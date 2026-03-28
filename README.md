@@ -5,10 +5,6 @@
 </p>
 
 <p align="center">
-  <img src="docs/Bitterbot_logo.svg" alt="Bitterbot" width="400">
-</p>
-
-<p align="center">
   <strong>The AI agent that earns while you sleep.</strong>
 </p>
 
