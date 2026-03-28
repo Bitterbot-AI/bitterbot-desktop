@@ -47,15 +47,34 @@ Use `/compact` (optionally with instructions) to force a compaction pass:
 
 Context window is model-specific. Bitterbot uses the model definition from the configured provider catalog to determine limits.
 
-## Compaction vs pruning
+## Progressive compression (pre-compaction)
 
-- **Compaction**: summarises and **persists** in JSONL.
-- **Session pruning**: trims old **tool results** only, **in-memory**, per request.
+Before expensive LLM-based compaction, Bitterbot runs a **deterministic pre-compression pass** that reduces token count cheaply:
+
+1. **Truncate old tool results** — Large tool outputs older than the most recent few are shortened (default threshold: 4096 tokens). Truncated content is stored in-memory and recoverable via the `expand_message` tool.
+2. **Truncate old messages** — User/assistant messages beyond the recent window are shortened (default: 2048 tokens).
+3. **Middle-out removal** — If message count exceeds the hard cap (default: 320), messages from the middle are removed, preserving beginning (context) and end (recent exchange).
+
+This means:
+- **Short conversations** — no compression at all
+- **Medium conversations** — cheap truncation only, no LLM calls
+- **Long conversations** — truncation first, then LLM summarization on the reduced set
+
+Configure via `agents.defaults.compression` (enabled by default).
+
+## Compaction vs pruning vs progressive compression
+
+| Mechanism | What it does | Persists? | When it runs |
+|-----------|-------------|-----------|-------------|
+| **Progressive compression** | Deterministic truncation of old tool results and messages | No (in-memory, originals recoverable via `expand_message`) | Before compaction |
+| **Compaction** | LLM summarization of older conversation | Yes (JSONL) | On auto-trigger or `/compact` |
+| **Session pruning** | Trims old tool results | No (in-memory, per request) | Before each LLM call (when TTL-based pruning is enabled) |
 
 See [/concepts/session-pruning](/concepts/session-pruning) for pruning details.
 
 ## Tips
 
 - Use `/compact` when sessions feel stale or context is bloated.
-- Large tool outputs are already truncated; pruning can further reduce tool-result buildup.
+- Large tool outputs are already truncated by progressive compression; session pruning can further reduce tool-result buildup.
+- If the agent needs content from a truncated message, it can use `expand_message` to retrieve the original.
 - If you need a fresh slate, `/new` or `/reset` starts a new session id.

@@ -63,11 +63,11 @@ The core of Bitterbot. A cognitive architecture grounded in computational neuros
 | Component | What It Does |
 |-----------|-------------|
 | **Knowledge Crystals** | Memories stored in SQLite, naturally decaying via Ebbinghaus forgetting curves. Important memories strengthen; unused ones fade. |
-| **Dream Engine** | Every 2 hours, runs 7 specialized modes: replay, mutation, extrapolation, compression, simulation, exploration, research. Rewrites the agent's working memory. |
+| **Dream Engine** | Every 2 hours (or on emotional spike), runs 7 specialized modes selected by FSHO oscillator + GCCRF signals. Includes ripple-enhanced replay, SNN-guided compression, and readiness checks. Rewrites working memory. |
 | **Curiosity Engine (GCCRF)** | Maps knowledge gaps, detects contradictions, generates intrinsic motivation. Drives autonomous exploration. |
-| **Hormonal System** | Dopamine (achievement), cortisol (urgency), oxytocin (bonding). Modulates behavior in real-time and determines what's worth remembering. |
+| **Hormonal System** | Dopamine (achievement), cortisol (urgency), oxytocin (bonding). Modulates behavior in real-time, influences memory retrieval (limbic bridge), and triggers emotional mini-dreams. |
 | **Evolving Identity** | `GENOME.md` (immutable safety axioms) constrains evolution. `MEMORY.md` (the Phenotype) is rewritten every dream cycle based on lived experience. |
-| **Consolidation Engine** | Runs every 30 minutes: Ebbinghaus decay, chunk merging, curiosity region mapping, governance enforcement, skill crystallization. |
+| **Consolidation Engine** | Runs every 30 minutes: Ebbinghaus decay, chunk merging, SNN near-merge discovery, orphan cluster rescue, curiosity region mapping, governance enforcement, skill crystallization. |
 
 **Storage:** Single SQLite database per agent at `~/.bitterbot/memory/<agentId>.sqlite`. No external services.
 

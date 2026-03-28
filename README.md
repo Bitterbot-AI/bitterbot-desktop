@@ -1,10 +1,11 @@
 # Bitterbot
 
 <p align="center">
-    <picture>
-        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/bitterbot/bitterbot/main/docs/assets/bitterbot-logo-text-dark.png">
-        <img src="https://raw.githubusercontent.com/bitterbot/bitterbot/main/docs/assets/bitterbot-logo-text.png" alt="Bitterbot" width="500">
-    </picture>
+  <img src="docs/bitterbot_avatar.png" alt="Bitterbot" width="180">
+</p>
+
+<p align="center">
+  <img src="docs/Bitterbot_logo.svg" alt="Bitterbot" width="400">
 </p>
 
 <p align="center">
@@ -12,10 +13,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/bitterbot/bitterbot/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/bitterbot/bitterbot/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/bitterbot/bitterbot/releases"><img src="https://img.shields.io/github/v/release/bitterbot/bitterbot?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
-  <a href="https://discord.gg/TODO-CREATE-BITTERBOT-DISCORD"><img src="https://img.shields.io/discord/1456350064065904867?label=Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Discord"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <a href="https://github.com/Bitterbot-AI/bitterbot-desktop/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/Bitterbot-AI/bitterbot-desktop/ci.yml?branch=main&style=for-the-badge&color=a855f7" alt="CI status"></a>
+  <a href="https://github.com/Bitterbot-AI/bitterbot-desktop/releases"><img src="https://img.shields.io/github/v/release/Bitterbot-AI/bitterbot-desktop?include_prereleases&style=for-the-badge&color=7c3aed" alt="GitHub release"></a>
+  <a href="https://discord.gg/TODO-CREATE-BITTERBOT-DISCORD"><img src="https://img.shields.io/discord/1456350064065904867?label=Discord&logo=discord&logoColor=white&color=9333ea&style=for-the-badge" alt="Discord"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-c084fc.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
 Most AI agents are stateless wrappers around an LLM API. Close the terminal, and they forget you exist.
@@ -31,7 +32,7 @@ Most AI agents are stateless wrappers around an LLM API. Close the terminal, and
 **Runtime: Node ≥ 22** · **Package manager: pnpm**
 
 ```bash
-git clone https://github.com/bitterbot/bitterbot.git && cd bitterbot
+git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop
 pnpm install && pnpm build
 ```
 
@@ -312,7 +313,7 @@ Run `bitterbot doctor` to surface risky configurations. [Security guide →](doc
 
 ## Models
 
-Works with any LLM provider. Recommended: **Anthropic Claude Opus 4.6** via Pro/Max subscription for long-context strength and prompt-injection resistance.  The bitterbot-core-a4 model api will be avaialble soon!
+Works with any LLM provider. Recommended: **Anthropic Claude Opus 4.6** via Pro/Max subscription for long-context strength and prompt-injection resistance.  The bitterbot-core-a4 model API will be available soon!
 
 Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic failover between providers.
 
@@ -349,12 +350,12 @@ Everything else — the memory system, dream engine, curiosity engine (GCCRF), h
 
 Built by **Victor Michael Gil** and the community.
 
-[about.bitterbot.ai](https://about.bitterbot.ai) · [@bitterbot](https://x.com/bitterbot) · [Discord](https://discord.gg/TODO-CREATE-BITTERBOT-DISCORD)
+[about.bitterbot.ai](https://about.bitterbot.ai) · [@Bitterbot_AI](https://x.com/Bitterbot_AI) · [Discord](https://discord.gg/TODO-CREATE-BITTERBOT-DISCORD)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and how to submit PRs. AI/vibe-coded PRs welcome! 🤖
 
 ---
 
 <!-- ## Star History — coming after launch
-[![Star History Chart](https://api.star-history.com/svg?repos=bitterbot/bitterbot&type=date&legend=top-left)](https://www.star-history.com/#bitterbot/bitterbot&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=Bitterbot-AI/bitterbot-desktop&type=date&legend=top-left)](https://www.star-history.com/#Bitterbot-AI/bitterbot-desktop&type=date&legend=top-left)
 -->

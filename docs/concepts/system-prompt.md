@@ -19,7 +19,7 @@ The system prompt assembles these sections in order:
 
 ### Identity & Emotional State
 
-- **Endocrine State** — Current hormonal levels (dopamine, cortisol, oxytocin) with behavioral guidance. High dopamine → enthusiastic and exploratory. High cortisol → focused and cautious. High oxytocin → warm and relational. These shift in real-time based on tool success/failure, user feedback, and dream cycles.
+- **Endocrine State** — Current hormonal levels (dopamine, cortisol, oxytocin) with dominant/active/baseline labels, behavioral guidance ("be enthusiastic and celebrate wins"), phenotype summary (self-concept from MEMORY.md), session handover brief (cross-session continuity), and developmental note for young agents (maturity < 15%). High dopamine → enthusiastic and exploratory. High cortisol → focused and cautious. High oxytocin → warm and relational. These shift in real-time based on tool success/failure, user feedback, memory retrieval (limbic bridge), and dream cycles.
 - **Safety Axioms** — Short guardrail reminders from `GENOME.md`. These are advisory in the prompt but enforced by tool policy, exec approvals, and sandboxing at the runtime level.
 
 ### Memory & Cognition
@@ -107,7 +107,8 @@ From the agent's perspective, the system prompt is its sense of self. On every t
 - **What it's good at** — Skills, marketplace reputation (from the Niche)
 - **What it's curious about** — Knowledge gaps, exploration targets (from GCCRF)
 - **What happened recently** — Active context, weighted by emotional salience
-- **What it can do** — Tools, browser, code execution, wallet, A2A
+- **What happened last session** — Session handover brief providing cross-session continuity
+- **What it can do** — Tools, browser, code execution, wallet, A2A, deep recall
 - **What it must never do** — Safety axioms from the Genome
 
 This isn't a static instruction set — it's a biological identity that evolves through experience and dreams. The prompt tomorrow will be different from the prompt today, because the agent will have lived another day.

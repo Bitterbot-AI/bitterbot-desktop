@@ -41,17 +41,21 @@ Session → Chunk indexing → Embedding → Crystal creation
                                             ↓
                               Consolidation (every 30 min)
                               ├── Ebbinghaus decay
-                              ├── Chunk merging
+                              ├── Chunk merging (cosine ≥ 0.92)
+                              ├── SNN near-merge discovery (cosine 0.82-0.91)
+                              ├── Orphan cluster detection → replay queue
                               ├── Curiosity region mapping
                               ├── Hormonal modulation
                               └── Skill crystallization
                                             ↓
-                                Dream Engine (every 2 hours)
-                                ├── Replay (strengthen retention)
+                                Dream Engine (every 2 hours + emotional triggers)
+                                ├── Readiness check (skip if nothing new)
+                                ├── FSHO oscillator + GCCRF → mode selection
+                                ├── Replay (ripple-enhanced, orphan priority)
                                 ├── Mutation (evolve skills)
                                 ├── Extrapolation (anticipate needs)
-                                ├── Compression (merge redundant memories)
-                                ├── Simulation (test hypotheses)
+                                ├── Compression (consume near-merge hints)
+                                ├── Simulation (cross-domain recombination)
                                 ├── Exploration (investigate knowledge gaps)
                                 └── Research (autonomous skill optimization)
                                             ↓
