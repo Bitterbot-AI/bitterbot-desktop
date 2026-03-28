@@ -1,0 +1,40 @@
+services:
+  bitterbot-gateway:
+    image: ${BITTERBOT_IMAGE:-bitterbot:local}
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      BITTERBOT_GATEWAY_TOKEN: ${BITTERBOT_GATEWAY_TOKEN}
+    volumes:
+      - ${BITTERBOT_CONFIG_DIR}:/home/node/.bitterbot
+      - ${BITTERBOT_WORKSPACE_DIR}:/home/node/.bitterbot/workspace
+    ports:
+      - "${BITTERBOT_GATEWAY_PORT:-18789}:18789"
+      - "${BITTERBOT_BRIDGE_PORT:-18790}:18790"
+    init: true
+    restart: unless-stopped
+    command:
+      [
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "${BITTERBOT_GATEWAY_BIND:-lan}",
+        "--port",
+        "18789",
+      ]
+
+  bitterbot-cli:
+    image: ${BITTERBOT_IMAGE:-bitterbot:local}
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      BITTERBOT_GATEWAY_TOKEN: ${BITTERBOT_GATEWAY_TOKEN}
+      BROWSER: echo
+    volumes:
+      - ${BITTERBOT_CONFIG_DIR}:/home/node/.bitterbot
+      - ${BITTERBOT_WORKSPACE_DIR}:/home/node/.bitterbot/workspace
+    stdin_open: true
+    tty: true
+    init: true
+    entrypoint: ["node", "dist/index.js"]

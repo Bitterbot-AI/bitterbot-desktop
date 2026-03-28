@@ -1,0 +1,21 @@
+[build]
+dockerfilePath = "deploy/bootnode/Dockerfile"
+
+[deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "always"
+
+# Railway exposes $PORT — map it to the P2P listen port.
+# The orchestrator HTTP dashboard goes on the internal port 9847.
+startCommand = """
+bitterbot-orchestrator \
+  --ipc-path /tmp/bitterbot-orchestrator.sock \
+  --key-dir /data/keys \
+  --listen-addr /ip4/0.0.0.0/tcp/${PORT:-9100} \
+  --http-addr 0.0.0.0:9847
+"""
+
+[[deploy.volumes]]
+mountPath = "/data/keys"
+name = "bootnode-keys"

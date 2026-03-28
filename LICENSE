@@ -1,0 +1,64 @@
+MIT License
+
+Copyright (c) 2025-2026 Victor Michael Gil / Bitterbot AI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+ATTRIBUTION
+
+Portions of the channel routing and base agent runner incorporate code from
+OpenClaw (MIT License) and the pi-agent framework by Mario Zechner (MIT
+License). See the Heritage & Attribution section of README.md for details.
+
+
+ORIGINAL WORK PROVENANCE
+
+The following components are original work by Victor Michael Gil and
+constitute the novel intellectual contributions of the Bitterbot project:
+
+  - Dream Engine (7-mode cognitive consolidation architecture)
+  - GCCRF Curiosity Engine (intrinsic motivation via surprise-driven exploration)
+  - Hormonal Modulation System (dopamine/cortisol/oxytocin personality dynamics)
+  - Knowledge Crystal Pipeline (skill crystallization, verification, and evolution)
+  - Biological Identity Framework (Genome, Phenotype, Bond, Niche)
+  - P2P Skills Marketplace (gossipsub propagation, EigenTrust reputation, bounties)
+  - Hormonal Weather Network (network-wide immune response via cortisol broadcasts)
+  - Management Node Analytics (census, anomaly detection, ban consensus)
+  - Agent Economic Layer (x402 micropayments, A2A skill trading, revenue sharing)
+
+
+ECONOMIC LAYER DISCLAIMER
+
+The wallet, micropayment (x402), P2P skills marketplace, and fiat-to-crypto
+onramp (powered by Stripe) features of this software are EXPERIMENTAL. They
+involve real cryptocurrency transactions (USDC on Base) and real money.
+
+USE AT YOUR OWN RISK. The authors and contributors are not responsible for any
+financial loss, failed transactions, incorrect payments, or unintended spending
+that may result from the use of these features. Users are solely responsible
+for configuring spending limits, reviewing transactions, and safeguarding their
+wallet credentials.
+
+The Stripe Crypto Onramp integration is subject to Stripe's own terms of
+service, KYC requirements, and regional availability. Coinbase Smart Wallet
+and the Base network are third-party services with their own terms and risks.
+
+This software does not provide financial advice and is not a regulated
+financial service.

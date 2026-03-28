@@ -1,0 +1,15 @@
+{
+  "name": "@bitterbot/google-gemini-cli-auth",
+  "version": "2026.2.15",
+  "private": true,
+  "description": "Bitterbot Gemini CLI OAuth provider plugin",
+  "type": "module",
+  "devDependencies": {
+    "bitterbot": "workspace:*"
+  },
+  "bitterbot": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+packages:
+  - .
+  - desktop
+  - extensions/*
+
+onlyBuiltDependencies:
+  - "@lydell/node-pty"
+  - "@matrix-org/matrix-sdk-crypto-nodejs"
+  - "@napi-rs/canvas"
+  - "@whiskeysockets/baileys"
+  - authenticate-pam
+  - esbuild
+  - node-llama-cpp
+  - protobufjs
+  - sharp

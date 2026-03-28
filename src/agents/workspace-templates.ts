@@ -1,0 +1,66 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
+import { pathExists } from "../utils.js";
+
+const FALLBACK_TEMPLATE_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../docs/reference/templates",
+);
+
+let cachedTemplateDir: string | undefined;
+let resolvingTemplateDir: Promise<string> | undefined;
+
+export async function resolveWorkspaceTemplateDir(opts?: {
+  cwd?: string;
+  argv1?: string;
+  moduleUrl?: string;
+}): Promise<string> {
+  if (cachedTemplateDir) {
+    return cachedTemplateDir;
+  }
+  if (resolvingTemplateDir) {
+    return resolvingTemplateDir;
+  }
+
+  resolvingTemplateDir = (async () => {
+    // Check env override first (used by Electron packaged app)
+    const envOverride = process.env.BITTERBOT_TEMPLATE_DIR?.trim();
+    if (envOverride && await pathExists(envOverride)) {
+      cachedTemplateDir = envOverride;
+      return envOverride;
+    }
+
+    const moduleUrl = opts?.moduleUrl ?? import.meta.url;
+    const argv1 = opts?.argv1 ?? process.argv[1];
+    const cwd = opts?.cwd ?? process.cwd();
+
+    const packageRoot = await resolveBitterbotPackageRoot({ moduleUrl, argv1, cwd });
+    const candidates = [
+      packageRoot ? path.join(packageRoot, "docs", "reference", "templates") : null,
+      cwd ? path.resolve(cwd, "docs", "reference", "templates") : null,
+      FALLBACK_TEMPLATE_DIR,
+    ].filter(Boolean) as string[];
+
+    for (const candidate of candidates) {
+      if (await pathExists(candidate)) {
+        cachedTemplateDir = candidate;
+        return candidate;
+      }
+    }
+
+    cachedTemplateDir = candidates[0] ?? FALLBACK_TEMPLATE_DIR;
+    return cachedTemplateDir;
+  })();
+
+  try {
+    return await resolvingTemplateDir;
+  } finally {
+    resolvingTemplateDir = undefined;
+  }
+}
+
+export function resetWorkspaceTemplateDirCache() {
+  cachedTemplateDir = undefined;
+  resolvingTemplateDir = undefined;
+}

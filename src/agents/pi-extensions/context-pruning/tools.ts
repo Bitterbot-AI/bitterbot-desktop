@@ -1,0 +1,26 @@
+import type { ContextPruningToolMatch } from "./settings.js";
+import { compileGlobPatterns, matchesAnyGlobPattern } from "../../glob-pattern.js";
+
+function normalizeGlob(value: string) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+export function makeToolPrunablePredicate(
+  match: ContextPruningToolMatch,
+): (toolName: string) => boolean {
+  const deny = compileGlobPatterns({ raw: match.deny, normalize: normalizeGlob });
+  const allow = compileGlobPatterns({ raw: match.allow, normalize: normalizeGlob });
+
+  return (toolName: string) => {
+    const normalized = normalizeGlob(toolName);
+    if (matchesAnyGlobPattern(normalized, deny)) {
+      return false;
+    }
+    if (allow.length === 0) {
+      return true;
+    }
+    return matchesAnyGlobPattern(normalized, allow);
+  };
+}

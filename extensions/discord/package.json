@@ -1,0 +1,14 @@
+{
+  "name": "@bitterbot/discord",
+  "version": "2026.2.15",
+  "description": "Bitterbot Discord channel plugin",
+  "type": "module",
+  "devDependencies": {
+    "bitterbot": "workspace:*"
+  },
+  "bitterbot": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@bitterbot/signal",
+  "version": "2026.2.15",
+  "private": true,
+  "description": "Bitterbot Signal channel plugin",
+  "type": "module",
+  "devDependencies": {
+    "bitterbot": "workspace:*"
+  },
+  "bitterbot": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
