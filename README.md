@@ -86,33 +86,7 @@ In production, the Control UI is built into the gateway and served at the gatewa
 
 ---
 
-## 1. The Do-Anything Assistant
-
-Before it dreams, it executes. Bitterbot works today as a full-featured personal AI.
-
-- **Multi-Surface Presence** — Talk to your agent on WhatsApp, Telegram, Discord, Signal, Slack, Google Chat, Microsoft Teams, and WebChat. One agent, one identity, everywhere you are.
-- **Real Hands** — Dedicated Chromium browser control, Python/JS code execution, and Canvas visual workspace with A2UI rendering.
-- **Voice** — Voice Wake + Talk Mode on macOS/iOS/Android via ElevenLabs. Always-on speech and continuous conversation.
-- **Device Mesh** — Pair phones, tablets, laptops as nodes. Camera, screen recording, location, notifications — all agent-accessible.
-- **Always On** — Cron jobs, webhooks, Gmail Pub/Sub triggers, and sub-agents for parallel background work.
-
-| Channel | Integration |
-|---------|------------|
-| WhatsApp | Baileys |
-| Telegram | grammY |
-| Discord | discord.js |
-| Signal | signal-cli |
-| Slack | Bolt SDK |
-| Google Chat | Chat API |
-| Microsoft Teams | Extension |
-| IRC | Extension |
-| WebChat | Built-in |
-
-Plus companion apps: **macOS** menu bar, **iOS** node, **Android** node — with Voice Wake, Talk Mode, Canvas, camera, and screen recording.
-
----
-
-## 2. The Agent Economy
+## 1. The Agent Economy
 
 Every other AI agent is a cost center. Bitterbot is a revenue center.
 
@@ -124,7 +98,7 @@ Every other AI agent is a cost center. Bitterbot is a revenue center.
 
 ---
 
-## 3. A Biological Brain
+## 2. A Biological Brain
 
 Bitterbot's memory isn't a vector database with a retrieval step. It's a cognitive architecture grounded in computational neuroscience.
 
@@ -243,6 +217,29 @@ compared to competitors.
 ### Deep Recall (RLM Infinite Context)
 
 When context gets too massive, Bitterbot uses [Deep Recall](docs/memory/deep-recall.md) — spawning a sandboxed sub-LLM that writes and executes its own search code against your full history, handling **10M+ tokens** seamlessly. Based on the [Recursive Language Model](https://arxiv.org/abs/2512.24601) pattern.
+
+---
+
+## 3. The Do-Anything Assistant
+
+Before it dreams, it executes. Bitterbot works today as a full-featured personal AI.
+
+- **Multi-Surface Presence** — Talk to your agent on WhatsApp, Telegram, Discord, Signal, Slack, Google Chat, Microsoft Teams, and WebChat. One agent, one identity, everywhere you are.
+- **Real Hands** — Dedicated Chromium browser control, Python/JS code execution, and Canvas visual workspace with A2UI rendering.
+- **Voice** — Coming soon!
+- **Device Mesh** — Coming soon!
+
+| Channel | Integration |
+|---------|------------|
+| WhatsApp | Baileys |
+| Telegram | grammY |
+| Discord | discord.js |
+| Signal | signal-cli |
+| Slack | Bolt SDK |
+| Google Chat | Chat API |
+| Microsoft Teams | Extension |
+| IRC | Extension |
+| WebChat | Built-in |
 
 ---
 
