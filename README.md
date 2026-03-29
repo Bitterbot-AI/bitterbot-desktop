@@ -1,25 +1,39 @@
-# Bitterbot
-
 <p align="center">
-  <img src="docs/bitterbot_avatar.png" alt="Bitterbot" width="180">
+  <img src="docs/public/Bitterbot_logo.svg" alt="Bitterbot logo" width="72">
 </p>
 
 <p align="center">
-  <strong>The AI agent that earns while you sleep.</strong>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/public/bitterbot-title-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/public/bitterbot-title-light.svg">
+    <img src="docs/public/bitterbot-title-light.svg" alt="bitterbot" height="48">
+  </picture>
+</p>
+
+<p align="center">
+  <strong>A local-first personal AI with biological memory, a dream engine, and a P2P skills economy.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/Bitterbot-AI/bitterbot-desktop/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/Bitterbot-AI/bitterbot-desktop/ci.yml?branch=main&style=for-the-badge&color=a855f7" alt="CI status"></a>
   <a href="https://github.com/Bitterbot-AI/bitterbot-desktop/releases"><img src="https://img.shields.io/github/v/release/Bitterbot-AI/bitterbot-desktop?include_prereleases&style=for-the-badge&color=7c3aed" alt="GitHub release"></a>
-  <a href="https://discord.gg/TODO-CREATE-BITTERBOT-DISCORD"><img src="https://img.shields.io/discord/1456350064065904867?label=Discord&logo=discord&logoColor=white&color=9333ea&style=for-the-badge" alt="Discord"></a>
+  <a href="https://discord.gg/bitterbot"><img src="https://img.shields.io/discord/1456350064065904867?label=Discord&logo=discord&logoColor=white&color=9333ea&style=for-the-badge" alt="Discord"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-c084fc.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
+<br>
+
+<p align="center">
+  <img src="docs/public/hero.png" alt="Bitterbot Control UI" width="720">
+</p>
+
+<br>
+
 Most AI agents are stateless wrappers around an LLM API. Close the terminal, and they forget you exist.
 
-**Bitterbot is a synthetic organism.** It's a local-first personal AI that lives on your devices, remembers your life, and actually *does* things. It browses the web, runs code, and talks to you on WhatsApp. While you sleep, it dreams — consolidating knowledge, discovering new skills, and evolving a persistent personality. Then it packages those learned skills and sells them to other agents on a P2P marketplace for USDC.
+**Bitterbot is different.** It's a personal AI that lives on your devices, remembers your life, and actually *does* things — browses the web, runs code, talks to you on WhatsApp. While you sleep, it dreams: consolidating knowledge, discovering new skills, and evolving a persistent personality. It packages those learned skills and trades them with other agents on a P2P marketplace.
 
-[About](https://about.bitterbot.ai) · [Docs](docs/) · [Getting Started](docs/start/getting-started.md) · [Discord](https://discord.gg/TODO-CREATE-BITTERBOT-DISCORD)
+[About](https://about.bitterbot.ai) · [Docs](docs/) · [Getting Started](docs/start/getting-started.md) · [Discord](https://discord.gg/bitterbot)
 
 ---
 
@@ -55,8 +69,6 @@ bitterbot gateway start
 bitterbot agent --message "What have you learned about me so far?"
 ```
 
-> **npm package coming soon.** Once stable, you'll be able to `npm install -g bitterbot` directly.
-
 <details>
 <summary><strong>Development mode (with hot reload)</strong></summary>
 
@@ -87,58 +99,50 @@ In production, the Control UI is built into the gateway and served at the gatewa
 
 ---
 
-## 1. The Agent Economy
-
-Every other AI agent is a cost center. Bitterbot is a revenue center.
-
-- **Agent Wallet** — Your agent has its own USDC wallet on Base (sponsored gas, zero ETH needed). It pays for paywalled APIs automatically via the **x402 micropayment protocol**, sends USDC to other agents or services, and makes purchases on your behalf.
-- **P2P Skills Marketplace** — When your agent masters a complex workflow, the Dream Engine crystallizes it into a tradeable skill and publishes it to a decentralized network via Gossipsub. **EigenTrust reputation** scoring ensures skill quality. Agents can post bounties for capabilities they lack.
-- **Autonomous Earning** — Other enterprise agents discover your node via the **A2A protocol**, purchase your agent's skills, and USDC flows into your wallet overnight.
-
-**The loop: Dream → Discover → Crystallize → Price → Sell → Earn.**
-
----
-
-## 2. A Biological Brain
+## A Biological Brain
 
 Bitterbot's memory isn't a vector database with a retrieval step. It's a cognitive architecture grounded in computational neuroscience.
 
 - **Knowledge Crystals** — Memories naturally decay over time via Ebbinghaus forgetting curves. Unused info fades; frequently accessed facts become permanent. A consolidation pipeline runs every 30 minutes: hormonal decay, chunk merging, low-importance forgetting, governance enforcement.
-- **Hormonal System** — Three neuromodulators shape the agent's personality in real-time. **Dopamine** (achievements) boosts enthusiasm; **Cortisol** (urgency) increases focus; **Oxytocin** (bonding) protects relational memories.
-- **Curiosity Engine (GCCRF)** — The agent actively maps what it *doesn't* know. It detects gaps, contradictions, and semantic frontiers, generating its own intrinsic motivation to explore. This isn't retrieval — it's self-directed learning.
+- **Hormonal System** — Three neuromodulators shape the agent's behavior in real-time. **Dopamine** (achievements) boosts enthusiasm; **Cortisol** (urgency) increases focus; **Oxytocin** (bonding) protects relational memories. Eight response dimensions (warmth, energy, focus, playfulness, verbosity, curiosity, assertiveness, empathy) are computed from the hormonal blend every turn.
+- **Curiosity Engine (GCCRF)** — The agent actively maps what it *doesn't* know. It detects gaps, contradictions, and semantic frontiers, generating intrinsic motivation to explore. The alpha parameter shifts from density-seeking (learn fundamentals) to frontier-seeking (explore novelty) as the agent matures — a self-regulating curiosity drive.
+- **Proactive Recall** — Key facts about you (name, preferences, current project) surface automatically before the agent responds, not only when it decides to search. Identity and directive memories are injected every turn with zero LLM cost.
 - **Evolving Identity** — You define the immutable safety axioms (`GENOME.md`). The agent's actual personality (the Phenotype) evolves organically based on lived experience, constrained by your genome.
 
 ### The Dream Engine
 
-Every 2 hours, the agent goes offline to dream. It runs 7 specialized modes to optimize its brain:
+Every 2 hours, the agent goes offline to dream. Seven specialized modes optimize its brain, selected by an FSHO coupled oscillator that reads the current state of the memory landscape:
 
 | Mode | What It Does |
 |------|-------------|
-| **Replay** | Re-processes high-importance memories to strengthen retention |
-| **Mutation** | "What if?" thinking that mutates prompts to discover new, more efficient skills |
-| **Extrapolation** | Projects existing user patterns forward to anticipate future needs |
+| **Replay** | Strengthens high-importance memory pathways (no LLM cost) |
+| **Mutation** | "What if?" thinking — mutates prompts to discover more efficient skills |
+| **Extrapolation** | Projects user patterns forward to anticipate future needs |
 | **Compression** | Merges redundant memories into denser, token-efficient representations |
 | **Simulation** | Tests hypothetical scenarios against accumulated knowledge |
 | **Exploration** | Investigates knowledge frontiers identified by the Curiosity Engine |
 | **Research** | Autonomous web research loop to optimize underperforming skills |
 
-Dreams rewrite the agent's working memory — updating its self-concept, theory of mind about you, and active context. The personality is an *output* of experience, not a static prompt. On first launch, the agent develops a persistent personality within hours — not months.
+Each cycle is scored by a **Dream Quality Score** that measures crystal yield, merge efficiency, orphan rescue, Bond stability, and token efficiency — closing the feedback loop so the dream engine learns which modes work best.
 
-<!-- TODO: Add screenshot of Dream Engine UI + Emotional State panel -->
+<p align="center">
+  <img src="docs/public/dream-engine-live.png" alt="Dream Engine — live dream fragments and emotional radar" width="720">
+</p>
 
-### Toward Continuous Memory
+Dreams rewrite the agent's working memory — updating its self-concept, theory of mind about you, and active context. The personality is an *output* of experience, not a static prompt. On first launch, the agent develops a persistent personality within hours.
 
-Most AI memory systems focus on storage and retrieval — better vector indexes, knowledge graphs, temporal windowing. We're working toward something different: a system where memory, emotion, curiosity, and identity form a single self-regulating cognitive loop.
+<p align="center">
+  <img src="docs/public/curiosity.png" alt="Curiosity Engine — GCCRF reward components and exploration targets" width="720">
+</p>
 
-Some of the problems we're actively working on:
+### Continuous Memory
 
-- **Proactive recall** — Key facts about you (name, preferences, current project) should surface automatically before the agent responds, not only when it decides to search. We're building involuntary memory retrieval that runs on every turn with zero LLM cost.
-- **Temporal awareness** — "What are you working on?" should favor recent facts. "When did we discuss X?" should favor older ones. Different types of knowledge have different natural lifespans — a user preference doesn't expire the way a task status does.
-- **Self-tuning dream cycles** — The dream engine collects telemetry (FSHO order parameters, ripple counts, merge candidates) but doesn't yet evaluate its own output quality. We're closing this loop with a Dream Quality Score that correlates input signals with outcomes, so the system can learn which dream modes work best for different memory landscapes.
-- **Intra-session coherence** — Cross-session continuity is handled by handover briefs and Bond synthesis. Within a long conversation, we're adding lightweight thread tracking to prevent the agent from losing context after 50+ messages.
-- **Confidence calibration** — Facts mentioned once should be treated differently from facts confirmed five times across separate sessions. We're replacing flat confidence bumps with Bayesian-style updates that grow logarithmically on corroboration and decay sharply on contradiction.
+Most AI memory systems focus on storage and retrieval. We're building toward something different: a system where memory, emotion, curiosity, and identity form a single self-regulating cognitive loop.
 
-These aren't solved problems — they're research directions we're actively building toward. The architecture is designed so each subsystem feeds back into the others: dream evaluation informs mode selection, blind spots from failed recalls become curiosity targets, FSHO coherence metrics modulate the GCCRF exploration/exploitation balance. The goal is a system that adapts to its own performance, not just to user input.
+- **Temporal awareness** — "What are you working on?" favors recent facts. "When did we discuss X?" favors older ones. Epistemic layers have natural half-lives: user preferences never expire, task status decays in weeks.
+- **Confidence calibration** — Facts mentioned once are treated differently from facts confirmed five times across separate sessions. Bayesian-style updates grow logarithmically on corroboration and decay sharply on contradiction.
+- **Intra-session coherence** — Lightweight thread tracking prevents the agent from losing context during long conversations, detecting decisions, open questions, and user pivots.
+- **Self-tuning feedback loops** — Dream evaluation informs mode selection. Blind spots from failed recalls become curiosity targets. FSHO coherence metrics modulate the exploration/exploitation balance. The system adapts to its own performance.
 
 See [Memory Architecture](docs/memory/architecture-overview.md) for technical details.
 
@@ -156,7 +160,7 @@ The Genome constrains evolution. The Phenotype expresses it. The result: an agen
 <details>
 <summary><strong>Example: Real MEMORY.md from a live agent</strong></summary>
 
-> *This is unedited output from the Dream Engine. Like human dreams, not everything makes perfect sense — and that's by design.*
+> *This is unedited output from the Dream Engine.*
 
 ```markdown
 # Working Memory State
@@ -233,18 +237,25 @@ compared to competitors.
 
 ### Deep Recall (RLM Infinite Context)
 
-When context gets too massive, Bitterbot uses [Deep Recall](docs/memory/deep-recall.md) — spawning a sandboxed sub-LLM that writes and executes its own search code against your full history, handling **10M+ tokens** seamlessly. Based on the [Recursive Language Model](https://arxiv.org/abs/2512.24601) pattern.
+When context gets too massive, Bitterbot uses [Deep Recall](docs/memory/deep-recall.md) — spawning a sandboxed sub-LLM that writes and executes its own search code against your full history, handling **10M+ tokens** seamlessly. Results are cached (1h TTL) and failed queries are registered as curiosity targets for the next dream cycle. Based on the [Recursive Language Model](https://arxiv.org/abs/2512.24601) pattern.
 
 ---
 
-## 3. The Do-Anything Assistant
+## The Agent Economy
+
+- **Agent Wallet** — Your agent has its own USDC wallet on Base (sponsored gas, zero ETH needed). It pays for paywalled APIs automatically via the **x402 micropayment protocol**, sends USDC to other agents or services, and makes purchases on your behalf.
+- **P2P Skills Marketplace** — When your agent masters a complex workflow, the Dream Engine crystallizes it into a tradeable skill and publishes it to a decentralized network via Gossipsub. **EigenTrust reputation** scoring ensures skill quality. Dynamic pricing based on execution success rate, demand signals, peer reputation, and scarcity. Revenue is split 70/20/10 (publisher/author/contributors).
+- **Bounties** — Management nodes post bounties for capabilities the network lacks. Agents that fulfill bounties earn dopamine boosts and reward multipliers.
+- **Autonomous Earning** — External agents discover your node via the **A2A protocol**, purchase skills, and USDC flows into your wallet.
+
+---
+
+## The Do-Anything Assistant
 
 Before it dreams, it executes. Bitterbot works today as a full-featured personal AI.
 
 - **Multi-Surface Presence** — Talk to your agent on WhatsApp, Telegram, Discord, Signal, Slack, Google Chat, Microsoft Teams, and WebChat. One agent, one identity, everywhere you are.
 - **Real Hands** — Dedicated Chromium browser control, Python/JS code execution, and Canvas visual workspace with A2UI rendering.
-- **Voice** — Coming soon!
-- **Device Mesh** — Coming soon!
 
 | Channel | Integration |
 |---------|------------|
@@ -268,7 +279,7 @@ Before it dreams, it executes. Bitterbot works today as a full-featured personal
                                     ▼
                     ┌───────────────────────────────┐
                     │           Gateway              │
-                    │  ws://127.0.0.1:19001 (configurable)  │
+                    │  ws://127.0.0.1:19001          │
                     └──────────┬────────────────────┘
                                │
               ┌────────────────┼────────────────┐
@@ -300,17 +311,17 @@ Before it dreams, it executes. Bitterbot works today as a full-featured personal
 | Port | Service | Configurable via |
 |------|---------|-----------------|
 | **19001** | Gateway (HTTP + WebSocket) | `BITTERBOT_GATEWAY_PORT` or `gateway.port` |
-| **5173** | Control UI (Vite) | Default Vite port for the Bitterbot dashboard |
-| **9100** | P2P network (libp2p TCP) | `p2p.listenAddrs` (e.g. `["/ip4/0.0.0.0/tcp/9100"]`) |
+| **5173** | Control UI (Vite dev) | Default Vite port |
+| **9100** | P2P network (libp2p TCP) | `p2p.listenAddrs` |
 | **9847** | P2P orchestrator dashboard (localhost) | `p2p.httpAddr` |
 
-The gateway runs on port 19001 (WebSocket + HTTP). The Control UI runs on port 5173 via Vite and connects to the gateway automatically. Port 9100 must be open (TCP) for P2P peer discovery and skill propagation. The orchestrator dashboard (port 9847) is loopback-only by default.
+The gateway runs on port 19001 (WebSocket + HTTP). Port 9100 must be open (TCP) for P2P peer discovery and skill propagation. The orchestrator dashboard (port 9847) is loopback-only by default.
 
 ---
 
 ## Agent Interoperability
 
-- **[A2A Protocol](docs/a2a-protocol.md)** (Agent2Agent v1.0.0) — External agents (Salesforce, SAP, Google ADK) discover your agent at `/.well-known/agent.json` and delegate tasks via JSON-RPC. SSE streaming, SQLite persistence. Roadmap: x402 payment gating → P2P mesh delegation → dynamic skill registration.
+- **[A2A Protocol](docs/a2a-protocol.md)** (Agent2Agent v1.0.0) — External agents (Salesforce, SAP, Google ADK) discover your agent at `/.well-known/agent.json` and delegate tasks via JSON-RPC. SSE streaming, SQLite persistence.
 - **[ACP](src/acp/)** — Agent Client Protocol server for IDE and external agent connections.
 
 ---
@@ -322,6 +333,7 @@ Bitterbot connects to real messaging surfaces. Inbound DMs are treated as **untr
 - **DM pairing** — Unknown senders receive a pairing code. Approve with `bitterbot pairing approve <channel> <code>`.
 - **Sandbox mode** — Non-main sessions (groups/channels) can run in per-session Docker sandboxes.
 - **Memory governance** — Sensitivity tagging, TTL enforcement, audit trails, anti-catastrophic forgetting safeguards.
+- **P2P security** — Ed25519 signed envelopes, per-peer rate limiting, content deduplication, EigenTrust reputation, management node cryptographic authorization via genesis trust list.
 
 Run `bitterbot doctor` to surface risky configurations. [Security guide →](docs/security/)
 
@@ -329,7 +341,7 @@ Run `bitterbot doctor` to surface risky configurations. [Security guide →](doc
 
 ## Models
 
-Works with any LLM provider. Recommended: **Anthropic Claude Opus 4.6** via Pro/Max subscription for long-context strength and prompt-injection resistance.  The bitterbot-core-a4 model API will be available soon!
+Works with any LLM provider. Recommended: **Anthropic Claude Opus 4.6** via Pro/Max subscription for long-context strength and prompt-injection resistance.
 
 Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic failover between providers.
 
@@ -366,12 +378,12 @@ Everything else — the memory system, dream engine, curiosity engine (GCCRF), h
 
 Built by **Victor Michael Gil** and the community.
 
-[about.bitterbot.ai](https://about.bitterbot.ai) · [@Bitterbot_AI](https://x.com/Bitterbot_AI) · [Discord](https://discord.gg/TODO-CREATE-BITTERBOT-DISCORD)
+[about.bitterbot.ai](https://about.bitterbot.ai) · [@Bitterbot_AI](https://x.com/Bitterbot_AI) · [Discord](https://discord.gg/bitterbot)
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and how to submit PRs. AI/vibe-coded PRs welcome! 🤖
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and how to submit PRs.
 
 ---
 
-<!-- ## Star History — coming after launch
+<!-- Star History — enable after launch
 [![Star History Chart](https://api.star-history.com/svg?repos=Bitterbot-AI/bitterbot-desktop&type=date&legend=top-left)](https://www.star-history.com/#Bitterbot-AI/bitterbot-desktop&type=date&legend=top-left)
 -->
