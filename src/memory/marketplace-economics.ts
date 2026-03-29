@@ -131,14 +131,15 @@ export class MarketplaceEconomics {
     // Get all published skill/task_pattern crystals
     const skills = this.db.prepare(`
       SELECT c.id, c.text, c.semantic_type,
-             COALESCE(c.download_count, 0) as download_count
+             COALESCE(c.download_count, 0) as download_count,
+             c.skill_category
       FROM chunks c
       WHERE c.publish_visibility = 'shared'
         AND c.semantic_type IN ('skill', 'task_pattern')
         AND COALESCE(c.lifecycle_state, 'active') != 'archived'
     `).all() as Array<{
       id: string; text: string; semantic_type: string;
-      download_count: number;
+      download_count: number; skill_category: string | null;
     }>;
 
     let listedCount = 0;
@@ -161,9 +162,9 @@ export class MarketplaceEconomics {
             avgRewardScore: metrics.avgRewardScore,
           },
           downloadCount: uniqueBuyers,
-          bountyMatches: 0, // TODO: get from bounty system
+          bountyMatches: this.countBountyMatches(skill.id),
           reputationScore,
-          similarSkillCount: 5, // TODO: get from network gossip
+          similarSkillCount: this.countSimilarSkills(skill.skill_category),
         }, this.pricingConfig);
 
         const name = skill.text.split("\n")[0]?.slice(0, 100).trim() || skill.id.slice(0, 8);
@@ -410,6 +411,36 @@ export class MarketplaceEconomics {
   /**
    * Count unique buyers for a skill (anti-sybil: distinct peer IDs only).
    */
+  /** Count active bounties that this skill could fulfill. */
+  private countBountyMatches(skillCrystalId: string): number {
+    try {
+      const row = this.db.prepare(`
+        SELECT COUNT(*) as c FROM curiosity_targets
+        WHERE resolved_at IS NULL AND expires_at > ?
+          AND metadata LIKE '%"isBounty":true%'
+      `).get(Date.now()) as { c: number } | undefined;
+      return row?.c ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Count similar skills on the network for scarcity pricing. */
+  private countSimilarSkills(category: string | null): number {
+    if (!category) return 5; // Default fallback
+    try {
+      const row = this.db.prepare(`
+        SELECT COUNT(*) as c FROM chunks
+        WHERE skill_category = ?
+          AND COALESCE(lifecycle_state, 'active') != 'archived'
+          AND COALESCE(deprecated, 0) != 1
+      `).get(category) as { c: number } | undefined;
+      return row?.c ?? 5;
+    } catch {
+      return 5;
+    }
+  }
+
   private getUniqueBuyerCount(skillCrystalId: string): number {
     const row = this.db.prepare(`
       SELECT COUNT(DISTINCT buyer_peer_id) as c

@@ -2,6 +2,11 @@
  * Multi-Resolution Skill Hierarchy: computes 4-level hierarchy from
  * multi-perspective embeddings for O(1) capability checks and
  * resolution-adaptive queries.
+ *
+ * STATUS: Phase 6 preparation — functions are defined but not yet wired
+ * into the skill crystallization pipeline. Will be activated when
+ * multi-perspective embedding generation (embedding-perspectives.ts)
+ * produces per-skill hierarchy data during dream cycles.
  */
 
 import type { DatabaseSync } from "node:sqlite";
