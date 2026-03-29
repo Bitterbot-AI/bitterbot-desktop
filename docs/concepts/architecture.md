@@ -197,9 +197,9 @@ A single long-lived Node.js process that:
 - Validates inbound frames against JSON Schema
 - Manages agent sessions, model routing, and tool execution
 
-### Control UI (Vite)
+### Control UI
 
-The Bitterbot dashboard runs as a Vite dev server on port **5173**:
+The Bitterbot dashboard runs on port **5173**:
 
 ```bash
 # Terminal 1 — Gateway

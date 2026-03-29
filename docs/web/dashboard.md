@@ -12,7 +12,7 @@ The Gateway dashboard is the browser Control UI served at `/` by default
 
 Quick open (local Gateway):
 
-- [http://localhost:5173](http://localhost:5173) (requires gateway + `cd desktop && pnpm dev`)
+- [http://localhost:5173](http://localhost:5173) (start gateway + `cd desktop && pnpm dev`)
 
 Key references:
 
@@ -35,12 +35,12 @@ Prefer localhost, Tailscale Serve, or an SSH tunnel.
 
 ## Token basics (local vs remote)
 
-- **Localhost**: open `http://localhost:5173` (start gateway + `cd desktop && pnpm dev` first).
+- **Localhost**: open `http://localhost:5173` (start both: gateway + `cd desktop && pnpm dev`).
 - **Token source**: `gateway.auth.token` (or `BITTERBOT_GATEWAY_TOKEN`); the UI stores a copy in localStorage after you connect.
 - **Not localhost**: use Tailscale Serve (tokenless if `gateway.auth.allowTailscale: true`), tailnet bind with a token, or an SSH tunnel. See [Web surfaces](/web).
 
 ## If you see “unauthorized” / 1008
 
-- Ensure the gateway is reachable (local: `bitterbot status`; remote: SSH tunnel `ssh -N -L 19001:127.0.0.1:19001 user@host` then open `http://localhost:5173` (start gateway + `cd desktop && pnpm dev` first)).
+- Ensure the gateway is reachable (local: `bitterbot status`; remote: SSH tunnel `ssh -N -L 19001:127.0.0.1:19001 user@host` then open `http://localhost:5173` (start both: gateway + `cd desktop && pnpm dev`)).
 - Retrieve the token from the gateway host: `bitterbot config get gateway.auth.token` (or generate one: `bitterbot doctor --generate-gateway-token`).
 - In the dashboard settings, paste the token into the auth field, then connect.

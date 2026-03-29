@@ -72,11 +72,9 @@ bitterbot channels login
 bitterbot health
 ```
 
-## Bleeding edge workflow (Gateway in a terminal)
+## Manual workflow (Gateway + Control UI in terminals)
 
-Goal: work on the TypeScript Gateway with hot reload.
-
-### 1) Start the dev Gateway
+### 1) Start the Gateway
 
 ```bash
 pnpm install && pnpm build

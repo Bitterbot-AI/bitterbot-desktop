@@ -177,7 +177,7 @@ Optional absolute base (when you want fixed asset URLs):
 BITTERBOT_CONTROL_UI_BASE_PATH=/bitterbot/ pnpm build
 ```
 
-For local development (separate dev server):
+To run the Control UI locally:
 
 ```bash
 cd desktop && pnpm dev # auto-installs UI deps on first run
@@ -185,13 +185,13 @@ cd desktop && pnpm dev # auto-installs UI deps on first run
 
 Then point the UI at your Gateway WS URL (e.g. `ws://127.0.0.1:19001`).
 
-## Debugging/testing: dev server + remote Gateway
+## Connecting to a remote Gateway
 
 The Control UI is static files; the WebSocket target is configurable and can be
-different from the HTTP origin. This is handy when you want the Vite dev server
+different from the HTTP origin. This is useful when you want the Control UI
 locally but the Gateway runs elsewhere.
 
-1. Start the UI dev server: `cd desktop && pnpm dev`
+1. Start the UI: `cd desktop && pnpm dev`
 2. Open a URL like:
 
 ```text
