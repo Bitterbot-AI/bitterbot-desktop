@@ -105,7 +105,7 @@ Yes, really. If you used Claude, Cursor, Copilot, or Bitterbot itself to write y
 
 ## Community
 
-- [Discord](https://discord.gg/TODO-CREATE-BITTERBOT-DISCORD) — chat, questions, show off what you built
+- [@Bitterbot_AI on X](https://x.com/Bitterbot_AI) — updates, questions, show off what you built
 - [GitHub Discussions](https://github.com/Bitterbot-AI/bitterbot-desktop/discussions) — longer-form topics
 
 ## Security

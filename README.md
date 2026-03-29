@@ -14,6 +14,14 @@
   <strong>A local-first personal AI with biological memory, a dream engine, and a P2P skills economy.</strong>
 </p>
 
+<p align="center">
+  <a href="https://github.com/Bitterbot-AI/bitterbot-desktop/releases"><img src="https://img.shields.io/badge/version-2026.2.15--beta-7c3aed?style=flat-square" alt="Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-a855f7?style=flat-square" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A5%2022-c084fc?style=flat-square&logo=node.js&logoColor=white" alt="Node >= 22">
+  <img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-9333ea?style=flat-square" alt="Platform">
+  <a href="https://x.com/Bitterbot_AI"><img src="https://img.shields.io/badge/@Bitterbot__AI-000000?style=flat-square&logo=x&logoColor=white" alt="X / Twitter"></a>
+</p>
+
 Most AI agents are stateless wrappers around an LLM API. Close the terminal, and they forget you exist.
 
 **Bitterbot is different.** It's a personal AI that lives on your devices, remembers your life, and actually *does* things, browses the web, runs code, talks to you on WhatsApp. While you sleep, it dreams: consolidating knowledge, discovering new skills, and evolving a persistent personality. It packages those learned skills and trades them with other agents on a P2P marketplace for USDC.
