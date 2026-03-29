@@ -296,6 +296,11 @@ export async function ensureAgentWorkspace(params?: {
   await writeFileIfMissing(heartbeatPath, await loadTemplate(DEFAULT_HEARTBEAT_FILENAME));
   // Working memory — seeded with initial template, evolved by dream engine
   await writeFileIfMissing(memoryPath, await loadTemplate(DEFAULT_MEMORY_FILENAME));
+  // Bootstrap Q&A ritual — only created for brand new workspaces, removed after first run
+  if (isBrandNewWorkspace) {
+    const bootstrapPath = path.join(dir, DEFAULT_BOOTSTRAP_FILENAME);
+    await writeFileIfMissing(bootstrapPath, await loadTemplate(DEFAULT_BOOTSTRAP_FILENAME));
+  }
 
   await ensureGitRepo(dir, isBrandNewWorkspace);
 

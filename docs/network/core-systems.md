@@ -2,7 +2,7 @@
 
 This document covers the wired end-to-end systems that enable Bitterbot agents to sell skills, execute tasks for other agents, process payments, and participate in a peer-to-peer swarm network.
 
-**Key source files:** `gateway/a2a/a2a-http.ts`, `gateway/a2a/task-executor.ts`, `gateway/a2a/payment.ts`, `gateway/a2a/streaming.ts`, `memory/marketplace-economics.ts`, `memory/management-node-service.ts`, `infra/orchestrator-bridge.ts`
+**Key source files:** `src/gateway/a2a/a2a-http.ts`, `src/gateway/a2a/task-executor.ts`, `src/gateway/a2a/payment.ts`, `src/gateway/a2a/streaming.ts`, `src/memory/marketplace-economics.ts`, `src/memory/management-node-service.ts`, `src/infra/orchestrator-bridge.ts`
 
 ---
 
@@ -20,7 +20,7 @@ flowchart LR
     end
 
     subgraph "Buying Agent"
-        BA[Agent] -->|tasks/send| AH
+        BA[Agent] -->|message/send| AH
         PM -->|402 + x402 headers| BA
         BA -->|Payment header| PM
         PM -->|Verify on-chain| BC[Base Chain]
@@ -37,51 +37,90 @@ flowchart LR
 
 ## A2A Task Execution
 
-When an external agent submits a task via `tasks/send`, the full execution pipeline is:
+When an external agent submits a task via `message/send`, the full execution pipeline is:
 
-1. **Auth check** — Bearer token validated
-2. **Payment gate** — If skill requires payment, return 402 with x402 headers
+1. **Auth check** — Bearer token validated (or local loopback allowed)
+2. **Payment gate** — If skill requires payment, return 402 with x402 headers and pricing info
 3. **Payment verification** — Validate on-chain USDC payment on Base
-4. **Replay protection** — Check payment hash against `payment_nonces` table
-5. **Rate limiting** — Per-sender rate limit on payment submissions
-6. **Task persistence** — Task stored in SQLite `a2a_tasks` table
+4. **Replay protection** — Check payment tx hash against `marketplace_purchases` unique index on `tx_hash`
+5. **Rate limiting** — In-memory per-IP rate limit on payment verification attempts (10/min)
+6. **Task persistence** — Task stored in SQLite `a2a_tasks` table (status: `submitted` then immediately `working`)
 7. **Background execution** — `executeA2aTask()` fires in background (fire-and-forget)
 
-### Task Executor (`task-executor.ts`)
+### A2A Methods
+
+The server dispatches JSON-RPC 2.0 requests to these methods (defined in `src/gateway/a2a/server.ts`):
+
+| Method | Description |
+|--------|-------------|
+| `message/send` | Submit a task (returns immediately with task in `working` state) |
+| `message/stream` | Submit a task with SSE streaming of status updates |
+| `tasks/get` | Retrieve a task by ID (with optional history length) |
+| `tasks/list` | List tasks (filterable by contextId, status; paginated) |
+| `tasks/cancel` | Cancel a task (fails if already in a final state) |
+
+### Task Executor (`src/gateway/a2a/task-executor.ts`)
 
 The executor bridges A2A tasks into the agent's sub-agent system:
 
 ```typescript
-async function executeA2aTask(taskId: string, message: string, db: Database): Promise<void> {
-  // 1. Call gateway("agent") to create a sub-agent session
-  // 2. Send the task message via agent.wait
-  // 3. Retrieve response via chat.history
-  // 4. Update task status in DB (completed/failed)
+async function executeA2aTask(params: {
+  taskId: string;
+  taskText: string;
+  config: BitterbotConfig;
+  taskManager: A2aTaskManager;
+}): Promise<void> {
+  // 1. Patch child session to set depth metadata
+  // 2. Spawn sub-agent run via callGateway("agent")
+  // 3. Wait for run completion via callGateway("agent.wait")
+  // 4. Read final assistant reply from chat history via callGateway("chat.history")
+  // 5. Update task status (completed with artifact, or failed)
 }
 ```
 
 Key design decisions:
 - **Fire-and-forget:** `void executeA2aTask(...)` — caller doesn't await
-- **Sub-agent isolation:** Each A2A task runs in its own session
-- **Result extraction:** Uses `chat.history` to get the agent's response
-- **Error handling:** Task status updated to `failed` on any error
+- **Params object:** Takes a single `{ taskId, taskText, config, taskManager }` object, not positional args
+- **Sub-agent isolation:** Each A2A task runs in its own session (`agent:default:a2a-task:<uuid>`)
+- **Result extraction:** Walks chat history backwards to find the last assistant message with text content
+- **Error handling:** Task status updated to `failed` on any error, including timeouts (10 min default)
 
 ### Persistent Task Database
 
-Tasks are stored in SQLite (not just in-memory):
+Tasks are stored in file-backed SQLite (persists across restarts). The schema is defined in `src/gateway/a2a/task-store.ts`:
 
 ```sql
 CREATE TABLE a2a_tasks (
   id TEXT PRIMARY KEY,
-  sender TEXT NOT NULL,
-  message TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',  -- pending, working, completed, failed
-  result TEXT,
-  payment_hash TEXT,
+  context_id TEXT,
+  status TEXT NOT NULL DEFAULT 'submitted',
+  session_key TEXT,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  metadata TEXT
+);
+
+CREATE TABLE a2a_messages (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES a2a_tasks(id),
+  role TEXT NOT NULL,
+  parts TEXT NOT NULL,
+  metadata TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE a2a_artifacts (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES a2a_tasks(id),
+  name TEXT,
+  description TEXT,
+  parts TEXT NOT NULL,
+  artifact_index INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
 );
 ```
+
+Task status values: `submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`.
 
 ---
 
@@ -89,34 +128,51 @@ CREATE TABLE a2a_tasks (
 
 ### Payment Flow
 
-1. Client sends `tasks/send` without payment
-2. Server returns 402 with `X-Payment-Amount`, `X-Payment-Currency`, `X-Payment-Network`
-3. Client signs USDC payment on Base and includes payment header
-4. Server verifies payment on-chain
-5. **Replay protection:** Payment hash checked against `payment_nonces` table
-6. **Rate limiting:** `isPaymentRateLimited()` checks per-sender frequency
+1. Client sends `message/send` without payment
+2. Server returns 402 with pricing info (available skills + prices), payTo address, chain (`base`), token (`USDC`)
+3. Client signs USDC payment on Base and includes `x-payment` or `x-payment-token` header
+4. Server verifies payment on-chain via `x402-verify.js`
+5. **Replay protection:** Payment tx hash checked via unique index on `marketplace_purchases.tx_hash`
+6. **Rate limiting:** `isPaymentRateLimited()` checks per-IP frequency (in-memory)
 
 ### Replay Protection
 
-Every verified payment hash is stored in the database. Resubmitting the same payment hash returns an error:
+Every verified payment is recorded in `marketplace_purchases` with a unique index on `tx_hash`. Resubmitting the same tx hash violates the unique constraint:
 
 ```typescript
-// In payment.ts
-const existing = db.prepare('SELECT 1 FROM payment_nonces WHERE hash = ?').get(paymentHash);
-if (existing) throw new Error('Payment already used');
-db.prepare('INSERT INTO payment_nonces (hash, used_at) VALUES (?, ?)').run(paymentHash, Date.now());
+// In marketplace-economics.ts
+isTxHashConsumed(txHash: string): boolean {
+  const row = this.db.prepare(
+    `SELECT 1 FROM marketplace_purchases WHERE tx_hash = ?`,
+  ).get(txHash);
+  return !!row;
+}
+
+// Schema includes:
+// CREATE UNIQUE INDEX idx_mp_purchases_tx_hash ON marketplace_purchases(tx_hash) WHERE tx_hash IS NOT NULL;
 ```
+
+There is no separate `payment_nonces` table — replay protection is handled entirely through the `marketplace_purchases` unique index.
 
 ### Rate Limiting
 
-Per-sender payment rate limiting prevents abuse:
+In-memory per-IP payment rate limiting prevents DoS via fake x402 tokens that trigger expensive on-chain `getTransactionReceipt` calls:
 
 ```typescript
-function isPaymentRateLimited(senderId: string, db: Database): boolean {
-  const recentCount = db.prepare(
-    'SELECT COUNT(*) as c FROM a2a_tasks WHERE sender = ? AND created_at > ?'
-  ).get(senderId, Date.now() - 60_000) as { c: number };
-  return recentCount.c > 10; // Max 10 tasks per minute per sender
+// In src/gateway/a2a/payment.ts
+const paymentAttemptTracker = new Map<string, { count: number; windowStart: number }>();
+const PAYMENT_RATE_LIMIT = 10; // max attempts per minute per IP
+const PAYMENT_WINDOW_MS = 60_000;
+
+export function isPaymentRateLimited(clientIp: string): boolean {
+  const now = Date.now();
+  const entry = paymentAttemptTracker.get(clientIp);
+  if (!entry || now - entry.windowStart > PAYMENT_WINDOW_MS) {
+    paymentAttemptTracker.set(clientIp, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count++;
+  return entry.count > PAYMENT_RATE_LIMIT;
 }
 ```
 
@@ -124,21 +180,21 @@ function isPaymentRateLimited(senderId: string, db: Database): boolean {
 
 ## Marketplace Economics
 
-The `MarketplaceEconomics` engine automatically prices skills:
+The `MarketplaceEconomics` engine (`src/memory/marketplace-economics.ts`) automatically prices skills using the pricing engine in `src/memory/skill-pricing.ts`:
 
 ```
-price = basePrice × qualityMultiplier × demandMultiplier × reputationMultiplier × scarcityBonus
+price = basePriceUsdc * (1 + qualityMultiplier) * demandMultiplier * reputationMultiplier * scarcityBonus
 ```
 
 | Factor | Calculation |
 |--------|-------------|
 | Base price | Configurable (default $0.01 USDC) |
-| Quality | successRate × avgRewardScore |
-| Demand | 1 + log(uniqueBuyers + bountyMatches + 1) × 0.1 |
-| Reputation | Publishing agent's peer reputation score |
-| Scarcity | 1.5x rare, 1.2x uncommon, 1.0x common |
+| Quality | `successRate * Math.max(0.1, avgRewardScore)` |
+| Demand | `1 + log(uniqueBuyers + bountyMatches + 1) * 0.1` |
+| Reputation | `Math.max(0.1, reputationScore)` — publishing agent's peer reputation score |
+| Scarcity | <=2 similar skills = 1.5x, <=5 = 1.2x, else 1.0x |
 
-Skills must pass quality gates: minimum 3 executions and 60% success rate.
+Skills must pass quality gates: minimum 3 executions and 60% success rate. Prices are clamped between $0.001 and $1.00 USDC, rounded to 6 decimal places (USDC precision).
 
 The `SkillMarketplace` handles search/discovery, while `MarketplaceEconomics` handles pricing/economics — they're complementary systems, not duplicates.
 
@@ -146,20 +202,23 @@ The `SkillMarketplace` handles search/discovery, while `MarketplaceEconomics` ha
 
 ## SSE Streaming & Backpressure
 
-For `tasks/sendSubscribe`, the server streams task updates via Server-Sent Events:
+For `message/stream`, the server streams task updates via Server-Sent Events (`src/gateway/a2a/streaming.ts`):
 
 ```
-Client → POST /a2a (tasks/sendSubscribe) → SSE stream
-  ← event: status_update (pending → working)
+Client → POST /a2a (message/stream) → SSE stream
+  ← event: status (submitted → working)
   ← event: artifact (partial result)
-  ← event: status_update (completed)
+  ← event: status (completed, final=true)
 ```
 
 **Backpressure handling:** If the client can't keep up with events, the server:
-1. Buffers up to 100 pending events
-2. Drops oldest events if buffer overflows
-3. Sends a `backpressure_warning` event before dropping
-4. Closes the connection if client is consistently slow
+1. Detects backpressure when `res.write()` returns `false`
+2. Sets a `paused` flag and pushes subsequent events into an unbounded `pendingEvents` array
+3. Resumes flushing pending events when the `drain` event fires on the response stream
+4. On final status event, flushes any remaining pending events before calling `res.end()`
+5. On client disconnect (`close` event), unsubscribes and clears the pending events array
+
+There is no cap on the pending events buffer, no event dropping, and no backpressure warning events.
 
 ---
 
@@ -170,37 +229,38 @@ Client → POST /a2a (tasks/sendSubscribe) → SSE stream
 The P2P layer uses a Rust binary (`orchestrator`) built on libp2p:
 
 - **Protocol:** Gossipsub for pub/sub messaging
-- **Transport:** QUIC + TCP with Noise encryption
-- **Discovery:** mDNS (local) + Bootstrap nodes (internet)
+- **Transport:** TCP with Noise encryption and Yamux multiplexing (+ DNS resolution)
+- **Discovery:** Kademlia DHT + Bootstrap nodes + DNS bootstrap (`src/infra/dns-bootstrap.ts`)
 - **Identity:** Ed25519 keypair per node
 
 ### Two-Tiered Topology
 
 | Tier | Role | Dashboard | How Set |
 |------|------|-----------|---------|
-| **Management** | Full birds-eye view, signed broadcasts, bounty issuance | Full management dashboard | `--node-tier management` via config |
+| **Management** | Full birds-eye view, signed broadcasts, bounty issuance | Full management dashboard | TypeScript-side `ManagementKeyAuth` via `BITTERBOT_MANAGEMENT_KEY` env var |
 | **Edge** | Basic P2P info, skill trading, gossip participation | Basic P2P status | Default |
 
-**Important:** The `--node-tier` argument is passed from the Node.js config through `orchestrator-bridge.ts`'s `buildArgs()` function to the Rust binary. This was previously a bug where the tier was never passed.
+**Important:** The `--node-tier` flag is NOT passed to the Rust binary. Management tier authorization is handled entirely in TypeScript via `ManagementKeyAuth` (`src/memory/management-key-auth.ts`), which derives an Ed25519 public key from the `BITTERBOT_MANAGEMENT_KEY` environment variable and verifies it against the genesis trust list. The Rust orchestrator always runs as an edge node.
 
 ### Gossipsub Topics (5)
 
 | Topic | Content | Publisher |
 |-------|---------|-----------|
-| `skills` | Skill announcements, marketplace listings | Any node |
-| `bounties` | Skill requests, reward offers | Management nodes |
-| `weather` | Network-wide cortisol signals | Management nodes (signed) |
-| `reputation` | Peer endorsements, trust updates | Management nodes |
-| `discovery` | Node announcements, capability ads | Any node |
+| `bitterbot/skills/v1` | Skill announcements, marketplace listings | Any node |
+| `bitterbot/telemetry/v1` | Telemetry signals (typed data) | Any node |
+| `bitterbot/weather/v1` | Network-wide cortisol signals | Management nodes (signed) |
+| `bitterbot/bounties/v1` | Skill requests, reward offers | Management nodes (signed) |
+| `bitterbot/queries/v1` | Peer-to-peer knowledge queries | Any node |
 
 ### Peer Reputation (EigenTrust)
 
-`PeerReputationManager` maintains trust scores using EigenTrust-inspired iterative scoring:
+`PeerReputationManager` (`src/memory/peer-reputation.ts`) maintains trust scores using EigenTrust-inspired iterative scoring:
 
 - Local trust from direct interactions (skill quality, response time)
-- Global trust propagated through the network
-- Trust scores fed into Gossipsub scoring (low-trust peers get deprioritized)
-- IP colocation penalties for Sybil resistance
+- Global trust propagated through the network via power iteration (`compute_eigentrust` in `orchestrator/src/swarm/mod.rs`)
+- EigenTrust scores injected into Gossipsub peer scoring (mapped from 0-1 to gossipsub app-specific scores)
+- IP colocation penalties for Sybil resistance (gossipsub `ip_colocation_factor_weight: -50.0`, penalizes >3 peers from same /24 subnet)
+- Ban/blocklist support for individual peers by pubkey
 
 ---
 
@@ -212,7 +272,7 @@ Agent daily work → episodes
   → SkillCrystallizer detects repeated success
   → MarketplaceEconomics prices the skill
   → Agent Card exposes the skill + price
-  → External agent calls tasks/send
+  → External agent calls message/send
   → x402 payment verified on-chain
   → Task executed via sub-agent
   → Sale recorded → dopamine spike
