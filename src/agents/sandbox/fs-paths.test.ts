@@ -64,7 +64,7 @@ describe("resolveSandboxFsPathWithMounts", () => {
     });
     const mounts = buildSandboxFsMounts(sandbox);
     const resolved = resolveSandboxFsPathWithMounts({
-      filePath: "/workspace-two/docs/AGENTS.md",
+      filePath: "/workspace-two/docs/TOOLS.md",
       cwd: sandbox.workspaceDir,
       defaultWorkspaceRoot: sandbox.workspaceDir,
       defaultContainerRoot: sandbox.containerWorkdir,
@@ -72,10 +72,10 @@ describe("resolveSandboxFsPathWithMounts", () => {
     });
 
     expect(resolved.hostPath).toBe(
-      path.join(path.resolve("/tmp/workspace-two"), "docs", "AGENTS.md"),
+      path.join(path.resolve("/tmp/workspace-two"), "docs", "TOOLS.md"),
     );
-    expect(resolved.containerPath).toBe("/workspace-two/docs/AGENTS.md");
-    expect(resolved.relativePath).toBe("/workspace-two/docs/AGENTS.md");
+    expect(resolved.containerPath).toBe("/workspace-two/docs/TOOLS.md");
+    expect(resolved.relativePath).toBe("/workspace-two/docs/TOOLS.md");
     expect(resolved.writable).toBe(false);
   });
 

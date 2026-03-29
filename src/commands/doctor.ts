@@ -2,7 +2,8 @@ import { intro as clackIntro, outro as clackOutro } from "@clack/prompts";
 import fs from "node:fs";
 import type { BitterbotConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { resolveAgentDir, resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import {
@@ -36,6 +37,7 @@ import {
 } from "./doctor-gateway-services.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
 import { noteMemorySearchHealth } from "./doctor-memory-search.js";
+import { runMemorySystemChecks } from "./doctor-memory-system.js";
 import {
   noteMacLaunchAgentOverrides,
   noteMacLaunchctlGatewayEnvOverrides,
@@ -249,6 +251,22 @@ export async function doctorCommand(
     gatewayDetailsMessage: gatewayDetails.message,
     healthOk,
   });
+
+  // ── Biological Memory Architecture ──
+  {
+    const agentId = resolveDefaultAgentId(cfg);
+    const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
+    const memSearchCfg = resolveMemorySearchConfig(cfg, agentId);
+    const dbPath = memSearchCfg?.store?.path ?? "";
+    const stateDir = resolveAgentDir(cfg, agentId);
+    await runMemorySystemChecks({
+      config: cfg,
+      stateDir,
+      workspaceDir,
+      dbPath,
+      isGatewayRunning: healthOk,
+    });
+  }
 
   const shouldWriteConfig = prompter.shouldRepair || configResult.shouldWriteConfig;
   if (shouldWriteConfig) {

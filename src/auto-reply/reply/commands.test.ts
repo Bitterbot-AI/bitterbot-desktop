@@ -109,7 +109,7 @@ vi.mock("./commands-context-report.js", () => ({
   buildContextReply: async (params: { command: { commandBodyNormalized: string } }) => {
     const normalized = params.command.commandBodyNormalized;
     if (normalized === "/context list") {
-      return { text: "Injected workspace files:\n- AGENTS.md" };
+      return { text: "Injected workspace files:\n- TOOLS.md" };
     }
     if (normalized === "/context detail") {
       return { text: "Context breakdown (detailed)\nTop tools (schema size):" };
@@ -122,7 +122,7 @@ let testWorkspaceDir = os.tmpdir();
 
 beforeAll(async () => {
   testWorkspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-commands-"));
-  await fs.writeFile(path.join(testWorkspaceDir, "AGENTS.md"), "# Agents\n", "utf-8");
+  await fs.writeFile(path.join(testWorkspaceDir, "TOOLS.md"), "# Agents\n", "utf-8");
 });
 
 afterAll(async () => {
@@ -863,7 +863,7 @@ describe("handleCommands context", () => {
     const result = await handleCommands(params);
     expect(result.shouldContinue).toBe(false);
     expect(result.reply?.text).toContain("Injected workspace files:");
-    expect(result.reply?.text).toContain("AGENTS.md");
+    expect(result.reply?.text).toContain("TOOLS.md");
   });
 
   it("returns a detailed breakdown for /context detail", async () => {

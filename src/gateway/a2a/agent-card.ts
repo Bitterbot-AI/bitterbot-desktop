@@ -89,6 +89,21 @@ export function buildAgentCard(params: {
     }
   }
 
+  // Plan 8, Phase 5: Add ERC-8004 identity extension if registered
+  if ((params as Record<string, unknown>).erc8004TokenId) {
+    const tokenId = (params as Record<string, unknown>).erc8004TokenId as string;
+    const registryAddress = (params as Record<string, unknown>).erc8004Registry as string;
+    const erc8004Chain = (params as Record<string, unknown>).erc8004Chain as string ?? "base";
+    (card as Record<string, unknown>).extensions = {
+      ...((card as Record<string, unknown>).extensions as Record<string, unknown> ?? {}),
+      erc8004: {
+        tokenId,
+        registry: registryAddress,
+        chain: erc8004Chain,
+      },
+    };
+  }
+
   return card;
 }
 

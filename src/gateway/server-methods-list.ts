@@ -116,6 +116,11 @@ const BASE_METHODS = [
   "dream.suggestSkills",
   "dream.marketplaceStatus",
   "dream.curiosityReward",
+  // Marketplace
+  "marketplace.search",
+  "marketplace.trending",
+  "marketplace.recommendations",
+  "marketplace.detail",
   // Management
   "management.census",
   "management.anomalies",

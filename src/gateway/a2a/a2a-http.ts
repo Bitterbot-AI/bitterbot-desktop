@@ -187,6 +187,25 @@ export function createA2aHttpHandler(opts: {
 
       const paymentResult = await verifyA2aPayment(req, config, marketplace, rpcRequest.params as any);
       if (!paymentResult.paid) {
+        // Plan 8, Phase 6: x402 native payment gate — spec-verified headers
+        // x402 v2 uses three headers: PAYMENT-REQUIRED, PAYMENT-SIGNATURE, PAYMENT-RESPONSE
+        // All headers contain Base64-encoded JSON strings per x402.org spec.
+        const paymentRequirements = {
+          scheme: "exact",
+          network: "base",
+          maxAmountRequired: String(paymentResult.pricing?.priceUsdc ?? "0.01"),
+          resource: req.url ?? "/a2a",
+          description: "Payment required for skill execution",
+          mimeType: "application/json",
+          payTo: config.a2a?.payment?.x402?.address ?? "",
+          maxTimeoutSeconds: 300,
+          asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+        };
+        const paymentRequiredB64 = Buffer.from(
+          JSON.stringify([paymentRequirements]),
+        ).toString("base64");
+        res.setHeader("PAYMENT-REQUIRED", paymentRequiredB64);
+
         sendJson(res, 402, {
           jsonrpc: "2.0",
           error: {
@@ -194,7 +213,7 @@ export function createA2aHttpHandler(opts: {
             message: "Payment required for this task",
             data: {
               pricing: paymentResult.pricing,
-              payTo: config.a2a.payment.x402?.address,
+              payTo: config.a2a?.payment?.x402?.address,
               chain: "base",
               token: "USDC",
             },
@@ -204,16 +223,52 @@ export function createA2aHttpHandler(opts: {
         return true;
       }
 
-      // Payment verified — record the sale
+      // Plan 8, Phase 6: x402 PAYMENT-RESPONSE header on successful settlement
+      if (paymentResult.txHash) {
+        const settlementResponse = {
+          success: true,
+          scheme: "exact",
+          network: "base",
+          transactionHash: paymentResult.txHash,
+          payer: paymentResult.buyerPeerId ?? "unknown",
+        };
+        res.setHeader(
+          "PAYMENT-RESPONSE",
+          Buffer.from(JSON.stringify(settlementResponse)).toString("base64"),
+        );
+      }
+
+      // Payment verified — record the sale + compute revenue shares
       if (paymentResult.txHash && marketplace) {
         try {
-          marketplace.recordPurchase({
+          const purchaseId = marketplace.recordPurchase({
             skillCrystalId: paymentResult.skillId ?? "unknown",
             buyerPeerId: paymentResult.buyerPeerId ?? "unknown",
             amountUsdc: paymentResult.amountUsdc ?? 0,
             txHash: paymentResult.txHash,
             direction: "sale",
           });
+
+          // Plan 8, Phase 1: Queue revenue shares with 48h dispute hold
+          if (paymentResult.amountUsdc && paymentResult.amountUsdc > 0) {
+            try {
+              const shares = marketplace.computeRevenueShares(
+                paymentResult.skillId ?? "unknown",
+                paymentResult.amountUsdc,
+              );
+              for (const share of shares) {
+                if (share.peerId !== "local" && share.amountUsdc >= 0.001) {
+                  marketplace.queueRevenuePayment({
+                    skillCrystalId: paymentResult.skillId ?? "unknown",
+                    purchaseId,
+                    recipientPeerId: share.peerId,
+                    amountUsdc: share.amountUsdc,
+                    role: share.role,
+                  });
+                }
+              }
+            } catch { /* revenue sharing failure shouldn't block the sale */ }
+          }
         } catch { /* non-critical */ }
       }
     }

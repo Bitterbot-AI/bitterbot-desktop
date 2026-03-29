@@ -44,9 +44,9 @@ describe("loadExtraBootstrapFiles", () => {
     const outsideDir = path.join(rootDir, "outside");
     await fs.mkdir(workspaceDir, { recursive: true });
     await fs.mkdir(outsideDir, { recursive: true });
-    await fs.writeFile(path.join(outsideDir, "AGENTS.md"), "outside", "utf-8");
+    await fs.writeFile(path.join(outsideDir, "TOOLS.md"), "outside", "utf-8");
 
-    const files = await loadExtraBootstrapFiles(workspaceDir, ["../outside/AGENTS.md"]);
+    const files = await loadExtraBootstrapFiles(workspaceDir, ["../outside/TOOLS.md"]);
 
     expect(files).toHaveLength(0);
   });
@@ -60,13 +60,13 @@ describe("loadExtraBootstrapFiles", () => {
     const realWorkspace = path.join(rootDir, "real-workspace");
     const linkedWorkspace = path.join(rootDir, "linked-workspace");
     await fs.mkdir(realWorkspace, { recursive: true });
-    await fs.writeFile(path.join(realWorkspace, "AGENTS.md"), "linked agents", "utf-8");
+    await fs.writeFile(path.join(realWorkspace, "TOOLS.md"), "linked agents", "utf-8");
     await fs.symlink(realWorkspace, linkedWorkspace, "dir");
 
-    const files = await loadExtraBootstrapFiles(linkedWorkspace, ["AGENTS.md"]);
+    const files = await loadExtraBootstrapFiles(linkedWorkspace, ["TOOLS.md"]);
 
     expect(files).toHaveLength(1);
-    expect(files[0]?.name).toBe("AGENTS.md");
+    expect(files[0]?.name).toBe("TOOLS.md");
     expect(files[0]?.content).toBe("linked agents");
   });
 });

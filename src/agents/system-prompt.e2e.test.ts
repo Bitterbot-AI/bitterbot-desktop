@@ -316,15 +316,15 @@ describe("buildAgentSystemPrompt", () => {
     const prompt = buildAgentSystemPrompt({
       workspaceDir: "/tmp/bitterbot",
       contextFiles: [
-        { path: "AGENTS.md", content: "Alpha" },
-        { path: "IDENTITY.md", content: "Bravo" },
+        { path: "GENOME.md", content: "Alpha" },
+        { path: "PROTOCOLS.md", content: "Bravo" },
       ],
     });
 
     expect(prompt).toContain("# Project Context");
-    expect(prompt).toContain("## AGENTS.md");
+    expect(prompt).toContain("## GENOME.md");
     expect(prompt).toContain("Alpha");
-    expect(prompt).toContain("## IDENTITY.md");
+    expect(prompt).toContain("## PROTOCOLS.md");
     expect(prompt).toContain("Bravo");
   });
 
@@ -334,12 +334,12 @@ describe("buildAgentSystemPrompt", () => {
       contextFiles: [
         { path: undefined as unknown as string, content: "Missing path" },
         { path: "   ", content: "Blank path" },
-        { path: "AGENTS.md", content: "Alpha" },
+        { path: "GENOME.md", content: "Alpha" },
       ],
     });
 
     expect(prompt).toContain("# Project Context");
-    expect(prompt).toContain("## AGENTS.md");
+    expect(prompt).toContain("## GENOME.md");
     expect(prompt).toContain("Alpha");
     expect(prompt).not.toContain("Missing path");
     expect(prompt).not.toContain("Blank path");

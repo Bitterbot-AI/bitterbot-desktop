@@ -206,6 +206,15 @@ export class PeerReputationManager {
     return Number(row?.reputation_score ?? 0.5);
   }
 
+  /** Plan 8: Store a peer's wallet address for revenue sharing. */
+  updateWalletAddress(peerPubkey: string, walletAddress: string): void {
+    try {
+      this.db.prepare(
+        `UPDATE peer_reputation SET wallet_address = ? WHERE peer_pubkey = ?`,
+      ).run(walletAddress, peerPubkey);
+    } catch { /* column may not exist on older schemas */ }
+  }
+
   /**
    * Get network leaderboard sorted by reputation.
    */

@@ -515,7 +515,7 @@ This provides the interactive terminal experience similar to pi's native mode.
 | --------------- | ----------------------- | ---------------------------------------------------------------------------------------------- |
 | Invocation      | `pi` command / RPC      | SDK via `createAgentSession()`                                                                 |
 | Tools           | Default coding tools    | Custom Bitterbot tool suite                                                                     |
-| System prompt   | AGENTS.md + prompts     | Dynamic per-channel/context                                                                    |
+| System prompt   | GENOME.md + prompts     | Dynamic per-channel/context                                                                    |
 | Session storage | `~/.pi/agent/sessions/` | `~/.bitterbot/agents/<agentId>/sessions/` (or `$BITTERBOT_STATE_DIR/agents/<agentId>/sessions/`) |
 | Auth            | Single credential       | Multi-profile with rotation                                                                    |
 | Extensions      | Loaded from disk        | Programmatic + disk paths                                                                      |

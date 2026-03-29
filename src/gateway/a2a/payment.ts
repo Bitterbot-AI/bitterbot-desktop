@@ -56,8 +56,10 @@ export async function verifyA2aPayment(
   marketplace: MarketplaceEconomics | null,
   rpcParams?: { skillId?: string; message?: { parts?: Array<{ type: string; text?: string }> } },
 ): Promise<PaymentGateResult> {
-  // Check x402 payment headers
-  const paymentHeader = getHeader(req, "x-payment");
+  // Check x402 payment headers — accept both custom and x402 v2 standard headers
+  // x402 v2 spec: client sends PAYMENT-SIGNATURE header (Base64 JSON)
+  const paymentHeader = getHeader(req, "x-payment")
+    ?? getHeader(req, "payment-signature");  // x402 v2 standard header
   const paymentToken = getHeader(req, "x-payment-token");
 
   if (!paymentHeader && !paymentToken) {

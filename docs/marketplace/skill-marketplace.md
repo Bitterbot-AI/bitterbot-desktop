@@ -209,6 +209,28 @@ For programmatic access, use the `dream.marketplaceStatus` JSON-RPC method:
 
 The response includes per-skill earnings, listing status, execution counts, and current dynamic price.
 
+### Search & Browse (Plan 8)
+
+Four additional RPC methods provide full marketplace access:
+
+| Method | Params | Description |
+|--------|--------|-------------|
+| `marketplace.search` | `query`, `category?`, `tags?`, `sort?`, `limit?` | Full-text search with filters |
+| `marketplace.trending` | `limit?` | Last 7 days, sorted by downloads + steering reward |
+| `marketplace.recommendations` | `limit?` | Skills from peers not yet local |
+| `marketplace.detail` | `stableSkillId` | Full detail with version history and execution metrics |
+
+### Revenue Payment Queue
+
+Sales trigger a 70/20/10 revenue split. Payments are held for 48 hours before release, giving buyers a dispute window. Revenue queue status is visible via `dream.marketplaceStatus`.
+
+| Status | Meaning |
+|--------|---------|
+| `held` | Payment queued, within 48h dispute window |
+| `released` | Dispute window expired, ready for dispatch |
+| `paid` | USDC sent, tx hash recorded |
+| `disputed` | Buyer flagged quality issue, payment frozen |
+
 ---
 
 ## Security Considerations

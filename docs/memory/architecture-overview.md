@@ -141,6 +141,7 @@ flowchart TB
         Q[DreamEngine.run] --> RDY{Readiness Check}
         RDY -->|ready| FSHO[FSHO Mode Selector]
         RDY -->|skip| SKIP[Save LLM tokens]
+        MI[Marketplace Intelligence] --> FSHO
         FSHO --> R[7 Dream Modes - ripple-enhanced replay]
         R --> S[New Insights]
         S --> T[CuriosityEngine.assessDreamInsight]
@@ -245,6 +246,13 @@ flowchart TB
 | `src/memory/temporal-scoring.ts` | Query-intent-sensitive temporal decay with epistemic half-lives |
 | `src/memory/dream-evaluator.ts` | Dream Quality Score (DQS), FSHO correlation analysis, outcome persistence |
 
+### Agent Economy (Plan 8)
+
+| File | Purpose |
+|------|---------|
+| `src/services/erc8004-identity.ts` | ERC-8004 onchain agent identity — register, reputation feedback, traction check |
+| `src/memory/marketplace-intelligence.ts` | Demand-driven dream targeting — market signals as 4th dream mode signal |
+
 ### Context Efficiency
 
 | File | Purpose |
@@ -276,10 +284,10 @@ See [Working Memory](./working-memory.md) for full documentation.
 | `src/memory/skill-refiner.ts` | `SkillRefiner` — mutation scoring, crystallization pipeline |
 | `src/memory/skill-verifier.ts` | `SkillVerifier` — 3-check safety gate (dangerous patterns, structural, semantic drift) |
 | `src/memory/skill-execution-tracker.ts` | `SkillExecutionTracker` — outcome recording, empirical metrics |
-| `src/memory/skill-network-bridge.ts` | `SkillNetworkBridge` — P2P publish/ingest with governance enforcement |
+| `src/memory/skill-network-bridge.ts` | Skill publish/ingest, version conflict resolution, governance, P2P ingest safety gate |
 | `src/memory/peer-reputation.ts` | `PeerReputationManager` — trust levels, EigenTrust, anomaly detection |
 | `src/memory/discovery-agent.ts` | `DiscoveryAgent` — skill edge discovery, proactive suggestions |
-| `src/memory/skill-marketplace.ts` | Marketplace listing and search |
+| `src/memory/skill-marketplace.ts` | Marketplace listing, search, trending, recommendations (wired via gateway RPC) |
 | `src/memory/skill-hierarchy.ts` | Parent-child skill tree relationships |
 
 ### Search & Embeddings

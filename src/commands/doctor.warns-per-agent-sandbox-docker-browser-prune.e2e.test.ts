@@ -82,12 +82,12 @@ describe("doctor command", () => {
     const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue("/Users/steipete");
     const realExists = fs.existsSync;
     const legacyPath = path.join("/Users/steipete", "bitterbot");
-    const legacyAgentsPath = path.join(legacyPath, "AGENTS.md");
+    const legacyToolsPath = path.join(legacyPath, "TOOLS.md");
     const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((value) => {
       if (
         value === "/Users/steipete/bitterbot" ||
         value === legacyPath ||
-        value === legacyAgentsPath
+        value === legacyToolsPath
       ) {
         return true;
       }

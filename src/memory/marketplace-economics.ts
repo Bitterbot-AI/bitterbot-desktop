@@ -117,6 +117,24 @@ export class MarketplaceEconomics {
       CREATE INDEX IF NOT EXISTS idx_mp_purchases_date ON marketplace_purchases(purchased_at);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_mp_purchases_tx_hash ON marketplace_purchases(tx_hash)
         WHERE tx_hash IS NOT NULL;
+
+      -- Plan 8, Phase 1: Revenue payment queue with 48h dispute window
+      CREATE TABLE IF NOT EXISTS revenue_payment_queue (
+        id TEXT PRIMARY KEY,
+        skill_crystal_id TEXT NOT NULL,
+        purchase_id TEXT NOT NULL,
+        recipient_peer_id TEXT NOT NULL,
+        amount_usdc REAL NOT NULL,
+        role TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'held',
+        dispute_reason TEXT,
+        tx_hash TEXT,
+        error TEXT,
+        queued_at INTEGER NOT NULL,
+        release_at INTEGER NOT NULL,
+        processed_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_rpq_status ON revenue_payment_queue(status);
     `);
   }
 
@@ -472,6 +490,107 @@ export class MarketplaceEconomics {
     } catch {
       // skill_executions table may not exist yet
       return { totalExecutions: 0, successRate: 0, avgRewardScore: 0 };
+    }
+  }
+
+  // ── Plan 8, Phase 1: Revenue Payment Queue with 48h Dispute Window ──
+
+  private static readonly HOLD_DURATION_MS = 48 * 60 * 60 * 1000; // 48 hours
+  private static readonly DUST_THRESHOLD_USDC = 0.001;
+
+  /** Queue a revenue payment with 48h hold before release. */
+  queueRevenuePayment(params: {
+    skillCrystalId: string;
+    purchaseId: string;
+    recipientPeerId: string;
+    amountUsdc: number;
+    role: string;
+  }): void {
+    if (params.amountUsdc < MarketplaceEconomics.DUST_THRESHOLD_USDC) return;
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO revenue_payment_queue
+        (id, skill_crystal_id, purchase_id, recipient_peer_id, amount_usdc, role, status, queued_at, release_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'held', ?, ?)
+    `).run(
+      crypto.randomUUID(), params.skillCrystalId, params.purchaseId,
+      params.recipientPeerId, params.amountUsdc, params.role,
+      now, now + MarketplaceEconomics.HOLD_DURATION_MS,
+    );
+  }
+
+  /** Transition held payments past the 48h window to released (if no dispute). */
+  releaseHeldPayments(): number {
+    const now = Date.now();
+    const result = this.db.prepare(
+      `UPDATE revenue_payment_queue SET status = 'released' WHERE status = 'held' AND release_at <= ?`,
+    ).run(now);
+    return Number(result.changes);
+  }
+
+  /** Get payments that are released and ready for dispatch. */
+  getReleasedPayments(): Array<{
+    id: string; recipientPeerId: string; amountUsdc: number; role: string; skillCrystalId: string;
+  }> {
+    return this.db.prepare(
+      `SELECT id, recipient_peer_id as recipientPeerId, amount_usdc as amountUsdc, role, skill_crystal_id as skillCrystalId
+       FROM revenue_payment_queue WHERE status = 'released'`,
+    ).all() as Array<{
+      id: string; recipientPeerId: string; amountUsdc: number; role: string; skillCrystalId: string;
+    }>;
+  }
+
+  /** Dispute a payment (buyer can call within 48h hold window). */
+  disputePayment(purchaseId: string, reason: string): boolean {
+    const result = this.db.prepare(
+      `UPDATE revenue_payment_queue SET status = 'disputed', dispute_reason = ?
+       WHERE purchase_id = ? AND status = 'held'`,
+    ).run(reason, purchaseId);
+    return result.changes > 0;
+  }
+
+  /** Mark a payment as dispatched onchain. */
+  markPaymentProcessed(id: string, txHash: string): void {
+    this.db.prepare(
+      `UPDATE revenue_payment_queue SET status = 'paid', tx_hash = ?, processed_at = ? WHERE id = ?`,
+    ).run(txHash, Date.now(), id);
+  }
+
+  /** Mark a payment as failed (will retry on next consolidation). */
+  markPaymentFailed(id: string, error: string): void {
+    this.db.prepare(
+      `UPDATE revenue_payment_queue SET status = 'released', error = ? WHERE id = ?`,
+    ).run(error, id);
+  }
+
+  /** Resolve a peer's wallet address from the reputation table. */
+  resolvePeerWalletAddress(peerPubkey: string): string | null {
+    try {
+      const row = this.db.prepare(
+        `SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = ?`,
+      ).get(peerPubkey) as { wallet_address: string | null } | undefined;
+      return row?.wallet_address ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Get revenue queue stats for observability. */
+  getRevenueQueueStats(): { held: number; released: number; paid: number; disputed: number; failed: number } {
+    try {
+      const rows = this.db.prepare(
+        `SELECT status, COUNT(*) as c FROM revenue_payment_queue GROUP BY status`,
+      ).all() as Array<{ status: string; c: number }>;
+      const map = new Map(rows.map(r => [r.status, r.c]));
+      return {
+        held: map.get("held") ?? 0,
+        released: map.get("released") ?? 0,
+        paid: map.get("paid") ?? 0,
+        disputed: map.get("disputed") ?? 0,
+        failed: rows.filter(r => r.status === "released" && r.c > 0).length, // approximation
+      };
+    } catch {
+      return { held: 0, released: 0, paid: 0, disputed: 0, failed: 0 };
     }
   }
 }

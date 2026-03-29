@@ -69,8 +69,6 @@ describe("ensureAgentWorkspace", () => {
   it("does not recreate BOOTSTRAP.md after completion, even when a core file is recreated", async () => {
     const tempDir = await makeTempWorkspace("bitterbot-workspace-");
     await ensureAgentWorkspace({ dir: tempDir, ensureBootstrapFiles: true });
-    await writeWorkspaceFile({ dir: tempDir, name: "IDENTITY.md", content: "custom" });
-    await writeWorkspaceFile({ dir: tempDir, name: "USER.md", content: "custom" });
     await fs.unlink(path.join(tempDir, DEFAULT_BOOTSTRAP_FILENAME));
     await fs.unlink(path.join(tempDir, DEFAULT_TOOLS_FILENAME));
 
@@ -86,8 +84,8 @@ describe("ensureAgentWorkspace", () => {
 
   it("does not re-seed BOOTSTRAP.md for legacy completed workspaces without state marker", async () => {
     const tempDir = await makeTempWorkspace("bitterbot-workspace-");
-    await writeWorkspaceFile({ dir: tempDir, name: "IDENTITY.md", content: "custom" });
-    await writeWorkspaceFile({ dir: tempDir, name: "USER.md", content: "custom" });
+    await writeWorkspaceFile({ dir: tempDir, name: "GENOME.md", content: "custom" });
+    await writeWorkspaceFile({ dir: tempDir, name: "PROTOCOLS.md", content: "custom" });
 
     await ensureAgentWorkspace({ dir: tempDir, ensureBootstrapFiles: true });
 

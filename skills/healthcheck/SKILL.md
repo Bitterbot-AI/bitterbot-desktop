@@ -227,7 +227,7 @@ Redact secrets. Never log tokens or full credential contents.
 ## Memory writes (conditional)
 
 Only write to memory files when the user explicitly opts in and the session is a private/local workspace
-(per `docs/reference/templates/AGENTS.md`). Otherwise provide a redacted, paste-ready summary the user can
+(per `docs/reference/templates/TOOLS.md`). Otherwise provide a redacted, paste-ready summary the user can
 decide to save elsewhere.
 
 Follow the durable-memory prompt format used by Bitterbot compaction:

@@ -288,10 +288,13 @@ The `SkillNetworkBridge` (`skill-network-bridge.ts`) mediates between the local 
 1. Checks if the sender peer is banned via `PeerReputationManager`
 2. **Cortisol gate** — if a network cortisol spike is active (`haltUntrustedIngestion`), rejects skills from peers with trust level below `"trusted"` (i.e., `untrusted` and `provisional` peers are blocked)
 3. Deduplicates by content hash
-4. Verifies management signature if present (Ed25519 via Node.js `crypto`)
+4. Version conflict resolution via `SkillVersionResolver` (natural selection: fitter variants win)
 5. Decodes base64 content from the envelope
-6. Stores as a new crystal with `lifecycle='generated'`, `semantic_type='skill'`, `origin='peer'`, plus `is_verified` and `verified_by` if management-endorsed
-7. Checks for bounty matches and records `bounty_match_id` / `bounty_priority_boost` if applicable
+6. **SkillVerifier safety gate** (Plan 8) — inbound skills pass through the same 3-check verification as locally crystallized mutations: dangerous pattern blocklist, structural integrity, and semantic drift. Rejected skills result in a negative trust signal (0.2 weight) against the sender, degrading their EigenTrust score over time.
+7. Verifies management signature if present (Ed25519 via Node.js `crypto`)
+8. Stores as a new crystal with `lifecycle='generated'`, `semantic_type='skill'`, `origin='peer'`, plus `is_verified` and `verified_by` if management-endorsed
+9. Stores peer wallet address (if included in envelope) for revenue sharing
+10. Checks for bounty matches — if a match is found and the skill passes the **bounty quality gate** (SkillVerifier + 3 executions + >70% success rate), a bounty claim is published to the network for USDC payout
 
 ### Rust Orchestrator
 

@@ -489,6 +489,10 @@ export class CuriosityEngine {
     rewardMultiplier: number;
     regionHint?: string;
     expiresAt: number;
+    // Plan 8, Phase 4: USDC reward info
+    rewardUsdc?: number;
+    posterPeerId?: string;
+    posterWalletAddress?: string;
   }): boolean {
     if (!this.config.enabled) return false;
 
@@ -510,6 +514,10 @@ export class CuriosityEngine {
       bountyId: bounty.bountyId,
       rewardMultiplier: bounty.rewardMultiplier,
       regionHint: bounty.regionHint,
+      // Plan 8, Phase 4: USDC reward for economic bounty payouts
+      rewardUsdc: bounty.rewardUsdc ?? 0,
+      posterPeerId: bounty.posterPeerId ?? null,
+      posterWalletAddress: bounty.posterWalletAddress ?? null,
     });
 
     this.db
@@ -536,7 +544,10 @@ export class CuriosityEngine {
   /**
    * Check if a crystal matches any active bounty. Returns match info or null.
    */
-  checkBountyMatch(crystalId: string, crystalText: string): { bountyId: string; rewardMultiplier: number } | null {
+  checkBountyMatch(crystalId: string, crystalText: string): {
+    bountyId: string; rewardMultiplier: number;
+    rewardUsdc: number; posterPeerId: string | null; posterWalletAddress: string | null;
+  } | null {
     if (!this.config.enabled) return null;
 
     const now = Date.now();
@@ -562,8 +573,11 @@ export class CuriosityEngine {
       const matchRatio = bountyWords.length > 0 ? matchCount / bountyWords.length : 0;
 
       if (matchRatio >= 0.3) {
-        // Parse metadata for reward multiplier and bounty ID
-        let meta: { bountyId?: string; rewardMultiplier?: number } = {};
+        // Parse metadata for reward multiplier, bounty ID, and USDC reward
+        let meta: {
+          bountyId?: string; rewardMultiplier?: number;
+          rewardUsdc?: number; posterPeerId?: string | null; posterWalletAddress?: string | null;
+        } = {};
         try { meta = JSON.parse(target.metadata); } catch {}
 
         // Resolve this bounty target
@@ -572,6 +586,9 @@ export class CuriosityEngine {
         return {
           bountyId: meta.bountyId ?? "unknown",
           rewardMultiplier: meta.rewardMultiplier ?? 1.0,
+          rewardUsdc: meta.rewardUsdc ?? 0,
+          posterPeerId: meta.posterPeerId ?? null,
+          posterWalletAddress: meta.posterWalletAddress ?? null,
         };
       }
     }

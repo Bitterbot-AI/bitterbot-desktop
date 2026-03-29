@@ -69,6 +69,8 @@ import { extractSessionFacts, type ExtractionResult, type HormonalBias } from ".
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { SessionCoherenceTracker } from "./session-coherence.js";
+import { SkillMarketplace } from "./skill-marketplace.js";
+import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
 
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
@@ -163,6 +165,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private peerReputationManager: PeerReputationManager | null = null;
   private discoveryAgent: DiscoveryAgent | null = null;
   private marketplaceEconomics: MarketplaceEconomics | null = null;
+  private skillMarketplace: SkillMarketplace | null = null;
   managementNodeService: ManagementNodeService | null = null;
 
   /**
@@ -237,7 +240,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         skills_rejected INTEGER DEFAULT 0, avg_skill_quality REAL DEFAULT 0,
         reputation_score REAL DEFAULT 0.5, trust_level TEXT DEFAULT 'provisional',
         first_seen_at INTEGER, last_seen_at INTEGER,
-        is_banned INTEGER DEFAULT 0, eigentrust_score REAL DEFAULT 0
+        is_banned INTEGER DEFAULT 0, eigentrust_score REAL DEFAULT 0,
+        wallet_address TEXT DEFAULT NULL
       )`);
       // Memory audit log
       this.db.exec(`CREATE TABLE IF NOT EXISTS memory_audit_log (
@@ -1268,6 +1272,22 @@ export class MemoryIndexManager implements MemorySearchManager {
               `**Marketplace:** ${recentSales.count} skill sale(s) — earned $${recentSales.totalUsdc.toFixed(4)} USDC`,
             );
           }
+
+          // 11c. Plan 8, Phase 1: Process revenue payment queue (release held + dispatch)
+          try {
+            const released = this.marketplaceEconomics.releaseHeldPayments();
+            if (released > 0) {
+              log.info(`revenue queue: ${released} payments released from 48h hold`);
+            }
+
+            // Observability: log revenue queue stats
+            const queueStats = this.marketplaceEconomics.getRevenueQueueStats();
+            if (queueStats.held + queueStats.released + queueStats.disputed > 0) {
+              log.debug("revenue queue status", queueStats);
+            }
+          } catch {
+            // Revenue queue processing non-critical
+          }
         }
       } catch (err) {
         log.warn(`memory consolidation failed: ${String(err)}`);
@@ -1334,6 +1354,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (this.gccrfRewardFunction) {
       this.dreamEngine.setGccrfRewardFunction(this.gccrfRewardFunction);
     }
+
+    // Plan 8, Phase 7: Wire marketplace intelligence for demand-driven dreams
+    this.dreamEngine.setMarketplaceIntelligence(new MarketplaceIntelligence(this.db));
 
     const minutes = dreamCfg?.intervalMinutes ?? 120;
     if (minutes > 0) {
@@ -2167,8 +2190,8 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   /** Get the agent's own reputation score (0-1) for marketplace pricing. */
   private getOwnReputationScore(): number {
-    // Default 0.5 for agents with no external reputation
-    // TODO: compute from peer feedback if available
+    // Default 0.5 for agents with no external reputation.
+    // Uses network average as rough proxy for own standing.
     try {
       const row = this.db.prepare(
         `SELECT AVG(reputation_score) as avg_rep FROM peer_reputation WHERE reputation_score > 0`,
@@ -2183,6 +2206,11 @@ export class MemoryIndexManager implements MemorySearchManager {
   /** Public accessor for marketplace economics (used by A2A, dashboard, etc.) */
   getMarketplaceEconomics(): MarketplaceEconomics | null {
     return this.marketplaceEconomics;
+  }
+
+  /** Plan 8, Phase 2: Public accessor for SkillMarketplace. */
+  getSkillMarketplace(): SkillMarketplace | null {
+    return this.skillMarketplace;
   }
 
   private getRecentHighImportanceCrystals(limit: number): WorkingMemoryContext["recentCrystals"] {
@@ -2734,6 +2762,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.skillNetworkBridge.setExecutionTracker(this.executionTracker);
     }
 
+    // Plan 8, Phase 3: Wire SkillVerifier for P2P ingest safety gate
+    this.skillNetworkBridge.setSkillVerifier(new SkillVerifier(this.db));
+
     // Also wire bridge into SkillRefiner if it exists
     if (this.skillRefiner) {
       this.skillRefiner.setNetworkBridge(this.skillNetworkBridge);
@@ -2743,6 +2774,15 @@ export class MemoryIndexManager implements MemorySearchManager {
     const a2aCfg = this.cfg.a2a;
     if (a2aCfg?.marketplace?.enabled !== false) {
       this.marketplaceEconomics = new MarketplaceEconomics(this.db, a2aCfg?.marketplace?.pricing);
+    }
+
+    // Plan 8, Phase 2: Initialize SkillMarketplace for search/browse/recommendations
+    if (!this.skillMarketplace && this.executionTracker && this.peerReputationManager) {
+      this.skillMarketplace = new SkillMarketplace(
+        this.db,
+        this.executionTracker,
+        this.peerReputationManager,
+      );
     }
 
     // Initialize experience signal collector

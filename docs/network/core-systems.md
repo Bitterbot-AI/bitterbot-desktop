@@ -194,7 +194,7 @@ price = basePriceUsdc * (1 + qualityMultiplier) * demandMultiplier * reputationM
 | Reputation | `Math.max(0.1, reputationScore)` — publishing agent's peer reputation score |
 | Scarcity | <=2 similar skills = 1.5x, <=5 = 1.2x, else 1.0x |
 
-Skills must pass quality gates: minimum 3 executions and 60% success rate. Prices are clamped between $0.001 and $1.00 USDC, rounded to 6 decimal places (USDC precision).
+Skills must pass quality gates: minimum 3 executions and 60% success rate for marketplace listing. Bounty claims require a stricter quality gate of 70% success rate. Prices are clamped between $0.001 and $1.00 USDC, rounded to 6 decimal places (USDC precision).
 
 The `SkillMarketplace` handles search/discovery, while `MarketplaceEconomics` handles pricing/economics — they're complementary systems, not duplicates.
 
@@ -261,6 +261,7 @@ The P2P layer uses a Rust binary (`orchestrator`) built on libp2p:
 - EigenTrust scores injected into Gossipsub peer scoring (mapped from 0-1 to gossipsub app-specific scores)
 - IP colocation penalties for Sybil resistance (gossipsub `ip_colocation_factor_weight: -50.0`, penalizes >3 peers from same /24 subnet)
 - Ban/blocklist support for individual peers by pubkey
+- **SkillVerifier safety gate on P2P ingest:** Skills received from peers pass through the same 3-check verification pipeline as locally crystallized mutations -- dangerous pattern detection, structural integrity validation, and semantic drift analysis. Rejected skills result in a negative trust signal to the sender.
 
 ---
 

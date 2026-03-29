@@ -98,6 +98,7 @@ export class DreamEngine {
   private executionTracker: SkillExecutionTracker | null = null;
   private hormonalManager: HormonalStateManager | null = null;
   private gccrfRewardFunction: { updateFshoR(r: number): void; getFshoRAvg(): number; getFshoCoupledAlpha(): number } | null = null;
+  private marketplaceIntelligence: { hasActivity(): boolean; getDreamModeAdjustments(): Partial<Record<DreamMode, number>>; injectDemandTargets(): number } | null = null;
   private state: DreamState = "DORMANT";
   private lastModeUsed: DreamMode | null = null;
 
@@ -184,6 +185,11 @@ export class DreamEngine {
    */
   setHormonalManager(manager: HormonalStateManager): void {
     this.hormonalManager = manager;
+  }
+
+  /** Plan 8, Phase 7: Set marketplace intelligence for demand-driven dreams. */
+  setMarketplaceIntelligence(mi: { hasActivity(): boolean; getDreamModeAdjustments(): Partial<Record<DreamMode, number>>; injectDemandTargets(): number } | null): void {
+    this.marketplaceIntelligence = mi;
   }
 
   /** Plan 7, Phase 10: Set GCCRF reward function for FSHO alpha coupling. */
@@ -521,18 +527,32 @@ export class DreamEngine {
       // FSHO computation non-critical
     }
 
-    // Weighted combination — prevents muddy signals when sources disagree:
-    //   Curiosity (0.3): heuristic gap detection
-    //   GCCRF (0.3): information-theoretic need
-    //   FSHO (0.4): memory landscape state (most direct signal)
-    const CURIOSITY_W = 0.3;
-    const GCCRF_W = 0.3;
-    const FSHO_W = 0.4;
+    // 4. Market Intelligence: what the network demands (Plan 8, Phase 7)
+    let marketAdj: Partial<Record<DreamMode, number>> = {};
+    const hasMarketActivity = this.marketplaceIntelligence?.hasActivity() ?? false;
+    if (hasMarketActivity) {
+      try {
+        marketAdj = this.marketplaceIntelligence!.getDreamModeAdjustments();
+        // Inject demand targets into curiosity engine
+        this.marketplaceIntelligence!.injectDemandTargets();
+      } catch {
+        // Marketplace intelligence non-critical
+      }
+    }
+
+    // Weighted combination with marketplace fallback:
+    // When marketplace is active, allocate 20% weight to market demand.
+    // When inactive, preserve original 3-signal weights (zero regression).
+    const CURIOSITY_W = hasMarketActivity ? 0.25 : 0.30;
+    const GCCRF_W =     hasMarketActivity ? 0.25 : 0.30;
+    const FSHO_W =      hasMarketActivity ? 0.30 : 0.40;
+    const MARKET_W =    hasMarketActivity ? 0.20 : 0.0;
 
     const adjustedModes = enabledModes.map(([mode, cfg]) => {
       const adj = CURIOSITY_W * (curiosityAdj[mode] ?? 0)
                + GCCRF_W * (gccrfAdj[mode] ?? 0)
-               + FSHO_W * (fshoAdj[mode] ?? 0);
+               + FSHO_W * (fshoAdj[mode] ?? 0)
+               + MARKET_W * (marketAdj[mode] ?? 0);
       return [mode, { ...cfg, weight: Math.max(0, cfg.weight + adj) }] as [DreamMode, DreamModeConfig];
     });
 

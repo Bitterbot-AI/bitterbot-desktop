@@ -12,7 +12,7 @@ describe("bootstrap-extra-files hook", () => {
     const tempDir = await makeTempWorkspace("bitterbot-bootstrap-extra-");
     const extraDir = path.join(tempDir, "packages", "core");
     await fs.mkdir(extraDir, { recursive: true });
-    await fs.writeFile(path.join(extraDir, "AGENTS.md"), "extra agents", "utf-8");
+    await fs.writeFile(path.join(extraDir, "TOOLS.md"), "extra agents", "utf-8");
 
     const cfg: BitterbotConfig = {
       hooks: {
@@ -20,7 +20,7 @@ describe("bootstrap-extra-files hook", () => {
           entries: {
             "bootstrap-extra-files": {
               enabled: true,
-              paths: ["packages/*/AGENTS.md"],
+              paths: ["packages/*/TOOLS.md"],
             },
           },
         },
@@ -31,10 +31,10 @@ describe("bootstrap-extra-files hook", () => {
       workspaceDir: tempDir,
       bootstrapFiles: [
         {
-          name: "AGENTS.md",
+          name: "TOOLS.md",
           path: await writeWorkspaceFile({
             dir: tempDir,
-            name: "AGENTS.md",
+            name: "TOOLS.md",
             content: "root agents",
           }),
           content: "root agents",
@@ -48,9 +48,9 @@ describe("bootstrap-extra-files hook", () => {
     const event = createHookEvent("agent", "bootstrap", "agent:main:main", context);
     await handler(event);
 
-    const injected = context.bootstrapFiles.filter((f) => f.name === "AGENTS.md");
+    const injected = context.bootstrapFiles.filter((f) => f.name === "TOOLS.md");
     expect(injected).toHaveLength(2);
-    expect(injected.some((f) => f.path.endsWith(path.join("packages", "core", "AGENTS.md")))).toBe(
+    expect(injected.some((f) => f.path.endsWith(path.join("packages", "core", "TOOLS.md")))).toBe(
       true,
     );
   });
@@ -78,13 +78,13 @@ describe("bootstrap-extra-files hook", () => {
       workspaceDir: tempDir,
       bootstrapFiles: [
         {
-          name: "AGENTS.md",
+          name: "PROTOCOLS.md",
           path: await writeWorkspaceFile({
             dir: tempDir,
-            name: "AGENTS.md",
-            content: "root agents",
+            name: "PROTOCOLS.md",
+            content: "root protocols",
           }),
-          content: "root agents",
+          content: "root protocols",
           missing: false,
         },
         {
@@ -101,6 +101,6 @@ describe("bootstrap-extra-files hook", () => {
     const event = createHookEvent("agent", "bootstrap", "agent:main:subagent:abc", context);
     await handler(event);
 
-    expect(context.bootstrapFiles.map((f) => f.name).toSorted()).toEqual(["AGENTS.md", "TOOLS.md"]);
+    expect(context.bootstrapFiles.map((f) => f.name).toSorted()).toEqual(["GENOME.md", "PROTOCOLS.md", "TOOLS.md"]);
   });
 });

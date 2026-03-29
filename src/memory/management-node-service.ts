@@ -141,7 +141,7 @@ export class ManagementNodeService {
       this.captureEconomicSnapshot();
     }, 300_000);
 
-    // Listen for anomaly events from Rust orchestrator
+    // Listen for anomaly and bounty claim events from Rust orchestrator
     this.bridge.onTelemetryReceived?.((event: {
       signal_type: string;
       data: unknown;
@@ -150,6 +150,13 @@ export class ManagementNodeService {
     }) => {
       if (event.signal_type === "management_ban") {
         this.handleBanReceived(event);
+      } else if (event.signal_type === "bounty_claim") {
+        this.handleBountyClaim(event.data as {
+          bountyId: string; skillCrystalId: string;
+          claimerWalletAddress: string | null; contentHash: string; rewardUsdc: number;
+        }, event.author_peer_id).catch((err) => {
+          log.warn(`bounty claim processing failed: ${String(err)}`);
+        });
       }
     });
 
@@ -330,7 +337,7 @@ export class ManagementNodeService {
         totalTransactions: total.c,
         totalVolumeUsdc: total.v,
         last24hVolumeUsdc: last24h.v,
-        uniquePeersTrading: 0, // TODO: count distinct peers from telemetry
+        uniquePeersTrading: (() => { try { return (this.db.prepare(`SELECT COUNT(DISTINCT buyer_peer_id) as c FROM marketplace_purchases WHERE purchased_at > ?`).get(Date.now() - 7 * 24 * 60 * 60 * 1000) as { c: number })?.c ?? 0; } catch { return 0; } })(),
       };
     } catch {
       return { totalTransactions: 0, totalVolumeUsdc: 0, last24hVolumeUsdc: 0, uniquePeersTrading: 0 };
@@ -360,6 +367,84 @@ export class ManagementNodeService {
       detectedAt: Date.now(),
       autoAction: "ban_applied",
     });
+  }
+
+  /**
+   * Plan 8, Phase 4: Handle bounty claim from a peer.
+   * Validates the claim and queues USDC payout if legitimate.
+   */
+  private async handleBountyClaim(
+    claim: { bountyId: string; skillCrystalId: string; claimerWalletAddress: string | null; contentHash: string; rewardUsdc: number },
+    claimerPeerId: string,
+  ): Promise<void> {
+    if (!claim.bountyId || !claim.rewardUsdc || claim.rewardUsdc <= 0) return;
+
+    // 1. Check that this bounty exists and hasn't been fulfilled yet
+    try {
+      const bountyTarget = this.db.prepare(
+        `SELECT id, metadata FROM curiosity_targets
+         WHERE metadata LIKE ? AND resolved_at IS NOT NULL`,
+      ).get(`%"bountyId":"${claim.bountyId}"%`) as { id: string; metadata: string } | undefined;
+
+      // Bounty must have been resolved (matched) — if it's still unresolved, ignore
+      if (!bountyTarget) {
+        log.debug("bounty claim for unknown/unresolved bounty", { bountyId: claim.bountyId });
+        return;
+      }
+
+      // 2. Check for duplicate claims (already paid)
+      const alreadyPaid = this.db.prepare(
+        `SELECT id FROM revenue_payment_queue WHERE skill_crystal_id = ? AND role = 'bounty_reward' AND status IN ('held', 'released', 'paid')`,
+      ).get(claim.skillCrystalId) as { id: string } | undefined;
+      if (alreadyPaid) {
+        log.debug("duplicate bounty claim — already queued/paid", { bountyId: claim.bountyId });
+        return;
+      }
+
+      // 3. Check claimer reputation (don't pay banned or very low trust peers)
+      if (this.peerReputation) {
+        if (this.peerReputation.isBanned(claimerPeerId)) {
+          log.warn("bounty claim from banned peer", { claimerPeerId });
+          return;
+        }
+        const trust = this.peerReputation.getTrustScore(claimerPeerId);
+        if (trust < 0.2) {
+          log.warn("bounty claim from very low trust peer", { claimerPeerId, trust });
+          return;
+        }
+      }
+
+      // 4. Queue USDC payout via revenue payment queue (with 48h hold)
+      if (!claim.claimerWalletAddress) {
+        log.debug("bounty claim has no wallet address — cannot pay", { claimerPeerId });
+        return;
+      }
+
+      if (this.economics) {
+        this.economics.queueRevenuePayment({
+          skillCrystalId: claim.skillCrystalId,
+          purchaseId: `bounty_${claim.bountyId}`,
+          recipientPeerId: claimerPeerId,
+          amountUsdc: claim.rewardUsdc,
+          role: "bounty_reward",
+        });
+
+        log.info("bounty claim accepted — USDC payment queued", {
+          bountyId: claim.bountyId,
+          claimerPeerId,
+          rewardUsdc: claim.rewardUsdc,
+        });
+
+        // 5. Broadcast bounty_fulfilled to network
+        this.bridge.publishTelemetry?.("bounty_fulfilled", {
+          bountyId: claim.bountyId,
+          fulfillerPeerId: claimerPeerId,
+          rewardUsdc: claim.rewardUsdc,
+        }).catch(() => { /* non-critical */ });
+      }
+    } catch (err) {
+      log.warn(`bounty claim processing error: ${String(err)}`);
+    }
   }
 
   /** Capture economic snapshot from local MarketplaceEconomics. */

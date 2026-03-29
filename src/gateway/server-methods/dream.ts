@@ -328,6 +328,55 @@ export const dreamHandlers: GatewayRequestHandlers = {
     }
   },
 
+  // Plan 8, Phase 2: Marketplace search/browse via gateway RPC
+  "marketplace.search": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const marketplace = (manager as any).getSkillMarketplace?.();
+      if (!marketplace) {
+        respond(true, []);
+        return;
+      }
+      const results = marketplace.search(
+        params.query ?? "",
+        { category: params.category, tags: params.tags, sort: params.sort ?? "relevance", limit: Math.min(Number(params.limit) || 20, 50) },
+      );
+      respond(true, results);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+  "marketplace.trending": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const marketplace = (manager as any).getSkillMarketplace?.();
+      if (!marketplace) { respond(true, []); return; }
+      respond(true, marketplace.getTrending(Number(params.limit) || 10));
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+  "marketplace.recommendations": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const marketplace = (manager as any).getSkillMarketplace?.();
+      if (!marketplace) { respond(true, []); return; }
+      respond(true, marketplace.getRecommendations(Number(params.limit) || 10));
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+  "marketplace.detail": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const marketplace = (manager as any).getSkillMarketplace?.();
+      if (!marketplace) { respond(true, null); return; }
+      respond(true, marketplace.getSkillDetail(String(params.stableSkillId)));
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
   "dream.marketplaceStatus": async ({ respond }) => {
     try {
       const manager = await getManager();

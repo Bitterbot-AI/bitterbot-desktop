@@ -62,13 +62,13 @@ describe("buildBootstrapContextFiles", () => {
     const files = [
       makeFile({ name: "PROTOCOLS.md", content: "a".repeat(10_000) }),
       makeFile({ name: "TOOLS.md", path: "/tmp/TOOLS.md", content: "b".repeat(10_000) }),
-      makeFile({ name: "USER.md", path: "/tmp/USER.md", content: "c".repeat(10_000) }),
+      makeFile({ name: "HEARTBEAT.md", path: "/tmp/HEARTBEAT.md", content: "c".repeat(10_000) }),
     ];
     const result = buildBootstrapContextFiles(files);
     const totalChars = result.reduce((sum, entry) => sum + entry.content.length, 0);
     expect(totalChars).toBeLessThanOrEqual(DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS);
     expect(result).toHaveLength(3);
-    expect(result[2]?.content).toContain("[...truncated, read USER.md for full content...]");
+    expect(result[2]?.content).toContain("[...truncated, read HEARTBEAT.md for full content...]");
   });
 
   it("enforces strict total cap even when truncation markers are present", () => {

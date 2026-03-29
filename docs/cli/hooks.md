@@ -255,7 +255,7 @@ bitterbot hooks enable session-memory
 
 ### bootstrap-extra-files
 
-Injects additional bootstrap files (for example monorepo-local `AGENTS.md` / `TOOLS.md`) during `agent:bootstrap`.
+Injects additional bootstrap files (for example monorepo-local `TOOLS.md` / `PROTOCOLS.md`) during `agent:bootstrap`.
 
 **Enable:**
 

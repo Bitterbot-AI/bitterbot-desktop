@@ -4,8 +4,8 @@ import { buildSystemPromptReport } from "./system-prompt-report.js";
 
 function makeBootstrapFile(overrides: Partial<WorkspaceBootstrapFile>): WorkspaceBootstrapFile {
   return {
-    name: "AGENTS.md",
-    path: "/tmp/workspace/AGENTS.md",
+    name: "TOOLS.md",
+    path: "/tmp/workspace/TOOLS.md",
     content: "alpha",
     missing: false,
     ...overrides,
@@ -14,14 +14,14 @@ function makeBootstrapFile(overrides: Partial<WorkspaceBootstrapFile>): Workspac
 
 describe("buildSystemPromptReport", () => {
   it("counts injected chars when injected file paths are absolute", () => {
-    const file = makeBootstrapFile({ path: "/tmp/workspace/policies/AGENTS.md" });
+    const file = makeBootstrapFile({ path: "/tmp/workspace/policies/TOOLS.md" });
     const report = buildSystemPromptReport({
       source: "run",
       generatedAt: 0,
       bootstrapMaxChars: 20_000,
       systemPrompt: "system",
       bootstrapFiles: [file],
-      injectedFiles: [{ path: "/tmp/workspace/policies/AGENTS.md", content: "trimmed" }],
+      injectedFiles: [{ path: "/tmp/workspace/policies/TOOLS.md", content: "trimmed" }],
       skillsPrompt: "",
       tools: [],
     });
@@ -30,14 +30,14 @@ describe("buildSystemPromptReport", () => {
   });
 
   it("keeps legacy basename matching for injected files", () => {
-    const file = makeBootstrapFile({ path: "/tmp/workspace/policies/AGENTS.md" });
+    const file = makeBootstrapFile({ path: "/tmp/workspace/policies/TOOLS.md" });
     const report = buildSystemPromptReport({
       source: "run",
       generatedAt: 0,
       bootstrapMaxChars: 20_000,
       systemPrompt: "system",
       bootstrapFiles: [file],
-      injectedFiles: [{ path: "AGENTS.md", content: "trimmed" }],
+      injectedFiles: [{ path: "TOOLS.md", content: "trimmed" }],
       skillsPrompt: "",
       tools: [],
     });

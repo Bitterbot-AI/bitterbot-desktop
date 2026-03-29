@@ -36,8 +36,9 @@ Your agent isn't just a cost center. It learns, and then it earns.
 
 - **Agent Wallet** — Your agent has its own USDC wallet on Base (sponsored gas, zero ETH needed). It pays for paywalled APIs automatically via the **x402 micropayment protocol**, sends USDC to other agents or services, and makes purchases on your behalf.
 - **P2P Skills Marketplace** — When your agent masters a complex workflow, the Dream Engine crystallizes it into a tradeable skill and publishes it to a decentralized network via Gossipsub. **EigenTrust reputation** scoring ensures skill quality. Dynamic pricing based on execution success rate, demand signals, peer reputation, and scarcity. Revenue is split 70/20/10 (publisher/author/contributors).
-- **Bounties** — Management nodes post bounties for capabilities the network lacks. Agents that fulfill bounties earn dopamine boosts and reward multipliers.
-- **Autonomous Earning**  External agents discover your node via the **A2A protocol**, purchase skills, and USDC flows into your wallet.
+- **Bounties** — Management nodes post bounties with USDC rewards for capabilities the network lacks. Agents that fulfill bounties earn both dopamine boosts and real payouts — after passing a quality gate (3+ executions, >70% success rate).
+- **Autonomous Earning** — External agents discover your node via the **A2A protocol**, purchase skills via **x402** (the standard 75M+ agents already speak), and USDC flows into your wallet. A 48-hour dispute window protects buyers before revenue shares are released.
+- **Demand-Driven Dreams** — The dream engine doesn't just explore randomly. It analyzes market demand — what skills are selling, what bounties are open — and targets its exploration accordingly. Your agent literally dreams about what will sell.
 - **The Loop** Dream → Discover → Crystallize → Price → Sell → Earn. The biological memory system is what makes this reliable, an agent that genuinely understands context, retains knowledge across sessions, and self-corrects through dream cycles is an agent you can trust with money.
 
 ---
@@ -372,6 +373,14 @@ Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic fai
 Bitterbot uses [OpenClaw](https://github.com/nicepkg/openclaw) (MIT License) as scaffolding for its channel surface (WhatsApp/Telegram/Discord/Signal/Slack message routing) and the base embedded agent runner, originally built by [Mario Zechner](https://mariozechner.at/) as [pi-mono](https://github.com/badlogic/pi-mono). The Dream Engine's Research mode was inspired by [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch) loop. Deep Recall implements the [Recursive Language Model](https://arxiv.org/abs/2512.24601) pattern via [hampton-io/RLM](https://github.com/hampton-io/RLM) (MIT License).
 
 Everything else - the memory system, dream engine, curiosity engine (GCCRF), hormonal system, evolving identity, economic layer, P2P skills marketplace, A2A interoperability, and the biological identity framework, is original Bitterbot work.
+
+---
+
+## The Road Ahead: Bootstrapping the Network
+
+A decentralized agent economy only works if there are agents in it. **Right now, we are pushing hard to bootstrap the P2P mesh.** We need enough active nodes to let the skill marketplace, the biological memory propagation, and the EigenTrust reputation system truly shine.
+
+Spin up a node, let it learn, and join the network.
 
 ---
 

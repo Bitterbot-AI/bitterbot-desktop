@@ -56,11 +56,23 @@ Client                              Selling Agent
   |<--------------------------------------|
 ```
 
+### x402 v2 Standard Headers
+
+The x402 v2 protocol defines three standard HTTP headers for the payment handshake:
+
+| Header | Direction | Content |
+|--------|-----------|---------|
+| `PAYMENT-REQUIRED` | Server -> Client | Base64-encoded JSON containing `PaymentRequirements`: `scheme`, `network`, `maxAmountRequired`, `resource`, `description`, `payTo`, `asset`, `maxTimeoutSeconds`. Sent with the 402 response. |
+| `PAYMENT-SIGNATURE` | Client -> Server | Base64-encoded payment proof. Sent by the client on retry after completing payment. |
+| `PAYMENT-RESPONSE` | Server -> Client | Base64-encoded settlement response containing `transactionHash`, `payer`, `network`. Sent with the 200 OK on successful verification and execution. |
+
+> **Backwards compatibility:** The custom `x-payment` and `x-payment-token` headers are still accepted on inbound requests. Clients may use either the v2 standard `PAYMENT-SIGNATURE` header or the legacy headers when submitting payment proof.
+
 ### Step-by-step
 
 1. **Initial request.** The client sends a `message/send` request to the selling agent's `/a2a` endpoint.
 
-2. **402 response.** If the requested skill requires payment, the agent responds with HTTP 402. The payment information is returned in the JSON-RPC error body under `error.data`:
+2. **402 response.** If the requested skill requires payment, the agent responds with HTTP 402. The `PAYMENT-REQUIRED` header contains a Base64-encoded JSON `PaymentRequirements` object. The payment information is also returned in the JSON-RPC error body under `error.data` for legacy clients:
 
    ```json
    {
@@ -86,11 +98,11 @@ Client                              Selling Agent
 
 3. **On-chain payment.** The client transfers the specified USDC amount to the `payTo` address on Base. This is a standard ERC-20 transfer.
 
-4. **Retry with proof.** The client resends the original `message/send` request, adding a payment proof header. Both `x-payment` and `x-payment-token` headers are accepted. The value is a base64-encoded JSON object containing the transaction hash, amount, sender address, and timestamp.
+4. **Retry with proof.** The client resends the original `message/send` request, adding a `PAYMENT-SIGNATURE` header with the Base64-encoded payment proof. The legacy `x-payment` and `x-payment-token` headers are also accepted for backwards compatibility. The value is a base64-encoded JSON object containing the transaction hash, amount, sender address, and timestamp.
 
 5. **Verification and execution.** The selling agent verifies the transaction on-chain (see "On-Chain Verification" below), confirms the amount and recipient match, and then creates and executes the task.
 
-6. **Result delivery.** The task result is returned in the JSON-RPC response.
+6. **Result delivery.** The task result is returned in the JSON-RPC response. The `PAYMENT-RESPONSE` header is included on the 200 OK response, containing a Base64-encoded JSON object with `transactionHash`, `payer`, and `network`.
 
 ---
 

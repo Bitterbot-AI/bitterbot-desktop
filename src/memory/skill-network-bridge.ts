@@ -16,6 +16,7 @@ import type { CuriosityEngine } from "./curiosity-engine.js";
 import type { ExplorationTargetType } from "./curiosity-types.js";
 import { SkillVersionResolver } from "./skill-version-resolver.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import type { SkillVerifier } from "./skill-verifier.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/skill-network-bridge");
@@ -39,6 +40,7 @@ export class SkillNetworkBridge {
   private curiosityEngine: CuriosityEngine | null = null;
   private versionResolver: SkillVersionResolver;
   private executionTracker: SkillExecutionTracker | null = null;
+  private skillVerifier: SkillVerifier | null = null;
 
   constructor(
     db: DatabaseSync,
@@ -58,6 +60,11 @@ export class SkillNetworkBridge {
   /**
    * Wire or replace the peer reputation manager.
    */
+  /** Plan 8, Phase 3: Wire SkillVerifier for P2P ingest safety gate. */
+  setSkillVerifier(verifier: SkillVerifier | null): void {
+    this.skillVerifier = verifier;
+  }
+
   setPeerReputation(manager: PeerReputationManager | null): void {
     this.peerReputation = manager;
   }
@@ -264,6 +271,23 @@ export class SkillNetworkBridge {
       return { ok: false, action: "rejected", reason: "invalid content encoding" };
     }
 
+    // Plan 8, Phase 3: Safety gate — verify inbound skill content
+    if (this.skillVerifier) {
+      const verification = this.skillVerifier.verify(content, null);
+      if (!verification.passed) {
+        log.warn("P2P skill rejected by verifier", {
+          author: envelope.author_peer_id,
+          reason: verification.overallReason,
+          checks: verification.checks.filter((c: { passed: boolean; name: string }) => !c.passed).map((c: { name: string }) => c.name),
+        });
+        // Record negative trust signal
+        if (this.peerReputation) {
+          this.peerReputation.recordTrustEdge("local", envelope.author_pubkey, 0.2);
+        }
+        return { ok: false, action: "rejected", reason: verification.overallReason };
+      }
+    }
+
     // Check management verification
     let isVerified = false;
     let verifiedBy: string | null = null;
@@ -343,6 +367,14 @@ export class SkillNetworkBridge {
           envelope.author_pubkey,
         );
 
+      // Plan 8, Phase 1: Store peer wallet address for revenue sharing
+      if ((envelope as Record<string, unknown>).author_wallet_address && this.peerReputation) {
+        this.peerReputation.updateWalletAddress(
+          envelope.author_pubkey,
+          (envelope as Record<string, unknown>).author_wallet_address as string,
+        );
+      }
+
       log.debug("network skill ingested as crystal", {
         id,
         peer: envelope.author_peer_id,
@@ -375,6 +407,32 @@ export class SkillNetworkBridge {
           // Record bounty match on the crystal
           this.db.prepare(`UPDATE chunks SET bounty_match_id = ?, bounty_priority_boost = ? WHERE id = ?`)
             .run(match.bountyId, match.rewardMultiplier, crystalId);
+
+          // Plan 8, Phase 4: Bounty USDC payout — quality gate + claim publishing
+          if (match.rewardUsdc > 0 && this.orchestratorBridge) {
+            const meetsQuality = this.checkBountyClaimQuality(crystalId, row.text);
+            if (meetsQuality) {
+              this.orchestratorBridge.publishTelemetry?.("bounty_claim", {
+                bountyId: match.bountyId,
+                skillCrystalId: crystalId,
+                claimerWalletAddress: this.getLocalWalletAddress(),
+                contentHash: crypto.createHash("sha256").update(row.text).digest("hex"),
+                rewardUsdc: match.rewardUsdc,
+              }).catch((err) => {
+                log.warn(`bounty claim publish failed: ${String(err)}`);
+              });
+              log.info("bounty claim published", {
+                bountyId: match.bountyId,
+                crystalId,
+                rewardUsdc: match.rewardUsdc,
+              });
+            } else {
+              log.debug("bounty match found but quality gate not met", {
+                bountyId: match.bountyId,
+                crystalId,
+              });
+            }
+          }
         }
       }
     }
@@ -387,6 +445,40 @@ export class SkillNetworkBridge {
     }
   }
 
+  /**
+   * Plan 8, Phase 4: Quality gate for bounty claims.
+   * Reuses SkillCrystallizer's thresholds: SkillVerifier passes + 3 executions + >70% success.
+   */
+  private checkBountyClaimQuality(crystalId: string, text: string): boolean {
+    // 1. SkillVerifier must pass
+    if (this.skillVerifier) {
+      const result = this.skillVerifier.verify(text, null);
+      if (!result.passed) return false;
+    }
+
+    // 2. Execution metrics: 3+ runs, >70% success
+    if (this.executionTracker) {
+      const metrics = this.executionTracker.getSkillMetrics(crystalId);
+      if (metrics.totalExecutions < 3) return false;
+      if (metrics.successRate < 0.7) return false;
+    }
+
+    return true;
+  }
+
+  /** Resolve this node's wallet address for bounty claim payouts. */
+  private getLocalWalletAddress(): string | null {
+    try {
+      // Read from config or wallet service cache
+      const row = this.db.prepare(
+        `SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = 'local'`,
+      ).get() as { wallet_address: string | null } | undefined;
+      return row?.wallet_address ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   handleWeatherEvent(event: { global_cortisol_spike: number; duration_ms: number; reason: string }): void {
     this.hormonalManager?.applyNetworkCortisolSpike(event.global_cortisol_spike, event.duration_ms, event.reason);
   }
@@ -394,6 +486,7 @@ export class SkillNetworkBridge {
   handleBountyEvent(bounty: {
     bounty_id: string; target_type: string; description: string;
     priority: number; reward_multiplier: number; region_hint?: string; expires_at: number;
+    reward_usdc?: number; poster_peer_id?: string; poster_wallet_address?: string;
   }): void {
     if (!this.curiosityEngine) return;
     const validTypes = ["knowledge_gap", "contradiction", "stale_region", "frontier"];
@@ -403,6 +496,10 @@ export class SkillNetworkBridge {
       bountyId: bounty.bounty_id, targetType, description: bounty.description,
       priority: bounty.priority, rewardMultiplier: bounty.reward_multiplier,
       regionHint: bounty.region_hint, expiresAt: bounty.expires_at,
+      // Plan 8, Phase 4: USDC reward info for economic bounty payouts
+      rewardUsdc: bounty.reward_usdc,
+      posterPeerId: bounty.poster_peer_id,
+      posterWalletAddress: bounty.poster_wallet_address,
     });
   }
 

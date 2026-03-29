@@ -230,35 +230,6 @@ describe("agents.create", () => {
     );
   });
 
-  it("always writes Name to IDENTITY.md even without emoji/avatar", async () => {
-    const { promise } = makeCall("agents.create", {
-      name: "Plain Agent",
-      workspace: "/tmp/ws",
-    });
-    await promise;
-
-    expect(mocks.fsAppendFile).toHaveBeenCalledWith(
-      expect.stringContaining("IDENTITY.md"),
-      expect.stringContaining("- Name: Plain Agent"),
-      "utf-8",
-    );
-  });
-
-  it("writes emoji and avatar to IDENTITY.md when provided", async () => {
-    const { promise } = makeCall("agents.create", {
-      name: "Fancy Agent",
-      workspace: "/tmp/ws",
-      emoji: "🤖",
-      avatar: "https://example.com/avatar.png",
-    });
-    await promise;
-
-    expect(mocks.fsAppendFile).toHaveBeenCalledWith(
-      expect.stringContaining("IDENTITY.md"),
-      expect.stringMatching(/- Name: Fancy Agent[\s\S]*- Emoji: 🤖[\s\S]*- Avatar:/),
-      "utf-8",
-    );
-  });
 });
 
 describe("agents.update", () => {

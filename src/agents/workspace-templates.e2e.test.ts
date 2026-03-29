@@ -20,7 +20,7 @@ describe("resolveWorkspaceTemplateDir", () => {
 
     const templatesDir = path.join(root, "docs", "reference", "templates");
     await fs.mkdir(templatesDir, { recursive: true });
-    await fs.writeFile(path.join(templatesDir, "AGENTS.md"), "# ok\n");
+    await fs.writeFile(path.join(templatesDir, "TOOLS.md"), "# ok\n");
 
     const distDir = path.join(root, "dist");
     await fs.mkdir(distDir, { recursive: true });
