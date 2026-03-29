@@ -40,8 +40,8 @@ The script runs all pi related unit tests via these globs:
 
 Recommended flow:
 
-- Run the gateway in dev mode:
-  - `pnpm gateway:dev`
+- Run the gateway (skip channels for faster startup):
+  - `BITTERBOT_SKIP_CHANNELS=1 pnpm start gateway`
 - Trigger the agent directly:
   - `pnpm bitterbot agent --message "Hello" --thinking low`
 - Use the TUI for interactive debugging:
