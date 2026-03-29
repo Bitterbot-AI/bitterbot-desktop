@@ -9,8 +9,7 @@ services:
       - ${BITTERBOT_CONFIG_DIR}:/home/node/.bitterbot
       - ${BITTERBOT_WORKSPACE_DIR}:/home/node/.bitterbot/workspace
     ports:
-      - "${BITTERBOT_GATEWAY_PORT:-18789}:18789"
-      - "${BITTERBOT_BRIDGE_PORT:-18790}:18790"
+      - "${BITTERBOT_GATEWAY_PORT:-19001}:19001"
     init: true
     restart: unless-stopped
     command:
@@ -21,7 +20,7 @@ services:
         "--bind",
         "${BITTERBOT_GATEWAY_BIND:-lan}",
         "--port",
-        "18789",
+        "19001",
       ]
 
   bitterbot-cli:

@@ -247,6 +247,17 @@ export function createDeepRecallTool(options: {
       const llmCall = buildLlmCallFn(cfg);
       const executor = new RLMExecutor(llmCall);
 
+      // Plan 7, Phase 8: Check cache first — avoid redundant REPL sessions
+      const cached = executor.getCachedResult(query, scope);
+      if (cached) {
+        return jsonResult({
+          answer: cached,
+          success: true,
+          source: "cache",
+          note: "Returned from RLM cache (1h TTL). New session extraction invalidates cache.",
+        });
+      }
+
       const result = await executor.execute(query, context, {
         model: rootModel,
         provider: rootProvider,
@@ -259,15 +270,25 @@ export function createDeepRecallTool(options: {
         timeout: rlmCfg?.sandboxTimeout ?? DEFAULT_RLM_CONFIG.sandboxTimeout,
       });
 
-      // Step 5: Trigger hormonal event based on result
+      // Step 5: Trigger hormonal event based on result + Plan 7 self-improvement
       if (manager) {
         try {
           const memManager = manager as any;
           if (memManager.hormonalManager) {
             if (result.success && result.answer) {
               memManager.hormonalManager.stimulate("reward");
+              // Plan 7, Phase 8: Cache successful result
+              executor.cacheResult(query, scope, result.answer);
             } else if (!result.success) {
               memManager.hormonalManager.stimulate("error");
+              // Plan 7, Phase 8: Register blind spot as curiosity target
+              if (memManager.curiosityEngine?.registerBlindSpot) {
+                memManager.curiosityEngine.registerBlindSpot({
+                  query,
+                  scope,
+                  timestamp: Date.now(),
+                });
+              }
             }
           }
         } catch {

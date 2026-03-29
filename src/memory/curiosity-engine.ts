@@ -797,6 +797,38 @@ export class CuriosityEngine {
     return adjustments;
   }
 
+  /**
+   * Register a query that deep_recall couldn't answer (Plan 7, Phase 8).
+   * Creates a high-priority exploration target so the dream engine
+   * specifically looks for this knowledge in the next cycle.
+   */
+  registerBlindSpot(params: { query: string; scope: string; timestamp: number }): void {
+    if (!this.config.enabled) return;
+    try {
+      const id = crypto.randomUUID();
+      const expiresAt = params.timestamp + 7 * 24 * 60 * 60 * 1000; // 7 day TTL
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO curiosity_targets
+           (id, type, description, priority, region_id, metadata, created_at, resolved_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          "knowledge_gap",
+          `Deep recall blind spot: "${params.query}" (scope: ${params.scope})`,
+          0.85,
+          null,
+          JSON.stringify({ source: "deep_recall", query: params.query, scope: params.scope }),
+          params.timestamp,
+          null,
+          expiresAt,
+        );
+    } catch {
+      // Non-critical
+    }
+  }
+
   // --- Private methods ---
 
   private detectEmergence(): EmergenceEvent[] {

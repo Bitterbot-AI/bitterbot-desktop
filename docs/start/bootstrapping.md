@@ -19,9 +19,9 @@ for the first time.
 On the first agent run, Bitterbot bootstraps the workspace (default
 `~/.bitterbot/workspace`):
 
-- Seeds `GENOME.md`, `PROTOCOLS.md`, `BOOTSTRAP.md`, `IDENTITY.md`, `USER.md`.
+- Seeds `GENOME.md`, `PROTOCOLS.md`, `TOOLS.md`, `HEARTBEAT.md`, `MEMORY.md`, `BOOTSTRAP.md`.
 - Runs a short Q&A ritual (one question at a time).
-- Writes identity + preferences to `IDENTITY.md`, `USER.md`, `GENOME.md`.
+- Writes core values and preferences to `GENOME.md`.
 - Removes `BOOTSTRAP.md` when finished so it only runs once.
 
 ## Where it runs

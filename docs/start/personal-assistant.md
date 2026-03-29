@@ -71,7 +71,7 @@ When onboarding finishes, we auto-open the dashboard and print a clean (non-toke
 
 Bitterbot reads operating instructions and “memory” from its workspace directory.
 
-By default, Bitterbot uses `~/.bitterbot/workspace` as the agent workspace, and will create it (plus starter `GENOME.md`, `PROTOCOLS.md`, `TOOLS.md`, `IDENTITY.md`, `USER.md`, `HEARTBEAT.md`, `MEMORY.md`) automatically on setup/first agent run. `BOOTSTRAP.md` is only created when the workspace is brand new (it should not come back after you delete it). Subagent sessions only inject `TOOLS.md`.
+By default, Bitterbot uses `~/.bitterbot/workspace` as the agent workspace, and will create it (plus starter `GENOME.md`, `PROTOCOLS.md`, `TOOLS.md`, `HEARTBEAT.md`, `MEMORY.md`) automatically on setup/first agent run. `BOOTSTRAP.md` is only created when the workspace is brand new (it should not come back after you delete it). Subagent sessions only inject `TOOLS.md`.
 
 Tip: treat this folder like Bitterbot’s “memory” and make it a git repo (ideally private) so your workspace files + memory are backed up. If git is installed, brand-new workspaces are auto-initialized.
 

@@ -24,14 +24,9 @@ bitterbot agents set-identity --agent main --avatar avatars/bitterbot.png
 bitterbot agents delete work
 ```
 
-## Identity files
+## Identity
 
-Each agent workspace can include an `IDENTITY.md` at the workspace root:
-
-- Example path: `~/.bitterbot/workspace/IDENTITY.md`
-- `set-identity --from-identity` reads from the workspace root (or an explicit `--identity-file`)
-
-Avatar paths resolve relative to the workspace root.
+Agent identity (name, theme, emoji, avatar) is configured via the CLI or config file. The agent's personality and self-concept evolve through dream cycles and are stored in the Phenotype section of `MEMORY.md`.
 
 ## Set identity
 
@@ -42,10 +37,8 @@ Avatar paths resolve relative to the workspace root.
 - `emoji`
 - `avatar` (workspace-relative path, http(s) URL, or data URI)
 
-Load from `IDENTITY.md`:
-
 ```bash
-bitterbot agents set-identity --workspace ~/.bitterbot/workspace --from-identity
+bitterbot agents set-identity --name "Bitterbot" --emoji "🤖"
 ```
 
 Override fields explicitly:

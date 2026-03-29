@@ -169,6 +169,10 @@ export class GCCRFRewardFunction {
   // Total chunks processed (for internal tracking — maturity uses dream cycles)
   private totalChunksProcessed: number;
 
+  // Plan 7, Phase 10: FSHO ↔ GCCRF alpha coupling
+  private fshoRAvg: number = 0.5;
+  private readonly fshoEmaAlpha = 0.2;
+
   constructor(db: DatabaseSync, config?: Partial<GCCRFConfig>) {
     this.db = db;
     this.config = { ...DEFAULT_GCCRF_CONFIG, ...config };
@@ -501,6 +505,41 @@ export class GCCRFRewardFunction {
     const crystalMat = this.getTotalCrystalCount() / 500;
     const ageMat = this.getDaysSinceFirstCrystal() / 30;
     return Math.min(1, Math.max(cycleMat, crystalMat, ageMat));
+  }
+
+  // ── Plan 7, Phase 10: FSHO Alpha Coupling ──
+
+  /**
+   * Update the running EMA of FSHO order parameter.
+   * Called by dream-engine after FSHO computation.
+   */
+  updateFshoR(orderParameter: number): void {
+    this.fshoRAvg = this.fshoEmaAlpha * orderParameter + (1 - this.fshoEmaAlpha) * this.fshoRAvg;
+  }
+
+  /**
+   * Get FSHO-coupled alpha. Modulates the base maturity schedule
+   * based on memory landscape coherence.
+   *
+   * High R (coherent) → shift alpha toward frontier-seeking (faster maturation)
+   * Low R (scattered) → shift alpha toward density-seeking (consolidate first)
+   */
+  getFshoCoupledAlpha(): number {
+    const baseAlpha = this.getCurrentAlpha();
+    const couplingStrength = 0.5;
+    const rThreshold = 0.5;
+
+    const delta = couplingStrength * (this.fshoRAvg - rThreshold);
+
+    return Math.max(
+      this.config.alphaStart,
+      Math.min(this.config.alphaEnd, baseAlpha + delta),
+    );
+  }
+
+  /** Expose FSHO R EMA for telemetry. */
+  getFshoRAvg(): number {
+    return this.fshoRAvg;
   }
 
   /** Count completed dream cycles from the dream_cycles table. */

@@ -18,6 +18,10 @@ export type EndocrineStateForPrompt = {
   maturity?: number;
   /** Compact 1-line summary from the latest session handover brief */
   lastSessionBrief?: string;
+  /** Proactive memory facts for involuntary recall (Plan 7, Phase 1) */
+  proactiveMemories?: string;
+  /** Intra-session coherence context (Plan 7, Phase 2+9) */
+  sessionCoherence?: string;
 };
 
 export async function resolveEndocrineState(params: {
@@ -79,6 +83,39 @@ export async function resolveEndocrineState(params: {
       // No handover briefs yet — that's fine
     }
 
+    // Plan 7, Phase 1: Proactive memory surfacing — involuntary recall of identity/directive facts
+    let proactiveMemories: string | undefined;
+    try {
+      const { proactiveRecall, formatProactiveFacts } = await import("../memory/proactive-recall.js");
+      const result = proactiveRecall({
+        userMessage: "",  // Will be populated when called with context
+        queryEmbedding: null,  // Identity prefs don't need embedding
+        db: (manager as Record<string, unknown>).db as import("node:sqlite").DatabaseSync,
+        userModelManager: (manager as Record<string, unknown>).userModelManager as import("../memory/user-model.js").UserModelManager | null,
+        recentlySurfaced: (manager as Record<string, unknown>).proactiveRecallCooldown as Map<string, number> ?? new Map(),
+        currentTurn: 0,
+        hormonalModulation: hormonalMgr ? (hormonalMgr as unknown as { getRetrievalModulation(): { importanceBoost: number; recencyBias: number } }).getRetrievalModulation() : null,
+      });
+      if (result.facts.length > 0) {
+        proactiveMemories = formatProactiveFacts(result.facts);
+      }
+    } catch {
+      // Proactive recall not available — non-critical
+    }
+
+    // Plan 7, Phase 2+9: Session coherence — intra-session thread/intent tracking
+    let sessionCoherence: string | undefined;
+    try {
+      const tracker = (manager as Record<string, unknown>).coherenceTracker as
+        | { formatForPrompt(): string | null }
+        | null;
+      if (tracker) {
+        sessionCoherence = tracker.formatForPrompt() ?? undefined;
+      }
+    } catch {
+      // Coherence tracker not available — non-critical
+    }
+
     return {
       dopamine: hormones.dopamine,
       cortisol: hormones.cortisol,
@@ -87,6 +124,8 @@ export async function resolveEndocrineState(params: {
       phenotypeSummary,
       maturity,
       lastSessionBrief,
+      proactiveMemories,
+      sessionCoherence,
     };
   } catch (err) {
     log.debug(`Failed to resolve endocrine state: ${String(err)}`);

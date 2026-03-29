@@ -9,6 +9,7 @@
  * Paper: https://arxiv.org/abs/2512.24601
  */
 
+import crypto from "node:crypto";
 import { RLMSandbox } from "./sandbox.js";
 import { CostTracker } from "./cost-tracker.js";
 import {
@@ -41,8 +42,54 @@ function extractCodeBlock(text: string): string | null {
   return null;
 }
 
+interface CachedRLMResult {
+  answer: string;
+  timestamp: number;
+  queryHash: string;
+}
+
 export class RLMExecutor {
   constructor(private readonly llmCall: RLMLLMCallFn) {}
+
+  // ── Plan 7, Phase 8: Query Result Cache ──
+  private cache = new Map<string, CachedRLMResult>();
+  private readonly cacheTtlMs = 60 * 60 * 1000; // 1 hour
+
+  getCachedResult(query: string, scope: string): string | null {
+    const hash = this.hashQuery(query, scope);
+    const cached = this.cache.get(hash);
+    if (!cached) return null;
+    if (Date.now() - cached.timestamp > this.cacheTtlMs) {
+      this.cache.delete(hash);
+      return null;
+    }
+    return cached.answer;
+  }
+
+  cacheResult(query: string, scope: string, answer: string): void {
+    const hash = this.hashQuery(query, scope);
+    this.cache.set(hash, { answer, timestamp: Date.now(), queryHash: hash });
+    // Cap cache size
+    if (this.cache.size > 50) {
+      const oldest = [...this.cache.entries()].sort(
+        (a, b) => a[1].timestamp - b[1].timestamp,
+      )[0];
+      if (oldest) this.cache.delete(oldest[0]);
+    }
+  }
+
+  /** Invalidate cache (e.g., after new session extraction). */
+  invalidateCache(): void {
+    this.cache.clear();
+  }
+
+  private hashQuery(query: string, scope: string): string {
+    return crypto
+      .createHash("sha256")
+      .update(`${scope}:${query.toLowerCase().trim()}`)
+      .digest("hex")
+      .slice(0, 16);
+  }
 
   async execute(
     query: string,

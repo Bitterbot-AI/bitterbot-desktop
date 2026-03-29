@@ -189,3 +189,77 @@ export async function loadLatestHandoverBrief(workspaceDir: string): Promise<Ses
     return null;
   }
 }
+
+// ── Plan 7, Phase 6: Handover Brief Quality Gate ──
+
+export interface HandoverQualityScore {
+  coverage: number;
+  specificity: number;
+  overall: number;
+  missingFacts: string[];
+}
+
+/** Minimum quality threshold. Below this, the brief should be enriched. */
+export const HANDOVER_QUALITY_THRESHOLD = 0.4;
+
+/**
+ * Score a handover brief against extracted session facts.
+ *
+ * Coverage: for each high-confidence fact, check if the brief text
+ * contains significant keyword overlap (>30% of fact's content words).
+ *
+ * Specificity: count concrete tokens (proper nouns, numbers, technical terms)
+ * as a ratio of total tokens.
+ */
+export function scoreHandoverBrief(
+  brief: SessionHandoverBrief,
+  extractedFacts: Array<{ text: string; confidence: number }>,
+  minConfidence: number = 0.5,
+): HandoverQualityScore {
+  const briefText = [
+    brief.purpose,
+    ...brief.milestones,
+    ...brief.decisions,
+    ...brief.blockers,
+    ...brief.nextSteps,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const briefWords = new Set(
+    briefText.split(/\s+/).filter((w) => w.length > 3),
+  );
+
+  const keyFacts = extractedFacts.filter((f) => f.confidence >= minConfidence);
+  let covered = 0;
+  const missingFacts: string[] = [];
+
+  for (const fact of keyFacts) {
+    const factWords = fact.text
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
+    const overlap = factWords.filter((w) => briefWords.has(w)).length;
+    const overlapRatio = factWords.length > 0 ? overlap / factWords.length : 0;
+    if (overlapRatio >= 0.3) {
+      covered++;
+    } else {
+      missingFacts.push(fact.text);
+    }
+  }
+
+  const coverage = keyFacts.length > 0 ? covered / keyFacts.length : 1.0;
+
+  // Specificity: concrete detail density
+  const allBriefWords = briefText.split(/\s+/);
+  const concretePattern = /^(?:[A-Z][a-z]+|[0-9]+(?:\.[0-9]+)?|v[0-9]|[A-Z]{2,}|https?:)/;
+  const concreteCount = allBriefWords.filter((w) => concretePattern.test(w)).length;
+  const specificity =
+    allBriefWords.length > 0
+      ? Math.min(1, concreteCount / (allBriefWords.length * 0.15))
+      : 0;
+
+  const overall = coverage * 0.7 + specificity * 0.3;
+
+  return { coverage, specificity, overall, missingFacts };
+}

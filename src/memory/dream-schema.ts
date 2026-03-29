@@ -110,6 +110,25 @@ export function ensureDreamSchema(db: DatabaseSync): void {
     );
   `);
 
+  // Dream outcome evaluation: closed-loop feedback for dream quality (Plan 7, Phase 5)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dream_outcomes (
+      cycle_id TEXT PRIMARY KEY,
+      dqs REAL NOT NULL,
+      crystal_yield REAL NOT NULL,
+      merge_efficiency REAL NOT NULL,
+      orphan_rescue REAL NOT NULL,
+      bond_stability REAL NOT NULL,
+      token_efficiency REAL NOT NULL,
+      fsho_r REAL,
+      curiosity_targets INTEGER,
+      gccrf_maturity REAL,
+      readiness_score REAL,
+      modes_run TEXT,
+      timestamp INTEGER NOT NULL
+    );
+  `);
+
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_dream_insights_cycle ON dream_insights(dream_cycle_id);`,
   );

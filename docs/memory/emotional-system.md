@@ -87,6 +87,16 @@ The dream engine detects anchors during processing. High-emotion anchors (where 
 
 The system automatically creates anchors when it detects significant hormonal spikes. A 5-minute cooldown prevents duplicate auto-anchors from the same event.
 
+### Proactive Anchor Recall
+
+Anchors can be recalled automatically through two mechanisms:
+
+1. **State-triggered:** When the current emotional state (dopamine/cortisol/oxytocin vector) has cosine similarity > 0.85 with a stored anchor's state, the anchor is blended in at low influence (0.15). This creates associative emotional memory — entering a similar mood brings back the associated experience.
+
+2. **Keyword-triggered:** When a user message contains emotional reference words ("remember when", "breakthrough", "that time"), stored anchors are matched by label/description keywords and blended at moderate influence (0.25).
+
+Both mechanisms use mild blending strengths to avoid destabilizing the current emotional state while providing continuity of emotional experience across interactions.
+
 ---
 
 ## Limbic Memory Bridge

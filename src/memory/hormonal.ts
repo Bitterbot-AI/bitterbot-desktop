@@ -567,6 +567,66 @@ export class HormonalStateManager {
     return [...this.anchors.values()].sort((a, b) => b.createdAt - a.createdAt);
   }
 
+  // ── Plan 7, Phase 7: Proactive Emotional Anchor Recall ──
+
+  /**
+   * Find anchors whose emotional state is similar to the current state.
+   * Enables "associative emotional recall" — when the agent enters
+   * an emotional state similar to a past experience, that experience
+   * surfaces spontaneously.
+   */
+  findSimilarAnchors(
+    threshold: number = 0.85,
+    maxResults: number = 2,
+  ): Array<{ anchor: EmotionalAnchor; similarity: number }> {
+    const current = [this.state.dopamine, this.state.cortisol, this.state.oxytocin];
+    const results: Array<{ anchor: EmotionalAnchor; similarity: number }> = [];
+
+    for (const anchor of this.anchors.values()) {
+      const anchorVec = [anchor.state.dopamine, anchor.state.cortisol, anchor.state.oxytocin];
+      const sim = this.cosine3d(current, anchorVec);
+      if (sim >= threshold) {
+        results.push({ anchor, similarity: sim });
+      }
+    }
+
+    return results
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, maxResults);
+  }
+
+  /**
+   * Find anchors whose label matches keywords in a text string.
+   * For keyword-triggered recall from user messages.
+   */
+  findAnchorsByKeywords(text: string, maxResults: number = 2): EmotionalAnchor[] {
+    const words = text.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+    const scored: Array<{ anchor: EmotionalAnchor; matchCount: number }> = [];
+
+    for (const anchor of this.anchors.values()) {
+      const labelWords = anchor.label.toLowerCase().split(/[\s_-]+/);
+      const descWords = (anchor.description ?? "").toLowerCase().split(/\s+/);
+      const anchorWords = new Set([...labelWords, ...descWords]);
+
+      const matchCount = words.filter((w) => anchorWords.has(w)).length;
+      if (matchCount > 0) {
+        scored.push({ anchor, matchCount });
+      }
+    }
+
+    return scored
+      .sort((a, b) => b.matchCount - a.matchCount)
+      .slice(0, maxResults)
+      .map((s) => s.anchor);
+  }
+
+  private cosine3d(a: number[], b: number[]): number {
+    const dot = a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+    const magA = Math.sqrt(a[0]! * a[0]! + a[1]! * a[1]! + a[2]! * a[2]!);
+    const magB = Math.sqrt(b[0]! * b[0]! + b[1]! * b[1]! + b[2]! * b[2]!);
+    return magA > 0 && magB > 0 ? dot / (magA * magB) : 0;
+  }
+
   /** Export current anchors for persistence. */
   exportAnchors(): EmotionalAnchor[] {
     return [...this.anchors.values()];

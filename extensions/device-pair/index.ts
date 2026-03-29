@@ -2,7 +2,7 @@ import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
 import os from "node:os";
 import { approveDevicePairing, listDevicePairing } from "bitterbot/plugin-sdk";
 
-const DEFAULT_GATEWAY_PORT = 18789;
+const DEFAULT_GATEWAY_PORT = 19001;
 
 type DevicePairPluginConfig = {
   publicUrl?: string;

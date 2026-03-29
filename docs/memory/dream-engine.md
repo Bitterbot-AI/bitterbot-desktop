@@ -215,6 +215,34 @@ Examples:
 
 This enables closed-loop validation: empirically measuring whether FSHO's R-parameter actually correlates with better dream outcomes.
 
+### Dream Outcome Evaluation
+
+After each dream cycle, a **Dream Quality Score (DQS)** is computed and persisted to the `dream_outcomes` table. DQS is a weighted composite of five metrics:
+
+| Component | Weight | Measures |
+|-----------|--------|----------|
+| **Crystal Yield** | 0.25 | New insights per LLM call |
+| **Merge Efficiency** | 0.15 | Successful merges / merge attempts |
+| **Orphan Rescue** | 0.15 | Orphans replayed / orphans queued |
+| **Bond Stability** | 0.30 | Whether the Bond passed drift validation |
+| **Token Efficiency** | 0.15 | Budget utilization |
+
+Bond stability has the highest weight because losing the user's identity information is the worst failure mode.
+
+The `analyzeSignalCorrelation()` function computes Pearson correlation between FSHO R values and DQS across the last 20 cycles. If |r| > 0.3, the FSHO signal is predictive and its weight should be maintained. This data will eventually drive adaptive weight tuning of the 0.3/0.3/0.4 (curiosity/GCCRF/FSHO) combination.
+
+### GCCRF ↔ FSHO Alpha Coupling
+
+The GCCRF's alpha parameter shifts from density-seeking (learn fundamentals, α = -3) to frontier-seeking (explore novelty, α = 0) as the agent matures. The FSHO order parameter R provides a complementary signal: high R means memories are well-consolidated, so the agent can afford to explore earlier.
+
+The coupling modulates alpha based on a running EMA of R:
+
+```
+effective_alpha = base_alpha + 0.5 × (R_avg - 0.5)
+```
+
+If R_avg > 0.5 (coherent memories), alpha shifts toward frontier-seeking. If R_avg < 0.5 (scattered), it shifts toward consolidation. This creates a self-regulating curiosity drive that responds to the actual state of the agent's knowledge.
+
 ---
 
 ## Anti-Catastrophic Forgetting

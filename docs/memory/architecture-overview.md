@@ -106,8 +106,18 @@ flowchart TB
     subgraph Retrieval
         K[Search Query] --> L[Hybrid BM25 + Vector]
         L --> M[Retrieval Modulation - hormones bias ranking]
-        M --> N[Results]
+        M --> TMP[Temporal Scoring - query intent × epistemic half-lives]
+        TMP --> N[Results]
         N --> LB[Limbic Bridge - results affect hormones]
+    end
+
+    subgraph "Proactive Recall (every turn, zero LLM cost)"
+        UM[User Message] --> PR[Proactive Recall]
+        PR --> ID[Identity prefs - always surface]
+        PR --> VEC[Vector-match directive/world_fact crystals]
+        ID --> SP[System Prompt injection]
+        VEC --> SP
+        COH[Session Coherence Tracker] --> SP
     end
 
     subgraph "Context Efficiency"
@@ -193,7 +203,8 @@ flowchart TB
 | `src/memory/dream-engine.ts` | `DreamEngine` — state machine, 7 mode runners, FSHO integration, emotional triggering |
 | `src/memory/dream-oscillator.ts` | FSHO oscillator — Kuramoto coupling, order parameter for mode selection |
 | `src/memory/dream-types.ts` | Dream types: modes, tiers, configs, `DreamInsight` |
-| `src/memory/dream-schema.ts` | `dream_insights` + `dream_cycles` + `dream_telemetry` table creation |
+| `src/memory/dream-schema.ts` | `dream_insights` + `dream_cycles` + `dream_telemetry` + `dream_outcomes` table creation |
+| `src/memory/dream-evaluator.ts` | Dream outcome evaluation — DQS scoring, FSHO correlation, adaptive feedback |
 | `src/memory/dream-synthesis-prompt.ts` | LLM prompt building, heuristic synthesis, response parsing |
 | `src/memory/dream-search.ts` | Vector search over dream insights |
 | `src/memory/dream-mutation-strategies.ts` | 5 mutation strategies + LLM prompt builders |
@@ -222,8 +233,17 @@ flowchart TB
 | File | Purpose |
 |------|---------|
 | `src/memory/session-extractor.ts` | Extract structured facts from session transcripts during dream cycles |
-| `src/memory/session-handover.ts` | Generate/load compact session handover briefs for cross-session continuity |
-| `src/memory/user-model.ts` | `UserModelManager` — preference storage, `upsertFromDirective()` |
+| `src/memory/session-handover.ts` | Generate/load compact session handover briefs for cross-session continuity, quality gate scoring |
+| `src/memory/user-model.ts` | `UserModelManager` — preference storage, `upsertFromDirective()`, Bayesian confidence calibration |
+
+### Cognitive Coherence (Plan 7)
+
+| File | Purpose |
+|------|---------|
+| `src/memory/proactive-recall.ts` | Involuntary memory surfacing — identity/directive facts auto-inject every turn |
+| `src/memory/session-coherence.ts` | Intra-session thread tracking, decision detection, intent classification |
+| `src/memory/temporal-scoring.ts` | Query-intent-sensitive temporal decay with epistemic half-lives |
+| `src/memory/dream-evaluator.ts` | Dream Quality Score (DQS), FSHO correlation analysis, outcome persistence |
 
 ### Context Efficiency
 

@@ -1,0 +1,13 @@
+node_modules/
+dist-electron/
+dist-renderer/
+release/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+resources/.env
+
+# Per-installation P2P node identity keypair
+keys/

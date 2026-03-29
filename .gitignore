@@ -208,8 +208,5 @@ keys/
 # Research / planning playground (internal only)
 research/
 
-# Desktop app (not released yet)
-desktop/
-
 # Wallet seed data (should never be in repo)
 wallet-data.json

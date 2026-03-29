@@ -308,8 +308,8 @@ export class UserModelManager {
 
     // Upsert: boost confidence for existing, insert for new
     const existing = this.db
-      .prepare(`SELECT id, confidence, evidence_ids FROM user_preferences WHERE category = ? AND key = ?`)
-      .get(category, key) as { id: string; confidence: number; evidence_ids: string } | undefined;
+      .prepare(`SELECT id, value, confidence, evidence_ids FROM user_preferences WHERE category = ? AND key = ?`)
+      .get(category, key) as { id: string; value: string; confidence: number; evidence_ids: string } | undefined;
 
     if (existing) {
       let evidenceIds: string[] = [];
@@ -317,18 +317,34 @@ export class UserModelManager {
       if (fact.sessionId && !evidenceIds.includes(fact.sessionId)) {
         evidenceIds.push(fact.sessionId);
       }
-      const newConfidence = Math.min(1, existing.confidence + 0.1);
+
+      // Plan 7, Phase 4: Bayesian-style confidence calibration
+      const isContradiction = this.detectContradiction(existing.value ?? "", text);
+      let newConfidence: number;
+
+      if (isContradiction) {
+        // Contradiction: erode confidence, update value to newer
+        newConfidence = Math.max(0.1, existing.confidence * 0.6);
+      } else {
+        // Corroboration: Bayesian-style update (logarithmic growth)
+        // Same session = weaker signal, different session = stronger
+        const sameSession = evidenceIds.some(id => id.startsWith(fact.sessionId));
+        const decayFactor = sameSession ? 0.7 : 0.6;
+        newConfidence = Math.min(1.0, 1 - (1 - existing.confidence) * decayFactor);
+      }
+
+      const updatedValue = isContradiction ? text : (existing as Record<string, unknown>).value as string ?? text;
       this.db
         .prepare(
           `UPDATE user_preferences SET value = ?, confidence = ?, evidence_ids = ?, updated_at = ? WHERE id = ?`,
         )
-        .run(text, newConfidence, JSON.stringify(evidenceIds), now, existing.id);
+        .run(updatedValue, newConfidence, JSON.stringify(evidenceIds.slice(-10)), now, existing.id);
 
       return {
         id: existing.id,
         category,
         key,
-        value: text,
+        value: updatedValue,
         confidence: newConfidence,
         evidenceIds,
         createdAt: now,
@@ -357,5 +373,26 @@ export class UserModelManager {
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  private detectContradiction(existing: string, incoming: string): boolean {
+    const existLower = existing.toLowerCase();
+    const incomingLower = incoming.toLowerCase();
+
+    // Direct negation patterns
+    if (
+      (existLower.includes("prefer") && incomingLower.includes("don't prefer")) ||
+      (existLower.includes("always") && incomingLower.includes("never")) ||
+      (existLower.includes("never") && incomingLower.includes("always"))
+    ) {
+      return true;
+    }
+
+    // Short values with same key but different content = contradiction
+    if (existing.length < 30 && incoming.length < 30 && existLower !== incomingLower) {
+      return true;
+    }
+
+    return false;
   }
 }

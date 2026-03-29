@@ -229,10 +229,10 @@ if [ "$NO_SIGN" -eq 1 ] && [ "$ATTACH_ONLY" -ne 1 ]; then
       try {
         const raw = fs.readFileSync(path.join(process.env.HOME, ".bitterbot", "bitterbot.json"), "utf8");
         const cfg = JSON.parse(raw);
-        const port = cfg && cfg.gateway && typeof cfg.gateway.port === "number" ? cfg.gateway.port : 18789;
+        const port = cfg && cfg.gateway && typeof cfg.gateway.port === "number" ? cfg.gateway.port : 19001;
         process.stdout.write(String(port));
       } catch {
-        process.stdout.write("18789");
+        process.stdout.write("19001");
       }
     '
   )"

@@ -5,7 +5,7 @@ Thanks for wanting to contribute! Bitterbot is an open-source project and we wel
 ## Quick Start
 
 ```bash
-git clone https://github.com/bitterbot/bitterbot.git && cd bitterbot
+git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop
 cp .env.example .env   # Add your API keys
 pnpm install && pnpm build
 ```
@@ -15,6 +15,10 @@ pnpm install && pnpm build
 ### Development Mode
 
 ```bash
+# Set up the Control UI env (one-time)
+cp desktop/.env.example desktop/.env
+# Edit desktop/.env — paste your gateway token from ~/.bitterbot/bitterbot.json → gateway.auth.token
+
 # Terminal 1 — Gateway with auto-reload
 pnpm gateway:watch
 
@@ -22,7 +26,7 @@ pnpm gateway:watch
 cd desktop && pnpm dev
 ```
 
-Open `http://localhost:5173` for the Control UI. It connects to the gateway on port 19001 automatically.
+Open `http://localhost:5173` for the Control UI. It connects to the gateway on port 19001 automatically. The `VITE_GATEWAY_TOKEN` in `desktop/.env` must match the token in your gateway config (`~/.bitterbot/bitterbot.json` → `gateway.auth.token`).
 
 ## Project Structure
 
@@ -51,7 +55,7 @@ Tests are colocated: `foo.ts` + `foo.test.ts`.
 
 ### Bug Reports
 
-Open a [GitHub issue](https://github.com/bitterbot/bitterbot/issues) with:
+Open a [GitHub issue](https://github.com/Bitterbot-AI/bitterbot-desktop/issues) with:
 - What you expected vs. what happened
 - Steps to reproduce
 - Output of `bitterbot status` and `bitterbot doctor`
@@ -102,7 +106,7 @@ Yes, really. If you used Claude, Cursor, Copilot, or Bitterbot itself to write y
 ## Community
 
 - [Discord](https://discord.gg/TODO-CREATE-BITTERBOT-DISCORD) — chat, questions, show off what you built
-- [GitHub Discussions](https://github.com/bitterbot/bitterbot/discussions) — longer-form topics
+- [GitHub Discussions](https://github.com/Bitterbot-AI/bitterbot-desktop/discussions) — longer-form topics
 
 ## Security
 

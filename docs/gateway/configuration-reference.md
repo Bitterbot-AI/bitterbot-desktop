@@ -569,7 +569,7 @@ Optional repository root shown in the system prompt's Runtime line. If unset, Bi
 
 ### `agents.defaults.skipBootstrap`
 
-Disables automatic creation of workspace bootstrap files (`GENOME.md`, `PROTOCOLS.md`, `TOOLS.md`, `IDENTITY.md`, `USER.md`, `HEARTBEAT.md`, `MEMORY.md`, `BOOTSTRAP.md`).
+Disables automatic creation of workspace bootstrap files (`GENOME.md`, `PROTOCOLS.md`, `TOOLS.md`, `HEARTBEAT.md`, `MEMORY.md`, `BOOTSTRAP.md`).
 
 ```json5
 {

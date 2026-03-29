@@ -68,6 +68,7 @@ import {
 import { extractSessionFacts, type ExtractionResult, type HormonalBias } from "./session-extractor.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
 import { listSessionFilesForAgent } from "./session-files.js";
+import { SessionCoherenceTracker } from "./session-coherence.js";
 
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
@@ -412,12 +413,25 @@ export class MemoryIndexManager implements MemorySearchManager {
       // Check if message stimulation triggered an emotional mini-dream
       this.checkEmotionalDreamTrigger();
     }
+
+    // Plan 7, Phase 2+9: Update coherence tracker + intent from user message
+    this.turnCount++;
+    this.coherenceTracker.updateIntent(text, this.turnCount);
+    this.coherenceTracker.update(
+      [{ role: "user", content: text, turn: this.turnCount }],
+      this.turnCount,
+    );
   }
 
   // ── Emotional Dream Triggering (Plan 6, Phase 4) ──
 
   private lastMiniDreamTrigger = 0;
   private readonly miniDreamCooldown = 10 * 60 * 1000; // 10 min
+
+  // Plan 7: Cognitive coherence state
+  readonly coherenceTracker = new SessionCoherenceTracker();
+  readonly proactiveRecallCooldown = new Map<string, number>();
+  private turnCount = 0;
 
   /**
    * Check hormonal state after stimulation and trigger mini-dream if spike detected.
@@ -442,6 +456,21 @@ export class MemoryIndexManager implements MemorySearchManager {
       void this.dreamEngine.runMiniDream("cortisol_spike").catch(err =>
         log.warn(`mini-dream failed: ${String(err)}`),
       );
+    }
+
+    // Plan 7, Phase 7: State-based emotional anchor recall
+    // When current emotional state matches a stored anchor, blend it mildly
+    if (this.hormonalManager) {
+      try {
+        const similar = this.hormonalManager.findSimilarAnchors(0.85, 1);
+        if (similar.length > 0) {
+          const { anchor, similarity } = similar[0]!;
+          this.hormonalManager.recallAnchor(anchor.id, 0.15);
+          log.debug("associative anchor recall", { label: anchor.label, similarity: similarity.toFixed(2) });
+        }
+      } catch {
+        // findSimilarAnchors not available yet — non-critical
+      }
     }
   }
 
@@ -567,6 +596,25 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (Math.abs(valence) > 0.3) {
           entry.score *= 1 + Math.abs(valence) * 0.1;
         }
+      }
+
+      // Plan 7, Phase 3: Temporal awareness — query intent determines how age affects scoring.
+      // "What am I working on?" strongly favors recent; "when did I..." favors older.
+      try {
+        const { detectTemporalIntent, temporalRelevanceMultiplier } = await import("./temporal-scoring.js");
+        const temporalIntent = detectTemporalIntent(query);
+        if (temporalIntent !== "timeless") {
+          for (const entry of merged) {
+            entry.score *= temporalRelevanceMultiplier({
+              intent: temporalIntent,
+              epistemicLayer: (entry as Record<string, unknown>).epistemicLayer as string | null ?? null,
+              createdAt: (entry as Record<string, unknown>).createdAt as number ?? Date.now(),
+              updatedAt: entry.updatedAt ?? null,
+            });
+          }
+        }
+      } catch {
+        // temporal-scoring module not available — non-critical
       }
 
       merged.sort((a, b) => b.score - a.score);
@@ -1087,13 +1135,17 @@ export class MemoryIndexManager implements MemorySearchManager {
     const baseForgetThreshold = consolidationCfg?.forgetThreshold ?? 0.02;
     const maturity = this.gccrfReward?.getMaturity() ?? 0;
     const scaledForgetThreshold = baseForgetThreshold * (1 - maturity * 0.5);
+    // Wire real-time hormonal state into consolidation: cortisol → decay resistance,
+    // dopamine → reward memory protection, oxytocin → relational memory protection
+    const hormonalMod = this.hormonalManager?.getConsolidationModulation();
     const engine = new ConsolidationEngine(this.db, {
       decayRate: consolidationCfg?.decayRate,
       promoteThreshold: consolidationCfg?.promoteThreshold,
       forgetThreshold: scaledForgetThreshold,
-      mergeOverlapThreshold: consolidationCfg?.mergeOverlapThreshold,
-      emotionDecayResistance:
-        emotionalCfg?.enabled !== false ? (emotionalCfg?.decayResistance ?? 0.5) : 0,
+      mergeOverlapThreshold: hormonalMod?.mergeThreshold ?? consolidationCfg?.mergeOverlapThreshold,
+      emotionDecayResistance: hormonalMod
+        ? hormonalMod.decayResistance
+        : (emotionalCfg?.enabled !== false ? (emotionalCfg?.decayResistance ?? 0.5) : 0),
     });
     return engine.run();
   }
@@ -1278,6 +1330,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     this.dreamEngine.setExecutionTracker(this.executionTracker);
 
+    // Plan 7, Phase 10: Wire GCCRF reward function for FSHO alpha coupling
+    if (this.gccrfRewardFunction) {
+      this.dreamEngine.setGccrfRewardFunction(this.gccrfRewardFunction);
+    }
+
     const minutes = dreamCfg?.intervalMinutes ?? 120;
     if (minutes > 0) {
       const ms = minutes * 60 * 1000;
@@ -1446,6 +1503,37 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
     }
 
+    // Create curiosity targets from emerging skill patterns to deepen weak skills
+    if (this.curiosityEngine) {
+      try {
+        const emergingSkills = this.getEmergingSkillsForSynthesis();
+        for (const skill of emergingSkills) {
+          if (skill.confidence > 0.6 && skill.occurrences < 5) {
+            const now = Date.now();
+            this.db
+              .prepare(
+                `INSERT OR IGNORE INTO curiosity_targets
+                 (id, type, description, priority, region_id, metadata, created_at, resolved_at, expires_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              )
+              .run(
+                crypto.randomUUID(),
+                "frontier",
+                `Deepen emerging skill: ${skill.pattern}`,
+                Math.min(1, skill.confidence * 0.8),
+                null,
+                JSON.stringify({ source: "emerging_skill", occurrences: skill.occurrences }),
+                now,
+                null,
+                now + 48 * 60 * 60 * 1000,
+              );
+          }
+        }
+      } catch (err) {
+        log.debug(`emerging skill curiosity targets failed: ${String(err)}`);
+      }
+    }
+
     // Experience signal collection: package dream cycle data into training signals
     if (stats && this.experienceCollector) {
       try {
@@ -1550,6 +1638,28 @@ export class MemoryIndexManager implements MemorySearchManager {
             mkdirSync(briefDir, { recursive: true });
           }
           const { writeFile } = await import("node:fs/promises");
+
+          // Plan 7, Phase 6: Handover brief quality gate
+          try {
+            const { scoreHandoverBrief, HANDOVER_QUALITY_THRESHOLD } = await import("./session-handover.js");
+            const quality = scoreHandoverBrief(brief, result.facts);
+            if (quality.overall < HANDOVER_QUALITY_THRESHOLD && quality.missingFacts.length > 0) {
+              log.warn("handover brief below quality threshold", {
+                score: quality.overall.toFixed(2),
+                coverage: quality.coverage.toFixed(2),
+                missing: quality.missingFacts.length,
+              });
+              // Enrich brief with missing facts
+              for (const missingFact of quality.missingFacts.slice(0, 5)) {
+                if (missingFact.length < 80) {
+                  brief.milestones.push(`[recovered] ${missingFact}`);
+                }
+              }
+            }
+          } catch {
+            // Quality gate module not available — non-critical
+          }
+
           await writeFile(briefPath, formatHandoverBrief(brief), "utf-8");
 
           // Store handover as searchable chunk
@@ -1594,6 +1704,16 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     if (extractedCount > 0) {
       log.info(`session extraction complete: ${extractedCount} facts from ${sessionFiles.length} sessions`);
+
+      // Plan 7, Phase 8: Invalidate RLM cache — new facts make cached results stale
+      try {
+        const { RLMExecutor } = await import("../agents/rlm/executor.js");
+        // The executor is typically a singleton per agent session; if we can reach it, invalidate.
+        // This is a best-effort invalidation — the tool-level cache will also TTL-expire.
+        (globalThis as Record<string, unknown>).__rlmCacheInvalidation = Date.now();
+      } catch {
+        // Non-critical
+      }
     }
   }
 
@@ -1887,21 +2007,23 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!this.skillNetworkBridge) return undefined;
 
     try {
-      // Published skills: chunks with publish_visibility = 'shared' and type = 'skill' or 'task_pattern'
+      // Published skills with marketplace download counts
       const published = this.db
         .prepare(
-          `SELECT text, id FROM chunks
-           WHERE publish_visibility = 'shared'
-             AND published_at IS NOT NULL
-             AND semantic_type IN ('skill', 'task_pattern')
-           ORDER BY published_at DESC
+          `SELECT c.text, c.id, COALESCE(ml.download_count, 0) as download_count
+           FROM chunks c
+           LEFT JOIN marketplace_listings ml ON ml.skill_crystal_id = c.id
+           WHERE c.publish_visibility = 'shared'
+             AND c.published_at IS NOT NULL
+             AND c.semantic_type IN ('skill', 'task_pattern')
+           ORDER BY c.published_at DESC
            LIMIT 20`,
         )
-        .all() as Array<{ text: string; id: string }>;
+        .all() as Array<{ text: string; id: string; download_count: number }>;
 
       const publishedSkills = published.map((row) => {
         const name = row.text.slice(0, 80).split("\n")[0]!.trim();
-        return { name, consumedBy: 0 };
+        return { name, consumedBy: row.download_count };
       });
 
       // Imported skills: chunks with provenance from peers
@@ -1926,14 +2048,17 @@ export class MemoryIndexManager implements MemorySearchManager {
         return { name, fromPeer };
       });
 
-      // Peer count from reputation manager
+      // Peer count and own reputation score from reputation manager
       let peerCount = 0;
-      const reputationScore: number | undefined = undefined;
+      let reputationScore: number | undefined;
       try {
         const peers = this.db
           .prepare(`SELECT COUNT(*) as c FROM peer_reputation`)
           .get() as { c: number } | undefined;
         peerCount = peers?.c ?? 0;
+        if (peerCount > 0) {
+          reputationScore = this.getOwnReputationScore();
+        }
       } catch { /* table may not exist */ }
 
       return {
@@ -2061,6 +2186,13 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   private getRecentHighImportanceCrystals(limit: number): WorkingMemoryContext["recentCrystals"] {
+    const deriveHormonalTag = (valence: number | null, semanticType: string | null): string | undefined => {
+      if (valence !== null && valence > 0.3) return "dopamine";
+      if (valence !== null && valence < -0.3) return "cortisol";
+      if (semanticType === "relationship") return "oxytocin";
+      return undefined;
+    };
+
     try {
       // Pull diverse crystals per semantic_type with recency-boosted ordering
       const typeBudgets: Array<{ type: string; budget: number }> = [
@@ -2084,15 +2216,15 @@ export class MemoryIndexManager implements MemorySearchManager {
       for (const { type, budget } of typeBudgets) {
         const rows = this.db
           .prepare(
-            `SELECT id, text, semantic_type, importance_score, updated_at FROM chunks
+            `SELECT id, text, semantic_type, importance_score, updated_at, emotional_valence FROM chunks
              WHERE importance_score >= 0.3
                AND (semantic_type = ? OR (? = 'episode' AND semantic_type IS NULL))
-             ORDER BY (importance_score * 0.6 + (CAST(updated_at AS REAL) / MAX(?, 1)) * 0.4) DESC
+             ORDER BY (importance_score * 0.6 + (CAST(updated_at AS REAL) / MAX(?, 1)) * 0.4 + ABS(COALESCE(emotional_valence, 0)) * 0.1) DESC
              LIMIT ?`,
           )
           .all(type, type, maxUpdated, budget) as Array<{
             id: string; text: string; semantic_type: string | null;
-            importance_score: number; updated_at: number;
+            importance_score: number; updated_at: number; emotional_valence: number | null;
           }>;
         for (const r of rows) {
           if (!seenIds.has(r.id)) {
@@ -2101,6 +2233,7 @@ export class MemoryIndexManager implements MemorySearchManager {
               text: r.text,
               semanticType: r.semantic_type ?? "general",
               importanceScore: r.importance_score,
+              hormonalTag: deriveHormonalTag(r.emotional_valence, r.semantic_type),
             });
           }
         }
@@ -2111,12 +2244,13 @@ export class MemoryIndexManager implements MemorySearchManager {
         const remaining = limit - results.length;
         const fillRows = this.db
           .prepare(
-            `SELECT id, text, semantic_type, importance_score FROM chunks
+            `SELECT id, text, semantic_type, importance_score, emotional_valence FROM chunks
              WHERE importance_score >= 0.3
              ORDER BY updated_at DESC LIMIT ?`,
           )
           .all(remaining + seenIds.size) as Array<{
-            id: string; text: string; semantic_type: string | null; importance_score: number;
+            id: string; text: string; semantic_type: string | null;
+            importance_score: number; emotional_valence: number | null;
           }>;
         for (const r of fillRows) {
           if (results.length >= limit) break;
@@ -2126,6 +2260,7 @@ export class MemoryIndexManager implements MemorySearchManager {
               text: r.text,
               semanticType: r.semantic_type ?? "general",
               importanceScore: r.importance_score,
+              hormonalTag: deriveHormonalTag(r.emotional_valence, r.semantic_type),
             });
           }
         }
@@ -2148,22 +2283,30 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   private getEmergingSkillsForSynthesis(): WorkingMemoryContext["emergingSkills"] {
-    // Query skill-type crystals with high access counts as emerging patterns
+    // Query skill-type crystals enriched with execution metrics (success rate, exec count)
     try {
       const rows = this.db
         .prepare(
-          `SELECT text, importance_score, access_count FROM chunks
-           WHERE semantic_type = 'skill' OR semantic_type = 'task_pattern'
-           ORDER BY access_count DESC, importance_score DESC
+          `SELECT c.text, c.importance_score, c.access_count,
+                  COUNT(se.id) as exec_count,
+                  COALESCE(AVG(CASE WHEN se.success = 1 THEN 1.0 ELSE 0.0 END), 0) as success_rate
+           FROM chunks c
+           LEFT JOIN skill_executions se ON se.skill_crystal_id = c.id AND se.completed_at IS NOT NULL
+           WHERE c.semantic_type IN ('skill', 'task_pattern')
+           GROUP BY c.id
+           ORDER BY c.access_count DESC, c.importance_score DESC
            LIMIT 5`,
         )
-        .all() as Array<{ text: string; importance_score: number; access_count: number }>;
+        .all() as Array<{
+          text: string; importance_score: number; access_count: number;
+          exec_count: number; success_rate: number;
+        }>;
       return rows
         .filter((r) => r.access_count >= 2)
         .map((r) => ({
           pattern: r.text.slice(0, 100),
-          confidence: Math.min(1, r.importance_score),
-          occurrences: r.access_count,
+          confidence: Math.min(1, r.importance_score * (1 + r.success_rate * 0.3)),
+          occurrences: r.access_count + r.exec_count,
         }));
     } catch {
       return [];

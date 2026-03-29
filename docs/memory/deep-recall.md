@@ -128,6 +128,20 @@ The `ContextBuilder` prepares the REPL prompt with:
 
 ---
 
+## Self-Improvement
+
+The RLM executor includes two self-improvement mechanisms:
+
+### Query Result Cache
+
+Identical (or near-identical) queries within a 1-hour window return cached results immediately, avoiding redundant REPL sessions. The cache is keyed on `SHA-256(scope + lowercase query)` and holds up to 50 entries. Cache is invalidated whenever new session extraction runs (facts have changed).
+
+### Blind Spot Registration
+
+When `deep_recall` returns no useful answer, the failed query is registered as a high-priority exploration target (`knowledge_gap` type, priority 0.85, 7-day TTL) in the curiosity engine. This ensures the dream engine's exploration mode specifically targets the gap during the next cycle. Over time, the system actively fills the holes that users care about most.
+
+---
+
 ## Related Documentation
 
 - [Architecture Overview](./architecture-overview.md) — where deep recall fits in the system

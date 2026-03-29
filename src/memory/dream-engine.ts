@@ -97,6 +97,7 @@ export class DreamEngine {
   private hormonalStateGetter: (() => { dopamine: number; cortisol: number; oxytocin: number } | null) | null = null;
   private executionTracker: SkillExecutionTracker | null = null;
   private hormonalManager: HormonalStateManager | null = null;
+  private gccrfRewardFunction: { updateFshoR(r: number): void; getFshoRAvg(): number; getFshoCoupledAlpha(): number } | null = null;
   private state: DreamState = "DORMANT";
   private lastModeUsed: DreamMode | null = null;
 
@@ -183,6 +184,11 @@ export class DreamEngine {
    */
   setHormonalManager(manager: HormonalStateManager): void {
     this.hormonalManager = manager;
+  }
+
+  /** Plan 7, Phase 10: Set GCCRF reward function for FSHO alpha coupling. */
+  setGccrfRewardFunction(fn: { updateFshoR(r: number): void; getFshoRAvg(): number; getFshoCoupledAlpha(): number } | null): void {
+    this.gccrfRewardFunction = fn;
   }
 
   getState(): DreamState {
@@ -410,6 +416,28 @@ export class DreamEngine {
       cycleMeta.insightsGenerated = allInsights.length;
       this.completeCycle(cycleMeta, null);
 
+      const stats: DreamStats = { cycle: cycleMeta, newInsights: allInsights };
+
+      // Plan 7, Phase 5: Dream outcome evaluation — close the telemetry loop
+      try {
+        const { evaluateDreamOutcome, persistDreamOutcome } = await import("./dream-evaluator.js");
+        const outcome = evaluateDreamOutcome({
+          cycleId,
+          db: this.db,
+          stats,
+          tokenBudget: this.config.maxLlmCallsPerCycle ?? 5,
+          tokensUsed: totalLlmCalls,
+        });
+        persistDreamOutcome(this.db, outcome);
+        this.recordTelemetry(cycleId, "outcome", "dqs", outcome.dqs);
+        log.debug("dream outcome", {
+          cycleId,
+          dqs: outcome.dqs.toFixed(3),
+        });
+      } catch {
+        // Dream evaluator not available — non-critical
+      }
+
       log.debug("dream cycle complete", {
         cycleId,
         modes: selectedModes,
@@ -417,7 +445,7 @@ export class DreamEngine {
         llmCalls: totalLlmCalls,
       });
 
-      return { cycle: cycleMeta, newInsights: allInsights };
+      return stats;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.warn(`dream cycle failed: ${message}`);
@@ -476,7 +504,17 @@ export class DreamEngine {
       if (salienceRows.length >= 5) {
         const { orderParameter } = simulateFSHO(salienceRows.map(r => r.importance_score));
         fshoAdj = fshoModeAdjustments(orderParameter, hormones);
-        // Telemetry will be recorded in run() with a real cycleId; here we just log
+
+        // Plan 7, Phase 10: FSHO ↔ GCCRF alpha coupling
+        // Feed order parameter into GCCRF for self-regulating curiosity drive
+        if (this.gccrfRewardFunction) {
+          try {
+            this.gccrfRewardFunction.updateFshoR(orderParameter);
+          } catch {
+            // Method may not exist yet — non-critical
+          }
+        }
+
         log.debug("FSHO mode selection", { R: orderParameter, adjustments: fshoAdj });
       }
     } catch {

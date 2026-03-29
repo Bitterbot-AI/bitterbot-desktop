@@ -65,7 +65,10 @@ The `UserModelManager` aggregates directive-type facts into a `user_preferences`
 | `personal_context` | "Has a dog named Max," "Lives in Toronto" |
 | `ui_preference` | "Dark mode," "Compact layout" |
 
-The `upsertFromDirective()` method handles updates — new directives in the same category replace or augment existing entries.
+The `upsertFromDirective()` method handles updates. Confidence calibration uses Bayesian-style updates:
+
+- **Corroboration:** `confidence = 1 - (1 - confidence) × decay_factor`. Same-session corroboration uses `decay_factor = 0.7`; cross-session uses `0.6` (stronger signal from independent confirmation). This creates logarithmic growth — first mentions matter most, subsequent ones have diminishing effect.
+- **Contradiction:** `confidence = confidence × 0.6`. When a new fact contradicts an existing one (detected via negation patterns and value comparison), confidence erodes quickly and the value is updated to the newer statement. Confidence never drops below 0.1.
 
 User preferences are fed into the dream engine's MEMORY.md synthesis as an `## Input: User Preferences` section, ensuring the Bond section reflects actual stated preferences.
 

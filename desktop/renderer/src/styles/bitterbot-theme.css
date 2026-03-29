@@ -1,0 +1,760 @@
+/* BitterBot Purple Theme Override */
+
+/* Core purple color palette */
+:root {
+  --bb-purple-50: #faf5ff;
+  --bb-purple-100: #f3e8ff;
+  --bb-purple-200: #e9d5ff;
+  --bb-purple-300: #d8b4fe;
+  --bb-purple-400: #c084fc;
+  --bb-purple-500: #a855f7;
+  --bb-purple-600: #9333ea;
+  --bb-purple-700: #7e22ce;
+  --bb-purple-800: #6b21a8;
+  --bb-purple-900: #581c87;
+  --bb-pink-400: #f472b6;
+  --bb-pink-500: #ec4899;
+  --bb-dark-bg: #0a0a0f;
+  --bb-dark-surface: #111827;
+  --bb-dark-border: rgba(139, 92, 246, 0.2);
+  --bb-light-bg: #fafafa;
+  --bb-light-surface: #ffffff;
+  --bb-light-border: rgba(139, 92, 246, 0.15);
+
+  /* BitterBot specific variables requested */
+  --bb-purple-primary: #8b5cf6;
+  --bb-purple-secondary: #7c3aed;
+  --bb-glow: rgba(168, 85, 247, 0.6);
+}
+
+/* Base theme colors (shared between light and dark) */
+.bitterbot-theme {
+  --primary: var(--bb-purple-600);
+  --primary-foreground: white;
+  --destructive: #ef4444;
+  --destructive-foreground: white;
+  --ring: var(--bb-purple-500);
+}
+
+/* Light mode theme colors */
+html:not(.dark) .bitterbot-theme {
+  --background: var(--bb-light-bg);
+  --foreground: #1f2937;
+  --card: var(--bb-light-surface);
+  --card-foreground: #1f2937;
+  --popover: var(--bb-light-surface);
+  --popover-foreground: #1f2937;
+  --secondary: var(--bb-purple-100);
+  --secondary-foreground: var(--bb-purple-900);
+  --muted: rgba(139, 92, 246, 0.08);
+  --muted-foreground: #6b7280;
+  --accent: var(--bb-purple-50);
+  --accent-foreground: var(--bb-purple-900);
+  --border: var(--bb-light-border);
+  --input: var(--bb-light-border);
+}
+
+/* Dark mode theme colors */
+.dark .bitterbot-theme {
+  --background: var(--bb-dark-bg);
+  --foreground: #f9fafb;
+  --card: rgba(17, 24, 39, 0.8);
+  --card-foreground: #f9fafb;
+  --popover: rgba(17, 24, 39, 0.95);
+  --popover-foreground: #f9fafb;
+  --secondary: var(--bb-purple-800);
+  --secondary-foreground: white;
+  --muted: rgba(139, 92, 246, 0.1);
+  --muted-foreground: #9ca3af;
+  --accent: var(--bb-purple-100);
+  --accent-foreground: var(--bb-purple-900);
+  --border: var(--bb-dark-border);
+  --input: var(--bb-dark-border);
+}
+
+/* Sidebar theming - Dark mode */
+.dark .bitterbot-theme [data-sidebar] {
+  background: rgba(17, 24, 39, 0.8) !important;
+  backdrop-filter: blur(20px);
+  border-right: 1px solid var(--bb-dark-border) !important;
+}
+
+.dark .bitterbot-theme [data-sidebar] .sidebar-header {
+  border-bottom: 1px solid var(--bb-dark-border);
+}
+
+/* Sidebar theming - Light mode */
+html:not(.dark) .bitterbot-theme [data-sidebar] {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(20px);
+  border-right: 1px solid var(--bb-light-border) !important;
+}
+
+html:not(.dark) .bitterbot-theme [data-sidebar] .sidebar-header {
+  border-bottom: 1px solid var(--bb-light-border);
+}
+
+/* Navigation items - active state stays purple for contrast */
+.bitterbot-theme [data-sidebar] a[data-active="true"],
+.bitterbot-theme [data-sidebar] button[data-active="true"] {
+  background: rgba(139, 92, 246, 0.1) !important;
+  color: var(--bb-purple-400) !important;
+  border-color: var(--bb-purple-500) !important;
+}
+
+.bitterbot-theme [data-sidebar] a:hover,
+.bitterbot-theme [data-sidebar] button:hover {
+  background: rgba(139, 92, 246, 0.05) !important;
+  color: var(--bb-purple-300) !important;
+}
+
+/* SACRED LOGO COLORS */
+/* Dark mode logo */
+.dark .bitterbot-theme [data-sidebar] .logo-bitter,
+.dark .bitterbot-theme .logo-bitter {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+/* Light mode logo */
+html:not(.dark) .bitterbot-theme [data-sidebar] .logo-bitter,
+html:not(.dark) .bitterbot-theme .logo-bitter {
+  color: #1f2937 !important;
+  font-weight: 700 !important;
+}
+
+.bitterbot-theme [data-sidebar] .logo-bot,
+.bitterbot-theme .logo-bot {
+  color: #a855f7 !important;
+  font-weight: 700 !important;
+}
+
+/* Previous Chats Title - Teal */
+.bitterbot-theme [data-sidebar] [data-sidebar="group-label"] {
+  color: #00D4E6 !important;
+  font-size: 0.75rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+}
+
+/* Chat history items - Dark mode */
+.dark .bitterbot-theme [data-sidebar] .sidebar-menu-item a:not([data-active="true"]) {
+  color: #e9d5ff !important;
+  background: rgba(139, 92, 246, 0.05) !important;
+  border: 1px solid transparent !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  position: relative !important;
+}
+
+.dark .bitterbot-theme [data-sidebar] .sidebar-menu-item a:not([data-active="true"]):hover {
+  color: #f3e8ff !important;
+  background: rgba(139, 92, 246, 0.1) !important;
+  border-color: rgba(139, 92, 246, 0.2) !important;
+  transform: translateX(2px) !important;
+}
+
+/* Chat history items - Light mode */
+html:not(.dark) .bitterbot-theme [data-sidebar] .sidebar-menu-item a:not([data-active="true"]) {
+  color: #4b5563 !important;
+  background: rgba(139, 92, 246, 0.03) !important;
+  border: 1px solid transparent !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  position: relative !important;
+}
+
+html:not(.dark) .bitterbot-theme [data-sidebar] .sidebar-menu-item a:not([data-active="true"]):hover {
+  color: #1f2937 !important;
+  background: rgba(139, 92, 246, 0.08) !important;
+  border-color: rgba(139, 92, 246, 0.15) !important;
+  transform: translateX(2px) !important;
+}
+
+/* Agent Playground - Golden Amber with enhanced Sparkle */
+.bitterbot-theme [data-sidebar] a[href="/agents"] span {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  position: relative !important;
+}
+
+/* Agent Playground sparkle with rotation */
+.bitterbot-theme [data-sidebar] a[href="/agents"]::after {
+  content: '✨';
+  position: absolute;
+  right: 20px;
+  animation: sparkle-rotate 3s ease-in-out infinite;
+}
+
+@keyframes sparkle-rotate {
+  0%, 100% { 
+    opacity: 0.5; 
+    transform: scale(1) rotate(0deg); 
+  }
+  50% { 
+    opacity: 1; 
+    transform: scale(1.2) rotate(180deg); 
+  }
+}
+
+/* Hover glow effect */
+.bitterbot-theme [data-sidebar] a[href="/agents"]:hover {
+  background: rgba(245, 158, 11, 0.1) !important;
+  box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.2) !important;
+}
+
+/* Account Info - Dark mode */
+.dark .bitterbot-theme [data-sidebar] [data-sidebar="footer"] {
+  color: rgba(255, 255, 255, 0.9) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .bitterbot-theme [data-sidebar] [data-sidebar="footer"] .user-email,
+.dark .bitterbot-theme [data-sidebar] [data-sidebar="footer"] .text-sm {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-size: 0.875rem !important;
+}
+
+/* Account Info - Light mode */
+html:not(.dark) .bitterbot-theme [data-sidebar] [data-sidebar="footer"] {
+  color: #1f2937 !important;
+  background: rgba(139, 92, 246, 0.03) !important;
+  border-top: 1px solid rgba(139, 92, 246, 0.1) !important;
+}
+
+html:not(.dark) .bitterbot-theme [data-sidebar] [data-sidebar="footer"] .user-email,
+html:not(.dark) .bitterbot-theme [data-sidebar] [data-sidebar="footer"] .text-sm {
+  color: #6b7280 !important;
+  font-size: 0.875rem !important;
+}
+
+/* Icons color - Dark mode */
+.dark .bitterbot-theme [data-sidebar] .sidebar-menu-item svg {
+  color: #e9d5ff !important;
+}
+
+/* Icons color - Light mode */
+html:not(.dark) .bitterbot-theme [data-sidebar] .sidebar-menu-item svg {
+  color: #7c3aed !important;
+}
+
+.bitterbot-theme [data-sidebar] a[href="/agents"] svg {
+  color: #f59e0b !important; /* Golden for Agent Playground */
+}
+
+/* Buttons with purple gradient */
+.bitterbot-theme .btn-primary,
+.bitterbot-theme button[class*="bg-primary"] {
+  background: linear-gradient(135deg, var(--bb-purple-600), var(--bb-purple-700)) !important;
+  box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
+  transition: all 0.2s;
+}
+
+.bitterbot-theme .btn-primary:hover,
+.bitterbot-theme button[class*="bg-primary"]:hover {
+  box-shadow: 0 6px 20px rgba(168, 85, 247, 0.4);
+  transform: translateY(-1px);
+}
+
+/* Cards and surfaces - Dark mode */
+.dark .bitterbot-theme [class*="bg-card"],
+.dark .bitterbot-theme .card {
+  background: rgba(17, 24, 39, 0.6) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--bb-dark-border) !important;
+}
+
+/* Cards and surfaces - Light mode */
+html:not(.dark) .bitterbot-theme [class*="bg-card"],
+html:not(.dark) .bitterbot-theme .card {
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--bb-light-border) !important;
+}
+
+/* Dialogs and modals - Dark mode */
+.dark .bitterbot-theme [role="dialog"] {
+  background: rgba(17, 24, 39, 0.95) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--bb-dark-border) !important;
+}
+
+/* Dialogs and modals - Light mode */
+html:not(.dark) .bitterbot-theme [role="dialog"] {
+  background: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--bb-light-border) !important;
+}
+
+/* Input fields - Dark mode */
+.dark .bitterbot-theme input,
+.dark .bitterbot-theme textarea,
+.dark .bitterbot-theme select {
+  background: rgba(139, 92, 246, 0.05) !important;
+  border: 1px solid var(--bb-dark-border) !important;
+  color: white !important;
+}
+
+/* Input fields - Light mode */
+html:not(.dark) .bitterbot-theme input,
+html:not(.dark) .bitterbot-theme textarea,
+html:not(.dark) .bitterbot-theme select {
+  background: rgba(139, 92, 246, 0.03) !important;
+  border: 1px solid var(--bb-light-border) !important;
+  color: #1f2937 !important;
+}
+
+.bitterbot-theme input:focus,
+.bitterbot-theme textarea:focus,
+.bitterbot-theme select:focus {
+  border-color: var(--bb-purple-500) !important;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1) !important;
+}
+
+/* Chat input specific styling - Dark mode Glassmorphism */
+.dark .bitterbot-theme [data-slot="chat-input-wrapper"] {
+  background: rgba(139, 92, 246, 0.05) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(139, 92, 246, 0.2) !important;
+  border-radius: 12px !important;
+  box-shadow:
+    0 8px 32px rgba(139, 92, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Chat input specific styling - Light mode */
+html:not(.dark) .bitterbot-theme [data-slot="chat-input-wrapper"] {
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(139, 92, 246, 0.15) !important;
+  border-radius: 12px !important;
+  box-shadow:
+    0 4px 20px rgba(139, 92, 246, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.bitterbot-theme [data-slot="chat-input-wrapper"]:focus-within {
+  border-color: #a855f7 !important;
+  box-shadow:
+    0 8px 32px rgba(139, 92, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Textarea specific styling */
+.bitterbot-theme [data-slot="chat-input-wrapper"] textarea {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  resize: none;
+}
+
+/* Scrollbars - Hide for sidebar */
+.bitterbot-theme [data-sidebar] ::-webkit-scrollbar,
+.bitterbot-theme .sidebar-left-new ::-webkit-scrollbar {
+  display: none;
+}
+
+/* Scrollbars for other elements */
+.bitterbot-theme :not([data-sidebar]) ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/* Scrollbar - Dark mode */
+.dark .bitterbot-theme :not([data-sidebar]) ::-webkit-scrollbar-track {
+  background: rgba(139, 92, 246, 0.05);
+}
+
+.dark .bitterbot-theme :not([data-sidebar]) ::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+}
+
+.dark .bitterbot-theme :not([data-sidebar]) ::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
+}
+
+/* Scrollbar - Light mode */
+html:not(.dark) .bitterbot-theme :not([data-sidebar]) ::-webkit-scrollbar-track {
+  background: rgba(139, 92, 246, 0.03);
+}
+
+html:not(.dark) .bitterbot-theme :not([data-sidebar]) ::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.2);
+  border-radius: 4px;
+}
+
+html:not(.dark) .bitterbot-theme :not([data-sidebar]) ::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.35);
+}
+
+/* Loading states */
+.bitterbot-theme .animate-spin {
+  color: var(--bb-purple-500) !important;
+}
+
+/* Badges - Dark mode */
+.dark .bitterbot-theme [class*="badge"] {
+  background: rgba(139, 92, 246, 0.1) !important;
+  color: var(--bb-purple-400) !important;
+  border: 1px solid var(--bb-dark-border) !important;
+}
+
+/* Badges - Light mode */
+html:not(.dark) .bitterbot-theme [class*="badge"] {
+  background: rgba(139, 92, 246, 0.08) !important;
+  color: var(--bb-purple-700) !important;
+  border: 1px solid var(--bb-light-border) !important;
+}
+
+/* Tool panel header - "BitterBot" */
+.bitterbot-theme .tool-panel-header::after {
+  content: "BitterBot's Computer";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: inherit;
+  display: flex;
+  align-items: center;
+  padding: inherit;
+}
+
+.bitterbot-theme .tool-panel-header > * {
+  visibility: hidden;
+}
+
+/* Animated background for dashboard - Dark mode */
+.dark .bitterbot-theme::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(99, 102, 241, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Animated background for dashboard - Light mode (subtle) */
+html:not(.dark) .bitterbot-theme::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(99, 102, 241, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Purple glow effects */
+.bitterbot-theme .glow-purple {
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+}
+
+/* Status indicators */
+.bitterbot-theme .status-online {
+  background: #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+/* Links - Dark mode */
+.dark .bitterbot-theme a {
+  color: var(--bb-purple-400);
+}
+
+.dark .bitterbot-theme a:hover {
+  color: var(--bb-purple-300);
+}
+
+/* Links - Light mode */
+html:not(.dark) .bitterbot-theme a {
+  color: var(--bb-purple-600);
+}
+
+html:not(.dark) .bitterbot-theme a:hover {
+  color: var(--bb-purple-700);
+}
+
+/* Code blocks - Dark mode */
+.dark .bitterbot-theme pre,
+.dark .bitterbot-theme code {
+  background: rgba(139, 92, 246, 0.05) !important;
+  border: 1px solid var(--bb-dark-border) !important;
+}
+
+/* Code blocks - Light mode */
+html:not(.dark) .bitterbot-theme pre,
+html:not(.dark) .bitterbot-theme code {
+  background: rgba(139, 92, 246, 0.03) !important;
+  border: 1px solid var(--bb-light-border) !important;
+}
+
+/* Chat bubbles - User messages with purple gradient */
+.bitterbot-theme [data-message-role="user"] {
+  background: linear-gradient(135deg, var(--bb-purple-primary), var(--bb-purple-secondary)) !important;
+  color: white !important;
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+}
+
+/* Assistant messages - Dark mode */
+.dark .bitterbot-theme [data-message-role="assistant"] {
+  background: rgba(17, 24, 39, 0.8) !important;
+  border: 1px solid var(--bb-dark-border) !important;
+}
+
+/* Assistant messages - Light mode */
+html:not(.dark) .bitterbot-theme [data-message-role="assistant"] {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid var(--bb-light-border) !important;
+}
+
+/* BitterBot Computer panel - pulsing status indicator */
+.bitterbot-theme .status-indicator {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.2);
+  }
+}
+
+/* Header glow effect for logo */
+.bitterbot-theme .bb-logo-glow {
+  filter: drop-shadow(0 0 20px var(--bb-glow));
+}
+
+/* Float animation for particles - SLOWER and DREAMIER */
+@keyframes float {
+  from {
+    transform: translateY(100vh) translateX(0) scale(0.8);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(0) translateX(50px) scale(1.1);
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(-100vh) translateX(100px) scale(0.8);
+    opacity: 0;
+  }
+}
+
+/* Slow drift animation for background elements */
+@keyframes slow-drift {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  33% {
+    transform: translate(30px, -30px) rotate(120deg);
+  }
+  66% {
+    transform: translate(-20px, 20px) rotate(240deg);
+  }
+}
+
+/* Welcome text gradient animation - Dark mode */
+.dark .bitterbot-theme .welcome-text,
+.dark .bitterbot-theme h1[class*="text-4xl"],
+.dark .bitterbot-theme h1[class*="text-5xl"] {
+  font-size: 2.5rem !important;
+  font-weight: 700 !important;
+  background: linear-gradient(
+    135deg,
+    #ffffff 0%,
+    #e9d5ff 25%,
+    #c084fc 50%,
+    #a855f7 75%,
+    #7c3aed 100%
+  ) !important;
+  background-size: 200% 200% !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  animation: gradient-shift 4s ease infinite !important;
+}
+
+/* Welcome text gradient animation - Light mode */
+html:not(.dark) .bitterbot-theme .welcome-text,
+html:not(.dark) .bitterbot-theme h1[class*="text-4xl"],
+html:not(.dark) .bitterbot-theme h1[class*="text-5xl"] {
+  font-size: 2.5rem !important;
+  font-weight: 700 !important;
+  background: linear-gradient(
+    135deg,
+    #1f2937 0%,
+    #7c3aed 25%,
+    #a855f7 50%,
+    #9333ea 75%,
+    #6b21a8 100%
+  ) !important;
+  background-size: 200% 200% !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  animation: gradient-shift 4s ease infinite !important;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Hide model selector as per BitterBot requirements */
+.bitterbot-theme .model-selector,
+.bitterbot-theme [class*="model-dropdown"],
+.bitterbot-theme [class*="claude-sonnet"],
+.bitterbot-theme [data-model-selector] {
+  display: none !important;
+}
+
+/* Thread title padding */
+.bitterbot-theme [data-slot="thread-title"],
+.bitterbot-theme .thread-title,
+.bitterbot-theme h1[class*="text-2xl"],
+.bitterbot-theme h1[class*="text-3xl"] {
+  padding-left: 20px !important;
+  margin-left: 10px !important;
+}
+
+/* Center helper text above input */
+.bitterbot-theme [data-slot="input-helper-text"],
+.bitterbot-theme .input-helper-text,
+.bitterbot-theme p[class*="text-muted-foreground"]:has(+ [class*="chat-input"]) {
+  text-align: center !important;
+  width: 100% !important;
+  display: block !important;
+  margin-bottom: 10px !important;
+}
+
+/* Premium send button with shimmer effect */
+.bitterbot-theme button[type="submit"]:has(svg),
+.bitterbot-theme button[aria-label*="Send"] {
+  position: relative !important;
+  overflow: hidden !important;
+  background: linear-gradient(135deg, #a855f7, #ec4899) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Shimmer effect */
+.bitterbot-theme button[type="submit"]:has(svg)::before,
+.bitterbot-theme button[aria-label*="Send"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg, 
+    transparent, 
+    rgba(255, 255, 255, 0.3), 
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.bitterbot-theme button[type="submit"]:hover::before,
+.bitterbot-theme button[aria-label*="Send"]:hover::before {
+  left: 100%;
+}
+
+/* Button hover state */
+.bitterbot-theme button[type="submit"]:hover,
+.bitterbot-theme button[aria-label*="Send"]:hover {
+  transform: scale(1.05) !important;
+  box-shadow: 0 8px 25px rgba(168, 85, 247, 0.4) !important;
+}
+
+/* Active state with ripple */
+.bitterbot-theme button[type="submit"]:active,
+.bitterbot-theme button[aria-label*="Send"]:active {
+  transform: scale(0.98) !important;
+}
+
+/* New Task button micro-interactions */
+.bitterbot-theme .new-task-button {
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* Micro-pulse animation on hover */
+@keyframes micro-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+.bitterbot-theme .new-task-button:hover {
+  animation: micro-pulse 2s ease-in-out infinite !important;
+}
+
+/* Ripple effect on click */
+.bitterbot-theme .new-task-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s, opacity 0.6s;
+  opacity: 0;
+}
+
+.bitterbot-theme .new-task-button:active::after {
+  width: 300px;
+  height: 300px;
+  opacity: 0;
+}
+
+/* Premium scrollbar styling - removed for sidebar */
+
+/* Premium focus states */
+.bitterbot-theme *:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.5);
+  outline-offset: 2px;
+}
+
+/* Subtle breathing animation for active elements */
+@keyframes breathing {
+  0%, 100% { 
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% { 
+    opacity: 0.95;
+    transform: scale(0.98);
+  }
+}
+
+.bitterbot-theme [data-active="true"] {
+  animation: breathing 4s ease-in-out infinite;
+}

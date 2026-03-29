@@ -63,6 +63,10 @@ bitterbot agent --message "What have you learned about me so far?"
 For active development, run the gateway and Control UI dev server separately:
 
 ```bash
+# Set up the Control UI env (one-time)
+cp desktop/.env.example desktop/.env
+# Edit desktop/.env — paste your gateway token from ~/.bitterbot/bitterbot.json → gateway.auth.token
+
 # Terminal 1 — Gateway (auto-rebuilds on TS changes)
 pnpm gateway:watch
 
@@ -121,6 +125,22 @@ Every 2 hours, the agent goes offline to dream. It runs 7 specialized modes to o
 Dreams rewrite the agent's working memory — updating its self-concept, theory of mind about you, and active context. The personality is an *output* of experience, not a static prompt. On first launch, the agent develops a persistent personality within hours — not months.
 
 <!-- TODO: Add screenshot of Dream Engine UI + Emotional State panel -->
+
+### Toward Continuous Memory
+
+Most AI memory systems focus on storage and retrieval — better vector indexes, knowledge graphs, temporal windowing. We're working toward something different: a system where memory, emotion, curiosity, and identity form a single self-regulating cognitive loop.
+
+Some of the problems we're actively working on:
+
+- **Proactive recall** — Key facts about you (name, preferences, current project) should surface automatically before the agent responds, not only when it decides to search. We're building involuntary memory retrieval that runs on every turn with zero LLM cost.
+- **Temporal awareness** — "What are you working on?" should favor recent facts. "When did we discuss X?" should favor older ones. Different types of knowledge have different natural lifespans — a user preference doesn't expire the way a task status does.
+- **Self-tuning dream cycles** — The dream engine collects telemetry (FSHO order parameters, ripple counts, merge candidates) but doesn't yet evaluate its own output quality. We're closing this loop with a Dream Quality Score that correlates input signals with outcomes, so the system can learn which dream modes work best for different memory landscapes.
+- **Intra-session coherence** — Cross-session continuity is handled by handover briefs and Bond synthesis. Within a long conversation, we're adding lightweight thread tracking to prevent the agent from losing context after 50+ messages.
+- **Confidence calibration** — Facts mentioned once should be treated differently from facts confirmed five times across separate sessions. We're replacing flat confidence bumps with Bayesian-style updates that grow logarithmically on corroboration and decay sharply on contradiction.
+
+These aren't solved problems — they're research directions we're actively building toward. The architecture is designed so each subsystem feeds back into the others: dream evaluation informs mode selection, blind spots from failed recalls become curiosity targets, FSHO coherence metrics modulate the GCCRF exploration/exploitation balance. The goal is a system that adapts to its own performance, not just to user input.
+
+See [Memory Architecture](docs/memory/architecture-overview.md) for technical details.
 
 ### Agent Identity
 

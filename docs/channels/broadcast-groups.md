@@ -173,7 +173,7 @@ Each agent in a broadcast group maintains completely separate:
 - **Conversation history** (agent doesn't see other agents' messages)
 - **Workspace** (separate sandboxes if configured)
 - **Tool access** (different allow/deny lists)
-- **Memory/context** (separate IDENTITY.md, GENOME.md, etc.)
+- **Memory/context** (separate GENOME.md, MEMORY.md, etc.)
 - **Group context buffer** (recent group messages used for context) is shared per peer, so all broadcast agents see the same context when triggered
 
 This allows each agent to have:

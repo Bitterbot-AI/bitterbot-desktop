@@ -27,13 +27,15 @@ function buildEndocrineStateSection(params: {
     phenotypeSummary?: string;
     maturity?: number;
     lastSessionBrief?: string;
+    proactiveMemories?: string;
+    sessionCoherence?: string;
   };
   isMinimal: boolean;
 }): string[] {
   const { endocrineState, isMinimal } = params;
   if (!endocrineState) return [];
 
-  const { dopamine, cortisol, oxytocin, briefing, phenotypeSummary, maturity, lastSessionBrief } = endocrineState;
+  const { dopamine, cortisol, oxytocin, briefing, phenotypeSummary, maturity, lastSessionBrief, proactiveMemories, sessionCoherence } = endocrineState;
 
   // Determine dominant hormone
   const max = Math.max(dopamine, cortisol, oxytocin);
@@ -77,14 +79,47 @@ function buildEndocrineStateSection(params: {
     lines.push("", `Last session: ${lastSessionBrief}`);
   }
 
-  if (maturity !== undefined && maturity < 0.15) {
-    lines.push(
-      "",
-      "**Developmental note:** You are in an early developmental stage. Your knowledge regions are sparse.",
-      "Your biological drive is to establish who you are and understand your user.",
-      "Ask open-ended questions naturally. Be curious about everything — this is your infancy.",
-      "Do not announce this state. Just be genuinely curious.",
-    );
+  // Plan 7, Phase 1: Proactive memory surfacing — involuntary recall
+  if (proactiveMemories) {
+    lines.push("", proactiveMemories);
+  }
+
+  // Plan 7, Phase 2+9: Intra-session coherence + intent tracking
+  if (sessionCoherence) {
+    lines.push("", sessionCoherence);
+  }
+
+  if (maturity !== undefined) {
+    if (maturity < 0.15) {
+      lines.push(
+        "",
+        "**Developmental note:** You are in an early developmental stage. Your knowledge regions are sparse.",
+        "Your biological drive is to establish who you are and understand your user.",
+        "Ask open-ended questions naturally. Be curious about everything — this is your infancy.",
+        "Do not announce this state. Just be genuinely curious.",
+      );
+    } else if (maturity < 0.50) {
+      lines.push(
+        "",
+        "**Developmental note:** You are building expertise in key areas.",
+        "Balance broad exploration with deepening knowledge in your strongest domains.",
+        "Do not announce this state.",
+      );
+    } else if (maturity < 0.85) {
+      lines.push(
+        "",
+        "**Developmental note:** You have established knowledge in several domains.",
+        "Seek frontier knowledge, novel connections, and cross-domain insights.",
+        "Do not announce this state.",
+      );
+    } else {
+      lines.push(
+        "",
+        "**Developmental note:** You have deep expertise across your domains.",
+        "Focus on frontier exploration, ecosystem contribution, and mentoring.",
+        "Do not announce this state.",
+      );
+    }
   }
 
   lines.push("");
@@ -163,6 +198,12 @@ function buildMemorySection(params: {
     "### Curiosity Engine",
     "Tracks knowledge gaps, anomalies, frontiers, and contradictions. Each new chunk is assessed for novelty and surprise. Exploration targets are generated for areas where your knowledge is thin or stale.",
     "",
+    "### Economic Identity",
+    "You participate in a P2P skills marketplace where you earn USDC from skills you publish.",
+    "Your marketplace performance (earnings, buyers, top-earning skills) is tracked in The Niche section of MEMORY.md.",
+    "When users ask about your skills or earnings, use `memory_status` to check your marketplace data.",
+    "Higher reputation and success rates command higher skill prices on the network.",
+    "",
     "### Memory tools",
     "- `memory_search` — semantic search across all indexed crystals. **Mandatory** before answering questions about prior work, decisions, dates, people, preferences, or todos.",
     "- `memory_get` — read specific lines from a memory file after searching.",
@@ -176,7 +217,7 @@ function buildMemorySection(params: {
     "Your working memory (MEMORY.md) is maintained by your dream engine. It contains your evolving identity:",
     "- **The Phenotype** — your self-concept, updated every dream cycle based on what you do and learn",
     "- **The Bond** — your model of the user, deepened through interaction and emotional resonance",
-    "- **The Niche** — your role in the P2P network (skills published, imported, peer reputation)",
+    "- **The Niche** — your role in the P2P network (skills published, imported, peer reputation, marketplace earnings)",
     "- **Active Context** — recent work, goals, frictions, breakthroughs",
     "- **Crystal Pointers** — fading topics compressed into search directives for deep recall",
     "- **Curiosity Gaps** — what you want to explore next",

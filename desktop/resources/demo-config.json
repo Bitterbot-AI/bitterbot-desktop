@@ -1,0 +1,34 @@
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "loopback",
+    "controlUi": {
+      "dangerouslyDisableDeviceAuth": true,
+      "allowInsecureAuth": true
+    },
+    "auth": {
+      "token": "local-dev-token"
+    }
+  },
+  "tools": {
+    "web": {
+      "search": {
+        "provider": "tavily"
+      }
+    },
+    "elevated": {
+      "enabled": true,
+      "allowFrom": {
+        "webchat": ["*"]
+      }
+    },
+    "exec": {
+      "ask": "off",
+      "host": "gateway",
+      "security": "full"
+    }
+  },
+  "memory": {
+    "backend": "builtin"
+  }
+}
