@@ -74,8 +74,8 @@ Start both the gateway and the Control UI:
 cp desktop/.env.example desktop/.env
 # Edit desktop/.env — paste your gateway token from ~/.bitterbot/bitterbot.json → gateway.auth.token
 
-# Terminal 1 — Gateway
-pnpm gateway:watch
+# Terminal 1 — Gateway (skip channels for faster startup)
+BITTERBOT_SKIP_CHANNELS=1 pnpm start gateway
 
 # Terminal 2 — Control UI
 cd desktop && pnpm dev

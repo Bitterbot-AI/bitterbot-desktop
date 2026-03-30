@@ -17462,10 +17462,10 @@ var BitterbotA2UIHost = class extends i$6 {
       position: relative;
       box-sizing: border-box;
       padding:
-        var(--bitterbot-a2ui-inset-top, var(--openclaw-a2ui-inset-top, 0px))
-        var(--bitterbot-a2ui-inset-right, var(--openclaw-a2ui-inset-right, 0px))
-        var(--bitterbot-a2ui-inset-bottom, var(--openclaw-a2ui-inset-bottom, 0px))
-        var(--bitterbot-a2ui-inset-left, var(--openclaw-a2ui-inset-left, 0px));
+        var(--bitterbot-a2ui-inset-top, 0px)
+        var(--bitterbot-a2ui-inset-right, 0px)
+        var(--bitterbot-a2ui-inset-bottom, 0px)
+        var(--bitterbot-a2ui-inset-left, 0px);
     }
 
     #surfaces {
@@ -17474,14 +17474,14 @@ var BitterbotA2UIHost = class extends i$6 {
       gap: 12px;
       height: 100%;
       overflow: auto;
-      padding-bottom: var(--bitterbot-a2ui-scroll-pad-bottom, var(--openclaw-a2ui-scroll-pad-bottom, 0px));
+      padding-bottom: var(--bitterbot-a2ui-scroll-pad-bottom, 0px);
     }
 
     .status {
       position: absolute;
       left: 50%;
       transform: translateX(-50%);
-      top: var(--bitterbot-a2ui-status-top, var(--openclaw-a2ui-status-top, 12px));
+      top: var(--bitterbot-a2ui-status-top, 12px);
       display: inline-flex;
       align-items: center;
       gap: 8px;
@@ -17502,7 +17502,7 @@ var BitterbotA2UIHost = class extends i$6 {
       position: absolute;
       left: 50%;
       transform: translateX(-50%);
-      bottom: var(--bitterbot-a2ui-toast-bottom, var(--openclaw-a2ui-toast-bottom, 12px));
+      bottom: var(--bitterbot-a2ui-toast-bottom, 12px);
       display: inline-flex;
       align-items: center;
       gap: 8px;
@@ -17528,7 +17528,7 @@ var BitterbotA2UIHost = class extends i$6 {
       position: absolute;
       left: 50%;
       transform: translateX(-50%);
-      top: var(--bitterbot-a2ui-empty-top, var(--openclaw-a2ui-empty-top, var(--bitterbot-a2ui-status-top, var(--openclaw-a2ui-status-top, 12px))));
+      top: var(--bitterbot-a2ui-empty-top, var(--bitterbot-a2ui-status-top, 12px));
       text-align: center;
       opacity: 0.8;
       padding: 10px 12px;
@@ -17566,10 +17566,9 @@ var BitterbotA2UIHost = class extends i$6 {
 			getSurfaces: () => Array.from(this.#processor.getSurfaces().keys())
 		};
 		globalThis.bitterbotA2UI = api;
-		globalThis.openclawA2UI = api;
 		this.addEventListener("a2uiaction", (evt) => this.#handleA2UIAction(evt));
 		this.#statusListener = (evt) => this.#handleActionStatus(evt);
-		for (const eventName of ["bitterbot:a2ui-action-status", "openclaw:a2ui-action-status"]) {
+		for (const eventName of ["bitterbot:a2ui-action-status"]) {
 			globalThis.addEventListener(eventName, this.#statusListener);
 		}
 		this.#syncSurfaces();
@@ -17577,7 +17576,7 @@ var BitterbotA2UIHost = class extends i$6 {
 	disconnectedCallback() {
 		super.disconnectedCallback();
 		if (this.#statusListener) {
-			for (const eventName of ["bitterbot:a2ui-action-status", "openclaw:a2ui-action-status"]) {
+			for (const eventName of ["bitterbot:a2ui-action-status"]) {
 				globalThis.removeEventListener(eventName, this.#statusListener);
 			}
 			this.#statusListener = null;
@@ -17691,11 +17690,10 @@ var BitterbotA2UIHost = class extends i$6 {
 			...Object.keys(context).length ? { context } : {}
 		};
 		globalThis.__bitterbotLastA2UIAction = userAction;
-		globalThis.__openclawLastA2UIAction = userAction;
-		const handler = globalThis.webkit?.messageHandlers?.bitterbotCanvasA2UIAction ?? globalThis.webkit?.messageHandlers?.openclawCanvasA2UIAction ?? globalThis.bitterbotCanvasA2UIAction ?? globalThis.openclawCanvasA2UIAction;
+		const handler = globalThis.webkit?.messageHandlers?.bitterbotCanvasA2UIAction ?? globalThis.bitterbotCanvasA2UIAction;
 		if (handler?.postMessage) {
 			try {
-				const isAndroidBridge = handler === globalThis.bitterbotCanvasA2UIAction || handler === globalThis.openclawCanvasA2UIAction;
+				const isAndroidBridge = handler === globalThis.bitterbotCanvasA2UIAction;
 				if (isAndroidBridge) {
 					handler.postMessage(JSON.stringify({ userAction }));
 				} else {
