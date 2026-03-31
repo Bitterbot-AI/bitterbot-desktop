@@ -39,4 +39,8 @@ export type P2pConfig = {
   genesisTrustListPath?: string;
   /** Inline genesis trust list: base64 Ed25519 pubkeys of authorized management nodes. */
   genesisTrustList?: string[];
+  /** Relay mode for NAT traversal. Default: "auto" (server for management, client for edge). */
+  relayMode?: "off" | "client" | "server" | "auto";
+  /** Relay server multiaddresses for NAT traversal. Used in client/auto mode. */
+  relayServers?: string[];
 };

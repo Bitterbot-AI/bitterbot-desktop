@@ -8,10 +8,12 @@ use ed25519_dalek::SigningKey;
 use futures::StreamExt as _;
 use libp2p::{
     autonat,
+    dcutr,
     gossipsub::{self, MessageAuthenticity, ValidationMode},
     identify,
     kad::{self, store::MemoryStore},
-    noise, tcp, yamux, Multiaddr, PeerId, SwarmBuilder,
+    noise, relay, tcp, yamux, Multiaddr, PeerId, SwarmBuilder,
+    swarm::behaviour::toggle::Toggle,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -239,6 +241,21 @@ pub enum SwarmEvent {
     PeerDisconnected(PeerId),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelayMode {
+    Off,
+    Client,
+    Server,
+    Auto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NatStatus {
+    Unknown,
+    Public,
+    Private,
+}
+
 /// Combined libp2p behaviour for the Bitterbot network.
 #[derive(libp2p::swarm::NetworkBehaviour)]
 pub struct BitterbotBehaviour {
@@ -246,6 +263,9 @@ pub struct BitterbotBehaviour {
     pub kademlia: kad::Behaviour<MemoryStore>,
     pub autonat: autonat::v2::client::Behaviour,
     pub identify: identify::Behaviour,
+    pub relay_client: Toggle<relay::client::Behaviour>,
+    pub relay_server: Toggle<relay::Behaviour>,
+    pub dcutr: Toggle<dcutr::Behaviour>,
 }
 
 pub struct SwarmHandle {
@@ -265,6 +285,14 @@ pub struct SwarmHandle {
     node_tier: String,
     /// Management-only aggregated state. None for edge nodes.
     management_state: Option<SharedManagementState>,
+    /// Current NAT status detected by AutoNAT.
+    nat_status: NatStatus,
+    /// Relay servers to request reservations from when behind NAT.
+    relay_server_addrs: Vec<(Multiaddr, PeerId)>,
+    /// Whether we have an active relay reservation.
+    has_relay_reservation: bool,
+    /// Relay mode configuration.
+    relay_mode: RelayMode,
 }
 
 impl SwarmHandle {
@@ -488,6 +516,10 @@ impl SwarmHandle {
         anomaly_interval.tick().await;
         let is_management = self.management_state.is_some();
 
+        // Relay reservation renewal (45 min, before the 1-hour expiry)
+        let mut relay_renewal_interval = tokio::time::interval(Duration::from_secs(2700));
+        relay_renewal_interval.tick().await;
+
         loop {
             tokio::select! {
                 Some(cmd) = ipc_rx.recv() => {
@@ -559,6 +591,13 @@ impl SwarmHandle {
                 }
                 _ = anomaly_interval.tick(), if is_management => {
                     self.run_anomaly_detection();
+                }
+                _ = relay_renewal_interval.tick(), if self.relay_mode == RelayMode::Client => {
+                    if self.has_relay_reservation && !self.relay_server_addrs.is_empty() {
+                        info!("Renewing relay reservations");
+                        self.has_relay_reservation = false; // Force re-reservation
+                        self.initiate_relay_reservations();
+                    }
                 }
                 _ = tokio::signal::ctrl_c() => {
                     info!("Received shutdown signal");
@@ -705,9 +744,122 @@ impl SwarmHandle {
                 }));
             }
             BitterbotBehaviourEvent::Autonat(event) => {
-                debug!("AutoNAT event: {:?}", event);
+                info!("AutoNAT event: {:?}", event);
+                // When AutoNAT detects we're behind NAT, initiate relay reservations
+                if self.relay_mode == RelayMode::Client {
+                    if !self.has_relay_reservation && !self.relay_server_addrs.is_empty() {
+                        info!("NAT detected, initiating relay reservations");
+                        self.initiate_relay_reservations();
+                    }
+                }
+            }
+            BitterbotBehaviourEvent::RelayClient(event) => {
+                match event {
+                    relay::client::Event::ReservationReqAccepted { relay_peer_id, renewal, .. } => {
+                        info!("Relay reservation accepted by {} (renewal: {})", relay_peer_id, renewal);
+                        self.has_relay_reservation = true;
+
+                        // Advertise relay address so other peers can reach us
+                        let relay_addr: Multiaddr = format!(
+                            "/p2p/{}/p2p-circuit",
+                            relay_peer_id
+                        ).parse().unwrap();
+                        self.swarm.add_external_address(relay_addr);
+
+                        self.emit_ipc_event(serde_json::json!({
+                            "type": "relay_reservation_accepted",
+                            "payload": {
+                                "relay_peer_id": relay_peer_id.to_string(),
+                                "renewal": renewal,
+                            }
+                        }));
+                    }
+                    // Note: libp2p-relay 0.18 does not have a ReservationReqFailed variant.
+                    // Reservation failures surface as transport errors or connection failures.
+                    relay::client::Event::OutboundCircuitEstablished { relay_peer_id, .. } => {
+                        info!("Outbound circuit via relay {} established", relay_peer_id);
+                        self.emit_ipc_event(serde_json::json!({
+                            "type": "relay_circuit_established",
+                            "payload": {
+                                "relay_peer_id": relay_peer_id.to_string(),
+                                "direction": "outbound",
+                            }
+                        }));
+                    }
+                    relay::client::Event::InboundCircuitEstablished { src_peer_id, .. } => {
+                        info!("Inbound circuit from {} established", src_peer_id);
+                        self.emit_ipc_event(serde_json::json!({
+                            "type": "relay_circuit_established",
+                            "payload": {
+                                "src_peer_id": src_peer_id.to_string(),
+                                "direction": "inbound",
+                            }
+                        }));
+                    }
+                }
+            }
+            BitterbotBehaviourEvent::RelayServer(event) => {
+                match event {
+                    relay::Event::ReservationReqAccepted { src_peer_id, renewed } => {
+                        info!("Relay server: accepted reservation from {} (renewed: {})", src_peer_id, renewed);
+                        self.emit_ipc_event(serde_json::json!({
+                            "type": "relay_server_reservation",
+                            "payload": {
+                                "peer_id": src_peer_id.to_string(),
+                                "renewed": renewed,
+                            }
+                        }));
+                    }
+                    relay::Event::ReservationTimedOut { src_peer_id } => {
+                        debug!("Relay server: reservation timed out for {}", src_peer_id);
+                    }
+                    relay::Event::CircuitReqDenied { src_peer_id, dst_peer_id } => {
+                        debug!("Relay server: circuit denied from {} to {}", src_peer_id, dst_peer_id);
+                    }
+                    _ => {}
+                }
+            }
+            BitterbotBehaviourEvent::Dcutr(dcutr::Event { remote_peer_id, result }) => {
+                match result {
+                    Ok(_) => {
+                        info!("DCUtR hole-punch succeeded with {}", remote_peer_id);
+                        self.emit_ipc_event(serde_json::json!({
+                            "type": "hole_punch_succeeded",
+                            "payload": {
+                                "peer_id": remote_peer_id.to_string(),
+                            }
+                        }));
+                    }
+                    Err(ref e) => {
+                        warn!("DCUtR hole-punch failed with {}: {:?}", remote_peer_id, e);
+                        self.emit_ipc_event(serde_json::json!({
+                            "type": "hole_punch_failed",
+                            "payload": {
+                                "peer_id": remote_peer_id.to_string(),
+                                "error": format!("{:?}", e),
+                            }
+                        }));
+                    }
+                }
             }
             _ => {}
+        }
+    }
+
+    fn initiate_relay_reservations(&mut self) {
+        if self.has_relay_reservation {
+            debug!("Already have relay reservation, skipping");
+            return;
+        }
+        for (addr, peer_id) in self.relay_server_addrs.clone() {
+            info!("Requesting relay reservation from {} at {}", peer_id, addr);
+            let relay_addr = addr
+                .with(libp2p::multiaddr::Protocol::P2p(peer_id))
+                .with(libp2p::multiaddr::Protocol::P2pCircuit);
+            match self.swarm.listen_on(relay_addr.clone()) {
+                Ok(_) => info!("Listening on relay circuit: {}", relay_addr),
+                Err(e) => warn!("Failed to listen on relay {}: {}", relay_addr, e),
+            }
         }
     }
 
@@ -1500,12 +1652,38 @@ fn dalek_to_libp2p_keypair(signing_key: &SigningKey) -> libp2p::identity::Keypai
     libp2p::identity::Keypair::from(libp2p_kp)
 }
 
+/// Parse relay server multiaddresses into (addr_without_p2p, peer_id) pairs.
+fn parse_relay_servers(relay_servers: &[String]) -> Vec<(Multiaddr, PeerId)> {
+    let mut result = Vec::new();
+    for s in relay_servers {
+        match s.parse::<Multiaddr>() {
+            Ok(addr) => {
+                if let Some(libp2p::multiaddr::Protocol::P2p(peer_id)) =
+                    addr.iter().find(|p| matches!(p, libp2p::multiaddr::Protocol::P2p(_)))
+                {
+                    let addr_without_p2p: Multiaddr = addr
+                        .iter()
+                        .filter(|p| !matches!(p, libp2p::multiaddr::Protocol::P2p(_)))
+                        .collect();
+                    result.push((addr_without_p2p, peer_id));
+                } else {
+                    warn!("Relay server address {} missing /p2p/<peer_id>, skipping", s);
+                }
+            }
+            Err(e) => warn!("Invalid relay server address '{}': {}", s, e),
+        }
+    }
+    result
+}
+
 pub async fn build_swarm(
     keypair: &SigningKey,
     listen_addr: &str,
     bootstrap_peers: &[String],
     node_tier: &str,
     genesis_trust_list: Vec<String>,
+    relay_mode: RelayMode,
+    relay_servers: &[String],
 ) -> Result<
     (
         SwarmHandle,
@@ -1649,28 +1827,98 @@ pub async fn build_swarm(
 
     let identify_behaviour = identify::Behaviour::new(identify_config);
 
-    // --- Build the combined behaviour ---
-    let behaviour = BitterbotBehaviour {
-        gossipsub: gossipsub_behaviour,
-        kademlia: kademlia_behaviour,
-        autonat: autonat_behaviour,
-        identify: identify_behaviour,
+    // --- Build swarm based on relay mode ---
+    let idle_timeout = if relay_mode == RelayMode::Client {
+        Duration::from_secs(120) // Longer timeout for relayed connections
+    } else {
+        Duration::from_secs(60)
     };
 
-    // --- Build the swarm ---
-    let mut swarm = SwarmBuilder::with_existing_identity(libp2p_keypair)
-        .with_tokio()
-        .with_tcp(
-            tcp::Config::default().nodelay(true),
-            noise::Config::new,
-            yamux::Config::default,
-        )?
-        .with_dns()?
-        .with_behaviour(|_key| behaviour)?
-        .with_swarm_config(|cfg: libp2p::swarm::Config| {
-            cfg.with_idle_connection_timeout(Duration::from_secs(60))
-        })
-        .build();
+    let mut swarm = match relay_mode {
+        RelayMode::Client => {
+            info!("Building swarm with relay client + dcutr");
+            SwarmBuilder::with_existing_identity(libp2p_keypair)
+                .with_tokio()
+                .with_tcp(
+                    tcp::Config::default().nodelay(true),
+                    noise::Config::new,
+                    yamux::Config::default,
+                )?
+                .with_dns()?
+                .with_relay_client(noise::Config::new, yamux::Config::default)?
+                .with_behaviour(|key: &libp2p::identity::Keypair, relay_client_behaviour| {
+                    Ok(BitterbotBehaviour {
+                        gossipsub: gossipsub_behaviour,
+                        kademlia: kademlia_behaviour,
+                        autonat: autonat_behaviour,
+                        identify: identify_behaviour,
+                        relay_client: Toggle::from(Some(relay_client_behaviour)),
+                        relay_server: Toggle::from(None),
+                        dcutr: Toggle::from(Some(dcutr::Behaviour::new(key.public().to_peer_id()))),
+                    })
+                })?
+                .with_swarm_config(|cfg: libp2p::swarm::Config| {
+                    cfg.with_idle_connection_timeout(idle_timeout)
+                })
+                .build()
+        }
+        RelayMode::Server => {
+            info!("Building swarm with relay server");
+            let relay_server_config = relay::Config::default();
+            SwarmBuilder::with_existing_identity(libp2p_keypair)
+                .with_tokio()
+                .with_tcp(
+                    tcp::Config::default().nodelay(true),
+                    noise::Config::new,
+                    yamux::Config::default,
+                )?
+                .with_dns()?
+                .with_behaviour(|_key| {
+                    Ok(BitterbotBehaviour {
+                        gossipsub: gossipsub_behaviour,
+                        kademlia: kademlia_behaviour,
+                        autonat: autonat_behaviour,
+                        identify: identify_behaviour,
+                        relay_client: Toggle::from(None),
+                        relay_server: Toggle::from(Some(relay::Behaviour::new(
+                            local_peer_id,
+                            relay_server_config,
+                        ))),
+                        dcutr: Toggle::from(None),
+                    })
+                })?
+                .with_swarm_config(|cfg: libp2p::swarm::Config| {
+                    cfg.with_idle_connection_timeout(idle_timeout)
+                })
+                .build()
+        }
+        RelayMode::Off | RelayMode::Auto => {
+            info!("Building swarm without relay");
+            SwarmBuilder::with_existing_identity(libp2p_keypair)
+                .with_tokio()
+                .with_tcp(
+                    tcp::Config::default().nodelay(true),
+                    noise::Config::new,
+                    yamux::Config::default,
+                )?
+                .with_dns()?
+                .with_behaviour(|_key| {
+                    Ok(BitterbotBehaviour {
+                        gossipsub: gossipsub_behaviour,
+                        kademlia: kademlia_behaviour,
+                        autonat: autonat_behaviour,
+                        identify: identify_behaviour,
+                        relay_client: Toggle::from(None),
+                        relay_server: Toggle::from(None),
+                        dcutr: Toggle::from(None),
+                    })
+                })?
+                .with_swarm_config(|cfg: libp2p::swarm::Config| {
+                    cfg.with_idle_connection_timeout(idle_timeout)
+                })
+                .build()
+        }
+    };
 
     // Listen on the specified address
     let listen_multiaddr: Multiaddr = listen_addr.parse()?;
@@ -1704,6 +1952,22 @@ pub async fn build_swarm(
         None
     };
 
+    // Parse relay server addresses for client mode
+    let relay_server_addrs = if relay_mode == RelayMode::Client {
+        let mut addrs = parse_relay_servers(relay_servers);
+        // Also use bootstrap peers as relay servers if no explicit relay servers
+        if addrs.is_empty() {
+            info!("No explicit relay servers; using bootstrap peers as relay candidates");
+            addrs = parse_relay_servers(bootstrap_peers);
+        }
+        if !addrs.is_empty() {
+            info!("Relay servers configured: {} candidates", addrs.len());
+        }
+        addrs
+    } else {
+        vec![]
+    };
+
     let handle = SwarmHandle {
         signing_key: keypair.clone(),
         local_peer_id,
@@ -1719,6 +1983,10 @@ pub async fn build_swarm(
         genesis_trust_list,
         node_tier: node_tier.to_string(),
         management_state,
+        nat_status: NatStatus::Unknown,
+        relay_server_addrs,
+        has_relay_reservation: false,
+        relay_mode,
     };
 
     info!(

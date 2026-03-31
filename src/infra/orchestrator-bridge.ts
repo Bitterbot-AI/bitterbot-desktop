@@ -397,6 +397,43 @@ export class OrchestratorBridge {
         }
         return;
       }
+
+      // Relay / NAT traversal events (log only for now)
+      if (msg.type === "relay_reservation_accepted") {
+        const p = msg.payload as { relay_peer_id: string; renewal: boolean };
+        log.info(`Relay reservation accepted by ${p.relay_peer_id} (renewal: ${p.renewal})`);
+        return;
+      }
+      if (msg.type === "relay_reservation_failed") {
+        const p = msg.payload as { relay_peer_id: string; error: string };
+        log.warn(`Relay reservation failed with ${p.relay_peer_id}: ${p.error}`);
+        return;
+      }
+      if (msg.type === "relay_circuit_established") {
+        const p = msg.payload as { relay_peer_id?: string; src_peer_id?: string; direction: string };
+        log.info(`Relay circuit established (${p.direction})`);
+        return;
+      }
+      if (msg.type === "hole_punch_succeeded") {
+        const p = msg.payload as { peer_id: string };
+        log.info(`DCUtR hole-punch succeeded with ${p.peer_id}`);
+        return;
+      }
+      if (msg.type === "hole_punch_failed") {
+        const p = msg.payload as { peer_id: string; error: string };
+        log.warn(`DCUtR hole-punch failed with ${p.peer_id}: ${p.error}`);
+        return;
+      }
+      if (msg.type === "relay_server_reservation") {
+        const p = msg.payload as { peer_id: string; renewed: boolean };
+        log.info(`Relay server: reservation from ${p.peer_id} (renewed: ${p.renewed})`);
+        return;
+      }
+      if (msg.type === "nat_status_changed") {
+        const p = msg.payload as { status: string; previous: string };
+        log.info(`NAT status changed: ${p.previous} → ${p.status}`);
+        return;
+      }
     } catch (err) {
       log.warn(`Failed to parse IPC message: ${String(err)}`);
     }
@@ -484,6 +521,13 @@ export class OrchestratorBridge {
     }
     if (this.config.httpAuthToken) {
       args.push("--http-auth-token", this.config.httpAuthToken);
+    }
+    // Relay mode and servers for NAT traversal
+    if (this.config.relayMode) {
+      args.push("--relay-mode", this.config.relayMode);
+    }
+    for (const relay of this.config.relayServers ?? []) {
+      args.push("--relay-servers", relay);
     }
     // Management tier auth is handled in TypeScript (ManagementKeyAuth).
     // The Rust orchestrator runs as edge — it doesn't verify management pubkeys.

@@ -315,7 +315,7 @@ Before it dreams, it executes. Bitterbot works today as a full-featured personal
 | **9100**  | P2P network (libp2p TCP)               | `p2p.listenAddrs`                          |
 | **9847**  | P2P orchestrator dashboard (localhost) | `p2p.httpAddr`                             |
 
-The gateway runs on port 19001 (WebSocket + HTTP). Port 9100 must be open (TCP) for P2P peer discovery and skill propagation. The orchestrator dashboard (port 9847) is loopback-only by default.
+The gateway runs on port 19001 (WebSocket + HTTP). Port 9100 is used for P2P peer discovery and skill propagation. If port 9100 is not directly reachable (e.g. behind NAT/firewall), the orchestrator automatically uses circuit relay through the bootstrap node and attempts dcutr hole-punching for direct connections. The orchestrator dashboard (port 9847) is loopback-only by default.
 
 ---
 

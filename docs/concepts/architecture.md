@@ -124,6 +124,8 @@ The networking layer runs as a separate Rust daemon (`orchestrator/`) using libp
 | **Gossipsub** | Publish/subscribe messaging across 5 topics: skills, telemetry, weather, bounties, queries |
 | **Kademlia DHT** | Peer discovery and routing |
 | **AutoNAT** | NAT detection for connectivity |
+| **Circuit Relay v2** | NAT traversal — NAT'd nodes reach the mesh through relay servers (bootstrap nodes) |
+| **DCUtR** | Direct Connection Upgrade through Relay — hole-punching to upgrade relayed connections to direct |
 | **Identify** | Peer protocol and tier exchange |
 
 ### Gossipsub Topics
@@ -166,11 +168,22 @@ Nodes discover the network via DNS:
 3. Join the gossipsub mesh on all 5 topics
 4. Begin skill exchange and telemetry
 
+### NAT Traversal
+
+Nodes behind NAT or firewalls participate automatically:
+
+1. **AutoNAT** detects whether the node is publicly reachable
+2. If behind NAT, the relay client reserves a slot on a bootstrap node (relay server)
+3. **DCUtR** attempts hole-punching through the relay for a direct connection
+4. If hole-punching fails, traffic flows through the relay transparently
+
+Port 9100 open (inbound TCP) gives the best performance, but is not required. Nodes behind NAT work via relay with no manual configuration.
+
 **Ports:**
 
 | Port | Service |
 |------|---------|
-| **9100** | P2P network (libp2p TCP) — must be open for peer discovery |
+| **9100** | P2P network (libp2p TCP) — open for best performance, relay fallback if closed |
 | **9847** | Orchestrator HTTP dashboard (loopback only) |
 
 ### IPC Bridge
@@ -178,7 +191,7 @@ Nodes discover the network via DNS:
 The Node.js gateway communicates with the Rust orchestrator via IPC (Unix socket on Linux/macOS, named pipe on Windows):
 
 - **Outbound commands:** publish_skill, publish_weather, publish_bounty, publish_telemetry, compute_eigentrust, get_peers, get_stats, sign_as_management
-- **Inbound events:** skill_received, peer_connected, peer_disconnected, peer_identified, weather_received, telemetry_received
+- **Inbound events:** skill_received, peer_connected, peer_disconnected, peer_identified, weather_received, telemetry_received, relay_reservation_accepted, hole_punch_succeeded, nat_status_changed
 
 Full documentation: [Network](../network.md) · [P2P Plan](../../research/plans/p2p-sota-upgrade.md)
 

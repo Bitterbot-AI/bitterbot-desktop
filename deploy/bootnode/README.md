@@ -59,8 +59,10 @@ Internet traffic → Railway TCP proxy (:12345) → bootnode (:9100)
                                                     └─ HTTP dashboard (:9847, internal only)
 ```
 
-The bootnode runs as **edge tier** — it participates in the DHT and gossipsub mesh
-but doesn't perform management operations. It's purely a rendezvous point.
+The bootnode runs with `--relay-mode server` — it participates in the DHT and gossipsub mesh,
+and serves as a **circuit relay** for nodes behind NAT/firewalls. NAT'd edge nodes
+automatically reserve relay slots on the bootnode and attempt DCUtR hole-punching for
+direct connections. If hole-punching fails, traffic flows through the relay transparently.
 
 ## Persistent Keys
 

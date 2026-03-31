@@ -2033,6 +2033,70 @@ See [Multiple Gateways](/gateway/multiple-gateways).
 
 ---
 
+## P2P Network
+
+The P2P orchestrator runs as a Rust sidecar daemon using libp2p. It handles peer discovery, skill propagation, reputation scoring, and NAT traversal.
+
+```json5
+{
+  p2p: {
+    enabled: true,                    // default: true
+    listenAddrs: ["/ip4/0.0.0.0/tcp/9100"],  // default if omitted
+    bootstrapDns: "p2p.bitterbot.ai", // DNS-based bootstrap discovery
+    bootstrapPeers: [],               // additional static bootstrap peers
+    relayMode: "auto",                // off | client | server | auto
+    relayServers: [],                 // explicit relay server multiaddresses
+    keyDir: "~/.bitterbot/keys",      // Ed25519 keypair for node identity
+    httpAddr: "127.0.0.1:9847",       // orchestrator dashboard (loopback)
+    httpAuthToken: "...",             // bearer token for dashboard API
+    security: {
+      maxSkillSizeBytes: 262144,      // 256KB
+      maxSkillsPerMinutePerPeer: 10,
+      requireSignature: true,
+    },
+  },
+}
+```
+
+<Accordion title="P2P field details">
+
+- `enabled`: set `false` to disable the P2P orchestrator entirely. Default: `true`.
+- `listenAddrs`: libp2p listen addresses. Default: `/ip4/0.0.0.0/tcp/9100`. Port 9100 open gives best performance, but is not required — nodes behind NAT use circuit relay.
+- `bootstrapDns`: DNS domain for bootstrap peer discovery. Resolves `_dnsaddr.<domain>` TXT records. Default: `"p2p.bitterbot.ai"`.
+- `bootstrapPeers`: additional static bootstrap peer multiaddresses (merged with DNS results).
+- `relayMode`: NAT traversal strategy.
+  - `"auto"` (default): server for management nodes, client for edge nodes.
+  - `"client"`: use relay servers when behind NAT. AutoNAT detects NAT status and reserves relay slots automatically.
+  - `"server"`: serve as a relay for NAT'd peers (used by bootstrap nodes).
+  - `"off"`: disable relay entirely.
+- `relayServers`: explicit relay server multiaddresses for client mode. If empty, bootstrap peers are used as relay candidates.
+- `keyDir`: directory for the Ed25519 keypair that determines the node's peer ID.
+- `httpAddr`: bind address for the orchestrator HTTP dashboard. Default: `"127.0.0.1:9847"` (loopback only).
+- `security.maxSkillSizeBytes`: reject skills larger than this. Default: 256KB.
+- `security.maxSkillsPerMinutePerPeer`: per-peer rate limit. Default: 10.
+- `security.requireSignature`: require Ed25519 signature on all skill envelopes. Default: `true`.
+
+</Accordion>
+
+<Accordion title="NAT traversal">
+
+Most nodes behind home routers or firewalls work automatically with no configuration needed. The orchestrator detects NAT via AutoNAT and reserves a circuit relay slot on the bootstrap node.
+
+**How it works:**
+1. AutoNAT probes whether the node is publicly reachable on port 9100
+2. If behind NAT, the relay client connects to a bootstrap node and reserves a relay slot
+3. Other peers reach this node via the relay: `/p2p/<relay>/p2p-circuit/p2p/<this-node>`
+4. DCUtR (Direct Connection Upgrade through Relay) attempts hole-punching for a direct TCP connection
+5. If hole-punching succeeds, traffic flows directly; if not, it continues through the relay
+
+**For best performance:** forward TCP port 9100 to the machine running Bitterbot. This avoids relay overhead and allows direct peer connections.
+
+**Relay reservations** expire after 1 hour and are automatically renewed every 45 minutes.
+
+</Accordion>
+
+---
+
 ## Hooks
 
 ```json5

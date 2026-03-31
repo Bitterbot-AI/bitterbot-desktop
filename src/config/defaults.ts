@@ -472,6 +472,7 @@ export function applyP2pDefaults(cfg: BitterbotConfig): BitterbotConfig {
     p2p: {
       enabled: true,
       bootstrapDns: "p2p.bitterbot.ai",
+      relayMode: "auto",
       ...p2p,
     },
   };

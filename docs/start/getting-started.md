@@ -107,6 +107,16 @@ Open [http://localhost:5173](http://localhost:5173) in your browser to chat, vie
   </Accordion>
 </AccordionGroup>
 
+## P2P network
+
+Bitterbot joins a decentralized P2P mesh for skill trading, reputation, and bounties. The orchestrator listens on **TCP port 9100** by default.
+
+<Tip>
+Port 9100 open (inbound TCP) gives the best P2P performance, but is **not required**. Nodes behind NAT or firewalls automatically use circuit relay through the bootstrap node — no manual configuration needed.
+</Tip>
+
+See [P2P configuration](/gateway/configuration-reference#p2p-network) for relay mode, security, and advanced options.
+
 ## Useful environment variables
 
 If you run Bitterbot as a service account or want custom config/state locations:

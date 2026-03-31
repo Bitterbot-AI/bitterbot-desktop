@@ -9,6 +9,8 @@ use std::path::PathBuf;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+pub use swarm::RelayMode;
+
 #[derive(Parser, Debug)]
 #[command(name = "bitterbot-orchestrator")]
 #[command(about = "P2P orchestrator daemon for Bitterbot skill propagation")]
@@ -52,6 +54,17 @@ struct Args {
     /// Supports ?tier=edge or ?tier=management for tier-specific discovery.
     #[arg(long, env = "BITTERBOT_BOOTSTRAP_URL")]
     bootstrap_url: Option<String>,
+
+    /// Relay mode: off (no relay), client (use relays for NAT traversal),
+    /// server (serve as relay for NAT'd peers), auto (detect from node tier).
+    #[arg(long, default_value = "auto", value_parser = parse_relay_mode)]
+    relay_mode: RelayMode,
+
+    /// Relay server multiaddresses to connect through when behind NAT.
+    /// Only used in client/auto mode. Can be specified multiple times.
+    /// Format: /ip4/1.2.3.4/tcp/9100/p2p/12D3KooW...
+    #[arg(long)]
+    relay_servers: Vec<String>,
 }
 
 #[tokio::main]
@@ -123,9 +136,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Resolve relay mode: auto → server for management, client for edge
+    let relay_mode = match args.relay_mode {
+        RelayMode::Auto => {
+            if args.node_tier == "management" {
+                info!("Relay mode: auto → server (management tier)");
+                RelayMode::Server
+            } else {
+                info!("Relay mode: auto → client (edge tier)");
+                RelayMode::Client
+            }
+        }
+        mode => {
+            info!("Relay mode: {:?}", mode);
+            mode
+        }
+    };
+
     // Build and start the libp2p swarm
     let (mut swarm_handle, ipc_event_rx) =
-        swarm::build_swarm(&keypair, &args.listen_addr, &bootstrap_peers, &args.node_tier, genesis_trust_list).await?;
+        swarm::build_swarm(
+            &keypair,
+            &args.listen_addr,
+            &bootstrap_peers,
+            &args.node_tier,
+            genesis_trust_list,
+            relay_mode,
+            &args.relay_servers,
+        ).await?;
 
     // Start IPC listener — pass the swarm event channel so events are pushed
     // to connected IPC clients through the socket (not stdout).
@@ -150,6 +188,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = tokio::fs::remove_file(&args.ipc_path).await;
 
     Ok(())
+}
+
+fn parse_relay_mode(s: &str) -> Result<RelayMode, String> {
+    match s.to_lowercase().as_str() {
+        "off" => Ok(RelayMode::Off),
+        "client" => Ok(RelayMode::Client),
+        "server" => Ok(RelayMode::Server),
+        "auto" => Ok(RelayMode::Auto),
+        _ => Err(format!(
+            "invalid relay mode '{}': expected off|client|server|auto",
+            s
+        )),
+    }
 }
 
 /// Fetch bootstrap peer multiaddresses from an HTTPS registry.

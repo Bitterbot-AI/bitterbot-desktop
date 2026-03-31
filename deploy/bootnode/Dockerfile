@@ -32,5 +32,6 @@ CMD [ \
   "--ipc-path", "/tmp/bitterbot-orchestrator.sock", \
   "--key-dir", "/data/keys", \
   "--listen-addr", "/ip4/0.0.0.0/tcp/9100", \
-  "--http-addr", "0.0.0.0:9847" \
+  "--http-addr", "0.0.0.0:9847", \
+  "--relay-mode", "server" \
 ]
