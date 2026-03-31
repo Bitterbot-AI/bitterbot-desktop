@@ -1985,6 +1985,29 @@ See [Plugins](/tools/plugin).
 
 </Accordion>
 
+<Accordion title="Control UI auth flow">
+
+The Control UI (`cd desktop && pnpm dev`) connects to the gateway over WebSocket at `ws://127.0.0.1:19001`. These settings control how the gateway handles that connection.
+
+**Shared token auth (normal path):**
+The Control UI authenticates using `gateway.auth.token` — the same shared token the CLI uses. The `VITE_GATEWAY_TOKEN` in `desktop/.env` must match the token in `~/.bitterbot/bitterbot.json`. The onboarding wizard generates this token automatically.
+
+**Device auth is NOT required for the Control UI.** Device identity (Ed25519 keypair pairing) is only used by non-browser clients: the CLI, iOS/Android apps, and remote gateways. The Control UI authenticates purely with the shared token.
+
+**`controlUi` fields:**
+- `enabled` (default `true`): controls whether the gateway accepts Control UI WebSocket connections.
+- `basePath`: optional prefix path for the gateway's built-in dashboard endpoint.
+- `allowedOrigins`: browser origins allowed to open WebSocket connections. When unset, the gateway allows loopback origins and origins matching the request Host header (including `http://localhost:5173`) automatically.
+- `allowInsecureAuth` (default `false`): allow shared-token auth over plain HTTP from non-loopback origins. Not recommended.
+- `dangerouslyDisableDeviceAuth` (default `false`): break-glass flag that strips device identity checks. Not needed for normal browser access — only use for emergency recovery.
+
+**If the Control UI cannot connect**, check:
+1. The `VITE_GATEWAY_TOKEN` in `desktop/.env` matches `gateway.auth.token` in `~/.bitterbot/bitterbot.json`.
+2. The gateway is running: `bitterbot gateway status`.
+3. Both the gateway and Control UI processes are running (two terminals).
+
+</Accordion>
+
 ### OpenAI-compatible endpoints
 
 - Chat Completions: disabled by default. Enable with `gateway.http.endpoints.chatCompletions.enabled: true`.

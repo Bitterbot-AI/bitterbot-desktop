@@ -318,6 +318,42 @@ install_playwright() {
 }
 
 # -----------------------------------------------------------------------------
+# Phase 6b: WSL2 NTFS mount fix
+# -----------------------------------------------------------------------------
+fix_wsl_ntfs_mount() {
+    # Skip if not running under WSL2
+    if [[ ! -f /proc/version ]] || ! grep -qi microsoft /proc/version 2>/dev/null; then
+        track_skip "wsl2-ntfs (not WSL2)"
+        return
+    fi
+
+    log "Phase 6b: WSL2 NTFS mount configuration"
+
+    local wsl_conf="/etc/wsl.conf"
+    local needs_metadata=false
+
+    if [[ -f "$wsl_conf" ]]; then
+        if grep -q "metadata" "$wsl_conf" 2>/dev/null; then
+            track_skip "wsl2-ntfs (metadata already configured)"
+            return
+        fi
+    fi
+
+    warn "WSL2 detected: NTFS mounts need metadata for npm/pnpm to work correctly."
+    warn "Adding [automount] metadata option to /etc/wsl.conf."
+    warn "You must restart WSL after this (run 'wsl --shutdown' from PowerShell)."
+
+    if [[ -f "$wsl_conf" ]] && grep -q "\[automount\]" "$wsl_conf" 2>/dev/null; then
+        # [automount] section exists, add options line after it
+        sudo sed -i '/\[automount\]/a options = "metadata,umask=22,fmask=11"' "$wsl_conf"
+    else
+        # Append new section
+        printf '\n[automount]\noptions = "metadata,umask=22,fmask=11"\n' | sudo tee -a "$wsl_conf" > /dev/null
+    fi
+    track_install "wsl2-ntfs (/etc/wsl.conf)"
+}
+
+# -----------------------------------------------------------------------------
 # Phase 7: Workspace setup
 # -----------------------------------------------------------------------------
 setup_workspace() {
@@ -343,7 +379,7 @@ FIRECRAWL_API_KEY=
 
 # Gateway Auth
 VITE_GATEWAY_URL=ws://127.0.0.1:19001
-VITE_GATEWAY_TOKEN=local-dev-token
+VITE_GATEWAY_TOKEN=paste-your-gateway-token-here
 VITE_GATEWAY_CLIENT_NAME=bitterbot-desktop
 ENVEOF
         track_install "~/.bitterbot/.env"
@@ -369,6 +405,7 @@ main() {
     install_node_tools
     install_python_packages
     install_playwright
+    fix_wsl_ntfs_mount
     setup_workspace
 
     echo ""
@@ -395,7 +432,7 @@ main() {
     echo ""
     log "Next steps:"
     echo "  1. Fill in API keys: nano ~/.bitterbot/.env"
-    echo "  2. Copy workspace files: cp node-application/desktop/workspace-templates/* ~/.bitterbot/workspace/"
+    echo "  2. Run onboarding: bitterbot onboard --install-daemon"
     echo "  3. Verify: python3 -c \"import pandas, numpy, scipy, sklearn, duckdb, polars; print('OK')\""
     echo "  4. Verify: rg --version && fd --version && jq --version"
     echo ""

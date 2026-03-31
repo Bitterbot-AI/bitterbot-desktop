@@ -80,23 +80,23 @@ Check your Node version with `node --version` if you are unsure.
 If the Control UI loads, your Gateway is ready for use.
 </Check>
 
-## Optional checks and extras
+## Run the Control UI
+
+Bitterbot requires two processes: the gateway (backend) and the Control UI (frontend).
+
+```bash
+# Terminal 1 — Gateway
+pnpm gateway:watch
+
+# Terminal 2 — Control UI
+cd desktop && pnpm dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) in your browser to chat, view dreams, manage skills, and monitor the agent. The Control UI connects to the gateway on port 19001 automatically.
+
+## Optional extras
 
 <AccordionGroup>
-  <Accordion title="Run the Gateway + Control UI">
-    Bitterbot requires two processes: the gateway (backend) and the Control UI (frontend).
-
-    ```bash
-    # Terminal 1 — Gateway
-    pnpm gateway:watch
-
-    # Terminal 2 — Control UI (Vite)
-    cd desktop && pnpm dev
-    ```
-
-    Open [http://localhost:5173](http://localhost:5173) in your browser to chat, view dreams, manage skills, and monitor the agent. The Control UI connects to the gateway on port 19001 automatically.
-
-  </Accordion>
   <Accordion title="Send a test message">
     Requires a configured channel.
 

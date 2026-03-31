@@ -22,7 +22,7 @@ cp desktop/.env.example desktop/.env
 # Terminal 1 — Gateway with auto-reload
 pnpm gateway:watch
 
-# Terminal 2 — Control UI dev server (Vite, hot reload)
+# Terminal 2 — Control UI (Vite, hot reload)
 cd desktop && pnpm dev
 ```
 
