@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isWSLSync } from "../infra/wsl.js";
 import type { ResolvedBrowserConfig } from "./config.js";
 
 export type BrowserExecutable = {
@@ -522,7 +523,73 @@ export function findChromeExecutableLinux(): BrowserExecutable | null {
     { kind: "chromium", path: "/snap/bin/chromium" },
   ];
 
+  const native = findFirstExecutable(candidates);
+  if (native) {
+    return native;
+  }
+
+  // WSL: fall back to Windows-side browsers accessible via /mnt/c/
+  if (isWSLSync()) {
+    return findChromeExecutableWSL();
+  }
+
+  return null;
+}
+
+function findChromeExecutableWSL(): BrowserExecutable | null {
+  const programFiles = "/mnt/c/Program Files";
+  const programFilesX86 = "/mnt/c/Program Files (x86)";
+  const localAppData = process.env.LOCALAPPDATA
+    ? wslPathFromWindows(process.env.LOCALAPPDATA)
+    : resolveWSLLocalAppData();
+
+  const candidates: Array<BrowserExecutable> = [];
+
+  if (localAppData) {
+    candidates.push(
+      { kind: "chrome", path: path.join(localAppData, "Google/Chrome/Application/chrome.exe") },
+      { kind: "brave", path: path.join(localAppData, "BraveSoftware/Brave-Browser/Application/brave.exe") },
+      { kind: "edge", path: path.join(localAppData, "Microsoft/Edge/Application/msedge.exe") },
+      { kind: "chromium", path: path.join(localAppData, "Chromium/Application/chrome.exe") },
+    );
+  }
+
+  candidates.push(
+    { kind: "chrome", path: path.join(programFiles, "Google/Chrome/Application/chrome.exe") },
+    { kind: "chrome", path: path.join(programFilesX86, "Google/Chrome/Application/chrome.exe") },
+    { kind: "brave", path: path.join(programFiles, "BraveSoftware/Brave-Browser/Application/brave.exe") },
+    { kind: "brave", path: path.join(programFilesX86, "BraveSoftware/Brave-Browser/Application/brave.exe") },
+    { kind: "edge", path: path.join(programFiles, "Microsoft/Edge/Application/msedge.exe") },
+    { kind: "edge", path: path.join(programFilesX86, "Microsoft/Edge/Application/msedge.exe") },
+    { kind: "chromium", path: path.join(programFiles, "Chromium/Application/chrome.exe") },
+    { kind: "chromium", path: path.join(programFilesX86, "Chromium/Application/chrome.exe") },
+  );
+
   return findFirstExecutable(candidates);
+}
+
+function wslPathFromWindows(windowsPath: string): string {
+  const normalized = windowsPath.replace(/\\/g, "/");
+  const match = normalized.match(/^([A-Za-z]):(.*)/);
+  if (match) {
+    return `/mnt/${match[1].toLowerCase()}${match[2]}`;
+  }
+  return normalized;
+}
+
+function resolveWSLLocalAppData(): string | null {
+  try {
+    const username = execText("cmd.exe", ["/C", "echo", "%USERNAME%"], 2000);
+    if (username) {
+      const candidate = `/mnt/c/Users/${username.trim()}/AppData/Local`;
+      if (exists(candidate)) {
+        return candidate;
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return null;
 }
 
 export function findChromeExecutableWindows(): BrowserExecutable | null {
