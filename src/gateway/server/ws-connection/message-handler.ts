@@ -346,7 +346,7 @@ export function attachGatewayWsMessageHandler(params: {
         const allowControlUiBypass = allowInsecureControlUi || disableControlUiDeviceAuth || localControlUiBypass;
         const device = disableControlUiDeviceAuth ? null : deviceRaw;
 
-        const hasDeviceTokenCandidate = Boolean(connectParams.auth?.token && device);
+        const hasDeviceTokenCandidate = Boolean((connectParams.auth?.deviceToken || connectParams.auth?.token) && device);
         let authResult: GatewayAuthResult = await authorizeGatewayConnect({
           auth: resolvedAuth,
           connectAuth: connectParams.auth,
@@ -616,7 +616,7 @@ export function attachGatewayWsMessageHandler(params: {
           }
         }
 
-        if (!authOk && connectParams.auth?.token && device) {
+        if (!authOk && (connectParams.auth?.deviceToken || connectParams.auth?.token) && device) {
           if (rateLimiter) {
             const deviceRateCheck = rateLimiter.check(clientIp, AUTH_RATE_LIMIT_SCOPE_DEVICE_TOKEN);
             if (!deviceRateCheck.allowed) {
@@ -629,12 +629,15 @@ export function attachGatewayWsMessageHandler(params: {
             }
           }
           if (!authResult.rateLimited) {
-            const tokenCheck = await verifyDeviceToken({
-              deviceId: device.id,
-              token: connectParams.auth.token,
-              role,
-              scopes,
-            });
+            const deviceTokenCandidate = connectParams.auth.deviceToken ?? connectParams.auth.token;
+            const tokenCheck = deviceTokenCandidate
+              ? await verifyDeviceToken({
+                  deviceId: device.id,
+                  token: deviceTokenCandidate,
+                  role,
+                  scopes,
+                })
+              : { ok: false as const, reason: "token-missing" };
             if (tokenCheck.ok) {
               authOk = true;
               authMethod = "device-token";

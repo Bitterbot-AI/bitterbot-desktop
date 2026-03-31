@@ -190,9 +190,10 @@ export class GatewayClient {
     // device-auth tokens. Persisted tokens are only used when no token is provided.
     const authToken = this.opts.token ?? storedToken ?? undefined;
     const auth =
-      authToken || this.opts.password
+      authToken || storedToken || this.opts.password
         ? {
             token: authToken,
+            deviceToken: storedToken ?? undefined,
             password: this.opts.password,
           }
         : undefined;

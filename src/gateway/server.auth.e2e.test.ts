@@ -747,6 +747,43 @@ describe("gateway server auth/connect", () => {
     }
   });
 
+  test("uses deviceToken field for device-token auth when shared token differs", async () => {
+    const { loadOrCreateDeviceIdentity } = await import("../infra/device-identity.js");
+    const { approveDevicePairing, getPairedDevice, listDevicePairing } =
+      await import("../infra/device-pairing.js");
+    const { server, ws, port, prevToken } = await startServerWithClient("secret");
+    const res = await connectReq(ws, { token: "secret" });
+    if (!res.ok) {
+      const list = await listDevicePairing();
+      const pending = list.pending.at(0);
+      expect(pending?.requestId).toBeDefined();
+      if (pending?.requestId) {
+        await approveDevicePairing(pending.requestId);
+      }
+    }
+
+    const identity = loadOrCreateDeviceIdentity();
+    const paired = await getPairedDevice(identity.deviceId);
+    const deviceToken = paired?.tokens?.operator?.token;
+    expect(deviceToken).toBeDefined();
+
+    ws.close();
+
+    // Connect with WRONG shared token but CORRECT deviceToken field
+    const ws2 = new WebSocket(`ws://127.0.0.1:${port}`);
+    await new Promise<void>((resolve) => ws2.once("open", resolve));
+    const res2 = await connectReq(ws2, { token: "wrong-shared-token", deviceToken: String(deviceToken) });
+    expect(res2.ok).toBe(true);
+
+    ws2.close();
+    await server.close();
+    if (prevToken === undefined) {
+      delete process.env.BITTERBOT_GATEWAY_TOKEN;
+    } else {
+      process.env.BITTERBOT_GATEWAY_TOKEN = prevToken;
+    }
+  });
+
   test("keeps shared-secret lockout separate from device-token auth", async () => {
     const { server, port, prevToken, deviceToken } =
       await startRateLimitedTokenServerWithPairedDeviceToken();

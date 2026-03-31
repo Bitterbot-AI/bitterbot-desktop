@@ -436,6 +436,7 @@ export async function connectReq(
   ws: WebSocket,
   opts?: {
     token?: string;
+    deviceToken?: string;
     password?: string;
     skipDefaultAuth?: boolean;
     minProtocol?: number;
@@ -533,9 +534,10 @@ export async function connectReq(
         role,
         scopes: requestedScopes,
         auth:
-          token || password
+          token || opts?.deviceToken || password
             ? {
                 token,
+                deviceToken: opts?.deviceToken,
                 password,
               }
             : undefined,

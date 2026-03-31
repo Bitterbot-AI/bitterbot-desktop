@@ -52,7 +52,7 @@ Client → Gateway:
     "caps": [],
     "commands": [],
     "permissions": {},
-    "auth": { "token": "…" },
+    "auth": { "token": "…", "deviceToken": "…" },
     "locale": "en-US",
     "userAgent": .bitterbot-cli/1.2.3",
     "device": {
@@ -110,7 +110,7 @@ When a device token is issued, `hello-ok` also includes:
     "caps": ["camera", "canvas", "screen", "location", "voice"],
     "commands": ["camera.snap", "canvas.navigate", "screen.record", "location.get"],
     "permissions": { "camera.capture": true, "screen.record": false },
-    "auth": { "token": "…" },
+    "auth": { "token": "…", "deviceToken": "…" },
     "locale": "en-US",
     "userAgent": .bitterbot-node/1.2.3",
     "device": {
@@ -191,6 +191,11 @@ The Gateway treats these as **claims** and enforces server-side allowlists.
 - After pairing, the Gateway issues a **device token** scoped to the connection
   role + scopes. It is returned in `hello-ok.auth.deviceToken` and should be
   persisted by the client for future connects.
+- Clients should send the persisted device token in `connect.params.auth.deviceToken`
+  separately from the shared gateway token in `auth.token`. This allows device-token
+  auth to succeed as a fallback when shared-secret auth fails (e.g. config reload,
+  rate limiting). The server uses `auth.deviceToken` for device verification when
+  present, falling back to `auth.token` for backwards compatibility with older clients.
 - Device tokens can be rotated/revoked via `device.token.rotate` and
   `device.token.revoke` (requires `operator.pairing` scope).
 

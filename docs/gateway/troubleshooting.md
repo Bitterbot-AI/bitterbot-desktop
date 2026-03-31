@@ -80,6 +80,9 @@ Look for:
 Common signatures:
 
 - `device identity required` → non-secure context or missing device auth.
+- `device token mismatch` → stale device pairing token. Fix: delete
+  `~/.bitterbot/identity/device-auth.json` and `~/.bitterbot/devices/paired.json`,
+  then restart the gateway to trigger re-pairing.
 - `unauthorized` / reconnect loop → token/password mismatch.
 - `gateway connect failed:` → wrong host/port/url target.
 

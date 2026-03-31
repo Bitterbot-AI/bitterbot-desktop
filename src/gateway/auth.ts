@@ -42,6 +42,7 @@ export type GatewayAuthResult = {
 
 type ConnectAuth = {
   token?: string;
+  deviceToken?: string;
   password?: string;
 };
 
