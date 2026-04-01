@@ -6,6 +6,7 @@ import {
   DEFAULT_BROWSER_CONTROL_PORT,
 } from "../config/port-defaults.js";
 import { isLoopbackHost } from "../gateway/net.js";
+import { isWSLSync } from "../infra/wsl.js";
 import {
   DEFAULT_BITTERBOT_BROWSER_COLOR,
   DEFAULT_BITTERBOT_BROWSER_ENABLED,
@@ -190,9 +191,11 @@ export function resolveBrowserConfig(
     controlPort,
   );
   const cdpProtocol = cdpInfo.parsed.protocol === "https:" ? "https" : "http";
+  // WSL: the "chrome" extension relay profile can't communicate cross-namespace
+  // with a Windows-side browser, so default to the "bitterbot" direct-launch profile.
   const defaultProfile =
     defaultProfileFromConfig ??
-    (profiles[DEFAULT_BROWSER_DEFAULT_PROFILE_NAME]
+    (profiles[DEFAULT_BROWSER_DEFAULT_PROFILE_NAME] && !isWSLSync()
       ? DEFAULT_BROWSER_DEFAULT_PROFILE_NAME
       : DEFAULT_BITTERBOT_BROWSER_PROFILE_NAME);
 

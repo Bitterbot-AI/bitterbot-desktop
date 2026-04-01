@@ -1,10 +1,11 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
 import type { ResolvedBrowserConfig, ResolvedBrowserProfile } from "./config.js";
 import { ensurePortAvailable } from "../infra/ports.js";
+import { isWSLSync } from "../infra/wsl.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { CONFIG_DIR } from "../utils.js";
 import { appendCdpPath } from "./cdp.helpers.js";
@@ -51,6 +52,8 @@ export type RunningChrome = {
   exe: BrowserExecutable;
   userDataDir: string;
   cdpPort: number;
+  /** CDP URL reachable from this process (may differ from 127.0.0.1 in WSL). */
+  cdpUrl: string;
   startedAt: number;
   proc: ChildProcessWithoutNullStreams;
 };
@@ -65,6 +68,62 @@ export function resolveBitterbotUserDataDir(profileName = DEFAULT_BITTERBOT_BROW
 
 function cdpUrlForPort(cdpPort: number) {
   return `http://127.0.0.1:${cdpPort}`;
+}
+
+/**
+ * In WSL2, Chrome runs as a Windows process and binds CDP to the Windows
+ * network namespace. WSL's 127.0.0.1 is a different address, so we need
+ * to reach Chrome via the Windows host IP (the WSL default gateway).
+ */
+function resolveWSLHostIp(): string | null {
+  try {
+    const output = execFileSync("ip", ["route", "show", "default"], {
+      timeout: 2000,
+      encoding: "utf8",
+    });
+    const match = output.match(/via\s+(\S+)/);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function isWindowsExe(exePath: string): boolean {
+  return exePath.toLowerCase().endsWith(".exe") && exePath.startsWith("/mnt/");
+}
+
+function wslPathToWindows(linuxPath: string): string | null {
+  try {
+    return execFileSync("wslpath", ["-w", linuxPath], {
+      timeout: 2000,
+      encoding: "utf8",
+    }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * For Windows Chrome launched from WSL, use a native Windows path for the
+ * user-data-dir. UNC paths (\\wsl.localhost\...) cause file locking and
+ * performance issues over the 9P bridge.
+ */
+function resolveWSLWindowsUserDataDir(profileName: string): string | null {
+  try {
+    const username = execFileSync("cmd.exe", ["/C", "echo", "%USERNAME%"], {
+      timeout: 2000,
+      encoding: "utf8",
+    }).trim();
+    if (username && !username.includes("%")) {
+      const dir = `/mnt/c/Users/${username}/AppData/Local/bitterbot/browser/${profileName}`;
+      fs.mkdirSync(dir, { recursive: true });
+      // Return the Windows-style path for Chrome.exe
+      return `C:\\Users\\${username}\\AppData\\Local\\bitterbot\\browser\\${profileName}`;
+    }
+  } catch {
+    // fall through
+  }
+  return null;
 }
 
 export async function isChromeReachable(cdpUrl: string, timeoutMs = 500): Promise<boolean> {
@@ -185,11 +244,27 @@ export async function launchBitterbotChrome(
     (profile.color ?? DEFAULT_BITTERBOT_BROWSER_COLOR).toUpperCase(),
   );
 
+  // WSL: when launching a Windows .exe from WSL, Chrome binds CDP to the
+  // Windows network namespace. We need to bind to 0.0.0.0 and connect via
+  // the Windows host IP instead of 127.0.0.1.
+  const wslWindowsBrowser = isWSLSync() && isWindowsExe(exe.path);
+  const wslHostIp = wslWindowsBrowser ? resolveWSLHostIp() : null;
+  const cdpReachableUrl = wslHostIp
+    ? `http://${wslHostIp}:${profile.cdpPort}`
+    : profile.cdpUrl;
+
   // First launch to create preference files if missing, then decorate and relaunch.
   const spawnOnce = () => {
+    // Windows Chrome needs a Windows-native path for --user-data-dir.
+    // UNC paths (\\wsl.localhost\...) are unreliable due to 9P file locking
+    // and perf issues, so use a path under /mnt/c/ instead.
+    const effectiveDataDir = wslWindowsBrowser
+      ? resolveWSLWindowsUserDataDir(profile.name) ?? wslPathToWindows(userDataDir) ?? userDataDir
+      : userDataDir;
+
     const args: string[] = [
       `--remote-debugging-port=${profile.cdpPort}`,
-      `--user-data-dir=${userDataDir}`,
+      `--user-data-dir=${effectiveDataDir}`,
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-sync",
@@ -201,12 +276,18 @@ export async function launchBitterbotChrome(
       "--password-store=basic",
     ];
 
+    // WSL: bind CDP to all interfaces so it's reachable from WSL's namespace
+    if (wslWindowsBrowser) {
+      args.push("--remote-debugging-address=0.0.0.0");
+    }
+
     if (resolved.headless) {
       // Best-effort; older Chromes may ignore.
       args.push("--headless=new");
       args.push("--disable-gpu");
     }
-    if (resolved.noSandbox) {
+    // WSL: native Linux Chromium typically needs --no-sandbox in the WSL2 VM
+    if (resolved.noSandbox || (isWSLSync() && !wslWindowsBrowser)) {
       args.push("--no-sandbox");
       args.push("--disable-setuid-sandbox");
     }
@@ -283,13 +364,13 @@ export async function launchBitterbotChrome(
   // Wait for CDP to come up.
   const readyDeadline = Date.now() + 15_000;
   while (Date.now() < readyDeadline) {
-    if (await isChromeReachable(profile.cdpUrl, 500)) {
+    if (await isChromeReachable(cdpReachableUrl, 500)) {
       break;
     }
     await new Promise((r) => setTimeout(r, 200));
   }
 
-  if (!(await isChromeReachable(profile.cdpUrl, 500))) {
+  if (!(await isChromeReachable(cdpReachableUrl, 500))) {
     try {
       proc.kill("SIGKILL");
     } catch {
@@ -301,8 +382,9 @@ export async function launchBitterbotChrome(
   }
 
   const pid = proc.pid ?? -1;
+  const cdpHost = wslHostIp ?? "127.0.0.1";
   log.info(
-    `🦞 bitterbot browser started (${exe.kind}) profile "${profile.name}" on 127.0.0.1:${profile.cdpPort} (pid ${pid})`,
+    `🦞 bitterbot browser started (${exe.kind}) profile "${profile.name}" on ${cdpHost}:${profile.cdpPort} (pid ${pid})`,
   );
 
   return {
@@ -310,6 +392,7 @@ export async function launchBitterbotChrome(
     exe,
     userDataDir,
     cdpPort: profile.cdpPort,
+    cdpUrl: cdpReachableUrl,
     startedAt,
     proc,
   };

@@ -306,6 +306,10 @@ function createProfileContext(
         );
       }
       const launched = await launchBitterbotChrome(current.resolved, profile);
+      // WSL: Chrome may bind CDP on a different host than the default loopback
+      if (launched.cdpUrl !== profile.cdpUrl) {
+        profile.cdpUrl = launched.cdpUrl;
+      }
       attachRunning(launched);
       return;
     }
@@ -342,6 +346,9 @@ function createProfileContext(
     setProfileRunning(null);
 
     const relaunched = await launchBitterbotChrome(current.resolved, profile);
+    if (relaunched.cdpUrl !== profile.cdpUrl) {
+      profile.cdpUrl = relaunched.cdpUrl;
+    }
     attachRunning(relaunched);
 
     if (!(await isReachable(600))) {
