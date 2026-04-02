@@ -105,18 +105,29 @@ flowchart TB
 
     subgraph Retrieval
         K[Search Query] --> L[Hybrid BM25 + Vector]
-        L --> M[Retrieval Modulation - hormones bias ranking]
+        L --> MCR[Mood-Congruent Retrieval - hormonal bias]
+        MCR --> M[Retrieval Modulation - hormones bias ranking]
         M --> TMP[Temporal Scoring - query intent × epistemic half-lives]
-        TMP --> N[Results]
+        TMP --> SOM{Somatic Marker Check}
+        SOM -->|proceed/trusted| N[Results]
+        SOM -->|caution| WARN[Warning injected]
         N --> LB[Limbic Bridge - results affect hormones]
+        N --> RECON[Reconsolidation - mark labile]
+        N --> SPACE[Spacing Effect - record access]
     end
 
     subgraph "Proactive Recall (every turn, zero LLM cost)"
         UM[User Message] --> PR[Proactive Recall]
         PR --> ID[Identity prefs - always surface]
         PR --> VEC[Vector-match directive/world_fact crystals]
+        PR --> ZEI[Zeigarnik - surface open loops]
+        PR --> PROSP[Prospective Memory - check triggers]
+        PR --> EPIST[Epistemic Directives - inject questions]
         ID --> SP[System Prompt injection]
         VEC --> SP
+        ZEI --> SP
+        PROSP --> SP
+        EPIST --> SP
         COH[Session Coherence Tracker] --> SP
     end
 
@@ -189,7 +200,7 @@ flowchart TB
 | `src/memory/manager.ts` | Central orchestrator. Creates all subsystems, runs search, exposes public API |
 | `src/memory/manager-sync-ops.ts` | File-watching sync logic (mixin) |
 | `src/memory/manager-embedding-ops.ts` | Embedding batch operations (mixin) |
-| `src/memory/migrations.ts` | Schema versioning: 4 migration versions |
+| `src/memory/migrations.ts` | Schema versioning: 9 migration versions |
 | `src/memory/memory-schema.ts` | Base table creation, `ensureColumn()` helper |
 | `src/memory/crystal-types.ts` | All type definitions: `KnowledgeCrystal`, lifecycle, governance, etc. |
 | `src/memory/crystal.ts` | `CrystalStore` — CRUD operations on knowledge crystals |
@@ -277,6 +288,20 @@ See [Working Memory](./working-memory.md) for full documentation.
 | `src/memory/user-model.ts` | `UserModelManager` — preference extraction, pattern detection |
 | `src/memory/task-memory.ts` | `TaskMemoryManager` — goal tracking, progress, stall detection |
 
+### PLAN-9: Neuroscience Memory Mechanisms
+
+| File | Purpose |
+|------|---------|
+| `src/memory/knowledge-graph.ts` | `KnowledgeGraphManager` — entity-relationship graph with temporal validity (GAP-1/2) |
+| `src/memory/reconsolidation.ts` | `ReconsolidationEngine` — labile states on recall, strengthen/flag/restabilize (GAP-5) |
+| `src/memory/mood-congruent-boost.ts` | Mood-congruent retrieval — hormonal state biases search results (GAP-6) |
+| `src/memory/spacing-effect.ts` | Spacing effect — spaced repetition importance multiplier (GAP-7) |
+| `src/memory/zeigarnik-effect.ts` | Zeigarnik effect — open loop detection, decay resistance for unfinished tasks (GAP-8) |
+| `src/memory/prospective-memory.ts` | `ProspectiveMemoryEngine` — event-triggered future recall (GAP-9) |
+| `src/memory/synaptic-tagging.ts` | Synaptic tagging & capture — strong events boost nearby weak memories (GAP-10) |
+| `src/memory/epistemic-directives.ts` | `EpistemicDirectiveEngine` — active inference, live knowledge gap questions (GAP-11) |
+| `src/memory/somatic-markers.ts` | Somatic marker fast-pathing — pre-retrieval emotional filtering (GAP-12) |
+
 ### Skills & P2P
 
 | File | Purpose |
@@ -344,7 +369,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 
 **Engine:** Node.js built-in `node:sqlite` (`DatabaseSync`) + `sqlite-vec` extension for vector search + FTS5 for full-text search.
 
-**Schema versions:** 4 migrations in `migrations.ts`:
+**Schema versions:** 9 migrations in `migrations.ts`:
 
 | Version | Description |
 |---------|-------------|
@@ -352,6 +377,11 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 | v2 | Skills pipeline tables: `skill_executions`, `peer_reputation`, `peer_skill_ratings`, `mutation_queue`, `skill_edges` + versioning/marketplace/hierarchy columns on `chunks` |
 | v3 | Trust hardening: `peer_trust_edges`, `peer_activity_log` tables + `is_banned`, `eigentrust_score`, `anomaly_flag` on `peer_reputation` |
 | v4 | Management node verification: `is_verified`, `verified_by` columns on `chunks` + bounty tracking: `bounty_match_id`, `bounty_priority_boost` columns on `chunks` |
+| v5 | Skill version conflict resolution — `lineage_hash`, `peer_origin` columns on `chunks` |
+| v6 | Bitemporal columns — `valid_time_start`, `valid_time_end`, `transaction_time` on `chunks` |
+| v7 | Session extraction tracking — `session_extractions` table + `epistemic_layer` on `chunks` |
+| v8 | Persistent emotional anchors — `emotional_anchors` table |
+| v9 | **PLAN-9 Memory Supremacy** — `entities` + `relationships` tables (Knowledge Graph), `prospective_memories` table, `epistemic_directives` table, reconsolidation/spacing/Zeigarnik/synaptic-tagging columns on `chunks` |
 
 **Key tables:**
 
@@ -373,6 +403,12 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 | `skill_edges` | Discovered skill relationships (prerequisite, enables, etc.) |
 | `embedding_cache` | Cached embedding vectors |
 | `memory_audit_log` | Governance audit trail |
+| `entities` | Knowledge graph entities (person, project, concept, etc.) |
+| `relationships` | Temporal entity relationships with validity windows |
+| `prospective_memories` | Event-triggered future recall ("remind me when X") |
+| `epistemic_directives` | Active inference questions to resolve knowledge gaps |
+| `emotional_anchors` | Persistent emotional bookmarks |
+| `session_extractions` | Session processing tracking |
 
 ---
 
@@ -519,6 +555,7 @@ npx vitest run src/memory/
 
 ## Related Documentation
 
+- [How the Memory Works](./how-the-memory-works.md) — plain-language guide to the complete memory system
 - [Knowledge Crystals](./knowledge-crystals.md) — core data model, lifecycle, epistemic layers
 - [Dream Engine](./dream-engine.md) — 7 modes, FSHO selector, ripple replay, emotional triggering
 - [Emotional System](./emotional-system.md) — hormones, anchors, limbic bridge
@@ -528,4 +565,5 @@ npx vitest run src/memory/
 - [Biological Identity](./biological-identity.md) — Genome/Phenotype model
 - [Skills Pipeline](./skills-pipeline.md) — skill lifecycle, verification, and P2P network
 - [Curiosity & Search](./curiosity-and-search.md) — curiosity engine and retrieval system
+- [PLAN-9 Memory Supremacy](./plan9-memory-supremacy.md) — knowledge graph, reconsolidation, neuroscience mechanisms
 - [Core Network Systems](../network/core-systems.md) — A2A, wallet, marketplace, P2P

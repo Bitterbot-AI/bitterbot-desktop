@@ -317,6 +317,99 @@ const MIGRATIONS: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_emotional_anchors_created ON emotional_anchors(created_at)`);
     },
   },
+  {
+    version: 9,
+    description:
+      "PLAN-9 Memory Supremacy: Knowledge Graph (GAP-1/2), Reconsolidation (GAP-5), " +
+      "Spacing Effect (GAP-7), Prospective Memory (GAP-9), Zeigarnik open loops (GAP-8), " +
+      "Synaptic Tagging (GAP-10)",
+    up: (db: DatabaseSync) => {
+      // ── GAP-1: Knowledge Graph — entities table ──
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS entities (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          entity_type TEXT NOT NULL,
+          properties TEXT DEFAULT '{}',
+          first_seen_at INTEGER NOT NULL,
+          last_seen_at INTEGER NOT NULL,
+          mention_count INTEGER DEFAULT 1,
+          importance REAL DEFAULT 0.5,
+          UNIQUE(name, entity_type)
+        )
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)`);
+
+      // ── GAP-1/2: Knowledge Graph — relationships table with temporal validity ──
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS relationships (
+          id TEXT PRIMARY KEY,
+          source_entity_id TEXT NOT NULL REFERENCES entities(id),
+          target_entity_id TEXT NOT NULL REFERENCES entities(id),
+          relation_type TEXT NOT NULL,
+          weight REAL DEFAULT 1.0,
+          valid_from INTEGER,
+          valid_until INTEGER,
+          evidence_chunk_ids TEXT DEFAULT '[]',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_rel_source ON relationships(source_entity_id)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_rel_target ON relationships(target_entity_id)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_rel_type ON relationships(relation_type)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_rel_temporal ON relationships(valid_from, valid_until)`);
+
+      // ── GAP-5: Memory Reconsolidation — labile state tracking ──
+      ensureColumn(db, "chunks", "labile_until", "INTEGER");
+      ensureColumn(db, "chunks", "reconsolidation_count", "INTEGER DEFAULT 0");
+
+      // ── GAP-7: Spacing Effect — access interval tracking ──
+      ensureColumn(db, "chunks", "access_timestamps", "TEXT DEFAULT '[]'");
+      ensureColumn(db, "chunks", "spacing_score", "REAL DEFAULT 0");
+
+      // ── GAP-8: Zeigarnik Effect — open loop detection ──
+      ensureColumn(db, "chunks", "open_loop", "INTEGER DEFAULT 0");
+      ensureColumn(db, "chunks", "open_loop_context", "TEXT");
+
+      // ── GAP-10: Synaptic Tagging & Capture ──
+      ensureColumn(db, "chunks", "captured_by", "TEXT");
+
+      // ── GAP-9: Prospective Memory — event-triggered future recall ──
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS prospective_memories (
+          id TEXT PRIMARY KEY,
+          trigger_condition TEXT NOT NULL,
+          trigger_embedding TEXT,
+          action TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          expires_at INTEGER,
+          triggered_at INTEGER,
+          source_session TEXT,
+          priority REAL DEFAULT 0.5
+        )
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_prospective_active ON prospective_memories(triggered_at)`);
+
+      // ── GAP-11: Active Inference — epistemic directives ──
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS epistemic_directives (
+          id TEXT PRIMARY KEY,
+          directive_type TEXT NOT NULL,
+          question TEXT NOT NULL,
+          context TEXT DEFAULT '',
+          priority REAL DEFAULT 0.5,
+          created_at INTEGER NOT NULL,
+          resolved_at INTEGER,
+          resolution TEXT,
+          source_entity_ids TEXT DEFAULT '[]',
+          attempts INTEGER DEFAULT 0
+        )
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_epistemic_active ON epistemic_directives(resolved_at)`);
+    },
+  },
 ];
 
 /**

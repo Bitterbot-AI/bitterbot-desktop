@@ -14,6 +14,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { calculateImportance, shouldForget } from "./importance.js";
 import { cosineSimilarity, computeCentroid, parseEmbedding } from "./internal.js";
 import { recordDreamTelemetry } from "./dream-schema.js";
+import { spacingImportanceMultiplier } from "./spacing-effect.js";
 
 const log = createSubsystemLogger("memory/consolidation");
 
@@ -52,6 +53,8 @@ type ChunkRow = {
   semantic_type: string | null;
   lifecycle_state: string | null;
   lifecycle: string | null;
+  spacing_score: number | null;
+  open_loop: number | null;
 };
 
 // Base relevance by semantic type: structurally important content gets a survival
@@ -117,7 +120,8 @@ export class ConsolidationEngine {
       .prepare(
         `SELECT id, path, source, start_line, end_line, hash, model, text, embedding,
                 updated_at, importance_score, access_count, last_accessed_at,
-                memory_type, emotional_valence, semantic_type, lifecycle_state, lifecycle
+                memory_type, emotional_valence, semantic_type, lifecycle_state, lifecycle,
+                spacing_score, open_loop
          FROM chunks
          WHERE (COALESCE(lifecycle, 'generated') IN ('generated', 'activated')
                 OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))
@@ -491,7 +495,7 @@ export class ConsolidationEngine {
       // This is stateless — no compounding decay — since the relevance comes
       // from the chunk's semantic type, not its previous importance score.
       const semanticRelevance = SEMANTIC_TYPE_RELEVANCE[chunk.semantic_type ?? "general"] ?? 1.0;
-      const newScore = calculateImportance(
+      let newScore = calculateImportance(
         {
           semanticRelevance,
           accessCount: chunk.access_count ?? 0,
@@ -502,6 +506,18 @@ export class ConsolidationEngine {
         this.config.decayRate,
         this.config.emotionDecayResistance,
       );
+
+      // PLAN-9 GAP-7: Spacing Effect — spaced access gets importance boost
+      if (chunk.spacing_score && chunk.spacing_score > 0) {
+        newScore *= spacingImportanceMultiplier(chunk.spacing_score);
+      }
+
+      // PLAN-9 GAP-8: Zeigarnik Effect — open loops get decay resistance
+      if (chunk.open_loop === 1) {
+        // Open loops are harder to forget (1.5x decay resistance by default)
+        newScore = Math.max(newScore, this.config.forgetThreshold * 2);
+      }
+
       return { chunk, newScore };
     });
   }

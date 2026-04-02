@@ -103,6 +103,38 @@ export async function resolveEndocrineState(params: {
       // Proactive recall not available — non-critical
     }
 
+    // PLAN-9: Prospective Memory — check triggers against current context
+    try {
+      const prospectiveEngine = (manager as Record<string, unknown>).prospectiveMemoryEngine as
+        | { checkTriggers(params: { messageText: string; messageEmbedding?: number[] }): Array<{ action: string }> }
+        | null;
+      if (prospectiveEngine) {
+        const triggered = prospectiveEngine.checkTriggers({ messageText: "" });
+        if (triggered.length > 0) {
+          const prospectiveLines = triggered.map((t) => `- [reminder] ${t.action}`);
+          proactiveMemories = (proactiveMemories ?? "") + "\n" + prospectiveLines.join("\n");
+        }
+      }
+    } catch {
+      // Prospective memory not available — non-critical
+    }
+
+    // PLAN-9: Epistemic Directives — inject knowledge gap questions
+    try {
+      const epistemicEngine = (manager as Record<string, unknown>).epistemicDirectiveEngine as
+        | { getDirectivesForSession(): Array<{ question: string }> }
+        | null;
+      if (epistemicEngine) {
+        const directives = epistemicEngine.getDirectivesForSession();
+        if (directives.length > 0) {
+          const directiveLines = directives.map((d) => `- [question] ${d.question}`);
+          proactiveMemories = (proactiveMemories ?? "") + "\n" + directiveLines.join("\n");
+        }
+      }
+    } catch {
+      // Epistemic directives not available — non-critical
+    }
+
     // Plan 7, Phase 2+9: Session coherence — intra-session thread/intent tracking
     let sessionCoherence: string | undefined;
     try {

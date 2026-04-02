@@ -247,6 +247,37 @@ export function createDeepRecallTool(options: {
       const llmCall = buildLlmCallFn(cfg);
       const executor = new RLMExecutor(llmCall);
 
+      // PLAN-9 GAP-12: Somatic marker assessment — check emotional signature of knowledge region
+      let somaticWarning: string | undefined;
+      if (manager) {
+        try {
+          const { assessSomaticMarkers } = await import("../../memory/somatic-markers.js");
+          const memManager = manager as any;
+          // Use quick search results as proxy for the knowledge region
+          const quickResults = await memManager.search(query, { maxResults: 10 });
+          if (quickResults.length >= 3) {
+            const db = memManager.db as import("node:sqlite").DatabaseSync;
+            const chunkIds: string[] = [];
+            for (const r of quickResults) {
+              try {
+                const row = db.prepare(
+                  `SELECT id FROM chunks WHERE path = ? AND start_line = ? AND end_line = ?`,
+                ).get(r.path, r.startLine, r.endLine) as { id: string } | undefined;
+                if (row) chunkIds.push(row.id);
+              } catch { /* non-critical */ }
+            }
+            if (chunkIds.length >= 3) {
+              const assessment = assessSomaticMarkers(db, chunkIds);
+              if (assessment.verdict === "caution" && assessment.message) {
+                somaticWarning = assessment.message;
+              }
+            }
+          }
+        } catch {
+          // Somatic assessment non-critical
+        }
+      }
+
       // Plan 7, Phase 8: Check cache first — avoid redundant REPL sessions
       const cached = executor.getCachedResult(query, scope);
       if (cached) {
@@ -304,6 +335,7 @@ export function createDeepRecallTool(options: {
         cost: `$${result.cost.toFixed(4)}`,
         limitReached: result.limitReached ?? null,
         error: result.error ?? null,
+        somaticWarning: somaticWarning ?? null,
         contextSize: {
           chars: context.length,
           estimatedTokens: Math.ceil(context.length / 4),

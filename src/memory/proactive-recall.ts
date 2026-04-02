@@ -15,6 +15,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { UserModelManager, UserPreference } from "./user-model.js";
+import { getActiveOpenLoops } from "./zeigarnik-effect.js";
 
 export interface ProactiveRecallConfig {
   enabled: boolean;
@@ -163,6 +164,30 @@ export function proactiveRecall(params: {
       } catch {
         // Vector table may not exist or query may fail — non-critical
       }
+    }
+  }
+
+  // ── 3. PLAN-9 GAP-8: Zeigarnik — surface unfinished business ──
+  if (facts.length < cfg.maxFacts) {
+    try {
+      const openLoops = getActiveOpenLoops(params.db, 2);
+      for (const loop of openLoops) {
+        if (facts.length >= cfg.maxFacts) break;
+        const key = `openloop:${loop.id}`;
+        const lastTurn = params.recentlySurfaced.get(key) ?? -Infinity;
+        if (params.currentTurn - lastTurn < cfg.cooldownTurns * 2) continue;
+
+        facts.push({
+          text: `Unfinished: ${loop.context || loop.text}`,
+          source: "crystal",
+          confidence: Math.min(0.9, loop.importance),
+          epistemicLayer: "experience",
+          chunkId: loop.id,
+        });
+        params.recentlySurfaced.set(key, params.currentTurn);
+      }
+    } catch {
+      // Non-critical
     }
   }
 

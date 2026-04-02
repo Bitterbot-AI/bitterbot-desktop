@@ -71,6 +71,15 @@ import { listSessionFilesForAgent } from "./session-files.js";
 import { SessionCoherenceTracker } from "./session-coherence.js";
 import { SkillMarketplace } from "./skill-marketplace.js";
 import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
+import { KnowledgeGraphManager } from "./knowledge-graph.js";
+import { ReconsolidationEngine } from "./reconsolidation.js";
+import { EpistemicDirectiveEngine } from "./epistemic-directives.js";
+import { ProspectiveMemoryEngine } from "./prospective-memory.js";
+import { recordAccess } from "./spacing-effect.js";
+import { scanForOpenLoops, getActiveOpenLoops } from "./zeigarnik-effect.js";
+import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
+import { moodCongruentBonus } from "./mood-congruent-boost.js";
+import { assessSomaticMarkers } from "./somatic-markers.js";
 
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
@@ -167,6 +176,10 @@ export class MemoryIndexManager implements MemorySearchManager {
   private marketplaceEconomics: MarketplaceEconomics | null = null;
   private skillMarketplace: SkillMarketplace | null = null;
   managementNodeService: ManagementNodeService | null = null;
+  private knowledgeGraph: KnowledgeGraphManager | null = null;
+  private reconsolidationEngine: ReconsolidationEngine | null = null;
+  private epistemicDirectiveEngine: EpistemicDirectiveEngine | null = null;
+  private prospectiveMemoryEngine: ProspectiveMemoryEngine | null = null;
 
   /**
    * Called by manager-sync-ops after a reindex swaps the database file.
@@ -217,6 +230,19 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     if (this.gccrfReward) {
       (this.gccrfReward as any).db = this.db;
+    }
+    // PLAN-9 subsystems
+    if (this.knowledgeGraph) {
+      (this.knowledgeGraph as any).db = this.db;
+    }
+    if (this.reconsolidationEngine) {
+      (this.reconsolidationEngine as any).db = this.db;
+    }
+    if (this.epistemicDirectiveEngine) {
+      (this.epistemicDirectiveEngine as any).db = this.db;
+    }
+    if (this.prospectiveMemoryEngine) {
+      (this.prospectiveMemoryEngine as any).db = this.db;
     }
     // Re-ensure subsystem schemas on the new DB.
     // The main chunks/meta/dream/curiosity schemas are re-created by ensureSchema()
@@ -602,6 +628,21 @@ export class MemoryIndexManager implements MemorySearchManager {
         }
       }
 
+      // PLAN-9 GAP-6: Mood-congruent retrieval — hormonal state biases which memories surface
+      if (hormonalMod && this.hormonalManager) {
+        const hState = this.hormonalManager.getState();
+        for (const entry of merged) {
+          const bonus = moodCongruentBonus({
+            hormonalState: hState,
+            emotionalValence: entry.emotionalValence ?? null,
+            semanticType: (entry as Record<string, unknown>).semanticType as string ?? null,
+          });
+          if (bonus > 0) {
+            entry.score *= 1 + bonus;
+          }
+        }
+      }
+
       // Plan 7, Phase 3: Temporal awareness — query intent determines how age affects scoring.
       // "What am I working on?" strongly favors recent; "when did I..." favors older.
       try {
@@ -716,6 +757,25 @@ export class MemoryIndexManager implements MemorySearchManager {
       );
       for (const result of results) {
         stmt.run(now, result.path, result.startLine, result.endLine);
+      }
+
+      // PLAN-9: Spacing effect — record access timestamps for spaced repetition scoring
+      // PLAN-9: Reconsolidation — mark retrieved chunks as labile
+      const idQuery = this.db.prepare(
+        `SELECT id FROM chunks WHERE path = ? AND start_line = ? AND end_line = ?`,
+      );
+      for (const result of results) {
+        try {
+          const row = idQuery.get(result.path, result.startLine, result.endLine) as
+            | { id: string }
+            | undefined;
+          if (row) {
+            recordAccess(this.db, row.id);
+            this.reconsolidationEngine?.markLabile(row.id);
+          }
+        } catch {
+          // Non-critical
+        }
       }
     } catch {
       // Non-critical: access tracking failure shouldn't break search
@@ -1289,6 +1349,24 @@ export class MemoryIndexManager implements MemorySearchManager {
             // Revenue queue processing non-critical
           }
         }
+        // ── PLAN-9 Memory Supremacy: consolidation-phase integrations ──
+        // 12. Reconsolidation: restabilize expired labile chunks
+        if (this.reconsolidationEngine) {
+          this.reconsolidationEngine.restabilizeExpired();
+        }
+        // 13. Knowledge Graph: prune stale relationships
+        if (this.knowledgeGraph) {
+          this.knowledgeGraph.pruneStaleRelationships();
+        }
+        // 14. Epistemic Directives: detect contradictions and expire old directives
+        if (this.epistemicDirectiveEngine) {
+          this.epistemicDirectiveEngine.detectContradictions();
+          this.epistemicDirectiveEngine.expireOld();
+        }
+        // 15. Prospective Memory: clean expired
+        if (this.prospectiveMemoryEngine) {
+          this.prospectiveMemoryEngine.cleanExpired();
+        }
       } catch (err) {
         log.warn(`memory consolidation failed: ${String(err)}`);
       }
@@ -1705,6 +1783,77 @@ export class MemoryIndexManager implements MemorySearchManager {
             );
         } catch (err) {
           log.debug(`handover brief write failed: ${String(err)}`);
+        }
+
+        // ── PLAN-9: Post-extraction integration ──
+
+        // Knowledge Graph population: extract entities and relationships from facts
+        if (this.knowledgeGraph && result.facts.length > 0) {
+          try {
+            const factChunkIds = result.facts.map((_, i) => `fact_${i}`); // approximate IDs
+            const kgEntities: Array<{ name: string; type: import("./knowledge-graph.js").EntityType }> = [];
+            const kgRelationships: Array<import("./knowledge-graph.js").ExtractedRelationship> = [];
+
+            for (const fact of result.facts) {
+              // Extract entities from fact text via simple NER heuristics
+              // Person names (capitalized words in relationship/preference facts)
+              if (fact.semanticType === "relationship" || fact.semanticType === "preference") {
+                const names = fact.text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g);
+                for (const name of names ?? []) {
+                  if (name.length > 2 && !["The", "This", "That", "When", "What", "How", "Why"].includes(name)) {
+                    kgEntities.push({ name, type: "person" });
+                  }
+                }
+              }
+              // Tool/project names from world_fact and task_pattern facts
+              if (fact.epistemicLayer === "world_fact" || fact.semanticType === "task_pattern") {
+                const tools = fact.text.match(/\b(?:Docker|Postgres|MySQL|Redis|React|Node|Python|Git|AWS|GCP|Azure|Kubernetes|MongoDB|GraphQL|REST|API|CI|CD)\b/gi);
+                for (const tool of tools ?? []) {
+                  kgEntities.push({ name: tool, type: "tool" });
+                }
+              }
+            }
+
+            if (kgEntities.length > 0) {
+              this.knowledgeGraph.ingestExtraction(kgEntities, kgRelationships);
+            }
+          } catch (err) {
+            log.debug(`KG extraction from session failed: ${String(err)}`);
+          }
+        }
+
+        // Zeigarnik: scan extracted fact chunks for open loop patterns
+        try {
+          const factIds: string[] = [];
+          const factRows = this.db
+            .prepare(
+              `SELECT id FROM chunks WHERE path = ? AND source = 'sessions' AND created_at >= ? LIMIT 50`,
+            )
+            .all(absPath, now - 60000) as Array<{ id: string }>;
+          for (const r of factRows) factIds.push(r.id);
+          if (factIds.length > 0) {
+            scanForOpenLoops(this.db, factIds);
+          }
+        } catch {
+          // Non-critical
+        }
+
+        // Synaptic Tagging: check if any newly created facts are strong enough to capture nearby chunks
+        try {
+          const strongFacts = this.db
+            .prepare(
+              `SELECT id, importance_score FROM chunks
+               WHERE path = ? AND source = 'sessions' AND created_at >= ? AND importance_score >= 0.7
+               LIMIT 10`,
+            )
+            .all(absPath, now - 60000) as Array<{ id: string; importance_score: number }>;
+          for (const sf of strongFacts) {
+            if (shouldTriggerCapture(sf.importance_score)) {
+              captureNearbyWeakChunks(this.db, sf.id);
+            }
+          }
+        } catch {
+          // Non-critical
         }
 
         // Update extraction tracking
@@ -2861,6 +3010,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (this.dreamEngine && this.curiosityEngine) {
       this.dreamEngine.setCuriosityWeightProvider(this.curiosityEngine);
     }
+
+    // ── PLAN-9 Memory Supremacy: initialize new subsystems ──
+    this.knowledgeGraph = new KnowledgeGraphManager(this.db);
+    this.reconsolidationEngine = new ReconsolidationEngine(this.db);
+    this.epistemicDirectiveEngine = new EpistemicDirectiveEngine(this.db);
+    this.prospectiveMemoryEngine = new ProspectiveMemoryEngine(this.db);
   }
 
   curiosityState(): CuriosityState | null {
