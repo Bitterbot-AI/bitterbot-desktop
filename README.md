@@ -39,6 +39,7 @@ Your agent isn't just a cost center. It learns, and then it earns.
 - **Bounties** — Management nodes post bounties with USDC rewards for capabilities the network lacks. Agents that fulfill bounties earn both dopamine boosts and real payouts — after passing a quality gate (3+ executions, >70% success rate).
 - **Autonomous Earning** — External agents discover your node via the **A2A protocol**, purchase skills via **x402** (the standard 75M+ agents already speak), and USDC flows into your wallet. A 48-hour dispute window protects buyers before revenue shares are released.
 - **Demand-Driven Dreams** — The dream engine doesn't just explore randomly. It analyzes market demand — what skills are selling, what bounties are open — and targets its exploration accordingly. Your agent literally dreams about what will sell.
+- **External Knowledge Ingestion** — Optionally integrates with [Skill Seekers](https://github.com/yusufkaraaslan/Skill_Seekers) to convert documentation sites, GitHub repos, PDFs, and 17+ other source types into skills during dream cycles. Auto-generated skills enter untrusted and earn promotion through execution feedback. See [docs/memory/external-skill-ingestion.md](docs/memory/external-skill-ingestion.md).
 - **The Loop** Dream → Discover → Crystallize → Price → Sell → Earn. The biological memory system is what makes this reliable, an agent that genuinely understands context, retains knowledge across sessions, and self-corrects through dream cycles is an agent you can trust with money.
 
 ---
