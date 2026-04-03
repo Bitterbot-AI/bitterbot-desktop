@@ -93,7 +93,10 @@ Respond with ONLY a JSON object (no markdown fences):
     "milestones": ["completed milestone 1", "..."],
     "decisions": ["decision made and rationale", "..."],
     "blockers": ["current blocker or open question", "..."],
-    "nextSteps": ["immediate next action", "..."]
+    "nextSteps": ["immediate next action", "..."],
+    "entities": [
+      { "name": "filename.ts or functionName() or CONFIG_KEY", "type": "file|function|variable|config|service|tool", "lastAction": "edited|debugged|created|discussed|configured" }
+    ]
   }
 }
 
@@ -103,6 +106,7 @@ Respond with ONLY a JSON object (no markdown fences):
 - Confidence reflects how certain the fact is: 1.0 = explicitly stated, 0.5 = inferred.
 - Prefer fewer high-quality facts over many low-quality ones.
 - The handover brief should let a new session pick up exactly where this one left off.
+- The entities list should capture specific files, functions, variables, config keys, and services the user was working with — concrete referents that allow resolving references like "that file" or "the second parameter" in the next session. Focus on the 5-10 most recently touched entities.
 
 ## Conversation Transcript
 ${sessionContent}`;
@@ -147,6 +151,20 @@ function parseExtractionResponse(
       }));
 
     const h = parsed.handover;
+
+    // Parse entity registry from LLM output
+    const rawEntities = Array.isArray((h as Record<string, unknown>)?.entities)
+      ? ((h as Record<string, unknown>).entities as Array<{ name?: string; type?: string; lastAction?: string }>)
+      : [];
+    const entities = rawEntities
+      .filter((e) => typeof e?.name === "string" && e.name.length > 0)
+      .map((e) => ({
+        name: e.name!,
+        type: typeof e.type === "string" ? e.type : "unknown",
+        lastAction: typeof e.lastAction === "string" ? e.lastAction : "discussed",
+      }))
+      .slice(0, 10);
+
     const handover: SessionHandoverBrief = {
       sessionId,
       purpose: typeof h?.purpose === "string" ? h.purpose : "Session purpose not determined",
@@ -154,6 +172,7 @@ function parseExtractionResponse(
       decisions: Array.isArray(h?.decisions) ? h.decisions.filter((s) => typeof s === "string") : [],
       blockers: Array.isArray(h?.blockers) ? h.blockers.filter((s) => typeof s === "string") : [],
       nextSteps: Array.isArray(h?.nextSteps) ? h.nextSteps.filter((s) => typeof s === "string") : [],
+      entities,
       timestamp: Date.now(),
     };
 

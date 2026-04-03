@@ -98,14 +98,21 @@ When a session ends (or during dream cycles), a **handover brief** is generated 
 - User was stressed about launch deadline (cortisol elevated)
 - Decided to defer P2P mesh delegation to post-launch
 - Emotional state: focused, slightly anxious, collaborative
+
+## Entities Touched
+- dream-engine.ts (file) — edited
+- computeGCCRFReward() (function) — debugged
+- CURIOSITY_THRESHOLD (config) — discussed
 ```
 
 The brief is:
 1. **Written** to `memory/handover/*.md` and indexed as searchable chunks
-2. **Loaded** by `endocrine-state.ts` at next session start
-3. **Injected** into the system prompt as "Last session: [compact summary]"
+2. **Gated** by the Session Continuity Gate — cosine similarity between the brief's purpose and the user's opening message determines whether to inject it. Below 0.25 similarity = fresh start, brief skipped. This prevents stale context pollution (e.g., injecting database migration context when the user wants help writing an email).
+3. **Loaded** by `endocrine-state.ts` at next session start (if the gate passes)
+4. **Annotated** with staleness if older than 48 hours
+5. **Injected** into the system prompt as "Last session: [compact summary]"
 
-This provides immediate context at session start without requiring the agent to search its memory.
+The **entity snapshot** (files, functions, config keys last touched) enables cross-session anaphora resolution. When the user says "change that parameter" in the next session, the agent has the referent available. Entity names are surfaced via proactive recall when deictic markers ("that", "the same", "it") are detected in the user's message.
 
 ---
 

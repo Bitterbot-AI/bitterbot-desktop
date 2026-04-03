@@ -107,7 +107,7 @@ From the agent's perspective, the system prompt is its sense of self. On every t
 - **What it's good at** — Skills, marketplace reputation (from the Niche)
 - **What it's curious about** — Knowledge gaps, exploration targets (from GCCRF)
 - **What happened recently** — Active context, weighted by emotional salience
-- **What happened last session** — Session handover brief providing cross-session continuity
+- **What happened last session** — Session handover brief (gated by cosine similarity — skipped if irrelevant) with entity snapshot for anaphora resolution
 - **What it can do** — Tools, browser, code execution, wallet, A2A, deep recall
 - **What it must never do** — Safety axioms from the Genome
 

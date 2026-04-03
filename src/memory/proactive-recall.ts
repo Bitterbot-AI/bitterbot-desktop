@@ -191,6 +191,41 @@ export function proactiveRecall(params: {
     }
   }
 
+  // ── 4. Entity snapshot: surface last-touched entities for anaphora resolution ──
+  // When the user says "that file" or "the same thing", the LLM needs the referents.
+  // Query the most recent handover chunk which contains entity names.
+  if (facts.length < cfg.maxFacts && params.userMessage) {
+    const deicticPatterns = /\b(?:that|this|the same|it|those|these|the other|the second|the first|same thing|change it|fix it|update it)\b/i;
+    if (deicticPatterns.test(params.userMessage)) {
+      try {
+        const handoverRow = params.db
+          .prepare(
+            `SELECT text FROM chunks
+             WHERE semantic_type = 'episode' AND source = 'memory'
+               AND text LIKE 'Session Handover:%'
+               AND COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'consolidated')
+             ORDER BY created_at DESC LIMIT 1`,
+          )
+          .get() as { text: string } | undefined;
+
+        if (handoverRow) {
+          // Extract entity names from the "Entities:" line in the chunk text
+          const entitiesMatch = handoverRow.text.match(/Entities:\s*(.+)/);
+          if (entitiesMatch) {
+            facts.push({
+              text: `Recent context: ${entitiesMatch[1].slice(0, 150)}`,
+              source: "preference",
+              confidence: 0.8,
+              category: "context",
+            });
+          }
+        }
+      } catch {
+        // Non-critical — entity snapshot not available
+      }
+    }
+  }
+
   return {
     facts,
     searchTimeMs: performance.now() - start,

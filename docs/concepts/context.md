@@ -106,7 +106,7 @@ The `## Endocrine State` section is built from live hormonal state and includes:
 - **Hormone levels** — Dopamine, cortisol, oxytocin with labels: `(DOMINANT)`, `(active)`, or `(baseline)`.
 - **Tone modulation** — Natural-language instruction like "be enthusiastic and celebrate wins" or "be focused and concise, minimize tangents."
 - **Phenotype summary** — First sentence of the Phenotype section from MEMORY.md (the agent's self-concept).
-- **Session handover brief** — A compact summary from the previous session, providing cross-session continuity (e.g., "Last session: discussed GCCRF alpha annealing, user prefers terse responses").
+- **Session handover brief** — A compact summary from the previous session, providing cross-session continuity (e.g., "Last session: discussed GCCRF alpha annealing, user prefers terse responses"). Gated by the Session Continuity Gate — only injected if cosine similarity with current context exceeds 0.25. Includes an entity snapshot (files, functions, config keys) for anaphora resolution.
 - **Developmental note** — For immature agents (maturity < 15%), guidance to be curious and exploratory.
 
 The model is instructed to **embody** the emotional state naturally without mentioning it. This produces organic personality variation. See [Emotional System](../memory/emotional-system.md) for details.

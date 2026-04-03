@@ -16,6 +16,12 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 
+export type HandoverEntity = {
+  name: string;       // "docker-compose.yml", "handleAuth()", "PORT"
+  type: string;       // "file", "function", "variable", "config", "service"
+  lastAction: string; // "edited", "debugged", "created", "discussed"
+};
+
 export type SessionHandoverBrief = {
   sessionId: string;
   purpose: string;
@@ -23,6 +29,8 @@ export type SessionHandoverBrief = {
   decisions: string[];
   blockers: string[];
   nextSteps: string[];
+  /** Structured entity registry for cross-session anaphora resolution */
+  entities: HandoverEntity[];
   timestamp: number;
 };
 
@@ -62,6 +70,12 @@ export function formatHandoverBrief(brief: SessionHandoverBrief): string {
   if (brief.nextSteps.length > 0) {
     lines.push(`## Next Steps`);
     for (const s of brief.nextSteps) lines.push(`- ${s}`);
+    lines.push("");
+  }
+
+  if (brief.entities && brief.entities.length > 0) {
+    lines.push(`## Entities Touched`);
+    for (const e of brief.entities) lines.push(`- ${e.name} (${e.type}) — ${e.lastAction}`);
     lines.push("");
   }
 
@@ -106,6 +120,9 @@ export function briefToChunkText(brief: SessionHandoverBrief): string {
   if (brief.nextSteps.length > 0) {
     parts.push(`Next steps: ${brief.nextSteps.join("; ")}`);
   }
+  if (brief.entities && brief.entities.length > 0) {
+    parts.push(`Entities: ${brief.entities.map((e) => `${e.name} (${e.lastAction})`).join(", ")}`);
+  }
   return parts.join("\n");
 }
 
@@ -127,7 +144,11 @@ export function formatCompactSummary(brief: SessionHandoverBrief): string {
     ? ` Next: ${brief.nextSteps[0]}`
     : "";
 
-  const summary = `[${dateStr}] ${brief.purpose}.${highlightStr}.${nextStr}`;
+  const entityStr = brief.entities && brief.entities.length > 0
+    ? ` Ctx: ${brief.entities.slice(0, 3).map((e) => e.name).join(", ")}`
+    : "";
+
+  const summary = `[${dateStr}] ${brief.purpose}.${highlightStr}.${nextStr}${entityStr}`;
 
   // Truncate gracefully at ~200 chars
   if (summary.length <= 200) return summary;
@@ -156,6 +177,16 @@ export function parseHandoverBrief(markdown: string, sessionId?: string): Sessio
 
   const sessionMatch = markdown.match(/\*\*Session:\*\*\s*(.+)/);
 
+  // Parse entities: "- name (type) — lastAction"
+  const entityLines = extractList("Entities Touched");
+  const entities: HandoverEntity[] = entityLines
+    .map((line) => {
+      const match = line.match(/^(.+?)\s*\((\w+)\)\s*[—–-]\s*(.+)$/);
+      if (!match) return null;
+      return { name: match[1]!.trim(), type: match[2]!.trim(), lastAction: match[3]!.trim() };
+    })
+    .filter((e): e is HandoverEntity => e !== null);
+
   return {
     sessionId: sessionId ?? sessionMatch?.[1]?.trim() ?? "unknown",
     purpose: purposeMatch[1].trim(),
@@ -163,6 +194,7 @@ export function parseHandoverBrief(markdown: string, sessionId?: string): Sessio
     decisions: extractList("Decisions Made"),
     blockers: extractList("Open Blockers"),
     nextSteps: extractList("Next Steps"),
+    entities,
     timestamp: Number.isNaN(timestamp) ? Date.now() : timestamp,
   };
 }

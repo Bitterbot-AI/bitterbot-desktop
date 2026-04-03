@@ -252,7 +252,7 @@ flowchart TB
 
 | File | Purpose |
 |------|---------|
-| `src/memory/proactive-recall.ts` | Involuntary memory surfacing — identity/directive facts auto-inject every turn |
+| `src/memory/proactive-recall.ts` | Involuntary memory surfacing — identity/directive facts, open loops, entity anaphora auto-inject every turn |
 | `src/memory/session-coherence.ts` | Intra-session thread tracking, decision detection, intent classification |
 | `src/memory/temporal-scoring.ts` | Query-intent-sensitive temporal decay with epistemic half-lives |
 | `src/memory/dream-evaluator.ts` | Dream Quality Score (DQS), FSHO correlation analysis, outcome persistence |

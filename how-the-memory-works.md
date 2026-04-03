@@ -272,6 +272,16 @@ After results are returned:
 
 ---
 
+## Session Continuity Gate — Knowing When to Remember
+
+Not every session is a continuation. Sometimes you spent three hours on a database migration and then come back the next day wanting help with something completely unrelated. Injecting yesterday's Postgres context into a birthday message draft is worse than useless — research shows irrelevant injected context actively reduces LLM accuracy by 10-30%.
+
+The session continuity gate solves this with a single cosine similarity check. When a new session starts, the system embeds the handover brief's purpose and compares it to the current context. Below 0.25 similarity — completely different topic — the brief is skipped entirely. The agent starts fresh instead of dragging in stale context.
+
+When the gate passes and context is loaded, it comes with two enhancements. First, a staleness annotation — briefs older than 48 hours get tagged with their age so the LLM treats them with appropriate skepticism. Second, an entity snapshot — a structured registry of the specific files, functions, variables, and config keys the user was working with. This solves the cross-session anaphora problem: when the user says "change that parameter" or "fix that file," the agent has the referents available. The entity names are automatically extracted during the session extraction pipeline, stored in the handover brief, and surfaced in proactive recall when the user's message contains deictic markers like "that," "the same," or "the other."
+
+---
+
 ## Proactive Recall — What the Agent Volunteers
 
 Every turn, before the LLM generates a response, the system runs a zero-cost proactive recall pass:
@@ -281,6 +291,7 @@ Every turn, before the LLM generates a response, the system runs a zero-cost pro
 3. **Open loops** — unfinished tasks detected by the Zeigarnik system.
 4. **Prospective memories** — trigger conditions that match the current message.
 5. **Epistemic directives** — top-priority knowledge gap questions.
+6. **Entity snapshot** — when the user's message contains references like "that file" or "the same thing," the last-touched entities from the handover brief are surfaced so the LLM can resolve the reference.
 
 These are injected into the system prompt as terse one-line facts. The agent embodies them naturally without announcing them. The user never sees "according to my memory" — they just experience an agent that remembers.
 

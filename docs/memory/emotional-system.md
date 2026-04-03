@@ -167,11 +167,15 @@ The agent is instructed to **embody** the emotional state naturally without ment
 
 ## Cross-Session Continuity
 
-The endocrine state loads the **latest handover brief** at session start, which includes the emotional state from the previous session's end. This means:
+The endocrine state loads the **latest handover brief** at session start — but only if it's relevant. The **Session Continuity Gate** computes cosine similarity between the brief's purpose and the current context. If the user is doing something completely unrelated (similarity < 0.25), the brief is skipped entirely to prevent stale context pollution.
+
+When the brief passes the gate:
 
 - A dopamine high from yesterday's breakthrough subtly colors today's greeting
 - Unresolved cortisol from a bug carries forward as residual focus
 - Built-up oxytocin from deep collaboration persists as warmth
+- An **entity snapshot** (files, functions, config keys) provides referents for cross-session anaphora
+- Briefs older than 48 hours are annotated with their age so the LLM treats them with appropriate skepticism
 
 The handover brief is generated during dream cycles by the session extraction pipeline.
 

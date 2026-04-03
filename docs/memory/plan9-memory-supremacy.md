@@ -444,6 +444,19 @@ Query → Embed
   → Limbic Bridge: results affect hormones
 ```
 
+### Session Start (once per session)
+
+```
+User sends first message
+  → 1. Load latest handover brief
+  → 2. Session Continuity Gate: cosine(message, brief.purpose)
+       → Below 0.25: FRESH START — skip handover
+       → Above 0.25: CONTINUATION — load brief with staleness annotation
+  → 3. Entity snapshot available for anaphora resolution
+  → 4. Prospective Memory: check trigger conditions
+  → 5. Epistemic Directives: inject top-priority questions
+```
+
 ### Proactive Recall (every turn)
 
 ```
@@ -453,6 +466,7 @@ User message arrives
   → 3. Zeigarnik: surface active open loops                           ← NEW
   → 4. Prospective Memory: check trigger conditions                   ← NEW
   → 5. Epistemic Directives: inject top-priority questions            ← NEW
+  → 6. Entity snapshot: surface referents on deictic markers           ← NEW
   → Format and inject into system prompt
 ```
 
@@ -476,6 +490,8 @@ User message arrives
 | Dream Consolidation | Yes (7 modes) | ADD/UPDATE | Episode decomp | Reflect | Fusion |
 | Ebbinghaus Decay | Yes | No | No | No | Yes |
 | Emotional Anchors | Yes | No | No | No | No |
+| Session Continuity Gate | Yes (entropy-gated) | No | Yes (basic) | No | No |
+| Entity Anaphora Resolution | Yes (snapshot) | No | No | No | No |
 | P2P Skill Marketplace | Yes | No | No | No | No |
 
 ---
@@ -487,3 +503,5 @@ User message arrives
 - [Dream Engine](./dream-engine.md) — 7 modes, FSHO selector
 - [Emotional System](./emotional-system.md) — hormones, anchors, limbic bridge
 - [Curiosity & Search](./curiosity-and-search.md) — GCCRF curiosity and retrieval
+- [How the Memory Works](./how-the-memory-works.md) — plain-language guide to the complete system
+- [User Knowledge](./user-knowledge.md) — session extraction, handover briefs, entity snapshots
