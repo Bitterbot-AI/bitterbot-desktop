@@ -180,6 +180,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private reconsolidationEngine: ReconsolidationEngine | null = null;
   private epistemicDirectiveEngine: EpistemicDirectiveEngine | null = null;
   private prospectiveMemoryEngine: ProspectiveMemoryEngine | null = null;
+  private skillSeekersAdapter: import("./skill-seekers-adapter.js").SkillSeekersAdapter | null = null;
 
   /**
    * Called by manager-sync-ops after a reindex swaps the database file.
@@ -1435,6 +1436,9 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     // Plan 8, Phase 7: Wire marketplace intelligence for demand-driven dreams
     this.dreamEngine.setMarketplaceIntelligence(new MarketplaceIntelligence(this.db));
+
+    // PLAN-10: Skill Seekers adapter is wired via the async .then() callback
+    // in ensureSkillNetworkBridge() — no need to wire here (adapter may not exist yet).
 
     const minutes = dreamCfg?.intervalMinutes ?? 120;
     if (minutes > 0) {
@@ -2938,6 +2942,26 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.experienceCollector = new ExperienceSignalCollector(this.db);
     if (this.hormonalManager) this.experienceCollector.setHormonalManager(this.hormonalManager);
     if (this.curiosityEngine) this.experienceCollector.setCuriosityEngine(this.curiosityEngine);
+
+    // Skill Seekers adapter (optional external skill generation)
+    const ssConfig = this.cfg.skills?.skillSeekers;
+    if (ssConfig?.enabled !== false) {
+      import("./skill-seekers-adapter.js")
+        .then(({ SkillSeekersAdapter }) => {
+          this.skillSeekersAdapter = new SkillSeekersAdapter(this.db, ssConfig);
+          this.skillSeekersAdapter.setBitterbotConfig(this.cfg);
+          if (this.epistemicDirectiveEngine) {
+            this.skillSeekersAdapter.setEpistemicDirectiveEngine(this.epistemicDirectiveEngine);
+          }
+          // Late-wire into dream engine if already created
+          if (this.dreamEngine) {
+            this.dreamEngine.setSkillSeekersAdapter(this.skillSeekersAdapter);
+          }
+        })
+        .catch(() => {
+          // Skill Seekers adapter is optional — skip silently
+        });
+    }
 
     // Create execution tracking hook for after_tool_call integration
     if (this.executionTracker) {

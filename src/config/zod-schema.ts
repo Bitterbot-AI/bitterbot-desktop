@@ -523,6 +523,17 @@ export const BitterbotSchema = z
               .strict(),
           )
           .optional(),
+        skillSeekers: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxSkillsPerCycle: z.number().int().min(1).optional(),
+            maxConcurrentScrapes: z.number().int().min(1).optional(),
+            allowedDomains: z.array(z.string()).optional(),
+            blockedDomains: z.array(z.string()).optional(),
+            defaultTtlDays: z.number().int().min(1).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

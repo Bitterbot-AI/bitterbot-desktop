@@ -1,5 +1,8 @@
 .DS_Store
 
+# Research repos (cloned for reference, not part of this project)
+research/*-repo/
+
 # Node
 node_modules/
 

@@ -156,6 +156,26 @@ Most AI memory systems focus on storage and retrieval. We're building toward som
 
 See [Memory Architecture](docs/memory/architecture-overview.md) for technical details.
 
+### BioMemEval Benchmark
+
+We open-sourced [BioMemEval](benchmarks/biomemeval/), the first benchmark that measures biological memory behaviors — not just retrieval accuracy. Six test suites score reconsolidation, mood-congruent retrieval, Zeigarnik proactivity, temporal reasoning, identity continuity, and prospective memory. Run it yourself:
+
+```bash
+pnpm benchmark:biomemeval
+```
+
+| Suite | What It Measures | Bitterbot | Mem0 | Zep | Letta |
+|-------|-----------------|-----------|------|-----|-------|
+| Zeigarnik Proactivity | Surfaces unfinished tasks unprompted | 100% | 0% | 0% | 0% |
+| Mood-Congruent Retrieval | Retrieval shifts with emotional state | 100% | 0% | 0% | 0% |
+| Reconsolidation | Recalled memories become editable | 100% | 0% | 0% | 0% |
+| Temporal Reasoning | Point-in-time KG queries | 100% | 0% | ~80% | 0% |
+| Identity Continuity | Self-model + knowledge gap detection | 100% | 0% | 0% | ~20% |
+| Prospective Memory | "When X happens, do Y" triggers | 100% | 0% | 0% | 0% |
+| **Composite** | | **100%** | **0%** | **~12%** | **~3%** |
+
+LongMemEval asks "can you remember facts?" BioMemEval asks "do you have a mind?"
+
 ### Agent Identity
 
 Every Bitterbot agent ships with a workspace that defines who it is:

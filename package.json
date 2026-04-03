@@ -104,6 +104,7 @@
     "protocol:gen:swift": "node --import tsx scripts/protocol-gen-swift.ts",
     "release:check": "node --import tsx scripts/release-check.ts",
     "start": "node scripts/run-node.mjs",
+    "benchmark:biomemeval": "vitest run --config benchmarks/biomemeval/vitest.config.ts && node --import tsx benchmarks/biomemeval/generate-report.ts",
     "test": "node scripts/test-parallel.mjs",
     "test:all": "pnpm lint && pnpm build && pnpm test && pnpm test:e2e && pnpm test:live && pnpm test:docker:all",
     "test:coverage": "vitest run --config vitest.unit.config.ts --coverage",

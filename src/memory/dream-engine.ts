@@ -99,6 +99,7 @@ export class DreamEngine {
   private hormonalManager: HormonalStateManager | null = null;
   private gccrfRewardFunction: { updateFshoR(r: number): void; getFshoRAvg(): number; getFshoCoupledAlpha(): number } | null = null;
   private marketplaceIntelligence: { hasActivity(): boolean; getDreamModeAdjustments(): Partial<Record<DreamMode, number>>; injectDemandTargets(): number } | null = null;
+  private skillSeekersAdapter: { isAvailable(): Promise<boolean>; fillKnowledgeGap(desc: string, hints?: { category?: string }): Promise<{ ok: boolean; envelopes: unknown[] }>; resetCycleCounter(): void } | null = null;
   private state: DreamState = "DORMANT";
   private lastModeUsed: DreamMode | null = null;
 
@@ -195,6 +196,11 @@ export class DreamEngine {
   /** Plan 7, Phase 10: Set GCCRF reward function for FSHO alpha coupling. */
   setGccrfRewardFunction(fn: { updateFshoR(r: number): void; getFshoRAvg(): number; getFshoCoupledAlpha(): number } | null): void {
     this.gccrfRewardFunction = fn;
+  }
+
+  /** PLAN-10: Set Skill Seekers adapter for external research during exploration mode. */
+  setSkillSeekersAdapter(adapter: { isAvailable(): Promise<boolean>; fillKnowledgeGap(desc: string, hints?: { category?: string }): Promise<{ ok: boolean; envelopes: unknown[] }>; resetCycleCounter(): void } | null): void {
+    this.skillSeekersAdapter = adapter;
   }
 
   getState(): DreamState {
@@ -1265,6 +1271,34 @@ export class DreamEngine {
           ).run(target.id);
         } catch {
           // json_set may not be available; skip gracefully
+        }
+      }
+
+      // PLAN-10: External research via Skill Seekers for knowledge gaps with URLs
+      if (this.skillSeekersAdapter) {
+        try {
+          if (await this.skillSeekersAdapter.isAvailable()) {
+            this.skillSeekersAdapter.resetCycleCounter();
+            const gaps = targets
+              .filter((t) => t.type === "knowledge_gap" || t.type === "market_demand")
+              .slice(0, 2);
+            for (const gap of gaps) {
+              const meta = JSON.parse(gap.metadata || "{}") as Record<string, unknown>;
+              if (meta.externalResearched) continue;
+              const result = await this.skillSeekersAdapter.fillKnowledgeGap(gap.description, {
+                category: typeof meta.category === "string" ? meta.category : undefined,
+              });
+              if (result.ok && result.envelopes.length > 0) {
+                try {
+                  this.db.prepare(
+                    `UPDATE curiosity_targets SET metadata = json_set(COALESCE(metadata, '{}'), '$.externalResearched', 1) WHERE id = ?`,
+                  ).run(gap.id);
+                } catch { /* skip */ }
+              }
+            }
+          }
+        } catch {
+          // Skill Seekers is optional — never break dreams
         }
       }
 

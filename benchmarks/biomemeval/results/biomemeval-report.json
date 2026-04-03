@@ -1,0 +1,69 @@
+{
+  "benchmark": "BioMemEval",
+  "version": "1.0.0",
+  "system": "Bitterbot",
+  "systemVersion": "2026.2.15-beta",
+  "timestamp": "2026-04-03T04:18:24.395Z",
+  "suites": [
+    {
+      "suiteId": "01-zeigarnik-proactivity",
+      "suiteName": "Zeigarnik Proactivity",
+      "weight": 20,
+      "scenarios": 5,
+      "passed": 5,
+      "failed": 0,
+      "percentage": 100
+    },
+    {
+      "suiteId": "02-mood-congruent",
+      "suiteName": "Mood-Congruent Retrieval",
+      "weight": 20,
+      "scenarios": 5,
+      "passed": 5,
+      "failed": 0,
+      "percentage": 100
+    },
+    {
+      "suiteId": "03-reconsolidation",
+      "suiteName": "Reconsolidation Accuracy",
+      "weight": 20,
+      "scenarios": 5,
+      "passed": 5,
+      "failed": 0,
+      "percentage": 100
+    },
+    {
+      "suiteId": "04-temporal-reasoning",
+      "suiteName": "Temporal Reasoning",
+      "weight": 15,
+      "scenarios": 5,
+      "passed": 5,
+      "failed": 0,
+      "percentage": 100
+    },
+    {
+      "suiteId": "05-identity-continuity",
+      "suiteName": "Identity Continuity",
+      "weight": 15,
+      "scenarios": 5,
+      "passed": 5,
+      "failed": 0,
+      "percentage": 100
+    },
+    {
+      "suiteId": "06-prospective-memory",
+      "suiteName": "Prospective Memory",
+      "weight": 10,
+      "scenarios": 5,
+      "passed": 5,
+      "failed": 0,
+      "percentage": 100
+    }
+  ],
+  "compositeScore": 100,
+  "metadata": {
+    "nodeVersion": "v22.22.1",
+    "platform": "linux",
+    "totalDurationMs": null
+  }
+}

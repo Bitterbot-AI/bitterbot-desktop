@@ -33,6 +33,8 @@ export type SkillsP2pConfig = {
   maxIngestedPerHour?: number;
 };
 
+import type { SkillSeekersConfig } from "./types.skill-seekers.js";
+
 export type SkillsConfig = {
   /** Optional bundled-skill allowlist (only affects bundled skills). */
   allowBundled?: string[];
@@ -41,4 +43,6 @@ export type SkillsConfig = {
   entries?: Record<string, SkillConfig>;
   /** P2P skill ingestion settings. */
   p2p?: SkillsP2pConfig;
+  /** External skill generation via Skill Seekers. */
+  skillSeekers?: SkillSeekersConfig;
 };
