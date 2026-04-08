@@ -177,6 +177,8 @@ pnpm benchmark:biomemeval
 
 LongMemEval asks "can you remember facts?" BioMemEval asks "do you have a mind?"
 
+If you find this architecture interesting, please consider starring the repo to follow our progress!
+
 ### Agent Identity
 
 Every Bitterbot agent ships with a workspace that defines who it is:
