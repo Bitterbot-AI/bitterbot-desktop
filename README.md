@@ -50,6 +50,7 @@ Your agent isn't just a cost center. It learns, and then it earns.
 
 ```bash
 git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop
+bash scripts/setup-deps.sh    # installs Chromium, ffmpeg, ripgrep, etc.
 pnpm install && pnpm build
 ```
 
@@ -116,7 +117,7 @@ Bitterbot's memory isn't a vector database with a retrieval step. It's a cogniti
 
 - **Knowledge Crystals** Memories naturally decay over time via Ebbinghaus forgetting curves. Unused info fades; frequently accessed facts become permanent. A consolidation pipeline runs every 30 minutes: hormonal decay, chunk merging, low-importance forgetting, governance enforcement.
 - **Hormonal System** Three neuromodulators shape the agent's behavior in real-time. **Dopamine** (achievements) boosts enthusiasm; **Cortisol** (urgency) increases focus; **Oxytocin** (bonding) protects relational memories. Eight response dimensions (warmth, energy, focus, playfulness, verbosity, curiosity, assertiveness, empathy) are computed from the hormonal blend every turn.
-- **Curiosity Engine (GCCRF)** The agent actively maps what it *doesn't* know. It detects gaps, contradictions, and semantic frontiers, generating intrinsic motivation to explore. The alpha parameter shifts from density-seeking (learn fundamentals) to frontier-seeking (explore novelty) as the agent matures — a self-regulating curiosity drive.
+- **Curiosity Engine** The agent actively maps what it *doesn't* know via a unified five-component GCCRF reward function. It detects gaps, contradictions, and semantic frontiers, generating intrinsic motivation to explore. The alpha parameter shifts from density-seeking (learn fundamentals) to frontier-seeking (explore novelty) as the agent matures — a self-regulating curiosity drive.
 - **Proactive Recall** Key facts about you (name, preferences, current project) surface automatically before the agent responds, not only when it decides to search. Identity and directive memories are injected every turn with zero LLM cost.
 - **Evolving Identity** You define the immutable safety axioms (`GENOME.md`). The agent's actual personality (the Phenotype) evolves organically based on lived experience, constrained by your genome.
 
@@ -143,7 +144,7 @@ Each cycle is scored by a **Dream Quality Score** that measures crystal yield, m
 Dreams rewrite the agent's working memory, updating its self-concept, theory of mind about you, and active context. The personality is an *output* of experience, not a static prompt. On first launch, the agent develops a persistent personality within hours.
 
 <p align="center">
-  <img src="docs/public/curiosity.png" alt="Curiosity Engine - GCCRF reward components and exploration targets" width="880">
+  <img src="docs/public/curiosity.png" alt="Curiosity Engine — reward components and exploration targets" width="880">
 </p>
 
 ### Continuous Memory
@@ -395,7 +396,7 @@ Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic fai
 
 Bitterbot uses [OpenClaw](https://github.com/nicepkg/openclaw) (MIT License) as scaffolding for its channel surface (WhatsApp/Telegram/Discord/Signal/Slack message routing) and the base embedded agent runner, originally built by [Mario Zechner](https://mariozechner.at/) as [pi-mono](https://github.com/badlogic/pi-mono). The Dream Engine's Research mode was inspired by [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch) loop. Deep Recall implements the [Recursive Language Model](https://arxiv.org/abs/2512.24601) pattern via [hampton-io/RLM](https://github.com/hampton-io/RLM) (MIT License).
 
-Everything else - the memory system, dream engine, curiosity engine (GCCRF), hormonal system, evolving identity, economic layer, P2P skills marketplace, A2A interoperability, and the biological identity framework, is original Bitterbot work.
+Everything else - the memory system, dream engine, curiosity engine, hormonal system, evolving identity, economic layer, P2P skills marketplace, A2A interoperability, and the biological identity framework, is original Bitterbot work.
 
 ---
 

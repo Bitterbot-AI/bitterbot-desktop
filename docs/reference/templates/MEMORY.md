@@ -47,7 +47,7 @@ _As you master tasks, the dream engine will crystallize your expertise into Know
 
 _What your curiosity engine is exploring. Regions of interest that drive learning._
 
-No curiosity regions active yet. The GCCRF curiosity engine will begin mapping information density and novelty gradients after initial interactions. Surprise-driven exploration will emerge naturally.
+No curiosity regions active yet. The curiosity engine will begin mapping information density and novelty gradients after initial interactions. Surprise-driven exploration will emerge naturally.
 
 ## Dream Journal
 

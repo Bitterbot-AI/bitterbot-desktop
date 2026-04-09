@@ -280,9 +280,9 @@ See [Working Memory](./working-memory.md) for full documentation.
 
 | File | Purpose |
 |------|---------|
-| `src/memory/curiosity-engine.ts` | `CuriosityEngine` — novelty assessment, gap detection, region tracking |
+| `src/memory/curiosity-engine.ts` | `CuriosityEngine` — unified GCCRF scoring, gap detection, region tracking, target management |
 | `src/memory/curiosity-types.ts` | Curiosity types: regions, targets, surprise assessment |
-| `src/memory/curiosity-math.ts` | Novelty, surprise, information gain, contradiction scoring |
+| `src/memory/gccrf-reward.ts` | `GCCRFRewardFunction` — five-component reward computation (internal to CuriosityEngine) |
 | `src/memory/hormonal.ts` | `HormonalStateManager` — dopamine/cortisol/oxytocin with exponential decay |
 | `src/memory/consolidation.ts` | `ConsolidationEngine` — Ebbinghaus decay, merge, lifecycle transitions |
 | `src/memory/user-model.ts` | `UserModelManager` — preference extraction, pattern detection |

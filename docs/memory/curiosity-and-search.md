@@ -2,7 +2,7 @@
 
 The curiosity engine identifies knowledge gaps by tracking what the system knows (knowledge regions), what surprises it (novelty assessment), and what the user searches for but can't find (gap detection). It feeds exploration targets into the dream engine's exploration mode and receives dream insights back, forming a continuous curiosity-dream feedback loop. The search system combines BM25 keyword matching with multi-perspective vector search for robust retrieval.
 
-**Key source files:** `curiosity-engine.ts`, `curiosity-types.ts`, `curiosity-math.ts`, `mem-store.ts`, `multi-perspective-search.ts`, `embedding-perspectives.ts`, `user-model.ts`, `task-memory.ts`
+**Key source files:** `curiosity-engine.ts`, `curiosity-types.ts`, `gccrf-reward.ts`, `mem-store.ts`, `multi-perspective-search.ts`, `embedding-perspectives.ts`, `user-model.ts`, `task-memory.ts`
 
 ---
 
@@ -31,41 +31,36 @@ type KnowledgeRegion = {
 
 Regions are rebuilt periodically during `run()`. The maximum number of regions is configurable (default: 50).
 
-### Novelty & Surprise Assessment
+### Unified GCCRF Scoring
 
-When a new chunk is indexed, `assessChunk()` evaluates it across 4 dimensions:
+When a new chunk is indexed, `assessChunk()` uses the internal GCCRF reward function to evaluate it across 5 components:
 
-| Dimension | What it measures | Weight |
+| Component | What it measures | Weight |
 |-----------|-----------------|--------|
-| Novelty | Distance from nearest knowledge region centroid | 0.30 |
-| Surprise | Prediction error vs. expected similarity | 0.25 |
-| Information gain | How much the chunk expands a region | 0.25 |
-| Contradiction | Semantic conflict with existing knowledge | 0.20 |
+| η (Prediction Error) | Distance from nearest knowledge region centroid | 0.25 |
+| Δη (Learning Progress) | Per-region improvement in prediction accuracy | 0.20 |
+| Iα (Info-Theoretic Novelty) | Density-based novelty with developmental annealing | 0.25 |
+| E·μ (Empowerment) | Knowledge agency gated by uncertainty | 0.20 |
+| S (Strategic Alignment) | Alignment with active exploration targets | 0.10 |
+
+Additionally, **contradiction detection** runs separately — it identifies chunks with high cosine similarity but different content hashes (conflicting information). Contradictions are stored for target generation but do not influence the reward score.
 
 ```typescript
 type SurpriseAssessment = {
   chunkId: string;
-  noveltyScore: number;
-  surpriseFactor: number;
-  informationGain: number;
-  contradictionScore: number;
-  compositeReward: number;      // Weighted sum of all 4
+  noveltyScore: number;           // Maps to η (prediction error)
+  surpriseFactor: number;         // Maps to Δη (learning progress)
+  informationGain: number;        // Maps to Iα (info-theoretic novelty)
+  contradictionScore: number;     // Standalone signal, not in GCCRF
+  compositeReward: number;        // Final GCCRF reward [0,1]
   regionId: string | null;
   assessedAt: number;
+  gccrfComponents?: { eta, deltaEta, iAlpha, empowerment, strategic };
+  gccrfReward?: number;
 };
 ```
 
-When the composite reward exceeds `boostThreshold` (default 0.4), the chunk's `importance_score` is multiplied by `boostMultiplier` (default 1.3).
-
-### Multi-Perspective Novelty
-
-When `perspectiveEmbeddings` are provided (from the multi-perspective embedding system), `assessChunk()` computes per-perspective novelty scores and blends them:
-
-```
-finalNovelty = 0.6 * max(perspectiveNovelties) + 0.4 * baseNovelty
-```
-
-This catches cases where a chunk is novel in one dimension (e.g., procedural) but not others.
+The GCCRF reward is written directly to `chunks.curiosity_reward`. The system also uses **alpha annealing** — young agents are rewarded for exploring common knowledge (α = -3), while mature agents are rewarded for frontier exploration (α → 0). See [Curiosity Reward Function](./curiosity-reward.md) for full details.
 
 ### Gap Detection
 

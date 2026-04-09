@@ -54,6 +54,16 @@ export type SurpriseAssessment = {
   compositeReward: number;
   regionId: string | null;
   assessedAt: number;
+  /** GCCRF component breakdown (when unified scoring is active). */
+  gccrfComponents?: {
+    eta: number;
+    deltaEta: number;
+    iAlpha: number;
+    empowerment: number;
+    strategic: number;
+  };
+  /** GCCRF final reward [0,1] (when unified scoring is active). */
+  gccrfReward?: number;
 };
 
 export type LearningProgressEntry = {
@@ -91,7 +101,7 @@ export type CuriosityWeights = {
 export type CuriosityConfig = {
   /** Enable curiosity engine. Default: true. */
   enabled?: boolean;
-  /** Component weights for reward computation. */
+  /** Component weights for reward computation (legacy heuristic — ignored when GCCRF active). */
   weights?: Partial<CuriosityWeights>;
   /** Composite reward threshold to boost importance. Default: 0.4. */
   boostThreshold?: number;
@@ -107,6 +117,8 @@ export type CuriosityConfig = {
   maxQueryHistory?: number;
   /** Score threshold below which a query indicates a gap. Default: 0.5. */
   gapScoreThreshold?: number;
+  /** GCCRF reward function configuration. When provided, GCCRF replaces heuristic scoring. */
+  gccrf?: import("./gccrf-reward.js").GCCRFConfig | Partial<import("./gccrf-reward.js").GCCRFConfig>;
 };
 
 export const DEFAULT_CURIOSITY_WEIGHTS: CuriosityWeights = {

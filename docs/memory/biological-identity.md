@@ -2,7 +2,7 @@
 
 Bitterbot agents do not have a static personality written once and loaded forever. Instead, identity is modeled after biological organisms: an immutable genetic blueprint (GENOME.md) constrains a living, evolving expression (the Phenotype in MEMORY.md) that develops organically through experience, dream cycles, and network participation. This document explains every piece of that system.
 
-**Key source files:** `genome-parser.ts`, `hormonal.ts`, `gccrf-reward.ts`, `working-memory-prompt.ts`, `skill-network-bridge.ts`, `peer-reputation.ts`, `system-prompt.ts`
+**Key source files:** `genome-parser.ts`, `hormonal.ts`, `curiosity-engine.ts`, `working-memory-prompt.ts`, `skill-network-bridge.ts`, `peer-reputation.ts`, `system-prompt.ts`
 
 ---
 
@@ -220,7 +220,7 @@ Hormones are stimulated by detected events in conversation content:
 | `achievement` | "milestone", "breakthrough", "all tests pass" | Dopamine +0.4, Oxytocin +0.2 |
 | `urgency` | "ASAP", "critical", "deadline", "blocker" | Cortisol +0.4 |
 
-The GCCRF curiosity system also drives hormonal responses:
+The CuriosityEngine's GCCRF scoring also drives hormonal responses:
 - High curiosity reward (>0.7) triggers a dopamine "discovery" spike
 - Sustained low reward (<0.2) triggers a cortisol "stagnation" spike
 - High empowerment on relational content triggers an oxytocin "bonding" spike
@@ -252,7 +252,7 @@ This trajectory is available via `emotionalTrajectory()` and feeds into the drea
 
 ## 5. The Awakening
 
-New agents do not need a bootstrap personality file. They develop organically through the GCCRF (Geodesic Crystal-Field Curiosity Reward Function) alpha annealing schedule.
+New agents do not need a bootstrap personality file. They develop organically through the CuriosityEngine's GCCRF alpha annealing schedule.
 
 ### Developmental Stages
 
@@ -447,4 +447,4 @@ Shorter half-lives make the agent more emotionally volatile (mood shifts faster)
 - [Dream Engine](./dream-engine.md) -- offline processing, 6 dream modes, synthesis pipeline
 - [Knowledge Crystals](./knowledge-crystals.md) -- core data model and memory lifecycle
 - [Skills Pipeline](./skills-pipeline.md) -- skill lifecycle, verification, and P2P network
-- [Curiosity & Search](./curiosity-and-search.md) -- curiosity engine and GCCRF reward function
+- [Curiosity & Search](./curiosity-and-search.md) -- unified curiosity engine with GCCRF reward scoring

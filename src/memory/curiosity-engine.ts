@@ -1,11 +1,17 @@
 /**
- * CuriosityEngine: intrinsic motivation signals that identify knowledge gaps,
- * assess novelty/surprise of new information, and generate exploration targets.
+ * CuriosityEngine: unified intrinsic motivation system combining knowledge
+ * infrastructure (regions, targets, queries, emergence) with GCCRF
+ * mathematical reward scoring.
  *
  * Three integration hooks:
- * 1. assessChunk() -- on indexing: compute surprise, optionally boost importance
+ * 1. assessChunk() -- on indexing: compute GCCRF reward + contradiction detection
  * 2. recordSearchQuery() -- on search: track query quality for gap detection
- * 3. run() -- on consolidation: rebuild regions, detect gaps, generate targets
+ * 3. run() -- on consolidation: rebuild regions, detect gaps, generate targets, score pending chunks
+ *
+ * GCCRF proxy methods:
+ * - getMaturity(), getCurrentAlpha(), updateFshoR(), getFshoRAvg(), getFshoCoupledAlpha()
+ * - saveGCCRFState(), getGCCRFState(), getGCCRFConfig(), gccrfDiagnostics()
+ * - computeReward(), scorePendingChunks()
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -13,13 +19,13 @@ import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
 import {
-  computeNovelty,
-  computeSurprise,
-  computeInformationGain,
-  computeContradiction,
-  computeCuriosityReward,
-  computeLearningProgress,
-} from "./curiosity-math.js";
+  GCCRFRewardFunction,
+  type GCCRFConfig,
+  type GCCRFRewardResult,
+} from "./gccrf-reward.js";
+
+// Re-export for consumers that previously imported from gccrf-reward directly via manager
+export type { GCCRFRewardResult, GCCRFConfig };
 import {
   type CuriosityConfig,
   type CuriosityState,
@@ -70,7 +76,7 @@ type QueryRow = {
 };
 
 export class CuriosityEngine {
-  private readonly db: DatabaseSync;
+  private db: DatabaseSync;
   private readonly config: {
     enabled: boolean;
     weights: { novelty: number; surprise: number; informationGain: number; contradiction: number };
@@ -82,6 +88,9 @@ export class CuriosityEngine {
     maxQueryHistory: number;
     gapScoreThreshold: number;
   };
+
+  /** Unified GCCRF reward function — the single scoring engine. */
+  private readonly gccrfReward: GCCRFRewardFunction;
 
   constructor(db: DatabaseSync, config?: CuriosityConfig) {
     this.db = db;
@@ -97,96 +106,81 @@ export class CuriosityEngine {
       gapScoreThreshold: config?.gapScoreThreshold ?? DEFAULT_CURIOSITY_CONFIG.gapScoreThreshold,
     };
     ensureCuriositySchema(db);
+
+    // Initialize GCCRF reward function as the single scoring engine
+    this.gccrfReward = new GCCRFRewardFunction(db, config?.gccrf as Partial<GCCRFConfig> | undefined);
+  }
+
+  /** Update the database handle after a reindex swaps the underlying file. */
+  updateDb(db: DatabaseSync): void {
+    this.db = db;
+    ensureCuriositySchema(db);
+    // Propagate to GCCRF (it needs to re-ensure its schema too)
+    (this.gccrfReward as any).db = db;
   }
 
   /**
-   * Hook 1: Assess a newly indexed chunk for novelty and surprise.
-   * Returns the composite reward and optionally boosts the chunk's importance.
-   *
-   * When perspectiveEmbeddings are provided, computes per-perspective novelty
-   * and uses the weighted max for a richer novelty signal.
+   * Hook 1: Assess a newly indexed chunk using unified GCCRF scoring.
+   * Returns the GCCRF reward result with component breakdown and contradiction detection.
+   * Writes curiosity_reward directly on the chunk.
    */
   assessChunk(
     chunkId: string,
     chunkEmbedding: number[],
     chunkHash: string,
-    perspectiveEmbeddings?: Partial<Record<EmbeddingPerspective, number[]>>,
+    _perspectiveEmbeddings?: Partial<Record<EmbeddingPerspective, number[]>>,
   ): SurpriseAssessment | null {
     if (!this.config.enabled) return null;
     if (chunkEmbedding.length === 0) return null;
 
     const regions = this.loadRegions();
-    const centroids = regions.map((r) => parseEmbedding(r.centroid));
 
-    // Find nearest region
-    let nearestRegion: RegionRow | null = null;
-    let maxSim = -1;
-    for (let i = 0; i < regions.length; i++) {
-      const centroid = centroids[i];
-      if (!centroid || centroid.length === 0) continue;
-      const sim = cosineSimilarity(chunkEmbedding, centroid);
-      if (sim > maxSim) {
-        maxSim = sim;
-        nearestRegion = regions[i]!;
-      }
+    // Build region centroid map for GCCRF
+    const regionCentroids = new Map<string, number[]>();
+    for (const region of regions) {
+      const centroid = parseEmbedding(region.centroid);
+      if (centroid.length > 0) regionCentroids.set(region.id, centroid);
     }
 
-    const regionCentroid = nearestRegion
-      ? parseEmbedding(nearestRegion.centroid)
-      : null;
+    // Build strategic target embeddings from active exploration targets
+    const strategicTargets: number[][] = [];
+    try {
+      const targets = this.db
+        .prepare(
+          `SELECT region_id FROM curiosity_targets
+           WHERE resolved_at IS NULL AND expires_at > ?
+           ORDER BY priority DESC LIMIT ?`,
+        )
+        .all(Date.now(), this.config.maxTargets) as Array<{ region_id: string | null }>;
+      for (const t of targets) {
+        if (t.region_id) {
+          const centroid = regionCentroids.get(t.region_id);
+          if (centroid) strategicTargets.push(centroid);
+        }
+      }
+    } catch { /* targets table may not exist yet */ }
 
-    // Get neighbors for contradiction detection
+    // Compute GCCRF reward (the single scoring path)
+    const gccrfResult = this.gccrfReward.compute(chunkEmbedding, regionCentroids, strategicTargets);
+
+    // Contradiction detection (unique signal not in GCCRF)
     const neighbors = this.getNeighborChunks(chunkEmbedding, chunkId, 10);
-
-    // Compute base novelty from semantic embedding
-    let novelty = computeNovelty(chunkEmbedding, centroids.filter((c) => c.length > 0));
-
-    // Multi-perspective novelty: compute per-perspective novelty and take weighted max
-    if (perspectiveEmbeddings) {
-      const perspectiveNovelties = this.computePerspectiveNovelties(
-        chunkId,
-        perspectiveEmbeddings,
-        centroids.filter((c) => c.length > 0),
-      );
-      if (perspectiveNovelties.length > 0) {
-        // Weighted max: highest perspective novelty dominates but others contribute
-        const sorted = [...perspectiveNovelties].sort((a, b) => b.novelty - a.novelty);
-        const weightedMax =
-          sorted[0]!.novelty * 0.6 +
-          (sorted[1]?.novelty ?? sorted[0]!.novelty) * 0.25 +
-          (sorted[2]?.novelty ?? sorted[0]!.novelty) * 0.1 +
-          (sorted[3]?.novelty ?? sorted[0]!.novelty) * 0.05;
-        // Blend multi-perspective novelty with base (60% multi, 40% base)
-        novelty = weightedMax * 0.6 + novelty * 0.4;
-      }
-    }
-
-    const surprise = computeSurprise(
-      chunkEmbedding,
-      regionCentroid,
-      nearestRegion?.prediction_error ?? 0,
-    );
-    const informationGain = computeInformationGain(
-      chunkEmbedding,
-      regionCentroid ?? [],
-      nearestRegion?.chunk_count ?? 0,
-    );
-    const contradiction = computeContradiction(chunkEmbedding, chunkHash, neighbors);
-    const compositeReward = computeCuriosityReward(
-      { novelty, surprise, informationGain, contradiction },
-      this.config.weights,
-    );
+    const contradiction = this.computeContradiction(chunkEmbedding, chunkHash, neighbors);
 
     const now = Date.now();
     const assessment: SurpriseAssessment = {
       chunkId,
-      noveltyScore: novelty,
-      surpriseFactor: surprise,
-      informationGain,
+      // Map GCCRF components to legacy assessment fields for backward compat
+      noveltyScore: gccrfResult.rawComponents.eta,
+      surpriseFactor: gccrfResult.rawComponents.deltaEta,
+      informationGain: gccrfResult.rawComponents.iAlpha,
       contradictionScore: contradiction,
-      compositeReward,
-      regionId: nearestRegion?.id ?? null,
+      compositeReward: gccrfResult.reward,
+      regionId: gccrfResult.regionId,
       assessedAt: now,
+      // New unified fields
+      gccrfComponents: gccrfResult.components,
+      gccrfReward: gccrfResult.reward,
     };
 
     // Store assessment
@@ -199,79 +193,21 @@ export class CuriosityEngine {
       )
       .run(
         chunkId,
-        novelty,
-        surprise,
-        informationGain,
+        gccrfResult.rawComponents.eta,
+        gccrfResult.rawComponents.deltaEta,
+        gccrfResult.rawComponents.iAlpha,
         contradiction,
-        compositeReward,
-        nearestRegion?.id ?? null,
+        gccrfResult.reward,
+        gccrfResult.regionId,
         now,
       );
 
-    // Optionally boost chunk importance
-    if (compositeReward > this.config.boostThreshold) {
-      this.db
-        .prepare(
-          `UPDATE chunks SET curiosity_boost = ? WHERE id = ?`,
-        )
-        .run(compositeReward * this.config.boostMultiplier, chunkId);
-    }
+    // Write curiosity_reward directly (replaces old dual curiosity_boost path)
+    this.db
+      .prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`)
+      .run(gccrfResult.reward, chunkId);
 
     return assessment;
-  }
-
-  /**
-   * Compute per-perspective novelty by comparing perspective embeddings against
-   * the existing perspective embeddings in the database.
-   */
-  private computePerspectiveNovelties(
-    _chunkId: string,
-    perspectives: Partial<Record<EmbeddingPerspective, number[]>>,
-    semanticCentroids: number[][],
-  ): Array<{ perspective: EmbeddingPerspective; novelty: number }> {
-    const results: Array<{ perspective: EmbeddingPerspective; novelty: number }> = [];
-
-    const perspectiveKeys: EmbeddingPerspective[] = ["semantic", "procedural", "causal", "entity"];
-    const dbColumns: Record<EmbeddingPerspective, string> = {
-      semantic: "embedding",
-      procedural: "embedding_procedural",
-      causal: "embedding_causal",
-      entity: "embedding_entity",
-    };
-
-    for (const perspective of perspectiveKeys) {
-      const emb = perspectives[perspective];
-      if (!emb || emb.length === 0) continue;
-
-      if (perspective === "semantic") {
-        // Use region centroids for semantic (already computed)
-        results.push({ perspective, novelty: computeNovelty(emb, semanticCentroids) });
-        continue;
-      }
-
-      // For non-semantic perspectives, compare against stored perspective embeddings
-      const col = dbColumns[perspective];
-      const rows = this.db
-        .prepare(
-          `SELECT ${col} as emb FROM chunks
-           WHERE ${col} IS NOT NULL AND ${col} != '[]'
-           ORDER BY updated_at DESC LIMIT 100`,
-        )
-        .all() as Array<{ emb: string }>;
-
-      const refEmbeddings = rows
-        .map((r) => parseEmbedding(r.emb))
-        .filter((e) => e.length > 0);
-
-      if (refEmbeddings.length === 0) {
-        // No reference embeddings → maximum novelty
-        results.push({ perspective, novelty: 1.0 });
-      } else {
-        results.push({ perspective, novelty: computeNovelty(emb, refEmbeddings) });
-      }
-    }
-
-    return results;
   }
 
   /**
@@ -339,11 +275,18 @@ export class CuriosityEngine {
       log.debug("emergence events detected", { count: emergence.length });
     }
 
+    // Score pending chunks that haven't been GCCRF-scored yet
+    const pendingScored = this.scorePendingChunks();
+
+    // Persist GCCRF state
+    this.gccrfReward.saveState();
+
     log.debug("curiosity run complete", {
       regions: regionsBuilt,
       targets: targetsGenerated,
       expired,
       emergence: emergence.length,
+      pendingScored,
     });
 
     return { regions: regionsBuilt, targets: targetsGenerated, expired };
@@ -660,7 +603,13 @@ export class CuriosityEngine {
     if (insight.embedding.length > 0 && insight.confidence >= 0.6) {
       const regions = this.loadRegions();
       const centroids = regions.map((r) => parseEmbedding(r.centroid)).filter((c) => c.length > 0);
-      const novelty = computeNovelty(insight.embedding, centroids);
+      // Inline novelty: 1 - max cosine similarity to region centroids
+      let maxSim = 0;
+      for (const c of centroids) {
+        const sim = cosineSimilarity(insight.embedding, c);
+        if (sim > maxSim) maxSim = sim;
+      }
+      const novelty = centroids.length === 0 ? 1.0 : Math.max(0, 1 - maxSim);
 
       if (novelty > 0.7) {
         // This insight is far from existing regions — frontier territory
@@ -1298,7 +1247,7 @@ export class CuriosityEngine {
         )
         .all(region.id) as Array<{ error: number; timestamp: number }>;
 
-      const progress = computeLearningProgress(history);
+      const progress = this.computeLearningProgressFromHistory(history);
 
       this.db
         .prepare(
@@ -1559,6 +1508,251 @@ export class CuriosityEngine {
     } catch { /* gccrf_state may not exist */ }
 
     return { alpha, maturity, regionProgress };
+  }
+
+  // ── GCCRF Proxy Methods ──
+  // These expose the internal GCCRFRewardFunction for consumers that need
+  // maturity, alpha, FSHO coupling, or direct reward computation.
+
+  /** Agent maturity ratio [0, 1]. */
+  getMaturity(): number {
+    return this.gccrfReward.getMaturity();
+  }
+
+  /** Current alpha schedule value. */
+  getCurrentAlpha(): number {
+    return this.gccrfReward.getCurrentAlpha();
+  }
+
+  /** Update FSHO order parameter EMA (called by DreamEngine after FSHO computation). */
+  updateFshoR(orderParameter: number): void {
+    this.gccrfReward.updateFshoR(orderParameter);
+  }
+
+  /** Get FSHO R EMA value. */
+  getFshoRAvg(): number {
+    return this.gccrfReward.getFshoRAvg();
+  }
+
+  /** Get FSHO-coupled alpha (modulated by memory landscape coherence). */
+  getFshoCoupledAlpha(): number {
+    return this.gccrfReward.getFshoCoupledAlpha();
+  }
+
+  /** Persist GCCRF normalizer and region ETA state. */
+  saveGCCRFState(): void {
+    this.gccrfReward.saveState();
+  }
+
+  /** Get full GCCRF diagnostic state. */
+  getGCCRFState(): Record<string, unknown> {
+    return this.gccrfReward.getState() as unknown as Record<string, unknown>;
+  }
+
+  /** Get current GCCRF config. */
+  getGCCRFConfig(): Record<string, unknown> {
+    return this.gccrfReward.getConfig() as unknown as Record<string, unknown>;
+  }
+
+  /** Get GCCRF diagnostics bundle for dashboard. */
+  gccrfDiagnostics(): {
+    alpha: number;
+    maturity: number;
+    state: Record<string, unknown>;
+    config: Record<string, unknown>;
+  } {
+    return {
+      alpha: this.gccrfReward.getCurrentAlpha(),
+      maturity: this.gccrfReward.getMaturity(),
+      state: this.gccrfReward.getState() as unknown as Record<string, unknown>,
+      config: this.gccrfReward.getConfig() as unknown as Record<string, unknown>,
+    };
+  }
+
+  // ── Reward Computation (absorbed from manager bridge) ──
+
+  /**
+   * Compute GCCRF reward for a single chunk. Used by manager for inline scoring.
+   * Returns the full result so the caller can trigger hormonal responses.
+   */
+  computeReward(chunkId: string, chunkEmbedding: number[]): GCCRFRewardResult | null {
+    if (!this.config.enabled) return null;
+    if (chunkEmbedding.length === 0) return null;
+
+    try {
+      const regions = this.loadRegions();
+      const regionCentroids = new Map<string, number[]>();
+      for (const region of regions) {
+        const centroid = parseEmbedding(region.centroid);
+        if (centroid.length > 0) regionCentroids.set(region.id, centroid);
+      }
+
+      const strategicTargets: number[][] = [];
+      try {
+        const targets = this.db
+          .prepare(
+            `SELECT region_id FROM curiosity_targets
+             WHERE resolved_at IS NULL AND expires_at > ?
+             ORDER BY priority DESC LIMIT ?`,
+          )
+          .all(Date.now(), this.config.maxTargets) as Array<{ region_id: string | null }>;
+        for (const t of targets) {
+          if (t.region_id) {
+            const c = regionCentroids.get(t.region_id);
+            if (c) strategicTargets.push(c);
+          }
+        }
+      } catch { /* non-critical */ }
+
+      const result = this.gccrfReward.compute(chunkEmbedding, regionCentroids, strategicTargets);
+
+      this.db
+        .prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`)
+        .run(result.reward, chunkId);
+
+      return result;
+    } catch (err) {
+      log.debug(`GCCRF computation failed for chunk ${chunkId}: ${String(err)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Batch-score all chunks with NULL curiosity_reward.
+   * Called during consolidation cycle.
+   */
+  scorePendingChunks(): number {
+    if (!this.config.enabled) return 0;
+
+    try {
+      const pendingRows = this.db
+        .prepare(
+          `SELECT id, embedding FROM chunks
+           WHERE curiosity_reward IS NULL
+             AND COALESCE(lifecycle_state, 'active') = 'active'
+             AND embedding IS NOT NULL AND embedding != '[]'
+           LIMIT 100`,
+        )
+        .all() as Array<{ id: string; embedding: string }>;
+
+      if (pendingRows.length === 0) return 0;
+
+      // Gather shared context once
+      const regions = this.loadRegions();
+      const regionCentroids = new Map<string, number[]>();
+      for (const region of regions) {
+        const centroid = parseEmbedding(region.centroid);
+        if (centroid.length > 0) regionCentroids.set(region.id, centroid);
+      }
+
+      const strategicTargets: number[][] = [];
+      try {
+        const targets = this.db
+          .prepare(
+            `SELECT region_id FROM curiosity_targets
+             WHERE resolved_at IS NULL AND expires_at > ?
+             ORDER BY priority DESC LIMIT ?`,
+          )
+          .all(Date.now(), this.config.maxTargets) as Array<{ region_id: string | null }>;
+        for (const t of targets) {
+          if (t.region_id) {
+            const c = regionCentroids.get(t.region_id);
+            if (c) strategicTargets.push(c);
+          }
+        }
+      } catch { /* non-critical */ }
+
+      let scored = 0;
+      const updateStmt = this.db.prepare(
+        `UPDATE chunks SET curiosity_reward = ? WHERE id = ?`,
+      );
+
+      for (const row of pendingRows) {
+        try {
+          const emb = JSON.parse(row.embedding) as number[];
+          if (emb.length === 0) continue;
+          const result = this.gccrfReward.compute(emb, regionCentroids, strategicTargets);
+          updateStmt.run(result.reward, row.id);
+          scored++;
+        } catch { /* skip individual failures */ }
+      }
+
+      if (scored > 0) {
+        log.debug(`GCCRF batch scored ${scored} pending chunks`);
+      }
+
+      return scored;
+    } catch (err) {
+      log.debug(`GCCRF batch scoring failed: ${String(err)}`);
+      return 0;
+    }
+  }
+
+  /** Count chunks that haven't been GCCRF-scored yet. */
+  countPendingChunks(): number {
+    try {
+      const row = this.db
+        .prepare(`SELECT COUNT(*) as c FROM chunks WHERE curiosity_reward IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'`)
+        .get() as { c: number } | undefined;
+      return row?.c ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  // ── Private: Contradiction Detection (moved from curiosity-math.ts) ──
+
+  /**
+   * Detects conflicting information within a region.
+   * High similarity in embedding space + different content hash = contradiction signal.
+   */
+  private computeContradiction(
+    chunkEmbedding: number[],
+    chunkHash: string,
+    neighborEmbeddings: Array<{ embedding: number[]; hash: string }>,
+  ): number {
+    if (neighborEmbeddings.length === 0) return 0;
+
+    let maxContradiction = 0;
+    for (const neighbor of neighborEmbeddings) {
+      const sim = cosineSimilarity(chunkEmbedding, neighbor.embedding);
+      if (sim >= 0.85 && chunkHash !== neighbor.hash) {
+        const contradiction = sim * 0.8;
+        if (contradiction > maxContradiction) {
+          maxContradiction = contradiction;
+        }
+      }
+    }
+    return maxContradiction;
+  }
+
+  /**
+   * Learning progress from prediction error history (moved from curiosity-math.ts).
+   * Positive = region is improving (errors decreasing).
+   */
+  private computeLearningProgressFromHistory(
+    errorHistory: Array<{ error: number; timestamp: number }>,
+  ): number {
+    if (errorHistory.length < 2) return 0;
+
+    const n = errorHistory.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    const t0 = errorHistory[0]!.timestamp;
+
+    for (const entry of errorHistory) {
+      const x = (entry.timestamp - t0) / (1000 * 60);
+      const y = entry.error;
+      sumX += x;
+      sumY += y;
+      sumXY += x * y;
+      sumX2 += x * x;
+    }
+
+    const denom = n * sumX2 - sumX * sumX;
+    if (Math.abs(denom) < 1e-10) return 0;
+
+    const slope = (n * sumXY - sumX * sumY) / denom;
+    return Math.max(-1, Math.min(1, -slope * 100));
   }
 
   /**

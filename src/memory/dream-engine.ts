@@ -47,6 +47,7 @@ import { ExperimentSandbox, type MutationVerdict } from "./experiment-sandbox.js
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { HormonalStateManager } from "./hormonal.js";
 import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
+import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
 
 const log = createSubsystemLogger("memory/dream");
 
@@ -421,7 +422,10 @@ export class DreamEngine {
           }
         }
 
-        this.storeInsights(allInsights);
+        // Relevance gate: filter simulation insights that are too distant from source chunks
+        const gatedInsights = this.applyRelevanceGate(allInsights, cycleId);
+
+        this.storeInsights(gatedInsights);
         this.pruneInsights();
       }
 
@@ -503,34 +507,37 @@ export class DreamEngine {
     const gccrfAdj = this.computeGCCRFModeAdjustments();
 
     // 3. FSHO: what the memory landscape looks like (coherence vs. scatter)
+    // Can be disabled via config.disableFsho for ablation testing.
     const hormones = this.hormonalStateGetter?.() ?? null;
     let fshoAdj: Partial<Record<DreamMode, number>> = {};
-    try {
-      const salienceRows = this.db.prepare(
-        `SELECT importance_score FROM chunks
-         WHERE COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
-           AND importance_score >= ?
-         ORDER BY importance_score DESC LIMIT 20`,
-      ).all(this.config.minImportanceForDream) as Array<{ importance_score: number }>;
+    if (!this.config.disableFsho) {
+      try {
+        const salienceRows = this.db.prepare(
+          `SELECT importance_score FROM chunks
+           WHERE COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
+             AND importance_score >= ?
+           ORDER BY importance_score DESC LIMIT 20`,
+        ).all(this.config.minImportanceForDream) as Array<{ importance_score: number }>;
 
-      if (salienceRows.length >= 5) {
-        const { orderParameter } = simulateFSHO(salienceRows.map(r => r.importance_score));
-        fshoAdj = fshoModeAdjustments(orderParameter, hormones);
+        if (salienceRows.length >= 5) {
+          const { orderParameter } = simulateFSHO(salienceRows.map(r => r.importance_score));
+          fshoAdj = fshoModeAdjustments(orderParameter, hormones);
 
-        // Plan 7, Phase 10: FSHO ↔ GCCRF alpha coupling
-        // Feed order parameter into GCCRF for self-regulating curiosity drive
-        if (this.gccrfRewardFunction) {
-          try {
-            this.gccrfRewardFunction.updateFshoR(orderParameter);
-          } catch {
-            // Method may not exist yet — non-critical
+          // Plan 7, Phase 10: FSHO ↔ GCCRF alpha coupling
+          // Feed order parameter into GCCRF for self-regulating curiosity drive
+          if (this.gccrfRewardFunction) {
+            try {
+              this.gccrfRewardFunction.updateFshoR(orderParameter);
+            } catch {
+              // Method may not exist yet — non-critical
+            }
           }
-        }
 
-        log.debug("FSHO mode selection", { R: orderParameter, adjustments: fshoAdj });
+          log.debug("FSHO mode selection", { R: orderParameter, adjustments: fshoAdj });
+        }
+      } catch {
+        // FSHO computation non-critical
       }
-    } catch {
-      // FSHO computation non-critical
     }
 
     // 4. Market Intelligence: what the network demands (Plan 8, Phase 7)
@@ -546,12 +553,24 @@ export class DreamEngine {
       }
     }
 
+    // FSHO self-validation: scale FSHO weight by empirical correlation strength.
+    // If FSHO R doesn't predict DQS after enough cycles, reduce its influence.
+    let fshoWeightFactor = 1.0;
+    try {
+      const fshoVal = computeFshoWeightAdjustment(this.db);
+      fshoWeightFactor = fshoVal.adjustment;
+      if (fshoVal.sampleSize >= 10) {
+        log.debug("FSHO self-validation", { correlation: fshoVal.correlation, factor: fshoWeightFactor, samples: fshoVal.sampleSize });
+      }
+    } catch { /* non-critical */ }
+
     // Weighted combination with marketplace fallback:
     // When marketplace is active, allocate 20% weight to market demand.
     // When inactive, preserve original 3-signal weights (zero regression).
+    // FSHO weight is scaled by empirical validation factor.
     const CURIOSITY_W = hasMarketActivity ? 0.25 : 0.30;
     const GCCRF_W =     hasMarketActivity ? 0.25 : 0.30;
-    const FSHO_W =      hasMarketActivity ? 0.30 : 0.40;
+    const FSHO_W =      (hasMarketActivity ? 0.30 : 0.40) * fshoWeightFactor;
     const MARKET_W =    hasMarketActivity ? 0.20 : 0.0;
 
     const adjustedModes = enabledModes.map(([mode, cfg]) => {
@@ -1142,16 +1161,36 @@ export class DreamEngine {
     }
 
     const texts = crossDomain.map((s) => s.text.slice(0, 600));
+
+    // Rotate creativity mode per cycle — different cognitive strategies for simulation
+    const cycleCount = this.getCycleCount();
+    const creativityMode = CREATIVITY_MODES[cycleCount % CREATIVITY_MODES.length]!;
+
+    const creativityPrompts: Record<DreamCreativityMode, string> = {
+      associative:
+        `You are a Dream Engine finding surprising associations. These pieces of ` +
+        `knowledge are from different domains. What unexpected similarities, metaphors, ` +
+        `or analogies connect them? Think laterally.`,
+      convergent:
+        `You are a Dream Engine finding convergent principles. These pieces of ` +
+        `knowledge are from different domains. Where do they point to the same ` +
+        `underlying principle or solution? What unified theory connects them?`,
+      cross_domain:
+        `You are a Dream Engine finding cross-domain applications. These pieces of ` +
+        `knowledge are from different domains. How could techniques or insights from ` +
+        `one domain solve problems in another?`,
+    };
+
     const prompt =
-      `You are a Dream Engine finding cross-domain connections. These pieces of ` +
-      `knowledge are from different domains. What non-obvious connections or ` +
-      `applications exist between them? Generate a novel insight.\n\n` +
+      creativityPrompts[creativityMode] + `\n\n` +
       texts.map((t, i) => `Domain ${i + 1}:\n${t}`).join("\n\n---\n\n") +
       `\n\nRespond with a JSON array of objects, each with:\n` +
       `- "content": a cross-domain insight (1-3 sentences)\n` +
       `- "confidence": float 0-1 indicating how strong the connection is\n` +
       `- "keywords": array of 2-5 relevant keywords\n\n` +
       `Respond ONLY with the JSON array.`;
+
+    this.recordTelemetry(cycleId, "simulation", "creativity_mode", CREATIVITY_MODES.indexOf(creativityMode));
 
     try {
       const raw = await llmCall(prompt);
@@ -1783,6 +1822,18 @@ export class DreamEngine {
     recordDreamTelemetry(this.db, cycleId, phase, metric, value);
   }
 
+  /** Get total completed dream cycle count (used for creativity mode rotation). */
+  private getCycleCount(): number {
+    try {
+      const row = this.db.prepare(
+        `SELECT COUNT(*) as c FROM dream_cycles WHERE completed_at IS NOT NULL`,
+      ).get() as { c: number } | undefined;
+      return row?.c ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
   private markChunksDreamed(ids: string[]): void {
     const now = Date.now();
     const stmt = this.db.prepare(
@@ -1810,6 +1861,101 @@ export class DreamEngine {
         )`,
       )
       .run(excess);
+
+    // Extrapolation decay: halve importance of unvalidated prediction insights
+    // after 5+ dream cycles without retrieval. Prevents speculative noise.
+    try {
+      const cycleCount = (this.db.prepare(
+        `SELECT COUNT(*) as c FROM dream_cycles WHERE completed_at IS NOT NULL`,
+      ).get() as { c: number })?.c ?? 0;
+
+      if (cycleCount >= 5) {
+        const fiveCyclesAgo = this.db.prepare(
+          `SELECT started_at FROM dream_cycles WHERE completed_at IS NOT NULL
+           ORDER BY started_at DESC LIMIT 1 OFFSET 4`,
+        ).get() as { started_at: number } | undefined;
+
+        if (fiveCyclesAgo) {
+          const decayed = this.db.prepare(
+            `UPDATE dream_insights SET importance_score = importance_score * 0.5
+             WHERE mode = 'extrapolation'
+               AND COALESCE(access_count, 0) = 0
+               AND created_at < ?
+               AND importance_score > 0.05`,
+          ).run(fiveCyclesAgo.started_at);
+          const changes = (decayed as { changes: number }).changes;
+          if (changes > 0) {
+            log.debug(`extrapolation decay: halved importance on ${changes} unvalidated predictions`);
+          }
+        }
+      }
+    } catch {
+      // Non-critical: extrapolation decay is a quality-of-life feature
+    }
+  }
+
+  /**
+   * Relevance gate: filter simulation insights that are too distant from their source chunks.
+   * Prevents hallucinated "connections" from polluting the memory corpus.
+   * Insights from other modes pass through unchanged.
+   */
+  private applyRelevanceGate(insights: DreamInsight[], cycleId: string): DreamInsight[] {
+    const simInsights = insights.filter(i => i.mode === "simulation");
+    const otherInsights = insights.filter(i => i.mode !== "simulation");
+
+    if (simInsights.length === 0) return insights;
+
+    const gated: DreamInsight[] = [];
+    let rejected = 0;
+
+    for (const insight of simInsights) {
+      if (insight.embedding.length === 0) {
+        gated.push(insight); // Can't gate without embedding
+        continue;
+      }
+
+      // Fetch source chunk embeddings
+      const sourceEmbs: number[][] = [];
+      for (const chunkId of insight.sourceChunkIds) {
+        try {
+          const row = this.db.prepare(`SELECT embedding FROM chunks WHERE id = ?`)
+            .get(chunkId) as { embedding: string } | undefined;
+          if (row) {
+            const emb = parseEmbedding(row.embedding);
+            if (emb.length > 0) sourceEmbs.push(emb);
+          }
+        } catch { /* skip */ }
+      }
+
+      if (sourceEmbs.length === 0) {
+        gated.push(insight); // No source embeddings, can't gate
+        continue;
+      }
+
+      // Check max cosine similarity to any source chunk
+      let maxSim = 0;
+      for (const sourceEmb of sourceEmbs) {
+        const sim = cosineSimilarity(insight.embedding, sourceEmb);
+        if (sim > maxSim) maxSim = sim;
+      }
+
+      if (maxSim >= 0.4) {
+        gated.push(insight);
+      } else {
+        rejected++;
+      }
+    }
+
+    if (simInsights.length > 0) {
+      const passRate = (simInsights.length - rejected) / simInsights.length;
+      this.recordTelemetry(cycleId, "simulation", "gate_pass_rate", passRate);
+      this.recordTelemetry(cycleId, "simulation", "gate_rejected", rejected);
+      if (rejected > 0) {
+        log.debug(`simulation relevance gate rejected ${rejected}/${simInsights.length} insights`);
+      }
+    }
+
+    return [...otherInsights, ...gated];
   }
 
   // ── Phase 7: Strategy helpers ──

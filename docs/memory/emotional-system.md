@@ -27,7 +27,7 @@ Events stimulate specific hormones. Each event has a magnitude (how much to add)
 | Event | Hormone | Magnitude | Trigger |
 |-------|---------|-----------|---------|
 | `achievement` | dopamine | +0.15 | Task completion, breakthrough |
-| `curiosity_high` | dopamine | +0.15 | GCCRF reward > 0.7 |
+| `curiosity_high` | dopamine | +0.15 | Curiosity reward > 0.7 |
 | `friction` | cortisol | +0.10 | Bug, error, frustration |
 | `deadline` | cortisol | +0.10 | Time pressure detected |
 | `bonding` | oxytocin | +0.10 | Personal sharing, trust building |
@@ -43,7 +43,7 @@ Note the **recall events** have smaller magnitudes (0.05) than direct events (0.
 Hormones are stimulated from multiple paths:
 
 1. **Text analysis** (`stimulateFromText`) — Detects emotional language in user messages
-2. **GCCRF rewards** (`stimulateFromGCCRF`) — Curiosity system feeds back into hormones
+2. **Curiosity rewards** (`stimulateFromGCCRF`) — CuriosityEngine GCCRF scoring feeds back into hormones
 3. **Limbic bridge** — Memory retrieval results influence emotional state (see below)
 4. **Network weather** — P2P swarm cortisol spikes from management node broadcasts
 

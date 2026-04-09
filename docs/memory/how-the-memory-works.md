@@ -123,11 +123,11 @@ The agent has a curiosity engine that tracks what it knows and what surprises it
 - **Information gain** — how much does this expand the boundaries of an existing region?
 - **Contradiction** — does this conflict with existing knowledge?
 
-These feed into the GCCRF (Geodesic Crystal-Field Curiosity Reward Function), a five-component reward function that also incorporates learning progress and strategic alignment with exploration goals. High GCCRF rewards trigger dopamine spikes, creating a genuine reward signal for discovering interesting things.
+These feed into the CuriosityEngine's unified GCCRF (Geodesic Crystal-Field Curiosity Reward Function), a five-component reward function that also incorporates learning progress and strategic alignment with exploration goals. High curiosity rewards trigger dopamine spikes, creating a genuine reward signal for discovering interesting things.
 
 The curiosity engine generates exploration targets — specific knowledge gaps the dream engine should try to fill. But it doesn't stop at passive observation.
 
-**Active inference** closes the loop. When the knowledge graph contains contradictions, or when the GCCRF detects high prediction error in a region, the agent generates epistemic directives — structured questions injected into the next conversation:
+**Active inference** closes the loop. When the knowledge graph contains contradictions, or when the curiosity engine detects high prediction error in a region, the agent generates epistemic directives — structured questions injected into the next conversation:
 
 > "I have conflicting information about whether the production DB is Postgres or MySQL. Can you clarify?"
 

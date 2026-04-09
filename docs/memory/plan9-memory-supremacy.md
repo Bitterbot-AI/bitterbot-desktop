@@ -343,7 +343,7 @@ Karl Friston's Free Energy Principle — organisms don't just passively measure 
 
 During consolidation, the engine detects:
 - **Contradictions** — Multiple active relationships of the same type between the same entities in the KG
-- **Knowledge gaps** — High GCCRF prediction error regions
+- **Knowledge gaps** — High prediction error regions (from CuriosityEngine GCCRF)
 - **Low confidence** — Entities with few evidence chunks
 - **Stale facts** — Relationships not reinforced recently
 
@@ -418,7 +418,7 @@ Steps 12-15 are new in PLAN-9:
  7. EigenTrust + anomaly detection
  8. Skill crystallization
  9. Steering reward decay
-10. GCCRF batch scoring
+10. CuriosityEngine batch scoring (GCCRF pending chunks)
 11. Marketplace refresh
 12. Reconsolidation: restabilize expired labile chunks     ← NEW
 13. Knowledge Graph: prune stale relationships              ← NEW
@@ -502,6 +502,6 @@ User message arrives
 - [Knowledge Crystals](./knowledge-crystals.md) — core data model
 - [Dream Engine](./dream-engine.md) — 7 modes, FSHO selector
 - [Emotional System](./emotional-system.md) — hormones, anchors, limbic bridge
-- [Curiosity & Search](./curiosity-and-search.md) — GCCRF curiosity and retrieval
+- [Curiosity & Search](./curiosity-and-search.md) — unified curiosity engine and retrieval
 - [How the Memory Works](./how-the-memory-works.md) — plain-language guide to the complete system
 - [User Knowledge](./user-knowledge.md) — session extraction, handover briefs, entity snapshots

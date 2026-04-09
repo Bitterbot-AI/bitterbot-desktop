@@ -29,7 +29,7 @@ The system prompt assembles these sections in order:
   - **The Bond** — Theory of mind about the user. Communication preferences, trust level, shared history.
   - **The Niche** — Ecosystem identity. Skills crystallized, marketplace earnings, reputation score, P2P network role.
   - **Active Context** — What the agent is working on, weighted by dopamine (excitement) and cortisol (urgency).
-  - **Curiosity Gaps** — What the agent wants to explore next, driven by the GCCRF curiosity engine.
+  - **Curiosity Gaps** — What the agent wants to explore next, driven by the CuriosityEngine's GCCRF reward signals.
   - **Crystal Pointers** — Deep memory search hints for topics the agent knows it has stored.
 - **Memory System Instructions** — How to use `memory_search`, `memory_get`, working memory notes, dream/curiosity introspection, and emotional anchors.
 - **Dream State** — Last dream timestamp, current maturity level, mood descriptor. The agent knows it dreams and can reference its dream journal.
@@ -105,7 +105,7 @@ From the agent's perspective, the system prompt is its sense of self. On every t
 - **How it feels** — Dopamine/cortisol/oxytocin levels (from hormonal system)
 - **Who you are** — Theory of mind, trust level, preferences (from the Bond)
 - **What it's good at** — Skills, marketplace reputation (from the Niche)
-- **What it's curious about** — Knowledge gaps, exploration targets (from GCCRF)
+- **What it's curious about** — Knowledge gaps, exploration targets (from CuriosityEngine)
 - **What happened recently** — Active context, weighted by emotional salience
 - **What happened last session** — Session handover brief (gated by cosine similarity — skipped if irrelevant) with entity snapshot for anaphora resolution
 - **What it can do** — Tools, browser, code execution, wallet, A2A, deep recall

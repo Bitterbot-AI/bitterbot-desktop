@@ -36,9 +36,8 @@ import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js
 import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
 import type { DreamStats, SynthesizeFn } from "./dream-types.js";
 import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
-import { CuriosityEngine } from "./curiosity-engine.js";
+import { CuriosityEngine, type GCCRFRewardResult } from "./curiosity-engine.js";
 import type { CuriosityState } from "./curiosity-types.js";
-import { GCCRFRewardFunction, type GCCRFRewardResult } from "./gccrf-reward.js";
 import { HormonalStateManager } from "./hormonal.js";
 import { UserModelManager } from "./user-model.js";
 import { SkillRefiner } from "./skill-refiner.js";
@@ -159,7 +158,6 @@ export class MemoryIndexManager implements MemorySearchManager {
   private dreamLlmCall: ((prompt: string) => Promise<string>) | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
   private curiosityEngine: CuriosityEngine | null = null;
-  private gccrfReward: GCCRFRewardFunction | null = null;
   private hormonalManager: HormonalStateManager | null = null;
   private userModelManager: UserModelManager | null = null;
   private skillRefiner: SkillRefiner | null = null;
@@ -229,8 +227,8 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (this.hormonalManager) {
       (this.hormonalManager as any).db = this.db;
     }
-    if (this.gccrfReward) {
-      (this.gccrfReward as any).db = this.db;
+    if (this.curiosityEngine) {
+      this.curiosityEngine.updateDb(this.db);
     }
     // PLAN-9 subsystems
     if (this.knowledgeGraph) {
@@ -541,7 +539,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     const queryVec = (await this.embedQueryWithTimeout(cleaned)) as number[];
     const hasVector = queryVec.some((v) => v !== 0);
     const vectorResults = hasVector
-      ? await this.searchVector(queryVec, candidates).catch(() => [])
+      ? await this.searchVector(queryVec, candidates, cleaned).catch(() => [])
       : [];
 
     const useRrf = hybrid.mergeStrategy === "rrf";
@@ -786,6 +784,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private async searchVector(
     queryVec: number[],
     limit: number,
+    queryText?: string,
   ): Promise<Array<MemorySearchResult & { id: string; importanceScore: number }>> {
     const results = await searchVector({
       db: this.db,
@@ -794,6 +793,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       queryVec,
       limit,
       snippetMaxChars: SNIPPET_MAX_CHARS,
+      queryText,
       ensureVectorReady: async (dimensions) => await this.ensureVectorReady(dimensions),
       sourceFilterVec: this.buildSourceFilter("c"),
       sourceFilterChunks: this.buildSourceFilter(),
@@ -1198,7 +1198,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     // use the default threshold; mature agents (maturity=1) use half the threshold,
     // becoming more retentive as they accumulate personality-defining memories.
     const baseForgetThreshold = consolidationCfg?.forgetThreshold ?? 0.02;
-    const maturity = this.gccrfReward?.getMaturity() ?? 0;
+    const maturity = this.curiosityEngine?.getMaturity() ?? 0;
     const scaledForgetThreshold = baseForgetThreshold * (1 - maturity * 0.5);
     // Wire real-time hormonal state into consolidation: cortisol → decay resistance,
     // dopamine → reward memory protection, oxytocin → relational memory protection
@@ -1299,8 +1299,8 @@ export class MemoryIndexManager implements MemorySearchManager {
           const engine = new ConsolidationEngine(this.db);
           engine.decaySteeringRewards();
         }
-        // 10. GCCRF: batch-score pending chunks and persist state
-        this.calculatePendingGCCRFRewards();
+        // 10. GCCRF: batch-score pending chunks and persist state (via unified CuriosityEngine)
+        this.curiosityEngine?.scorePendingChunks();
         // 11. Marketplace: refresh listings and prices
         if (this.marketplaceEconomics) {
           const repScore = this.getOwnReputationScore();
@@ -1430,8 +1430,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.dreamEngine.setExecutionTracker(this.executionTracker);
 
     // Plan 7, Phase 10: Wire GCCRF reward function for FSHO alpha coupling
-    if (this.gccrfRewardFunction) {
-      this.dreamEngine.setGccrfRewardFunction(this.gccrfRewardFunction);
+    // (CuriosityEngine now exposes updateFshoR/getFshoRAvg/getFshoCoupledAlpha)
+    if (this.curiosityEngine) {
+      this.dreamEngine.setGccrfRewardFunction(this.curiosityEngine);
     }
 
     // Plan 8, Phase 7: Wire marketplace intelligence for demand-driven dreams
@@ -1541,7 +1542,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
 
       // Persist GCCRF state after each dream cycle (dream cycles drive maturity)
-      this.gccrfReward?.saveState();
+      this.curiosityEngine?.saveGCCRFState();
 
       // Skill refinement evaluation (for mutation and research mode insights)
       if (this.skillRefiner) {
@@ -2063,8 +2064,8 @@ export class MemoryIndexManager implements MemorySearchManager {
       emergingSkills,
       hormonalState,
       timestamp,
-      maturity: this.gccrfReward?.getMaturity() ?? 0,
-      alpha: this.gccrfReward?.getCurrentAlpha() ?? -3.0,
+      maturity: this.curiosityEngine?.getMaturity() ?? 0,
+      alpha: this.curiosityEngine?.getCurrentAlpha() ?? -3.0,
       phenotypeConstraints,
       networkIdentity,
       emotionalAnchors,
@@ -3025,10 +3026,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     const curiosityCfg = this.cfg.memory?.curiosity;
     if (curiosityCfg?.enabled === false) return;
 
-    this.curiosityEngine = new CuriosityEngine(this.db, curiosityCfg);
-
-    // Initialize GCCRF reward function (five-component curiosity reward)
-    this.gccrfReward = new GCCRFRewardFunction(this.db, this.cfg.memory?.gccrf);
+    this.curiosityEngine = new CuriosityEngine(this.db, {
+      ...curiosityCfg,
+      gccrf: this.cfg.memory?.gccrf,
+    });
 
     // Wire curiosity engine to dream mode selection (influences which dream modes run)
     if (this.dreamEngine && this.curiosityEngine) {
@@ -3054,6 +3055,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   /**
    * Assess a newly indexed chunk for novelty/surprise (called from embedding ops).
+   * CuriosityEngine.assessChunk() now handles unified GCCRF scoring internally.
    * If surprise exceeds the novelty signal threshold, emits a signal to the P2P network.
    */
   assessChunkCuriosity(chunkId: string, chunkEmbedding: number[], chunkHash: string): void {
@@ -3062,155 +3064,28 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.skillNetworkBridge?.emitNoveltySignal(assessment).catch(() => {});
     }
 
-    // Inline GCCRF scoring for single-chunk ingestion.
-    // For bulk imports (>10 pending), chunks are scored in the background during consolidation.
-    const pendingCount = this.countPendingGCCRFChunks();
-    if (pendingCount <= 10) {
-      this.computeGCCRFReward(chunkId, chunkEmbedding);
-    }
-  }
+    // Trigger hormonal response from GCCRF signals (kept in manager for separation of concerns)
+    if (assessment?.gccrfReward != null && assessment.gccrfComponents && this.hormonalManager) {
+      let semanticType: string | null = null;
+      try {
+        const row = this.db
+          .prepare(`SELECT semantic_type FROM chunks WHERE id = ?`)
+          .get(chunkId) as { semantic_type: string | null } | undefined;
+        semanticType = row?.semantic_type ?? null;
+      } catch { /* column may not exist */ }
 
-  private countPendingGCCRFChunks(): number {
-    try {
-      const row = this.db
-        .prepare(`SELECT COUNT(*) as c FROM chunks WHERE curiosity_reward IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'`)
-        .get() as { c: number } | undefined;
-      return row?.c ?? 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  /**
-   * Compute GCCRF reward for a single chunk and store it.
-   * Called inline for interactive (single-chunk) ingestion.
-   */
-  computeGCCRFReward(chunkId: string, chunkEmbedding: number[]): GCCRFRewardResult | null {
-    if (!this.gccrfReward || !this.curiosityEngine) return null;
-
-    try {
-      // Gather region centroids from curiosity engine
-      const curiosityState = this.curiosityEngine.getState();
-      const regionCentroids = new Map<string, number[]>();
-      for (const region of curiosityState.regions) {
-        if (region.centroid.length > 0) {
-          regionCentroids.set(region.id, region.centroid);
-        }
-      }
-
-      // Gather strategic target embeddings
-      const strategicTargets: number[][] = [];
-      for (const target of curiosityState.targets) {
-        // Targets don't store embeddings directly — use region centroids as proxy
-        if (target.regionId) {
-          const centroid = regionCentroids.get(target.regionId);
-          if (centroid) strategicTargets.push(centroid);
-        }
-      }
-
-      // Compute GCCRF reward
-      const result = this.gccrfReward.compute(chunkEmbedding, regionCentroids, strategicTargets);
-
-      // Store curiosity_reward on the chunk
-      this.db
-        .prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`)
-        .run(result.reward, chunkId);
-
-      // Trigger hormonal response from GCCRF signals
-      if (this.hormonalManager) {
-        // Get the chunk's semantic type for oxytocin path
-        let semanticType: string | null = null;
-        try {
-          const row = this.db
-            .prepare(`SELECT semantic_type FROM chunks WHERE id = ?`)
-            .get(chunkId) as { semantic_type: string | null } | undefined;
-          semanticType = row?.semantic_type ?? null;
-        } catch { /* column may not exist */ }
-
-        this.hormonalManager.stimulateFromGCCRF(
-          result.reward,
-          result.components,
-          semanticType,
-        );
-        // Check if GCCRF stimulation triggered an emotional mini-dream
-        this.checkEmotionalDreamTrigger();
-      }
-
-      return result;
-    } catch (err) {
-      log.debug(`GCCRF computation failed for chunk ${chunkId}: ${String(err)}`);
-      return null;
-    }
-  }
-
-  /**
-   * Batch-score all chunks with NULL curiosity_reward.
-   * Called during the consolidation cycle for deferred bulk scoring.
-   * Threshold: skip if fewer than 1 pending chunk.
-   */
-  private calculatePendingGCCRFRewards(): number {
-    if (!this.gccrfReward || !this.curiosityEngine) return 0;
-
-    try {
-      const pendingRows = this.db
-        .prepare(
-          `SELECT id, embedding FROM chunks
-           WHERE curiosity_reward IS NULL
-             AND COALESCE(lifecycle_state, 'active') = 'active'
-             AND embedding IS NOT NULL AND embedding != '[]'
-           LIMIT 100`,
-        )
-        .all() as Array<{ id: string; embedding: string }>;
-
-      if (pendingRows.length === 0) return 0;
-
-      // Gather shared context once (not per-chunk)
-      const curiosityState = this.curiosityEngine.getState();
-      const regionCentroids = new Map<string, number[]>();
-      for (const region of curiosityState.regions) {
-        if (region.centroid.length > 0) {
-          regionCentroids.set(region.id, region.centroid);
-        }
-      }
-      const strategicTargets: number[][] = [];
-      for (const target of curiosityState.targets) {
-        if (target.regionId) {
-          const centroid = regionCentroids.get(target.regionId);
-          if (centroid) strategicTargets.push(centroid);
-        }
-      }
-
-      let scored = 0;
-      const updateStmt = this.db.prepare(
-        `UPDATE chunks SET curiosity_reward = ? WHERE id = ?`,
+      this.hormonalManager.stimulateFromGCCRF(
+        assessment.gccrfReward,
+        assessment.gccrfComponents,
+        semanticType,
       );
-
-      for (const row of pendingRows) {
-        try {
-          const emb = JSON.parse(row.embedding) as number[];
-          if (emb.length === 0) continue;
-          const result = this.gccrfReward.compute(emb, regionCentroids, strategicTargets);
-          updateStmt.run(result.reward, row.id);
-          scored++;
-        } catch { /* skip individual failures */ }
-      }
-
-      // Save GCCRF state after batch scoring
-      this.gccrfReward.saveState();
-
-      if (scored > 0) {
-        log.debug(`GCCRF batch scored ${scored} pending chunks`);
-      }
-
-      return scored;
-    } catch (err) {
-      log.debug(`GCCRF batch scoring failed: ${String(err)}`);
-      return 0;
+      this.checkEmotionalDreamTrigger();
     }
   }
 
   /**
    * Get GCCRF diagnostics for the dashboard.
+   * Delegates to the unified CuriosityEngine.
    */
   gccrfDiagnostics(): {
     alpha: number;
@@ -3218,13 +3093,8 @@ export class MemoryIndexManager implements MemorySearchManager {
     state: Record<string, unknown>;
     config: Record<string, unknown>;
   } | null {
-    if (!this.gccrfReward) return null;
-    return {
-      alpha: this.gccrfReward.getCurrentAlpha(),
-      maturity: this.gccrfReward.getMaturity(),
-      state: this.gccrfReward.getState() as unknown as Record<string, unknown>,
-      config: this.gccrfReward.getConfig() as unknown as Record<string, unknown>,
-    };
+    if (!this.curiosityEngine) return null;
+    return this.curiosityEngine.gccrfDiagnostics();
   }
 
   /**

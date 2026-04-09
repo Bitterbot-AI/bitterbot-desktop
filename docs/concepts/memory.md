@@ -16,7 +16,7 @@ Bitterbot's memory is a biological cognitive architecture, not a vector database
 |-----------|-------------|------|
 | **Knowledge Crystals** | Memories that naturally decay via Ebbinghaus curves. Frequently accessed facts become permanent; unused info fades. | [Knowledge Crystals](../memory/knowledge-crystals.md) |
 | **Dream Engine** | Every 2 hours, the agent goes offline to dream — running 7 specialized modes to consolidate, mutate, and optimize knowledge. | [Dream Engine](../memory/dream-engine.md) |
-| **Curiosity Engine (GCCRF)** | Maps what the agent *doesn't* know. Detects gaps, contradictions, and semantic frontiers. Generates intrinsic motivation to explore. | [Curiosity & Search](../memory/curiosity-and-search.md) |
+| **Curiosity Engine** | Unified intrinsic motivation with GCCRF reward scoring. Maps what the agent *doesn't* know. Detects gaps, contradictions, and semantic frontiers. Developmental alpha annealing shifts curiosity from common knowledge to frontier exploration. | [Curiosity & Search](../memory/curiosity-and-search.md) |
 | **Hormonal System** | Three neuromodulators (dopamine, cortisol, oxytocin) shape personality in real-time and determine what's worth remembering. | [Emotional System](../memory/emotional-system.md) |
 | **Working Memory (MEMORY.md)** | Dream-synthesized identity: the Phenotype (self-concept), Bond (theory of mind), Niche (ecosystem role), and active context. Rewritten every dream cycle. | [Working Memory](../memory/working-memory.md) |
 | **Skills Pipeline** | Successful task patterns are crystallized into tradeable skills, published to the P2P marketplace. | [Skills Pipeline](../memory/skills-pipeline.md) |
@@ -50,7 +50,7 @@ Session → Chunk indexing → Embedding → Crystal creation
                                             ↓
                                 Dream Engine (every 2 hours + emotional triggers)
                                 ├── Readiness check (skip if nothing new)
-                                ├── FSHO oscillator + GCCRF → mode selection
+                                ├── CuriosityEngine signals + self-validating FSHO → mode selection
                                 ├── Replay (ripple-enhanced, orphan priority)
                                 ├── Mutation (evolve skills)
                                 ├── Extrapolation (anticipate needs)

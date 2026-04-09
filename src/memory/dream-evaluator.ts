@@ -228,3 +228,39 @@ export function analyzeSignalCorrelation(
     return { fshoCorrelation: 0, sampleSize: 0 };
   }
 }
+
+/**
+ * Compute adaptive FSHO weight adjustment based on empirical correlation.
+ *
+ * After 10+ cycles, checks whether FSHO R actually predicts dream quality.
+ * Returns a scaling factor for FSHO_W in mode selection:
+ *   |r| > 0.3 → validated signal, increase weight (up to 1.5x)
+ *   |r| < 0.2 after 20+ cycles → noise, decrease weight (down to 0.5x)
+ *   Otherwise → neutral (1.0x)
+ */
+export function computeFshoWeightAdjustment(
+  db: DatabaseSync,
+): { adjustment: number; correlation: number; sampleSize: number } {
+  const { fshoCorrelation, sampleSize } = analyzeSignalCorrelation(db, 30);
+
+  if (sampleSize < 10) {
+    // Too few samples — neutral weight, don't penalize early
+    return { adjustment: 1.0, correlation: fshoCorrelation, sampleSize };
+  }
+
+  const absR = Math.abs(fshoCorrelation);
+
+  if (absR > 0.3) {
+    // Validated: FSHO predicts DQS. Scale up proportionally (max 1.5x).
+    const boost = 1.0 + (absR - 0.3) * (0.5 / 0.7);
+    return { adjustment: Math.min(1.5, boost), correlation: fshoCorrelation, sampleSize };
+  }
+
+  if (sampleSize >= 20 && absR < 0.2) {
+    // Enough data to conclude FSHO is noise. Scale down (min 0.5x).
+    const penalty = 0.5 + absR * (0.5 / 0.2);
+    return { adjustment: Math.max(0.5, penalty), correlation: fshoCorrelation, sampleSize };
+  }
+
+  return { adjustment: 1.0, correlation: fshoCorrelation, sampleSize };
+}

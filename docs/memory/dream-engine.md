@@ -2,7 +2,7 @@
 
 The Dream Engine processes memories during idle periods, generating new insights through 7 specialized modes: replaying important memories, compressing redundant knowledge, mutating skills, extrapolating future patterns, simulating cross-domain recombinations, exploring curiosity-driven knowledge gaps, and researching empirical prompt optimizations. Each mode is assigned a compute tier (none, local LLM, or cloud LLM) to balance cost against insight quality.
 
-The engine uses four complementary signals for intelligent mode selection: **curiosity heuristics**, **GCCRF information theory**, **FSHO oscillator dynamics** (a Kuramoto synchronization model), and **marketplace demand** (Plan 8). Dream cycles are triggered on a timer, but can also fire immediately in response to emotional spikes.
+The engine uses three complementary signals for intelligent mode selection: **curiosity-driven GCCRF analysis** (prediction error, learning progress, novelty, empowerment, strategic alignment), **FSHO oscillator dynamics** (a Kuramoto synchronization model with empirical self-validation), and **marketplace demand** (Plan 8). Dream cycles are triggered on a timer, but can also fire immediately in response to emotional spikes.
 
 **Key source files:** `dream-engine.ts`, `dream-types.ts`, `dream-schema.ts`, `dream-synthesis-prompt.ts`, `dream-mutation-strategies.ts`, `dream-oscillator.ts`, `scheduler.ts`
 
@@ -72,35 +72,37 @@ Each mode serves a different purpose and has a default weight controlling how of
 | `exploration` | 0.10 | `local` | Gap-filling from curiosity targets |
 | `research` | 0.10 | `cloud` | Empirical prompt optimization using skill execution data |
 
-### Mode Selection — Four-Signal Architecture
+### Mode Selection — Three-Signal Architecture
 
-`selectModes()` picks 1-3 modes using four complementary signals, combined via weighted normalization. The marketplace signal activates only when there is recent marketplace activity; otherwise the original three-signal weights are preserved:
+`selectModes()` picks 1-3 modes using three complementary signals from the unified `CuriosityEngine`, combined via weighted normalization. The marketplace signal activates only when there is recent marketplace activity; otherwise the original two-signal weights are preserved:
 
 **When marketplace is active** (purchases, bounties, or searches in the last 24h):
 ```
-adjustment = 0.25 × curiosityAdj + 0.25 × gccrfAdj + 0.30 × fshoAdj + 0.20 × marketAdj
+adjustment = 0.25 × curiosityAdj + 0.25 × gccrfAdj + (0.30 × fshoFactor) × fshoAdj + 0.20 × marketAdj
 ```
 
 **When no marketplace activity** (fallback to original weights):
 ```
-adjustment = 0.30 × curiosityAdj + 0.30 × gccrfAdj + 0.40 × fshoAdj
+adjustment = 0.30 × curiosityAdj + 0.30 × gccrfAdj + (0.40 × fshoFactor) × fshoAdj
 ```
 
-#### 1. Curiosity Heuristics (weight: 0.30 / 0.25 with market)
+The `fshoFactor` is an empirical self-validation coefficient (0.5–1.5x) computed from the Pearson correlation between FSHO R and Dream Quality Score over recent cycles. If FSHO doesn't predict dream quality after 20+ cycles, its influence is automatically reduced.
+
+#### 1. Curiosity Heuristics
 The `CuriosityEngine` shifts weights based on detected knowledge structure:
 - Many knowledge gaps → boost `exploration`
 - Contradictions detected → boost `simulation`
 - Frontier targets → boost `mutation`
 
-#### 2. GCCRF Component Analysis (weight: 0.30 / 0.25 with market)
-Maps individual GCCRF components to modes — what the agent *needs to learn*:
+#### 2. GCCRF Component Analysis
+The unified `CuriosityEngine` maps its internal GCCRF component values to modes — what the agent *needs to learn*:
 - High η (prediction error) → `exploration` (investigate the surprising)
 - High Δη (learning progress) → `compression` (consolidate what's being learned)
 - High Iα (novelty) → `simulation` (cross-domain connections in novel space)
 - High E (empowerment) → `mutation` (optimize high-agency skills)
 - High S (strategic alignment) → `research` (goal-directed investigation)
 
-#### 3. FSHO Oscillator Dynamics (weight: 0.40 / 0.30 with market)
+#### 3. FSHO Oscillator Dynamics (self-validating)
 Maps what the *memory landscape* looks like. Runs a Kuramoto-coupled oscillator simulation on recent chunk salience values and outputs an order parameter R ∈ [0, 1]:
 
 | R Range | Memory State | Favored Modes |
@@ -109,9 +111,9 @@ Maps what the *memory landscape* looks like. Runs a Kuramoto-coupled oscillator 
 | 0.3-0.7 | Critical (edge of sync) | mutation, simulation |
 | R < 0.3 | Scattered (memories dispersed) | exploration, extrapolation |
 
-The FSHO uses fractional Gaussian noise (Hurst parameter H=0.7 for long-range memory) and completes in <3ms.
+The FSHO uses fractional Gaussian noise (Hurst parameter H=0.7 for long-range memory) and completes in <3ms. After 10+ dream cycles, `computeFshoWeightAdjustment()` checks whether FSHO R actually predicts dream quality (Pearson |r| > 0.3 = validated, |r| < 0.2 after 20 cycles = demoted).
 
-**Key insight:** GCCRF and FSHO can disagree. High curiosity targets (GCCRF wants exploration) but coherent memory set (FSHO wants compression) → the weighted combination produces a balanced selection rather than one signal dominating.
+**Key insight:** Curiosity and FSHO can disagree. High curiosity targets (GCCRF wants exploration) but coherent memory set (FSHO wants compression) → the weighted combination produces a balanced selection rather than one signal dominating.
 
 #### Hormonal Temperature
 After adjustment, mode selection uses temperature-scaled softmax:
@@ -169,11 +171,11 @@ Mid-confidence results are queued in `mutation_queue` for retry (up to 3 attempt
 
 ### Extrapolation Mode (cloud LLM)
 
-Predicts future user needs by analyzing preferences, patterns, and episodic memories. Requires at least 3 seed chunks.
+Predicts future user needs by analyzing preferences, patterns, and episodic memories. Requires at least 3 seed chunks. **Prediction tracking:** unvalidated extrapolation insights that go unretrieved for 5+ dream cycles have their importance halved, preventing speculative noise from accumulating in the insight corpus.
 
 ### Simulation Mode (cloud LLM)
 
-Cross-domain creative recombination. Uses **farthest-point sampling** to select 3 maximally diverse chunks, then asks the LLM to find unexpected connections.
+Cross-domain creative recombination. Uses **farthest-point sampling** to select 3 maximally diverse chunks, then asks the LLM to find unexpected connections. Rotates through three **creativity modes** per cycle: `associative` (metaphors/analogies), `convergent` (unified principles), and `cross_domain` (technique transfer). A **relevance gate** filters insights before storage — simulation insights with max cosine similarity < 0.4 to their source chunks are rejected as hallucinated connections. Gate pass rate is tracked in telemetry.
 
 ### Exploration Mode (local LLM)
 
@@ -235,7 +237,7 @@ After each dream cycle, a **Dream Quality Score (DQS)** is computed and persiste
 
 Bond stability has the highest weight because losing the user's identity information is the worst failure mode.
 
-The `analyzeSignalCorrelation()` function computes Pearson correlation between FSHO R values and DQS across the last 20 cycles. If |r| > 0.3, the FSHO signal is predictive and its weight should be maintained. This data will eventually drive adaptive weight tuning of the signal combination (0.25/0.25/0.30/0.20 with marketplace, or 0.30/0.30/0.40 without).
+The `analyzeSignalCorrelation()` function computes Pearson correlation between FSHO R values and DQS across the last 30 cycles. `computeFshoWeightAdjustment()` then uses this correlation to scale FSHO's influence on mode selection: validated signals (|r| > 0.3) get boosted up to 1.5x, while noise (|r| < 0.2 after 20+ cycles) gets reduced to 0.5x. This makes the FSHO oscillator self-validating — it must empirically prove its value to maintain influence.
 
 ### GCCRF ↔ FSHO Alpha Coupling
 

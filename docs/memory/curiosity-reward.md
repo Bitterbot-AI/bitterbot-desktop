@@ -2,9 +2,9 @@
 
 ## What Is GCCRF?
 
-The Geodesic Crystal-Field Curiosity Reward Function (GCCRF) is Bitterbot's intrinsic curiosity system. It scores every new piece of information the agent encounters on a 0-to-1 scale of "how curious should I be about this?"
+The Geodesic Crystal-Field Curiosity Reward Function (GCCRF) is Bitterbot's intrinsic curiosity system, integrated into the unified `CuriosityEngine`. It scores every new piece of information the agent encounters on a 0-to-1 scale of "how curious should I be about this?"
 
-Unlike simple keyword matching or random exploration, GCCRF computes curiosity from five neuroscience-grounded components that together model how biological curiosity actually works.
+Unlike simple keyword matching or random exploration, the curiosity engine computes curiosity from five neuroscience-grounded components that together model how biological curiosity actually works. The GCCRF reward function is invoked internally by `CuriosityEngine.assessChunk()` — there is no separate scoring path.
 
 ## The Five Components
 
@@ -88,9 +88,9 @@ The Dream Engine's **FSHO oscillator** (Fractional Stuart-Landau Hopf Oscillator
 
 - **GCCRF high prediction error + FSHO low R** → Both agree: explore (scattered, surprising memories)
 - **GCCRF high learning progress + FSHO high R** → Both agree: compress (coherent, consolidating memories)
-- **GCCRF wants exploration + FSHO wants compression** → Disagreement resolved via weighted normalization (0.3 GCCRF, 0.4 FSHO, 0.3 curiosity heuristics)
+- **GCCRF wants exploration + FSHO wants compression** → Disagreement resolved via weighted normalization (0.3 GCCRF, 0.4 FSHO × validation factor, 0.3 curiosity heuristics)
 
-**Future coupling:** The FSHO order parameter R could inform alpha annealing — high R (coherent memory set) suggests the agent has consolidated well and could shift toward frontier-seeking (higher alpha) earlier in its development. This coupling is noted for future implementation.
+**FSHO alpha coupling (implemented):** The FSHO order parameter R informs alpha annealing via a running EMA: `effective_alpha = base_alpha + 0.5 × (R_avg - 0.5)`. High R (coherent memory set) shifts alpha toward frontier-seeking; low R shifts toward consolidation. The FSHO signal is also **self-validating** — `computeFshoWeightAdjustment()` checks Pearson correlation between R and DQS, scaling FSHO's mode selection weight between 0.5x (noise) and 1.5x (validated).
 
 ### Maturity Calculation
 
@@ -120,5 +120,5 @@ The Dream Engine dashboard includes a "Curiosity" tab showing:
 
 - [Dream Engine](./dream-engine.md) — GCCRF mode adjustments, FSHO coupling
 - [Architecture Overview](./architecture-overview.md) — full system data flow
-- [Knowledge Crystals](./knowledge-crystals.md) — curiosity_boost and curiosity_reward columns
+- [Knowledge Crystals](./knowledge-crystals.md) — curiosity_reward column (unified scoring)
 - [Emotional System](./emotional-system.md) — GCCRF → hormonal feedback loop

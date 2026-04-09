@@ -26,7 +26,7 @@ Anything environment-specific that your skills need to know:
 ### Memory System
 
 - **Dream interval:** Every 2 hours (configurable in config)
-- **Curiosity engine:** GCCRF with surprise-driven exploration
+- **Curiosity engine:** Unified GCCRF scoring with developmental alpha annealing
 - **Consolidation:** Automatic decay + importance scoring
 
 ### P2P Network

@@ -155,6 +155,8 @@ export type DreamEngineConfig = {
   modes?: Partial<Record<DreamMode, Partial<DreamModeConfig>>>;
   /** Tiered compute routing configuration. */
   modelTiers?: ModelTierConfig;
+  /** Disable FSHO oscillator for mode selection (fall back to uniform weights). Used for ablation testing. */
+  disableFsho?: boolean;
 };
 
 export const DEFAULT_DREAM_CONFIG: Required<Omit<DreamEngineConfig, "llmCall" | "synthesisLlmCall" | "localLlmCall" | "modes" | "modelTiers">> & { modes: Record<DreamMode, DreamModeConfig> } = {
@@ -170,5 +172,6 @@ export const DEFAULT_DREAM_CONFIG: Required<Omit<DreamEngineConfig, "llmCall" | 
   synthesisModel: "openai/gpt-4o-mini",
   maxInsights: 200,
   minChunksForDream: 5,
+  disableFsho: false,
   modes: { ...DEFAULT_MODE_CONFIGS },
 };

@@ -27,6 +27,16 @@ Last updated: 2026-01-01
 - `pnpm`
 - Docker (optional; only for containerized setup/e2e — see [Docker](/install/docker))
 
+### System dependencies (one-time setup)
+
+The setup script installs Chromium (browser automation), ffmpeg, ripgrep, and other tools Bitterbot uses:
+
+```bash
+bash scripts/setup-deps.sh
+```
+
+This is safe to re-run — it skips already-installed packages. Works on Ubuntu/Debian, Fedora, Arch, and macOS (Homebrew).
+
 ## Tailoring strategy (so updates don’t hurt)
 
 If you want “100% tailored to me” _and_ easy updates, keep your customization in:

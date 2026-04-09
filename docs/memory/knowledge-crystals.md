@@ -87,7 +87,7 @@ type CrystalOrigin =
 | `lastAccessedAt` | `number \| null` | Timestamp of last search hit |
 | `emotionalValence` | `number \| null` | Derived: `(dopamine + oxytocin - cortisol) / 2` at ingestion time. Influences dream seed selection, Ebbinghaus decay resistance, and limbic bridge feedback. |
 | `hormonalInfluence` | `HormonalInfluence \| null` | Dopamine/cortisol/oxytocin snapshot at ingestion time |
-| `curiosityBoost` | `number` | Boost from GCCRF novelty assessment |
+| `curiosityBoost` | `number` | Legacy boost field (backward compat). New scoring uses `curiosityReward` from unified CuriosityEngine |
 | `dreamCount` | `number` | Times processed in dream cycles |
 | `lastDreamedAt` | `number \| null` | Last dream processing timestamp |
 | `lastRippleCount` | `number \| null` | Poisson-sampled ripple count from last replay (enables spaced repetition prioritization) |
