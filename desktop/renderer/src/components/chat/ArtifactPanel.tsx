@@ -27,8 +27,7 @@ export function ArtifactPanel({ onClose }: ArtifactPanelProps) {
 
   // Derive canvas host URL from gateway connection
   const canvasBaseUrl = useMemo(() => {
-    // In Electron, the renderer is served from a local HTTP server that proxies
-    // /__bitterbot__/* to the gateway. Use the current window origin so the iframe
+    // When the UI is served from localhost, reuse the current origin so the iframe
     // loads same-origin (avoids cross-origin iframe issues).
     if (window.location.protocol === "http:" && window.location.hostname === "localhost") {
       return window.location.origin;

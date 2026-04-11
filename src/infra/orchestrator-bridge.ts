@@ -485,13 +485,7 @@ export class OrchestratorBridge {
     const isWindows = process.platform === "win32";
     const exeName = isWindows ? "bitterbot-orchestrator.exe" : "bitterbot-orchestrator";
 
-    // Check Electron packaged app location first (extraResources)
-    if (typeof (process as unknown as Record<string, unknown>).resourcesPath === "string") {
-      const packaged = path.join((process as unknown as Record<string, unknown>).resourcesPath as string, exeName);
-      try { fs.accessSync(packaged); return packaged; } catch { /* fall through */ }
-    }
-
-    // Dev mode: look in orchestrator/target/
+    // Look in orchestrator/target/ (release preferred, debug fallback)
     const base = path.resolve(process.cwd(), "orchestrator", "target");
     const release = path.join(base, "release", exeName);
     const debug = path.join(base, "debug", exeName);

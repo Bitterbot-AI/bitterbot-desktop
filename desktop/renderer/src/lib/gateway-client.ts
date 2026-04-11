@@ -1,8 +1,7 @@
 /**
- * Gateway WebSocket client for the React desktop renderer.
+ * Gateway WebSocket client for the Bitterbot Control UI.
  *
- * Stripped of browser-specific device-auth (handled by Electron IPC instead)
- * and simplified for desktop-first usage.
+ * Authenticates with a shared token from the gateway config.
  */
 
 export type GatewayEventFrame = {

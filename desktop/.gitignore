@@ -1,7 +1,5 @@
 node_modules/
-dist-electron/
 dist-renderer/
-release/
 
 # Secrets — never commit
 .env

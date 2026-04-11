@@ -1,19 +1,12 @@
 {
-  "name": "bitterbot-desktop",
+  "name": "bitterbot-control-ui",
   "version": "2026.2.15",
-  "description": "Bitterbot Desktop - AI assistant with multi-channel gateway",
+  "description": "Bitterbot Control UI - browser-based dashboard for the gateway",
   "private": true,
   "type": "module",
-  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "dev:electron": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "build:renderer": "vite build",
-    "build:main": "vite build --config vite.electron.config.ts",
-    "build:preload": "esbuild electron/preload.ts --bundle --platform=node --target=node22 --outfile=dist-electron/preload.js --external:electron --format=cjs",
-    "build:all": "pnpm build:renderer && pnpm build:main && pnpm build:preload",
-    "build:installer": "electron-builder --config electron-builder.yml",
-    "build": "pnpm build:all && pnpm build:installer",
+    "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
@@ -61,13 +54,9 @@
     "@tailwindcss/postcss": "^4.0.6",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "concurrently": "^9.1.2",
-    "electron": "^35.0.0",
-    "electron-builder": "^26.0.0",
     "postcss": "^8.5.1",
     "tailwindcss": "^4.0.6",
     "typescript": "^5.9.3",
-    "vite": "^6.1.0",
-    "wait-on": "^8.0.3"
+    "vite": "^6.1.0"
   }
 }

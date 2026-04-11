@@ -82,19 +82,6 @@ You can also talk to your agent from the terminal:
 bitterbot agent --message "What have you learned about me so far?"
 ```
 
-<details>
-<summary><strong>Packaged desktop app (Electron)</strong></summary>
-
-For a standalone desktop experience without a browser:
-
-```bash
-cd desktop && pnpm build
-```
-
-This builds the renderer, Electron main process, and packages an installer for your platform.
-
-</details>
-
 ---
 
 ## A Biological Brain

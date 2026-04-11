@@ -108,7 +108,7 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 - `extensions/` — Bundled plugin extensions
 - `skills/` — Bundled agent skills
 - `docs/` — Documentation (Mintlify)
-- `desktop/` — Electron desktop app
+- `desktop/` — Vite/React Control UI (browser dashboard)
 - `orchestrator/` — Rust P2P sidecar
 - Tests: colocated `*.test.ts` and `*.e2e.test.ts`
 - Built output: `dist/`

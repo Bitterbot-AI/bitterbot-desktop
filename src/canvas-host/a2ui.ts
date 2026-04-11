@@ -15,7 +15,7 @@ let cachedA2uiRootReal: string | null | undefined;
 let resolvingA2uiRoot: Promise<string | null> | null = null;
 
 async function resolveA2uiRoot(): Promise<string | null> {
-  // Check env override first (used by Electron packaged app)
+  // Check env override first (for custom deployments)
   const envOverride = process.env.BITTERBOT_A2UI_DIR?.trim();
   if (envOverride) {
     try {

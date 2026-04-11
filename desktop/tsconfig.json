@@ -24,7 +24,6 @@
   "include": [
     "renderer/src/**/*.ts",
     "renderer/src/**/*.tsx",
-    "electron/**/*.ts",
     "env.d.ts"
   ]
 }

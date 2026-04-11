@@ -9,17 +9,3 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
-
-interface BitterbotElectronAPI {
-  platform: string;
-  getGatewayUrl: () => string;
-  getVersion: () => string;
-  windowMinimize: () => void;
-  windowMaximize: () => void;
-  windowClose: () => void;
-  openExternal: (url: string) => void;
-}
-
-interface Window {
-  bitterbot: BitterbotElectronAPI;
-}
