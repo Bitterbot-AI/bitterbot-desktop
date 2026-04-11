@@ -543,28 +543,49 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
   return results;
 }
 
-function checkP2POrchestrator(dbPath: string): DoctorCheckResult[] {
+function checkP2POrchestrator(cfg: BitterbotConfig, dbPath: string): DoctorCheckResult[] {
   const results: DoctorCheckResult[] = [];
 
-  // Check orchestrator binary
-  const orchestratorPath = path.join(process.cwd(), "orchestrator", "target", "release", "bitterbot-orchestrator");
-  const orchestratorExe = process.platform === "win32" ? `${orchestratorPath}.exe` : orchestratorPath;
-  if (fs.existsSync(orchestratorExe)) {
-    results.push(ok("Orchestrator binary found"));
-  } else {
-    results.push(info("Orchestrator binary not found (optional — build with `cargo build --release`)"));
+  // P2P is core infrastructure: missing pieces are errors when enabled, info when off.
+  const p2pEnabled = cfg.p2p?.enabled !== false; // defaults to true
+  if (!p2pEnabled) {
+    results.push(info("P2P network disabled in config — node will run isolated"));
+    return results;
   }
 
-  // Check IPC socket
-  if (process.platform === "win32") {
-    // Named pipe on Windows — cannot easily stat, just note
-    results.push(info("Windows named pipe check skipped"));
+  // Check orchestrator binary (release preferred, debug acceptable with warning)
+  const exeName = process.platform === "win32" ? "bitterbot-orchestrator.exe" : "bitterbot-orchestrator";
+  const releasePath = path.join(process.cwd(), "orchestrator", "target", "release", exeName);
+  const debugPath = path.join(process.cwd(), "orchestrator", "target", "debug", exeName);
+  const explicitPath = cfg.p2p?.orchestratorBinary;
+  let binaryFound = false;
+  if (explicitPath && fs.existsSync(explicitPath)) {
+    results.push(ok(`Orchestrator binary found at ${explicitPath}`));
+    binaryFound = true;
+  } else if (fs.existsSync(releasePath)) {
+    results.push(ok("Orchestrator release binary found"));
+    binaryFound = true;
+  } else if (fs.existsSync(debugPath)) {
+    results.push(warn("Only debug orchestrator binary found — run `cargo build --release --manifest-path orchestrator/Cargo.toml` for production"));
+    binaryFound = true;
   } else {
-    const socketPath = "/tmp/bitterbot-orchestrator.sock";
-    if (fs.existsSync(socketPath)) {
-      results.push(ok("Orchestrator IPC socket found — process appears running"));
+    results.push(error(
+      "Orchestrator binary NOT FOUND — node cannot join the P2P network.\n" +
+      "  Build with: cargo build --release --manifest-path orchestrator/Cargo.toml",
+    ));
+  }
+
+  // Check IPC socket — only meaningful if the binary exists
+  if (binaryFound) {
+    if (process.platform === "win32") {
+      results.push(info("Windows TCP IPC check skipped (port 19002)"));
     } else {
-      results.push(info("Orchestrator IPC socket not found — process not running"));
+      const socketPath = "/tmp/bitterbot-orchestrator.sock";
+      if (fs.existsSync(socketPath)) {
+        results.push(ok("Orchestrator IPC socket found — process appears running"));
+      } else {
+        results.push(warn("Orchestrator IPC socket not found — process not running (start the gateway to launch it)"));
+      }
     }
   }
 
@@ -655,5 +676,5 @@ export async function runMemorySystemChecks(params: {
   renderSection("Curiosity Engine", checkCuriosityEngine(config, dbPath));
 
   // 8. P2P Network
-  renderSection("P2P Network", checkP2POrchestrator(dbPath));
+  renderSection("P2P Network", checkP2POrchestrator(config, dbPath));
 }

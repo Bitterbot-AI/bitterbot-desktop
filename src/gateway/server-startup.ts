@@ -202,9 +202,15 @@ export async function startGatewaySidecars(params: {
           params.log.warn(`Query event handling failed: ${String(err)}`);
         });
       });
-      params.log.warn("P2P orchestrator bridge started");
+      params.log.warn(
+        `P2P orchestrator bridge started (binary: ${orchestratorBridge.getHealth().binaryPath})`,
+      );
     } catch (err) {
-      params.log.warn(`P2P orchestrator bridge failed to start: ${String(err)}`);
+      // P2P is core, not optional. Surface the failure loudly with the
+      // operator-facing hint already embedded in the thrown error.
+      params.log.warn(
+        `P2P orchestrator bridge FAILED to start — node will be isolated from the network.\n${String(err)}`,
+      );
     }
   }
 

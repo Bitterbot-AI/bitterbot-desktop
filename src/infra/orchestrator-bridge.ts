@@ -38,6 +38,21 @@ type PendingRequest = {
   timer: NodeJS.Timeout;
 };
 
+export type OrchestratorHealth = {
+  /** True once start() has been called and not yet stop()'d. */
+  enabled: boolean;
+  /** True if the child process is currently alive. */
+  processRunning: boolean;
+  /** True if the IPC socket is connected and usable. */
+  ipcConnected: boolean;
+  /** True if we've successfully connected to the orchestrator at least once. */
+  everConnected: boolean;
+  /** Resolved path of the binary that was spawned, if any. */
+  binaryPath: string | null;
+  /** Most recent unrecoverable error, if any. */
+  lastError: string | null;
+};
+
 export class OrchestratorBridge {
   private process: ChildProcess | null = null;
   private socket: Socket | null = null;
@@ -45,6 +60,10 @@ export class OrchestratorBridge {
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private closed = false;
+  private started = false;
+  private everConnected = false;
+  private lastError: string | null = null;
+  private resolvedBinaryPath: string | null = null;
   private pending = new Map<string, PendingRequest>();
   private skillReceivedCallbacks: Array<(event: SkillReceivedEvent) => void> = [];
   private peerConnectedCallbacks: Array<(peerId: string, addrs: string[]) => void> = [];
@@ -80,6 +99,8 @@ export class OrchestratorBridge {
       return;
     }
 
+    this.started = true;
+
     // Resolve DNS bootstrap peers before starting the orchestrator
     if (this.config.bootstrapDns) {
       const dnsPeers = await resolveBootstrapDns(this.config.bootstrapDns);
@@ -89,33 +110,81 @@ export class OrchestratorBridge {
       );
     }
 
-    const binary = this.config.orchestratorBinary ?? this.resolveBinary();
+    let binary: string;
+    try {
+      binary = this.config.orchestratorBinary ?? this.resolveBinary();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.lastError = msg;
+      log.error(msg);
+      throw err;
+    }
+    this.resolvedBinaryPath = binary;
     const args = this.buildArgs();
 
     log.info(`Starting orchestrator: ${binary} ${args.join(" ")}`);
 
-    this.process = spawn(binary, args, {
+    const child = spawn(binary, args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, RUST_LOG: "info" },
     });
+    this.process = child;
 
-    this.process.stdout?.on("data", (data: Buffer) => {
+    // Spawn errors (ENOENT, EACCES, etc.) arrive on 'error', not 'exit'.
+    // Without this listener, Node treats it as an uncaughtException and can
+    // crash the gateway. Suppress reconnect in this state — the binary is
+    // fundamentally unreachable and retrying won't help.
+    child.on("error", (err) => {
+      const reason =
+        (err as NodeJS.ErrnoException).code === "ENOENT"
+          ? `Orchestrator binary could not be executed (ENOENT): ${binary}. ` +
+            `Build it with: cargo build --release --manifest-path orchestrator/Cargo.toml`
+          : `Orchestrator process error: ${err.message}`;
+      this.lastError = reason;
+      log.error(reason);
+      this.process = null;
+      // Do not scheduleReconnect — spawn errors are not recoverable without intervention.
+    });
+
+    child.stdout?.on("data", (data: Buffer) => {
       log.debug(`orchestrator stdout: ${data.toString().trim()}`);
     });
 
-    this.process.stderr?.on("data", (data: Buffer) => {
+    child.stderr?.on("data", (data: Buffer) => {
       log.debug(`orchestrator stderr: ${data.toString().trim()}`);
     });
 
-    this.process.on("exit", (code) => {
+    child.on("exit", (code) => {
       log.warn(`Orchestrator exited with code ${code}`);
       this.process = null;
-      this.scheduleReconnect();
+      // Only reconnect if we had a working IPC at some point. A process that
+      // exits before ever connecting is almost always a config/binary problem,
+      // and retrying just fills the log with "IPC not connected" noise.
+      if (this.everConnected) {
+        this.scheduleReconnect();
+      }
     });
 
     // Wait briefly for the socket to become available, then connect
     await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (!this.process) {
+      // 'error' fired during the wait — surface a clean rejection.
+      throw new Error(this.lastError ?? "Orchestrator failed to start");
+    }
     await this.connectIpc();
+    this.everConnected = true;
+  }
+
+  /** Current health snapshot, safe to call from doctor / health endpoints. */
+  getHealth(): OrchestratorHealth {
+    return {
+      enabled: this.started && !this.closed,
+      processRunning: this.process !== null && !this.process.killed,
+      ipcConnected: this.socket !== null && !this.socket.destroyed,
+      everConnected: this.everConnected,
+      binaryPath: this.resolvedBinaryPath,
+      lastError: this.lastError,
+    };
   }
 
   async stop(): Promise<void> {
@@ -480,21 +549,34 @@ export class OrchestratorBridge {
 
   private resolveBinary(): string {
     if (this.config.orchestratorBinary) {
+      // Honor explicit config. Spawn will surface ENOENT via the 'error'
+      // listener if the operator-provided path is wrong.
       return this.config.orchestratorBinary;
     }
     const isWindows = process.platform === "win32";
     const exeName = isWindows ? "bitterbot-orchestrator.exe" : "bitterbot-orchestrator";
-
-    // Look in orchestrator/target/ (release preferred, debug fallback)
     const base = path.resolve(process.cwd(), "orchestrator", "target");
     const release = path.join(base, "release", exeName);
     const debug = path.join(base, "debug", exeName);
     try {
       fs.accessSync(release);
       return release;
-    } catch {
+    } catch {}
+    try {
+      fs.accessSync(debug);
+      log.warn(
+        `Using debug orchestrator build at ${debug}. ` +
+          `Run \`cargo build --release --manifest-path orchestrator/Cargo.toml\` for production.`,
+      );
       return debug;
-    }
+    } catch {}
+    throw new Error(
+      `Orchestrator binary not found. Looked in:\n` +
+        `  ${release}\n` +
+        `  ${debug}\n` +
+        `Build it with: cargo build --release --manifest-path orchestrator/Cargo.toml\n` +
+        `Or set p2p.orchestratorBinary in your config to point at an existing binary.`,
+    );
   }
 
   private buildArgs(): string[] {
