@@ -2,7 +2,7 @@
 # Minimal image: just the Rust orchestrator daemon for DHT peer discovery.
 # No agent, no gateway, no Node.js — pure libp2p networking.
 
-FROM rust:1.82-slim-bookworm AS builder
+FROM rust:1.88-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
