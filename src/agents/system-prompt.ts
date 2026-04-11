@@ -3,6 +3,7 @@ import type { MemoryCitationsMode } from "../config/types.memory.js";
 import type { ResolvedTimeFormat } from "./date-time.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
+import { getP2pStatus } from "../infra/p2p-status.js";
 import { listDeliverableMessageChannels } from "../utils/message-channel.js";
 import { sanitizeForPromptLiteral } from "./sanitize-for-prompt.js";
 
@@ -126,6 +127,49 @@ function buildEndocrineStateSection(params: {
   return lines;
 }
 
+/**
+ * Build the Economic Identity section based on the LIVE P2P state, not
+ * a hardcoded claim. The agent's identity should match what's actually
+ * happening on the wire — if the orchestrator isn't connected to any
+ * peers right now, claiming to "earn USDC from skills you publish"
+ * would be a lie that erodes trust the moment a user asks about it.
+ */
+function buildEconomicIdentitySection(): string[] {
+  const status = getP2pStatus();
+
+  if (!status.enabled) {
+    return [
+      "### Economic Identity (P2P disabled)",
+      "Your P2P networking is disabled in the gateway config. You operate in local-only mode.",
+      "Skills you crystallize stay on this device — you are not part of the marketplace until P2P is enabled.",
+      "If the user asks about your earnings, peers, or network state, tell them honestly that P2P is off and they can re-enable it via `p2p.enabled` in the gateway config.",
+    ];
+  }
+
+  if (!status.connected) {
+    const reason = status.lastError
+      ? `The orchestrator failed to start: ${status.lastError}`
+      : "The orchestrator is up but no peers are currently connected.";
+    return [
+      "### Economic Identity (P2P offline)",
+      "You are configured to participate in the P2P skills marketplace, but you are not currently reachable on the network.",
+      reason,
+      "Skills you crystallize will be queued for publishing once a peer becomes available.",
+      "If the user asks about your earnings or network state, tell them honestly that the P2P layer is offline right now. They can run `bitterbot doctor` for diagnostics.",
+    ];
+  }
+
+  const peerWord = status.peerCount === 1 ? "peer" : "peers";
+  return [
+    "### Economic Identity",
+    "You participate in a P2P skills marketplace where you earn USDC from skills you publish.",
+    `You are currently connected to ${status.peerCount} ${peerWord} on the network.`,
+    "Your marketplace performance (earnings, buyers, top-earning skills) is tracked in The Niche section of MEMORY.md.",
+    "When users ask about your skills or earnings, use `memory_status` to check your marketplace data.",
+    "Higher reputation and success rates command higher skill prices on the network.",
+  ];
+}
+
 function buildSkillsSection(params: {
   skillsPrompt?: string;
   isMinimal: boolean;
@@ -198,11 +242,7 @@ function buildMemorySection(params: {
     "### Curiosity Engine",
     "Tracks knowledge gaps, anomalies, frontiers, and contradictions. Each new chunk is assessed for novelty and surprise. Exploration targets are generated for areas where your knowledge is thin or stale.",
     "",
-    "### Economic Identity",
-    "You participate in a P2P skills marketplace where you earn USDC from skills you publish.",
-    "Your marketplace performance (earnings, buyers, top-earning skills) is tracked in The Niche section of MEMORY.md.",
-    "When users ask about your skills or earnings, use `memory_status` to check your marketplace data.",
-    "Higher reputation and success rates command higher skill prices on the network.",
+    ...buildEconomicIdentitySection(),
     "",
     "### Memory tools",
     "- `memory_search` — semantic search across all indexed crystals. **Mandatory** before answering questions about prior work, decisions, dates, people, preferences, or todos.",

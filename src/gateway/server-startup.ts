@@ -16,6 +16,7 @@ import {
 } from "../hooks/internal-hooks.js";
 import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import { getP2pStatus, patchP2pStatus, setP2pStatus } from "../infra/p2p-status.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import {
@@ -165,6 +166,22 @@ export async function startGatewaySidecars(params: {
       const { OrchestratorBridge: Bridge } = await import("../infra/orchestrator-bridge.js");
       orchestratorBridge = new Bridge(params.cfg.p2p);
       await orchestratorBridge.start();
+      // Publish initial status snapshot for system prompt / doctor / UI consumers.
+      // peer_connected/peer_disconnected callbacks below maintain peerCount live.
+      setP2pStatus({
+        enabled: true,
+        connected: false,
+        peerCount: 0,
+        lastError: null,
+      });
+      orchestratorBridge.onPeerConnected(() => {
+        const next = getP2pStatus().peerCount + 1;
+        patchP2pStatus({ peerCount: next, connected: next > 0 });
+      });
+      orchestratorBridge.onPeerDisconnected(() => {
+        const next = Math.max(0, getP2pStatus().peerCount - 1);
+        patchP2pStatus({ peerCount: next, connected: next > 0 });
+      });
       // Wire skill_received → ingestion pipeline (with reputation manager support)
       orchestratorBridge.onSkillReceived(async (event) => {
         const { ingestSkill } = await import("../agents/skills/ingest.js");
@@ -211,6 +228,12 @@ export async function startGatewaySidecars(params: {
       params.log.warn(
         `P2P orchestrator bridge FAILED to start — node will be isolated from the network.\n${String(err)}`,
       );
+      setP2pStatus({
+        enabled: true,
+        connected: false,
+        peerCount: 0,
+        lastError: String(err),
+      });
     }
   }
 

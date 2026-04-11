@@ -465,8 +465,26 @@ export function applyCompactionDefaults(cfg: BitterbotConfig): BitterbotConfig {
   };
 }
 
+/**
+ * Hardcoded fallback bootstrap peers shipped with the binary.
+ * Used as a backstop if `bootstrapDns` resolution fails (DNS outage,
+ * stale TTL, registrar misconfig). Merged with DNS-resolved peers, not
+ * a replacement — the DNS path is still primary so the network can
+ * rotate hosts without a client release.
+ *
+ * Add new bootnodes here as they come online; remove only when a node
+ * is permanently retired.
+ */
+const FALLBACK_BOOTSTRAP_PEERS: readonly string[] = [
+  // Railway bootnode #1 (us-east, persistent volume)
+  "/dns4/metro.proxy.rlwy.net/tcp/12838/p2p/12D3KooWCwCCFMHCVv8eXZnAGMTUjTDPPePfYRTJ1fZvRpqcQXKt",
+];
+
 export function applyP2pDefaults(cfg: BitterbotConfig): BitterbotConfig {
   const p2p = cfg.p2p ?? {};
+  // Merge fallback peers with any user-supplied ones, dedupe.
+  const userPeers = p2p.bootstrapPeers ?? [];
+  const mergedPeers = Array.from(new Set([...FALLBACK_BOOTSTRAP_PEERS, ...userPeers]));
   return {
     ...cfg,
     p2p: {
@@ -474,6 +492,7 @@ export function applyP2pDefaults(cfg: BitterbotConfig): BitterbotConfig {
       bootstrapDns: "p2p.bitterbot.ai",
       relayMode: "auto",
       ...p2p,
+      bootstrapPeers: mergedPeers,
     },
   };
 }
