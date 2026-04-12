@@ -10,7 +10,7 @@
  * stays lean and `pnpm install` doesn't need to pull a tree.
  *
  * Equivalent to the old two-terminal setup:
- *   Terminal 1: pnpm start gateway
+ *   Terminal 1: pnpm gateway:watch  (auto-rebuilds on TS changes)
  *   Terminal 2: cd desktop && pnpm dev
  *
  * Pass through env vars normally — e.g. BITTERBOT_SKIP_CHANNELS=1 still works.
@@ -65,7 +65,7 @@ function startChild(name, color, cmd, args, opts = {}) {
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 
-const gateway = startChild("gateway", colors.gateway, "pnpm", ["start", "gateway"], {
+const gateway = startChild("gateway", colors.gateway, "pnpm", ["gateway:watch"], {
   cwd: repoRoot,
 });
 

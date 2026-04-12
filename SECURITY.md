@@ -6,7 +6,7 @@ If you believe you've found a security issue in Bitterbot, please report it priv
 
 Report vulnerabilities directly to the repository where the issue lives:
 
-- **Core CLI, gateway, and desktop app** — [bitterbot/bitterbot](https://github.com/bitterbot/bitterbot)
+- **Core CLI, gateway, and desktop app** — [Bitterbot-AI/bitterbot-desktop](https://github.com/Bitterbot-AI/bitterbot-desktop)
 
 For issues that don't fit a specific repo, or if you're unsure, email **security@bitterbot.net** and we'll route it.
 

@@ -14,19 +14,27 @@ pnpm install && pnpm build
 
 ### Development Mode
 
-```bash
-# Set up the Control UI env (one-time)
-cp desktop/.env.example desktop/.env
-# Edit desktop/.env — paste your gateway token from ~/.bitterbot/bitterbot.json → gateway.auth.token
+The fastest way to get both the gateway and the Control UI running:
 
-# Terminal 1 — Gateway with auto-reload
+```bash
+pnpm dev:all
+```
+
+This spawns the gateway and the Vite dev server in one terminal with color-tagged output. Ctrl+C stops both. The gateway auto-rebuilds on TypeScript changes.
+
+If you prefer separate terminals (useful when debugging one process in isolation):
+
+```bash
+# Terminal 1 — Gateway with auto-reload on TS changes
 pnpm gateway:watch
 
 # Terminal 2 — Control UI (Vite, hot reload)
 cd desktop && pnpm dev
 ```
 
-Open `http://localhost:5173` for the Control UI. It connects to the gateway on port 19001 automatically. The `VITE_GATEWAY_TOKEN` in `desktop/.env` must match the token in your gateway config (`~/.bitterbot/bitterbot.json` → `gateway.auth.token`).
+Open `http://localhost:5173` for the Control UI. It connects to the gateway on port 19001 automatically.
+
+**Control UI auth:** the onboarding wizard (`pnpm bitterbot onboard`) auto-generates `desktop/.env` with the gateway token. If you skipped the wizard, copy `desktop/.env.example` to `desktop/.env` and paste your token from `~/.bitterbot/bitterbot.json → gateway.auth.token`.
 
 ## Project Structure
 
