@@ -7,6 +7,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { randomUUID } from "node:crypto";
+import os from "node:os";
 import { createInterface } from "node:readline";
 import path from "node:path";
 import type { P2pConfig } from "../config/types.p2p.js";
@@ -548,6 +549,14 @@ export class OrchestratorBridge {
   }
 
   private resolveBinary(): string {
+    // Priority order:
+    //   1. Explicit config override (operator knows best)
+    //   2. Local cargo RELEASE build — dev iteration on Rust code must
+    //      never be shadowed by a stale prebuilt
+    //   3. Local cargo DEBUG build, with a warning
+    //   4. Prebuilt downloaded to ~/.bitterbot/bin/ via postinstall
+    // Only throws if none of the above exist; the thrown error is the
+    // operator-facing remediation guide.
     if (this.config.orchestratorBinary) {
       // Honor explicit config. Spawn will surface ENOENT via the 'error'
       // listener if the operator-provided path is wrong.
@@ -555,9 +564,10 @@ export class OrchestratorBridge {
     }
     const isWindows = process.platform === "win32";
     const exeName = isWindows ? "bitterbot-orchestrator.exe" : "bitterbot-orchestrator";
-    const base = path.resolve(process.cwd(), "orchestrator", "target");
-    const release = path.join(base, "release", exeName);
-    const debug = path.join(base, "debug", exeName);
+    const cargoBase = path.resolve(process.cwd(), "orchestrator", "target");
+    const release = path.join(cargoBase, "release", exeName);
+    const debug = path.join(cargoBase, "debug", exeName);
+    const prebuilt = path.join(os.homedir(), ".bitterbot", "bin", exeName);
     try {
       fs.accessSync(release);
       return release;
@@ -570,12 +580,18 @@ export class OrchestratorBridge {
       );
       return debug;
     } catch {}
+    try {
+      fs.accessSync(prebuilt);
+      return prebuilt;
+    } catch {}
     throw new Error(
       `Orchestrator binary not found. Looked in:\n` +
         `  ${release}\n` +
         `  ${debug}\n` +
-        `Build it with: cargo build --release --manifest-path orchestrator/Cargo.toml\n` +
-        `Or set p2p.orchestratorBinary in your config to point at an existing binary.`,
+        `  ${prebuilt}\n` +
+        `Build it locally:     cargo build --release --manifest-path orchestrator/Cargo.toml\n` +
+        `Or download prebuilt: reinstall with \`pnpm install\` to run the postinstall fetcher.\n` +
+        `Or override via config: set p2p.orchestratorBinary to an explicit binary path.`,
     );
   }
 

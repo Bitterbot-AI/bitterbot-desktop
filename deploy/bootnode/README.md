@@ -220,3 +220,80 @@ The `/data/keys` volume stores the Ed25519 keypair. This is **critical** — the
 - **Memory**: ~20–30 MB steady
 - **Disk**: < 1 MB (keypair + minor state)
 - **Network**: minimal in normal operation; bursts during DHT walks and skill propagation
+
+---
+
+## Releasing new orchestrator binaries
+
+End users get the orchestrator via a `postinstall` script that downloads prebuilt binaries from GitHub Releases, so they never need a Rust toolchain. Releases are triggered by pushing a version tag. Workflow lives at `.github/workflows/orchestrator-release.yml`.
+
+### 1. Bump the version
+
+The source of truth for the orchestrator version is `orchestrator/Cargo.toml`:
+
+```toml
+[package]
+name = "bitterbot-orchestrator"
+version = "0.1.1"   # ← bump this
+```
+
+No second manifest, no duplicate `VERSION` file. The postinstall script reads `Cargo.toml` directly with a regex, and the CI workflow derives the tag from the pushed ref.
+
+### 2. Tag and push
+
+```bash
+git add orchestrator/Cargo.toml
+git commit -m "orchestrator: bump to 0.1.1"
+git tag orchestrator-v0.1.1
+git push origin main
+git push origin orchestrator-v0.1.1
+```
+
+The tag push triggers the release workflow. It builds on 5 native runners in parallel:
+
+| Target | Runner |
+|---|---|
+| `linux-x64` | `ubuntu-latest` |
+| `linux-arm64` | `ubuntu-22.04-arm` (native, no cross-compile) |
+| `darwin-x64` | `macos-13` |
+| `darwin-arm64` | `macos-14` (native Apple Silicon) |
+| `win32-x64` | `windows-latest` |
+
+Each job installs Rust 1.88.0, restores the cargo cache via `Swatinem/rust-cache`, builds with `RUSTFLAGS="-C strip=symbols"`, and uploads its binary as a workflow artifact. A final `release` job flattens all artifacts, generates a `checksums.txt` via `sha256sum`, and publishes a GitHub Release keyed by the tag with the binaries plus the checksums file attached.
+
+First-time cold build is ~15–20 min end to end because of libp2p's dep tree. Subsequent builds hit the cache and land in 3–5 min.
+
+### 3. What end users see
+
+On `pnpm install`, the root `postinstall` script runs `node scripts/fetch-orchestrator.mjs`, which:
+
+1. Reads the target version from `orchestrator/Cargo.toml`
+2. Detects `process.platform` + `process.arch` → target string
+3. Fetches `checksums.txt` from `https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/orchestrator-v<version>/checksums.txt`
+4. Fetches the matching binary from the same release
+5. Verifies SHA-256 against the checksums manifest
+6. Drops the verified binary at `~/.bitterbot/bin/bitterbot-orchestrator[.exe]`
+7. Idempotent: skips the download if the existing binary's hash already matches
+
+The script is **non-fatal**. Any failure (offline, release not yet published, flaky network, hash mismatch) logs a clear `[orchestrator-fetch]` warning and exits 0, so `pnpm install` always succeeds. If the binary really is missing when the gateway starts, the existing Tier 0 error path in `OrchestratorBridge.resolveBinary()` surfaces a clear remediation message at that point.
+
+### 4. Developer override
+
+Binary resolution order at gateway start (`src/infra/orchestrator-bridge.ts:resolveBinary`):
+
+1. `p2p.orchestratorBinary` in the gateway config — explicit operator override
+2. `orchestrator/target/release/bitterbot-orchestrator` — local cargo release build
+3. `orchestrator/target/debug/bitterbot-orchestrator` — local cargo debug build (with a warning)
+4. `~/.bitterbot/bin/bitterbot-orchestrator` — the postinstall-downloaded prebuilt
+
+**Developer iteration always wins.** If you have a local cargo build, it takes precedence over the downloaded prebuilt — no risk of a stale prebuilt silently shadowing your in-progress changes. Run `cargo build --release --manifest-path orchestrator/Cargo.toml` and your new binary is what the gateway spawns next start.
+
+To force-use the prebuilt for testing, either delete your local target/ or set `p2p.orchestratorBinary` explicitly in your gateway config.
+
+### 5. Manual workflow dispatch
+
+The release workflow also accepts a manual trigger via GitHub's "Run workflow" button with a `tag` input. Useful for re-running a failed build against an existing tag without bumping and re-tagging.
+
+### 6. Skipping the postinstall download
+
+For airgapped installs or CI environments where you don't want the network call, set `BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD=1` before `pnpm install`. The script will log the skip and exit 0. The orchestrator release workflow itself also auto-detects and skips to avoid self-referential downloads during its own build.

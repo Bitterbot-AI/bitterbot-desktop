@@ -1,0 +1,152 @@
+name: Orchestrator Release
+
+# Tag-triggered build + publish of prebuilt bitterbot-orchestrator binaries
+# for the 5 supported platforms. Bump orchestrator/Cargo.toml version, commit,
+# and push a matching `orchestrator-v<version>` tag to run this workflow.
+
+on:
+  push:
+    tags:
+      - 'orchestrator-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. orchestrator-v0.1.0). Must already exist.'
+        required: true
+        type: string
+
+concurrency:
+  group: orchestrator-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write  # required by softprops/action-gh-release to publish
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-gnu
+            bin: bitterbot-orchestrator
+            asset: bitterbot-orchestrator-linux-x64
+          - target: linux-arm64
+            os: ubuntu-22.04-arm
+            rust-target: aarch64-unknown-linux-gnu
+            bin: bitterbot-orchestrator
+            asset: bitterbot-orchestrator-linux-arm64
+          - target: darwin-x64
+            os: macos-13
+            rust-target: x86_64-apple-darwin
+            bin: bitterbot-orchestrator
+            asset: bitterbot-orchestrator-darwin-x64
+          - target: darwin-arm64
+            os: macos-14
+            rust-target: aarch64-apple-darwin
+            bin: bitterbot-orchestrator
+            asset: bitterbot-orchestrator-darwin-arm64
+          - target: win32-x64
+            os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            bin: bitterbot-orchestrator.exe
+            asset: bitterbot-orchestrator-win32-x64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: orchestrator
+          shared-key: ${{ matrix.target }}
+
+      - name: Build release
+        working-directory: orchestrator
+        env:
+          RUSTFLAGS: '-C strip=symbols'
+        run: cargo build --release --target ${{ matrix.rust-target }}
+
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "orchestrator/target/${{ matrix.rust-target }}/release/${{ matrix.bin }}" "staging/${{ matrix.asset }}"
+          ls -lh staging/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: staging/${{ matrix.asset }}
+          retention-days: 1
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten and checksum
+        working-directory: .
+        run: |
+          mkdir -p release
+          find artifacts -type f -name 'bitterbot-orchestrator-*' -exec cp {} release/ \;
+          ls -lh release/
+          cd release
+          sha256sum bitterbot-orchestrator-* > checksums.txt
+          cat checksums.txt
+
+      - name: Extract version for notes
+        id: meta
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#orchestrator-v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: Orchestrator ${{ steps.meta.outputs.version }}
+          files: |
+            release/bitterbot-orchestrator-*
+            release/checksums.txt
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+          body: |
+            Prebuilt `bitterbot-orchestrator` v${{ steps.meta.outputs.version }} binaries.
+
+            Downloaded automatically by `pnpm install` via `scripts/fetch-orchestrator.mjs`.
+            Manual verification: `sha256sum -c checksums.txt`.
