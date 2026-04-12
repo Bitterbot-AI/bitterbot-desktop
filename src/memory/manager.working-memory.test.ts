@@ -681,50 +681,7 @@ describe("First Breath micro-cycle", () => {
   });
 });
 
-// ── Legacy File Write-Back Tests ──
-
-describe("Legacy file write-back", () => {
-  let fixtureRoot: string;
-  let workspaceDir: string;
-  let memoryDir: string;
-  let indexPath: string;
-  let lwManager: MemoryIndexManager | null = null;
-
-  function createLwCfg() {
-    return {
-      agents: {
-        defaults: {
-          workspace: workspaceDir,
-          memorySearch: {
-            provider: "openai",
-            model: "text-embedding-3-small",
-            store: { path: indexPath, vector: { enabled: false } },
-            sync: { watch: false, onSessionStart: false, onSearch: false },
-            query: { minScore: 0, hybrid: { enabled: false } },
-          },
-        },
-        list: [{ id: "lw-test", default: true }],
-      },
-    };
-  }
-
-  beforeAll(async () => {
-    fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-mem-lw-"));
-    workspaceDir = path.join(fixtureRoot, "workspace");
-    memoryDir = path.join(workspaceDir, "memory");
-    indexPath = path.join(fixtureRoot, "lw-index.sqlite");
-    await fs.mkdir(memoryDir, { recursive: true });
-
-    const result = await getMemorySearchManager({ cfg: createLwCfg(), agentId: "lw-test" });
-    expect(result.manager).not.toBeNull();
-    lwManager = result.manager!;
-  });
-
-  afterAll(async () => {
-    if (lwManager) {
-      await lwManager.close();
-      lwManager = null;
-    }
-    await fs.rm(fixtureRoot, { recursive: true, force: true });
-  });
-});
+// Legacy file write-back describe block removed — it had setup/teardown
+// but zero it() blocks, causing vitest "No test found in suite" error.
+// When legacy write-back tests are needed, add them here with actual
+// test cases.

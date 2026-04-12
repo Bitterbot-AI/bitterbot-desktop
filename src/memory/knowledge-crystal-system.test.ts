@@ -17,16 +17,13 @@ import { ConsolidationEngine } from "./consolidation.js";
 import { rowToCrystal, crystalToRow, inferSemanticType, defaultGovernance } from "./crystal.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
 import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
-import {
-  PromptOptimizationExperiment,
-  calculateOpportunity,
-} from "./experiments/prompt-optimization.js";
 import { MemoryGovernance } from "./governance.js";
 import { HormonalStateManager } from "./hormonal.js";
 import { MemStore } from "./mem-store.js";
 import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
 import { MemoryPipeline } from "./pipeline.js";
+import { PromptOptimizationExperiment, calculateOpportunity } from "./prompt-optimization.js";
 import { MemoryScheduler } from "./scheduler.js";
 import { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { SkillRefiner } from "./skill-refiner.js";

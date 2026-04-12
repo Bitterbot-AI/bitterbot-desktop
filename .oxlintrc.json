@@ -36,8 +36,6 @@
     "pnpm-lock.yaml/",
     "skills/",
     "src/canvas-host/a2ui/a2ui.bundle.js",
-    "src/agents/rlm/rlm.test.ts",
-    "src/memory/scripts/skill-forge-test.ts",
     "Swabble/",
     "vendor/"
   ]
