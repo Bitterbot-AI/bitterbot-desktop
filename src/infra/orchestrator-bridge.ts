@@ -4,15 +4,16 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import fs from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { randomUUID } from "node:crypto";
-import os from "node:os";
 import { createInterface } from "node:readline";
-import path from "node:path";
 import type { P2pConfig } from "../config/types.p2p.js";
 import { resolveBootstrapDns, mergeBootstrapPeers } from "./dns-bootstrap.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import {
+  formatBinaryNotFoundMessage,
+  probeOrchestratorBinary,
+} from "./orchestrator-binary.js";
 
 const log = createSubsystemLogger("p2p/orchestrator");
 
@@ -549,50 +550,20 @@ export class OrchestratorBridge {
   }
 
   private resolveBinary(): string {
-    // Priority order:
-    //   1. Explicit config override (operator knows best)
-    //   2. Local cargo RELEASE build — dev iteration on Rust code must
-    //      never be shadowed by a stale prebuilt
-    //   3. Local cargo DEBUG build, with a warning
-    //   4. Prebuilt downloaded to ~/.bitterbot/bin/ via postinstall
-    // Only throws if none of the above exist; the thrown error is the
-    // operator-facing remediation guide.
-    if (this.config.orchestratorBinary) {
-      // Honor explicit config. Spawn will surface ENOENT via the 'error'
-      // listener if the operator-provided path is wrong.
-      return this.config.orchestratorBinary;
+    // Delegates to the shared probe so doctor and wizard see the same
+    // priority order. Preserves the throw-on-missing contract this
+    // bridge has always had.
+    const probe = probeOrchestratorBinary(this.config);
+    if (probe.found) {
+      if (probe.source === "debug") {
+        log.warn(
+          `Using debug orchestrator build at ${probe.path}. ` +
+            `Run \`cargo build --release --manifest-path orchestrator/Cargo.toml\` for production.`,
+        );
+      }
+      return probe.path;
     }
-    const isWindows = process.platform === "win32";
-    const exeName = isWindows ? "bitterbot-orchestrator.exe" : "bitterbot-orchestrator";
-    const cargoBase = path.resolve(process.cwd(), "orchestrator", "target");
-    const release = path.join(cargoBase, "release", exeName);
-    const debug = path.join(cargoBase, "debug", exeName);
-    const prebuilt = path.join(os.homedir(), ".bitterbot", "bin", exeName);
-    try {
-      fs.accessSync(release);
-      return release;
-    } catch {}
-    try {
-      fs.accessSync(debug);
-      log.warn(
-        `Using debug orchestrator build at ${debug}. ` +
-          `Run \`cargo build --release --manifest-path orchestrator/Cargo.toml\` for production.`,
-      );
-      return debug;
-    } catch {}
-    try {
-      fs.accessSync(prebuilt);
-      return prebuilt;
-    } catch {}
-    throw new Error(
-      `Orchestrator binary not found. Looked in:\n` +
-        `  ${release}\n` +
-        `  ${debug}\n` +
-        `  ${prebuilt}\n` +
-        `Build it locally:     cargo build --release --manifest-path orchestrator/Cargo.toml\n` +
-        `Or download prebuilt: reinstall with \`pnpm install\` to run the postinstall fetcher.\n` +
-        `Or override via config: set p2p.orchestratorBinary to an explicit binary path.`,
-    );
+    throw new Error(formatBinaryNotFoundMessage(probe.candidates));
   }
 
   private buildArgs(): string[] {

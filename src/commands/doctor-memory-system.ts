@@ -1,8 +1,11 @@
 /**
  * Doctor checks for the biological memory architecture:
  * workspace identity files, GENOME.md, MEMORY.md schema, SQLite DB health,
- * dream engine, hormonal system, curiosity engine (GCCRF), P2P orchestrator,
- * and deprecated file warnings.
+ * dream engine, hormonal system, and curiosity engine (GCCRF).
+ *
+ * P2P state (orchestrator binary, DNS bootstrap, peer reachability,
+ * live peer count) is reported by the separate top-level P2P Network
+ * doctor section — see src/commands/doctor-p2p.ts.
  *
  * Reads the database directly (read-only) — does NOT require the gateway.
  */
@@ -10,7 +13,6 @@
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import type { BitterbotConfig } from "../config/config.js";
 import { parseGenomeHomeostasis, parsePhenotypeConstraints } from "../memory/genome-parser.js";
 import { WORKING_MEMORY_SECTIONS } from "../memory/working-memory-prompt.js";
@@ -543,97 +545,11 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
   return results;
 }
 
-function checkP2POrchestrator(cfg: BitterbotConfig, dbPath: string): DoctorCheckResult[] {
-  const results: DoctorCheckResult[] = [];
-
-  // P2P is core infrastructure: missing pieces are errors when enabled, info when off.
-  const p2pEnabled = cfg.p2p?.enabled !== false; // defaults to true
-  if (!p2pEnabled) {
-    results.push(info("P2P network disabled in config — node will run isolated"));
-    return results;
-  }
-
-  // Check orchestrator binary (release preferred, debug acceptable with warning)
-  const exeName = process.platform === "win32" ? "bitterbot-orchestrator.exe" : "bitterbot-orchestrator";
-  const releasePath = path.join(process.cwd(), "orchestrator", "target", "release", exeName);
-  const debugPath = path.join(process.cwd(), "orchestrator", "target", "debug", exeName);
-  const explicitPath = cfg.p2p?.orchestratorBinary;
-  let binaryFound = false;
-  if (explicitPath && fs.existsSync(explicitPath)) {
-    results.push(ok(`Orchestrator binary found at ${explicitPath}`));
-    binaryFound = true;
-  } else if (fs.existsSync(releasePath)) {
-    results.push(ok("Orchestrator release binary found"));
-    binaryFound = true;
-  } else if (fs.existsSync(debugPath)) {
-    results.push(warn("Only debug orchestrator binary found — run `cargo build --release --manifest-path orchestrator/Cargo.toml` for production"));
-    binaryFound = true;
-  } else {
-    results.push(error(
-      "Orchestrator binary NOT FOUND — node cannot join the P2P network.\n" +
-      "  Build with: cargo build --release --manifest-path orchestrator/Cargo.toml",
-    ));
-  }
-
-  // Check IPC socket — only meaningful if the binary exists
-  if (binaryFound) {
-    if (process.platform === "win32") {
-      results.push(info("Windows TCP IPC check skipped (port 19002)"));
-    } else {
-      const socketPath = "/tmp/bitterbot-orchestrator.sock";
-      if (fs.existsSync(socketPath)) {
-        results.push(ok("Orchestrator IPC socket found — process appears running"));
-      } else {
-        results.push(warn("Orchestrator IPC socket not found — process not running (start the gateway to launch it)"));
-      }
-    }
-  }
-
-  if (!fs.existsSync(dbPath)) {
-    return results;
-  }
-
-  let db: DatabaseSync | null = null;
-  try {
-    db = new DatabaseSync(dbPath, { open: true, readOnly: true } as any);
-
-    // Peer count
-    if (tableExists(db, "peer_reputation")) {
-      try {
-        const peerRow = db
-          .prepare(`SELECT COUNT(*) as c FROM peer_reputation`)
-          .get() as { c: number };
-        results.push(info(`Known peers: ${peerRow.c}`));
-      } catch {
-        // ignore
-      }
-    }
-
-    // Published skill count
-    if (tableExists(db, "chunks")) {
-      try {
-        const pubRow = db
-          .prepare(
-            `SELECT COUNT(*) as c FROM chunks WHERE publish_visibility = 'shared' AND published_at IS NOT NULL`,
-          )
-          .get() as { c: number };
-        results.push(info(`Published skills: ${pubRow.c}`));
-      } catch {
-        // publish_visibility column may not exist
-      }
-    }
-  } catch {
-    // ignore db errors — p2p is optional
-  } finally {
-    try {
-      db?.close();
-    } catch {
-      // ignore
-    }
-  }
-
-  return results;
-}
+// The previous P2P orchestrator subsection has moved to its own
+// top-level doctor section in src/commands/doctor-p2p.ts. Memory
+// system checks below no longer reference P2P state — orchestrator
+// availability, DNS bootstrap, fallback peer reachability, and live
+// peer counts are all reported in the "P2P Network" section now.
 
 // ── Section Renderer ──
 
@@ -675,6 +591,5 @@ export async function runMemorySystemChecks(params: {
   // 7. Curiosity Engine
   renderSection("Curiosity Engine", checkCuriosityEngine(config, dbPath));
 
-  // 8. P2P Network
-  renderSection("P2P Network", checkP2POrchestrator(config, dbPath));
+  // (P2P Network is now a top-level doctor section — see doctor-p2p.ts)
 }

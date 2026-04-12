@@ -38,6 +38,7 @@ import {
 import { noteSourceInstallIssues } from "./doctor-install.js";
 import { noteMemorySearchHealth } from "./doctor-memory-search.js";
 import { runMemorySystemChecks } from "./doctor-memory-system.js";
+import { runP2pNetworkChecks } from "./doctor-p2p.js";
 import {
   noteMacLaunchAgentOverrides,
   noteMacLaunchctlGatewayEnvOverrides,
@@ -251,6 +252,9 @@ export async function doctorCommand(
     gatewayDetailsMessage: gatewayDetails.message,
     healthOk,
   });
+
+  // ── P2P Network (core infra; promoted from the memory architecture block) ──
+  await runP2pNetworkChecks({ config: cfg, isGatewayRunning: healthOk });
 
   // ── Biological Memory Architecture ──
   {

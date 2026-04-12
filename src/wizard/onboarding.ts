@@ -409,6 +409,21 @@ export async function runOnboardingWizard(
   nextConfig = gateway.nextConfig;
   const settings = gateway.settings;
 
+  // P2P network step — lands after gateway config (settings.gatewayToken
+  // is minted) and before channels (so a slow P2P probe doesn't make
+  // channel setup feel like it's hanging). No node-tier prompt: all
+  // new nodes are edge, management is assigned manually post-install.
+  {
+    const { setupP2pForOnboarding } = await import("./onboarding.p2p.js");
+    nextConfig = await setupP2pForOnboarding({
+      config: nextConfig,
+      flow,
+      settings,
+      prompter,
+      runtime,
+    });
+  }
+
   if (opts.skipChannels ?? opts.skipProviders) {
     await prompter.note("Skipping channel setup.", "Channels");
   } else {
