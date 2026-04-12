@@ -55,19 +55,25 @@ pnpm bitterbot onboard --install-daemon
 
 The wizard walks you through model auth, channel setup, and workspace configuration. Works on **macOS, Linux, and Windows (WSL2)**.
 
-Start both the gateway and the Control UI:
+Start both the gateway and the Control UI in one terminal:
 
 ```bash
-# Set up the Control UI env (one-time)
-cp desktop/.env.example desktop/.env
-# Edit desktop/.env — paste your gateway token from ~/.bitterbot/bitterbot.json → gateway.auth.token
+pnpm dev:all
+```
 
-# Terminal 1 — Gateway (skip channels for faster startup)
-BITTERBOT_SKIP_CHANNELS=1 pnpm start gateway
+This spawns the gateway and the Vite dev server for the Control UI side-by-side with prefixed, color-tagged logs so you can read both at once. Ctrl+C stops both cleanly.
+
+If you want the two processes in separate terminals (useful when debugging one of them in isolation):
+
+```bash
+# Terminal 1 — Gateway
+pnpm start gateway
 
 # Terminal 2 — Control UI
 cd desktop && pnpm dev
 ```
+
+The Control UI's connection to the gateway is wired up automatically: the onboarding wizard writes `desktop/.env` for you with the gateway token and URL. If you skipped the wizard or need to regenerate it, copy `desktop/.env.example` and paste the token from `~/.bitterbot/bitterbot.json → gateway.auth.token`.
 
 Open [http://localhost:5173](http://localhost:5173) to chat, view dreams, manage skills, and monitor the agent. The Control UI connects to the gateway on port 19001 automatically.
 
@@ -356,6 +362,28 @@ Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic fai
 | A2A Protocol     | [Agent Interoperability Spec](docs/a2a-protocol.md)                           |
 | Security         | [DM Policies, Sandboxing, Tailscale](docs/security/)                          |
 | Troubleshooting  | [Common Issues + `bitterbot doctor`](docs/channels/troubleshooting.md)        |
+
+---
+
+## Troubleshooting
+
+If something feels off, start with:
+
+```bash
+pnpm bitterbot doctor
+```
+
+The doctor command walks ~25 subsystem checks — workspace integrity, config validity, auth profile health, gateway reachability, memory database, dream engine, curiosity engine, hormonal baselines, and a dedicated **P2P Network** section that probes orchestrator binary availability, DNS bootstrap, fallback peer reachability, and live peer count. Run it before filing a bug, and run it after any config change.
+
+Common fast fixes:
+
+- **Control UI shows "Disconnected"** — verify `desktop/.env` exists and `VITE_GATEWAY_TOKEN` matches `~/.bitterbot/bitterbot.json → gateway.auth.token`. If you ran `pnpm bitterbot onboard`, this should have been auto-generated.
+- **"Orchestrator binary NOT FOUND"** — either re-run `pnpm install` to trigger the postinstall downloader or `cargo build --release --manifest-path orchestrator/Cargo.toml` to build it locally.
+- **Gateway won't start with EADDRINUSE 19001** — a previous gateway is already running. Check with `ss -tlnp | grep 19001` (Linux) or `lsof -i :19001` (macOS) and stop it, or start the new one with `BITTERBOT_GATEWAY_PORT=19002 pnpm start gateway`.
+- **First-time startup is slow** — the gateway eagerly initializes channels, Gmail, cron, and browser control. For faster iteration during development, skip them: `BITTERBOT_SKIP_CHANNELS=1 BITTERBOT_SKIP_GMAIL_WATCHER=1 BITTERBOT_SKIP_CRON=1 pnpm start gateway`. Full list of skip flags in [Configuration Reference → Startup skip flags](docs/gateway/configuration-reference.md#startup-skip-flags-bitterbot_skip_).
+- **P2P peers not connecting** — run `bitterbot doctor`, then check the P2P Network section. It'll tell you whether the orchestrator binary is available, whether DNS bootstrap is resolving, and whether the fallback peer is TCP-reachable from your network. Firewall/egress issues surface here.
+
+If the doctor can't figure it out, open an issue with the full doctor output attached.
 
 ---
 

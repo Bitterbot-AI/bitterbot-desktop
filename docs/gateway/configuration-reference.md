@@ -2269,6 +2269,37 @@ Reference env vars in any config string with `${VAR_NAME}`:
 - Escape with `$${VAR}` for a literal `${VAR}`.
 - Works with `$include`.
 
+### Startup skip flags (`BITTERBOT_SKIP_*`)
+
+These env vars disable individual gateway subsystems at startup. Useful for
+fast-iterating during development, running a lightweight P2P-only node, or
+minimizing side effects while debugging. Set to `1` / `true` to skip the
+subsystem; leave unset for normal behavior.
+
+| Var | Effect |
+|---|---|
+| `BITTERBOT_SKIP_CHANNELS` | Don't start configured channels (WhatsApp, Telegram, Discord, etc.). Your agent stays reachable via the gateway API but won't auto-reply on external messaging surfaces. |
+| `BITTERBOT_SKIP_PROVIDERS` | Legacy alias for `BITTERBOT_SKIP_CHANNELS`. |
+| `BITTERBOT_SKIP_GMAIL_WATCHER` | Don't start the Gmail watcher hook. Mail polling stays off until the gateway is restarted without this flag. |
+| `BITTERBOT_SKIP_CRON` | Don't start the internal cron scheduler. Scheduled jobs won't fire. |
+| `BITTERBOT_SKIP_CANVAS_HOST` | Don't start the local canvas rendering host. Canvas-related tool calls fall back to no-op. |
+| `BITTERBOT_SKIP_BROWSER_CONTROL_SERVER` | Don't start the Bitterbot browser control server. Browser tools will fail at runtime. |
+| `BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD` | Skip the `postinstall` download of the prebuilt P2P orchestrator binary. For airgapped installs — the gateway will still attempt to use a local cargo build if you have one. |
+
+These flags are primarily for development, tests, and narrow P2P-only
+deployments. Production gateways should usually leave all subsystems enabled
+so the agent's capabilities match what the system prompt advertises.
+
+**Example — fast dev boot focused on the agent loop only:**
+
+```bash
+BITTERBOT_SKIP_CHANNELS=1 \
+BITTERBOT_SKIP_GMAIL_WATCHER=1 \
+BITTERBOT_SKIP_CRON=1 \
+BITTERBOT_SKIP_BROWSER_CONTROL_SERVER=1 \
+pnpm start gateway
+```
+
 ---
 
 ## Auth storage

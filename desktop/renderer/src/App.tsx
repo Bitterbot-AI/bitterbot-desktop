@@ -1,14 +1,37 @@
-import { useEffect } from "react";
-import { useGatewayStore } from "./stores/gateway-store";
+import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "./components/layout/AppShell";
+import { FirstRun } from "./components/first-run/FirstRun";
+import {
+  readStoredGatewayToken,
+  readStoredGatewayUrl,
+  useGatewayStore,
+} from "./stores/gateway-store";
 
 export function App() {
   const connect = useGatewayStore((s) => s.connect);
 
+  // Decide at boot whether we already have a token (either persisted
+  // to localStorage from a prior FirstRun or baked in via
+  // VITE_GATEWAY_TOKEN at build time). If not, render <FirstRun>
+  // instead of the main shell so we don't flash a "Disconnected"
+  // badge and confuse a new user.
+  const [hasCredentials, setHasCredentials] = useState<boolean>(() =>
+    readStoredGatewayToken() !== null,
+  );
+
   useEffect(() => {
-    const url = import.meta.env.VITE_GATEWAY_URL ?? "ws://localhost:19001";
+    if (!hasCredentials) return;
+    const url = readStoredGatewayUrl();
     connect(url);
-  }, [connect]);
+  }, [connect, hasCredentials]);
+
+  const handleFirstRunComplete = useCallback(() => {
+    setHasCredentials(true);
+  }, []);
+
+  if (!hasCredentials) {
+    return <FirstRun onComplete={handleFirstRunComplete} />;
+  }
 
   return <AppShell />;
 }
