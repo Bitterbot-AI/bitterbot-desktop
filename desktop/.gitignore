@@ -1,11 +1,5 @@
 node_modules/
 dist-renderer/
 
-# Secrets — never commit
-.env
-.env.*
-!.env.example
-resources/.env
-
 # Per-installation P2P node identity keypair
 keys/
