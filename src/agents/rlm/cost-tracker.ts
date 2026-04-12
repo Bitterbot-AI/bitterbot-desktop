@@ -49,9 +49,15 @@ export class CostTracker {
     return this.totalCost + avgCost <= this.maxBudget;
   }
 
-  getTotalCost(): number { return this.totalCost; }
-  getSubCallCount(): number { return this.subCallCount; }
-  getIterationCount(): number { return this.iterationCount; }
+  getTotalCost(): number {
+    return this.totalCost;
+  }
+  getSubCallCount(): number {
+    return this.subCallCount;
+  }
+  getIterationCount(): number {
+    return this.iterationCount;
+  }
 
   getSummary() {
     return {

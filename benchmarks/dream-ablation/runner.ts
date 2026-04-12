@@ -27,9 +27,13 @@ import {
   writeResults,
   cleanWorkDir,
 } from "../longmemeval/adapter.js";
-
+import {
+  createAblationBridge,
+  type AblationBridge,
+  type AggregatedDreamMetrics,
+  type MemoryMetrics,
+} from "./bridge.js";
 import { VARIANTS, VARIANT_IDS, type VariantConfig } from "./variants.js";
-import { createAblationBridge, type AblationBridge, type AggregatedDreamMetrics, type MemoryMetrics } from "./bridge.js";
 
 // ── CLI Args ──
 
@@ -118,7 +122,9 @@ async function runVariant(
       // Dream
       const dreamResult = await bridge.dream();
       if (verbose && dreamResult) {
-        console.log(`   Dream: ${dreamResult.insightsGenerated} insights, modes=[${dreamResult.modesRun.join(",")}]`);
+        console.log(
+          `   Dream: ${dreamResult.insightsGenerated} insights, modes=[${dreamResult.modesRun.join(",")}]`,
+        );
       }
 
       // Search
@@ -131,7 +137,12 @@ async function runVariant(
       }
 
       // Answer
-      const prompt = buildAnswerPrompt(item.question, item.question_date, item.question_type, chunks);
+      const prompt = buildAnswerPrompt(
+        item.question,
+        item.question_date,
+        item.question_type,
+        chunks,
+      );
       const hypothesis = await bridge.complete({ model, prompt, maxTokens: 256 });
 
       results.push({ question_id: item.question_id, hypothesis: hypothesis.trim() });
@@ -218,7 +229,13 @@ async function run() {
   console.log(`Loaded ${items.length} questions (of ${dataset.length} total)`);
 
   for (const variant of variantsToRun) {
-    const { results, questionMetrics } = await runVariant(variant, items, model, maxResults, verbose);
+    const { results, questionMetrics } = await runVariant(
+      variant,
+      items,
+      model,
+      maxResults,
+      verbose,
+    );
 
     // Write results JSONL
     const suffix = args.oracle ? "oracle" : "s";
@@ -288,15 +305,18 @@ function summarizeMemoryMetrics(metrics: QuestionMetrics[]): Record<string, unkn
   if (metrics.length === 0) return {};
 
   const avgChunks = metrics.reduce((s, m) => s + m.memoryMetrics.activeChunks, 0) / metrics.length;
-  const avgInsights = metrics.reduce((s, m) => s + m.memoryMetrics.dreamInsights, 0) / metrics.length;
-  const avgImportance = metrics.reduce((s, m) => s + m.memoryMetrics.avgImportanceScore, 0) / metrics.length;
+  const avgInsights =
+    metrics.reduce((s, m) => s + m.memoryMetrics.dreamInsights, 0) / metrics.length;
+  const avgImportance =
+    metrics.reduce((s, m) => s + m.memoryMetrics.avgImportanceScore, 0) / metrics.length;
 
   const curiosityRewards = metrics
     .map((m) => m.memoryMetrics.avgCuriosityReward)
     .filter((r): r is number => r !== null);
-  const avgCuriosity = curiosityRewards.length > 0
-    ? curiosityRewards.reduce((a, b) => a + b, 0) / curiosityRewards.length
-    : null;
+  const avgCuriosity =
+    curiosityRewards.length > 0
+      ? curiosityRewards.reduce((a, b) => a + b, 0) / curiosityRewards.length
+      : null;
 
   return {
     avgActiveChunks: avgChunks.toFixed(1),

@@ -23,7 +23,9 @@ export async function resolveFileWithinRoot(
       return await openFileWithinRoot({ rootDir: rootReal, relativePath: relative });
     } catch (err) {
       if (err instanceof SafeOpenError) {
-        console.warn(`[canvas] SafeOpenError: ${err.code} ${err.message} rootDir=${rootReal} rel=${relative}`);
+        console.warn(
+          `[canvas] SafeOpenError: ${err.code} ${err.message} rootDir=${rootReal} rel=${relative}`,
+        );
         return null;
       }
       throw err;

@@ -5,9 +5,9 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { EmbeddingPerspective, MultiPerspectiveEmbedding } from "./crystal-types.js";
-import { cosineSimilarity, parseEmbedding } from "./internal.js";
 import type { EmbeddingProvider } from "./embedding-perspectives.js";
 import { embedWithPerspectives } from "./embedding-perspectives.js";
+import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 export type PerspectiveWeights = {
   semantic: number;
@@ -85,7 +85,10 @@ export function multiPerspectiveSearchWithEmbeddings(
   const perspectives: EmbeddingPerspective[] = ["semantic", "procedural", "causal", "entity"];
 
   // For each perspective, compute similarity and rank
-  const perspectiveRankings = new Map<EmbeddingPerspective, Map<string, { rank: number; sim: number }>>();
+  const perspectiveRankings = new Map<
+    EmbeddingPerspective,
+    Map<string, { rank: number; sim: number }>
+  >();
 
   for (const perspective of perspectives) {
     if (weights[perspective] === 0) continue;
@@ -95,13 +98,14 @@ export function multiPerspectiveSearchWithEmbeddings(
 
     const scored: Array<{ id: string; sim: number }> = [];
     for (const chunk of chunks) {
-      const embCol = perspective === "semantic"
-        ? chunk.embedding
-        : perspective === "procedural"
-          ? chunk.embedding_procedural
-          : perspective === "causal"
-            ? chunk.embedding_causal
-            : chunk.embedding_entity;
+      const embCol =
+        perspective === "semantic"
+          ? chunk.embedding
+          : perspective === "procedural"
+            ? chunk.embedding_procedural
+            : perspective === "causal"
+              ? chunk.embedding_causal
+              : chunk.embedding_entity;
 
       if (!embCol) continue;
       const emb = parseEmbedding(embCol);
@@ -131,11 +135,14 @@ export function multiPerspectiveSearchWithEmbeddings(
     steeringMap.set(chunk.id, chunk.steering_reward ?? 0);
   }
 
-  const fusedScores = new Map<string, {
-    score: number;
-    ranks: Record<EmbeddingPerspective, number>;
-    sims: Record<EmbeddingPerspective, number>;
-  }>();
+  const fusedScores = new Map<
+    string,
+    {
+      score: number;
+      ranks: Record<EmbeddingPerspective, number>;
+      sims: Record<EmbeddingPerspective, number>;
+    }
+  >();
 
   const allIds = new Set(chunks.map((c) => c.id));
   for (const id of allIds) {

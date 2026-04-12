@@ -29,7 +29,10 @@ const SANDBOX_EXAMPLES = {
   recreate: [
     ["bitterbot sandbox recreate --all", "Recreate all containers."],
     ["bitterbot sandbox recreate --session main", "Recreate a specific session."],
-    ["bitterbot sandbox recreate --agent mybot", "Recreate a specific agent (includes sub-agents)."],
+    [
+      "bitterbot sandbox recreate --agent mybot",
+      "Recreate a specific agent (includes sub-agents).",
+    ],
     ["bitterbot sandbox recreate --browser --all", "Recreate only browser containers."],
     ["bitterbot sandbox recreate --all --force", "Skip confirmation."],
   ],

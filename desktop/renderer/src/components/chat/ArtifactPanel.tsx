@@ -1,15 +1,9 @@
+import { Code, Copy, Download, ExternalLink, X } from "lucide-react";
+import { useCallback, useMemo } from "react";
+import { cn } from "../../lib/utils";
 import { useArtifactStore } from "../../stores/artifact-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { ArtifactRenderer } from "./ArtifactRenderer";
-import {
-  Code,
-  Copy,
-  Download,
-  ExternalLink,
-  X,
-} from "lucide-react";
-import { cn } from "../../lib/utils";
-import { useCallback, useMemo } from "react";
 
 interface ArtifactPanelProps {
   onClose?: () => void;
@@ -106,18 +100,13 @@ export function ArtifactPanel({ onClose }: ArtifactPanelProps) {
           {artifact.type}
         </span>
         {artifact.version > 1 && (
-          <span className="text-[10px] text-muted-foreground/50">
-            v{artifact.version}
-          </span>
+          <span className="text-[10px] text-muted-foreground/50">v{artifact.version}</span>
         )}
       </div>
 
       {/* Artifact iframe */}
       <div className="flex-1 overflow-hidden">
-        <ArtifactRenderer
-          artifactId={activeArtifactId}
-          canvasBaseUrl={canvasBaseUrl}
-        />
+        <ArtifactRenderer artifactId={activeArtifactId} canvasBaseUrl={canvasBaseUrl} />
       </div>
 
       {/* Action bar */}

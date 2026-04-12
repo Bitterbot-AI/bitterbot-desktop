@@ -8,11 +8,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { MemorySource, MemorySyncProgressUpdate } from "./types.js";
+import { resolveWatchPaths } from "../agents/skills/refresh.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { onSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { resolveUserPath } from "../utils.js";
-import { resolveWatchPaths } from "../agents/skills/refresh.js";
 import {
   buildFileEntry,
   ensureDir,
@@ -336,8 +336,8 @@ class MemoryManagerSyncOps {
       interval: isWSL ? 2000 : undefined,
     });
     const markDirty = (changedPath?: string) => {
-      const isSkillPath = typeof changedPath === "string" &&
-        path.basename(changedPath) === "SKILL.md";
+      const isSkillPath =
+        typeof changedPath === "string" && path.basename(changedPath) === "SKILL.md";
       if (isSkillPath) {
         this.skillsDirty = true;
       } else {

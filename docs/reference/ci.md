@@ -9,18 +9,18 @@ The CI runs on every push to `main` and every pull request. It uses smart scopin
 
 ## Job Overview
 
-| Job               | Purpose                                         | When it runs              |
-| ----------------- | ----------------------------------------------- | ------------------------- |
-| `docs-scope`      | Detect docs-only changes                        | Always                    |
-| `changed-scope`   | Detect which areas changed (node)               | Non-docs PRs              |
-| `check`           | TypeScript types, lint, format                  | Non-docs changes          |
-| `check-docs`      | Markdown lint + broken link check               | Docs changed              |
-| `code-analysis`   | LOC threshold check (1000 lines)                | PRs only                  |
-| `secrets`         | Detect leaked secrets                           | Always                    |
-| `build-artifacts` | Build dist once, share with other jobs          | Non-docs, node changes    |
-| `release-check`   | Validate npm pack contents                      | After build               |
-| `checks`          | Node/Bun tests + protocol check                 | Non-docs, node changes    |
-| `checks-windows`  | Windows-specific tests                          | Non-docs, node changes    |
+| Job               | Purpose                                | When it runs           |
+| ----------------- | -------------------------------------- | ---------------------- |
+| `docs-scope`      | Detect docs-only changes               | Always                 |
+| `changed-scope`   | Detect which areas changed (node)      | Non-docs PRs           |
+| `check`           | TypeScript types, lint, format         | Non-docs changes       |
+| `check-docs`      | Markdown lint + broken link check      | Docs changed           |
+| `code-analysis`   | LOC threshold check (1000 lines)       | PRs only               |
+| `secrets`         | Detect leaked secrets                  | Always                 |
+| `build-artifacts` | Build dist once, share with other jobs | Non-docs, node changes |
+| `release-check`   | Validate npm pack contents             | After build            |
+| `checks`          | Node/Bun tests + protocol check        | Non-docs, node changes |
+| `checks-windows`  | Windows-specific tests                 | Non-docs, node changes |
 
 ## Fail-Fast Order
 

@@ -12,27 +12,27 @@ Bitterbot's memory is a biological cognitive architecture, not a vector database
 
 ## Core Components
 
-| Component | What It Does | Docs |
-|-----------|-------------|------|
-| **Knowledge Crystals** | Memories that naturally decay via Ebbinghaus curves. Frequently accessed facts become permanent; unused info fades. | [Knowledge Crystals](../memory/knowledge-crystals.md) |
-| **Dream Engine** | Every 2 hours, the agent goes offline to dream — running 7 specialized modes to consolidate, mutate, and optimize knowledge. | [Dream Engine](../memory/dream-engine.md) |
-| **Curiosity Engine** | Unified intrinsic motivation with GCCRF reward scoring. Maps what the agent *doesn't* know. Detects gaps, contradictions, and semantic frontiers. Developmental alpha annealing shifts curiosity from common knowledge to frontier exploration. | [Curiosity & Search](../memory/curiosity-and-search.md) |
-| **Hormonal System** | Three neuromodulators (dopamine, cortisol, oxytocin) shape personality in real-time and determine what's worth remembering. | [Emotional System](../memory/emotional-system.md) |
-| **Working Memory (MEMORY.md)** | Dream-synthesized identity: the Phenotype (self-concept), Bond (theory of mind), Niche (ecosystem role), and active context. Rewritten every dream cycle. | [Working Memory](../memory/working-memory.md) |
-| **Skills Pipeline** | Successful task patterns are crystallized into tradeable skills, published to the P2P marketplace. | [Skills Pipeline](../memory/skills-pipeline.md) |
-| **Deep Recall (RLM)** | For massive context (10M+ tokens), spawns a sub-LLM that writes and executes search code against full history. | [Deep Recall](../memory/deep-recall.md) |
+| Component                      | What It Does                                                                                                                                                                                                                                    | Docs                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Knowledge Crystals**         | Memories that naturally decay via Ebbinghaus curves. Frequently accessed facts become permanent; unused info fades.                                                                                                                             | [Knowledge Crystals](../memory/knowledge-crystals.md)   |
+| **Dream Engine**               | Every 2 hours, the agent goes offline to dream — running 7 specialized modes to consolidate, mutate, and optimize knowledge.                                                                                                                    | [Dream Engine](../memory/dream-engine.md)               |
+| **Curiosity Engine**           | Unified intrinsic motivation with GCCRF reward scoring. Maps what the agent _doesn't_ know. Detects gaps, contradictions, and semantic frontiers. Developmental alpha annealing shifts curiosity from common knowledge to frontier exploration. | [Curiosity & Search](../memory/curiosity-and-search.md) |
+| **Hormonal System**            | Three neuromodulators (dopamine, cortisol, oxytocin) shape personality in real-time and determine what's worth remembering.                                                                                                                     | [Emotional System](../memory/emotional-system.md)       |
+| **Working Memory (MEMORY.md)** | Dream-synthesized identity: the Phenotype (self-concept), Bond (theory of mind), Niche (ecosystem role), and active context. Rewritten every dream cycle.                                                                                       | [Working Memory](../memory/working-memory.md)           |
+| **Skills Pipeline**            | Successful task patterns are crystallized into tradeable skills, published to the P2P marketplace.                                                                                                                                              | [Skills Pipeline](../memory/skills-pipeline.md)         |
+| **Deep Recall (RLM)**          | For massive context (10M+ tokens), spawns a sub-LLM that writes and executes search code against full history.                                                                                                                                  | [Deep Recall](../memory/deep-recall.md)                 |
 
 ## Agent Identity Files
 
 Every agent ships with a workspace that defines who it is:
 
-| File | Purpose | Mutability |
-|------|---------|------------|
-| `GENOME.md` | Safety axioms, hormonal baselines, core values, personality constraints | Immutable — dreams can never override |
-| `MEMORY.md` | Living working memory — Phenotype, Bond, Niche, active context | Rewritten every dream cycle |
-| `PROTOCOLS.md` | Operating procedures — how the agent behaves in groups, sessions, heartbeats | User-editable |
-| `TOOLS.md` | Environment-specific notes — camera names, SSH hosts, device nicknames | User-editable |
-| `HEARTBEAT.md` | Periodic tasks the agent checks on a schedule | User-editable |
+| File           | Purpose                                                                      | Mutability                            |
+| -------------- | ---------------------------------------------------------------------------- | ------------------------------------- |
+| `GENOME.md`    | Safety axioms, hormonal baselines, core values, personality constraints      | Immutable — dreams can never override |
+| `MEMORY.md`    | Living working memory — Phenotype, Bond, Niche, active context               | Rewritten every dream cycle           |
+| `PROTOCOLS.md` | Operating procedures — how the agent behaves in groups, sessions, heartbeats | User-editable                         |
+| `TOOLS.md`     | Environment-specific notes — camera names, SSH hosts, device nicknames       | User-editable                         |
+| `HEARTBEAT.md` | Periodic tasks the agent checks on a schedule                                | User-editable                         |
 
 ## How It Works
 

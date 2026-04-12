@@ -128,9 +128,7 @@ export function extractToolResult(msg: unknown): string | undefined {
 /**
  * Extract role from a gateway message.
  */
-function extractRole(
-  msg: unknown,
-): "user" | "assistant" | "system" | "tool" {
+function extractRole(msg: unknown): "user" | "assistant" | "system" | "tool" {
   if (!msg || typeof msg !== "object") return "assistant";
   const obj = msg as Record<string, unknown>;
   const role = obj.role;
@@ -187,9 +185,7 @@ function extractImages(
 /**
  * Extract usage data from a gateway message.
  */
-function extractUsage(
-  msg: unknown,
-): { input: number; output: number; total: number } | undefined {
+function extractUsage(msg: unknown): { input: number; output: number; total: number } | undefined {
   if (!msg || typeof msg !== "object") return undefined;
   const obj = msg as Record<string, unknown>;
   const usage = obj.usage as Record<string, unknown> | undefined;
@@ -205,16 +201,13 @@ function extractUsage(
  */
 export function normalizeMessage(raw: unknown, id?: string): ChatMessage {
   const role = extractRole(raw);
-  const obj = (raw && typeof raw === "object") ? raw as Record<string, unknown> : {};
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
   const msg: ChatMessage = {
     id: id ?? nextMsgId(),
     role,
     content: extractMessageText(raw),
-    timestamp:
-      typeof obj.timestamp === "number"
-        ? obj.timestamp
-        : Date.now(),
+    timestamp: typeof obj.timestamp === "number" ? obj.timestamp : Date.now(),
     thinking: extractThinking(raw),
     images: extractImages(raw),
   };
@@ -252,7 +245,11 @@ export function normalizeMessages(rawMessages: unknown[]): ChatMessage[] {
     .filter((msg) => {
       // Filter out tool-role messages — they show in the panel, not in chat
       if (msg.role === "tool") return false;
-      return msg.content.length > 0 || (msg.images && msg.images.length > 0) || (msg.toolCalls && msg.toolCalls.length > 0);
+      return (
+        msg.content.length > 0 ||
+        (msg.images && msg.images.length > 0) ||
+        (msg.toolCalls && msg.toolCalls.length > 0)
+      );
     });
 }
 

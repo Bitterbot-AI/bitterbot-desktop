@@ -86,7 +86,11 @@ interface WorkspaceState {
   /** Set tree filter string */
   setTreeFilter: (filter: string) => void;
   /** Search file contents via backend RPC */
-  searchContent: (query: string, opts?: { regex?: boolean; caseSensitive?: boolean }, agentId?: string) => Promise<void>;
+  searchContent: (
+    query: string,
+    opts?: { regex?: boolean; caseSensitive?: boolean },
+    agentId?: string,
+  ) => Promise<void>;
   /** Clear search results */
   clearSearch: () => void;
 
@@ -354,7 +358,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ treeFilter: filter });
   },
 
-  searchContent: async (query: string, opts?: { regex?: boolean; caseSensitive?: boolean }, agentId?: string) => {
+  searchContent: async (
+    query: string,
+    opts?: { regex?: boolean; caseSensitive?: boolean },
+    agentId?: string,
+  ) => {
     if (!query.trim()) {
       set({ searchResults: [], searchLoading: false });
       return;

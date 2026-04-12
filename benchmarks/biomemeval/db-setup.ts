@@ -4,8 +4,8 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import { ensureMemoryIndexSchema, ensureColumn } from "../../src/memory/memory-schema.js";
 import { ensureDreamSchema } from "../../src/memory/dream-schema.js";
+import { ensureMemoryIndexSchema, ensureColumn } from "../../src/memory/memory-schema.js";
 
 export function createBenchmarkDb(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
@@ -49,7 +49,9 @@ export function createBenchmarkDb(): DatabaseSync {
       importance REAL DEFAULT 0.5
     )
   `);
-  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_name_type ON entities(name, entity_type)`);
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_name_type ON entities(name, entity_type)`,
+  );
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS relationships (

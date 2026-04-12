@@ -1,8 +1,8 @@
 import { useCallback, useRef, useState, type KeyboardEvent } from "react";
+import { cn } from "../../lib/utils";
 import { useChatStore, nextMsgId } from "../../stores/chat-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useProjectsStore } from "../../stores/projects-store";
-import { cn } from "../../lib/utils";
 
 export function ChatInput() {
   const [text, setText] = useState("");
@@ -107,11 +107,7 @@ export function ChatInput() {
             handleInput();
           }}
           onKeyDown={handleKeyDown}
-          placeholder={
-            isConnected
-              ? "Message BitterBot..."
-              : "Connecting to gateway..."
-          }
+          placeholder={isConnected ? "Message BitterBot..." : "Connecting to gateway..."}
           disabled={!isConnected}
           rows={1}
           className={cn(
@@ -184,12 +180,7 @@ function SendIcon() {
 
 function StopIcon() {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-    >
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
       <rect x="4" y="4" width="16" height="16" rx="2" />
     </svg>
   );

@@ -7,11 +7,11 @@ name: Orchestrator Release
 on:
   push:
     tags:
-      - 'orchestrator-v*'
+      - "orchestrator-v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build (e.g. orchestrator-v0.1.0). Must already exist.'
+        description: "Tag to build (e.g. orchestrator-v0.1.0). Must already exist."
         required: true
         type: string
 
@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write  # required by softprops/action-gh-release to publish
+  contents: write # required by softprops/action-gh-release to publish
 
 jobs:
   build:
@@ -82,7 +82,7 @@ jobs:
       - name: Build release
         working-directory: orchestrator
         env:
-          RUSTFLAGS: '-C strip=symbols'
+          RUSTFLAGS: "-C strip=symbols"
         run: cargo build --release --target ${{ matrix.rust-target }}
 
       - name: Stage binary

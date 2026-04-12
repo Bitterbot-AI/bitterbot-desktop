@@ -9,6 +9,7 @@
   "ignorePatterns": [
     "apps/",
     "assets/",
+    "benchmarks/longmemeval/data/",
     "dist/",
     "docs/_layouts/",
     "node_modules/",

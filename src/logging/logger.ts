@@ -64,7 +64,9 @@ function resolveSettings(): ResolvedSettings {
     }
   }
   const defaultLevel =
-    process.env.VITEST === "true" && process.env.BITTERBOT_TEST_FILE_LOG !== "1" ? "silent" : "info";
+    process.env.VITEST === "true" && process.env.BITTERBOT_TEST_FILE_LOG !== "1"
+      ? "silent"
+      : "info";
   const level = normalizeLogLevel(cfg?.level, defaultLevel);
   const file = cfg?.file ?? defaultRollingPathForToday();
   return { level, file };

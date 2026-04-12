@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useCronStore, type CronJob } from "../../stores/cron-store";
 import { formatRelativeTime, formatDateTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import { useCronStore, type CronJob } from "../../stores/cron-store";
+import { useGatewayStore } from "../../stores/gateway-store";
 
 function CronJobCard({
   job,
@@ -37,23 +37,13 @@ function CronJobCard({
             <span className="text-sm font-medium text-foreground">
               {job.label ?? "Untitled Job"}
             </span>
-            <span className="text-xs font-mono text-muted-foreground/60">
-              {job.schedule}
-            </span>
+            <span className="text-xs font-mono text-muted-foreground/60">{job.schedule}</span>
           </div>
-          <p className="text-xs text-muted-foreground line-clamp-2">
-            {job.text}
-          </p>
+          <p className="text-xs text-muted-foreground line-clamp-2">{job.text}</p>
           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground/60">
-            {job.lastRunAt && (
-              <span>Last: {formatRelativeTime(job.lastRunAt)}</span>
-            )}
-            {job.nextRunAt && (
-              <span>Next: {formatDateTime(job.nextRunAt)}</span>
-            )}
-            {job.sessionKey && (
-              <span className="font-mono">{job.sessionKey}</span>
-            )}
+            {job.lastRunAt && <span>Last: {formatRelativeTime(job.lastRunAt)}</span>}
+            {job.nextRunAt && <span>Next: {formatDateTime(job.nextRunAt)}</span>}
+            {job.sessionKey && <span className="font-mono">{job.sessionKey}</span>}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -65,8 +55,7 @@ function CronJobCard({
           </button>
           <button
             onClick={() => {
-              if (confirm(`Remove cron job "${job.label ?? job.id}"?`))
-                onRemove(job.id);
+              if (confirm(`Remove cron job "${job.label ?? job.id}"?`)) onRemove(job.id);
             }}
             className="px-2 py-1 text-xs rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
           >

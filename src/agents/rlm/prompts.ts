@@ -107,7 +107,8 @@ export function buildRLMOutputFeedback(output: string, error?: string): string {
     msg += `\n**Error:** ${error}\n\nFix the error and try again.`;
   }
   if (!output && !error) {
-    msg += "(No output produced. Use `print()` to see intermediate results, or call `FINAL()` when done.)";
+    msg +=
+      "(No output produced. Use `print()` to see intermediate results, or call `FINAL()` when done.)";
   }
   return msg;
 }

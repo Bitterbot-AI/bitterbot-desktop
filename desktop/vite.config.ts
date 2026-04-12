@@ -1,8 +1,8 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import { defineConfig } from "vite";
 
 /**
  * Resolve the gateway auth token with the following precedence:

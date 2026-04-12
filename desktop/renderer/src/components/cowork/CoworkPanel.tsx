@@ -1,6 +1,6 @@
+import { ListTree } from "lucide-react";
 import { useCoworkStore } from "../../stores/cowork-store";
 import { TaskTreeView } from "./TaskTreeView";
-import { ListTree } from "lucide-react";
 
 /**
  * Cowork panel showing hierarchical task tree with sub-task progress.
@@ -8,11 +8,11 @@ import { ListTree } from "lucide-react";
  */
 export function CoworkPanel() {
   const taskCount = useCoworkStore((s) => s.tasks.size);
-  const runningCount = useCoworkStore((s) =>
-    [...s.tasks.values()].filter((t) => t.status === "running").length,
+  const runningCount = useCoworkStore(
+    (s) => [...s.tasks.values()].filter((t) => t.status === "running").length,
   );
-  const completedCount = useCoworkStore((s) =>
-    [...s.tasks.values()].filter((t) => t.status === "completed").length,
+  const completedCount = useCoworkStore(
+    (s) => [...s.tasks.values()].filter((t) => t.status === "completed").length,
   );
 
   if (taskCount === 0) {
@@ -21,9 +21,7 @@ export function CoworkPanel() {
         <div className="text-center space-y-2 text-muted-foreground">
           <ListTree className="w-8 h-8 mx-auto opacity-50" />
           <p className="text-sm">No tasks yet</p>
-          <p className="text-xs">
-            Sub-agent tasks will appear here during complex operations.
-          </p>
+          <p className="text-xs">Sub-agent tasks will appear here during complex operations.</p>
         </div>
       </div>
     );
@@ -43,9 +41,7 @@ export function CoworkPanel() {
           </span>
         )}
         {completedCount > 0 && (
-          <span className="text-[10px] text-emerald-400/70">
-            {completedCount} done
-          </span>
+          <span className="text-[10px] text-emerald-400/70">{completedCount} done</span>
         )}
       </div>
 

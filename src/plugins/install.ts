@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { MANIFEST_KEY } from "../compat/legacy-names.js";
-import { getPackageManifestMetadata } from "./manifest.js";
 import {
   extractArchive,
   fileExists,
@@ -21,6 +20,7 @@ import { runCommandWithTimeout } from "../process/exec.js";
 import { extensionUsesSkippedScannerPath, isPathInside } from "../security/scan-paths.js";
 import * as skillScanner from "../security/skill-scanner.js";
 import { CONFIG_DIR, resolveUserPath } from "../utils.js";
+import { getPackageManifestMetadata } from "./manifest.js";
 
 type PluginInstallLogger = {
   info?: (message: string) => void;

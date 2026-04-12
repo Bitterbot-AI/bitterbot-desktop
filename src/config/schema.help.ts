@@ -94,8 +94,7 @@ export const FIELD_HELP: Record<string, string> = {
     "Perplexity base URL override (default: https://openrouter.ai/api/v1 or https://api.perplexity.ai).",
   "tools.web.search.perplexity.model":
     'Perplexity model override (default: "perplexity/sonar-pro").',
-  "tools.web.search.tavily.apiKey":
-    "Tavily API key (fallback: TAVILY_API_KEY env var).",
+  "tools.web.search.tavily.apiKey": "Tavily API key (fallback: TAVILY_API_KEY env var).",
   "tools.web.search.tavily.searchDepth":
     'Tavily search depth ("basic" or "advanced"; default: "basic").',
   "tools.web.fetch.enabled": "Enable the web_fetch tool (lightweight HTTP fetch).",

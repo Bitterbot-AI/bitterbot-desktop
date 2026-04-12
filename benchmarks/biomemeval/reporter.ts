@@ -6,9 +6,9 @@
  * and a summary table is printed to stdout.
  */
 
+import type { Reporter, File, Task } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import type { Reporter, File, Task } from "vitest";
 
 interface SuiteScore {
   name: string;
@@ -78,9 +78,10 @@ export default class BioMemEvalReporter implements Reporter {
     }
 
     const totalWeight = suites.reduce((s, suite) => s + suite.weight, 0);
-    const composite = totalWeight > 0
-      ? suites.reduce((s, suite) => s + suite.percentage * suite.weight, 0) / totalWeight
-      : 0;
+    const composite =
+      totalWeight > 0
+        ? suites.reduce((s, suite) => s + suite.percentage * suite.weight, 0) / totalWeight
+        : 0;
 
     const report = {
       system: "Bitterbot",
@@ -120,11 +121,7 @@ export default class BioMemEvalReporter implements Reporter {
     console.log("=".repeat(70));
     console.log("");
     console.log(
-      "  Suite".padEnd(30) +
-      "Weight".padEnd(10) +
-      "Pass".padEnd(8) +
-      "Fail".padEnd(8) +
-      "Score",
+      "  Suite".padEnd(30) + "Weight".padEnd(10) + "Pass".padEnd(8) + "Fail".padEnd(8) + "Score",
     );
     console.log("  " + "-".repeat(62));
 
@@ -136,7 +133,9 @@ export default class BioMemEvalReporter implements Reporter {
     }
 
     console.log("  " + "-".repeat(62));
-    console.log(`  ${"COMPOSITE".padEnd(28)}${"100%".padEnd(10)}${"".padEnd(16)}${Math.round(composite)}%`);
+    console.log(
+      `  ${"COMPOSITE".padEnd(28)}${"100%".padEnd(10)}${"".padEnd(16)}${Math.round(composite)}%`,
+    );
     console.log("");
     console.log(`  System: ${report.system} v${report.version}`);
     console.log(`  Duration: ${report.metadata.runDurationMs}ms`);

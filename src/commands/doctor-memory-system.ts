@@ -10,13 +10,13 @@
  * Reads the database directly (read-only) — does NOT require the gateway.
  */
 
-import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import type { BitterbotConfig } from "../config/config.js";
+import { DEFAULT_GCCRF_CONFIG } from "../memory/gccrf-reward.js";
 import { parseGenomeHomeostasis, parsePhenotypeConstraints } from "../memory/genome-parser.js";
 import { WORKING_MEMORY_SECTIONS } from "../memory/working-memory-prompt.js";
-import { DEFAULT_GCCRF_CONFIG } from "../memory/gccrf-reward.js";
 import { note } from "../terminal/note.js";
 
 // ── Types ──
@@ -115,13 +115,25 @@ function checkGenomeStructure(workspaceDir: string): DoctorCheckResult[] {
       if (homeostasis) {
         const { dopamine, cortisol, oxytocin } = homeostasis;
         const valid =
-          dopamine !== undefined && dopamine >= 0 && dopamine <= 1 &&
-          cortisol !== undefined && cortisol >= 0 && cortisol <= 1 &&
-          oxytocin !== undefined && oxytocin >= 0 && oxytocin <= 1;
+          dopamine !== undefined &&
+          dopamine >= 0 &&
+          dopamine <= 1 &&
+          cortisol !== undefined &&
+          cortisol >= 0 &&
+          cortisol <= 1 &&
+          oxytocin !== undefined &&
+          oxytocin >= 0 &&
+          oxytocin <= 1;
         if (valid) {
-          results.push(ok(`Hormonal Homeostasis: dopamine=${dopamine} cortisol=${cortisol} oxytocin=${oxytocin}`));
+          results.push(
+            ok(
+              `Hormonal Homeostasis: dopamine=${dopamine} cortisol=${cortisol} oxytocin=${oxytocin}`,
+            ),
+          );
         } else {
-          results.push(warn("Hormonal Homeostasis YAML has missing or out-of-range values (expected 0-1)"));
+          results.push(
+            warn("Hormonal Homeostasis YAML has missing or out-of-range values (expected 0-1)"),
+          );
         }
       } else {
         results.push(warn("Hormonal Homeostasis section exists but YAML could not be parsed"));
@@ -186,7 +198,11 @@ function checkMemorySchema(workspaceDir: string): DoctorCheckResult[] {
     if (presentCount === WORKING_MEMORY_SECTIONS.length) {
       results.push(ok(`All ${WORKING_MEMORY_SECTIONS.length} working memory sections present`));
     } else {
-      results.push(info(`${presentCount}/${WORKING_MEMORY_SECTIONS.length} sections present (nascent agent may not have all yet)`));
+      results.push(
+        info(
+          `${presentCount}/${WORKING_MEMORY_SECTIONS.length} sections present (nascent agent may not have all yet)`,
+        ),
+      );
     }
   } catch (err) {
     results.push(error(`Failed to read MEMORY.md: ${String(err)}`));
@@ -209,11 +225,15 @@ function checkMemoryDatabase(dbPath: string): DoctorCheckResult[] {
 
     // Integrity check — quick_check skips index consistency (fast on large DBs)
     try {
-      const integrity = db.prepare(`PRAGMA quick_check`).get() as { quick_check: string } | undefined;
+      const integrity = db.prepare(`PRAGMA quick_check`).get() as
+        | { quick_check: string }
+        | undefined;
       if (integrity?.quick_check === "ok") {
         results.push(ok("Database integrity check passed"));
       } else {
-        results.push(error(`Database integrity check failed: ${integrity?.quick_check ?? "unknown"}`));
+        results.push(
+          error(`Database integrity check failed: ${integrity?.quick_check ?? "unknown"}`),
+        );
       }
     } catch (err) {
       results.push(error(`Integrity check failed: ${String(err)}`));
@@ -221,14 +241,16 @@ function checkMemoryDatabase(dbPath: string): DoctorCheckResult[] {
 
     // Schema version
     try {
-      const versionRow = db
-        .prepare(`SELECT value FROM meta WHERE key = 'schema_version'`)
-        .get() as { value: string } | undefined;
+      const versionRow = db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
+        | { value: string }
+        | undefined;
       const version = versionRow ? parseInt(versionRow.value, 10) : 0;
       if (version === 4) {
         results.push(ok(`Schema version: ${version} (current)`));
       } else if (version > 0) {
-        results.push(warn(`Schema version: ${version} (expected 4 — run gateway to trigger migration)`));
+        results.push(
+          warn(`Schema version: ${version} (expected 4 — run gateway to trigger migration)`),
+        );
       } else {
         results.push(warn("Schema version not found in meta table"));
       }
@@ -269,12 +291,12 @@ function checkMemoryDatabase(dbPath: string): DoctorCheckResult[] {
         // Lifecycle distribution
         try {
           const rows = db
-            .prepare(`SELECT lifecycle, COUNT(*) as c FROM chunks GROUP BY lifecycle ORDER BY c DESC`)
+            .prepare(
+              `SELECT lifecycle, COUNT(*) as c FROM chunks GROUP BY lifecycle ORDER BY c DESC`,
+            )
             .all() as Array<{ lifecycle: string | null; c: number }>;
           if (rows.length > 0) {
-            const dist = rows
-              .map((r) => `${r.lifecycle ?? "null"}=${r.c}`)
-              .join(", ");
+            const dist = rows.map((r) => `${r.lifecycle ?? "null"}=${r.c}`).join(", ");
             results.push(info(`Lifecycle distribution: ${dist}`));
           }
         } catch {
@@ -332,13 +354,15 @@ function checkDreamEngine(dbPath: string, isGatewayRunning: boolean): DoctorChec
           `SELECT started_at, duration_ms, insights_generated, modes_used, error
            FROM dream_cycles ORDER BY started_at DESC LIMIT 1`,
         )
-        .get() as {
-        started_at: number;
-        duration_ms: number | null;
-        insights_generated: number;
-        modes_used: string | null;
-        error: string | null;
-      } | undefined;
+        .get() as
+        | {
+            started_at: number;
+            duration_ms: number | null;
+            insights_generated: number;
+            modes_used: string | null;
+            error: string | null;
+          }
+        | undefined;
 
       if (lastRow) {
         const agoMs = Date.now() - lastRow.started_at;
@@ -400,10 +424,7 @@ function checkDreamEngine(dbPath: string, isGatewayRunning: boolean): DoctorChec
   return results;
 }
 
-function checkHormonalSystem(
-  cfg: BitterbotConfig,
-  workspaceDir: string,
-): DoctorCheckResult[] {
+function checkHormonalSystem(cfg: BitterbotConfig, workspaceDir: string): DoctorCheckResult[] {
   const results: DoctorCheckResult[] = [];
 
   const hormonalEnabled = cfg.memory?.emotional?.hormonal?.enabled !== false;
@@ -421,12 +442,13 @@ function checkHormonalSystem(
       const homeostasis = parseGenomeHomeostasis(content);
       if (homeostasis) {
         const { dopamine, cortisol, oxytocin } = homeostasis;
-        const allValid =
-          dopamine !== undefined && cortisol !== undefined && oxytocin !== undefined;
+        const allValid = dopamine !== undefined && cortisol !== undefined && oxytocin !== undefined;
         if (allValid) {
           results.push(ok(`Homeostasis baselines: D=${dopamine} C=${cortisol} O=${oxytocin}`));
         } else {
-          results.push(warn("Homeostasis baselines incomplete — some hormones missing from GENOME.md"));
+          results.push(
+            warn("Homeostasis baselines incomplete — some hormones missing from GENOME.md"),
+          );
         }
       } else {
         results.push(warn("Could not parse homeostasis baselines from GENOME.md"));
@@ -459,7 +481,8 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
     db = new DatabaseSync(dbPath, { open: true, readOnly: true } as any);
 
     // Compute maturity from dream cycles + crystal count + age (same logic as GCCRFRewardFunction.getMaturity)
-    const expectedMatureCycles = cfg.memory?.gccrf?.expectedMatureCycles ?? DEFAULT_GCCRF_CONFIG.expectedMatureCycles;
+    const expectedMatureCycles =
+      cfg.memory?.gccrf?.expectedMatureCycles ?? DEFAULT_GCCRF_CONFIG.expectedMatureCycles;
     const alphaStart = cfg.memory?.gccrf?.alphaStart ?? DEFAULT_GCCRF_CONFIG.alphaStart;
     const alphaEnd = cfg.memory?.gccrf?.alphaEnd ?? DEFAULT_GCCRF_CONFIG.alphaEnd;
 
@@ -481,13 +504,15 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
     if (tableExists(db, "chunks")) {
       try {
         const countRow = db
-          .prepare(`SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`)
+          .prepare(
+            `SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`,
+          )
           .get() as { c: number };
         crystalMat = countRow.c / 500;
 
-        const ageRow = db
-          .prepare(`SELECT MIN(created_at) as earliest FROM chunks`)
-          .get() as { earliest: number | null };
+        const ageRow = db.prepare(`SELECT MIN(created_at) as earliest FROM chunks`).get() as {
+          earliest: number | null;
+        };
         if (ageRow?.earliest) {
           ageMat = Math.max(0, (Date.now() - ageRow.earliest) / (24 * 60 * 60_000)) / 30;
         }
@@ -502,7 +527,7 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
     // Developmental stage
     let stage: string;
     if (maturity < 0.15) stage = "Nascent";
-    else if (maturity < 0.50) stage = "Developing";
+    else if (maturity < 0.5) stage = "Developing";
     else if (maturity < 0.85) stage = "Maturing";
     else stage = "Mature";
 
@@ -524,9 +549,9 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
     // Knowledge regions
     if (tableExists(db, "curiosity_regions")) {
       try {
-        const regionRow = db
-          .prepare(`SELECT COUNT(*) as c FROM curiosity_regions`)
-          .get() as { c: number };
+        const regionRow = db.prepare(`SELECT COUNT(*) as c FROM curiosity_regions`).get() as {
+          c: number;
+        };
         results.push(info(`Knowledge regions: ${regionRow.c}`));
       } catch {
         // ignore

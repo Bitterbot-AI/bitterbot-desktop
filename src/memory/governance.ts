@@ -5,9 +5,9 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { ProvenanceNode } from "./crystal-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { ensureColumn } from "./memory-schema.js";
-import type { ProvenanceNode } from "./crystal-types.js";
 
 const log = createSubsystemLogger("memory/governance");
 
@@ -89,12 +89,20 @@ export class MemoryGovernance {
     const lower = text.toLowerCase();
 
     // Confidential patterns
-    if (/\b(?:password|secret|api[_\s]?key|token|credential|private[_\s]?key|ssh[_\s]?key)\b/i.test(lower)) {
+    if (
+      /\b(?:password|secret|api[_\s]?key|token|credential|private[_\s]?key|ssh[_\s]?key)\b/i.test(
+        lower,
+      )
+    ) {
       return "confidential";
     }
 
     // Personal patterns
-    if (/\b(?:my name|my email|my phone|my address|birthday|social security|ssn|credit card)\b/i.test(lower)) {
+    if (
+      /\b(?:my name|my email|my phone|my address|birthday|social security|ssn|credit card)\b/i.test(
+        lower,
+      )
+    ) {
       return "personal";
     }
     if (/\b(?:i feel|i think|personally|my opinion|my preference)\b/i.test(lower)) {
@@ -252,9 +260,9 @@ export class MemoryGovernance {
    * Get the full provenance DAG for a crystal.
    */
   getProvenanceDAG(crystalId: string): ProvenanceNode[] {
-    const row = this.db
-      .prepare(`SELECT provenance_dag FROM chunks WHERE id = ?`)
-      .get(crystalId) as { provenance_dag: string | null } | undefined;
+    const row = this.db.prepare(`SELECT provenance_dag FROM chunks WHERE id = ?`).get(crystalId) as
+      | { provenance_dag: string | null }
+      | undefined;
 
     if (!row?.provenance_dag) return [];
     try {
@@ -302,11 +310,7 @@ export class MemoryGovernance {
     return [...actors];
   }
 
-  private buildTree(
-    node: ProvenanceNode,
-    depth: number,
-    visited: Set<string>,
-  ): ProvenanceTree {
+  private buildTree(node: ProvenanceNode, depth: number, visited: Set<string>): ProvenanceTree {
     visited.add(node.crystalId);
     const parents: ProvenanceTree[] = [];
 
@@ -332,9 +336,9 @@ export class MemoryGovernance {
     sensitivityCounts: { normal: number; personal: number; confidential: number };
     lifecycleCounts: Record<string, number>;
   } {
-    const auditCount = (
-      this.db.prepare(`SELECT COUNT(*) as c FROM memory_audit_log`).get() as { c: number }
-    )?.c ?? 0;
+    const auditCount =
+      (this.db.prepare(`SELECT COUNT(*) as c FROM memory_audit_log`).get() as { c: number })?.c ??
+      0;
 
     const lifecycleRows = this.db
       .prepare(
@@ -351,7 +355,9 @@ export class MemoryGovernance {
     const sensitivityCounts = { normal: 0, personal: 0, confidential: 0 };
     try {
       const gRows = this.db
-        .prepare(`SELECT governance_json FROM chunks WHERE governance_json IS NOT NULL AND governance_json != '{}'`)
+        .prepare(
+          `SELECT governance_json FROM chunks WHERE governance_json IS NOT NULL AND governance_json != '{}'`,
+        )
         .all() as Array<{ governance_json: string }>;
 
       for (const row of gRows) {

@@ -12,7 +12,7 @@ import { expandHomePrefix, resolveRequiredHomeDir } from "../infra/home-dir.js";
  * - Config is managed externally (read-only from Nix perspective)
  */
 export function resolveIsNixMode(env: NodeJS.ProcessEnv = process.env): boolean {
-  return (env.BITTERBOT_NIX_MODE) === "1";
+  return env.BITTERBOT_NIX_MODE === "1";
 }
 
 export const isNixMode = resolveIsNixMode();
@@ -127,9 +127,7 @@ export function resolveConfigPath(
     return resolveUserPath(override, env, homedir);
   }
   const stateOverride = env.BITTERBOT_STATE_DIR?.trim();
-  const candidates = [
-    path.join(stateDir, CONFIG_FILENAME),
-  ];
+  const candidates = [path.join(stateDir, CONFIG_FILENAME)];
   const existing = candidates.find((candidate) => {
     try {
       return fs.existsSync(candidate);

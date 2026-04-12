@@ -11,14 +11,14 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { SkillMetrics } from "./crystal-types.js";
+import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   selectStrategy,
   buildStrategyPrompt,
   type StrategyContext,
 } from "./dream-mutation-strategies.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/prompt-optimization");
 
@@ -97,8 +97,7 @@ export class PromptOptimizationExperiment {
         if (metrics.successRate < MIN_SUCCESS_RATE) continue;
         if (metrics.successRate > MAX_SUCCESS_RATE) continue;
 
-        const opportunityScore =
-          (1 - metrics.successRate) * row.importance_score;
+        const opportunityScore = (1 - metrics.successRate) * row.importance_score;
 
         candidates.push({
           candidate: {
@@ -125,9 +124,7 @@ export class PromptOptimizationExperiment {
         return aAge - bAge; // older dreamed_at = higher priority
       });
 
-      const result = candidates
-        .slice(0, maxChunks)
-        .map((c) => c.candidate);
+      const result = candidates.slice(0, maxChunks).map((c) => c.candidate);
 
       if (result.length > 0) {
         log.debug(
@@ -154,10 +151,7 @@ export class PromptOptimizationExperiment {
       const { skill, metrics } = candidate;
 
       // Count related skills for compositional strategy selection
-      const relatedCount = this.countRelatedSkills(
-        skill.id,
-        skill.skill_category,
-      );
+      const relatedCount = this.countRelatedSkills(skill.id, skill.skill_category);
 
       // Select the best mutation strategy based on metrics
       const strategy = selectStrategy(
@@ -169,11 +163,7 @@ export class PromptOptimizationExperiment {
       // Build strategy-specific context
       const context: StrategyContext = { metrics };
       if (strategy === "compositional" && relatedCount > 0) {
-        context.relatedSkills = this.getRelatedSkills(
-          skill.id,
-          skill.skill_category,
-          2,
-        );
+        context.relatedSkills = this.getRelatedSkills(skill.id, skill.skill_category, 2);
       }
 
       // Build and send the mutation prompt
@@ -188,10 +178,7 @@ export class PromptOptimizationExperiment {
       }
 
       // Calculate opportunity score (same for all mutations from this candidate)
-      const opportunityScore = Math.min(
-        1,
-        (1 - metrics.successRate) * skill.importance_score,
-      );
+      const opportunityScore = Math.min(1, (1 - metrics.successRate) * skill.importance_score);
 
       return parsed.map((item) => ({
         content: item.content,
@@ -207,10 +194,7 @@ export class PromptOptimizationExperiment {
 
   // ── Internals ──────────────────────────────────────────────────────────
 
-  private countRelatedSkills(
-    skillId: string,
-    category: string | null,
-  ): number {
+  private countRelatedSkills(skillId: string, category: string | null): number {
     if (!category) return 0;
     try {
       const row = this.db
@@ -259,15 +243,11 @@ export class PromptOptimizationExperiment {
    * Expects a JSON array of { content, confidence, keywords }.
    * Handles markdown code fences and noisy output gracefully.
    */
-  private parseMutationResponse(
-    raw: string,
-  ): Array<{ content: string; confidence: number }> {
+  private parseMutationResponse(raw: string): Array<{ content: string; confidence: number }> {
     try {
       let cleaned = raw.trim();
       // Strip markdown code fences
-      cleaned = cleaned
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/\s*```$/, "");
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
 
       const parsed = JSON.parse(cleaned);
       if (!Array.isArray(parsed)) return [];

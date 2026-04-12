@@ -37,9 +37,7 @@ export async function createHostedOnrampSession(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(
-      `Hosted onramp service returned ${res.status}: ${body || res.statusText}`,
-    );
+    throw new Error(`Hosted onramp service returned ${res.status}: ${body || res.statusText}`);
   }
 
   const data = (await res.json()) as Record<string, unknown>;

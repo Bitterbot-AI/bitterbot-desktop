@@ -43,9 +43,9 @@ export async function resolveEndocrineState(params: {
     if (!hormones) return undefined;
 
     // Get response modulation briefing via the hormonal manager
-    const hormonalMgr = (manager as Record<string, unknown>).hormonalManager as
-      | { responseModulation(): { briefing: string } }
-      | null;
+    const hormonalMgr = (manager as Record<string, unknown>).hormonalManager as {
+      responseModulation(): { briefing: string };
+    } | null;
     const briefing = hormonalMgr?.responseModulation().briefing ?? "";
 
     // Get maturity from GCCRF
@@ -61,9 +61,7 @@ export async function resolveEndocrineState(params: {
         pathMod.join(params.workspaceDir, "MEMORY.md"),
         "utf-8",
       );
-      const phenoMatch = memoryMd.match(
-        /## The Phenotype[^\n]*\n\*[^\n]*\*\n([^\n]+)/,
-      );
+      const phenoMatch = memoryMd.match(/## The Phenotype[^\n]*\n\*[^\n]*\*\n([^\n]+)/);
       if (phenoMatch?.[1]) {
         phenotypeSummary = phenoMatch[1].slice(0, 200).trim();
       }
@@ -76,7 +74,8 @@ export async function resolveEndocrineState(params: {
     // Below the entropy threshold → fresh start, skip the brief entirely.
     let lastSessionBrief: string | undefined;
     try {
-      const { loadLatestHandoverBrief, formatCompactSummary } = await import("../memory/session-handover.js");
+      const { loadLatestHandoverBrief, formatCompactSummary } =
+        await import("../memory/session-handover.js");
       const brief = await loadLatestHandoverBrief(params.workspaceDir);
       if (brief) {
         let gatePass = true;
@@ -85,7 +84,9 @@ export async function resolveEndocrineState(params: {
         // If the user is doing something completely unrelated, skip the handover.
         try {
           const memManager = manager as Record<string, unknown>;
-          const provider = memManager.provider as { embedQuery?: (text: string) => Promise<number[]> } | undefined;
+          const provider = memManager.provider as
+            | { embedQuery?: (text: string) => Promise<number[]> }
+            | undefined;
           if (provider?.embedQuery) {
             const { cosineSimilarity } = await import("../memory/internal.js");
             const briefEmb = await provider.embedQuery(brief.purpose);
@@ -128,15 +129,26 @@ export async function resolveEndocrineState(params: {
     // Plan 7, Phase 1: Proactive memory surfacing — involuntary recall of identity/directive facts
     let proactiveMemories: string | undefined;
     try {
-      const { proactiveRecall, formatProactiveFacts } = await import("../memory/proactive-recall.js");
+      const { proactiveRecall, formatProactiveFacts } =
+        await import("../memory/proactive-recall.js");
       const result = proactiveRecall({
-        userMessage: "",  // Will be populated when called with context
-        queryEmbedding: null,  // Identity prefs don't need embedding
+        userMessage: "", // Will be populated when called with context
+        queryEmbedding: null, // Identity prefs don't need embedding
         db: (manager as Record<string, unknown>).db as import("node:sqlite").DatabaseSync,
-        userModelManager: (manager as Record<string, unknown>).userModelManager as import("../memory/user-model.js").UserModelManager | null,
-        recentlySurfaced: (manager as Record<string, unknown>).proactiveRecallCooldown as Map<string, number> ?? new Map(),
+        userModelManager: (manager as Record<string, unknown>).userModelManager as
+          | import("../memory/user-model.js").UserModelManager
+          | null,
+        recentlySurfaced:
+          ((manager as Record<string, unknown>).proactiveRecallCooldown as Map<string, number>) ??
+          new Map(),
         currentTurn: 0,
-        hormonalModulation: hormonalMgr ? (hormonalMgr as unknown as { getRetrievalModulation(): { importanceBoost: number; recencyBias: number } }).getRetrievalModulation() : null,
+        hormonalModulation: hormonalMgr
+          ? (
+              hormonalMgr as unknown as {
+                getRetrievalModulation(): { importanceBoost: number; recencyBias: number };
+              }
+            ).getRetrievalModulation()
+          : null,
       });
       if (result.facts.length > 0) {
         proactiveMemories = formatProactiveFacts(result.facts);
@@ -147,9 +159,12 @@ export async function resolveEndocrineState(params: {
 
     // PLAN-9: Prospective Memory — check triggers against current context
     try {
-      const prospectiveEngine = (manager as Record<string, unknown>).prospectiveMemoryEngine as
-        | { checkTriggers(params: { messageText: string; messageEmbedding?: number[] }): Array<{ action: string }> }
-        | null;
+      const prospectiveEngine = (manager as Record<string, unknown>).prospectiveMemoryEngine as {
+        checkTriggers(params: {
+          messageText: string;
+          messageEmbedding?: number[];
+        }): Array<{ action: string }>;
+      } | null;
       if (prospectiveEngine) {
         const triggered = prospectiveEngine.checkTriggers({ messageText: "" });
         if (triggered.length > 0) {
@@ -163,9 +178,9 @@ export async function resolveEndocrineState(params: {
 
     // PLAN-9: Epistemic Directives — inject knowledge gap questions
     try {
-      const epistemicEngine = (manager as Record<string, unknown>).epistemicDirectiveEngine as
-        | { getDirectivesForSession(): Array<{ question: string }> }
-        | null;
+      const epistemicEngine = (manager as Record<string, unknown>).epistemicDirectiveEngine as {
+        getDirectivesForSession(): Array<{ question: string }>;
+      } | null;
       if (epistemicEngine) {
         const directives = epistemicEngine.getDirectivesForSession();
         if (directives.length > 0) {
@@ -180,9 +195,9 @@ export async function resolveEndocrineState(params: {
     // Plan 7, Phase 2+9: Session coherence — intra-session thread/intent tracking
     let sessionCoherence: string | undefined;
     try {
-      const tracker = (manager as Record<string, unknown>).coherenceTracker as
-        | { formatForPrompt(): string | null }
-        | null;
+      const tracker = (manager as Record<string, unknown>).coherenceTracker as {
+        formatForPrompt(): string | null;
+      } | null;
       if (tracker) {
         sessionCoherence = tracker.formatForPrompt() ?? undefined;
       }

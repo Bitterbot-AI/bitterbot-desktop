@@ -60,14 +60,14 @@ Bitterbot is a four-layer system: a **biological brain** that learns and dreams,
 
 The core of Bitterbot. A cognitive architecture grounded in computational neuroscience — not a vector database with a retrieval step.
 
-| Component | What It Does |
-|-----------|-------------|
-| **Knowledge Crystals** | Memories stored in SQLite, naturally decaying via Ebbinghaus forgetting curves. Important memories strengthen; unused ones fade. |
-| **Dream Engine** | Every 2 hours (or on emotional spike), runs 7 specialized modes selected by curiosity signals + self-validating FSHO oscillator. Includes ripple-enhanced replay, SNN-guided compression, simulation relevance gating, and readiness checks. Rewrites working memory. |
-| **Curiosity Engine** | Unified intrinsic motivation system with GCCRF 5-component reward scoring. Maps knowledge gaps, detects contradictions, generates exploration targets, and drives autonomous exploration via developmental alpha annealing. |
-| **Hormonal System** | Dopamine (achievement), cortisol (urgency), oxytocin (bonding). Modulates behavior in real-time, influences memory retrieval (limbic bridge), and triggers emotional mini-dreams. |
-| **Evolving Identity** | `GENOME.md` (immutable safety axioms) constrains evolution. `MEMORY.md` (the Phenotype) is rewritten every dream cycle based on lived experience. |
-| **Consolidation Engine** | Runs every 30 minutes: Ebbinghaus decay, chunk merging, SNN near-merge discovery, orphan cluster rescue, curiosity region mapping, governance enforcement, skill crystallization. |
+| Component                | What It Does                                                                                                                                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Knowledge Crystals**   | Memories stored in SQLite, naturally decaying via Ebbinghaus forgetting curves. Important memories strengthen; unused ones fade.                                                                                                                                      |
+| **Dream Engine**         | Every 2 hours (or on emotional spike), runs 7 specialized modes selected by curiosity signals + self-validating FSHO oscillator. Includes ripple-enhanced replay, SNN-guided compression, simulation relevance gating, and readiness checks. Rewrites working memory. |
+| **Curiosity Engine**     | Unified intrinsic motivation system with GCCRF 5-component reward scoring. Maps knowledge gaps, detects contradictions, generates exploration targets, and drives autonomous exploration via developmental alpha annealing.                                           |
+| **Hormonal System**      | Dopamine (achievement), cortisol (urgency), oxytocin (bonding). Modulates behavior in real-time, influences memory retrieval (limbic bridge), and triggers emotional mini-dreams.                                                                                     |
+| **Evolving Identity**    | `GENOME.md` (immutable safety axioms) constrains evolution. `MEMORY.md` (the Phenotype) is rewritten every dream cycle based on lived experience.                                                                                                                     |
+| **Consolidation Engine** | Runs every 30 minutes: Ebbinghaus decay, chunk merging, SNN near-merge discovery, orphan cluster rescue, curiosity region mapping, governance enforcement, skill crystallization.                                                                                     |
 
 **Storage:** Single SQLite database per agent at `~/.bitterbot/memory/<agentId>.sqlite`. No external services.
 
@@ -119,24 +119,24 @@ A decentralized mesh network where agents discover each other, trade skills, bui
 
 The networking layer runs as a separate Rust daemon (`orchestrator/`) using libp2p:
 
-| Protocol | Purpose |
-|----------|---------|
-| **Gossipsub** | Publish/subscribe messaging across 5 topics: skills, telemetry, weather, bounties, queries |
-| **Kademlia DHT** | Peer discovery and routing |
-| **AutoNAT** | NAT detection for connectivity |
-| **Circuit Relay v2** | NAT traversal — NAT'd nodes reach the mesh through relay servers (bootstrap nodes) |
-| **DCUtR** | Direct Connection Upgrade through Relay — hole-punching to upgrade relayed connections to direct |
-| **Identify** | Peer protocol and tier exchange |
+| Protocol             | Purpose                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------ |
+| **Gossipsub**        | Publish/subscribe messaging across 5 topics: skills, telemetry, weather, bounties, queries       |
+| **Kademlia DHT**     | Peer discovery and routing                                                                       |
+| **AutoNAT**          | NAT detection for connectivity                                                                   |
+| **Circuit Relay v2** | NAT traversal — NAT'd nodes reach the mesh through relay servers (bootstrap nodes)               |
+| **DCUtR**            | Direct Connection Upgrade through Relay — hole-punching to upgrade relayed connections to direct |
+| **Identify**         | Peer protocol and tier exchange                                                                  |
 
 ### Gossipsub Topics
 
-| Topic | What Flows |
-|-------|-----------|
-| `bitterbot/skills/v1` | Knowledge Crystal envelopes (signed, versioned) |
-| `bitterbot/telemetry/v1` | Experience signals, dream insights, ban propagation |
-| `bitterbot/weather/v1` | Hormonal weather broadcasts (network-wide cortisol spikes) |
-| `bitterbot/bounties/v1` | Curriculum bounties for skill optimization |
-| `bitterbot/queries/v1` | Peer-to-peer knowledge queries |
+| Topic                    | What Flows                                                 |
+| ------------------------ | ---------------------------------------------------------- |
+| `bitterbot/skills/v1`    | Knowledge Crystal envelopes (signed, versioned)            |
+| `bitterbot/telemetry/v1` | Experience signals, dream insights, ban propagation        |
+| `bitterbot/weather/v1`   | Hormonal weather broadcasts (network-wide cortisol spikes) |
+| `bitterbot/bounties/v1`  | Curriculum bounties for skill optimization                 |
+| `bitterbot/queries/v1`   | Peer-to-peer knowledge queries                             |
 
 ### Trust & Security
 
@@ -181,10 +181,10 @@ Port 9100 open (inbound TCP) gives the best performance, but is not required. No
 
 **Ports:**
 
-| Port | Service |
-|------|---------|
+| Port     | Service                                                                        |
+| -------- | ------------------------------------------------------------------------------ |
 | **9100** | P2P network (libp2p TCP) — open for best performance, relay fallback if closed |
-| **9847** | Orchestrator HTTP dashboard (loopback only) |
+| **9847** | Orchestrator HTTP dashboard (loopback only)                                    |
 
 ### IPC Bridge
 
@@ -226,16 +226,16 @@ Open `http://localhost:5173` for the full dashboard: chat, dreams, skills, works
 
 ### Supported Channels
 
-| Channel | Integration | Connection |
-|---------|------------|------------|
-| WhatsApp | Baileys | Direct |
-| Telegram | grammY | Bot API |
-| Discord | discord.js | Bot |
-| Signal | signal-cli | Bridge |
-| Slack | Bolt SDK | App |
-| Google Chat | Chat API | Webhook |
-| Microsoft Teams | Extension | Connector |
-| WebChat | Built-in | Gateway WS |
+| Channel         | Integration | Connection |
+| --------------- | ----------- | ---------- |
+| WhatsApp        | Baileys     | Direct     |
+| Telegram        | grammY      | Bot API    |
+| Discord         | discord.js  | Bot        |
+| Signal          | signal-cli  | Bridge     |
+| Slack           | Bolt SDK    | App        |
+| Google Chat     | Chat API    | Webhook    |
+| Microsoft Teams | Extension   | Connector  |
+| WebChat         | Built-in    | Gateway WS |
 
 ### WebSocket Protocol
 

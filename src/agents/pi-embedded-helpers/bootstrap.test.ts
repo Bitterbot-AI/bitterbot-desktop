@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
-import {
-  resolveMemoryMdBudgetChars,
-  buildBootstrapContextFiles,
-} from "./bootstrap.js";
 import type { WorkspaceBootstrapFile } from "../workspace.js";
+import { resolveMemoryMdBudgetChars, buildBootstrapContextFiles } from "./bootstrap.js";
 
 describe("resolveMemoryMdBudgetChars", () => {
   it("should return 8000 for 200K+ context windows", () => {

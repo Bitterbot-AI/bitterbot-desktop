@@ -99,13 +99,13 @@ export class SkillExecutionTracker {
          ORDER BY started_at DESC`,
       )
       .all(skillCrystalId) as Array<{
-        success: number | null;
-        reward_score: number | null;
-        error_type: string | null;
-        execution_time_ms: number | null;
-        user_feedback: number | null;
-        started_at: number;
-      }>;
+      success: number | null;
+      reward_score: number | null;
+      error_type: string | null;
+      execution_time_ms: number | null;
+      user_feedback: number | null;
+      started_at: number;
+    }>;
 
     if (rows.length === 0) {
       return {

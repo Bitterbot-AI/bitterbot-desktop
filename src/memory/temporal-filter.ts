@@ -36,10 +36,7 @@ export type TemporalClause = {
  * @param alias   Table alias prefix for column references (default: "c")
  * @returns SQL fragment and parameter bindings
  */
-export function buildTemporalWhereClause(
-  filter: TemporalFilter,
-  alias = "c",
-): TemporalClause {
+export function buildTemporalWhereClause(filter: TemporalFilter, alias = "c"): TemporalClause {
   const conditions: string[] = [];
   const params: number[] = [];
 
@@ -50,33 +47,23 @@ export function buildTemporalWhereClause(
 
   // Point-in-time validity
   if (filter.validAt != null) {
-    conditions.push(
-      `(${alias}.valid_time_start IS NULL OR ${alias}.valid_time_start <= ?)`,
-    );
+    conditions.push(`(${alias}.valid_time_start IS NULL OR ${alias}.valid_time_start <= ?)`);
     params.push(filter.validAt);
-    conditions.push(
-      `(${alias}.valid_time_end IS NULL OR ${alias}.valid_time_end > ?)`,
-    );
+    conditions.push(`(${alias}.valid_time_end IS NULL OR ${alias}.valid_time_end > ?)`);
     params.push(filter.validAt);
   }
 
   // Range validity
   if (filter.validRange) {
-    conditions.push(
-      `(${alias}.valid_time_start IS NULL OR ${alias}.valid_time_start <= ?)`,
-    );
+    conditions.push(`(${alias}.valid_time_start IS NULL OR ${alias}.valid_time_start <= ?)`);
     params.push(filter.validRange.end);
-    conditions.push(
-      `(${alias}.valid_time_end IS NULL OR ${alias}.valid_time_end > ?)`,
-    );
+    conditions.push(`(${alias}.valid_time_end IS NULL OR ${alias}.valid_time_end > ?)`);
     params.push(filter.validRange.start);
   }
 
   // Transaction time (as-of query): only facts ingested before this time
   if (filter.asOf != null) {
-    conditions.push(
-      `(${alias}.transaction_time IS NULL OR ${alias}.transaction_time <= ?)`,
-    );
+    conditions.push(`(${alias}.transaction_time IS NULL OR ${alias}.transaction_time <= ?)`);
     params.push(filter.asOf);
   }
 

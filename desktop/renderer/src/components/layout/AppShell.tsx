@@ -1,27 +1,27 @@
-import { Sidebar } from "./Sidebar";
-import { ConnectionBadge } from "./ConnectionBadge";
+import { cn } from "../../lib/utils";
+import { useUIStore, type TabId } from "../../stores/ui-store";
+import { AgentsView } from "../agents/AgentsView";
+import { ChannelsView } from "../channels/ChannelsView";
 import { ChatView } from "../chat/ChatView";
 import { ToolCallPanel } from "../chat/ToolCallPanel";
-import { OverviewView } from "../overview/OverviewView";
-import { ChannelsView } from "../channels/ChannelsView";
-import { InstancesView } from "../instances/InstancesView";
-import { SessionsView } from "../sessions/SessionsView";
-import { UsageView } from "../usage/UsageView";
-import { CronView } from "../cron/CronView";
-import { AgentsView } from "../agents/AgentsView";
-import { SkillsView } from "../skills/SkillsView";
-import { NodesView } from "../nodes/NodesView";
-import { ProjectsView } from "../projects/ProjectsView";
-import { WorkspaceView } from "../workspace/WorkspaceView";
-import { WalletView } from "../wallet/WalletView";
 import { ConfigView } from "../config/ConfigView";
+import { CronView } from "../cron/CronView";
 import { DebugView } from "../debug/DebugView";
-import { LogsView } from "../logs/LogsView";
-import { P2pDashboard } from "../p2p/P2pDashboard";
 import { DreamsView } from "../dreams/DreamsView";
+import { InstancesView } from "../instances/InstancesView";
+import { LogsView } from "../logs/LogsView";
 import { ManagementView } from "../management/ManagementView";
-import { useUIStore, type TabId } from "../../stores/ui-store";
-import { cn } from "../../lib/utils";
+import { NodesView } from "../nodes/NodesView";
+import { OverviewView } from "../overview/OverviewView";
+import { P2pDashboard } from "../p2p/P2pDashboard";
+import { ProjectsView } from "../projects/ProjectsView";
+import { SessionsView } from "../sessions/SessionsView";
+import { SkillsView } from "../skills/SkillsView";
+import { UsageView } from "../usage/UsageView";
+import { WalletView } from "../wallet/WalletView";
+import { WorkspaceView } from "../workspace/WorkspaceView";
+import { ConnectionBadge } from "./ConnectionBadge";
+import { Sidebar } from "./Sidebar";
 
 const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   chat: () => <ChatView />,
@@ -58,7 +58,7 @@ export function AppShell() {
       <main
         className={cn(
           "flex-1 flex flex-col min-w-0 transition-all duration-200",
-          isChat && toolPanelOpen && "mr-[550px]"
+          isChat && toolPanelOpen && "mr-[550px]",
         )}
       >
         {/* Title bar area for drag region */}

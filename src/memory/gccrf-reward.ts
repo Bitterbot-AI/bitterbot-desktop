@@ -17,7 +17,6 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { cosineSimilarity, parseEmbedding } from "./internal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   type GCCRFState,
@@ -25,6 +24,7 @@ import {
   loadGCCRFState,
   ensureGCCRFSchema,
 } from "./gccrf-state.js";
+import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 const log = createSubsystemLogger("memory/gccrf");
 
@@ -57,7 +57,7 @@ export const DEFAULT_GCCRF_CONFIG: GCCRFConfig = {
   // [η, Δη, Iα, E, S] — Strategic alignment (S) raised from 0.05 to 0.10
   // for personal assistant use: goal-directedness matters more than pure novelty.
   // Δη reduced slightly (0.25→0.20) to compensate.
-  weights: [0.25, 0.20, 0.25, 0.20, 0.10],
+  weights: [0.25, 0.2, 0.25, 0.2, 0.1],
   alphaStart: -3.0,
   alphaEnd: 0.0,
   expectedMatureCycles: 100,
@@ -142,7 +142,10 @@ class RunningEMANormalizer {
     return { mean: this.mean, variance: this.variance, count: this.count };
   }
 
-  static fromJSON(alpha: number, data: { mean: number; variance: number; count: number }): RunningEMANormalizer {
+  static fromJSON(
+    alpha: number,
+    data: { mean: number; variance: number; count: number },
+  ): RunningEMANormalizer {
     return new RunningEMANormalizer(alpha, data.mean, data.variance, data.count);
   }
 }
@@ -337,8 +340,8 @@ export class GCCRFRewardFunction {
     const deltaEta = Math.max(0, state.emaLong - state.emaShort);
 
     // Update EMAs with current η
-    const ALPHA_LONG = 0.01;   // slow decay
-    const ALPHA_SHORT = 0.1;   // fast decay
+    const ALPHA_LONG = 0.01; // slow decay
+    const ALPHA_SHORT = 0.1; // fast decay
     state.emaLong = (1 - ALPHA_LONG) * state.emaLong + ALPHA_LONG * currentEta;
     state.emaShort = (1 - ALPHA_SHORT) * state.emaShort + ALPHA_SHORT * currentEta;
     state.sampleCount++;
@@ -359,15 +362,18 @@ export class GCCRFRewardFunction {
   // Curse of dimensionality fix: contrast-stretch local distances before RBF kernel.
   // Cold start protection: return 0.5 (neutral) when < 10 neighbors available.
 
-  private computeInformationTheoreticNovelty(
-    chunkEmbedding: number[],
-  ): { iAlpha: number; density: number } {
+  private computeInformationTheoreticNovelty(chunkEmbedding: number[]): {
+    iAlpha: number;
+    density: number;
+  } {
     const targetK = this.config.kdeK;
     const EPS = 1e-8;
 
     // Get total chunk count for cold start check
     const totalRow = this.db
-      .prepare(`SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`)
+      .prepare(
+        `SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`,
+      )
       .get() as { c: number } | undefined;
     const totalChunks = totalRow?.c ?? 0;
     const actualK = Math.min(targetK, totalChunks - 1);
@@ -427,15 +433,14 @@ export class GCCRFRewardFunction {
   // The interoceptive modulator μ_t gates empowerment by uncertainty:
   // when prediction errors are volatile (confused), seek agency.
 
-  private computeEmpowerment(
-    chunkEmbedding: number[],
-    currentEta: number,
-  ): number {
+  private computeEmpowerment(chunkEmbedding: number[], currentEta: number): number {
     const targetK = this.config.empowermentK;
 
     // Get total chunk count for cold start check
     const totalRow = this.db
-      .prepare(`SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`)
+      .prepare(
+        `SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`,
+      )
       .get() as { c: number } | undefined;
     const totalChunks = totalRow?.c ?? 0;
     const actualK = Math.min(targetK, totalChunks - 1);
@@ -531,10 +536,7 @@ export class GCCRFRewardFunction {
 
     const delta = couplingStrength * (this.fshoRAvg - rThreshold);
 
-    return Math.max(
-      this.config.alphaStart,
-      Math.min(this.config.alphaEnd, baseAlpha + delta),
-    );
+    return Math.max(this.config.alphaStart, Math.min(this.config.alphaEnd, baseAlpha + delta));
   }
 
   /** Expose FSHO R EMA for telemetry. */
@@ -558,7 +560,9 @@ export class GCCRFRewardFunction {
   private getTotalCrystalCount(): number {
     try {
       const row = this.db
-        .prepare(`SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`)
+        .prepare(
+          `SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`,
+        )
         .get() as { c: number } | undefined;
       return row?.c ?? 0;
     } catch {
@@ -569,9 +573,9 @@ export class GCCRFRewardFunction {
   /** Days elapsed since the earliest crystal was created. */
   private getDaysSinceFirstCrystal(): number {
     try {
-      const row = this.db
-        .prepare(`SELECT MIN(created_at) as earliest FROM chunks`)
-        .get() as { earliest: number | null } | undefined;
+      const row = this.db.prepare(`SELECT MIN(created_at) as earliest FROM chunks`).get() as
+        | { earliest: number | null }
+        | undefined;
       if (!row?.earliest) return 0;
       return Math.max(0, (Date.now() - row.earliest) / (24 * 60 * 60_000));
     } catch {
@@ -583,10 +587,7 @@ export class GCCRFRewardFunction {
   // Uses sqlite-vec for K-nearest-neighbor search when available,
   // falls back to brute-force cosine similarity over recent chunks.
 
-  private knnSearch(
-    embedding: number[],
-    k: number,
-  ): Array<{ id: string; similarity: number }> {
+  private knnSearch(embedding: number[], k: number): Array<{ id: string; similarity: number }> {
     // Try sqlite-vec first
     try {
       const vecBlob = float32ArrayToBlob(new Float32Array(embedding));
@@ -659,15 +660,19 @@ export class GCCRFRewardFunction {
           .prepare(`SELECT region_id FROM curiosity_surprises WHERE chunk_id = ?`)
           .get(nId) as { region_id: string | null } | undefined;
         if (row?.region_id) regionIds.add(row.region_id);
-      } catch { /* table may not exist yet */ }
+      } catch {
+        /* table may not exist yet */
+      }
 
       // Check semantic type from chunks table
       try {
-        const row = this.db
-          .prepare(`SELECT semantic_type FROM chunks WHERE id = ?`)
-          .get(nId) as { semantic_type: string | null } | undefined;
+        const row = this.db.prepare(`SELECT semantic_type FROM chunks WHERE id = ?`).get(nId) as
+          | { semantic_type: string | null }
+          | undefined;
         if (row?.semantic_type) types.add(row.semantic_type);
-      } catch { /* column may not exist */ }
+      } catch {
+        /* column may not exist */
+      }
     }
 
     // If no region data from surprises, approximate from region centroids
@@ -678,9 +683,9 @@ export class GCCRFRewardFunction {
           .all() as Array<{ id: string; centroid: string }>;
 
         for (const nId of neighborIds) {
-          const chunk = this.db
-            .prepare(`SELECT embedding FROM chunks WHERE id = ?`)
-            .get(nId) as { embedding: string } | undefined;
+          const chunk = this.db.prepare(`SELECT embedding FROM chunks WHERE id = ?`).get(nId) as
+            | { embedding: string }
+            | undefined;
           if (!chunk) continue;
           const emb = parseEmbedding(chunk.embedding);
           if (emb.length === 0) continue;
@@ -698,7 +703,9 @@ export class GCCRFRewardFunction {
           }
           if (bestRegion && bestSim > 0.5) regionIds.add(bestRegion);
         }
-      } catch { /* curiosity_regions may not exist */ }
+      } catch {
+        /* curiosity_regions may not exist */
+      }
     }
 
     return {

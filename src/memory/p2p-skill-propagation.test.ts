@@ -8,22 +8,22 @@
  * Every test uses an in-memory SQLite database for full isolation.
  */
 
-import { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect, beforeEach } from "vitest";
-import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
-import { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import { PeerReputationManager } from "./peer-reputation.js";
-import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
-import { SkillMarketplace } from "./skill-marketplace.js";
+import type { SkillEnvelope } from "../agents/skills/ingest.js";
+import type { DreamInsight, SynthesizeFn, EmbedBatchFn } from "./dream-types.js";
+import { ConsolidationEngine } from "./consolidation.js";
 import { DiscoveryAgent } from "./discovery-agent.js";
+import { DreamEngine } from "./dream-engine.js";
 import { MemoryGovernance } from "./governance.js";
 import { MemStore } from "./mem-store.js";
+import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
+import { PeerReputationManager } from "./peer-reputation.js";
+import { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import { SkillMarketplace } from "./skill-marketplace.js";
+import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
 import { SkillRefiner } from "./skill-refiner.js";
-import { ConsolidationEngine } from "./consolidation.js";
-import { DreamEngine } from "./dream-engine.js";
-import type { DreamInsight, SynthesizeFn, EmbedBatchFn } from "./dream-types.js";
-import type { SkillEnvelope } from "../agents/skills/ingest.js";
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 
@@ -214,16 +214,17 @@ function mockOrchestratorBridge(opts?: {
 function mockLlmCall(responses?: string[]): (prompt: string) => Promise<string> {
   let callCount = 0;
   return async () => {
-    const response = responses?.[callCount] ?? JSON.stringify([
-      { content: "Mock insight from LLM", confidence: 0.8, keywords: ["test", "mock"] },
-    ]);
+    const response =
+      responses?.[callCount] ??
+      JSON.stringify([
+        { content: "Mock insight from LLM", confidence: 0.8, keywords: ["test", "mock"] },
+      ]);
     callCount++;
     return response;
   };
 }
 
-const noopEmbedBatch: EmbedBatchFn = async (texts) =>
-  texts.map(() => fakeEmbedding(Math.random()));
+const noopEmbedBatch: EmbedBatchFn = async (texts) => texts.map(() => fakeEmbedding(Math.random()));
 
 const noopSynthesize: SynthesizeFn = async () => [];
 
@@ -246,7 +247,10 @@ describe("SkillExecutionTracker", () => {
     expect(execId).toBeTruthy();
     expect(typeof execId).toBe("string");
 
-    const row = db.prepare("SELECT * FROM skill_executions WHERE id = ?").get(execId) as Record<string, unknown>;
+    const row = db.prepare("SELECT * FROM skill_executions WHERE id = ?").get(execId) as Record<
+      string,
+      unknown
+    >;
     expect(row).toBeDefined();
     expect(row.skill_crystal_id).toBe(skillId);
     expect(row.session_id).toBe("session-1");
@@ -264,7 +268,10 @@ describe("SkillExecutionTracker", () => {
       toolCallsCount: 3,
     });
 
-    const row = db.prepare("SELECT * FROM skill_executions WHERE id = ?").get(execId) as Record<string, unknown>;
+    const row = db.prepare("SELECT * FROM skill_executions WHERE id = ?").get(execId) as Record<
+      string,
+      unknown
+    >;
     expect(row.success).toBe(1);
     expect(row.reward_score).toBe(0.9);
     expect(row.completed_at).toBeGreaterThan(0);
@@ -282,7 +289,10 @@ describe("SkillExecutionTracker", () => {
       errorDetail: "Operation timed out after 30s",
     });
 
-    const row = db.prepare("SELECT * FROM skill_executions WHERE id = ?").get(execId) as Record<string, unknown>;
+    const row = db.prepare("SELECT * FROM skill_executions WHERE id = ?").get(execId) as Record<
+      string,
+      unknown
+    >;
     expect(row.success).toBe(0);
     expect(row.error_type).toBe("timeout");
     expect(row.error_detail).toBe("Operation timed out after 30s");
@@ -294,13 +304,17 @@ describe("SkillExecutionTracker", () => {
     // Success: +0.1
     const exec1 = tracker.startExecution(skillId);
     tracker.completeExecution(exec1, { success: true });
-    let skill = db.prepare("SELECT steering_reward FROM chunks WHERE id = ?").get(skillId) as { steering_reward: number };
+    let skill = db.prepare("SELECT steering_reward FROM chunks WHERE id = ?").get(skillId) as {
+      steering_reward: number;
+    };
     expect(skill.steering_reward).toBeCloseTo(0.1);
 
     // Failure: -0.05
     const exec2 = tracker.startExecution(skillId);
     tracker.completeExecution(exec2, { success: false });
-    skill = db.prepare("SELECT steering_reward FROM chunks WHERE id = ?").get(skillId) as { steering_reward: number };
+    skill = db.prepare("SELECT steering_reward FROM chunks WHERE id = ?").get(skillId) as {
+      steering_reward: number;
+    };
     expect(skill.steering_reward).toBeCloseTo(0.05);
   });
 
@@ -310,7 +324,9 @@ describe("SkillExecutionTracker", () => {
     // Push over 1.0
     const exec = tracker.startExecution(skillId);
     tracker.completeExecution(exec, { success: true });
-    const skill = db.prepare("SELECT steering_reward FROM chunks WHERE id = ?").get(skillId) as { steering_reward: number };
+    const skill = db.prepare("SELECT steering_reward FROM chunks WHERE id = ?").get(skillId) as {
+      steering_reward: number;
+    };
     expect(skill.steering_reward).toBeLessThanOrEqual(1.0);
   });
 
@@ -320,7 +336,9 @@ describe("SkillExecutionTracker", () => {
     tracker.completeExecution(execId, { success: true });
 
     tracker.recordFeedback(execId, 1);
-    const row = db.prepare("SELECT user_feedback FROM skill_executions WHERE id = ?").get(execId) as { user_feedback: number };
+    const row = db
+      .prepare("SELECT user_feedback FROM skill_executions WHERE id = ?")
+      .get(execId) as { user_feedback: number };
     expect(row.user_feedback).toBe(1);
   });
 
@@ -330,11 +348,19 @@ describe("SkillExecutionTracker", () => {
     // 3 successes, 2 failures
     for (let i = 0; i < 3; i++) {
       const id = tracker.startExecution(skillId);
-      tracker.completeExecution(id, { success: true, rewardScore: 0.8, executionTimeMs: 100 + i * 50 });
+      tracker.completeExecution(id, {
+        success: true,
+        rewardScore: 0.8,
+        executionTimeMs: 100 + i * 50,
+      });
     }
     for (let i = 0; i < 2; i++) {
       const id = tracker.startExecution(skillId);
-      tracker.completeExecution(id, { success: false, errorType: "tool_error", executionTimeMs: 500 });
+      tracker.completeExecution(id, {
+        success: false,
+        errorType: "tool_error",
+        executionTimeMs: 500,
+      });
     }
 
     const metrics = tracker.getSkillMetrics(skillId);
@@ -355,7 +381,11 @@ describe("SkillExecutionTracker", () => {
 
   it("computes peer skill metrics across all skills from a peer", () => {
     const peerPubkey = "peer-pub-1";
-    const governance = JSON.stringify({ peerOrigin: peerPubkey, accessScope: "shared", sensitivity: "normal" });
+    const governance = JSON.stringify({
+      peerOrigin: peerPubkey,
+      accessScope: "shared",
+      sensitivity: "normal",
+    });
 
     // Insert 2 skills from peer
     const skill1 = createSkillChunk(db, "Peer skill 1", { governance_json: governance });
@@ -399,7 +429,9 @@ describe("SkillExecutionTracker", () => {
     const decayed = tracker.decaySteeringRewards(0.9);
     expect(decayed).toBe(2);
 
-    const a = db.prepare("SELECT steering_reward FROM chunks WHERE text = 'Skill A'").get() as { steering_reward: number };
+    const a = db.prepare("SELECT steering_reward FROM chunks WHERE text = 'Skill A'").get() as {
+      steering_reward: number;
+    };
     expect(a.steering_reward).toBeCloseTo(0.45);
   });
 });
@@ -469,24 +501,34 @@ describe("PeerReputationManager", () => {
     expect(level).toBe("provisional");
 
     // Manually set high reputation
-    db.prepare(`UPDATE peer_reputation SET reputation_score = 0.9 WHERE peer_pubkey = ?`).run("pubkey-1");
+    db.prepare(`UPDATE peer_reputation SET reputation_score = 0.9 WHERE peer_pubkey = ?`).run(
+      "pubkey-1",
+    );
     level = repManager.getTrustLevel("pubkey-1");
     expect(level).toBe("verified");
 
     // Low reputation
-    db.prepare(`UPDATE peer_reputation SET reputation_score = 0.1 WHERE peer_pubkey = ?`).run("pubkey-1");
+    db.prepare(`UPDATE peer_reputation SET reputation_score = 0.1 WHERE peer_pubkey = ?`).run(
+      "pubkey-1",
+    );
     level = repManager.getTrustLevel("pubkey-1");
     expect(level).toBe("untrusted");
 
     // Medium reputation
-    db.prepare(`UPDATE peer_reputation SET reputation_score = 0.65 WHERE peer_pubkey = ?`).run("pubkey-1");
+    db.prepare(`UPDATE peer_reputation SET reputation_score = 0.65 WHERE peer_pubkey = ?`).run(
+      "pubkey-1",
+    );
     level = repManager.getTrustLevel("pubkey-1");
     expect(level).toBe("trusted");
   });
 
   it("updates peer quality from execution data", () => {
     const peerPubkey = "peer-pub-quality";
-    const governance = JSON.stringify({ peerOrigin: peerPubkey, accessScope: "shared", sensitivity: "normal" });
+    const governance = JSON.stringify({
+      peerOrigin: peerPubkey,
+      accessScope: "shared",
+      sensitivity: "normal",
+    });
 
     // Create peer and skills
     repManager.recordSkillReceived(peerPubkey, "peer-quality");
@@ -508,9 +550,15 @@ describe("PeerReputationManager", () => {
     repManager.recordSkillReceived("pub-b", "peer-b");
     repManager.recordSkillReceived("pub-c", "peer-c");
 
-    db.prepare(`UPDATE peer_reputation SET reputation_score = 0.9 WHERE peer_pubkey = 'pub-a'`).run();
-    db.prepare(`UPDATE peer_reputation SET reputation_score = 0.3 WHERE peer_pubkey = 'pub-b'`).run();
-    db.prepare(`UPDATE peer_reputation SET reputation_score = 0.7 WHERE peer_pubkey = 'pub-c'`).run();
+    db.prepare(
+      `UPDATE peer_reputation SET reputation_score = 0.9 WHERE peer_pubkey = 'pub-a'`,
+    ).run();
+    db.prepare(
+      `UPDATE peer_reputation SET reputation_score = 0.3 WHERE peer_pubkey = 'pub-b'`,
+    ).run();
+    db.prepare(
+      `UPDATE peer_reputation SET reputation_score = 0.7 WHERE peer_pubkey = 'pub-c'`,
+    ).run();
 
     const board = repManager.getLeaderboard();
     expect(board.length).toBe(3);
@@ -522,7 +570,9 @@ describe("PeerReputationManager", () => {
   it("rates a skill from a peer", () => {
     repManager.rateSkill("pub-1", "skill-1", 0.9);
 
-    const row = db.prepare("SELECT * FROM peer_skill_ratings WHERE peer_pubkey = 'pub-1'").get() as Record<string, unknown>;
+    const row = db
+      .prepare("SELECT * FROM peer_skill_ratings WHERE peer_pubkey = 'pub-1'")
+      .get() as Record<string, unknown>;
     expect(row).toBeDefined();
     expect(row.rating).toBe(0.9);
     expect(row.skill_crystal_id).toBe("skill-1");
@@ -542,8 +592,9 @@ describe("PeerReputationManager", () => {
     for (let i = 0; i < 2; i++) repManager.recordIngestionResult(pubkey, false);
 
     // Set first_seen_at to 60 days ago for max longevity
-    db.prepare(`UPDATE peer_reputation SET first_seen_at = ?, skills_received = 10 WHERE peer_pubkey = ?`)
-      .run(Date.now() - 60 * 24 * 60 * 60 * 1000, pubkey);
+    db.prepare(
+      `UPDATE peer_reputation SET first_seen_at = ?, skills_received = 10 WHERE peer_pubkey = ?`,
+    ).run(Date.now() - 60 * 24 * 60 * 60 * 1000, pubkey);
 
     // Quality = 1.0 (mock via direct execution)
     repManager.updatePeerQuality(pubkey);
@@ -585,12 +636,16 @@ describe("SkillNetworkBridge", () => {
       expect(decoded).toContain("Docker");
 
       // Verify publish state updated in DB
-      const row = db.prepare("SELECT publish_visibility, published_at FROM chunks WHERE id = ?").get(skillId) as Record<string, unknown>;
+      const row = db
+        .prepare("SELECT publish_visibility, published_at FROM chunks WHERE id = ?")
+        .get(skillId) as Record<string, unknown>;
       expect(row.publish_visibility).toBe("shared");
       expect(row.published_at).toBeGreaterThan(0);
 
       // Verify audit log
-      const audit = db.prepare("SELECT * FROM memory_audit_log WHERE event = 'skill_network_published'").all() as unknown[];
+      const audit = db
+        .prepare("SELECT * FROM memory_audit_log WHERE event = 'skill_network_published'")
+        .all() as unknown[];
       expect(audit.length).toBe(1);
     });
 
@@ -647,13 +702,15 @@ describe("SkillNetworkBridge", () => {
 
       const childId = createSkillChunk(db, "Child via DAG", {
         provenance_chain: "[]",
-        provenance_dag: JSON.stringify([{
-          crystalId: "child-id",
-          operation: "mutated",
-          actor: "dream_engine",
-          timestamp: Date.now(),
-          parentIds: [parentId],
-        }]),
+        provenance_dag: JSON.stringify([
+          {
+            crystalId: "child-id",
+            operation: "mutated",
+            actor: "dream_engine",
+            timestamp: Date.now(),
+            parentIds: [parentId],
+          },
+        ]),
       });
 
       const result = await bridge.publishCrystalSkill(childId);
@@ -686,7 +743,9 @@ describe("SkillNetworkBridge", () => {
     });
 
     it("handles orchestrator returning ok:false", async () => {
-      const mockBridge = mockOrchestratorBridge({ publishResult: { ok: false, error: "peers unreachable" } });
+      const mockBridge = mockOrchestratorBridge({
+        publishResult: { ok: false, error: "peers unreachable" },
+      });
       const bridge = new SkillNetworkBridge(db, mockBridge);
 
       const skillId = createSkillChunk(db, "No peers skill");
@@ -706,7 +765,10 @@ describe("SkillNetworkBridge", () => {
       expect(result.crystalId).toBeTruthy();
 
       // Verify crystal was stored
-      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(result.crystalId!) as Record<string, unknown>;
+      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(result.crystalId!) as Record<
+        string,
+        unknown
+      >;
       expect(row.source).toBe("skills");
       expect(row.semantic_type).toBe("skill");
       expect(row.lifecycle).toBe("generated");
@@ -852,8 +914,12 @@ describe("SkillMarketplace", () => {
   });
 
   it("filters by tags", () => {
-    const id1 = createSkillChunk(db, "Docker skill", { skill_tags: JSON.stringify(["docker", "deploy"]) });
-    const id2 = createSkillChunk(db, "React skill", { skill_tags: JSON.stringify(["react", "frontend"]) });
+    const id1 = createSkillChunk(db, "Docker skill", {
+      skill_tags: JSON.stringify(["docker", "deploy"]),
+    });
+    const id2 = createSkillChunk(db, "React skill", {
+      skill_tags: JSON.stringify(["react", "frontend"]),
+    });
     marketplace.listSkill(id1);
     marketplace.listSkill(id2);
 
@@ -927,12 +993,17 @@ describe("SkillMarketplace", () => {
     marketplace.recordDownload(id);
     marketplace.recordDownload(id);
 
-    const row = db.prepare("SELECT download_count FROM chunks WHERE id = ?").get(id) as { download_count: number };
+    const row = db.prepare("SELECT download_count FROM chunks WHERE id = ?").get(id) as {
+      download_count: number;
+    };
     expect(row.download_count).toBe(2);
   });
 
   it("getTrending returns recent high-download skills", () => {
-    const id = createSkillChunk(db, "Trending skill", { download_count: 50, created_at: Date.now() });
+    const id = createSkillChunk(db, "Trending skill", {
+      download_count: 50,
+      created_at: Date.now(),
+    });
     marketplace.listSkill(id);
 
     const old = createSkillChunk(db, "Old skill", {
@@ -984,9 +1055,15 @@ describe("DiscoveryAgent", () => {
 
   it("discovers similar edges from embeddings", async () => {
     // Insert skills with similar embeddings
-    createSkillChunk(db, "Docker deployment skill", { embedding: JSON.stringify(fakeEmbedding(1)) });
-    createSkillChunk(db, "Docker container management", { embedding: JSON.stringify(fakeEmbedding(1.01)) });
-    createSkillChunk(db, "Unrelated Python skill", { embedding: JSON.stringify(fakeEmbedding(100)) });
+    createSkillChunk(db, "Docker deployment skill", {
+      embedding: JSON.stringify(fakeEmbedding(1)),
+    });
+    createSkillChunk(db, "Docker container management", {
+      embedding: JSON.stringify(fakeEmbedding(1.01)),
+    });
+    createSkillChunk(db, "Unrelated Python skill", {
+      embedding: JSON.stringify(fakeEmbedding(100)),
+    });
 
     const agent = new DiscoveryAgent(db, null);
     const result = await agent.runCycle();
@@ -1065,7 +1142,9 @@ describe("DiscoveryAgent", () => {
       JSON.stringify([]),
       // Composites (not enough for same category)
       // Contradictions
-      JSON.stringify([{ pair: 1, contradicts: true, explanation: "Opposing architectures", confidence: 0.8 }]),
+      JSON.stringify([
+        { pair: 1, contradicts: true, explanation: "Opposing architectures", confidence: 0.8 },
+      ]),
     ]);
 
     const agent = new DiscoveryAgent(db, llm);
@@ -1144,7 +1223,9 @@ describe("DiscoveryAgent", () => {
     const decayed = agent.decayEdgeRewards(0.9);
     expect(decayed).toBe(1);
 
-    const edge = db.prepare("SELECT steering_reward FROM skill_edges").get() as { steering_reward: number };
+    const edge = db.prepare("SELECT steering_reward FROM skill_edges").get() as {
+      steering_reward: number;
+    };
     expect(edge.steering_reward).toBeCloseTo(0.45);
   });
 
@@ -1186,7 +1267,9 @@ describe("Governance for P2P Skills", () => {
     });
 
     expect(gov.canAccess(id, { actor: "local_agent", purpose: "use" })).toBe(true);
-    expect(gov.canAccess(id, { actor: "peer:abc", purpose: "share", sessionKey: "session-123" })).toBe(true);
+    expect(
+      gov.canAccess(id, { actor: "peer:abc", purpose: "share", sessionKey: "session-123" }),
+    ).toBe(true);
     expect(gov.canAccess(id, { actor: "peer:abc", purpose: "share" })).toBe(false);
   });
 
@@ -1264,10 +1347,18 @@ describe("Governance for P2P Skills", () => {
     const c = createSkillChunk(db, "Child");
 
     gov.recordProvenanceNode(p, {
-      crystalId: p, operation: "created", actor: "user", timestamp: Date.now(), parentIds: [],
+      crystalId: p,
+      operation: "created",
+      actor: "user",
+      timestamp: Date.now(),
+      parentIds: [],
     });
     gov.recordProvenanceNode(c, {
-      crystalId: c, operation: "mutated", actor: "dream_engine", timestamp: Date.now(), parentIds: [p],
+      crystalId: c,
+      operation: "mutated",
+      actor: "dream_engine",
+      timestamp: Date.now(),
+      parentIds: [p],
     });
 
     const chain = gov.getAttributionChain(c);
@@ -1285,7 +1376,9 @@ describe("Governance for P2P Skills", () => {
     const expired = gov.enforceLifespan();
     expect(expired).toBe(1);
 
-    const row = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(id) as { lifecycle: string };
+    const row = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(id) as {
+      lifecycle: string;
+    };
     expect(row.lifecycle).toBe("expired");
   });
 
@@ -1294,7 +1387,9 @@ describe("Governance for P2P Skills", () => {
 
     gov.logAccess(id, "read", { actor: "local_agent", purpose: "skill_execution" });
 
-    const logs = db.prepare("SELECT * FROM memory_audit_log WHERE chunk_id = ? AND event = 'accessed'").all(id) as unknown[];
+    const logs = db
+      .prepare("SELECT * FROM memory_audit_log WHERE chunk_id = ? AND event = 'accessed'")
+      .all(id) as unknown[];
     expect(logs.length).toBe(1);
   });
 
@@ -1383,7 +1478,10 @@ describe("MemStore Pub/Sub & Versioning", () => {
     expect(result.ok).toBe(true);
     expect(result.crystalId).toBeTruthy();
 
-    const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(result.crystalId!) as Record<string, unknown>;
+    const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(result.crystalId!) as Record<
+      string,
+      unknown
+    >;
     expect(row.source).toBe("skills");
     expect(row.semantic_type).toBe("skill");
     const gov = JSON.parse(String(row.governance_json));
@@ -1403,7 +1501,11 @@ describe("MemStore Pub/Sub & Versioning", () => {
 
     createSkillChunk(db, "Version 1", { stable_skill_id: stableId, skill_version: 1 });
     createSkillChunk(db, "Version 2", { stable_skill_id: stableId, skill_version: 2 });
-    createSkillChunk(db, "Version 3 (deprecated)", { stable_skill_id: stableId, skill_version: 3, deprecated: 1 });
+    createSkillChunk(db, "Version 3 (deprecated)", {
+      stable_skill_id: stableId,
+      skill_version: 3,
+      deprecated: 1,
+    });
 
     const latest = store.getLatestVersion(stableId);
     expect(latest).not.toBeNull();
@@ -1445,7 +1547,9 @@ describe("MemStore Pub/Sub & Versioning", () => {
     const result = store.publish(id, "public");
     expect(result).not.toBeNull();
 
-    const row = db.prepare("SELECT publish_visibility FROM chunks WHERE id = ?").get(id) as { publish_visibility: string };
+    const row = db.prepare("SELECT publish_visibility FROM chunks WHERE id = ?").get(id) as {
+      publish_visibility: string;
+    };
     expect(row.publish_visibility).toBe("public");
   });
 });
@@ -1478,11 +1582,14 @@ describe("End-to-End P2P Skill Propagation", () => {
 
     // 2. Dream mutation
     const llm = mockLlmCall([
-      JSON.stringify([{
-        content: "Deploy using Docker with health checks, monitoring, and edge case handling. More general approach with Kubernetes fallback.",
-        confidence: 0.9,
-        keywords: ["docker", "deploy", "kubernetes"],
-      }]),
+      JSON.stringify([
+        {
+          content:
+            "Deploy using Docker with health checks, monitoring, and edge case handling. More general approach with Kubernetes fallback.",
+          confidence: 0.9,
+          keywords: ["docker", "deploy", "kubernetes"],
+        },
+      ]),
     ]);
 
     const dream = new DreamEngine(
@@ -1504,13 +1611,18 @@ describe("End-to-End P2P Skill Propagation", () => {
     const refiner = new SkillRefiner(
       dbA,
       { promotionThreshold: 0.4 },
-      (id) => { crystallizedId = id; },
+      (id) => {
+        crystallizedId = id;
+      },
       undefined,
       networkBridge,
     );
 
     const sourceId = mutations[0]!.sourceChunkIds[0]!;
-    const source = dbA.prepare("SELECT id, text FROM chunks WHERE id = ?").get(sourceId) as { id: string; text: string };
+    const source = dbA.prepare("SELECT id, text FROM chunks WHERE id = ?").get(sourceId) as {
+      id: string;
+      text: string;
+    };
     refiner.evaluateMutations(source, mutations);
     expect(crystallizedId).not.toBeNull();
 
@@ -1527,7 +1639,9 @@ describe("End-to-End P2P Skill Propagation", () => {
 
     // 4. Peer B receives skill via network
     const bridgeB = new SkillNetworkBridge(dbB, null);
-    const publishedSkill = dbA.prepare("SELECT text FROM chunks WHERE id = ?").get(crystallizedId!) as { text: string };
+    const publishedSkill = dbA
+      .prepare("SELECT text FROM chunks WHERE id = ?")
+      .get(crystallizedId!) as { text: string };
 
     const importResult = bridgeB.ingestNetworkSkill({
       version: 1,
@@ -1567,8 +1681,10 @@ describe("End-to-End P2P Skill Propagation", () => {
     // Gen0: Original
     const gen0 = createSkillChunk(db, "Base deployment skill");
     const stableId = crypto.randomUUID();
-    db.prepare(`UPDATE chunks SET stable_skill_id = ?, skill_version = 1 WHERE id = ?`)
-      .run(stableId, gen0);
+    db.prepare(`UPDATE chunks SET stable_skill_id = ?, skill_version = 1 WHERE id = ?`).run(
+      stableId,
+      gen0,
+    );
 
     // Gen1: Mutation crystallized from Gen0
     const gen1Mutation: DreamInsight = {
@@ -1590,16 +1706,32 @@ describe("End-to-End P2P Skill Propagation", () => {
     db.prepare(
       `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
        VALUES (?, ?, '[]', ?, 'mutation', '[]', '[]', ?, 0.7, 0, ?, ?)`,
-    ).run(gen1Mutation.id, gen1Mutation.content, gen1Mutation.confidence, gen1Mutation.dreamCycleId, Date.now(), Date.now());
+    ).run(
+      gen1Mutation.id,
+      gen1Mutation.content,
+      gen1Mutation.confidence,
+      gen1Mutation.dreamCycleId,
+      Date.now(),
+      Date.now(),
+    );
 
     let gen1Id: string | null = null;
-    const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => { gen1Id = id; });
+    const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
+      gen1Id = id;
+    });
     refiner.evaluateMutations({ id: gen0, text: "Base deployment skill" }, [gen1Mutation]);
     expect(gen1Id).not.toBeNull();
 
     // Verify version chain
-    const gen1Row = db.prepare("SELECT stable_skill_id, skill_version, previous_version_id FROM chunks WHERE id = ?")
-      .get(gen1Id!) as { stable_skill_id: string; skill_version: number; previous_version_id: string };
+    const gen1Row = db
+      .prepare(
+        "SELECT stable_skill_id, skill_version, previous_version_id FROM chunks WHERE id = ?",
+      )
+      .get(gen1Id!) as {
+      stable_skill_id: string;
+      skill_version: number;
+      previous_version_id: string;
+    };
 
     expect(gen1Row.stable_skill_id).toBe(stableId);
     expect(gen1Row.skill_version).toBe(2);
@@ -1631,7 +1763,9 @@ describe("End-to-End P2P Skill Propagation", () => {
     repManager.recordSkillReceived(peerPubkey, "peer-mp");
     repManager.recordIngestionResult(peerPubkey, true);
 
-    const skillId = createSkillChunk(db, "Marketplace skill from peer", { governance_json: governance });
+    const skillId = createSkillChunk(db, "Marketplace skill from peer", {
+      governance_json: governance,
+    });
     marketplace.listSkill(skillId, "Skill description");
 
     // Execute skill successfully
@@ -1661,7 +1795,10 @@ describe("End-to-End P2P Skill Propagation", () => {
   });
 
   it("consolidation preserves frozen skill crystals", () => {
-    const skillId = createSkillChunk(db, "Frozen skill", { lifecycle: "frozen", importance_score: 0.01 });
+    const skillId = createSkillChunk(db, "Frozen skill", {
+      lifecycle: "frozen",
+      importance_score: 0.01,
+    });
 
     // Also insert some low-importance non-skill chunks that should be forgotten
     for (let i = 0; i < 10; i++) {
@@ -1677,7 +1814,9 @@ describe("End-to-End P2P Skill Propagation", () => {
     const consolidation = new ConsolidationEngine(db, { forgetThreshold: 0.05 });
     consolidation.run();
 
-    const skill = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(skillId) as { lifecycle: string };
+    const skill = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(skillId) as {
+      lifecycle: string;
+    };
     expect(skill.lifecycle).toBe("frozen");
   });
 

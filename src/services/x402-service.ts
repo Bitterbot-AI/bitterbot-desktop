@@ -34,17 +34,11 @@ type X402PaymentPayload = {
   [key: string]: unknown;
 };
 
-export function createX402Service(
-  walletService: WalletService,
-  config: WalletConfig,
-): X402Service {
+export function createX402Service(walletService: WalletService, config: WalletConfig): X402Service {
   const maxCostDefault = config.x402?.maxCostPerRequestUsd ?? 1;
 
   return {
-    async payForRequest(
-      url: string,
-      opts?: { maxCostUsd?: number },
-    ): Promise<X402PaymentResult> {
+    async payForRequest(url: string, opts?: { maxCostUsd?: number }): Promise<X402PaymentResult> {
       const maxCost = opts?.maxCostUsd ?? maxCostDefault;
 
       // Step 1: Initial GET request

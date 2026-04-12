@@ -12,8 +12,7 @@ import { getOriginalContent, getTruncatedOriginalsSize } from "../progressive-co
 
 const ExpandMessageToolSchema = Type.Object({
   reference: Type.String({
-    description:
-      "The reference fingerprint shown in the truncation notice (e.g., 'a1b2c3d4e5f6')",
+    description: "The reference fingerprint shown in the truncation notice (e.g., 'a1b2c3d4e5f6')",
   }),
 });
 
@@ -26,8 +25,7 @@ export function createExpandMessageTool(): AnyAgentTool {
     parameters: ExpandMessageToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
-      const reference =
-        typeof params.reference === "string" ? params.reference.trim() : "";
+      const reference = typeof params.reference === "string" ? params.reference.trim() : "";
 
       if (!reference) {
         return {

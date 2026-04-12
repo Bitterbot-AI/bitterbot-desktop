@@ -24,20 +24,22 @@ import { jsonResult, readStringParam, readNumberParam } from "./common.js";
 const WorkingMemoryNoteSchema = Type.Object({
   note: Type.String(),
   importance: Type.Optional(Type.Number()),
-  type: Type.Optional(Type.Union([
-    Type.Literal("experience"),
-    Type.Literal("directive"),
-    Type.Literal("world_fact"),
-    Type.Literal("mental_model"),
-  ])),
+  type: Type.Optional(
+    Type.Union([
+      Type.Literal("experience"),
+      Type.Literal("directive"),
+      Type.Literal("world_fact"),
+      Type.Literal("mental_model"),
+    ]),
+  ),
 });
 
 /** Map epistemic types to crystal semantic types and layers */
 const EPISTEMIC_TYPE_MAP: Record<string, { semanticType: string; epistemicLayer: string }> = {
-  experience:    { semanticType: "episode",    epistemicLayer: "experience" },
-  directive:     { semanticType: "preference", epistemicLayer: "directive" },
-  world_fact:    { semanticType: "fact",       epistemicLayer: "world_fact" },
-  mental_model:  { semanticType: "insight",    epistemicLayer: "mental_model" },
+  experience: { semanticType: "episode", epistemicLayer: "experience" },
+  directive: { semanticType: "preference", epistemicLayer: "directive" },
+  world_fact: { semanticType: "fact", epistemicLayer: "world_fact" },
+  mental_model: { semanticType: "insight", epistemicLayer: "mental_model" },
 };
 
 function resolveWorkingMemoryToolContext(options: {
@@ -92,7 +94,10 @@ export function createWorkingMemoryNoteTool(options: {
       const entry = `\n- [${timestamp}] (importance: ${clampedImportance.toFixed(1)}) ${note}\n`;
 
       if (!existsSync(scratchPath)) {
-        appendFileSync(scratchPath, "# Scratch Buffer (Working Memory WAL)\n\nUnsynthesized notes — will be consumed by next dream cycle.\n");
+        appendFileSync(
+          scratchPath,
+          "# Scratch Buffer (Working Memory WAL)\n\nUnsynthesized notes — will be consumed by next dream cycle.\n",
+        );
       }
       appendFileSync(scratchPath, entry);
 
@@ -102,10 +107,20 @@ export function createWorkingMemoryNoteTool(options: {
         const { manager } = await getMemorySearchManager({ cfg, agentId });
         if (manager) {
           const mgr = manager as unknown as {
-            ingestScratchNote?: (text: string, importance: number, semanticType?: string, epistemicLayer?: string) => void;
+            ingestScratchNote?: (
+              text: string,
+              importance: number,
+              semanticType?: string,
+              epistemicLayer?: string,
+            ) => void;
           };
           if (typeof mgr.ingestScratchNote === "function") {
-            mgr.ingestScratchNote(note, clampedImportance, typeMapping.semanticType, typeMapping.epistemicLayer);
+            mgr.ingestScratchNote(
+              note,
+              clampedImportance,
+              typeMapping.semanticType,
+              typeMapping.epistemicLayer,
+            );
             crystalCreated = true;
           }
         }
@@ -119,7 +134,8 @@ export function createWorkingMemoryNoteTool(options: {
         timestamp,
         importance: clampedImportance,
         crystalCreated,
-        message: "Note saved to scratch buffer. Will be incorporated into Working Memory on next dream cycle.",
+        message:
+          "Note saved to scratch buffer. Will be incorporated into Working Memory on next dream cycle.",
       });
     },
   };

@@ -1,9 +1,9 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { runSeedCrystalMigration } from "./seed-crystal-migration.js";
-import { DatabaseSync } from "node:sqlite";
-import fs from "node:fs/promises";
-import path from "node:path";
-import os from "node:os";
 
 describe("seed-crystal-migration", () => {
   let db: DatabaseSync;
@@ -54,7 +54,8 @@ describe("seed-crystal-migration", () => {
   });
 
   it("should migrate MEMORY.md content into consolidated crystals", async () => {
-    const content = "# My Memory\n\nSome important information about the project.\n\nMore details here.";
+    const content =
+      "# My Memory\n\nSome important information about the project.\n\nMore details here.";
     await fs.writeFile(path.join(tmpDir, "MEMORY.md"), content, "utf-8");
 
     await runSeedCrystalMigration({ db, workspaceDir: tmpDir });
@@ -88,10 +89,12 @@ describe("seed-crystal-migration", () => {
     await fs.writeFile(path.join(tmpDir, "MEMORY.md"), "test content", "utf-8");
 
     await runSeedCrystalMigration({ db, workspaceDir: tmpDir });
-    const countAfterFirst = (db.prepare(`SELECT COUNT(*) as c FROM chunks`).get() as { c: number }).c;
+    const countAfterFirst = (db.prepare(`SELECT COUNT(*) as c FROM chunks`).get() as { c: number })
+      .c;
 
     await runSeedCrystalMigration({ db, workspaceDir: tmpDir });
-    const countAfterSecond = (db.prepare(`SELECT COUNT(*) as c FROM chunks`).get() as { c: number }).c;
+    const countAfterSecond = (db.prepare(`SELECT COUNT(*) as c FROM chunks`).get() as { c: number })
+      .c;
 
     expect(countAfterSecond).toBe(countAfterFirst);
   });

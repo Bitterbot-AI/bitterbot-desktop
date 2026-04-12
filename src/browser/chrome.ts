@@ -94,10 +94,12 @@ function isWindowsExe(exePath: string): boolean {
 
 function wslPathToWindows(linuxPath: string): string | null {
   try {
-    return execFileSync("wslpath", ["-w", linuxPath], {
-      timeout: 2000,
-      encoding: "utf8",
-    }).trim() || null;
+    return (
+      execFileSync("wslpath", ["-w", linuxPath], {
+        timeout: 2000,
+        encoding: "utf8",
+      }).trim() || null
+    );
   } catch {
     return null;
   }
@@ -249,9 +251,7 @@ export async function launchBitterbotChrome(
   // the Windows host IP instead of 127.0.0.1.
   const wslWindowsBrowser = isWSLSync() && isWindowsExe(exe.path);
   const wslHostIp = wslWindowsBrowser ? resolveWSLHostIp() : null;
-  const cdpReachableUrl = wslHostIp
-    ? `http://${wslHostIp}:${profile.cdpPort}`
-    : profile.cdpUrl;
+  const cdpReachableUrl = wslHostIp ? `http://${wslHostIp}:${profile.cdpPort}` : profile.cdpUrl;
 
   // First launch to create preference files if missing, then decorate and relaunch.
   const spawnOnce = () => {
@@ -259,7 +259,7 @@ export async function launchBitterbotChrome(
     // UNC paths (\\wsl.localhost\...) are unreliable due to 9P file locking
     // and perf issues, so use a path under /mnt/c/ instead.
     const effectiveDataDir = wslWindowsBrowser
-      ? resolveWSLWindowsUserDataDir(profile.name) ?? wslPathToWindows(userDataDir) ?? userDataDir
+      ? (resolveWSLWindowsUserDataDir(profile.name) ?? wslPathToWindows(userDataDir) ?? userDataDir)
       : userDataDir;
 
     const args: string[] = [

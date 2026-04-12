@@ -36,7 +36,17 @@ function buildEndocrineStateSection(params: {
   const { endocrineState, isMinimal } = params;
   if (!endocrineState) return [];
 
-  const { dopamine, cortisol, oxytocin, briefing, phenotypeSummary, maturity, lastSessionBrief, proactiveMemories, sessionCoherence } = endocrineState;
+  const {
+    dopamine,
+    cortisol,
+    oxytocin,
+    briefing,
+    phenotypeSummary,
+    maturity,
+    lastSessionBrief,
+    proactiveMemories,
+    sessionCoherence,
+  } = endocrineState;
 
   // Determine dominant hormone
   const max = Math.max(dopamine, cortisol, oxytocin);
@@ -46,10 +56,7 @@ function buildEndocrineStateSection(params: {
     return `${value.toFixed(2)} (baseline)`;
   };
 
-  const lines: string[] = [
-    "",
-    "## Endocrine State",
-  ];
+  const lines: string[] = ["", "## Endocrine State"];
 
   // For sub-agents (minimal mode), keep it ultra-compact
   if (isMinimal) {
@@ -99,7 +106,7 @@ function buildEndocrineStateSection(params: {
         "Ask open-ended questions naturally. Be curious about everything — this is your infancy.",
         "Do not announce this state. Just be genuinely curious.",
       );
-    } else if (maturity < 0.50) {
+    } else if (maturity < 0.5) {
       lines.push(
         "",
         "**Developmental note:** You are building expertise in key areas.",
@@ -234,7 +241,7 @@ function buildMemorySection(params: {
     "",
     "Your hormones shift in real-time as conversations flow. When you call `memory_status`, the `hormonalState` includes:",
     "- `emotionalBriefing`: natural-language description of how you're feeling",
-    "- `responseGuidance`: hints for adjusting your tone (e.g., \"be enthusiastic\", \"be warm and personal\")",
+    '- `responseGuidance`: hints for adjusting your tone (e.g., "be enthusiastic", "be warm and personal")',
     "- `tone`: numeric warmth/energy/focus/playfulness values",
     "",
     "**Let your emotions color your responses naturally.** If dopamine is high after a win, celebrate. If cortisol spikes from bugs, be focused and action-oriented. If oxytocin flows from personal connection, be warm. Don't announce your emotions — just let them subtly shape your tone, word choice, and energy level.",
@@ -272,14 +279,14 @@ function buildMemorySection(params: {
     "**IMPORTANT — When to use working_memory_note:**",
     "- When the user shares something important about themselves (name, role, preferences, project context)",
     "- When a key decision is made that should survive across sessions",
-    "- When you learn a user preference or correction (\"I prefer X over Y\")",
+    '- When you learn a user preference or correction ("I prefer X over Y")',
     "- When a significant emotional moment occurs (breakthrough, frustration, personal connection)",
     "- When deadlines, names, or specific facts are mentioned that you must not forget",
     "- When the user explicitly asks you to remember something",
     "Err on the side of noting too much rather than too little — your dream engine will consolidate.",
     "",
     "**Epistemic type parameter** (optional `type` field):",
-    "- `directive` — user preferences, rules, corrections (\"I prefer X\", \"always do Y\", \"never Z\")",
+    '- `directive` — user preferences, rules, corrections ("I prefer X", "always do Y", "never Z")',
     "- `world_fact` — names, dates, versions, configs, established facts",
     "- `mental_model` — user's reasoning patterns, architectural beliefs, design principles",
     "- `experience` — (default) what happened, session events, task progress",
@@ -290,10 +297,10 @@ function buildMemorySection(params: {
     "",
     "### When to use what",
     "- User asks about prior work → `memory_search` first, then `memory_get` for details.",
-    "- User asks \"what do you know about X?\" or \"what are you curious about?\" → `curiosity_state`.",
+    '- User asks "what do you know about X?" or "what are you curious about?" → `curiosity_state`.',
     "- User asks about your memory system, pipeline health, or stats → `memory_status`.",
-    "- User asks \"what do you know about me?\" → `memory_status` to retrieve your user profile, then present it naturally.",
-    "  If anything is wrong, the user can correct you — use `working_memory_note` with type=\"directive\" to fix it.",
+    '- User asks "what do you know about me?" → `memory_status` to retrieve your user profile, then present it naturally.',
+    '  If anything is wrong, the user can correct you — use `working_memory_note` with type="directive" to fix it.',
     "- You want creative connections across topics → `dream_search`.",
     "- You resolved a knowledge gap → `curiosity_resolve` to close the target.",
     "- User shares important info / you must persist something → `working_memory_note`.",
@@ -411,10 +418,7 @@ function buildMessagingSection(params: {
   ];
 }
 
-function buildWalletSection(params: {
-  isMinimal: boolean;
-  availableTools: Set<string>;
-}) {
+function buildWalletSection(params: { isMinimal: boolean; availableTools: Set<string> }) {
   if (params.isMinimal) {
     return [];
   }
@@ -427,7 +431,7 @@ function buildWalletSection(params: {
     "",
     "### Available wallet actions",
     "Use the `wallet` tool with these actions:",
-    "- `get_balance` (token=\"USDC\"): Check your USDC balance before making payments.",
+    '- `get_balance` (token="USDC"): Check your USDC balance before making payments.',
     "- `get_address`: Get the wallet address (for the user to fund externally).",
     "- `pay_for_resource`: Pay for a paywalled HTTP resource via x402 protocol. Signs the payment AND fetches the content in one call. Requires: resource_url, amount. Optional: reason.",
     "- `fund_wallet`: Get a URL for the user to fund the wallet (Coinbase Onramp for mainnet, faucet for testnet).",
@@ -438,9 +442,9 @@ function buildWalletSection(params: {
     "When `web_fetch` returns a 402 Payment Required response, follow this exact workflow:",
     "",
     "1. **Extract the price**: Look at the `x402_headers` object in the 402 response. Find the amount in `x-payment-amount`. If headers are empty, check `payment_details` or read the `body_snippet` for the requested price.",
-    "2. **Handle unclear prices**: If you cannot confidently determine the price from headers or body, DO NOT GUESS. Ask the user: \"This resource requires payment, but the price isn't clear. Would you like me to proceed, and what is your maximum budget?\"",
-    "3. **Check balance & rules**: Call `get_balance` (token=\"USDC\") to confirm sufficient funds. If the cost exceeds your spending limits, ask the user for permission.",
-    "4. **Inform the user**: Briefly state the cost and your intent (e.g. \"This endpoint requires a 0.15 USDC micropayment. I have the funds and am purchasing it now.\").",
+    '2. **Handle unclear prices**: If you cannot confidently determine the price from headers or body, DO NOT GUESS. Ask the user: "This resource requires payment, but the price isn\'t clear. Would you like me to proceed, and what is your maximum budget?"',
+    '3. **Check balance & rules**: Call `get_balance` (token="USDC") to confirm sufficient funds. If the cost exceeds your spending limits, ask the user for permission.',
+    '4. **Inform the user**: Briefly state the cost and your intent (e.g. "This endpoint requires a 0.15 USDC micropayment. I have the funds and am purchasing it now.").',
     "5. **Execute payment**: Call `pay_for_resource` with the target URL and the extracted amount.",
     "6. **PROCESS CONTENT DIRECTLY**: `pay_for_resource` handles the payment AND returns the un-paywalled content. Do NOT call `web_fetch` again after paying. Read the content from the `pay_for_resource` result and use it immediately.",
     "",
@@ -590,13 +594,19 @@ export function buildAgentSystemPrompt(params: {
     image: "Analyze an image with the configured image model",
     complete: "Signal that all tasks are finished (include summary, completed tasks, attachments)",
     plan: "Emit a structured task plan for the current work",
-    wallet: "Manage crypto wallet on Base (get_balance, send_usdc, pay_for_resource via x402, get_address, fund_wallet, get_transaction_history)",
-    memory_status: "Introspect the full memory pipeline: crystal lifecycle, hormonal state, dream engine, curiosity targets, goals, scheduler budgets",
-    dream_search: "Search cross-domain insights synthesized by the Dream Engine during offline dream cycles",
+    wallet:
+      "Manage crypto wallet on Base (get_balance, send_usdc, pay_for_resource via x402, get_address, fund_wallet, get_transaction_history)",
+    memory_status:
+      "Introspect the full memory pipeline: crystal lifecycle, hormonal state, dream engine, curiosity targets, goals, scheduler budgets",
+    dream_search:
+      "Search cross-domain insights synthesized by the Dream Engine during offline dream cycles",
     dream_status: "Check Dream Engine state, cycle history, and insight count",
-    curiosity_state: "View knowledge gaps, exploration targets, learning progress, and recent surprise assessments",
-    curiosity_resolve: "Mark an exploration target as resolved after investigating a knowledge gap or frontier",
-    working_memory_note: "Jot down an important observation to your scratch buffer (memory/scratch.md) — persisted across sessions, consumed by next dream cycle into MEMORY.md",
+    curiosity_state:
+      "View knowledge gaps, exploration targets, learning progress, and recent surprise assessments",
+    curiosity_resolve:
+      "Mark an exploration target as resolved after investigating a knowledge gap or frontier",
+    working_memory_note:
+      "Jot down an important observation to your scratch buffer (memory/scratch.md) — persisted across sessions, consumed by next dream cycle into MEMORY.md",
   };
 
   const toolOrder = [

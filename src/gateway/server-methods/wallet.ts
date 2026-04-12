@@ -1,11 +1,8 @@
 import type { GatewayRequestHandlers } from "./types.js";
 import { loadConfig } from "../../config/config.js";
-import { createWalletService, type WalletService } from "../../services/wallet-service.js";
+import { createHostedOnrampSession, DEFAULT_ONRAMP_URL } from "../../services/hosted-onramp.js";
 import { createOnrampSession } from "../../services/stripe-onramp.js";
-import {
-  createHostedOnrampSession,
-  DEFAULT_ONRAMP_URL,
-} from "../../services/hosted-onramp.js";
+import { createWalletService, type WalletService } from "../../services/wallet-service.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
 let cachedService: WalletService | null = null;
@@ -80,8 +77,7 @@ export const walletHandlers: GatewayRequestHandlers = {
         (walletConfig?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY) &&
         (walletConfig?.stripe?.publishableKey || process.env.STRIPE_PUBLISHABLE_KEY)
       );
-      const onrampUrl =
-        walletConfig?.onrampUrl ?? process.env.BITTERBOT_ONRAMP_URL ?? "";
+      const onrampUrl = walletConfig?.onrampUrl ?? process.env.BITTERBOT_ONRAMP_URL ?? "";
       const hasCustomOnramp = !!onrampUrl;
 
       let onrampTier: "local" | "custom" | "hosted" | "none";
@@ -141,17 +137,17 @@ export const walletHandlers: GatewayRequestHandlers = {
         return;
       }
       const svc = getWalletService();
-      const resourceUrl =
-        typeof params.resourceUrl === "string" ? params.resourceUrl.trim() : "";
+      const resourceUrl = typeof params.resourceUrl === "string" ? params.resourceUrl.trim() : "";
       const amount =
-        typeof params.amount === "number" && Number.isFinite(params.amount)
-          ? params.amount
-          : 0;
+        typeof params.amount === "number" && Number.isFinite(params.amount) ? params.amount : 0;
       if (!resourceUrl || amount <= 0) {
         respond(
           false,
           undefined,
-          errorShape(ErrorCodes.UNAVAILABLE, "resourceUrl (string) and amount (positive number) are required"),
+          errorShape(
+            ErrorCodes.UNAVAILABLE,
+            "resourceUrl (string) and amount (positive number) are required",
+          ),
         );
         return;
       }
@@ -176,8 +172,7 @@ export const walletHandlers: GatewayRequestHandlers = {
       const network = (walletConfig?.network ?? "base-sepolia") as "base" | "base-sepolia";
 
       // ── Tier 2: Local Stripe keys — create session locally ──
-      const secretKey =
-        walletConfig?.stripe?.secretKey ?? process.env.STRIPE_SECRET_KEY ?? "";
+      const secretKey = walletConfig?.stripe?.secretKey ?? process.env.STRIPE_SECRET_KEY ?? "";
       const publishableKey =
         walletConfig?.stripe?.publishableKey ?? process.env.STRIPE_PUBLISHABLE_KEY ?? "";
 
@@ -194,9 +189,7 @@ export const walletHandlers: GatewayRequestHandlers = {
       // ── Tier 3: Custom onramp endpoint ──
       // ── Tier 1: Default to hosted service (onramp.bitterbot.ai) ──
       const onrampUrl =
-        walletConfig?.onrampUrl ??
-        process.env.BITTERBOT_ONRAMP_URL ??
-        DEFAULT_ONRAMP_URL;
+        walletConfig?.onrampUrl ?? process.env.BITTERBOT_ONRAMP_URL ?? DEFAULT_ONRAMP_URL;
 
       const hosted = await createHostedOnrampSession(onrampUrl, {
         walletAddress,

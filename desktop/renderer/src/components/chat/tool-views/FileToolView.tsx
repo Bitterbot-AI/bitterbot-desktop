@@ -1,5 +1,3 @@
-import { useState, useCallback } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import {
   FileCode,
   FilePlus,
@@ -10,6 +8,8 @@ import {
   Copy,
   Check,
 } from "lucide-react";
+import { useState, useCallback } from "react";
+import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { SyntaxViewer } from "../../workspace/SyntaxViewer";
 import { extractFilePath, getLanguageFromExtension } from "./tool-view-utils";
@@ -23,16 +23,46 @@ function getFileOp(name: string): {
 } {
   const lower = name.toLowerCase();
   if (lower.includes("write") || lower.includes("create"))
-    return { label: "Create File", Icon: FilePlus, color: "border-emerald-500/20", iconColor: "text-emerald-400" };
+    return {
+      label: "Create File",
+      Icon: FilePlus,
+      color: "border-emerald-500/20",
+      iconColor: "text-emerald-400",
+    };
   if (lower.includes("edit") || lower.includes("replace"))
-    return { label: "Edit File", Icon: FileEdit, color: "border-blue-500/20", iconColor: "text-blue-400" };
+    return {
+      label: "Edit File",
+      Icon: FileEdit,
+      color: "border-blue-500/20",
+      iconColor: "text-blue-400",
+    };
   if (lower.includes("read"))
-    return { label: "Read File", Icon: FileSearch, color: "border-blue-500/20", iconColor: "text-blue-400" };
+    return {
+      label: "Read File",
+      Icon: FileSearch,
+      color: "border-blue-500/20",
+      iconColor: "text-blue-400",
+    };
   if (lower.includes("delete"))
-    return { label: "Delete File", Icon: FileX, color: "border-red-500/20", iconColor: "text-red-400" };
+    return {
+      label: "Delete File",
+      Icon: FileX,
+      color: "border-red-500/20",
+      iconColor: "text-red-400",
+    };
   if (lower.includes("list") || lower.includes("directory"))
-    return { label: "List Directory", Icon: FolderOpen, color: "border-blue-500/20", iconColor: "text-blue-400" };
-  return { label: "File Operation", Icon: FileCode, color: "border-blue-500/20", iconColor: "text-blue-400" };
+    return {
+      label: "List Directory",
+      Icon: FolderOpen,
+      color: "border-blue-500/20",
+      iconColor: "text-blue-400",
+    };
+  return {
+    label: "File Operation",
+    Icon: FileCode,
+    color: "border-blue-500/20",
+    iconColor: "text-blue-400",
+  };
 }
 
 /** Get language from file path extension. */
@@ -109,9 +139,7 @@ export function FileToolView({ toolCall }: ToolViewProps) {
       <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/60 border-b border-zinc-800/50">
         <Icon className={cn("w-3.5 h-3.5", iconColor)} />
         <span className="text-xs font-medium text-zinc-300">{label}</span>
-        {langDisplay && (
-          <span className="text-[10px] text-zinc-500 ml-auto">{langDisplay}</span>
-        )}
+        {langDisplay && <span className="text-[10px] text-zinc-500 ml-auto">{langDisplay}</span>}
         {/* Copy button */}
         {output && (
           <button
@@ -119,11 +147,7 @@ export function FileToolView({ toolCall }: ToolViewProps) {
             className="ml-1 p-1 rounded hover:bg-zinc-700/50 transition-colors text-zinc-500 hover:text-zinc-300"
             title="Copy content"
           >
-            {copied ? (
-              <Check className="w-3 h-3 text-emerald-400" />
-            ) : (
-              <Copy className="w-3 h-3" />
-            )}
+            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
           </button>
         )}
       </div>
@@ -141,9 +165,7 @@ export function FileToolView({ toolCall }: ToolViewProps) {
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-zinc-400">
           <FileX className="w-10 h-10 text-red-400/60" />
           <span className="text-sm font-medium text-red-400">File Deleted</span>
-          {filePath && (
-            <span className="text-xs text-zinc-500 font-mono">{filePath}</span>
-          )}
+          {filePath && <span className="text-xs text-zinc-500 font-mono">{filePath}</span>}
         </div>
       ) : output && language !== "text" ? (
         /* Syntax-highlighted view */

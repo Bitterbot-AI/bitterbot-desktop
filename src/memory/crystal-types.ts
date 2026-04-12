@@ -9,34 +9,34 @@ import type { MemorySource } from "./types.js";
 
 // ── Lifecycle ──
 export type CrystalLifecycle =
-  | "generated"    // Just created/indexed
-  | "activated"    // Frequently accessed, high importance
+  | "generated" // Just created/indexed
+  | "activated" // Frequently accessed, high importance
   | "consolidated" // Merged with related crystals
-  | "archived"     // Low importance, retained for lineage
-  | "expired"      // Marked for purge
-  | "frozen";      // Immutable (skills, critical memories)
+  | "archived" // Low importance, retained for lineage
+  | "expired" // Marked for purge
+  | "frozen"; // Immutable (skills, critical memories)
 
 // ── Origin Signature ──
 export type CrystalOrigin =
-  | "indexed"      // File-based memory
-  | "session"      // Conversation transcript
-  | "skill"        // Crystallized skill
-  | "dream"        // Dream synthesis output
-  | "user_input"   // Direct user statement
-  | "inferred"     // Extracted by LLM
-  | "peer";        // Received from P2P peer
+  | "indexed" // File-based memory
+  | "session" // Conversation transcript
+  | "skill" // Crystallized skill
+  | "dream" // Dream synthesis output
+  | "user_input" // Direct user statement
+  | "inferred" // Extracted by LLM
+  | "peer"; // Received from P2P peer
 
 // ── Semantic Type ──
 export type CrystalSemanticType =
-  | "fact"           // Factual knowledge
-  | "preference"     // User preference
-  | "task_pattern"   // Recurring task pattern
-  | "skill"          // Executable skill
-  | "episode"        // Episodic memory (event)
-  | "insight"        // Dream-synthesized insight
-  | "relationship"   // User relationship/social
-  | "goal"           // User goal/objective
-  | "general";       // Default
+  | "fact" // Factual knowledge
+  | "preference" // User preference
+  | "task_pattern" // Recurring task pattern
+  | "skill" // Executable skill
+  | "episode" // Episodic memory (event)
+  | "insight" // Dream-synthesized insight
+  | "relationship" // User relationship/social
+  | "goal" // User goal/objective
+  | "general"; // Default
 
 // ── Governance ──
 export type CrystalGovernance = {
@@ -53,28 +53,28 @@ export type CrystalGovernance = {
 export type ProvenanceNode = {
   crystalId: string;
   operation: "created" | "mutated" | "merged" | "imported" | "forked";
-  actor: string;         // "local_agent" | "dream_engine" | "peer:<pubkey>"
+  actor: string; // "local_agent" | "dream_engine" | "peer:<pubkey>"
   timestamp: number;
-  parentIds: string[];   // multiple parents for merges
+  parentIds: string[]; // multiple parents for merges
   metadata?: Record<string, unknown>;
 };
 
 // ── Skill Identity (versioning) ──
 export type SkillIdentity = {
-  stableId: string;      // persists across versions (UUID, assigned at first creation)
-  version: number;       // increments on each mutation promotion
-  previousVersionId: string | null;  // crystal ID of the prior version
+  stableId: string; // persists across versions (UUID, assigned at first creation)
+  version: number; // increments on each mutation promotion
+  previousVersionId: string | null; // crystal ID of the prior version
   deprecated: boolean;
-  deprecatedBy: string | null;  // stableId of replacement skill
+  deprecatedBy: string | null; // stableId of replacement skill
   tags: string[];
-  category: string;      // e.g. "code-generation", "debugging", "devops"
+  category: string; // e.g. "code-generation", "debugging", "devops"
 };
 
 // ── Hormonal State (per-crystal influence) ──
 export type HormonalInfluence = {
-  dopamine: number;   // -1 to 1: reward/achievement signal
-  cortisol: number;   // -1 to 1: stress/urgency signal
-  oxytocin: number;   // -1 to 1: social/relational signal
+  dopamine: number; // -1 to 1: reward/achievement signal
+  cortisol: number; // -1 to 1: stress/urgency signal
+  oxytocin: number; // -1 to 1: social/relational signal
 };
 
 // ── Embedding Perspectives ──
@@ -89,15 +89,16 @@ export type MultiPerspectiveEmbedding = {
 
 // ── Skill Hierarchy ──
 export type DomainProfile = {
-  factual: number;     // What: facts, entities, knowledge
-  procedural: number;  // How: steps, tools, execution
-  affective: number;   // Why: goals, motivations, context
+  factual: number; // What: facts, entities, knowledge
+  procedural: number; // How: steps, tools, execution
+  affective: number; // Why: goals, motivations, context
 };
 
 export type SkillHierarchy = {
-  level3: number;           // Overall capability score (0-1)
-  level2: DomainProfile;    // 3 domains: What/How/Why
-  level1: {                 // 6 groups
+  level3: number; // Overall capability score (0-1)
+  level2: DomainProfile; // 3 domains: What/How/Why
+  level1: {
+    // 6 groups
     factual: number;
     temporal: number;
     causal: number;
@@ -105,7 +106,7 @@ export type SkillHierarchy = {
     qualitative: number;
     implementation: number;
   };
-  level0: number[];         // Raw 4-perspective embedding similarities
+  level0: number[]; // Raw 4-perspective embedding similarities
 };
 
 // ── Skill Edge Types ──
@@ -127,7 +128,7 @@ export type SkillEdge = {
 // ── Execution Tracking ──
 export type ExecutionOutcome = {
   success: boolean;
-  rewardScore?: number;      // 0-1
+  rewardScore?: number; // 0-1
   errorType?: string | null;
   errorDetail?: string | null;
   executionTimeMs?: number;
@@ -136,10 +137,10 @@ export type ExecutionOutcome = {
 
 export type SkillMetrics = {
   totalExecutions: number;
-  successRate: number;         // 0-1
-  avgRewardScore: number;      // 0-1
+  successRate: number; // 0-1
+  avgRewardScore: number; // 0-1
   avgExecutionTimeMs: number;
-  userFeedbackScore: number;   // -1 to 1 (weighted average)
+  userFeedbackScore: number; // -1 to 1 (weighted average)
   lastExecutedAt: number;
   errorBreakdown: Record<string, number>;
 };
@@ -204,11 +205,11 @@ export type MarketplaceFilters = {
 
 // ── Mutation Strategies ──
 export type MutationStrategy =
-  | "generic"         // current behavior
-  | "error_driven"    // analyze failure logs, suggest fixes
-  | "adversarial"     // find edge cases and harden
-  | "compositional"   // combine best aspects of multiple skills
-  | "parametric";     // vary thresholds/timeouts/strategies
+  | "generic" // current behavior
+  | "error_driven" // analyze failure logs, suggest fixes
+  | "adversarial" // find edge cases and harden
+  | "compositional" // combine best aspects of multiple skills
+  | "parametric"; // vary thresholds/timeouts/strategies
 
 // ── Full Knowledge Crystal ──
 export type KnowledgeCrystal = {

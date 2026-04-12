@@ -45,10 +45,12 @@ readiness = newChunks / totalChunks   (information ratio)
 ```
 
 The cycle is skipped if:
+
 - No chunks have been added/updated since the last dream
 - Fewer than 3 new chunks AND no pending near-merge hints AND no curiosity targets
 
 Secondary triggers that guarantee readiness:
+
 - **Near-merge hints** from SNN discovery (score ≥ 0.3)
 - **Active curiosity targets** (score ≥ 0.2)
 
@@ -62,26 +64,28 @@ This saves ~$0.50/day in LLM tokens during quiet periods and prevents "stale dre
 
 Each mode serves a different purpose and has a default weight controlling how often it's selected:
 
-| Mode | Weight | Compute Tier | Purpose |
-|------|--------|-------------|---------|
-| `replay` | 0.20 | `none` | Strengthen important memory pathways via ripple-enhanced multi-pass |
-| `compression` | 0.20 | `none` | Generalize into higher abstractions; consume near-merge hints |
-| `mutation` | 0.15 | `cloud` | Generate skill/knowledge variations via strategy-based prompts |
-| `simulation` | 0.15 | `cloud` | Cross-domain creative recombination via farthest-point sampling |
-| `extrapolation` | 0.10 | `cloud` | Predict future patterns from user behavior |
-| `exploration` | 0.10 | `local` | Gap-filling from curiosity targets |
-| `research` | 0.10 | `cloud` | Empirical prompt optimization using skill execution data |
+| Mode            | Weight | Compute Tier | Purpose                                                             |
+| --------------- | ------ | ------------ | ------------------------------------------------------------------- |
+| `replay`        | 0.20   | `none`       | Strengthen important memory pathways via ripple-enhanced multi-pass |
+| `compression`   | 0.20   | `none`       | Generalize into higher abstractions; consume near-merge hints       |
+| `mutation`      | 0.15   | `cloud`      | Generate skill/knowledge variations via strategy-based prompts      |
+| `simulation`    | 0.15   | `cloud`      | Cross-domain creative recombination via farthest-point sampling     |
+| `extrapolation` | 0.10   | `cloud`      | Predict future patterns from user behavior                          |
+| `exploration`   | 0.10   | `local`      | Gap-filling from curiosity targets                                  |
+| `research`      | 0.10   | `cloud`      | Empirical prompt optimization using skill execution data            |
 
 ### Mode Selection — Three-Signal Architecture
 
 `selectModes()` picks 1-3 modes using three complementary signals from the unified `CuriosityEngine`, combined via weighted normalization. The marketplace signal activates only when there is recent marketplace activity; otherwise the original two-signal weights are preserved:
 
 **When marketplace is active** (purchases, bounties, or searches in the last 24h):
+
 ```
 adjustment = 0.25 × curiosityAdj + 0.25 × gccrfAdj + (0.30 × fshoFactor) × fshoAdj + 0.20 × marketAdj
 ```
 
 **When no marketplace activity** (fallback to original weights):
+
 ```
 adjustment = 0.30 × curiosityAdj + 0.30 × gccrfAdj + (0.40 × fshoFactor) × fshoAdj
 ```
@@ -89,13 +93,17 @@ adjustment = 0.30 × curiosityAdj + 0.30 × gccrfAdj + (0.40 × fshoFactor) × f
 The `fshoFactor` is an empirical self-validation coefficient (0.5–1.5x) computed from the Pearson correlation between FSHO R and Dream Quality Score over recent cycles. If FSHO doesn't predict dream quality after 20+ cycles, its influence is automatically reduced.
 
 #### 1. Curiosity Heuristics
+
 The `CuriosityEngine` shifts weights based on detected knowledge structure:
+
 - Many knowledge gaps → boost `exploration`
 - Contradictions detected → boost `simulation`
 - Frontier targets → boost `mutation`
 
 #### 2. GCCRF Component Analysis
-The unified `CuriosityEngine` maps its internal GCCRF component values to modes — what the agent *needs to learn*:
+
+The unified `CuriosityEngine` maps its internal GCCRF component values to modes — what the agent _needs to learn_:
+
 - High η (prediction error) → `exploration` (investigate the surprising)
 - High Δη (learning progress) → `compression` (consolidate what's being learned)
 - High Iα (novelty) → `simulation` (cross-domain connections in novel space)
@@ -103,25 +111,29 @@ The unified `CuriosityEngine` maps its internal GCCRF component values to modes 
 - High S (strategic alignment) → `research` (goal-directed investigation)
 
 #### 3. FSHO Oscillator Dynamics (self-validating)
-Maps what the *memory landscape* looks like. Runs a Kuramoto-coupled oscillator simulation on recent chunk salience values and outputs an order parameter R ∈ [0, 1]:
 
-| R Range | Memory State | Favored Modes |
-|---------|-------------|---------------|
-| R > 0.7 | Coherent (memories clustered) | compression, replay, research |
-| 0.3-0.7 | Critical (edge of sync) | mutation, simulation |
-| R < 0.3 | Scattered (memories dispersed) | exploration, extrapolation |
+Maps what the _memory landscape_ looks like. Runs a Kuramoto-coupled oscillator simulation on recent chunk salience values and outputs an order parameter R ∈ [0, 1]:
+
+| R Range | Memory State                   | Favored Modes                 |
+| ------- | ------------------------------ | ----------------------------- |
+| R > 0.7 | Coherent (memories clustered)  | compression, replay, research |
+| 0.3-0.7 | Critical (edge of sync)        | mutation, simulation          |
+| R < 0.3 | Scattered (memories dispersed) | exploration, extrapolation    |
 
 The FSHO uses fractional Gaussian noise (Hurst parameter H=0.7 for long-range memory) and completes in <3ms. After 10+ dream cycles, `computeFshoWeightAdjustment()` checks whether FSHO R actually predicts dream quality (Pearson |r| > 0.3 = validated, |r| < 0.2 after 20 cycles = demoted).
 
 **Key insight:** Curiosity and FSHO can disagree. High curiosity targets (GCCRF wants exploration) but coherent memory set (FSHO wants compression) → the weighted combination produces a balanced selection rather than one signal dominating.
 
 #### Hormonal Temperature
+
 After adjustment, mode selection uses temperature-scaled softmax:
+
 - **High dopamine** → higher temperature → more creative/exploratory
 - **High cortisol** → lower temperature → more focused/replay-oriented
 - **High oxytocin** → slight temperature increase → relational exploration
 
 #### Auto-Triggers
+
 - `exploration` forced if unresolved curiosity targets exist
 - `mutation` forced if skill crystals exist
 
@@ -148,6 +160,7 @@ Each ripple represents a simulated sharp-wave replay at 60% amplitude of the pre
 **Spaced repetition tracking:** Each chunk stores `last_ripple_count`, enabling future prioritization of chunks that received fewer ripples in previous cycles.
 
 **Hormonal influence on seed selection:**
+
 - High dopamine → preferentially replay positive memories (reinforcement)
 - High cortisol → preferentially replay successful memories (stress coping)
 
@@ -191,10 +204,10 @@ Empirical prompt optimization. Analyzes skill execution data to identify underpe
 
 The dream engine can be triggered immediately by significant hormonal spikes, bypassing the normal timer:
 
-| Spike | Threshold | Mini-Dream Mode | Rationale |
-|-------|-----------|----------------|-----------|
-| Dopamine | > 0.7 | `replay` | Reinforce the positive experience |
-| Cortisol | > 0.8 | `compression` | Process the stressful event |
+| Spike    | Threshold | Mini-Dream Mode | Rationale                         |
+| -------- | --------- | --------------- | --------------------------------- |
+| Dopamine | > 0.7     | `replay`        | Reinforce the positive experience |
+| Cortisol | > 0.8     | `compression`   | Process the stressful event       |
 
 Mini-dreams run through the same `run()` pipeline but with a single non-LLM mode (free). A **10-minute cooldown** prevents runaway cycles.
 
@@ -217,6 +230,7 @@ CREATE TABLE dream_telemetry (
 ```
 
 Examples:
+
 - `(cycle_123, "fsho", "order_parameter", 0.62)` — FSHO computed R=0.62 (creative zone)
 - `(cycle_123, "ripple", "ripple_count", 4)` — 4 Poisson-sampled ripples this replay
 - `(cycle_123, "readiness", "score", 0.45)` — 45% of knowledge base is new
@@ -227,13 +241,13 @@ This enables closed-loop validation: empirically measuring whether FSHO's R-para
 
 After each dream cycle, a **Dream Quality Score (DQS)** is computed and persisted to the `dream_outcomes` table. DQS is a weighted composite of five metrics:
 
-| Component | Weight | Measures |
-|-----------|--------|----------|
-| **Crystal Yield** | 0.25 | New insights per LLM call |
-| **Merge Efficiency** | 0.15 | Successful merges / merge attempts |
-| **Orphan Rescue** | 0.15 | Orphans replayed / orphans queued |
-| **Bond Stability** | 0.30 | Whether the Bond passed drift validation |
-| **Token Efficiency** | 0.15 | Budget utilization |
+| Component            | Weight | Measures                                 |
+| -------------------- | ------ | ---------------------------------------- |
+| **Crystal Yield**    | 0.25   | New insights per LLM call                |
+| **Merge Efficiency** | 0.15   | Successful merges / merge attempts       |
+| **Orphan Rescue**    | 0.15   | Orphans replayed / orphans queued        |
+| **Bond Stability**   | 0.30   | Whether the Bond passed drift validation |
+| **Token Efficiency** | 0.15   | Budget utilization                       |
 
 Bond stability has the highest weight because losing the user's identity information is the worst failure mode.
 
@@ -258,11 +272,13 @@ Market demand signals feed into dream mode selection as the fourth signal, enabl
 **Key source file:** `marketplace-intelligence.ts`
 
 **Demand signals ingested:**
+
 - **Purchases by category** — which skill categories are buyers spending on
 - **Active bounties** — explicit requests from marketplace users that no skill yet fulfills
 - **Unfulfilled searches** — search queries that returned zero or low-quality results
 
 **Effect on dream modes:**
+
 - High-demand categories boost `exploration` and `mutation` modes, directing creative energy toward market opportunities
 - Demand targets are injected into the curiosity engine as exploration targets with a **24-hour TTL**, ensuring stale market signals expire naturally
 - When marketplace activity is detected (any signal within the last 24h), the four-signal weighting activates (0.25/0.25/0.30/0.20); when no marketplace activity exists, the system falls back to the original three-signal weights (0.30/0.30/0.40)
@@ -294,7 +310,7 @@ Before the standard cosine ≥ 0.92 merge step, the consolidation engine runs **
 3. Pairs with ≥ 4 shared neighbors → stored as `near_merge_hints`
 4. Compression mode consumes hints in the next dream cycle
 
-SNN is more robust than raw cosine for high-dimensional embedding spaces because it detects *structural* similarity (shared neighborhood) rather than just pairwise distance.
+SNN is more robust than raw cosine for high-dimensional embedding spaces because it detects _structural_ similarity (shared neighborhood) rather than just pairwise distance.
 
 ---
 
@@ -351,17 +367,21 @@ The `clusterChunks()` method uses **greedy single-linkage clustering**:
 Dream insights are generated through two paths:
 
 ### Heuristic Synthesis (`"heuristic"`)
+
 No LLM call. Extracts keywords, builds summary from highest-importance chunks, assigns confidence based on cluster cohesion.
 
 ### LLM Synthesis (`"llm"`)
+
 1. `buildDreamSynthesisPrompt()` generates prompt with cluster context
 2. LLM returns JSON array of `{ content, confidence, keywords }`
 3. `parseDreamSynthesisResponse()` validates results
 
 ### Both (`"both"`, default)
+
 Runs heuristic first, then LLM. Takes the higher-confidence result.
 
 ### Insight Storage
+
 Each insight is stored in `dream_insights` with its own embedding. Insights exceeding `maxInsights` (200) are pruned by lowest importance.
 
 ---
@@ -370,11 +390,11 @@ Each insight is stored in `dream_insights` with its own embedding. Insights exce
 
 The `MemoryScheduler` enforces per-hour API budgets:
 
-| Budget | Default | Operations |
-|--------|---------|------------|
-| `llmCallsPerHour` | 20 | dream, curiosity, discovery |
-| `embeddingCallsPerHour` | 100 | embed, preload, backfill |
-| `localLlmCallsPerHour` | ∞ | local LLM operations |
+| Budget                  | Default | Operations                  |
+| ----------------------- | ------- | --------------------------- |
+| `llmCallsPerHour`       | 20      | dream, curiosity, discovery |
+| `embeddingCallsPerHour` | 100     | embed, preload, backfill    |
+| `localLlmCallsPerHour`  | ∞       | local LLM operations        |
 
 Search and consolidation are always allowed (no API calls).
 
@@ -384,16 +404,16 @@ Search and consolidation are always allowed (no API calls).
 
 ```typescript
 type DreamEngineConfig = {
-  enabled?: boolean;                        // Default: true
-  intervalMinutes?: number;                 // Default: 120
-  maxChunksPerCycle?: number;               // Default: 50
-  maxLlmCallsPerCycle?: number;             // Default: 5
-  clusterSimilarityThreshold?: number;      // Default: 0.65
-  minImportanceForDream?: number;           // Default: 0.3
-  synthesisMode?: "heuristic" | "llm" | "both";  // Default: "both"
-  model?: string;                           // Default: "openai/gpt-4o-mini"
-  maxInsights?: number;                     // Default: 200
-  minChunksForDream?: number;               // Default: 5
+  enabled?: boolean; // Default: true
+  intervalMinutes?: number; // Default: 120
+  maxChunksPerCycle?: number; // Default: 50
+  maxLlmCallsPerCycle?: number; // Default: 5
+  clusterSimilarityThreshold?: number; // Default: 0.65
+  minImportanceForDream?: number; // Default: 0.3
+  synthesisMode?: "heuristic" | "llm" | "both"; // Default: "both"
+  model?: string; // Default: "openai/gpt-4o-mini"
+  maxInsights?: number; // Default: 200
+  minChunksForDream?: number; // Default: 5
   llmCall?: (prompt: string) => Promise<string>;
   localLlmCall?: (prompt: string) => Promise<string>;
   modes?: Partial<Record<DreamMode, Partial<DreamModeConfig>>>;

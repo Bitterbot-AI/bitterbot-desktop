@@ -1,3 +1,4 @@
+import type { CrystallizationCandidate } from "../../agents/skills/types.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import {
@@ -8,14 +9,17 @@ import {
 import { installSkill } from "../../agents/skills-install.js";
 import { buildWorkspaceSkillStatus } from "../../agents/skills-status.js";
 import { loadWorkspaceSkillEntries, type SkillEntry } from "../../agents/skills.js";
+import { crystallizeSkill } from "../../agents/skills/crystallize.js";
+import {
+  acceptIncomingSkill,
+  listIncomingSkills,
+  rejectIncomingSkill,
+} from "../../agents/skills/ingest.js";
 import { listAgentWorkspaceDirs } from "../../agents/workspace-dirs.js";
 import { loadConfig, writeConfigFile } from "../../config/config.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
-import { crystallizeSkill } from "../../agents/skills/crystallize.js";
-import { acceptIncomingSkill, listIncomingSkills, rejectIncomingSkill } from "../../agents/skills/ingest.js";
-import type { CrystallizationCandidate } from "../../agents/skills/types.js";
 import {
   ErrorCodes,
   errorShape,
@@ -159,7 +163,10 @@ export const skillsHandlers: GatewayRequestHandlers = {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "invalid crystallization candidate: requires taskName, description, rewardScore, reasoningPath[], toolCalls[]"),
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "invalid crystallization candidate: requires taskName, description, rewardScore, reasoningPath[], toolCalls[]",
+        ),
       );
       return;
     }
@@ -170,21 +177,33 @@ export const skillsHandlers: GatewayRequestHandlers = {
       bridge: context.orchestratorBridge,
       workspaceDir,
     });
-    respond(result.ok, result, result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.error ?? "crystallization failed"));
+    respond(
+      result.ok,
+      result,
+      result.ok
+        ? undefined
+        : errorShape(ErrorCodes.UNAVAILABLE, result.error ?? "crystallization failed"),
+    );
   },
   "skills.network": async ({ respond, context }) => {
     const cfg = loadConfig();
     const p2p = cfg.p2p;
     let stats = null;
     if (context.orchestratorBridge) {
-      try { stats = await context.orchestratorBridge.getStats(); } catch {}
+      try {
+        stats = await context.orchestratorBridge.getStats();
+      } catch {}
     }
-    respond(true, {
-      enabled: p2p?.enabled ?? false,
-      topics: p2p?.topics ?? {},
-      security: p2p?.security ?? {},
-      stats,
-    }, undefined);
+    respond(
+      true,
+      {
+        enabled: p2p?.enabled ?? false,
+        topics: p2p?.topics ?? {},
+        security: p2p?.security ?? {},
+        stats,
+      },
+      undefined,
+    );
   },
   "skills.update": async ({ params, respond }) => {
     if (!validateSkillsUpdateParams(params)) {
@@ -258,7 +277,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
     const cfg = loadConfig();
     const workspaceDir = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
     const result = await acceptIncomingSkill({ skillName, config: cfg, workspaceDir });
-    respond(result.ok, result, result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "accept failed"));
+    respond(
+      result.ok,
+      result,
+      result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "accept failed"),
+    );
   },
   "skills.incoming.reject": async ({ params, respond }) => {
     const skillName = typeof params?.skillName === "string" ? params.skillName.trim() : "";
@@ -268,6 +291,10 @@ export const skillsHandlers: GatewayRequestHandlers = {
     }
     const cfg = loadConfig();
     const result = await rejectIncomingSkill({ skillName, config: cfg });
-    respond(result.ok, result, result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "reject failed"));
+    respond(
+      result.ok,
+      result,
+      result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "reject failed"),
+    );
   },
 };

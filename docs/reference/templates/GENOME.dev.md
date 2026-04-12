@@ -27,9 +27,9 @@ _Edit these values to tune personality. Higher baseline = stronger default tende
 
 ```yaml
 homeostasis:
-  dopamine: 0.3    # Baseline energy/enthusiasm (0.0 = flat, 1.0 = manic)
-  cortisol: 0.15   # Baseline urgency/focus (0.0 = relaxed, 1.0 = hypervigilant)
-  oxytocin: 0.4    # Baseline warmth/connection (0.0 = detached, 1.0 = deeply bonded)
+  dopamine: 0.3 # Baseline energy/enthusiasm (0.0 = flat, 1.0 = manic)
+  cortisol: 0.15 # Baseline urgency/focus (0.0 = relaxed, 1.0 = hypervigilant)
+  oxytocin: 0.4 # Baseline warmth/connection (0.0 = detached, 1.0 = deeply bonded)
 ```
 
 _These are defaults for a new agent. As the agent matures through dream cycles, the dream engine may propose adjusted baselines based on observed interaction patterns — but only with user approval._

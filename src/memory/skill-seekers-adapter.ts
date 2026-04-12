@@ -7,16 +7,16 @@
  * and are promoted through execution feedback.
  */
 
-import { createHash, generateKeyPairSync, sign, randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { execFileSync } from "node:child_process";
+import { createHash, generateKeyPairSync, sign, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
 import type { SkillEnvelope, IngestResult } from "../agents/skills/ingest.js";
-import { ingestSkill } from "../agents/skills/ingest.js";
-import type { SkillSeekersConfig } from "../config/types.skill-seekers.js";
 import type { BitterbotConfig } from "../config/config.js";
+import type { SkillSeekersConfig } from "../config/types.skill-seekers.js";
+import { ingestSkill } from "../agents/skills/ingest.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("skill-seekers");
@@ -47,9 +47,7 @@ function loadOrCreateSyntheticKeypair(db: DatabaseSync): SyntheticKeypair {
   // Try loading from DB
   try {
     const row = db
-      .prepare(
-        `SELECT value FROM memory_meta WHERE key = 'skill_seekers_keypair'`,
-      )
+      .prepare(`SELECT value FROM memory_meta WHERE key = 'skill_seekers_keypair'`)
       .get() as { value: string } | undefined;
     if (row) {
       const parsed = JSON.parse(row.value) as SyntheticKeypair;
@@ -71,9 +69,7 @@ function loadOrCreateSyntheticKeypair(db: DatabaseSync): SyntheticKeypair {
 
   // Persist
   try {
-    db.exec(
-      `CREATE TABLE IF NOT EXISTS memory_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
-    );
+    db.exec(`CREATE TABLE IF NOT EXISTS memory_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
     db.prepare(
       `INSERT OR REPLACE INTO memory_meta (key, value) VALUES ('skill_seekers_keypair', ?)`,
     ).run(JSON.stringify(keypair));
@@ -200,15 +196,36 @@ export class SkillSeekersAdapter {
     };
 
     if (!(await this.isAvailable())) {
-      return { ...base, ok: false, envelopes: [], ingested: [], error: "skill-seekers not installed", elapsedMs: Date.now() - start };
+      return {
+        ...base,
+        ok: false,
+        envelopes: [],
+        ingested: [],
+        error: "skill-seekers not installed",
+        elapsedMs: Date.now() - start,
+      };
     }
 
     if (!this.isDomainAllowed(source.url)) {
-      return { ...base, ok: false, envelopes: [], ingested: [], error: "domain_blocked", elapsedMs: Date.now() - start };
+      return {
+        ...base,
+        ok: false,
+        envelopes: [],
+        ingested: [],
+        error: "domain_blocked",
+        elapsedMs: Date.now() - start,
+      };
     }
 
     if (this.skillsGeneratedThisCycle >= this.config.maxSkillsPerCycle) {
-      return { ...base, ok: false, envelopes: [], ingested: [], error: "rate_limit_exceeded", elapsedMs: Date.now() - start };
+      return {
+        ...base,
+        ok: false,
+        envelopes: [],
+        ingested: [],
+        error: "rate_limit_exceeded",
+        elapsedMs: Date.now() - start,
+      };
     }
 
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ss-"));
@@ -220,13 +237,27 @@ export class SkillSeekersAdapter {
       // Find the generated skill directory
       const skillDir = findSkillDir(outputDir);
       if (!skillDir) {
-        return { ...base, ok: false, envelopes: [], ingested: [], error: "no skill output generated", elapsedMs: Date.now() - start };
+        return {
+          ...base,
+          ok: false,
+          envelopes: [],
+          ingested: [],
+          error: "no skill output generated",
+          elapsedMs: Date.now() - start,
+        };
       }
 
       // Parse SKILL.md + references
       const parsed = parseSkillDirectory(skillDir, source);
       if (!parsed) {
-        return { ...base, ok: false, envelopes: [], ingested: [], error: "failed to parse SKILL.md", elapsedMs: Date.now() - start };
+        return {
+          ...base,
+          ok: false,
+          envelopes: [],
+          ingested: [],
+          error: "failed to parse SKILL.md",
+          elapsedMs: Date.now() - start,
+        };
       }
 
       // Parse conflicts if available
@@ -265,7 +296,14 @@ export class SkillSeekersAdapter {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn(`Skill Seekers failed for ${source.url}: ${msg}`);
-      return { ...base, ok: false, envelopes: [], ingested: [], error: msg, elapsedMs: Date.now() - start };
+      return {
+        ...base,
+        ok: false,
+        envelopes: [],
+        ingested: [],
+        error: msg,
+        elapsedMs: Date.now() - start,
+      };
     } finally {
       // Cleanup tmp
       try {
@@ -354,7 +392,8 @@ export class SkillSeekersAdapter {
       try {
         this.epistemicDirectiveEngine.createDirective({
           type: "contradiction",
-          question: `Conflict detected: ${conflict.apiName} — ${conflict.difference ?? conflict.type}. ${conflict.suggestion ?? ""}`.trim(),
+          question:
+            `Conflict detected: ${conflict.apiName} — ${conflict.difference ?? conflict.type}. ${conflict.suggestion ?? ""}`.trim(),
           context: `Source: Skill Seekers conflict detection during ingestion from ${sourceUrl}`,
           priority: 0.8,
         });
@@ -454,10 +493,7 @@ type ParsedSkill = {
   content: string;
 };
 
-function parseSkillDirectory(
-  skillDir: string,
-  source: SkillSeekersSource,
-): ParsedSkill | null {
+function parseSkillDirectory(skillDir: string, source: SkillSeekersSource): ParsedSkill | null {
   const skillMdPath = path.join(skillDir, "SKILL.md");
   if (!fs.existsSync(skillMdPath)) return null;
 
@@ -483,7 +519,10 @@ function parseSkillDirectory(
   let content = skillMd;
   const refsDir = path.join(skillDir, "references");
   if (fs.existsSync(refsDir)) {
-    const refs = fs.readdirSync(refsDir).filter((f) => f.endsWith(".md")).sort();
+    const refs = fs
+      .readdirSync(refsDir)
+      .filter((f) => f.endsWith(".md"))
+      .sort();
     for (const ref of refs) {
       const refContent = fs.readFileSync(path.join(refsDir, ref), "utf8");
       content += `\n\n---\n\n<!-- reference: ${ref} -->\n\n${refContent}`;

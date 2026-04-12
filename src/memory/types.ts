@@ -1,6 +1,13 @@
 export type MemorySource = "memory" | "sessions" | "skills";
 
-export type { KnowledgeCrystal, CrystalLifecycle, CrystalOrigin, CrystalSemanticType, CrystalGovernance, HormonalInfluence } from "./crystal-types.js";
+export type {
+  KnowledgeCrystal,
+  CrystalLifecycle,
+  CrystalOrigin,
+  CrystalSemanticType,
+  CrystalGovernance,
+  HormonalInfluence,
+} from "./crystal-types.js";
 
 export type MemorySearchResult = {
   path: string;
@@ -94,5 +101,12 @@ export interface MemorySearchManager {
   // Emotional Anchors
   createEmotionalAnchor?(label: string, description?: string): { id: string; label: string } | null;
   recallEmotionalAnchor?(anchorId: string, influence?: number): boolean;
-  listEmotionalAnchors?(): Array<{ id: string; label: string; description: string; state: { dopamine: number; cortisol: number; oxytocin: number }; createdAt: number; recallCount: number }>;
+  listEmotionalAnchors?(): Array<{
+    id: string;
+    label: string;
+    description: string;
+    state: { dopamine: number; cortisol: number; oxytocin: number };
+    createdAt: number;
+    recallCount: number;
+  }>;
 }

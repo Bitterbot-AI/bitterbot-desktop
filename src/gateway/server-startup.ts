@@ -125,9 +125,7 @@ export async function startGatewaySidecars(params: {
       params.logChannels.error(`channel startup failed: ${String(err)}`);
     }
   } else {
-    params.logChannels.info(
-      "skipping channel start (BITTERBOT_SKIP_CHANNELS=1)",
-    );
+    params.logChannels.info("skipping channel start (BITTERBOT_SKIP_CHANNELS=1)");
   }
 
   if (params.cfg.hooks?.internal?.enabled) {
@@ -159,8 +157,10 @@ export async function startGatewaySidecars(params: {
   }
 
   // Start P2P orchestrator bridge if configured.
-  let orchestratorBridge: import("../infra/orchestrator-bridge.js").OrchestratorBridge | null = null;
-  let skillNetworkBridge: import("../memory/skill-network-bridge.js").SkillNetworkBridge | null = null;
+  let orchestratorBridge: import("../infra/orchestrator-bridge.js").OrchestratorBridge | null =
+    null;
+  let skillNetworkBridge: import("../memory/skill-network-bridge.js").SkillNetworkBridge | null =
+    null;
   if (params.cfg.p2p?.enabled) {
     try {
       const { OrchestratorBridge: Bridge } = await import("../infra/orchestrator-bridge.js");
@@ -242,13 +242,15 @@ export async function startGatewaySidecars(params: {
     cfg: params.cfg,
     log: params.log,
     orchestratorBridge: orchestratorBridge ?? undefined,
-  }).then((result) => {
-    if (result.skillNetworkBridge) {
-      skillNetworkBridge = result.skillNetworkBridge;
-    }
-  }).catch((err) => {
-    params.log.warn(`memory startup initialization failed: ${String(err)}`);
-  });
+  })
+    .then((result) => {
+      if (result.skillNetworkBridge) {
+        skillNetworkBridge = result.skillNetworkBridge;
+      }
+    })
+    .catch((err) => {
+      params.log.warn(`memory startup initialization failed: ${String(err)}`);
+    });
 
   return { browserControl, pluginServices, orchestratorBridge, skillNetworkBridge };
 }

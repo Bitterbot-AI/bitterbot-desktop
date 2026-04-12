@@ -3,10 +3,10 @@
  * Only functional when the node is running in management tier.
  */
 import type { GatewayRequestHandlers } from "./types.js";
-import { ErrorCodes, errorShape } from "../protocol/index.js";
-import { loadConfig } from "../../config/config.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
+import { ErrorCodes, errorShape } from "../protocol/index.js";
 
 async function getManagementService() {
   const cfg = loadConfig();
@@ -14,7 +14,8 @@ async function getManagementService() {
   const { manager } = await getMemorySearchManager({ cfg, agentId });
   if (!manager) throw new Error("memory manager unavailable");
   const service = (manager as any).managementNodeService;
-  if (!service) throw new Error("management node service not available (this node is not a management node)");
+  if (!service)
+    throw new Error("management node service not available (this node is not a management node)");
   return service;
 }
 

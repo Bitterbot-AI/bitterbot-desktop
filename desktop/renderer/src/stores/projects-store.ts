@@ -59,7 +59,10 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
       const res = await request<{ projects: Project[] }>("projects.list");
       set({ projects: res.projects ?? [], loading: false });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : "Failed to fetch projects", loading: false });
+      set({
+        error: err instanceof Error ? err.message : "Failed to fetch projects",
+        loading: false,
+      });
     }
   },
 

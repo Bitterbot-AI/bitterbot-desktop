@@ -20,7 +20,7 @@ For each knowledge region, the agent tracks whether it's getting less surprised 
 
 This is GCCRF's most distinctive feature. It uses density estimation to determine how crowded or sparse a region of knowledge space is.
 
-**The developmental twist**: A young agent (few dream cycles completed) is rewarded for exploring *common* things -- building foundational understanding, like a baby fixating on faces. As the agent matures, it shifts to being rewarded for exploring *rare* things -- frontier territory, like a researcher seeking the unknown.
+**The developmental twist**: A young agent (few dream cycles completed) is rewarded for exploring _common_ things -- building foundational understanding, like a baby fixating on faces. As the agent matures, it shifts to being rewarded for exploring _rare_ things -- frontier territory, like a researcher seeking the unknown.
 
 This transition happens automatically through **alpha annealing**: a parameter that smoothly shifts the density reward from "common is interesting" to "rare is interesting" over the agent's lifetime.
 
@@ -40,7 +40,8 @@ This measures how well new information aligns with the agent's active exploratio
 
 GCCRF rewards directly influence which memories the Dream Engine selects as seeds for dream cycles. Higher curiosity reward = more likely to be dreamed about = more likely to generate insights.
 
-Each GCCRF component also influences which *mode* the Dream Engine uses:
+Each GCCRF component also influences which _mode_ the Dream Engine uses:
+
 - High prediction error --> Exploration mode
 - High learning progress --> Compression mode (consolidate what's being learned)
 - High novelty --> Simulation mode (cross-domain connections)
@@ -59,11 +60,11 @@ Chunks with high curiosity rewards resist decay longer during consolidation. The
 
 The alpha parameter controls the agent's developmental stage:
 
-| Alpha Range | Stage | Behavior |
-|---|---|---|
-| -3.0 to -1.5 | Infant | Curious about common, foundational things |
-| -1.5 to -0.5 | Adolescent | Transitioning from common to novel |
-| -0.5 to 0.0 | Mature | Curious about rare, frontier things |
+| Alpha Range  | Stage      | Behavior                                  |
+| ------------ | ---------- | ----------------------------------------- |
+| -3.0 to -1.5 | Infant     | Curious about common, foundational things |
+| -1.5 to -0.5 | Adolescent | Transitioning from common to novel        |
+| -0.5 to 0.0  | Mature     | Curious about rare, frontier things       |
 
 Maturity is tied to **dream cycles completed**, not raw data volume. This prevents bulk file imports from "speedrunning" the agent's childhood -- maturity tracks actual consolidation and reflection.
 
@@ -71,20 +72,20 @@ Maturity is tied to **dream cycles completed**, not raw data volume. This preven
 
 GCCRF configuration is set in the `memory.gccrf` section of the Bitterbot config:
 
-| Setting | Default | Description |
-|---|---|---|
-| `weights` | `[0.25, 0.20, 0.25, 0.20, 0.10]` | Component weights (eta, deltaEta, iAlpha, empowerment, strategic) |
-| `alphaStart` | `-3.0` | Alpha at birth (rewards commonality) |
-| `alphaEnd` | `0.0` | Alpha at maturity (rewards novelty) |
-| `expectedMatureCycles` | `100` | Dream cycles to full maturity |
-| `kdeK` | `50` | Neighbors for density estimation |
-| `empowermentK` | `30` | Neighbors for empowerment computation |
-| `muGain` | `5.0` | Interoceptive modulator sensitivity |
-| `muThreshold` | `0.3` | Interoceptive modulator threshold |
+| Setting                | Default                          | Description                                                       |
+| ---------------------- | -------------------------------- | ----------------------------------------------------------------- |
+| `weights`              | `[0.25, 0.20, 0.25, 0.20, 0.10]` | Component weights (eta, deltaEta, iAlpha, empowerment, strategic) |
+| `alphaStart`           | `-3.0`                           | Alpha at birth (rewards commonality)                              |
+| `alphaEnd`             | `0.0`                            | Alpha at maturity (rewards novelty)                               |
+| `expectedMatureCycles` | `100`                            | Dream cycles to full maturity                                     |
+| `kdeK`                 | `50`                             | Neighbors for density estimation                                  |
+| `empowermentK`         | `30`                             | Neighbors for empowerment computation                             |
+| `muGain`               | `5.0`                            | Interoceptive modulator sensitivity                               |
+| `muThreshold`          | `0.3`                            | Interoceptive modulator threshold                                 |
 
 ## FSHO Oscillator Coupling
 
-The Dream Engine's **FSHO oscillator** (Fractional Stuart-Landau Hopf Oscillator) provides a complementary signal to GCCRF for dream mode selection. While GCCRF tells the agent what it *needs to learn*, the FSHO order parameter R tells the agent what the *memory landscape looks like*:
+The Dream Engine's **FSHO oscillator** (Fractional Stuart-Landau Hopf Oscillator) provides a complementary signal to GCCRF for dream mode selection. While GCCRF tells the agent what it _needs to learn_, the FSHO order parameter R tells the agent what the _memory landscape looks like_:
 
 - **GCCRF high prediction error + FSHO low R** → Both agree: explore (scattered, surprising memories)
 - **GCCRF high learning progress + FSHO high R** → Both agree: compress (coherent, consolidating memories)
@@ -110,6 +111,7 @@ Exploration targets expire after **48 hours** (reduced from 168h). This prevents
 ## Dashboard
 
 The Dream Engine dashboard includes a "Curiosity" tab showing:
+
 - Current alpha value and maturity percentage
 - All five GCCRF components with their current mean values
 - Per-region learning progress (which topics are improving?)

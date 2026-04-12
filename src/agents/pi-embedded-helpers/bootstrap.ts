@@ -90,10 +90,10 @@ const BOOTSTRAP_TAIL_RATIO = 0.2;
 
 /** Adaptive MEMORY.md token budget based on model context window */
 const MEMORY_MD_BUDGET_MAP: Array<{ minContextK: number; budgetChars: number }> = [
-  { minContextK: 200, budgetChars: 8000 },   // ~2K tokens for 200K+ models
+  { minContextK: 200, budgetChars: 8000 }, // ~2K tokens for 200K+ models
   { minContextK: 128, budgetChars: 6000 },
   { minContextK: 64, budgetChars: 4000 },
-  { minContextK: 32, budgetChars: 3200 },     // ~800 tokens for 32K models
+  { minContextK: 32, budgetChars: 3200 }, // ~800 tokens for 32K models
 ];
 
 export function resolveMemoryMdBudgetChars(contextWindowTokens?: number): number {

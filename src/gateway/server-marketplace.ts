@@ -3,8 +3,8 @@
  * as RPC endpoints accessible via the gateway protocol.
  */
 
-import type { SkillMarketplace, SkillDetail } from "../memory/skill-marketplace.js";
 import type { MarketplaceEntry, MarketplaceFilters } from "../memory/crystal-types.js";
+import type { SkillMarketplace, SkillDetail } from "../memory/skill-marketplace.js";
 
 export type MarketplaceRpcMethods = {
   "marketplace.search": {
@@ -34,7 +34,10 @@ export type MarketplaceRpcMethods = {
  */
 export function createMarketplaceHandler(marketplace: SkillMarketplace | null) {
   return {
-    "marketplace.search"(params: { query: string; filters?: MarketplaceFilters }): MarketplaceEntry[] {
+    "marketplace.search"(params: {
+      query: string;
+      filters?: MarketplaceFilters;
+    }): MarketplaceEntry[] {
       if (!marketplace) return [];
       return marketplace.search(params.query, params.filters);
     },

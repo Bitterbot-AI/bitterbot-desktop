@@ -89,7 +89,9 @@ function run() {
     try {
       const data = JSON.parse(readFileSync(join(resultsDir, file), "utf-8")) as DreamMetricsFile;
       dreamMetrics.set(variantId, data);
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Check baseline exists
@@ -135,7 +137,9 @@ function run() {
   const header = ["variant", "overall", ...sortedTypes];
   const matrix: (string | number)[][] = [header];
 
-  for (const [variantId, summary] of Object.entries(comparison).sort((a, b) => b[1].overall.accuracy - a[1].overall.accuracy)) {
+  for (const [variantId, summary] of Object.entries(comparison).sort(
+    (a, b) => b[1].overall.accuracy - a[1].overall.accuracy,
+  )) {
     const row: (string | number)[] = [variantId];
     row.push(summary.overall.accuracy);
     for (const type of sortedTypes) {
@@ -164,12 +168,19 @@ function run() {
   // Header
   const colWidth = 14;
   const nameWidth = 22;
-  const headerLine = "variant".padEnd(nameWidth) + header.slice(1).map((h) => String(h).padStart(colWidth)).join("");
+  const headerLine =
+    "variant".padEnd(nameWidth) +
+    header
+      .slice(1)
+      .map((h) => String(h).padStart(colWidth))
+      .join("");
   console.log(headerLine);
   console.log("-".repeat(headerLine.length));
 
   // Rows
-  for (const [variantId, summary] of Object.entries(comparison).sort((a, b) => b[1].overall.accuracy - a[1].overall.accuracy)) {
+  for (const [variantId, summary] of Object.entries(comparison).sort(
+    (a, b) => b[1].overall.accuracy - a[1].overall.accuracy,
+  )) {
     const isBaseline = variantId === baselineId;
     let line = variantId.padEnd(nameWidth);
 
@@ -200,7 +211,9 @@ function run() {
   console.log("-".repeat(70));
   for (const [variantId, dm] of dreamMetrics) {
     const ds = dm.dreamSummary;
-    console.log(`  ${variantId}: ${ds?.totalInsights ?? 0} insights, ${ds?.totalLlmCalls ?? 0} LLM calls, modes: ${JSON.stringify(ds?.modeFrequency ?? {})}`);
+    console.log(
+      `  ${variantId}: ${ds?.totalInsights ?? 0} insights, ${ds?.totalLlmCalls ?? 0} LLM calls, modes: ${JSON.stringify(ds?.modeFrequency ?? {})}`,
+    );
   }
 
   console.log(`\nFull comparison: ${outPath}`);

@@ -218,7 +218,6 @@ async function scanMemoryFiles(
   return { source: "memory", totalFiles, issues };
 }
 
-
 async function scanSkillFiles(): Promise<SourceScan> {
   // Skills are discovered dynamically from multiple directories at sync time.
   // The CLI scan provides a minimal stub so the source appears in status output.

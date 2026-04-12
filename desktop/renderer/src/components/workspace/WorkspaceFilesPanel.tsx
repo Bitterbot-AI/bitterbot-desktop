@@ -1,7 +1,3 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { useWorkspaceStore, type FileTreeNode } from "../../stores/workspace-store";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { cn } from "../../lib/utils";
 import {
   FolderOpen,
   FolderClosed,
@@ -13,11 +9,15 @@ import {
   Pencil,
   Eye,
 } from "lucide-react";
-import { getFileIcon, formatSize, filterTree } from "./workspace-utils";
-import { SyntaxViewer } from "./SyntaxViewer";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
+import { useWorkspaceStore, type FileTreeNode } from "../../stores/workspace-store";
 import { FileEditor } from "./FileEditor";
 import { FileTabBar } from "./FileTabBar";
+import { SyntaxViewer } from "./SyntaxViewer";
 import { TreeFilterInput } from "./TreeFilterInput";
+import { getFileIcon, formatSize, filterTree } from "./workspace-utils";
 
 function MiniTreeNode({
   node,
@@ -61,24 +61,23 @@ function MiniTreeNode({
           <span className="w-2.5 flex-shrink-0" />
         )}
         <NodeIcon
-          className={cn(
-            "w-3 h-3 flex-shrink-0",
-            isDir ? "text-amber-400/70" : "text-blue-400/60",
-          )}
+          className={cn("w-3 h-3 flex-shrink-0", isDir ? "text-amber-400/70" : "text-blue-400/60")}
         />
         <span className="truncate">{node.name}</span>
       </button>
-      {isDir && isExpanded && node.children?.map((child) => (
-        <MiniTreeNode
-          key={child.path}
-          node={child}
-          depth={depth + 1}
-          expanded={expanded}
-          activeFilePath={activeFilePath}
-          onToggle={onToggle}
-          onOpen={onOpen}
-        />
-      ))}
+      {isDir &&
+        isExpanded &&
+        node.children?.map((child) => (
+          <MiniTreeNode
+            key={child.path}
+            node={child}
+            depth={depth + 1}
+            expanded={expanded}
+            activeFilePath={activeFilePath}
+            onToggle={onToggle}
+            onOpen={onOpen}
+          />
+        ))}
     </>
   );
 }
@@ -109,10 +108,7 @@ export function WorkspaceFilesPanel() {
 
   const isConnected = status === "connected";
 
-  const filteredTree = useMemo(
-    () => filterTree(tree, treeFilter),
-    [tree, treeFilter],
-  );
+  const filteredTree = useMemo(() => filterTree(tree, treeFilter), [tree, treeFilter]);
 
   useEffect(() => {
     if (isConnected && tree.length === 0 && !treeLoading) {
@@ -202,7 +198,11 @@ export function WorkspaceFilesPanel() {
                   )}
                   title={activeTab.editing ? "View mode" : "Edit mode"}
                 >
-                  {activeTab.editing ? <Eye className="w-2.5 h-2.5" /> : <Pencil className="w-2.5 h-2.5" />}
+                  {activeTab.editing ? (
+                    <Eye className="w-2.5 h-2.5" />
+                  ) : (
+                    <Pencil className="w-2.5 h-2.5" />
+                  )}
                 </button>
                 <button
                   onClick={() => navigator.clipboard.writeText(activeTab.content).catch(() => {})}

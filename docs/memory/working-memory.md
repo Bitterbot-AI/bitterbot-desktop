@@ -27,6 +27,7 @@ New_State = f(Old_State + Scratch_Delta + New_Crystals + Dream_Insights)
 ```
 
 This means the agent's working memory is:
+
 - **Persistent** — survives across sessions
 - **Self-updating** — the dream engine maintains it automatically
 - **Lossless** — fading topics become Crystal Pointers, not deletions
@@ -40,27 +41,35 @@ MEMORY.md follows a structured schema with 5 mandatory sections, kept under ~2K 
 
 ```markdown
 # Working Memory State
-*Last dream: {timestamp} | Mood: {hormonal_description}*
+
+_Last dream: {timestamp} | Mood: {hormonal_description}_
 
 ## The Bond (Oxytocin-Weighted)
+
 Enduring user traits, communication style, trust level, shared history.
 Current emotional baseline.
 
 ## Active Context (Dopamine/Cortisol-Weighted)
+
 Last 1-3 sessions, unresolved tasks, current goals.
 Recent frictions (cortisol-tagged): explicit things to avoid.
 Breakthroughs (dopamine-tagged): recent wins.
 
 ## Crystal Pointers (Deep Memory Awareness)
-*Use memory_search if user asks about these topics:*
+
+_Use memory_search if user asks about these topics:_
+
 - Past: P2P bridge CORS debugging → search: `CORS P2P EigenTrust`
 - Past: Workspace migration → search: `workspace migration WSL`
 
 ## Curiosity Gaps
+
 Unresolved questions, knowledge gaps, things the agent wants to explore.
 
 ## Emerging Skills
-*Patterns detected from repeated tasks. Pre-crystallization:*
+
+_Patterns detected from repeated tasks. Pre-crystallization:_
+
 - TypeScript refactoring → Confidence: 85% | Occurrences: 7
 - SQLite schema design → Confidence: 72% | Occurrences: 4
 ```
@@ -69,13 +78,13 @@ Unresolved questions, knowledge gaps, things the agent wants to explore.
 
 Each section has a hormonal attention weight that controls how aggressively the dream engine updates it:
 
-| Section | Primary Hormone | When Updated Aggressively |
-|---------|----------------|--------------------------|
-| The Bond | Oxytocin | High oxytocin → social bonding moments detected |
-| Active Context | Dopamine + Cortisol | High dopamine → breakthroughs; High cortisol → frictions |
-| Crystal Pointers | (decay-driven) | Topics fading from Active Context → compressed to pointers |
-| Curiosity Gaps | (curiosity engine) | Updated from CuriosityEngine exploration targets |
-| Emerging Skills | (access patterns) | Updated from repeated task patterns in crystal access counts |
+| Section          | Primary Hormone     | When Updated Aggressively                                    |
+| ---------------- | ------------------- | ------------------------------------------------------------ |
+| The Bond         | Oxytocin            | High oxytocin → social bonding moments detected              |
+| Active Context   | Dopamine + Cortisol | High dopamine → breakthroughs; High cortisol → frictions     |
+| Crystal Pointers | (decay-driven)      | Topics fading from Active Context → compressed to pointers   |
+| Curiosity Gaps   | (curiosity engine)  | Updated from CuriosityEngine exploration targets             |
+| Emerging Skills  | (access patterns)   | Updated from repeated task patterns in crystal access counts |
 
 ### The 7-Section Schema
 
@@ -92,6 +101,7 @@ The working memory state (MEMORY.md) contains 7 required sections:
 ### Catastrophic Collapse Guard
 
 The `validateWorkingMemory()` function includes three collapse guards:
+
 - **Mass drop:** Rejects synthesis if new state is <50% the length of a mature (>2000 char) previous state
 - **Eviction runaway:** Rejects if >20 crystal pointers (LLM over-evicting active topics)
 - **Empty synthesis:** Rejects if all section headers present but <50 chars of substance
@@ -99,6 +109,7 @@ The `validateWorkingMemory()` function includes three collapse guards:
 ### Economic Data in The Niche
 
 The Niche section receives economic data from the MarketplaceEconomics system:
+
 - Total earnings and spending in USDC
 - Listed skill count and unique buyer count
 - Top earning skills and 7-day earnings trend
@@ -136,10 +147,10 @@ The agent is a stateless LLM. If it learns something important mid-session (a na
 
 Two-file architecture:
 
-| File | Writer | Reader | Purpose |
-|------|--------|--------|---------|
+| File                | Writer                                                         | Reader                          | Purpose                          |
+| ------------------- | -------------------------------------------------------------- | ------------------------------- | -------------------------------- |
 | `memory/scratch.md` | Agent (via `working_memory_note` tool) + Hormonal auto-scratch | Bootstrap loader + Dream engine | Write-ahead log for urgent notes |
-| `MEMORY.md` | Dream engine only | Bootstrap loader + Agent | Committed state vector |
+| `MEMORY.md`         | Dream engine only                                              | Bootstrap loader + Agent        | Committed state vector           |
 
 The agent appends timestamped notes to `scratch.md` during sessions:
 
@@ -152,10 +163,12 @@ The agent appends timestamped notes to `scratch.md` during sessions:
 ```
 
 On session start, the bootstrap loader injects BOTH files into the system prompt:
+
 - MEMORY.md as committed state
 - scratch.md as "Unsynthesized Notes (pending dream consolidation)"
 
 When the next dream cycle fires, scratch notes are:
+
 1. Incorporated into the RLM state update of MEMORY.md
 2. Indexed as crystals (lossless backup)
 3. Cleared from scratch.md
@@ -192,6 +205,7 @@ The first dream cycle after migration is **conservative**: it appends a `## Drea
 
 ```markdown
 # My existing MEMORY.md content
+
 ...user's original content...
 
 ---
@@ -200,9 +214,11 @@ The first dream cycle after migration is **conservative**: it appends a `## Drea
      gradually integrate the above content. -->
 
 # Working Memory State
-*Last dream: 2026-03-12T16:00:00Z | Mood: motivated, socially engaged*
+
+_Last dream: 2026-03-12T16:00:00Z | Mood: motivated, socially engaged_
 
 ## The Bond (Oxytocin-Weighted)
+
 ...
 ```
 
@@ -223,11 +239,13 @@ The agent's primary interface for persisting observations:
 ```
 
 **What it does:**
+
 1. Appends a timestamped entry to `memory/scratch.md`
 2. Creates an immediate crystal for searchability (so memory_search can find it before the next dream cycle)
 3. Returns confirmation with timestamp and crystal status
 
 **When to use it** (from system prompt guidance):
+
 - User shares something important about themselves
 - Key decisions made that should survive across sessions
 - User preferences or corrections
@@ -252,11 +270,11 @@ The agent uses `memory_search` with those keywords to pull full crystal content 
 MEMORY.md token budget scales based on model context window to work across different deployments:
 
 | Context Window | MEMORY.md Budget (chars) | ~Tokens |
-|---------------|-------------------------|---------|
-| 200K+ | 8,000 | ~2,000 |
-| 128K | 6,000 | ~1,500 |
-| 64K | 4,000 | ~1,000 |
-| 32K | 3,200 | ~800 |
+| -------------- | ------------------------ | ------- |
+| 200K+          | 8,000                    | ~2,000  |
+| 128K           | 6,000                    | ~1,500  |
+| 64K            | 4,000                    | ~1,000  |
+| 32K            | 3,200                    | ~800    |
 
 If MEMORY.md exceeds its budget, it's truncated with a note: `[Full working memory available via memory_search]`.
 
@@ -270,19 +288,19 @@ Relevant existing config keys:
 
 ```json5
 {
-  "memory": {
-    "dream": {
-      "enabled": true,           // Must be true for RLM state updates
-      "intervalMinutes": 120,    // Dream cycle frequency
-      "minChunksForDream": 5     // Lowered from 20 — activates in first session
+  memory: {
+    dream: {
+      enabled: true, // Must be true for RLM state updates
+      intervalMinutes: 120, // Dream cycle frequency
+      minChunksForDream: 5, // Lowered from 20 — activates in first session
     },
-    "search": {
-      "sources": ["memory", "sessions"],  // Sessions now indexed by default
-      "experimental": {
-        "sessionMemory": true              // Enabled by default
-      }
-    }
-  }
+    search: {
+      sources: ["memory", "sessions"], // Sessions now indexed by default
+      experimental: {
+        sessionMemory: true, // Enabled by default
+      },
+    },
+  },
 }
 ```
 
@@ -323,14 +341,14 @@ flowchart TD
 
 ## Credits
 
-| Concept | Origin |
-|---------|--------|
-| Crystal Pointers (semantic eviction → search directives) | Gemini |
-| Scratch Buffer WAL (write-ahead log for inter-session persistence) | BitterBot |
-| Emerging Skills section in working memory schema | BitterBot |
-| Hormone-weighted attention mechanism in synthesis prompt | Gemini |
-| RLM state update equation (New = f(Old + Delta)) | Gemini |
-| Three-tier architecture + phased rollout | Claude Code |
-| Auto-scratch from hormonal spikes (belt AND suspenders) | BitterBot |
-| Conservative first-cycle transition UX | BitterBot |
-| Vision and requirements | Vic |
+| Concept                                                            | Origin      |
+| ------------------------------------------------------------------ | ----------- |
+| Crystal Pointers (semantic eviction → search directives)           | Gemini      |
+| Scratch Buffer WAL (write-ahead log for inter-session persistence) | BitterBot   |
+| Emerging Skills section in working memory schema                   | BitterBot   |
+| Hormone-weighted attention mechanism in synthesis prompt           | Gemini      |
+| RLM state update equation (New = f(Old + Delta))                   | Gemini      |
+| Three-tier architecture + phased rollout                           | Claude Code |
+| Auto-scratch from hormonal spikes (belt AND suspenders)            | BitterBot   |
+| Conservative first-cycle transition UX                             | BitterBot   |
+| Vision and requirements                                            | Vic         |

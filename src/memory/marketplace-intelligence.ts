@@ -34,32 +34,31 @@ export class MarketplaceIntelligence {
   hasActivity(): boolean {
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     try {
-      const purchases = (
-        this.db
-          .prepare(
-            `SELECT COUNT(*) as c FROM marketplace_purchases WHERE purchased_at > ?`,
-          )
-          .get(weekAgo) as { c: number } | undefined
-      )?.c ?? 0;
+      const purchases =
+        (
+          this.db
+            .prepare(`SELECT COUNT(*) as c FROM marketplace_purchases WHERE purchased_at > ?`)
+            .get(weekAgo) as { c: number } | undefined
+        )?.c ?? 0;
 
-      const listings = (
-        this.db
-          .prepare(
-            `SELECT COUNT(*) as c FROM marketplace_listings WHERE listed_at > ?`,
-          )
-          .get(weekAgo) as { c: number } | undefined
-      )?.c ?? 0;
+      const listings =
+        (
+          this.db
+            .prepare(`SELECT COUNT(*) as c FROM marketplace_listings WHERE listed_at > ?`)
+            .get(weekAgo) as { c: number } | undefined
+        )?.c ?? 0;
 
       let bounties = 0;
       try {
-        bounties = (
-          this.db
-            .prepare(
-              `SELECT COUNT(*) as c FROM curiosity_targets
+        bounties =
+          (
+            this.db
+              .prepare(
+                `SELECT COUNT(*) as c FROM curiosity_targets
                WHERE metadata LIKE '%"isBounty":true%' AND expires_at > ?`,
-            )
-            .get(Date.now()) as { c: number } | undefined
-        )?.c ?? 0;
+              )
+              .get(Date.now()) as { c: number } | undefined
+          )?.c ?? 0;
       } catch {
         // curiosity_targets table may not exist
       }

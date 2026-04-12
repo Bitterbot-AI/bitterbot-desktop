@@ -60,9 +60,11 @@ try {
   });
 
   const totalWeight = suites.reduce((s: number, suite: any) => s + suite.weight, 0);
-  const composite = totalWeight > 0
-    ? suites.reduce((s: number, suite: any) => s + suite.percentage * suite.weight, 0) / totalWeight
-    : 0;
+  const composite =
+    totalWeight > 0
+      ? suites.reduce((s: number, suite: any) => s + suite.percentage * suite.weight, 0) /
+        totalWeight
+      : 0;
 
   const report = {
     benchmark: "BioMemEval",
@@ -75,9 +77,7 @@ try {
     metadata: {
       nodeVersion: process.version,
       platform: process.platform,
-      totalDurationMs: raw.startTime && raw.endTime
-        ? raw.endTime - raw.startTime
-        : null,
+      totalDurationMs: raw.startTime && raw.endTime ? raw.endTime - raw.startTime : null,
     },
   };
 
@@ -90,33 +90,25 @@ try {
   console.log("=".repeat(72));
   console.log("");
   console.log(
-    "  " +
-    "Suite".padEnd(30) +
-    "Weight".padEnd(10) +
-    "Pass".padEnd(8) +
-    "Fail".padEnd(8) +
-    "Score",
+    "  " + "Suite".padEnd(30) + "Weight".padEnd(10) + "Pass".padEnd(8) + "Fail".padEnd(8) + "Score",
   );
   console.log("  " + "-".repeat(64));
 
   for (const s of suites) {
     console.log(
       "  " +
-      s.suiteName.padEnd(30) +
-      (s.weight + "%").padEnd(10) +
-      String(s.passed).padEnd(8) +
-      String(s.failed).padEnd(8) +
-      Math.round(s.percentage) + "%",
+        s.suiteName.padEnd(30) +
+        (s.weight + "%").padEnd(10) +
+        String(s.passed).padEnd(8) +
+        String(s.failed).padEnd(8) +
+        Math.round(s.percentage) +
+        "%",
     );
   }
 
   console.log("  " + "-".repeat(64));
   console.log(
-    "  " +
-    "COMPOSITE".padEnd(30) +
-    "100%".padEnd(10) +
-    "".padEnd(16) +
-    Math.round(composite) + "%",
+    "  " + "COMPOSITE".padEnd(30) + "100%".padEnd(10) + "".padEnd(16) + Math.round(composite) + "%",
   );
   console.log("");
   console.log(`  System: ${report.system} v${report.systemVersion}`);

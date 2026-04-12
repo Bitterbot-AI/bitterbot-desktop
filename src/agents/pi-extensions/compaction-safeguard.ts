@@ -309,7 +309,8 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
       summary += toolFailureSection;
       summary += fileOpsSummary;
       // Hint that full conversation history is available via memory_search
-      summary += "\n\n[Full conversation history available via memory_search tool. Use it to recall details from earlier in this session.]";
+      summary +=
+        "\n\n[Full conversation history available via memory_search tool. Use it to recall details from earlier in this session.]";
 
       return {
         compaction: {

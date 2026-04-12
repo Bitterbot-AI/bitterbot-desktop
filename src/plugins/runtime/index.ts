@@ -1,12 +1,15 @@
 import { createRequire } from "node:module";
 import type { PluginRuntime } from "./types.js";
 import { resolveEffectiveMessagesConfig, resolveHumanDelayConfig } from "../../agents/identity.js";
-import { createMemoryGetTool, createMemorySearchTool } from "../../agents/tools/memory-tool.js";
+import {
+  createCuriosityStateTool,
+  createCuriosityResolveTool,
+} from "../../agents/tools/curiosity-tool.js";
 import { createDreamSearchTool, createDreamStatusTool } from "../../agents/tools/dream-tool.js";
-import { createCuriosityStateTool, createCuriosityResolveTool } from "../../agents/tools/curiosity-tool.js";
 import { createMemoryStatusTool } from "../../agents/tools/memory-status-tool.js";
-import { createWorkingMemoryNoteTool } from "../../agents/tools/working-memory-tool.js";
+import { createMemoryGetTool, createMemorySearchTool } from "../../agents/tools/memory-tool.js";
 import { handleSlackAction } from "../../agents/tools/slack-actions.js";
+import { createWorkingMemoryNoteTool } from "../../agents/tools/working-memory-tool.js";
 import {
   chunkByNewline,
   chunkMarkdownText,

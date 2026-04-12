@@ -44,13 +44,7 @@ export function PeerMap({ connectedPeers }: PeerMapProps) {
         {/* Peer nodes */}
         {peers.map((peer) => (
           <g key={`peer-${peer.id}`}>
-            <circle
-              cx={peer.x}
-              cy={peer.y}
-              r="6"
-              fill="currentColor"
-              className="text-primary/60"
-            />
+            <circle cx={peer.x} cy={peer.y} r="6" fill="currentColor" className="text-primary/60" />
             <circle
               cx={peer.x}
               cy={peer.y}
@@ -76,33 +70,18 @@ export function PeerMap({ connectedPeers }: PeerMapProps) {
           strokeWidth="2"
           style={{ animationDuration: "2s" }}
         />
-        <text
-          x={150}
-          y={130}
-          textAnchor="middle"
-          className="fill-muted-foreground text-[10px]"
-        >
+        <text x={150} y={130} textAnchor="middle" className="fill-muted-foreground text-[10px]">
           You
         </text>
 
         {connectedPeers === 0 && (
-          <text
-            x={150}
-            y={105}
-            textAnchor="middle"
-            className="fill-muted-foreground text-[11px]"
-          >
+          <text x={150} y={105} textAnchor="middle" className="fill-muted-foreground text-[11px]">
             No peers connected
           </text>
         )}
 
         {connectedPeers > 24 && (
-          <text
-            x={150}
-            y={190}
-            textAnchor="middle"
-            className="fill-muted-foreground text-[10px]"
-          >
+          <text x={150} y={190} textAnchor="middle" className="fill-muted-foreground text-[10px]">
             +{connectedPeers - 24} more peers
           </text>
         )}

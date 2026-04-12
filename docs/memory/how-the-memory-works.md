@@ -265,6 +265,7 @@ When the agent searches its memory, seven layers of processing happen:
 7. **Temporal scoring** — query intent detection ("what am I working on?" vs. "when did I...?") applies different temporal decay profiles based on epistemic layer half-lives
 
 After results are returned:
+
 - Access counts are updated
 - Spacing effect timestamps are recorded
 - Retrieved chunks are marked as labile for reconsolidation

@@ -1,6 +1,6 @@
+import { Globe, ExternalLink, Copy, Check, FileText, Loader2 } from "lucide-react";
 import { useState, useCallback, useMemo } from "react";
 import type { ToolViewProps } from "./ToolViewRegistry";
-import { Globe, ExternalLink, Copy, Check, FileText, Loader2 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { extractDomain, getFaviconUrl, getContentStats } from "./tool-view-utils";
 
@@ -65,27 +65,17 @@ export function WebCrawlToolView({ toolCall }: ToolViewProps) {
         <div className="flex items-center gap-3 px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30">
           <div className="flex items-center gap-1.5">
             <FileText className="w-3 h-3 text-zinc-500" />
-            <span className="text-[10px] text-zinc-500">
-              {stats.words.toLocaleString()} words
-            </span>
+            <span className="text-[10px] text-zinc-500">{stats.words.toLocaleString()} words</span>
           </div>
-          <span className="text-[10px] text-zinc-600">
-            {stats.chars.toLocaleString()} chars
-          </span>
-          <span className="text-[10px] text-zinc-600">
-            {stats.lines.toLocaleString()} lines
-          </span>
+          <span className="text-[10px] text-zinc-600">{stats.chars.toLocaleString()} chars</span>
+          <span className="text-[10px] text-zinc-600">{stats.lines.toLocaleString()} lines</span>
           {/* Copy button */}
           <button
             onClick={handleCopy}
             className="ml-auto p-1 rounded hover:bg-zinc-700/50 transition-colors text-zinc-500 hover:text-zinc-300"
             title="Copy content"
           >
-            {copied ? (
-              <Check className="w-3 h-3 text-emerald-400" />
-            ) : (
-              <Copy className="w-3 h-3" />
-            )}
+            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
           </button>
         </div>
       )}
@@ -100,9 +90,7 @@ export function WebCrawlToolView({ toolCall }: ToolViewProps) {
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <Loader2 className="w-5 h-5 text-green-400 animate-spin" />
             <span className="text-sm text-zinc-400">Crawling page...</span>
-            {url && (
-              <span className="text-xs text-zinc-500 font-mono">{domain}</span>
-            )}
+            {url && <span className="text-xs text-zinc-500 font-mono">{domain}</span>}
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-zinc-600 text-sm">

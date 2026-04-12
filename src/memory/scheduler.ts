@@ -22,8 +22,8 @@ export type MemoryOperationType =
 export type MemoryOperation = {
   id: string;
   type: MemoryOperationType;
-  priority: number;        // 0-1, higher = more urgent
-  estimatedCost: number;   // Estimated API calls
+  priority: number; // 0-1, higher = more urgent
+  estimatedCost: number; // Estimated API calls
   execute: () => Promise<void>;
   createdAt: number;
 };
@@ -153,7 +153,14 @@ export class MemoryScheduler {
    */
   getQueueStatus(): Record<MemoryOperationType, number> {
     const counts: Record<MemoryOperationType, number> = {
-      embed: 0, consolidate: 0, dream: 0, curiosity: 0, search: 0, preload: 0, discovery: 0, backfill: 0,
+      embed: 0,
+      consolidate: 0,
+      dream: 0,
+      curiosity: 0,
+      search: 0,
+      preload: 0,
+      discovery: 0,
+      backfill: 0,
     };
     for (const op of this.queue) {
       counts[op.type]++;

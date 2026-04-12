@@ -115,14 +115,16 @@ export class RLMSandbox {
 
       // LLM recursive sub-calls
       llm_query: self.options.onLLMQuery,
-      llm_query_parallel: self.options.onLLMQueryParallel ?? (async (queries: Array<{ prompt: string; context?: string }>) => {
-        // Fallback: sequential execution if parallel not provided
-        const results: string[] = [];
-        for (const q of queries) {
-          results.push(await self.options.onLLMQuery(q.prompt, q.context));
-        }
-        return results;
-      }),
+      llm_query_parallel:
+        self.options.onLLMQueryParallel ??
+        (async (queries: Array<{ prompt: string; context?: string }>) => {
+          // Fallback: sequential execution if parallel not provided
+          const results: string[] = [];
+          for (const q of queries) {
+            results.push(await self.options.onLLMQuery(q.prompt, q.context));
+          }
+          return results;
+        }),
 
       // Text utility functions
       chunk,
@@ -138,7 +140,8 @@ export class RLMSandbox {
       join: (arr: string[], sep: string) => arr.join(sep),
       includes: (text: string, sub: string) => text.includes(sub),
       indexOf: (text: string, sub: string, from?: number) => text.indexOf(sub, from),
-      replace: (text: string, pattern: string | RegExp, replacement: string) => text.replace(pattern, replacement),
+      replace: (text: string, pattern: string | RegExp, replacement: string) =>
+        text.replace(pattern, replacement),
       toLowerCase: (text: string) => text.toLowerCase(),
       toUpperCase: (text: string) => text.toUpperCase(),
       trim: (text: string) => text.trim(),

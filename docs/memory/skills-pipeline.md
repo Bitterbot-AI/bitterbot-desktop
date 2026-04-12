@@ -71,16 +71,17 @@ The `SkillCrystallizer` (`skill-crystallizer.ts`) is the entry point for automat
 
 ### Promotion Criteria
 
-| Constant | Value | Purpose |
-|----------|-------|---------|
-| `MIN_SUCCESSES` | 3 | Minimum successful executions before a pattern qualifies |
-| `MIN_SUCCESS_RATE` | 0.7 (70%) | Minimum success/total ratio |
+| Constant           | Value     | Purpose                                                  |
+| ------------------ | --------- | -------------------------------------------------------- |
+| `MIN_SUCCESSES`    | 3         | Minimum successful executions before a pattern qualifies |
+| `MIN_SUCCESS_RATE` | 0.7 (70%) | Minimum success/total ratio                              |
 
 The crystallizer queries the `skill_executions` table, grouping by `skill_crystal_id`, and selects patterns where `successes >= 3 AND successes/total >= 0.7`. Deduplication prevents re-crystallizing patterns that already have a frozen skill crystal or a crystallized child.
 
 ### Crystal Creation
 
 When a pattern qualifies:
+
 1. The original chunk text is loaded and used as the basis
 2. Importance score is computed as `successRate * 0.6 + frequencyFactor * 0.4` (where `frequencyFactor = min(1, totalExecutions / 20)`)
 3. A new chunk is inserted with `lifecycle='generated'`, `memory_type='skill'`, `semantic_type='skill'`, `origin='inferred'`
@@ -98,12 +99,14 @@ The `SkillRefiner` (`skill-refiner.ts`) orchestrates the dream mutation evaluati
 Each mutation is scored by combining heuristic and empirical signals:
 
 **Heuristic score** (`heuristicScore()`):
+
 - **Length ratio** (+0.2) — mutations should be similar length to originals (penalty for >2x or <0.5x)
 - **Keyword coverage** (+0.3 max) — what fraction of original keywords (words >3 chars) appear in the mutation
 - **Novelty** (+0.3 max) — new words not in the original (rewarded via `min(0.3, novelty * 0.5)`)
 - **Structural indicators** (+0.1 each) — presence of edge case handling, generality/robustness language
 
 **Empirical score** (from `SkillExecutionTracker`):
+
 - If the original skill has >= 3 executions, the tracker's `successRate` boosts the score by `successRate * 0.15`
 - If the original already has >90% success rate, an additional `-0.1` penalty raises the bar for mutations (the original is already strong)
 - Combined score is capped at 1.0
@@ -120,6 +123,7 @@ Mutations failing the score gate are archived with a learning note via the audit
 ### Crystallization
 
 When a mutation is promoted:
+
 1. A new chunk is created with `lifecycle='frozen'`, `memory_type='skill'`, `semantic_type='skill'`
 2. If the original had a `stable_skill_id`, the new crystal inherits it with `skill_version + 1` and a `previous_version_id` link
 3. If no `stable_skill_id` exists, a new one is generated (UUID)
@@ -137,6 +141,7 @@ The `SkillVerifier` (`skill-verifier.ts`) runs 3 checks before any mutation is p
 ### Check 1: Dangerous Pattern Blocklist
 
 Tests the mutation text against 17 regex patterns covering:
+
 - SQL injection (`DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, `DELETE FROM`)
 - Shell injection (`rm -rf`, `curl|sh`, `wget|sh`, `sudo`, `chmod 777`)
 - Code injection (`eval(`, `new Function(`, `child_process`, `exec(`, `execSync(`)
@@ -152,6 +157,7 @@ Tests the mutation text against 17 regex patterns covering:
 ### Check 3: Semantic Drift
 
 If a parent crystal ID is provided and has an embedding:
+
 - Computes cosine distance between the mutation embedding and the parent embedding
 - Rejects if distance > `maxDriftThreshold` (default 0.3)
 - Ensures mutations stay semantically related to their origin
@@ -159,7 +165,7 @@ If a parent crystal ID is provided and has an embedding:
 ```typescript
 type VerificationResult = {
   passed: boolean;
-  checks: VerificationCheck[];    // Array of { name, passed, reason }
+  checks: VerificationCheck[]; // Array of { name, passed, reason }
   overallReason: string;
 };
 ```
@@ -170,13 +176,13 @@ type VerificationResult = {
 
 The `dream-mutation-strategies.ts` module provides 5 specialized mutation strategies:
 
-| Strategy | Trigger condition | What it does |
-|----------|-------------------|--------------|
-| `generic` | Default fallback | General-purpose skill improvement prompt |
-| `error_driven` | >= 3 executions, high error count | Analyzes failure logs, suggests fixes |
-| `adversarial` | Success rate > 0.9 | Finds edge cases, hardens the skill |
-| `compositional` | >= 2 related skills | Combines best aspects of multiple skills |
-| `parametric` | Numeric parameters detected in text | Varies thresholds, timeouts, strategies |
+| Strategy        | Trigger condition                   | What it does                             |
+| --------------- | ----------------------------------- | ---------------------------------------- |
+| `generic`       | Default fallback                    | General-purpose skill improvement prompt |
+| `error_driven`  | >= 3 executions, high error count   | Analyzes failure logs, suggests fixes    |
+| `adversarial`   | Success rate > 0.9                  | Finds edge cases, hardens the skill      |
+| `compositional` | >= 2 related skills                 | Combines best aspects of multiple skills |
+| `parametric`    | Numeric parameters detected in text | Varies thresholds, timeouts, strategies  |
 
 ### Strategy Selection (`selectStrategy()`)
 
@@ -185,10 +191,10 @@ function selectStrategy(
   skill: { text: string; skillCategory?: string | null },
   metrics: SkillMetrics | null,
   relatedSkillCount?: number,
-): MutationStrategy
+): MutationStrategy;
 ```
 
-Priority order: error\_driven > adversarial > compositional > parametric > generic
+Priority order: error_driven > adversarial > compositional > parametric > generic
 
 ### Numeric Parameter Detection
 
@@ -215,12 +221,13 @@ tracker.completeExecution(execId, {
 });
 
 // 3. Optional user feedback
-tracker.recordFeedback(execId, 1);  // -1, 0, or 1
+tracker.recordFeedback(execId, 1); // -1, 0, or 1
 ```
 
 ### Steering Reward
 
 On completion, the skill crystal's `steering_reward` is adjusted:
+
 - **Success:** +0.1 (clamped to [-1.0, 1.0])
 - **Failure:** -0.05
 
@@ -231,10 +238,10 @@ Steering rewards decay multiplicatively each consolidation cycle (default factor
 ```typescript
 type SkillMetrics = {
   totalExecutions: number;
-  successRate: number;         // 0-1
+  successRate: number; // 0-1
   avgRewardScore: number;
   avgExecutionTimeMs: number;
-  userFeedbackScore: number;   // -1 to 1 (weighted average)
+  userFeedbackScore: number; // -1 to 1 (weighted average)
   lastExecutedAt: number;
   errorBreakdown: Record<string, number>;
 };
@@ -261,6 +268,7 @@ crystal_id: <uuid>
 ### Anthropic Spec Compliance
 
 The generated SKILL.md must satisfy:
+
 - Starts with YAML frontmatter delimiters (`---`)
 - Contains `name:` field (sanitized from path, max 64 chars, alphanumeric + hyphens)
 - Contains `description:` field
@@ -278,6 +286,7 @@ The `SkillNetworkBridge.publishCrystalSkill()` generates this format automatical
 The `SkillNetworkBridge` (`skill-network-bridge.ts`) mediates between the local crystal store and the P2P network.
 
 **Publishing** (`publishCrystalSkill()`):
+
 1. Loads the crystal from the database
 2. Enforces governance: only `shared` or `public` scope, never `confidential` sensitivity
 3. Checks provenance chain for confidential ancestors (blocks publish if found)
@@ -285,6 +294,7 @@ The `SkillNetworkBridge` (`skill-network-bridge.ts`) mediates between the local 
 5. Sends to the Rust orchestrator via `orchestratorBridge.publishSkill()`
 
 **Ingesting** (`ingestNetworkSkill()`):
+
 1. Checks if the sender peer is banned via `PeerReputationManager`
 2. **Cortisol gate** — if a network cortisol spike is active (`haltUntrustedIngestion`), rejects skills from peers with trust level below `"trusted"` (i.e., `untrusted` and `provisional` peers are blocked)
 3. Deduplicates by content hash
@@ -299,6 +309,7 @@ The `SkillNetworkBridge` (`skill-network-bridge.ts`) mediates between the local 
 ### Rust Orchestrator
 
 The P2P layer uses a Rust binary (`swarm/mod.rs`) implementing a real libp2p swarm with:
+
 - **Gossipsub** for skill envelope broadcast (4 topics — see below)
 - **Kademlia** for peer discovery
 - **AutoNAT** for NAT traversal
@@ -308,12 +319,12 @@ Communication between Node.js and Rust happens via IPC. The bridge is wired at g
 
 ### Gossipsub Topics
 
-| Topic | Purpose | Who publishes |
-|-------|---------|--------------|
-| `bitterbot/skills/v1` | Skill envelope broadcast | All nodes |
-| `bitterbot/telemetry/v1` | Telemetry events | All nodes |
-| `bitterbot/weather/v1` | Hormonal weather broadcasts | Management nodes only |
-| `bitterbot/bounties/v1` | Global curriculum bounties | Management nodes only |
+| Topic                    | Purpose                     | Who publishes         |
+| ------------------------ | --------------------------- | --------------------- |
+| `bitterbot/skills/v1`    | Skill envelope broadcast    | All nodes             |
+| `bitterbot/telemetry/v1` | Telemetry events            | All nodes             |
+| `bitterbot/weather/v1`   | Hormonal weather broadcasts | Management nodes only |
+| `bitterbot/bounties/v1`  | Global curriculum bounties  | Management nodes only |
 
 ---
 
@@ -368,6 +379,7 @@ bitterbot-orchestrator/0.1.0/management
 ```
 
 When a peer identifies as `management`, the receiving node:
+
 1. Extracts the peer's Ed25519 pubkey from the Identify response
 2. Checks the pubkey against the local genesis trust list
 3. Sets `PeerDetail.tier = "management"` and `PeerDetail.tier_verified = true/false`
@@ -382,8 +394,8 @@ Management nodes can cryptographically endorse skills by signing the skill conte
 ```typescript
 type SkillEnvelope = {
   // ... existing fields ...
-  management_signature?: string;  // base64 Ed25519 sig by management node
-  management_pubkey?: string;     // base64 pubkey of management signer
+  management_signature?: string; // base64 Ed25519 sig by management node
+  management_pubkey?: string; // base64 pubkey of management signer
 };
 ```
 
@@ -411,19 +423,21 @@ Management nodes can broadcast **weather events** — network-wide cortisol spik
 ```typescript
 // Management node publishes:
 await orchestratorBridge.publishWeather(
-  0.9,       // cortisol level (0-1)
-  300_000,   // duration: 5 minutes
-  "Sybil attack detected in peer cluster X"
+  0.9, // cortisol level (0-1)
+  300_000, // duration: 5 minutes
+  "Sybil attack detected in peer cluster X",
 );
 ```
 
 **Security:**
+
 - Weather envelopes are signed with the management node's Ed25519 key
 - Rust validates: pubkey in genesis trust list + valid signature
 - **5-minute TTL**: Envelopes with timestamps older than 5 minutes or more than 1 minute in the future are silently dropped (replay attack prevention)
 - Edge nodes call `HormonalStateManager.applyNetworkCortisolSpike()` to raise local cortisol
 
 **Effects on edge nodes during a spike:**
+
 - `haltUntrustedIngestion = true` — skills from `untrusted`/`provisional` peers are rejected
 - `decayResistance` increases — stressed memories are harder to forget
 - `mergeThreshold` tightens — more conservative merging
@@ -437,11 +451,11 @@ Management nodes can publish **bounties** — exploration targets that prioritiz
 ```typescript
 await orchestratorBridge.publishBounty({
   bounty_id: "bounty-001",
-  target_type: "knowledge_gap",     // or "contradiction", "stale_region", "frontier"
+  target_type: "knowledge_gap", // or "contradiction", "stale_region", "frontier"
   description: "Production debugging patterns for memory leak detection",
   priority: 0.8,
   reward_multiplier: 2.5,
-  expires_at: Date.now() + 86_400_000,  // 24 hours
+  expires_at: Date.now() + 86_400_000, // 24 hours
   region_hint: "debugging",
 });
 ```
@@ -509,6 +523,7 @@ t_new = 0.9 * C^T * t + 0.1 * p
 ```
 
 Where:
+
 - `C` = row-normalized trust matrix
 - `t` = current trust vector
 - `p` = pre-trusted peer vector (from config)
@@ -525,6 +540,7 @@ reputationScore = 0.7 * localScore + 0.3 * eigenTrustScore
 ### Anomaly Detection
 
 `detectAnomalies()` runs periodically and flags peers publishing > 3x their historical average rate within a sliding window (default: 1 hour). Anomalous peers:
+
 - Get `anomaly_flag = 1` in the database
 - Are capped at `provisional` trust level maximum
 
@@ -542,12 +558,12 @@ reputationScore = 0.7 * localScore + 0.3 * eigenTrustScore
 
 The `DiscoveryAgent` (`discovery-agent.ts`) suggests skills to the user using 4 strategies:
 
-| Strategy | Signal | Data source |
-|----------|--------|-------------|
-| `friction` | Repeated low-score search queries | `curiosity_search_queries` (>= 3 occurrences, avg score < 0.4) |
-| `goal_alignment` | Active or stalled user goals | `task_goals` table matched to marketplace by keyword |
-| `curiosity_gap` | Unresolved knowledge gaps | `curiosity_targets` of type `knowledge_gap` |
-| `trending` | Popular peer-origin skills | High-download marketplace-listed chunks |
+| Strategy         | Signal                            | Data source                                                    |
+| ---------------- | --------------------------------- | -------------------------------------------------------------- |
+| `friction`       | Repeated low-score search queries | `curiosity_search_queries` (>= 3 occurrences, avg score < 0.4) |
+| `goal_alignment` | Active or stalled user goals      | `task_goals` table matched to marketplace by keyword           |
+| `curiosity_gap`  | Unresolved knowledge gaps         | `curiosity_targets` of type `knowledge_gap`                    |
+| `trending`       | Popular peer-origin skills        | High-download marketplace-listed chunks                        |
 
 ```typescript
 type SkillSuggestion = {
@@ -565,13 +581,13 @@ type SkillSuggestion = {
 
 The `DiscoveryAgent` also maintains the `skill_edges` table, discovering relationships between skills:
 
-| Edge type | Meaning | Discovery method |
-|-----------|---------|------------------|
-| `prerequisite` | Skill A is required before B | LLM analysis of skill pairs |
-| `enables` | Completing A unlocks B | LLM analysis |
-| `contradicts` | A and B are mutually exclusive | LLM analysis |
-| `composes` | A and B can be combined | LLM analysis of same-category skills |
-| `similar` | A and B are semantically close | Cosine similarity >= 0.8 |
+| Edge type      | Meaning                        | Discovery method                     |
+| -------------- | ------------------------------ | ------------------------------------ |
+| `prerequisite` | Skill A is required before B   | LLM analysis of skill pairs          |
+| `enables`      | Completing A unlocks B         | LLM analysis                         |
+| `contradicts`  | A and B are mutually exclusive | LLM analysis                         |
+| `composes`     | A and B can be combined        | LLM analysis of same-category skills |
+| `similar`      | A and B are semantically close | Cosine similarity >= 0.8             |
 
 Edge steering rewards decay by 0.95x each cycle.
 
@@ -594,8 +610,8 @@ type MarketplaceEntry = {
   tags: string[];
   category: string;
   createdAt: number;
-  isVerified?: boolean;          // Endorsed by a management node (Phase 3)
-  verifiedBy?: string | null;    // Base64 pubkey of endorsing management node
+  isVerified?: boolean; // Endorsed by a management node (Phase 3)
+  verifiedBy?: string | null; // Base64 pubkey of endorsing management node
 };
 
 type MarketplaceFilters = {
@@ -623,18 +639,19 @@ Each skill's price is computed by `computeSkillPrice()`:
 rawPrice = basePriceUsdc * (1 + qualityMultiplier) * demandMultiplier * reputationMultiplier * scarcityBonus
 ```
 
-| Component | Formula | Range |
-|-----------|---------|-------|
-| `qualityMultiplier` | `successRate * max(0.1, avgRewardScore)` | 0-1 |
-| `demandMultiplier` | `1 + log(uniqueBuyers + bountyMatches + 1) * 0.1` | 1+ |
-| `reputationMultiplier` | `max(0.1, reputationScore)` | 0.1-1 |
-| `scarcityBonus` | `1.5` if <= 2 similar skills, `1.2` if <= 5, else `1.0` | 1.0-1.5 |
+| Component              | Formula                                                 | Range   |
+| ---------------------- | ------------------------------------------------------- | ------- |
+| `qualityMultiplier`    | `successRate * max(0.1, avgRewardScore)`                | 0-1     |
+| `demandMultiplier`     | `1 + log(uniqueBuyers + bountyMatches + 1) * 0.1`       | 1+      |
+| `reputationMultiplier` | `max(0.1, reputationScore)`                             | 0.1-1   |
+| `scarcityBonus`        | `1.5` if <= 2 similar skills, `1.2` if <= 5, else `1.0` | 1.0-1.5 |
 
 Price defaults: base `$0.01`, floor `$0.001`, cap `$1.00`. Prices are rounded to 6 decimal places (USDC precision).
 
 #### Listing Requirements
 
 A skill must meet minimum quality gates before it can be listed:
+
 - `minExecutionsForListing`: 3 (default)
 - `minSuccessRateForListing`: 0.6 (60%)
 
@@ -672,9 +689,10 @@ The `skill-hierarchy.ts` module manages parent-child skill relationships and mul
 
 ```typescript
 type SkillHierarchy = {
-  level3: number;           // Overall capability score (0-1)
-  level2: DomainProfile;    // 3 domains: What/How/Why
-  level1: {                 // 6 groups
+  level3: number; // Overall capability score (0-1)
+  level2: DomainProfile; // 3 domains: What/How/Why
+  level1: {
+    // 6 groups
     factual: number;
     temporal: number;
     causal: number;
@@ -682,13 +700,13 @@ type SkillHierarchy = {
     qualitative: number;
     implementation: number;
   };
-  level0: number[];         // Raw 4-perspective embedding similarities
+  level0: number[]; // Raw 4-perspective embedding similarities
 };
 
 type DomainProfile = {
-  factual: number;     // What: facts, entities, knowledge
-  procedural: number;  // How: steps, tools, execution
-  affective: number;   // Why: goals, motivations, context
+  factual: number; // What: facts, entities, knowledge
+  procedural: number; // How: steps, tools, execution
+  affective: number; // Why: goals, motivations, context
 };
 ```
 

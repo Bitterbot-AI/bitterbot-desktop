@@ -205,7 +205,7 @@ Remote CDP tips:
 
 Bitterbot supports multiple named profiles (routing configs). Profiles can be:
 
-- *.bitterbot-managed**: a dedicated Chromium-based browser instance with its own user data directory + CDP port
+- \*.bitterbot-managed\*\*: a dedicated Chromium-based browser instance with its own user data directory + CDP port
 - **remote**: an explicit CDP URL (Chromium-based browser running elsewhere)
 - **extension relay**: your existing Chrome tab(s) via the local relay + Chrome extension
 

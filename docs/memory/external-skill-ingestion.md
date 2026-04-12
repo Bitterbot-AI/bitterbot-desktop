@@ -82,14 +82,14 @@ Add to `~/.bitterbot/bitterbot.json`:
 }
 ```
 
-| Field | Default | Description |
-|---|---|---|
-| `enabled` | `true` | Enable/disable the adapter. Skills generation only runs if the CLI is also installed. |
-| `maxSkillsPerCycle` | `3` | Maximum skills generated per dream cycle. Prevents resource abuse during idle periods. |
-| `maxConcurrentScrapes` | `1` | Concurrent scrape operations. |
-| `allowedDomains` | `[]` (all) | Only scrape these domains. Empty = allow all. |
-| `blockedDomains` | `[]` | Never scrape these domains. |
-| `defaultTtlDays` | `30` | Auto-generated skills expire after this many days if unused. |
+| Field                  | Default    | Description                                                                            |
+| ---------------------- | ---------- | -------------------------------------------------------------------------------------- |
+| `enabled`              | `true`     | Enable/disable the adapter. Skills generation only runs if the CLI is also installed.  |
+| `maxSkillsPerCycle`    | `3`        | Maximum skills generated per dream cycle. Prevents resource abuse during idle periods. |
+| `maxConcurrentScrapes` | `1`        | Concurrent scrape operations.                                                          |
+| `allowedDomains`       | `[]` (all) | Only scrape these domains. Empty = allow all.                                          |
+| `blockedDomains`       | `[]`       | Never scrape these domains.                                                            |
+| `defaultTtlDays`       | `30`       | Auto-generated skills expire after this many days if unused.                           |
 
 ### No Configuration Needed
 
@@ -101,12 +101,12 @@ If Skill Seekers is installed and the `skills.skillSeekers.enabled` flag is not 
 
 Auto-generated skills are **untrusted by default**. They follow the same trust pipeline as P2P skills:
 
-| Stage | Trust Level | Behavior |
-|---|---|---|
-| Ingestion | 0.5 (neutral) | Quarantined for review (if `ingestPolicy: "review"`) or accepted with low trust (if `ingestPolicy: "auto"`) |
-| First executions | 0.5 - 0.7 | Trust builds with successful executions |
-| Proven | 0.7+ | Auto-accepted in future, eligible for marketplace |
-| Established | 0.9+ | Treated like a trusted peer |
+| Stage            | Trust Level   | Behavior                                                                                                    |
+| ---------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
+| Ingestion        | 0.5 (neutral) | Quarantined for review (if `ingestPolicy: "review"`) or accepted with low trust (if `ingestPolicy: "auto"`) |
+| First executions | 0.5 - 0.7     | Trust builds with successful executions                                                                     |
+| Proven           | 0.7+          | Auto-accepted in future, eligible for marketplace                                                           |
+| Established      | 0.9+          | Treated like a trusted peer                                                                                 |
 
 The adapter registers a **synthetic peer** with a real Ed25519 keypair (generated per installation, persisted in the database). All envelopes are properly signed and pass the same cryptographic verification as P2P skills.
 

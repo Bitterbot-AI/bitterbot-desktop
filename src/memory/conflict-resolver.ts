@@ -73,7 +73,9 @@ export function resolveFactConflict(
       if (emb.length === 0) return null;
       return { id: c.id, similarity: cosineSimilarity(factEmbedding, emb) };
     })
-    .filter((c): c is { id: string; similarity: number } => c !== null && Number.isFinite(c.similarity))
+    .filter(
+      (c): c is { id: string; similarity: number } => c !== null && Number.isFinite(c.similarity),
+    )
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, MAX_CANDIDATES);
 
@@ -115,17 +117,11 @@ export function resolveFactConflict(
  * Apply the supersession: set valid_time_end on the old chunk.
  * Returns true if the update was applied.
  */
-export function supersedeChunk(
-  db: DatabaseSync,
-  chunkId: string,
-  nowMs?: number,
-): boolean {
+export function supersedeChunk(db: DatabaseSync, chunkId: string, nowMs?: number): boolean {
   const now = nowMs ?? Date.now();
   try {
     const result = db
-      .prepare(
-        `UPDATE chunks SET valid_time_end = ? WHERE id = ? AND valid_time_end IS NULL`,
-      )
+      .prepare(`UPDATE chunks SET valid_time_end = ? WHERE id = ? AND valid_time_end IS NULL`)
       .run(now, chunkId);
     return (result as { changes: number }).changes > 0;
   } catch {

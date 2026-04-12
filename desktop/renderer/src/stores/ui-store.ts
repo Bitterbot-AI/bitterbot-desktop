@@ -64,12 +64,16 @@ export const useUIStore = create<UIState>((set) => ({
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setToolPanelOpen: (open) => set({ toolPanelOpen: open }),
   toggleToolPanel: () => set((s) => ({ toolPanelOpen: !s.toolPanelOpen })),
-  setTheme: (theme) => { applyTheme(theme); set({ theme }); },
-  toggleTheme: () => set((s) => {
-    const next = s.theme === "dark" ? "light" : "dark";
-    applyTheme(next);
-    return { theme: next };
-  }),
+  setTheme: (theme) => {
+    applyTheme(theme);
+    set({ theme });
+  },
+  toggleTheme: () =>
+    set((s) => {
+      const next = s.theme === "dark" ? "light" : "dark";
+      applyTheme(next);
+      return { theme: next };
+    }),
 }));
 
 // Apply saved theme on load (in case index.html has class="dark" hardcoded)

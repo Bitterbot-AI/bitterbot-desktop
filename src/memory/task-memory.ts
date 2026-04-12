@@ -13,7 +13,7 @@ const log = createSubsystemLogger("memory/task-memory");
 export type TaskGoal = {
   id: string;
   description: string;
-  progress: number;          // 0-1
+  progress: number; // 0-1
   relatedCrystalIds: string[];
   sessionKey: string | null;
   status: "active" | "completed" | "stalled" | "abandoned";
@@ -71,9 +71,7 @@ export class TaskMemoryManager {
     const status = clampedProgress >= 1 ? "completed" : "active";
 
     this.db
-      .prepare(
-        `UPDATE task_goals SET progress = ?, status = ?, updated_at = ? WHERE id = ?`,
-      )
+      .prepare(`UPDATE task_goals SET progress = ?, status = ?, updated_at = ? WHERE id = ?`)
       .run(clampedProgress, status, now, goalId);
   }
 
@@ -88,7 +86,9 @@ export class TaskMemoryManager {
     if (!row) return;
 
     let ids: string[] = [];
-    try { ids = JSON.parse(row.related_crystal_ids); } catch {}
+    try {
+      ids = JSON.parse(row.related_crystal_ids);
+    } catch {}
 
     if (!ids.includes(crystalId)) {
       ids.push(crystalId);
@@ -111,21 +111,27 @@ export class TaskMemoryManager {
          LIMIT 20`,
       )
       .all() as Array<{
-        id: string;
-        description: string;
-        progress: number;
-        related_crystal_ids: string;
-        session_key: string | null;
-        status: string;
-        created_at: number;
-        updated_at: number;
-      }>;
+      id: string;
+      description: string;
+      progress: number;
+      related_crystal_ids: string;
+      session_key: string | null;
+      status: string;
+      created_at: number;
+      updated_at: number;
+    }>;
 
     return rows.map((r) => ({
       id: r.id,
       description: r.description,
       progress: r.progress,
-      relatedCrystalIds: (() => { try { return JSON.parse(r.related_crystal_ids); } catch { return []; } })(),
+      relatedCrystalIds: (() => {
+        try {
+          return JSON.parse(r.related_crystal_ids);
+        } catch {
+          return [];
+        }
+      })(),
       sessionKey: r.session_key,
       status: r.status as TaskGoal["status"],
       createdAt: r.created_at,
@@ -145,21 +151,27 @@ export class TaskMemoryManager {
          LIMIT 50`,
       )
       .all() as Array<{
-        id: string;
-        description: string;
-        progress: number;
-        related_crystal_ids: string;
-        session_key: string | null;
-        status: string;
-        created_at: number;
-        updated_at: number;
-      }>;
+      id: string;
+      description: string;
+      progress: number;
+      related_crystal_ids: string;
+      session_key: string | null;
+      status: string;
+      created_at: number;
+      updated_at: number;
+    }>;
 
     return rows.map((r) => ({
       id: r.id,
       description: r.description,
       progress: r.progress,
-      relatedCrystalIds: (() => { try { return JSON.parse(r.related_crystal_ids); } catch { return []; } })(),
+      relatedCrystalIds: (() => {
+        try {
+          return JSON.parse(r.related_crystal_ids);
+        } catch {
+          return [];
+        }
+      })(),
       sessionKey: r.session_key,
       status: r.status as TaskGoal["status"],
       createdAt: r.created_at,

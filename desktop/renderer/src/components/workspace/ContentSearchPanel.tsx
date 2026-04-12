@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { useWorkspaceStore, type SearchResult } from "../../stores/workspace-store";
-import { cn } from "../../lib/utils";
 import { Search, X, CaseSensitive, Regex, FileCode, Loader2 } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { cn } from "../../lib/utils";
+import { useWorkspaceStore, type SearchResult } from "../../stores/workspace-store";
 import { getFileIcon } from "./workspace-utils";
 
 export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
@@ -87,9 +87,7 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
           onClick={toggleRegex}
           className={cn(
             "w-5 h-5 flex items-center justify-center rounded transition-colors",
-            regex
-              ? "bg-purple-500/20 text-purple-300"
-              : "text-zinc-500 hover:text-zinc-300",
+            regex ? "bg-purple-500/20 text-purple-300" : "text-zinc-500 hover:text-zinc-300",
           )}
           title="Regex"
         >
@@ -127,9 +125,7 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
               {/* File header */}
               <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-900/40 sticky top-0">
                 <Icon className="w-3 h-3 text-blue-400/60 flex-shrink-0" />
-                <span className="text-[11px] font-mono text-zinc-400 truncate">
-                  {filePath}
-                </span>
+                <span className="text-[11px] font-mono text-zinc-400 truncate">{filePath}</span>
                 <span className="ml-auto text-[10px] text-zinc-600">{results.length}</span>
               </div>
               {/* Line results */}
@@ -142,9 +138,7 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
                   <span className="text-[10px] text-zinc-600 w-8 text-right flex-shrink-0 font-mono">
                     {r.line}
                   </span>
-                  <span className="text-[11px] text-zinc-400 font-mono truncate">
-                    {r.content}
-                  </span>
+                  <span className="text-[11px] text-zinc-400 font-mono truncate">{r.content}</span>
                 </button>
               ))}
             </div>

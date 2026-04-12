@@ -3,41 +3,36 @@
  * synthesis, and configuration.
  */
 
-export type DreamState =
-  | "DORMANT"
-  | "INCUBATING"
-  | "DREAMING"
-  | "SYNTHESIZING"
-  | "AWAKENING";
+export type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" | "AWAKENING";
 
 /** @deprecated Use DreamMode instead */
 export type DreamCreativityMode = "associative" | "convergent" | "cross_domain";
 
 // ── 7 Dream Modes ──
 export type DreamMode =
-  | "replay"        // Strengthen important memory pathways
-  | "mutation"      // Generate skill/knowledge variations
+  | "replay" // Strengthen important memory pathways
+  | "mutation" // Generate skill/knowledge variations
   | "extrapolation" // Predict future patterns
-  | "compression"   // Generalize into higher abstractions
-  | "simulation"    // Cross-domain creative recombination
-  | "exploration"   // Gap-filling from curiosity targets
-  | "research";     // Empirical prompt optimization using execution data
+  | "compression" // Generalize into higher abstractions
+  | "simulation" // Cross-domain creative recombination
+  | "exploration" // Gap-filling from curiosity targets
+  | "research"; // Empirical prompt optimization using execution data
 
 export type DreamModeConfig = {
   enabled: boolean;
-  weight: number;        // Relative frequency (0-1)
-  maxChunks: number;     // Chunks per cycle for this mode
-  requiresLlm: boolean;  // Whether this mode needs LLM calls
+  weight: number; // Relative frequency (0-1)
+  maxChunks: number; // Chunks per cycle for this mode
+  requiresLlm: boolean; // Whether this mode needs LLM calls
 };
 
 export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
-  replay:        { enabled: true,  weight: 0.20, maxChunks: 20, requiresLlm: false },
-  compression:   { enabled: true,  weight: 0.20, maxChunks: 30, requiresLlm: false },
-  mutation:      { enabled: true,  weight: 0.15, maxChunks: 10, requiresLlm: true },
-  simulation:    { enabled: true,  weight: 0.15, maxChunks: 10, requiresLlm: true },
-  extrapolation: { enabled: true,  weight: 0.10, maxChunks: 15, requiresLlm: true },
-  exploration:   { enabled: true,  weight: 0.10, maxChunks: 10, requiresLlm: true },
-  research:      { enabled: true,  weight: 0.10, maxChunks: 5,  requiresLlm: true },
+  replay: { enabled: true, weight: 0.2, maxChunks: 20, requiresLlm: false },
+  compression: { enabled: true, weight: 0.2, maxChunks: 30, requiresLlm: false },
+  mutation: { enabled: true, weight: 0.15, maxChunks: 10, requiresLlm: true },
+  simulation: { enabled: true, weight: 0.15, maxChunks: 10, requiresLlm: true },
+  extrapolation: { enabled: true, weight: 0.1, maxChunks: 15, requiresLlm: true },
+  exploration: { enabled: true, weight: 0.1, maxChunks: 10, requiresLlm: true },
+  research: { enabled: true, weight: 0.1, maxChunks: 5, requiresLlm: true },
 };
 
 export type DreamCluster = {
@@ -159,7 +154,9 @@ export type DreamEngineConfig = {
   disableFsho?: boolean;
 };
 
-export const DEFAULT_DREAM_CONFIG: Required<Omit<DreamEngineConfig, "llmCall" | "synthesisLlmCall" | "localLlmCall" | "modes" | "modelTiers">> & { modes: Record<DreamMode, DreamModeConfig> } = {
+export const DEFAULT_DREAM_CONFIG: Required<
+  Omit<DreamEngineConfig, "llmCall" | "synthesisLlmCall" | "localLlmCall" | "modes" | "modelTiers">
+> & { modes: Record<DreamMode, DreamModeConfig> } = {
   enabled: true,
   intervalMinutes: 120,
   initialDelayMinutes: 5,

@@ -4,11 +4,24 @@ import type { SandboxFsBridge } from "./sandbox/fs-bridge.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { resolvePluginTools } from "../plugins/tools.js";
 import { resolveSessionAgentId } from "./agent-scope.js";
+import { createA2aClientTool } from "./tools/a2a-client-tool.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
+import { createArtifactTool } from "./tools/artifact-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
+import { createCodeInterpreterTool } from "./tools/code-interpreter-tool.js";
+import { createCuriosityResolveTool, createCuriosityStateTool } from "./tools/curiosity-tool.js";
+import { createDeepRecallTool } from "./tools/deep-recall-tool.js";
+import { createDreamSearchTool, createDreamStatusTool } from "./tools/dream-tool.js";
+import {
+  createEmotionalAnchorTool,
+  createRecallEmotionalAnchorTool,
+} from "./tools/emotional-anchor-tool.js";
+import { createExpandMessageTool } from "./tools/expand-message-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
+import { createMemoryStatusTool } from "./tools/memory-status-tool.js";
+import { createMemoryGetTool, createMemorySearchTool } from "./tools/memory-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
@@ -18,19 +31,9 @@ import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
-import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { createWalletTool } from "./tools/wallet-tool.js";
-import { createA2aClientTool } from "./tools/a2a-client-tool.js";
-import { createArtifactTool } from "./tools/artifact-tool.js";
-import { createCodeInterpreterTool } from "./tools/code-interpreter-tool.js";
-import { createCuriosityResolveTool, createCuriosityStateTool } from "./tools/curiosity-tool.js";
-import { createEmotionalAnchorTool, createRecallEmotionalAnchorTool } from "./tools/emotional-anchor-tool.js";
-import { createDreamSearchTool, createDreamStatusTool } from "./tools/dream-tool.js";
-import { createMemoryStatusTool } from "./tools/memory-status-tool.js";
-import { createMemoryGetTool, createMemorySearchTool } from "./tools/memory-tool.js";
-import { createExpandMessageTool } from "./tools/expand-message-tool.js";
+import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { createCompleteTool, createPlanTool } from "./tools/workflow-tools.js";
-import { createDeepRecallTool } from "./tools/deep-recall-tool.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 export function createBitterbotTools(options?: {

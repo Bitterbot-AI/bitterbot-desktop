@@ -21,11 +21,11 @@ Every Bitterbot agent has a USDC wallet on Base powered by Coinbase Smart Wallet
 
 The wallet has layered safety limits:
 
-| Limit | Default | Description |
-|-------|---------|-------------|
-| Session cap | $50 | Maximum spend per session |
-| Per-transaction cap | $25 | Maximum per single transaction |
-| x402 per-request cap | $1 | Maximum for automatic paywall payments |
+| Limit                | Default | Description                            |
+| -------------------- | ------- | -------------------------------------- |
+| Session cap          | $50     | Maximum spend per session              |
+| Per-transaction cap  | $25     | Maximum per single transaction         |
+| x402 per-request cap | $1      | Maximum for automatic paywall payments |
 
 For amounts above these limits, the agent asks for your approval before spending.
 
@@ -56,9 +56,9 @@ The wallet is enabled by default. No configuration needed for basic usage.
 
 Ask your agent directly:
 
-- *"What's your wallet balance?"*
-- *"What's your wallet address?"*
-- *"Send 5 USDC to 0x..."*
+- _"What's your wallet balance?"_
+- _"What's your wallet address?"_
+- _"Send 5 USDC to 0x..."_
 
 Or use the CLI:
 

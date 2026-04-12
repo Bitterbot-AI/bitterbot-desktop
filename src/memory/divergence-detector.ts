@@ -43,14 +43,10 @@ export function detectDivergence(
   }
 
   // Find weak perspectives (high novelty = weak coverage)
-  const weakPerspectives: EmbeddingPerspective[] = perspectives.filter(
-    (p) => novelScores[p] > 0.8,
-  );
+  const weakPerspectives: EmbeddingPerspective[] = perspectives.filter((p) => novelScores[p] > 0.8);
 
   // Overall severity: based on max similarity across all perspectives
-  const maxOverallSim = Math.max(
-    ...perspectives.map((p) => 1 - novelScores[p]),
-  );
+  const maxOverallSim = Math.max(...perspectives.map((p) => 1 - novelScores[p]));
 
   let severity: DivergenceReport["severity"];
   if (maxOverallSim < 0.15) {

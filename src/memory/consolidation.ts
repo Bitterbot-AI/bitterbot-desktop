@@ -11,9 +11,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { recordDreamTelemetry } from "./dream-schema.js";
 import { calculateImportance, shouldForget } from "./importance.js";
 import { cosineSimilarity, computeCentroid, parseEmbedding } from "./internal.js";
-import { recordDreamTelemetry } from "./dream-schema.js";
 import { spacingImportanceMultiplier } from "./spacing-effect.js";
 
 const log = createSubsystemLogger("memory/consolidation");
@@ -158,10 +158,12 @@ export class ConsolidationEngine {
     // Phase 3b: SNN near-merge discovery (Plan 6, Phase 3)
     // Finds chunk pairs in the near-miss cosine zone that share enough nearest neighbors
     try {
-      const snnChunks = surviving.map(p => {
-        const emb = this.parseEmbedding(p.chunk.embedding);
-        return emb ? { id: p.chunk.id, embedding: emb, path: p.chunk.path } : null;
-      }).filter((c): c is { id: string; embedding: number[]; path: string } => c !== null);
+      const snnChunks = surviving
+        .map((p) => {
+          const emb = this.parseEmbedding(p.chunk.embedding);
+          return emb ? { id: p.chunk.id, embedding: emb, path: p.chunk.path } : null;
+        })
+        .filter((c): c is { id: string; embedding: number[]; path: string } => c !== null);
 
       if (snnChunks.length > 10) {
         const nearMerges = this.discoverNearMerges(snnChunks);
@@ -173,10 +175,23 @@ export class ConsolidationEngine {
           );
           const discoveredAt = Date.now();
           for (const c of nearMerges) {
-            hintStmt.run(c.chunkIdA, c.chunkIdB, c.baseSimilarity, c.snnSimilarity, c.sharedNeighbors, discoveredAt);
+            hintStmt.run(
+              c.chunkIdA,
+              c.chunkIdB,
+              c.baseSimilarity,
+              c.snnSimilarity,
+              c.sharedNeighbors,
+              discoveredAt,
+            );
           }
           log.debug("SNN near-merge candidates discovered", { count: nearMerges.length });
-          recordDreamTelemetry(this.db, `consolidation-${discoveredAt}`, "snn_merge", "candidates_found", nearMerges.length);
+          recordDreamTelemetry(
+            this.db,
+            `consolidation-${discoveredAt}`,
+            "snn_merge",
+            "candidates_found",
+            nearMerges.length,
+          );
         }
       }
     } catch (err) {
@@ -189,9 +204,7 @@ export class ConsolidationEngine {
       this.db.exec("BEGIN");
 
       // Update importance scores
-      const updateStmt = this.db.prepare(
-        `UPDATE chunks SET importance_score = ? WHERE id = ?`,
-      );
+      const updateStmt = this.db.prepare(`UPDATE chunks SET importance_score = ? WHERE id = ?`);
       for (const entry of scored) {
         updateStmt.run(entry.newScore, entry.chunk.id);
       }
@@ -221,7 +234,11 @@ export class ConsolidationEngine {
         mergeStmt.run(winnerId, loserId);
         promoteWinnerStmt.run(now, winnerId);
         auditStmt.run(
-          crypto.randomUUID(), loserId, "merged", now, "consolidation",
+          crypto.randomUUID(),
+          loserId,
+          "merged",
+          now,
+          "consolidation",
           JSON.stringify({ parent_id: winnerId }),
         );
       }
@@ -242,7 +259,13 @@ export class ConsolidationEngine {
     const orphansQueued = this.rescueOrphanClusters();
     if (orphansQueued > 0) {
       log.info(`anti-forgetting: queued ${orphansQueued} chunks from orphan clusters for replay`);
-      recordDreamTelemetry(this.db, `consolidation-${Date.now()}`, "orphan_rescue", "chunks_queued", orphansQueued);
+      recordDreamTelemetry(
+        this.db,
+        `consolidation-${Date.now()}`,
+        "orphan_rescue",
+        "chunks_queued",
+        orphansQueued,
+      );
     }
 
     stats.durationMs = Date.now() - start;
@@ -280,13 +303,20 @@ export class ConsolidationEngine {
    * - Not archived/expired
    * - Cluster together (cosine > 0.75) forming a coherent topic
    */
-  detectOrphanClusters(maxClusters: number = 5): Array<{ chunkIds: string[]; centroid: number[]; avgImportance: number; avgAgeDays: number; semanticTypes: string[] }> {
+  detectOrphanClusters(maxClusters: number = 5): Array<{
+    chunkIds: string[];
+    centroid: number[];
+    avgImportance: number;
+    avgAgeDays: number;
+    semanticTypes: string[];
+  }> {
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
     let neglected: Array<ChunkRow & { semantic_type: string }>;
     try {
-      neglected = this.db.prepare(
-        `SELECT id, path, source, start_line, end_line, hash, model, text, embedding,
+      neglected = this.db
+        .prepare(
+          `SELECT id, path, source, start_line, end_line, hash, model, text, embedding,
                 updated_at, importance_score, access_count, last_accessed_at,
                 memory_type, emotional_valence, lifecycle_state, lifecycle,
                 COALESCE(semantic_type, 'general') as semantic_type
@@ -296,16 +326,23 @@ export class ConsolidationEngine {
            AND COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'consolidated')
          ORDER BY importance_score DESC
          LIMIT 100`,
-      ).all(cutoff) as Array<ChunkRow & { semantic_type: string }>;
+        )
+        .all(cutoff) as Array<ChunkRow & { semantic_type: string }>;
     } catch {
       return [];
     }
 
     if (neglected.length < 3) return [];
 
-    const embeddings = neglected.map(r => parseEmbedding(r.embedding));
+    const embeddings = neglected.map((r) => parseEmbedding(r.embedding));
     const assigned = new Set<number>();
-    const clusters: Array<{ chunkIds: string[]; centroid: number[]; avgImportance: number; avgAgeDays: number; semanticTypes: string[] }> = [];
+    const clusters: Array<{
+      chunkIds: string[];
+      centroid: number[];
+      avgImportance: number;
+      avgAgeDays: number;
+      semanticTypes: string[];
+    }> = [];
 
     // Greedy single-linkage clustering
     for (let i = 0; i < neglected.length && clusters.length < maxClusters; i++) {
@@ -325,14 +362,20 @@ export class ConsolidationEngine {
       }
 
       if (cluster.length >= 2) {
-        const clusterChunks = cluster.map(idx => neglected[idx]!);
+        const clusterChunks = cluster.map((idx) => neglected[idx]!);
         const now = Date.now();
         clusters.push({
-          chunkIds: clusterChunks.map(c => c.id),
-          centroid: computeCentroid(cluster.filter(idx => embeddings[idx]!.length > 0).map(idx => embeddings[idx]!)),
-          avgImportance: clusterChunks.reduce((s, c) => s + c.importance_score, 0) / clusterChunks.length,
-          avgAgeDays: clusterChunks.reduce((s, c) => s + (now - (c.last_accessed_at ?? 0)), 0) / clusterChunks.length / (24 * 60 * 60 * 1000),
-          semanticTypes: [...new Set(clusterChunks.map(c => c.semantic_type))],
+          chunkIds: clusterChunks.map((c) => c.id),
+          centroid: computeCentroid(
+            cluster.filter((idx) => embeddings[idx]!.length > 0).map((idx) => embeddings[idx]!),
+          ),
+          avgImportance:
+            clusterChunks.reduce((s, c) => s + c.importance_score, 0) / clusterChunks.length,
+          avgAgeDays:
+            clusterChunks.reduce((s, c) => s + (now - (c.last_accessed_at ?? 0)), 0) /
+            clusterChunks.length /
+            (24 * 60 * 60 * 1000),
+          semanticTypes: [...new Set(clusterChunks.map((c) => c.semantic_type))],
         });
       }
     }
@@ -417,7 +460,7 @@ export class ConsolidationEngine {
         distances.push({ idx: j, sim });
       }
       distances.sort((a, b) => b.sim - a.sim);
-      knnSets.set(i, new Set(distances.slice(0, k).map(d => d.idx)));
+      knnSets.set(i, new Set(distances.slice(0, k).map((d) => d.idx)));
     }
 
     // Step 2: For near-miss pairs, count shared neighbors
@@ -472,9 +515,11 @@ export class ConsolidationEngine {
       );
       deleteVecStmt?.run(cutoff);
       deleteFtsStmt?.run(cutoff);
-      const result = this.db.prepare(
-        `DELETE FROM chunks WHERE (lifecycle_state = 'forgotten' OR lifecycle = 'expired') AND updated_at < ?`,
-      ).run(cutoff);
+      const result = this.db
+        .prepare(
+          `DELETE FROM chunks WHERE (lifecycle_state = 'forgotten' OR lifecycle = 'expired') AND updated_at < ?`,
+        )
+        .run(cutoff);
       this.db.exec("COMMIT");
       return (result as { changes: number }).changes;
     } catch (err) {
@@ -486,9 +531,7 @@ export class ConsolidationEngine {
     }
   }
 
-  private scoreChunks(
-    chunks: ChunkRow[],
-  ): Array<{ chunk: ChunkRow; newScore: number }> {
+  private scoreChunks(chunks: ChunkRow[]): Array<{ chunk: ChunkRow; newScore: number }> {
     return chunks.map((chunk) => {
       // Use semantic-type-aware base relevance so that structurally important
       // content (preferences, goals) gets a survival advantage over boilerplate.
@@ -525,9 +568,7 @@ export class ConsolidationEngine {
   private findMergeCandidatesWithParent(
     entries: Array<{ chunk: ChunkRow; newScore: number }>,
   ): Array<{ loserId: string; winnerId: string }> {
-    const promoted = entries.filter(
-      (e) => e.newScore >= this.config.promoteThreshold,
-    );
+    const promoted = entries.filter((e) => e.newScore >= this.config.promoteThreshold);
     if (promoted.length < 2) {
       return [];
     }
@@ -595,4 +636,3 @@ export class ConsolidationEngine {
     }
   }
 }
-

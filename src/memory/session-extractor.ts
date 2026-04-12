@@ -52,13 +52,17 @@ function buildHormonalGuidance(hormones?: HormonalBias): string {
   if (!hormones) return "";
   const lines: string[] = [];
   if (hormones.cortisol > 0.3) {
-    lines.push("- PRIORITY: Extract errors, frictions, and blockers encountered during this session.");
+    lines.push(
+      "- PRIORITY: Extract errors, frictions, and blockers encountered during this session.",
+    );
   }
   if (hormones.dopamine > 0.3) {
     lines.push("- PRIORITY: Extract achievements, breakthroughs, and successful outcomes.");
   }
   if (hormones.oxytocin > 0.3) {
-    lines.push("- PRIORITY: Extract relational information, user preferences, and personal details shared.");
+    lines.push(
+      "- PRIORITY: Extract relational information, user preferences, and personal details shared.",
+    );
   }
   return lines.length > 0
     ? `\n## Extraction Priority (hormonal modulation)\n${lines.join("\n")}\n`
@@ -118,7 +122,10 @@ function parseExtractionResponse(
 ): { facts: ExtractedFact[]; handover: SessionHandoverBrief } | null {
   try {
     // Strip markdown code fences if present
-    const cleaned = raw.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "").trim();
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*\n?/m, "")
+      .replace(/\n?```\s*$/m, "")
+      .trim();
     const parsed = JSON.parse(cleaned) as {
       facts?: Array<{ text?: string; layer?: string; confidence?: number }>;
       handover?: {
@@ -154,7 +161,11 @@ function parseExtractionResponse(
 
     // Parse entity registry from LLM output
     const rawEntities = Array.isArray((h as Record<string, unknown>)?.entities)
-      ? ((h as Record<string, unknown>).entities as Array<{ name?: string; type?: string; lastAction?: string }>)
+      ? ((h as Record<string, unknown>).entities as Array<{
+          name?: string;
+          type?: string;
+          lastAction?: string;
+        }>)
       : [];
     const entities = rawEntities
       .filter((e) => typeof e?.name === "string" && e.name.length > 0)
@@ -168,10 +179,16 @@ function parseExtractionResponse(
     const handover: SessionHandoverBrief = {
       sessionId,
       purpose: typeof h?.purpose === "string" ? h.purpose : "Session purpose not determined",
-      milestones: Array.isArray(h?.milestones) ? h.milestones.filter((s) => typeof s === "string") : [],
-      decisions: Array.isArray(h?.decisions) ? h.decisions.filter((s) => typeof s === "string") : [],
+      milestones: Array.isArray(h?.milestones)
+        ? h.milestones.filter((s) => typeof s === "string")
+        : [],
+      decisions: Array.isArray(h?.decisions)
+        ? h.decisions.filter((s) => typeof s === "string")
+        : [],
       blockers: Array.isArray(h?.blockers) ? h.blockers.filter((s) => typeof s === "string") : [],
-      nextSteps: Array.isArray(h?.nextSteps) ? h.nextSteps.filter((s) => typeof s === "string") : [],
+      nextSteps: Array.isArray(h?.nextSteps)
+        ? h.nextSteps.filter((s) => typeof s === "string")
+        : [],
       entities,
       timestamp: Date.now(),
     };

@@ -7,19 +7,19 @@
  * 3. Memory metrics capture (chunk count, insight count, curiosity distribution)
  */
 
+import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync, readdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 import type { BitterbotConfig } from "../../src/config/types.js";
-import { MemoryIndexManager } from "../../src/memory/manager.js";
 import type { MemorySearchResult } from "../../src/memory/types.js";
 import type { MemoryChunk } from "../longmemeval/adapter.js";
 import type { VariantConfig } from "./variants.js";
+import { MemoryIndexManager } from "../../src/memory/manager.js";
 
 // ── Types ──
 
@@ -68,11 +68,23 @@ export interface AblationBridge {
 
 // ── Deep merge ──
 
-function deepMerge(base: Record<string, unknown>, overrides: Record<string, unknown>): Record<string, unknown> {
+function deepMerge(
+  base: Record<string, unknown>,
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
   const result = { ...base };
   for (const [key, value] of Object.entries(overrides)) {
-    if (value && typeof value === "object" && !Array.isArray(value) && base[key] && typeof base[key] === "object") {
-      result[key] = deepMerge(base[key] as Record<string, unknown>, value as Record<string, unknown>);
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      base[key] &&
+      typeof base[key] === "object"
+    ) {
+      result[key] = deepMerge(
+        base[key] as Record<string, unknown>,
+        value as Record<string, unknown>,
+      );
     } else {
       result[key] = value;
     }
@@ -103,7 +115,7 @@ function buildBaselineMemoryConfig(): Record<string, unknown> {
       enabled: true,
       hormonal: {
         enabled: true,
-        homeostasis: { dopamine: 0.15, cortisol: 0.02, oxytocin: 0.10 },
+        homeostasis: { dopamine: 0.15, cortisol: 0.02, oxytocin: 0.1 },
       },
       decayResistance: 0.5,
     },
@@ -187,7 +199,9 @@ export async function createAblationBridge(
   const manager = await MemoryIndexManager.get({ cfg: config, agentId });
   if (!manager) throw new Error("Failed to create MemoryIndexManager");
 
-  const markDirty = () => { (manager as unknown as { dirty: boolean }).dirty = true; };
+  const markDirty = () => {
+    (manager as unknown as { dirty: boolean }).dirty = true;
+  };
   markDirty();
   await manager.sync({ reason: "ablation-init" });
 
@@ -202,7 +216,15 @@ export async function createAblationBridge(
   };
 
   // LLM completion (same as biological bridge)
-  const llmComplete = async ({ model, prompt, maxTokens }: { model: string; prompt: string; maxTokens?: number }): Promise<string> => {
+  const llmComplete = async ({
+    model,
+    prompt,
+    maxTokens,
+  }: {
+    model: string;
+    prompt: string;
+    maxTokens?: number;
+  }): Promise<string> => {
     const tokens = maxTokens ?? 256;
     const isAnthropic = model.startsWith("anthropic/") || model.startsWith("claude-");
 
@@ -210,8 +232,16 @@ export async function createAblationBridge(
       const modelName = model.replace("anthropic/", "");
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": anthropicApiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model: modelName, max_tokens: tokens, messages: [{ role: "user", content: prompt }] }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicApiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: modelName,
+          max_tokens: tokens,
+          messages: [{ role: "user", content: prompt }],
+        }),
       });
       if (!res.ok) throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
       const data = (await res.json()) as { content?: Array<{ text?: string }> };
@@ -222,7 +252,11 @@ export async function createAblationBridge(
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiApiKey}` },
-      body: JSON.stringify({ model: modelName, messages: [{ role: "user", content: prompt }], max_tokens: tokens }),
+      body: JSON.stringify({
+        model: modelName,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: tokens,
+      }),
     });
     if (!res.ok) throw new Error(`OpenAI API error ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -241,22 +275,34 @@ export async function createAblationBridge(
 
     stimulate(text: string) {
       try {
-        (manager as unknown as { stimulateFromLiveMessage(t: string): void }).stimulateFromLiveMessage(text);
-      } catch { /* skip */ }
+        (
+          manager as unknown as { stimulateFromLiveMessage(t: string): void }
+        ).stimulateFromLiveMessage(text);
+      } catch {
+        /* skip */
+      }
     },
 
     consolidate() {
       try {
-        return (manager as unknown as { consolidate(): Record<string, unknown> | null }).consolidate();
-      } catch { return null; }
+        return (
+          manager as unknown as { consolidate(): Record<string, unknown> | null }
+        ).consolidate();
+      } catch {
+        return null;
+      }
     },
 
     async dream(): Promise<DreamCycleMetrics | null> {
       try {
-        const stats = await (manager as unknown as { dream(): Promise<Record<string, unknown> | null> }).dream();
+        const stats = await (
+          manager as unknown as { dream(): Promise<Record<string, unknown> | null> }
+        ).dream();
         if (!stats) return null;
 
-        const cycle = stats.cycle as { modesUsed?: string[]; llmCallsUsed?: number; chunksAnalyzed?: number } | undefined;
+        const cycle = stats.cycle as
+          | { modesUsed?: string[]; llmCallsUsed?: number; chunksAnalyzed?: number }
+          | undefined;
         const insights = stats.newInsights as unknown[] | undefined;
 
         const metrics: DreamCycleMetrics = {
@@ -277,7 +323,9 @@ export async function createAblationBridge(
         dreamMetrics.perCycle.push(metrics);
 
         return metrics;
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     },
 
     async search(query: string, opts?: { maxResults?: number }): Promise<MemoryChunk[]> {
@@ -303,8 +351,14 @@ export async function createAblationBridge(
 
     hormonalState() {
       try {
-        return (manager as unknown as { hormonalState(): { dopamine: number; cortisol: number; oxytocin: number } | null }).hormonalState();
-      } catch { return null; }
+        return (
+          manager as unknown as {
+            hormonalState(): { dopamine: number; cortisol: number; oxytocin: number } | null;
+          }
+        ).hormonalState();
+      } catch {
+        return null;
+      }
     },
 
     complete: llmComplete,
@@ -320,13 +374,21 @@ export async function createAblationBridge(
 
       // Reset dream metrics for next question
       dreamMetrics = {
-        totalCycles: 0, totalInsights: 0, totalLlmCalls: 0,
-        totalChunksAnalyzed: 0, modeFrequency: {}, perCycle: [],
+        totalCycles: 0,
+        totalInsights: 0,
+        totalLlmCalls: 0,
+        totalChunksAnalyzed: 0,
+        modeFrequency: {},
+        perCycle: [],
       };
     },
 
     async cleanup() {
-      try { manager.close(); } catch { /* ignore */ }
+      try {
+        manager.close();
+      } catch {
+        /* ignore */
+      }
       rmSync(benchDir, { recursive: true, force: true });
     },
 
@@ -339,29 +401,43 @@ export async function createAblationBridge(
         const db = (manager as unknown as { db: import("node:sqlite").DatabaseSync }).db;
 
         const totalRow = db.prepare(`SELECT COUNT(*) as c FROM chunks`).get() as { c: number };
-        const activeRow = db.prepare(
-          `SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`,
-        ).get() as { c: number };
-        const archivedRow = db.prepare(
-          `SELECT COUNT(*) as c FROM chunks WHERE lifecycle_state = 'archived'`,
-        ).get() as { c: number };
+        const activeRow = db
+          .prepare(
+            `SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`,
+          )
+          .get() as { c: number };
+        const archivedRow = db
+          .prepare(`SELECT COUNT(*) as c FROM chunks WHERE lifecycle_state = 'archived'`)
+          .get() as { c: number };
 
         let dreamInsights = 0;
         try {
-          dreamInsights = (db.prepare(`SELECT COUNT(*) as c FROM dream_insights`).get() as { c: number })?.c ?? 0;
-        } catch { /* table may not exist */ }
+          dreamInsights =
+            (db.prepare(`SELECT COUNT(*) as c FROM dream_insights`).get() as { c: number })?.c ?? 0;
+        } catch {
+          /* table may not exist */
+        }
 
         let avgCuriosityReward: number | null = null;
         try {
-          const row = db.prepare(
-            `SELECT AVG(curiosity_reward) as avg FROM chunks WHERE curiosity_reward IS NOT NULL`,
-          ).get() as { avg: number | null };
+          const row = db
+            .prepare(
+              `SELECT AVG(curiosity_reward) as avg FROM chunks WHERE curiosity_reward IS NOT NULL`,
+            )
+            .get() as { avg: number | null };
           avgCuriosityReward = row?.avg ?? null;
-        } catch { /* column may not exist */ }
+        } catch {
+          /* column may not exist */
+        }
 
-        const avgImportance = (db.prepare(
-          `SELECT AVG(importance_score) as avg FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`,
-        ).get() as { avg: number })?.avg ?? 0;
+        const avgImportance =
+          (
+            db
+              .prepare(
+                `SELECT AVG(importance_score) as avg FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`,
+              )
+              .get() as { avg: number }
+          )?.avg ?? 0;
 
         return {
           totalChunks: totalRow.c,
@@ -372,7 +448,14 @@ export async function createAblationBridge(
           avgImportanceScore: avgImportance,
         };
       } catch {
-        return { totalChunks: 0, activeChunks: 0, archivedChunks: 0, dreamInsights: 0, avgCuriosityReward: null, avgImportanceScore: 0 };
+        return {
+          totalChunks: 0,
+          activeChunks: 0,
+          archivedChunks: 0,
+          dreamInsights: 0,
+          avgCuriosityReward: null,
+          avgImportanceScore: 0,
+        };
       }
     },
   };

@@ -1,1 +1,355 @@
-{"numTotalTestSuites":12,"numPassedTestSuites":12,"numFailedTestSuites":0,"numPendingTestSuites":0,"numTotalTests":30,"numPassedTests":30,"numFailedTests":0,"numPendingTests":0,"numTodoTests":0,"snapshot":{"added":0,"failure":false,"filesAdded":0,"filesRemoved":0,"filesRemovedList":[],"filesUnmatched":0,"filesUpdated":0,"matched":0,"total":0,"unchecked":0,"uncheckedKeysByFile":[],"unmatched":0,"updated":0,"didUpdate":false},"startTime":1775189969383,"success":true,"testResults":[{"assertionResults":[{"ancestorTitles":["BioMemEval > Zeigarnik Proactivity"],"fullName":"BioMemEval > Zeigarnik Proactivity Scenario 1: Open loop detection accuracy (4 pts)","status":"passed","title":"Scenario 1: Open loop detection accuracy (4 pts)","duration":145.19659299999967,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Zeigarnik Proactivity"],"fullName":"BioMemEval > Zeigarnik Proactivity Scenario 2: Proactive surfacing order (4 pts)","status":"passed","title":"Scenario 2: Proactive surfacing order (4 pts)","duration":114.79262800000015,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Zeigarnik Proactivity"],"fullName":"BioMemEval > Zeigarnik Proactivity Scenario 3: Resolution detection (4 pts)","status":"passed","title":"Scenario 3: Resolution detection (4 pts)","duration":124.01433100000031,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Zeigarnik Proactivity"],"fullName":"BioMemEval > Zeigarnik Proactivity Scenario 4: Decay resistance (4 pts)","status":"passed","title":"Scenario 4: Decay resistance (4 pts)","duration":103.64065299999947,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Zeigarnik Proactivity"],"fullName":"BioMemEval > Zeigarnik Proactivity Scenario 5: Multi-session compound scenario (4 pts)","status":"passed","title":"Scenario 5: Multi-session compound scenario (4 pts)","duration":121.74988899999971,"failureMessages":[],"meta":{}}],"startTime":1775189973514,"endTime":1775189974123.75,"status":"passed","message":"","name":"/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/01-zeigarnik-proactivity.test.ts"},{"assertionResults":[{"ancestorTitles":["BioMemEval > Mood-Congruent Retrieval"],"fullName":"BioMemEval > Mood-Congruent Retrieval Scenario 1: Dopamine boosts positive memories (4 pts)","status":"passed","title":"Scenario 1: Dopamine boosts positive memories (4 pts)","duration":1.8132070000001477,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Mood-Congruent Retrieval"],"fullName":"BioMemEval > Mood-Congruent Retrieval Scenario 2: Cortisol boosts task memories (4 pts)","status":"passed","title":"Scenario 2: Cortisol boosts task memories (4 pts)","duration":0.47629500000039116,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Mood-Congruent Retrieval"],"fullName":"BioMemEval > Mood-Congruent Retrieval Scenario 3: Oxytocin boosts relational memories (4 pts)","status":"passed","title":"Scenario 3: Oxytocin boosts relational memories (4 pts)","duration":0.3377919999993537,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Mood-Congruent Retrieval"],"fullName":"BioMemEval > Mood-Congruent Retrieval Scenario 4: Subthreshold activation returns 0 (4 pts)","status":"passed","title":"Scenario 4: Subthreshold activation returns 0 (4 pts)","duration":0.5293100000008053,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Mood-Congruent Retrieval"],"fullName":"BioMemEval > Mood-Congruent Retrieval Scenario 5: Max bonus clamping (4 pts)","status":"passed","title":"Scenario 5: Max bonus clamping (4 pts)","duration":0.4042509999999311,"failureMessages":[],"meta":{}}],"startTime":1775189973685,"endTime":1775189973688.4043,"status":"passed","message":"","name":"/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/02-mood-congruent.test.ts"},{"assertionResults":[{"ancestorTitles":["BioMemEval > Reconsolidation Accuracy"],"fullName":"BioMemEval > Reconsolidation Accuracy Scenario 1: Labile window activation (4 pts)","status":"passed","title":"Scenario 1: Labile window activation (4 pts)","duration":143.26126000000022,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Reconsolidation Accuracy"],"fullName":"BioMemEval > Reconsolidation Accuracy Scenario 2: Strengthen within window (4 pts)","status":"passed","title":"Scenario 2: Strengthen within window (4 pts)","duration":116.03479299999981,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Reconsolidation Accuracy"],"fullName":"BioMemEval > Reconsolidation Accuracy Scenario 3: Contradiction flagging (4 pts)","status":"passed","title":"Scenario 3: Contradiction flagging (4 pts)","duration":101.41381000000001,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Reconsolidation Accuracy"],"fullName":"BioMemEval > Reconsolidation Accuracy Scenario 4: Window expiration and restabilization (4 pts)","status":"passed","title":"Scenario 4: Window expiration and restabilization (4 pts)","duration":119.07059299999946,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Reconsolidation Accuracy"],"fullName":"BioMemEval > Reconsolidation Accuracy Scenario 5: Non-labile rejection (4 pts)","status":"passed","title":"Scenario 5: Non-labile rejection (4 pts)","duration":103.90973800000029,"failureMessages":[],"meta":{}}],"startTime":1775189973609,"endTime":1775189974192.9097,"status":"passed","message":"","name":"/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/03-reconsolidation.test.ts"},{"assertionResults":[{"ancestorTitles":["BioMemEval > Temporal Reasoning"],"fullName":"BioMemEval > Temporal Reasoning Scenario 1: Basic temporal query (3 pts)","status":"passed","title":"Scenario 1: Basic temporal query (3 pts)","duration":144.55669300000045,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Temporal Reasoning"],"fullName":"BioMemEval > Temporal Reasoning Scenario 2: Relationship supersession (3 pts)","status":"passed","title":"Scenario 2: Relationship supersession (3 pts)","duration":92.6028209999995,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Temporal Reasoning"],"fullName":"BioMemEval > Temporal Reasoning Scenario 3: Multi-hop temporal (3 pts)","status":"passed","title":"Scenario 3: Multi-hop temporal (3 pts)","duration":94.52605200000016,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Temporal Reasoning"],"fullName":"BioMemEval > Temporal Reasoning Scenario 4: Graph search with evidence (3 pts)","status":"passed","title":"Scenario 4: Graph search with evidence (3 pts)","duration":89.16858600000069,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Temporal Reasoning"],"fullName":"BioMemEval > Temporal Reasoning Scenario 5: Contradiction via temporal overlap (3 pts)","status":"passed","title":"Scenario 5: Contradiction via temporal overlap (3 pts)","duration":110.29729599999973,"failureMessages":[],"meta":{}}],"startTime":1775189973514,"endTime":1775189974045.2974,"status":"passed","message":"","name":"/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/04-temporal-reasoning.test.ts"},{"assertionResults":[{"ancestorTitles":["BioMemEval > Identity Continuity"],"fullName":"BioMemEval > Identity Continuity Scenario 1: Directive creation (3 pts)","status":"passed","title":"Scenario 1: Directive creation (3 pts)","duration":178.61724200000026,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Identity Continuity"],"fullName":"BioMemEval > Identity Continuity Scenario 2: Directive resolution (3 pts)","status":"passed","title":"Scenario 2: Directive resolution (3 pts)","duration":126.17110899999989,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Identity Continuity"],"fullName":"BioMemEval > Identity Continuity Scenario 3: Deduplication (3 pts)","status":"passed","title":"Scenario 3: Deduplication (3 pts)","duration":94.5651369999996,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Identity Continuity"],"fullName":"BioMemEval > Identity Continuity Scenario 4: Somatic marker assessment (3 pts)","status":"passed","title":"Scenario 4: Somatic marker assessment (3 pts)","duration":124.55153599999994,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Identity Continuity"],"fullName":"BioMemEval > Identity Continuity Scenario 5: Directive expiry (3 pts)","status":"passed","title":"Scenario 5: Directive expiry (3 pts)","duration":93.28843400000005,"failureMessages":[],"meta":{}}],"startTime":1775189973513,"endTime":1775189974131.2883,"status":"passed","message":"","name":"/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/05-identity-continuity.test.ts"},{"assertionResults":[{"ancestorTitles":["BioMemEval > Prospective Memory"],"fullName":"BioMemEval > Prospective Memory Scenario 1: Keyword trigger (2 pts)","status":"passed","title":"Scenario 1: Keyword trigger (2 pts)","duration":163.3174280000003,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Prospective Memory"],"fullName":"BioMemEval > Prospective Memory Scenario 2: Semantic trigger (2 pts)","status":"passed","title":"Scenario 2: Semantic trigger (2 pts)","duration":119.09431499999937,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Prospective Memory"],"fullName":"BioMemEval > Prospective Memory Scenario 3: Expiration cleanup (2 pts)","status":"passed","title":"Scenario 3: Expiration cleanup (2 pts)","duration":101.42168700000002,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Prospective Memory"],"fullName":"BioMemEval > Prospective Memory Scenario 4: Max active limit (2 pts)","status":"passed","title":"Scenario 4: Max active limit (2 pts)","duration":144.50117500000033,"failureMessages":[],"meta":{}},{"ancestorTitles":["BioMemEval > Prospective Memory"],"fullName":"BioMemEval > Prospective Memory Scenario 5: No false positives (2 pts)","status":"passed","title":"Scenario 5: No false positives (2 pts)","duration":99.78883200000018,"failureMessages":[],"meta":{}}],"startTime":1775189973513,"endTime":1775189974141.7888,"status":"passed","message":"","name":"/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/06-prospective-memory.test.ts"}]}
+{
+  "numTotalTestSuites": 12,
+  "numPassedTestSuites": 12,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 30,
+  "numPassedTests": 30,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1775189969383,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["BioMemEval > Zeigarnik Proactivity"],
+          "fullName": "BioMemEval > Zeigarnik Proactivity Scenario 1: Open loop detection accuracy (4 pts)",
+          "status": "passed",
+          "title": "Scenario 1: Open loop detection accuracy (4 pts)",
+          "duration": 145.19659299999967,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Zeigarnik Proactivity"],
+          "fullName": "BioMemEval > Zeigarnik Proactivity Scenario 2: Proactive surfacing order (4 pts)",
+          "status": "passed",
+          "title": "Scenario 2: Proactive surfacing order (4 pts)",
+          "duration": 114.79262800000015,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Zeigarnik Proactivity"],
+          "fullName": "BioMemEval > Zeigarnik Proactivity Scenario 3: Resolution detection (4 pts)",
+          "status": "passed",
+          "title": "Scenario 3: Resolution detection (4 pts)",
+          "duration": 124.01433100000031,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Zeigarnik Proactivity"],
+          "fullName": "BioMemEval > Zeigarnik Proactivity Scenario 4: Decay resistance (4 pts)",
+          "status": "passed",
+          "title": "Scenario 4: Decay resistance (4 pts)",
+          "duration": 103.64065299999947,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Zeigarnik Proactivity"],
+          "fullName": "BioMemEval > Zeigarnik Proactivity Scenario 5: Multi-session compound scenario (4 pts)",
+          "status": "passed",
+          "title": "Scenario 5: Multi-session compound scenario (4 pts)",
+          "duration": 121.74988899999971,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1775189973514,
+      "endTime": 1775189974123.75,
+      "status": "passed",
+      "message": "",
+      "name": "/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/01-zeigarnik-proactivity.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["BioMemEval > Mood-Congruent Retrieval"],
+          "fullName": "BioMemEval > Mood-Congruent Retrieval Scenario 1: Dopamine boosts positive memories (4 pts)",
+          "status": "passed",
+          "title": "Scenario 1: Dopamine boosts positive memories (4 pts)",
+          "duration": 1.8132070000001477,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Mood-Congruent Retrieval"],
+          "fullName": "BioMemEval > Mood-Congruent Retrieval Scenario 2: Cortisol boosts task memories (4 pts)",
+          "status": "passed",
+          "title": "Scenario 2: Cortisol boosts task memories (4 pts)",
+          "duration": 0.47629500000039116,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Mood-Congruent Retrieval"],
+          "fullName": "BioMemEval > Mood-Congruent Retrieval Scenario 3: Oxytocin boosts relational memories (4 pts)",
+          "status": "passed",
+          "title": "Scenario 3: Oxytocin boosts relational memories (4 pts)",
+          "duration": 0.3377919999993537,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Mood-Congruent Retrieval"],
+          "fullName": "BioMemEval > Mood-Congruent Retrieval Scenario 4: Subthreshold activation returns 0 (4 pts)",
+          "status": "passed",
+          "title": "Scenario 4: Subthreshold activation returns 0 (4 pts)",
+          "duration": 0.5293100000008053,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Mood-Congruent Retrieval"],
+          "fullName": "BioMemEval > Mood-Congruent Retrieval Scenario 5: Max bonus clamping (4 pts)",
+          "status": "passed",
+          "title": "Scenario 5: Max bonus clamping (4 pts)",
+          "duration": 0.4042509999999311,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1775189973685,
+      "endTime": 1775189973688.4043,
+      "status": "passed",
+      "message": "",
+      "name": "/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/02-mood-congruent.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["BioMemEval > Reconsolidation Accuracy"],
+          "fullName": "BioMemEval > Reconsolidation Accuracy Scenario 1: Labile window activation (4 pts)",
+          "status": "passed",
+          "title": "Scenario 1: Labile window activation (4 pts)",
+          "duration": 143.26126000000022,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Reconsolidation Accuracy"],
+          "fullName": "BioMemEval > Reconsolidation Accuracy Scenario 2: Strengthen within window (4 pts)",
+          "status": "passed",
+          "title": "Scenario 2: Strengthen within window (4 pts)",
+          "duration": 116.03479299999981,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Reconsolidation Accuracy"],
+          "fullName": "BioMemEval > Reconsolidation Accuracy Scenario 3: Contradiction flagging (4 pts)",
+          "status": "passed",
+          "title": "Scenario 3: Contradiction flagging (4 pts)",
+          "duration": 101.41381000000001,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Reconsolidation Accuracy"],
+          "fullName": "BioMemEval > Reconsolidation Accuracy Scenario 4: Window expiration and restabilization (4 pts)",
+          "status": "passed",
+          "title": "Scenario 4: Window expiration and restabilization (4 pts)",
+          "duration": 119.07059299999946,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Reconsolidation Accuracy"],
+          "fullName": "BioMemEval > Reconsolidation Accuracy Scenario 5: Non-labile rejection (4 pts)",
+          "status": "passed",
+          "title": "Scenario 5: Non-labile rejection (4 pts)",
+          "duration": 103.90973800000029,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1775189973609,
+      "endTime": 1775189974192.9097,
+      "status": "passed",
+      "message": "",
+      "name": "/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/03-reconsolidation.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["BioMemEval > Temporal Reasoning"],
+          "fullName": "BioMemEval > Temporal Reasoning Scenario 1: Basic temporal query (3 pts)",
+          "status": "passed",
+          "title": "Scenario 1: Basic temporal query (3 pts)",
+          "duration": 144.55669300000045,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Temporal Reasoning"],
+          "fullName": "BioMemEval > Temporal Reasoning Scenario 2: Relationship supersession (3 pts)",
+          "status": "passed",
+          "title": "Scenario 2: Relationship supersession (3 pts)",
+          "duration": 92.6028209999995,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Temporal Reasoning"],
+          "fullName": "BioMemEval > Temporal Reasoning Scenario 3: Multi-hop temporal (3 pts)",
+          "status": "passed",
+          "title": "Scenario 3: Multi-hop temporal (3 pts)",
+          "duration": 94.52605200000016,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Temporal Reasoning"],
+          "fullName": "BioMemEval > Temporal Reasoning Scenario 4: Graph search with evidence (3 pts)",
+          "status": "passed",
+          "title": "Scenario 4: Graph search with evidence (3 pts)",
+          "duration": 89.16858600000069,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Temporal Reasoning"],
+          "fullName": "BioMemEval > Temporal Reasoning Scenario 5: Contradiction via temporal overlap (3 pts)",
+          "status": "passed",
+          "title": "Scenario 5: Contradiction via temporal overlap (3 pts)",
+          "duration": 110.29729599999973,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1775189973514,
+      "endTime": 1775189974045.2974,
+      "status": "passed",
+      "message": "",
+      "name": "/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/04-temporal-reasoning.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["BioMemEval > Identity Continuity"],
+          "fullName": "BioMemEval > Identity Continuity Scenario 1: Directive creation (3 pts)",
+          "status": "passed",
+          "title": "Scenario 1: Directive creation (3 pts)",
+          "duration": 178.61724200000026,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Identity Continuity"],
+          "fullName": "BioMemEval > Identity Continuity Scenario 2: Directive resolution (3 pts)",
+          "status": "passed",
+          "title": "Scenario 2: Directive resolution (3 pts)",
+          "duration": 126.17110899999989,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Identity Continuity"],
+          "fullName": "BioMemEval > Identity Continuity Scenario 3: Deduplication (3 pts)",
+          "status": "passed",
+          "title": "Scenario 3: Deduplication (3 pts)",
+          "duration": 94.5651369999996,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Identity Continuity"],
+          "fullName": "BioMemEval > Identity Continuity Scenario 4: Somatic marker assessment (3 pts)",
+          "status": "passed",
+          "title": "Scenario 4: Somatic marker assessment (3 pts)",
+          "duration": 124.55153599999994,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Identity Continuity"],
+          "fullName": "BioMemEval > Identity Continuity Scenario 5: Directive expiry (3 pts)",
+          "status": "passed",
+          "title": "Scenario 5: Directive expiry (3 pts)",
+          "duration": 93.28843400000005,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1775189973513,
+      "endTime": 1775189974131.2883,
+      "status": "passed",
+      "message": "",
+      "name": "/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/05-identity-continuity.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["BioMemEval > Prospective Memory"],
+          "fullName": "BioMemEval > Prospective Memory Scenario 1: Keyword trigger (2 pts)",
+          "status": "passed",
+          "title": "Scenario 1: Keyword trigger (2 pts)",
+          "duration": 163.3174280000003,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Prospective Memory"],
+          "fullName": "BioMemEval > Prospective Memory Scenario 2: Semantic trigger (2 pts)",
+          "status": "passed",
+          "title": "Scenario 2: Semantic trigger (2 pts)",
+          "duration": 119.09431499999937,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Prospective Memory"],
+          "fullName": "BioMemEval > Prospective Memory Scenario 3: Expiration cleanup (2 pts)",
+          "status": "passed",
+          "title": "Scenario 3: Expiration cleanup (2 pts)",
+          "duration": 101.42168700000002,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Prospective Memory"],
+          "fullName": "BioMemEval > Prospective Memory Scenario 4: Max active limit (2 pts)",
+          "status": "passed",
+          "title": "Scenario 4: Max active limit (2 pts)",
+          "duration": 144.50117500000033,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["BioMemEval > Prospective Memory"],
+          "fullName": "BioMemEval > Prospective Memory Scenario 5: No false positives (2 pts)",
+          "status": "passed",
+          "title": "Scenario 5: No false positives (2 pts)",
+          "duration": 99.78883200000018,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1775189973513,
+      "endTime": 1775189974141.7888,
+      "status": "passed",
+      "message": "",
+      "name": "/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/biomemeval/suites/06-prospective-memory.test.ts"
+    }
+  ]
+}

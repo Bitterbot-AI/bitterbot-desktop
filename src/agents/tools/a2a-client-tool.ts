@@ -10,9 +10,9 @@
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
-import { jsonResult, readStringParam } from "./common.js";
-import { A2aClient } from "../../services/a2a-client.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { A2aClient } from "../../services/a2a-client.js";
+import { jsonResult, readStringParam } from "./common.js";
 
 const log = createSubsystemLogger("tool/a2a-client");
 
@@ -30,9 +30,7 @@ const A2aClientSchema = Type.Object({
   maxCost: Type.Optional(Type.Number()),
 });
 
-export function createA2aClientTool(options: {
-  config?: BitterbotConfig;
-}): AnyAgentTool | null {
+export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyAgentTool | null {
   const cfg = options.config;
   if (!cfg?.a2a?.enabled) return null;
   if (cfg.a2a.marketplace?.client === undefined && !cfg.a2a.marketplace?.enabled) return null;
@@ -65,7 +63,7 @@ export function createA2aClientTool(options: {
           allowed: status.allowed,
           spentToday: `$${status.spent.toFixed(4)} USDC`,
           remaining: `$${status.remaining.toFixed(4)} USDC`,
-          dailyLimit: `$${(clientConfig?.dailySpendLimitUsdc ?? 2.00).toFixed(2)} USDC`,
+          dailyLimit: `$${(clientConfig?.dailySpendLimitUsdc ?? 2.0).toFixed(2)} USDC`,
         });
       }
 

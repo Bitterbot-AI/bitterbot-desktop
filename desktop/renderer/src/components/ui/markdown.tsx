@@ -1,10 +1,10 @@
+import { marked } from "marked";
+import { memo, useId, useMemo } from "react";
+import ReactMarkdown, { Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { cn } from '@/lib/utils';
-import { marked } from 'marked';
-import { memo, useId, useMemo } from 'react';
-import ReactMarkdown, { Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { CodeBlock, CodeBlockCode } from '@/components/ui/code-block';
+import { cn } from "@/lib/utils";
 
 export type MarkdownProps = {
   children: string;
@@ -19,9 +19,9 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
 }
 
 function extractLanguage(className?: string): string {
-  if (!className) return 'plaintext';
+  if (!className) return "plaintext";
   const match = className.match(/language-(\w+)/);
-  return match?.[1] ?? 'plaintext';
+  return match?.[1] ?? "plaintext";
 }
 
 const INITIAL_COMPONENTS: Partial<Components> = {
@@ -34,7 +34,7 @@ const INITIAL_COMPONENTS: Partial<Components> = {
       return (
         <span
           className={cn(
-            'bg-primary-foreground dark:bg-zinc-800 dark:border dark:border-zinc-700 rounded-sm px-1 font-mono text-sm',
+            "bg-primary-foreground dark:bg-zinc-800 dark:border dark:border-zinc-700 rounded-sm px-1 font-mono text-sm",
             className,
           )}
           {...props}
@@ -48,11 +48,7 @@ const INITIAL_COMPONENTS: Partial<Components> = {
 
     return (
       <CodeBlock className="rounded-md overflow-hidden my-4 border border-zinc-200 dark:border-zinc-800 max-w-full min-w-0 w-full">
-        <CodeBlockCode
-          code={children as string}
-          language={language}
-          className="text-sm"
-        />
+        <CodeBlockCode code={children as string} language={language} className="text-sm" />
       </CodeBlock>
     );
   },
@@ -143,10 +139,7 @@ const INITIAL_COMPONENTS: Partial<Components> = {
   },
   td: function TableCell({ children, ...props }: any) {
     return (
-      <td
-        className="border border-slate-300 dark:border-zinc-700 px-3 py-2"
-        {...props}
-      >
+      <td className="border border-slate-300 dark:border-zinc-700 px-3 py-2" {...props}>
         {children}
       </td>
     );
@@ -172,7 +165,7 @@ const MemoizedMarkdownBlock = memo(
   },
 );
 
-MemoizedMarkdownBlock.displayName = 'MemoizedMarkdownBlock';
+MemoizedMarkdownBlock.displayName = "MemoizedMarkdownBlock";
 
 function MarkdownComponent({
   children,
@@ -185,12 +178,7 @@ function MarkdownComponent({
   const blocks = useMemo(() => parseMarkdownIntoBlocks(children), [children]);
 
   return (
-    <div
-      className={cn(
-        'prose-code:before:hidden prose-code:after:hidden',
-        className,
-      )}
-    >
+    <div className={cn("prose-code:before:hidden prose-code:after:hidden", className)}>
       {blocks.map((block, index) => (
         <MemoizedMarkdownBlock
           key={`${blockId}-block-${index}`}
@@ -203,6 +191,6 @@ function MarkdownComponent({
 }
 
 const Markdown = memo(MarkdownComponent);
-Markdown.displayName = 'Markdown';
+Markdown.displayName = "Markdown";
 
 export { Markdown };

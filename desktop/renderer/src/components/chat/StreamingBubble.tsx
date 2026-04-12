@@ -1,5 +1,5 @@
-import { BitterBotAvatar } from "./BitterBotAvatar";
 import { Markdown } from "../ui/markdown";
+import { BitterBotAvatar } from "./BitterBotAvatar";
 
 interface StreamingBubbleProps {
   text: string;

@@ -26,7 +26,7 @@ export async function resolveWorkspaceTemplateDir(opts?: {
   resolvingTemplateDir = (async () => {
     // Check env override first (for custom deployments)
     const envOverride = process.env.BITTERBOT_TEMPLATE_DIR?.trim();
-    if (envOverride && await pathExists(envOverride)) {
+    if (envOverride && (await pathExists(envOverride))) {
       cachedTemplateDir = envOverride;
       return envOverride;
     }

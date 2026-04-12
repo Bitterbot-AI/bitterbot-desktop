@@ -8,11 +8,11 @@
  * Reference: Nader, Schafe & LeDoux (2000)
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import type { DatabaseSync } from "node:sqlite";
+import { describe, it, expect, beforeEach } from "vitest";
+import { ReconsolidationEngine } from "../../../src/memory/reconsolidation.js";
 import { createBenchmarkDb } from "../db-setup.js";
 import { insertChunk } from "../helpers.js";
-import { ReconsolidationEngine } from "../../../src/memory/reconsolidation.js";
 import { ScenarioScorer, SuiteScorer } from "../scoring.js";
 
 const suite = new SuiteScorer("Reconsolidation Accuracy", "03-reconsolidation", 20, 20);
@@ -40,7 +40,11 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
 
     // Verify labile chunks list includes this chunk
     const labileChunks = engine.getLabileChunks();
-    s.score("getLabileChunks includes the marked chunk", labileChunks.some((c) => c.chunkId === id), 1);
+    s.score(
+      "getLabileChunks includes the marked chunk",
+      labileChunks.some((c) => c.chunkId === id),
+      1,
+    );
 
     const result = s.result();
     suite.addScenario(result);
@@ -53,12 +57,18 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
     const id = insertChunk(db, { importance_score: 0.5, text: "The API endpoint is /v2/users" });
     engine.markLabile(id);
 
-    const beforeRow = db.prepare("SELECT importance_score, reconsolidation_count FROM chunks WHERE id = ?").get(id) as any;
+    const beforeRow = db
+      .prepare("SELECT importance_score, reconsolidation_count FROM chunks WHERE id = ?")
+      .get(id) as any;
     const beforeImportance = beforeRow.importance_score;
 
     const strengthened = engine.strengthen(id);
 
-    const afterRow = db.prepare("SELECT importance_score, reconsolidation_count, labile_until FROM chunks WHERE id = ?").get(id) as any;
+    const afterRow = db
+      .prepare(
+        "SELECT importance_score, reconsolidation_count, labile_until FROM chunks WHERE id = ?",
+      )
+      .get(id) as any;
 
     s.score("strengthen returns true", strengthened, 1.5);
     s.score(
@@ -86,7 +96,9 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
 
     const flagged = engine.flagContradiction(id, "Bob replaced Alice as lead in March");
 
-    const row = db.prepare("SELECT labile_until, open_loop, open_loop_context FROM chunks WHERE id = ?").get(id) as any;
+    const row = db
+      .prepare("SELECT labile_until, open_loop, open_loop_context FROM chunks WHERE id = ?")
+      .get(id) as any;
 
     s.score("flagContradiction returns true", flagged, 1.5);
     s.score("chunk is no longer labile after flagging", !engine.isLabile(id), 1);
@@ -117,7 +129,9 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
 
     // Wait for the 1ms window to expire
     const start = Date.now();
-    while (Date.now() - start < 5) { /* spin */ }
+    while (Date.now() - start < 5) {
+      /* spin */
+    }
 
     const restabilized = shortWindowEngine.restabilizeExpired();
 
@@ -126,7 +140,9 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
     // All should have received the recall boost
     let allBoosted = true;
     for (const id of ids) {
-      const row = db.prepare("SELECT importance_score, labile_until FROM chunks WHERE id = ?").get(id) as any;
+      const row = db
+        .prepare("SELECT importance_score, labile_until FROM chunks WHERE id = ?")
+        .get(id) as any;
       if (engine.isLabile(id)) allBoosted = false;
     }
 
@@ -152,7 +168,11 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
     // Do NOT mark labile
 
     s.score("strengthen returns false for non-labile", !engine.strengthen(id), 1);
-    s.score("flagContradiction returns false for non-labile", !engine.flagContradiction(id, "test"), 1);
+    s.score(
+      "flagContradiction returns false for non-labile",
+      !engine.flagContradiction(id, "test"),
+      1,
+    );
 
     // Low importance should also be rejected
     const lowId = insertChunk(db, { importance_score: 0.05 });

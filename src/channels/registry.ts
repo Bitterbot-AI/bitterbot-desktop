@@ -57,7 +57,7 @@ const CHAT_CHANNEL_META: Record<ChatChannelId, ChannelMeta> = {
     blurb: "very well supported right now.",
     systemImage: "bubble.left.and.bubble.right",
   },
-slack: {
+  slack: {
     id: "slack",
     label: "Slack",
     selectionLabel: "Slack (Socket Mode)",

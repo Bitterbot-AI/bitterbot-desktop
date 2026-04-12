@@ -10,14 +10,6 @@
  */
 
 import crypto from "node:crypto";
-import { RLMSandbox } from "./sandbox.js";
-import { CostTracker } from "./cost-tracker.js";
-import {
-  buildRLMSystemPrompt,
-  buildRLMUserPrompt,
-  buildRLMOutputFeedback,
-  buildBudgetWarning,
-} from "./prompts.js";
 import type {
   RLMExecutorOptions,
   RLMResult,
@@ -25,14 +17,19 @@ import type {
   RLMMessage,
   RLMLLMCallFn,
 } from "./types.js";
+import { CostTracker } from "./cost-tracker.js";
+import {
+  buildRLMSystemPrompt,
+  buildRLMUserPrompt,
+  buildRLMOutputFeedback,
+  buildBudgetWarning,
+} from "./prompts.js";
+import { RLMSandbox } from "./sandbox.js";
 
 /** Extract the first JavaScript code block from an LLM response. */
 function extractCodeBlock(text: string): string | null {
   // Match ```js, ```javascript, or bare ``` code blocks
-  const patterns = [
-    /```(?:js|javascript)\s*\n([\s\S]*?)```/,
-    /```\s*\n([\s\S]*?)```/,
-  ];
+  const patterns = [/```(?:js|javascript)\s*\n([\s\S]*?)```/, /```\s*\n([\s\S]*?)```/];
   for (const re of patterns) {
     const match = text.match(re);
     if (match?.[1]?.trim()) {
@@ -71,9 +68,7 @@ export class RLMExecutor {
     this.cache.set(hash, { answer, timestamp: Date.now(), queryHash: hash });
     // Cap cache size
     if (this.cache.size > 50) {
-      const oldest = [...this.cache.entries()].sort(
-        (a, b) => a[1].timestamp - b[1].timestamp,
-      )[0];
+      const oldest = [...this.cache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
       if (oldest) this.cache.delete(oldest[0]);
     }
   }
@@ -91,11 +86,7 @@ export class RLMExecutor {
       .slice(0, 16);
   }
 
-  async execute(
-    query: string,
-    context: string,
-    options: RLMExecutorOptions,
-  ): Promise<RLMResult> {
+  async execute(query: string, context: string, options: RLMExecutorOptions): Promise<RLMResult> {
     const trace: RLMTraceEntry[] = [];
     const costTracker = new CostTracker(
       options.maxBudget,
@@ -127,7 +118,11 @@ export class RLMExecutor {
           });
           costTracker.addCost(result.cost);
           costTracker.addSubCall();
-          trace.push({ type: "sub_call", content: `[sub-call] ${prompt.slice(0, 100)}...`, timestamp: Date.now() });
+          trace.push({
+            type: "sub_call",
+            content: `[sub-call] ${prompt.slice(0, 100)}...`,
+            timestamp: Date.now(),
+          });
           return result.text;
         }
         // Could support deeper recursion here in the future
@@ -144,7 +139,11 @@ export class RLMExecutor {
         currentDepth--;
         costTracker.addCost(result.cost);
         costTracker.addSubCall();
-        trace.push({ type: "sub_call", content: `[sub-call] ${prompt.slice(0, 100)}...`, timestamp: Date.now() });
+        trace.push({
+          type: "sub_call",
+          content: `[sub-call] ${prompt.slice(0, 100)}...`,
+          timestamp: Date.now(),
+        });
         return result.text;
       },
       onLLMQueryParallel: async (queries) => {
@@ -155,7 +154,10 @@ export class RLMExecutor {
             return "[Budget exceeded — cannot make more sub-calls]";
           }
           const messages: RLMMessage[] = [
-            { role: "user", content: q.context ? `Context:\n${q.context}\n\n${q.prompt}` : q.prompt },
+            {
+              role: "user",
+              content: q.context ? `Context:\n${q.context}\n\n${q.prompt}` : q.prompt,
+            },
           ];
           const result = await this.llmCall({
             messages,
@@ -165,7 +167,11 @@ export class RLMExecutor {
           });
           costTracker.addCost(result.cost);
           costTracker.addSubCall();
-          trace.push({ type: "sub_call", content: `[parallel sub-call] ${q.prompt.slice(0, 80)}...`, timestamp: Date.now() });
+          trace.push({
+            type: "sub_call",
+            content: `[parallel sub-call] ${q.prompt.slice(0, 80)}...`,
+            timestamp: Date.now(),
+          });
           return result.text;
         });
         return await Promise.all(promises);
@@ -222,7 +228,8 @@ export class RLMExecutor {
           // Ask the LLM to write code
           messages.push({
             role: "user",
-            content: "Please write a JavaScript code block to explore the context. Use ```js ... ``` syntax.",
+            content:
+              "Please write a JavaScript code block to explore the context. Use ```js ... ``` syntax.",
           });
           continue;
         }
@@ -231,7 +238,11 @@ export class RLMExecutor {
 
         // Execute code in sandbox
         const execResult = await sandbox.execute(code);
-        trace.push({ type: "output", content: execResult.output || "(no output)", timestamp: Date.now() });
+        trace.push({
+          type: "output",
+          content: execResult.output || "(no output)",
+          timestamp: Date.now(),
+        });
 
         if (execResult.error) {
           trace.push({ type: "error", content: execResult.error, timestamp: Date.now() });
@@ -265,7 +276,8 @@ export class RLMExecutor {
             subCalls: costTracker.getSubCallCount(),
             cost: costTracker.getTotalCost(),
             trace,
-            limitReached: limit === "iterations" ? "iterations" : limit === "budget" ? "budget" : "sub_calls",
+            limitReached:
+              limit === "iterations" ? "iterations" : limit === "budget" ? "budget" : "sub_calls",
           };
         }
 
@@ -274,7 +286,11 @@ export class RLMExecutor {
 
         // Add budget warning if running low
         const summary = costTracker.getSummary();
-        if (summary.iterationsRemaining <= 3 || summary.subCallsRemaining <= 3 || summary.budgetRemaining < 0.10) {
+        if (
+          summary.iterationsRemaining <= 3 ||
+          summary.subCallsRemaining <= 3 ||
+          summary.budgetRemaining < 0.1
+        ) {
           feedback += "\n\n" + buildBudgetWarning(summary);
         }
 

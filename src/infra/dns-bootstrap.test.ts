@@ -47,9 +47,7 @@ describe("resolveBootstrapDns", () => {
 
   it("handles multi-string TXT records (joined)", async () => {
     // DNS TXT records can be split into multiple strings
-    mockResolveTxt.mockResolvedValue([
-      ["dnsaddr=/ip4/1.2.3.4/tcp/4001", "/p2p/12D3KooWTest1"],
-    ]);
+    mockResolveTxt.mockResolvedValue([["dnsaddr=/ip4/1.2.3.4/tcp/4001", "/p2p/12D3KooWTest1"]]);
 
     const peers = await resolveBootstrapDns("example.com");
     expect(peers).toEqual(["/ip4/1.2.3.4/tcp/4001/p2p/12D3KooWTest1"]);
@@ -79,9 +77,7 @@ describe("resolveBootstrapDns", () => {
 
     mockResolveTxt
       .mockRejectedValueOnce(transientErr)
-      .mockResolvedValueOnce([
-        ["dnsaddr=/ip4/1.2.3.4/tcp/4001/p2p/12D3KooWTest1"],
-      ]);
+      .mockResolvedValueOnce([["dnsaddr=/ip4/1.2.3.4/tcp/4001/p2p/12D3KooWTest1"]]);
 
     const peers = await resolveBootstrapDns("flaky.example.com");
     expect(peers).toEqual(["/ip4/1.2.3.4/tcp/4001/p2p/12D3KooWTest1"]);
@@ -99,9 +95,7 @@ describe("resolveBootstrapDns", () => {
   });
 
   it("returns empty when no dnsaddr records found", async () => {
-    mockResolveTxt.mockResolvedValue([
-      ["v=spf1 include:example.com ~all"],
-    ]);
+    mockResolveTxt.mockResolvedValue([["v=spf1 include:example.com ~all"]]);
 
     const peers = await resolveBootstrapDns("no-peers.example.com");
     expect(peers).toEqual([]);
@@ -124,10 +118,7 @@ describe("mergeBootstrapPeers", () => {
       ["/ip4/1.1.1.1/tcp/4001/p2p/PeerA"],
       ["/ip4/2.2.2.2/tcp/4001/p2p/PeerB"],
     );
-    expect(merged).toEqual([
-      "/ip4/1.1.1.1/tcp/4001/p2p/PeerA",
-      "/ip4/2.2.2.2/tcp/4001/p2p/PeerB",
-    ]);
+    expect(merged).toEqual(["/ip4/1.1.1.1/tcp/4001/p2p/PeerA", "/ip4/2.2.2.2/tcp/4001/p2p/PeerB"]);
   });
 
   it("deduplicates identical multiaddresses", () => {

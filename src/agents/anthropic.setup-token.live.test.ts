@@ -21,7 +21,8 @@ import { normalizeProviderId, parseModelRef } from "./model-selection.js";
 import { ensureBitterbotModelsJson } from "./models-config.js";
 import { discoverAuthStorage, discoverModels } from "./pi-model-discovery.js";
 
-const LIVE = isTruthyEnvValue(process.env.LIVE) || isTruthyEnvValue(process.env.BITTERBOT_LIVE_TEST);
+const LIVE =
+  isTruthyEnvValue(process.env.LIVE) || isTruthyEnvValue(process.env.BITTERBOT_LIVE_TEST);
 const SETUP_TOKEN_RAW = process.env.BITTERBOT_LIVE_SETUP_TOKEN?.trim() ?? "";
 const SETUP_TOKEN_VALUE = process.env.BITTERBOT_LIVE_SETUP_TOKEN_VALUE?.trim() ?? "";
 const SETUP_TOKEN_PROFILE = process.env.BITTERBOT_LIVE_SETUP_TOKEN_PROFILE?.trim() ?? "";

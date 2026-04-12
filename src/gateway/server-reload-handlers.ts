@@ -100,9 +100,7 @@ export function createGatewayReloadHandlers(params: {
         isTruthyEnvValue(process.env.BITTERBOT_SKIP_CHANNELS) ||
         isTruthyEnvValue(process.env.BITTERBOT_SKIP_PROVIDERS)
       ) {
-        params.logChannels.info(
-          "skipping channel reload (BITTERBOT_SKIP_CHANNELS=1)",
-        );
+        params.logChannels.info("skipping channel reload (BITTERBOT_SKIP_CHANNELS=1)");
       } else {
         const restartChannel = async (name: ChannelKind) => {
           params.logChannels.info(`restarting ${name} channel`);

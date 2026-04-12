@@ -9,6 +9,7 @@ A **Knowledge Crystal** is the fundamental memory unit in the Bitterbot memory s
 ## Memory Crystals vs Knowledge Crystals
 
 Bitterbot formally distinguishes two crystal types:
+
 - **Memory Crystals** (episode, preference, relationship, fact, goal) — private, autobiographical, never leave the node
 - **Knowledge Crystals** (skill, task_pattern) — executable, procedural, eligible for P2P marketplace
 
@@ -17,6 +18,7 @@ This document covers Knowledge Crystals. For Memory Crystals, see the main memor
 ### Marketplace Pricing
 
 Knowledge Crystals are automatically priced by the marketplace economics engine:
+
 - **Base price:** Configurable (default $0.01 USDC)
 - **Quality multiplier:** successRate × avgRewardScore
 - **Demand multiplier:** 1 + log(uniqueBuyers + bountyMatches + 1) × 0.1
@@ -33,95 +35,95 @@ The `KnowledgeCrystal` type (`crystal-types.ts`) defines ~50 fields across sever
 
 ### Payload
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `string` | UUID primary key |
-| `text` | `string` | The actual memory content |
+| Field       | Type       | Description                       |
+| ----------- | ---------- | --------------------------------- |
+| `id`        | `string`   | UUID primary key                  |
+| `text`      | `string`   | The actual memory content         |
 | `embedding` | `number[]` | Primary semantic embedding vector |
 
 ### Descriptive Metadata
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `path` | `string` | Source file path (relative to workspace) |
-| `source` | `MemorySource` | `"memory"` \| `"sessions"` \| `"skills"` |
-| `startLine` / `endLine` | `number` | Line range in source file |
-| `hash` | `string` | Content hash for deduplication |
-| `semanticType` | `CrystalSemanticType` | Classification (see below) |
-| `origin` | `CrystalOrigin` | How it was created (see below) |
+| Field                   | Type                  | Description                              |
+| ----------------------- | --------------------- | ---------------------------------------- |
+| `path`                  | `string`              | Source file path (relative to workspace) |
+| `source`                | `MemorySource`        | `"memory"` \| `"sessions"` \| `"skills"` |
+| `startLine` / `endLine` | `number`              | Line range in source file                |
+| `hash`                  | `string`              | Content hash for deduplication           |
+| `semanticType`          | `CrystalSemanticType` | Classification (see below)               |
+| `origin`                | `CrystalOrigin`       | How it was created (see below)           |
 
 ### Semantic Types
 
 ```typescript
 type CrystalSemanticType =
-  | "fact"           // Factual knowledge
-  | "preference"     // User preference
-  | "task_pattern"   // Recurring task pattern
-  | "skill"          // Executable skill
-  | "episode"        // Episodic memory (event)
-  | "insight"        // Dream-synthesized insight
-  | "relationship"   // User relationship/social
-  | "goal"           // User goal/objective
-  | "general";       // Default
+  | "fact" // Factual knowledge
+  | "preference" // User preference
+  | "task_pattern" // Recurring task pattern
+  | "skill" // Executable skill
+  | "episode" // Episodic memory (event)
+  | "insight" // Dream-synthesized insight
+  | "relationship" // User relationship/social
+  | "goal" // User goal/objective
+  | "general"; // Default
 ```
 
 ### Origins
 
 ```typescript
 type CrystalOrigin =
-  | "indexed"      // File-based memory
-  | "session"      // Conversation transcript
-  | "skill"        // Crystallized skill
-  | "dream"        // Dream synthesis output
-  | "user_input"   // Direct user statement
-  | "inferred"     // Extracted by LLM
-  | "peer";        // Received from P2P peer
+  | "indexed" // File-based memory
+  | "session" // Conversation transcript
+  | "skill" // Crystallized skill
+  | "dream" // Dream synthesis output
+  | "user_input" // Direct user statement
+  | "inferred" // Extracted by LLM
+  | "peer"; // Received from P2P peer
 ```
 
 ### Behavioral Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `importanceScore` | `number` | 0-1, recalculated by consolidation engine |
-| `accessCount` | `number` | Times retrieved in search results |
-| `lastAccessedAt` | `number \| null` | Timestamp of last search hit |
-| `emotionalValence` | `number \| null` | Derived: `(dopamine + oxytocin - cortisol) / 2` at ingestion time. Influences dream seed selection, Ebbinghaus decay resistance, and limbic bridge feedback. |
-| `hormonalInfluence` | `HormonalInfluence \| null` | Dopamine/cortisol/oxytocin snapshot at ingestion time |
-| `curiosityBoost` | `number` | Legacy boost field (backward compat). New scoring uses `curiosityReward` from unified CuriosityEngine |
-| `dreamCount` | `number` | Times processed in dream cycles |
-| `lastDreamedAt` | `number \| null` | Last dream processing timestamp |
-| `lastRippleCount` | `number \| null` | Poisson-sampled ripple count from last replay (enables spaced repetition prioritization) |
-| `steeringReward` | `number` | -1 to 1, accumulated from skill execution outcomes |
-| `epistemicLayer` | `EpistemicType \| null` | Knowledge type: `"experience"` \| `"directive"` \| `"world_fact"` \| `"mental_model"`. Populated by session extraction pipeline during dream cycles. Directives (explicit user preferences) take priority over inferred knowledge. |
+| Field               | Type                        | Description                                                                                                                                                                                                                        |
+| ------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `importanceScore`   | `number`                    | 0-1, recalculated by consolidation engine                                                                                                                                                                                          |
+| `accessCount`       | `number`                    | Times retrieved in search results                                                                                                                                                                                                  |
+| `lastAccessedAt`    | `number \| null`            | Timestamp of last search hit                                                                                                                                                                                                       |
+| `emotionalValence`  | `number \| null`            | Derived: `(dopamine + oxytocin - cortisol) / 2` at ingestion time. Influences dream seed selection, Ebbinghaus decay resistance, and limbic bridge feedback.                                                                       |
+| `hormonalInfluence` | `HormonalInfluence \| null` | Dopamine/cortisol/oxytocin snapshot at ingestion time                                                                                                                                                                              |
+| `curiosityBoost`    | `number`                    | Legacy boost field (backward compat). New scoring uses `curiosityReward` from unified CuriosityEngine                                                                                                                              |
+| `dreamCount`        | `number`                    | Times processed in dream cycles                                                                                                                                                                                                    |
+| `lastDreamedAt`     | `number \| null`            | Last dream processing timestamp                                                                                                                                                                                                    |
+| `lastRippleCount`   | `number \| null`            | Poisson-sampled ripple count from last replay (enables spaced repetition prioritization)                                                                                                                                           |
+| `steeringReward`    | `number`                    | -1 to 1, accumulated from skill execution outcomes                                                                                                                                                                                 |
+| `epistemicLayer`    | `EpistemicType \| null`     | Knowledge type: `"experience"` \| `"directive"` \| `"world_fact"` \| `"mental_model"`. Populated by session extraction pipeline during dream cycles. Directives (explicit user preferences) take priority over inferred knowledge. |
 
 ### Verification & Bounties (Phase 3)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `isVerified` | `boolean` | Whether endorsed by a management node's Ed25519 signature |
-| `verifiedBy` | `string \| null` | Base64 pubkey of the management node that endorsed this skill |
-| `bountyMatchId` | `string \| null` | ID of the bounty this crystal fulfilled (if any) |
-| `bountyPriorityBoost` | `number` | Reward multiplier from the matched bounty |
+| Field                 | Type             | Description                                                   |
+| --------------------- | ---------------- | ------------------------------------------------------------- |
+| `isVerified`          | `boolean`        | Whether endorsed by a management node's Ed25519 signature     |
+| `verifiedBy`          | `string \| null` | Base64 pubkey of the management node that endorsed this skill |
+| `bountyMatchId`       | `string \| null` | ID of the bounty this crystal fulfilled (if any)              |
+| `bountyPriorityBoost` | `number`         | Reward multiplier from the matched bounty                     |
 
 ### Versioning (Skills)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `stableSkillId` | `string \| null` | Persistent ID across skill versions |
-| `skillVersion` | `number` | Increments on each mutation promotion |
-| `previousVersionId` | `string \| null` | Crystal ID of the prior version |
-| `deprecated` | `boolean` | Whether superseded by a newer version |
-| `deprecatedBy` | `string \| null` | `stableSkillId` of the replacement |
-| `skillTags` | `string[]` | Categorization tags |
-| `skillCategory` | `string \| null` | e.g. `"code-generation"`, `"debugging"` |
+| Field               | Type             | Description                             |
+| ------------------- | ---------------- | --------------------------------------- |
+| `stableSkillId`     | `string \| null` | Persistent ID across skill versions     |
+| `skillVersion`      | `number`         | Increments on each mutation promotion   |
+| `previousVersionId` | `string \| null` | Crystal ID of the prior version         |
+| `deprecated`        | `boolean`        | Whether superseded by a newer version   |
+| `deprecatedBy`      | `string \| null` | `stableSkillId` of the replacement      |
+| `skillTags`         | `string[]`       | Categorization tags                     |
+| `skillCategory`     | `string \| null` | e.g. `"code-generation"`, `"debugging"` |
 
 ### Multi-Perspective Embeddings
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `embeddingProcedural` | `number[]` | Steps/execution-focused embedding |
-| `embeddingCausal` | `number[]` | Cause/effect-focused embedding |
-| `embeddingEntity` | `number[]` | Tools/APIs/technology-focused embedding |
+| Field                 | Type       | Description                             |
+| --------------------- | ---------- | --------------------------------------- |
+| `embeddingProcedural` | `number[]` | Steps/execution-focused embedding       |
+| `embeddingCausal`     | `number[]` | Cause/effect-focused embedding          |
+| `embeddingEntity`     | `number[]` | Tools/APIs/technology-focused embedding |
 
 ---
 
@@ -146,15 +148,16 @@ stateDiagram-v2
 
 ```typescript
 type CrystalLifecycle =
-  | "generated"    // Just created/indexed
-  | "activated"    // Frequently accessed, high importance
+  | "generated" // Just created/indexed
+  | "activated" // Frequently accessed, high importance
   | "consolidated" // Merged with related crystals
-  | "archived"     // Low importance, retained for lineage
-  | "expired"      // Marked for purge
-  | "frozen";      // Immutable (skills, critical memories)
+  | "archived" // Low importance, retained for lineage
+  | "expired" // Marked for purge
+  | "frozen"; // Immutable (skills, critical memories)
 ```
 
 **Transition rules (in `ConsolidationEngine.run()`):**
+
 - Skills (`memory_type='skill'`) are immune to decay — they never reach `expired`
 - Crystals below `forgetThreshold` (default 0.02) transition to `expired`
 - Merged crystals: the winner becomes `consolidated`, the loser becomes `archived` with a `parent_id` pointing to the winner
@@ -180,29 +183,30 @@ type CrystalGovernance = {
 
 ### Access Control (`MemoryGovernance.canAccess()`)
 
-| Scope | Who can access |
-|-------|---------------|
-| `confidential` | Only `local_agent` |
-| `private` | Only `local_agent` |
-| `shared` | `local_agent` + authenticated sessions |
-| `public` | Anyone |
+| Scope          | Who can access                         |
+| -------------- | -------------------------------------- |
+| `confidential` | Only `local_agent`                     |
+| `private`      | Only `local_agent`                     |
+| `shared`       | `local_agent` + authenticated sessions |
+| `public`       | Anyone                                 |
 
 Expired crystals always return `false` regardless of scope.
 
 ### Sensitivity Detection (`MemoryGovernance.tagSensitivity()`)
 
 Content is automatically classified via regex patterns:
+
 - **confidential**: passwords, API keys, tokens, secrets
 - **personal**: names, emails, opinions, personal feelings
 - **normal**: everything else
 
 ### Lifespan Policies
 
-| Policy | Behavior |
-|--------|----------|
-| `permanent` | Never automatically expired |
-| `ttl` | Expired after `ttlMs` milliseconds (enforced by `enforceLifespan()`) |
-| `decay` | Subject to Ebbinghaus decay in consolidation cycles |
+| Policy      | Behavior                                                             |
+| ----------- | -------------------------------------------------------------------- |
+| `permanent` | Never automatically expired                                          |
+| `ttl`       | Expired after `ttlMs` milliseconds (enforced by `enforceLifespan()`) |
+| `decay`     | Subject to Ebbinghaus decay in consolidation cycles                  |
 
 ### Provenance DAG
 
@@ -212,9 +216,9 @@ Each crystal can have a `provenanceDag` (array of `ProvenanceNode`) tracking its
 type ProvenanceNode = {
   crystalId: string;
   operation: "created" | "mutated" | "merged" | "imported" | "forked";
-  actor: string;         // "local_agent" | "dream_engine" | "peer:<pubkey>"
+  actor: string; // "local_agent" | "dream_engine" | "peer:<pubkey>"
   timestamp: number;
-  parentIds: string[];   // multiple parents for merges
+  parentIds: string[]; // multiple parents for merges
   metadata?: Record<string, unknown>;
 };
 ```
@@ -229,11 +233,11 @@ The `HormonalStateManager` (`hormonal.ts`) maintains three hormone levels that m
 
 ### Hormone Channels
 
-| Hormone | Signal | Half-life (default) | Trigger patterns |
-|---------|--------|---------------------|------------------|
-| Dopamine | Reward/achievement | 30 min | "success", "fixed", "shipped", "deployed", "milestone" |
-| Cortisol | Stress/urgency | 60 min | "fail", "error", "bug", "crash", "urgent", "deadline" |
-| Oxytocin | Social/relational | 45 min | "thank", "help", "appreciate", "team", "collaborate" |
+| Hormone  | Signal             | Half-life (default) | Trigger patterns                                       |
+| -------- | ------------------ | ------------------- | ------------------------------------------------------ |
+| Dopamine | Reward/achievement | 30 min              | "success", "fixed", "shipped", "deployed", "milestone" |
+| Cortisol | Stress/urgency     | 60 min              | "fail", "error", "bug", "crash", "urgent", "deadline"  |
+| Oxytocin | Social/relational  | 45 min              | "thank", "help", "appreciate", "team", "collaborate"   |
 
 ### Event Types and Spike Magnitudes
 
@@ -311,10 +315,11 @@ I(t) = S(t) * f(accessCount) * e^(-λ_eff * Δt)
 ```
 
 Where:
+
 - **S(t)** = `1.0` (fixed base — avoids compounding decay)
 - **f(n)** = `1 - e^(-0.1 * (n + 1))` — saturating frequency factor
 - **Δt** = milliseconds since last access
-- **λ\_eff** = `decayRate * (1 - |emotionalValence| * emotionDecayResistance)`
+- **λ_eff** = `decayRate * (1 - |emotionalValence| * emotionDecayResistance)`
 
 The key insight: `semanticRelevance` is always `1.0` so importance is determined solely by access patterns and time. Emotional valence slows decay but doesn't inflate scores.
 
@@ -334,10 +339,10 @@ All score updates, lifecycle transitions, and merges are applied in a single SQL
 
 ```typescript
 type ConsolidationConfig = {
-  decayRate: number;              // Default: 5e-10 (~16-day half-life)
-  promoteThreshold: number;       // Default: 0.7
-  forgetThreshold: number;        // Default: 0.02
-  mergeOverlapThreshold: number;  // Default: 0.92
+  decayRate: number; // Default: 5e-10 (~16-day half-life)
+  promoteThreshold: number; // Default: 0.7
+  forgetThreshold: number; // Default: 0.02
+  mergeOverlapThreshold: number; // Default: 0.92
   emotionDecayResistance: number; // Default: 0.5
 };
 ```
@@ -367,8 +372,8 @@ The `MemoryPipeline` class (`pipeline.ts`) provides a fluent API for custom retr
 ```typescript
 const result = await MemoryPipeline.create()
   .retrieve("query", { semanticType: "skill", limit: 20 })
-  .filter(c => c.importanceScore > 0.5)
-  .augment(c => ({ ...c, importanceScore: c.importanceScore * 1.1 }))
+  .filter((c) => c.importanceScore > 0.5)
+  .augment((c) => ({ ...c, importanceScore: c.importanceScore * 1.1 }))
   .store()
   .execute(db);
 ```

@@ -13,8 +13,17 @@ const log = createSubsystemLogger("memory/user-model");
 
 export type UserPreference = {
   id: string;
-  category: "tool" | "language" | "style" | "workflow" | "communication"
-    | "identity" | "project" | "technical" | "personal" | "directive";
+  category:
+    | "tool"
+    | "language"
+    | "style"
+    | "workflow"
+    | "communication"
+    | "identity"
+    | "project"
+    | "technical"
+    | "personal"
+    | "directive";
   key: string;
   value: string;
   confidence: number;
@@ -51,7 +60,8 @@ const PREFERENCE_PATTERNS: Array<{
   {
     category: "language",
     key: "preferred_language",
-    pattern: /\b(?:i (?:prefer|use|like|always use|write in))\s+(typescript|javascript|python|rust|go|java|c\+\+|ruby|php|swift|kotlin)\b/i,
+    pattern:
+      /\b(?:i (?:prefer|use|like|always use|write in))\s+(typescript|javascript|python|rust|go|java|c\+\+|ruby|php|swift|kotlin)\b/i,
     extractValue: (m) => m[1]!,
   },
   {
@@ -69,25 +79,29 @@ const PREFERENCE_PATTERNS: Array<{
   {
     category: "style",
     key: "code_style",
-    pattern: /\b(?:i (?:prefer|like|use))\s+(tabs|spaces|2 spaces|4 spaces|semicolons|no semicolons)\b/i,
+    pattern:
+      /\b(?:i (?:prefer|like|use))\s+(tabs|spaces|2 spaces|4 spaces|semicolons|no semicolons)\b/i,
     extractValue: (m) => m[1]!,
   },
   {
     category: "workflow",
     key: "preferred_workflow",
-    pattern: /\b(?:i (?:always|usually|prefer to))\s+(test first|write tests|review before|commit often|squash commits)\b/i,
+    pattern:
+      /\b(?:i (?:always|usually|prefer to))\s+(test first|write tests|review before|commit often|squash commits)\b/i,
     extractValue: (m) => m[1]!,
   },
   {
     category: "communication",
     key: "communication_style",
-    pattern: /\b(?:i (?:prefer|like|want))\s+(brief|detailed|verbose|concise|step by step)\s+(?:responses?|explanations?|answers?)\b/i,
+    pattern:
+      /\b(?:i (?:prefer|like|want))\s+(brief|detailed|verbose|concise|step by step)\s+(?:responses?|explanations?|answers?)\b/i,
     extractValue: (m) => m[1]!,
   },
   {
     category: "tool",
     key: "preferred_framework",
-    pattern: /\b(?:i (?:use|prefer|like|build with))\s+(react|vue|angular|svelte|next\.?js|nuxt|express|fastapi|django|flask|spring)\b/i,
+    pattern:
+      /\b(?:i (?:use|prefer|like|build with))\s+(react|vue|angular|svelte|next\.?js|nuxt|express|fastapi|django|flask|spring)\b/i,
     extractValue: (m) => m[1]!,
   },
 ];
@@ -147,12 +161,18 @@ export class UserModelManager {
 
       // Upsert: if we already have this preference, boost confidence
       const existing = this.db
-        .prepare(`SELECT id, confidence, evidence_ids FROM user_preferences WHERE category = ? AND key = ?`)
-        .get(spec.category, spec.key) as { id: string; confidence: number; evidence_ids: string } | undefined;
+        .prepare(
+          `SELECT id, confidence, evidence_ids FROM user_preferences WHERE category = ? AND key = ?`,
+        )
+        .get(spec.category, spec.key) as
+        | { id: string; confidence: number; evidence_ids: string }
+        | undefined;
 
       if (existing) {
         let existingEvidence: string[] = [];
-        try { existingEvidence = JSON.parse(existing.evidence_ids); } catch {}
+        try {
+          existingEvidence = JSON.parse(existing.evidence_ids);
+        } catch {}
         if (evidenceChunkId && !existingEvidence.includes(evidenceChunkId)) {
           existingEvidence.push(evidenceChunkId);
         }
@@ -208,15 +228,15 @@ export class UserModelManager {
          ORDER BY confidence DESC, updated_at DESC`,
       )
       .all() as Array<{
-        id: string;
-        category: string;
-        key: string;
-        value: string;
-        confidence: number;
-        evidence_ids: string;
-        created_at: number;
-        updated_at: number;
-      }>;
+      id: string;
+      category: string;
+      key: string;
+      value: string;
+      confidence: number;
+      evidence_ids: string;
+      created_at: number;
+      updated_at: number;
+    }>;
 
     const preferences: UserPreference[] = rows.map((r) => ({
       id: r.id,
@@ -224,7 +244,13 @@ export class UserModelManager {
       key: r.key,
       value: r.value,
       confidence: r.confidence,
-      evidenceIds: (() => { try { return JSON.parse(r.evidence_ids); } catch { return []; } })(),
+      evidenceIds: (() => {
+        try {
+          return JSON.parse(r.evidence_ids);
+        } catch {
+          return [];
+        }
+      })(),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
@@ -245,7 +271,9 @@ export class UserModelManager {
     // Detect recurring action patterns (verbs + nouns appearing across multiple texts)
     const actionFreq = new Map<string, number>();
     for (const text of texts) {
-      const actions = text.match(/\b(?:always|usually|often|prefer to|tend to|like to)\s+\w+(?:\s+\w+)?/gi);
+      const actions = text.match(
+        /\b(?:always|usually|often|prefer to|tend to|like to)\s+\w+(?:\s+\w+)?/gi,
+      );
       if (actions) {
         for (const action of actions) {
           const normalized = action.toLowerCase().trim();
@@ -272,7 +300,11 @@ export class UserModelManager {
    * Route an LLM-extracted directive fact into user_preferences.
    * Uses heuristic keyword matching to classify category and derive a key.
    */
-  upsertFromDirective(fact: { text: string; confidence: number; sessionId: string }): UserPreference | null {
+  upsertFromDirective(fact: {
+    text: string;
+    confidence: number;
+    sessionId: string;
+  }): UserPreference | null {
     if (!this.config.enabled) return null;
     const text = fact.text.trim();
     if (!text || text.length < 5) return null;
@@ -282,11 +314,19 @@ export class UserModelManager {
 
     // Classify category via keyword heuristics
     let category: UserPreference["category"];
-    if (/\b(?:my name is|i am a|i work (?:as|at|for|in)|i'm based in|i live in|born in)\b/i.test(lower)) {
+    if (
+      /\b(?:my name is|i am a|i work (?:as|at|for|in)|i'm based in|i live in|born in)\b/i.test(
+        lower,
+      )
+    ) {
       category = "identity";
     } else if (/\b(?:project|repo|app|product|codebase|monorepo|workspace)\b/i.test(lower)) {
       category = "project";
-    } else if (/\b(?:api|framework|library|database|server|deploy|docker|kubernetes|ci\/cd|infra)\b/i.test(lower)) {
+    } else if (
+      /\b(?:api|framework|library|database|server|deploy|docker|kubernetes|ci\/cd|infra)\b/i.test(
+        lower,
+      )
+    ) {
       category = "technical";
     } else if (/\b(?:always|never|prefer|don't|do not|must|should)\b/i.test(lower)) {
       category = "directive";
@@ -296,24 +336,69 @@ export class UserModelManager {
 
     // Derive key from significant words (skip stop words, take first 5)
     const STOP_WORDS = new Set([
-      "i", "me", "my", "the", "a", "an", "is", "am", "are", "was", "were",
-      "be", "been", "to", "of", "in", "for", "on", "with", "at", "by", "from",
-      "that", "this", "it", "and", "or", "but", "not", "do", "does", "did",
-      "have", "has", "had", "will", "would", "should", "can", "could",
+      "i",
+      "me",
+      "my",
+      "the",
+      "a",
+      "an",
+      "is",
+      "am",
+      "are",
+      "was",
+      "were",
+      "be",
+      "been",
+      "to",
+      "of",
+      "in",
+      "for",
+      "on",
+      "with",
+      "at",
+      "by",
+      "from",
+      "that",
+      "this",
+      "it",
+      "and",
+      "or",
+      "but",
+      "not",
+      "do",
+      "does",
+      "did",
+      "have",
+      "has",
+      "had",
+      "will",
+      "would",
+      "should",
+      "can",
+      "could",
     ]);
-    const words = lower.replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(
-      (w) => w.length > 2 && !STOP_WORDS.has(w),
-    );
+    const words = lower
+      .replace(/[^a-z0-9\s]/g, "")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
     const key = words.slice(0, 5).join("_") || `directive_${now}`;
 
     // Upsert: boost confidence for existing, insert for new
     const existing = this.db
-      .prepare(`SELECT id, value, confidence, evidence_ids FROM user_preferences WHERE category = ? AND key = ?`)
-      .get(category, key) as { id: string; value: string; confidence: number; evidence_ids: string } | undefined;
+      .prepare(
+        `SELECT id, value, confidence, evidence_ids FROM user_preferences WHERE category = ? AND key = ?`,
+      )
+      .get(category, key) as
+      | { id: string; value: string; confidence: number; evidence_ids: string }
+      | undefined;
 
     if (existing) {
       let evidenceIds: string[] = [];
-      try { evidenceIds = JSON.parse(existing.evidence_ids); } catch { /* empty */ }
+      try {
+        evidenceIds = JSON.parse(existing.evidence_ids);
+      } catch {
+        /* empty */
+      }
       if (fact.sessionId && !evidenceIds.includes(fact.sessionId)) {
         evidenceIds.push(fact.sessionId);
       }
@@ -328,12 +413,14 @@ export class UserModelManager {
       } else {
         // Corroboration: Bayesian-style update (logarithmic growth)
         // Same session = weaker signal, different session = stronger
-        const sameSession = evidenceIds.some(id => id.startsWith(fact.sessionId));
+        const sameSession = evidenceIds.some((id) => id.startsWith(fact.sessionId));
         const decayFactor = sameSession ? 0.7 : 0.6;
         newConfidence = Math.min(1.0, 1 - (1 - existing.confidence) * decayFactor);
       }
 
-      const updatedValue = isContradiction ? text : (existing as Record<string, unknown>).value as string ?? text;
+      const updatedValue = isContradiction
+        ? text
+        : (((existing as Record<string, unknown>).value as string) ?? text);
       this.db
         .prepare(
           `UPDATE user_preferences SET value = ?, confidence = ?, evidence_ids = ?, updated_at = ? WHERE id = ?`,
@@ -361,7 +448,9 @@ export class UserModelManager {
       )
       .run(id, category, key, text, fact.confidence, JSON.stringify(evidenceIds), now, now);
 
-    log.debug(`Upserted directive preference: [${category}] ${key} (confidence: ${fact.confidence})`);
+    log.debug(
+      `Upserted directive preference: [${category}] ${key} (confidence: ${fact.confidence})`,
+    );
 
     return {
       id,

@@ -53,11 +53,9 @@ export const useArtifactStore = create<ArtifactState>((set) => ({
       return { artifacts: next };
     }),
 
-  openArtifact: (id) =>
-    set({ activeArtifactId: id, panelMode: "artifact" }),
+  openArtifact: (id) => set({ activeArtifactId: id, panelMode: "artifact" }),
 
   setPanelMode: (mode) => set({ panelMode: mode }),
 
-  clearArtifacts: () =>
-    set({ artifacts: new Map(), activeArtifactId: null, panelMode: "tools" }),
+  clearArtifacts: () => set({ artifacts: new Map(), activeArtifactId: null, panelMode: "tools" }),
 }));

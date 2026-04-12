@@ -14,8 +14,18 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { HormonalStateManager } from "./hormonal.js";
+import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
+import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
+import { selectStrategy, buildStrategyPrompt } from "./dream-mutation-strategies.js";
+import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
+import { ensureDreamSchema, recordDreamTelemetry } from "./dream-schema.js";
+import {
+  buildDreamSynthesisPrompt,
+  heuristicSynthesize,
+  parseDreamSynthesisResponse,
+} from "./dream-synthesis-prompt.js";
 import {
   type ComputeTier,
   type DreamCluster,
@@ -34,20 +44,10 @@ import {
   DEFAULT_MODE_CONFIGS,
   DEFAULT_MODE_TIERS,
 } from "./dream-types.js";
-import { ensureDreamSchema, recordDreamTelemetry } from "./dream-schema.js";
-import {
-  buildDreamSynthesisPrompt,
-  heuristicSynthesize,
-  parseDreamSynthesisResponse,
-} from "./dream-synthesis-prompt.js";
-import { ensureColumn } from "./memory-schema.js";
-import { selectStrategy, buildStrategyPrompt } from "./dream-mutation-strategies.js";
-import { PromptOptimizationExperiment } from "./prompt-optimization.js";
 import { ExperimentSandbox, type MutationVerdict } from "./experiment-sandbox.js";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import type { HormonalStateManager } from "./hormonal.js";
-import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
-import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
+import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
+import { ensureColumn } from "./memory-schema.js";
+import { PromptOptimizationExperiment } from "./prompt-optimization.js";
 
 const log = createSubsystemLogger("memory/dream");
 
@@ -66,11 +66,7 @@ type ChunkRow = {
   lifecycle?: string | null;
 };
 
-const CREATIVITY_MODES: DreamCreativityMode[] = [
-  "associative",
-  "convergent",
-  "cross_domain",
-];
+const CREATIVITY_MODES: DreamCreativityMode[] = ["associative", "convergent", "cross_domain"];
 
 export type CuriosityWeightProvider = {
   getDreamModeWeightAdjustments(): Partial<Record<DreamMode, number>>;
@@ -87,7 +83,9 @@ export type GCCRFModeInfluence = {
 
 export class DreamEngine {
   private db: DatabaseSync;
-  private readonly config: Required<Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers">> & { modes: Record<DreamMode, DreamModeConfig> };
+  private readonly config: Required<
+    Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers">
+  > & { modes: Record<DreamMode, DreamModeConfig> };
   private readonly synthesize: SynthesizeFn;
   private readonly embedBatch: EmbedBatchFn;
   private readonly llmCallCloud: ((prompt: string) => Promise<string>) | null;
@@ -95,12 +93,29 @@ export class DreamEngine {
   private readonly modeTiers: Record<DreamMode, ComputeTier>;
   private readonly fallbackToCloud: boolean;
   private curiosityWeightProvider: CuriosityWeightProvider | null = null;
-  private hormonalStateGetter: (() => { dopamine: number; cortisol: number; oxytocin: number } | null) | null = null;
+  private hormonalStateGetter:
+    | (() => { dopamine: number; cortisol: number; oxytocin: number } | null)
+    | null = null;
   private executionTracker: SkillExecutionTracker | null = null;
   private hormonalManager: HormonalStateManager | null = null;
-  private gccrfRewardFunction: { updateFshoR(r: number): void; getFshoRAvg(): number; getFshoCoupledAlpha(): number } | null = null;
-  private marketplaceIntelligence: { hasActivity(): boolean; getDreamModeAdjustments(): Partial<Record<DreamMode, number>>; injectDemandTargets(): number } | null = null;
-  private skillSeekersAdapter: { isAvailable(): Promise<boolean>; fillKnowledgeGap(desc: string, hints?: { category?: string }): Promise<{ ok: boolean; envelopes: unknown[] }>; resetCycleCounter(): void } | null = null;
+  private gccrfRewardFunction: {
+    updateFshoR(r: number): void;
+    getFshoRAvg(): number;
+    getFshoCoupledAlpha(): number;
+  } | null = null;
+  private marketplaceIntelligence: {
+    hasActivity(): boolean;
+    getDreamModeAdjustments(): Partial<Record<DreamMode, number>>;
+    injectDemandTargets(): number;
+  } | null = null;
+  private skillSeekersAdapter: {
+    isAvailable(): Promise<boolean>;
+    fillKnowledgeGap(
+      desc: string,
+      hints?: { category?: string },
+    ): Promise<{ ok: boolean; envelopes: unknown[] }>;
+    resetCycleCounter(): void;
+  } | null = null;
   private state: DreamState = "DORMANT";
   private lastModeUsed: DreamMode | null = null;
 
@@ -126,7 +141,9 @@ export class DreamEngine {
       ...DEFAULT_DREAM_CONFIG,
       ...config,
       modes: resolvedModes,
-    } as Required<Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers">> & { modes: Record<DreamMode, DreamModeConfig> };
+    } as Required<Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers">> & {
+      modes: Record<DreamMode, DreamModeConfig>;
+    };
     this.synthesize = synthesize;
     this.embedBatch = embedBatch;
     this.llmCallCloud = config?.llmCall ?? null;
@@ -170,7 +187,9 @@ export class DreamEngine {
   /**
    * Wire a hormonal state getter for temperature-modulated mode selection.
    */
-  setHormonalStateGetter(getter: () => { dopamine: number; cortisol: number; oxytocin: number } | null): void {
+  setHormonalStateGetter(
+    getter: () => { dopamine: number; cortisol: number; oxytocin: number } | null,
+  ): void {
     this.hormonalStateGetter = getter;
   }
 
@@ -190,17 +209,38 @@ export class DreamEngine {
   }
 
   /** Plan 8, Phase 7: Set marketplace intelligence for demand-driven dreams. */
-  setMarketplaceIntelligence(mi: { hasActivity(): boolean; getDreamModeAdjustments(): Partial<Record<DreamMode, number>>; injectDemandTargets(): number } | null): void {
+  setMarketplaceIntelligence(
+    mi: {
+      hasActivity(): boolean;
+      getDreamModeAdjustments(): Partial<Record<DreamMode, number>>;
+      injectDemandTargets(): number;
+    } | null,
+  ): void {
     this.marketplaceIntelligence = mi;
   }
 
   /** Plan 7, Phase 10: Set GCCRF reward function for FSHO alpha coupling. */
-  setGccrfRewardFunction(fn: { updateFshoR(r: number): void; getFshoRAvg(): number; getFshoCoupledAlpha(): number } | null): void {
+  setGccrfRewardFunction(
+    fn: {
+      updateFshoR(r: number): void;
+      getFshoRAvg(): number;
+      getFshoCoupledAlpha(): number;
+    } | null,
+  ): void {
     this.gccrfRewardFunction = fn;
   }
 
   /** PLAN-10: Set Skill Seekers adapter for external research during exploration mode. */
-  setSkillSeekersAdapter(adapter: { isAvailable(): Promise<boolean>; fillKnowledgeGap(desc: string, hints?: { category?: string }): Promise<{ ok: boolean; envelopes: unknown[] }>; resetCycleCounter(): void } | null): void {
+  setSkillSeekersAdapter(
+    adapter: {
+      isAvailable(): Promise<boolean>;
+      fillKnowledgeGap(
+        desc: string,
+        hints?: { category?: string },
+      ): Promise<{ ok: boolean; envelopes: unknown[] }>;
+      resetCycleCounter(): void;
+    } | null,
+  ): void {
     this.skillSeekersAdapter = adapter;
   }
 
@@ -218,22 +258,30 @@ export class DreamEngine {
    */
   private computeDreamReadiness(): { ready: boolean; score: number; reason: string } {
     // 1. When was the last completed dream?
-    const lastDream = this.db.prepare(
-      `SELECT MAX(started_at) as last FROM dream_cycles WHERE completed_at IS NOT NULL`,
-    ).get() as { last: number | null } | undefined;
+    const lastDream = this.db
+      .prepare(`SELECT MAX(started_at) as last FROM dream_cycles WHERE completed_at IS NOT NULL`)
+      .get() as { last: number | null } | undefined;
 
     const since = lastDream?.last ?? 0;
 
     // 2. Count new/updated chunks since last dream
-    const newChunks = (this.db.prepare(
-      `SELECT COUNT(*) as c FROM chunks WHERE created_at > ? OR updated_at > ?`,
-    ).get(since, since) as { c: number })?.c ?? 0;
+    const newChunks =
+      (
+        this.db
+          .prepare(`SELECT COUNT(*) as c FROM chunks WHERE created_at > ? OR updated_at > ?`)
+          .get(since, since) as { c: number }
+      )?.c ?? 0;
 
     // 3. Total active chunks (for information ratio)
-    const totalChunks = (this.db.prepare(
-      `SELECT COUNT(*) as c FROM chunks
+    const totalChunks =
+      (
+        this.db
+          .prepare(
+            `SELECT COUNT(*) as c FROM chunks
        WHERE COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'consolidated', 'frozen')`,
-    ).get() as { c: number })?.c ?? 1;
+          )
+          .get() as { c: number }
+      )?.c ?? 1;
 
     // 4. Information ratio
     const infoRatio = newChunks / Math.max(totalChunks, 1);
@@ -241,18 +289,24 @@ export class DreamEngine {
     // 5. Secondary triggers (table-existence-safe)
     let pendingHints = 0;
     try {
-      pendingHints = (this.db.prepare(
-        `SELECT COUNT(*) as c FROM near_merge_hints WHERE consumed_at IS NULL`,
-      ).get() as { c: number })?.c ?? 0;
+      pendingHints =
+        (
+          this.db
+            .prepare(`SELECT COUNT(*) as c FROM near_merge_hints WHERE consumed_at IS NULL`)
+            .get() as { c: number }
+        )?.c ?? 0;
     } catch {
       // near_merge_hints table may not exist yet
     }
 
     let orphanQueue = 0;
     try {
-      orphanQueue = (this.db.prepare(
-        `SELECT COUNT(*) as c FROM orphan_replay_queue WHERE consumed_at IS NULL`,
-      ).get() as { c: number })?.c ?? 0;
+      orphanQueue =
+        (
+          this.db
+            .prepare(`SELECT COUNT(*) as c FROM orphan_replay_queue WHERE consumed_at IS NULL`)
+            .get() as { c: number }
+        )?.c ?? 0;
     } catch {
       // orphan_replay_queue table may not exist yet
     }
@@ -274,7 +328,11 @@ export class DreamEngine {
       return { ready: false, score, reason: `only ${newChunks} new chunks, below threshold` };
     }
 
-    return { ready: true, score: Math.min(1, score), reason: `${newChunks} new chunks, ratio=${infoRatio.toFixed(2)}` };
+    return {
+      ready: true,
+      score: Math.min(1, score),
+      reason: `${newChunks} new chunks, ratio=${infoRatio.toFixed(2)}`,
+    };
   }
 
   /** Update the database handle after a reindex swaps the underlying file. */
@@ -291,12 +349,11 @@ export class DreamEngine {
     let cycleCount = 0;
     let lastCycle: DreamCycleMetadata | undefined;
     try {
-      insightCount = (
-        this.db.prepare(`SELECT COUNT(*) as c FROM dream_insights`).get() as { c: number }
-      )?.c ?? 0;
-      cycleCount = (
-        this.db.prepare(`SELECT COUNT(*) as c FROM dream_cycles`).get() as { c: number }
-      )?.c ?? 0;
+      insightCount =
+        (this.db.prepare(`SELECT COUNT(*) as c FROM dream_insights`).get() as { c: number })?.c ??
+        0;
+      cycleCount =
+        (this.db.prepare(`SELECT COUNT(*) as c FROM dream_cycles`).get() as { c: number })?.c ?? 0;
       lastCycle = this.db
         .prepare(`SELECT * FROM dream_cycles ORDER BY started_at DESC LIMIT 1`)
         .get() as DreamCycleMetadata | undefined;
@@ -305,7 +362,12 @@ export class DreamEngine {
     }
     // Strip functions from config — the agent framework structuredClone's tool results
     // in the message history, and functions are not cloneable (DataCloneError).
-    const { llmCall: _, synthesisLlmCall: _s, localLlmCall: _l, ...safeConfig } = this.config as Record<string, unknown>;
+    const {
+      llmCall: _,
+      synthesisLlmCall: _s,
+      localLlmCall: _l,
+      ...safeConfig
+    } = this.config as Record<string, unknown>;
     return {
       state: this.state,
       insightCount,
@@ -325,13 +387,22 @@ export class DreamEngine {
     // Dream readiness gate (skip for mode-specific runs like mini-dreams)
     if (!opts?.modes) {
       const readiness = this.computeDreamReadiness();
-      recordDreamTelemetry(this.db, `pre-${crypto.randomUUID().slice(0, 8)}`, "readiness", "score", readiness.score);
+      recordDreamTelemetry(
+        this.db,
+        `pre-${crypto.randomUUID().slice(0, 8)}`,
+        "readiness",
+        "score",
+        readiness.score,
+      );
 
       if (!readiness.ready) {
         log.debug(`skipping dream cycle: ${readiness.reason}`);
         return null;
       }
-      log.debug("dream readiness check passed", { score: readiness.score, reason: readiness.reason });
+      log.debug("dream readiness check passed", {
+        score: readiness.score,
+        reason: readiness.reason,
+      });
     }
 
     const cycleId = crypto.randomUUID();
@@ -361,14 +432,17 @@ export class DreamEngine {
       cycleMeta.modesUsed = selectedModes;
 
       // Check minimum chunks
-      const totalChunks = (
-        this.db.prepare(
-          `SELECT COUNT(*) as c FROM chunks
+      const totalChunks =
+        (
+          this.db
+            .prepare(
+              `SELECT COUNT(*) as c FROM chunks
            WHERE (COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
                   OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))
              AND importance_score >= ?`,
-        ).get(this.config.minImportanceForDream) as { c: number }
-      )?.c ?? 0;
+            )
+            .get(this.config.minImportanceForDream) as { c: number }
+        )?.c ?? 0;
 
       if (totalChunks < this.config.minChunksForDream) {
         log.debug("not enough chunks for dream cycle", {
@@ -388,8 +462,10 @@ export class DreamEngine {
       let totalChunksAnalyzed = 0;
 
       for (const mode of selectedModes) {
-        if (totalLlmCalls >= this.config.maxLlmCallsPerCycle &&
-            this.config.modes[mode].requiresLlm) {
+        if (
+          totalLlmCalls >= this.config.maxLlmCallsPerCycle &&
+          this.config.modes[mode].requiresLlm
+        ) {
           log.debug(`skipping ${mode} mode: LLM budget exhausted`);
           continue;
         }
@@ -493,8 +569,9 @@ export class DreamEngine {
   // ── Mode Selection ──
 
   private selectModes(): DreamMode[] {
-    const enabledModes = (Object.entries(this.config.modes) as [DreamMode, DreamModeConfig][])
-      .filter(([, cfg]) => cfg.enabled && cfg.weight > 0);
+    const enabledModes = (
+      Object.entries(this.config.modes) as [DreamMode, DreamModeConfig][]
+    ).filter(([, cfg]) => cfg.enabled && cfg.weight > 0);
 
     if (enabledModes.length === 0) return ["replay"];
 
@@ -512,15 +589,17 @@ export class DreamEngine {
     let fshoAdj: Partial<Record<DreamMode, number>> = {};
     if (!this.config.disableFsho) {
       try {
-        const salienceRows = this.db.prepare(
-          `SELECT importance_score FROM chunks
+        const salienceRows = this.db
+          .prepare(
+            `SELECT importance_score FROM chunks
            WHERE COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
              AND importance_score >= ?
            ORDER BY importance_score DESC LIMIT 20`,
-        ).all(this.config.minImportanceForDream) as Array<{ importance_score: number }>;
+          )
+          .all(this.config.minImportanceForDream) as Array<{ importance_score: number }>;
 
         if (salienceRows.length >= 5) {
-          const { orderParameter } = simulateFSHO(salienceRows.map(r => r.importance_score));
+          const { orderParameter } = simulateFSHO(salienceRows.map((r) => r.importance_score));
           fshoAdj = fshoModeAdjustments(orderParameter, hormones);
 
           // Plan 7, Phase 10: FSHO ↔ GCCRF alpha coupling
@@ -560,25 +639,35 @@ export class DreamEngine {
       const fshoVal = computeFshoWeightAdjustment(this.db);
       fshoWeightFactor = fshoVal.adjustment;
       if (fshoVal.sampleSize >= 10) {
-        log.debug("FSHO self-validation", { correlation: fshoVal.correlation, factor: fshoWeightFactor, samples: fshoVal.sampleSize });
+        log.debug("FSHO self-validation", {
+          correlation: fshoVal.correlation,
+          factor: fshoWeightFactor,
+          samples: fshoVal.sampleSize,
+        });
       }
-    } catch { /* non-critical */ }
+    } catch {
+      /* non-critical */
+    }
 
     // Weighted combination with marketplace fallback:
     // When marketplace is active, allocate 20% weight to market demand.
     // When inactive, preserve original 3-signal weights (zero regression).
     // FSHO weight is scaled by empirical validation factor.
-    const CURIOSITY_W = hasMarketActivity ? 0.25 : 0.30;
-    const GCCRF_W =     hasMarketActivity ? 0.25 : 0.30;
-    const FSHO_W =      (hasMarketActivity ? 0.30 : 0.40) * fshoWeightFactor;
-    const MARKET_W =    hasMarketActivity ? 0.20 : 0.0;
+    const CURIOSITY_W = hasMarketActivity ? 0.25 : 0.3;
+    const GCCRF_W = hasMarketActivity ? 0.25 : 0.3;
+    const FSHO_W = (hasMarketActivity ? 0.3 : 0.4) * fshoWeightFactor;
+    const MARKET_W = hasMarketActivity ? 0.2 : 0.0;
 
     const adjustedModes = enabledModes.map(([mode, cfg]) => {
-      const adj = CURIOSITY_W * (curiosityAdj[mode] ?? 0)
-               + GCCRF_W * (gccrfAdj[mode] ?? 0)
-               + FSHO_W * (fshoAdj[mode] ?? 0)
-               + MARKET_W * (marketAdj[mode] ?? 0);
-      return [mode, { ...cfg, weight: Math.max(0, cfg.weight + adj) }] as [DreamMode, DreamModeConfig];
+      const adj =
+        CURIOSITY_W * (curiosityAdj[mode] ?? 0) +
+        GCCRF_W * (gccrfAdj[mode] ?? 0) +
+        FSHO_W * (fshoAdj[mode] ?? 0) +
+        MARKET_W * (marketAdj[mode] ?? 0);
+      return [mode, { ...cfg, weight: Math.max(0, cfg.weight + adj) }] as [
+        DreamMode,
+        DreamModeConfig,
+      ];
     });
 
     // Weighted random selection, pick 1-3 modes
@@ -604,7 +693,7 @@ export class DreamEngine {
     // Cortisol (stress) → more focused/replay-oriented dreams
     // Oxytocin (warmth) → slightly more creative, relational exploration
     const hormonalTemp = hormones
-      ? baseTemp + (hormones.dopamine * 1.0) - (hormones.cortisol * 0.6) + (hormones.oxytocin * 0.3)
+      ? baseTemp + hormones.dopamine * 1.0 - hormones.cortisol * 0.6 + hormones.oxytocin * 0.3
       : baseTemp;
     const temperature = Math.max(0.3, Math.min(2.0, hormonalTemp));
 
@@ -633,8 +722,11 @@ export class DreamEngine {
         }
       }
       // Safety fallback
-      if (selected.length < numModes && remaining.length > 0 &&
-          !selected.includes(remaining[0]![0])) {
+      if (
+        selected.length < numModes &&
+        remaining.length > 0 &&
+        !selected.includes(remaining[0]![0])
+      ) {
         selected.push(remaining.shift()![0]);
       }
     }
@@ -668,7 +760,9 @@ export class DreamEngine {
              AND COALESCE(lifecycle_state, 'active') = 'active'
              AND updated_at > ?`,
         )
-        .get(Date.now() - 24 * 60 * 60 * 1000) as { avg_reward: number | null; cnt: number } | undefined;
+        .get(Date.now() - 24 * 60 * 60 * 1000) as
+        | { avg_reward: number | null; cnt: number }
+        | undefined;
 
       if (!recentRow || !recentRow.avg_reward || recentRow.cnt < 5) return adj;
 
@@ -696,7 +790,8 @@ export class DreamEngine {
         if (etaMean > 0.6) adj.exploration = (adj.exploration ?? 0) + (etaMean - 0.5) * SCALE;
 
         // High Δη → compression mode (consolidate what's being learned)
-        if (deltaEtaMean > 0.6) adj.compression = (adj.compression ?? 0) + (deltaEtaMean - 0.5) * SCALE;
+        if (deltaEtaMean > 0.6)
+          adj.compression = (adj.compression ?? 0) + (deltaEtaMean - 0.5) * SCALE;
 
         // High Iα → simulation mode (cross-domain connections in novel space)
         if (iAlphaMean > 0.6) adj.simulation = (adj.simulation ?? 0) + (iAlphaMean - 0.5) * SCALE;
@@ -750,8 +845,9 @@ export class DreamEngine {
     // --- Check orphan replay queue first (Phase 7 integration) ---
     let orphanSeeds: ChunkRow[] = [];
     try {
-      orphanSeeds = this.db.prepare(
-        `SELECT c.id, c.text, c.embedding, c.importance_score, c.access_count,
+      orphanSeeds = this.db
+        .prepare(
+          `SELECT c.id, c.text, c.embedding, c.importance_score, c.access_count,
                 COALESCE(c.curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(c.dream_count, 0) as dream_count,
                 c.last_dreamed_at, c.emotional_valence
@@ -760,7 +856,8 @@ export class DreamEngine {
          WHERE q.consumed_at IS NULL
          ORDER BY q.cluster_importance DESC
          LIMIT 5`,
-      ).all() as ChunkRow[];
+        )
+        .all() as ChunkRow[];
 
       if (orphanSeeds.length > 0) {
         const consumeStmt = this.db.prepare(
@@ -777,13 +874,21 @@ export class DreamEngine {
     const hormones = this.hormonalStateGetter?.() ?? null;
     const dopBoost = hormones ? hormones.dopamine * 0.3 : 0;
     const cortBoost = hormones ? hormones.cortisol * 0.2 : 0;
-    const orderExpr = `(importance_score * (1 + ABS(COALESCE(emotional_valence, 0)))` +
-      (dopBoost > 0 ? ` * (1 + ${dopBoost} * CASE WHEN COALESCE(emotional_valence, 0) > 0 THEN 1 ELSE 0 END)` : ``) +
-      (cortBoost > 0 ? ` * (1 + ${cortBoost} * CASE WHEN COALESCE(emotional_valence, 0) > 0.3 THEN 1 ELSE 0 END)` : ``) +
+    const orderExpr =
+      `(importance_score * (1 + ABS(COALESCE(emotional_valence, 0)))` +
+      (dopBoost > 0
+        ? ` * (1 + ${dopBoost} * CASE WHEN COALESCE(emotional_valence, 0) > 0 THEN 1 ELSE 0 END)`
+        : ``) +
+      (cortBoost > 0
+        ? ` * (1 + ${cortBoost} * CASE WHEN COALESCE(emotional_valence, 0) > 0.3 THEN 1 ELSE 0 END)`
+        : ``) +
       `)`;
 
-    const normalSeeds = remainingSlots > 0 ? this.db.prepare(
-      `SELECT id, text, embedding, importance_score, access_count,
+    const normalSeeds =
+      remainingSlots > 0
+        ? (this.db
+            .prepare(
+              `SELECT id, text, embedding, importance_score, access_count,
               COALESCE(curiosity_boost, 0.0) as curiosity_boost,
               COALESCE(dream_count, 0) as dream_count,
               last_dreamed_at, emotional_valence
@@ -794,7 +899,9 @@ export class DreamEngine {
        ORDER BY ${orderExpr} DESC,
                 last_accessed_at DESC
        LIMIT ?`,
-    ).all(this.config.minImportanceForDream, remainingSlots) as ChunkRow[] : [];
+            )
+            .all(this.config.minImportanceForDream, remainingSlots) as ChunkRow[])
+        : [];
 
     const seeds = [...orphanSeeds, ...normalSeeds];
     if (seeds.length === 0) {
@@ -808,7 +915,7 @@ export class DreamEngine {
     const decayRate = 0.6;
 
     // Geometric series: total boost from multiple ripples with habituation
-    const totalBoost = baseBoost * (1 - Math.pow(decayRate, rippleCount)) / (1 - decayRate);
+    const totalBoost = (baseBoost * (1 - Math.pow(decayRate, rippleCount))) / (1 - decayRate);
 
     const stmt = this.db.prepare(
       `UPDATE chunks SET
@@ -904,7 +1011,8 @@ export class DreamEngine {
       );
 
       // Build context for strategy-specific prompt
-      const relatedSkills = relatedCount > 0 ? this.getRelatedSkills(seed.id, seed.semantic_type, 2) : [];
+      const relatedSkills =
+        relatedCount > 0 ? this.getRelatedSkills(seed.id, seed.semantic_type, 2) : [];
       const prompt = buildStrategyPrompt(strategy, seed.text, { relatedSkills });
 
       try {
@@ -1027,11 +1135,13 @@ export class DreamEngine {
     // Consume SNN near-merge hints (Plan 6, Phase 3 integration)
     let hintChunkIds: string[] = [];
     try {
-      const hints = this.db.prepare(
-        `SELECT chunk_id_a, chunk_id_b FROM near_merge_hints
+      const hints = this.db
+        .prepare(
+          `SELECT chunk_id_a, chunk_id_b FROM near_merge_hints
          WHERE consumed_at IS NULL
          ORDER BY snn_similarity DESC LIMIT 10`,
-      ).all() as Array<{ chunk_id_a: string; chunk_id_b: string }>;
+        )
+        .all() as Array<{ chunk_id_a: string; chunk_id_b: string }>;
 
       if (hints.length > 0) {
         const consumeStmt = this.db.prepare(
@@ -1182,7 +1292,8 @@ export class DreamEngine {
     };
 
     const prompt =
-      creativityPrompts[creativityMode] + `\n\n` +
+      creativityPrompts[creativityMode] +
+      `\n\n` +
       texts.map((t, i) => `Domain ${i + 1}:\n${t}`).join("\n\n---\n\n") +
       `\n\nRespond with a JSON array of objects, each with:\n` +
       `- "content": a cross-domain insight (1-3 sentences)\n` +
@@ -1190,7 +1301,12 @@ export class DreamEngine {
       `- "keywords": array of 2-5 relevant keywords\n\n` +
       `Respond ONLY with the JSON array.`;
 
-    this.recordTelemetry(cycleId, "simulation", "creativity_mode", CREATIVITY_MODES.indexOf(creativityMode));
+    this.recordTelemetry(
+      cycleId,
+      "simulation",
+      "creativity_mode",
+      CREATIVITY_MODES.indexOf(creativityMode),
+    );
 
     try {
       const raw = await llmCall(prompt);
@@ -1240,13 +1356,13 @@ export class DreamEngine {
          LIMIT 3`,
       )
       .all(Date.now()) as Array<{
-        id: string;
-        type: string;
-        description: string;
-        priority: number;
-        region_id: string | null;
-        metadata: string;
-      }>;
+      id: string;
+      type: string;
+      description: string;
+      priority: number;
+      region_id: string | null;
+      metadata: string;
+    }>;
 
     if (targets.length === 0) {
       return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
@@ -1305,9 +1421,11 @@ export class DreamEngine {
       // Mark targets as explored (but not resolved — needs real new knowledge)
       for (const target of targets) {
         try {
-          this.db.prepare(
-            `UPDATE curiosity_targets SET metadata = json_set(COALESCE(metadata, '{}'), '$.explored', 1) WHERE id = ?`,
-          ).run(target.id);
+          this.db
+            .prepare(
+              `UPDATE curiosity_targets SET metadata = json_set(COALESCE(metadata, '{}'), '$.explored', 1) WHERE id = ?`,
+            )
+            .run(target.id);
         } catch {
           // json_set may not be available; skip gracefully
         }
@@ -1329,10 +1447,14 @@ export class DreamEngine {
               });
               if (result.ok && result.envelopes.length > 0) {
                 try {
-                  this.db.prepare(
-                    `UPDATE curiosity_targets SET metadata = json_set(COALESCE(metadata, '{}'), '$.externalResearched', 1) WHERE id = ?`,
-                  ).run(gap.id);
-                } catch { /* skip */ }
+                  this.db
+                    .prepare(
+                      `UPDATE curiosity_targets SET metadata = json_set(COALESCE(metadata, '{}'), '$.externalResearched', 1) WHERE id = ?`,
+                    )
+                    .run(gap.id);
+                } catch {
+                  /* skip */
+                }
               }
             }
           }
@@ -1398,10 +1520,7 @@ export class DreamEngine {
             sourceChunkIds: [candidate.skill.id],
             sourceClusterIds: [],
             dreamCycleId: cycleId,
-            importanceScore: Math.min(
-              1,
-              adjustedConfidence * candidate.skill.importance_score,
-            ),
+            importanceScore: Math.min(1, adjustedConfidence * candidate.skill.importance_score),
             accessCount: 0,
             lastAccessedAt: null,
             createdAt: now,
@@ -1424,7 +1543,12 @@ export class DreamEngine {
 
             if (verdict.accepted && verdict.confidence >= 0.6) {
               // Promote the mutation (git advance)
-              this.promoteSkillMutation(candidate.skill.id, result.content, verdict, result.strategy ?? undefined);
+              this.promoteSkillMutation(
+                candidate.skill.id,
+                result.content,
+                verdict,
+                result.strategy ?? undefined,
+              );
               log.debug("mutation promoted", {
                 skillId: candidate.skill.id,
                 delta: verdict.delta.toFixed(3),
@@ -1472,11 +1596,13 @@ export class DreamEngine {
       // Get current version info
       const row = this.db
         .prepare(`SELECT skill_version, governance_json, importance_score FROM chunks WHERE id = ?`)
-        .get(skillId) as {
-          skill_version: number | null;
-          governance_json: string | null;
-          importance_score: number;
-        } | undefined;
+        .get(skillId) as
+        | {
+            skill_version: number | null;
+            governance_json: string | null;
+            importance_score: number;
+          }
+        | undefined;
 
       if (!row) return;
 
@@ -1486,7 +1612,9 @@ export class DreamEngine {
       let governance: Record<string, unknown> = {};
       try {
         governance = row.governance_json ? JSON.parse(row.governance_json) : {};
-      } catch { /* empty */ }
+      } catch {
+        /* empty */
+      }
       governance.lastMutationPromotion = {
         strategy: strategy ?? "unknown",
         delta: verdict.delta,
@@ -1589,13 +1717,15 @@ export class DreamEngine {
     if (priorityIds && priorityIds.length > 0) {
       try {
         const placeholders = priorityIds.map(() => "?").join(",");
-        prioritySeeds = this.db.prepare(
-          `SELECT id, text, embedding, importance_score, access_count,
+        prioritySeeds = this.db
+          .prepare(
+            `SELECT id, text, embedding, importance_score, access_count,
                   COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                   COALESCE(dream_count, 0) as dream_count,
                   last_dreamed_at, emotional_valence
            FROM chunks WHERE id IN (${placeholders})`,
-        ).all(...priorityIds) as ChunkRow[];
+          )
+          .all(...priorityIds) as ChunkRow[];
       } catch {
         // Non-critical
       }
@@ -1605,9 +1735,11 @@ export class DreamEngine {
     // GCCRF-informed seed selection: use curiosity_reward (from GCCRF) when available,
     // fall back to curiosity_boost (from old heuristic engine) for backwards compatibility.
     // Dream count penalty: / (dream_count + 1) deprioritizes previously-dreamed chunks.
-    const normalSeeds = remaining > 0 ? this.db
-      .prepare(
-        `SELECT id, text, embedding, importance_score, access_count,
+    const normalSeeds =
+      remaining > 0
+        ? (this.db
+            .prepare(
+              `SELECT id, text, embedding, importance_score, access_count,
                 COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(dream_count, 0) as dream_count,
                 last_dreamed_at, emotional_valence
@@ -1619,8 +1751,9 @@ export class DreamEngine {
          ORDER BY (importance_score + COALESCE(curiosity_reward, curiosity_boost, 0.0))
                   / (COALESCE(dream_count, 0) + 1) DESC
          LIMIT ?`,
-      )
-      .all(this.config.minImportanceForDream, remaining) as ChunkRow[] : [];
+            )
+            .all(this.config.minImportanceForDream, remaining) as ChunkRow[])
+        : [];
 
     // Merge, deduplicate
     const seen = new Set<string>();
@@ -1670,17 +1803,11 @@ export class DreamEngine {
 
       if (cluster.length < 2) continue;
 
-      const centroid = computeCentroid(
-        cluster.map((id) => embeddings.get(id)!).filter(Boolean),
-      );
-      const keywords = this.extractKeywords(
-        cluster.map((id) => seedMap.get(id)?.text ?? ""),
-      );
+      const centroid = computeCentroid(cluster.map((id) => embeddings.get(id)!).filter(Boolean));
+      const keywords = this.extractKeywords(cluster.map((id) => seedMap.get(id)?.text ?? ""));
       const meanImportance =
-        cluster.reduce(
-          (sum, id) => sum + (seedMap.get(id)?.importance_score ?? 0),
-          0,
-        ) / cluster.length;
+        cluster.reduce((sum, id) => sum + (seedMap.get(id)?.importance_score ?? 0), 0) /
+        cluster.length;
 
       const mode = CREATIVITY_MODES[clusters.length % CREATIVITY_MODES.length]!;
 
@@ -1766,7 +1893,9 @@ export class DreamEngine {
   private countCuriosityTargets(): number {
     try {
       const row = this.db
-        .prepare(`SELECT COUNT(*) as c FROM curiosity_targets WHERE resolved_at IS NULL AND expires_at > ?`)
+        .prepare(
+          `SELECT COUNT(*) as c FROM curiosity_targets WHERE resolved_at IS NULL AND expires_at > ?`,
+        )
         .get(Date.now()) as { c: number };
       return row?.c ?? 0;
     } catch {
@@ -1825,9 +1954,9 @@ export class DreamEngine {
   /** Get total completed dream cycle count (used for creativity mode rotation). */
   private getCycleCount(): number {
     try {
-      const row = this.db.prepare(
-        `SELECT COUNT(*) as c FROM dream_cycles WHERE completed_at IS NOT NULL`,
-      ).get() as { c: number } | undefined;
+      const row = this.db
+        .prepare(`SELECT COUNT(*) as c FROM dream_cycles WHERE completed_at IS NOT NULL`)
+        .get() as { c: number } | undefined;
       return row?.c ?? 0;
     } catch {
       return 0;
@@ -1865,27 +1994,36 @@ export class DreamEngine {
     // Extrapolation decay: halve importance of unvalidated prediction insights
     // after 5+ dream cycles without retrieval. Prevents speculative noise.
     try {
-      const cycleCount = (this.db.prepare(
-        `SELECT COUNT(*) as c FROM dream_cycles WHERE completed_at IS NOT NULL`,
-      ).get() as { c: number })?.c ?? 0;
+      const cycleCount =
+        (
+          this.db
+            .prepare(`SELECT COUNT(*) as c FROM dream_cycles WHERE completed_at IS NOT NULL`)
+            .get() as { c: number }
+        )?.c ?? 0;
 
       if (cycleCount >= 5) {
-        const fiveCyclesAgo = this.db.prepare(
-          `SELECT started_at FROM dream_cycles WHERE completed_at IS NOT NULL
+        const fiveCyclesAgo = this.db
+          .prepare(
+            `SELECT started_at FROM dream_cycles WHERE completed_at IS NOT NULL
            ORDER BY started_at DESC LIMIT 1 OFFSET 4`,
-        ).get() as { started_at: number } | undefined;
+          )
+          .get() as { started_at: number } | undefined;
 
         if (fiveCyclesAgo) {
-          const decayed = this.db.prepare(
-            `UPDATE dream_insights SET importance_score = importance_score * 0.5
+          const decayed = this.db
+            .prepare(
+              `UPDATE dream_insights SET importance_score = importance_score * 0.5
              WHERE mode = 'extrapolation'
                AND COALESCE(access_count, 0) = 0
                AND created_at < ?
                AND importance_score > 0.05`,
-          ).run(fiveCyclesAgo.started_at);
+            )
+            .run(fiveCyclesAgo.started_at);
           const changes = (decayed as { changes: number }).changes;
           if (changes > 0) {
-            log.debug(`extrapolation decay: halved importance on ${changes} unvalidated predictions`);
+            log.debug(
+              `extrapolation decay: halved importance on ${changes} unvalidated predictions`,
+            );
           }
         }
       }
@@ -1900,8 +2038,8 @@ export class DreamEngine {
    * Insights from other modes pass through unchanged.
    */
   private applyRelevanceGate(insights: DreamInsight[], cycleId: string): DreamInsight[] {
-    const simInsights = insights.filter(i => i.mode === "simulation");
-    const otherInsights = insights.filter(i => i.mode !== "simulation");
+    const simInsights = insights.filter((i) => i.mode === "simulation");
+    const otherInsights = insights.filter((i) => i.mode !== "simulation");
 
     if (simInsights.length === 0) return insights;
 
@@ -1918,13 +2056,16 @@ export class DreamEngine {
       const sourceEmbs: number[][] = [];
       for (const chunkId of insight.sourceChunkIds) {
         try {
-          const row = this.db.prepare(`SELECT embedding FROM chunks WHERE id = ?`)
-            .get(chunkId) as { embedding: string } | undefined;
+          const row = this.db.prepare(`SELECT embedding FROM chunks WHERE id = ?`).get(chunkId) as
+            | { embedding: string }
+            | undefined;
           if (row) {
             const emb = parseEmbedding(row.embedding);
             if (emb.length > 0) sourceEmbs.push(emb);
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
 
       if (sourceEmbs.length === 0) {
@@ -1978,7 +2119,11 @@ export class DreamEngine {
     }
   }
 
-  private getRelatedSkills(skillId: string, semanticType: string | null | undefined, limit: number): Array<{ text: string; id: string }> {
+  private getRelatedSkills(
+    skillId: string,
+    semanticType: string | null | undefined,
+    limit: number,
+  ): Array<{ text: string; id: string }> {
     if (!semanticType) return [];
     try {
       return this.db

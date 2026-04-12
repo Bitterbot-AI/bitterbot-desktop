@@ -3,8 +3,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { cosineSimilarity, parseEmbedding } from "./internal.js";
 import type { DreamInsight, DreamMode } from "./dream-types.js";
+import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 export type DreamSearchResult = {
   id: string;
@@ -40,7 +40,9 @@ export function searchDreamInsights(
   const minScore = opts?.minScore ?? 0.3;
 
   const rows = db
-    .prepare(`SELECT id, content, embedding, confidence, mode, source_chunk_ids, dream_cycle_id, importance_score, access_count, created_at FROM dream_insights ORDER BY importance_score DESC LIMIT 200`)
+    .prepare(
+      `SELECT id, content, embedding, confidence, mode, source_chunk_ids, dream_cycle_id, importance_score, access_count, created_at FROM dream_insights ORDER BY importance_score DESC LIMIT 200`,
+    )
     .all() as InsightRow[];
 
   const scored: DreamSearchResult[] = [];

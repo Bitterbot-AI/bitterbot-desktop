@@ -1,3 +1,4 @@
+import type { A2aConfig } from "./types.a2a.js";
 import type { AgentBinding, AgentsConfig } from "./types.agents.js";
 import type { ApprovalsConfig } from "./types.approvals.js";
 import type { AuthConfig } from "./types.auth.js";
@@ -12,8 +13,6 @@ import type {
 } from "./types.gateway.js";
 import type { HooksConfig } from "./types.hooks.js";
 import type { MemoryConfig } from "./types.memory.js";
-import type { A2aConfig } from "./types.a2a.js";
-import type { P2pConfig } from "./types.p2p.js";
 import type {
   AudioConfig,
   BroadcastConfig,
@@ -22,6 +21,7 @@ import type {
 } from "./types.messages.js";
 import type { ModelsConfig } from "./types.models.js";
 import type { NodeHostConfig } from "./types.node-host.js";
+import type { P2pConfig } from "./types.p2p.js";
 import type { PluginsConfig } from "./types.plugins.js";
 import type { SkillsConfig } from "./types.skills.js";
 import type { ToolsConfig } from "./types.tools.js";

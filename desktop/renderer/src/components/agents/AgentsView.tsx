@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import {
-  useAgentsStore,
-  type AgentEntry,
-  type AgentFile,
-} from "../../stores/agents-store";
 import { cn } from "../../lib/utils";
+import { useAgentsStore, type AgentEntry, type AgentFile } from "../../stores/agents-store";
+import { useGatewayStore } from "../../stores/gateway-store";
 
 function AgentFilePanel({
   file,
@@ -31,9 +27,7 @@ function AgentFilePanel({
           )}
           {file.size != null && (
             <span className="text-[10px] text-muted-foreground">
-              {file.size < 1024
-                ? `${file.size}B`
-                : `${(file.size / 1024).toFixed(1)}KB`}
+              {file.size < 1024 ? `${file.size}B` : `${(file.size / 1024).toFixed(1)}KB`}
             </span>
           )}
         </div>
@@ -120,7 +114,8 @@ function FilesSections({
           </h4>
           <p className="text-[10px] text-muted-foreground px-1 mb-2">
             Safety axioms, hormonal homeostasis baselines, phenotype constraints, and core values.
-            This is your agent's DNA — it constrains how the Phenotype can evolve but never changes itself.
+            This is your agent's DNA — it constrains how the Phenotype can evolve but never changes
+            itself.
           </p>
           <div className="space-y-2">
             {genome.map((file) => (
@@ -136,8 +131,9 @@ function FilesSections({
             Working Memory — Emergent Identity
           </h4>
           <p className="text-[10px] text-muted-foreground px-1 mb-2">
-            Dream-synthesized every cycle: The Phenotype (self-concept), The Bond (user model),
-            The Niche (ecosystem role), Active Context, Crystal Pointers, Curiosity Gaps, Emerging Skills.
+            Dream-synthesized every cycle: The Phenotype (self-concept), The Bond (user model), The
+            Niche (ecosystem role), Active Context, Crystal Pointers, Curiosity Gaps, Emerging
+            Skills.
           </p>
           <div className="space-y-2">
             {memory.map((file) => (
@@ -153,7 +149,8 @@ function FilesSections({
             Protocols — Operating Procedures
           </h4>
           <p className="text-[10px] text-muted-foreground px-1 mb-2">
-            Runtime behavior, memory conventions, safety rules, tools config. These govern what the agent does, not who it is.
+            Runtime behavior, memory conventions, safety rules, tools config. These govern what the
+            agent does, not who it is.
           </p>
           <div className="space-y-2">
             {protocols.map((file) => (
@@ -194,13 +191,9 @@ function AgentDetail({
     <div className="space-y-4">
       <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
         <div className="flex items-center gap-3 mb-3">
-          {agent.avatar && (
-            <span className="text-2xl">{agent.avatar}</span>
-          )}
+          {agent.avatar && <span className="text-2xl">{agent.avatar}</span>}
           <div>
-            <h3 className="text-lg font-semibold text-foreground">
-              {agent.name ?? agent.id}
-            </h3>
+            <h3 className="text-lg font-semibold text-foreground">{agent.name ?? agent.id}</h3>
             <p className="text-xs text-muted-foreground font-mono">{agent.id}</p>
           </div>
           {agent.isDefault && (
@@ -226,9 +219,7 @@ function AgentDetail({
       </div>
 
       {filesLoading ? (
-        <div className="p-4 text-sm text-muted-foreground text-center">
-          Loading files…
-        </div>
+        <div className="p-4 text-sm text-muted-foreground text-center">Loading files…</div>
       ) : (
         <FilesSections files={files} agentId={agent.id} onSaveFile={onSaveFile} />
       )}
@@ -351,17 +342,11 @@ export function AgentsView() {
                   )}
                 >
                   <div className="flex items-center gap-1.5">
-                    {agent.avatar && (
-                      <span className="text-sm">{agent.avatar}</span>
-                    )}
-                    <span className="truncate">
-                      {agent.name ?? agent.id}
-                    </span>
+                    {agent.avatar && <span className="text-sm">{agent.avatar}</span>}
+                    <span className="truncate">{agent.name ?? agent.id}</span>
                   </div>
                   {agent.isDefault && (
-                    <span className="text-[10px] text-purple-400/60">
-                      default
-                    </span>
+                    <span className="text-[10px] text-purple-400/60">default</span>
                   )}
                 </button>
               ))}

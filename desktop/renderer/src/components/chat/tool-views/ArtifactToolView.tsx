@@ -1,8 +1,8 @@
+import { Code, ExternalLink } from "lucide-react";
+import { useCallback } from "react";
 import type { ToolViewProps } from "./ToolViewRegistry";
 import { useArtifactStore } from "../../../stores/artifact-store";
 import { useUIStore } from "../../../stores/ui-store";
-import { Code, ExternalLink } from "lucide-react";
-import { useCallback } from "react";
 
 /**
  * Tool view for the create_artifact tool call.
@@ -31,9 +31,7 @@ export function ArtifactToolView({ toolCall }: ToolViewProps) {
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/60 border-b border-zinc-800/50">
         <Code className="w-3.5 h-3.5 text-blue-400" />
-        <span className="text-xs font-medium text-zinc-300">
-          Create Artifact
-        </span>
+        <span className="text-xs font-medium text-zinc-300">Create Artifact</span>
       </div>
 
       <div className="flex-1 overflow-auto p-3 space-y-3">
@@ -47,9 +45,7 @@ export function ArtifactToolView({ toolCall }: ToolViewProps) {
           </div>
 
           {identifier && (
-            <div className="text-xs text-muted-foreground/60 font-mono">
-              id: {identifier}
-            </div>
+            <div className="text-xs text-muted-foreground/60 font-mono">id: {identifier}</div>
           )}
         </div>
 

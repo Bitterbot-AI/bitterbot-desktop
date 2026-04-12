@@ -52,7 +52,8 @@ tool surface those skills teach.
 Browse community skills on [GitHub](https://github.com/bitterbot/bitterbot). Skills propagate automatically via the P2P network — nodes share proven skills with peers based on execution success and trust scores.
 
 Install a skill into your workspace:
-  - `bitterbot skills install <skill-name>`
+
+- `bitterbot skills install <skill-name>`
 
 Bitterbot picks up workspace skills from `<workspace>/skills` on the next session.
 
@@ -194,7 +195,7 @@ Bundled/managed skills can be toggled and supplied with env values:
           model: "nano-pro",
         },
       },
-      
+
       sag: { enabled: false },
     },
   },

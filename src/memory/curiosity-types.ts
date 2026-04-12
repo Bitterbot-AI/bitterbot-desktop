@@ -27,11 +27,7 @@ export type SearchQueryRecord = {
   timestamp: number;
 };
 
-export type ExplorationTargetType =
-  | "knowledge_gap"
-  | "contradiction"
-  | "stale_region"
-  | "frontier";
+export type ExplorationTargetType = "knowledge_gap" | "contradiction" | "stale_region" | "frontier";
 
 export type ExplorationTarget = {
   id: string;
@@ -118,7 +114,9 @@ export type CuriosityConfig = {
   /** Score threshold below which a query indicates a gap. Default: 0.5. */
   gapScoreThreshold?: number;
   /** GCCRF reward function configuration. When provided, GCCRF replaces heuristic scoring. */
-  gccrf?: import("./gccrf-reward.js").GCCRFConfig | Partial<import("./gccrf-reward.js").GCCRFConfig>;
+  gccrf?:
+    | import("./gccrf-reward.js").GCCRFConfig
+    | Partial<import("./gccrf-reward.js").GCCRFConfig>;
 };
 
 export const DEFAULT_CURIOSITY_WEIGHTS: CuriosityWeights = {

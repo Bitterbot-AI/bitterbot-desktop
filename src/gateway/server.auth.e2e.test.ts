@@ -772,7 +772,10 @@ describe("gateway server auth/connect", () => {
     // Connect with WRONG shared token but CORRECT deviceToken field
     const ws2 = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise<void>((resolve) => ws2.once("open", resolve));
-    const res2 = await connectReq(ws2, { token: "wrong-shared-token", deviceToken: String(deviceToken) });
+    const res2 = await connectReq(ws2, {
+      token: "wrong-shared-token",
+      deviceToken: String(deviceToken),
+    });
     expect(res2.ok).toBe(true);
 
     ws2.close();

@@ -4,34 +4,32 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createConnection, type Socket } from "node:net";
 import { randomUUID } from "node:crypto";
+import { createConnection, type Socket } from "node:net";
 import { createInterface } from "node:readline";
 import type { P2pConfig } from "../config/types.p2p.js";
-import { resolveBootstrapDns, mergeBootstrapPeers } from "./dns-bootstrap.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import {
-  formatBinaryNotFoundMessage,
-  probeOrchestratorBinary,
-} from "./orchestrator-binary.js";
+import { resolveBootstrapDns, mergeBootstrapPeers } from "./dns-bootstrap.js";
+import { formatBinaryNotFoundMessage, probeOrchestratorBinary } from "./orchestrator-binary.js";
 
 const log = createSubsystemLogger("p2p/orchestrator");
 
-const DEFAULT_IPC_PATH = process.platform === "win32"
-  ? "\\\\.\\pipe\\bitterbot-orchestrator"
-  : "/tmp/bitterbot-orchestrator.sock";
+const DEFAULT_IPC_PATH =
+  process.platform === "win32"
+    ? "\\\\.\\pipe\\bitterbot-orchestrator"
+    : "/tmp/bitterbot-orchestrator.sock";
 const RECONNECT_DELAY_MS = 3000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 
 type SkillReceivedEvent = {
   version: number;
-  skill_md: string;      // base64
+  skill_md: string; // base64
   name: string;
   author_peer_id: string;
-  author_pubkey: string;  // base64
-  signature: string;      // base64
+  author_pubkey: string; // base64
+  signature: string; // base64
   timestamp: number;
-  content_hash: string;   // sha256 hex
+  content_hash: string; // sha256 hex
 };
 
 type PendingRequest = {
@@ -70,24 +68,48 @@ export class OrchestratorBridge {
   private skillReceivedCallbacks: Array<(event: SkillReceivedEvent) => void> = [];
   private peerConnectedCallbacks: Array<(peerId: string, addrs: string[]) => void> = [];
   private peerDisconnectedCallbacks: Array<(peerId: string) => void> = [];
-  private peerIdentifiedCallbacks: Array<(event: { peer_id: string; tier: string; verified: boolean; pubkey: string }) => void> = [];
-  private weatherReceivedCallbacks: Array<(event: {
-    global_cortisol_spike: number; duration_ms: number; reason: string;
-    management_pubkey: string; timestamp: number;
-  }) => void> = [];
-  private bountyReceivedCallbacks: Array<(event: {
-    bounty_id: string; target_type: string; description: string;
-    priority: number; reward_multiplier: number; region_hint?: string;
-    expires_at: number; management_pubkey: string; timestamp: number;
-  }) => void> = [];
-  private telemetryReceivedCallbacks: Array<(event: {
-    signal_type: string; data: unknown;
-    author_peer_id: string; timestamp: number;
-  }) => void> = [];
-  private queryReceivedCallbacks: Array<(event: {
-    query_id: string; query: string; domain_hint?: string;
-    author_peer_id: string; timestamp: number;
-  }) => void> = [];
+  private peerIdentifiedCallbacks: Array<
+    (event: { peer_id: string; tier: string; verified: boolean; pubkey: string }) => void
+  > = [];
+  private weatherReceivedCallbacks: Array<
+    (event: {
+      global_cortisol_spike: number;
+      duration_ms: number;
+      reason: string;
+      management_pubkey: string;
+      timestamp: number;
+    }) => void
+  > = [];
+  private bountyReceivedCallbacks: Array<
+    (event: {
+      bounty_id: string;
+      target_type: string;
+      description: string;
+      priority: number;
+      reward_multiplier: number;
+      region_hint?: string;
+      expires_at: number;
+      management_pubkey: string;
+      timestamp: number;
+    }) => void
+  > = [];
+  private telemetryReceivedCallbacks: Array<
+    (event: {
+      signal_type: string;
+      data: unknown;
+      author_peer_id: string;
+      timestamp: number;
+    }) => void
+  > = [];
+  private queryReceivedCallbacks: Array<
+    (event: {
+      query_id: string;
+      query: string;
+      domain_hint?: string;
+      author_peer_id: string;
+      timestamp: number;
+    }) => void
+  > = [];
   /** Bootstrap peers after merging config + DNS discovery. */
   private resolvedBootstrapPeers: string[] | null = null;
 
@@ -106,10 +128,7 @@ export class OrchestratorBridge {
     // Resolve DNS bootstrap peers before starting the orchestrator
     if (this.config.bootstrapDns) {
       const dnsPeers = await resolveBootstrapDns(this.config.bootstrapDns);
-      this.resolvedBootstrapPeers = mergeBootstrapPeers(
-        this.config.bootstrapPeers,
-        dnsPeers,
-      );
+      this.resolvedBootstrapPeers = mergeBootstrapPeers(this.config.bootstrapPeers, dnsPeers);
     }
 
     let binary: string;
@@ -252,39 +271,73 @@ export class OrchestratorBridge {
     };
   }
 
-  onPeerIdentified(callback: (event: { peer_id: string; tier: string; verified: boolean; pubkey: string }) => void): () => void {
+  onPeerIdentified(
+    callback: (event: { peer_id: string; tier: string; verified: boolean; pubkey: string }) => void,
+  ): () => void {
     this.peerIdentifiedCallbacks.push(callback);
-    return () => { this.peerIdentifiedCallbacks = this.peerIdentifiedCallbacks.filter(cb => cb !== callback); };
+    return () => {
+      this.peerIdentifiedCallbacks = this.peerIdentifiedCallbacks.filter((cb) => cb !== callback);
+    };
   }
 
-  onWeatherReceived(callback: (event: {
-    global_cortisol_spike: number; duration_ms: number; reason: string;
-    management_pubkey: string; timestamp: number;
-  }) => void): () => void {
+  onWeatherReceived(
+    callback: (event: {
+      global_cortisol_spike: number;
+      duration_ms: number;
+      reason: string;
+      management_pubkey: string;
+      timestamp: number;
+    }) => void,
+  ): () => void {
     this.weatherReceivedCallbacks.push(callback);
-    return () => { this.weatherReceivedCallbacks = this.weatherReceivedCallbacks.filter(cb => cb !== callback); };
+    return () => {
+      this.weatherReceivedCallbacks = this.weatherReceivedCallbacks.filter((cb) => cb !== callback);
+    };
   }
 
-  onBountyReceived(callback: (event: {
-    bounty_id: string; target_type: string; description: string;
-    priority: number; reward_multiplier: number; region_hint?: string;
-    expires_at: number; management_pubkey: string; timestamp: number;
-  }) => void): () => void {
+  onBountyReceived(
+    callback: (event: {
+      bounty_id: string;
+      target_type: string;
+      description: string;
+      priority: number;
+      reward_multiplier: number;
+      region_hint?: string;
+      expires_at: number;
+      management_pubkey: string;
+      timestamp: number;
+    }) => void,
+  ): () => void {
     this.bountyReceivedCallbacks.push(callback);
-    return () => { this.bountyReceivedCallbacks = this.bountyReceivedCallbacks.filter(cb => cb !== callback); };
+    return () => {
+      this.bountyReceivedCallbacks = this.bountyReceivedCallbacks.filter((cb) => cb !== callback);
+    };
   }
 
   async signAsManagement(skillMdBase64: string, name: string): Promise<unknown> {
     return this.sendCommand("sign_as_management", { skill_md: skillMdBase64, name });
   }
 
-  async publishWeather(cortisolSpike: number, durationMs: number, reason: string): Promise<unknown> {
-    return this.sendCommand("publish_weather", { global_cortisol_spike: cortisolSpike, duration_ms: durationMs, reason });
+  async publishWeather(
+    cortisolSpike: number,
+    durationMs: number,
+    reason: string,
+  ): Promise<unknown> {
+    return this.sendCommand("publish_weather", {
+      global_cortisol_spike: cortisolSpike,
+      duration_ms: durationMs,
+      reason,
+    });
   }
 
   async publishBounty(bounty: {
-    bounty_id: string; target_type: string; description: string;
-    priority: number; reward_multiplier: number; expires_at: number; region_hint?: string;
+    bounty_id: string;
+    target_type: string;
+    description: string;
+    priority: number;
+    reward_multiplier: number;
+    expires_at: number;
+    region_hint?: string;
   }): Promise<unknown> {
     return this.sendCommand("publish_bounty", bounty);
   }
@@ -297,20 +350,35 @@ export class OrchestratorBridge {
     return this.sendCommand("publish_query", { query_id: queryId, query, domain_hint: domainHint });
   }
 
-  onTelemetryReceived(callback: (event: {
-    signal_type: string; data: unknown;
-    author_peer_id: string; timestamp: number;
-  }) => void): () => void {
+  onTelemetryReceived(
+    callback: (event: {
+      signal_type: string;
+      data: unknown;
+      author_peer_id: string;
+      timestamp: number;
+    }) => void,
+  ): () => void {
     this.telemetryReceivedCallbacks.push(callback);
-    return () => { this.telemetryReceivedCallbacks = this.telemetryReceivedCallbacks.filter(cb => cb !== callback); };
+    return () => {
+      this.telemetryReceivedCallbacks = this.telemetryReceivedCallbacks.filter(
+        (cb) => cb !== callback,
+      );
+    };
   }
 
-  onQueryReceived(callback: (event: {
-    query_id: string; query: string; domain_hint?: string;
-    author_peer_id: string; timestamp: number;
-  }) => void): () => void {
+  onQueryReceived(
+    callback: (event: {
+      query_id: string;
+      query: string;
+      domain_hint?: string;
+      author_peer_id: string;
+      timestamp: number;
+    }) => void,
+  ): () => void {
     this.queryReceivedCallbacks.push(callback);
-    return () => { this.queryReceivedCallbacks = this.queryReceivedCallbacks.filter(cb => cb !== callback); };
+    return () => {
+      this.queryReceivedCallbacks = this.queryReceivedCallbacks.filter((cb) => cb !== callback);
+    };
   }
 
   private async connectIpc(): Promise<void> {
@@ -324,9 +392,8 @@ export class OrchestratorBridge {
     return new Promise((resolve, reject) => {
       // On Windows, the orchestrator listens on TCP 19002 (named pipe TODO).
       // On Unix, connects via Unix domain socket.
-      const connectTarget = process.platform === "win32"
-        ? { host: "127.0.0.1", port: 19002 }
-        : { path: this.ipcPath };
+      const connectTarget =
+        process.platform === "win32" ? { host: "127.0.0.1", port: 19002 } : { path: this.ipcPath };
       let settled = false;
       const socket = createConnection(connectTarget, () => {
         settled = true;
@@ -417,54 +484,93 @@ export class OrchestratorBridge {
       }
 
       if (msg.type === "peer_identified") {
-        const payload = msg.payload as { peer_id: string; tier: string; verified: boolean; pubkey: string };
+        const payload = msg.payload as {
+          peer_id: string;
+          tier: string;
+          verified: boolean;
+          pubkey: string;
+        };
         for (const cb of this.peerIdentifiedCallbacks) {
-          try { cb(payload); } catch (err) { log.warn(`peer_identified callback error: ${String(err)}`); }
+          try {
+            cb(payload);
+          } catch (err) {
+            log.warn(`peer_identified callback error: ${String(err)}`);
+          }
         }
         return;
       }
 
       if (msg.type === "weather_received") {
         const payload = msg.payload as {
-          global_cortisol_spike: number; duration_ms: number; reason: string;
-          management_pubkey: string; timestamp: number;
+          global_cortisol_spike: number;
+          duration_ms: number;
+          reason: string;
+          management_pubkey: string;
+          timestamp: number;
         };
         for (const cb of this.weatherReceivedCallbacks) {
-          try { cb(payload); } catch (err) { log.warn(`weather_received callback error: ${String(err)}`); }
+          try {
+            cb(payload);
+          } catch (err) {
+            log.warn(`weather_received callback error: ${String(err)}`);
+          }
         }
         return;
       }
 
       if (msg.type === "bounty_received") {
         const payload = msg.payload as {
-          bounty_id: string; target_type: string; description: string;
-          priority: number; reward_multiplier: number; region_hint?: string;
-          expires_at: number; management_pubkey: string; timestamp: number;
+          bounty_id: string;
+          target_type: string;
+          description: string;
+          priority: number;
+          reward_multiplier: number;
+          region_hint?: string;
+          expires_at: number;
+          management_pubkey: string;
+          timestamp: number;
         };
         for (const cb of this.bountyReceivedCallbacks) {
-          try { cb(payload); } catch (err) { log.warn(`bounty_received callback error: ${String(err)}`); }
+          try {
+            cb(payload);
+          } catch (err) {
+            log.warn(`bounty_received callback error: ${String(err)}`);
+          }
         }
         return;
       }
 
       if (msg.type === "telemetry_received") {
         const payload = msg.payload as {
-          signal_type: string; data: unknown;
-          author_peer_id: string; timestamp: number;
+          signal_type: string;
+          data: unknown;
+          author_peer_id: string;
+          timestamp: number;
         };
         for (const cb of this.telemetryReceivedCallbacks) {
-          try { cb(payload); } catch (err) { log.warn(`telemetry_received callback error: ${String(err)}`); }
+          try {
+            cb(payload);
+          } catch (err) {
+            log.warn(`telemetry_received callback error: ${String(err)}`);
+          }
         }
         return;
       }
 
       if (msg.type === "query_received") {
         const payload = msg.payload as {
-          query_id: string; query: string; domain_hint?: string;
-          author_peer_id: string; timestamp: number;
+          query_id: string;
+          query: string;
+          domain_hint?: string;
+          author_peer_id: string;
+          timestamp: number;
         };
         for (const cb of this.queryReceivedCallbacks) {
-          try { cb(payload); } catch (err) { log.warn(`query_received callback error: ${String(err)}`); }
+          try {
+            cb(payload);
+          } catch (err) {
+            log.warn(`query_received callback error: ${String(err)}`);
+          }
         }
         return;
       }
@@ -481,7 +587,11 @@ export class OrchestratorBridge {
         return;
       }
       if (msg.type === "relay_circuit_established") {
-        const p = msg.payload as { relay_peer_id?: string; src_peer_id?: string; direction: string };
+        const p = msg.payload as {
+          relay_peer_id?: string;
+          src_peer_id?: string;
+          direction: string;
+        };
         log.info(`Relay circuit established (${p.direction})`);
         return;
       }

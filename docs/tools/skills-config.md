@@ -31,7 +31,7 @@ All skills-related configuration lives under `skills` in `~/.bitterbot/bitterbot
           GEMINI_API_KEY: "GEMINI_KEY_HERE",
         },
       },
-      
+
       sag: { enabled: false },
     },
   },

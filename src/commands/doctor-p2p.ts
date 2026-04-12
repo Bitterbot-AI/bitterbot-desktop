@@ -83,10 +83,8 @@ async function queryLiveStats(
     const data = (await res.json()) as Record<string, unknown>;
     return {
       peerId: typeof data.peer_id === "string" ? data.peer_id : undefined,
-      connectedPeers:
-        typeof data.connected_peers === "number" ? data.connected_peers : undefined,
-      meshPeers:
-        typeof data.mesh_peers_count === "number" ? data.mesh_peers_count : undefined,
+      connectedPeers: typeof data.connected_peers === "number" ? data.connected_peers : undefined,
+      meshPeers: typeof data.mesh_peers_count === "number" ? data.mesh_peers_count : undefined,
       subscribedTopics: Array.isArray(data.subscribed_topics)
         ? (data.subscribed_topics.filter((t) => typeof t === "string") as string[])
         : undefined,
@@ -177,9 +175,7 @@ export async function runP2pNetworkChecks(params: {
       const probeResult = await probeTcpReachable(parsed.host, parsed.port, 3000);
       if (probeResult.reachable) {
         const rtt = probeResult.rttMs != null ? ` (${probeResult.rttMs}ms)` : "";
-        results.push(
-          ok(`Fallback peer ${parsed.host}:${parsed.port} reachable via TCP${rtt}`),
-        );
+        results.push(ok(`Fallback peer ${parsed.host}:${parsed.port} reachable via TCP${rtt}`));
         if (fallbackPeers.length > 1) {
           results.push(
             info(

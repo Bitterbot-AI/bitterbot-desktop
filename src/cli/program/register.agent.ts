@@ -153,7 +153,10 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.bitterbot.ai/cli/ag
         `
 ${theme.heading("Examples:")}
 ${formatHelpExamples([
-  ['bitterbot agents set-identity --agent main --name "Bitterbot" --emoji "🦞"', "Set name + emoji."],
+  [
+    'bitterbot agents set-identity --agent main --name "Bitterbot" --emoji "🦞"',
+    "Set name + emoji.",
+  ],
   ["bitterbot agents set-identity --agent main --avatar avatars/bitterbot.png", "Set avatar path."],
   ['bitterbot agents set-identity --agent main --theme "friendly companion"', "Set theme."],
 ])}

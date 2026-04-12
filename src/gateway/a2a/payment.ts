@@ -9,8 +9,8 @@
 import type { IncomingMessage } from "node:http";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type { MarketplaceEconomics } from "../../memory/marketplace-economics.js";
-import { getHeader } from "../http-utils.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { getHeader } from "../http-utils.js";
 
 const log = createSubsystemLogger("a2a/payment");
 
@@ -58,8 +58,7 @@ export async function verifyA2aPayment(
 ): Promise<PaymentGateResult> {
   // Check x402 payment headers — accept both custom and x402 v2 standard headers
   // x402 v2 spec: client sends PAYMENT-SIGNATURE header (Base64 JSON)
-  const paymentHeader = getHeader(req, "x-payment")
-    ?? getHeader(req, "payment-signature");  // x402 v2 standard header
+  const paymentHeader = getHeader(req, "x-payment") ?? getHeader(req, "payment-signature"); // x402 v2 standard header
   const paymentToken = getHeader(req, "x-payment-token");
 
   if (!paymentHeader && !paymentToken) {
@@ -98,15 +97,16 @@ export async function verifyA2aPayment(
       // Resolve skill ID from explicit param or by matching task text against listings
       let resolvedSkillId = rpcParams?.skillId;
       if (!resolvedSkillId && marketplace) {
-        const taskText = rpcParams?.message?.parts
-          ?.filter((p) => p.type === "text")
-          .map((p) => p.text ?? "")
-          .join(" ")
-          .toLowerCase() ?? "";
+        const taskText =
+          rpcParams?.message?.parts
+            ?.filter((p) => p.type === "text")
+            .map((p) => p.text ?? "")
+            .join(" ")
+            .toLowerCase() ?? "";
         if (taskText) {
           const listings = marketplace.getListableSkills();
-          const match = listings.find((l) =>
-            taskText.includes(l.name.toLowerCase()) || taskText.includes(l.skillCrystalId),
+          const match = listings.find(
+            (l) => taskText.includes(l.name.toLowerCase()) || taskText.includes(l.skillCrystalId),
           );
           resolvedSkillId = match?.skillCrystalId;
         }

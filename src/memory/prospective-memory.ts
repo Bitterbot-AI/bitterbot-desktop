@@ -13,8 +13,8 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import { cosineSimilarity, parseEmbedding } from "./internal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 const log = createSubsystemLogger("memory/prospective");
 
@@ -127,10 +127,7 @@ export class ProspectiveMemoryEngine {
    * 1. Semantic: cosine similarity of message embedding vs trigger embedding
    * 2. Keyword: substring match of trigger_condition in message text
    */
-  checkTriggers(params: {
-    messageText: string;
-    messageEmbedding?: number[];
-  }): ProspectiveMemory[] {
+  checkTriggers(params: { messageText: string; messageEmbedding?: number[] }): ProspectiveMemory[] {
     if (!this.config.enabled) return [];
 
     const now = Date.now();
@@ -197,9 +194,7 @@ export class ProspectiveMemoryEngine {
   cleanExpired(): number {
     try {
       const result = this.db
-        .prepare(
-          `DELETE FROM prospective_memories WHERE expires_at IS NOT NULL AND expires_at < ?`,
-        )
+        .prepare(`DELETE FROM prospective_memories WHERE expires_at IS NOT NULL AND expires_at < ?`)
         .run(Date.now());
       return (result as { changes: number }).changes;
     } catch {

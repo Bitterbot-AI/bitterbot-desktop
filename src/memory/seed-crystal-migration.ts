@@ -7,9 +7,9 @@
  * `meta` table.
  */
 import type { DatabaseSync } from "node:sqlite";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory:seed-migration");
@@ -44,9 +44,9 @@ export async function runSeedCrystalMigration(params: {
 
   // Check if already migrated
   try {
-    const row = db
-      .prepare(`SELECT value FROM meta WHERE key = ?`)
-      .get(SEED_MIGRATION_KEY) as { value: string } | undefined;
+    const row = db.prepare(`SELECT value FROM meta WHERE key = ?`).get(SEED_MIGRATION_KEY) as
+      | { value: string }
+      | undefined;
     if (row?.value === "true") {
       return;
     }
@@ -111,12 +111,12 @@ export async function runSeedCrystalMigration(params: {
         (i + 1) * 100,
         chunk,
         hash,
-        "pending",       // placeholder model — will be backfilled on next sync
-        "[]",            // placeholder embedding — will be backfilled on next sync
-        0.75,            // moderately high — natural lifecycle will handle decay
-        "consolidated",  // let the dream engine promote or decay naturally
+        "pending", // placeholder model — will be backfilled on next sync
+        "[]", // placeholder embedding — will be backfilled on next sync
+        0.75, // moderately high — natural lifecycle will handle decay
+        "consolidated", // let the dream engine promote or decay naturally
         "general",
-        1,               // access_count
+        1, // access_count
         now,
         now,
         now,
@@ -127,7 +127,9 @@ export async function runSeedCrystalMigration(params: {
     }
   }
 
-  log.info(`seed migration: inserted ${inserted} consolidated crystals from MEMORY.md (${chunks.length} chunks)`);
+  log.info(
+    `seed migration: inserted ${inserted} consolidated crystals from MEMORY.md (${chunks.length} chunks)`,
+  );
   markDone(db);
 }
 
@@ -160,9 +162,9 @@ export async function runSkillBootstrap(params: {
 
   // Check if already bootstrapped
   try {
-    const row = db
-      .prepare(`SELECT value FROM meta WHERE key = ?`)
-      .get(SKILL_BOOTSTRAP_KEY) as { value: string } | undefined;
+    const row = db.prepare(`SELECT value FROM meta WHERE key = ?`).get(SKILL_BOOTSTRAP_KEY) as
+      | { value: string }
+      | undefined;
     if (row?.value === "true") {
       return;
     }
@@ -205,12 +207,18 @@ export async function runSkillBootstrap(params: {
       try {
         content = await fs.readFile(path.join(skillsDir, folder, filename), "utf-8");
         break;
-      } catch { /* try next */ }
+      } catch {
+        /* try next */
+      }
     }
     if (!content?.trim()) continue;
 
     // Deterministic UUID from folder name for idempotent re-runs
-    const stableId = crypto.createHash("sha256").update(`skill:${folder}`).digest("hex").slice(0, 32);
+    const stableId = crypto
+      .createHash("sha256")
+      .update(`skill:${folder}`)
+      .digest("hex")
+      .slice(0, 32);
     const deterministicUuid = [
       stableId.slice(0, 8),
       stableId.slice(8, 12),
@@ -230,13 +238,13 @@ export async function runSkillBootstrap(params: {
         0,
         content.trim(),
         hash,
-        "bootstrap",       // placeholder model
-        "[]",              // placeholder embedding
-        0.7,               // moderately high importance
-        "frozen",          // frozen = stable, won't decay
+        "bootstrap", // placeholder model
+        "[]", // placeholder embedding
+        0.7, // moderately high importance
+        "frozen", // frozen = stable, won't decay
         "skill",
         "skill",
-        folder,            // skill_category = folder name
+        folder, // skill_category = folder name
         deterministicUuid, // stable_skill_id
         1,
         now,

@@ -88,7 +88,9 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
     <div className="min-h-screen flex items-center justify-center bg-background text-foreground px-6">
       <div className="w-full max-w-xl space-y-6">
         <header className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Connect to your Bitterbot gateway</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Connect to your Bitterbot gateway
+          </h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
             The Control UI needs a running Bitterbot gateway and an auth token to connect. If you
             already ran <code className="px-1 py-0.5 bg-muted rounded">pnpm bitterbot onboard</code>
@@ -97,8 +99,13 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             you're seeing this screen, that file is missing or this browser doesn't have it cached.
           </p>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Start the gateway in a terminal with <code className="px-1 py-0.5 bg-muted rounded">pnpm start gateway</code>, then paste your token below. You can find it at{" "}
-            <code className="px-1 py-0.5 bg-muted rounded">~/.bitterbot/bitterbot.json → gateway.auth.token</code>.
+            Start the gateway in a terminal with{" "}
+            <code className="px-1 py-0.5 bg-muted rounded">pnpm start gateway</code>, then paste
+            your token below. You can find it at{" "}
+            <code className="px-1 py-0.5 bg-muted rounded">
+              ~/.bitterbot/bitterbot.json → gateway.auth.token
+            </code>
+            .
           </p>
         </header>
 
@@ -185,15 +192,15 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
         <footer className="text-xs text-muted-foreground border-t border-border/40 pt-4 space-y-1">
           <p>
             Need to start the gateway?{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-[11px]">pnpm start gateway</code>{" "}
-            or{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-[11px]">pnpm dev:all</code>{" "}
-            (spawns gateway + Control UI in one terminal).
+            <code className="px-1 py-0.5 bg-muted rounded text-[11px]">pnpm start gateway</code> or{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-[11px]">pnpm dev:all</code> (spawns
+            gateway + Control UI in one terminal).
           </p>
           <p>
             Don't have a token yet?{" "}
             <code className="px-1 py-0.5 bg-muted rounded text-[11px]">pnpm bitterbot onboard</code>{" "}
-            walks you through full setup and auto-generates <code className="px-1 py-0.5 bg-muted rounded text-[11px]">desktop/.env</code>.
+            walks you through full setup and auto-generates{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-[11px]">desktop/.env</code>.
           </p>
         </footer>
       </div>

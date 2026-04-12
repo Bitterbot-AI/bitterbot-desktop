@@ -9,12 +9,12 @@
  * - Damasio, A.R. (1994). Descartes' Error.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import type { DatabaseSync } from "node:sqlite";
-import { createBenchmarkDb } from "../db-setup.js";
-import { insertChunk } from "../helpers.js";
+import { describe, it, expect, beforeEach } from "vitest";
 import { EpistemicDirectiveEngine } from "../../../src/memory/epistemic-directives.js";
 import { assessSomaticMarkers } from "../../../src/memory/somatic-markers.js";
+import { createBenchmarkDb } from "../db-setup.js";
+import { insertChunk } from "../helpers.js";
 import { ScenarioScorer, SuiteScorer } from "../scoring.js";
 
 const suite = new SuiteScorer("Identity Continuity", "05-identity", 15, 15);
@@ -52,10 +52,18 @@ describe("BioMemEval > Identity Continuity", () => {
       priority: 0.3,
     });
 
-    s.score("all 4 directives created", [d1, d2, d3, d4].every((d) => d !== null), 1);
+    s.score(
+      "all 4 directives created",
+      [d1, d2, d3, d4].every((d) => d !== null),
+      1,
+    );
 
     const session = directives.getDirectivesForSession();
-    s.score("getDirectivesForSession returns top directives", session.length > 0 && session.length <= 2, 1);
+    s.score(
+      "getDirectivesForSession returns top directives",
+      session.length > 0 && session.length <= 2,
+      1,
+    );
     s.score(
       "highest priority directive is first",
       session[0]?.priority === 0.9 || (session[0]?.priority ?? 0) >= (session[1]?.priority ?? 0),
@@ -93,14 +101,12 @@ describe("BioMemEval > Identity Continuity", () => {
 
     // d1 should no longer appear in session directives
     const session = directives.getDirectivesForSession();
-    s.score(
-      "resolved directive excluded from session",
-      !session.some((d) => d.id === d1!.id),
-      1,
-    );
+    s.score("resolved directive excluded from session", !session.some((d) => d.id === d1!.id), 1);
 
     // Verify resolution is stored
-    const row = db.prepare("SELECT resolution, resolved_at FROM epistemic_directives WHERE id = ?").get(d1!.id) as any;
+    const row = db
+      .prepare("SELECT resolution, resolved_at FROM epistemic_directives WHERE id = ?")
+      .get(d1!.id) as any;
     s.score(
       "resolution stored correctly",
       row?.resolution === "It's PostgreSQL 15" && row?.resolved_at !== null,
@@ -129,7 +135,12 @@ describe("BioMemEval > Identity Continuity", () => {
     });
 
     // Should be deduplicated: only 1 directive exists
-    const count = (db.prepare("SELECT COUNT(*) as c FROM epistemic_directives WHERE resolved_at IS NULL").get() as any)?.c ?? 0;
+    const count =
+      (
+        db
+          .prepare("SELECT COUNT(*) as c FROM epistemic_directives WHERE resolved_at IS NULL")
+          .get() as any
+      )?.c ?? 0;
 
     s.score("only 1 unresolved directive exists (deduped)", count === 1, 1.5);
 
@@ -152,28 +163,40 @@ describe("BioMemEval > Identity Continuity", () => {
     // Create high-cortisol, negative-steering chunks (danger zone)
     const cautionIds: string[] = [];
     for (let i = 0; i < 5; i++) {
-      cautionIds.push(insertChunk(db, {
-        hormonal_cortisol: 0.8,
-        steering_reward: -0.5,
-        hormonal_dopamine: 0.1,
-      }));
+      cautionIds.push(
+        insertChunk(db, {
+          hormonal_cortisol: 0.8,
+          steering_reward: -0.5,
+          hormonal_dopamine: 0.1,
+        }),
+      );
     }
 
     const cautionResult = assessSomaticMarkers(db, cautionIds);
-    s.score("high cortisol + negative steering → 'caution'", cautionResult.verdict === "caution", 1);
+    s.score(
+      "high cortisol + negative steering → 'caution'",
+      cautionResult.verdict === "caution",
+      1,
+    );
 
     // Create high-dopamine, positive-steering chunks (trusted zone)
     const trustedIds: string[] = [];
     for (let i = 0; i < 5; i++) {
-      trustedIds.push(insertChunk(db, {
-        hormonal_dopamine: 0.8,
-        steering_reward: 0.7,
-        hormonal_cortisol: 0.1,
-      }));
+      trustedIds.push(
+        insertChunk(db, {
+          hormonal_dopamine: 0.8,
+          steering_reward: 0.7,
+          hormonal_cortisol: 0.1,
+        }),
+      );
     }
 
     const trustedResult = assessSomaticMarkers(db, trustedIds);
-    s.score("high dopamine + positive steering → 'trusted'", trustedResult.verdict === "trusted", 1);
+    s.score(
+      "high dopamine + positive steering → 'trusted'",
+      trustedResult.verdict === "trusted",
+      1,
+    );
 
     // Mixed chunks should get "proceed"
     const mixedIds = [cautionIds[0]!, trustedIds[0]!, insertChunk(db)];
@@ -192,7 +215,14 @@ describe("BioMemEval > Identity Continuity", () => {
     db.prepare(
       `INSERT INTO epistemic_directives (id, directive_type, question, priority, created_at, attempts)
        VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run("old-1", "stale_fact", "Is this still true?", 0.5, Date.now() - 31 * 24 * 60 * 60 * 1000, 0);
+    ).run(
+      "old-1",
+      "stale_fact",
+      "Is this still true?",
+      0.5,
+      Date.now() - 31 * 24 * 60 * 60 * 1000,
+      0,
+    );
 
     // Create recent directive
     const recent = directives.createDirective({
@@ -206,9 +236,9 @@ describe("BioMemEval > Identity Continuity", () => {
     s.score("expireOld removes at least 1", expired >= 1, 1.5);
 
     // Recent should survive
-    const remaining = db.prepare(
-      "SELECT COUNT(*) as c FROM epistemic_directives WHERE resolved_at IS NULL",
-    ).get() as any;
+    const remaining = db
+      .prepare("SELECT COUNT(*) as c FROM epistemic_directives WHERE resolved_at IS NULL")
+      .get() as any;
 
     s.score("recent directive survives expiry", remaining?.c >= 1, 1.5);
 

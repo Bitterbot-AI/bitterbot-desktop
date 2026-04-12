@@ -24,11 +24,7 @@ export class PeerReputationManager {
   private readonly executionTracker: SkillExecutionTracker;
   private readonly trustList: string[];
 
-  constructor(
-    db: DatabaseSync,
-    executionTracker: SkillExecutionTracker,
-    trustList: string[] = [],
-  ) {
+  constructor(db: DatabaseSync, executionTracker: SkillExecutionTracker, trustList: string[] = []) {
     this.db = db;
     this.executionTracker = executionTracker;
     this.trustList = trustList;
@@ -53,9 +49,7 @@ export class PeerReputationManager {
       .get(pubkey) as { peer_pubkey: string } | undefined;
 
     if (existing) {
-      this.db
-        .prepare(`UPDATE peer_reputation SET is_banned = 1 WHERE peer_pubkey = ?`)
-        .run(pubkey);
+      this.db.prepare(`UPDATE peer_reputation SET is_banned = 1 WHERE peer_pubkey = ?`).run(pubkey);
     } else {
       this.db
         .prepare(
@@ -72,9 +66,7 @@ export class PeerReputationManager {
    * Unban a previously banned peer.
    */
   unbanPeer(pubkey: string): void {
-    this.db
-      .prepare(`UPDATE peer_reputation SET is_banned = 0 WHERE peer_pubkey = ?`)
-      .run(pubkey);
+    this.db.prepare(`UPDATE peer_reputation SET is_banned = 0 WHERE peer_pubkey = ?`).run(pubkey);
     log.debug(`peer unbanned: ${pubkey}`);
   }
 
@@ -172,8 +164,12 @@ export class PeerReputationManager {
   getTrustLevel(peerPubkey: string): TrustLevel {
     // Check ban first — takes absolute precedence
     const row = this.db
-      .prepare(`SELECT reputation_score, is_trusted, is_banned, anomaly_flag FROM peer_reputation WHERE peer_pubkey = ?`)
-      .get(peerPubkey) as { reputation_score: number; is_trusted: number; is_banned: number; anomaly_flag: number } | undefined;
+      .prepare(
+        `SELECT reputation_score, is_trusted, is_banned, anomaly_flag FROM peer_reputation WHERE peer_pubkey = ?`,
+      )
+      .get(peerPubkey) as
+      | { reputation_score: number; is_trusted: number; is_banned: number; anomaly_flag: number }
+      | undefined;
 
     if (row?.is_banned === 1) return "banned";
 
@@ -209,10 +205,12 @@ export class PeerReputationManager {
   /** Plan 8: Store a peer's wallet address for revenue sharing. */
   updateWalletAddress(peerPubkey: string, walletAddress: string): void {
     try {
-      this.db.prepare(
-        `UPDATE peer_reputation SET wallet_address = ? WHERE peer_pubkey = ?`,
-      ).run(walletAddress, peerPubkey);
-    } catch { /* column may not exist on older schemas */ }
+      this.db
+        .prepare(`UPDATE peer_reputation SET wallet_address = ? WHERE peer_pubkey = ?`)
+        .run(walletAddress, peerPubkey);
+    } catch {
+      /* column may not exist on older schemas */
+    }
   }
 
   /**
@@ -220,9 +218,7 @@ export class PeerReputationManager {
    */
   getLeaderboard(limit = 20): PeerReputation[] {
     const rows = this.db
-      .prepare(
-        `SELECT * FROM peer_reputation ORDER BY reputation_score DESC LIMIT ?`,
-      )
+      .prepare(`SELECT * FROM peer_reputation ORDER BY reputation_score DESC LIMIT ?`)
       .all(limit) as Array<Record<string, unknown>>;
 
     return rows.map((r) => this.rowToReputation(r));
@@ -253,7 +249,9 @@ export class PeerReputationManager {
         `SELECT id, trust_weight, evidence_count FROM peer_trust_edges
          WHERE truster_pubkey = ? AND trustee_pubkey = ?`,
       )
-      .get(trusterPubkey, trusteePubkey) as { id: string; trust_weight: number; evidence_count: number } | undefined;
+      .get(trusterPubkey, trusteePubkey) as
+      | { id: string; trust_weight: number; evidence_count: number }
+      | undefined;
 
     if (existing) {
       // EMA blending: new = alpha * observation + (1-alpha) * previous
@@ -287,7 +285,9 @@ export class PeerReputationManager {
     if (edges.length === 0) return;
 
     const trustEdges: Array<[string, string, number]> = edges.map((e) => [
-      e.truster_pubkey, e.trustee_pubkey, e.trust_weight,
+      e.truster_pubkey,
+      e.trustee_pubkey,
+      e.trust_weight,
     ]);
 
     const preTrusted = this.trustList;
@@ -297,8 +297,15 @@ export class PeerReputationManager {
     if (orchestratorBridge && "computeEigenTrust" in orchestratorBridge) {
       // Route to Rust orchestrator via IPC
       try {
-        const result = await (orchestratorBridge as unknown as { computeEigenTrust(payload: unknown): Promise<{ scores: Record<string, number> }> })
-          .computeEigenTrust({ trust_edges: trustEdges, pre_trusted: preTrusted, max_iterations: 7 });
+        const result = await (
+          orchestratorBridge as unknown as {
+            computeEigenTrust(payload: unknown): Promise<{ scores: Record<string, number> }>;
+          }
+        ).computeEigenTrust({
+          trust_edges: trustEdges,
+          pre_trusted: preTrusted,
+          max_iterations: 7,
+        });
         scores = result.scores;
       } catch (err) {
         log.debug(`EigenTrust IPC failed, falling back to JS: ${String(err)}`);
@@ -444,7 +451,9 @@ export class PeerReputationManager {
         .run(isAnomaly ? 1 : 0, peer_pubkey);
 
       if (isAnomaly) {
-        log.debug(`anomaly flagged: peer ${peer_pubkey} published ${recentCount} skills in window (avg: ${avgPerWindow.toFixed(1)})`);
+        log.debug(
+          `anomaly flagged: peer ${peer_pubkey} published ${recentCount} skills in window (avg: ${avgPerWindow.toFixed(1)})`,
+        );
       }
     }
   }
@@ -455,12 +464,14 @@ export class PeerReputationManager {
         `SELECT skills_received, skills_accepted, first_seen_at, eigentrust_score
          FROM peer_reputation WHERE peer_pubkey = ?`,
       )
-      .get(peerPubkey) as {
-        skills_received: number;
-        skills_accepted: number;
-        first_seen_at: number;
-        eigentrust_score: number | null;
-      } | undefined;
+      .get(peerPubkey) as
+      | {
+          skills_received: number;
+          skills_accepted: number;
+          first_seen_at: number;
+          eigentrust_score: number | null;
+        }
+      | undefined;
 
     if (!row) return 0.5;
 
@@ -536,7 +547,12 @@ export class PeerReputationManager {
    * Record a category-specific trust score for a peer.
    * Called when a peer's skill is executed and rated by the local agent.
    */
-  recordCategoryTrust(peerPubkey: string, category: string, success: boolean, quality: number): void {
+  recordCategoryTrust(
+    peerPubkey: string,
+    category: string,
+    success: boolean,
+    quality: number,
+  ): void {
     try {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS peer_category_reputation (
@@ -549,21 +565,27 @@ export class PeerReputationManager {
         )
       `);
 
-      const existing = this.db.prepare(
-        `SELECT score, evidence_count FROM peer_category_reputation WHERE pubkey = ? AND category = ?`,
-      ).get(peerPubkey, category) as { score: number; evidence_count: number } | undefined;
+      const existing = this.db
+        .prepare(
+          `SELECT score, evidence_count FROM peer_category_reputation WHERE pubkey = ? AND category = ?`,
+        )
+        .get(peerPubkey, category) as { score: number; evidence_count: number } | undefined;
 
       const newEvidence = success ? quality : quality * 0.3;
       if (existing) {
         // Exponential moving average: 0.7 * old + 0.3 * new
         const updated = 0.7 * existing.score + 0.3 * newEvidence;
-        this.db.prepare(
-          `UPDATE peer_category_reputation SET score = ?, evidence_count = ?, last_updated = ? WHERE pubkey = ? AND category = ?`,
-        ).run(updated, existing.evidence_count + 1, Date.now(), peerPubkey, category);
+        this.db
+          .prepare(
+            `UPDATE peer_category_reputation SET score = ?, evidence_count = ?, last_updated = ? WHERE pubkey = ? AND category = ?`,
+          )
+          .run(updated, existing.evidence_count + 1, Date.now(), peerPubkey, category);
       } else {
-        this.db.prepare(
-          `INSERT INTO peer_category_reputation (pubkey, category, score, evidence_count, last_updated) VALUES (?, ?, ?, 1, ?)`,
-        ).run(peerPubkey, category, newEvidence, Date.now());
+        this.db
+          .prepare(
+            `INSERT INTO peer_category_reputation (pubkey, category, score, evidence_count, last_updated) VALUES (?, ?, ?, 1, ?)`,
+          )
+          .run(peerPubkey, category, newEvidence, Date.now());
       }
     } catch {
       // Non-critical
@@ -579,9 +601,9 @@ export class PeerReputationManager {
       return this.getReputation(peerPubkey)?.reputationScore ?? 0.5;
     }
     try {
-      const row = this.db.prepare(
-        `SELECT score FROM peer_category_reputation WHERE pubkey = ? AND category = ?`,
-      ).get(peerPubkey, category) as { score: number } | undefined;
+      const row = this.db
+        .prepare(`SELECT score FROM peer_category_reputation WHERE pubkey = ? AND category = ?`)
+        .get(peerPubkey, category) as { score: number } | undefined;
       return row?.score ?? 0.5;
     } catch {
       return 0.5;
@@ -601,7 +623,9 @@ export class PeerReputationManager {
     rewardScore: number,
   ): void {
     // Update overall trust edge based on execution outcome
-    const weight = success ? Math.min(1.0, 0.5 + rewardScore * 0.5) : Math.max(0.0, 0.3 - rewardScore * 0.3);
+    const weight = success
+      ? Math.min(1.0, 0.5 + rewardScore * 0.5)
+      : Math.max(0.0, 0.3 - rewardScore * 0.3);
     this.recordTrustEdge("local", authorPubkey, weight);
 
     // Update category-specific trust
@@ -616,11 +640,7 @@ export class PeerReputationManager {
    * Record an anomaly report from another edge node.
    * If N independent reporters flag the same peer, reduce trust.
    */
-  recordPeerAnomalyReport(
-    reporterPubkey: string,
-    targetPubkey: string,
-    reason: string,
-  ): void {
+  recordPeerAnomalyReport(reporterPubkey: string, targetPubkey: string, reason: string): void {
     try {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS peer_anomaly_reports (
@@ -631,26 +651,37 @@ export class PeerReputationManager {
           reported_at INTEGER NOT NULL
         )
       `);
-      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_anomaly_target ON peer_anomaly_reports(target_pubkey)`);
+      this.db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_anomaly_target ON peer_anomaly_reports(target_pubkey)`,
+      );
 
-      this.db.prepare(
-        `INSERT INTO peer_anomaly_reports (id, reporter_pubkey, target_pubkey, reason, reported_at) VALUES (?, ?, ?, ?, ?)`,
-      ).run(crypto.randomUUID(), reporterPubkey, targetPubkey, reason, Date.now());
+      this.db
+        .prepare(
+          `INSERT INTO peer_anomaly_reports (id, reporter_pubkey, target_pubkey, reason, reported_at) VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(crypto.randomUUID(), reporterPubkey, targetPubkey, reason, Date.now());
 
       // Count unique reporters for this target in last hour
       const cutoff = Date.now() - 3600000;
-      const count = (this.db.prepare(
-        `SELECT COUNT(DISTINCT reporter_pubkey) as c FROM peer_anomaly_reports WHERE target_pubkey = ? AND reported_at > ?`,
-      ).get(targetPubkey, cutoff) as { c: number })?.c ?? 0;
+      const count =
+        (
+          this.db
+            .prepare(
+              `SELECT COUNT(DISTINCT reporter_pubkey) as c FROM peer_anomaly_reports WHERE target_pubkey = ? AND reported_at > ?`,
+            )
+            .get(targetPubkey, cutoff) as { c: number }
+        )?.c ?? 0;
 
       // If 3+ independent reporters flag the same peer, reduce trust
       if (count >= 3) {
         const rep = this.getReputation(targetPubkey);
         if (rep && rep.reputationScore > 0.1) {
           const newScore = Math.max(0.0, rep.reputationScore - 0.1 * count);
-          this.db.prepare(
-            `UPDATE peer_reputation SET reputation_score = ?, trust_level = ? WHERE peer_pubkey = ?`,
-          ).run(newScore, newScore < 0.3 ? "untrusted" : "provisional", targetPubkey);
+          this.db
+            .prepare(
+              `UPDATE peer_reputation SET reputation_score = ?, trust_level = ? WHERE peer_pubkey = ?`,
+            )
+            .run(newScore, newScore < 0.3 ? "untrusted" : "provisional", targetPubkey);
         }
       }
     } catch {
@@ -661,12 +692,21 @@ export class PeerReputationManager {
   /**
    * Get anomaly reports for a peer.
    */
-  getAnomalyReports(targetPubkey: string, limit = 50): Array<{ reporter: string; reason: string; reportedAt: number }> {
+  getAnomalyReports(
+    targetPubkey: string,
+    limit = 50,
+  ): Array<{ reporter: string; reason: string; reportedAt: number }> {
     try {
-      return this.db.prepare(
-        `SELECT reporter_pubkey as reporter, reason, reported_at as reportedAt
+      return this.db
+        .prepare(
+          `SELECT reporter_pubkey as reporter, reason, reported_at as reportedAt
          FROM peer_anomaly_reports WHERE target_pubkey = ? ORDER BY reported_at DESC LIMIT ?`,
-      ).all(targetPubkey, limit) as Array<{ reporter: string; reason: string; reportedAt: number }>;
+        )
+        .all(targetPubkey, limit) as Array<{
+        reporter: string;
+        reason: string;
+        reportedAt: number;
+      }>;
     } catch {
       return [];
     }

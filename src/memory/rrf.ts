@@ -38,7 +38,10 @@ export function rrfFuse<T = Record<string, unknown>>(
 ): Array<FusedEntry<T>> {
   if (lists.length === 0) return [];
 
-  const scores = new Map<string, { score: number; sourceRanks: Record<string, number>; payload: T }>();
+  const scores = new Map<
+    string,
+    { score: number; sourceRanks: Record<string, number>; payload: T }
+  >();
 
   for (const list of lists) {
     for (const entry of list.entries) {

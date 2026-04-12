@@ -11,17 +11,14 @@ export function ManagementView() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Build the management dashboard URL from the gateway connection
-  const gatewayToken =
-    (import.meta.env.VITE_GATEWAY_TOKEN ?? "local-dev-token").trim();
+  const gatewayToken = (import.meta.env.VITE_GATEWAY_TOKEN ?? "local-dev-token").trim();
 
   // Derive HTTP URL from the gateway WS URL
   const wsUrl =
     (window as any).__BITTERBOT_GATEWAY_URL__ ??
     import.meta.env.VITE_GATEWAY_URL ??
     "ws://localhost:19001";
-  const httpUrl = wsUrl
-    .replace(/^ws:/, "http:")
-    .replace(/^wss:/, "https:");
+  const httpUrl = wsUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:");
   const dashboardUrl = `${httpUrl}/management?token=${encodeURIComponent(gatewayToken)}`;
 
   useEffect(() => {

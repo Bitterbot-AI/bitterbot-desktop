@@ -773,4 +773,3 @@ export const BlueBubblesConfigSchema = BlueBubblesAccountSchemaBase.extend({
       'channels.bluebubbles.dmPolicy="open" requires channels.bluebubbles.allowFrom to include "*"',
   });
 });
-

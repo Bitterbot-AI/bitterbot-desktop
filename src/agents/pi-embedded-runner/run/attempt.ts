@@ -6,7 +6,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
-import { resolveEndocrineState } from "../../endocrine-state.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
@@ -33,6 +32,7 @@ import {
   resolveChannelMessageToolHints,
 } from "../../channel-tools.js";
 import { resolveBitterbotDocsPath } from "../../docs-path.js";
+import { resolveEndocrineState } from "../../endocrine-state.js";
 import { isTimeoutError } from "../../failover-error.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
@@ -50,7 +50,6 @@ import {
 } from "../../pi-settings.js";
 import { toClientToolDefinitions } from "../../pi-tool-definition-adapter.js";
 import { createBitterbotCodingTools } from "../../pi-tools.js";
-import { getGlobalToolCache } from "../../tool-cache.js";
 import { resolveSandboxContext } from "../../sandbox.js";
 import { resolveSandboxRuntimeStatus } from "../../sandbox/runtime-status.js";
 import { repairSessionFileIfNeeded } from "../../session-file-repair.js";
@@ -66,8 +65,8 @@ import {
 } from "../../skills.js";
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
+import { getGlobalToolCache } from "../../tool-cache.js";
 import { resolveTranscriptPolicy } from "../../transcript-policy.js";
-
 import { isRunnerAbortError } from "../abort.js";
 import { appendCacheTtlTimestamp, isCacheTtlEligibleProvider } from "../cache-ttl.js";
 import { buildEmbeddedExtensionPaths } from "../extensions.js";

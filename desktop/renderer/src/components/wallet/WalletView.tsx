@@ -1,7 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useWalletStore, type WalletTransaction, type WalletConfig } from "../../stores/wallet-store";
-import { cn } from "../../lib/utils";
 import {
   Wallet,
   Copy,
@@ -12,6 +8,14 @@ import {
   Shield,
   KeyRound,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
+import {
+  useWalletStore,
+  type WalletTransaction,
+  type WalletConfig,
+} from "../../stores/wallet-store";
 
 function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text).catch(() => {});
@@ -60,9 +64,7 @@ function TransactionRow({ tx, network }: { tx: WalletTransaction; network: strin
   const isOutgoing = tx.type === "send" || tx.type === "trade" || tx.type === "x402_payment";
   const isX402 = tx.type === "x402_payment";
   const explorerBase =
-    network === "base"
-      ? "https://basescan.org/tx/"
-      : "https://sepolia.basescan.org/tx/";
+    network === "base" ? "https://basescan.org/tx/" : "https://sepolia.basescan.org/tx/";
   const displayType = isX402 ? "x402 Payment" : tx.type;
 
   return (
@@ -98,10 +100,7 @@ function TransactionRow({ tx, network }: { tx: WalletTransaction; network: strin
       </div>
       <div className="text-right flex-shrink-0">
         <span
-          className={cn(
-            "text-sm font-medium",
-            isOutgoing ? "text-orange-400" : "text-emerald-400",
-          )}
+          className={cn("text-sm font-medium", isOutgoing ? "text-orange-400" : "text-emerald-400")}
         >
           {isOutgoing ? "-" : "+"}
           {tx.amount} {tx.token}
@@ -154,14 +153,12 @@ export function WalletView() {
       setAddress(addrRes.address, addrRes.network);
 
       const [ethBal, usdcBal, historyRes] = await Promise.allSettled([
-        request<{ token: string; balance: string; usdValue?: string }>(
-          "wallet.getBalance",
-          { token: "ETH" },
-        ),
-        request<{ token: string; balance: string; usdValue?: string }>(
-          "wallet.getBalance",
-          { token: "USDC" },
-        ),
+        request<{ token: string; balance: string; usdValue?: string }>("wallet.getBalance", {
+          token: "ETH",
+        }),
+        request<{ token: string; balance: string; usdValue?: string }>("wallet.getBalance", {
+          token: "USDC",
+        }),
         request<{ transactions: WalletTransaction[] }>("wallet.getHistory", {
           limit: 20,
         }),
@@ -186,15 +183,7 @@ export function WalletView() {
     } finally {
       setLoading(false);
     }
-  }, [
-    gwStatus,
-    request,
-    setAddress,
-    setBalances,
-    setTransactions,
-    setLoading,
-    setError,
-  ]);
+  }, [gwStatus, request, setAddress, setBalances, setTransactions, setLoading, setError]);
 
   useEffect(() => {
     refresh();
@@ -231,9 +220,7 @@ export function WalletView() {
   };
 
   const explorerBase =
-    network === "base"
-      ? "https://basescan.org/address/"
-      : "https://sepolia.basescan.org/address/";
+    network === "base" ? "https://basescan.org/address/" : "https://sepolia.basescan.org/address/";
 
   // Empty state: wallet disabled or provider failed to initialize
   if (!address && !loading && failReason) {
@@ -242,9 +229,7 @@ export function WalletView() {
       <div className="h-full overflow-y-auto p-6 space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Wallet</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Coinbase AgentKit wallet on Base L2
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">Coinbase AgentKit wallet on Base L2</p>
         </div>
         <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-6 space-y-4">
           <div className="flex items-center gap-3">
@@ -285,8 +270,7 @@ export function WalletView() {
                 and create an API key
               </li>
               <li>
-                Add{" "}
-                <code className="text-xs bg-muted/40 px-1 py-0.5 rounded">CDP_API_KEY_ID</code>{" "}
+                Add <code className="text-xs bg-muted/40 px-1 py-0.5 rounded">CDP_API_KEY_ID</code>{" "}
                 and{" "}
                 <code className="text-xs bg-muted/40 px-1 py-0.5 rounded">CDP_API_KEY_SECRET</code>{" "}
                 to your environment or config
@@ -329,9 +313,7 @@ export function WalletView() {
               </span>
             )}
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Coinbase AgentKit wallet on Base L2
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">Coinbase AgentKit wallet on Base L2</p>
         </div>
         <button
           onClick={refresh}
@@ -379,9 +361,7 @@ export function WalletView() {
               </a>
             </div>
           </div>
-          {copied && (
-            <p className="text-xs text-emerald-400 mt-2">Address copied!</p>
-          )}
+          {copied && <p className="text-xs text-emerald-400 mt-2">Address copied!</p>}
         </div>
       )}
 
@@ -418,7 +398,9 @@ export function WalletView() {
             />
             <StatCard
               label="x402"
-              value={walletConfig.x402Enabled ? `$${walletConfig.x402MaxPerRequestUsd}/req` : "Disabled"}
+              value={
+                walletConfig.x402Enabled ? `$${walletConfig.x402MaxPerRequestUsd}/req` : "Disabled"
+              }
               sub={walletConfig.x402Enabled ? "micropayment protocol" : "enable in config"}
               icon={<Shield className="w-3.5 h-3.5 text-blue-400" />}
             />

@@ -127,7 +127,12 @@ function setMessageText(msg: AgentMessage, text: string): AgentMessage {
   if (Array.isArray(content)) {
     let replaced = false;
     const newContent = content.map((block) => {
-      if (!replaced && block && typeof block === "object" && typeof (block as { text?: unknown }).text === "string") {
+      if (
+        !replaced &&
+        block &&
+        typeof block === "object" &&
+        typeof (block as { text?: unknown }).text === "string"
+      ) {
         replaced = true;
         return { ...block, text };
       }
@@ -227,10 +232,7 @@ function compressMessagesByRole(
  * Pass 5 (nuclear): Middle-out message removal.
  * Keep the first N and last N messages, drop the middle.
  */
-function middleOutMessages(
-  messages: AgentMessage[],
-  maxMessages: number,
-): AgentMessage[] {
+function middleOutMessages(messages: AgentMessage[], maxMessages: number): AgentMessage[] {
   if (messages.length <= maxMessages) return messages;
   const half = Math.floor(maxMessages / 2);
   const head = messages.slice(0, half);

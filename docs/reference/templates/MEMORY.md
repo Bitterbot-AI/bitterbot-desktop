@@ -54,6 +54,7 @@ No curiosity regions active yet. The curiosity engine will begin mapping informa
 _Key insights from recent dream cycles._
 
 No dreams yet. The dream engine runs periodically to:
+
 - Consolidate episodic memories into long-term knowledge
 - Detect skill patterns for crystallization
 - Rewrite The Phenotype based on observed behavior

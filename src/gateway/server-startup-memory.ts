@@ -1,13 +1,17 @@
 import type { BitterbotConfig } from "../config/config.js";
-import { loadConfig } from "../config/config.js";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { getMemorySearchManager } from "../memory/index.js";
 import type { OrchestratorBridgeLike } from "../memory/skill-network-bridge.js";
 import type { SkillNetworkBridge } from "../memory/skill-network-bridge.js";
-import { getGlobalPluginRegistry } from "../plugins/hook-runner-global.js";
 import type { PluginHookHandlerMap } from "../plugins/types.js";
-import { ManagementKeyAuth, ManagementKeyAuthError, loadGenesisTrustList } from "../memory/management-key-auth.js";
+import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { loadConfig } from "../config/config.js";
+import { getMemorySearchManager } from "../memory/index.js";
+import {
+  ManagementKeyAuth,
+  ManagementKeyAuthError,
+  loadGenesisTrustList,
+} from "../memory/management-key-auth.js";
 import { ManagementNodeService } from "../memory/management-node-service.js";
+import { getGlobalPluginRegistry } from "../plugins/hook-runner-global.js";
 
 export type MemoryBackendResult = {
   skillNetworkBridge: SkillNetworkBridge | null;
@@ -33,7 +37,9 @@ export async function startGatewayMemoryBackend(params: {
   if (params.orchestratorBridge) {
     const managerAny = manager as unknown as Record<string, unknown>;
     if (typeof managerAny.wireOrchestratorBridge === "function") {
-      (managerAny.wireOrchestratorBridge as (b: OrchestratorBridgeLike) => void)(params.orchestratorBridge);
+      (managerAny.wireOrchestratorBridge as (b: OrchestratorBridgeLike) => void)(
+        params.orchestratorBridge,
+      );
     }
     if (typeof managerAny.getSkillNetworkBridge === "function") {
       skillNetworkBridge = (managerAny.getSkillNetworkBridge as () => SkillNetworkBridge | null)();
@@ -46,17 +52,29 @@ export async function startGatewayMemoryBackend(params: {
     const p2pCfg = freshCfg.p2p;
     if (p2pCfg?.nodeTier === "management") {
       try {
-        const trustList = loadGenesisTrustList(p2pCfg.genesisTrustListPath, p2pCfg.genesisTrustList);
+        const trustList = loadGenesisTrustList(
+          p2pCfg.genesisTrustListPath,
+          p2pCfg.genesisTrustList,
+        );
         const auth = ManagementKeyAuth.init(trustList);
         const db = (managerAny as any).db;
         const peerRep = (managerAny as any).peerReputationManager ?? null;
         const economics = (managerAny as any).marketplaceEconomics ?? null;
-        const svc = new ManagementNodeService(db, params.orchestratorBridge as any, peerRep, economics, auth);
+        const svc = new ManagementNodeService(
+          db,
+          params.orchestratorBridge as any,
+          peerRep,
+          economics,
+          auth,
+        );
         svc.start();
         (managerAny as any).managementNodeService = svc;
-        params.log.warn?.(`Management node service started (pubkey: ${auth.publicKeyBase64.substring(0, 8)}...)`);
+        params.log.warn?.(
+          `Management node service started (pubkey: ${auth.publicKeyBase64.substring(0, 8)}...)`,
+        );
       } catch (err) {
-        const msg = err instanceof ManagementKeyAuthError ? `${err.code}: ${err.message}` : String(err);
+        const msg =
+          err instanceof ManagementKeyAuthError ? `${err.code}: ${err.message}` : String(err);
         params.log.warn(`Management node auth failed: ${msg}`);
       }
     }

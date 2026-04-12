@@ -84,7 +84,8 @@ export function resolveGatewayServiceDescription(params: {
     params.description ??
     formatGatewayServiceDescription({
       profile: params.env.BITTERBOT_PROFILE,
-      version: params.environment?.BITTERBOT_SERVICE_VERSION ?? params.env.BITTERBOT_SERVICE_VERSION,
+      version:
+        params.environment?.BITTERBOT_SERVICE_VERSION ?? params.env.BITTERBOT_SERVICE_VERSION,
     })
   );
 }

@@ -14,6 +14,7 @@ import {
   isEmbeddedPiRunStreaming,
   resolveEmbeddedSessionLane,
 } from "../../agents/pi-embedded.js";
+import { buildProjectContext } from "../../agents/project-rag.js";
 import {
   resolveGroupSessionKey,
   resolveSessionFilePath,
@@ -47,7 +48,6 @@ import { BARE_SESSION_RESET_PROMPT } from "./session-reset-prompt.js";
 import { ensureSkillSnapshot, prependSystemEvents } from "./session-updates.js";
 import { resolveTypingMode } from "./typing-mode.js";
 import { appendUntrustedContext } from "./untrusted-context.js";
-import { buildProjectContext } from "../../agents/project-rag.js";
 
 type AgentDefaults = NonNullable<BitterbotConfig["agents"]>["defaults"];
 type ExecOverrides = Pick<ExecToolDefaults, "host" | "security" | "ask" | "node">;
@@ -204,9 +204,9 @@ export async function runPreparedReply(
         } else if (projectCtx.ragActive) {
           parts.push(
             "# Project Knowledge Base\n\n" +
-            "The project knowledge base is too large for full context inclusion " +
-            `(~${projectCtx.totalKBTokens.toLocaleString()} tokens). ` +
-            "Use the memory search tool to query project knowledge on demand.",
+              "The project knowledge base is too large for full context inclusion " +
+              `(~${projectCtx.totalKBTokens.toLocaleString()} tokens). ` +
+              "Use the memory search tool to query project knowledge on demand.",
           );
         }
         if (parts.length > 0) {
@@ -218,7 +218,13 @@ export async function runPreparedReply(
     }
   }
 
-  const extraSystemPrompt = [projectContextPrompt, inboundMetaPrompt, groupChatContext, groupIntro, groupSystemPrompt]
+  const extraSystemPrompt = [
+    projectContextPrompt,
+    inboundMetaPrompt,
+    groupChatContext,
+    groupIntro,
+    groupSystemPrompt,
+  ]
     .filter(Boolean)
     .join("\n\n");
   const baseBody = sessionCtx.BodyStripped ?? sessionCtx.Body ?? "";

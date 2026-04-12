@@ -1,6 +1,6 @@
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { cn } from "../../lib/utils";
-import { AlertTriangle, Loader2 } from "lucide-react";
 
 interface ArtifactRendererProps {
   artifactId: string;
@@ -21,16 +21,13 @@ export function ArtifactRenderer({ artifactId, canvasBaseUrl, className }: Artif
 
   const src = `${canvasBaseUrl}/__bitterbot__/canvas/artifacts/${encodeURIComponent(artifactId)}.html`;
 
-  const handleMessage = useCallback(
-    (event: MessageEvent) => {
-      if (!event.data || typeof event.data !== "object") return;
-      const { type } = event.data;
-      if (type === "artifact-error") {
-        setError(`${event.data.error} (line ${event.data.line ?? "?"})`);
-      }
-    },
-    [],
-  );
+  const handleMessage = useCallback((event: MessageEvent) => {
+    if (!event.data || typeof event.data !== "object") return;
+    const { type } = event.data;
+    if (type === "artifact-error") {
+      setError(`${event.data.error} (line ${event.data.line ?? "?"})`);
+    }
+  }, []);
 
   useEffect(() => {
     window.addEventListener("message", handleMessage);

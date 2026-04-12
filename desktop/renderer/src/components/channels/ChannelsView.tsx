@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useChannelsStore } from "../../stores/channels-store";
-import { cn } from "../../lib/utils";
 import { formatRelativeTime } from "../../lib/format";
+import { cn } from "../../lib/utils";
+import { useChannelsStore } from "../../stores/channels-store";
+import { useGatewayStore } from "../../stores/gateway-store";
 
 type ChannelAccount = {
   accountId: string;
@@ -43,13 +43,15 @@ function ChannelCard({
         <div
           className={cn(
             "w-2 h-2 rounded-full flex-shrink-0",
-            isConnected ? "bg-green-400" : primaryAccount?.configured ? "bg-yellow-400" : "bg-muted-foreground/30",
+            isConnected
+              ? "bg-green-400"
+              : primaryAccount?.configured
+                ? "bg-yellow-400"
+                : "bg-muted-foreground/30",
           )}
         />
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium text-foreground">
-            {channel.label}
-          </span>
+          <span className="text-sm font-medium text-foreground">{channel.label}</span>
         </div>
         <span
           className={cn(
@@ -61,24 +63,16 @@ function ChannelCard({
                 : "bg-muted text-muted-foreground",
           )}
         >
-          {isConnected
-            ? "connected"
-            : primaryAccount?.configured
-              ? "configured"
-              : "not configured"}
+          {isConnected ? "connected" : primaryAccount?.configured ? "configured" : "not configured"}
         </span>
-        <span className="text-xs text-muted-foreground">
-          {expanded ? "▲" : "▼"}
-        </span>
+        <span className="text-xs text-muted-foreground">{expanded ? "▲" : "▼"}</span>
       </div>
       {expanded && (
         <div className="px-4 pb-3 border-t border-border/10 pt-3 space-y-3">
           {channel.accounts.map((account) => (
             <div key={account.accountId} className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-muted-foreground">
-                  {account.accountId}
-                </span>
+                <span className="text-xs font-mono text-muted-foreground">{account.accountId}</span>
                 {account.enabled === false && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">
                     disabled
@@ -107,11 +101,7 @@ function ChannelCard({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (
-                      confirm(
-                        `Logout ${channel.label} account "${account.accountId}"?`,
-                      )
-                    )
+                    if (confirm(`Logout ${channel.label} account "${account.accountId}"?`))
                       onLogout(channel.channelId, account.accountId);
                   }}
                   className="px-2 py-1 text-xs rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
@@ -149,10 +139,7 @@ export function ChannelsView() {
         const order = res.channelOrder ?? Object.keys(res.channels ?? {});
         const labels = res.channelLabels ?? {};
         const accounts = res.channelAccounts ?? {};
-        const channelSummaries = (res.channels ?? {}) as Record<
-          string,
-          Record<string, unknown>
-        >;
+        const channelSummaries = (res.channels ?? {}) as Record<string, Record<string, unknown>>;
 
         const parsed: ChannelData[] = order.map((id) => ({
           channelId: id,
@@ -237,11 +224,7 @@ export function ChannelsView() {
           </div>
         ) : (
           channels.map((channel) => (
-            <ChannelCard
-              key={channel.channelId}
-              channel={channel}
-              onLogout={handleLogout}
-            />
+            <ChannelCard key={channel.channelId} channel={channel} onLogout={handleLogout} />
           ))
         )}
       </div>

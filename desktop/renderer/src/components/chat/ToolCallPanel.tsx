@@ -1,13 +1,3 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import { useChatStore, type ActiveToolCall } from "../../stores/chat-store";
-import { useArtifactStore, type RightPanelMode } from "../../stores/artifact-store";
-import { useCoworkStore } from "../../stores/cowork-store";
-import { useUIStore } from "../../stores/ui-store";
-import { cn } from "../../lib/utils";
-import { ToolView } from "./tool-views/ToolViewRegistry";
-import { ArtifactPanel } from "./ArtifactPanel";
-import { CoworkPanel } from "../cowork/CoworkPanel";
-import { WorkspaceFilesPanel } from "../workspace/WorkspaceFilesPanel";
 import {
   X,
   ChevronLeft,
@@ -24,72 +14,123 @@ import {
   AlertTriangle,
   FileEdit,
 } from "lucide-react";
-import { extractFilePath, parseExitCode, getLanguageFromExtension } from "./tool-views/tool-view-utils";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { cn } from "../../lib/utils";
+import { useArtifactStore, type RightPanelMode } from "../../stores/artifact-store";
+import { useChatStore, type ActiveToolCall } from "../../stores/chat-store";
+import { useCoworkStore } from "../../stores/cowork-store";
+import { useUIStore } from "../../stores/ui-store";
+import { CoworkPanel } from "../cowork/CoworkPanel";
+import { WorkspaceFilesPanel } from "../workspace/WorkspaceFilesPanel";
+import { ArtifactPanel } from "./ArtifactPanel";
+import {
+  extractFilePath,
+  parseExitCode,
+  getLanguageFromExtension,
+} from "./tool-views/tool-view-utils";
+import { ToolView } from "./tool-views/ToolViewRegistry";
 
 /** Map tool names to icons + colors */
 function getToolMeta(name: string): { icon: typeof Terminal; color: string; gradient: string } {
   const lower = name.toLowerCase();
   if (lower === "complete" || lower.includes("task_complete") || lower.includes("task-complete"))
-    return { icon: CheckCircle, color: "text-emerald-400", gradient: "from-emerald-500/20 to-emerald-600/10" };
+    return {
+      icon: CheckCircle,
+      color: "text-emerald-400",
+      gradient: "from-emerald-500/20 to-emerald-600/10",
+    };
   if (lower === "ask" || lower.includes("ask_user") || lower.includes("ask-user"))
     return { icon: Wrench, color: "text-blue-400", gradient: "from-blue-500/20 to-blue-600/10" };
   if (lower === "plan")
-    return { icon: ListTree, color: "text-indigo-400", gradient: "from-indigo-500/20 to-indigo-600/10" };
-  if (lower.includes("command") || lower.includes("execute") || lower.includes("shell") || lower.includes("terminal"))
-    return { icon: Terminal, color: "text-purple-400", gradient: "from-purple-500/20 to-purple-600/10" };
+    return {
+      icon: ListTree,
+      color: "text-indigo-400",
+      gradient: "from-indigo-500/20 to-indigo-600/10",
+    };
+  if (
+    lower.includes("command") ||
+    lower.includes("execute") ||
+    lower.includes("shell") ||
+    lower.includes("terminal")
+  )
+    return {
+      icon: Terminal,
+      color: "text-purple-400",
+      gradient: "from-purple-500/20 to-purple-600/10",
+    };
   if (lower.includes("str-replace") || lower.includes("str_replace"))
-    return { icon: FileEdit, color: "text-amber-400", gradient: "from-amber-500/20 to-amber-600/10" };
-  if (lower.includes("file") || lower.includes("write") || lower.includes("read") || lower.includes("edit"))
+    return {
+      icon: FileEdit,
+      color: "text-amber-400",
+      gradient: "from-amber-500/20 to-amber-600/10",
+    };
+  if (
+    lower.includes("file") ||
+    lower.includes("write") ||
+    lower.includes("read") ||
+    lower.includes("edit")
+  )
     return { icon: FileCode, color: "text-blue-400", gradient: "from-blue-500/20 to-blue-600/10" };
   if (lower.includes("search") || lower.includes("find") || lower.includes("grep"))
     return { icon: Search, color: "text-cyan-400", gradient: "from-cyan-500/20 to-cyan-600/10" };
-  if (lower.includes("browser") || lower.includes("web") || lower.includes("crawl") || lower.includes("scrape") || lower.includes("fetch") || lower.includes("screenshot"))
+  if (
+    lower.includes("browser") ||
+    lower.includes("web") ||
+    lower.includes("crawl") ||
+    lower.includes("scrape") ||
+    lower.includes("fetch") ||
+    lower.includes("screenshot")
+  )
     return { icon: Globe, color: "text-green-400", gradient: "from-green-500/20 to-green-600/10" };
-  return { icon: Wrench, color: "text-purple-400", gradient: "from-purple-500/20 to-purple-600/10" };
+  return {
+    icon: Wrench,
+    color: "text-purple-400",
+    gradient: "from-purple-500/20 to-purple-600/10",
+  };
 }
 
 /** Get a user-friendly display name for a tool. */
 function getToolDisplayName(name: string): string {
   const DISPLAY_NAMES: Record<string, string> = {
     "execute-command": "Execute Command",
-    "execute_command": "Execute Command",
+    execute_command: "Execute Command",
     "run-command": "Run Command",
-    "run_command": "Run Command",
+    run_command: "Run Command",
     "read-file": "Read File",
-    "read_file": "Read File",
+    read_file: "Read File",
     "write-file": "Write File",
-    "write_file": "Write File",
+    write_file: "Write File",
     "create-file": "Create File",
-    "create_file": "Create File",
+    create_file: "Create File",
     "edit-file": "Edit File",
-    "edit_file": "Edit File",
+    edit_file: "Edit File",
     "str-replace-editor": "Edit File",
-    "str_replace_editor": "Edit File",
+    str_replace_editor: "Edit File",
     "delete-file": "Delete File",
-    "delete_file": "Delete File",
+    delete_file: "Delete File",
     "list-directory": "List Directory",
-    "list_directory": "List Directory",
+    list_directory: "List Directory",
     "browser-action": "Browser Action",
-    "browser_action": "Browser Action",
+    browser_action: "Browser Action",
     "web-search": "Web Search",
-    "web_search": "Web Search",
-    "search": "Search",
+    web_search: "Web Search",
+    search: "Search",
     "take-screenshot": "Screenshot",
-    "take_screenshot": "Screenshot",
+    take_screenshot: "Screenshot",
     "see-image": "View Image",
     "web-crawl": "Web Crawl",
-    "web_crawl": "Web Crawl",
+    web_crawl: "Web Crawl",
     "scrape-webpage": "Scrape Page",
-    "scrape_webpage": "Scrape Page",
+    scrape_webpage: "Scrape Page",
     "terminate-command": "Terminate Command",
-    "terminate_command": "Terminate Command",
-    "complete": "Task Complete",
+    terminate_command: "Terminate Command",
+    complete: "Task Complete",
     "task-complete": "Task Complete",
-    "task_complete": "Task Complete",
-    "ask": "Ask User",
+    task_complete: "Task Complete",
+    ask: "Ask User",
     "ask-user": "Ask User",
-    "ask_user": "Ask User",
-    "plan": "Task Plan",
+    ask_user: "Ask User",
+    plan: "Task Plan",
   };
   return DISPLAY_NAMES[name] ?? name;
 }
@@ -215,11 +256,7 @@ export function ToolCallPanel() {
           <div className="flex items-center gap-2">
             {/* Live/Manual status button (tools mode only) */}
             {panelMode === "tools" && toolCalls.length > 0 && (
-              <StatusButton
-                navMode={navMode}
-                isRunning={anyRunning}
-                onJumpToLive={jumpToLive}
-              />
+              <StatusButton navMode={navMode} isRunning={anyRunning} onJumpToLive={jumpToLive} />
             )}
 
             <button
@@ -256,9 +293,7 @@ export function ToolCallPanel() {
                 <div className="text-center space-y-2 text-muted-foreground">
                   <Terminal className="w-8 h-8 mx-auto opacity-50" />
                   <p className="text-sm">No tool calls yet</p>
-                  <p className="text-xs">
-                    Tool calls will appear here when the agent uses tools.
-                  </p>
+                  <p className="text-xs">Tool calls will appear here when the agent uses tools.</p>
                 </div>
               </div>
             )}
@@ -398,10 +433,7 @@ function StatusButton({
         )}
       />
       <span
-        className={cn(
-          "text-[10px] font-medium",
-          isRunning ? "text-emerald-400" : "text-blue-400",
-        )}
+        className={cn("text-[10px] font-medium", isRunning ? "text-emerald-400" : "text-blue-400")}
       >
         {isRunning ? "Jump to Live" : "Jump to Latest"}
       </span>
@@ -416,8 +448,18 @@ function getToolSubtitle(toolCall: ActiveToolCall): string | null {
   const lower = toolCall.name.toLowerCase();
 
   // Commands: show the command string
-  if (lower.includes("command") || lower.includes("execute") || lower.includes("shell") || lower.includes("terminal")) {
-    const cmd = typeof args.command === "string" ? args.command : typeof args.cmd === "string" ? args.cmd : null;
+  if (
+    lower.includes("command") ||
+    lower.includes("execute") ||
+    lower.includes("shell") ||
+    lower.includes("terminal")
+  ) {
+    const cmd =
+      typeof args.command === "string"
+        ? args.command
+        : typeof args.cmd === "string"
+          ? args.cmd
+          : null;
     if (cmd) return cmd.length > 80 ? cmd.slice(0, 77) + "..." : cmd;
   }
   // File ops: show file path
@@ -428,12 +470,29 @@ function getToolSubtitle(toolCall: ActiveToolCall): string | null {
   }
   // Search: show query
   if (lower.includes("search")) {
-    const q = typeof args.query === "string" ? args.query : typeof args.search_query === "string" ? args.search_query : typeof args.q === "string" ? args.q : null;
+    const q =
+      typeof args.query === "string"
+        ? args.query
+        : typeof args.search_query === "string"
+          ? args.search_query
+          : typeof args.q === "string"
+            ? args.q
+            : null;
     if (q) return q;
   }
   // Browser/web: show URL
-  if (lower.includes("browser") || lower.includes("web") || lower.includes("crawl") || lower.includes("scrape")) {
-    const url = typeof args.url === "string" ? args.url : typeof args.target_url === "string" ? args.target_url : null;
+  if (
+    lower.includes("browser") ||
+    lower.includes("web") ||
+    lower.includes("crawl") ||
+    lower.includes("scrape")
+  ) {
+    const url =
+      typeof args.url === "string"
+        ? args.url
+        : typeof args.target_url === "string"
+          ? args.target_url
+          : null;
     if (url) return url.length > 60 ? url.slice(0, 57) + "..." : url;
   }
   return null;
@@ -447,12 +506,20 @@ function getToolFooterBadges(toolCall: ActiveToolCall): Array<{ label: string; c
   const lower = toolCall.name.toLowerCase();
 
   // Exit code for commands
-  if (lower.includes("command") || lower.includes("execute") || lower.includes("shell") || lower.includes("terminal")) {
+  if (
+    lower.includes("command") ||
+    lower.includes("execute") ||
+    lower.includes("shell") ||
+    lower.includes("terminal")
+  ) {
     const code = parseExitCode(output);
     if (code !== null) {
       badges.push({
         label: `Exit ${code}`,
-        color: code === 0 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20",
+        color:
+          code === 0
+            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+            : "bg-red-500/10 text-red-400 border-red-500/20",
       });
     }
   }
@@ -475,11 +542,22 @@ function getToolFooterBadges(toolCall: ActiveToolCall): Array<{ label: string; c
   if (lower.includes("search") && output) {
     try {
       const parsed = JSON.parse(output);
-      const items = Array.isArray(parsed) ? parsed : Array.isArray(parsed.results) ? parsed.results : Array.isArray(parsed.organic_results) ? parsed.organic_results : null;
+      const items = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed.results)
+          ? parsed.results
+          : Array.isArray(parsed.organic_results)
+            ? parsed.organic_results
+            : null;
       if (items) {
-        badges.push({ label: `${items.length} results`, color: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" });
+        badges.push({
+          label: `${items.length} results`,
+          color: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+        });
       }
-    } catch { /* not JSON */ }
+    } catch {
+      /* not JSON */
+    }
   }
 
   return badges;
@@ -493,13 +571,16 @@ function ToolHeader({ toolCall }: { toolCall: ActiveToolCall }) {
 
   return (
     <div className="flex items-center gap-2.5 px-3 py-2 border-b border-border/20 flex-shrink-0">
-      <div className={cn("w-7 h-7 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0", gradient)}>
+      <div
+        className={cn(
+          "w-7 h-7 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0",
+          gradient,
+        )}
+      >
         <Icon className={cn("w-3.5 h-3.5", color)} />
       </div>
       <div className="flex-1 min-w-0">
-        <span className="text-xs font-medium text-foreground">
-          {displayName}
-        </span>
+        <span className="text-xs font-medium text-foreground">{displayName}</span>
         {subtitle && (
           <div className="text-[10px] text-muted-foreground/70 font-mono truncate mt-0.5">
             {subtitle}
@@ -519,12 +600,8 @@ function ToolHeader({ toolCall }: { toolCall: ActiveToolCall }) {
         {toolCall.status === "running" && (
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         )}
-        {toolCall.status === "completed" && (
-          <CheckCircle className="w-2.5 h-2.5" />
-        )}
-        {toolCall.status === "error" && (
-          <AlertTriangle className="w-2.5 h-2.5" />
-        )}
+        {toolCall.status === "completed" && <CheckCircle className="w-2.5 h-2.5" />}
+        {toolCall.status === "error" && <AlertTriangle className="w-2.5 h-2.5" />}
         {toolCall.status}
       </span>
     </div>
@@ -547,10 +624,7 @@ function ToolFooter({ toolCall }: { toolCall: ActiveToolCall }) {
         {badges.map((badge, i) => (
           <span
             key={i}
-            className={cn(
-              "text-[10px] font-medium px-1.5 py-0.5 rounded border",
-              badge.color,
-            )}
+            className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border", badge.color)}
           >
             {badge.label}
           </span>

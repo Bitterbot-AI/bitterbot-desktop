@@ -8,8 +8,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { SkillEdge, SkillEdgeType } from "./crystal-types.js";
-import { cosineSimilarity, parseEmbedding } from "./internal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 const log = createSubsystemLogger("memory/discovery-agent");
 
@@ -50,10 +50,7 @@ export class DiscoveryAgent {
   private readonly db: DatabaseSync;
   private readonly llmCall: LlmCallFn | null;
 
-  constructor(
-    db: DatabaseSync,
-    llmCall: LlmCallFn | null,
-  ) {
+  constructor(db: DatabaseSync, llmCall: LlmCallFn | null) {
     this.db = db;
     this.llmCall = llmCall;
   }
@@ -84,7 +81,8 @@ export class DiscoveryAgent {
       result.edgesDiscovered += prereqs.length;
       if (prereqs.length >= 0) result.llmCallsUsed++; // 1 call for prerequisites
 
-      const { edges: composites, llmCalls: compositeLlmCalls } = await this.discoverCompositesWithCount(skills);
+      const { edges: composites, llmCalls: compositeLlmCalls } =
+        await this.discoverCompositesWithCount(skills);
       result.compositesFound = composites.length;
       result.edgesDiscovered += composites.length;
       result.llmCallsUsed += compositeLlmCalls;
@@ -169,7 +167,9 @@ export class DiscoveryAgent {
    * Internal: discover composites and return the actual LLM call count
    * (one call per qualifying category).
    */
-  private async discoverCompositesWithCount(skills: SkillRow[]): Promise<{ edges: SkillEdge[]; llmCalls: number }> {
+  private async discoverCompositesWithCount(
+    skills: SkillRow[],
+  ): Promise<{ edges: SkillEdge[]; llmCalls: number }> {
     if (!this.llmCall || skills.length < 3) return { edges: [], llmCalls: 0 };
 
     // Take up to 5 skills in the same category
@@ -186,9 +186,7 @@ export class DiscoveryAgent {
       if (catSkills.length < 3) continue;
       const sample = catSkills.slice(0, 5);
 
-      const skillList = sample
-        .map((s, i) => `Skill ${i + 1}: ${s.text.slice(0, 200)}`)
-        .join("\n");
+      const skillList = sample.map((s, i) => `Skill ${i + 1}: ${s.text.slice(0, 200)}`).join("\n");
 
       const prompt =
         `Given these skills in the "${cat}" category, identify which skills compose ` +
@@ -215,7 +213,13 @@ export class DiscoveryAgent {
               const b = sample[(skillNums[j] ?? 1) - 1];
               if (!a || !b) continue;
 
-              const edge = this.storeEdge(a.id, b.id, "composes", Number(item.confidence) || 0.5, "llm");
+              const edge = this.storeEdge(
+                a.id,
+                b.id,
+                "composes",
+                Number(item.confidence) || 0.5,
+                "llm",
+              );
               if (edge) edges.push(edge);
             }
           }
@@ -268,7 +272,13 @@ export class DiscoveryAgent {
         if (pairIdx < 0 || pairIdx >= candidates.length) continue;
 
         const [a, b] = candidates[pairIdx]!;
-        const edge = this.storeEdge(a.id, b.id, "contradicts", Number(item.confidence) || 0.5, "llm");
+        const edge = this.storeEdge(
+          a.id,
+          b.id,
+          "contradicts",
+          Number(item.confidence) || 0.5,
+          "llm",
+        );
         if (edge) edges.push(edge);
       }
 
@@ -586,13 +596,7 @@ export class DiscoveryAgent {
         if (!embB) continue;
         const sim = cosineSimilarity(embA, embB);
         if (sim >= 0.8) {
-          const edge = this.storeEdge(
-            skills[i]!.id,
-            skills[j]!.id,
-            "similar",
-            sim,
-            "embedding",
-          );
+          const edge = this.storeEdge(skills[i]!.id, skills[j]!.id, "similar", sim, "embedding");
           if (edge) count++;
         }
       }
@@ -692,7 +696,10 @@ export class DiscoveryAgent {
 
   private parseLlmResponse(raw: string): Array<Record<string, unknown>> {
     try {
-      const cleaned = raw.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
+      const cleaned = raw
+        .trim()
+        .replace(/^```json?\s*/i, "")
+        .replace(/```\s*$/, "");
       const parsed = JSON.parse(cleaned);
       return Array.isArray(parsed) ? parsed : [];
     } catch {

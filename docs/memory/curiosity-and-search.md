@@ -22,8 +22,8 @@ type KnowledgeRegion = {
   chunkCount: number;
   totalAccesses: number;
   meanImportance: number;
-  predictionError: number;    // How often this region surprises us
-  learningProgress: number;   // Rate of prediction error reduction
+  predictionError: number; // How often this region surprises us
+  learningProgress: number; // Rate of prediction error reduction
   createdAt: number;
   lastUpdatedAt: number;
 };
@@ -35,27 +35,27 @@ Regions are rebuilt periodically during `run()`. The maximum number of regions i
 
 When a new chunk is indexed, `assessChunk()` uses the internal GCCRF reward function to evaluate it across 5 components:
 
-| Component | What it measures | Weight |
-|-----------|-----------------|--------|
-| η (Prediction Error) | Distance from nearest knowledge region centroid | 0.25 |
-| Δη (Learning Progress) | Per-region improvement in prediction accuracy | 0.20 |
-| Iα (Info-Theoretic Novelty) | Density-based novelty with developmental annealing | 0.25 |
-| E·μ (Empowerment) | Knowledge agency gated by uncertainty | 0.20 |
-| S (Strategic Alignment) | Alignment with active exploration targets | 0.10 |
+| Component                   | What it measures                                   | Weight |
+| --------------------------- | -------------------------------------------------- | ------ |
+| η (Prediction Error)        | Distance from nearest knowledge region centroid    | 0.25   |
+| Δη (Learning Progress)      | Per-region improvement in prediction accuracy      | 0.20   |
+| Iα (Info-Theoretic Novelty) | Density-based novelty with developmental annealing | 0.25   |
+| E·μ (Empowerment)           | Knowledge agency gated by uncertainty              | 0.20   |
+| S (Strategic Alignment)     | Alignment with active exploration targets          | 0.10   |
 
 Additionally, **contradiction detection** runs separately — it identifies chunks with high cosine similarity but different content hashes (conflicting information). Contradictions are stored for target generation but do not influence the reward score.
 
 ```typescript
 type SurpriseAssessment = {
   chunkId: string;
-  noveltyScore: number;           // Maps to η (prediction error)
-  surpriseFactor: number;         // Maps to Δη (learning progress)
-  informationGain: number;        // Maps to Iα (info-theoretic novelty)
-  contradictionScore: number;     // Standalone signal, not in GCCRF
-  compositeReward: number;        // Final GCCRF reward [0,1]
+  noveltyScore: number; // Maps to η (prediction error)
+  surpriseFactor: number; // Maps to Δη (learning progress)
+  informationGain: number; // Maps to Iα (info-theoretic novelty)
+  contradictionScore: number; // Standalone signal, not in GCCRF
+  compositeReward: number; // Final GCCRF reward [0,1]
   regionId: string | null;
   assessedAt: number;
-  gccrfComponents?: { eta, deltaEta, iAlpha, empowerment, strategic };
+  gccrfComponents?: { eta; deltaEta; iAlpha; empowerment; strategic };
   gccrfReward?: number;
 };
 ```
@@ -73,10 +73,10 @@ The engine detects knowledge gaps from two signals:
 
 ```typescript
 type ExplorationTargetType =
-  | "knowledge_gap"     // Missing knowledge detected from search
-  | "contradiction"     // Conflicting information found
-  | "stale_region"      // Region with declining learning progress
-  | "frontier";         // Edge of knowledge — opportunity to expand
+  | "knowledge_gap" // Missing knowledge detected from search
+  | "contradiction" // Conflicting information found
+  | "stale_region" // Region with declining learning progress
+  | "frontier"; // Edge of knowledge — opportunity to expand
 
 type ExplorationTarget = {
   id: string;
@@ -87,7 +87,7 @@ type ExplorationTarget = {
   metadata: Record<string, unknown>;
   createdAt: number;
   resolvedAt: number | null;
-  expiresAt: number;              // Default TTL: 7 days
+  expiresAt: number; // Default TTL: 7 days
 };
 ```
 
@@ -104,7 +104,7 @@ Management nodes can publish **global curriculum bounties** — network-wide exp
 ```typescript
 curiosityEngine.ingestBounty({
   bountyId: "bounty-001",
-  targetType: "knowledge_gap",     // maps to ExplorationTargetType
+  targetType: "knowledge_gap", // maps to ExplorationTargetType
   description: "Production debugging patterns for memory leak detection",
   priority: 0.8,
   rewardMultiplier: 2.5,
@@ -125,6 +125,7 @@ const match = curiosityEngine.checkBountyMatch(crystalId, crystalText);
 ```
 
 When a match is found:
+
 1. The bounty target is resolved (`resolvedAt` set)
 2. The `SkillNetworkBridge` applies a massive **dopamine boost**: `"achievement"` events are stimulated `ceil(rewardMultiplier)` times (capped at 5)
 3. The crystal is updated with `bounty_match_id` and `bounty_priority_boost`
@@ -177,6 +178,7 @@ flowchart LR
 ### Dream -> Curiosity
 
 `assessDreamInsight()` checks each new dream insight against existing curiosity state:
+
 - **Gap filling** — If the insight's embedding is close to a knowledge gap target, the target is resolved
 - **Contradiction detection** — If the insight contradicts existing knowledge regions
 - **Frontier opening** — If the insight represents genuinely novel territory, a new `frontier` target is created
@@ -210,6 +212,7 @@ flowchart TB
 **Hybrid merging** uses configurable weights (default: 0.7 vector + 0.3 text). BM25 ranks are converted to [0,1] scores via `bm25RankToScore()`.
 
 **Importance boost** applies a multiplicative factor:
+
 ```
 boostedScore = score * (1 - importanceWeight + importanceWeight * importanceScore)
 ```
@@ -229,12 +232,12 @@ type PerspectiveWeights = {
 
 **Weight profiles** for different query intents:
 
-| Profile | Semantic | Procedural | Causal | Entity |
-|---------|----------|------------|--------|--------|
-| `general` | 0.7 | 0.1 | 0.1 | 0.1 |
-| `skill_discovery` | 0.3 | 0.3 | 0.1 | 0.3 |
-| `debugging` | 0.2 | 0.1 | 0.5 | 0.2 |
-| `learning_path` | 0.1 | 0.5 | 0.3 | 0.1 |
+| Profile           | Semantic | Procedural | Causal | Entity |
+| ----------------- | -------- | ---------- | ------ | ------ |
+| `general`         | 0.7      | 0.1        | 0.1    | 0.1    |
+| `skill_discovery` | 0.3      | 0.3        | 0.1    | 0.3    |
+| `debugging`       | 0.2      | 0.1        | 0.5    | 0.2    |
+| `learning_path`   | 0.1      | 0.5        | 0.3    | 0.1    |
 
 **RRF formula** (K=60): For each perspective, rank all chunks by cosine similarity. The fused score is:
 
@@ -250,12 +253,12 @@ Steering reward and importance scores provide additional boosts to the fused sco
 
 The `embedding-perspectives.ts` module generates 4 different embedding views of the same text using **prefix-tuning**:
 
-| Perspective | Prefix | What it captures |
-|-------------|--------|------------------|
-| `semantic` | *(none)* | General meaning and concepts |
-| `procedural` | `"Steps, prerequisites, and execution order: "` | How-to knowledge, workflows |
-| `causal` | `"Causes, effects, and consequences: "` | Why things happen, debugging chains |
-| `entity` | `"Tools, APIs, technologies, and entities: "` | Named tools, frameworks, APIs |
+| Perspective  | Prefix                                          | What it captures                    |
+| ------------ | ----------------------------------------------- | ----------------------------------- |
+| `semantic`   | _(none)_                                        | General meaning and concepts        |
+| `procedural` | `"Steps, prerequisites, and execution order: "` | How-to knowledge, workflows         |
+| `causal`     | `"Causes, effects, and consequences: "`         | Why things happen, debugging chains |
+| `entity`     | `"Tools, APIs, technologies, and entities: "`   | Named tools, frameworks, APIs       |
 
 ```typescript
 // Generate all 4 perspectives for a text
@@ -278,13 +281,13 @@ The `UserModelManager` (`user-model.ts`) tracks user preferences and behavioral 
 
 `extractPreferences()` scans text for user preferences using 7 regex-based extractors:
 
-| Category | Pattern examples |
-|----------|-----------------|
-| `language` | "prefer TypeScript", "I use Python" |
-| `tool` | "using VSCode", "prefer vim" |
-| `style` | "like functional", "prefer OOP" |
-| `workflow` | "TDD approach", "CI/CD pipeline" |
-| `communication` | "be concise", "explain in detail" |
+| Category        | Pattern examples                    |
+| --------------- | ----------------------------------- |
+| `language`      | "prefer TypeScript", "I use Python" |
+| `tool`          | "using VSCode", "prefer vim"        |
+| `style`         | "like functional", "prefer OOP"     |
+| `workflow`      | "TDD approach", "CI/CD pipeline"    |
+| `communication` | "be concise", "explain in detail"   |
 
 Preferences are upserted with confidence boosting (+0.1 on repeated detection).
 
@@ -326,7 +329,7 @@ The `TaskMemoryManager` (`task-memory.ts`) tracks user goals and their progress.
 type TaskGoal = {
   id: string;
   description: string;
-  progress: number;           // 0-1
+  progress: number; // 0-1
   relatedCrystalIds: string[];
   sessionKey: string | null;
   status: "active" | "completed" | "stalled" | "abandoned";
@@ -353,15 +356,15 @@ Active and stalled goals feed into the `DiscoveryAgent`'s `goal_alignment` strat
 
 ```typescript
 type CuriosityConfig = {
-  enabled?: boolean;               // Default: true
+  enabled?: boolean; // Default: true
   weights?: Partial<CuriosityWeights>;
-  boostThreshold?: number;         // Default: 0.4
-  boostMultiplier?: number;        // Default: 1.3
-  maxRegions?: number;             // Default: 50
-  maxTargets?: number;             // Default: 10
-  targetTtlHours?: number;         // Default: 168 (7 days)
-  maxQueryHistory?: number;        // Default: 200
-  gapScoreThreshold?: number;      // Default: 0.4
+  boostThreshold?: number; // Default: 0.4
+  boostMultiplier?: number; // Default: 1.3
+  maxRegions?: number; // Default: 50
+  maxTargets?: number; // Default: 10
+  targetTtlHours?: number; // Default: 168 (7 days)
+  maxQueryHistory?: number; // Default: 200
+  gapScoreThreshold?: number; // Default: 0.4
 };
 
 // Default weights
@@ -377,14 +380,14 @@ const DEFAULT_CURIOSITY_WEIGHTS = {
 
 ```typescript
 type EmotionalConfig = {
-  enabled?: boolean;               // Default: true
-  decayResistance?: number;        // Default: 0.5
+  enabled?: boolean; // Default: true
+  decayResistance?: number; // Default: 0.5
   sentimentAnalysis?: "keyword" | "hybrid" | "llm" | "none";
   hormonal?: {
     enabled?: boolean;
-    dopamineHalflife?: number;     // Default: 30 min (ms)
-    cortisolHalflife?: number;     // Default: 60 min (ms)
-    oxytocinHalflife?: number;     // Default: 45 min (ms)
+    dopamineHalflife?: number; // Default: 30 min (ms)
+    cortisolHalflife?: number; // Default: 60 min (ms)
+    oxytocinHalflife?: number; // Default: 45 min (ms)
   };
   userModel?: {
     enabled?: boolean;

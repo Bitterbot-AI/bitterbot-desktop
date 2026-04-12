@@ -1,7 +1,7 @@
-import { useProjectsStore } from "../../stores/projects-store";
 import { FolderKanban, ChevronDown } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { cn } from "../../lib/utils";
+import { useProjectsStore } from "../../stores/projects-store";
 
 /**
  * Compact dropdown for switching the active project.

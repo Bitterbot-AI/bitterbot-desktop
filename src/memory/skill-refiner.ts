@@ -6,10 +6,10 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { DreamInsight } from "./dream-types.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { SkillNetworkBridge } from "./skill-network-bridge.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { SkillVerifier } from "./skill-verifier.js";
 
 const log = createSubsystemLogger("memory/skill-refiner");
@@ -174,10 +174,18 @@ export class SkillRefiner {
 
     // Keyword coverage: mutation should retain core concepts
     const originalWords = new Set(
-      original.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter((w) => w.length > 3),
+      original
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, "")
+        .split(/\s+/)
+        .filter((w) => w.length > 3),
     );
     const mutationWords = new Set(
-      mutation.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter((w) => w.length > 3),
+      mutation
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, "")
+        .split(/\s+/)
+        .filter((w) => w.length > 3),
     );
 
     let overlap = 0;
@@ -229,13 +237,17 @@ export class SkillRefiner {
       let stableSkillId: string;
       let skillVersion = 1;
       const originalRow = this.db
-        .prepare(`SELECT stable_skill_id, skill_version, skill_category, skill_tags FROM chunks WHERE id = ?`)
-        .get(originalId) as {
-          stable_skill_id: string | null;
-          skill_version: number | null;
-          skill_category: string | null;
-          skill_tags: string | null;
-        } | undefined;
+        .prepare(
+          `SELECT stable_skill_id, skill_version, skill_category, skill_tags FROM chunks WHERE id = ?`,
+        )
+        .get(originalId) as
+        | {
+            stable_skill_id: string | null;
+            skill_version: number | null;
+            skill_category: string | null;
+            skill_tags: string | null;
+          }
+        | undefined;
 
       if (originalRow?.stable_skill_id) {
         stableSkillId = originalRow.stable_skill_id;
@@ -253,14 +265,16 @@ export class SkillRefiner {
         provenanceChain: [originalId, mutation.id],
       });
 
-      const provenanceDag = JSON.stringify([{
-        crystalId,
-        operation: "mutated",
-        actor: "dream_engine",
-        timestamp: now,
-        parentIds: [originalId],
-        metadata: { mutationId: mutation.id, confidence: mutation.confidence },
-      }]);
+      const provenanceDag = JSON.stringify([
+        {
+          crystalId,
+          operation: "mutated",
+          actor: "dream_engine",
+          timestamp: now,
+          parentIds: [originalId],
+          metadata: { mutationId: mutation.id, confidence: mutation.confidence },
+        },
+      ]);
 
       this.db
         .prepare(

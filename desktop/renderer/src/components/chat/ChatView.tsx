@@ -1,9 +1,4 @@
 import { useCallback, useEffect } from "react";
-import { useChatStore, nextMsgId } from "../../stores/chat-store";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useUIStore } from "../../stores/ui-store";
-import { useArtifactStore, type ArtifactType } from "../../stores/artifact-store";
-import { useCoworkStore, type TaskStatus } from "../../stores/cowork-store";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
 import {
   extractMessageText,
@@ -14,8 +9,13 @@ import {
   parseAgentEvent,
   formatToolOutput,
 } from "../../lib/message-utils";
-import { MessageList } from "./MessageList";
+import { useArtifactStore, type ArtifactType } from "../../stores/artifact-store";
+import { useChatStore, nextMsgId } from "../../stores/chat-store";
+import { useCoworkStore, type TaskStatus } from "../../stores/cowork-store";
+import { useGatewayStore } from "../../stores/gateway-store";
+import { useUIStore } from "../../stores/ui-store";
 import { ChatInput } from "./ChatInput";
+import { MessageList } from "./MessageList";
 
 const ARTIFACT_TOOL_NAMES = new Set(["create_artifact", "create-artifact"]);
 const PLAN_TOOL_NAMES = new Set(["plan"]);
@@ -23,10 +23,18 @@ const COMPLETE_TOOL_NAMES = new Set(["complete", "task_complete", "task-complete
 
 /** Tools that are too trivial/read-only to track as subtasks in the CoworkPanel. */
 const SKIP_SUBTASK_TOOLS = new Set([
-  "read", "read-file", "read_file",
-  "ls", "list-directory", "list_directory",
-  "find", "grep",
-  "plan", "complete", "task_complete", "task-complete",
+  "read",
+  "read-file",
+  "read_file",
+  "ls",
+  "list-directory",
+  "list_directory",
+  "find",
+  "grep",
+  "plan",
+  "complete",
+  "task_complete",
+  "task-complete",
 ]);
 
 export function ChatView() {
@@ -139,7 +147,8 @@ export function ChatView() {
       if (evt.stream === "lifecycle") {
         const phase = typeof evt.data?.phase === "string" ? evt.data.phase : "";
         const label = typeof evt.data?.label === "string" ? evt.data.label : evt.runId;
-        const parentTaskId = typeof evt.data?.parentTaskId === "string" ? evt.data.parentTaskId : undefined;
+        const parentTaskId =
+          typeof evt.data?.parentTaskId === "string" ? evt.data.parentTaskId : undefined;
 
         switch (phase) {
           case "start":
@@ -203,15 +212,21 @@ export function ChatView() {
           if (!SKIP_SUBTASK_TOOLS.has(name.toLowerCase())) {
             const toolArgs = data.args as Record<string, unknown> | undefined;
             const primaryParam =
-              typeof toolArgs?.command === "string" ? toolArgs.command :
-              typeof toolArgs?.file_path === "string" ? toolArgs.file_path :
-              typeof toolArgs?.path === "string" ? toolArgs.path :
-              typeof toolArgs?.query === "string" ? toolArgs.query :
-              typeof toolArgs?.url === "string" ? toolArgs.url :
-              "";
-            const shortParam = typeof primaryParam === "string" && primaryParam.length > 60
-              ? primaryParam.slice(0, 57) + "..."
-              : primaryParam;
+              typeof toolArgs?.command === "string"
+                ? toolArgs.command
+                : typeof toolArgs?.file_path === "string"
+                  ? toolArgs.file_path
+                  : typeof toolArgs?.path === "string"
+                    ? toolArgs.path
+                    : typeof toolArgs?.query === "string"
+                      ? toolArgs.query
+                      : typeof toolArgs?.url === "string"
+                        ? toolArgs.url
+                        : "";
+            const shortParam =
+              typeof primaryParam === "string" && primaryParam.length > 60
+                ? primaryParam.slice(0, 57) + "..."
+                : primaryParam;
             upsertTask({
               id: `tool-${toolCallId}`,
               parentId: evt.runId,
@@ -232,11 +247,7 @@ export function ChatView() {
         case "result": {
           const result = formatToolOutput(data.result) ?? "";
           const isError = data.isError === true;
-          updateToolCallResult(
-            toolCallId,
-            result,
-            isError ? "error" : "completed",
-          );
+          updateToolCallResult(toolCallId, result, isError ? "error" : "completed");
           // Update subtask status
           updateTaskStatus(`tool-${toolCallId}`, isError ? "error" : "completed");
 
@@ -257,7 +268,9 @@ export function ChatView() {
                   }
                 }
               }
-            } catch { /* ignore parse errors */ }
+            } catch {
+              /* ignore parse errors */
+            }
           }
 
           // Detect complete tool: mark all matching plan tasks as completed
@@ -274,7 +287,8 @@ export function ChatView() {
                   const matched = completedTasks.some(
                     (ct: unknown) =>
                       typeof ct === "string" &&
-                      (labelLower.includes(ct.toLowerCase()) || ct.toLowerCase().includes(labelLower)),
+                      (labelLower.includes(ct.toLowerCase()) ||
+                        ct.toLowerCase().includes(labelLower)),
                   );
                   if (matched) {
                     updateTaskStatus(taskId, "completed");
@@ -283,7 +297,9 @@ export function ChatView() {
               }
               // Also mark the parent run task as completed
               updateTaskStatus(evt.runId, "completed");
-            } catch { /* ignore parse errors */ }
+            } catch {
+              /* ignore parse errors */
+            }
           }
 
           // Detect create_artifact tool results and update artifact store
@@ -327,7 +343,16 @@ export function ChatView() {
         }
       }
     },
-    [addToolCall, updateToolCallPartial, updateToolCallResult, setToolPanelOpen, upsertArtifact, openArtifact, upsertTask, updateTaskStatus],
+    [
+      addToolCall,
+      updateToolCallPartial,
+      updateToolCallResult,
+      setToolPanelOpen,
+      upsertArtifact,
+      openArtifact,
+      upsertTask,
+      updateTaskStatus,
+    ],
   );
 
   // Handle dedicated artifact events (broadcast by gateway when artifact stream events arrive)
@@ -336,7 +361,7 @@ export function ChatView() {
       if (!payload || typeof payload !== "object") return;
       const data = payload as Record<string, unknown>;
       const artifactId = typeof data.artifactId === "string" ? data.artifactId : "";
-      const type = typeof data.type === "string" ? data.type as ArtifactType : "html";
+      const type = typeof data.type === "string" ? (data.type as ArtifactType) : "html";
       const title = typeof data.title === "string" ? data.title : "Artifact";
       const version = typeof data.version === "number" ? data.version : 1;
 

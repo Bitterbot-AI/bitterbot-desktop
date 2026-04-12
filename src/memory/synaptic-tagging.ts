@@ -17,8 +17,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { cosineSimilarity, parseEmbedding } from "./internal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 const log = createSubsystemLogger("memory/synaptic-tagging");
 
@@ -42,8 +42,8 @@ export const DEFAULT_STC_CONFIG: SynapticTaggingConfig = {
   enabled: true,
   strongThreshold: 0.7,
   weakThreshold: 0.4,
-  windowBeforeMs: 2 * 60 * 60 * 1000,  // 2 hours
-  windowAfterMs: 30 * 60 * 1000,        // 30 minutes
+  windowBeforeMs: 2 * 60 * 60 * 1000, // 2 hours
+  windowAfterMs: 30 * 60 * 1000, // 30 minutes
   minSimilarity: 0.5,
   captureBoost: 0.15,
 };
@@ -78,15 +78,17 @@ export function captureNearbyWeakChunks(
         `SELECT id, embedding, importance_score, created_at, hormonal_dopamine, hormonal_cortisol, hormonal_oxytocin
          FROM chunks WHERE id = ?`,
       )
-      .get(strongChunkId) as {
-      id: string;
-      embedding: string;
-      importance_score: number;
-      created_at: number;
-      hormonal_dopamine: number | null;
-      hormonal_cortisol: number | null;
-      hormonal_oxytocin: number | null;
-    } | undefined;
+      .get(strongChunkId) as
+      | {
+          id: string;
+          embedding: string;
+          importance_score: number;
+          created_at: number;
+          hormonal_dopamine: number | null;
+          hormonal_cortisol: number | null;
+          hormonal_oxytocin: number | null;
+        }
+      | undefined;
 
     if (!strong || strong.importance_score < cfg.strongThreshold) return result;
 

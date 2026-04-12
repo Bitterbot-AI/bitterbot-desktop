@@ -132,7 +132,10 @@ export function resolveAgentSkillsFilter(
   return normalizeSkillFilter(resolveAgentConfig(cfg, agentId)?.skills);
 }
 
-export function resolveAgentModelPrimary(cfg: BitterbotConfig, agentId: string): string | undefined {
+export function resolveAgentModelPrimary(
+  cfg: BitterbotConfig,
+  agentId: string,
+): string | undefined {
   const raw = resolveAgentConfig(cfg, agentId)?.model;
   if (!raw) {
     return undefined;

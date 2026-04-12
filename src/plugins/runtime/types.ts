@@ -84,8 +84,10 @@ type ResizeToJpeg = typeof import("../../media/image-ops.js").resizeToJpeg;
 type CreateMemoryGetTool = typeof import("../../agents/tools/memory-tool.js").createMemoryGetTool;
 type CreateMemorySearchTool =
   typeof import("../../agents/tools/memory-tool.js").createMemorySearchTool;
-type CreateDreamSearchTool = typeof import("../../agents/tools/dream-tool.js").createDreamSearchTool;
-type CreateDreamStatusTool = typeof import("../../agents/tools/dream-tool.js").createDreamStatusTool;
+type CreateDreamSearchTool =
+  typeof import("../../agents/tools/dream-tool.js").createDreamSearchTool;
+type CreateDreamStatusTool =
+  typeof import("../../agents/tools/dream-tool.js").createDreamStatusTool;
 type CreateCuriosityStateTool =
   typeof import("../../agents/tools/curiosity-tool.js").createCuriosityStateTool;
 type CreateCuriosityResolveTool =

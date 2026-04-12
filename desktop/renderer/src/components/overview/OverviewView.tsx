@@ -1,8 +1,8 @@
 import { useCallback, useEffect } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useOverviewStore } from "../../stores/overview-store";
 import { formatUptime, formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
+import { useOverviewStore } from "../../stores/overview-store";
 
 function StatCard({
   label,
@@ -20,9 +20,7 @@ function StatCard({
       className={cn(
         "rounded-xl border p-4",
         "bg-card/60 backdrop-blur-sm",
-        accent
-          ? "border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.1)]"
-          : "border-border/20",
+        accent ? "border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.1)]" : "border-border/20",
       )}
     >
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
@@ -32,13 +30,7 @@ function StatCard({
   );
 }
 
-function ChannelCard({
-  name,
-  status,
-}: {
-  name: string;
-  status: string;
-}) {
+function ChannelCard({ name, status }: { name: string; status: string }) {
   const isConnected = status === "connected" || status === "running";
   return (
     <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
@@ -46,9 +38,7 @@ function ChannelCard({
       <span
         className={cn(
           "text-xs px-2 py-0.5 rounded-full",
-          isConnected
-            ? "bg-green-500/10 text-green-400"
-            : "bg-muted text-muted-foreground",
+          isConnected ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground",
         )}
       >
         {status || "idle"}
@@ -73,10 +63,7 @@ export function OverviewView() {
     if (status !== "connected") return;
     setLoading(true);
     try {
-      const [h, s] = await Promise.all([
-        request("health", {}),
-        request("status", {}),
-      ]);
+      const [h, s] = await Promise.all([request("health", {}), request("status", {})]);
       setHealth(h as any);
       setStatus(s as any);
       setError(null);
@@ -102,9 +89,7 @@ export function OverviewView() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Overview</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gateway dashboard
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">Gateway dashboard</p>
         </div>
         <button
           onClick={refresh}
@@ -123,40 +108,25 @@ export function OverviewView() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Version" value={String(version)} accent />
-        <StatCard
-          label="Uptime"
-          value={typeof uptime === "number" ? formatUptime(uptime) : "—"}
-        />
+        <StatCard label="Uptime" value={typeof uptime === "number" ? formatUptime(uptime) : "—"} />
         <StatCard label="Platform" value={String(platform)} />
-        <StatCard
-          label="Channels"
-          value={String(Object.keys(channels).length)}
-          sub="registered"
-        />
+        <StatCard label="Channels" value={String(Object.keys(channels).length)} sub="registered" />
       </div>
 
       {/* Connection Info */}
       <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
-        <h2 className="text-sm font-medium text-foreground mb-3">
-          Gateway Connection
-        </h2>
+        <h2 className="text-sm font-medium text-foreground mb-3">Gateway Connection</h2>
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <span className="text-muted-foreground">Status: </span>
-            <span
-              className={cn(
-                status === "connected" ? "text-green-400" : "text-yellow-400",
-              )}
-            >
+            <span className={cn(status === "connected" ? "text-green-400" : "text-yellow-400")}>
               {status}
             </span>
           </div>
           {hello?.ts && (
             <div>
               <span className="text-muted-foreground">Connected: </span>
-              <span className="text-foreground">
-                {formatRelativeTime(hello.ts)}
-              </span>
+              <span className="text-foreground">{formatRelativeTime(hello.ts)}</span>
             </div>
           )}
           {statusData?.configPath && (
@@ -181,9 +151,7 @@ export function OverviewView() {
       {/* Channel Summary */}
       {Object.keys(channels).length > 0 && (
         <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
-          <h2 className="text-sm font-medium text-foreground mb-3">
-            Channel Status
-          </h2>
+          <h2 className="text-sm font-medium text-foreground mb-3">Channel Status</h2>
           <div className="space-y-1">
             {Object.entries(channels).map(([name, data]) => (
               <ChannelCard
@@ -191,7 +159,9 @@ export function OverviewView() {
                 name={name}
                 status={
                   typeof data === "object" && data
-                    ? String((data as any).status ?? (data as any).configured ? "configured" : "idle")
+                    ? String(
+                        ((data as any).status ?? (data as any).configured) ? "configured" : "idle",
+                      )
                     : "idle"
                 }
               />

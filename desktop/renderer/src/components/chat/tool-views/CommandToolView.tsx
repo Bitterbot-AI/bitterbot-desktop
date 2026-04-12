@@ -1,6 +1,6 @@
+import { ChevronDown, ChevronUp, Info } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import type { ToolViewProps } from "./ToolViewRegistry";
-import { ChevronDown, ChevronUp, Info } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { parseExitCode, isNonBlockingOutput, safeJsonParse } from "./tool-view-utils";
 
@@ -82,9 +82,7 @@ export function CommandToolView({ toolCall }: ToolViewProps) {
           <span className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
         </div>
         {sessionName && (
-          <span className="text-[10px] text-zinc-500 font-mono ml-2">
-            {sessionName}
-          </span>
+          <span className="text-[10px] text-zinc-500 font-mono ml-2">{sessionName}</span>
         )}
         <div className="ml-auto flex items-center gap-2">
           {/* Exit code badge */}
@@ -117,7 +115,8 @@ export function CommandToolView({ toolCall }: ToolViewProps) {
         <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
           <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
           <span className="text-xs text-blue-300">
-            Command sent to tmux session <span className="font-mono font-semibold">{nonBlocking.sessionName}</span>
+            Command sent to tmux session{" "}
+            <span className="font-mono font-semibold">{nonBlocking.sessionName}</span>
           </span>
         </div>
       )}

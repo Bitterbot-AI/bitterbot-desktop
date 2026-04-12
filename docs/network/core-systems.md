@@ -51,13 +51,13 @@ When an external agent submits a task via `message/send`, the full execution pip
 
 The server dispatches JSON-RPC 2.0 requests to these methods (defined in `src/gateway/a2a/server.ts`):
 
-| Method | Description |
-|--------|-------------|
-| `message/send` | Submit a task (returns immediately with task in `working` state) |
-| `message/stream` | Submit a task with SSE streaming of status updates |
-| `tasks/get` | Retrieve a task by ID (with optional history length) |
-| `tasks/list` | List tasks (filterable by contextId, status; paginated) |
-| `tasks/cancel` | Cancel a task (fails if already in a final state) |
+| Method           | Description                                                      |
+| ---------------- | ---------------------------------------------------------------- |
+| `message/send`   | Submit a task (returns immediately with task in `working` state) |
+| `message/stream` | Submit a task with SSE streaming of status updates               |
+| `tasks/get`      | Retrieve a task by ID (with optional history length)             |
+| `tasks/list`     | List tasks (filterable by contextId, status; paginated)          |
+| `tasks/cancel`   | Cancel a task (fails if already in a final state)                |
 
 ### Task Executor (`src/gateway/a2a/task-executor.ts`)
 
@@ -79,6 +79,7 @@ async function executeA2aTask(params: {
 ```
 
 Key design decisions:
+
 - **Fire-and-forget:** `void executeA2aTask(...)` — caller doesn't await
 - **Params object:** Takes a single `{ taskId, taskText, config, taskManager }` object, not positional args
 - **Sub-agent isolation:** Each A2A task runs in its own session (`agent:default:a2a-task:<uuid>`)
@@ -186,13 +187,13 @@ The `MarketplaceEconomics` engine (`src/memory/marketplace-economics.ts`) automa
 price = basePriceUsdc * (1 + qualityMultiplier) * demandMultiplier * reputationMultiplier * scarcityBonus
 ```
 
-| Factor | Calculation |
-|--------|-------------|
-| Base price | Configurable (default $0.01 USDC) |
-| Quality | `successRate * Math.max(0.1, avgRewardScore)` |
-| Demand | `1 + log(uniqueBuyers + bountyMatches + 1) * 0.1` |
+| Factor     | Calculation                                                                 |
+| ---------- | --------------------------------------------------------------------------- |
+| Base price | Configurable (default $0.01 USDC)                                           |
+| Quality    | `successRate * Math.max(0.1, avgRewardScore)`                               |
+| Demand     | `1 + log(uniqueBuyers + bountyMatches + 1) * 0.1`                           |
 | Reputation | `Math.max(0.1, reputationScore)` — publishing agent's peer reputation score |
-| Scarcity | <=2 similar skills = 1.5x, <=5 = 1.2x, else 1.0x |
+| Scarcity   | <=2 similar skills = 1.5x, <=5 = 1.2x, else 1.0x                            |
 
 Skills must pass quality gates: minimum 3 executions and 60% success rate for marketplace listing. Bounty claims require a stricter quality gate of 70% success rate. Prices are clamped between $0.001 and $1.00 USDC, rounded to 6 decimal places (USDC precision).
 
@@ -212,6 +213,7 @@ Client → POST /a2a (message/stream) → SSE stream
 ```
 
 **Backpressure handling:** If the client can't keep up with events, the server:
+
 1. Detects backpressure when `res.write()` returns `false`
 2. Sets a `paused` flag and pushes subsequent events into an unbounded `pendingEvents` array
 3. Resumes flushing pending events when the `drain` event fires on the response stream
@@ -235,22 +237,22 @@ The P2P layer uses a Rust binary (`orchestrator`) built on libp2p:
 
 ### Two-Tiered Topology
 
-| Tier | Role | Dashboard | How Set |
-|------|------|-----------|---------|
+| Tier           | Role                                                    | Dashboard                 | How Set                                                                    |
+| -------------- | ------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------- |
 | **Management** | Full birds-eye view, signed broadcasts, bounty issuance | Full management dashboard | TypeScript-side `ManagementKeyAuth` via `BITTERBOT_MANAGEMENT_KEY` env var |
-| **Edge** | Basic P2P info, skill trading, gossip participation | Basic P2P status | Default |
+| **Edge**       | Basic P2P info, skill trading, gossip participation     | Basic P2P status          | Default                                                                    |
 
 **Important:** The `--node-tier` flag is NOT passed to the Rust binary. Management tier authorization is handled entirely in TypeScript via `ManagementKeyAuth` (`src/memory/management-key-auth.ts`), which derives an Ed25519 public key from the `BITTERBOT_MANAGEMENT_KEY` environment variable and verifies it against the genesis trust list. The Rust orchestrator always runs as an edge node.
 
 ### Gossipsub Topics (5)
 
-| Topic | Content | Publisher |
-|-------|---------|-----------|
-| `bitterbot/skills/v1` | Skill announcements, marketplace listings | Any node |
-| `bitterbot/telemetry/v1` | Telemetry signals (typed data) | Any node |
-| `bitterbot/weather/v1` | Network-wide cortisol signals | Management nodes (signed) |
-| `bitterbot/bounties/v1` | Skill requests, reward offers | Management nodes (signed) |
-| `bitterbot/queries/v1` | Peer-to-peer knowledge queries | Any node |
+| Topic                    | Content                                   | Publisher                 |
+| ------------------------ | ----------------------------------------- | ------------------------- |
+| `bitterbot/skills/v1`    | Skill announcements, marketplace listings | Any node                  |
+| `bitterbot/telemetry/v1` | Telemetry signals (typed data)            | Any node                  |
+| `bitterbot/weather/v1`   | Network-wide cortisol signals             | Management nodes (signed) |
+| `bitterbot/bounties/v1`  | Skill requests, reward offers             | Management nodes (signed) |
+| `bitterbot/queries/v1`   | Peer-to-peer knowledge queries            | Any node                  |
 
 ### Peer Reputation (EigenTrust)
 

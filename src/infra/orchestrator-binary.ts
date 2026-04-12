@@ -50,9 +50,7 @@ const exeName = (): string =>
  * probeOrchestratorBinary(); callers that want to render a full
  * diagnostic table use this.
  */
-export function listOrchestratorBinaryCandidates(
-  cfg: P2pConfig | undefined,
-): BinaryCandidate[] {
+export function listOrchestratorBinaryCandidates(cfg: P2pConfig | undefined): BinaryCandidate[] {
   const bin = exeName();
   const cargoBase = path.resolve(process.cwd(), "orchestrator", "target");
   const candidates: BinaryCandidate[] = [];

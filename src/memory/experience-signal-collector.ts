@@ -14,9 +14,9 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { CuriosityEngine } from "./curiosity-engine.js";
 import type { DreamInsight, DreamStats, DreamMode } from "./dream-types.js";
 import type { HormonalStateManager } from "./hormonal.js";
-import type { CuriosityEngine } from "./curiosity-engine.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { OrchestratorBridgeLike } from "./skill-network-bridge.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -64,7 +64,7 @@ const SOURCE_WEIGHTS: Record<ExperienceSignal["signalType"], number> = {
 const EMOTION_BLEND = {
   valence: 0.4, // dopamine → positivity
   arousal: 0.3, // cortisol → stress/arousal
-  warmth: 0.3,  // oxytocin → social connection
+  warmth: 0.3, // oxytocin → social connection
 };
 
 const MAX_RECENT_SIGNALS = 50;
@@ -165,8 +165,12 @@ export class ExperienceSignalCollector {
 
     // Dream consolidation: confidence * mode weight
     const modeWeights: Record<string, number> = {
-      replay: 0.3, compression: 0.4, exploration: 0.7,
-      mutation: 0.9, extrapolation: 0.8, simulation: 0.85,
+      replay: 0.3,
+      compression: 0.4,
+      exploration: 0.7,
+      mutation: 0.9,
+      extrapolation: 0.8,
+      simulation: 0.85,
     };
     const modeWeight = modeWeights[insight.mode] ?? 0.5;
     const dreamConsolidation = insight.confidence * modeWeight;
@@ -287,10 +291,7 @@ export class ExperienceSignalCollector {
     };
   }
 
-  private scoreEmotionalState(
-    cycleId: string,
-    now: number,
-  ): ExperienceSignal | null {
+  private scoreEmotionalState(cycleId: string, now: number): ExperienceSignal | null {
     if (!this.hormonalManager) return null;
 
     const state = this.hormonalManager.getState();
@@ -304,9 +305,7 @@ export class ExperienceSignalCollector {
 
     const novelty = trajectory.trend === "volatile" ? 0.7 : 0.4;
     const trainingRelevance =
-      SOURCE_WEIGHTS.emotional_shift * 0.4 +
-      emotionalWeight * 0.4 +
-      novelty * 0.2;
+      SOURCE_WEIGHTS.emotional_shift * 0.4 + emotionalWeight * 0.4 + novelty * 0.2;
 
     return {
       signalId: crypto.randomUUID(),
@@ -372,11 +371,11 @@ export class ExperienceSignalCollector {
            ORDER BY completed_at DESC LIMIT ?`,
         )
         .all(limit) as Array<{
-          skill_crystal_id: string;
-          success: number | null;
-          reward_score: number | null;
-          execution_time_ms: number | null;
-        }>;
+        skill_crystal_id: string;
+        success: number | null;
+        reward_score: number | null;
+        execution_time_ms: number | null;
+      }>;
       return rows.map((r) => ({
         skillId: r.skill_crystal_id,
         success: r.success === 1,
@@ -393,9 +392,11 @@ export class ExperienceSignalCollector {
     cycleId: string | null,
     now: number,
   ): SignalBatch {
-    const meanRelevance = signals.reduce((s, sig) => s + sig.scores.trainingRelevance, 0) / signals.length;
+    const meanRelevance =
+      signals.reduce((s, sig) => s + sig.scores.trainingRelevance, 0) / signals.length;
     const meanNovelty = signals.reduce((s, sig) => s + sig.scores.novelty, 0) / signals.length;
-    const emotionalIntensity = signals.reduce((s, sig) => s + sig.scores.emotionalWeight, 0) / signals.length;
+    const emotionalIntensity =
+      signals.reduce((s, sig) => s + sig.scores.emotionalWeight, 0) / signals.length;
 
     return {
       batchId: crypto.randomUUID(),

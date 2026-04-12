@@ -1,4 +1,5 @@
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
+import type { A2aTaskManager } from "./task-manager.js";
 import type {
   JsonRpcRequest,
   JsonRpcResponse,
@@ -8,9 +9,8 @@ import type {
   TaskCancelParams,
   A2aTaskState,
 } from "./types.js";
-import { A2aErrorCodes } from "./types.js";
-import type { A2aTaskManager } from "./task-manager.js";
 import { executeA2aTask, extractTaskText } from "./task-executor.js";
+import { A2aErrorCodes } from "./types.js";
 
 type A2aServerContext = {
   taskManager: A2aTaskManager;
@@ -20,10 +20,7 @@ type A2aServerContext = {
 /**
  * Dispatch a JSON-RPC 2.0 request to the appropriate A2A handler.
  */
-export function handleA2aJsonRpc(
-  request: JsonRpcRequest,
-  ctx: A2aServerContext,
-): JsonRpcResponse {
+export function handleA2aJsonRpc(request: JsonRpcRequest, ctx: A2aServerContext): JsonRpcResponse {
   if (request.jsonrpc !== "2.0") {
     return errorResponse(request.id, A2aErrorCodes.INVALID_REQUEST, "Invalid JSON-RPC version");
   }
@@ -58,10 +55,7 @@ export function isStreamingMethod(request: JsonRpcRequest): boolean {
 // Method handlers
 // ---------------------------------------------------------------------------
 
-function handleMessageSend(
-  request: JsonRpcRequest,
-  ctx: A2aServerContext,
-): JsonRpcResponse {
+function handleMessageSend(request: JsonRpcRequest, ctx: A2aServerContext): JsonRpcResponse {
   const params = request.params as MessageSendParams | undefined;
   if (!params?.message) {
     return errorResponse(request.id, A2aErrorCodes.INVALID_PARAMS, "Missing message in params");
@@ -93,10 +87,7 @@ function handleMessageSend(
   return successResponse(request.id, ctx.taskManager.getTask(task.id));
 }
 
-function handleTasksGet(
-  request: JsonRpcRequest,
-  ctx: A2aServerContext,
-): JsonRpcResponse {
+function handleTasksGet(request: JsonRpcRequest, ctx: A2aServerContext): JsonRpcResponse {
   const params = request.params as TaskGetParams | undefined;
   if (!params?.id) {
     return errorResponse(request.id, A2aErrorCodes.INVALID_PARAMS, "Missing task id");
@@ -110,10 +101,7 @@ function handleTasksGet(
   return successResponse(request.id, task);
 }
 
-function handleTasksList(
-  request: JsonRpcRequest,
-  ctx: A2aServerContext,
-): JsonRpcResponse {
+function handleTasksList(request: JsonRpcRequest, ctx: A2aServerContext): JsonRpcResponse {
   const params = (request.params ?? {}) as TaskListParams;
   const tasks = ctx.taskManager.listTasks({
     contextId: params.contextId,
@@ -125,10 +113,7 @@ function handleTasksList(
   return successResponse(request.id, tasks);
 }
 
-function handleTasksCancel(
-  request: JsonRpcRequest,
-  ctx: A2aServerContext,
-): JsonRpcResponse {
+function handleTasksCancel(request: JsonRpcRequest, ctx: A2aServerContext): JsonRpcResponse {
   const params = request.params as TaskCancelParams | undefined;
   if (!params?.id) {
     return errorResponse(request.id, A2aErrorCodes.INVALID_PARAMS, "Missing task id");

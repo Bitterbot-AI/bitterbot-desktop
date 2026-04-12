@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { SkillVersionResolver } from "./skill-version-resolver.js";
 import type { FitnessInput } from "./skill-version-resolver.js";
+import { SkillVersionResolver } from "./skill-version-resolver.js";
 
 // ── lineageHash ────────────────────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ describe("SkillVersionResolver.fitness", () => {
     });
     expect(fresh).toBeGreaterThan(weekOld);
     // Recency component halves — difference should be ~0.10
-    expect(fresh - weekOld).toBeCloseTo(0.10, 1);
+    expect(fresh - weekOld).toBeCloseTo(0.1, 1);
   });
 });
 

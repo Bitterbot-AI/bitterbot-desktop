@@ -21,12 +21,11 @@ import {
   type ExecToolDefaults,
   type ProcessToolDefaults,
 } from "./bash-tools.js";
-import { listChannelAgentTools } from "./channel-tools.js";
 import { createBitterbotTools } from "./bitterbot-tools.js";
+import { listChannelAgentTools } from "./channel-tools.js";
 import { wrapToolWithAbortSignal } from "./pi-tools.abort.js";
 import { wrapToolWithBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
 import { wrapToolsWithCache } from "./pi-tools.cache.js";
-import { ToolCache } from "./tool-cache.js";
 import {
   isToolAllowedByPolicies,
   resolveEffectiveToolPolicy,
@@ -47,6 +46,7 @@ import {
 } from "./pi-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
+import { ToolCache } from "./tool-cache.js";
 import {
   applyToolPolicyPipeline,
   buildDefaultToolPolicyPipelineSteps,

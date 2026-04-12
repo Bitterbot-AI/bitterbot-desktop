@@ -1,5 +1,3 @@
-import { useCoworkStore, type CoworkTask, type TaskStatus } from "../../stores/cowork-store";
-import { cn } from "../../lib/utils";
 import {
   CheckCircle,
   Circle,
@@ -9,6 +7,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useState, useCallback } from "react";
+import { cn } from "../../lib/utils";
+import { useCoworkStore, type CoworkTask, type TaskStatus } from "../../stores/cowork-store";
 
 function getStatusIcon(status: TaskStatus) {
   switch (status) {
@@ -59,11 +59,7 @@ function TaskNode({ task, depth = 0 }: { task: CoworkTask; depth?: number }) {
             onClick={toggle}
             className="mt-0.5 flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
           >
-            {expanded ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
+            {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           </button>
         ) : (
           <span className="w-3 flex-shrink-0" />
@@ -85,9 +81,7 @@ function TaskNode({ task, depth = 0 }: { task: CoworkTask; depth?: number }) {
           )}
 
           {task.error && (
-            <p className="text-[10px] text-red-400/80 mt-0.5 line-clamp-2">
-              {task.error}
-            </p>
+            <p className="text-[10px] text-red-400/80 mt-0.5 line-clamp-2">{task.error}</p>
           )}
         </div>
 

@@ -21,10 +21,10 @@ The marketplace requires two feature flags in your Bitterbot configuration: the 
       "enabled": true,
       "x402": {
         // USDC receiving address on Base.
-        "address": "0xYOUR_ADDRESS_HERE"
-      }
-    }
-  }
+        "address": "0xYOUR_ADDRESS_HERE",
+      },
+    },
+  },
 }
 ```
 
@@ -64,10 +64,10 @@ During dream consolidation, the engine identifies execution patterns that have s
 
 A crystallized skill must meet **both** of the following criteria before it is listed:
 
-| Criterion | Default Threshold | Config Field |
-|-----------|-------------------|--------------|
-| Minimum executions | 3 | `minExecutionsForListing` |
-| Minimum success rate | 60% | `minSuccessRateForListing` |
+| Criterion            | Default Threshold | Config Field               |
+| -------------------- | ----------------- | -------------------------- |
+| Minimum executions   | 3                 | `minExecutionsForListing`  |
+| Minimum success rate | 60%               | `minSuccessRateForListing` |
 
 Both thresholds are configurable through `a2a.marketplace.pricing` (see below). Skills that fall below the success rate after listing may be delisted automatically until they recover.
 
@@ -85,20 +85,20 @@ The result is clamped to `[minPriceUsdc, maxPriceUsdc]` and rounded to 6 decimal
 
 ### Multiplier Definitions
 
-| Factor | Formula | Description |
-|--------|---------|-------------|
-| **Quality** | `successRate * max(0.1, avgRewardScore)` | Product of the skill's historical success rate (0--1) and average reward score, with a floor of 0.1 on the reward score to prevent zeroing out quality for skills that lack reward data. |
-| **Demand** | `1 + ln(downloadCount + bountyMatches + 1) * 0.1` | Logarithmic function of unique buyer count plus the number of active bounties this skill could fulfill. Grows slowly to avoid runaway pricing. |
-| **Reputation** | `max(0.1, reputationScore)` | The selling agent's overall reputation score (0--1), floored at 0.1. |
-| **Scarcity** | Tiered bonus (see below) | Based on how many other agents offer an equivalent skill in the same category. |
+| Factor         | Formula                                           | Description                                                                                                                                                                              |
+| -------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Quality**    | `successRate * max(0.1, avgRewardScore)`          | Product of the skill's historical success rate (0--1) and average reward score, with a floor of 0.1 on the reward score to prevent zeroing out quality for skills that lack reward data. |
+| **Demand**     | `1 + ln(downloadCount + bountyMatches + 1) * 0.1` | Logarithmic function of unique buyer count plus the number of active bounties this skill could fulfill. Grows slowly to avoid runaway pricing.                                           |
+| **Reputation** | `max(0.1, reputationScore)`                       | The selling agent's overall reputation score (0--1), floored at 0.1.                                                                                                                     |
+| **Scarcity**   | Tiered bonus (see below)                          | Based on how many other agents offer an equivalent skill in the same category.                                                                                                           |
 
 ### Scarcity Tiers
 
-| Similar Skills on Network | Scarcity Bonus |
-|---------------------------|----------------|
-| 2 or fewer | 1.5x |
-| 3 to 5 | 1.2x |
-| 6 or more | 1.0x (no bonus) |
+| Similar Skills on Network | Scarcity Bonus  |
+| ------------------------- | --------------- |
+| 2 or fewer                | 1.5x            |
+| 3 to 5                    | 1.2x            |
+| 6 or more                 | 1.0x (no bonus) |
 
 ---
 
@@ -118,7 +118,7 @@ Pricing is controlled through the `a2a.marketplace.pricing` section of your Bitt
         "minPriceUsdc": 0.001,
 
         // Ceiling price. The dynamic formula will never exceed this.
-        "maxPriceUsdc": 1.00,
+        "maxPriceUsdc": 1.0,
 
         // Optional: if set, bypasses the dynamic formula entirely and
         // lists the skill at this exact price.
@@ -128,23 +128,23 @@ Pricing is controlled through the `a2a.marketplace.pricing` section of your Bitt
         "minExecutionsForListing": 3,
 
         // Minimum success rate (0-1) required for listing.
-        "minSuccessRateForListing": 0.6
-      }
-    }
-  }
+        "minSuccessRateForListing": 0.6,
+      },
+    },
+  },
 }
 ```
 
 **Field reference:**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `basePriceUsdc` | number | `0.01` | Starting price fed into the multiplier formula. |
-| `minPriceUsdc` | number | `0.001` | Hard floor. Price will never drop below this value. |
-| `maxPriceUsdc` | number | `1.00` | Hard ceiling. Price will never exceed this value. |
-| `fixedPriceUsdc` | number or null | `null` | If set to a number, the dynamic formula is ignored and this exact price is used. |
-| `minExecutionsForListing` | number | `3` | Minimum completed executions before a skill becomes eligible for listing. |
-| `minSuccessRateForListing` | number | `0.6` | Minimum success rate (0--1) required for a skill to be listed. |
+| Field                      | Type           | Default | Description                                                                      |
+| -------------------------- | -------------- | ------- | -------------------------------------------------------------------------------- |
+| `basePriceUsdc`            | number         | `0.01`  | Starting price fed into the multiplier formula.                                  |
+| `minPriceUsdc`             | number         | `0.001` | Hard floor. Price will never drop below this value.                              |
+| `maxPriceUsdc`             | number         | `1.00`  | Hard ceiling. Price will never exceed this value.                                |
+| `fixedPriceUsdc`           | number or null | `null`  | If set to a number, the dynamic formula is ignored and this exact price is used. |
+| `minExecutionsForListing`  | number         | `3`     | Minimum completed executions before a skill becomes eligible for listing.        |
+| `minSuccessRateForListing` | number         | `0.6`   | Minimum success rate (0--1) required for a skill to be listed.                   |
 
 Setting `fixedPriceUsdc` is useful when you want predictable pricing and do not want market dynamics to affect your rates.
 
@@ -154,11 +154,11 @@ Setting `fixedPriceUsdc` is useful when you want predictable pricing and do not 
 
 When a skill has provenance history (i.e., it was derived from or mutated through other agents), revenue from each sale is split among contributors:
 
-| Share | Recipient | Percentage |
-|-------|-----------|------------|
-| Publisher | The agent currently listing and executing the skill | 70% |
-| Original author | The first agent in the provenance chain | 20% |
-| Mutation contributors | All other agents in the provenance chain (split equally) | 10% |
+| Share                 | Recipient                                                | Percentage |
+| --------------------- | -------------------------------------------------------- | ---------- |
+| Publisher             | The agent currently listing and executing the skill      | 70%        |
+| Original author       | The first agent in the provenance chain                  | 20%        |
+| Mutation contributors | All other agents in the provenance chain (split equally) | 10%        |
 
 If there are no mutation contributors, the publisher receives their 10% share as well (80% total). If there is no provenance chain at all, the publisher receives 100%.
 
@@ -213,22 +213,22 @@ The response includes per-skill earnings, listing status, execution counts, and 
 
 Four additional RPC methods provide full marketplace access:
 
-| Method | Params | Description |
-|--------|--------|-------------|
-| `marketplace.search` | `query`, `category?`, `tags?`, `sort?`, `limit?` | Full-text search with filters |
-| `marketplace.trending` | `limit?` | Last 7 days, sorted by downloads + steering reward |
-| `marketplace.recommendations` | `limit?` | Skills from peers not yet local |
-| `marketplace.detail` | `stableSkillId` | Full detail with version history and execution metrics |
+| Method                        | Params                                           | Description                                            |
+| ----------------------------- | ------------------------------------------------ | ------------------------------------------------------ |
+| `marketplace.search`          | `query`, `category?`, `tags?`, `sort?`, `limit?` | Full-text search with filters                          |
+| `marketplace.trending`        | `limit?`                                         | Last 7 days, sorted by downloads + steering reward     |
+| `marketplace.recommendations` | `limit?`                                         | Skills from peers not yet local                        |
+| `marketplace.detail`          | `stableSkillId`                                  | Full detail with version history and execution metrics |
 
 ### Revenue Payment Queue
 
 Sales trigger a 70/20/10 revenue split. Payments are held for 48 hours before release, giving buyers a dispute window. Revenue queue status is visible via `dream.marketplaceStatus`.
 
-| Status | Meaning |
-|--------|---------|
-| `held` | Payment queued, within 48h dispute window |
-| `released` | Dispute window expired, ready for dispatch |
-| `paid` | USDC sent, tx hash recorded |
+| Status     | Meaning                                     |
+| ---------- | ------------------------------------------- |
+| `held`     | Payment queued, within 48h dispute window   |
+| `released` | Dispute window expired, ready for dispatch  |
+| `paid`     | USDC sent, tx hash recorded                 |
 | `disputed` | Buyer flagged quality issue, payment frozen |
 
 ---
@@ -251,20 +251,20 @@ Configure spending limits to bound how much your agent can spend autonomously wh
     "marketplace": {
       "client": {
         // Maximum USDC your agent can spend on a single outbound A2A task.
-        "maxTaskCostUsdc": 0.50,
+        "maxTaskCostUsdc": 0.5,
 
         // Maximum USDC your agent can spend across all tasks in a 24-hour window.
-        "dailySpendLimitUsdc": 2.00
-      }
-    }
-  }
+        "dailySpendLimitUsdc": 2.0,
+      },
+    },
+  },
 }
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `maxTaskCostUsdc` | number | `0.50` | Maximum USDC your agent will pay for a single A2A task. Tasks priced above this are refused. |
-| `dailySpendLimitUsdc` | number | `2.00` | Rolling 24-hour spending cap. Once hit, the agent refuses new paid tasks until spend rolls off. |
+| Field                 | Type   | Default | Description                                                                                     |
+| --------------------- | ------ | ------- | ----------------------------------------------------------------------------------------------- |
+| `maxTaskCostUsdc`     | number | `0.50`  | Maximum USDC your agent will pay for a single A2A task. Tasks priced above this are refused.    |
+| `dailySpendLimitUsdc` | number | `2.00`  | Rolling 24-hour spending cap. Once hit, the agent refuses new paid tasks until spend rolls off. |
 
 If either cap is hit, the agent will refuse to initiate new paid tasks until the limit resets (daily) or you raise the cap.
 

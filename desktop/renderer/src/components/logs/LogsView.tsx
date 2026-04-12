@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
+import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useLogsStore } from "../../stores/logs-store";
-import { cn } from "../../lib/utils";
 
 const POLL_INTERVAL_MS = 2000;
 const LOG_LEVELS = ["info", "warn", "error", "debug"] as const;
@@ -12,8 +12,7 @@ function parseLogLevel(line: string): string {
     return "error";
   if (lower.includes("[warn]") || lower.includes(" warn ") || lower.includes("warning"))
     return "warn";
-  if (lower.includes("[debug]") || lower.includes(" debug "))
-    return "debug";
+  if (lower.includes("[debug]") || lower.includes(" debug ")) return "debug";
   return "info";
 }
 
@@ -164,8 +163,7 @@ export function LogsView() {
         className="flex-1 overflow-y-auto bg-black/20"
         onScroll={(e) => {
           const el = e.currentTarget;
-          const atBottom =
-            el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+          const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
           if (!atBottom && autoScroll) setAutoScroll(false);
         }}
       >
@@ -178,9 +176,7 @@ export function LogsView() {
             No log entries
           </div>
         ) : (
-          filteredLines.map((line, i) => (
-            <LogLine key={i} text={line} levelFilter={levelFilter} />
-          ))
+          filteredLines.map((line, i) => <LogLine key={i} text={line} levelFilter={levelFilter} />)
         )}
       </div>
     </div>

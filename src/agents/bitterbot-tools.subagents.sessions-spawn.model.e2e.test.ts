@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
-import "./test-helpers/fast-core-tools.js";
 import {
   getCallGatewayMock,
   resetSessionsSpawnConfigOverride,
   setSessionsSpawnConfigOverride,
 } from "./bitterbot-tools.subagents.sessions-spawn.test-harness.js";
+import "./test-helpers/fast-core-tools.js";
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
 import { resetSubagentRegistryForTests } from "./subagent-registry.js";
 
 const callGatewayMock = getCallGatewayMock();

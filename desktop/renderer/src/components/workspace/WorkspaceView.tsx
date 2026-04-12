@@ -1,7 +1,3 @@
-import { useEffect, useCallback, useState, useMemo } from "react";
-import { useWorkspaceStore, type FileTreeNode } from "../../stores/workspace-store";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { cn } from "../../lib/utils";
 import {
   FolderOpen,
   FolderClosed,
@@ -13,14 +9,18 @@ import {
   Pencil,
   Eye,
 } from "lucide-react";
-import { getFileIcon, formatSize, filterTree } from "./workspace-utils";
-import { SyntaxViewer } from "./SyntaxViewer";
+import { useEffect, useCallback, useState, useMemo } from "react";
+import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
+import { useWorkspaceStore, type FileTreeNode } from "../../stores/workspace-store";
+import { ContentSearchPanel } from "./ContentSearchPanel";
+import { FileBreadcrumb } from "./FileBreadcrumb";
 import { FileEditor } from "./FileEditor";
 import { FileTabBar } from "./FileTabBar";
-import { FileBreadcrumb } from "./FileBreadcrumb";
 import { QuickOpenDialog } from "./QuickOpenDialog";
-import { ContentSearchPanel } from "./ContentSearchPanel";
+import { SyntaxViewer } from "./SyntaxViewer";
 import { TreeFilterInput } from "./TreeFilterInput";
+import { getFileIcon, formatSize, filterTree } from "./workspace-utils";
 
 /** Single tree node row */
 function TreeNode({
@@ -57,9 +57,7 @@ function TreeNode({
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
-        {Chevron && (
-          <Chevron className="w-3 h-3 flex-shrink-0 text-zinc-500" />
-        )}
+        {Chevron && <Chevron className="w-3 h-3 flex-shrink-0 text-zinc-500" />}
         {!Chevron && <span className="w-3 flex-shrink-0" />}
         <FileIcon
           className={cn(
@@ -74,17 +72,19 @@ function TreeNode({
           </span>
         )}
       </button>
-      {isDir && isExpanded && node.children?.map((child) => (
-        <TreeNode
-          key={child.path}
-          node={child}
-          depth={depth + 1}
-          expanded={expanded}
-          activeFilePath={activeFilePath}
-          onToggleDir={onToggleDir}
-          onOpenFile={onOpenFile}
-        />
-      ))}
+      {isDir &&
+        isExpanded &&
+        node.children?.map((child) => (
+          <TreeNode
+            key={child.path}
+            node={child}
+            depth={depth + 1}
+            expanded={expanded}
+            activeFilePath={activeFilePath}
+            onToggleDir={onToggleDir}
+            onOpenFile={onOpenFile}
+          />
+        ))}
     </>
   );
 }
@@ -155,12 +155,8 @@ function FileContent() {
     <div className="flex-1 flex flex-col min-w-0">
       {/* File header bar */}
       <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/50 bg-zinc-900/40">
-        <span className="text-[10px] text-zinc-500 flex-shrink-0 font-mono">
-          {tab.language}
-        </span>
-        <span className="text-[10px] text-zinc-600 flex-shrink-0">
-          {formatSize(tab.size)}
-        </span>
+        <span className="text-[10px] text-zinc-500 flex-shrink-0 font-mono">{tab.language}</span>
+        <span className="text-[10px] text-zinc-600 flex-shrink-0">{formatSize(tab.size)}</span>
 
         <div className="ml-auto flex items-center gap-1">
           <button
@@ -233,10 +229,7 @@ export function WorkspaceView() {
   const isConnected = status === "connected";
 
   // Filtered tree
-  const filteredTree = useMemo(
-    () => filterTree(tree, treeFilter),
-    [tree, treeFilter],
-  );
+  const filteredTree = useMemo(() => filterTree(tree, treeFilter), [tree, treeFilter]);
 
   // Load tree on mount / when connected
   useEffect(() => {
@@ -325,9 +318,7 @@ export function WorkspaceView() {
         <FolderOpen className="w-4 h-4 text-purple-400" />
         <h2 className="text-sm font-semibold text-foreground">Workspace</h2>
         {root && (
-          <span className="text-[10px] text-zinc-500 font-mono truncate max-w-[400px]">
-            {root}
-          </span>
+          <span className="text-[10px] text-zinc-500 font-mono truncate max-w-[400px]">{root}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
           <button
@@ -357,7 +348,9 @@ export function WorkspaceView() {
               <TreeFilterInput value={treeFilter} onChange={setTreeFilter} />
               <div className="flex-1 overflow-y-auto scrollbar-none">
                 {treeLoading && tree.length === 0 ? (
-                  <div className="p-4 text-xs text-zinc-500 animate-pulse">Loading workspace...</div>
+                  <div className="p-4 text-xs text-zinc-500 animate-pulse">
+                    Loading workspace...
+                  </div>
                 ) : treeError ? (
                   <div className="p-4 text-xs text-red-400">{treeError}</div>
                 ) : filteredTree.length === 0 ? (
@@ -394,10 +387,7 @@ export function WorkspaceView() {
             onClose={closeTab}
           />
           {activeTab && activeTabPath && (
-            <FileBreadcrumb
-              filePath={activeTabPath}
-              onNavigateDir={handleBreadcrumbNavigate}
-            />
+            <FileBreadcrumb filePath={activeTabPath} onNavigateDir={handleBreadcrumbNavigate} />
           )}
           <FileContent />
         </div>

@@ -161,9 +161,10 @@ export class GatewayClient {
       role: "operator",
       scopes: ["operator.admin", "operator.approvals", "operator.pairing"],
       caps: ["tool-events"],
-      auth: this.opts.token || this.opts.password
-        ? { token: this.opts.token, password: this.opts.password }
-        : undefined,
+      auth:
+        this.opts.token || this.opts.password
+          ? { token: this.opts.token, password: this.opts.password }
+          : undefined,
       userAgent: navigator.userAgent,
       locale: navigator.language,
     };

@@ -38,7 +38,14 @@ export type UsageAggregates = {
   tools: { totalCalls: number; uniqueTools: number; tools: Array<{ name: string; count: number }> };
   byModel: Array<{ provider?: string; model?: string; count: number; totals: UsageTotals }>;
   byProvider: Array<{ provider?: string; count: number; totals: UsageTotals }>;
-  daily: Array<{ date: string; tokens: number; cost: number; messages: number; toolCalls: number; errors: number }>;
+  daily: Array<{
+    date: string;
+    tokens: number;
+    cost: number;
+    messages: number;
+    toolCalls: number;
+    errors: number;
+  }>;
   [key: string]: unknown;
 };
 

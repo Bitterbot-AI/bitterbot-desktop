@@ -7,10 +7,8 @@
  * Reference: Zeigarnik, B. (1927). Das Behalten erledigter und unerledigter Handlungen.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import type { DatabaseSync } from "node:sqlite";
-import { createBenchmarkDb } from "../db-setup.js";
-import { insertChunk } from "../helpers.js";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   detectOpenLoop,
   detectResolution,
@@ -19,6 +17,8 @@ import {
   getActiveOpenLoops,
   scanForOpenLoops,
 } from "../../../src/memory/zeigarnik-effect.js";
+import { createBenchmarkDb } from "../db-setup.js";
+import { insertChunk } from "../helpers.js";
 import { ScenarioScorer, SuiteScorer } from "../scoring.js";
 
 const suite = new SuiteScorer("Zeigarnik Proactivity", "01-zeigarnik", 20, 20);
@@ -58,16 +58,8 @@ describe("BioMemEval > Zeigarnik Proactivity", () => {
       if (detectOpenLoop(text) === null || detectResolution(text)) correctResolved++;
     }
 
-    s.score(
-      `detected ${correctOpen}/5 open loops correctly`,
-      correctOpen >= 4,
-      2,
-    );
-    s.score(
-      `classified ${correctResolved}/5 resolved texts correctly`,
-      correctResolved >= 4,
-      2,
-    );
+    s.score(`detected ${correctOpen}/5 open loops correctly`, correctOpen >= 4, 2);
+    s.score(`classified ${correctResolved}/5 resolved texts correctly`, correctResolved >= 4, 2);
 
     const result = s.result();
     suite.addScenario(result);
@@ -94,17 +86,17 @@ describe("BioMemEval > Zeigarnik Proactivity", () => {
     const loops = getActiveOpenLoops(db, 3);
 
     s.score("returns exactly 3 results", loops.length === 3, 1);
-    s.score("all results are open loops", loops.every((l) => l.context !== undefined && l.context !== null), 1);
+    s.score(
+      "all results are open loops",
+      loops.every((l) => l.context !== undefined && l.context !== null),
+      1,
+    );
     s.score(
       "ordered by importance (highest first)",
       loops.length >= 2 && loops[0]!.importance >= loops[1]!.importance,
       1,
     );
-    s.score(
-      "highest importance loop is first",
-      loops[0]?.id === loop1,
-      1,
-    );
+    s.score("highest importance loop is first", loops[0]?.id === loop1, 1);
 
     const result = s.result();
     suite.addScenario(result);
@@ -176,7 +168,10 @@ describe("BioMemEval > Zeigarnik Proactivity", () => {
     closeOpenLoop(db, s1loop1);
     const s2loop1 = insertChunk(db, { text: "Need to update API docs", importance_score: 0.75 });
     markOpenLoop(db, s2loop1, "docs outdated");
-    const s2loop2 = insertChunk(db, { text: "TODO: fix memory leak in worker", importance_score: 0.85 });
+    const s2loop2 = insertChunk(db, {
+      text: "TODO: fix memory leak in worker",
+      importance_score: 0.85,
+    });
     markOpenLoop(db, s2loop2, "worker memory leak");
 
     const allLoops = getActiveOpenLoops(db, 5);

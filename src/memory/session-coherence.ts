@@ -142,25 +142,38 @@ export class SessionCoherenceTracker {
   private classifyAct(message: string): ConversationalAct {
     const lower = message.toLowerCase().trim();
 
-    if (/^(?:yes|yeah|yep|correct|right|perfect|exactly|that's right|looks good|lgtm)\b/i.test(lower)) {
+    if (
+      /^(?:yes|yeah|yep|correct|right|perfect|exactly|that's right|looks good|lgtm)\b/i.test(lower)
+    ) {
       return "confirm";
     }
     if (/^(?:no[,.]?\s|nope|that's wrong|actually|wait|not what i|i meant)/i.test(lower)) {
       return "correct";
     }
-    if (/^(?:forget that|scratch that|instead|wait.*let's|never ?mind|on second thought)/i.test(lower)) {
+    if (
+      /^(?:forget that|scratch that|instead|wait.*let's|never ?mind|on second thought)/i.test(lower)
+    ) {
       return "pivot";
     }
     if (/^(?:what if|could we|i'm wondering|hypothetically|would it be possible)/i.test(lower)) {
       return "explore";
     }
-    if (/^(?:and also|additionally|specifically|what i mean|to clarify|more precisely)/i.test(lower)) {
+    if (
+      /^(?:and also|additionally|specifically|what i mean|to clarify|more precisely)/i.test(lower)
+    ) {
       return "elaborate";
     }
-    if (/\?$/.test(lower) || /^(?:how|what|why|when|where|which|can you|do you|is there|does)/i.test(lower)) {
+    if (
+      /\?$/.test(lower) ||
+      /^(?:how|what|why|when|where|which|can you|do you|is there|does)/i.test(lower)
+    ) {
       return "question";
     }
-    if (/^(?:build|create|add|change|update|fix|remove|delete|implement|write|make|set up|deploy|run|test)/i.test(lower)) {
+    if (
+      /^(?:build|create|add|change|update|fix|remove|delete|implement|write|make|set up|deploy|run|test)/i.test(
+        lower,
+      )
+    ) {
       return "instruct";
     }
 
@@ -193,9 +206,7 @@ export class SessionCoherenceTracker {
     return transitions.length > 0 ? transitions.join(", ") : "";
   }
 
-  private extractTopicMentions(
-    msgs: Array<{ content: string }>,
-  ): Map<string, number> {
+  private extractTopicMentions(msgs: Array<{ content: string }>): Map<string, number> {
     const counts = new Map<string, number>();
     const techPattern =
       /\b(?:API|REST|GraphQL|auth|database|deploy|test|build|CI|CD|Docker|K8s|Kubernetes|React|Node|TypeScript|Python)\b/gi;
@@ -216,9 +227,7 @@ export class SessionCoherenceTracker {
     return counts;
   }
 
-  private extractDecisions(
-    msgs: Array<{ role: string; content: string }>,
-  ): string[] {
+  private extractDecisions(msgs: Array<{ role: string; content: string }>): string[] {
     const decisionPatterns = [
       /(?:let's|let us)\s+(.{10,80}?)(?:\.|$)/gi,
       /(?:we'll|we will)\s+(.{10,80}?)(?:\.|$)/gi,
@@ -266,10 +275,7 @@ export class SessionCoherenceTracker {
           .filter((w) => w.length > 3),
       );
       const answered = msgs.some(
-        (m) =>
-          m.turn > q.turn &&
-          m.role !== q.role &&
-          this.wordOverlap(qWords, m.content) > 0.3,
+        (m) => m.turn > q.turn && m.role !== q.role && this.wordOverlap(qWords, m.content) > 0.3,
       );
       if (!answered) open.push(q.text);
     }
@@ -303,9 +309,7 @@ export class SessionCoherenceTracker {
   ): void {
     for (const [topic] of topicCounts) {
       const existing = this.state.threads.find(
-        (t) =>
-          t.topic.toLowerCase().includes(topic) ||
-          topic.includes(t.topic.toLowerCase()),
+        (t) => t.topic.toLowerCase().includes(topic) || topic.includes(t.topic.toLowerCase()),
       );
       if (existing) {
         existing.lastMentionedTurn = currentTurn;
@@ -366,9 +370,7 @@ export class SessionCoherenceTracker {
 
     const recentPivots = this.state.pivots.slice(-2);
     if (recentPivots.length > 0) {
-      lines.push(
-        `- User pivoted: ${recentPivots.map((p) => p.to).join("; ")}`,
-      );
+      lines.push(`- User pivoted: ${recentPivots.map((p) => p.to).join("; ")}`);
     }
 
     if (this.intentState.intentSummary) {

@@ -245,7 +245,8 @@ export async function startGatewayServer(
   const channelMethods = listChannelPlugins().flatMap((plugin) => plugin.gatewayMethods ?? []);
   const gatewayMethods = Array.from(new Set([...baseGatewayMethods, ...channelMethods]));
   let pluginServices: PluginServicesHandle | null = null;
-  let orchestratorBridge: import("../infra/orchestrator-bridge.js").OrchestratorBridge | null = null;
+  let orchestratorBridge: import("../infra/orchestrator-bridge.js").OrchestratorBridge | null =
+    null;
   const runtimeConfig = await resolveGatewayRuntimeConfig({
     cfg: cfgAtStart,
     port,

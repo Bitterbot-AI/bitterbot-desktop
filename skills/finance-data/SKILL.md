@@ -16,6 +16,7 @@ curl -s "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&rang
 ```
 
 Replace `AAPL` with any ticker symbol. Response is JSON:
+
 - `chart.result[0].meta.regularMarketPrice` — current price
 - `chart.result[0].meta.previousClose` — previous close
 - `chart.result[0].meta.currency` — currency
@@ -29,6 +30,7 @@ curl -s "https://query1.finance.yahoo.com/v10/finance/quoteSummary/AAPL?modules=
 ```
 
 Useful modules (comma-separated):
+
 - `assetProfile` — sector, industry, employees, description
 - `financialData` — revenue, margins, EPS, recommendation
 - `defaultKeyStatistics` — P/E, market cap, beta, float

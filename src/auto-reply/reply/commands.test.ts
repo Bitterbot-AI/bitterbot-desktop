@@ -129,7 +129,11 @@ afterAll(async () => {
   await fs.rm(testWorkspaceDir, { recursive: true, force: true });
 });
 
-function buildParams(commandBody: string, cfg: BitterbotConfig, ctxOverrides?: Partial<MsgContext>) {
+function buildParams(
+  commandBody: string,
+  cfg: BitterbotConfig,
+  ctxOverrides?: Partial<MsgContext>,
+) {
   return buildCommandTestParams(commandBody, cfg, ctxOverrides, { workspaceDir: testWorkspaceDir });
 }
 

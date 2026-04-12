@@ -56,6 +56,7 @@ Before expensive LLM-based compaction, Bitterbot runs a **deterministic pre-comp
 3. **Middle-out removal** — If message count exceeds the hard cap (default: 320), messages from the middle are removed, preserving beginning (context) and end (recent exchange).
 
 This means:
+
 - **Short conversations** — no compression at all
 - **Medium conversations** — cheap truncation only, no LLM calls
 - **Long conversations** — truncation first, then LLM summarization on the reduced set
@@ -64,11 +65,11 @@ Configure via `agents.defaults.compression` (enabled by default).
 
 ## Compaction vs pruning vs progressive compression
 
-| Mechanism | What it does | Persists? | When it runs |
-|-----------|-------------|-----------|-------------|
-| **Progressive compression** | Deterministic truncation of old tool results and messages | No (in-memory, originals recoverable via `expand_message`) | Before compaction |
-| **Compaction** | LLM summarization of older conversation | Yes (JSONL) | On auto-trigger or `/compact` |
-| **Session pruning** | Trims old tool results | No (in-memory, per request) | Before each LLM call (when TTL-based pruning is enabled) |
+| Mechanism                   | What it does                                              | Persists?                                                  | When it runs                                             |
+| --------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------- |
+| **Progressive compression** | Deterministic truncation of old tool results and messages | No (in-memory, originals recoverable via `expand_message`) | Before compaction                                        |
+| **Compaction**              | LLM summarization of older conversation                   | Yes (JSONL)                                                | On auto-trigger or `/compact`                            |
+| **Session pruning**         | Trims old tool results                                    | No (in-memory, per request)                                | Before each LLM call (when TTL-based pruning is enabled) |
 
 See [/concepts/session-pruning](/concepts/session-pruning) for pruning details.
 

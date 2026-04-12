@@ -1,12 +1,7 @@
+import { MessageCircleQuestion, FileText, Clock, CheckCircle2 } from "lucide-react";
 import { useMemo } from "react";
 import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
-import {
-  MessageCircleQuestion,
-  FileText,
-  Clock,
-  CheckCircle2,
-} from "lucide-react";
 import { safeJsonParse } from "./tool-view-utils";
 
 /**
@@ -28,12 +23,9 @@ export function AskToolView({ toolCall }: ToolViewProps) {
       if (typeof args.text === "string") question = args.text;
       if (typeof args.question === "string") question = args.question;
       if (Array.isArray(args.attachments))
-        attachments = args.attachments.filter(
-          (a): a is string => typeof a === "string",
-        );
+        attachments = args.attachments.filter((a): a is string => typeof a === "string");
       // Single attachment string
-      if (typeof args.attachments === "string")
-        attachments = [args.attachments];
+      if (typeof args.attachments === "string") attachments = [args.attachments];
     }
 
     // Try result for more data
@@ -119,12 +111,8 @@ export function AskToolView({ toolCall }: ToolViewProps) {
                   >
                     <FileText className="w-4 h-4 text-blue-400 flex-shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm text-zinc-300 font-medium truncate">
-                        {fileName}
-                      </div>
-                      <div className="text-[10px] text-zinc-500 font-mono truncate">
-                        {filePath}
-                      </div>
+                      <div className="text-sm text-zinc-300 font-medium truncate">{fileName}</div>
+                      <div className="text-[10px] text-zinc-500 font-mono truncate">{filePath}</div>
                     </div>
                   </div>
                 );

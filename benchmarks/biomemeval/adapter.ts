@@ -10,9 +10,9 @@
  */
 
 export interface HormonalState {
-  dopamine: number;   // 0-1
-  cortisol: number;   // 0-1
-  oxytocin: number;   // 0-1
+  dopamine: number; // 0-1
+  cortisol: number; // 0-1
+  oxytocin: number; // 0-1
 }
 
 export interface StoredMemory {
@@ -65,19 +65,28 @@ export interface MemorySystemAdapter {
   // ── Suite 4: Temporal Reasoning ──
   upsertEntity(entity: { name: string; type: string }): Promise<{ id: string }>;
   upsertRelationship(params: {
-    sourceName: string; sourceType: string;
-    targetName: string; targetType: string;
+    sourceName: string;
+    sourceType: string;
+    targetName: string;
+    targetType: string;
     relationType: string;
-    validFrom?: number; validUntil?: number | null;
+    validFrom?: number;
+    validUntil?: number | null;
     evidenceChunkIds?: string[];
   }): Promise<{ id: string }>;
   queryAtTime(
-    entityName: string, entityType: string, relationType: string, atTime: number,
+    entityName: string,
+    entityType: string,
+    relationType: string,
+    atTime: number,
   ): Promise<TemporalRelationship[]>;
 
   // ── Suite 5: Identity Continuity ──
   createDirective(params: {
-    type: string; question: string; context?: string; priority?: number;
+    type: string;
+    question: string;
+    context?: string;
+    priority?: number;
   }): Promise<{ id: string } | null>;
   getSessionDirectives(): Promise<Array<{ id: string; question: string; priority: number }>>;
   resolveDirective(directiveId: string, resolution: string): Promise<boolean>;
@@ -86,11 +95,14 @@ export interface MemorySystemAdapter {
 
   // ── Suite 6: Prospective Memory ──
   createProspectiveMemory(params: {
-    triggerCondition: string; action: string; triggerEmbedding?: number[];
+    triggerCondition: string;
+    action: string;
+    triggerEmbedding?: number[];
     expiresAt?: number;
   }): Promise<{ id: string } | null>;
   checkTriggers(params: {
-    messageText: string; messageEmbedding?: number[];
+    messageText: string;
+    messageEmbedding?: number[];
   }): Promise<Array<{ id: string; action: string }>>;
   cleanExpired(): Promise<number>;
 }

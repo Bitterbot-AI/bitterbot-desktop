@@ -12,10 +12,10 @@
 
 import crypto from "node:crypto";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
-import { callGateway } from "../call.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { A2aTaskManager } from "./task-manager.js";
 import type { MessageSendParams } from "./types.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { callGateway } from "../call.js";
 
 const log = createSubsystemLogger("a2a/executor");
 
@@ -79,9 +79,7 @@ export async function executeA2aTask(params: {
     });
 
     const runId =
-      typeof response?.runId === "string" && response.runId
-        ? response.runId
-        : idempotencyKey;
+      typeof response?.runId === "string" && response.runId ? response.runId : idempotencyKey;
 
     // Link the session to the A2A task for traceability.
     taskManager.setSessionKey(taskId, childSessionKey);
@@ -104,7 +102,10 @@ export async function executeA2aTask(params: {
     let resultText = "Task completed.";
     try {
       const history = await callGateway<{
-        messages: Array<{ role?: string; content?: string | Array<{ type?: string; text?: string }> }>;
+        messages: Array<{
+          role?: string;
+          content?: string | Array<{ type?: string; text?: string }>;
+        }>;
       }>({
         method: "chat.history",
         params: { sessionKey: childSessionKey, limit: 50 },

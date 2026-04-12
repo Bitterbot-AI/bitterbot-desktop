@@ -1,8 +1,8 @@
 import { Type } from "@sinclair/typebox";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import vm from "node:vm";
-import { execFile } from "node:child_process";
 import { resolveStateDir } from "../../config/paths.js";
 import { ensureDir } from "../../utils.js";
 import { stringEnum } from "../schema/typebox.js";
@@ -251,7 +251,9 @@ export function createCodeInterpreterTool(): AnyAgentTool {
     parameters: CodeInterpreterSchema,
     execute: async (toolCallId, args) => {
       const params = args as Record<string, unknown>;
-      const language = readStringParam(params, "language", { required: true }) as "python" | "javascript";
+      const language = readStringParam(params, "language", { required: true }) as
+        | "python"
+        | "javascript";
       const code = readStringParam(params, "code", { required: true });
       const sessionId = readStringParam(params, "sessionId", { required: false }) || "default";
 

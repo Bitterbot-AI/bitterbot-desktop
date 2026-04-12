@@ -82,14 +82,18 @@ export function spacingImportanceMultiplier(
  * Record a new access for a chunk, updating its access_timestamps and spacing_score.
  * Called when a chunk is retrieved during search.
  */
-export function recordAccess(db: DatabaseSync, chunkId: string, config?: Partial<SpacingConfig>): void {
+export function recordAccess(
+  db: DatabaseSync,
+  chunkId: string,
+  config?: Partial<SpacingConfig>,
+): void {
   const cfg = { ...DEFAULT_SPACING_CONFIG, ...config };
   if (!cfg.enabled) return;
 
   try {
-    const row = db
-      .prepare(`SELECT access_timestamps FROM chunks WHERE id = ?`)
-      .get(chunkId) as { access_timestamps: string | null } | undefined;
+    const row = db.prepare(`SELECT access_timestamps FROM chunks WHERE id = ?`).get(chunkId) as
+      | { access_timestamps: string | null }
+      | undefined;
 
     if (!row) return;
 
@@ -103,9 +107,11 @@ export function recordAccess(db: DatabaseSync, chunkId: string, config?: Partial
 
     const score = computeSpacingScore(timestamps);
 
-    db.prepare(
-      `UPDATE chunks SET access_timestamps = ?, spacing_score = ? WHERE id = ?`,
-    ).run(JSON.stringify(timestamps), score, chunkId);
+    db.prepare(`UPDATE chunks SET access_timestamps = ?, spacing_score = ? WHERE id = ?`).run(
+      JSON.stringify(timestamps),
+      score,
+      chunkId,
+    );
   } catch (err) {
     log.debug(`recordAccess spacing failed: ${String(err)}`);
   }

@@ -8,12 +8,12 @@
  * Reference: Zep/Graphiti temporal KG architecture (arxiv:2501.13956)
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import type { DatabaseSync } from "node:sqlite";
+import { describe, it, expect, beforeEach } from "vitest";
+import { EpistemicDirectiveEngine } from "../../../src/memory/epistemic-directives.js";
+import { KnowledgeGraphManager } from "../../../src/memory/knowledge-graph.js";
 import { createBenchmarkDb } from "../db-setup.js";
 import { insertChunk } from "../helpers.js";
-import { KnowledgeGraphManager } from "../../../src/memory/knowledge-graph.js";
-import { EpistemicDirectiveEngine } from "../../../src/memory/epistemic-directives.js";
 import { ScenarioScorer, SuiteScorer } from "../scoring.js";
 
 const suite = new SuiteScorer("Temporal Reasoning", "04-temporal", 15, 15);
@@ -187,8 +187,16 @@ describe("BioMemEval > Temporal Reasoning", () => {
     const aliceApr = kg.queryAtTime("alice", "person", "works_on", APR_1);
     const bobApr = kg.queryAtTime("bob", "person", "works_on", APR_1);
 
-    s.score("alice was on ml team in Feb", aliceFeb.some((r) => r.entity.name === "ml team"), 1);
-    s.score("bob is on ml team in Apr", bobApr.some((r) => r.entity.name === "ml team"), 1);
+    s.score(
+      "alice was on ml team in Feb",
+      aliceFeb.some((r) => r.entity.name === "ml team"),
+      1,
+    );
+    s.score(
+      "bob is on ml team in Apr",
+      bobApr.some((r) => r.entity.name === "ml team"),
+      1,
+    );
     s.score(
       "different results for different times",
       bobFeb.length === 0 || aliceApr.length === 0,

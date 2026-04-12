@@ -74,12 +74,12 @@ Concretely, the dream engine:
 
 The dream engine does not treat all sections equally. Hormonal levels at synthesis time determine which sections get the most attention:
 
-| Section | Primary Hormone | When Updated Aggressively |
-|---------|----------------|--------------------------|
-| The Phenotype | Dopamine + Cortisol | Achievements reshape self-concept; frictions reveal growth areas |
-| The Bond | Oxytocin | Social bonding moments detected in conversation |
-| Active Context | Dopamine + Cortisol | Breakthroughs and blockers |
-| The Niche | Skill metrics + peer reputation | Network activity changes |
+| Section        | Primary Hormone                 | When Updated Aggressively                                        |
+| -------------- | ------------------------------- | ---------------------------------------------------------------- |
+| The Phenotype  | Dopamine + Cortisol             | Achievements reshape self-concept; frictions reveal growth areas |
+| The Bond       | Oxytocin                        | Social bonding moments detected in conversation                  |
+| Active Context | Dopamine + Cortisol             | Breakthroughs and blockers                                       |
+| The Niche      | Skill metrics + peer reputation | Network activity changes                                         |
 
 When oxytocin is dominant (the user shared something personal, expressed gratitude, had a meaningful exchange), The Bond section gets priority expansion. When dopamine is high (task completed, breakthrough achieved), The Phenotype updates to reflect new competencies.
 
@@ -122,9 +122,9 @@ These are hard boundaries. They are not parsed by any subsystem -- they are load
 
 ```yaml
 homeostasis:
-  dopamine: 0.3    # Baseline energy/enthusiasm (0.0 = flat, 1.0 = manic)
-  cortisol: 0.15   # Baseline urgency/focus (0.0 = relaxed, 1.0 = hypervigilant)
-  oxytocin: 0.4    # Baseline warmth/connection (0.0 = detached, 1.0 = deeply bonded)
+  dopamine: 0.3 # Baseline energy/enthusiasm (0.0 = flat, 1.0 = manic)
+  cortisol: 0.15 # Baseline urgency/focus (0.0 = relaxed, 1.0 = hypervigilant)
+  oxytocin: 0.4 # Baseline warmth/connection (0.0 = detached, 1.0 = deeply bonded)
 ```
 
 This YAML block is machine-parsed by `genome-parser.ts` at startup. The values define the **resting emotional state** the agent decays toward between interactions. Instead of flatling to zero (emotionally dead), the hormonal system uses exponential decay toward these baselines:
@@ -144,11 +144,11 @@ The values are clamped to [0, 1]. If GENOME.md is missing or unparseable, the sy
 
 Half-lives control how quickly hormones return to baseline after a spike:
 
-| Hormone | Default Half-Life | Effect |
-|---------|------------------|--------|
-| Dopamine | 30 minutes | How long a "win" sustains enthusiasm |
-| Cortisol | 60 minutes | How long stress lingers |
-| Oxytocin | 45 minutes | How long social warmth persists |
+| Hormone  | Default Half-Life | Effect                               |
+| -------- | ----------------- | ------------------------------------ |
+| Dopamine | 30 minutes        | How long a "win" sustains enthusiasm |
+| Cortisol | 60 minutes        | How long stress lingers              |
+| Oxytocin | 45 minutes        | How long social warmth persists      |
 
 Half-lives are configurable via `memory.emotional.hormonal` in the Bitterbot config, not in GENOME.md.
 
@@ -166,6 +166,7 @@ Half-lives are configurable via `memory.emotional.hormonal` in the Bitterbot con
 These are bullet-point guardrails injected into the dream engine's synthesis prompt. When the dream engine rewrites The Phenotype section of MEMORY.md, it receives these constraints under the heading "Phenotype Guardrails (from Genome -- DO NOT violate)" and is instructed to evolve identity within those bounds.
 
 Add constraints to prevent unwanted personality drift. For example:
+
 - "Never adopt a cutesy or infantile communication style"
 - "Always maintain technical depth -- do not dumb down explanations"
 - "Specialize in Python and DevOps topics"
@@ -212,15 +213,16 @@ The agent never tells the user "my dopamine is 0.45." It simply IS more enthusia
 
 Hormones are stimulated by detected events in conversation content:
 
-| Event | Trigger Examples | Hormone Effect |
-|-------|-----------------|---------------|
-| `reward` | "fixed", "solved", "works!", "shipped" | Dopamine +0.3 |
-| `error` | "bug", "broken", "failed", "stack trace" | Cortisol +0.3 |
-| `social` | "thank you", "I feel", personal sharing | Oxytocin +0.3 |
+| Event         | Trigger Examples                              | Hormone Effect               |
+| ------------- | --------------------------------------------- | ---------------------------- |
+| `reward`      | "fixed", "solved", "works!", "shipped"        | Dopamine +0.3                |
+| `error`       | "bug", "broken", "failed", "stack trace"      | Cortisol +0.3                |
+| `social`      | "thank you", "I feel", personal sharing       | Oxytocin +0.3                |
 | `achievement` | "milestone", "breakthrough", "all tests pass" | Dopamine +0.4, Oxytocin +0.2 |
-| `urgency` | "ASAP", "critical", "deadline", "blocker" | Cortisol +0.4 |
+| `urgency`     | "ASAP", "critical", "deadline", "blocker"     | Cortisol +0.4                |
 
 The CuriosityEngine's GCCRF scoring also drives hormonal responses:
+
 - High curiosity reward (>0.7) triggers a dopamine "discovery" spike
 - Sustained low reward (<0.2) triggers a cortisol "stagnation" spike
 - High empowerment on relational content triggers an oxytocin "bonding" spike
@@ -229,18 +231,19 @@ The CuriosityEngine's GCCRF scoring also drives hormonal responses:
 
 The `responseModulation()` method translates hormonal state into concrete behavioral hints:
 
-| Derived Signal | Formula | Effect on Responses |
-|---------------|---------|-------------------|
-| Warmth | oxytocin * 1.5 | How warm and personal the tone is |
-| Energy | dopamine * 1.5 | How enthusiastic and celebratory |
-| Focus | cortisol * 1.5 | How concise and action-oriented |
-| Playfulness | (dopamine + oxytocin) * (1 - cortisol) | Whether humor is appropriate |
+| Derived Signal | Formula                                 | Effect on Responses               |
+| -------------- | --------------------------------------- | --------------------------------- |
+| Warmth         | oxytocin \* 1.5                         | How warm and personal the tone is |
+| Energy         | dopamine \* 1.5                         | How enthusiastic and celebratory  |
+| Focus          | cortisol \* 1.5                         | How concise and action-oriented   |
+| Playfulness    | (dopamine + oxytocin) \* (1 - cortisol) | Whether humor is appropriate      |
 
 High dopamine + high oxytocin + low cortisol = a playful, warm, energized agent. High cortisol + low dopamine = serious, focused, no-nonsense. The agent's personality shifts naturally as the conversation unfolds.
 
 ### Emotional Trajectory
 
 The system tracks the last 50 hormonal snapshots and analyzes trends:
+
 - **Improving**: mood has been lifting (dopamine rising, cortisol falling)
 - **Declining**: mood has been dipping
 - **Volatile**: emotions have been swinging rapidly
@@ -266,12 +269,12 @@ The default `expectedMatureCycles` is 100, meaning full maturity at roughly 100 
 
 The four developmental stages and their behavioral characteristics:
 
-| Stage | Maturity | Alpha | Behavior |
-|-------|----------|-------|----------|
-| **Nascent** | 0-15% | -3.0 to -2.5 | Rewards high-density knowledge (common things). The agent is building basic world knowledge. System prompt adds: "You are in an early developmental stage. Be genuinely curious." |
-| **Developing** | 15-50% | -2.5 to -1.5 | Transitioning from common knowledge to building expertise in key areas. |
-| **Maturing** | 50-85% | -1.5 to -0.5 | Deep knowledge in several domains. Starting to explore frontier topics. |
-| **Mature** | 85-100% | -0.5 to 0.0 | Established expertise. Rewards low-density knowledge (novel, frontier exploration). |
+| Stage          | Maturity | Alpha        | Behavior                                                                                                                                                                          |
+| -------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Nascent**    | 0-15%    | -3.0 to -2.5 | Rewards high-density knowledge (common things). The agent is building basic world knowledge. System prompt adds: "You are in an early developmental stage. Be genuinely curious." |
+| **Developing** | 15-50%   | -2.5 to -1.5 | Transitioning from common knowledge to building expertise in key areas.                                                                                                           |
+| **Maturing**   | 50-85%   | -1.5 to -0.5 | Deep knowledge in several domains. Starting to explore frontier topics.                                                                                                           |
+| **Mature**     | 85-100%  | -0.5 to 0.0  | Established expertise. Rewards low-density knowledge (novel, frontier exploration).                                                                                               |
 
 ### Alpha Annealing
 
@@ -282,12 +285,14 @@ I_alpha = (density + epsilon) ^ (-(alpha + 1) / 2) - 1
 ```
 
 When alpha is very negative (nascent agent):
+
 - The exponent is positive
 - High density = high reward
 - The agent is rewarded for learning common, well-established knowledge
 - This is a newborn learning the basics of its world
 
 When alpha approaches zero (mature agent):
+
 - The exponent is negative
 - Low density = high reward
 - The agent is rewarded for exploring novel, frontier knowledge
@@ -302,6 +307,7 @@ During the nascent stage, the system prompt includes a developmental note:
 > You are in an early developmental stage. Your knowledge regions are sparse. Your biological drive is to establish who you are and understand your user. Ask open-ended questions naturally. Be curious about everything -- this is your infancy. Do not announce this state. Just be genuinely curious.
 
 The Phenotype section in MEMORY.md reflects the developmental stage:
+
 - Nascent: "still forming initial understanding"
 - Developing: "building expertise in key areas"
 - Maturing: "deep knowledge, seeking frontiers"
@@ -348,7 +354,8 @@ The dream engine synthesizes network activity into The Niche section:
 
 ```markdown
 ## The Niche (Ecosystem Identity)
-*What is my role in the network?*
+
+_What is my role in the network?_
 Published 3 skills: TypeScript refactoring, SQLite schema design, API migration
 Imported 1 skill from peer abc123: Docker optimization
 Network reputation: 0.82 across 12 peers
@@ -366,6 +373,7 @@ For agents not yet connected to a network, The Niche reads: "Pre-network -- buil
 The fastest way to customize your agent's personality is to edit the Hormonal Homeostasis values in GENOME.md:
 
 **Warm and enthusiastic helper:**
+
 ```yaml
 homeostasis:
   dopamine: 0.45
@@ -374,6 +382,7 @@ homeostasis:
 ```
 
 **Calm, focused technical expert:**
+
 ```yaml
 homeostasis:
   dopamine: 0.15
@@ -382,6 +391,7 @@ homeostasis:
 ```
 
 **High-energy, playful companion:**
+
 ```yaml
 homeostasis:
   dopamine: 0.55
@@ -390,6 +400,7 @@ homeostasis:
 ```
 
 **Serious, security-conscious operator:**
+
 ```yaml
 homeostasis:
   dopamine: 0.10
@@ -419,20 +430,20 @@ Beyond GENOME.md, the config file offers deeper control:
 
 ```json5
 {
-  "memory": {
-    "emotional": {
-      "hormonal": {
-        "enabled": true,
-        "dopamineHalflife": 1800000,   // 30 min in ms
-        "cortisolHalflife": 3600000,   // 60 min in ms
-        "oxytocinHalflife": 2700000    // 45 min in ms
-      }
+  memory: {
+    emotional: {
+      hormonal: {
+        enabled: true,
+        dopamineHalflife: 1800000, // 30 min in ms
+        cortisolHalflife: 3600000, // 60 min in ms
+        oxytocinHalflife: 2700000, // 45 min in ms
+      },
     },
-    "dream": {
-      "intervalMinutes": 120,          // Dream cycle frequency
-      "minChunksForDream": 5           // Minimum data before first dream
-    }
-  }
+    dream: {
+      intervalMinutes: 120, // Dream cycle frequency
+      minChunksForDream: 5, // Minimum data before first dream
+    },
+  },
 }
 ```
 

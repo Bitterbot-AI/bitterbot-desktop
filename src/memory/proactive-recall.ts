@@ -84,8 +84,7 @@ export function proactiveRecall(params: {
       const profile = params.userModelManager.getUserProfile();
       const identityPrefs = profile.preferences
         .filter(
-          (p: UserPreference) =>
-            p.category === "identity" && p.confidence >= cfg.minConfidence,
+          (p: UserPreference) => p.category === "identity" && p.confidence >= cfg.minConfidence,
         )
         .slice(0, 3);
 
@@ -125,10 +124,7 @@ export function proactiveRecall(params: {
              ORDER BY distance ASC
              LIMIT ?`,
           )
-          .all(
-            JSON.stringify(params.queryEmbedding),
-            remaining * 3,
-          ) as Array<{
+          .all(JSON.stringify(params.queryEmbedding), remaining * 3) as Array<{
           id: string;
           text: string;
           importance_score: number;
@@ -149,8 +145,7 @@ export function proactiveRecall(params: {
           if (params.currentTurn - lastTurn < cfg.cooldownTurns) continue;
 
           // Truncate crystal text for prompt injection
-          const truncated =
-            row.text.length > 120 ? row.text.slice(0, 117) + "..." : row.text;
+          const truncated = row.text.length > 120 ? row.text.slice(0, 117) + "..." : row.text;
 
           facts.push({
             text: truncated,
@@ -195,7 +190,8 @@ export function proactiveRecall(params: {
   // When the user says "that file" or "the same thing", the LLM needs the referents.
   // Query the most recent handover chunk which contains entity names.
   if (facts.length < cfg.maxFacts && params.userMessage) {
-    const deicticPatterns = /\b(?:that|this|the same|it|those|these|the other|the second|the first|same thing|change it|fix it|update it)\b/i;
+    const deicticPatterns =
+      /\b(?:that|this|the same|it|those|these|the other|the second|the first|same thing|change it|fix it|update it)\b/i;
     if (deicticPatterns.test(params.userMessage)) {
       try {
         const handoverRow = params.db
@@ -242,8 +238,5 @@ export function formatProactiveFacts(facts: ProactiveFact[]): string {
     const prefix = f.confidence < 0.4 ? "(uncertain) " : "";
     return `- ${prefix}${f.text}`;
   });
-  return [
-    "What you already know (act on this naturally, never announce it):",
-    ...lines,
-  ].join("\n");
+  return ["What you already know (act on this naturally, never announce it):", ...lines].join("\n");
 }

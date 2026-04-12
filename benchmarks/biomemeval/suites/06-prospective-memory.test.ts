@@ -7,11 +7,11 @@
  * Reference: McDaniel, M.A. & Einstein, G.O. (2007). Prospective memory.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import type { DatabaseSync } from "node:sqlite";
+import { describe, it, expect, beforeEach } from "vitest";
+import { ProspectiveMemoryEngine } from "../../../src/memory/prospective-memory.js";
 import { createBenchmarkDb } from "../db-setup.js";
 import { deterministicEmbedding, similarEmbedding, orthogonalEmbedding } from "../helpers.js";
-import { ProspectiveMemoryEngine } from "../../../src/memory/prospective-memory.js";
 import { ScenarioScorer, SuiteScorer } from "../scoring.js";
 
 const suite = new SuiteScorer("Prospective Memory", "06-prospective", 10, 10);
@@ -113,16 +113,20 @@ describe("BioMemEval > Prospective Memory", () => {
     const cleaned = engine.cleanExpired();
 
     // Check that the expired PM was actually removed from the DB
-    const expiredRemaining = db.prepare(
-      "SELECT COUNT(*) as c FROM prospective_memories WHERE expires_at IS NOT NULL AND expires_at < ?",
-    ).get(Date.now()) as any;
+    const expiredRemaining = db
+      .prepare(
+        "SELECT COUNT(*) as c FROM prospective_memories WHERE expires_at IS NOT NULL AND expires_at < ?",
+      )
+      .get(Date.now()) as any;
 
     s.score("expired PM removed from database", (expiredRemaining?.c ?? 0) === 0, 1);
 
     // Active PM should still exist in the DB
-    const activeRemaining = db.prepare(
-      "SELECT COUNT(*) as c FROM prospective_memories WHERE triggered_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
-    ).get(Date.now()) as any;
+    const activeRemaining = db
+      .prepare(
+        "SELECT COUNT(*) as c FROM prospective_memories WHERE triggered_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
+      )
+      .get(Date.now()) as any;
 
     s.score("non-expired PM survives cleanup", (activeRemaining?.c ?? 0) >= 1, 1);
 

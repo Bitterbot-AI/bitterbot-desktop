@@ -56,7 +56,11 @@ export async function ingestSkill(params: {
   envelope: SkillEnvelope;
   config: BitterbotConfig;
   workspaceDir?: string;
-  reputationManager?: { getTrustLevel(pubkey: string): string; recordSkillReceived(pubkey: string, peerId: string): void; recordIngestionResult(pubkey: string, accepted: boolean): void };
+  reputationManager?: {
+    getTrustLevel(pubkey: string): string;
+    recordSkillReceived(pubkey: string, peerId: string): void;
+    recordIngestionResult(pubkey: string, accepted: boolean): void;
+  };
 }): Promise<IngestResult> {
   const { envelope, config, workspaceDir } = params;
   const p2pConfig = config.skills?.p2p;
@@ -118,7 +122,9 @@ export async function ingestSkill(params: {
   // If available, use trust level; otherwise fall back to binary trust list
   const trustLevel = params.reputationManager
     ? params.reputationManager.getTrustLevel(envelope.author_pubkey)
-    : (isTrusted ? "verified" : "untrusted");
+    : isTrusted
+      ? "verified"
+      : "untrusted";
 
   const isAutoAccepted = trustLevel === "trusted" || trustLevel === "verified";
 
@@ -136,14 +142,22 @@ export async function ingestSkill(params: {
 
     // Write provenance metadata
     const metaPath = path.join(skillDir, ".provenance.json");
-    await fs.writeFile(metaPath, JSON.stringify({
-      author_peer_id: envelope.author_peer_id,
-      author_pubkey: envelope.author_pubkey,
-      signature: envelope.signature,
-      content_hash: envelope.content_hash,
-      timestamp: envelope.timestamp,
-      ingested_at: Date.now(),
-    }, null, 2), "utf-8");
+    await fs.writeFile(
+      metaPath,
+      JSON.stringify(
+        {
+          author_peer_id: envelope.author_peer_id,
+          author_pubkey: envelope.author_pubkey,
+          signature: envelope.signature,
+          content_hash: envelope.content_hash,
+          timestamp: envelope.timestamp,
+          ingested_at: Date.now(),
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
 
     bumpSkillsSnapshotVersion({
       workspaceDir,
@@ -178,7 +192,8 @@ export async function acceptIncomingSkill(params: {
   workspaceDir?: string;
 }): Promise<IngestResult> {
   const { skillName, config, workspaceDir } = params;
-  const quarantineDir = config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
+  const quarantineDir =
+    config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
   const incomingDir = path.join(quarantineDir, skillName);
   const skillPath = path.join(incomingDir, "SKILL.md");
 
@@ -215,7 +230,8 @@ export async function rejectIncomingSkill(params: {
   config: BitterbotConfig;
 }): Promise<IngestResult> {
   const { skillName, config } = params;
-  const quarantineDir = config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
+  const quarantineDir =
+    config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
   const incomingDir = path.join(quarantineDir, skillName);
 
   try {
@@ -234,7 +250,8 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<
     timestamp?: number;
   }>
 > {
-  const quarantineDir = config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
+  const quarantineDir =
+    config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
   try {
     const entries = await fs.readdir(quarantineDir, { withFileTypes: true });
     const skills: Array<{ name: string; author_peer_id?: string; timestamp?: number }> = [];
@@ -264,10 +281,7 @@ function verifySignature(envelope: SkillEnvelope): boolean {
     const skillBytes = Buffer.from(envelope.skill_md, "base64");
 
     // Ed25519 verification: construct SPKI DER from raw 32-byte pubkey
-    const spkiDer = Buffer.concat([
-      Buffer.from("302a300506032b6570032100", "hex"),
-      pubkeyBytes,
-    ]);
+    const spkiDer = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), pubkeyBytes]);
     const publicKey = createPublicKey({
       key: spkiDer,
       format: "der",

@@ -14,14 +14,14 @@ Results output to `benchmarks/biomemeval/results/biomemeval-report.json`.
 
 ## Test Suites
 
-| Suite | Weight | What It Measures |
-|-------|--------|-----------------|
-| **Zeigarnik Proactivity** | 20% | Does the agent detect unfinished tasks and surface them without being asked? |
-| **Mood-Congruent Retrieval** | 20% | Does retrieval ranking shift based on the agent's current emotional state? |
-| **Reconsolidation Accuracy** | 20% | Can recalled memories enter a labile state for time-windowed updates? |
-| **Temporal Reasoning** | 15% | Can the knowledge graph answer "who was X in January?" differently from "who is X now?" |
-| **Identity Continuity** | 15% | Does the system maintain a coherent self-model and actively identify knowledge gaps? |
-| **Prospective Memory** | 10% | Can the agent create "when X happens, do Y" memories and trigger them correctly? |
+| Suite                        | Weight | What It Measures                                                                        |
+| ---------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| **Zeigarnik Proactivity**    | 20%    | Does the agent detect unfinished tasks and surface them without being asked?            |
+| **Mood-Congruent Retrieval** | 20%    | Does retrieval ranking shift based on the agent's current emotional state?              |
+| **Reconsolidation Accuracy** | 20%    | Can recalled memories enter a labile state for time-windowed updates?                   |
+| **Temporal Reasoning**       | 15%    | Can the knowledge graph answer "who was X in January?" differently from "who is X now?" |
+| **Identity Continuity**      | 15%    | Does the system maintain a coherent self-model and actively identify knowledge gaps?    |
+| **Prospective Memory**       | 10%    | Can the agent create "when X happens, do Y" memories and trigger them correctly?        |
 
 ## Scoring
 
@@ -32,13 +32,13 @@ Results output to `benchmarks/biomemeval/results/biomemeval-report.json`.
 
 ## Expected Scores
 
-| System | Zeigarnik | Mood | Reconsolidation | Temporal | Identity | Prospective | **Composite** |
-|--------|-----------|------|-----------------|----------|----------|-------------|---------------|
-| **Bitterbot** | 100% | 100% | 100% | 100% | 100% | 100% | **100%** |
-| Zep/Graphiti | 0% | 0% | 0% | ~80% | 0% | 0% | **~12%** |
-| Letta/MemGPT | 0% | 0% | 0% | 0% | ~20% | 0% | **~3%** |
-| Mem0 | 0% | 0% | 0% | 0% | 0% | 0% | **0%** |
-| Hindsight | 0% | 0% | 0% | ~40% | 0% | 0% | **~6%** |
+| System        | Zeigarnik | Mood | Reconsolidation | Temporal | Identity | Prospective | **Composite** |
+| ------------- | --------- | ---- | --------------- | -------- | -------- | ----------- | ------------- |
+| **Bitterbot** | 100%      | 100% | 100%            | 100%     | 100%     | 100%        | **100%**      |
+| Zep/Graphiti  | 0%        | 0%   | 0%              | ~80%     | 0%       | 0%          | **~12%**      |
+| Letta/MemGPT  | 0%        | 0%   | 0%              | 0%       | ~20%     | 0%          | **~3%**       |
+| Mem0          | 0%        | 0%   | 0%              | 0%       | 0%       | 0%          | **0%**        |
+| Hindsight     | 0%        | 0%   | 0%              | ~40%     | 0%       | 0%          | **~6%**       |
 
 Zep scores on Temporal Reasoning because it has a temporal knowledge graph. No competitor has reconsolidation, mood-congruent retrieval, Zeigarnik open loops, or prospective memory.
 
@@ -68,12 +68,20 @@ export class MySystemAdapter implements MemorySystemAdapter {
   name = "my-system";
   version = "1.0.0";
 
-  async setup() { /* initialize your system */ }
-  async teardown() { /* cleanup */ }
+  async setup() {
+    /* initialize your system */
+  }
+  async teardown() {
+    /* cleanup */
+  }
 
   // Implement each method or return false/0/[] for unsupported features
-  async detectOpenLoop(text: string) { return { detected: false }; }
-  async markLabile(id: string) { return false; }
+  async detectOpenLoop(text: string) {
+    return { detected: false };
+  }
+  async markLabile(id: string) {
+    return false;
+  }
   // ... etc
 }
 ```
@@ -92,14 +100,14 @@ See `adapters/null.adapter.ts` for a complete baseline reference.
 
 ## Scientific References
 
-- Nader, K., Schafe, G.E., & LeDoux, J.E. (2000). Fear memories require protein synthesis for reconsolidation after retrieval. *Nature*, 406.
-- Bower, G.H. (1981). Mood and memory. *American Psychologist*, 36(2).
-- Zeigarnik, B. (1927). Das Behalten erledigter und unerledigter Handlungen. *Psychologische Forschung*, 9.
-- McDaniel, M.A. & Einstein, G.O. (2007). *Prospective memory: An overview and synthesis*. Sage.
-- Tulving, E. (1972). Episodic and semantic memory. In *Organization of Memory*.
-- Friston, K. (2010). The free-energy principle: a unified brain theory. *Nature Reviews Neuroscience*, 11(2).
-- Damasio, A.R. (1994). *Descartes' Error: Emotion, Reason, and the Human Brain*.
-- Ebbinghaus, H. (1885). *Uber das Gedachtnis*.
+- Nader, K., Schafe, G.E., & LeDoux, J.E. (2000). Fear memories require protein synthesis for reconsolidation after retrieval. _Nature_, 406.
+- Bower, G.H. (1981). Mood and memory. _American Psychologist_, 36(2).
+- Zeigarnik, B. (1927). Das Behalten erledigter und unerledigter Handlungen. _Psychologische Forschung_, 9.
+- McDaniel, M.A. & Einstein, G.O. (2007). _Prospective memory: An overview and synthesis_. Sage.
+- Tulving, E. (1972). Episodic and semantic memory. In _Organization of Memory_.
+- Friston, K. (2010). The free-energy principle: a unified brain theory. _Nature Reviews Neuroscience_, 11(2).
+- Damasio, A.R. (1994). _Descartes' Error: Emotion, Reason, and the Human Brain_.
+- Ebbinghaus, H. (1885). _Uber das Gedachtnis_.
 
 ## Citation
 

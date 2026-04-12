@@ -98,9 +98,7 @@ describe("ManagementKeyAuth", () => {
     });
 
     it("throws KEY_MISSING when no key provided", () => {
-      expect(() => ManagementKeyAuth.init([kp.pubkeyBase64])).toThrow(
-        ManagementKeyAuthError,
-      );
+      expect(() => ManagementKeyAuth.init([kp.pubkeyBase64])).toThrow(ManagementKeyAuthError);
       try {
         // Ensure BITTERBOT_MANAGEMENT_KEY is not set
         const saved = process.env.BITTERBOT_MANAGEMENT_KEY;

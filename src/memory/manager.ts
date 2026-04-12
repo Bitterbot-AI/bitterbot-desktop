@@ -1,11 +1,15 @@
 import type { DatabaseSync } from "node:sqlite";
 import { type FSWatcher } from "chokidar";
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
 import { appendFileSync, mkdirSync, existsSync } from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import type { BitterbotConfig } from "../config/config.js";
+import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
+import type { CuriosityState } from "./curiosity-types.js";
+import type { DreamStats, SynthesizeFn } from "./dream-types.js";
+import type { ManagementNodeService } from "./management-node-service.js";
 import type {
   MemoryEmbeddingProbeResult,
   MemoryProviderStatus,
@@ -18,6 +22,15 @@ import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
+import { CuriosityEngine, type GCCRFRewardResult } from "./curiosity-engine.js";
+import {
+  DiscoveryAgent,
+  type SkillSuggestion,
+  type SuggestSkillsConfig,
+} from "./discovery-agent.js";
+import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
+import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
 import {
   createEmbeddingProvider,
   type EmbeddingProvider,
@@ -26,37 +39,51 @@ import {
   type OpenAiEmbeddingClient,
   type VoyageEmbeddingClient,
 } from "./embeddings.js";
-import { bm25RankToScore, buildFtsQuery, mergeHybridResults, mergeHybridResultsRRF } from "./hybrid.js";
+import { EpistemicDirectiveEngine } from "./epistemic-directives.js";
+import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
+import { ExperienceSignalCollector } from "./experience-signal-collector.js";
+import { MemoryGovernance } from "./governance.js";
+import { HormonalStateManager } from "./hormonal.js";
+import {
+  bm25RankToScore,
+  buildFtsQuery,
+  mergeHybridResults,
+  mergeHybridResultsRRF,
+} from "./hybrid.js";
 import { isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
-import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
+import { KnowledgeGraphManager } from "./knowledge-graph.js";
 import { memoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
 import { searchKeyword, searchVector } from "./manager-search.js";
 import { memoryManagerSyncOps } from "./manager-sync-ops.js";
-import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
-import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
-import type { DreamStats, SynthesizeFn } from "./dream-types.js";
-import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
-import { CuriosityEngine, type GCCRFRewardResult } from "./curiosity-engine.js";
-import type { CuriosityState } from "./curiosity-types.js";
-import { HormonalStateManager } from "./hormonal.js";
-import { UserModelManager } from "./user-model.js";
-import { SkillRefiner } from "./skill-refiner.js";
-import { MemoryGovernance } from "./governance.js";
-import { TaskMemoryManager } from "./task-memory.js";
-import { MemoryScheduler } from "./scheduler.js";
-import { MemStore } from "./mem-store.js";
-import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
-import { PeerReputationManager } from "./peer-reputation.js";
-import { SkillVerifier } from "./skill-verifier.js";
-import { DiscoveryAgent, type SkillSuggestion, type SuggestSkillsConfig } from "./discovery-agent.js";
-import { ExperienceSignalCollector } from "./experience-signal-collector.js";
-import { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import { SkillCrystallizer } from "./skill-crystallizer.js";
-import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
-import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
-import { runSeedCrystalMigration, runSkillBootstrap } from "./seed-crystal-migration.js";
 import { MarketplaceEconomics } from "./marketplace-economics.js";
-import type { ManagementNodeService } from "./management-node-service.js";
+import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
+import { MemStore } from "./mem-store.js";
+import { moodCongruentBonus } from "./mood-congruent-boost.js";
+import { PeerReputationManager } from "./peer-reputation.js";
+import { ProspectiveMemoryEngine } from "./prospective-memory.js";
+import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
+import { ReconsolidationEngine } from "./reconsolidation.js";
+import { MemoryScheduler } from "./scheduler.js";
+import { runSeedCrystalMigration, runSkillBootstrap } from "./seed-crystal-migration.js";
+import { SessionCoherenceTracker } from "./session-coherence.js";
+import {
+  extractSessionFacts,
+  type ExtractionResult,
+  type HormonalBias,
+} from "./session-extractor.js";
+import { listSessionFilesForAgent } from "./session-files.js";
+import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
+import { SkillCrystallizer } from "./skill-crystallizer.js";
+import { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import { SkillMarketplace } from "./skill-marketplace.js";
+import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
+import { SkillRefiner } from "./skill-refiner.js";
+import { SkillVerifier } from "./skill-verifier.js";
+import { assessSomaticMarkers } from "./somatic-markers.js";
+import { recordAccess } from "./spacing-effect.js";
+import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
+import { TaskMemoryManager } from "./task-memory.js";
+import { UserModelManager } from "./user-model.js";
 import {
   buildWorkingMemorySynthesisPrompt,
   buildHeuristicWorkingMemory,
@@ -64,21 +91,7 @@ import {
   WORKING_MEMORY_SECTIONS,
   type WorkingMemoryContext,
 } from "./working-memory-prompt.js";
-import { extractSessionFacts, type ExtractionResult, type HormonalBias } from "./session-extractor.js";
-import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
-import { listSessionFilesForAgent } from "./session-files.js";
-import { SessionCoherenceTracker } from "./session-coherence.js";
-import { SkillMarketplace } from "./skill-marketplace.js";
-import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
-import { KnowledgeGraphManager } from "./knowledge-graph.js";
-import { ReconsolidationEngine } from "./reconsolidation.js";
-import { EpistemicDirectiveEngine } from "./epistemic-directives.js";
-import { ProspectiveMemoryEngine } from "./prospective-memory.js";
-import { recordAccess } from "./spacing-effect.js";
 import { scanForOpenLoops, getActiveOpenLoops } from "./zeigarnik-effect.js";
-import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
-import { moodCongruentBonus } from "./mood-congruent-boost.js";
-import { assessSomaticMarkers } from "./somatic-markers.js";
 
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
@@ -167,7 +180,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   private memStore: MemStore | null = null;
   private skillNetworkBridge: SkillNetworkBridge | null = null;
   private executionTracker: SkillExecutionTracker | null = null;
-  private executionTrackingHook: ((event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void) | null = null;
+  private executionTrackingHook:
+    | ((event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void)
+    | null = null;
   private experienceCollector: ExperienceSignalCollector | null = null;
   private peerReputationManager: PeerReputationManager | null = null;
   private discoveryAgent: DiscoveryAgent | null = null;
@@ -178,7 +193,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   private reconsolidationEngine: ReconsolidationEngine | null = null;
   private epistemicDirectiveEngine: EpistemicDirectiveEngine | null = null;
   private prospectiveMemoryEngine: ProspectiveMemoryEngine | null = null;
-  private skillSeekersAdapter: import("./skill-seekers-adapter.js").SkillSeekersAdapter | null = null;
+  private skillSeekersAdapter: import("./skill-seekers-adapter.js").SkillSeekersAdapter | null =
+    null;
 
   /**
    * Called by manager-sync-ops after a reindex swaps the database file.
@@ -282,10 +298,14 @@ export class MemoryIndexManager implements MemorySearchManager {
       )`);
       // Re-run subsystem ensureSchema methods
       if (this.taskMemory) {
-        try { (this.taskMemory as any).ensureSchema(); } catch {}
+        try {
+          (this.taskMemory as any).ensureSchema();
+        } catch {}
       }
       if (this.governance) {
-        try { (this.governance as any).ensureSchema?.(); } catch {}
+        try {
+          (this.governance as any).ensureSchema?.();
+        } catch {}
       }
     } catch (err) {
       log.debug(`schema re-creation after reindex failed: ${String(err)}`);
@@ -477,14 +497,14 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     if (state.dopamine > 0.7) {
       this.lastMiniDreamTrigger = now;
-      void this.dreamEngine.runMiniDream("dopamine_spike").catch(err =>
-        log.warn(`mini-dream failed: ${String(err)}`),
-      );
+      void this.dreamEngine
+        .runMiniDream("dopamine_spike")
+        .catch((err) => log.warn(`mini-dream failed: ${String(err)}`));
     } else if (state.cortisol > 0.8) {
       this.lastMiniDreamTrigger = now;
-      void this.dreamEngine.runMiniDream("cortisol_spike").catch(err =>
-        log.warn(`mini-dream failed: ${String(err)}`),
-      );
+      void this.dreamEngine
+        .runMiniDream("cortisol_spike")
+        .catch((err) => log.warn(`mini-dream failed: ${String(err)}`));
     }
 
     // Plan 7, Phase 7: State-based emotional anchor recall
@@ -495,7 +515,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (similar.length > 0) {
           const { anchor, similarity } = similar[0]!;
           this.hormonalManager.recallAnchor(anchor.id, 0.15);
-          log.debug("associative anchor recall", { label: anchor.label, similarity: similarity.toFixed(2) });
+          log.debug("associative anchor recall", {
+            label: anchor.label,
+            similarity: similarity.toFixed(2),
+          });
         }
       } catch {
         // findSimilarAnchors not available yet — non-critical
@@ -526,7 +549,8 @@ export class MemoryIndexManager implements MemorySearchManager {
     // RRF scores are on a different scale (~0.01–0.03 for k=60) than cosine
     // similarity (~0.3–0.9). When using RRF, disable minScore filtering since
     // rank-based fusion already handles relevance ranking effectively.
-    const minScore = hybrid.mergeStrategy === "rrf" ? 0 : (opts?.minScore ?? this.settings.query.minScore);
+    const minScore =
+      hybrid.mergeStrategy === "rrf" ? 0 : (opts?.minScore ?? this.settings.query.minScore);
     const candidates = Math.min(
       200,
       Math.max(1, Math.floor(maxResults * hybrid.candidateMultiplier)),
@@ -566,8 +590,25 @@ export class MemoryIndexManager implements MemorySearchManager {
     } else if (useRrf) {
       // RRF merge: rank-based fusion that doesn't require comparable score scales.
       // Importance is NOT applied — it governs memory lifecycle only.
-      const typedVector = vectorResults as Array<typeof vectorResults[number] & { id: string; importanceScore: number; updatedAt: number; lastAccessedAt: number | null; emotionalValence: number | null }>;
-      const typedKeyword = keywordResults as Array<typeof keywordResults[number] & { id: string; textScore: number; importanceScore: number; updatedAt: number; lastAccessedAt: number | null; emotionalValence: number | null }>;
+      const typedVector = vectorResults as Array<
+        (typeof vectorResults)[number] & {
+          id: string;
+          importanceScore: number;
+          updatedAt: number;
+          lastAccessedAt: number | null;
+          emotionalValence: number | null;
+        }
+      >;
+      const typedKeyword = keywordResults as Array<
+        (typeof keywordResults)[number] & {
+          id: string;
+          textScore: number;
+          importanceScore: number;
+          updatedAt: number;
+          lastAccessedAt: number | null;
+          emotionalValence: number | null;
+        }
+      >;
       const merged = mergeHybridResultsRRF({
         vector: typedVector.map((r) => ({
           id: r.id,
@@ -634,7 +675,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           const bonus = moodCongruentBonus({
             hormonalState: hState,
             emotionalValence: entry.emotionalValence ?? null,
-            semanticType: (entry as Record<string, unknown>).semanticType as string ?? null,
+            semanticType: ((entry as Record<string, unknown>).semanticType as string) ?? null,
           });
           if (bonus > 0) {
             entry.score *= 1 + bonus;
@@ -645,14 +686,16 @@ export class MemoryIndexManager implements MemorySearchManager {
       // Plan 7, Phase 3: Temporal awareness — query intent determines how age affects scoring.
       // "What am I working on?" strongly favors recent; "when did I..." favors older.
       try {
-        const { detectTemporalIntent, temporalRelevanceMultiplier } = await import("./temporal-scoring.js");
+        const { detectTemporalIntent, temporalRelevanceMultiplier } =
+          await import("./temporal-scoring.js");
         const temporalIntent = detectTemporalIntent(query);
         if (temporalIntent !== "timeless") {
           for (const entry of merged) {
             entry.score *= temporalRelevanceMultiplier({
               intent: temporalIntent,
-              epistemicLayer: (entry as Record<string, unknown>).epistemicLayer as string | null ?? null,
-              createdAt: (entry as Record<string, unknown>).createdAt as number ?? Date.now(),
+              epistemicLayer:
+                ((entry as Record<string, unknown>).epistemicLayer as string | null) ?? null,
+              createdAt: ((entry as Record<string, unknown>).createdAt as number) ?? Date.now(),
               updatedAt: entry.updatedAt ?? null,
             });
           }
@@ -698,13 +741,19 @@ export class MemoryIndexManager implements MemorySearchManager {
         for (const r of results) {
           params.push(r.path, r.startLine, r.endLine);
         }
-        const whereClause = results.map(() => "(path = ? AND start_line = ? AND end_line = ?)").join(" OR ");
-        const retrieved = this.db.prepare(
-          `SELECT emotional_valence, semantic_type FROM chunks WHERE ${whereClause}`,
-        ).all(...params) as Array<{ emotional_valence: number | null; semantic_type: string | null }>;
+        const whereClause = results
+          .map(() => "(path = ? AND start_line = ? AND end_line = ?)")
+          .join(" OR ");
+        const retrieved = this.db
+          .prepare(`SELECT emotional_valence, semantic_type FROM chunks WHERE ${whereClause}`)
+          .all(...params) as Array<{
+          emotional_valence: number | null;
+          semantic_type: string | null;
+        }>;
 
         if (retrieved.length > 0) {
-          const avgValence = retrieved.reduce((sum, r) => sum + (r.emotional_valence ?? 0), 0) / retrieved.length;
+          const avgValence =
+            retrieved.reduce((sum, r) => sum + (r.emotional_valence ?? 0), 0) / retrieved.length;
 
           if (avgValence > 0.3) {
             this.hormonalManager.stimulate("recall_positive");
@@ -712,8 +761,8 @@ export class MemoryIndexManager implements MemorySearchManager {
             this.hormonalManager.stimulate("recall_negative");
           }
 
-          const hasRelational = retrieved.some(r =>
-            r.semantic_type === "relationship" || r.semantic_type === "preference",
+          const hasRelational = retrieved.some(
+            (r) => r.semantic_type === "relationship" || r.semantic_type === "preference",
           );
           if (hasRelational) {
             this.hormonalManager.stimulate("recall_relational");
@@ -732,9 +781,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       try {
         const topScore = results.length > 0 ? results[0]!.score : 0;
         const meanScore =
-          results.length > 0
-            ? results.reduce((sum, r) => sum + r.score, 0) / results.length
-            : 0;
+          results.length > 0 ? results.reduce((sum, r) => sum + r.score, 0) / results.length : 0;
         this.recordSearchQueryCuriosity(cleaned, queryVec, results.length, topScore, meanScore);
       } catch {
         // Non-critical
@@ -798,7 +845,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       sourceFilterVec: this.buildSourceFilter("c"),
       sourceFilterChunks: this.buildSourceFilter(),
     });
-    return results.map((entry) => entry as MemorySearchResult & { id: string; importanceScore: number });
+    return results.map(
+      (entry) => entry as MemorySearchResult & { id: string; importanceScore: number },
+    );
   }
 
   private buildFtsQuery(raw: string): string | null {
@@ -808,7 +857,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   private async searchKeyword(
     query: string,
     limit: number,
-  ): Promise<Array<MemorySearchResult & { id: string; textScore: number; importanceScore: number }>> {
+  ): Promise<
+    Array<MemorySearchResult & { id: string; textScore: number; importanceScore: number }>
+  > {
     if (!this.fts.enabled || !this.fts.available) {
       return [];
     }
@@ -824,7 +875,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       buildFtsQuery: (raw) => this.buildFtsQuery(raw),
       bm25RankToScore,
     });
-    return results.map((entry) => entry as MemorySearchResult & { id: string; textScore: number; importanceScore: number });
+    return results.map(
+      (entry) =>
+        entry as MemorySearchResult & { id: string; textScore: number; importanceScore: number },
+    );
   }
 
   private mergeHybridResults(params: {
@@ -1089,7 +1143,21 @@ export class MemoryIndexManager implements MemorySearchManager {
         mood,
         emotionalBriefing,
         ...(trajectory ? { trajectory } : {}),
-        ...(modulation ? { responseGuidance: modulation.briefing, tone: { warmth: modulation.warmth, energy: modulation.energy, focus: modulation.focus, playfulness: modulation.playfulness, verbosity: modulation.verbosity, curiosityExpression: modulation.curiosityExpression, assertiveness: modulation.assertiveness, empathyExpression: modulation.empathyExpression } } : {}),
+        ...(modulation
+          ? {
+              responseGuidance: modulation.briefing,
+              tone: {
+                warmth: modulation.warmth,
+                energy: modulation.energy,
+                focus: modulation.focus,
+                playfulness: modulation.playfulness,
+                verbosity: modulation.verbosity,
+                curiosityExpression: modulation.curiosityExpression,
+                assertiveness: modulation.assertiveness,
+                empathyExpression: modulation.empathyExpression,
+              },
+            }
+          : {}),
       };
       // Emotional anchors
       const anchors = this.hormonalManager?.getAnchors() ?? [];
@@ -1210,7 +1278,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       mergeOverlapThreshold: hormonalMod?.mergeThreshold ?? consolidationCfg?.mergeOverlapThreshold,
       emotionDecayResistance: hormonalMod
         ? hormonalMod.decayResistance
-        : (emotionalCfg?.enabled !== false ? (emotionalCfg?.decayResistance ?? 0.5) : 0),
+        : emotionalCfg?.enabled !== false
+          ? (emotionalCfg?.decayResistance ?? 0.5)
+          : 0,
     });
     return engine.run();
   }
@@ -1228,30 +1298,34 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.consolidationTimer = setInterval(() => {
       try {
         // 0. First Breath: trigger immediate RLM synthesis for new agents with no Phenotype
-        this.shouldTriggerFirstBreath().then(async (should) => {
-          if (should) {
-            log.info("First Breath triggered — running immediate RLM micro-cycle for nascent agent");
-            const stats: DreamStats = {
-              cycle: {
-                cycleId: `first-breath-${Date.now()}`,
-                startedAt: Date.now(),
-                completedAt: Date.now(),
-                durationMs: 0,
-                state: "AWAKENING" as const,
-                clustersProcessed: 0,
-                insightsGenerated: 0,
-                chunksAnalyzed: 0,
-                llmCallsUsed: 0,
-                error: null,
-              },
-              newInsights: [],
-            };
-            await this.rewriteWorkingMemory(stats);
-            log.info("First Breath complete — Phenotype and Bond sections created");
-          }
-        }).catch((err) => {
-          log.debug(`First Breath check failed: ${String(err)}`);
-        });
+        this.shouldTriggerFirstBreath()
+          .then(async (should) => {
+            if (should) {
+              log.info(
+                "First Breath triggered — running immediate RLM micro-cycle for nascent agent",
+              );
+              const stats: DreamStats = {
+                cycle: {
+                  cycleId: `first-breath-${Date.now()}`,
+                  startedAt: Date.now(),
+                  completedAt: Date.now(),
+                  durationMs: 0,
+                  state: "AWAKENING" as const,
+                  clustersProcessed: 0,
+                  insightsGenerated: 0,
+                  chunksAnalyzed: 0,
+                  llmCallsUsed: 0,
+                  error: null,
+                },
+                newInsights: [],
+              };
+              await this.rewriteWorkingMemory(stats);
+              log.info("First Breath complete — Phenotype and Bond sections created");
+            }
+          })
+          .catch((err) => {
+            log.debug(`First Breath check failed: ${String(err)}`);
+          });
         // 1. Hormonal decay
         this.hormonalManager?.decay();
         // 2. Consolidation (Ebbinghaus decay + merge)
@@ -1270,11 +1344,11 @@ export class MemoryIndexManager implements MemorySearchManager {
         this.autoScratchFromHormonalSpike();
         // 7. EigenTrust + anomaly detection (Task 6)
         if (this.peerReputationManager) {
-          this.peerReputationManager.refreshEigenTrustScores(
-            this.skillNetworkBridge ? undefined : null,
-          ).catch((err) => {
-            log.warn(`EigenTrust refresh failed: ${String(err)}`);
-          });
+          this.peerReputationManager
+            .refreshEigenTrustScores(this.skillNetworkBridge ? undefined : null)
+            .catch((err) => {
+              log.warn(`EigenTrust refresh failed: ${String(err)}`);
+            });
           this.peerReputationManager.detectAnomalies();
           // 7b. Update peer quality scores from execution outcomes
           try {
@@ -1292,7 +1366,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (this.executionTracker) {
           const crystallizer = new SkillCrystallizer(this.db, this.executionTracker);
           const newSkills = crystallizer.crystallizePatterns();
-          if (newSkills > 0) log.info(`crystallized ${newSkills} new skill(s) from execution patterns`);
+          if (newSkills > 0)
+            log.info(`crystallized ${newSkills} new skill(s) from execution patterns`);
         }
         // 9. Decay steering rewards to prevent unbounded accumulation
         {
@@ -1385,12 +1460,19 @@ export class MemoryIndexManager implements MemorySearchManager {
     // because the agent framework may structuredClone the config, and
     // functions are not cloneable. We keep them as local variables and
     // pass a sanitized config (without functions) to the DreamEngine.
-    const builtLlmCall = dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? "openai/gpt-4o-mini");
-    const builtSynthesisLlmCall = dreamCfg?.synthesisLlmCall ??
+    const builtLlmCall =
+      dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? "openai/gpt-4o-mini");
+    const builtSynthesisLlmCall =
+      dreamCfg?.synthesisLlmCall ??
       (dreamCfg?.synthesisModel ? this.buildLlmCallFn(dreamCfg.synthesisModel) : null);
 
     // Build a config WITHOUT function properties (safe for structuredClone)
-    const { llmCall: _lc, synthesisLlmCall: _slc, localLlmCall: _llc, ...safeDreamCfg } = dreamCfg ?? {};
+    const {
+      llmCall: _lc,
+      synthesisLlmCall: _slc,
+      localLlmCall: _llc,
+      ...safeDreamCfg
+    } = dreamCfg ?? {};
 
     // Reassemble a config with functions for the DreamEngine constructor only
     const engineCfg = {
@@ -1697,7 +1779,13 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (existing?.last_extracted_hash === contentHash) continue;
 
         // Run LLM extraction
-        const result = await extractSessionFacts(entry.content, absPath, llmCall, maxFacts, hormonalBias);
+        const result = await extractSessionFacts(
+          entry.content,
+          absPath,
+          llmCall,
+          maxFacts,
+          hormonalBias,
+        );
         if (!result) continue;
 
         const now = Date.now();
@@ -1716,10 +1804,23 @@ export class MemoryIndexManager implements MemorySearchManager {
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               )
               .run(
-                id, absPath, "sessions", 0, 0, fact.text, hash,
-                "pending", "[]",
-                fact.confidence, "generated", fact.semanticType, fact.epistemicLayer,
-                0, null, now, now,
+                id,
+                absPath,
+                "sessions",
+                0,
+                0,
+                fact.text,
+                hash,
+                "pending",
+                "[]",
+                fact.confidence,
+                "generated",
+                fact.semanticType,
+                fact.epistemicLayer,
+                0,
+                null,
+                now,
+                now,
               );
 
             // Route directive facts to user preferences
@@ -1747,7 +1848,8 @@ export class MemoryIndexManager implements MemorySearchManager {
 
           // Plan 7, Phase 6: Handover brief quality gate
           try {
-            const { scoreHandoverBrief, HANDOVER_QUALITY_THRESHOLD } = await import("./session-handover.js");
+            const { scoreHandoverBrief, HANDOVER_QUALITY_THRESHOLD } =
+              await import("./session-handover.js");
             const quality = scoreHandoverBrief(brief, result.facts);
             if (quality.overall < HANDOVER_QUALITY_THRESHOLD && quality.missingFacts.length > 0) {
               log.warn("handover brief below quality threshold", {
@@ -1781,10 +1883,23 @@ export class MemoryIndexManager implements MemorySearchManager {
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
-              briefId, briefPath, "memory", 0, 0, briefText, briefHash,
-              "pending", "[]",
-              0.8, "generated", "episode", "experience",
-              0, null, now, now,
+              briefId,
+              briefPath,
+              "memory",
+              0,
+              0,
+              briefText,
+              briefHash,
+              "pending",
+              "[]",
+              0.8,
+              "generated",
+              "episode",
+              "experience",
+              0,
+              null,
+              now,
+              now,
             );
         } catch (err) {
           log.debug(`handover brief write failed: ${String(err)}`);
@@ -1796,7 +1911,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (this.knowledgeGraph && result.facts.length > 0) {
           try {
             const factChunkIds = result.facts.map((_, i) => `fact_${i}`); // approximate IDs
-            const kgEntities: Array<{ name: string; type: import("./knowledge-graph.js").EntityType }> = [];
+            const kgEntities: Array<{
+              name: string;
+              type: import("./knowledge-graph.js").EntityType;
+            }> = [];
             const kgRelationships: Array<import("./knowledge-graph.js").ExtractedRelationship> = [];
 
             for (const fact of result.facts) {
@@ -1805,14 +1923,19 @@ export class MemoryIndexManager implements MemorySearchManager {
               if (fact.semanticType === "relationship" || fact.semanticType === "preference") {
                 const names = fact.text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g);
                 for (const name of names ?? []) {
-                  if (name.length > 2 && !["The", "This", "That", "When", "What", "How", "Why"].includes(name)) {
+                  if (
+                    name.length > 2 &&
+                    !["The", "This", "That", "When", "What", "How", "Why"].includes(name)
+                  ) {
                     kgEntities.push({ name, type: "person" });
                   }
                 }
               }
               // Tool/project names from world_fact and task_pattern facts
               if (fact.epistemicLayer === "world_fact" || fact.semanticType === "task_pattern") {
-                const tools = fact.text.match(/\b(?:Docker|Postgres|MySQL|Redis|React|Node|Python|Git|AWS|GCP|Azure|Kubernetes|MongoDB|GraphQL|REST|API|CI|CD)\b/gi);
+                const tools = fact.text.match(
+                  /\b(?:Docker|Postgres|MySQL|Redis|React|Node|Python|Git|AWS|GCP|Azure|Kubernetes|MongoDB|GraphQL|REST|API|CI|CD)\b/gi,
+                );
                 for (const tool of tools ?? []) {
                   kgEntities.push({ name: tool, type: "tool" });
                 }
@@ -1870,17 +1993,22 @@ export class MemoryIndexManager implements MemorySearchManager {
           .run(absPath, now, contentHash, result.facts.length);
 
         extractedCount += result.facts.length;
-        log.debug(`session extraction: ${result.facts.length} facts from ${path.basename(absPath)}`, {
-          handover: brief.purpose.slice(0, 80),
-          processingTimeMs: result.processingTimeMs,
-        });
+        log.debug(
+          `session extraction: ${result.facts.length} facts from ${path.basename(absPath)}`,
+          {
+            handover: brief.purpose.slice(0, 80),
+            processingTimeMs: result.processingTimeMs,
+          },
+        );
       } catch (err) {
         log.debug(`session extraction failed for ${path.basename(absPath)}: ${String(err)}`);
       }
     }
 
     if (extractedCount > 0) {
-      log.info(`session extraction complete: ${extractedCount} facts from ${sessionFiles.length} sessions`);
+      log.info(
+        `session extraction complete: ${extractedCount} facts from ${sessionFiles.length} sessions`,
+      );
 
       // Plan 7, Phase 8: Invalidate RLM cache — new facts make cached results stale
       try {
@@ -1934,7 +2062,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     const journalPath = path.join(journalDir, "dream-journal.md");
     if (!existsSync(journalPath)) {
-      appendFileSync(journalPath, "# Dream Journal\n\nAutomatically generated dream cycle narratives.\n");
+      appendFileSync(
+        journalPath,
+        "# Dream Journal\n\nAutomatically generated dream cycle narratives.\n",
+      );
     }
     appendFileSync(journalPath, entry);
   }
@@ -2006,11 +2137,13 @@ export class MemoryIndexManager implements MemorySearchManager {
           cortisol: hormones.cortisol,
           oxytocin: hormones.oxytocin,
           mood: describeHormonalMood(hormones),
-          trends: trajectory ? {
-            dopamine: trajectory.trend === "stable" ? undefined : trajectory.trend,
-            cortisol: trajectory.trend === "stable" ? undefined : trajectory.trend,
-            oxytocin: trajectory.trend === "stable" ? undefined : trajectory.trend,
-          } : undefined,
+          trends: trajectory
+            ? {
+                dopamine: trajectory.trend === "stable" ? undefined : trajectory.trend,
+                cortisol: trajectory.trend === "stable" ? undefined : trajectory.trend,
+                oxytocin: trajectory.trend === "stable" ? undefined : trajectory.trend,
+              }
+            : undefined,
         }
       : null;
 
@@ -2040,19 +2173,29 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
 
     // Collect emotional anchors for dream context
-    const emotionalAnchors = this.hormonalManager?.getAnchors().slice(0, 5).map((a) => ({
-      label: a.label,
-      description: a.description,
-      state: a.state,
-      createdAt: a.createdAt,
-      recallCount: a.recallCount,
-    })) ?? [];
+    const emotionalAnchors =
+      this.hormonalManager
+        ?.getAnchors()
+        .slice(0, 5)
+        .map((a) => ({
+          label: a.label,
+          description: a.description,
+          state: a.state,
+          createdAt: a.createdAt,
+          recallCount: a.recallCount,
+        })) ?? [];
 
     // Gather user preferences for The Bond enrichment
     const userPreferences = this.userModelManager
-      ? this.userModelManager.getUserProfile().preferences
-          .slice(0, 15)
-          .map((p) => ({ category: p.category, key: p.key, value: p.value, confidence: p.confidence }))
+      ? this.userModelManager
+          .getUserProfile()
+          .preferences.slice(0, 15)
+          .map((p) => ({
+            category: p.category,
+            key: p.key,
+            value: p.value,
+            confidence: p.confidence,
+          }))
       : undefined;
 
     const ctx: WorkingMemoryContext = {
@@ -2084,7 +2227,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         const raw = await synthesisCall(prompt);
         const validation = validateWorkingMemory(raw, isFirstSynthesis ? undefined : oldState);
         if (validation.collapsed) {
-          log.warn(`RLM synthesis collapsed: ${validation.collapseReason}; using heuristic fallback`);
+          log.warn(
+            `RLM synthesis collapsed: ${validation.collapseReason}; using heuristic fallback`,
+          );
           newState = buildHeuristicWorkingMemory(ctx);
           usedHeuristicFallback = true;
         } else if (validation.valid) {
@@ -2093,10 +2238,14 @@ export class MemoryIndexManager implements MemorySearchManager {
             log.debug(`RLM synthesis warnings: ${validation.warnings.join("; ")}`);
           }
           if (validation.bondDriftRatio !== undefined && validation.bondDriftRatio < 0.5) {
-            log.warn(`Bond drift detected: ${Math.round(validation.bondDriftRatio * 100)}% term retention`);
+            log.warn(
+              `Bond drift detected: ${Math.round(validation.bondDriftRatio * 100)}% term retention`,
+            );
           }
         } else {
-          log.warn(`RLM synthesis missing sections: ${validation.missing.join(", ")}; using heuristic fallback`);
+          log.warn(
+            `RLM synthesis missing sections: ${validation.missing.join(", ")}; using heuristic fallback`,
+          );
           newState = buildHeuristicWorkingMemory(ctx);
           usedHeuristicFallback = true;
         }
@@ -2118,7 +2267,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         "<!-- Dream-generated working memory follows. Subsequent dream cycles will gradually integrate the above content. -->\n\n" +
         newState;
       await fs.writeFile(memoryMdPath, combined, "utf-8");
-      log.info("RLM: first synthesis — appended dream-generated section below existing MEMORY.md content");
+      log.info(
+        "RLM: first synthesis — appended dream-generated section below existing MEMORY.md content",
+      );
     } else {
       await fs.writeFile(memoryMdPath, newState, "utf-8");
       log.info("RLM: wrote updated working memory state to MEMORY.md");
@@ -2163,13 +2314,16 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
     }
 
-
     // Index scratch content as crystals before clearing (lossless backup)
     if (scratchNotes.trim()) {
       this.indexScratchAsCrystals(scratchNotes);
       // Clear the scratch buffer — it has been consumed
       try {
-        await fs.writeFile(scratchPath, "# Scratch Buffer (Working Memory WAL)\n\nUnsynthesized notes — will be consumed by next dream cycle.\n", "utf-8");
+        await fs.writeFile(
+          scratchPath,
+          "# Scratch Buffer (Working Memory WAL)\n\nUnsynthesized notes — will be consumed by next dream cycle.\n",
+          "utf-8",
+        );
       } catch {
         // Non-critical
       }
@@ -2221,7 +2375,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         try {
           const dag = JSON.parse(row.provenance_dag);
           if (Array.isArray(dag) && dag[0]?.peer) fromPeer = dag[0].peer.slice(0, 16);
-        } catch { /* ignore parse errors */ }
+        } catch {
+          /* ignore parse errors */
+        }
         return { name, fromPeer };
       });
 
@@ -2229,14 +2385,16 @@ export class MemoryIndexManager implements MemorySearchManager {
       let peerCount = 0;
       let reputationScore: number | undefined;
       try {
-        const peers = this.db
-          .prepare(`SELECT COUNT(*) as c FROM peer_reputation`)
-          .get() as { c: number } | undefined;
+        const peers = this.db.prepare(`SELECT COUNT(*) as c FROM peer_reputation`).get() as
+          | { c: number }
+          | undefined;
         peerCount = peers?.c ?? 0;
         if (peerCount > 0) {
           reputationScore = this.getOwnReputationScore();
         }
-      } catch { /* table may not exist */ }
+      } catch {
+        /* table may not exist */
+      }
 
       return {
         publishedSkills,
@@ -2265,10 +2423,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private async shouldTriggerFirstBreath(): Promise<boolean> {
     // Check if Phenotype already exists in MEMORY.md
     try {
-      const memoryMd = await fs.readFile(
-        path.join(this.workspaceDir, "MEMORY.md"),
-        "utf-8",
-      );
+      const memoryMd = await fs.readFile(path.join(this.workspaceDir, "MEMORY.md"), "utf-8");
       if (memoryMd.includes("## The Phenotype")) return false;
     } catch {
       // No MEMORY.md yet — that's fine, might need first breath
@@ -2309,13 +2464,15 @@ export class MemoryIndexManager implements MemorySearchManager {
    */
   cleanupOrphanedSkillChunks(): number {
     try {
-      const skillChunks = this.db.prepare(
-        `SELECT id, path FROM chunks
+      const skillChunks = this.db
+        .prepare(
+          `SELECT id, path FROM chunks
          WHERE semantic_type IN ('skill', 'task_pattern')
            AND path IS NOT NULL
            AND path != ''
            AND COALESCE(lifecycle, 'generated') != 'expired'`,
-      ).all() as Array<{ id: string; path: string }>;
+        )
+        .all() as Array<{ id: string; path: string }>;
 
       if (skillChunks.length === 0) return 0;
 
@@ -2332,7 +2489,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
 
       if (removed > 0) {
-        log.info(`Cleaned up ${removed} orphaned skill chunk(s) — source files no longer exist on disk`);
+        log.info(
+          `Cleaned up ${removed} orphaned skill chunk(s) — source files no longer exist on disk`,
+        );
       }
 
       return removed;
@@ -2347,9 +2506,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     // Default 0.5 for agents with no external reputation.
     // Uses network average as rough proxy for own standing.
     try {
-      const row = this.db.prepare(
-        `SELECT AVG(reputation_score) as avg_rep FROM peer_reputation WHERE reputation_score > 0`,
-      ).get() as { avg_rep: number | null } | undefined;
+      const row = this.db
+        .prepare(
+          `SELECT AVG(reputation_score) as avg_rep FROM peer_reputation WHERE reputation_score > 0`,
+        )
+        .get() as { avg_rep: number | null } | undefined;
       // Use network average as rough proxy for own standing; default 0.5
       return row?.avg_rep ?? 0.5;
     } catch {
@@ -2368,7 +2529,10 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   private getRecentHighImportanceCrystals(limit: number): WorkingMemoryContext["recentCrystals"] {
-    const deriveHormonalTag = (valence: number | null, semanticType: string | null): string | undefined => {
+    const deriveHormonalTag = (
+      valence: number | null,
+      semanticType: string | null,
+    ): string | undefined => {
       if (valence !== null && valence > 0.3) return "dopamine";
       if (valence !== null && valence < -0.3) return "cortisol";
       if (semanticType === "relationship") return "oxytocin";
@@ -2405,9 +2569,13 @@ export class MemoryIndexManager implements MemorySearchManager {
              LIMIT ?`,
           )
           .all(type, type, maxUpdated, budget) as Array<{
-            id: string; text: string; semantic_type: string | null;
-            importance_score: number; updated_at: number; emotional_valence: number | null;
-          }>;
+          id: string;
+          text: string;
+          semantic_type: string | null;
+          importance_score: number;
+          updated_at: number;
+          emotional_valence: number | null;
+        }>;
         for (const r of rows) {
           if (!seenIds.has(r.id)) {
             seenIds.add(r.id);
@@ -2431,9 +2599,12 @@ export class MemoryIndexManager implements MemorySearchManager {
              ORDER BY updated_at DESC LIMIT ?`,
           )
           .all(remaining + seenIds.size) as Array<{
-            id: string; text: string; semantic_type: string | null;
-            importance_score: number; emotional_valence: number | null;
-          }>;
+          id: string;
+          text: string;
+          semantic_type: string | null;
+          importance_score: number;
+          emotional_valence: number | null;
+        }>;
         for (const r of fillRows) {
           if (results.length >= limit) break;
           if (!seenIds.has(r.id)) {
@@ -2480,9 +2651,12 @@ export class MemoryIndexManager implements MemorySearchManager {
            LIMIT 5`,
         )
         .all() as Array<{
-          text: string; importance_score: number; access_count: number;
-          exec_count: number; success_rate: number;
-        }>;
+        text: string;
+        importance_score: number;
+        access_count: number;
+        exec_count: number;
+        success_rate: number;
+      }>;
       return rows
         .filter((r) => r.access_count >= 2)
         .map((r) => ({
@@ -2508,7 +2682,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       try {
         // Strip the "- [timestamp] (importance: N) " prefix to get the note content
         const text = line
-          .replace(/^-\s*\[[^\]]*\]\s*/, "")         // remove "- [timestamp] "
+          .replace(/^-\s*\[[^\]]*\]\s*/, "") // remove "- [timestamp] "
           .replace(/^\(importance:\s*[\d.]+\)\s*/, "") // remove optional "(importance: N) "
           .trim();
         if (!text || text.length < 10) continue;
@@ -2524,9 +2698,24 @@ export class MemoryIndexManager implements MemorySearchManager {
              importance_score, lifecycle, semantic_type, access_count, last_accessed_at, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
-          .run(id, "memory/scratch.md", "memory", 0, 0, text, hash,
-            "pending", "[]",
-            0.7, "generated", "episode", 0, null, now, now);
+          .run(
+            id,
+            "memory/scratch.md",
+            "memory",
+            0,
+            0,
+            text,
+            hash,
+            "pending",
+            "[]",
+            0.7,
+            "generated",
+            "episode",
+            0,
+            null,
+            now,
+            now,
+          );
       } catch {
         // Non-critical — scratch content survives in MEMORY.md regardless
       }
@@ -2537,7 +2726,12 @@ export class MemoryIndexManager implements MemorySearchManager {
    * Ingest a single scratch note as a crystal for immediate searchability.
    * Called by the working_memory_note tool.
    */
-  ingestScratchNote(text: string, importance: number, semanticType?: string, epistemicLayer?: string): void {
+  ingestScratchNote(
+    text: string,
+    importance: number,
+    semanticType?: string,
+    epistemicLayer?: string,
+  ): void {
     const now = Date.now();
     const effectiveSemanticType = semanticType ?? "episode";
     try {
@@ -2554,10 +2748,25 @@ export class MemoryIndexManager implements MemorySearchManager {
            access_count, last_accessed_at, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(id, "memory/scratch.md", "memory", 0, 0, text, hash,
-          "pending", "[]",
-          importance, "generated", effectiveSemanticType, epistemicLayer ?? null,
-          0, null, now, now);
+        .run(
+          id,
+          "memory/scratch.md",
+          "memory",
+          0,
+          0,
+          text,
+          hash,
+          "pending",
+          "[]",
+          importance,
+          "generated",
+          effectiveSemanticType,
+          epistemicLayer ?? null,
+          0,
+          null,
+          now,
+          now,
+        );
 
       // Route directive-type notes to user preferences for structured storage
       if (epistemicLayer === "directive" && this.userModelManager) {
@@ -2607,7 +2816,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         mkdirSync(memoryDir, { recursive: true });
       }
       if (!existsSync(scratchPath)) {
-        appendFileSync(scratchPath, "# Scratch Buffer (Working Memory WAL)\n\nUnsynthesized notes — will be consumed by next dream cycle.\n");
+        appendFileSync(
+          scratchPath,
+          "# Scratch Buffer (Working Memory WAL)\n\nUnsynthesized notes — will be consumed by next dream cycle.\n",
+        );
       }
       appendFileSync(scratchPath, entry);
     } catch {
@@ -2642,7 +2854,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         const { readFileSync } = require("node:fs") as typeof import("node:fs");
         const genomePath = path.join(this.workspaceDir, "GENOME.md");
         const genomeContent = readFileSync(genomePath, "utf-8");
-        const { parseGenomeHomeostasis } = require("./genome-parser.js") as typeof import("./genome-parser.js");
+        const { parseGenomeHomeostasis } =
+          require("./genome-parser.js") as typeof import("./genome-parser.js");
         const parsed = parseGenomeHomeostasis(genomeContent);
         if (parsed) {
           hormonalConfig = {
@@ -2650,7 +2863,7 @@ export class MemoryIndexManager implements MemorySearchManager {
             homeostasis: {
               dopamine: parsed.dopamine ?? 0.15,
               cortisol: parsed.cortisol ?? 0.02,
-              oxytocin: parsed.oxytocin ?? 0.10,
+              oxytocin: parsed.oxytocin ?? 0.1,
             },
           };
           log.debug("Parsed hormonal homeostasis from GENOME.md", parsed);
@@ -2677,12 +2890,17 @@ export class MemoryIndexManager implements MemorySearchManager {
   private loadEmotionalAnchors(): void {
     if (!this.hormonalManager) return;
     try {
-      const rows = this.db.prepare(
-        "SELECT * FROM emotional_anchors ORDER BY created_at DESC LIMIT 20",
-      ).all() as Array<{
-        id: string; label: string; description: string;
-        dopamine: number; cortisol: number; oxytocin: number;
-        created_at: number; recall_count: number;
+      const rows = this.db
+        .prepare("SELECT * FROM emotional_anchors ORDER BY created_at DESC LIMIT 20")
+        .all() as Array<{
+        id: string;
+        label: string;
+        description: string;
+        dopamine: number;
+        cortisol: number;
+        oxytocin: number;
+        created_at: number;
+        recall_count: number;
         last_recalled_at: number | null;
         associated_crystal_ids: string | null;
       }>;
@@ -2694,7 +2912,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         createdAt: row.created_at,
         recallCount: row.recall_count ?? 0,
         lastRecalledAt: row.last_recalled_at ?? undefined,
-        associatedCrystalIds: row.associated_crystal_ids ? JSON.parse(row.associated_crystal_ids) : undefined,
+        associatedCrystalIds: row.associated_crystal_ids
+          ? JSON.parse(row.associated_crystal_ids)
+          : undefined,
       }));
       this.hormonalManager.importAnchors(anchors);
       if (anchors.length > 0) {
@@ -2710,16 +2930,24 @@ export class MemoryIndexManager implements MemorySearchManager {
     triggerEvent?: string,
   ): void {
     try {
-      this.db.prepare(`
+      this.db
+        .prepare(`
         INSERT OR REPLACE INTO emotional_anchors
           (id, label, description, dopamine, cortisol, oxytocin, created_at, recall_count, trigger_event, associated_crystal_ids)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        anchor.id, anchor.label, anchor.description,
-        anchor.state.dopamine, anchor.state.cortisol, anchor.state.oxytocin,
-        anchor.createdAt, anchor.recallCount, triggerEvent ?? null,
-        anchor.associatedCrystalIds?.length ? JSON.stringify(anchor.associatedCrystalIds) : null,
-      );
+      `)
+        .run(
+          anchor.id,
+          anchor.label,
+          anchor.description,
+          anchor.state.dopamine,
+          anchor.state.cortisol,
+          anchor.state.oxytocin,
+          anchor.createdAt,
+          anchor.recallCount,
+          triggerEvent ?? null,
+          anchor.associatedCrystalIds?.length ? JSON.stringify(anchor.associatedCrystalIds) : null,
+        );
     } catch {
       // Non-critical — anchor still exists in memory
     }
@@ -2727,18 +2955,23 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private updateEmotionalAnchorRecall(anchorId: string): void {
     try {
-      this.db.prepare(`
+      this.db
+        .prepare(`
         UPDATE emotional_anchors
         SET recall_count = recall_count + 1, last_recalled_at = ?
         WHERE id = ?
-      `).run(Date.now(), anchorId);
+      `)
+        .run(Date.now(), anchorId);
     } catch {
       // Non-critical
     }
   }
 
   /** Create an emotional anchor (public API for agent tools). */
-  createEmotionalAnchor(label: string, description?: string): import("./hormonal.js").EmotionalAnchor | null {
+  createEmotionalAnchor(
+    label: string,
+    description?: string,
+  ): import("./hormonal.js").EmotionalAnchor | null {
     if (!this.hormonalManager) return null;
     return this.hormonalManager.createAnchor(label, description ?? "", "manual");
   }
@@ -2793,14 +3026,14 @@ export class MemoryIndexManager implements MemorySearchManager {
       categories[p.category] = (categories[p.category] ?? 0) + 1;
       totalConfidence += p.confidence;
     }
-    const avgConfidence = profile.preferences.length > 0
-      ? totalConfidence / profile.preferences.length
-      : 0;
+    const avgConfidence =
+      profile.preferences.length > 0 ? totalConfidence / profile.preferences.length : 0;
 
     // Load latest handover brief compact summary
     let latestHandover: string | undefined;
     try {
-      const { loadLatestHandoverBrief: loadBrief, formatCompactSummary } = await import("./session-handover.js");
+      const { loadLatestHandoverBrief: loadBrief, formatCompactSummary } =
+        await import("./session-handover.js");
       const brief = await loadBrief(this.workspaceDir);
       if (brief) {
         latestHandover = formatCompactSummary(brief);
@@ -2888,7 +3121,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.memStore = new MemStore(this.db);
   }
 
-  publishCrystal(crystalId: string, visibility: "shared" | "public"): import("./mem-store.js").PublishResult | null {
+  publishCrystal(
+    crystalId: string,
+    visibility: "shared" | "public",
+  ): import("./mem-store.js").PublishResult | null {
     return this.memStore?.publish(crystalId, visibility) ?? null;
   }
 
@@ -2967,7 +3203,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     // Create execution tracking hook for after_tool_call integration
     if (this.executionTracker) {
       this.executionTrackingHook = createExecutionTrackingHook(
-        this.executionTracker, this.db, this.hormonalManager,
+        this.executionTracker,
+        this.db,
+        this.hormonalManager,
       );
     }
   }
@@ -2977,7 +3215,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.executionTracker = new SkillExecutionTracker(this.db);
     }
     const trustList = this.cfg.skills?.p2p?.trustList ?? [];
-    this.peerReputationManager = new PeerReputationManager(this.db, this.executionTracker, trustList);
+    this.peerReputationManager = new PeerReputationManager(
+      this.db,
+      this.executionTracker,
+      trustList,
+    );
     if (this.skillNetworkBridge) {
       this.skillNetworkBridge.setPeerReputation(this.peerReputationManager);
     }
@@ -2994,7 +3236,9 @@ export class MemoryIndexManager implements MemorySearchManager {
    * Get the `after_tool_call` hook handler for plugin registration.
    * Returns null if execution tracking is not initialized.
    */
-  getExecutionTrackingHook(): ((event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void) | null {
+  getExecutionTrackingHook():
+    | ((event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void)
+    | null {
     return this.executionTrackingHook;
   }
 
@@ -3014,7 +3258,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   async suggestSkills(config?: SuggestSkillsConfig): Promise<SkillSuggestion[]> {
     if (!this.discoveryAgent) {
       const dreamCfg = this.cfg.memory?.dream;
-      const llmCall = dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? "openai/gpt-4o-mini");
+      const llmCall =
+        dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? "openai/gpt-4o-mini");
       this.discoveryAgent = new DiscoveryAgent(this.db, llmCall);
     }
     return this.discoveryAgent.suggestSkills(config);
@@ -3068,11 +3313,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (assessment?.gccrfReward != null && assessment.gccrfComponents && this.hormonalManager) {
       let semanticType: string | null = null;
       try {
-        const row = this.db
-          .prepare(`SELECT semantic_type FROM chunks WHERE id = ?`)
-          .get(chunkId) as { semantic_type: string | null } | undefined;
+        const row = this.db.prepare(`SELECT semantic_type FROM chunks WHERE id = ?`).get(chunkId) as
+          | { semantic_type: string | null }
+          | undefined;
         semanticType = row?.semantic_type ?? null;
-      } catch { /* column may not exist */ }
+      } catch {
+        /* column may not exist */
+      }
 
       this.hormonalManager.stimulateFromGCCRF(
         assessment.gccrfReward,
@@ -3124,7 +3371,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     topScore: number,
     meanScore: number,
   ): void {
-    this.curiosityEngine?.recordSearchQuery(query, queryEmbedding, resultCount, topScore, meanScore);
+    this.curiosityEngine?.recordSearchQuery(
+      query,
+      queryEmbedding,
+      resultCount,
+      topScore,
+      meanScore,
+    );
   }
 
   async close(): Promise<void> {
@@ -3200,7 +3453,11 @@ function bigramDiffRatio(a: string, b: string): number {
   return union === 0 ? 0 : 1 - intersection / union;
 }
 
-function describeHormonalMood(state: { dopamine: number; cortisol: number; oxytocin: number }): string {
+function describeHormonalMood(state: {
+  dopamine: number;
+  cortisol: number;
+  oxytocin: number;
+}): string {
   const parts: string[] = [];
 
   if (state.dopamine > 0.6) parts.push("energized");

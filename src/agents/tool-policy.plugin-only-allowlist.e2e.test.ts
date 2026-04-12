@@ -27,11 +27,7 @@ describe("stripPluginOnlyAllowlist", () => {
   });
 
   it("keeps allowlist when it mixes plugin and core entries", () => {
-    const policy = stripPluginOnlyAllowlist(
-      { allow: ["bitter", "read"] },
-      pluginGroups,
-      coreTools,
-    );
+    const policy = stripPluginOnlyAllowlist({ allow: ["bitter", "read"] }, pluginGroups, coreTools);
     expect(policy.policy?.allow).toEqual(["bitter", "read"]);
     expect(policy.unknownAllowlist).toEqual([]);
   });
@@ -45,11 +41,7 @@ describe("stripPluginOnlyAllowlist", () => {
 
   it("keeps allowlist with core tools and reports unknown entries", () => {
     const emptyPlugins: PluginToolGroups = { all: [], byPlugin: new Map() };
-    const policy = stripPluginOnlyAllowlist(
-      { allow: ["read", "bitter"] },
-      emptyPlugins,
-      coreTools,
-    );
+    const policy = stripPluginOnlyAllowlist({ allow: ["read", "bitter"] }, emptyPlugins, coreTools);
     expect(policy.policy?.allow).toEqual(["read", "bitter"]);
     expect(policy.unknownAllowlist).toEqual(["bitter"]);
   });

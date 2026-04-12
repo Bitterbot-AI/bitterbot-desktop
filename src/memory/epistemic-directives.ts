@@ -23,10 +23,10 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 const log = createSubsystemLogger("memory/epistemic-directives");
 
 export type DirectiveType =
-  | "contradiction"    // Conflicting relationships in KG
-  | "knowledge_gap"   // High GCCRF prediction error region
-  | "low_confidence"  // Entity with few evidence chunks
-  | "stale_fact";     // Relationship not reinforced recently
+  | "contradiction" // Conflicting relationships in KG
+  | "knowledge_gap" // High GCCRF prediction error region
+  | "low_confidence" // Entity with few evidence chunks
+  | "stale_fact"; // Relationship not reinforced recently
 
 export interface EpistemicDirective {
   id: string;
@@ -178,9 +178,7 @@ export class EpistemicDirectiveEngine {
   resolveDirective(directiveId: string, resolution: string): boolean {
     try {
       this.db
-        .prepare(
-          `UPDATE epistemic_directives SET resolved_at = ?, resolution = ? WHERE id = ?`,
-        )
+        .prepare(`UPDATE epistemic_directives SET resolved_at = ?, resolution = ? WHERE id = ?`)
         .run(Date.now(), resolution, directiveId);
       log.debug("directive resolved", { directiveId: directiveId.slice(0, 8) });
       return true;
@@ -196,9 +194,7 @@ export class EpistemicDirectiveEngine {
     const cutoff = Date.now() - this.config.expiryDays * 24 * 60 * 60 * 1000;
     try {
       const result = this.db
-        .prepare(
-          `DELETE FROM epistemic_directives WHERE resolved_at IS NULL AND created_at < ?`,
-        )
+        .prepare(`DELETE FROM epistemic_directives WHERE resolved_at IS NULL AND created_at < ?`)
         .run(cutoff);
       return (result as { changes: number }).changes;
     } catch {

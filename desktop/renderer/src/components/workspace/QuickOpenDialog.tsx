@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useWorkspaceStore } from "../../stores/workspace-store";
 import {
   CommandDialog,
   CommandInput,
@@ -7,7 +8,6 @@ import {
   CommandGroup,
   CommandItem,
 } from "../ui/command";
-import { useWorkspaceStore } from "../../stores/workspace-store";
 import { flattenTree, getFileIcon } from "./workspace-utils";
 
 export function QuickOpenDialog({
@@ -42,11 +42,7 @@ export function QuickOpenDialog({
             const fileName = filePath.split("/").pop() ?? filePath;
             const Icon = getFileIcon(fileName);
             return (
-              <CommandItem
-                key={filePath}
-                value={filePath}
-                onSelect={() => handleSelect(filePath)}
-              >
+              <CommandItem key={filePath} value={filePath} onSelect={() => handleSelect(filePath)}>
                 <Icon className="w-4 h-4 text-blue-400/60 flex-shrink-0" />
                 <span className="font-mono text-xs truncate">{filePath}</span>
               </CommandItem>

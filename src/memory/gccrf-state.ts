@@ -76,7 +76,10 @@ export function loadGCCRFState(db: DatabaseSync): GCCRFState | null {
       : {};
 
     const regionEta = map.has("region_eta")
-      ? (JSON.parse(map.get("region_eta")!) as Record<string, { emaLong: number; emaShort: number; sampleCount: number }>)
+      ? (JSON.parse(map.get("region_eta")!) as Record<
+          string,
+          { emaLong: number; emaShort: number; sampleCount: number }
+        >)
       : {};
 
     const recentEtas = map.has("recent_etas")

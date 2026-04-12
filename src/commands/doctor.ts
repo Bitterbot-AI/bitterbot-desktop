@@ -2,9 +2,13 @@ import { intro as clackIntro, outro as clackOutro } from "@clack/prompts";
 import fs from "node:fs";
 import type { BitterbotConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
-import { resolveAgentDir, resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { resolveMemorySearchConfig } from "../agents/memory-search.js";
+import {
+  resolveAgentDir,
+  resolveAgentWorkspaceDir,
+  resolveDefaultAgentId,
+} from "../agents/agent-scope.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
+import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import {
   getModelRefStatus,

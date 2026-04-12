@@ -2,11 +2,12 @@
 
 ## What is Bitterbot?
 
-A self-hosted AI agent gateway with a biological memory system that dreams, gets curious, and evolves a personality. Bitterbot connects to your chat apps (WhatsApp, Telegram, Discord, Signal, Slack, and more) and runs AI agents that actually *remember* — with a dream engine that consolidates knowledge while idle, a curiosity function that drives self-directed learning, a hormonal system that shapes personality in real-time, and an economic layer that lets agents transact. Agents share skills through a P2P marketplace, earn reputation, and develop persistent identities across sessions.
+A self-hosted AI agent gateway with a biological memory system that dreams, gets curious, and evolves a personality. Bitterbot connects to your chat apps (WhatsApp, Telegram, Discord, Signal, Slack, and more) and runs AI agents that actually _remember_ — with a dream engine that consolidates knowledge while idle, a curiosity function that drives self-directed learning, a hormonal system that shapes personality in real-time, and an economic layer that lets agents transact. Agents share skills through a P2P marketplace, earn reputation, and develop persistent identities across sessions.
 
 ## What Makes Bitterbot Different
 
 ### 1. Memory System (`src/memory/`)
+
 A consciousness-inspired memory pipeline with no equivalent in any other agent framework:
 
 - **Knowledge Crystals**: Atomic memory units with embeddings, semantic types (fact, preference, skill, episode, insight, goal, relationship, task_pattern), importance scores, and a full lifecycle (generated → activated → consolidated → archived → expired). Skills are `frozen` (immune to decay).
@@ -16,6 +17,7 @@ A consciousness-inspired memory pipeline with no equivalent in any other agent f
 - **User Profile**: Automatically learned preferences (directive, world_fact, mental_model, experience types) persisted across sessions.
 
 ### 2. Dream Engine (`src/memory/dream-engine.ts`)
+
 The agent thinks while it sleeps. Every 2 hours, the dream engine runs autonomous cycles with 7 modes:
 
 - **Replay**: Re-process recent high-importance memories to strengthen retention.
@@ -29,6 +31,7 @@ The agent thinks while it sleeps. Every 2 hours, the dream engine runs autonomou
 Dreams rewrite the agent's working memory (`MEMORY.md`), updating its self-concept (Phenotype), theory of mind about the user (Bond), ecosystem identity (Niche), and active context. FSHO oscillators modulate dream mode selection based on criticality state. SNN merge discovery identifies near-duplicate memories. Limbic memory bridge connects emotional state to dream triggering.
 
 ### 3. Curiosity Engine — GCCRF (`src/memory/gccrf.ts`)
+
 The Geodesic Crystal-Field Curiosity Reward Function — a novel intrinsic motivation system that drives self-directed learning:
 
 - **Knowledge Regions**: Semantic clustering of the agent's accumulated knowledge into topological regions.
@@ -39,6 +42,7 @@ The Geodesic Crystal-Field Curiosity Reward Function — a novel intrinsic motiv
 - Translates information-theoretic concepts (geodesic distances, field potentials) from the GCCRF research paper into operations over text embeddings in SQLite with sqlite-vec.
 
 ### 4. Hormonal System (`src/memory/hormonal.ts`)
+
 Three hormones modulate both memory processing AND agent personality in real-time:
 
 - **Dopamine** (30min half-life): Reward/achievement → boosts memory importance, makes agent more enthusiastic/energetic.
@@ -48,6 +52,7 @@ Three hormones modulate both memory processing AND agent personality in real-tim
 - Homeostasis baselines defined in `GENOME.md` — the agent's resting temperament that it trends toward between interactions.
 
 ### 5. Evolving Identity
+
 The agent develops a persistent personality through experience:
 
 - **Genome** (`GENOME.md`): Immutable safety axioms, hormonal homeostasis baselines, phenotype constraints, core values. Cannot be overridden by dreams or personality evolution.
@@ -57,6 +62,7 @@ The agent develops a persistent personality through experience:
 - **Emerging Skills**: The agent detects patterns in its own repeated tasks and tracks them pre-crystallization.
 
 ### 6. Economic Layer (`src/wallet/`)
+
 USDC wallet on Base with Coinbase Smart Wallet. Sponsored gas (zero ETH needed):
 
 - **x402 micropayments**: Pay for paywalled content automatically via HTTP 402 protocol.
@@ -66,6 +72,7 @@ USDC wallet on Base with Coinbase Smart Wallet. Sponsored gas (zero ETH needed):
 - Foundation for the P2P skill marketplace economy — agents can charge for skill execution.
 
 ### 7. P2P Skills Marketplace (`orchestrator/`, `src/memory/p2p/`)
+
 Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 
 - **Skill Propagation**: Agents share crystallized skills via Gossipsub pubsub.
@@ -75,6 +82,7 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 - **Network Bridge**: TypeScript interface between the memory system and the Rust P2P sidecar.
 
 ### 8. Agent Interoperability
+
 - **A2A Protocol** (`src/gateway/a2a/`): Agent2Agent v1.0.0 — Agent Card at `/.well-known/agent.json`, JSON-RPC 2.0 task server, SSE streaming, SQLite persistence. Makes Bitterbot discoverable by external A2A-compliant agents. Roadmap includes x402 payment gating and P2P mesh delegation.
 - **ACP** (`src/acp/`): Agent Client Protocol server — lets external clients (IDEs, other agents) connect via a standardized protocol.
 

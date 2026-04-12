@@ -8,8 +8,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { cosineSimilarity, parseEmbedding } from "./internal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 const log = createSubsystemLogger("memory/skill-verifier");
 
@@ -109,22 +109,34 @@ export class SkillVerifier {
       return { name: "structural", passed: false, reason: "content is empty or all whitespace" };
     }
     if (text.trim().length < MIN_CONTENT_LENGTH) {
-      return { name: "structural", passed: false, reason: `content too short (${text.trim().length} < ${MIN_CONTENT_LENGTH} chars)` };
+      return {
+        name: "structural",
+        passed: false,
+        reason: `content too short (${text.trim().length} < ${MIN_CONTENT_LENGTH} chars)`,
+      };
     }
     if (Buffer.byteLength(text, "utf-8") > MAX_CONTENT_BYTES) {
-      return { name: "structural", passed: false, reason: `content too large (> ${MAX_CONTENT_BYTES} bytes)` };
+      return {
+        name: "structural",
+        passed: false,
+        reason: `content too large (> ${MAX_CONTENT_BYTES} bytes)`,
+      };
     }
     return { name: "structural", passed: true, reason: "structural invariants met" };
   }
 
   private checkSemanticDrift(candidateEmbedding: number[], parentId: string): VerificationCheck {
     try {
-      const row = this.db
-        .prepare(`SELECT embedding FROM chunks WHERE id = ?`)
-        .get(parentId) as { embedding: string } | undefined;
+      const row = this.db.prepare(`SELECT embedding FROM chunks WHERE id = ?`).get(parentId) as
+        | { embedding: string }
+        | undefined;
 
       if (!row?.embedding) {
-        return { name: "semantic_drift", passed: true, reason: "parent embedding not available, skipping" };
+        return {
+          name: "semantic_drift",
+          passed: true,
+          reason: "parent embedding not available, skipping",
+        };
       }
 
       const parentEmbedding = parseEmbedding(row.embedding);
@@ -143,9 +155,17 @@ export class SkillVerifier {
         };
       }
 
-      return { name: "semantic_drift", passed: true, reason: `cosine distance ${distance.toFixed(3)} within threshold` };
+      return {
+        name: "semantic_drift",
+        passed: true,
+        reason: `cosine distance ${distance.toFixed(3)} within threshold`,
+      };
     } catch {
-      return { name: "semantic_drift", passed: true, reason: "drift check failed gracefully, passing" };
+      return {
+        name: "semantic_drift",
+        passed: true,
+        reason: "drift check failed gracefully, passing",
+      };
     }
   }
 }

@@ -1,6 +1,6 @@
+import { Search, ExternalLink, Globe, Image, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import type { ToolViewProps } from "./ToolViewRegistry";
-import { Search, ExternalLink, Globe, Image, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { safeJsonParse, getFaviconUrl, extractDomain, classifyResultType } from "./tool-view-utils";
 
@@ -25,14 +25,13 @@ function parseSearchResults(output: string): SearchData {
   const parsed = safeJsonParse<Record<string, unknown>>(output, {});
   if (parsed && typeof parsed === "object") {
     // Tavily / structured JSON
-    const items =
-      Array.isArray(parsed)
-        ? parsed
-        : Array.isArray((parsed as Record<string, unknown>).results)
-          ? (parsed as Record<string, unknown>).results as unknown[]
-          : Array.isArray((parsed as Record<string, unknown>).organic_results)
-            ? (parsed as Record<string, unknown>).organic_results as unknown[]
-            : [];
+    const items = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as Record<string, unknown>).results)
+        ? ((parsed as Record<string, unknown>).results as unknown[])
+        : Array.isArray((parsed as Record<string, unknown>).organic_results)
+          ? ((parsed as Record<string, unknown>).organic_results as unknown[])
+          : [];
 
     for (const item of items as Record<string, unknown>[]) {
       if (item && typeof item === "object") {
@@ -133,7 +132,9 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
   const output = toolCall.result ?? toolCall.partialResult;
   const isRunning = toolCall.status === "running";
 
-  const searchData = output ? parseSearchResults(output) : { results: [], images: [], answer: undefined };
+  const searchData = output
+    ? parseSearchResults(output)
+    : { results: [], images: [], answer: undefined };
   const { results: searchResults, images, answer } = searchData;
 
   const toggleSnippet = (i: number) => {
@@ -163,9 +164,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <Search className="w-6 h-6 text-cyan-400 animate-pulse" />
             <span className="text-sm text-zinc-400">Searching the web...</span>
-            {query && (
-              <span className="text-xs text-zinc-500 font-mono">"{query}"</span>
-            )}
+            {query && <span className="text-xs text-zinc-500 font-mono">"{query}"</span>}
           </div>
         ) : searchResults.length > 0 ? (
           <div className="p-3 space-y-3">

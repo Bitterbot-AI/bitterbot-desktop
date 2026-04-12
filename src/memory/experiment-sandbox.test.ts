@@ -165,9 +165,7 @@ describe("ExperimentSandbox", () => {
 
       const extremeResponse = JSON.stringify({
         criteriaScores: { edgeCases: 5.0, clarity: -1.0 },
-        testScenarios: [
-          { scenario: "test", originalScore: 2.0, mutatedScore: -0.5 },
-        ],
+        testScenarios: [{ scenario: "test", originalScore: 2.0, mutatedScore: -0.5 }],
         overallMutatedScore: 1.5,
         reasoning: "extreme values",
       });

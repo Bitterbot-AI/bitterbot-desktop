@@ -12,7 +12,6 @@ import type { BitterbotConfig } from "../../config/config.js";
 import type { ExecElevatedDefaults } from "../bash-tools.js";
 import type { EmbeddedPiCompactResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../auto-reply/heartbeat.js";
-import { resolveEndocrineState } from "../endocrine-state.js";
 import { resolveChannelCapabilities } from "../../config/channel-capabilities.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
@@ -32,6 +31,7 @@ import { listChannelSupportedActions, resolveChannelMessageToolHints } from "../
 import { formatUserTime, resolveUserTimeFormat, resolveUserTimezone } from "../date-time.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { resolveBitterbotDocsPath } from "../docs-path.js";
+import { resolveEndocrineState } from "../endocrine-state.js";
 import { getApiKeyForModel, resolveModelAuthMode } from "../model-auth.js";
 import { ensureBitterbotModelsJson } from "../models-config.js";
 import {
@@ -44,6 +44,7 @@ import {
   resolveCompactionReserveTokensFloor,
 } from "../pi-settings.js";
 import { createBitterbotCodingTools } from "../pi-tools.js";
+import { compressOldMessages } from "../progressive-compression.js";
 import { resolveSandboxContext } from "../sandbox.js";
 import { repairSessionFileIfNeeded } from "../session-file-repair.js";
 import { guardSessionManager } from "../session-tool-result-guard-wrapper.js";
@@ -58,7 +59,6 @@ import {
   type SkillSnapshot,
 } from "../skills.js";
 import { resolveTranscriptPolicy } from "../transcript-policy.js";
-import { compressOldMessages } from "../progressive-compression.js";
 import { compactWithSafetyTimeout } from "./compaction-safety-timeout.js";
 import { buildEmbeddedExtensionPaths } from "./extensions.js";
 import {
@@ -601,22 +601,16 @@ export async function compactEmbeddedPiSessionDirect(
         // of text the summarizer must process, saving tokens and latency.
         const compressionCfg = params.config?.agents?.defaults?.compression;
         if (compressionCfg?.enabled !== false) {
-          const contextBudget = Math.floor(
-            (model.contextWindow ?? 128_000) * 0.85,
-          );
-          const compressed = compressOldMessages(
-            [...session.messages],
-            contextBudget,
-            {
-              enabled: true,
-              toolResultThreshold: compressionCfg?.toolResultThreshold,
-              messageThreshold: compressionCfg?.messageThreshold,
-              maxIterations: compressionCfg?.maxIterations,
-              middleOutMaxMessages: compressionCfg?.middleOutMaxMessages,
-              spareRecentToolResults: compressionCfg?.spareRecentToolResults,
-              spareRecentMessages: compressionCfg?.spareRecentMessages,
-            },
-          );
+          const contextBudget = Math.floor((model.contextWindow ?? 128_000) * 0.85);
+          const compressed = compressOldMessages([...session.messages], contextBudget, {
+            enabled: true,
+            toolResultThreshold: compressionCfg?.toolResultThreshold,
+            messageThreshold: compressionCfg?.messageThreshold,
+            maxIterations: compressionCfg?.maxIterations,
+            middleOutMaxMessages: compressionCfg?.middleOutMaxMessages,
+            spareRecentToolResults: compressionCfg?.spareRecentToolResults,
+            spareRecentMessages: compressionCfg?.spareRecentMessages,
+          });
           if (compressed.totalCompressed > 0) {
             session.agent.replaceMessages(compressed.messages);
             log.info(

@@ -1,9 +1,5 @@
 import { create } from "zustand";
-import {
-  GatewayClient,
-  type GatewayEventFrame,
-  type GatewayHelloOk,
-} from "../lib/gateway-client";
+import { GatewayClient, type GatewayEventFrame, type GatewayHelloOk } from "../lib/gateway-client";
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
@@ -95,8 +91,7 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
     set({ status: "connecting", error: null });
 
-    const token =
-      tokenOverride?.trim() || readStoredGatewayToken() || "local-dev-token";
+    const token = tokenOverride?.trim() || readStoredGatewayToken() || "local-dev-token";
 
     const client = new GatewayClient({
       url,

@@ -1,8 +1,8 @@
-import type { WalletConfig } from "../config/types.wallet.js";
 import fs from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import lockfile from "proper-lockfile";
+import type { WalletConfig } from "../config/types.wallet.js";
 
 export type BalanceResult = {
   token: string;
@@ -151,9 +151,7 @@ export function createWalletService(config: WalletConfig): WalletService {
       throw new Error("Transaction amount must be positive");
     }
     if (amount > perTxCap) {
-      throw new Error(
-        `Transaction amount $${amount} exceeds per-transaction cap of $${perTxCap}`,
-      );
+      throw new Error(`Transaction amount $${amount} exceeds per-transaction cap of $${perTxCap}`);
     }
   }
 
@@ -271,16 +269,12 @@ export function createWalletService(config: WalletConfig): WalletService {
           status: "pending",
         };
       } catch (err) {
-        throw new Error(
-          `Failed to send USDC: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        throw new Error(`Failed to send USDC: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
 
     async trade(fromToken: string, toToken: string, _amount: number): Promise<TradeResult> {
-      throw new Error(
-        `Token swaps (${fromToken} \u2192 ${toToken}) are not yet implemented.`,
-      );
+      throw new Error(`Token swaps (${fromToken} \u2192 ${toToken}) are not yet implemented.`);
     },
 
     async getTransactionHistory(limit?: number): Promise<TransactionRecord[]> {
@@ -351,7 +345,7 @@ export function createWalletService(config: WalletConfig): WalletService {
         const response = await fetch(resourceUrl, {
           headers: {
             "X-PAYMENT": paymentHeader,
-            "Accept": "application/json, text/plain, */*",
+            Accept: "application/json, text/plain, */*",
           },
         });
 

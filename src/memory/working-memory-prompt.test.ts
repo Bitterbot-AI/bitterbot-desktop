@@ -40,7 +40,9 @@ describe("working-memory-prompt", () => {
 
     it("should include hormonal attention weights when state is provided", () => {
       const prompt = buildWorkingMemorySynthesisPrompt(
-        makeContext({ hormonalState: { dopamine: 0.8, cortisol: 0.1, oxytocin: 0.6, mood: "energized" } }),
+        makeContext({
+          hormonalState: { dopamine: 0.8, cortisol: 0.1, oxytocin: 0.6, mood: "energized" },
+        }),
       );
       expect(prompt).toContain("Dopamine (0.80)");
       expect(prompt).toContain("DOMINANT");
@@ -57,7 +59,13 @@ describe("working-memory-prompt", () => {
     it("should include recent crystals", () => {
       const prompt = buildWorkingMemorySynthesisPrompt(
         makeContext({
-          recentCrystals: [{ text: "User is building a P2P agent system", semanticType: "fact", importanceScore: 0.9 }],
+          recentCrystals: [
+            {
+              text: "User is building a P2P agent system",
+              semanticType: "fact",
+              importanceScore: 0.9,
+            },
+          ],
         }),
       );
       expect(prompt).toContain("P2P agent system");
@@ -66,7 +74,13 @@ describe("working-memory-prompt", () => {
     it("should include dream insights", () => {
       const prompt = buildWorkingMemorySynthesisPrompt(
         makeContext({
-          dreamInsights: [{ content: "Cross-domain connection between CORS and EigenTrust", mode: "simulation", confidence: 0.85 }],
+          dreamInsights: [
+            {
+              content: "Cross-domain connection between CORS and EigenTrust",
+              mode: "simulation",
+              confidence: 0.85,
+            },
+          ],
         }),
       );
       expect(prompt).toContain("CORS and EigenTrust");
@@ -97,7 +111,9 @@ describe("working-memory-prompt", () => {
     it("should include curiosity targets", () => {
       const result = buildHeuristicWorkingMemory(
         makeContext({
-          curiosityTargets: [{ description: "How does the P2P bridge handle NAT traversal?", priority: 0.8 }],
+          curiosityTargets: [
+            { description: "How does the P2P bridge handle NAT traversal?", priority: 0.8 },
+          ],
         }),
       );
       expect(result).toContain("NAT traversal");
@@ -225,8 +241,8 @@ Working on memory system.`;
     it("allows mass drop when previous state is immature (<2000 chars)", () => {
       const shortPrevious = validContent; // ~400 chars
       // Build a shorter new state that has enough substance to not trigger empty synthesis
-      const shorterNew = WORKING_MEMORY_SECTIONS.map((s) =>
-        `## ${s}\nSome meaningful content for this section that is substantive enough.`,
+      const shorterNew = WORKING_MEMORY_SECTIONS.map(
+        (s) => `## ${s}\nSome meaningful content for this section that is substantive enough.`,
       ).join("\n");
       const result = validateWorkingMemory(shorterNew, shortPrevious);
       // Should NOT collapse because previous is <2000 chars (mass drop guard ignores immature states)
@@ -234,8 +250,9 @@ Working on memory system.`;
     });
 
     it("rejects eviction runaway — >20 crystal pointers", () => {
-      const manyPointers = Array.from({ length: 25 }, (_, i) =>
-        `- Topic ${i} → search: \`topic ${i}\``,
+      const manyPointers = Array.from(
+        { length: 25 },
+        (_, i) => `- Topic ${i} → search: \`topic ${i}\``,
       ).join("\n");
       const runawayContent = validContent.replace(
         "- Legacy memory system → search: `legacy memory system`\n- GCCRF implementation → search: `GCCRF implementation`",

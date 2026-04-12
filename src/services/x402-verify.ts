@@ -36,9 +36,7 @@ export async function verifyX402Payment(params: {
   // Parse the payment token
   // x402 tokens are base64-encoded JSON with: { txHash, chain, amount, sender, timestamp, signature }
   try {
-    const decoded = JSON.parse(
-      Buffer.from(params.paymentToken, "base64").toString("utf-8"),
-    ) as {
+    const decoded = JSON.parse(Buffer.from(params.paymentToken, "base64").toString("utf-8")) as {
       txHash?: string;
       amount?: string | number;
       sender?: string;
@@ -49,9 +47,8 @@ export async function verifyX402Payment(params: {
       return { valid: false, error: "Missing txHash in payment token" };
     }
 
-    const amount = typeof decoded.amount === "string"
-      ? parseFloat(decoded.amount)
-      : decoded.amount ?? 0;
+    const amount =
+      typeof decoded.amount === "string" ? parseFloat(decoded.amount) : (decoded.amount ?? 0);
 
     if (amount < params.minimumAmount) {
       return { valid: false, error: `Amount ${amount} below minimum ${params.minimumAmount}` };
@@ -67,9 +64,9 @@ export async function verifyX402Payment(params: {
     // 5-minute window. (Gemini peer review: replay attack fix)
     // The UNIQUE index on tx_hash in marketplace_purchases enforces this at the DB level.
     if (params.db) {
-      const existing = params.db.prepare(
-        `SELECT 1 FROM marketplace_purchases WHERE tx_hash = ?`,
-      ).get(decoded.txHash);
+      const existing = params.db
+        .prepare(`SELECT 1 FROM marketplace_purchases WHERE tx_hash = ?`)
+        .get(decoded.txHash);
       if (existing) {
         return { valid: false, error: "Payment token already consumed" };
       }
@@ -100,8 +97,9 @@ export async function verifyX402Payment(params: {
         // Check Transfer event logs for actual recipient.
         const transferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
         const transferLog = receipt.logs.find(
-          (l) => l.topics[0] === transferTopic &&
-                 l.topics[2]?.toLowerCase().includes(params.expectedRecipient.slice(2).toLowerCase()),
+          (l) =>
+            l.topics[0] === transferTopic &&
+            l.topics[2]?.toLowerCase().includes(params.expectedRecipient.slice(2).toLowerCase()),
         );
         if (!transferLog) {
           return { valid: false, error: "Transaction recipient does not match" };

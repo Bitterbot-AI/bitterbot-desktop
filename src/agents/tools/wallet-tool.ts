@@ -1,10 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { WalletConfig } from "../../config/types.wallet.js";
-import {
-  createWalletService,
-  type WalletService,
-} from "../../services/wallet-service.js";
+import { createWalletService, type WalletService } from "../../services/wallet-service.js";
 import { stringEnum } from "../schema/typebox.js";
 import {
   type AnyAgentTool,
@@ -44,13 +41,20 @@ const WalletToolSchema = Type.Object({
   fromToken: Type.Optional(Type.String({ description: "Source token symbol (for trade)." })),
   toToken: Type.Optional(Type.String({ description: "Target token symbol (for trade)." })),
   limit: Type.Optional(
-    Type.Number({ description: "Max number of transactions to return (for get_transaction_history, default: 10)." }),
+    Type.Number({
+      description:
+        "Max number of transactions to return (for get_transaction_history, default: 10).",
+    }),
   ),
   resource_url: Type.Optional(
-    Type.String({ description: "URL of the paywalled resource to pay for and retrieve (for pay_for_resource)." }),
+    Type.String({
+      description: "URL of the paywalled resource to pay for and retrieve (for pay_for_resource).",
+    }),
   ),
   reason: Type.Optional(
-    Type.String({ description: "Brief explanation of why this resource is needed (for pay_for_resource)." }),
+    Type.String({
+      description: "Brief explanation of why this resource is needed (for pay_for_resource).",
+    }),
   ),
 });
 

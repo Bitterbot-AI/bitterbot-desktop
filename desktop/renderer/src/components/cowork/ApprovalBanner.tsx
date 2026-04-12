@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
 import { ShieldCheck, X } from "lucide-react";
+import { useState, useCallback } from "react";
 import { cn } from "../../lib/utils";
 
 interface ApprovalBannerProps {

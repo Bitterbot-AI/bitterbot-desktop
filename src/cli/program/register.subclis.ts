@@ -120,7 +120,7 @@ const entries: SubCliEntry[] = [
       mod.registerSandboxCli(program);
     },
   },
-{
+  {
     name: "dns",
     description: "DNS helpers",
     register: async (program) => {

@@ -59,10 +59,7 @@ export function onCodeExecResult(execId: string, callback: ResultCallback): () =
 /**
  * Wait for a code execution result with a timeout.
  */
-export function waitForCodeExecResult(
-  execId: string,
-  timeoutMs = 60_000,
-): Promise<CodeExecResult> {
+export function waitForCodeExecResult(execId: string, timeoutMs = 60_000): Promise<CodeExecResult> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       pendingCallbacks.delete(execId);

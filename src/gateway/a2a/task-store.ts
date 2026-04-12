@@ -41,18 +41,10 @@ export function ensureA2aSchema(db: DatabaseSync): void {
     );
   `);
 
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_a2a_tasks_status ON a2a_tasks(status);`,
-  );
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_a2a_tasks_context ON a2a_tasks(context_id);`,
-  );
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_a2a_messages_task ON a2a_messages(task_id);`,
-  );
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_a2a_artifacts_task ON a2a_artifacts(task_id);`,
-  );
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_a2a_tasks_status ON a2a_tasks(status);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_a2a_tasks_context ON a2a_tasks(context_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_a2a_messages_task ON a2a_messages(task_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_a2a_artifacts_task ON a2a_artifacts(task_id);`);
 }
 
 // ---------------------------------------------------------------------------
@@ -130,9 +122,9 @@ export class A2aTaskStore {
   }
 
   getTask(taskId: string): TaskRow | undefined {
-    return this.db
-      .prepare(`SELECT * FROM a2a_tasks WHERE id = ?`)
-      .get(taskId) as TaskRow | undefined;
+    return this.db.prepare(`SELECT * FROM a2a_tasks WHERE id = ?`).get(taskId) as
+      | TaskRow
+      | undefined;
   }
 
   listTasks(params?: {
@@ -158,9 +150,7 @@ export class A2aTaskStore {
     const offset = params?.offset ?? 0;
 
     return this.db
-      .prepare(
-        `SELECT * FROM a2a_tasks ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      )
+      .prepare(`SELECT * FROM a2a_tasks ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
       .all(...args, limit, offset) as TaskRow[];
   }
 

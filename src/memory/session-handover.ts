@@ -13,12 +13,12 @@
  * - Chunks in the database with semantic_type='episode' (searchable)
  */
 
-import path from "node:path";
 import fs from "node:fs/promises";
+import path from "node:path";
 
 export type HandoverEntity = {
-  name: string;       // "docker-compose.yml", "handleAuth()", "PORT"
-  type: string;       // "file", "function", "variable", "config", "service"
+  name: string; // "docker-compose.yml", "handleAuth()", "PORT"
+  type: string; // "file", "function", "variable", "config", "service"
   lastAction: string; // "edited", "debugged", "created", "discussed"
 };
 
@@ -105,9 +105,7 @@ export function handoverPath(workspaceDir: string, timestamp: number): string {
  * Convert a handover brief to a single text chunk for database storage.
  */
 export function briefToChunkText(brief: SessionHandoverBrief): string {
-  const parts: string[] = [
-    `Session Handover: ${brief.purpose}`,
-  ];
+  const parts: string[] = [`Session Handover: ${brief.purpose}`];
   if (brief.milestones.length > 0) {
     parts.push(`Milestones: ${brief.milestones.join("; ")}`);
   }
@@ -134,19 +132,18 @@ export function formatCompactSummary(brief: SessionHandoverBrief): string {
   const date = new Date(brief.timestamp);
   const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
 
-  const highlights = [
-    ...brief.milestones.slice(0, 2),
-    ...brief.decisions.slice(0, 1),
-  ];
+  const highlights = [...brief.milestones.slice(0, 2), ...brief.decisions.slice(0, 1)];
   const highlightStr = highlights.length > 0 ? ` Key: ${highlights.join("; ")}` : "";
 
-  const nextStr = brief.nextSteps.length > 0
-    ? ` Next: ${brief.nextSteps[0]}`
-    : "";
+  const nextStr = brief.nextSteps.length > 0 ? ` Next: ${brief.nextSteps[0]}` : "";
 
-  const entityStr = brief.entities && brief.entities.length > 0
-    ? ` Ctx: ${brief.entities.slice(0, 3).map((e) => e.name).join(", ")}`
-    : "";
+  const entityStr =
+    brief.entities && brief.entities.length > 0
+      ? ` Ctx: ${brief.entities
+          .slice(0, 3)
+          .map((e) => e.name)
+          .join(", ")}`
+      : "";
 
   const summary = `[${dateStr}] ${brief.purpose}.${highlightStr}.${nextStr}${entityStr}`;
 
@@ -158,7 +155,10 @@ export function formatCompactSummary(brief: SessionHandoverBrief): string {
 /**
  * Parse a handover brief markdown file back into a structured object.
  */
-export function parseHandoverBrief(markdown: string, sessionId?: string): SessionHandoverBrief | null {
+export function parseHandoverBrief(
+  markdown: string,
+  sessionId?: string,
+): SessionHandoverBrief | null {
   const purposeMatch = markdown.match(/## Purpose\n([^\n]+)/);
   if (!purposeMatch) return null;
 
@@ -203,13 +203,13 @@ export function parseHandoverBrief(markdown: string, sessionId?: string): Sessio
  * Load the most recent handover brief from disk.
  * Returns null if no handover briefs exist.
  */
-export async function loadLatestHandoverBrief(workspaceDir: string): Promise<SessionHandoverBrief | null> {
+export async function loadLatestHandoverBrief(
+  workspaceDir: string,
+): Promise<SessionHandoverBrief | null> {
   const handoverDir = path.join(workspaceDir, "memory", "handover");
   try {
     const entries = await fs.readdir(handoverDir);
-    const mdFiles = entries
-      .filter((name) => name.endsWith(".md"))
-      .sort(); // YYYY-MM-DD-HH.md sorts chronologically
+    const mdFiles = entries.filter((name) => name.endsWith(".md")).sort(); // YYYY-MM-DD-HH.md sorts chronologically
 
     if (mdFiles.length === 0) return null;
 
@@ -258,9 +258,7 @@ export function scoreHandoverBrief(
     .join(" ")
     .toLowerCase();
 
-  const briefWords = new Set(
-    briefText.split(/\s+/).filter((w) => w.length > 3),
-  );
+  const briefWords = new Set(briefText.split(/\s+/).filter((w) => w.length > 3));
 
   const keyFacts = extractedFacts.filter((f) => f.confidence >= minConfidence);
   let covered = 0;
@@ -287,9 +285,7 @@ export function scoreHandoverBrief(
   const concretePattern = /^(?:[A-Z][a-z]+|[0-9]+(?:\.[0-9]+)?|v[0-9]|[A-Z]{2,}|https?:)/;
   const concreteCount = allBriefWords.filter((w) => concretePattern.test(w)).length;
   const specificity =
-    allBriefWords.length > 0
-      ? Math.min(1, concreteCount / (allBriefWords.length * 0.15))
-      : 0;
+    allBriefWords.length > 0 ? Math.min(1, concreteCount / (allBriefWords.length * 0.15)) : 0;
 
   const overall = coverage * 0.7 + specificity * 0.3;
 

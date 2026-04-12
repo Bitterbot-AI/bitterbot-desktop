@@ -74,22 +74,23 @@ The knowledge graph acts as a 3rd retrieval modality alongside vector + BM25:
 ### Dream Integration
 
 During consolidation cycles:
+
 - **Prune** relationships not reinforced with new evidence in 30+ days (low weight)
 - **Merge** duplicate entities discovered over time
 - **Detect contradictions** for epistemic directive generation
 
 ### Key Methods
 
-| Method | Description |
-|--------|-------------|
-| `upsertEntity()` | Create or merge an entity by name+type |
-| `upsertRelationship()` | Create or update a relationship, merging evidence |
-| `supersedeRelationship()` | Close old relationship, optionally create new one |
-| `traverseEntity()` | Get all relationships for an entity (both directions) |
-| `graphSearch()` | Extract entities from query, traverse, return ranked results |
-| `queryAtTime()` | Temporal query: who/what held a relationship at a specific time |
-| `ingestExtraction()` | Batch ingest entities + relationships from session extraction |
-| `pruneStaleRelationships()` | Close low-weight relationships not reinforced recently |
+| Method                      | Description                                                     |
+| --------------------------- | --------------------------------------------------------------- |
+| `upsertEntity()`            | Create or merge an entity by name+type                          |
+| `upsertRelationship()`      | Create or update a relationship, merging evidence               |
+| `supersedeRelationship()`   | Close old relationship, optionally create new one               |
+| `traverseEntity()`          | Get all relationships for an entity (both directions)           |
+| `graphSearch()`             | Extract entities from query, traverse, return ranked results    |
+| `queryAtTime()`             | Temporal query: who/what held a relationship at a specific time |
+| `ingestExtraction()`        | Batch ingest entities + relationships from session extraction   |
+| `pruneStaleRelationships()` | Close low-weight relationships not reinforced recently          |
 
 ---
 
@@ -102,7 +103,7 @@ During consolidation cycles:
 
 When a consolidated memory is recalled, it enters a temporary "labile" state (~30 minutes) where it can be updated, strengthened, or erased. After the window closes, the memory restabilizes — potentially stronger.
 
-**Reference:** Nader, Schafe & LeDoux (2000). Fear memories require protein synthesis for reconsolidation. *Nature*, 406.
+**Reference:** Nader, Schafe & LeDoux (2000). Fear memories require protein synthesis for reconsolidation. _Nature_, 406.
 
 ### How It Works
 
@@ -125,9 +126,9 @@ Chunk retrieved during search
 
 ### Columns Added to `chunks`
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| `labile_until` | INTEGER | Timestamp when labile window expires |
+| Column                  | Type    | Purpose                                           |
+| ----------------------- | ------- | ------------------------------------------------- |
+| `labile_until`          | INTEGER | Timestamp when labile window expires              |
 | `reconsolidation_count` | INTEGER | How many times this chunk has been reconsolidated |
 
 ---
@@ -141,17 +142,17 @@ Chunk retrieved during search
 
 Current emotional state biases which memories are recalled. Happy people recall happy memories; stressed people recall threats.
 
-**Reference:** Bower, G.H. (1981). Mood and memory. *American Psychologist*, 36(2).
+**Reference:** Bower, G.H. (1981). Mood and memory. _American Psychologist_, 36(2).
 
 ### How It Works
 
 Applied in the search pipeline after RRF fusion, before final ranking:
 
-| Hormone | Threshold | Boosts | Mechanism |
-|---------|-----------|--------|-----------|
-| Dopamine > 0.4 | Positive-valence memories | `dopamineWeight * valence * dopamine` |
-| Cortisol > 0.4 | Task/goal/directive/skill memories | `cortisolWeight * cortisol` |
-| Oxytocin > 0.4 | Relationship/preference/episode memories | `oxytocinWeight * oxytocin` |
+| Hormone        | Threshold                                | Boosts                                | Mechanism |
+| -------------- | ---------------------------------------- | ------------------------------------- | --------- |
+| Dopamine > 0.4 | Positive-valence memories                | `dopamineWeight * valence * dopamine` |
+| Cortisol > 0.4 | Task/goal/directive/skill memories       | `cortisolWeight * cortisol`           |
+| Oxytocin > 0.4 | Relationship/preference/episode memories | `oxytocinWeight * oxytocin`           |
 
 Maximum bonus per result: 0.15 (prevents emotional spiraling).
 
@@ -179,7 +180,7 @@ The feedback is self-limiting: the `maxBonus` cap and the limbic bridge's mild s
 
 Spaced repetition produces stronger retention than massed repetition. Accessing a memory 5 times in one session should get less boost than accessing it once per week for 5 weeks.
 
-**Reference:** Cepeda, N.J. et al. (2008). Spacing effects in learning. *Psychological Science*, 19(11).
+**Reference:** Cepeda, N.J. et al. (2008). Spacing effects in learning. _Psychological Science_, 19(11).
 
 ### How It Works
 
@@ -198,10 +199,10 @@ recordAccess(db, chunkId);
 
 ### Columns Added to `chunks`
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| `access_timestamps` | TEXT (JSON array) | Last 20 access timestamps |
-| `spacing_score` | REAL | Computed spacing score [0, 1] |
+| Column              | Type              | Purpose                       |
+| ------------------- | ----------------- | ----------------------------- |
+| `access_timestamps` | TEXT (JSON array) | Last 20 access timestamps     |
+| `spacing_score`     | REAL              | Computed spacing score [0, 1] |
 
 ### Integration Points
 
@@ -223,26 +224,29 @@ Unfinished tasks are remembered better than completed ones. The human brain keep
 ### How It Works
 
 **Detection:** Pattern matching on chunk text during session extraction:
+
 - "TODO", "need to", "working on", "started", "will do later"
 - Unanswered questions (ends with `?`)
 - Unresolved errors ("bug still", "issue remains")
 
 **Persistence:** Open loop chunks get:
+
 - `open_loop = 1` flag
 - `open_loop_context` with surrounding text
 - **Decay resistance** — score never drops below `forgetThreshold * 2`
 
 **Proactive Surfacing:** Open loops appear in proactive recall:
+
 > "Unfinished: you were working on the Docker port conflict and hadn't resolved it"
 
 **Resolution:** When resolution patterns are detected ("done", "fixed", "resolved"), the open loop flag is cleared and normal decay resumes.
 
 ### Columns Added to `chunks`
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| `open_loop` | INTEGER | 1 if this is an unfinished task/question |
-| `open_loop_context` | TEXT | Context snippet describing the open loop |
+| Column              | Type    | Purpose                                  |
+| ------------------- | ------- | ---------------------------------------- |
+| `open_loop`         | INTEGER | 1 if this is an unfinished task/question |
+| `open_loop_context` | TEXT    | Context snippet describing the open loop |
 
 ---
 
@@ -255,7 +259,7 @@ Unfinished tasks are remembered better than completed ones. The human brain keep
 
 "Remember to do X when Y happens." Event-triggered future memory that transforms the agent from reactive to proactive.
 
-**Reference:** McDaniel, M.A. & Einstein, G.O. (2007). *Prospective memory*. Sage.
+**Reference:** McDaniel, M.A. & Einstein, G.O. (2007). _Prospective memory_. Sage.
 
 ### How It Works
 
@@ -291,11 +295,11 @@ CREATE TABLE prospective_memories (
 
 ### Key Methods
 
-| Method | Description |
-|--------|-------------|
-| `create()` | Create a new prospective memory |
+| Method            | Description                                                     |
+| ----------------- | --------------------------------------------------------------- |
+| `create()`        | Create a new prospective memory                                 |
 | `checkTriggers()` | Match user message against active triggers (semantic + keyword) |
-| `cleanExpired()` | Delete expired un-triggered memories |
+| `cleanExpired()`  | Delete expired un-triggered memories                            |
 
 ---
 
@@ -308,11 +312,12 @@ CREATE TABLE prospective_memories (
 
 When a strong memory event occurs, temporally-nearby weak memories get "captured" and consolidated alongside the strong one.
 
-**Reference:** Frey, U. & Morris, R.G. (1997). Synaptic tagging and LTP. *Nature*, 385.
+**Reference:** Frey, U. & Morris, R.G. (1997). Synaptic tagging and LTP. _Nature_, 385.
 
 ### How It Works
 
 When a high-importance chunk is created (importance > 0.7):
+
 1. Query chunks created within [-2h, +30min] of the strong chunk
 2. For each weak chunk (importance < 0.4):
    - If cosine similarity to strong chunk > 0.5 → capture
@@ -322,8 +327,8 @@ When a high-importance chunk is created (importance > 0.7):
 
 ### Column Added to `chunks`
 
-| Column | Type | Purpose |
-|--------|------|---------|
+| Column        | Type | Purpose                                       |
+| ------------- | ---- | --------------------------------------------- |
 | `captured_by` | TEXT | ID of the strong chunk that captured this one |
 
 ---
@@ -337,17 +342,19 @@ When a high-importance chunk is created (importance > 0.7):
 
 Karl Friston's Free Energy Principle — organisms don't just passively measure surprise, they take action to minimize it. The agent actively asks the user to resolve contradictions and knowledge gaps.
 
-**Reference:** Friston, K. (2010). The free-energy principle: a unified brain theory. *Nature Reviews Neuroscience*, 11(2).
+**Reference:** Friston, K. (2010). The free-energy principle: a unified brain theory. _Nature Reviews Neuroscience_, 11(2).
 
 ### How It Works
 
 During consolidation, the engine detects:
+
 - **Contradictions** — Multiple active relationships of the same type between the same entities in the KG
 - **Knowledge gaps** — High prediction error regions (from CuriosityEngine GCCRF)
 - **Low confidence** — Entities with few evidence chunks
 - **Stale facts** — Relationships not reinforced recently
 
 For each detection, an epistemic directive is created:
+
 > "I have conflicting info about whether the production DB is Postgres or MySQL. Can you clarify?"
 
 Directives are injected into proactive recall (max 2 per session) and tracked until resolved.
@@ -386,17 +393,17 @@ CREATE TABLE epistemic_directives (
 
 Damasio's somatic marker hypothesis — biological brains use emotional "gut feelings" to instantly rule out bad paths before expensive deliberation.
 
-**Reference:** Damasio, A.R. (1994). *Descartes' Error*.
+**Reference:** Damasio, A.R. (1994). _Descartes' Error_.
 
 ### How It Works
 
 Before expensive operations (Deep Recall, skill execution), query the aggregate emotional signature of chunks near the query:
 
-| Condition | Verdict | Effect |
-|-----------|---------|--------|
+| Condition                                            | Verdict   | Effect                                                            |
+| ---------------------------------------------------- | --------- | ----------------------------------------------------------------- |
 | High cortisol (> 0.6) AND negative steering (< -0.3) | `caution` | Warning injected: "This region is associated with prior friction" |
-| High dopamine (> 0.6) AND positive steering (> 0.5) | `trusted` | Reduced validation overhead |
-| Otherwise | `proceed` | Normal operation |
+| High dopamine (> 0.6) AND positive steering (> 0.5)  | `trusted` | Reduced validation overhead                                       |
+| Otherwise                                            | `proceed` | Normal operation                                                  |
 
 Uses existing `hormonal_cortisol`, `hormonal_dopamine`, and `steering_reward` columns — no new schema needed.
 
@@ -474,25 +481,25 @@ User message arrives
 
 ## Competitive Position After PLAN-9
 
-| Capability | Bitterbot | Mem0 | Zep | Hindsight | FadeMem |
-|-----------|-----------|------|-----|-----------|---------|
-| Knowledge Graph | Yes (temporal) | Yes | Yes (best temporal) | Yes | No |
-| Hormonal Modulation | Yes | No | No | No | No |
-| Mood-Congruent Retrieval | Yes | No | No | No | No |
-| Reconsolidation | Yes (FIRST) | No | No | No | No |
-| Spacing Effect | Yes (FIRST) | No | No | No | No |
-| Zeigarnik Persistence | Yes (FIRST) | No | No | No | No |
-| Prospective Memory | Yes (FIRST) | No | No | No | No |
-| Synaptic Tagging | Yes (FIRST) | No | No | No | No |
-| Active Inference | Yes (FIRST) | No | No | No | No |
-| Somatic Markers | Yes (FIRST) | No | No | No | No |
-| GCCRF Curiosity | Yes | No | No | No | No |
-| Dream Consolidation | Yes (7 modes) | ADD/UPDATE | Episode decomp | Reflect | Fusion |
-| Ebbinghaus Decay | Yes | No | No | No | Yes |
-| Emotional Anchors | Yes | No | No | No | No |
-| Session Continuity Gate | Yes (entropy-gated) | No | Yes (basic) | No | No |
-| Entity Anaphora Resolution | Yes (snapshot) | No | No | No | No |
-| P2P Skill Marketplace | Yes | No | No | No | No |
+| Capability                 | Bitterbot           | Mem0       | Zep                 | Hindsight | FadeMem |
+| -------------------------- | ------------------- | ---------- | ------------------- | --------- | ------- |
+| Knowledge Graph            | Yes (temporal)      | Yes        | Yes (best temporal) | Yes       | No      |
+| Hormonal Modulation        | Yes                 | No         | No                  | No        | No      |
+| Mood-Congruent Retrieval   | Yes                 | No         | No                  | No        | No      |
+| Reconsolidation            | Yes (FIRST)         | No         | No                  | No        | No      |
+| Spacing Effect             | Yes (FIRST)         | No         | No                  | No        | No      |
+| Zeigarnik Persistence      | Yes (FIRST)         | No         | No                  | No        | No      |
+| Prospective Memory         | Yes (FIRST)         | No         | No                  | No        | No      |
+| Synaptic Tagging           | Yes (FIRST)         | No         | No                  | No        | No      |
+| Active Inference           | Yes (FIRST)         | No         | No                  | No        | No      |
+| Somatic Markers            | Yes (FIRST)         | No         | No                  | No        | No      |
+| GCCRF Curiosity            | Yes                 | No         | No                  | No        | No      |
+| Dream Consolidation        | Yes (7 modes)       | ADD/UPDATE | Episode decomp      | Reflect   | Fusion  |
+| Ebbinghaus Decay           | Yes                 | No         | No                  | No        | Yes     |
+| Emotional Anchors          | Yes                 | No         | No                  | No        | No      |
+| Session Continuity Gate    | Yes (entropy-gated) | No         | Yes (basic)         | No        | No      |
+| Entity Anaphora Resolution | Yes (snapshot)      | No         | No                  | No        | No      |
+| P2P Skill Marketplace      | Yes                 | No         | No                  | No        | No      |
 
 ---
 

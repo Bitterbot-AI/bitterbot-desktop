@@ -155,14 +155,14 @@ Before configuring Bitterbot, you need to create an Azure Bot resource.
 1. Go to [Create Azure Bot](https://portal.azure.com/#create/Microsoft.AzureBot)
 2. Fill in the **Basics** tab:
 
-   | Field              | Value                                                    |
-   | ------------------ | -------------------------------------------------------- |
+   | Field              | Value                                                     |
+   | ------------------ | --------------------------------------------------------- |
    | **Bot handle**     | Your bot name, e.g., .bitterbot-msteams` (must be unique) |
-   | **Subscription**   | Select your Azure subscription                           |
-   | **Resource group** | Create new or use existing                               |
-   | **Pricing tier**   | **Free** for dev/testing                                 |
-   | **Type of App**    | **Single Tenant** (recommended - see note below)         |
-   | **Creation type**  | **Create new Microsoft App ID**                          |
+   | **Subscription**   | Select your Azure subscription                            |
+   | **Resource group** | Create new or use existing                                |
+   | **Pricing tier**   | **Free** for dev/testing                                  |
+   | **Type of App**    | **Single Tenant** (recommended - see note below)          |
+   | **Creation type**  | **Create new Microsoft App ID**                           |
 
 > **Deprecation notice:** Creation of new multi-tenant bots was deprecated after 2025-07-31. Use **Single Tenant** for new bots.
 

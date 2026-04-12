@@ -9,8 +9,8 @@
  * 5. Collect result and record purchase
  */
 
-import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import crypto from "node:crypto";
 import type { WalletService } from "./wallet-service.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
@@ -53,8 +53,8 @@ export class A2aClient {
 
   constructor(config?: Partial<A2aClientConfig>, db?: DatabaseSync) {
     this.config = {
-      maxTaskCostUsdc: config?.maxTaskCostUsdc ?? 0.50,
-      dailySpendLimitUsdc: config?.dailySpendLimitUsdc ?? 2.00,
+      maxTaskCostUsdc: config?.maxTaskCostUsdc ?? 0.5,
+      dailySpendLimitUsdc: config?.dailySpendLimitUsdc ?? 2.0,
       taskTimeoutMs: config?.taskTimeoutMs ?? 60_000,
     };
     this.db = db;
@@ -71,11 +71,13 @@ export class A2aClient {
 
     try {
       const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-      const row = this.db.prepare(`
+      const row = this.db
+        .prepare(`
         SELECT COALESCE(SUM(amount_usdc), 0) as total
         FROM marketplace_purchases
         WHERE direction = 'purchase' AND purchased_at >= ?
-      `).get(oneDayAgo) as { total: number };
+      `)
+        .get(oneDayAgo) as { total: number };
 
       const spent = row.total;
       const remaining = this.config.dailySpendLimitUsdc - spent;
@@ -93,7 +95,7 @@ export class A2aClient {
     try {
       const response = await fetch(cardUrl, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) return null;
-      const card = await response.json() as {
+      const card = (await response.json()) as {
         url: string;
         name: string;
         description: string;
@@ -101,10 +103,12 @@ export class A2aClient {
         extensions?: Record<string, unknown>;
       };
 
-      const paymentExt = card.extensions?.["x402-payment"] as {
-        address?: string;
-        minPayment?: string;
-      } | undefined;
+      const paymentExt = card.extensions?.["x402-payment"] as
+        | {
+            address?: string;
+            minPayment?: string;
+          }
+        | undefined;
 
       return {
         url: card.url,
@@ -158,7 +162,7 @@ export class A2aClient {
 
     // Handle 402 — payment required
     if (response.status === 402 && params.walletService) {
-      const body = await response.json() as {
+      const body = (await response.json()) as {
         error?: { data?: { payTo?: string; pricing?: { priceUsdc: number } } };
       };
 
@@ -170,7 +174,10 @@ export class A2aClient {
       }
 
       if (price > this.config.maxTaskCostUsdc) {
-        return { success: false, error: `Price $${price} exceeds per-task max $${this.config.maxTaskCostUsdc}` };
+        return {
+          success: false,
+          error: `Price $${price} exceeds per-task max $${this.config.maxTaskCostUsdc}`,
+        };
       }
 
       // Check daily spend limit before paying
@@ -191,12 +198,14 @@ export class A2aClient {
       }
 
       // Retry with payment token
-      const paymentToken = Buffer.from(JSON.stringify({
-        txHash: payment.txHash,
-        amount: price,
-        sender: await params.walletService.getAddress(),
-        timestamp: Date.now(),
-      })).toString("base64");
+      const paymentToken = Buffer.from(
+        JSON.stringify({
+          txHash: payment.txHash,
+          amount: price,
+          sender: await params.walletService.getAddress(),
+          timestamp: Date.now(),
+        }),
+      ).toString("base64");
 
       try {
         response = await fetch(a2aUrl, {
@@ -209,14 +218,26 @@ export class A2aClient {
           signal: AbortSignal.timeout(this.config.taskTimeoutMs),
         });
       } catch (err) {
-        return { success: false, error: `A2A request failed after payment: ${String(err)}`, amountPaid: price, txHash: payment.txHash };
+        return {
+          success: false,
+          error: `A2A request failed after payment: ${String(err)}`,
+          amountPaid: price,
+          txHash: payment.txHash,
+        };
       }
 
       if (!response.ok) {
-        return { success: false, error: `A2A request failed after payment: ${response.status}`, amountPaid: price, txHash: payment.txHash };
+        return {
+          success: false,
+          error: `A2A request failed after payment: ${response.status}`,
+          amountPaid: price,
+          txHash: payment.txHash,
+        };
       }
 
-      const result = await response.json() as { result?: { id?: string; status?: { message?: { parts?: Array<{ text?: string }> } } } };
+      const result = (await response.json()) as {
+        result?: { id?: string; status?: { message?: { parts?: Array<{ text?: string }> } } };
+      };
       return {
         success: true,
         taskId: result.result?.id,
@@ -230,7 +251,9 @@ export class A2aClient {
       return { success: false, error: `A2A request failed: ${response.status}` };
     }
 
-    const result = await response.json() as { result?: { id?: string; status?: { message?: { parts?: Array<{ text?: string }> } } } };
+    const result = (await response.json()) as {
+      result?: { id?: string; status?: { message?: { parts?: Array<{ text?: string }> } } };
+    };
     return {
       success: true,
       taskId: result.result?.id,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
+import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useSkillsStore, type SkillStatus } from "../../stores/skills-store";
-import { cn } from "../../lib/utils";
 
 type SkillReport = {
   skills?: Array<{
@@ -43,9 +43,7 @@ function SkillCard({
       </button>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">
-            {skill.name}
-          </span>
+          <span className="text-sm font-medium text-foreground">{skill.name}</span>
           {skill.category && (
             <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300">
               {skill.category}
@@ -63,9 +61,7 @@ function SkillCard({
           )}
         </div>
         {skill.description && (
-          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-            {skill.description}
-          </p>
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{skill.description}</p>
         )}
         {skill.requires?.bins && skill.requires.bins.length > 0 && (
           <div className="flex gap-1 mt-1">
@@ -145,9 +141,7 @@ export function SkillsView() {
     list.push(skill);
     groups.set(cat, list);
   }
-  const sortedGroups = [...groups.entries()].sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
+  const sortedGroups = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="h-full overflow-y-auto p-6 space-y-4">
@@ -195,11 +189,7 @@ export function SkillsView() {
             </h3>
             <div className="space-y-1">
               {categorySkills.map((skill) => (
-                <SkillCard
-                  key={skill.key}
-                  skill={skill}
-                  onToggle={handleToggle}
-                />
+                <SkillCard key={skill.key} skill={skill} onToggle={handleToggle} />
               ))}
             </div>
           </div>

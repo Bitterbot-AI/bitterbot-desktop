@@ -1,7 +1,7 @@
-import { type ComponentProps, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from './alert';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from "lucide-react";
+import { type ComponentProps, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "./alert";
 
 type Props = ComponentProps<typeof Button> & {
   pendingText?: string;
@@ -11,7 +11,7 @@ type Props = ComponentProps<typeof Button> & {
 export function SubmitButton({
   children,
   errorMessage,
-  pendingText = 'Submitting...',
+  pendingText = "Submitting...",
   disabled,
   ...props
 }: Props) {
@@ -26,11 +26,7 @@ export function SubmitButton({
         </Alert>
       )}
       <div>
-        <Button
-          {...props}
-          type="submit"
-          disabled={disabled || pending}
-        >
+        <Button {...props} type="submit" disabled={disabled || pending}>
           {pending ? pendingText : children}
         </Button>
       </div>

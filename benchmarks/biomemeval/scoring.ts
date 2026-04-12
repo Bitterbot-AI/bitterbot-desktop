@@ -45,7 +45,10 @@ export class ScenarioScorer {
   private assertions: AssertionResult[] = [];
   readonly maxPoints: number;
 
-  constructor(readonly name: string, maxPoints: number) {
+  constructor(
+    readonly name: string,
+    maxPoints: number,
+  ) {
     this.maxPoints = maxPoints;
   }
 

@@ -1,8 +1,8 @@
+import { Code, Image, BarChart3, GitBranch, FileCode } from "lucide-react";
+import { useCallback } from "react";
+import { cn } from "../../lib/utils";
 import { useArtifactStore, type Artifact } from "../../stores/artifact-store";
 import { useUIStore } from "../../stores/ui-store";
-import { Code, Image, BarChart3, GitBranch, FileCode } from "lucide-react";
-import { cn } from "../../lib/utils";
-import { useCallback } from "react";
 
 interface ArtifactChipProps {
   artifactId: string;

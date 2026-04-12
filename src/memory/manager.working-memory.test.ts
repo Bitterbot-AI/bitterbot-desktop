@@ -13,8 +13,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { getMemorySearchManager, type MemoryIndexManager } from "./index.js";
 import type { DreamStats } from "./dream-types.js";
+import { getMemorySearchManager, type MemoryIndexManager } from "./index.js";
 import {
   buildWorkingMemorySynthesisPrompt,
   buildHeuristicWorkingMemory,
@@ -51,7 +51,9 @@ vi.mock("./embeddings.js", () => ({
   }),
 }));
 
-function makeDreamStats(overrides?: { insights?: Array<{ content: string; mode: string; confidence: number }> }): DreamStats {
+function makeDreamStats(overrides?: {
+  insights?: Array<{ content: string; mode: string; confidence: number }>;
+}): DreamStats {
   return {
     cycle: {
       cycleId: "test-cycle-1",
@@ -135,8 +137,12 @@ describe("rewriteWorkingMemory integration", () => {
     // Clean workspace files between tests
     const memoryMdPath = path.join(workspaceDir, "MEMORY.md");
     const scratchPath = path.join(memoryDir, "scratch.md");
-    try { await fs.unlink(memoryMdPath); } catch {}
-    try { await fs.unlink(scratchPath); } catch {}
+    try {
+      await fs.unlink(memoryMdPath);
+    } catch {}
+    try {
+      await fs.unlink(scratchPath);
+    } catch {}
 
     // Reset index
     if (manager) {
@@ -147,8 +153,9 @@ describe("rewriteWorkingMemory integration", () => {
 
   // Access private method via cast
   function callRewriteWorkingMemory(stats: DreamStats): Promise<void> {
-    return (manager as unknown as { rewriteWorkingMemory: (s: DreamStats) => Promise<void> })
-      .rewriteWorkingMemory(stats);
+    return (
+      manager as unknown as { rewriteWorkingMemory: (s: DreamStats) => Promise<void> }
+    ).rewriteWorkingMemory(stats);
   }
 
   // ── Core State Vector Tests ──
@@ -188,7 +195,8 @@ describe("rewriteWorkingMemory integration", () => {
   });
 
   it("should NOT use conservative transition when MEMORY.md already has Working Memory State", async () => {
-    const existingState = "# Working Memory State\n*Last dream: 2026-03-11*\n\n## The Phenotype\nDeveloping agent.\n\n## The Bond\nExisting bond.\n\n## The Niche\nPre-network.\n\n## Active Context\nOld context.\n\n## Crystal Pointers\n*Use memory_search*\n\n## Curiosity Gaps\nNone.\n\n## Emerging Skills\nNone.";
+    const existingState =
+      "# Working Memory State\n*Last dream: 2026-03-11*\n\n## The Phenotype\nDeveloping agent.\n\n## The Bond\nExisting bond.\n\n## The Niche\nPre-network.\n\n## Active Context\nOld context.\n\n## Crystal Pointers\n*Use memory_search*\n\n## Curiosity Gaps\nNone.\n\n## Emerging Skills\nNone.";
     await fs.writeFile(path.join(workspaceDir, "MEMORY.md"), existingState, "utf-8");
 
     await callRewriteWorkingMemory(makeDreamStats());
@@ -227,10 +235,14 @@ Unsynthesized notes — will be consumed by next dream cycle.
 
   it("should index scratch notes as crystals in the database (lossless backup)", async () => {
     const scratchPath = path.join(memoryDir, "scratch.md");
-    await fs.writeFile(scratchPath, `# Scratch Buffer (Working Memory WAL)
+    await fs.writeFile(
+      scratchPath,
+      `# Scratch Buffer (Working Memory WAL)
 
 - [2026-03-12T14:30:00Z] (importance: 0.8) Vic prefers TypeScript strict mode and tabs over spaces
-`, "utf-8");
+`,
+      "utf-8",
+    );
 
     await callRewriteWorkingMemory(makeDreamStats());
 
@@ -238,10 +250,14 @@ Unsynthesized notes — will be consumed by next dream cycle.
     // This tests the fix for the NOT NULL constraint bug: the base chunks schema
     // requires `model` and `embedding` columns, which the original INSERT omitted,
     // causing INSERT OR IGNORE to silently skip every row.
-    const db = (manager as unknown as { db: { prepare: (sql: string) => { all: (...args: unknown[]) => unknown[] } } }).db;
-    const rows = db.prepare(
-      `SELECT id, text, model FROM chunks WHERE id LIKE 'scratch_%'`,
-    ).all() as Array<{ id: string; text: string; model: string }>;
+    const db = (
+      manager as unknown as {
+        db: { prepare: (sql: string) => { all: (...args: unknown[]) => unknown[] } };
+      }
+    ).db;
+    const rows = db
+      .prepare(`SELECT id, text, model FROM chunks WHERE id LIKE 'scratch_%'`)
+      .all() as Array<{ id: string; text: string; model: string }>;
 
     expect(rows.length).toBeGreaterThan(0);
     expect(rows[0]!.text).toContain("TypeScript strict mode");
@@ -252,10 +268,14 @@ Unsynthesized notes — will be consumed by next dream cycle.
     // This tests the fix for the bug where rewriteWorkingMemory was gated
     // by `newInsights.length > 0`, causing scratch notes to pile up
     const scratchPath = path.join(memoryDir, "scratch.md");
-    await fs.writeFile(scratchPath, `# Scratch Buffer (Working Memory WAL)
+    await fs.writeFile(
+      scratchPath,
+      `# Scratch Buffer (Working Memory WAL)
 
 - [2026-03-13T10:00:00Z] (importance: 0.9) User's name is Douglas
-`, "utf-8");
+`,
+      "utf-8",
+    );
 
     // Zero insights — the dream produced nothing, but scratch must still be consumed
     await callRewriteWorkingMemory(makeDreamStats({ insights: [] }));
@@ -327,7 +347,11 @@ None.`;
 
   it("should handle empty scratch buffer (header only, no notes)", async () => {
     const scratchPath = path.join(memoryDir, "scratch.md");
-    await fs.writeFile(scratchPath, "# Scratch Buffer (Working Memory WAL)\n\nUnsynthesized notes — will be consumed by next dream cycle.\n", "utf-8");
+    await fs.writeFile(
+      scratchPath,
+      "# Scratch Buffer (Working Memory WAL)\n\nUnsynthesized notes — will be consumed by next dream cycle.\n",
+      "utf-8",
+    );
 
     await callRewriteWorkingMemory(makeDreamStats());
 
@@ -399,7 +423,8 @@ Unsynthesized notes — will be consumed by next dream cycle.
   });
 
   it("should handle AUTO-generated hormonal spike entries", () => {
-    const line = "- [2026-03-12T15:30:00Z] (importance: 0.8) [AUTO] Hormonal event: dopamine spike (achievement/breakthrough detected). User seems energized after solving the build issue.";
+    const line =
+      "- [2026-03-12T15:30:00Z] (importance: 0.8) [AUTO] Hormonal event: dopamine spike (achievement/breakthrough detected). User seems energized after solving the build issue.";
     const text = line
       .replace(/^-\s*\[[^\]]*\]\s*/, "")
       .replace(/^\(importance:\s*[\d.]+\)\s*/, "")
@@ -499,11 +524,13 @@ Content.`;
   it("should include scratch notes and crystals in synthesis prompt", () => {
     const ctx = makeContext({
       scratchNotes: "- [2026-03-12] User's name is Douglas, prefers tabs",
-      recentCrystals: [{
-        text: "Built P2P skill network with EigenTrust reputation",
-        semanticType: "fact",
-        importanceScore: 0.9,
-      }],
+      recentCrystals: [
+        {
+          text: "Built P2P skill network with EigenTrust reputation",
+          semanticType: "fact",
+          importanceScore: 0.9,
+        },
+      ],
     });
 
     const prompt = buildWorkingMemorySynthesisPrompt(ctx);
@@ -563,8 +590,9 @@ describe("First Breath micro-cycle", () => {
   });
 
   function callShouldTriggerFirstBreath(): Promise<boolean> {
-    return (fbManager as unknown as { shouldTriggerFirstBreath: () => Promise<boolean> })
-      .shouldTriggerFirstBreath();
+    return (
+      fbManager as unknown as { shouldTriggerFirstBreath: () => Promise<boolean> }
+    ).shouldTriggerFirstBreath();
   }
 
   it("triggers when scratch buffer >=500 chars and no Phenotype section exists", async () => {
@@ -572,22 +600,28 @@ describe("First Breath micro-cycle", () => {
     const memoryMdPath = path.join(workspaceDir, "MEMORY.md");
 
     // Write 500+ chars to scratch with enough note entries
-    const notes = Array.from({ length: 6 }, (_, i) =>
-      `- [2026-03-15T10:0${i}:00Z] (importance: 0.7) User context note number ${i} with enough detail to be meaningful`,
+    const notes = Array.from(
+      { length: 6 },
+      (_, i) =>
+        `- [2026-03-15T10:0${i}:00Z] (importance: 0.7) User context note number ${i} with enough detail to be meaningful`,
     ).join("\n");
     await fs.writeFile(scratchPath, `# Scratch Buffer (Working Memory WAL)\n\n${notes}\n`, "utf-8");
 
     // Write MEMORY.md without Phenotype section (old 5-section format)
-    await fs.writeFile(memoryMdPath, [
-      "# Working Memory State",
-      "## The Bond",
-      "Unknown user",
-      "## Active Context",
-      "No context yet",
-      "## Crystal Pointers",
-      "## Curiosity Gaps",
-      "## Emerging Skills",
-    ].join("\n"), "utf-8");
+    await fs.writeFile(
+      memoryMdPath,
+      [
+        "# Working Memory State",
+        "## The Bond",
+        "Unknown user",
+        "## Active Context",
+        "No context yet",
+        "## Crystal Pointers",
+        "## Curiosity Gaps",
+        "## Emerging Skills",
+      ].join("\n"),
+      "utf-8",
+    );
 
     const shouldTrigger = await callShouldTriggerFirstBreath();
     expect(shouldTrigger).toBe(true);
@@ -598,24 +632,29 @@ describe("First Breath micro-cycle", () => {
     const scratchPath = path.join(memoryDir, "scratch.md");
 
     // Write MEMORY.md with Phenotype section
-    await fs.writeFile(memoryMdPath, [
-      "# Working Memory State",
-      "## The Phenotype",
-      "Developing agent.",
-      "## The Bond",
-      "User profile.",
-      "## The Niche",
-      "Pre-network.",
-      "## Active Context",
-      "Working.",
-      "## Crystal Pointers",
-      "## Curiosity Gaps",
-      "## Emerging Skills",
-    ].join("\n"), "utf-8");
+    await fs.writeFile(
+      memoryMdPath,
+      [
+        "# Working Memory State",
+        "## The Phenotype",
+        "Developing agent.",
+        "## The Bond",
+        "User profile.",
+        "## The Niche",
+        "Pre-network.",
+        "## Active Context",
+        "Working.",
+        "## Crystal Pointers",
+        "## Curiosity Gaps",
+        "## Emerging Skills",
+      ].join("\n"),
+      "utf-8",
+    );
 
     // Still have scratch content
-    const notes = Array.from({ length: 6 }, (_, i) =>
-      `- [2026-03-15T10:0${i}:00Z] (importance: 0.7) Note ${i} with enough detail`,
+    const notes = Array.from(
+      { length: 6 },
+      (_, i) => `- [2026-03-15T10:0${i}:00Z] (importance: 0.7) Note ${i} with enough detail`,
     ).join("\n");
     await fs.writeFile(scratchPath, `# Scratch Buffer (Working Memory WAL)\n\n${notes}\n`, "utf-8");
 
@@ -631,7 +670,11 @@ describe("First Breath micro-cycle", () => {
     await fs.writeFile(memoryMdPath, "# Working Memory State\n## The Bond\nUser.", "utf-8");
 
     // Tiny scratch buffer
-    await fs.writeFile(scratchPath, "# Scratch Buffer (Working Memory WAL)\n\n- [2026-03-15] hi\n", "utf-8");
+    await fs.writeFile(
+      scratchPath,
+      "# Scratch Buffer (Working Memory WAL)\n\n- [2026-03-15] hi\n",
+      "utf-8",
+    );
 
     const shouldTrigger = await callShouldTriggerFirstBreath();
     expect(shouldTrigger).toBe(false);
@@ -684,5 +727,4 @@ describe("Legacy file write-back", () => {
     }
     await fs.rm(fixtureRoot, { recursive: true, force: true });
   });
-
 });

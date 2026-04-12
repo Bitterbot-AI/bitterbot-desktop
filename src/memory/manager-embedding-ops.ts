@@ -1,11 +1,10 @@
 // @ts-nocheck
 // oxlint-disable eslint/no-unused-vars, typescript/no-explicit-any
 import fs from "node:fs/promises";
-import type { SessionFileEntry } from "./session-files.js";
-import type { MemorySource } from "./types.js";
-import { inferSemanticType, defaultGovernance } from "./crystal.js";
 import type { CrystalOrigin } from "./crystal-types.js";
 import type { HormonalInfluence } from "./crystal-types.js";
+import type { SessionFileEntry } from "./session-files.js";
+import type { MemorySource } from "./types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runGeminiEmbeddingBatches, type GeminiBatchRequest } from "./batch-gemini.js";
 import {
@@ -14,6 +13,7 @@ import {
   runOpenAiEmbeddingBatches,
 } from "./batch-openai.js";
 import { type VoyageBatchRequest, runVoyageEmbeddingBatches } from "./batch-voyage.js";
+import { inferSemanticType, defaultGovernance } from "./crystal.js";
 import { enforceEmbeddingMaxInputTokens } from "./embedding-chunk-limits.js";
 import { estimateUtf8Bytes } from "./embedding-input-limits.js";
 import {
@@ -724,19 +724,23 @@ class MemoryManagerEmbeddingOps {
     // which would cause retroactive emotional spikes on reindex.
     if (options.source === "sessions" && this.hormonalManager) {
       const delta = this.sessionDeltas.get(entry.path);
-      const newContent = (delta && delta.pendingBytes > 0 && delta.pendingBytes < content.length)
-        ? content.slice(content.length - delta.pendingBytes)
-        : (!delta ? content : ""); // First index: process all; reindex with no delta: skip
+      const newContent =
+        delta && delta.pendingBytes > 0 && delta.pendingBytes < content.length
+          ? content.slice(content.length - delta.pendingBytes)
+          : !delta
+            ? content
+            : ""; // First index: process all; reindex with no delta: skip
       if (newContent.length > 0) {
         const events = this.hormonalManager.stimulateFromText(newContent);
         if (events.length > 0) {
-          log.debug(`hormonal stimulation from session delta (${delta?.pendingBytes ?? content.length}B new): ${events.join(", ")}`);
+          log.debug(
+            `hormonal stimulation from session delta (${delta?.pendingBytes ?? content.length}B new): ${events.join(", ")}`,
+          );
         }
       }
     }
-    const origin: CrystalOrigin = options.source === "sessions" ? "session"
-                 : options.source === "skills" ? "skill"
-                 : "indexed";
+    const origin: CrystalOrigin =
+      options.source === "sessions" ? "session" : options.source === "skills" ? "skill" : "indexed";
     const memoryType = options.source === "skills" ? "skill" : "plaintext";
     const lifecycle = options.source === "skills" ? "frozen" : "generated";
     for (let i = 0; i < chunks.length; i++) {
@@ -805,7 +809,9 @@ class MemoryManagerEmbeddingOps {
         );
       // Extract user preferences from session content
       if (options.source === "sessions" && this.userModelManager) {
-        try { this.userModelManager.extractPreferences(chunk.text, id); } catch {}
+        try {
+          this.userModelManager.extractPreferences(chunk.text, id);
+        } catch {}
       }
       if (vectorReady && embedding.length > 0) {
         try {

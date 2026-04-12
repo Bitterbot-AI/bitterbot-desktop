@@ -289,8 +289,8 @@ describe("skills-cli", () => {
       });
 
       // test-bundled is a bundled skill that should always exist
-      const test-bundled = report.skills.find((s) => s.name === "test-bundled");
-      if (!test-bundled) {
+      const testBundled = report.skills.find((s) => s.name === "test-bundled");
+      if (!testBundled) {
         throw new Error("test-bundled fixture skill missing");
       }
 

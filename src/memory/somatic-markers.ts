@@ -70,7 +70,13 @@ export function assessSomaticMarkers(
   const cfg = { ...DEFAULT_SOMATIC_CONFIG, ...config };
 
   if (!cfg.enabled || nearbyChunkIds.length < cfg.minRegionSize) {
-    return { verdict: "proceed", avgCortisol: 0, avgSteeringReward: 0, avgDopamine: 0, chunkCount: 0 };
+    return {
+      verdict: "proceed",
+      avgCortisol: 0,
+      avgSteeringReward: 0,
+      avgDopamine: 0,
+      chunkCount: 0,
+    };
   }
 
   try {
@@ -128,6 +134,12 @@ export function assessSomaticMarkers(
     return assessment;
   } catch (err) {
     log.debug(`somatic assessment failed: ${String(err)}`);
-    return { verdict: "proceed", avgCortisol: 0, avgSteeringReward: 0, avgDopamine: 0, chunkCount: 0 };
+    return {
+      verdict: "proceed",
+      avgCortisol: 0,
+      avgSteeringReward: 0,
+      avgDopamine: 0,
+      chunkCount: 0,
+    };
   }
 }

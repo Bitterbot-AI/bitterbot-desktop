@@ -585,7 +585,9 @@ export function collectSandboxDockerNoopFindings(cfg: BitterbotConfig): Security
   return findings;
 }
 
-export function collectSandboxDangerousConfigFindings(cfg: BitterbotConfig): SecurityAuditFinding[] {
+export function collectSandboxDangerousConfigFindings(
+  cfg: BitterbotConfig,
+): SecurityAuditFinding[] {
   const findings: SecurityAuditFinding[] = [];
   const agents = Array.isArray(cfg.agents?.list) ? cfg.agents.list : [];
 
@@ -683,7 +685,9 @@ export function collectSandboxDangerousConfigFindings(cfg: BitterbotConfig): Sec
   return findings;
 }
 
-export function collectNodeDenyCommandPatternFindings(cfg: BitterbotConfig): SecurityAuditFinding[] {
+export function collectNodeDenyCommandPatternFindings(
+  cfg: BitterbotConfig,
+): SecurityAuditFinding[] {
   const findings: SecurityAuditFinding[] = [];
   const denyListRaw = cfg.gateway?.nodes?.denyCommands;
   if (!Array.isArray(denyListRaw) || denyListRaw.length === 0) {
@@ -732,7 +736,9 @@ export function collectNodeDenyCommandPatternFindings(cfg: BitterbotConfig): Sec
   return findings;
 }
 
-export function collectMinimalProfileOverrideFindings(cfg: BitterbotConfig): SecurityAuditFinding[] {
+export function collectMinimalProfileOverrideFindings(
+  cfg: BitterbotConfig,
+): SecurityAuditFinding[] {
   const findings: SecurityAuditFinding[] = [];
   if (cfg.tools?.profile !== "minimal") {
     return findings;

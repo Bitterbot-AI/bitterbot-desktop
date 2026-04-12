@@ -35,6 +35,7 @@ sequenceDiagram
 ### The Key Insight (from RLM Paper, arxiv 2512.24601)
 
 The sub-LLM writes its own search code rather than having pre-baked search functions. This means it can:
+
 - Combine semantic search with keyword filtering
 - Cross-reference results across sessions
 - Apply temporal reasoning ("messages from last Tuesday")
@@ -45,16 +46,16 @@ The sub-LLM writes its own search code rather than having pre-baked search funct
 ```javascript
 // Iteration 1: Sub-LLM writes this code
 const results = await search("GCCRF implementation details", { limit: 20 });
-const gccrf = results.filter(r => r.score > 0.6);
+const gccrf = results.filter((r) => r.score > 0.6);
 
 // Iteration 2: Refine based on results
-const dates = gccrf.map(r => new Date(r.created_at).toISOString().slice(0, 10));
+const dates = gccrf.map((r) => new Date(r.created_at).toISOString().slice(0, 10));
 const recentResults = await search("GCCRF changes March 2026", { limit: 10 });
 
 // Iteration 3: Synthesize
 return {
   summary: "GCCRF was discussed on March 12 and March 26...",
-  sources: gccrf.slice(0, 5).map(r => ({ id: r.id, text: r.text.slice(0, 200) }))
+  sources: gccrf.slice(0, 5).map((r) => ({ id: r.id, text: r.text.slice(0, 200) })),
 };
 ```
 
@@ -68,7 +69,7 @@ Before spawning the expensive sub-LLM, the tool runs a quick hybrid search (BM25
 
 ```typescript
 // Fixed: filter scores client-side
-const quickResults = rawResults.filter(r => r.score >= 0.8);
+const quickResults = rawResults.filter((r) => r.score >= 0.8);
 if (quickResults.length >= 3) {
   return formatQuickResults(quickResults); // Skip REPL
 }
@@ -78,10 +79,10 @@ if (quickResults.length >= 3) {
 
 ## Model Routing
 
-| Role | Model | Why |
-|------|-------|-----|
-| Root agent | User's configured model (e.g., Claude Opus) | Understands the question, uses the answer |
-| Sub-LLM (REPL) | Cheap model (e.g., GPT-4o-mini, Haiku) | Writes search code — doesn't need creativity |
+| Role           | Model                                       | Why                                          |
+| -------------- | ------------------------------------------- | -------------------------------------------- |
+| Root agent     | User's configured model (e.g., Claude Opus) | Understands the question, uses the answer    |
+| Sub-LLM (REPL) | Cheap model (e.g., GPT-4o-mini, Haiku)      | Writes search code — doesn't need creativity |
 
 Resolved via `resolveAgentModelPrimary()` for root, hardcoded cheap model for sub-calls.
 

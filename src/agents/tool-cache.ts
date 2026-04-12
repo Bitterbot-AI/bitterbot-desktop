@@ -68,10 +68,7 @@ export class ToolCache {
   /** Generate a deterministic cache key from tool name + sorted args. */
   generateKey(toolName: string, args: Record<string, unknown>): string {
     const sorted = JSON.stringify(args, Object.keys(args).sort());
-    const hash = createHash("sha256")
-      .update(`${toolName}:${sorted}`)
-      .digest("hex")
-      .slice(0, 16);
+    const hash = createHash("sha256").update(`${toolName}:${sorted}`).digest("hex").slice(0, 16);
     return `${toolName}:${hash}`;
   }
 

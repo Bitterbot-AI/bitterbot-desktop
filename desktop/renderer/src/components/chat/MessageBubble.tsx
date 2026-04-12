@@ -1,10 +1,3 @@
-import { memo, useCallback } from "react";
-import type { ChatMessage, ToolCallItem } from "../../stores/chat-store";
-import { useUIStore } from "../../stores/ui-store";
-import { BitterBotAvatar } from "./BitterBotAvatar";
-import { ArtifactChip } from "./ArtifactChip";
-import { Markdown } from "../ui/markdown";
-import { cn } from "../../lib/utils";
 import {
   Terminal,
   FileCode,
@@ -16,6 +9,13 @@ import {
   AlertTriangle,
   Trophy,
 } from "lucide-react";
+import { memo, useCallback } from "react";
+import type { ChatMessage, ToolCallItem } from "../../stores/chat-store";
+import { cn } from "../../lib/utils";
+import { useUIStore } from "../../stores/ui-store";
+import { Markdown } from "../ui/markdown";
+import { ArtifactChip } from "./ArtifactChip";
+import { BitterBotAvatar } from "./BitterBotAvatar";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -27,17 +27,31 @@ const COMPLETE_CHIP_NAMES = new Set(["complete", "task_complete", "task-complete
 /** Map tool names to icons (same logic as ToolCallPanel). */
 function getToolChipIcon(name: string) {
   const lower = name.toLowerCase();
-  if (COMPLETE_CHIP_NAMES.has(lower))
-    return Trophy;
-  if (lower === "ask" || lower.includes("ask_user") || lower.includes("ask-user"))
-    return Wrench;
-  if (lower.includes("command") || lower.includes("execute") || lower.includes("shell") || lower.includes("terminal"))
+  if (COMPLETE_CHIP_NAMES.has(lower)) return Trophy;
+  if (lower === "ask" || lower.includes("ask_user") || lower.includes("ask-user")) return Wrench;
+  if (
+    lower.includes("command") ||
+    lower.includes("execute") ||
+    lower.includes("shell") ||
+    lower.includes("terminal")
+  )
     return Terminal;
-  if (lower.includes("file") || lower.includes("write") || lower.includes("read") || lower.includes("edit") || lower.includes("str-replace") || lower.includes("str_replace"))
+  if (
+    lower.includes("file") ||
+    lower.includes("write") ||
+    lower.includes("read") ||
+    lower.includes("edit") ||
+    lower.includes("str-replace") ||
+    lower.includes("str_replace")
+  )
     return FileCode;
-  if (lower.includes("search") || lower.includes("find") || lower.includes("grep"))
-    return Search;
-  if (lower.includes("browser") || lower.includes("web") || lower.includes("fetch") || lower.includes("screenshot"))
+  if (lower.includes("search") || lower.includes("find") || lower.includes("grep")) return Search;
+  if (
+    lower.includes("browser") ||
+    lower.includes("web") ||
+    lower.includes("fetch") ||
+    lower.includes("screenshot")
+  )
     return Globe;
   return Wrench;
 }
@@ -96,12 +110,7 @@ export const MessageBubble = memo(function MessageBubble({
   );
 
   return (
-    <div
-      className={cn(
-        "flex gap-3 px-4 py-2 group",
-        isUser ? "flex-row-reverse" : "flex-row",
-      )}
-    >
+    <div className={cn("flex gap-3 px-4 py-2 group", isUser ? "flex-row-reverse" : "flex-row")}>
       {/* Avatar */}
       <div className="flex-shrink-0 mt-1">
         {isAssistant ? (
@@ -123,9 +132,7 @@ export const MessageBubble = memo(function MessageBubble({
       </div>
 
       {/* Content */}
-      <div
-        className={cn("max-w-[80%] min-w-0", isUser ? "items-end" : "items-start")}
-      >
+      <div className={cn("max-w-[80%] min-w-0", isUser ? "items-end" : "items-start")}>
         {/* Thinking block (collapsible) */}
         {message.thinking && (
           <details className="mb-2">

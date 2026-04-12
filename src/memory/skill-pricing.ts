@@ -29,7 +29,7 @@ export interface SkillPricingConfig {
 export const DEFAULT_PRICING_CONFIG: SkillPricingConfig = {
   basePriceUsdc: 0.01,
   minPriceUsdc: 0.001,
-  maxPriceUsdc: 1.00,
+  maxPriceUsdc: 1.0,
   minExecutionsForListing: 3,
   minSuccessRateForListing: 0.6,
 };
@@ -38,8 +38,8 @@ export interface SkillPricingInput {
   /** Execution metrics from SkillExecutionTracker */
   metrics: {
     totalExecutions: number;
-    successRate: number;      // 0-1
-    avgRewardScore: number;   // 0-1
+    successRate: number; // 0-1
+    avgRewardScore: number; // 0-1
   };
   /** Download/purchase count (unique buyers only — anti-sybil) */
   downloadCount: number;
@@ -95,7 +95,13 @@ export function computeSkillPrice(
       priceUsdc: 0,
       listable: false,
       listingBlockReason: `Needs ${cfg.minExecutionsForListing - input.metrics.totalExecutions} more executions`,
-      breakdown: { basePrice: 0, qualityMultiplier: 0, demandMultiplier: 0, reputationMultiplier: 0, scarcityBonus: 0 },
+      breakdown: {
+        basePrice: 0,
+        qualityMultiplier: 0,
+        demandMultiplier: 0,
+        reputationMultiplier: 0,
+        scarcityBonus: 0,
+      },
     };
   }
   if (input.metrics.successRate < cfg.minSuccessRateForListing) {
@@ -103,7 +109,13 @@ export function computeSkillPrice(
       priceUsdc: 0,
       listable: false,
       listingBlockReason: `Success rate ${(input.metrics.successRate * 100).toFixed(0)}% below ${(cfg.minSuccessRateForListing * 100).toFixed(0)}% minimum`,
-      breakdown: { basePrice: 0, qualityMultiplier: 0, demandMultiplier: 0, reputationMultiplier: 0, scarcityBonus: 0 },
+      breakdown: {
+        basePrice: 0,
+        qualityMultiplier: 0,
+        demandMultiplier: 0,
+        reputationMultiplier: 0,
+        scarcityBonus: 0,
+      },
     };
   }
 
@@ -111,9 +123,15 @@ export function computeSkillPrice(
   const qualityMultiplier = input.metrics.successRate * Math.max(0.1, input.metrics.avgRewardScore);
   const demandMultiplier = 1 + Math.log(input.downloadCount + input.bountyMatches + 1) * 0.1;
   const reputationMultiplier = Math.max(0.1, input.reputationScore);
-  const scarcityBonus = input.similarSkillCount <= 2 ? 1.5 : input.similarSkillCount <= 5 ? 1.2 : 1.0;
+  const scarcityBonus =
+    input.similarSkillCount <= 2 ? 1.5 : input.similarSkillCount <= 5 ? 1.2 : 1.0;
 
-  const rawPrice = cfg.basePriceUsdc * (1 + qualityMultiplier) * demandMultiplier * reputationMultiplier * scarcityBonus;
+  const rawPrice =
+    cfg.basePriceUsdc *
+    (1 + qualityMultiplier) *
+    demandMultiplier *
+    reputationMultiplier *
+    scarcityBonus;
   const priceUsdc = Math.max(cfg.minPriceUsdc, Math.min(cfg.maxPriceUsdc, rawPrice));
 
   return {

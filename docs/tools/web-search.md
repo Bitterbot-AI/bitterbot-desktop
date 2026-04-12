@@ -10,12 +10,12 @@ title: "Web Search Providers"
 
 Bitterbot supports 4 web search providers for the `web_search` tool. Pick one and configure its API key.
 
-| Provider | Env Variable | Free Tier | Best For |
-|----------|-------------|-----------|----------|
-| **Tavily** | `TAVILY_API_KEY` | 1,000 req/month | Structured results, AI-optimized |
-| **Brave** | `BRAVE_API_KEY` | 2,000 req/month | Privacy-focused, fast |
-| **Perplexity** | `PERPLEXITY_API_KEY` | Pay-per-use | AI-synthesized answers with citations |
-| **Grok** | `XAI_API_KEY` | Varies | X/Twitter integration |
+| Provider       | Env Variable         | Free Tier       | Best For                              |
+| -------------- | -------------------- | --------------- | ------------------------------------- |
+| **Tavily**     | `TAVILY_API_KEY`     | 1,000 req/month | Structured results, AI-optimized      |
+| **Brave**      | `BRAVE_API_KEY`      | 2,000 req/month | Privacy-focused, fast                 |
+| **Perplexity** | `PERPLEXITY_API_KEY` | Pay-per-use     | AI-synthesized answers with citations |
+| **Grok**       | `XAI_API_KEY`        | Varies          | X/Twitter integration                 |
 
 ## Quick Setup
 
@@ -51,7 +51,7 @@ You can also configure the provider in `~/.bitterbot/bitterbot.json`:
         provider: "tavily",
         tavily: {
           apiKey: "tvly-...",
-          searchDepth: "basic",  // or "advanced" for deeper results
+          searchDepth: "basic", // or "advanced" for deeper results
         },
       },
     },
@@ -89,7 +89,7 @@ Get your key at [brave.com/search/api](https://brave.com/search/api/). Use the *
         provider: "perplexity",
         perplexity: {
           apiKey: "pplx-...",
-          model: "perplexity/sonar-pro",  // or sonar, sonar-reasoning-pro
+          model: "perplexity/sonar-pro", // or sonar, sonar-reasoning-pro
         },
       },
     },
@@ -118,6 +118,7 @@ Uses your `XAI_API_KEY` environment variable.
 ## Auto-Detection
 
 If no provider is explicitly set, Bitterbot checks for API keys in this order:
+
 1. `TAVILY_API_KEY` → Tavily
 2. `BRAVE_API_KEY` → Brave
 3. `PERPLEXITY_API_KEY` → Perplexity

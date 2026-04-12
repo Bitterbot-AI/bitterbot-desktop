@@ -72,7 +72,6 @@ Session transcripts are stored as JSONL at:
 
 The session ID is stable and chosen by Bitterbot.
 
-
 ## Steering while streaming
 
 When queue mode is `steer`, inbound messages are injected into the current run.
@@ -113,5 +112,3 @@ At minimum, set:
 - `channels.whatsapp.allowFrom` (strongly recommended)
 
 ---
-
-

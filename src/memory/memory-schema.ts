@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
-import { ensureDreamSchema } from "./dream-schema.js";
 import { ensureCuriositySchema } from "./curiosity-schema.js";
+import { ensureDreamSchema } from "./dream-schema.js";
 import { runMigrations } from "./migrations.js";
 
 export function ensureMemoryIndexSchema(params: {

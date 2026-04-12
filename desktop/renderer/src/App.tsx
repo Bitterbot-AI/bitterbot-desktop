@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { AppShell } from "./components/layout/AppShell";
 import { FirstRun } from "./components/first-run/FirstRun";
+import { AppShell } from "./components/layout/AppShell";
 import {
   readStoredGatewayToken,
   readStoredGatewayUrl,
@@ -15,8 +15,8 @@ export function App() {
   // VITE_GATEWAY_TOKEN at build time). If not, render <FirstRun>
   // instead of the main shell so we don't flash a "Disconnected"
   // badge and confuse a new user.
-  const [hasCredentials, setHasCredentials] = useState<boolean>(() =>
-    readStoredGatewayToken() !== null,
+  const [hasCredentials, setHasCredentials] = useState<boolean>(
+    () => readStoredGatewayToken() !== null,
   );
 
   useEffect(() => {

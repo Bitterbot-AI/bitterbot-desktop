@@ -229,7 +229,6 @@ describe("agents.create", () => {
       expect.objectContaining({ message: expect.stringContaining("invalid") }),
     );
   });
-
 });
 
 describe("agents.update", () => {

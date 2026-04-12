@@ -43,8 +43,7 @@ export const useCronStore = create<CronState>((set) => ({
   loading: false,
   error: null,
   setJobs: (jobs) => set({ jobs }),
-  setRunLogs: (jobId, entries) =>
-    set((s) => ({ runLogs: { ...s.runLogs, [jobId]: entries } })),
+  setRunLogs: (jobId, entries) => set((s) => ({ runLogs: { ...s.runLogs, [jobId]: entries } })),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
   updateJob: (id, patch) =>

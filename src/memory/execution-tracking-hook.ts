@@ -9,13 +9,10 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import type { HormonalStateManager } from "./hormonal.js";
-import type {
-  PluginHookAfterToolCallEvent,
-  PluginHookToolContext,
-} from "../plugins/types.js";
+import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
 import type { ExecutionOutcome } from "./crystal-types.js";
+import type { HormonalStateManager } from "./hormonal.js";
+import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/exec-hook");
@@ -27,10 +24,7 @@ const log = createSubsystemLogger("memory/exec-hook");
  * - 0.0 for an error
  * - 0.5-0.8 scaled by result content length (for non-error, non-trivial results)
  */
-export function computeReward(
-  result: unknown,
-  error: string | undefined,
-): number {
+export function computeReward(result: unknown, error: string | undefined): number {
   if (error) return 0.0;
   if (result == null) return 0.5;
 
@@ -58,10 +52,7 @@ function normalizeToolName(name: string): string {
  * Try to find a matching skill crystal for a given tool name.
  * Returns the skill crystal ID if found, null otherwise.
  */
-function findMatchingSkill(
-  db: DatabaseSync,
-  toolName: string,
-): string | null {
+function findMatchingSkill(db: DatabaseSync, toolName: string): string | null {
   const normalized = normalizeToolName(toolName);
   try {
     const row = db
@@ -89,10 +80,7 @@ export function createExecutionTrackingHook(
   db: DatabaseSync,
   hormonalManager?: HormonalStateManager | null,
 ): (event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void {
-  return (
-    event: PluginHookAfterToolCallEvent,
-    ctx: PluginHookToolContext,
-  ): void => {
+  return (event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext): void => {
     try {
       const reward = computeReward(event.result, event.error);
 

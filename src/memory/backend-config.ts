@@ -1,8 +1,5 @@
 import type { BitterbotConfig } from "../config/config.js";
-import type {
-  MemoryBackend,
-  MemoryCitationsMode,
-} from "../config/types.memory.js";
+import type { MemoryBackend, MemoryCitationsMode } from "../config/types.memory.js";
 
 export type ResolvedMemoryBackendConfig = {
   backend: MemoryBackend;

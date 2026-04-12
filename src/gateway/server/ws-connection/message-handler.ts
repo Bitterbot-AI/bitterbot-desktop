@@ -343,10 +343,13 @@ export function attachGatewayWsMessageHandler(params: {
         const disableControlUiDeviceAuth =
           isControlUi && configSnapshot.gateway?.controlUi?.dangerouslyDisableDeviceAuth === true;
         const localControlUiBypass = isControlUi && isLocalClient;
-        const allowControlUiBypass = allowInsecureControlUi || disableControlUiDeviceAuth || localControlUiBypass;
+        const allowControlUiBypass =
+          allowInsecureControlUi || disableControlUiDeviceAuth || localControlUiBypass;
         const device = disableControlUiDeviceAuth ? null : deviceRaw;
 
-        const hasDeviceTokenCandidate = Boolean((connectParams.auth?.deviceToken || connectParams.auth?.token) && device);
+        const hasDeviceTokenCandidate = Boolean(
+          (connectParams.auth?.deviceToken || connectParams.auth?.token) && device,
+        );
         let authResult: GatewayAuthResult = await authorizeGatewayConnect({
           auth: resolvedAuth,
           connectAuth: connectParams.auth,

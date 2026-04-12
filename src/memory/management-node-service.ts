@@ -7,9 +7,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { OrchestratorBridge } from "../infra/orchestrator-bridge.js";
-import type { PeerReputationManager } from "./peer-reputation.js";
-import type { MarketplaceEconomics } from "./marketplace-economics.js";
 import type { ManagementKeyAuth } from "./management-key-auth.js";
+import type { MarketplaceEconomics } from "./marketplace-economics.js";
+import type { PeerReputationManager } from "./peer-reputation.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/management-node");
@@ -114,8 +114,12 @@ export class ManagementNodeService {
         unique_buyers INTEGER
       )
     `);
-    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_mgmt_census_ts ON management_census_log(timestamp)`);
-    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_mgmt_anomaly_ts ON management_anomaly_log(detected_at)`);
+    this.db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_mgmt_census_ts ON management_census_log(timestamp)`,
+    );
+    this.db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_mgmt_anomaly_ts ON management_anomaly_log(detected_at)`,
+    );
   }
 
   /**
@@ -142,25 +146,35 @@ export class ManagementNodeService {
     }, 300_000);
 
     // Listen for anomaly and bounty claim events from Rust orchestrator
-    this.bridge.onTelemetryReceived?.((event: {
-      signal_type: string;
-      data: unknown;
-      author_peer_id: string;
-      timestamp: number;
-    }) => {
-      if (event.signal_type === "management_ban") {
-        this.handleBanReceived(event);
-      } else if (event.signal_type === "bounty_claim") {
-        this.handleBountyClaim(event.data as {
-          bountyId: string; skillCrystalId: string;
-          claimerWalletAddress: string | null; contentHash: string; rewardUsdc: number;
-        }, event.author_peer_id).catch((err) => {
-          log.warn(`bounty claim processing failed: ${String(err)}`);
-        });
-      }
-    });
+    this.bridge.onTelemetryReceived?.(
+      (event: {
+        signal_type: string;
+        data: unknown;
+        author_peer_id: string;
+        timestamp: number;
+      }) => {
+        if (event.signal_type === "management_ban") {
+          this.handleBanReceived(event);
+        } else if (event.signal_type === "bounty_claim") {
+          this.handleBountyClaim(
+            event.data as {
+              bountyId: string;
+              skillCrystalId: string;
+              claimerWalletAddress: string | null;
+              contentHash: string;
+              rewardUsdc: number;
+            },
+            event.author_peer_id,
+          ).catch((err) => {
+            log.warn(`bounty claim processing failed: ${String(err)}`);
+          });
+        }
+      },
+    );
 
-    log.info(`ManagementNodeService started (pubkey: ${this.auth.publicKeyBase64.substring(0, 8)}...)`);
+    log.info(
+      `ManagementNodeService started (pubkey: ${this.auth.publicKeyBase64.substring(0, 8)}...)`,
+    );
   }
 
   stop(): void {
@@ -193,19 +207,21 @@ export class ManagementNodeService {
       this.latestCensus = census;
 
       // Persist to DB
-      this.db.prepare(
-        `INSERT OR REPLACE INTO management_census_log
+      this.db
+        .prepare(
+          `INSERT OR REPLACE INTO management_census_log
          (id, timestamp, connected_peers, peers_by_tier, skills_network_wide, health_score, anomaly_count)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        crypto.randomUUID(),
-        Date.now(),
-        census.connectedPeers,
-        JSON.stringify(census.peersByTier),
-        census.skillsPublishedNetworkWide,
-        census.networkHealthScore,
-        this.anomalyHistory.length,
-      );
+        )
+        .run(
+          crypto.randomUUID(),
+          Date.now(),
+          census.connectedPeers,
+          JSON.stringify(census.peersByTier),
+          census.skillsPublishedNetworkWide,
+          census.networkHealthScore,
+          this.anomalyHistory.length,
+        );
 
       return census;
     } catch (err) {
@@ -231,21 +247,27 @@ export class ManagementNodeService {
 
       // Persist new alerts
       for (const alert of alerts) {
-        if (!this.anomalyHistory.some((h) => h.detectedAt === alert.detectedAt && h.alertType === alert.alertType)) {
+        if (
+          !this.anomalyHistory.some(
+            (h) => h.detectedAt === alert.detectedAt && h.alertType === alert.alertType,
+          )
+        ) {
           this.anomalyHistory.push(alert);
-          this.db.prepare(
-            `INSERT OR IGNORE INTO management_anomaly_log
+          this.db
+            .prepare(
+              `INSERT OR IGNORE INTO management_anomaly_log
              (id, alert_type, severity, peer_ids, description, detected_at, auto_action)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          ).run(
-            crypto.randomUUID(),
-            alert.alertType,
-            alert.severity,
-            JSON.stringify(alert.peerIds),
-            alert.description,
-            alert.detectedAt,
-            alert.autoAction ?? null,
-          );
+            )
+            .run(
+              crypto.randomUUID(),
+              alert.alertType,
+              alert.severity,
+              JSON.stringify(alert.peerIds),
+              alert.description,
+              alert.detectedAt,
+              alert.autoAction ?? null,
+            );
         }
       }
 
@@ -294,23 +316,33 @@ export class ManagementNodeService {
   }
 
   /** Handle economic telemetry from the network — aggregate cross-node transaction data. */
-  handleEconomicTelemetry(event: { signal_type: string; data: unknown; author_peer_id: string; timestamp: number }): void {
+  handleEconomicTelemetry(event: {
+    signal_type: string;
+    data: unknown;
+    author_peer_id: string;
+    timestamp: number;
+  }): void {
     try {
       const data = event.data as Record<string, unknown> | undefined;
       if (!data) return;
 
       // Track marketplace events from peer telemetry
-      if (event.signal_type === "marketplace_sale" || event.signal_type === "marketplace_purchase") {
-        this.db.prepare(
-          `INSERT OR IGNORE INTO management_economic_snapshots
+      if (
+        event.signal_type === "marketplace_sale" ||
+        event.signal_type === "marketplace_purchase"
+      ) {
+        this.db
+          .prepare(
+            `INSERT OR IGNORE INTO management_economic_snapshots
            (id, timestamp, total_listings, avg_price, transaction_volume, unique_sellers, unique_buyers)
            VALUES (?, ?, 0, ?, ?, 1, 1)`,
-        ).run(
-          crypto.randomUUID(),
-          event.timestamp * 1000,
-          (data.amount_usdc as number) ?? 0,
-          (data.amount_usdc as number) ?? 0,
-        );
+          )
+          .run(
+            crypto.randomUUID(),
+            event.timestamp * 1000,
+            (data.amount_usdc as number) ?? 0,
+            (data.amount_usdc as number) ?? 0,
+          );
       }
     } catch (err) {
       log.debug(`Economic telemetry handling failed: ${String(err)}`);
@@ -325,39 +357,70 @@ export class ManagementNodeService {
     uniquePeersTrading: number;
   } {
     try {
-      const total = this.db.prepare(
-        `SELECT COUNT(*) as c, COALESCE(SUM(transaction_volume), 0) as v FROM management_economic_snapshots`,
-      ).get() as { c: number; v: number };
+      const total = this.db
+        .prepare(
+          `SELECT COUNT(*) as c, COALESCE(SUM(transaction_volume), 0) as v FROM management_economic_snapshots`,
+        )
+        .get() as { c: number; v: number };
 
-      const last24h = this.db.prepare(
-        `SELECT COALESCE(SUM(transaction_volume), 0) as v FROM management_economic_snapshots WHERE timestamp > ?`,
-      ).get(Date.now() - 86400000) as { v: number };
+      const last24h = this.db
+        .prepare(
+          `SELECT COALESCE(SUM(transaction_volume), 0) as v FROM management_economic_snapshots WHERE timestamp > ?`,
+        )
+        .get(Date.now() - 86400000) as { v: number };
 
       return {
         totalTransactions: total.c,
         totalVolumeUsdc: total.v,
         last24hVolumeUsdc: last24h.v,
-        uniquePeersTrading: (() => { try { return (this.db.prepare(`SELECT COUNT(DISTINCT buyer_peer_id) as c FROM marketplace_purchases WHERE purchased_at > ?`).get(Date.now() - 7 * 24 * 60 * 60 * 1000) as { c: number })?.c ?? 0; } catch { return 0; } })(),
+        uniquePeersTrading: (() => {
+          try {
+            return (
+              (
+                this.db
+                  .prepare(
+                    `SELECT COUNT(DISTINCT buyer_peer_id) as c FROM marketplace_purchases WHERE purchased_at > ?`,
+                  )
+                  .get(Date.now() - 7 * 24 * 60 * 60 * 1000) as { c: number }
+              )?.c ?? 0
+            );
+          } catch {
+            return 0;
+          }
+        })(),
       };
     } catch {
-      return { totalTransactions: 0, totalVolumeUsdc: 0, last24hVolumeUsdc: 0, uniquePeersTrading: 0 };
+      return {
+        totalTransactions: 0,
+        totalVolumeUsdc: 0,
+        last24hVolumeUsdc: 0,
+        uniquePeersTrading: 0,
+      };
     }
   }
 
   /** Handle incoming ban from another management node. */
-  private handleBanReceived(event: { data: unknown; author_peer_id: string; author_pubkey?: string }): void {
+  private handleBanReceived(event: {
+    data: unknown;
+    author_peer_id: string;
+    author_pubkey?: string;
+  }): void {
     const data = event.data as { peer_pubkey?: string; reason?: string } | undefined;
     if (!data?.peer_pubkey) return;
 
     // Verify the ban came from a management node (genesis trust list check)
     const authorPubkey = (event as any).author_pubkey;
     if (!authorPubkey || !this.peerReputation?.isManagementNode(authorPubkey)) {
-      log.warn(`Rejected management ban from non-management peer ${event.author_peer_id} (pubkey: ${authorPubkey ?? "missing"})`);
+      log.warn(
+        `Rejected management ban from non-management peer ${event.author_peer_id} (pubkey: ${authorPubkey ?? "missing"})`,
+      );
       return;
     }
 
     this.peerReputation.banPeer(data.peer_pubkey);
-    log.info(`Received verified management ban for ${data.peer_pubkey} from ${event.author_peer_id}: ${data.reason ?? "no reason"}`);
+    log.info(
+      `Received verified management ban for ${data.peer_pubkey} from ${event.author_peer_id}: ${data.reason ?? "no reason"}`,
+    );
 
     this.anomalyHistory.push({
       alertType: "management_ban_received",
@@ -374,17 +437,25 @@ export class ManagementNodeService {
    * Validates the claim and queues USDC payout if legitimate.
    */
   private async handleBountyClaim(
-    claim: { bountyId: string; skillCrystalId: string; claimerWalletAddress: string | null; contentHash: string; rewardUsdc: number },
+    claim: {
+      bountyId: string;
+      skillCrystalId: string;
+      claimerWalletAddress: string | null;
+      contentHash: string;
+      rewardUsdc: number;
+    },
     claimerPeerId: string,
   ): Promise<void> {
     if (!claim.bountyId || !claim.rewardUsdc || claim.rewardUsdc <= 0) return;
 
     // 1. Check that this bounty exists and hasn't been fulfilled yet
     try {
-      const bountyTarget = this.db.prepare(
-        `SELECT id, metadata FROM curiosity_targets
+      const bountyTarget = this.db
+        .prepare(
+          `SELECT id, metadata FROM curiosity_targets
          WHERE metadata LIKE ? AND resolved_at IS NOT NULL`,
-      ).get(`%"bountyId":"${claim.bountyId}"%`) as { id: string; metadata: string } | undefined;
+        )
+        .get(`%"bountyId":"${claim.bountyId}"%`) as { id: string; metadata: string } | undefined;
 
       // Bounty must have been resolved (matched) — if it's still unresolved, ignore
       if (!bountyTarget) {
@@ -393,9 +464,11 @@ export class ManagementNodeService {
       }
 
       // 2. Check for duplicate claims (already paid)
-      const alreadyPaid = this.db.prepare(
-        `SELECT id FROM revenue_payment_queue WHERE skill_crystal_id = ? AND role = 'bounty_reward' AND status IN ('held', 'released', 'paid')`,
-      ).get(claim.skillCrystalId) as { id: string } | undefined;
+      const alreadyPaid = this.db
+        .prepare(
+          `SELECT id FROM revenue_payment_queue WHERE skill_crystal_id = ? AND role = 'bounty_reward' AND status IN ('held', 'released', 'paid')`,
+        )
+        .get(claim.skillCrystalId) as { id: string } | undefined;
       if (alreadyPaid) {
         log.debug("duplicate bounty claim — already queued/paid", { bountyId: claim.bountyId });
         return;
@@ -436,11 +509,15 @@ export class ManagementNodeService {
         });
 
         // 5. Broadcast bounty_fulfilled to network
-        this.bridge.publishTelemetry?.("bounty_fulfilled", {
-          bountyId: claim.bountyId,
-          fulfillerPeerId: claimerPeerId,
-          rewardUsdc: claim.rewardUsdc,
-        }).catch(() => { /* non-critical */ });
+        this.bridge
+          .publishTelemetry?.("bounty_fulfilled", {
+            bountyId: claim.bountyId,
+            fulfillerPeerId: claimerPeerId,
+            rewardUsdc: claim.rewardUsdc,
+          })
+          .catch(() => {
+            /* non-critical */
+          });
       }
     } catch (err) {
       log.warn(`bounty claim processing error: ${String(err)}`);
@@ -452,19 +529,23 @@ export class ManagementNodeService {
     if (!this.economics) return;
     try {
       const summary = this.economics.getEconomicSummary();
-      this.db.prepare(
-        `INSERT INTO management_economic_snapshots
+      this.db
+        .prepare(
+          `INSERT INTO management_economic_snapshots
          (id, timestamp, total_listings, avg_price, transaction_volume, unique_sellers, unique_buyers)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        crypto.randomUUID(),
-        Date.now(),
-        summary.listedSkillCount ?? 0,
-        summary.listedSkillCount > 0 ? (summary.totalEarningsUsdc / Math.max(1, summary.listedSkillCount)) : 0,
-        summary.totalEarningsUsdc ?? 0,
-        summary.topEarners?.length ?? 0,
-        summary.uniqueBuyers ?? 0,
-      );
+        )
+        .run(
+          crypto.randomUUID(),
+          Date.now(),
+          summary.listedSkillCount ?? 0,
+          summary.listedSkillCount > 0
+            ? summary.totalEarningsUsdc / Math.max(1, summary.listedSkillCount)
+            : 0,
+          summary.totalEarningsUsdc ?? 0,
+          summary.topEarners?.length ?? 0,
+          summary.uniqueBuyers ?? 0,
+        );
     } catch (err) {
       log.debug(`Economic snapshot failed: ${String(err)}`);
     }
@@ -478,9 +559,9 @@ export class ManagementNodeService {
   /** Get census history for dashboard trending. */
   getCensusHistory(limit = 100): Array<Record<string, unknown>> {
     try {
-      return this.db.prepare(
-        `SELECT * FROM management_census_log ORDER BY timestamp DESC LIMIT ?`,
-      ).all(limit) as Array<Record<string, unknown>>;
+      return this.db
+        .prepare(`SELECT * FROM management_census_log ORDER BY timestamp DESC LIMIT ?`)
+        .all(limit) as Array<Record<string, unknown>>;
     } catch {
       return [];
     }
@@ -489,13 +570,16 @@ export class ManagementNodeService {
   /** Get economic overview with historical trend. */
   getEconomicOverview(): NetworkEconomicOverview {
     try {
-      const latest = this.db.prepare(
-        `SELECT * FROM management_economic_snapshots ORDER BY timestamp DESC LIMIT 1`,
-      ).get() as Record<string, unknown> | undefined;
+      const latest = this.db
+        .prepare(`SELECT * FROM management_economic_snapshots ORDER BY timestamp DESC LIMIT 1`)
+        .get() as Record<string, unknown> | undefined;
 
-      const count = (this.db.prepare(
-        `SELECT COUNT(*) as c FROM management_economic_snapshots`,
-      ).get() as { c: number })?.c ?? 0;
+      const count =
+        (
+          this.db.prepare(`SELECT COUNT(*) as c FROM management_economic_snapshots`).get() as {
+            c: number;
+          }
+        )?.c ?? 0;
 
       return {
         totalSkillsListed: (latest?.total_listings as number) ?? 0,

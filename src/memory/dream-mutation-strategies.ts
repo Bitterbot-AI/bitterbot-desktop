@@ -78,9 +78,10 @@ function buildErrorDrivenPrompt(skillText: string, context: StrategyContext): st
   const topErrors = Object.entries(errors)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 3);
-  const errorSummary = topErrors.length > 0
-    ? topErrors.map(([type, count]) => `- ${type}: ${count} occurrences`).join("\n")
-    : "- Various execution failures";
+  const errorSummary =
+    topErrors.length > 0
+      ? topErrors.map(([type, count]) => `- ${type}: ${count} occurrences`).join("\n")
+      : "- Various execution failures";
 
   return (
     `You are a Dream Engine fixing skill failures. This skill has been executing ` +
@@ -152,6 +153,9 @@ function buildParametricPrompt(skillText: string): string {
 
 function hasNumericParameters(text: string): boolean {
   // Look for patterns like: timeout=30, max_retries: 3, threshold 0.8
-  return /\b\d+(?:\.\d+)?\s*(?:ms|seconds?|retries|attempts|timeout|threshold|limit|max|min)\b/i.test(text)
-    || /\b(?:timeout|retries|attempts|threshold|limit|max|min)\s*[=:]\s*\d/i.test(text);
+  return (
+    /\b\d+(?:\.\d+)?\s*(?:ms|seconds?|retries|attempts|timeout|threshold|limit|max|min)\b/i.test(
+      text,
+    ) || /\b(?:timeout|retries|attempts|threshold|limit|max|min)\s*[=:]\s*\d/i.test(text)
+  );
 }

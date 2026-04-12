@@ -7,8 +7,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { ensureColumn } from "./memory-schema.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { ensureColumn } from "./memory-schema.js";
 
 const log = createSubsystemLogger("memory/migrations");
 
@@ -91,8 +91,12 @@ const MIGRATIONS: Migration[] = [
           context_json TEXT DEFAULT '{}'
         )
       `);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_skill_executions_crystal ON skill_executions(skill_crystal_id)`);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_skill_executions_time ON skill_executions(started_at)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_skill_executions_crystal ON skill_executions(skill_crystal_id)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_skill_executions_time ON skill_executions(started_at)`,
+      );
 
       // Steering reward on chunks
       ensureColumn(db, "chunks", "steering_reward", "REAL DEFAULT 0");
@@ -207,8 +211,12 @@ const MIGRATIONS: Migration[] = [
           UNIQUE(truster_pubkey, trustee_pubkey)
         )
       `);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_trust_edges_truster ON peer_trust_edges(truster_pubkey)`);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_trust_edges_trustee ON peer_trust_edges(trustee_pubkey)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_trust_edges_truster ON peer_trust_edges(truster_pubkey)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_trust_edges_trustee ON peer_trust_edges(trustee_pubkey)`,
+      );
 
       db.exec(`
         CREATE TABLE IF NOT EXISTS peer_activity_log (
@@ -244,7 +252,9 @@ const MIGRATIONS: Migration[] = [
       ensureColumn(db, "chunks", "lineage_hash", "TEXT");
       // Origin peer pubkey (denormalized from provenance_dag for fast queries)
       ensureColumn(db, "chunks", "peer_origin", "TEXT");
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_chunks_lineage ON chunks(stable_skill_id, skill_version, lineage_hash)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunks_lineage ON chunks(stable_skill_id, skill_version, lineage_hash)`,
+      );
       db.exec(`CREATE INDEX IF NOT EXISTS idx_chunks_peer_origin ON chunks(peer_origin)`);
     },
   },
@@ -270,7 +280,9 @@ const MIGRATIONS: Migration[] = [
         WHERE valid_time_start IS NULL
       `);
 
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_chunks_valid_time ON chunks(valid_time_start, valid_time_end)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunks_valid_time ON chunks(valid_time_start, valid_time_end)`,
+      );
       db.exec(`CREATE INDEX IF NOT EXISTS idx_chunks_transaction_time ON chunks(transaction_time)`);
     },
   },
@@ -314,7 +326,9 @@ const MIGRATIONS: Migration[] = [
           associated_crystal_ids TEXT
         )
       `);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_emotional_anchors_created ON emotional_anchors(created_at)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_emotional_anchors_created ON emotional_anchors(created_at)`,
+      );
     },
   },
   {
@@ -359,7 +373,9 @@ const MIGRATIONS: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_rel_source ON relationships(source_entity_id)`);
       db.exec(`CREATE INDEX IF NOT EXISTS idx_rel_target ON relationships(target_entity_id)`);
       db.exec(`CREATE INDEX IF NOT EXISTS idx_rel_type ON relationships(relation_type)`);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_rel_temporal ON relationships(valid_from, valid_until)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_rel_temporal ON relationships(valid_from, valid_until)`,
+      );
 
       // ── GAP-5: Memory Reconsolidation — labile state tracking ──
       ensureColumn(db, "chunks", "labile_until", "INTEGER");
@@ -390,7 +406,9 @@ const MIGRATIONS: Migration[] = [
           priority REAL DEFAULT 0.5
         )
       `);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_prospective_active ON prospective_memories(triggered_at)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_prospective_active ON prospective_memories(triggered_at)`,
+      );
 
       // ── GAP-11: Active Inference — epistemic directives ──
       db.exec(`
@@ -407,7 +425,9 @@ const MIGRATIONS: Migration[] = [
           attempts INTEGER DEFAULT 0
         )
       `);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_epistemic_active ON epistemic_directives(resolved_at)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_epistemic_active ON epistemic_directives(resolved_at)`,
+      );
     },
   },
 ];
@@ -417,9 +437,9 @@ const MIGRATIONS: Migration[] = [
  */
 function getSchemaVersion(db: DatabaseSync): number {
   try {
-    const row = db
-      .prepare(`SELECT value FROM meta WHERE key = ?`)
-      .get(SCHEMA_VERSION_KEY) as { value: string } | undefined;
+    const row = db.prepare(`SELECT value FROM meta WHERE key = ?`).get(SCHEMA_VERSION_KEY) as
+      | { value: string }
+      | undefined;
     if (!row?.value) return 0;
     const version = parseInt(row.value, 10);
     return Number.isFinite(version) ? version : 0;

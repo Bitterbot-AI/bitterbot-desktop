@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createExpandMessageTool } from "./expand-message-tool.js";
 import {
   truncateWithReference,
   clearTruncatedOriginals,
   getOriginalContent,
 } from "../progressive-compression.js";
+import { createExpandMessageTool } from "./expand-message-tool.js";
 
 afterEach(() => {
   clearTruncatedOriginals();

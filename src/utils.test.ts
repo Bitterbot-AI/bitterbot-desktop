@@ -157,9 +157,9 @@ describe("shortenHomePath", () => {
     vi.stubEnv("BITTERBOT_HOME", "/srv/bitterbot-home");
     vi.stubEnv("HOME", "/home/other");
 
-    expect(shortenHomePath(`${path.resolve("/srv/bitterbot-home")}/.bitterbot/bitterbot.json`)).toBe(
-      "$BITTERBOT_HOME/.bitterbot/bitterbot.json",
-    );
+    expect(
+      shortenHomePath(`${path.resolve("/srv/bitterbot-home")}/.bitterbot/bitterbot.json`),
+    ).toBe("$BITTERBOT_HOME/.bitterbot/bitterbot.json");
 
     vi.unstubAllEnvs();
   });
@@ -171,7 +171,9 @@ describe("shortenHomeInString", () => {
     vi.stubEnv("HOME", "/home/other");
 
     expect(
-      shortenHomeInString(`config: ${path.resolve("/srv/bitterbot-home")}/.bitterbot/bitterbot.json`),
+      shortenHomeInString(
+        `config: ${path.resolve("/srv/bitterbot-home")}/.bitterbot/bitterbot.json`,
+      ),
     ).toBe("config: $BITTERBOT_HOME/.bitterbot/bitterbot.json");
 
     vi.unstubAllEnvs();

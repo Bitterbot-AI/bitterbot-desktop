@@ -12,7 +12,7 @@ export function resolveDefaultAgentWorkspaceDir(
   homedir: () => string = os.homedir,
 ): string {
   const home = resolveRequiredHomeDir(env, homedir);
-  const profile = (env.BITTERBOT_PROFILE)?.trim();
+  const profile = env.BITTERBOT_PROFILE?.trim();
   if (profile && profile.toLowerCase() !== "default") {
     return path.join(home, ".bitterbot", `workspace-${profile}`);
   }
@@ -414,9 +414,9 @@ export async function loadWorkspaceBootstrapFiles(dir: string): Promise<Workspac
 }
 
 const MINIMAL_BOOTSTRAP_ALLOWLIST = new Set([
-  DEFAULT_PROTOCOLS_FILENAME,   // Operating procedures
+  DEFAULT_PROTOCOLS_FILENAME, // Operating procedures
   DEFAULT_TOOLS_FILENAME,
-  DEFAULT_GENOME_FILENAME,      // Safety axioms — sub-agents inherit the genome
+  DEFAULT_GENOME_FILENAME, // Safety axioms — sub-agents inherit the genome
 ]);
 
 export function filterBootstrapFilesForSession(

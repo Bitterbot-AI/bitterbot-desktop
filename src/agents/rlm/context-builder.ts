@@ -8,9 +8,9 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
 import type { MemorySearchManager } from "../../memory/types.js";
 import type { ContextBuildParams, RLMScope } from "./types.js";
+import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
 
 type SessionTranscriptMessage = {
   role: string;
@@ -34,7 +34,10 @@ function estimateTokens(text: string): number {
 
 /** Format epoch ms to readable date string. */
 function formatTimestamp(ts: number): string {
-  return new Date(ts).toISOString().replace("T", " ").replace(/\.\d+Z$/, "");
+  return new Date(ts)
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d+Z$/, "");
 }
 
 /**
@@ -101,7 +104,12 @@ function extractText(content: unknown): string | null {
   if (!Array.isArray(content)) return null;
   const parts: string[] = [];
   for (const block of content) {
-    if (block && typeof block === "object" && (block as any).type === "text" && typeof (block as any).text === "string") {
+    if (
+      block &&
+      typeof block === "object" &&
+      (block as any).type === "text" &&
+      typeof (block as any).text === "string"
+    ) {
       const text = (block as any).text.trim();
       if (text) parts.push(text);
     }
@@ -112,7 +120,9 @@ function extractText(content: unknown): string | null {
 /**
  * List session JSONL files for an agent, sorted by modification time (newest first).
  */
-async function listSessionFiles(agentId: string): Promise<Array<{ path: string; mtimeMs: number }>> {
+async function listSessionFiles(
+  agentId: string,
+): Promise<Array<{ path: string; mtimeMs: number }>> {
   const dir = resolveSessionTranscriptsDirForAgent(agentId);
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -153,13 +163,7 @@ export async function buildDeepRecallContext(params: {
   maxTokens?: number;
   memoryManager?: MemorySearchManager | null;
 }): Promise<string> {
-  const {
-    agentId,
-    scope,
-    sessionKey,
-    includeMemory = true,
-    maxTokens = 500_000,
-  } = params;
+  const { agentId, scope, sessionKey, includeMemory = true, maxTokens = 500_000 } = params;
 
   const maxChars = maxTokens * 4; // ~4 chars per token
   const sections: string[] = [];
@@ -213,7 +217,9 @@ export async function buildDeepRecallContext(params: {
     for (const transcript of transcripts) {
       if (currentChars >= maxChars) break;
 
-      sections.push(`\n--- Session: ${transcript.sessionId} (${transcript.messageCount} messages) ---`);
+      sections.push(
+        `\n--- Session: ${transcript.sessionId} (${transcript.messageCount} messages) ---`,
+      );
 
       for (const msg of transcript.messages) {
         if (currentChars >= maxChars) {
@@ -226,7 +232,8 @@ export async function buildDeepRecallContext(params: {
         const line = `[${ts}] ${role}: ${msg.text}`;
 
         // Truncate very long individual messages
-        const truncated = line.length > 5000 ? line.slice(0, 5000) + " [... message truncated ...]" : line;
+        const truncated =
+          line.length > 5000 ? line.slice(0, 5000) + " [... message truncated ...]" : line;
         sections.push(truncated);
         currentChars += truncated.length;
       }
@@ -270,7 +277,8 @@ export async function buildDeepRecallContext(params: {
       sections.push(`\n=== KNOWLEDGE CRYSTALS (${allResults.length} entries) ===`);
       for (const r of allResults) {
         if (currentChars >= maxChars) break;
-        const sourceTag = r.source === "memory" ? "memory" : r.source === "sessions" ? "session" : r.source;
+        const sourceTag =
+          r.source === "memory" ? "memory" : r.source === "sessions" ? "session" : r.source;
         const line = `[${sourceTag}] ${r.snippet}`;
         const truncated = line.length > 2000 ? line.slice(0, 2000) + " [...]" : line;
         sections.push(truncated);

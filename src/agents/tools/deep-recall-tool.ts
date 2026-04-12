@@ -11,29 +11,32 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
+import type { RLMScope, RLMMessage, RLMLLMCallFn } from "../rlm/types.js";
 import type { AnyAgentTool } from "./common.js";
-import { jsonResult, readStringParam } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId, resolveAgentModelPrimary } from "../agent-scope.js";
-import { resolveMemorySearchConfig } from "../memory-search.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
-import { RLMExecutor } from "../rlm/executor.js";
+import { resolveMemorySearchConfig } from "../memory-search.js";
 import { buildDeepRecallContext } from "../rlm/context-builder.js";
+import { RLMExecutor } from "../rlm/executor.js";
 import { DEFAULT_RLM_CONFIG } from "../rlm/types.js";
-import type { RLMScope, RLMMessage, RLMLLMCallFn } from "../rlm/types.js";
+import { jsonResult, readStringParam } from "./common.js";
 
 const DeepRecallSchema = Type.Object({
   query: Type.String({
     description: "What you're looking for or trying to figure out. Be specific.",
   }),
   scope: Type.Optional(
-    Type.Union([
-      Type.Literal("current_session"),
-      Type.Literal("recent_sessions"),
-      Type.Literal("all_sessions"),
-    ], {
-      description: "How far back to search. Default: recent_sessions.",
-    }),
+    Type.Union(
+      [
+        Type.Literal("current_session"),
+        Type.Literal("recent_sessions"),
+        Type.Literal("all_sessions"),
+      ],
+      {
+        description: "How far back to search. Default: recent_sessions.",
+      },
+    ),
   ),
   include_memory: Type.Optional(
     Type.Boolean({
@@ -171,12 +174,12 @@ export function createDeepRecallTool(options: {
     parameters: DeepRecallSchema,
     execute: async (_toolCallId, params) => {
       const query = readStringParam(params, "query", { required: true });
-      const scope = (readStringParam(params, "scope") as RLMScope | undefined) ??
+      const scope =
+        (readStringParam(params, "scope") as RLMScope | undefined) ??
         rlmCfg?.defaultScope ??
         DEFAULT_RLM_CONFIG.defaultScope;
-      const includeMemory = typeof params.include_memory === "boolean"
-        ? params.include_memory
-        : true;
+      const includeMemory =
+        typeof params.include_memory === "boolean" ? params.include_memory : true;
 
       // Step 1: Quick memory_search first — if high-confidence results, skip RLM
       const { manager } = await getMemorySearchManager({ cfg, agentId });
@@ -207,7 +210,8 @@ export function createDeepRecallTool(options: {
       const subModelRef = await resolveSubModel(cfg, rlmCfg?.subModel ?? "auto");
       if (!subModelRef) {
         return jsonResult({
-          error: "No suitable sub-model available for deep recall. Configure an API key for OpenAI, Anthropic, or Google.",
+          error:
+            "No suitable sub-model available for deep recall. Configure an API key for OpenAI, Anthropic, or Google.",
         });
       }
 
@@ -260,11 +264,15 @@ export function createDeepRecallTool(options: {
             const chunkIds: string[] = [];
             for (const r of quickResults) {
               try {
-                const row = db.prepare(
-                  `SELECT id FROM chunks WHERE path = ? AND start_line = ? AND end_line = ?`,
-                ).get(r.path, r.startLine, r.endLine) as { id: string } | undefined;
+                const row = db
+                  .prepare(
+                    `SELECT id FROM chunks WHERE path = ? AND start_line = ? AND end_line = ?`,
+                  )
+                  .get(r.path, r.startLine, r.endLine) as { id: string } | undefined;
                 if (row) chunkIds.push(row.id);
-              } catch { /* non-critical */ }
+              } catch {
+                /* non-critical */
+              }
             }
             if (chunkIds.length >= 3) {
               const assessment = assessSomaticMarkers(db, chunkIds);

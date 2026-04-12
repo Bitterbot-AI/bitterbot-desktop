@@ -9,15 +9,15 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { SkillEnvelope } from "../agents/skills/ingest.js";
-import type { PublishResult, ImportResult } from "./mem-store.js";
-import type { PeerReputationManager } from "./peer-reputation.js";
-import type { HormonalStateManager } from "./hormonal.js";
 import type { CuriosityEngine } from "./curiosity-engine.js";
 import type { ExplorationTargetType } from "./curiosity-types.js";
-import { SkillVersionResolver } from "./skill-version-resolver.js";
+import type { HormonalStateManager } from "./hormonal.js";
+import type { PublishResult, ImportResult } from "./mem-store.js";
+import type { PeerReputationManager } from "./peer-reputation.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { SkillVerifier } from "./skill-verifier.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { SkillVersionResolver } from "./skill-version-resolver.js";
 
 const log = createSubsystemLogger("memory/skill-network-bridge");
 
@@ -101,12 +101,14 @@ export class SkillNetworkBridge {
     // Read crystal from DB
     const row = this.db
       .prepare(`SELECT id, text, path, governance_json FROM chunks WHERE id = ?`)
-      .get(crystalId) as {
-        id: string;
-        text: string;
-        path: string;
-        governance_json: string | null;
-      } | undefined;
+      .get(crystalId) as
+      | {
+          id: string;
+          text: string;
+          path: string;
+          governance_json: string | null;
+        }
+      | undefined;
 
     if (!row) {
       log.warn(`publishCrystalSkill: crystal ${crystalId} not found`);
@@ -149,9 +151,7 @@ export class SkillNetworkBridge {
         const now = Date.now();
         // Update crystal's publish state
         this.db
-          .prepare(
-            `UPDATE chunks SET publish_visibility = 'shared', published_at = ? WHERE id = ?`,
-          )
+          .prepare(`UPDATE chunks SET publish_visibility = 'shared', published_at = ? WHERE id = ?`)
           .run(now, crystalId);
 
         // Audit log
@@ -198,7 +198,11 @@ export class SkillNetworkBridge {
       if (modulation.haltUntrustedIngestion) {
         const trustLevel = this.peerReputation?.getTrustLevel(envelope.author_pubkey);
         if (trustLevel !== "trusted" && trustLevel !== "verified") {
-          return { ok: false, action: "rejected", reason: "network cortisol spike: untrusted peer halted" };
+          return {
+            ok: false,
+            action: "rejected",
+            reason: "network cortisol spike: untrusted peer halted",
+          };
         }
       }
     }
@@ -236,7 +240,8 @@ export class SkillNetworkBridge {
         (crystalId, authorPubkey) => {
           const metrics = this.executionTracker?.getSkillMetrics(crystalId);
           return {
-            executionSuccessRate: metrics && metrics.totalExecutions > 0 ? metrics.successRate : null,
+            executionSuccessRate:
+              metrics && metrics.totalExecutions > 0 ? metrics.successRate : null,
             executionCount: metrics?.totalExecutions ?? 0,
             peerTrust: this.peerReputation?.getTrustScore(authorPubkey) ?? 0.5,
             ageMs: Date.now() - (metrics?.lastExecutedAt ?? Date.now()),
@@ -250,7 +255,12 @@ export class SkillNetworkBridge {
           version: envelope.skill_version,
           reason: resolution.reason,
         });
-        return { ok: false, action: "rejected", reason: `version conflict: ${resolution.reason}`, crystalId: resolution.winner.crystalId };
+        return {
+          ok: false,
+          action: "rejected",
+          reason: `version conflict: ${resolution.reason}`,
+          crystalId: resolution.winner.crystalId,
+        };
       }
 
       // For "accept_new", we continue to the INSERT below.
@@ -278,7 +288,9 @@ export class SkillNetworkBridge {
         log.warn("P2P skill rejected by verifier", {
           author: envelope.author_peer_id,
           reason: verification.overallReason,
-          checks: verification.checks.filter((c: { passed: boolean; name: string }) => !c.passed).map((c: { name: string }) => c.name),
+          checks: verification.checks
+            .filter((c: { passed: boolean; name: string }) => !c.passed)
+            .map((c: { name: string }) => c.name),
         });
         // Record negative trust signal
         if (this.peerReputation) {
@@ -395,7 +407,9 @@ export class SkillNetworkBridge {
   onSkillCrystallized(crystalId: string): void {
     // Check bounty match
     if (this.curiosityEngine && this.hormonalManager) {
-      const row = this.db.prepare(`SELECT text FROM chunks WHERE id = ?`).get(crystalId) as { text: string } | undefined;
+      const row = this.db.prepare(`SELECT text FROM chunks WHERE id = ?`).get(crystalId) as
+        | { text: string }
+        | undefined;
       if (row?.text) {
         const match = this.curiosityEngine.checkBountyMatch(crystalId, row.text);
         if (match) {
@@ -405,22 +419,27 @@ export class SkillNetworkBridge {
             this.hormonalManager.stimulate("achievement");
           }
           // Record bounty match on the crystal
-          this.db.prepare(`UPDATE chunks SET bounty_match_id = ?, bounty_priority_boost = ? WHERE id = ?`)
+          this.db
+            .prepare(
+              `UPDATE chunks SET bounty_match_id = ?, bounty_priority_boost = ? WHERE id = ?`,
+            )
             .run(match.bountyId, match.rewardMultiplier, crystalId);
 
           // Plan 8, Phase 4: Bounty USDC payout — quality gate + claim publishing
           if (match.rewardUsdc > 0 && this.orchestratorBridge) {
             const meetsQuality = this.checkBountyClaimQuality(crystalId, row.text);
             if (meetsQuality) {
-              this.orchestratorBridge.publishTelemetry?.("bounty_claim", {
-                bountyId: match.bountyId,
-                skillCrystalId: crystalId,
-                claimerWalletAddress: this.getLocalWalletAddress(),
-                contentHash: crypto.createHash("sha256").update(row.text).digest("hex"),
-                rewardUsdc: match.rewardUsdc,
-              }).catch((err) => {
-                log.warn(`bounty claim publish failed: ${String(err)}`);
-              });
+              this.orchestratorBridge
+                .publishTelemetry?.("bounty_claim", {
+                  bountyId: match.bountyId,
+                  skillCrystalId: crystalId,
+                  claimerWalletAddress: this.getLocalWalletAddress(),
+                  contentHash: crypto.createHash("sha256").update(row.text).digest("hex"),
+                  rewardUsdc: match.rewardUsdc,
+                })
+                .catch((err) => {
+                  log.warn(`bounty claim publish failed: ${String(err)}`);
+                });
               log.info("bounty claim published", {
                 bountyId: match.bountyId,
                 crystalId,
@@ -470,32 +489,52 @@ export class SkillNetworkBridge {
   private getLocalWalletAddress(): string | null {
     try {
       // Read from config or wallet service cache
-      const row = this.db.prepare(
-        `SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = 'local'`,
-      ).get() as { wallet_address: string | null } | undefined;
+      const row = this.db
+        .prepare(`SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = 'local'`)
+        .get() as { wallet_address: string | null } | undefined;
       return row?.wallet_address ?? null;
     } catch {
       return null;
     }
   }
 
-  handleWeatherEvent(event: { global_cortisol_spike: number; duration_ms: number; reason: string }): void {
-    this.hormonalManager?.applyNetworkCortisolSpike(event.global_cortisol_spike, event.duration_ms, event.reason);
+  handleWeatherEvent(event: {
+    global_cortisol_spike: number;
+    duration_ms: number;
+    reason: string;
+  }): void {
+    this.hormonalManager?.applyNetworkCortisolSpike(
+      event.global_cortisol_spike,
+      event.duration_ms,
+      event.reason,
+    );
   }
 
   handleBountyEvent(bounty: {
-    bounty_id: string; target_type: string; description: string;
-    priority: number; reward_multiplier: number; region_hint?: string; expires_at: number;
-    reward_usdc?: number; poster_peer_id?: string; poster_wallet_address?: string;
+    bounty_id: string;
+    target_type: string;
+    description: string;
+    priority: number;
+    reward_multiplier: number;
+    region_hint?: string;
+    expires_at: number;
+    reward_usdc?: number;
+    poster_peer_id?: string;
+    poster_wallet_address?: string;
   }): void {
     if (!this.curiosityEngine) return;
     const validTypes = ["knowledge_gap", "contradiction", "stale_region", "frontier"];
-    const targetType = (validTypes.includes(bounty.target_type)
-      ? bounty.target_type : "knowledge_gap") as ExplorationTargetType;
+    const targetType = (
+      validTypes.includes(bounty.target_type) ? bounty.target_type : "knowledge_gap"
+    ) as ExplorationTargetType;
     this.curiosityEngine.ingestBounty({
-      bountyId: bounty.bounty_id, targetType, description: bounty.description,
-      priority: bounty.priority, rewardMultiplier: bounty.reward_multiplier,
-      regionHint: bounty.region_hint, expiresAt: bounty.expires_at,
+      bountyId: bounty.bounty_id,
+      targetType,
+      description: bounty.description,
+      priority: bounty.priority,
+      rewardMultiplier: bounty.reward_multiplier,
+      regionHint: bounty.region_hint,
+      expiresAt: bounty.expires_at,
       // Plan 8, Phase 4: USDC reward info for economic bounty payouts
       rewardUsdc: bounty.reward_usdc,
       posterPeerId: bounty.poster_peer_id,
@@ -507,9 +546,15 @@ export class SkillNetworkBridge {
    * Handle an incoming telemetry event from the P2P network.
    * Routes to the appropriate subsystem based on signal_type.
    */
-  handleTelemetryEvent(event: { signal_type: string; data: unknown; author_peer_id: string }): void {
+  handleTelemetryEvent(event: {
+    signal_type: string;
+    data: unknown;
+    author_peer_id: string;
+  }): void {
     if (event.signal_type === "novelty") {
-      const data = event.data as { region?: string; surprise_score?: number; domain_hint?: string } | undefined;
+      const data = event.data as
+        | { region?: string; surprise_score?: number; domain_hint?: string }
+        | undefined;
       if (data?.region && typeof data.surprise_score === "number" && this.curiosityEngine) {
         this.curiosityEngine.handleNoveltySignal({
           region: data.region,
@@ -536,7 +581,8 @@ export class SkillNetworkBridge {
     // Look up region label
     let regionLabel = "unknown";
     if (assessment.regionId) {
-      const row = this.db.prepare(`SELECT label FROM curiosity_regions WHERE id = ?`)
+      const row = this.db
+        .prepare(`SELECT label FROM curiosity_regions WHERE id = ?`)
         .get(assessment.regionId) as { label: string } | undefined;
       if (row) regionLabel = row.label;
     }
@@ -547,7 +593,9 @@ export class SkillNetworkBridge {
         surprise_score: assessment.compositeReward,
         domain_hint: regionLabel,
       });
-      log.debug(`novelty signal emitted: region=${regionLabel} score=${assessment.compositeReward.toFixed(3)}`);
+      log.debug(
+        `novelty signal emitted: region=${regionLabel} score=${assessment.compositeReward.toFixed(3)}`,
+      );
     } catch (err) {
       log.debug(`failed to emit novelty signal: ${String(err)}`);
     }
@@ -558,7 +606,10 @@ export class SkillNetworkBridge {
    * respond by publishing matching skills back to the network.
    */
   async handleQueryEvent(event: {
-    query_id: string; query: string; domain_hint?: string; author_peer_id: string;
+    query_id: string;
+    query: string;
+    domain_hint?: string;
+    author_peer_id: string;
   }): Promise<void> {
     if (!this.curiosityEngine || !this.orchestratorBridge) return;
 
@@ -570,21 +621,28 @@ export class SkillNetworkBridge {
     }
 
     // Find best-matching crystals with high importance
-    const crystals = this.db.prepare(
-      `SELECT id, text, path, importance_score, governance_json
+    const crystals = this.db
+      .prepare(
+        `SELECT id, text, path, importance_score, governance_json
        FROM chunks
        WHERE lifecycle_state = 'active' AND semantic_type = 'skill'
        ORDER BY importance_score DESC LIMIT 3`,
-    ).all() as Array<{
-      id: string; text: string; path: string;
-      importance_score: number; governance_json: string | null;
+      )
+      .all() as Array<{
+      id: string;
+      text: string;
+      path: string;
+      importance_score: number;
+      governance_json: string | null;
     }>;
 
     // Publish matching crystals as skill responses
     for (const crystal of crystals) {
       // Governance check
       let gov: Record<string, unknown> = {};
-      try { if (crystal.governance_json) gov = JSON.parse(crystal.governance_json); } catch {}
+      try {
+        if (crystal.governance_json) gov = JSON.parse(crystal.governance_json);
+      } catch {}
       if (gov.accessScope !== "shared" && gov.accessScope !== "public") continue;
       if (gov.sensitivity === "confidential") continue;
 
@@ -627,7 +685,9 @@ export class SkillNetworkBridge {
       const spkiDer = Buffer.concat([spkiPrefix, pubkeyBytes]);
       const publicKey = crypto.createPublicKey({ key: spkiDer, format: "der", type: "spki" });
       return crypto.verify(null, skillBytes, publicKey, sigBytes);
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
 
   private generateSkillMd(text: string, path: string, crystalId: string): string {
@@ -651,10 +711,12 @@ export class SkillNetworkBridge {
   private checkProvenanceSafe(crystalId: string): boolean {
     const row = this.db
       .prepare(`SELECT provenance_chain, provenance_dag FROM chunks WHERE id = ?`)
-      .get(crystalId) as {
-        provenance_chain: string | null;
-        provenance_dag: string | null;
-      } | undefined;
+      .get(crystalId) as
+      | {
+          provenance_chain: string | null;
+          provenance_dag: string | null;
+        }
+      | undefined;
 
     if (!row) return true;
 

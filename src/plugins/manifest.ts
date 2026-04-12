@@ -6,7 +6,10 @@ import { isRecord } from "../utils.js";
 
 export const PLUGIN_MANIFEST_FILENAME = "bitterbot.plugin.json";
 /** Also check legacy bitterbot.plugin.json for backwards compat. */
-export const PLUGIN_MANIFEST_FILENAMES = [PLUGIN_MANIFEST_FILENAME, "bitterbot.plugin.json"] as const;
+export const PLUGIN_MANIFEST_FILENAMES = [
+  PLUGIN_MANIFEST_FILENAME,
+  "bitterbot.plugin.json",
+] as const;
 
 export type PluginManifest = {
   id: string;
@@ -154,7 +157,9 @@ export function getPackageManifestMetadata(
     return current;
   }
   for (const legacyKey of LEGACY_MANIFEST_KEYS) {
-    const legacy = (manifest as Record<string, unknown>)[legacyKey] as BitterbotPackageManifest | undefined;
+    const legacy = (manifest as Record<string, unknown>)[legacyKey] as
+      | BitterbotPackageManifest
+      | undefined;
     if (legacy) {
       return legacy;
     }

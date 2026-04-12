@@ -50,7 +50,10 @@ type NodeDaemonStatusOptions = {
 };
 
 function renderNodeServiceStartHints(): string[] {
-  const base = [formatCliCommand("bitterbot node install"), formatCliCommand("bitterbot node start")];
+  const base = [
+    formatCliCommand("bitterbot node install"),
+    formatCliCommand("bitterbot node start"),
+  ];
   switch (process.platform) {
     case "darwin":
       return [

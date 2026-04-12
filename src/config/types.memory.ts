@@ -1,8 +1,8 @@
-import type { DreamEngineConfig, DreamMode, DreamModeConfig } from "../memory/dream-types.js";
-import type { CuriosityConfig, EmotionalConfig } from "../memory/curiosity-types.js";
-import type { BudgetConfig } from "../memory/scheduler.js";
-import type { GCCRFConfig } from "../memory/gccrf-reward.js";
 import type { RLMConfig } from "../agents/rlm/types.js";
+import type { CuriosityConfig, EmotionalConfig } from "../memory/curiosity-types.js";
+import type { DreamEngineConfig, DreamMode, DreamModeConfig } from "../memory/dream-types.js";
+import type { GCCRFConfig } from "../memory/gccrf-reward.js";
+import type { BudgetConfig } from "../memory/scheduler.js";
 
 export type MemoryBackend = "builtin";
 export type MemoryCitationsMode = "auto" | "on" | "off";

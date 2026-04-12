@@ -1,7 +1,8 @@
 import { describe, it } from "vitest";
 import { isTruthyEnvValue } from "../infra/env.js";
 
-const LIVE = isTruthyEnvValue(process.env.LIVE) || isTruthyEnvValue(process.env.BITTERBOT_LIVE_TEST);
+const LIVE =
+  isTruthyEnvValue(process.env.LIVE) || isTruthyEnvValue(process.env.BITTERBOT_LIVE_TEST);
 const CDP_URL = process.env.BITTERBOT_LIVE_BROWSER_CDP_URL?.trim() || "";
 const describeLive = LIVE && CDP_URL ? describe : describe.skip;
 

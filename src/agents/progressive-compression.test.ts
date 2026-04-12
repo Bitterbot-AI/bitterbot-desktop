@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   middleOutTruncate,
   truncateWithReference,
@@ -78,10 +78,7 @@ describe("truncateWithReference", () => {
 
 describe("compressOldMessages", () => {
   it("returns messages unchanged when under budget", () => {
-    const messages = [
-      makeMessage("user", "hello"),
-      makeMessage("assistant", "hi"),
-    ];
+    const messages = [makeMessage("user", "hello"), makeMessage("assistant", "hi")];
     const result = compressOldMessages(messages, 100_000);
     expect(result.messages).toEqual(messages);
     expect(result.totalCompressed).toBe(0);
@@ -125,9 +122,7 @@ describe("compressOldMessages", () => {
       spareRecentMessages: 1,
     });
     // The last message should be untouched
-    expect(result.messages[result.messages.length - 1]).toBe(
-      messages[messages.length - 1],
-    );
+    expect(result.messages[result.messages.length - 1]).toBe(messages[messages.length - 1]);
   });
 
   it("applies middle-out message removal when over middleOutMaxMessages", () => {
@@ -170,10 +165,7 @@ describe("compressOldMessages", () => {
 
   it("truncated messages have retrievable references", () => {
     const originalText = "Important content: " + "Z".repeat(50_000);
-    const messages = [
-      makeToolResult(originalText),
-      makeToolResult("recent"),
-    ];
+    const messages = [makeToolResult(originalText), makeToolResult("recent")];
     const result = compressOldMessages(messages, 500, {
       toolResultThreshold: 100,
       spareRecentToolResults: 1,

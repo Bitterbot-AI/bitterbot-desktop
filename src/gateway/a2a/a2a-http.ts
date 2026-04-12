@@ -1,29 +1,25 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import path from "node:path";
-import os from "node:os";
 import { mkdirSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type { SkillEntry } from "../../agents/skills/types.js";
-import type { ResolvedGatewayAuth } from "../auth.js";
+import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type { AuthRateLimiter } from "../auth-rate-limit.js";
+import type { ResolvedGatewayAuth } from "../auth.js";
+import type { JsonRpcRequest, MessageSendParams } from "./types.js";
 import { authorizeGatewayConnect } from "../auth.js";
+import { sendJson, sendGatewayAuthFailure, readJsonBodyOrError } from "../http-common.js";
 import { getBearerToken } from "../http-utils.js";
-import {
-  sendJson,
-  sendGatewayAuthFailure,
-  readJsonBodyOrError,
-} from "../http-common.js";
-import { resolveGatewayClientIp, isPrivateOrLoopbackAddress } from "../net.js";
 import { getHeader } from "../http-utils.js";
+import { resolveGatewayClientIp, isPrivateOrLoopbackAddress } from "../net.js";
 import { buildAgentCard } from "./agent-card.js";
+import { verifyA2aPayment, isPaymentRateLimited } from "./payment.js";
 import { handleA2aJsonRpc, isStreamingMethod } from "./server.js";
 import { streamTaskEvents } from "./streaming.js";
-import { A2aTaskManager } from "./task-manager.js";
-import type { JsonRpcRequest, MessageSendParams } from "./types.js";
-import { A2aErrorCodes } from "./types.js";
-import { verifyA2aPayment, isPaymentRateLimited } from "./payment.js";
 import { executeA2aTask, extractTaskText } from "./task-executor.js";
+import { A2aTaskManager } from "./task-manager.js";
+import { A2aErrorCodes } from "./types.js";
 
 const MAX_A2A_BODY_BYTES = 1_048_576; // 1 MB
 const WELL_KNOWN_PATH = "/.well-known/agent.json";
@@ -32,16 +28,21 @@ const A2A_PATH = "/a2a";
 let taskManager: A2aTaskManager | null = null;
 let cachedAgentCard: { json: string; version: number } | null = null;
 
-function getOrCreateTaskManager(config: BitterbotConfig, externalDb?: DatabaseSync): A2aTaskManager {
+function getOrCreateTaskManager(
+  config: BitterbotConfig,
+  externalDb?: DatabaseSync,
+): A2aTaskManager {
   if (!taskManager) {
-    const db = externalDb ?? (() => {
-      // Persist A2A tasks to a file-backed SQLite DB so they survive restarts.
-      const stateDir = process.env.BITTERBOT_STATE_DIR?.trim()
-        || path.join(os.homedir(), ".bitterbot");
-      const dbDir = path.join(stateDir, "a2a");
-      mkdirSync(dbDir, { recursive: true });
-      return new DatabaseSync(path.join(dbDir, "tasks.db"));
-    })();
+    const db =
+      externalDb ??
+      (() => {
+        // Persist A2A tasks to a file-backed SQLite DB so they survive restarts.
+        const stateDir =
+          process.env.BITTERBOT_STATE_DIR?.trim() || path.join(os.homedir(), ".bitterbot");
+        const dbDir = path.join(stateDir, "a2a");
+        mkdirSync(dbDir, { recursive: true });
+        return new DatabaseSync(path.join(dbDir, "tasks.db"));
+      })();
     db.exec("PRAGMA journal_mode = WAL");
     taskManager = new A2aTaskManager(db, config);
   }
@@ -89,13 +90,19 @@ export function createA2aHttpHandler(opts: {
         let skillPrices: Map<string, number> | undefined;
         try {
           const { MemoryIndexManager } = await import("../../memory/manager.js");
-          const memManager = await MemoryIndexManager.get({ cfg: config, agentId: "default", purpose: "status" });
+          const memManager = await MemoryIndexManager.get({
+            cfg: config,
+            agentId: "default",
+            purpose: "status",
+          });
           const marketplace = memManager?.getMarketplaceEconomics?.();
           if (marketplace) {
             const listings = marketplace.getListableSkills();
             skillPrices = new Map(listings.map((l: any) => [l.skillCrystalId, l.priceUsdc]));
           }
-        } catch { /* non-critical */ }
+        } catch {
+          /* non-critical */
+        }
         const card = buildAgentCard({
           config,
           skills: getSkills(),
@@ -174,7 +181,8 @@ export function createA2aHttpHandler(opts: {
         });
         return true;
       }
-      let marketplace: import("../../memory/marketplace-economics.js").MarketplaceEconomics | null = null;
+      let marketplace: import("../../memory/marketplace-economics.js").MarketplaceEconomics | null =
+        null;
       try {
         const { MemoryIndexManager } = await import("../../memory/manager.js");
         const memManager = await MemoryIndexManager.get({
@@ -183,9 +191,16 @@ export function createA2aHttpHandler(opts: {
           purpose: "status",
         });
         marketplace = memManager?.getMarketplaceEconomics?.() ?? null;
-      } catch { /* memory manager not available */ }
+      } catch {
+        /* memory manager not available */
+      }
 
-      const paymentResult = await verifyA2aPayment(req, config, marketplace, rpcRequest.params as any);
+      const paymentResult = await verifyA2aPayment(
+        req,
+        config,
+        marketplace,
+        rpcRequest.params as any,
+      );
       if (!paymentResult.paid) {
         // Plan 8, Phase 6: x402 native payment gate — spec-verified headers
         // x402 v2 uses three headers: PAYMENT-REQUIRED, PAYMENT-SIGNATURE, PAYMENT-RESPONSE
@@ -201,9 +216,9 @@ export function createA2aHttpHandler(opts: {
           maxTimeoutSeconds: 300,
           asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
         };
-        const paymentRequiredB64 = Buffer.from(
-          JSON.stringify([paymentRequirements]),
-        ).toString("base64");
+        const paymentRequiredB64 = Buffer.from(JSON.stringify([paymentRequirements])).toString(
+          "base64",
+        );
         res.setHeader("PAYMENT-REQUIRED", paymentRequiredB64);
 
         sendJson(res, 402, {
@@ -267,9 +282,13 @@ export function createA2aHttpHandler(opts: {
                   });
                 }
               }
-            } catch { /* revenue sharing failure shouldn't block the sale */ }
+            } catch {
+              /* revenue sharing failure shouldn't block the sale */
+            }
           }
-        } catch { /* non-critical */ }
+        } catch {
+          /* non-critical */
+        }
       }
     }
 

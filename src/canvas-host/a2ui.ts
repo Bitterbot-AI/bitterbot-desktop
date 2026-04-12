@@ -21,7 +21,9 @@ async function resolveA2uiRoot(): Promise<string | null> {
     try {
       await fs.stat(path.join(envOverride, "index.html"));
       return envOverride;
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
 
   const here = path.dirname(fileURLToPath(import.meta.url));

@@ -1,18 +1,10 @@
 import { useCallback, useEffect } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useUsageStore, type UsageResult } from "../../stores/usage-store";
 import { formatTokens, formatCost } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
+import { useUsageStore, type UsageResult } from "../../stores/usage-store";
 
-function StatCard({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
@@ -33,10 +25,7 @@ function DailyChart({ daily }: { daily: UsageResult["aggregates"]["daily"] }) {
         {daily.map((day) => {
           const height = Math.max(2, (day.tokens / maxTokens) * 100);
           return (
-            <div
-              key={day.date}
-              className="flex-1 flex flex-col items-center group relative"
-            >
+            <div key={day.date} className="flex-1 flex flex-col items-center group relative">
               <div
                 className="w-full bg-purple-500/40 hover:bg-purple-500/60 rounded-t transition-colors"
                 style={{ height: `${height}%` }}
@@ -55,11 +44,7 @@ function DailyChart({ daily }: { daily: UsageResult["aggregates"]["daily"] }) {
   );
 }
 
-function ModelBreakdown({
-  byModel,
-}: {
-  byModel: UsageResult["aggregates"]["byModel"];
-}) {
+function ModelBreakdown({ byModel }: { byModel: UsageResult["aggregates"]["byModel"] }) {
   if (!byModel || byModel.length === 0) return null;
 
   return (
@@ -69,12 +54,8 @@ function ModelBreakdown({
         {byModel.slice(0, 10).map((entry, i) => (
           <div key={i} className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-foreground truncate">
-                {entry.model ?? "unknown"}
-              </span>
-              <span className="text-muted-foreground/60">
-                {entry.provider ?? ""}
-              </span>
+              <span className="text-foreground truncate">{entry.model ?? "unknown"}</span>
+              <span className="text-muted-foreground/60">{entry.provider ?? ""}</span>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
               <span className="text-muted-foreground">
@@ -91,11 +72,7 @@ function ModelBreakdown({
   );
 }
 
-function SessionList({
-  sessions,
-}: {
-  sessions: UsageResult["sessions"];
-}) {
+function SessionList({ sessions }: { sessions: UsageResult["sessions"] }) {
   if (!sessions || sessions.length === 0) return null;
 
   return (
@@ -114,9 +91,7 @@ function SessionList({
                 {session.label ?? session.key}
               </span>
               {session.model && (
-                <span className="text-[10px] text-muted-foreground/60">
-                  {session.model}
-                </span>
+                <span className="text-[10px] text-muted-foreground/60">{session.model}</span>
               )}
             </div>
             <div className="flex items-center gap-3 flex-shrink-0 text-xs">
@@ -125,9 +100,7 @@ function SessionList({
                   <span className="text-muted-foreground">
                     {formatTokens(session.usage.totalTokens)}
                   </span>
-                  <span className="text-purple-300">
-                    {formatCost(session.usage.totalCost)}
-                  </span>
+                  <span className="text-purple-300">{formatCost(session.usage.totalCost)}</span>
                 </>
               )}
             </div>
@@ -181,9 +154,7 @@ export function UsageView() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Usage</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {result
-              ? `${result.startDate} — ${result.endDate}`
-              : "Analytics & cost breakdown"}
+            {result ? `${result.startDate} — ${result.endDate}` : "Analytics & cost breakdown"}
           </p>
         </div>
         <div className="flex items-center gap-2">

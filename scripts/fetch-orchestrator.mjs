@@ -26,8 +26,8 @@ import { createWriteStream } from "node:fs";
 import { chmod, mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
+import { fileURLToPath } from "node:url";
 
 const REPO = "Bitterbot-AI/bitterbot-desktop";
 const INSTALL_DIR = join(homedir(), ".bitterbot", "bin");

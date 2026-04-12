@@ -81,9 +81,7 @@ export function ensureDreamSchema(db: DatabaseSync): void {
       created_at INTEGER NOT NULL
     );
   `);
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_dream_telemetry_cycle ON dream_telemetry(cycle_id);`,
-  );
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_dream_telemetry_cycle ON dream_telemetry(cycle_id);`);
 
   // SNN near-merge hints: discovered by consolidation, consumed by compression mode
   db.exec(`
@@ -129,13 +127,9 @@ export function ensureDreamSchema(db: DatabaseSync): void {
     );
   `);
 
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_dream_insights_cycle ON dream_insights(dream_cycle_id);`,
-  );
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_dream_insights_cycle ON dream_insights(dream_cycle_id);`);
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_dream_insights_importance ON dream_insights(importance_score);`,
   );
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_dream_cycles_started ON dream_cycles(started_at);`,
-  );
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_dream_cycles_started ON dream_cycles(started_at);`);
 }

@@ -105,10 +105,7 @@ export class SkillCrystallizer {
    * Check if a frozen skill crystal already exists for this pattern.
    * Dedup by skill_crystal_id (already exists) or by tool name.
    */
-  private skillCrystalExists(
-    skillCrystalId: string,
-    toolName: string | null,
-  ): boolean {
+  private skillCrystalExists(skillCrystalId: string, toolName: string | null): boolean {
     try {
       // Check if the source skill is already frozen (promoted)
       const existing = this.db
@@ -159,7 +156,9 @@ export class SkillCrystallizer {
         .prepare(`SELECT text FROM chunks WHERE id = ?`)
         .get(pattern.skillCrystalId) as { text: string } | undefined;
       originalText = row?.text ?? "";
-    } catch { /* empty */ }
+    } catch {
+      /* empty */
+    }
 
     const skillText = [
       `SKILL: ${pattern.toolName ?? "unknown"} (auto-crystallized)`,

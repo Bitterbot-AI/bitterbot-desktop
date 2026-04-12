@@ -431,7 +431,7 @@ Save to `~/.bitterbot/bitterbot.json` and you can DM the bot from that number.
         apiKey: "GEMINI_KEY_HERE",
         env: { GEMINI_API_KEY: "GEMINI_KEY_HERE" },
       },
-      
+
     },
   },
 }

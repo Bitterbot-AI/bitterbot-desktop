@@ -8,10 +8,7 @@ import { normalizeAgentId } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
 import { resolveUserPath, shortenHomePath } from "../utils.js";
 import { requireValidConfig } from "./agents.command-shared.js";
-import {
-  findAgentEntryIndex,
-  listAgentEntries,
-} from "./agents.config.js";
+import { findAgentEntryIndex, listAgentEntries } from "./agents.config.js";
 
 type AgentsSetIdentityOptions = {
   agent?: string;
@@ -107,9 +104,7 @@ export async function agentsSetIdentityCommand(
     !incomingIdentity.theme &&
     !incomingIdentity.avatar
   ) {
-    runtime.error(
-      "No identity fields provided. Use --name/--emoji/--theme/--avatar.",
-    );
+    runtime.error("No identity fields provided. Use --name/--emoji/--theme/--avatar.");
     runtime.exit(1);
     return;
   }

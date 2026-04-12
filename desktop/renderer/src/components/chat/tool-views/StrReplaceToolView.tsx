@@ -1,6 +1,6 @@
+import { FileEdit, Plus, Minus, Columns, Rows } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { ToolViewProps } from "./ToolViewRegistry";
-import { FileEdit, Plus, Minus, Columns, Rows } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import {
   extractStrReplaceArgs,
@@ -213,10 +213,7 @@ function SplitDiff({ lines }: { lines: DiffLine[] }) {
         {leftLines.map((line, i) => (
           <div
             key={i}
-            className={cn(
-              "flex min-h-[1.5em]",
-              line?.type === "removed" && "bg-red-500/10",
-            )}
+            className={cn("flex min-h-[1.5em]", line?.type === "removed" && "bg-red-500/10")}
           >
             <span className="flex-shrink-0 w-8 text-right pr-2 select-none text-zinc-600">
               {line?.oldLineNum ?? ""}
@@ -237,10 +234,7 @@ function SplitDiff({ lines }: { lines: DiffLine[] }) {
         {rightLines.map((line, i) => (
           <div
             key={i}
-            className={cn(
-              "flex min-h-[1.5em]",
-              line?.type === "added" && "bg-emerald-500/10",
-            )}
+            className={cn("flex min-h-[1.5em]", line?.type === "added" && "bg-emerald-500/10")}
           >
             <span className="flex-shrink-0 w-8 text-right pr-2 select-none text-zinc-600">
               {line?.newLineNum ?? ""}

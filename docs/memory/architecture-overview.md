@@ -195,143 +195,143 @@ flowchart TB
 
 ### Core
 
-| File | Purpose |
-|------|---------|
-| `src/memory/manager.ts` | Central orchestrator. Creates all subsystems, runs search, exposes public API |
-| `src/memory/manager-sync-ops.ts` | File-watching sync logic (mixin) |
-| `src/memory/manager-embedding-ops.ts` | Embedding batch operations (mixin) |
-| `src/memory/migrations.ts` | Schema versioning: 9 migration versions |
-| `src/memory/memory-schema.ts` | Base table creation, `ensureColumn()` helper |
-| `src/memory/crystal-types.ts` | All type definitions: `KnowledgeCrystal`, lifecycle, governance, etc. |
-| `src/memory/crystal.ts` | `CrystalStore` — CRUD operations on knowledge crystals |
-| `src/memory/importance.ts` | `calculateImportance()` — Ebbinghaus decay formula |
-| `src/memory/internal.ts` | Shared math: `cosineSimilarity()`, `computeCentroid()`, `parseEmbedding()` |
-| `src/memory/hybrid.ts` | `mergeHybridResults()`, `buildFtsQuery()`, `bm25RankToScore()` |
+| File                                  | Purpose                                                                       |
+| ------------------------------------- | ----------------------------------------------------------------------------- |
+| `src/memory/manager.ts`               | Central orchestrator. Creates all subsystems, runs search, exposes public API |
+| `src/memory/manager-sync-ops.ts`      | File-watching sync logic (mixin)                                              |
+| `src/memory/manager-embedding-ops.ts` | Embedding batch operations (mixin)                                            |
+| `src/memory/migrations.ts`            | Schema versioning: 9 migration versions                                       |
+| `src/memory/memory-schema.ts`         | Base table creation, `ensureColumn()` helper                                  |
+| `src/memory/crystal-types.ts`         | All type definitions: `KnowledgeCrystal`, lifecycle, governance, etc.         |
+| `src/memory/crystal.ts`               | `CrystalStore` — CRUD operations on knowledge crystals                        |
+| `src/memory/importance.ts`            | `calculateImportance()` — Ebbinghaus decay formula                            |
+| `src/memory/internal.ts`              | Shared math: `cosineSimilarity()`, `computeCentroid()`, `parseEmbedding()`    |
+| `src/memory/hybrid.ts`                | `mergeHybridResults()`, `buildFtsQuery()`, `bm25RankToScore()`                |
 
 ### Dream System
 
-| File | Purpose |
-|------|---------|
-| `src/memory/dream-engine.ts` | `DreamEngine` — state machine, 7 mode runners, FSHO integration, emotional triggering |
-| `src/memory/dream-oscillator.ts` | FSHO oscillator — Kuramoto coupling, order parameter for mode selection |
-| `src/memory/dream-types.ts` | Dream types: modes, tiers, configs, `DreamInsight` |
-| `src/memory/dream-schema.ts` | `dream_insights` + `dream_cycles` + `dream_telemetry` + `dream_outcomes` table creation |
-| `src/memory/dream-evaluator.ts` | Dream outcome evaluation — DQS scoring, FSHO correlation, adaptive feedback |
-| `src/memory/dream-synthesis-prompt.ts` | LLM prompt building, heuristic synthesis, response parsing |
-| `src/memory/dream-search.ts` | Vector search over dream insights |
-| `src/memory/dream-mutation-strategies.ts` | 5 mutation strategies + LLM prompt builders |
+| File                                      | Purpose                                                                                 |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `src/memory/dream-engine.ts`              | `DreamEngine` — state machine, 7 mode runners, FSHO integration, emotional triggering   |
+| `src/memory/dream-oscillator.ts`          | FSHO oscillator — Kuramoto coupling, order parameter for mode selection                 |
+| `src/memory/dream-types.ts`               | Dream types: modes, tiers, configs, `DreamInsight`                                      |
+| `src/memory/dream-schema.ts`              | `dream_insights` + `dream_cycles` + `dream_telemetry` + `dream_outcomes` table creation |
+| `src/memory/dream-evaluator.ts`           | Dream outcome evaluation — DQS scoring, FSHO correlation, adaptive feedback             |
+| `src/memory/dream-synthesis-prompt.ts`    | LLM prompt building, heuristic synthesis, response parsing                              |
+| `src/memory/dream-search.ts`              | Vector search over dream insights                                                       |
+| `src/memory/dream-mutation-strategies.ts` | 5 mutation strategies + LLM prompt builders                                             |
 
 ### Working Memory (RLM)
 
-| File | Purpose |
-|------|---------|
-| `src/memory/working-memory-prompt.ts` | RLM synthesis prompt, user preferences input, Bond drift guard, schema validation |
-| `src/memory/seed-crystal-migration.ts` | One-time migration of existing MEMORY.md into consolidated crystals |
-| `src/agents/tools/working-memory-tool.ts` | `working_memory_note` tool — epistemic type parameter, scratch buffer WAL |
+| File                                      | Purpose                                                                           |
+| ----------------------------------------- | --------------------------------------------------------------------------------- |
+| `src/memory/working-memory-prompt.ts`     | RLM synthesis prompt, user preferences input, Bond drift guard, schema validation |
+| `src/memory/seed-crystal-migration.ts`    | One-time migration of existing MEMORY.md into consolidated crystals               |
+| `src/agents/tools/working-memory-tool.ts` | `working_memory_note` tool — epistemic type parameter, scratch buffer WAL         |
 
 ### Deep Recall
 
-| File | Purpose |
-|------|---------|
-| `src/agents/rlm/executor.ts` | RLM executor — REPL loop, model routing, iteration control |
-| `src/agents/rlm/sandbox.ts` | VM sandbox — isolated execution context with search/transcript APIs |
-| `src/agents/rlm/prompts.ts` | REPL system prompts and diverse query generation |
-| `src/agents/rlm/cost-tracker.ts` | Per-query token usage and cost monitoring |
-| `src/agents/rlm/context-builder.ts` | Conversation history and session context assembly |
-| `src/agents/tools/deep-recall-tool.ts` | Agent tool — smart shortcut, REPL dispatch |
+| File                                   | Purpose                                                             |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| `src/agents/rlm/executor.ts`           | RLM executor — REPL loop, model routing, iteration control          |
+| `src/agents/rlm/sandbox.ts`            | VM sandbox — isolated execution context with search/transcript APIs |
+| `src/agents/rlm/prompts.ts`            | REPL system prompts and diverse query generation                    |
+| `src/agents/rlm/cost-tracker.ts`       | Per-query token usage and cost monitoring                           |
+| `src/agents/rlm/context-builder.ts`    | Conversation history and session context assembly                   |
+| `src/agents/tools/deep-recall-tool.ts` | Agent tool — smart shortcut, REPL dispatch                          |
 
 ### Session & User Knowledge
 
-| File | Purpose |
-|------|---------|
-| `src/memory/session-extractor.ts` | Extract structured facts from session transcripts during dream cycles |
-| `src/memory/session-handover.ts` | Generate/load compact session handover briefs for cross-session continuity, quality gate scoring |
-| `src/memory/user-model.ts` | `UserModelManager` — preference storage, `upsertFromDirective()`, Bayesian confidence calibration |
+| File                              | Purpose                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `src/memory/session-extractor.ts` | Extract structured facts from session transcripts during dream cycles                             |
+| `src/memory/session-handover.ts`  | Generate/load compact session handover briefs for cross-session continuity, quality gate scoring  |
+| `src/memory/user-model.ts`        | `UserModelManager` — preference storage, `upsertFromDirective()`, Bayesian confidence calibration |
 
 ### Cognitive Coherence (Plan 7)
 
-| File | Purpose |
-|------|---------|
-| `src/memory/proactive-recall.ts` | Involuntary memory surfacing — identity/directive facts, open loops, entity anaphora auto-inject every turn |
-| `src/memory/session-coherence.ts` | Intra-session thread tracking, decision detection, intent classification |
-| `src/memory/temporal-scoring.ts` | Query-intent-sensitive temporal decay with epistemic half-lives |
-| `src/memory/dream-evaluator.ts` | Dream Quality Score (DQS), FSHO correlation analysis, outcome persistence |
+| File                              | Purpose                                                                                                     |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `src/memory/proactive-recall.ts`  | Involuntary memory surfacing — identity/directive facts, open loops, entity anaphora auto-inject every turn |
+| `src/memory/session-coherence.ts` | Intra-session thread tracking, decision detection, intent classification                                    |
+| `src/memory/temporal-scoring.ts`  | Query-intent-sensitive temporal decay with epistemic half-lives                                             |
+| `src/memory/dream-evaluator.ts`   | Dream Quality Score (DQS), FSHO correlation analysis, outcome persistence                                   |
 
 ### Agent Economy (Plan 8)
 
-| File | Purpose |
-|------|---------|
-| `src/services/erc8004-identity.ts` | ERC-8004 onchain agent identity — register, reputation feedback, traction check |
-| `src/memory/marketplace-intelligence.ts` | Demand-driven dream targeting — market signals as 4th dream mode signal |
+| File                                     | Purpose                                                                         |
+| ---------------------------------------- | ------------------------------------------------------------------------------- |
+| `src/services/erc8004-identity.ts`       | ERC-8004 onchain agent identity — register, reputation feedback, traction check |
+| `src/memory/marketplace-intelligence.ts` | Demand-driven dream targeting — market signals as 4th dream mode signal         |
 
 ### Context Efficiency
 
-| File | Purpose |
-|------|---------|
-| `src/agents/tool-cache.ts` | In-memory LRU cache for tool results |
-| `src/agents/pi-tools.cache.ts` | Cache integration layer for Pi coding tools |
-| `src/agents/progressive-compression.ts` | Deterministic truncation before LLM summarization |
-| `src/agents/tools/expand-message-tool.ts` | Retrieve full content of truncated messages |
-| `src/agents/tools/emotional-anchor-tool.ts` | Create/recall persistent emotional bookmarks |
+| File                                        | Purpose                                           |
+| ------------------------------------------- | ------------------------------------------------- |
+| `src/agents/tool-cache.ts`                  | In-memory LRU cache for tool results              |
+| `src/agents/pi-tools.cache.ts`              | Cache integration layer for Pi coding tools       |
+| `src/agents/progressive-compression.ts`     | Deterministic truncation before LLM summarization |
+| `src/agents/tools/expand-message-tool.ts`   | Retrieve full content of truncated messages       |
+| `src/agents/tools/emotional-anchor-tool.ts` | Create/recall persistent emotional bookmarks      |
 
 See [Working Memory](./working-memory.md) for full documentation.
 
 ### Curiosity & Emotional
 
-| File | Purpose |
-|------|---------|
+| File                             | Purpose                                                                                      |
+| -------------------------------- | -------------------------------------------------------------------------------------------- |
 | `src/memory/curiosity-engine.ts` | `CuriosityEngine` — unified GCCRF scoring, gap detection, region tracking, target management |
-| `src/memory/curiosity-types.ts` | Curiosity types: regions, targets, surprise assessment |
-| `src/memory/gccrf-reward.ts` | `GCCRFRewardFunction` — five-component reward computation (internal to CuriosityEngine) |
-| `src/memory/hormonal.ts` | `HormonalStateManager` — dopamine/cortisol/oxytocin with exponential decay |
-| `src/memory/consolidation.ts` | `ConsolidationEngine` — Ebbinghaus decay, merge, lifecycle transitions |
-| `src/memory/user-model.ts` | `UserModelManager` — preference extraction, pattern detection |
-| `src/memory/task-memory.ts` | `TaskMemoryManager` — goal tracking, progress, stall detection |
+| `src/memory/curiosity-types.ts`  | Curiosity types: regions, targets, surprise assessment                                       |
+| `src/memory/gccrf-reward.ts`     | `GCCRFRewardFunction` — five-component reward computation (internal to CuriosityEngine)      |
+| `src/memory/hormonal.ts`         | `HormonalStateManager` — dopamine/cortisol/oxytocin with exponential decay                   |
+| `src/memory/consolidation.ts`    | `ConsolidationEngine` — Ebbinghaus decay, merge, lifecycle transitions                       |
+| `src/memory/user-model.ts`       | `UserModelManager` — preference extraction, pattern detection                                |
+| `src/memory/task-memory.ts`      | `TaskMemoryManager` — goal tracking, progress, stall detection                               |
 
 ### PLAN-9: Neuroscience Memory Mechanisms
 
-| File | Purpose |
-|------|---------|
-| `src/memory/knowledge-graph.ts` | `KnowledgeGraphManager` — entity-relationship graph with temporal validity (GAP-1/2) |
-| `src/memory/reconsolidation.ts` | `ReconsolidationEngine` — labile states on recall, strengthen/flag/restabilize (GAP-5) |
-| `src/memory/mood-congruent-boost.ts` | Mood-congruent retrieval — hormonal state biases search results (GAP-6) |
-| `src/memory/spacing-effect.ts` | Spacing effect — spaced repetition importance multiplier (GAP-7) |
-| `src/memory/zeigarnik-effect.ts` | Zeigarnik effect — open loop detection, decay resistance for unfinished tasks (GAP-8) |
-| `src/memory/prospective-memory.ts` | `ProspectiveMemoryEngine` — event-triggered future recall (GAP-9) |
-| `src/memory/synaptic-tagging.ts` | Synaptic tagging & capture — strong events boost nearby weak memories (GAP-10) |
-| `src/memory/epistemic-directives.ts` | `EpistemicDirectiveEngine` — active inference, live knowledge gap questions (GAP-11) |
-| `src/memory/somatic-markers.ts` | Somatic marker fast-pathing — pre-retrieval emotional filtering (GAP-12) |
+| File                                 | Purpose                                                                                |
+| ------------------------------------ | -------------------------------------------------------------------------------------- |
+| `src/memory/knowledge-graph.ts`      | `KnowledgeGraphManager` — entity-relationship graph with temporal validity (GAP-1/2)   |
+| `src/memory/reconsolidation.ts`      | `ReconsolidationEngine` — labile states on recall, strengthen/flag/restabilize (GAP-5) |
+| `src/memory/mood-congruent-boost.ts` | Mood-congruent retrieval — hormonal state biases search results (GAP-6)                |
+| `src/memory/spacing-effect.ts`       | Spacing effect — spaced repetition importance multiplier (GAP-7)                       |
+| `src/memory/zeigarnik-effect.ts`     | Zeigarnik effect — open loop detection, decay resistance for unfinished tasks (GAP-8)  |
+| `src/memory/prospective-memory.ts`   | `ProspectiveMemoryEngine` — event-triggered future recall (GAP-9)                      |
+| `src/memory/synaptic-tagging.ts`     | Synaptic tagging & capture — strong events boost nearby weak memories (GAP-10)         |
+| `src/memory/epistemic-directives.ts` | `EpistemicDirectiveEngine` — active inference, live knowledge gap questions (GAP-11)   |
+| `src/memory/somatic-markers.ts`      | Somatic marker fast-pathing — pre-retrieval emotional filtering (GAP-12)               |
 
 ### Skills & P2P
 
-| File | Purpose |
-|------|---------|
-| `src/memory/skill-refiner.ts` | `SkillRefiner` — mutation scoring, crystallization pipeline |
-| `src/memory/skill-verifier.ts` | `SkillVerifier` — 3-check safety gate (dangerous patterns, structural, semantic drift) |
-| `src/memory/skill-execution-tracker.ts` | `SkillExecutionTracker` — outcome recording, empirical metrics |
-| `src/memory/skill-network-bridge.ts` | Skill publish/ingest, version conflict resolution, governance, P2P ingest safety gate |
-| `src/memory/peer-reputation.ts` | `PeerReputationManager` — trust levels, EigenTrust, anomaly detection |
-| `src/memory/discovery-agent.ts` | `DiscoveryAgent` — skill edge discovery, proactive suggestions |
-| `src/memory/skill-marketplace.ts` | Marketplace listing, search, trending, recommendations (wired via gateway RPC) |
-| `src/memory/skill-hierarchy.ts` | Parent-child skill tree relationships |
+| File                                    | Purpose                                                                                |
+| --------------------------------------- | -------------------------------------------------------------------------------------- |
+| `src/memory/skill-refiner.ts`           | `SkillRefiner` — mutation scoring, crystallization pipeline                            |
+| `src/memory/skill-verifier.ts`          | `SkillVerifier` — 3-check safety gate (dangerous patterns, structural, semantic drift) |
+| `src/memory/skill-execution-tracker.ts` | `SkillExecutionTracker` — outcome recording, empirical metrics                         |
+| `src/memory/skill-network-bridge.ts`    | Skill publish/ingest, version conflict resolution, governance, P2P ingest safety gate  |
+| `src/memory/peer-reputation.ts`         | `PeerReputationManager` — trust levels, EigenTrust, anomaly detection                  |
+| `src/memory/discovery-agent.ts`         | `DiscoveryAgent` — skill edge discovery, proactive suggestions                         |
+| `src/memory/skill-marketplace.ts`       | Marketplace listing, search, trending, recommendations (wired via gateway RPC)         |
+| `src/memory/skill-hierarchy.ts`         | Parent-child skill tree relationships                                                  |
 
 ### Search & Embeddings
 
-| File | Purpose |
-|------|---------|
-| `src/memory/manager-search.ts` | `searchVector()`, `searchKeyword()` implementations |
-| `src/memory/mem-store.ts` | `MemStore` — publish/subscribe, version history |
+| File                                     | Purpose                                                |
+| ---------------------------------------- | ------------------------------------------------------ |
+| `src/memory/manager-search.ts`           | `searchVector()`, `searchKeyword()` implementations    |
+| `src/memory/mem-store.ts`                | `MemStore` — publish/subscribe, version history        |
 | `src/memory/multi-perspective-search.ts` | Reciprocal Rank Fusion across 4 embedding perspectives |
-| `src/memory/embedding-perspectives.ts` | Prefix-tuned multi-perspective embedding generation |
-| `src/memory/embeddings.ts` | Provider abstraction: OpenAI, Gemini, Voyage, local |
+| `src/memory/embedding-perspectives.ts`   | Prefix-tuned multi-perspective embedding generation    |
+| `src/memory/embeddings.ts`               | Provider abstraction: OpenAI, Gemini, Voyage, local    |
 
 ### Infrastructure
 
-| File | Purpose |
-|------|---------|
+| File                       | Purpose                                                                  |
+| -------------------------- | ------------------------------------------------------------------------ |
 | `src/memory/governance.ts` | `MemoryGovernance` — access control, sensitivity tagging, provenance DAG |
-| `src/memory/scheduler.ts` | `MemoryScheduler` — per-hour LLM/embedding budgets |
-| `src/memory/pipeline.ts` | `MemoryPipeline` — fluent retrieve-filter-augment-store API |
+| `src/memory/scheduler.ts`  | `MemoryScheduler` — per-hour LLM/embedding budgets                       |
+| `src/memory/pipeline.ts`   | `MemoryPipeline` — fluent retrieve-filter-augment-store API              |
 
 ---
 
@@ -371,44 +371,44 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 
 **Schema versions:** 9 migrations in `migrations.ts`:
 
-| Version | Description |
-|---------|-------------|
-| v1 | Knowledge Crystal columns on `chunks`: `semantic_type`, `lifecycle`, hormonal fields, `governance_json`, `provenance_chain`, `created_at` |
-| v2 | Skills pipeline tables: `skill_executions`, `peer_reputation`, `peer_skill_ratings`, `mutation_queue`, `skill_edges` + versioning/marketplace/hierarchy columns on `chunks` |
-| v3 | Trust hardening: `peer_trust_edges`, `peer_activity_log` tables + `is_banned`, `eigentrust_score`, `anomaly_flag` on `peer_reputation` |
-| v4 | Management node verification: `is_verified`, `verified_by` columns on `chunks` + bounty tracking: `bounty_match_id`, `bounty_priority_boost` columns on `chunks` |
-| v5 | Skill version conflict resolution — `lineage_hash`, `peer_origin` columns on `chunks` |
-| v6 | Bitemporal columns — `valid_time_start`, `valid_time_end`, `transaction_time` on `chunks` |
-| v7 | Session extraction tracking — `session_extractions` table + `epistemic_layer` on `chunks` |
-| v8 | Persistent emotional anchors — `emotional_anchors` table |
-| v9 | **PLAN-9 Memory Supremacy** — `entities` + `relationships` tables (Knowledge Graph), `prospective_memories` table, `epistemic_directives` table, reconsolidation/spacing/Zeigarnik/synaptic-tagging columns on `chunks` |
+| Version | Description                                                                                                                                                                                                             |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1      | Knowledge Crystal columns on `chunks`: `semantic_type`, `lifecycle`, hormonal fields, `governance_json`, `provenance_chain`, `created_at`                                                                               |
+| v2      | Skills pipeline tables: `skill_executions`, `peer_reputation`, `peer_skill_ratings`, `mutation_queue`, `skill_edges` + versioning/marketplace/hierarchy columns on `chunks`                                             |
+| v3      | Trust hardening: `peer_trust_edges`, `peer_activity_log` tables + `is_banned`, `eigentrust_score`, `anomaly_flag` on `peer_reputation`                                                                                  |
+| v4      | Management node verification: `is_verified`, `verified_by` columns on `chunks` + bounty tracking: `bounty_match_id`, `bounty_priority_boost` columns on `chunks`                                                        |
+| v5      | Skill version conflict resolution — `lineage_hash`, `peer_origin` columns on `chunks`                                                                                                                                   |
+| v6      | Bitemporal columns — `valid_time_start`, `valid_time_end`, `transaction_time` on `chunks`                                                                                                                               |
+| v7      | Session extraction tracking — `session_extractions` table + `epistemic_layer` on `chunks`                                                                                                                               |
+| v8      | Persistent emotional anchors — `emotional_anchors` table                                                                                                                                                                |
+| v9      | **PLAN-9 Memory Supremacy** — `entities` + `relationships` tables (Knowledge Graph), `prospective_memories` table, `epistemic_directives` table, reconsolidation/spacing/Zeigarnik/synaptic-tagging columns on `chunks` |
 
 **Key tables:**
 
-| Table | Purpose |
-|-------|---------|
-| `chunks` | Knowledge crystals (memory units) — ~50 columns |
-| `chunks_vec` | sqlite-vec virtual table for vector search |
-| `chunks_fts` | FTS5 virtual table for keyword search |
-| `files` | Tracked source files with hashes |
-| `meta` | Key-value store (schema version, provider key) |
-| `dream_insights` | Dream-generated insights with embeddings |
-| `dream_cycles` | Dream cycle execution metadata |
-| `skill_executions` | Skill execution outcomes |
-| `peer_reputation` | Per-peer trust scores |
-| `peer_skill_ratings` | Individual skill ratings by peer |
-| `peer_trust_edges` | EigenTrust web-of-trust edges |
-| `peer_activity_log` | Peer activity timestamps for anomaly detection |
-| `mutation_queue` | Pending dream mutation retries |
-| `skill_edges` | Discovered skill relationships (prerequisite, enables, etc.) |
-| `embedding_cache` | Cached embedding vectors |
-| `memory_audit_log` | Governance audit trail |
-| `entities` | Knowledge graph entities (person, project, concept, etc.) |
-| `relationships` | Temporal entity relationships with validity windows |
-| `prospective_memories` | Event-triggered future recall ("remind me when X") |
-| `epistemic_directives` | Active inference questions to resolve knowledge gaps |
-| `emotional_anchors` | Persistent emotional bookmarks |
-| `session_extractions` | Session processing tracking |
+| Table                  | Purpose                                                      |
+| ---------------------- | ------------------------------------------------------------ |
+| `chunks`               | Knowledge crystals (memory units) — ~50 columns              |
+| `chunks_vec`           | sqlite-vec virtual table for vector search                   |
+| `chunks_fts`           | FTS5 virtual table for keyword search                        |
+| `files`                | Tracked source files with hashes                             |
+| `meta`                 | Key-value store (schema version, provider key)               |
+| `dream_insights`       | Dream-generated insights with embeddings                     |
+| `dream_cycles`         | Dream cycle execution metadata                               |
+| `skill_executions`     | Skill execution outcomes                                     |
+| `peer_reputation`      | Per-peer trust scores                                        |
+| `peer_skill_ratings`   | Individual skill ratings by peer                             |
+| `peer_trust_edges`     | EigenTrust web-of-trust edges                                |
+| `peer_activity_log`    | Peer activity timestamps for anomaly detection               |
+| `mutation_queue`       | Pending dream mutation retries                               |
+| `skill_edges`          | Discovered skill relationships (prerequisite, enables, etc.) |
+| `embedding_cache`      | Cached embedding vectors                                     |
+| `memory_audit_log`     | Governance audit trail                                       |
+| `entities`             | Knowledge graph entities (person, project, concept, etc.)    |
+| `relationships`        | Temporal entity relationships with validity windows          |
+| `prospective_memories` | Event-triggered future recall ("remind me when X")           |
+| `epistemic_directives` | Active inference questions to resolve knowledge gaps         |
+| `emotional_anchors`    | Persistent emotional bookmarks                               |
+| `session_extractions`  | Session processing tracking                                  |
 
 ---
 

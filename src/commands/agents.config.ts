@@ -95,8 +95,7 @@ export function buildAgentSummaries(cfg: BitterbotConfig): AgentSummary[] {
     )?.identity;
     const identityName = configIdentity?.name?.trim();
     const identityEmoji = configIdentity?.emoji?.trim();
-    const identitySource =
-      configIdentity && (identityName || identityEmoji) ? "config" : undefined;
+    const identitySource = configIdentity && (identityName || identityEmoji) ? "config" : undefined;
     return {
       id,
       name: resolveAgentName(cfg, id),

@@ -3,7 +3,10 @@ import type { HookInstallRecord } from "../config/types.hooks.js";
 
 export type HookInstallUpdate = HookInstallRecord & { hookId: string };
 
-export function recordHookInstall(cfg: BitterbotConfig, update: HookInstallUpdate): BitterbotConfig {
+export function recordHookInstall(
+  cfg: BitterbotConfig,
+  update: HookInstallUpdate,
+): BitterbotConfig {
   const { hookId, ...record } = update;
   const installs = {
     ...cfg.hooks?.internal?.installs,

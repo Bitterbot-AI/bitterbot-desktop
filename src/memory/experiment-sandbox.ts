@@ -56,15 +56,10 @@ export class ExperimentSandbox {
     try {
       // 1. Get baseline execution data
       const baseline = this.getBaselineData(skill.id);
-      const originalScore =
-        0.6 * baseline.successRate + 0.4 * baseline.avgReward;
+      const originalScore = 0.6 * baseline.successRate + 0.4 * baseline.avgReward;
 
       // 2. Build evaluation prompt
-      const prompt = this.buildEvaluationPrompt(
-        skill,
-        mutatedText,
-        baseline,
-      );
+      const prompt = this.buildEvaluationPrompt(skill, mutatedText, baseline);
 
       // 3. Call LLM for evaluation
       const raw = await this.llmCall(prompt);
@@ -72,19 +67,14 @@ export class ExperimentSandbox {
       // 4. Parse response
       const parsed = this.parseEvaluationResponse(raw);
       if (!parsed) {
-        return this.negativeVerdict(
-          originalScore,
-          "LLM response could not be parsed",
-        );
+        return this.negativeVerdict(originalScore, "LLM response could not be parsed");
       }
 
       // 5. Calculate mutated score from blended LLM assessment
       const scenarioAvg =
         parsed.testScenarios.length > 0
-          ? parsed.testScenarios.reduce(
-              (sum, s) => sum + s.mutatedScore,
-              0,
-            ) / parsed.testScenarios.length
+          ? parsed.testScenarios.reduce((sum, s) => sum + s.mutatedScore, 0) /
+            parsed.testScenarios.length
           : parsed.overallMutatedScore;
 
       const criteriaValues = Object.values(parsed.criteriaScores);
@@ -94,9 +84,7 @@ export class ExperimentSandbox {
           : parsed.overallMutatedScore;
 
       const mutatedScore = clamp(
-        0.4 * scenarioAvg +
-          0.3 * criteriaAvg +
-          0.3 * parsed.overallMutatedScore,
+        0.4 * scenarioAvg + 0.3 * criteriaAvg + 0.3 * parsed.overallMutatedScore,
       );
 
       const testCasesRun = Math.max(1, parsed.testScenarios.length);
@@ -106,9 +94,7 @@ export class ExperimentSandbox {
       // 6. Calculate confidence
       const dataSufficiency = Math.min(1, testCasesRun / 5);
       const scoreClarity = Math.min(1, Math.abs(delta) / 0.3);
-      const confidence = clamp(
-        dataSufficiency * (0.5 + 0.5 * scoreClarity),
-      );
+      const confidence = clamp(dataSufficiency * (0.5 + 0.5 * scoreClarity));
 
       const reason = accepted
         ? `mutation improves skill by ${(delta * 100).toFixed(1)}%: ${parsed.reasoning}`
@@ -194,9 +180,7 @@ export class ExperimentSandbox {
   ): string {
     const category = skill.skill_category ?? "general";
     const errorSummary =
-      baseline.errorTypes.length > 0
-        ? baseline.errorTypes.join(", ")
-        : "none recorded";
+      baseline.errorTypes.length > 0 ? baseline.errorTypes.join(", ") : "none recorded";
 
     return (
       `You are evaluating a proposed mutation to a skill/pattern.\n\n` +
@@ -271,12 +255,11 @@ export class ExperimentSandbox {
         }
       }
 
-      const overallMutatedScore = clamp(
-        Number(parsed.overallMutatedScore) || 0,
-      );
-      const reasoning = typeof parsed.reasoning === "string"
-        ? parsed.reasoning.slice(0, 500)
-        : "no reasoning provided";
+      const overallMutatedScore = clamp(Number(parsed.overallMutatedScore) || 0);
+      const reasoning =
+        typeof parsed.reasoning === "string"
+          ? parsed.reasoning.slice(0, 500)
+          : "no reasoning provided";
 
       return { criteriaScores, testScenarios, overallMutatedScore, reasoning };
     } catch {
@@ -285,10 +268,7 @@ export class ExperimentSandbox {
     }
   }
 
-  private negativeVerdict(
-    originalScore: number,
-    reason: string,
-  ): MutationVerdict {
+  private negativeVerdict(originalScore: number, reason: string): MutationVerdict {
     return {
       accepted: false,
       confidence: 0,

@@ -38,24 +38,24 @@ Open `http://localhost:5173` for the Control UI. It connects to the gateway on p
 
 ## Project Structure
 
-| Directory | What's In There |
-|-----------|----------------|
-| `src/agents/` | Agent runtime, tools, system prompt, identity, endocrine state |
-| `src/memory/` | Memory system: dream engine, curiosity/GCCRF, crystals, hormones, governance |
-| `src/gateway/` | Gateway server, RPC methods, A2A protocol, routing |
-| `src/channels/` | Channel plugin system and shared logic |
-| `src/whatsapp/` | WhatsApp (Baileys) |
-| `src/telegram/` | Telegram (grammY) |
-| `src/discord/` | Discord (discord.js) |
-| `src/signal/` | Signal (signal-cli) |
-| `src/slack/` | Slack (Bolt SDK) |
-| `src/services/` | Wallet service, x402 verification, A2A client, Stripe onramp |
-| `src/browser/` | Browser control (Playwright) |
-| `src/acp/` | Agent Client Protocol server |
-| `extensions/` | Bundled plugin extensions |
-| `skills/` | Bundled agent skills |
-| `docs/` | Documentation (Mintlify) |
-| `orchestrator/` | Rust P2P sidecar (libp2p, Gossipsub, EigenTrust) |
+| Directory       | What's In There                                                              |
+| --------------- | ---------------------------------------------------------------------------- |
+| `src/agents/`   | Agent runtime, tools, system prompt, identity, endocrine state               |
+| `src/memory/`   | Memory system: dream engine, curiosity/GCCRF, crystals, hormones, governance |
+| `src/gateway/`  | Gateway server, RPC methods, A2A protocol, routing                           |
+| `src/channels/` | Channel plugin system and shared logic                                       |
+| `src/whatsapp/` | WhatsApp (Baileys)                                                           |
+| `src/telegram/` | Telegram (grammY)                                                            |
+| `src/discord/`  | Discord (discord.js)                                                         |
+| `src/signal/`   | Signal (signal-cli)                                                          |
+| `src/slack/`    | Slack (Bolt SDK)                                                             |
+| `src/services/` | Wallet service, x402 verification, A2A client, Stripe onramp                 |
+| `src/browser/`  | Browser control (Playwright)                                                 |
+| `src/acp/`      | Agent Client Protocol server                                                 |
+| `extensions/`   | Bundled plugin extensions                                                    |
+| `skills/`       | Bundled agent skills                                                         |
+| `docs/`         | Documentation (Mintlify)                                                     |
+| `orchestrator/` | Rust P2P sidecar (libp2p, Gossipsub, EigenTrust)                             |
 
 Tests are colocated: `foo.ts` + `foo.test.ts`.
 
@@ -64,6 +64,7 @@ Tests are colocated: `foo.ts` + `foo.test.ts`.
 ### Bug Reports
 
 Open a [GitHub issue](https://github.com/Bitterbot-AI/bitterbot-desktop/issues) with:
+
 - What you expected vs. what happened
 - Steps to reproduce
 - Output of `bitterbot status` and `bitterbot doctor`

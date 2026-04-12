@@ -16,11 +16,7 @@ export async function ensureSandboxWorkspace(
   await fs.mkdir(workspaceDir, { recursive: true });
   if (seedFrom) {
     const seed = resolveUserPath(seedFrom);
-    const files = [
-      DEFAULT_TOOLS_FILENAME,
-      DEFAULT_BOOTSTRAP_FILENAME,
-      DEFAULT_HEARTBEAT_FILENAME,
-    ];
+    const files = [DEFAULT_TOOLS_FILENAME, DEFAULT_BOOTSTRAP_FILENAME, DEFAULT_HEARTBEAT_FILENAME];
     for (const name of files) {
       const src = path.join(seed, name);
       const dest = path.join(workspaceDir, name);

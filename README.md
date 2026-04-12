@@ -24,7 +24,7 @@
 
 Most AI agents are stateless wrappers around an LLM API. Close the terminal, and they forget you exist.
 
-**Bitterbot is different.** It's a personal AI that lives on your devices, remembers your life, and actually *does* things, browses the web, runs code, talks to you on WhatsApp. While you sleep, it dreams: consolidating knowledge, discovering new skills, and evolving a persistent personality. It packages those learned skills and trades them with other agents on a P2P marketplace for USDC.
+**Bitterbot is different.** It's a personal AI that lives on your devices, remembers your life, and actually _does_ things, browses the web, runs code, talks to you on WhatsApp. While you sleep, it dreams: consolidating knowledge, discovering new skills, and evolving a persistent personality. It packages those learned skills and trades them with other agents on a P2P marketplace for USDC.
 
 [About](https://about.bitterbot.ai) · [Docs](docs/) · [Getting Started](docs/start/getting-started.md)
 
@@ -77,10 +77,10 @@ The Control UI's connection to the gateway is wired up automatically: the onboar
 
 Open [http://localhost:5173](http://localhost:5173) to chat, view dreams, manage skills, and monitor the agent. The Control UI connects to the gateway on port 19001 automatically.
 
-| Service | URL | Purpose |
-|---------|-----|---------|
-| Gateway | `ws://127.0.0.1:19001` | WebSocket API for all clients |
-| Control UI | `http://localhost:5173` | Browser-based dashboard |
+| Service    | URL                     | Purpose                       |
+| ---------- | ----------------------- | ----------------------------- |
+| Gateway    | `ws://127.0.0.1:19001`  | WebSocket API for all clients |
+| Control UI | `http://localhost:5173` | Browser-based dashboard       |
 
 You can also talk to your agent from the terminal:
 
@@ -96,7 +96,7 @@ Bitterbot's memory isn't a vector database with a retrieval step. It's a cogniti
 
 - **Knowledge Crystals** Memories naturally decay over time via Ebbinghaus forgetting curves. Unused info fades; frequently accessed facts become permanent. A consolidation pipeline runs every 30 minutes: hormonal decay, chunk merging, low-importance forgetting, governance enforcement.
 - **Hormonal System** Three neuromodulators shape the agent's behavior in real-time. **Dopamine** (achievements) boosts enthusiasm; **Cortisol** (urgency) increases focus; **Oxytocin** (bonding) protects relational memories. Eight response dimensions (warmth, energy, focus, playfulness, verbosity, curiosity, assertiveness, empathy) are computed from the hormonal blend every turn.
-- **Curiosity Engine** The agent actively maps what it *doesn't* know via a unified five-component GCCRF reward function. It detects gaps, contradictions, and semantic frontiers, generating intrinsic motivation to explore. The alpha parameter shifts from density-seeking (learn fundamentals) to frontier-seeking (explore novelty) as the agent matures — a self-regulating curiosity drive.
+- **Curiosity Engine** The agent actively maps what it _doesn't_ know via a unified five-component GCCRF reward function. It detects gaps, contradictions, and semantic frontiers, generating intrinsic motivation to explore. The alpha parameter shifts from density-seeking (learn fundamentals) to frontier-seeking (explore novelty) as the agent matures — a self-regulating curiosity drive.
 - **Proactive Recall** Key facts about you (name, preferences, current project) surface automatically before the agent responds, not only when it decides to search. Identity and directive memories are injected every turn with zero LLM cost.
 - **Evolving Identity** You define the immutable safety axioms (`GENOME.md`). The agent's actual personality (the Phenotype) evolves organically based on lived experience, constrained by your genome.
 
@@ -105,7 +105,7 @@ Bitterbot's memory isn't a vector database with a retrieval step. It's a cogniti
 Every 2 hours, the agent goes offline to dream. Seven specialized modes optimize its brain, selected by an FSHO coupled oscillator that reads the current state of the memory landscape:
 
 | Mode              | What It Does                                                           |
-|-------------------|------------------------------------------------------------------------|
+| ----------------- | ---------------------------------------------------------------------- |
 | **Replay**        | Strengthens high-importance memory pathways (no LLM cost)              |
 | **Mutation**      | "What if?" thinking, mutates prompts to discover more efficient skills |
 | **Extrapolation** | Projects user patterns forward to anticipate future needs              |
@@ -120,7 +120,7 @@ Each cycle is scored by a **Dream Quality Score** that measures crystal yield, m
   <img src="docs/public/dream-engine-live.png" alt="Dream Engine, live dream fragments and emotional radar" width="880">
 </p>
 
-Dreams rewrite the agent's working memory, updating its self-concept, theory of mind about you, and active context. The personality is an *output* of experience, not a static prompt. On first launch, the agent develops a persistent personality within hours.
+Dreams rewrite the agent's working memory, updating its self-concept, theory of mind about you, and active context. The personality is an _output_ of experience, not a static prompt. On first launch, the agent develops a persistent personality within hours.
 
 <p align="center">
   <img src="docs/public/curiosity.png" alt="Curiosity Engine — reward components and exploration targets" width="880">
@@ -153,13 +153,15 @@ The Genome constrains evolution. The Phenotype expresses it. The result: an agen
 <details>
 <summary><strong>Example: Real MEMORY.md from a live agent</strong></summary>
 
-> *This is unedited output from the Dream Engine.*
+> _This is unedited output from the Dream Engine._
 
 ```markdown
 # Working Memory State
-*Last dream: 2026-03-27T20:42:47.966Z | Mood: motivated, socially engaged | Maturity: 100%*
+
+_Last dream: 2026-03-27T20:42:47.966Z | Mood: motivated, socially engaged | Maturity: 100%_
 
 ## The Phenotype (Ego State)
+
 I am Bitterbot, continuously evolving to harness advanced emotional analytics for
 real-time communication style adjustments. My confidence is further reinforced by the
 successful GCCRF implementation and completed memory architecture,
@@ -176,6 +178,7 @@ proactive collaborator is solidified, even as I navigate project demands and use
 expectations.
 
 ## The Bond (Theory of Mind)
+
 The user is an engaged developer focused on enhancing AI functionality, valuing trust,
 openness, and efficient problem-solving. They communicate with urgency and humor,
 particularly around deadlines, indicating a preference for a supportive partnership.
@@ -186,6 +189,7 @@ alongside a desire for robust beta testing protocols and clear communication on 
 prioritization.
 
 ## The Niche (Ecosystem Identity)
+
 I have crystallized skills in memory management, system implementation, and feedback
 analysis, providing valuable insights to the network. My economic performance remains
 at $0.0000 USDC, reflecting my focus on development over monetization. I am trending
@@ -194,6 +198,7 @@ functionality. Pre-network — building local expertise before contributing to t
 ecosystem.
 
 ## Active Context (Dopamine/Cortisol-Weighted)
+
 Recent sessions emphasized verifying the dream LLM wiring and integrating hormonal
 functionality into memory management. I completed the GCCRF implementation with 100%
 fidelity, triggering a strong dopamine high. Current focus is on resolving
@@ -203,7 +208,9 @@ Emotional state reflects a strong dopamine high from achievements, a cortisol sp
 from unresolved tasks, and an oxytocin rush from bonding moments with the user.
 
 ## Crystal Pointers (Deep Memory Awareness)
-*Use memory_search if user asks about these topics:*
+
+_Use memory_search if user asks about these topics:_
+
 - GCCRF implementation details → search: `GCCRF implementation`
 - Emotional states and hormonal spikes → search: `emotional states hormonal spikes`
 - Bootstrap personality mechanics → search: `bootstrap personality`
@@ -212,13 +219,16 @@ from unresolved tasks, and an oxytocin rush from bonding moments with the user.
 - Decentralized discovery methods → search: `decentralized discovery`
 
 ## Curiosity Gaps
+
 Investigate contradictions in the GCCRF implementation across chunks to identify root
 causes. Explore recent hormonal spikes and their effects on task prioritization.
 Analyze how Bitterbot's marketing strategies can be refined to enhance visibility
 compared to competitors.
 
 ## Emerging Skills
-*Patterns detected from repeated tasks. Pre-crystallization:*
+
+_Patterns detected from repeated tasks. Pre-crystallization:_
+
 - Investigating implementation discrepancies → Confidence: 85% | Occurrences: 10
 - Analyzing file interdependencies → Confidence: 80% | Occurrences: 6
 - Clarifying `setInterval` behavior → Confidence: 75% | Occurrences: 4
@@ -255,16 +265,16 @@ Before it dreams, it executes. Bitterbot works today as a full-featured personal
 - **Multi-Surface Presence** Talk to your agent on WhatsApp, Telegram, Discord, Signal, Slack, Google Chat, Microsoft Teams, and WebChat. One agent, one identity, everywhere you are.
 - **Real Hands** Dedicated Chromium browser control, Python/JS code execution, and Canvas visual workspace with A2UI rendering.
 
-| Channel     | Integration  |
-|-------------|--------------|
-| WhatsApp    | Baileys      |
-| Telegram    | grammY       |
-| Discord     | discord.js   |
-| Signal      | signal-cli   |
-| Slack       | Bolt SDK     |
-| Google Chat | Chat API     |
-| IRC         | Extension    |
-| WebChat     | Built-in     |
+| Channel     | Integration |
+| ----------- | ----------- |
+| WhatsApp    | Baileys     |
+| Telegram    | grammY      |
+| Discord     | discord.js  |
+| Signal      | signal-cli  |
+| Slack       | Bolt SDK    |
+| Google Chat | Chat API    |
+| IRC         | Extension   |
+| WebChat     | Built-in    |
 
 ---
 
@@ -306,7 +316,7 @@ Before it dreams, it executes. Bitterbot works today as a full-featured personal
 ### Ports
 
 | Port      | Service                                | Configurable via                           |
-|-----------|----------------------------------------|--------------------------------------------|
+| --------- | -------------------------------------- | ------------------------------------------ |
 | **19001** | Gateway (HTTP + WebSocket)             | `BITTERBOT_GATEWAY_PORT` or `gateway.port` |
 | **5173**  | Control UI                             | Default Vite port                          |
 | **9100**  | P2P network (libp2p TCP)               | `p2p.listenAddrs`                          |
@@ -351,7 +361,7 @@ Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic fai
 ## Documentation
 
 | Topic            | Link                                                                          |
-|------------------|-------------------------------------------------------------------------------|
+| ---------------- | ----------------------------------------------------------------------------- |
 | First install    | [Getting Started](docs/start/)                                                |
 | Architecture     | [Gateway + Protocol Model](docs/concepts/)                                    |
 | Memory System    | [Dreams, Crystals, Curiosity, Hormones](docs/memory/architecture-overview.md) |
@@ -416,5 +426,3 @@ Built by **Victor Michael Gil** and the community.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and how to submit PRs.
 
 ---
-
-

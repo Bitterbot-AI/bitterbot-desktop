@@ -9,7 +9,7 @@ title: "Tools"
 # Tools (Bitterbot)
 
 Bitterbot exposes **first-class agent tools** for browser, canvas, nodes, and cron.
-These replace the old .bitterbot-*` skills: the tools are typed, no shelling,
+These replace the old .bitterbot-\*` skills: the tools are typed, no shelling,
 and the agent should rely on them directly.
 
 ## Disabling tools

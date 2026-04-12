@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useSessionsStore, type SessionEntry } from "../../stores/sessions-store";
 import { formatRelativeTime, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
+import { useSessionsStore, type SessionEntry } from "../../stores/sessions-store";
 
 function SessionRow({
   session,
@@ -50,9 +50,7 @@ function SessionRow({
             {formatRelativeTime(session.updatedAt)}
           </span>
         )}
-        <span className="text-xs text-muted-foreground">
-          {expanded ? "▲" : "▼"}
-        </span>
+        <span className="text-xs text-muted-foreground">{expanded ? "▲" : "▼"}</span>
       </div>
       {expanded && (
         <div className="px-4 pb-3 space-y-2">
@@ -60,9 +58,7 @@ function SessionRow({
             {session.sessionId && (
               <div>
                 <span className="text-muted-foreground">Session ID: </span>
-                <span className="text-foreground font-mono">
-                  {session.sessionId}
-                </span>
+                <span className="text-foreground font-mono">{session.sessionId}</span>
               </div>
             )}
             {session.thinkingLevel && (

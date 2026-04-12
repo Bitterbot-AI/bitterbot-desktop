@@ -50,7 +50,9 @@ export async function applyAuthChoicePluginProvider(
   const defaultAgentId = resolveDefaultAgentId(nextConfig);
   const agentDir =
     params.agentDir ??
-    (agentId === defaultAgentId ? resolveBitterbotAgentDir() : resolveAgentDir(nextConfig, agentId));
+    (agentId === defaultAgentId
+      ? resolveBitterbotAgentDir()
+      : resolveAgentDir(nextConfig, agentId));
   const workspaceDir =
     resolveAgentWorkspaceDir(nextConfig, agentId) ?? resolveDefaultAgentWorkspaceDir();
 

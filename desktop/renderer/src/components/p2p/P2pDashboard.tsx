@@ -41,9 +41,7 @@ export function P2pDashboard() {
       {/* Disconnected empty state */}
       {!connected && !loading && !error && (
         <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-6 text-center space-y-2">
-          <p className="text-sm text-muted-foreground">
-            The P2P orchestrator is not running.
-          </p>
+          <p className="text-sm text-muted-foreground">The P2P orchestrator is not running.</p>
           <p className="text-xs text-muted-foreground/60">
             Enable P2P in your config and restart the gateway to connect to the network.
           </p>

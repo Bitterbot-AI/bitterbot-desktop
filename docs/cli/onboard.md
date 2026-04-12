@@ -16,7 +16,6 @@ Interactive onboarding wizard (local or remote Gateway setup).
 - CLI onboarding reference: [CLI Onboarding Reference](/start/wizard-cli-reference)
 - CLI automation: [CLI Automation](/start/wizard-cli-automation)
 
-
 ## Examples
 
 ```bash

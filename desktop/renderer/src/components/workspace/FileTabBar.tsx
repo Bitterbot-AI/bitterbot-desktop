@@ -1,7 +1,7 @@
-import { cn } from "../../lib/utils";
 import { X } from "lucide-react";
-import { getFileIcon } from "./workspace-utils";
 import type { TabEntry } from "../../stores/workspace-store";
+import { cn } from "../../lib/utils";
+import { getFileIcon } from "./workspace-utils";
 
 export function FileTabBar({
   tabs,
@@ -48,11 +48,11 @@ export function FileTabBar({
                 : "text-zinc-500 hover:bg-zinc-800/30 hover:text-zinc-300 border-b-2 border-b-transparent",
             )}
           >
-            <Icon className={cn("flex-shrink-0 text-blue-400/60", compact ? "w-2.5 h-2.5" : "w-3 h-3")} />
+            <Icon
+              className={cn("flex-shrink-0 text-blue-400/60", compact ? "w-2.5 h-2.5" : "w-3 h-3")}
+            />
             <span className="truncate max-w-[120px] font-mono">{fileName}</span>
-            {tab.dirty && (
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0" />
-            )}
+            {tab.dirty && <span className="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0" />}
             <span
               onClick={(e) => {
                 e.stopPropagation();

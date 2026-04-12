@@ -11,8 +11,8 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { SkillHierarchy, DomainProfile, MultiPerspectiveEmbedding } from "./crystal-types.js";
-import { cosineSimilarity, parseEmbedding } from "./internal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 const log = createSubsystemLogger("memory/skill-hierarchy");
 
@@ -66,9 +66,9 @@ export function computeHierarchy(
 
   // Level 2: 3 domains
   const level2: DomainProfile = {
-    factual: (level1.factual + level1.relational) / 2,   // What
+    factual: (level1.factual + level1.relational) / 2, // What
     procedural: (level1.temporal + level1.implementation) / 2, // How
-    affective: (level1.causal + level1.qualitative) / 2,      // Why
+    affective: (level1.causal + level1.qualitative) / 2, // Why
   };
 
   // Level 3: weighted average
@@ -81,10 +81,7 @@ export function computeHierarchy(
  * Fast capability check: does the agent have skills in a given category?
  * Returns 0-1 capability score without needing embeddings.
  */
-export function quickCapabilityCheck(
-  db: DatabaseSync,
-  category: string,
-): number {
+export function quickCapabilityCheck(db: DatabaseSync, category: string): number {
   const rows = db
     .prepare(
       `SELECT skill_hierarchy FROM chunks
@@ -125,11 +122,11 @@ export function getVersionHistory(
        ORDER BY skill_version ASC`,
     )
     .all(stableSkillId) as Array<{
-      id: string;
-      skill_version: number;
-      created_at: number;
-      deprecated: number;
-    }>;
+    id: string;
+    skill_version: number;
+    created_at: number;
+    deprecated: number;
+  }>;
 
   return rows.map((r) => ({
     crystalId: r.id,

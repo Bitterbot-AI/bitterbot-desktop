@@ -13,8 +13,7 @@ import { jsonResult, readStringParam, readNumberParam } from "./common.js";
 
 const CreateAnchorSchema = Type.Object({
   label: Type.String({
-    description:
-      "Short label for this moment (e.g., 'GCCRF breakthrough', 'late night debugging')",
+    description: "Short label for this moment (e.g., 'GCCRF breakthrough', 'late night debugging')",
   }),
   description: Type.Optional(
     Type.String({
@@ -34,10 +33,7 @@ const RecallAnchorSchema = Type.Object({
   ),
 });
 
-function resolveAnchorToolContext(options: {
-  config?: BitterbotConfig;
-  agentSessionKey?: string;
-}) {
+function resolveAnchorToolContext(options: { config?: BitterbotConfig; agentSessionKey?: string }) {
   const cfg = options.config;
   if (!cfg) return null;
   if (cfg.memory?.emotional?.hormonal?.enabled === false) return null;
@@ -74,7 +70,9 @@ export function createEmotionalAnchorTool(options: {
           return jsonResult({ created: false, error: "emotional anchors not available" });
         }
 
-        const label = readStringParam(params as Record<string, unknown>, "label", { required: true });
+        const label = readStringParam(params as Record<string, unknown>, "label", {
+          required: true,
+        });
         const description = readStringParam(params as Record<string, unknown>, "description");
         const anchor = manager.createEmotionalAnchor(label, description);
 
@@ -119,7 +117,9 @@ export function createRecallEmotionalAnchorTool(options: {
           return jsonResult({ recalled: false, error: "emotional anchors not available" });
         }
 
-        const anchorId = readStringParam(params as Record<string, unknown>, "anchor_id", { required: true });
+        const anchorId = readStringParam(params as Record<string, unknown>, "anchor_id", {
+          required: true,
+        });
         const influence = readNumberParam(params as Record<string, unknown>, "influence");
         const success = manager.recallEmotionalAnchor(anchorId, influence ?? 0.3);
 

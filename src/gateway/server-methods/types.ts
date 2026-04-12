@@ -1,6 +1,7 @@
 import type { ModelCatalogEntry } from "../../agents/model-catalog.js";
 import type { createDefaultDeps } from "../../cli/deps.js";
 import type { HealthSummary } from "../../commands/health.js";
+import type { OrchestratorBridge } from "../../infra/orchestrator-bridge.js";
 import type { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { WizardSession } from "../../wizard/session.js";
 import type { ChatAbortControllerEntry } from "../chat-abort.js";
@@ -9,7 +10,6 @@ import type { NodeRegistry } from "../node-registry.js";
 import type { ConnectParams, ErrorShape, RequestFrame } from "../protocol/index.js";
 import type { GatewayBroadcastFn, GatewayBroadcastToConnIdsFn } from "../server-broadcast.js";
 import type { ChannelRuntimeSnapshot } from "../server-channels.js";
-import type { OrchestratorBridge } from "../../infra/orchestrator-bridge.js";
 import type { DedupeEntry } from "../server-shared.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;

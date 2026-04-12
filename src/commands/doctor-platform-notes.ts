@@ -103,4 +103,3 @@ export async function noteMacLaunchctlGatewayEnvOverrides(
 
   (deps?.noteFn ?? note)(lines.join("\n"), "Gateway (macOS)");
 }
-

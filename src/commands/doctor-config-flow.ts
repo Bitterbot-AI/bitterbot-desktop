@@ -148,7 +148,9 @@ function noteOpencodeProviderOverrides(cfg: BitterbotConfig) {
 
 type TelegramAllowFromUsernameHit = { path: string; entry: string };
 
-function scanTelegramAllowFromUsernameEntries(cfg: BitterbotConfig): TelegramAllowFromUsernameHit[] {
+function scanTelegramAllowFromUsernameEntries(
+  cfg: BitterbotConfig,
+): TelegramAllowFromUsernameHit[] {
   const hits: TelegramAllowFromUsernameHit[] = [];
   const telegram = cfg.channels?.telegram;
   if (!telegram) {

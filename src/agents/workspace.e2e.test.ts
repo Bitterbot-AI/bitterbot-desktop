@@ -55,7 +55,11 @@ describe("ensureAgentWorkspace", () => {
 
   it("recovers partial initialization by creating BOOTSTRAP.md when marker is missing", async () => {
     const tempDir = await makeTempWorkspace("bitterbot-workspace-");
-    await writeWorkspaceFile({ dir: tempDir, name: DEFAULT_PROTOCOLS_FILENAME, content: "existing" });
+    await writeWorkspaceFile({
+      dir: tempDir,
+      name: DEFAULT_PROTOCOLS_FILENAME,
+      content: "existing",
+    });
 
     await ensureAgentWorkspace({ dir: tempDir, ensureBootstrapFiles: true });
 

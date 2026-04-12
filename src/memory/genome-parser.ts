@@ -34,9 +34,7 @@ export function parseGenomeHomeostasis(genomeContent: string): {
 
   // Simple key-value parsing (no full YAML parser needed)
   for (const line of yaml.split("\n")) {
-    const match = line.match(
-      /^\s*(dopamine|cortisol|oxytocin)\s*:\s*([\d.]+)/,
-    );
+    const match = line.match(/^\s*(dopamine|cortisol|oxytocin)\s*:\s*([\d.]+)/);
     if (match) {
       const value = parseFloat(match[2]!);
       if (!isNaN(value) && value >= 0 && value <= 1) {
@@ -53,9 +51,7 @@ export function parseGenomeHomeostasis(genomeContent: string): {
  * Returns the bullet-point constraints as an array of strings.
  */
 export function parsePhenotypeConstraints(genomeContent: string): string[] {
-  const section = genomeContent.match(
-    /## Phenotype Constraints[\s\S]*?\n([\s\S]*?)(?=\n## |$)/,
-  );
+  const section = genomeContent.match(/## Phenotype Constraints[\s\S]*?\n([\s\S]*?)(?=\n## |$)/);
   if (!section?.[1]) return [];
 
   return section[1]

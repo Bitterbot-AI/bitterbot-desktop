@@ -1,14 +1,8 @@
+import { CheckCircle2, Trophy, FileText, Sparkles, AlertTriangle } from "lucide-react";
 import { useMemo } from "react";
 import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { Markdown } from "../../ui/markdown";
-import {
-  CheckCircle2,
-  Trophy,
-  FileText,
-  Sparkles,
-  AlertTriangle,
-} from "lucide-react";
 import { safeJsonParse } from "./tool-view-utils";
 
 /**
@@ -30,17 +24,11 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
     if (args) {
       if (typeof args.summary === "string") summary = args.summary;
       if (Array.isArray(args.tasks_completed))
-        tasksCompleted = args.tasks_completed.filter(
-          (t): t is string => typeof t === "string",
-        );
+        tasksCompleted = args.tasks_completed.filter((t): t is string => typeof t === "string");
       if (Array.isArray(args.tasksCompleted))
-        tasksCompleted = args.tasksCompleted.filter(
-          (t): t is string => typeof t === "string",
-        );
+        tasksCompleted = args.tasksCompleted.filter((t): t is string => typeof t === "string");
       if (Array.isArray(args.attachments))
-        attachments = args.attachments.filter(
-          (a): a is string => typeof a === "string",
-        );
+        attachments = args.attachments.filter((a): a is string => typeof a === "string");
     }
 
     // Try from result (may have richer data)
@@ -55,9 +43,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
             (t: unknown): t is string => typeof t === "string",
           );
         if (Array.isArray(p.attachments) && p.attachments.length > 0)
-          attachments = p.attachments.filter(
-            (a: unknown): a is string => typeof a === "string",
-          );
+          attachments = p.attachments.filter((a: unknown): a is string => typeof a === "string");
       }
     }
 
@@ -80,9 +66,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         <div
           className={cn(
             "w-8 h-8 rounded-lg flex items-center justify-center",
-            isError
-              ? "bg-red-500/15"
-              : "bg-emerald-500/15",
+            isError ? "bg-red-500/15" : "bg-emerald-500/15",
           )}
         >
           {isError ? (
@@ -93,10 +77,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         </div>
         <div className="flex-1">
           <h3
-            className={cn(
-              "text-sm font-semibold",
-              isError ? "text-red-300" : "text-emerald-300",
-            )}
+            className={cn("text-sm font-semibold", isError ? "text-red-300" : "text-emerald-300")}
           >
             {isError ? "Task Failed" : "Task Complete"}
           </h3>
@@ -180,12 +161,8 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
                   >
                     <FileText className="w-4 h-4 text-blue-400 flex-shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm text-zinc-300 font-medium truncate">
-                        {fileName}
-                      </div>
-                      <div className="text-[10px] text-zinc-500 font-mono truncate">
-                        {filePath}
-                      </div>
+                      <div className="text-sm text-zinc-300 font-medium truncate">{fileName}</div>
+                      <div className="text-[10px] text-zinc-500 font-mono truncate">{filePath}</div>
                     </div>
                   </div>
                 );

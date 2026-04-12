@@ -86,9 +86,7 @@ export class ReconsolidationEngine {
         return true;
       }
 
-      this.db
-        .prepare(`UPDATE chunks SET labile_until = ? WHERE id = ?`)
-        .run(labileUntil, chunkId);
+      this.db.prepare(`UPDATE chunks SET labile_until = ? WHERE id = ?`).run(labileUntil, chunkId);
 
       log.debug("chunk marked labile", { chunkId: chunkId.slice(0, 8), labileUntil });
       return true;
@@ -103,9 +101,9 @@ export class ReconsolidationEngine {
    */
   isLabile(chunkId: string): boolean {
     try {
-      const row = this.db
-        .prepare(`SELECT labile_until FROM chunks WHERE id = ?`)
-        .get(chunkId) as { labile_until: number | null } | undefined;
+      const row = this.db.prepare(`SELECT labile_until FROM chunks WHERE id = ?`).get(chunkId) as
+        | { labile_until: number | null }
+        | undefined;
       return !!row?.labile_until && row.labile_until > Date.now();
     } catch {
       return false;
@@ -182,7 +180,9 @@ export class ReconsolidationEngine {
         )
         .run(`CONTRADICTION: ${contradictingInfo.slice(0, 500)}`, chunkId);
 
-      this.auditLog(chunkId, "reconsolidation_contradiction", { contradictingInfo: contradictingInfo.slice(0, 200) });
+      this.auditLog(chunkId, "reconsolidation_contradiction", {
+        contradictingInfo: contradictingInfo.slice(0, 200),
+      });
       log.debug("chunk flagged for contradiction review", { chunkId: chunkId.slice(0, 8) });
       return true;
     } catch (err) {

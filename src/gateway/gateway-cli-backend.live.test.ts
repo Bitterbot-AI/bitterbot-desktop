@@ -11,7 +11,8 @@ import { GatewayClient } from "./client.js";
 import { renderCatNoncePngBase64 } from "./live-image-probe.js";
 import { startGatewayServer } from "./server.js";
 
-const LIVE = isTruthyEnvValue(process.env.LIVE) || isTruthyEnvValue(process.env.BITTERBOT_LIVE_TEST);
+const LIVE =
+  isTruthyEnvValue(process.env.LIVE) || isTruthyEnvValue(process.env.BITTERBOT_LIVE_TEST);
 const CLI_LIVE = isTruthyEnvValue(process.env.BITTERBOT_LIVE_CLI_BACKEND);
 const CLI_IMAGE = isTruthyEnvValue(process.env.BITTERBOT_LIVE_CLI_BACKEND_IMAGE_PROBE);
 const CLI_RESUME = isTruthyEnvValue(process.env.BITTERBOT_LIVE_CLI_BACKEND_RESUME_PROBE);

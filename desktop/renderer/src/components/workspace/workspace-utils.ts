@@ -1,18 +1,30 @@
-import {
-  File,
-  FileCode,
-  FileText,
-  FileJson,
-  Image,
-} from "lucide-react";
+import { File, FileCode, FileText, FileJson, Image } from "lucide-react";
 import type { FileTreeNode } from "../../stores/workspace-store";
 
 /** Icon component for a file based on its extension */
 export function getFileIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   const codeExts = new Set([
-    "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "rb", "c", "cpp", "h",
-    "cs", "php", "swift", "kt", "scala", "sh", "bash", "zsh",
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "py",
+    "rs",
+    "go",
+    "java",
+    "rb",
+    "c",
+    "cpp",
+    "h",
+    "cs",
+    "php",
+    "swift",
+    "kt",
+    "scala",
+    "sh",
+    "bash",
+    "zsh",
   ]);
   const textExts = new Set(["md", "txt", "log", "csv", "env", "cfg", "ini", "toml", "yaml", "yml"]);
   const jsonExts = new Set(["json", "jsonl", "jsonc"]);
@@ -29,11 +41,27 @@ export function getFileIcon(name: string) {
 export function getLangLabel(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   const map: Record<string, string> = {
-    ts: "TypeScript", tsx: "TypeScript JSX", js: "JavaScript", jsx: "JavaScript JSX",
-    py: "Python", rs: "Rust", go: "Go", java: "Java", rb: "Ruby",
-    css: "CSS", scss: "SCSS", html: "HTML", json: "JSON",
-    yaml: "YAML", yml: "YAML", toml: "TOML", md: "Markdown",
-    sh: "Shell", sql: "SQL", xml: "XML", svg: "SVG",
+    ts: "TypeScript",
+    tsx: "TypeScript JSX",
+    js: "JavaScript",
+    jsx: "JavaScript JSX",
+    py: "Python",
+    rs: "Rust",
+    go: "Go",
+    java: "Java",
+    rb: "Ruby",
+    css: "CSS",
+    scss: "SCSS",
+    html: "HTML",
+    json: "JSON",
+    yaml: "YAML",
+    yml: "YAML",
+    toml: "TOML",
+    md: "Markdown",
+    sh: "Shell",
+    sql: "SQL",
+    xml: "XML",
+    svg: "SVG",
   };
   return map[ext] ?? ext.toUpperCase();
 }

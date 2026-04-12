@@ -100,9 +100,10 @@ export function mergeHybridResults(params: {
       }
       // Keep the higher importance score if both sources provide one
       if (r.importanceScore != null) {
-        existing.importanceScore = existing.importanceScore != null
-          ? Math.max(existing.importanceScore, r.importanceScore)
-          : r.importanceScore;
+        existing.importanceScore =
+          existing.importanceScore != null
+            ? Math.max(existing.importanceScore, r.importanceScore)
+            : r.importanceScore;
       }
     } else {
       byId.set(r.id, {

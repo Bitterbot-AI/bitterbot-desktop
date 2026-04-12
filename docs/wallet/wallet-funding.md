@@ -28,6 +28,7 @@ The user never manages keys, signs transactions, or thinks about blockchain. The
 Stripe's [Crypto Onramp](https://docs.stripe.com/crypto/onramp) is an embeddable widget that handles the entire fiat-to-crypto pipeline: identity verification, payment collection, currency conversion, and on-chain delivery. Bitterbot wraps this in a three-tier system.
 
 The flow requires two Stripe credentials:
+
 - **Secret key** — used server-side to create an Onramp Session
 - **Publishable key** — used client-side to render the widget
 
@@ -89,8 +90,8 @@ tools:
   wallet:
     stripe:
       enabled: true
-      secretKey: sk_live_...       # or STRIPE_SECRET_KEY env var
-      publishableKey: pk_live_...  # or STRIPE_PUBLISHABLE_KEY env var
+      secretKey: sk_live_... # or STRIPE_SECRET_KEY env var
+      publishableKey: pk_live_... # or STRIPE_PUBLISHABLE_KEY env var
 ```
 
 When local keys are detected, the app creates sessions directly against the Stripe API from the gateway process. The hosted service is never contacted.
@@ -124,21 +125,23 @@ Whether hosted or self-deployed, the onramp service exposes a single endpoint.
 Creates a Stripe Crypto Onramp session and returns the credentials needed to render the widget.
 
 **Request:**
+
 ```json
 {
   "walletAddress": "0xabc...",
   "network": "base-sepolia",
-  "amount": 10.00
+  "amount": 10.0
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `walletAddress` | string | yes | Agent wallet address (hex, checksummed) |
-| `network` | string | yes | `base-sepolia` (testnet) or `base` (mainnet) |
-| `amount` | number | no | Pre-filled USDC amount |
+| Field           | Type   | Required | Description                                  |
+| --------------- | ------ | -------- | -------------------------------------------- |
+| `walletAddress` | string | yes      | Agent wallet address (hex, checksummed)      |
+| `network`       | string | yes      | `base-sepolia` (testnet) or `base` (mainnet) |
+| `amount`        | number | no       | Pre-filled USDC amount                       |
 
 **Response:**
+
 ```json
 {
   "clientSecret": "cos_xxx_secret_yyy",
@@ -156,6 +159,7 @@ Creates a Stripe Crypto Onramp session and returns the credentials needed to ren
 ### Rate Limiting
 
 The hosted service rate-limits by IP and wallet address to prevent session spam. Defaults:
+
 - 10 sessions per wallet address per hour
 - 30 sessions per IP per hour
 
@@ -167,30 +171,31 @@ All wallet funding configuration lives under `tools.wallet` in the Bitterbot con
 tools:
   wallet:
     enabled: true
-    network: base-sepolia          # base-sepolia | base
+    network: base-sepolia # base-sepolia | base
 
     # Tier 2: local Stripe keys (optional)
     stripe:
-      enabled: true                # Activates local session creation
-      secretKey: sk_test_...       # Or STRIPE_SECRET_KEY env var
-      publishableKey: pk_test_...  # Or STRIPE_PUBLISHABLE_KEY env var
+      enabled: true # Activates local session creation
+      secretKey: sk_test_... # Or STRIPE_SECRET_KEY env var
+      publishableKey: pk_test_... # Or STRIPE_PUBLISHABLE_KEY env var
 
     # Tier 3: custom onramp endpoint (optional)
     onrampUrl: https://your-service.example.com
 ```
 
 Environment variables take precedence over config file values for secrets:
+
 - `STRIPE_SECRET_KEY` → `stripe.secretKey`
 - `STRIPE_PUBLISHABLE_KEY` → `stripe.publishableKey`
 
 ### Testnet vs Mainnet
 
-| Setting | Testnet (`base-sepolia`) | Mainnet (`base`) |
-|---------|--------------------------|-------------------|
-| Stripe keys | Test keys (`sk_test_`, `pk_test_`) | Live keys (`sk_live_`, `pk_live_`) |
-| USDC | Test USDC (no real value) | Real USDC |
-| Faucet fallback | Available | Not available |
-| Hosted service fee | Free | Small service fee (shown in UI) |
+| Setting            | Testnet (`base-sepolia`)           | Mainnet (`base`)                   |
+| ------------------ | ---------------------------------- | ---------------------------------- |
+| Stripe keys        | Test keys (`sk_test_`, `pk_test_`) | Live keys (`sk_live_`, `pk_live_`) |
+| USDC               | Test USDC (no real value)          | Real USDC                          |
+| Faucet fallback    | Available                          | Not available                      |
+| Hosted service fee | Free                               | Small service fee (shown in UI)    |
 
 The funding page automatically shows a **Use Faucet** option on testnet for developers who want free test USDC without going through Stripe.
 

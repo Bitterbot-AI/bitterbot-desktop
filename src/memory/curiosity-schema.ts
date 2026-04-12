@@ -86,12 +86,8 @@ export function ensureCuriositySchema(db: DatabaseSync): void {
     `CREATE INDEX IF NOT EXISTS idx_curiosity_emergence_detected ON curiosity_emergence(detected_at);`,
   );
 
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_curiosity_queries_ts ON curiosity_queries(timestamp);`,
-  );
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_curiosity_targets_type ON curiosity_targets(type);`,
-  );
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_curiosity_queries_ts ON curiosity_queries(timestamp);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_curiosity_targets_type ON curiosity_targets(type);`);
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_curiosity_targets_expires ON curiosity_targets(expires_at);`,
   );

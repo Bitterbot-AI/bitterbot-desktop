@@ -14,8 +14,8 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import { computeSkillPrice, type SkillPricingConfig } from "./skill-pricing.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { computeSkillPrice, type SkillPricingConfig } from "./skill-pricing.js";
 
 const log = createSubsystemLogger("memory/marketplace-economics");
 
@@ -66,7 +66,9 @@ export interface EconomicSummary {
 }
 
 export class MarketplaceEconomics {
-  private onSaleCallback: ((params: { skillCrystalId: string; amountUsdc: number; txHash?: string }) => void) | null = null;
+  private onSaleCallback:
+    | ((params: { skillCrystalId: string; amountUsdc: number; txHash?: string }) => void)
+    | null = null;
 
   constructor(
     private readonly db: DatabaseSync,
@@ -81,7 +83,9 @@ export class MarketplaceEconomics {
   }
 
   /** Register a callback for sale events (e.g., to notify wallet UI). */
-  onSale(callback: (params: { skillCrystalId: string; amountUsdc: number; txHash?: string }) => void): void {
+  onSale(
+    callback: (params: { skillCrystalId: string; amountUsdc: number; txHash?: string }) => void,
+  ): void {
     this.onSaleCallback = callback;
   }
 
@@ -147,7 +151,8 @@ export class MarketplaceEconomics {
    */
   refreshListings(reputationScore: number): number {
     // Get all published skill/task_pattern crystals
-    const skills = this.db.prepare(`
+    const skills = this.db
+      .prepare(`
       SELECT c.id, c.text, c.semantic_type,
              COALESCE(c.download_count, 0) as download_count,
              c.skill_category
@@ -155,9 +160,13 @@ export class MarketplaceEconomics {
       WHERE c.publish_visibility = 'shared'
         AND c.semantic_type IN ('skill', 'task_pattern')
         AND COALESCE(c.lifecycle_state, 'active') != 'archived'
-    `).all() as Array<{
-      id: string; text: string; semantic_type: string;
-      download_count: number; skill_category: string | null;
+    `)
+      .all() as Array<{
+      id: string;
+      text: string;
+      semantic_type: string;
+      download_count: number;
+      skill_category: string | null;
     }>;
 
     let listedCount = 0;
@@ -173,20 +182,24 @@ export class MarketplaceEconomics {
         // (Gemini peer review fix)
         const uniqueBuyers = this.getUniqueBuyerCount(skill.id);
 
-        const pricing = computeSkillPrice({
-          metrics: {
-            totalExecutions: metrics.totalExecutions,
-            successRate: metrics.successRate,
-            avgRewardScore: metrics.avgRewardScore,
+        const pricing = computeSkillPrice(
+          {
+            metrics: {
+              totalExecutions: metrics.totalExecutions,
+              successRate: metrics.successRate,
+              avgRewardScore: metrics.avgRewardScore,
+            },
+            downloadCount: uniqueBuyers,
+            bountyMatches: this.countBountyMatches(skill.id),
+            reputationScore,
+            similarSkillCount: this.countSimilarSkills(skill.skill_category),
           },
-          downloadCount: uniqueBuyers,
-          bountyMatches: this.countBountyMatches(skill.id),
-          reputationScore,
-          similarSkillCount: this.countSimilarSkills(skill.skill_category),
-        }, this.pricingConfig);
+          this.pricingConfig,
+        );
 
         const name = skill.text.split("\n")[0]?.slice(0, 100).trim() || skill.id.slice(0, 8);
-        this.db.prepare(`
+        this.db
+          .prepare(`
           INSERT INTO marketplace_listings
             (skill_crystal_id, name, description, price_usdc, listable, listing_block_reason,
              total_executions, success_rate, avg_reward_score, download_count, bounty_matches,
@@ -204,19 +217,32 @@ export class MarketplaceEconomics {
             listed_at = CASE WHEN excluded.listable = 1 AND marketplace_listings.listed_at IS NULL
                         THEN excluded.updated_at ELSE marketplace_listings.listed_at END,
             updated_at = excluded.updated_at
-        `).run(
-          skill.id, name, skill.text.slice(0, 500), pricing.priceUsdc,
-          pricing.listable ? 1 : 0, pricing.listingBlockReason ?? null,
-          metrics.totalExecutions, metrics.successRate, metrics.avgRewardScore,
-          skill.download_count, 0,
-          pricing.listable ? now : null, now,
-        );
+        `)
+          .run(
+            skill.id,
+            name,
+            skill.text.slice(0, 500),
+            pricing.priceUsdc,
+            pricing.listable ? 1 : 0,
+            pricing.listingBlockReason ?? null,
+            metrics.totalExecutions,
+            metrics.successRate,
+            metrics.avgRewardScore,
+            skill.download_count,
+            0,
+            pricing.listable ? now : null,
+            now,
+          );
 
         if (pricing.listable) listedCount++;
       }
       this.db.exec("COMMIT");
     } catch (err) {
-      try { this.db.exec("ROLLBACK"); } catch { /* ignore */ }
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        /* ignore */
+      }
       log.warn(`Marketplace listing refresh failed: ${String(err)}`);
     }
 
@@ -235,12 +261,21 @@ export class MarketplaceEconomics {
     direction: "sale" | "purchase";
   }): string {
     const id = crypto.randomUUID();
-    this.db.prepare(`
+    this.db
+      .prepare(`
       INSERT INTO marketplace_purchases
         (id, skill_crystal_id, buyer_peer_id, amount_usdc, tx_hash, direction, purchased_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, params.skillCrystalId, params.buyerPeerId, params.amountUsdc,
-           params.txHash ?? null, params.direction, Date.now());
+    `)
+      .run(
+        id,
+        params.skillCrystalId,
+        params.buyerPeerId,
+        params.amountUsdc,
+        params.txHash ?? null,
+        params.direction,
+        Date.now(),
+      );
 
     // Notify listeners (e.g., wallet UI) of incoming sales
     if (params.direction === "sale" && this.onSaleCallback) {
@@ -250,7 +285,9 @@ export class MarketplaceEconomics {
           amountUsdc: params.amountUsdc,
           txHash: params.txHash,
         });
-      } catch { /* non-critical */ }
+      } catch {
+        /* non-critical */
+      }
     }
 
     return id;
@@ -260,15 +297,20 @@ export class MarketplaceEconomics {
    * Compute revenue split for a skill purchase based on provenance lineage.
    * 70% to current publisher, 20% to original author, 10% to mutation contributors.
    */
-  computeRevenueShares(skillCrystalId: string, totalUsdc: number): Array<{
+  computeRevenueShares(
+    skillCrystalId: string,
+    totalUsdc: number,
+  ): Array<{
     role: "publisher" | "original_author" | "contributor";
     peerId: string;
     amountUsdc: number;
   }> {
     try {
-      const chunk = this.db.prepare(
-        `SELECT provenance_chain, origin FROM chunks WHERE id = ?`,
-      ).get(skillCrystalId) as { provenance_chain: string | null; origin: string | null } | undefined;
+      const chunk = this.db
+        .prepare(`SELECT provenance_chain, origin FROM chunks WHERE id = ?`)
+        .get(skillCrystalId) as
+        | { provenance_chain: string | null; origin: string | null }
+        | undefined;
 
       if (!chunk?.provenance_chain) {
         return [{ role: "publisher", peerId: "local", amountUsdc: totalUsdc }];
@@ -279,7 +321,11 @@ export class MarketplaceEconomics {
         return [{ role: "publisher", peerId: "local", amountUsdc: totalUsdc }];
       }
 
-      const shares: Array<{ role: "publisher" | "original_author" | "contributor"; peerId: string; amountUsdc: number }> = [];
+      const shares: Array<{
+        role: "publisher" | "original_author" | "contributor";
+        peerId: string;
+        amountUsdc: number;
+      }> = [];
 
       // 70% to current publisher (local node)
       shares.push({ role: "publisher", peerId: "local", amountUsdc: totalUsdc * 0.7 });
@@ -310,9 +356,9 @@ export class MarketplaceEconomics {
    * Check if a tx_hash has already been used (replay protection).
    */
   isTxHashConsumed(txHash: string): boolean {
-    const row = this.db.prepare(
-      `SELECT 1 FROM marketplace_purchases WHERE tx_hash = ?`,
-    ).get(txHash);
+    const row = this.db
+      .prepare(`SELECT 1 FROM marketplace_purchases WHERE tx_hash = ?`)
+      .get(txHash);
     return !!row;
   }
 
@@ -320,23 +366,30 @@ export class MarketplaceEconomics {
    * Get economic summary for The Niche section of working memory.
    */
   getEconomicSummary(): EconomicSummary {
-    const sales = this.db.prepare(`
+    const sales = this.db
+      .prepare(`
       SELECT COALESCE(SUM(amount_usdc), 0) as total,
              COUNT(DISTINCT buyer_peer_id) as buyers,
              COUNT(*) as count
       FROM marketplace_purchases WHERE direction = 'sale'
-    `).get() as { total: number; buyers: number; count: number };
+    `)
+      .get() as { total: number; buyers: number; count: number };
 
-    const purchases = this.db.prepare(`
+    const purchases = this.db
+      .prepare(`
       SELECT COALESCE(SUM(amount_usdc), 0) as total, COUNT(*) as count
       FROM marketplace_purchases WHERE direction = 'purchase'
-    `).get() as { total: number; count: number };
+    `)
+      .get() as { total: number; count: number };
 
-    const listed = this.db.prepare(`
+    const listed = this.db
+      .prepare(`
       SELECT COUNT(*) as c FROM marketplace_listings WHERE listable = 1
-    `).get() as { c: number };
+    `)
+      .get() as { c: number };
 
-    const topEarners = this.db.prepare(`
+    const topEarners = this.db
+      .prepare(`
       SELECT ml.name, SUM(mp.amount_usdc) as earnings, COUNT(*) as purchases
       FROM marketplace_purchases mp
       JOIN marketplace_listings ml ON ml.skill_crystal_id = mp.skill_crystal_id
@@ -344,18 +397,21 @@ export class MarketplaceEconomics {
       GROUP BY mp.skill_crystal_id
       ORDER BY earnings DESC
       LIMIT 5
-    `).all() as Array<{ name: string; earnings: number; purchases: number }>;
+    `)
+      .all() as Array<{ name: string; earnings: number; purchases: number }>;
 
     // Earnings trend (last 7 days)
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const dailyEarnings = this.db.prepare(`
+    const dailyEarnings = this.db
+      .prepare(`
       SELECT date(purchased_at / 1000, 'unixepoch') as date,
              SUM(amount_usdc) as amount
       FROM marketplace_purchases
       WHERE direction = 'sale' AND purchased_at >= ?
       GROUP BY date
       ORDER BY date
-    `).all(sevenDaysAgo) as Array<{ date: string; amount: number }>;
+    `)
+      .all(sevenDaysAgo) as Array<{ date: string; amount: number }>;
 
     return {
       totalEarningsUsdc: sales.total,
@@ -381,11 +437,13 @@ export class MarketplaceEconomics {
    * Used for earnings notifications.
    */
   getRecentSales(sinceMs: number): { count: number; totalUsdc: number } {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(`
       SELECT COUNT(*) as count, COALESCE(SUM(amount_usdc), 0) as total
       FROM marketplace_purchases
       WHERE direction = 'sale' AND purchased_at >= ?
-    `).get(sinceMs) as { count: number; total: number };
+    `)
+      .get(sinceMs) as { count: number; total: number };
     return { count: row.count, totalUsdc: row.total };
   }
 
@@ -393,10 +451,12 @@ export class MarketplaceEconomics {
    * Get the listed price for a specific skill (used by A2A payment gate).
    */
   getSkillPrice(skillCrystalId: string): number | null {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(`
       SELECT price_usdc FROM marketplace_listings
       WHERE skill_crystal_id = ? AND listable = 1
-    `).get(skillCrystalId) as { price_usdc: number } | undefined;
+    `)
+      .get(skillCrystalId) as { price_usdc: number } | undefined;
     return row?.price_usdc ?? null;
   }
 
@@ -404,11 +464,13 @@ export class MarketplaceEconomics {
    * Get all listable skills for Agent Card generation.
    */
   getListableSkills(): MarketplaceListing[] {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(`
       SELECT skill_crystal_id, name, description, price_usdc, listable,
              total_executions, success_rate, avg_reward_score, download_count, listed_at
       FROM marketplace_listings WHERE listable = 1 ORDER BY price_usdc DESC
-    `).all() as Array<Record<string, unknown>>;
+    `)
+      .all() as Array<Record<string, unknown>>;
 
     return rows.map((r) => ({
       skillCrystalId: String(r.skill_crystal_id),
@@ -432,11 +494,13 @@ export class MarketplaceEconomics {
   /** Count active bounties that this skill could fulfill. */
   private countBountyMatches(skillCrystalId: string): number {
     try {
-      const row = this.db.prepare(`
+      const row = this.db
+        .prepare(`
         SELECT COUNT(*) as c FROM curiosity_targets
         WHERE resolved_at IS NULL AND expires_at > ?
           AND metadata LIKE '%"isBounty":true%'
-      `).get(Date.now()) as { c: number } | undefined;
+      `)
+        .get(Date.now()) as { c: number } | undefined;
       return row?.c ?? 0;
     } catch {
       return 0;
@@ -447,12 +511,14 @@ export class MarketplaceEconomics {
   private countSimilarSkills(category: string | null): number {
     if (!category) return 5; // Default fallback
     try {
-      const row = this.db.prepare(`
+      const row = this.db
+        .prepare(`
         SELECT COUNT(*) as c FROM chunks
         WHERE skill_category = ?
           AND COALESCE(lifecycle_state, 'active') != 'archived'
           AND COALESCE(deprecated, 0) != 1
-      `).get(category) as { c: number } | undefined;
+      `)
+        .get(category) as { c: number } | undefined;
       return row?.c ?? 5;
     } catch {
       return 5;
@@ -460,11 +526,13 @@ export class MarketplaceEconomics {
   }
 
   private getUniqueBuyerCount(skillCrystalId: string): number {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(`
       SELECT COUNT(DISTINCT buyer_peer_id) as c
       FROM marketplace_purchases
       WHERE skill_crystal_id = ? AND direction = 'sale'
-    `).get(skillCrystalId) as { c: number } | undefined;
+    `)
+      .get(skillCrystalId) as { c: number } | undefined;
     return row?.c ?? 0;
   }
 
@@ -474,13 +542,15 @@ export class MarketplaceEconomics {
     avgRewardScore: number;
   } {
     try {
-      const row = this.db.prepare(`
+      const row = this.db
+        .prepare(`
         SELECT COUNT(*) as total,
                COALESCE(AVG(CASE WHEN success = 1 THEN 1.0 ELSE 0.0 END), 0) as success_rate,
                COALESCE(AVG(reward_score), 0) as avg_reward
         FROM skill_executions
         WHERE skill_crystal_id = ? AND completed_at IS NOT NULL
-      `).get(skillCrystalId) as { total: number; success_rate: number; avg_reward: number };
+      `)
+        .get(skillCrystalId) as { total: number; success_rate: number; avg_reward: number };
 
       return {
         totalExecutions: row?.total ?? 0,
@@ -508,67 +578,90 @@ export class MarketplaceEconomics {
   }): void {
     if (params.amountUsdc < MarketplaceEconomics.DUST_THRESHOLD_USDC) return;
     const now = Date.now();
-    this.db.prepare(`
+    this.db
+      .prepare(`
       INSERT INTO revenue_payment_queue
         (id, skill_crystal_id, purchase_id, recipient_peer_id, amount_usdc, role, status, queued_at, release_at)
       VALUES (?, ?, ?, ?, ?, ?, 'held', ?, ?)
-    `).run(
-      crypto.randomUUID(), params.skillCrystalId, params.purchaseId,
-      params.recipientPeerId, params.amountUsdc, params.role,
-      now, now + MarketplaceEconomics.HOLD_DURATION_MS,
-    );
+    `)
+      .run(
+        crypto.randomUUID(),
+        params.skillCrystalId,
+        params.purchaseId,
+        params.recipientPeerId,
+        params.amountUsdc,
+        params.role,
+        now,
+        now + MarketplaceEconomics.HOLD_DURATION_MS,
+      );
   }
 
   /** Transition held payments past the 48h window to released (if no dispute). */
   releaseHeldPayments(): number {
     const now = Date.now();
-    const result = this.db.prepare(
-      `UPDATE revenue_payment_queue SET status = 'released' WHERE status = 'held' AND release_at <= ?`,
-    ).run(now);
+    const result = this.db
+      .prepare(
+        `UPDATE revenue_payment_queue SET status = 'released' WHERE status = 'held' AND release_at <= ?`,
+      )
+      .run(now);
     return Number(result.changes);
   }
 
   /** Get payments that are released and ready for dispatch. */
   getReleasedPayments(): Array<{
-    id: string; recipientPeerId: string; amountUsdc: number; role: string; skillCrystalId: string;
+    id: string;
+    recipientPeerId: string;
+    amountUsdc: number;
+    role: string;
+    skillCrystalId: string;
   }> {
-    return this.db.prepare(
-      `SELECT id, recipient_peer_id as recipientPeerId, amount_usdc as amountUsdc, role, skill_crystal_id as skillCrystalId
+    return this.db
+      .prepare(
+        `SELECT id, recipient_peer_id as recipientPeerId, amount_usdc as amountUsdc, role, skill_crystal_id as skillCrystalId
        FROM revenue_payment_queue WHERE status = 'released'`,
-    ).all() as Array<{
-      id: string; recipientPeerId: string; amountUsdc: number; role: string; skillCrystalId: string;
+      )
+      .all() as Array<{
+      id: string;
+      recipientPeerId: string;
+      amountUsdc: number;
+      role: string;
+      skillCrystalId: string;
     }>;
   }
 
   /** Dispute a payment (buyer can call within 48h hold window). */
   disputePayment(purchaseId: string, reason: string): boolean {
-    const result = this.db.prepare(
-      `UPDATE revenue_payment_queue SET status = 'disputed', dispute_reason = ?
+    const result = this.db
+      .prepare(
+        `UPDATE revenue_payment_queue SET status = 'disputed', dispute_reason = ?
        WHERE purchase_id = ? AND status = 'held'`,
-    ).run(reason, purchaseId);
+      )
+      .run(reason, purchaseId);
     return result.changes > 0;
   }
 
   /** Mark a payment as dispatched onchain. */
   markPaymentProcessed(id: string, txHash: string): void {
-    this.db.prepare(
-      `UPDATE revenue_payment_queue SET status = 'paid', tx_hash = ?, processed_at = ? WHERE id = ?`,
-    ).run(txHash, Date.now(), id);
+    this.db
+      .prepare(
+        `UPDATE revenue_payment_queue SET status = 'paid', tx_hash = ?, processed_at = ? WHERE id = ?`,
+      )
+      .run(txHash, Date.now(), id);
   }
 
   /** Mark a payment as failed (will retry on next consolidation). */
   markPaymentFailed(id: string, error: string): void {
-    this.db.prepare(
-      `UPDATE revenue_payment_queue SET status = 'released', error = ? WHERE id = ?`,
-    ).run(error, id);
+    this.db
+      .prepare(`UPDATE revenue_payment_queue SET status = 'released', error = ? WHERE id = ?`)
+      .run(error, id);
   }
 
   /** Resolve a peer's wallet address from the reputation table. */
   resolvePeerWalletAddress(peerPubkey: string): string | null {
     try {
-      const row = this.db.prepare(
-        `SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = ?`,
-      ).get(peerPubkey) as { wallet_address: string | null } | undefined;
+      const row = this.db
+        .prepare(`SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = ?`)
+        .get(peerPubkey) as { wallet_address: string | null } | undefined;
       return row?.wallet_address ?? null;
     } catch {
       return null;
@@ -576,18 +669,24 @@ export class MarketplaceEconomics {
   }
 
   /** Get revenue queue stats for observability. */
-  getRevenueQueueStats(): { held: number; released: number; paid: number; disputed: number; failed: number } {
+  getRevenueQueueStats(): {
+    held: number;
+    released: number;
+    paid: number;
+    disputed: number;
+    failed: number;
+  } {
     try {
-      const rows = this.db.prepare(
-        `SELECT status, COUNT(*) as c FROM revenue_payment_queue GROUP BY status`,
-      ).all() as Array<{ status: string; c: number }>;
-      const map = new Map(rows.map(r => [r.status, r.c]));
+      const rows = this.db
+        .prepare(`SELECT status, COUNT(*) as c FROM revenue_payment_queue GROUP BY status`)
+        .all() as Array<{ status: string; c: number }>;
+      const map = new Map(rows.map((r) => [r.status, r.c]));
       return {
         held: map.get("held") ?? 0,
         released: map.get("released") ?? 0,
         paid: map.get("paid") ?? 0,
         disputed: map.get("disputed") ?? 0,
-        failed: rows.filter(r => r.status === "released" && r.c > 0).length, // approximation
+        failed: rows.filter((r) => r.status === "released" && r.c > 0).length, // approximation
       };
     } catch {
       return { held: 0, released: 0, paid: 0, disputed: 0, failed: 0 };

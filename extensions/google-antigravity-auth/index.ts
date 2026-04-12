@@ -1,5 +1,3 @@
-import { createHash, randomBytes } from "node:crypto";
-import { createServer } from "node:http";
 import {
   buildOauthProviderAuthResult,
   emptyPluginConfigSchema,
@@ -7,6 +5,8 @@ import {
   type BitterbotPluginApi,
   type ProviderAuthContext,
 } from "bitterbot/plugin-sdk";
+import { createHash, randomBytes } from "node:crypto";
+import { createServer } from "node:http";
 
 // OAuth constants - decoded from pi-ai's base64 encoded values to stay in sync
 const decode = (s: string) => Buffer.from(s, "base64").toString();

@@ -1,9 +1,9 @@
 import { useCallback, useEffect } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useNodesStore, type NodeEntry, type PairRequest } from "../../stores/nodes-store";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
+import { useNodesStore, type NodeEntry, type PairRequest } from "../../stores/nodes-store";
 
 function NodeCard({ node }: { node: NodeEntry }) {
   return (
@@ -32,21 +32,11 @@ function NodeCard({ node }: { node: NodeEntry }) {
             )}
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
-            {node.platform && (
-              <span>Platform: {node.platform}</span>
-            )}
-            {node.version && (
-              <span>Version: {node.version}</span>
-            )}
-            {node.deviceFamily && (
-              <span>Device: {node.deviceFamily}</span>
-            )}
-            {node.remoteIp && (
-              <span className="font-mono">IP: {node.remoteIp}</span>
-            )}
-            {node.connectedAtMs && (
-              <span>Connected: {formatRelativeTime(node.connectedAtMs)}</span>
-            )}
+            {node.platform && <span>Platform: {node.platform}</span>}
+            {node.version && <span>Version: {node.version}</span>}
+            {node.deviceFamily && <span>Device: {node.deviceFamily}</span>}
+            {node.remoteIp && <span className="font-mono">IP: {node.remoteIp}</span>}
+            {node.connectedAtMs && <span>Connected: {formatRelativeTime(node.connectedAtMs)}</span>}
           </div>
           {node.commands.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
@@ -100,9 +90,7 @@ function PairRequestCard({
             {req.displayName ?? req.nodeId}
           </span>
           {req.platform && (
-            <span className="ml-2 text-xs text-muted-foreground">
-              ({req.platform})
-            </span>
+            <span className="ml-2 text-xs text-muted-foreground">({req.platform})</span>
           )}
           <p className="text-xs text-muted-foreground mt-1">
             Requesting to pair • {formatRelativeTime(req.ts)}
@@ -149,8 +137,7 @@ export function NodesView() {
       const nr = nodeRes as { nodes?: NodeEntry[] };
       const pr = pairRes as { requests?: PairRequest[]; pending?: PairRequest[] };
       if (nr?.nodes) setNodes(nr.nodes);
-      if (pr?.requests || pr?.pending)
-        setPairRequests(pr.requests ?? pr.pending ?? []);
+      if (pr?.requests || pr?.pending) setPairRequests(pr.requests ?? pr.pending ?? []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load nodes");

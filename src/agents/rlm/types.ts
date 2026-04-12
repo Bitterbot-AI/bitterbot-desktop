@@ -35,7 +35,7 @@ export const DEFAULT_RLM_CONFIG: Required<RLMConfig> = {
   subModel: "auto",
   maxIterations: 15,
   maxDepth: 1,
-  maxBudget: 0.50,
+  maxBudget: 0.5,
   maxSubCalls: 20,
   sandboxTimeout: 30_000,
   maxContextTokens: 500_000,

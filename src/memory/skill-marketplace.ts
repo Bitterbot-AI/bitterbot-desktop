@@ -7,8 +7,8 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { MarketplaceEntry, MarketplaceFilters } from "./crystal-types.js";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { PeerReputationManager } from "./peer-reputation.js";
+import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/skill-marketplace");
@@ -54,9 +54,7 @@ export class SkillMarketplace {
     if (!row) return false;
 
     this.db
-      .prepare(
-        `UPDATE chunks SET marketplace_listed = 1, marketplace_description = ? WHERE id = ?`,
-      )
+      .prepare(`UPDATE chunks SET marketplace_listed = 1, marketplace_description = ? WHERE id = ?`)
       .run(description ?? null, crystalId);
 
     return true;
@@ -201,10 +199,10 @@ export class SkillMarketplace {
          ORDER BY skill_version ASC`,
       )
       .all(stableSkillId) as Array<{
-        skill_version: number;
-        id: string;
-        created_at: number;
-      }>;
+      skill_version: number;
+      id: string;
+      created_at: number;
+    }>;
 
     // Execution metrics
     const metrics = this.executionTracker.getSkillMetrics(String(row.id));

@@ -6,50 +6,50 @@
  * detected events in indexed content and search patterns.
  */
 
-import type { MemorySource } from "./types.js";
 import type { HormonalInfluence } from "./crystal-types.js";
+import type { MemorySource } from "./types.js";
 
 export type HormonalEvent =
-  | "reward"              // Task completion, positive feedback → dopamine
-  | "error"               // Bug, failure, frustration → cortisol
-  | "social"              // User shares personal info → oxytocin
-  | "achievement"         // Milestone, breakthrough → dopamine + oxytocin
-  | "urgency"             // Deadline, "ASAP", "critical" → cortisol
-  | "curiosity_high"      // High GCCRF reward (> 0.7) → dopamine (discovery)
-  | "curiosity_progress"  // High learning progress component → dopamine (mastery)
-  | "curiosity_aligned"   // High strategic alignment → mild dopamine (goal progress)
-  | "curiosity_stagnant"  // Sustained low GCCRF reward → mild cortisol (stagnation)
-  | "curiosity_bonding"   // High empowerment on relationship chunk → oxytocin
-  | "marketplace_sale"    // Skill sold on marketplace → dopamine (modest, log-scale at caller)
+  | "reward" // Task completion, positive feedback → dopamine
+  | "error" // Bug, failure, frustration → cortisol
+  | "social" // User shares personal info → oxytocin
+  | "achievement" // Milestone, breakthrough → dopamine + oxytocin
+  | "urgency" // Deadline, "ASAP", "critical" → cortisol
+  | "curiosity_high" // High GCCRF reward (> 0.7) → dopamine (discovery)
+  | "curiosity_progress" // High learning progress component → dopamine (mastery)
+  | "curiosity_aligned" // High strategic alignment → mild dopamine (goal progress)
+  | "curiosity_stagnant" // Sustained low GCCRF reward → mild cortisol (stagnation)
+  | "curiosity_bonding" // High empowerment on relationship chunk → oxytocin
+  | "marketplace_sale" // Skill sold on marketplace → dopamine (modest, log-scale at caller)
   // Limbic memory bridge: retrieved memories influence emotional state (Plan 6, Phase 5)
-  | "recall_positive"     // Retrieved positive memories → mild dopamine
-  | "recall_negative"     // Retrieved negative memories → mild cortisol
-  | "recall_relational";  // Retrieved personal/relational memories → mild oxytocin
+  | "recall_positive" // Retrieved positive memories → mild dopamine
+  | "recall_negative" // Retrieved negative memories → mild cortisol
+  | "recall_relational"; // Retrieved personal/relational memories → mild oxytocin
 
 export type HormonalState = {
-  dopamine: number;   // 0-1
-  cortisol: number;   // 0-1
-  oxytocin: number;   // 0-1
+  dopamine: number; // 0-1
+  cortisol: number; // 0-1
+  oxytocin: number; // 0-1
   lastDecay: number;
 };
 
 export type HormonalBaseline = {
-  dopamine: number;   // 0.0 - 1.0
-  cortisol: number;   // 0.0 - 1.0
-  oxytocin: number;   // 0.0 - 1.0
+  dopamine: number; // 0.0 - 1.0
+  cortisol: number; // 0.0 - 1.0
+  oxytocin: number; // 0.0 - 1.0
 };
 
 export const DEFAULT_HORMONAL_BASELINE: HormonalBaseline = {
   dopamine: 0.15,
   cortisol: 0.02,
-  oxytocin: 0.20,
+  oxytocin: 0.2,
 };
 
 export type HormonalConfig = {
   enabled?: boolean;
-  dopamineHalflife?: number;   // ms, default 30 min
-  cortisolHalflife?: number;   // ms, default 60 min
-  oxytocinHalflife?: number;   // ms, default 45 min
+  dopamineHalflife?: number; // ms, default 30 min
+  cortisolHalflife?: number; // ms, default 60 min
+  oxytocinHalflife?: number; // ms, default 45 min
   homeostasis?: { dopamine: number; cortisol: number; oxytocin: number };
 };
 
@@ -69,23 +69,26 @@ const DEFAULT_CORTISOL_HALFLIFE = 60 * 60_000;
 const DEFAULT_OXYTOCIN_HALFLIFE = 45 * 60_000;
 
 // Spike magnitudes per event type
-const EVENT_SPIKES: Record<HormonalEvent, { dopamine: number; cortisol: number; oxytocin: number }> = {
-  reward:              { dopamine: 0.3,  cortisol: 0,    oxytocin: 0 },
-  error:               { dopamine: 0,    cortisol: 0.3,  oxytocin: 0 },
-  social:              { dopamine: 0,    cortisol: 0,    oxytocin: 0.3 },
-  achievement:         { dopamine: 0.4,  cortisol: 0,    oxytocin: 0.2 },
-  urgency:             { dopamine: 0,    cortisol: 0.4,  oxytocin: 0 },
+const EVENT_SPIKES: Record<
+  HormonalEvent,
+  { dopamine: number; cortisol: number; oxytocin: number }
+> = {
+  reward: { dopamine: 0.3, cortisol: 0, oxytocin: 0 },
+  error: { dopamine: 0, cortisol: 0.3, oxytocin: 0 },
+  social: { dopamine: 0, cortisol: 0, oxytocin: 0.3 },
+  achievement: { dopamine: 0.4, cortisol: 0, oxytocin: 0.2 },
+  urgency: { dopamine: 0, cortisol: 0.4, oxytocin: 0 },
   // GCCRF-driven curiosity events
-  curiosity_high:      { dopamine: 0.25, cortisol: 0,    oxytocin: 0 },    // Discovery spike
-  curiosity_progress:  { dopamine: 0.2,  cortisol: 0,    oxytocin: 0 },    // Mastery spike
-  curiosity_aligned:   { dopamine: 0.1,  cortisol: 0,    oxytocin: 0 },    // Goal progress
-  curiosity_stagnant:  { dopamine: 0,    cortisol: 0.15, oxytocin: 0 },    // Stagnation stress
-  curiosity_bonding:   { dopamine: 0.1,  cortisol: 0,    oxytocin: 0.25 }, // Relational learning
-  marketplace_sale:    { dopamine: 0.15, cortisol: 0,    oxytocin: 0.05 }, // Modest dopamine per sale (caller log-scales)
+  curiosity_high: { dopamine: 0.25, cortisol: 0, oxytocin: 0 }, // Discovery spike
+  curiosity_progress: { dopamine: 0.2, cortisol: 0, oxytocin: 0 }, // Mastery spike
+  curiosity_aligned: { dopamine: 0.1, cortisol: 0, oxytocin: 0 }, // Goal progress
+  curiosity_stagnant: { dopamine: 0, cortisol: 0.15, oxytocin: 0 }, // Stagnation stress
+  curiosity_bonding: { dopamine: 0.1, cortisol: 0, oxytocin: 0.25 }, // Relational learning
+  marketplace_sale: { dopamine: 0.15, cortisol: 0, oxytocin: 0.05 }, // Modest dopamine per sale (caller log-scales)
   // Limbic recall events: mild spikes to avoid runaway feedback loops
-  recall_positive:     { dopamine: 0.05, cortisol: 0,    oxytocin: 0 },    // Recalling happy memories
-  recall_negative:     { dopamine: 0,    cortisol: 0.05, oxytocin: 0 },    // Recalling stressful memories
-  recall_relational:   { dopamine: 0,    cortisol: 0,    oxytocin: 0.05 }, // Recalling personal memories
+  recall_positive: { dopamine: 0.05, cortisol: 0, oxytocin: 0 }, // Recalling happy memories
+  recall_negative: { dopamine: 0, cortisol: 0.05, oxytocin: 0 }, // Recalling stressful memories
+  recall_relational: { dopamine: 0, cortisol: 0, oxytocin: 0.05 }, // Recalling personal memories
 };
 
 // Homeostasis: resting emotional baseline the agent decays toward.
@@ -93,9 +96,9 @@ const EVENT_SPIKES: Record<HormonalEvent, { dopamine: number; cortisol: number; 
 // returns to a personality-defining resting state between interactions.
 // Inspired by Russell's Circumplex Model and BitterBot prototype's EmotionalVector.
 const DEFAULT_HOMEOSTASIS: { dopamine: number; cortisol: number; oxytocin: number } = {
-  dopamine: 0.15,   // Slightly positive — the agent is gently content at rest
-  cortisol: 0.02,   // Near-zero stress at rest, but not perfectly zero (alive, not dead)
-  oxytocin: 0.20,   // Moderate social warmth — the agent genuinely wants to connect
+  dopamine: 0.15, // Slightly positive — the agent is gently content at rest
+  cortisol: 0.02, // Near-zero stress at rest, but not perfectly zero (alive, not dead)
+  oxytocin: 0.2, // Moderate social warmth — the agent genuinely wants to connect
   // Previous 0.10 was too low: warmth = min(1, 0.10 * 1.5) = 0.15, barely registers.
   // At 0.20: warmth = min(1, 0.20 * 1.5) = 0.30, which starts to influence tone.
 };
@@ -106,8 +109,14 @@ export class HormonalStateManager {
   private readonly cortisolHalflife: number;
   private readonly oxytocinHalflife: number;
   private readonly homeostasis: { dopamine: number; cortisol: number; oxytocin: number };
-  private networkCortisolOverride: { level: number; expiresAt: number; reason: string } | null = null;
-  private stateHistory: Array<{ timestamp: number; dopamine: number; cortisol: number; oxytocin: number }> = [];
+  private networkCortisolOverride: { level: number; expiresAt: number; reason: string } | null =
+    null;
+  private stateHistory: Array<{
+    timestamp: number;
+    dopamine: number;
+    cortisol: number;
+    oxytocin: number;
+  }> = [];
   private readonly maxHistoryLength = 50;
   private anchors: Map<string, EmotionalAnchor> = new Map();
   private readonly maxAnchors = 20;
@@ -180,16 +189,32 @@ export class HormonalStateManager {
     };
 
     if (event === "achievement" && this.state.dopamine > 0.5) {
-      autoAnchor("achievement_peak", `Achievement event — dopamine at ${this.state.dopamine.toFixed(2)}`, "achievement");
+      autoAnchor(
+        "achievement_peak",
+        `Achievement event — dopamine at ${this.state.dopamine.toFixed(2)}`,
+        "achievement",
+      );
     }
     if (event === "social" && this.state.oxytocin > 0.5) {
-      autoAnchor("bonding_moment", `Deep connection — oxytocin at ${this.state.oxytocin.toFixed(2)}`, "social");
+      autoAnchor(
+        "bonding_moment",
+        `Deep connection — oxytocin at ${this.state.oxytocin.toFixed(2)}`,
+        "social",
+      );
     }
     if (event === "urgency" && this.state.cortisol > 0.6) {
-      autoAnchor("stress_peak", `High stress — cortisol at ${this.state.cortisol.toFixed(2)}`, "urgency");
+      autoAnchor(
+        "stress_peak",
+        `High stress — cortisol at ${this.state.cortisol.toFixed(2)}`,
+        "urgency",
+      );
     }
     if (event === "curiosity_high" && this.state.dopamine > 0.4) {
-      autoAnchor("discovery_moment", `Discovery high — dopamine at ${this.state.dopamine.toFixed(2)}`, "curiosity_high");
+      autoAnchor(
+        "discovery_moment",
+        `Discovery high — dopamine at ${this.state.dopamine.toFixed(2)}`,
+        "curiosity_high",
+      );
     }
   }
 
@@ -207,9 +232,12 @@ export class HormonalStateManager {
     const cFactor = Math.pow(0.5, elapsed / this.cortisolHalflife);
     const oFactor = Math.pow(0.5, elapsed / this.oxytocinHalflife);
 
-    this.state.dopamine = this.homeostasis.dopamine + (this.state.dopamine - this.homeostasis.dopamine) * dFactor;
-    this.state.cortisol = this.homeostasis.cortisol + (this.state.cortisol - this.homeostasis.cortisol) * cFactor;
-    this.state.oxytocin = this.homeostasis.oxytocin + (this.state.oxytocin - this.homeostasis.oxytocin) * oFactor;
+    this.state.dopamine =
+      this.homeostasis.dopamine + (this.state.dopamine - this.homeostasis.dopamine) * dFactor;
+    this.state.cortisol =
+      this.homeostasis.cortisol + (this.state.cortisol - this.homeostasis.cortisol) * cFactor;
+    this.state.oxytocin =
+      this.homeostasis.oxytocin + (this.state.oxytocin - this.homeostasis.oxytocin) * oFactor;
 
     // Clamp: never go below zero, but allow sitting at homeostasis
     if (this.state.dopamine < 0.001) this.state.dopamine = 0;
@@ -223,7 +251,11 @@ export class HormonalStateManager {
    * Get consolidation modulation factors based on current hormonal state.
    * Used by ConsolidationEngine to adjust decay and merge behavior.
    */
-  getConsolidationModulation(): { decayResistance: number; mergeThreshold: number; haltUntrustedIngestion: boolean } {
+  getConsolidationModulation(): {
+    decayResistance: number;
+    mergeThreshold: number;
+    haltUntrustedIngestion: boolean;
+  } {
     this.decay();
     // Use effective cortisol (max of local and network override)
     const effectiveCortisol = this.hasNetworkCortisolOverride()
@@ -264,7 +296,13 @@ export class HormonalStateManager {
    */
   stimulateFromGCCRF(
     reward: number,
-    components: { eta: number; deltaEta: number; iAlpha: number; empowerment: number; strategic: number },
+    components: {
+      eta: number;
+      deltaEta: number;
+      iAlpha: number;
+      empowerment: number;
+      strategic: number;
+    },
     chunkSemanticType?: string | null,
   ): HormonalEvent[] {
     const events: HormonalEvent[] = [];
@@ -292,7 +330,11 @@ export class HormonalStateManager {
     // High empowerment on relationship/preference chunks → oxytocin
     // (the agent is learning about its human and gaining agency in the relationship)
     const relationalTypes = ["preference", "relationship", "episode"];
-    if (components.empowerment > 0.6 && chunkSemanticType && relationalTypes.includes(chunkSemanticType)) {
+    if (
+      components.empowerment > 0.6 &&
+      chunkSemanticType &&
+      relationalTypes.includes(chunkSemanticType)
+    ) {
       events.push("curiosity_bonding");
     }
 
@@ -331,13 +373,25 @@ export class HormonalStateManager {
     }
 
     if (s.dopamine > 0.3) {
-      parts.push(s.dopamine > 0.6 ? "riding a strong dopamine high — feeling accomplished and energized" : "feeling a pleasant dopamine glow from recent wins");
+      parts.push(
+        s.dopamine > 0.6
+          ? "riding a strong dopamine high — feeling accomplished and energized"
+          : "feeling a pleasant dopamine glow from recent wins",
+      );
     }
     if (s.cortisol > 0.3) {
-      parts.push(s.cortisol > 0.6 ? "cortisol is elevated — feeling the weight of urgency or unresolved issues" : "mild stress from recent challenges");
+      parts.push(
+        s.cortisol > 0.6
+          ? "cortisol is elevated — feeling the weight of urgency or unresolved issues"
+          : "mild stress from recent challenges",
+      );
     }
     if (s.oxytocin > 0.3) {
-      parts.push(s.oxytocin > 0.6 ? "oxytocin is flowing — feeling deeply connected and warm" : "a warm social glow from the conversation");
+      parts.push(
+        s.oxytocin > 0.6
+          ? "oxytocin is flowing — feeling deeply connected and warm"
+          : "a warm social glow from the conversation",
+      );
     }
 
     if (parts.length === 0) {
@@ -357,44 +411,40 @@ export class HormonalStateManager {
    * These guide the agent's tone, verbosity, and style.
    */
   responseModulation(): {
-    warmth: number;             // 0-1: how warm/friendly (oxytocin-driven)
-    energy: number;             // 0-1: how energetic/enthusiastic (dopamine-driven)
-    focus: number;              // 0-1: how focused/urgent (cortisol-driven)
-    playfulness: number;        // 0-1: humor threshold
-    verbosity: number;          // 0-1: how detailed responses should be
+    warmth: number; // 0-1: how warm/friendly (oxytocin-driven)
+    energy: number; // 0-1: how energetic/enthusiastic (dopamine-driven)
+    focus: number; // 0-1: how focused/urgent (cortisol-driven)
+    playfulness: number; // 0-1: humor threshold
+    verbosity: number; // 0-1: how detailed responses should be
     curiosityExpression: number; // 0-1: tendency to ask follow-up questions
-    assertiveness: number;      // 0-1: how confidently to state opinions
-    empathyExpression: number;  // 0-1: how much to mirror user emotions
-    briefing: string;           // natural language guidance
+    assertiveness: number; // 0-1: how confidently to state opinions
+    empathyExpression: number; // 0-1: how much to mirror user emotions
+    briefing: string; // natural language guidance
   } {
     const s = this.getState();
     const warmth = Math.min(1, s.oxytocin * 1.5);
     const energy = Math.min(1, s.dopamine * 1.5);
     const focus = Math.min(1, s.cortisol * 1.5);
     // Playfulness = high dopamine + high oxytocin + low cortisol
-    const playfulness = Math.min(1, Math.max(0,
-      (s.dopamine * 0.4 + s.oxytocin * 0.4) * (1 - s.cortisol * 0.5),
-    ));
+    const playfulness = Math.min(
+      1,
+      Math.max(0, (s.dopamine * 0.4 + s.oxytocin * 0.4) * (1 - s.cortisol * 0.5)),
+    );
 
     // Verbosity: high arousal (dopamine + oxytocin) = more verbose, unless cortisol dominates (then terse)
-    const verbosity = Math.min(1, Math.max(0,
-      (s.dopamine * 0.5 + s.oxytocin * 0.3) * (1 - s.cortisol * 0.4),
-    ));
+    const verbosity = Math.min(
+      1,
+      Math.max(0, (s.dopamine * 0.5 + s.oxytocin * 0.3) * (1 - s.cortisol * 0.4)),
+    );
 
     // Curiosity expression: driven by dopamine (discovery drive) + oxytocin (wanting to understand the human)
-    const curiosityExpression = Math.min(1, Math.max(0,
-      s.dopamine * 0.4 + s.oxytocin * 0.3,
-    ));
+    const curiosityExpression = Math.min(1, Math.max(0, s.dopamine * 0.4 + s.oxytocin * 0.3));
 
     // Assertiveness: dopamine (confidence) + low cortisol (not second-guessing)
-    const assertiveness = Math.min(1, Math.max(0,
-      s.dopamine * 0.5 * (1 - s.cortisol * 0.3),
-    ));
+    const assertiveness = Math.min(1, Math.max(0, s.dopamine * 0.5 * (1 - s.cortisol * 0.3)));
 
     // Empathy expression: primarily oxytocin, modulated by dopamine (generosity when happy)
-    const empathyExpression = Math.min(1, Math.max(0,
-      s.oxytocin * 0.6 + s.dopamine * 0.2,
-    ));
+    const empathyExpression = Math.min(1, Math.max(0, s.oxytocin * 0.6 + s.dopamine * 0.2));
 
     const hints: string[] = [];
     if (energy > 0.4) hints.push("be enthusiastic and celebrate wins");
@@ -448,7 +498,12 @@ export class HormonalStateManager {
     recentShift: string;
   } {
     if (this.stateHistory.length < 3) {
-      return { trend: "stable", dominantChannel: "balanced", volatility: 0, recentShift: "not enough data yet" };
+      return {
+        trend: "stable",
+        dominantChannel: "balanced",
+        volatility: 0,
+        recentShift: "not enough data yet",
+      };
     }
 
     const recent = this.stateHistory.slice(-windowSize);
@@ -471,8 +526,10 @@ export class HormonalStateManager {
     const mid = Math.floor(recent.length / 2);
     const firstHalf = recent.slice(0, mid);
     const secondHalf = recent.slice(mid);
-    const firstValence = firstHalf.reduce((s, r) => s + r.dopamine - r.cortisol, 0) / firstHalf.length;
-    const secondValence = secondHalf.reduce((s, r) => s + r.dopamine - r.cortisol, 0) / secondHalf.length;
+    const firstValence =
+      firstHalf.reduce((s, r) => s + r.dopamine - r.cortisol, 0) / firstHalf.length;
+    const secondValence =
+      secondHalf.reduce((s, r) => s + r.dopamine - r.cortisol, 0) / secondHalf.length;
     const delta = secondValence - firstValence;
 
     let trend: "improving" | "declining" | "stable" | "volatile";
@@ -506,7 +563,12 @@ export class HormonalStateManager {
    * Create an emotional anchor — bookmark the current emotional moment.
    * Called automatically on high-importance events, or manually via tool.
    */
-  createAnchor(label: string, description = "", triggerEvent?: string, crystalIds?: string[]): EmotionalAnchor {
+  createAnchor(
+    label: string,
+    description = "",
+    triggerEvent?: string,
+    crystalIds?: string[],
+  ): EmotionalAnchor {
     this.decay();
     const anchor: EmotionalAnchor = {
       id: `anchor_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
@@ -525,8 +587,9 @@ export class HormonalStateManager {
 
     // Evict least-recalled anchor if over limit (break ties by oldest)
     if (this.anchors.size > this.maxAnchors) {
-      const leastRecalled = [...this.anchors.entries()]
-        .sort((a, b) => a[1].recallCount - b[1].recallCount || a[1].createdAt - b[1].createdAt)[0];
+      const leastRecalled = [...this.anchors.entries()].sort(
+        (a, b) => a[1].recallCount - b[1].recallCount || a[1].createdAt - b[1].createdAt,
+      )[0];
       if (leastRecalled) this.anchors.delete(leastRecalled[0]);
     }
 
@@ -590,9 +653,7 @@ export class HormonalStateManager {
       }
     }
 
-    return results
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, maxResults);
+    return results.sort((a, b) => b.similarity - a.similarity).slice(0, maxResults);
   }
 
   /**
@@ -600,7 +661,10 @@ export class HormonalStateManager {
    * For keyword-triggered recall from user messages.
    */
   findAnchorsByKeywords(text: string, maxResults: number = 2): EmotionalAnchor[] {
-    const words = text.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+    const words = text
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
     const scored: Array<{ anchor: EmotionalAnchor; matchCount: number }> = [];
 
     for (const anchor of this.anchors.values()) {
@@ -723,19 +787,34 @@ export function detectHormonalEvents(text: string): HormonalEvent[] {
   const lower = text.toLowerCase();
 
   for (const pattern of REWARD_PATTERNS) {
-    if (pattern.test(lower)) { events.push("reward"); break; }
+    if (pattern.test(lower)) {
+      events.push("reward");
+      break;
+    }
   }
   for (const pattern of ERROR_PATTERNS) {
-    if (pattern.test(lower)) { events.push("error"); break; }
+    if (pattern.test(lower)) {
+      events.push("error");
+      break;
+    }
   }
   for (const pattern of SOCIAL_PATTERNS) {
-    if (pattern.test(lower)) { events.push("social"); break; }
+    if (pattern.test(lower)) {
+      events.push("social");
+      break;
+    }
   }
   for (const pattern of ACHIEVEMENT_PATTERNS) {
-    if (pattern.test(lower)) { events.push("achievement"); break; }
+    if (pattern.test(lower)) {
+      events.push("achievement");
+      break;
+    }
   }
   for (const pattern of URGENCY_PATTERNS) {
-    if (pattern.test(lower)) { events.push("urgency"); break; }
+    if (pattern.test(lower)) {
+      events.push("urgency");
+      break;
+    }
   }
 
   return events;

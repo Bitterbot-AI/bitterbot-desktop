@@ -37,7 +37,7 @@ const DQS_WEIGHTS = {
   crystalYield: 0.25,
   mergeEfficiency: 0.15,
   orphanRescue: 0.15,
-  bondStability: 0.30,
+  bondStability: 0.3,
   tokenEfficiency: 0.15,
 };
 
@@ -104,8 +104,7 @@ export function evaluateDreamOutcome(params: {
       : 1.0;
 
   // Token efficiency
-  const tokenEfficiency =
-    tokenBudget > 0 ? 1 - Math.min(1, tokensUsed / tokenBudget) : 1.0;
+  const tokenEfficiency = tokenBudget > 0 ? 1 - Math.min(1, tokensUsed / tokenBudget) : 1.0;
 
   // Composite DQS
   const dqs =
@@ -238,9 +237,11 @@ export function analyzeSignalCorrelation(
  *   |r| < 0.2 after 20+ cycles → noise, decrease weight (down to 0.5x)
  *   Otherwise → neutral (1.0x)
  */
-export function computeFshoWeightAdjustment(
-  db: DatabaseSync,
-): { adjustment: number; correlation: number; sampleSize: number } {
+export function computeFshoWeightAdjustment(db: DatabaseSync): {
+  adjustment: number;
+  correlation: number;
+  sampleSize: number;
+} {
   const { fshoCorrelation, sampleSize } = analyzeSignalCorrelation(db, 30);
 
   if (sampleSize < 10) {

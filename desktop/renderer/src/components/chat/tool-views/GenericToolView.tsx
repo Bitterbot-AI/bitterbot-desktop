@@ -1,9 +1,9 @@
+import { Wrench, ChevronDown, ChevronUp } from "lucide-react";
 import { useState, useCallback, useMemo } from "react";
 import type { ToolViewProps } from "./ToolViewRegistry";
-import { Wrench, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "../../../lib/utils";
-import { safeJsonParse } from "./tool-view-utils";
 import { SyntaxViewer } from "../../workspace/SyntaxViewer";
+import { safeJsonParse } from "./tool-view-utils";
 
 const VALUE_TRUNCATE_LENGTH = 200;
 
@@ -16,10 +16,7 @@ export function GenericToolView({ toolCall }: ToolViewProps) {
   const isRunning = toolCall.status === "running";
   const args = toolCall.args as Record<string, unknown> | undefined;
   const hasArgs =
-    args !== undefined &&
-    args !== null &&
-    typeof args === "object" &&
-    Object.keys(args).length > 0;
+    args !== undefined && args !== null && typeof args === "object" && Object.keys(args).length > 0;
 
   // Check if output is JSON for highlighting
   const formattedOutput = useMemo(() => {
@@ -39,9 +36,7 @@ export function GenericToolView({ toolCall }: ToolViewProps) {
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/60 border-b border-zinc-800/50">
         <Wrench className="w-3.5 h-3.5 text-purple-400" />
-        <span className="text-xs font-medium text-zinc-300 font-mono">
-          {toolCall.name}
-        </span>
+        <span className="text-xs font-medium text-zinc-300 font-mono">{toolCall.name}</span>
       </div>
 
       <div className="flex-1 overflow-auto p-3 space-y-3">

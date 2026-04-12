@@ -8,10 +8,10 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./crystal-types.js";
 import type { SkillEnvelope } from "../agents/skills/ingest.js";
-import { rowToCrystal } from "./crystal.js";
+import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./crystal-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { rowToCrystal } from "./crystal.js";
 import { ensureColumn } from "./memory-schema.js";
 
 const log = createSubsystemLogger("memory/mem-store");
@@ -77,7 +77,9 @@ export class MemStore {
       try {
         governance = JSON.parse(row.governance_json);
       } catch (err) {
-        log.warn(`corrupted governance_json for crystal ${crystalId}, updating publish fields only`);
+        log.warn(
+          `corrupted governance_json for crystal ${crystalId}, updating publish fields only`,
+        );
         // Don't overwrite corrupted governance — only update publish visibility
         this.db
           .prepare(`UPDATE chunks SET publish_visibility = ?, published_at = ? WHERE id = ?`)
@@ -262,9 +264,9 @@ export class MemStore {
   }
 
   private getCrystal(id: string): KnowledgeCrystal | null {
-    const row = this.db
-      .prepare(`SELECT * FROM chunks WHERE id = ?`)
-      .get(id) as Record<string, unknown> | undefined;
+    const row = this.db.prepare(`SELECT * FROM chunks WHERE id = ?`).get(id) as
+      | Record<string, unknown>
+      | undefined;
 
     if (!row) return null;
     return rowToCrystal(row);

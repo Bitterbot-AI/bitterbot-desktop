@@ -3,7 +3,8 @@ name: coding-agent
 description: Run Codex CLI, Claude Code, OpenCode, or Pi Coding Agent via background process for programmatic control.
 metadata:
   {
-    "bitterbot": { "emoji": "🧩", "requires": { "anyBins": ["claude", "codex", "opencode", "pi"] } },
+    "bitterbot":
+      { "emoji": "🧩", "requires": { "anyBins": ["claude", "codex", "opencode", "pi"] } },
   }
 ---
 

@@ -1,6 +1,6 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import crypto from "node:crypto";
 import { loadConfig, writeConfigFile } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { ensureDir } from "../utils.js";
@@ -55,9 +55,7 @@ function resolveProjectKnowledgeDir(projectId: string): string {
 
 function readProjectsFromConfig(): ProjectConfig[] {
   const cfg = loadConfig();
-  const raw = (cfg as Record<string, unknown>).projects as
-    | { list?: ProjectConfig[] }
-    | undefined;
+  const raw = (cfg as Record<string, unknown>).projects as { list?: ProjectConfig[] } | undefined;
   return Array.isArray(raw?.list) ? raw.list : [];
 }
 
@@ -199,10 +197,7 @@ export function listProjectFiles(projectId: string): ProjectKBFile[] {
   return project?.knowledgeBase.files ?? [];
 }
 
-export async function deleteProjectFile(
-  projectId: string,
-  fileId: string,
-): Promise<boolean> {
+export async function deleteProjectFile(projectId: string, fileId: string): Promise<boolean> {
   const configs = readProjectsFromConfig();
   const idx = configs.findIndex((p) => p.id === projectId);
   if (idx < 0) return false;

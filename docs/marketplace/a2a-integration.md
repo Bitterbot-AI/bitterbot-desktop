@@ -8,9 +8,9 @@ Technical documentation for integrating with the Bitterbot Skill Marketplace via
 
 Bitterbot implements the A2A protocol, exposing two standard endpoints:
 
-| Endpoint | Purpose |
-|----------|---------|
-| `/a2a` | JSON-RPC 2.0 endpoint for task submission and lifecycle management. |
+| Endpoint                  | Purpose                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `/a2a`                    | JSON-RPC 2.0 endpoint for task submission and lifecycle management.                                    |
 | `/.well-known/agent.json` | Agent Card -- a static JSON document describing the agent's identity, capabilities, and payment terms. |
 
 All A2A requests and responses use JSON-RPC 2.0. The `/a2a` endpoint accepts POST requests with a JSON-RPC body. The following methods are supported:
@@ -60,11 +60,11 @@ Client                              Selling Agent
 
 The x402 v2 protocol defines three standard HTTP headers for the payment handshake:
 
-| Header | Direction | Content |
-|--------|-----------|---------|
-| `PAYMENT-REQUIRED` | Server -> Client | Base64-encoded JSON containing `PaymentRequirements`: `scheme`, `network`, `maxAmountRequired`, `resource`, `description`, `payTo`, `asset`, `maxTimeoutSeconds`. Sent with the 402 response. |
-| `PAYMENT-SIGNATURE` | Client -> Server | Base64-encoded payment proof. Sent by the client on retry after completing payment. |
-| `PAYMENT-RESPONSE` | Server -> Client | Base64-encoded settlement response containing `transactionHash`, `payer`, `network`. Sent with the 200 OK on successful verification and execution. |
+| Header              | Direction        | Content                                                                                                                                                                                       |
+| ------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PAYMENT-REQUIRED`  | Server -> Client | Base64-encoded JSON containing `PaymentRequirements`: `scheme`, `network`, `maxAmountRequired`, `resource`, `description`, `payTo`, `asset`, `maxTimeoutSeconds`. Sent with the 402 response. |
+| `PAYMENT-SIGNATURE` | Client -> Server | Base64-encoded payment proof. Sent by the client on retry after completing payment.                                                                                                           |
+| `PAYMENT-RESPONSE`  | Server -> Client | Base64-encoded settlement response containing `transactionHash`, `payer`, `network`. Sent with the 200 OK on successful verification and execution.                                           |
 
 > **Backwards compatibility:** The custom `x-payment` and `x-payment-token` headers are still accepted on inbound requests. Clients may use either the v2 standard `PAYMENT-SIGNATURE` header or the legacy headers when submitting payment proof.
 
@@ -83,9 +83,7 @@ The x402 v2 protocol defines three standard HTTP headers for the payment handsha
        "data": {
          "pricing": {
            "priceUsdc": 0.05,
-           "skills": [
-             { "id": "summarize-webpage", "name": "Summarize Webpage", "price": 0.05 }
-           ]
+           "skills": [{ "id": "summarize-webpage", "name": "Summarize Webpage", "price": 0.05 }]
          },
          "payTo": "0xABCDEF1234567890ABCDEF1234567890ABCDEF12",
          "chain": "base",
@@ -159,21 +157,21 @@ The Agent Card at `/.well-known/agent.json` follows the standard A2A schema with
 
 **A2aSkill fields:**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Unique skill identifier (slug). |
-| `name` | string | Human-readable skill name. |
-| `description` | string | What the skill does. |
-| `tags` | string[] | Optional categorization tags. |
-| `examples` | string[] | Optional example inputs. |
+| Field         | Type     | Description                     |
+| ------------- | -------- | ------------------------------- |
+| `id`          | string   | Unique skill identifier (slug). |
+| `name`        | string   | Human-readable skill name.      |
+| `description` | string   | What the skill does.            |
+| `tags`        | string[] | Optional categorization tags.   |
+| `examples`    | string[] | Optional example inputs.        |
 
 **Per-skill `extensions.pricing`** is added by the marketplace economics engine when skill prices are available:
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field       | Type   | Description                               |
+| ----------- | ------ | ----------------------------------------- |
 | `priceUsdc` | number | The current price for this skill in USDC. |
-| `chain` | string | The payment chain (always `"base"`). |
-| `token` | string | The payment token (always `"USDC"`). |
+| `chain`     | string | The payment chain (always `"base"`).      |
+| `token`     | string | The payment token (always `"USDC"`).      |
 
 Clients should read the per-skill pricing to know what amount to send. If no per-skill pricing is present, use the `minPayment` value from the top-level `x402-payment` extension. The price may change between reads if the marketplace uses dynamic pricing, so clients should re-check before paying if there is a significant delay.
 
@@ -190,14 +188,14 @@ submitted -> working -> completed | failed | canceled
 
 The full set of task states defined in the protocol:
 
-| State | Description |
-|-------|-------------|
-| `submitted` | Task has been created and is queued for execution. |
-| `working` | The agent is actively executing the task. |
+| State            | Description                                                         |
+| ---------------- | ------------------------------------------------------------------- |
+| `submitted`      | Task has been created and is queued for execution.                  |
+| `working`        | The agent is actively executing the task.                           |
 | `input-required` | The agent needs additional input from the client before proceeding. |
-| `completed` | The task finished successfully. Artifacts are available. |
-| `failed` | The task encountered an error. |
-| `canceled` | The task was canceled via `tasks/cancel`. |
+| `completed`      | The task finished successfully. Artifacts are available.            |
+| `failed`         | The task encountered an error.                                      |
+| `canceled`       | The task was canceled via `tasks/cancel`.                           |
 
 When payment is involved, the full request lifecycle is:
 
@@ -305,7 +303,7 @@ Cancel a running task. Only tasks in non-final states (`submitted`, `working`, `
 
 ```typescript
 {
-  id: string
+  id: string;
 }
 ```
 
@@ -336,7 +334,7 @@ for (const skill of agentCard.skills) {
 Before paying, confirm the current price for the specific skill you want:
 
 ```typescript
-const skill = agentCard.skills.find(s => s.id === "summarize-webpage");
+const skill = agentCard.skills.find((s) => s.id === "summarize-webpage");
 const price = skill.extensions?.pricing?.priceUsdc;
 const payTo = agentCard.extensions["x402-payment"].address;
 ```
@@ -352,11 +350,7 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
 
-async function executeWithPayment(
-  a2aUrl: string,
-  input: string,
-  authToken: string
-): Promise<any> {
+async function executeWithPayment(a2aUrl: string, input: string, authToken: string): Promise<any> {
   const taskPayload = {
     jsonrpc: "2.0",
     method: "message/send",
@@ -364,9 +358,9 @@ async function executeWithPayment(
     params: {
       message: {
         role: "user",
-        parts: [{ type: "text", text: input }]
-      }
-    }
+        parts: [{ type: "text", text: input }],
+      },
+    },
   };
 
   // Step 1: initial request (expect 402)
@@ -374,9 +368,9 @@ async function executeWithPayment(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${authToken}`
+      Authorization: `Bearer ${authToken}`,
     },
-    body: JSON.stringify(taskPayload)
+    body: JSON.stringify(taskPayload),
   });
 
   if (initialResponse.status !== 402) {
@@ -400,7 +394,7 @@ async function executeWithPayment(
   const walletClient = createWalletClient({
     account,
     chain: base,
-    transport: http()
+    transport: http(),
   });
 
   const amount = parseUnits(price.toString(), 6); // USDC has 6 decimals
@@ -413,35 +407,37 @@ async function executeWithPayment(
         type: "function",
         inputs: [
           { name: "to", type: "address" },
-          { name: "amount", type: "uint256" }
+          { name: "amount", type: "uint256" },
         ],
         outputs: [{ type: "bool" }],
-        stateMutability: "nonpayable"
-      }
+        stateMutability: "nonpayable",
+      },
     ],
     functionName: "transfer",
-    args: [payTo as `0x${string}`, amount]
+    args: [payTo as `0x${string}`, amount],
   });
 
   // Step 4: wait for confirmation, then retry with payment proof
   // In production, wait for at least 1 confirmation.
 
   // Build payment proof token (base64-encoded JSON)
-  const paymentToken = Buffer.from(JSON.stringify({
-    txHash,
-    amount: price,
-    sender: account.address,
-    timestamp: Date.now(),
-  })).toString("base64");
+  const paymentToken = Buffer.from(
+    JSON.stringify({
+      txHash,
+      amount: price,
+      sender: account.address,
+      timestamp: Date.now(),
+    }),
+  ).toString("base64");
 
   const paidResponse = await fetch(a2aUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${authToken}`,
-      "X-Payment-Token": paymentToken
+      Authorization: `Bearer ${authToken}`,
+      "X-Payment-Token": paymentToken,
     },
-    body: JSON.stringify({ ...taskPayload, id: crypto.randomUUID() })
+    body: JSON.stringify({ ...taskPayload, id: crypto.randomUUID() }),
   });
 
   return paidResponse.json();
@@ -510,14 +506,14 @@ The A2A client enforces configurable spending limits to prevent runaway costs wh
     "marketplace": {
       "client": {
         // Maximum USDC to spend per outbound A2A task. Default: 0.50
-        "maxTaskCostUsdc": 0.50,
+        "maxTaskCostUsdc": 0.5,
         // Maximum USDC to spend per day on outbound tasks. Default: 2.00
-        "dailySpendLimitUsdc": 2.00,
+        "dailySpendLimitUsdc": 2.0,
         // Task timeout in ms. Default: 60000
-        "taskTimeoutMs": 60000
-      }
-    }
-  }
+        "taskTimeoutMs": 60000,
+      },
+    },
+  },
 }
 ```
 
@@ -547,7 +543,7 @@ import { base } from "viem/chains";
 
 const publicClient = createPublicClient({
   chain: base,
-  transport: http()
+  transport: http(),
 });
 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -555,7 +551,7 @@ const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 async function verifyPayment(
   txHash: `0x${string}`,
   expectedRecipient: string,
-  expectedAmountUsdc: number
+  expectedAmountUsdc: number,
 ): Promise<{ valid: boolean; reason?: string }> {
   // 1. Fetch the transaction receipt
   const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
@@ -566,11 +562,11 @@ async function verifyPayment(
 
   // 2. Parse Transfer event logs from the USDC contract
   const transferEvent = parseAbiItem(
-    "event Transfer(address indexed from, address indexed to, uint256 value)"
+    "event Transfer(address indexed from, address indexed to, uint256 value)",
   );
 
   const transferLogs = receipt.logs.filter(
-    (log) => log.address.toLowerCase() === USDC_ADDRESS.toLowerCase()
+    (log) => log.address.toLowerCase() === USDC_ADDRESS.toLowerCase(),
   );
 
   if (transferLogs.length === 0) {
@@ -584,30 +580,27 @@ async function verifyPayment(
     const value = BigInt(log.data);
     const amountUsdc = Number(formatUnits(value, 6));
 
-    if (
-      to === expectedRecipient.toLowerCase() &&
-      amountUsdc >= expectedAmountUsdc
-    ) {
+    if (to === expectedRecipient.toLowerCase() && amountUsdc >= expectedAmountUsdc) {
       return { valid: true };
     }
   }
 
   return {
     valid: false,
-    reason: "No matching transfer to the expected recipient with sufficient amount."
+    reason: "No matching transfer to the expected recipient with sufficient amount.",
   };
 }
 ```
 
 ### What the Verification Checks
 
-| Check | Detail |
-|-------|--------|
-| Transaction status | `receipt.status` must be `"success"`. Reverted transactions are rejected. |
-| Contract address | The log must originate from the USDC contract on Base (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`). |
-| Recipient | The `to` address in the Transfer event must match the selling agent's configured `x402.address`. |
-| Amount | The transferred value (decoded from the log data, 6 decimal places for USDC) must be greater than or equal to the minimum payment. |
-| Uniqueness | The transaction hash must not have been used for a prior task (checked against a local consumed-hashes store, not shown above). |
+| Check              | Detail                                                                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Transaction status | `receipt.status` must be `"success"`. Reverted transactions are rejected.                                                          |
+| Contract address   | The log must originate from the USDC contract on Base (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`).                              |
+| Recipient          | The `to` address in the Transfer event must match the selling agent's configured `x402.address`.                                   |
+| Amount             | The transferred value (decoded from the log data, 6 decimal places for USDC) must be greater than or equal to the minimum payment. |
+| Uniqueness         | The transaction hash must not have been used for a prior task (checked against a local consumed-hashes store, not shown above).    |
 
 If any check fails, the selling agent responds with 402 and a JSON-RPC error body describing the failure reason. The buying agent can then retry with a corrected payment.
 

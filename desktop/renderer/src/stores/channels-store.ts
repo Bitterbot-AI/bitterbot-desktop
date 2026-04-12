@@ -17,9 +17,7 @@ export const useChannelsStore = create<ChannelsState>((set) => ({
 
   updateChannel: (id, update) =>
     set((s) => ({
-      channels: s.channels.map((ch) =>
-        ch.id === id ? { ...ch, ...update } : ch,
-      ),
+      channels: s.channels.map((ch) => (ch.id === id ? { ...ch, ...update } : ch)),
     })),
 
   setLoading: (loading) => set({ loading }),

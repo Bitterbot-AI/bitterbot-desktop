@@ -64,18 +64,19 @@ The system prompt assembles these sections in order:
 
 Bootstrap files are trimmed and injected under **Project Context** so the agent sees its identity without needing explicit file reads:
 
-| File | Purpose | Injected? |
-|------|---------|-----------|
-| `GENOME.md` | Immutable safety axioms, hormonal baselines, core values | Always |
-| `MEMORY.md` | Living working memory — Phenotype, Bond, Niche, context | Always (main session only) |
-| `PROTOCOLS.md` | Operating procedures, group behavior, heartbeat rules | Always |
-| `TOOLS.md` | Environment-specific notes (devices, SSH, voice prefs) | Always |
-| `HEARTBEAT.md` | Periodic task instructions | Always |
-| `memory/*.md` | Daily logs | NOT injected — accessed via `memory_search` on demand |
+| File           | Purpose                                                  | Injected?                                             |
+| -------------- | -------------------------------------------------------- | ----------------------------------------------------- |
+| `GENOME.md`    | Immutable safety axioms, hormonal baselines, core values | Always                                                |
+| `MEMORY.md`    | Living working memory — Phenotype, Bond, Niche, context  | Always (main session only)                            |
+| `PROTOCOLS.md` | Operating procedures, group behavior, heartbeat rules    | Always                                                |
+| `TOOLS.md`     | Environment-specific notes (devices, SSH, voice prefs)   | Always                                                |
+| `HEARTBEAT.md` | Periodic task instructions                               | Always                                                |
+| `memory/*.md`  | Daily logs                                               | NOT injected — accessed via `memory_search` on demand |
 
 **Security note:** `MEMORY.md` is only loaded in the main, private session. It's never injected in group chats, Discord channels, or shared contexts to prevent personal information leakage.
 
 Large files are truncated with a marker. Limits:
+
 - Per-file: `agents.defaults.bootstrapMaxChars` (default: 20000)
 - Total: `agents.defaults.bootstrapTotalMaxChars` (default: 24000)
 
@@ -89,11 +90,11 @@ Use `/context list` or `/context detail` to inspect how much each file contribut
 
 Bitterbot renders different prompt sizes depending on the session type:
 
-| Mode | Used For | What's Included |
-|------|----------|----------------|
-| `full` | Main sessions, direct chats | Everything above |
+| Mode      | Used For                                | What's Included                                                                                                     |
+| --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `full`    | Main sessions, direct chats             | Everything above                                                                                                    |
 | `minimal` | Sub-agents, cron jobs, background tasks | Tooling, Safety, Workspace, Sandbox, Date/Time, Runtime. Omits Skills, Memory, Self-Update, Heartbeats, Reply Tags. |
-| `none` | Internal operations | Base identity line only |
+| `none`    | Internal operations                     | Base identity line only                                                                                             |
 
 When `promptMode=minimal`, injected context is labeled **Subagent Context** instead of **Group Chat Context**.
 

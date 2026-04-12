@@ -19,9 +19,9 @@ import {
   loadGenesisTrustList,
 } from "./management-key-auth.js";
 import { ManagementNodeService } from "./management-node-service.js";
+import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -36,7 +36,12 @@ function generateKeypair() {
 
 function createTestDb(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
-  ensureMemoryIndexSchema({ db, embeddingCacheTable: "embedding_cache", ftsTable: "chunks_fts", ftsEnabled: false });
+  ensureMemoryIndexSchema({
+    db,
+    embeddingCacheTable: "embedding_cache",
+    ftsTable: "chunks_fts",
+    ftsEnabled: false,
+  });
   ensureColumn(db, "chunks", "publish_visibility", "TEXT");
   ensureColumn(db, "chunks", "published_at", "INTEGER");
   return db;
@@ -52,7 +57,9 @@ function createMockBridge() {
       commands.push({ cmd, args });
       return { ok: true };
     },
-    onTelemetryReceived: (cb: (event: any) => void) => { telemetryCbs.push(cb); },
+    onTelemetryReceived: (cb: (event: any) => void) => {
+      telemetryCbs.push(cb);
+    },
   };
 }
 
@@ -75,11 +82,10 @@ describe("Management Node Integration", () => {
 
     // 2. Write trust list file (simulates ~/.bitterbot/genesis-trust.txt)
     const trustListPath = path.join(tmpDir, "genesis-trust.txt");
-    fs.writeFileSync(trustListPath, [
-      "# Genesis trust list for test network",
-      mgmtKey.pubkeyBase64,
-      "",
-    ].join("\n"));
+    fs.writeFileSync(
+      trustListPath,
+      ["# Genesis trust list for test network", mgmtKey.pubkeyBase64, ""].join("\n"),
+    );
 
     // 3. Load trust list from file (simulates loadGenesisTrustList in manager.ts)
     const trustList = loadGenesisTrustList(trustListPath);

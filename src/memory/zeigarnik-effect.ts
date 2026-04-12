@@ -82,9 +82,10 @@ export function detectResolution(text: string): boolean {
  */
 export function markOpenLoop(db: DatabaseSync, chunkId: string, context: string): boolean {
   try {
-    db.prepare(
-      `UPDATE chunks SET open_loop = 1, open_loop_context = ? WHERE id = ?`,
-    ).run(context.slice(0, 500), chunkId);
+    db.prepare(`UPDATE chunks SET open_loop = 1, open_loop_context = ? WHERE id = ?`).run(
+      context.slice(0, 500),
+      chunkId,
+    );
     log.debug("chunk marked as open loop", { chunkId: chunkId.slice(0, 8) });
     return true;
   } catch {
@@ -97,9 +98,9 @@ export function markOpenLoop(db: DatabaseSync, chunkId: string, context: string)
  */
 export function closeOpenLoop(db: DatabaseSync, chunkId: string): boolean {
   try {
-    db.prepare(
-      `UPDATE chunks SET open_loop = 0, open_loop_context = NULL WHERE id = ?`,
-    ).run(chunkId);
+    db.prepare(`UPDATE chunks SET open_loop = 0, open_loop_context = NULL WHERE id = ?`).run(
+      chunkId,
+    );
     log.debug("open loop closed", { chunkId: chunkId.slice(0, 8) });
     return true;
   } catch {
@@ -158,9 +159,9 @@ export function scanForOpenLoops(
   let marked = 0;
   try {
     for (const id of chunkIds) {
-      const row = db
-        .prepare(`SELECT text, open_loop FROM chunks WHERE id = ?`)
-        .get(id) as { text: string; open_loop: number } | undefined;
+      const row = db.prepare(`SELECT text, open_loop FROM chunks WHERE id = ?`).get(id) as
+        | { text: string; open_loop: number }
+        | undefined;
 
       if (!row || row.open_loop === 1) continue;
 

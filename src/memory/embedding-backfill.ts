@@ -6,8 +6,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { EmbeddingPerspective } from "./crystal-types.js";
 import type { EmbeddingProvider } from "./embedding-perspectives.js";
-import { embedSinglePerspective } from "./embedding-perspectives.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { embedSinglePerspective } from "./embedding-perspectives.js";
 
 const log = createSubsystemLogger("memory/embedding-backfill");
 
@@ -73,7 +73,9 @@ export async function backfillEmbeddings(
           generated++;
         }
       } catch (err) {
-        log.debug(`backfill failed for chunk ${chunk.id} perspective ${perspective}: ${String(err)}`);
+        log.debug(
+          `backfill failed for chunk ${chunk.id} perspective ${perspective}: ${String(err)}`,
+        );
       }
     }
 
@@ -89,9 +91,7 @@ export async function backfillEmbeddings(
 /**
  * Count how many chunks are missing each perspective embedding.
  */
-export function countMissingEmbeddings(
-  db: DatabaseSync,
-): Record<EmbeddingPerspective, number> {
+export function countMissingEmbeddings(db: DatabaseSync): Record<EmbeddingPerspective, number> {
   const result: Record<EmbeddingPerspective, number> = {
     semantic: 0,
     procedural: 0,

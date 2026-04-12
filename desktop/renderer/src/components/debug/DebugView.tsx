@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
 import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
 
 function SnapshotViewer() {
   const hello = useGatewayStore((s) => s.hello);
@@ -8,9 +8,7 @@ function SnapshotViewer() {
   return (
     <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-border/10">
-        <h3 className="text-sm font-medium text-foreground">
-          Gateway Hello Snapshot
-        </h3>
+        <h3 className="text-sm font-medium text-foreground">Gateway Hello Snapshot</h3>
       </div>
       <pre className="p-4 text-xs font-mono text-foreground/80 whitespace-pre-wrap overflow-auto max-h-[400px]">
         {hello ? JSON.stringify(hello, null, 2) : "Not connected"}
@@ -45,9 +43,7 @@ function RpcCaller() {
       const res = await request(method, parsedParams);
       setResult(JSON.stringify(res, null, 2));
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : JSON.stringify(err, null, 2),
-      );
+      setError(err instanceof Error ? err.message : JSON.stringify(err, null, 2));
     } finally {
       setLoading(false);
     }
@@ -101,9 +97,7 @@ function RpcCaller() {
       )}
       {error && (
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 overflow-hidden">
-          <div className="px-3 py-1.5 text-xs text-red-400 border-b border-red-500/10">
-            Error
-          </div>
+          <div className="px-3 py-1.5 text-xs text-red-400 border-b border-red-500/10">Error</div>
           <pre className="p-3 text-xs font-mono text-red-300 whitespace-pre-wrap overflow-auto max-h-[300px]">
             {error}
           </pre>
@@ -126,9 +120,7 @@ function HealthProbe() {
       const res = await request("health", { probe: true });
       setResult(JSON.stringify(res, null, 2));
     } catch (err) {
-      setResult(
-        `Error: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      setResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -165,9 +157,7 @@ export function DebugView() {
     <div className="h-full overflow-y-auto p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Debug</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Gateway inspection & RPC tools
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">Gateway inspection & RPC tools</p>
       </div>
 
       <RpcCaller />

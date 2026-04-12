@@ -105,42 +105,50 @@ export const WORKING_MEMORY_SECTIONS = [
  * a state update on MEMORY.md.
  */
 export function buildWorkingMemorySynthesisPrompt(ctx: WorkingMemoryContext): string {
-  const hormonalGuidance = ctx.hormonalState
-    ? buildHormonalAttentionBlock(ctx.hormonalState)
-    : "";
+  const hormonalGuidance = ctx.hormonalState ? buildHormonalAttentionBlock(ctx.hormonalState) : "";
 
-  const crystalBlock = ctx.recentCrystals.length > 0
-    ? ctx.recentCrystals
-        .slice(0, 20)
-        .map((c) => {
-          const tag = c.hormonalTag ? ` [${c.hormonalTag}]` : "";
-          return `- [${c.semanticType}, importance=${c.importanceScore.toFixed(2)}${tag}] ${c.text.slice(0, 200)}`;
-        })
-        .join("\n")
-    : "(none)";
+  const crystalBlock =
+    ctx.recentCrystals.length > 0
+      ? ctx.recentCrystals
+          .slice(0, 20)
+          .map((c) => {
+            const tag = c.hormonalTag ? ` [${c.hormonalTag}]` : "";
+            return `- [${c.semanticType}, importance=${c.importanceScore.toFixed(2)}${tag}] ${c.text.slice(0, 200)}`;
+          })
+          .join("\n")
+      : "(none)";
 
-  const insightBlock = ctx.dreamInsights.length > 0
-    ? ctx.dreamInsights
-        .slice(0, 10)
-        .map((i) => `- [${i.mode}, confidence=${i.confidence.toFixed(2)}] ${i.content.slice(0, 200)}`)
-        .join("\n")
-    : "(none)";
+  const insightBlock =
+    ctx.dreamInsights.length > 0
+      ? ctx.dreamInsights
+          .slice(0, 10)
+          .map(
+            (i) =>
+              `- [${i.mode}, confidence=${i.confidence.toFixed(2)}] ${i.content.slice(0, 200)}`,
+          )
+          .join("\n")
+      : "(none)";
 
   const scratchBlock = ctx.scratchNotes.trim() || "(empty)";
 
-  const curiosityBlock = ctx.curiosityTargets.length > 0
-    ? ctx.curiosityTargets
-        .slice(0, 5)
-        .map((t) => `- [priority=${t.priority.toFixed(2)}] ${t.description}`)
-        .join("\n")
-    : "(none)";
+  const curiosityBlock =
+    ctx.curiosityTargets.length > 0
+      ? ctx.curiosityTargets
+          .slice(0, 5)
+          .map((t) => `- [priority=${t.priority.toFixed(2)}] ${t.description}`)
+          .join("\n")
+      : "(none)";
 
-  const skillsBlock = ctx.emergingSkills.length > 0
-    ? ctx.emergingSkills
-        .slice(0, 5)
-        .map((s) => `- ${s.pattern} → Confidence: ${Math.round(s.confidence * 100)}% | Occurrences: ${s.occurrences}`)
-        .join("\n")
-    : "(none)";
+  const skillsBlock =
+    ctx.emergingSkills.length > 0
+      ? ctx.emergingSkills
+          .slice(0, 5)
+          .map(
+            (s) =>
+              `- ${s.pattern} → Confidence: ${Math.round(s.confidence * 100)}% | Occurrences: ${s.occurrences}`,
+          )
+          .join("\n")
+      : "(none)";
 
   return `You are the dream engine performing a Recursive Language Model (RLM) state update on the agent's Working Memory.
 
@@ -281,11 +289,12 @@ function buildEmotionalAnchorsInputBlock(ctx: WorkingMemoryContext): string {
 
   for (const a of ctx.emotionalAnchors.slice(0, 5)) {
     const ageMs = Date.now() - a.createdAt;
-    const ageStr = ageMs < 3_600_000
-      ? `${Math.round(ageMs / 60_000)}m ago`
-      : ageMs < 86_400_000
-        ? `${Math.round(ageMs / 3_600_000)}h ago`
-        : `${Math.round(ageMs / 86_400_000)}d ago`;
+    const ageStr =
+      ageMs < 3_600_000
+        ? `${Math.round(ageMs / 60_000)}m ago`
+        : ageMs < 86_400_000
+          ? `${Math.round(ageMs / 3_600_000)}h ago`
+          : `${Math.round(ageMs / 86_400_000)}d ago`;
 
     const mood = describeMoodFromState(a.state);
     const recalled = a.recallCount > 0 ? ` Recalled ${a.recallCount} times.` : "";
@@ -299,7 +308,11 @@ function buildEmotionalAnchorsInputBlock(ctx: WorkingMemoryContext): string {
 /**
  * Describe mood from a hormonal state snapshot (used for anchor display).
  */
-function describeMoodFromState(state: { dopamine: number; cortisol: number; oxytocin: number }): string {
+function describeMoodFromState(state: {
+  dopamine: number;
+  cortisol: number;
+  oxytocin: number;
+}): string {
   const parts: string[] = [];
   if (state.dopamine > 0.4) parts.push("high dopamine");
   if (state.cortisol > 0.4) parts.push("elevated cortisol");
@@ -350,10 +363,14 @@ function buildNetworkIdentityInputBlock(ctx: WorkingMemoryContext): string {
       `Unique buyers: ${e.uniqueBuyers}`,
     );
     if (e.topEarners.length > 0) {
-      lines.push(`Top earners: ${e.topEarners.map((t) => `${t.name} ($${t.earningsUsdc.toFixed(4)})`).join(", ")}`);
+      lines.push(
+        `Top earners: ${e.topEarners.map((t) => `${t.name} ($${t.earningsUsdc.toFixed(4)})`).join(", ")}`,
+      );
     }
     if (e.earningsTrend.length > 0) {
-      lines.push(`Earnings trend (7d): ${e.earningsTrend.map((d) => `${d.date}: $${d.amountUsdc.toFixed(4)}`).join(", ")}`);
+      lines.push(
+        `Earnings trend (7d): ${e.earningsTrend.map((d) => `${d.date}: $${d.amountUsdc.toFixed(4)}`).join(", ")}`,
+      );
     }
   }
 
@@ -446,14 +463,17 @@ export function buildHeuristicWorkingMemory(ctx: WorkingMemoryContext): string {
 
   // The Phenotype: extract from old state or use developmental placeholder
   const oldPhenotype = extractSection(ctx.oldState, "The Phenotype");
-  const maturityStage = ctx.maturity < 0.15
-    ? "Nascent — still forming initial understanding of the world."
-    : ctx.maturity < 0.5
-      ? "Developing — building expertise in key areas."
-      : ctx.maturity < 0.85
-        ? "Maturing — deep knowledge in several domains, seeking frontiers."
-        : "Mature — established expertise, exploring edge cases.";
-  const phenotypeContent = oldPhenotype || `Developmental stage: ${maturityStage}\nSelf-concept forming — more interactions needed.`;
+  const maturityStage =
+    ctx.maturity < 0.15
+      ? "Nascent — still forming initial understanding of the world."
+      : ctx.maturity < 0.5
+        ? "Developing — building expertise in key areas."
+        : ctx.maturity < 0.85
+          ? "Maturing — deep knowledge in several domains, seeking frontiers."
+          : "Mature — established expertise, exploring edge cases.";
+  const phenotypeContent =
+    oldPhenotype ||
+    `Developmental stage: ${maturityStage}\nSelf-concept forming — more interactions needed.`;
 
   // The Bond: extract from old state, enrich with preferences, or use placeholder
   const oldBond = extractSection(ctx.oldState, "The Bond");
@@ -461,9 +481,9 @@ export function buildHeuristicWorkingMemory(ctx: WorkingMemoryContext): string {
   if (oldBond) {
     bondContent = oldBond;
   } else if (ctx.userPreferences && ctx.userPreferences.length > 0) {
-    const prefLines = ctx.userPreferences.slice(0, 10).map(
-      (p) => `- [${p.category}] ${p.key}: ${p.value}`,
-    );
+    const prefLines = ctx.userPreferences
+      .slice(0, 10)
+      .map((p) => `- [${p.category}] ${p.key}: ${p.value}`);
     bondContent = `User profile emerging from extracted preferences:\n${prefLines.join("\n")}`;
   } else {
     bondContent = "User profile building — interact more to develop this section.";
@@ -474,7 +494,11 @@ export function buildHeuristicWorkingMemory(ctx: WorkingMemoryContext): string {
   let nicheContent: string;
   if (oldNiche) {
     nicheContent = oldNiche;
-  } else if (ctx.networkIdentity && (ctx.networkIdentity.publishedSkills.length > 0 || ctx.networkIdentity.importedSkills.length > 0)) {
+  } else if (
+    ctx.networkIdentity &&
+    (ctx.networkIdentity.publishedSkills.length > 0 ||
+      ctx.networkIdentity.importedSkills.length > 0)
+  ) {
     const published = ctx.networkIdentity.publishedSkills.map((s) => s.name).join(", ");
     const imported = ctx.networkIdentity.importedSkills.map((s) => s.name).join(", ");
     nicheContent = [
@@ -484,7 +508,9 @@ export function buildHeuristicWorkingMemory(ctx: WorkingMemoryContext): string {
       ctx.networkIdentity.reputationScore !== undefined
         ? `Network reputation: ${ctx.networkIdentity.reputationScore.toFixed(2)}`
         : "",
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
   } else {
     nicheContent = "Pre-network — building local expertise before contributing to the ecosystem.";
   }
@@ -505,47 +531,53 @@ export function buildHeuristicWorkingMemory(ctx: WorkingMemoryContext): string {
   if (ctx.emotionalAnchors && ctx.emotionalAnchors.length > 0) {
     for (const a of ctx.emotionalAnchors.slice(0, 3)) {
       const ageMs = Date.now() - a.createdAt;
-      const ageStr = ageMs < 3_600_000
-        ? `${Math.round(ageMs / 60_000)}m ago`
-        : ageMs < 86_400_000
-          ? `${Math.round(ageMs / 3_600_000)}h ago`
-          : `${Math.round(ageMs / 86_400_000)}d ago`;
+      const ageStr =
+        ageMs < 3_600_000
+          ? `${Math.round(ageMs / 60_000)}m ago`
+          : ageMs < 86_400_000
+            ? `${Math.round(ageMs / 3_600_000)}h ago`
+            : `${Math.round(ageMs / 86_400_000)}d ago`;
       activeLines.push(`[Emotional anchor: ${a.label} — ${ageStr}]`);
     }
   }
 
-  const activeContent = activeLines.length > 0
-    ? activeLines.join("\n")
-    : "No recent active context.";
+  const activeContent =
+    activeLines.length > 0 ? activeLines.join("\n") : "No recent active context.";
 
   // Crystal Pointers: extract from old state, strip duplicate instruction lines
   const oldPointers = extractSection(ctx.oldState, "Crystal Pointers");
   let pointersContent: string;
   if (oldPointers) {
-    pointersContent = oldPointers
-      .split("\n")
-      .filter((line) => !line.startsWith("*Use memory_search"))
-      .join("\n")
-      .trim() || "*No fading topics yet — memory is fresh.*";
+    pointersContent =
+      oldPointers
+        .split("\n")
+        .filter((line) => !line.startsWith("*Use memory_search"))
+        .join("\n")
+        .trim() || "*No fading topics yet — memory is fresh.*";
   } else {
     pointersContent = "*No fading topics yet — memory is fresh.*";
   }
 
   // Curiosity Gaps
-  const curiosityContent = ctx.curiosityTargets.length > 0
-    ? ctx.curiosityTargets
-        .slice(0, 5)
-        .map((t) => `- ${t.description}`)
-        .join("\n")
-    : "No knowledge gaps detected yet.";
+  const curiosityContent =
+    ctx.curiosityTargets.length > 0
+      ? ctx.curiosityTargets
+          .slice(0, 5)
+          .map((t) => `- ${t.description}`)
+          .join("\n")
+      : "No knowledge gaps detected yet.";
 
   // Emerging Skills
-  const skillsContent = ctx.emergingSkills.length > 0
-    ? ctx.emergingSkills
-        .slice(0, 5)
-        .map((s) => `- ${s.pattern} → Confidence: ${Math.round(s.confidence * 100)}% | Occurrences: ${s.occurrences}`)
-        .join("\n")
-    : "*No repeated task patterns detected yet.*";
+  const skillsContent =
+    ctx.emergingSkills.length > 0
+      ? ctx.emergingSkills
+          .slice(0, 5)
+          .map(
+            (s) =>
+              `- ${s.pattern} → Confidence: ${Math.round(s.confidence * 100)}% | Occurrences: ${s.occurrences}`,
+          )
+          .join("\n")
+      : "*No repeated task patterns detected yet.*";
 
   return `# Working Memory State
 *Last dream: ${ctx.timestamp} | Mood: ${mood} | Maturity: ${Math.round(ctx.maturity * 100)}%*
@@ -599,7 +631,10 @@ export type WorkingMemoryValidation = {
  * - Eviction runaway: >20 crystal pointers (LLM over-evicting)
  * - Empty synthesis: all section headers present but no substance
  */
-export function validateWorkingMemory(content: string, previousContent?: string): WorkingMemoryValidation {
+export function validateWorkingMemory(
+  content: string,
+  previousContent?: string,
+): WorkingMemoryValidation {
   const missing: string[] = [];
   const warnings: string[] = [];
   let collapsed = false;
@@ -617,11 +652,11 @@ export function validateWorkingMemory(content: string, previousContent?: string)
     const pointerSection = extractSection(content, "Crystal Pointers");
     if (pointerSection) {
       const pointerLines = pointerSection.split("\n").filter((l) => l.trimStart().startsWith("- "));
-      const malformed = pointerLines.filter(
-        (l) => l.includes("→") && !/ → search: `.+`/.test(l),
-      );
+      const malformed = pointerLines.filter((l) => l.includes("→") && !/ → search: `.+`/.test(l));
       if (malformed.length > 0) {
-        warnings.push(`${malformed.length} Crystal Pointer(s) missing proper "→ search: \`keywords\`" format`);
+        warnings.push(
+          `${malformed.length} Crystal Pointer(s) missing proper "→ search: \`keywords\`" format`,
+        );
       }
 
       // Collapse guard: eviction runaway (>20 pointers)
@@ -647,10 +682,12 @@ export function validateWorkingMemory(content: string, previousContent?: string)
       .split("\n")
       .filter((line) => {
         const trimmed = line.trim();
-        return trimmed.length > 0
-          && !trimmed.startsWith("#")
-          && !trimmed.startsWith("*")
-          && trimmed !== "---";
+        return (
+          trimmed.length > 0 &&
+          !trimmed.startsWith("#") &&
+          !trimmed.startsWith("*") &&
+          trimmed !== "---"
+        );
       })
       .join("")
       .trim();
@@ -669,7 +706,8 @@ export function validateWorkingMemory(content: string, previousContent?: string)
     if (oldBond && oldBond.length > 100 && newBond) {
       const extractTerms = (text: string): Set<string> => {
         return new Set(
-          text.toLowerCase()
+          text
+            .toLowerCase()
             .replace(/[^a-z0-9\s]/g, "")
             .split(/\s+/)
             .filter((w) => w.length > 3),
@@ -697,7 +735,14 @@ export function validateWorkingMemory(content: string, previousContent?: string)
     }
   }
 
-  return { valid: missing.length === 0, missing, warnings, collapsed, collapseReason, bondDriftRatio };
+  return {
+    valid: missing.length === 0,
+    missing,
+    warnings,
+    collapsed,
+    collapseReason,
+    bondDriftRatio,
+  };
 }
 
 /**

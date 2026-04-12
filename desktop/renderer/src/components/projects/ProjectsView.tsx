@@ -1,7 +1,3 @@
-import { useEffect, useState, useCallback } from "react";
-import { useProjectsStore, type Project } from "../../stores/projects-store";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { cn } from "../../lib/utils";
 import {
   FolderKanban,
   Plus,
@@ -12,6 +8,10 @@ import {
   ChevronRight,
   Database,
 } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
+import { useProjectsStore, type Project } from "../../stores/projects-store";
 
 export function ProjectsView() {
   const projects = useProjectsStore((s) => s.projects);
@@ -83,10 +83,16 @@ export function ProjectsView() {
               placeholder="Project name..."
               className="flex-1 text-xs bg-transparent border border-border/30 rounded px-2 py-1 outline-none focus:border-purple-500/50"
             />
-            <button onClick={handleCreate} className="text-xs text-purple-400 hover:text-purple-300 px-1">
+            <button
+              onClick={handleCreate}
+              className="text-xs text-purple-400 hover:text-purple-300 px-1"
+            >
               Add
             </button>
-            <button onClick={() => setShowCreate(false)} className="text-muted-foreground hover:text-foreground">
+            <button
+              onClick={() => setShowCreate(false)}
+              className="text-muted-foreground hover:text-foreground"
+            >
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -189,7 +195,8 @@ function ProjectDetail({
 
   const totalKB = project.knowledgeBase.files.reduce((sum, f) => sum + f.sizeBytes, 0);
   const estimatedTokens = Math.ceil(totalKB / 4);
-  const ragActive = project.knowledgeBase.autoRag && estimatedTokens >= project.knowledgeBase.ragThresholdTokens;
+  const ragActive =
+    project.knowledgeBase.autoRag && estimatedTokens >= project.knowledgeBase.ragThresholdTokens;
 
   return (
     <div className="p-4 space-y-6">
@@ -254,7 +261,9 @@ function ProjectDetail({
           </div>
         ) : (
           <div className="text-xs text-muted-foreground bg-zinc-900/20 rounded-lg p-2.5 border border-border/20 min-h-[40px]">
-            {project.systemPrompt || <span className="italic opacity-50">No custom instructions</span>}
+            {project.systemPrompt || (
+              <span className="italic opacity-50">No custom instructions</span>
+            )}
           </div>
         )}
       </div>
@@ -314,8 +323,9 @@ function ProjectDetail({
               </div>
             ))}
             <div className="text-[10px] text-muted-foreground/40 pt-1">
-              {project.knowledgeBase.files.length} file{project.knowledgeBase.files.length !== 1 ? "s" : ""} ·{" "}
-              {formatFileSize(totalKB)} · ~{estimatedTokens.toLocaleString()} tokens
+              {project.knowledgeBase.files.length} file
+              {project.knowledgeBase.files.length !== 1 ? "s" : ""} · {formatFileSize(totalKB)} · ~
+              {estimatedTokens.toLocaleString()} tokens
             </div>
           </div>
         )}

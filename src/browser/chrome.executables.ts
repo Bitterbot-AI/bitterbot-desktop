@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isWSLSync } from "../infra/wsl.js";
 import type { ResolvedBrowserConfig } from "./config.js";
+import { isWSLSync } from "../infra/wsl.js";
 
 export type BrowserExecutable = {
   kind: "brave" | "canary" | "chromium" | "chrome" | "custom" | "edge";
@@ -548,7 +548,10 @@ function findChromeExecutableWSL(): BrowserExecutable | null {
   if (localAppData) {
     candidates.push(
       { kind: "chrome", path: path.join(localAppData, "Google/Chrome/Application/chrome.exe") },
-      { kind: "brave", path: path.join(localAppData, "BraveSoftware/Brave-Browser/Application/brave.exe") },
+      {
+        kind: "brave",
+        path: path.join(localAppData, "BraveSoftware/Brave-Browser/Application/brave.exe"),
+      },
       { kind: "edge", path: path.join(localAppData, "Microsoft/Edge/Application/msedge.exe") },
       { kind: "chromium", path: path.join(localAppData, "Chromium/Application/chrome.exe") },
     );
@@ -557,8 +560,14 @@ function findChromeExecutableWSL(): BrowserExecutable | null {
   candidates.push(
     { kind: "chrome", path: path.join(programFiles, "Google/Chrome/Application/chrome.exe") },
     { kind: "chrome", path: path.join(programFilesX86, "Google/Chrome/Application/chrome.exe") },
-    { kind: "brave", path: path.join(programFiles, "BraveSoftware/Brave-Browser/Application/brave.exe") },
-    { kind: "brave", path: path.join(programFilesX86, "BraveSoftware/Brave-Browser/Application/brave.exe") },
+    {
+      kind: "brave",
+      path: path.join(programFiles, "BraveSoftware/Brave-Browser/Application/brave.exe"),
+    },
+    {
+      kind: "brave",
+      path: path.join(programFilesX86, "BraveSoftware/Brave-Browser/Application/brave.exe"),
+    },
     { kind: "edge", path: path.join(programFiles, "Microsoft/Edge/Application/msedge.exe") },
     { kind: "edge", path: path.join(programFilesX86, "Microsoft/Edge/Application/msedge.exe") },
     { kind: "chromium", path: path.join(programFiles, "Chromium/Application/chrome.exe") },

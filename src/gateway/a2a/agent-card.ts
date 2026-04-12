@@ -1,6 +1,6 @@
+import type { SkillEntry } from "../../agents/skills/types.js";
 import type { A2aConfig } from "../../config/types.a2a.js";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
-import type { SkillEntry } from "../../agents/skills/types.js";
 import type { A2aAgentCard, A2aSkill } from "./types.js";
 
 const A2A_PROTOCOL_VERSION = "a2a/1.0.0";
@@ -93,9 +93,9 @@ export function buildAgentCard(params: {
   if ((params as Record<string, unknown>).erc8004TokenId) {
     const tokenId = (params as Record<string, unknown>).erc8004TokenId as string;
     const registryAddress = (params as Record<string, unknown>).erc8004Registry as string;
-    const erc8004Chain = (params as Record<string, unknown>).erc8004Chain as string ?? "base";
+    const erc8004Chain = ((params as Record<string, unknown>).erc8004Chain as string) ?? "base";
     (card as Record<string, unknown>).extensions = {
-      ...((card as Record<string, unknown>).extensions as Record<string, unknown> ?? {}),
+      ...(((card as Record<string, unknown>).extensions as Record<string, unknown>) ?? {}),
       erc8004: {
         tokenId,
         registry: registryAddress,

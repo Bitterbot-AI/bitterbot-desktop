@@ -30,11 +30,7 @@ export function MessageList() {
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-6 max-w-lg px-4">
           <div className="flex justify-center mb-4">
-            <img
-              src="/bitterbot_avatar.png"
-              alt="BitterBot"
-              className="w-20 h-20 object-contain"
-            />
+            <img src="/bitterbot_avatar.png" alt="BitterBot" className="w-20 h-20 object-contain" />
           </div>
           <h2 className="text-4xl font-bold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent">
             How can I help you today?

@@ -54,9 +54,7 @@ export function handleAgentEnd(ctx: EmbeddedPiSubscribeContext) {
     });
   } else {
     // Detect if the agent explicitly signalled completion via the `complete` tool.
-    const completedExplicitly = ctx.state.toolMetas.some(
-      (entry) => entry.toolName === "complete",
-    );
+    const completedExplicitly = ctx.state.toolMetas.some((entry) => entry.toolName === "complete");
     emitAgentEvent({
       runId: ctx.params.runId,
       stream: "lifecycle",

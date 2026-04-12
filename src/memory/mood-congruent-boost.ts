@@ -15,9 +15,9 @@
  */
 
 export interface HormonalState {
-  dopamine: number;   // 0-1
-  cortisol: number;   // 0-1
-  oxytocin: number;   // 0-1
+  dopamine: number; // 0-1
+  cortisol: number; // 0-1
+  oxytocin: number; // 0-1
 }
 
 export interface MoodCongruentConfig {
@@ -38,9 +38,9 @@ export const DEFAULT_MOOD_CONGRUENT_CONFIG: MoodCongruentConfig = {
   enabled: true,
   maxBonus: 0.15,
   activationThreshold: 0.4,
-  dopamineWeight: 0.10,
-  cortisolWeight: 0.10,
-  oxytocinWeight: 0.10,
+  dopamineWeight: 0.1,
+  cortisolWeight: 0.1,
+  oxytocinWeight: 0.1,
 };
 
 /**

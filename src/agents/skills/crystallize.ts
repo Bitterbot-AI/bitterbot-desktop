@@ -10,11 +10,11 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
+import type { OrchestratorBridge } from "../../infra/orchestrator-bridge.js";
+import type { CrystallizationCandidate } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CONFIG_DIR } from "../../utils.js";
-import type { OrchestratorBridge } from "../../infra/orchestrator-bridge.js";
 import { bumpSkillsSnapshotVersion } from "./refresh.js";
-import type { CrystallizationCandidate } from "./types.js";
 
 const log = createSubsystemLogger("skills/crystallize");
 
@@ -38,7 +38,10 @@ export async function crystallizeSkill(params: {
 
   // 1. Evaluate reward threshold
   if (candidate.rewardScore < SUCCESS_THRESHOLD) {
-    return { ok: false, error: `reward score ${candidate.rewardScore} below threshold ${SUCCESS_THRESHOLD}` };
+    return {
+      ok: false,
+      error: `reward score ${candidate.rewardScore} below threshold ${SUCCESS_THRESHOLD}`,
+    };
   }
 
   // 2. Generate SKILL.md content
@@ -137,7 +140,8 @@ function normalizeSkillName(name: string): string {
 
 function generateSkillMd(candidate: CrystallizationCandidate, skillName: string): string {
   const bins = detectRequiredBins(candidate);
-  const binsYaml = bins.length > 0 ? `\n    bins:\n${bins.map((b) => `      - ${b}`).join("\n")}` : "";
+  const binsYaml =
+    bins.length > 0 ? `\n    bins:\n${bins.map((b) => `      - ${b}`).join("\n")}` : "";
 
   let md = `---
 name: ${skillName}
@@ -175,7 +179,17 @@ function detectRequiredBins(candidate: CrystallizationCandidate): string[] {
     if (tool.includes("shell") || tool.includes("exec") || tool.includes("terminal")) {
       const args = typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args);
       // Detect common binaries from command strings
-      const knownBins = ["git", "npm", "pnpm", "node", "python3", "cargo", "docker", "curl", "wget"];
+      const knownBins = [
+        "git",
+        "npm",
+        "pnpm",
+        "node",
+        "python3",
+        "cargo",
+        "docker",
+        "curl",
+        "wget",
+      ];
       for (const bin of knownBins) {
         if (args.includes(bin)) {
           bins.add(bin);

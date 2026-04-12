@@ -2,10 +2,10 @@
  * Tests for RLM Deep Recall: sandbox, executor, cost tracker, and context builder.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { RLMSandbox } from "./sandbox.js";
-import { RLMExecutor } from "./executor.js";
-import { CostTracker } from "./cost-tracker.js";
 import type { RLMLLMCallFn, RLMExecutorOptions } from "./types.js";
+import { CostTracker } from "./cost-tracker.js";
+import { RLMExecutor } from "./executor.js";
+import { RLMSandbox } from "./sandbox.js";
 
 // ---------------------------------------------------------------------------
 // CostTracker
@@ -13,16 +13,16 @@ import type { RLMLLMCallFn, RLMExecutorOptions } from "./types.js";
 
 describe("CostTracker", () => {
   it("tracks cost and returns budget status", () => {
-    const tracker = new CostTracker(0.50, 20, 15);
+    const tracker = new CostTracker(0.5, 20, 15);
     expect(tracker.isExceeded()).toBeNull();
-    tracker.addCost(0.10);
-    tracker.addCost(0.10);
-    expect(tracker.getTotalCost()).toBeCloseTo(0.20);
+    tracker.addCost(0.1);
+    tracker.addCost(0.1);
+    expect(tracker.getTotalCost()).toBeCloseTo(0.2);
     expect(tracker.isExceeded()).toBeNull();
   });
 
   it("detects budget exceeded", () => {
-    const tracker = new CostTracker(0.10, 20, 15);
+    const tracker = new CostTracker(0.1, 20, 15);
     tracker.addCost(0.11);
     expect(tracker.isExceeded()).toBe("budget");
   });
@@ -46,7 +46,7 @@ describe("CostTracker", () => {
   });
 
   it("canAffordSubCall heuristic works", () => {
-    const tracker = new CostTracker(0.10, 20, 15);
+    const tracker = new CostTracker(0.1, 20, 15);
     expect(tracker.canAffordSubCall()).toBe(true);
     // Simulate 5 sub-calls at $0.01 each
     for (let i = 0; i < 5; i++) {
@@ -267,11 +267,7 @@ describe("RLMExecutor", () => {
     };
 
     const executor = new RLMExecutor(mockLlm);
-    const result = await executor.execute(
-      "How many lines?",
-      "A\nB\nC\nD\nE",
-      defaultOptions,
-    );
+    const result = await executor.execute("How many lines?", "A\nB\nC\nD\nE", defaultOptions);
 
     expect(result.success).toBe(true);
     expect(result.answer).toBe("The context has 5 lines of data");
@@ -302,7 +298,7 @@ describe("RLMExecutor", () => {
       callCount++;
       if (callCount === 1) {
         return {
-          text: '```js\nundefinedVar.method();\n```',
+          text: "```js\nundefinedVar.method();\n```",
           cost: 0.001,
         };
       }

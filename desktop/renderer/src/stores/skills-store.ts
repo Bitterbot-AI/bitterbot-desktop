@@ -35,8 +35,6 @@ export const useSkillsStore = create<SkillsState>((set) => ({
   setFilter: (filter) => set({ filter }),
   updateSkill: (key, patch) =>
     set((s) => ({
-      skills: s.skills.map((skill) =>
-        skill.key === key ? { ...skill, ...patch } : skill,
-      ),
+      skills: s.skills.map((skill) => (skill.key === key ? { ...skill, ...patch } : skill)),
     })),
 }));

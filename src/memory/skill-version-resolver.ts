@@ -16,8 +16,8 @@
  * This makes each branch uniquely identifiable even at the same version number.
  */
 
-import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/skill-version-resolver");
@@ -58,7 +58,7 @@ export type FitnessInput = {
 
 const WEIGHT_EXECUTION = 0.45;
 const WEIGHT_TRUST = 0.35;
-const WEIGHT_RECENCY = 0.20;
+const WEIGHT_RECENCY = 0.2;
 
 /** Minimum executions before success rate is considered reliable. */
 const MIN_EXECUTIONS_FOR_CONFIDENCE = 3;
@@ -109,11 +109,7 @@ export class SkillVersionResolver {
     // Recency component: exponential decay
     const recencyScore = Math.exp((-Math.LN2 * input.ageMs) / RECENCY_HALFLIFE_MS);
 
-    return (
-      WEIGHT_EXECUTION * execScore +
-      WEIGHT_TRUST * trustScore +
-      WEIGHT_RECENCY * recencyScore
-    );
+    return WEIGHT_EXECUTION * execScore + WEIGHT_TRUST * trustScore + WEIGHT_RECENCY * recencyScore;
   }
 
   /**
@@ -311,11 +307,9 @@ export class SkillVersionResolver {
       contentHash: r.hash,
       parentContentHash: null,
       authorPubkey: r.peer_origin ?? "local",
-      lineageHash: r.lineage_hash ?? SkillVersionResolver.lineageHash(
-        r.stable_skill_id,
-        null,
-        r.peer_origin ?? "local",
-      ),
+      lineageHash:
+        r.lineage_hash ??
+        SkillVersionResolver.lineageHash(r.stable_skill_id, null, r.peer_origin ?? "local"),
       fitnessScore: r.importance_score,
       createdAt: r.created_at,
     }));

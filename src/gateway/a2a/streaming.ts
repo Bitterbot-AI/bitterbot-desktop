@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
-import type { A2aStreamEvent } from "./types.js";
 import type { A2aTaskManager } from "./task-manager.js";
+import type { A2aStreamEvent } from "./types.js";
 
 /**
  * Wire an SSE stream to a task's lifecycle events.

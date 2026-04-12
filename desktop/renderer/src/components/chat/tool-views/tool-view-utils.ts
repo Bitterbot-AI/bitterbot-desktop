@@ -108,9 +108,7 @@ export function isNonBlockingOutput(output: string): { sessionName: string } | n
   if (match) return { sessionName: match[1].trim() };
 
   // Also detect "send-keys" in command args
-  const keysMatch = output.match(
-    /tmux\s+send-keys.*?-t\s+([^\s]+)/i,
-  );
+  const keysMatch = output.match(/tmux\s+send-keys.*?-t\s+([^\s]+)/i);
   if (keysMatch) return { sessionName: keysMatch[1].trim() };
 
   return null;
@@ -142,9 +140,7 @@ export function classifyResultType(result: { url?: string; title?: string }): st
 }
 
 /** Extract screenshot/image data from tool output. */
-export function extractScreenshot(
-  output: string,
-): { src: string; remaining: string } | null {
+export function extractScreenshot(output: string): { src: string; remaining: string } | null {
   // 1. data:image URI
   const dataUriMatch = output.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/);
   if (dataUriMatch) {
@@ -238,8 +234,19 @@ export function generateLineDiff(oldText: string, newText: string): DiffLine[] {
   let newLineNum = 1;
 
   while (oi < oldLines.length || ni < newLines.length) {
-    if (li < lcs.length && oi < oldLines.length && oldLines[oi] === lcs[li] && ni < newLines.length && newLines[ni] === lcs[li]) {
-      diff.push({ type: "unchanged", content: oldLines[oi], oldLineNum: oldLineNum++, newLineNum: newLineNum++ });
+    if (
+      li < lcs.length &&
+      oi < oldLines.length &&
+      oldLines[oi] === lcs[li] &&
+      ni < newLines.length &&
+      newLines[ni] === lcs[li]
+    ) {
+      diff.push({
+        type: "unchanged",
+        content: oldLines[oi],
+        oldLineNum: oldLineNum++,
+        newLineNum: newLineNum++,
+      });
       oi++;
       ni++;
       li++;
@@ -265,7 +272,8 @@ function buildLCS(a: string[], b: string[]): string[] {
   const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+      dp[i][j] =
+        a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
     }
   }
   const result: string[] = [];

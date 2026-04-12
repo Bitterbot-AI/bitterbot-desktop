@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
-import { loadConfig } from "../../config/config.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
+import { loadConfig } from "../../config/config.js";
 import { DEFAULT_AGENT_ID } from "../../routing/session-key.js";
 
 /** Resolve workspace root and validate that a requested path stays inside it. */
@@ -203,7 +203,9 @@ const workspaceSearch: GatewayRequestHandler = async ({ params, respond }) => {
   let pattern: RegExp;
   try {
     const flags = caseSensitive ? "g" : "gi";
-    pattern = isRegex ? new RegExp(query, flags) : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
+    pattern = isRegex
+      ? new RegExp(query, flags)
+      : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
   } catch {
     respond(false, undefined, { code: "INVALID_REQUEST", message: "invalid regex" });
     return;

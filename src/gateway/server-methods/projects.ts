@@ -1,4 +1,5 @@
 import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
+import { buildProjectContext } from "../../agents/project-rag.js";
 import {
   listProjects,
   getProject,
@@ -9,7 +10,6 @@ import {
   listProjectFiles,
   deleteProjectFile,
 } from "../../agents/projects.js";
-import { buildProjectContext } from "../../agents/project-rag.js";
 
 const projectsList: GatewayRequestHandler = async ({ respond }) => {
   const projects = listProjects();
@@ -109,7 +109,10 @@ const projectsFilesDelete: GatewayRequestHandler = async ({ params, respond }) =
   const fileId = typeof params.fileId === "string" ? params.fileId : "";
 
   if (!projectId || !fileId) {
-    respond(false, undefined, { code: "INVALID_REQUEST", message: "projectId and fileId required" });
+    respond(false, undefined, {
+      code: "INVALID_REQUEST",
+      message: "projectId and fileId required",
+    });
     return;
   }
 

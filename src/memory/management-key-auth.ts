@@ -38,7 +38,11 @@ export class ManagementKeyAuth {
   /** Base64 encoding of the raw 32-byte Ed25519 public key. */
   readonly publicKeyBase64: string;
 
-  private constructor(privateKey: crypto.KeyObject, publicKey: crypto.KeyObject, publicKeyBase64: string) {
+  private constructor(
+    privateKey: crypto.KeyObject,
+    publicKey: crypto.KeyObject,
+    publicKeyBase64: string,
+  ) {
     this.privateKey = privateKey;
     this.publicKey = publicKey;
     this.publicKeyBase64 = publicKeyBase64;
@@ -98,10 +102,7 @@ export class ManagementKeyAuth {
     try {
       // Import the seed as a PKCS8 Ed25519 private key
       // Node.js expects Ed25519 in PKCS8 DER format for import
-      const pkcs8Prefix = Buffer.from(
-        "302e020100300506032b657004220420",
-        "hex",
-      );
+      const pkcs8Prefix = Buffer.from("302e020100300506032b657004220420", "hex");
       const pkcs8Der = Buffer.concat([pkcs8Prefix, seed]);
       privateKey = crypto.createPrivateKey({
         key: pkcs8Der,
@@ -125,9 +126,7 @@ export class ManagementKeyAuth {
 
     // Verify the derived public key is in the genesis trust list
     if (!trustList.includes(publicKeyBase64)) {
-      log.warn(
-        `Management key's public key (${publicKeyBase64}) is not in the genesis trust list`,
-      );
+      log.warn(`Management key's public key (${publicKeyBase64}) is not in the genesis trust list`);
       throw new ManagementKeyAuthError(
         "Management key's public key is not in the genesis trust list. " +
           "This node is not authorized to operate as a management node.",
@@ -135,9 +134,7 @@ export class ManagementKeyAuth {
       );
     }
 
-    log.info(
-      `Management key authorized: pubkey ${publicKeyBase64.substring(0, 8)}...`,
-    );
+    log.info(`Management key authorized: pubkey ${publicKeyBase64.substring(0, 8)}...`);
     return new ManagementKeyAuth(privateKey, publicKey, publicKeyBase64);
   }
 
@@ -176,7 +173,10 @@ export class ManagementKeyAuth {
    * Create a signed management command envelope.
    * Includes the command, timestamp, pubkey, and signature.
    */
-  signCommand(command: string, payload: Record<string, unknown>): {
+  signCommand(
+    command: string,
+    payload: Record<string, unknown>,
+  ): {
     command: string;
     payload: Record<string, unknown>;
     timestamp: number;
@@ -240,10 +240,7 @@ export class ManagementKeyAuth {
  * Load the genesis trust list from a file path or inline array.
  * File format: one base64 pubkey per line, blank lines and # comments ignored.
  */
-export function loadGenesisTrustList(
-  filePath?: string,
-  inlineList?: string[],
-): string[] {
+export function loadGenesisTrustList(filePath?: string, inlineList?: string[]): string[] {
   const result: string[] = [];
 
   if (inlineList && inlineList.length > 0) {

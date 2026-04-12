@@ -144,9 +144,9 @@ describe("formatCliCommand", () => {
   });
 
   it("trims whitespace from profile", () => {
-    expect(formatCliCommand("bitterbot doctor --fix", { BITTERBOT_PROFILE: "  jbbitterbot  " })).toBe(
-      "bitterbot --profile jbbitterbot doctor --fix",
-    );
+    expect(
+      formatCliCommand("bitterbot doctor --fix", { BITTERBOT_PROFILE: "  jbbitterbot  " }),
+    ).toBe("bitterbot --profile jbbitterbot doctor --fix");
   });
 
   it("handles command with no args after bitterbot", () => {

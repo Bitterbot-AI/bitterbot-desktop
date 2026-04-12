@@ -361,13 +361,17 @@ export function createAgentEventHandler({
       if (isFileWrite) {
         const args = evt.data.args as Record<string, unknown> | undefined;
         const filePath = args?.file_path ?? args?.path ?? args?.filePath;
-        broadcast("workspace.fileChanged", {
-          runId: evt.runId,
-          sessionKey,
-          toolName: evt.data.name,
-          filePath: typeof filePath === "string" ? filePath : undefined,
-          ts: evt.ts,
-        }, { dropIfSlow: true });
+        broadcast(
+          "workspace.fileChanged",
+          {
+            runId: evt.runId,
+            sessionKey,
+            toolName: evt.data.name,
+            filePath: typeof filePath === "string" ? filePath : undefined,
+            ts: evt.ts,
+          },
+          { dropIfSlow: true },
+        );
       }
     }
 

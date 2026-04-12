@@ -195,10 +195,7 @@ export class KnowledgeGraphManager {
    * Add or update a relationship. If an active relationship of the same type
    * exists between the same entities, supersede it by setting valid_until on the old one.
    */
-  upsertRelationship(
-    rel: ExtractedRelationship,
-    evidenceChunkIds: string[] = [],
-  ): Relationship {
+  upsertRelationship(rel: ExtractedRelationship, evidenceChunkIds: string[] = []): Relationship {
     const now = Date.now();
 
     // Ensure both entities exist
@@ -280,7 +277,9 @@ export class KnowledgeGraphManager {
    */
   supersedeRelationship(oldRelId: string, newRel?: ExtractedRelationship): Relationship | null {
     const now = Date.now();
-    this.db.prepare(`UPDATE relationships SET valid_until = ?, updated_at = ? WHERE id = ?`).run(now, now, oldRelId);
+    this.db
+      .prepare(`UPDATE relationships SET valid_until = ?, updated_at = ? WHERE id = ?`)
+      .run(now, now, oldRelId);
 
     if (newRel) {
       return this.upsertRelationship(newRel);
@@ -511,7 +510,9 @@ export class KnowledgeGraphManager {
             .run(keepId, removeId);
           // Transfer mention count
           this.db
-            .prepare(`UPDATE entities SET mention_count = mention_count + (SELECT mention_count FROM entities WHERE id = ?) WHERE id = ?`)
+            .prepare(
+              `UPDATE entities SET mention_count = mention_count + (SELECT mention_count FROM entities WHERE id = ?) WHERE id = ?`,
+            )
             .run(removeId, keepId);
           // Delete duplicate
           this.db.prepare(`DELETE FROM entities WHERE id = ?`).run(removeId);

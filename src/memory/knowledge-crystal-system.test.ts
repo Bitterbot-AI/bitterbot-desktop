@@ -8,32 +8,30 @@
  * Every test uses an in-memory SQLite database for full isolation.
  */
 
-import { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect, beforeEach } from "vitest";
+import type { KnowledgeCrystal } from "./crystal-types.js";
+import type { DreamInsight, SynthesizeFn, EmbedBatchFn } from "./dream-types.js";
+import { ConsolidationEngine } from "./consolidation.js";
+import { rowToCrystal, crystalToRow, inferSemanticType, defaultGovernance } from "./crystal.js";
+import { CuriosityEngine } from "./curiosity-engine.js";
+import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
+import {
+  PromptOptimizationExperiment,
+  calculateOpportunity,
+} from "./experiments/prompt-optimization.js";
+import { MemoryGovernance } from "./governance.js";
+import { HormonalStateManager } from "./hormonal.js";
+import { MemStore } from "./mem-store.js";
 import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
-import {
-  rowToCrystal,
-  crystalToRow,
-  inferSemanticType,
-  defaultGovernance,
-} from "./crystal.js";
-import type { KnowledgeCrystal } from "./crystal-types.js";
-import { ConsolidationEngine } from "./consolidation.js";
-import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
-import type { DreamInsight, SynthesizeFn, EmbedBatchFn } from "./dream-types.js";
-import { CuriosityEngine } from "./curiosity-engine.js";
-import { HormonalStateManager } from "./hormonal.js";
-import { UserModelManager } from "./user-model.js";
-import { SkillRefiner } from "./skill-refiner.js";
-import { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import { PromptOptimizationExperiment, calculateOpportunity } from "./experiments/prompt-optimization.js";
-import { MemoryGovernance } from "./governance.js";
-import { TaskMemoryManager } from "./task-memory.js";
-import { MemoryScheduler } from "./scheduler.js";
-import { MemStore } from "./mem-store.js";
 import { MemoryPipeline } from "./pipeline.js";
+import { MemoryScheduler } from "./scheduler.js";
+import { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import { SkillRefiner } from "./skill-refiner.js";
+import { TaskMemoryManager } from "./task-memory.js";
+import { UserModelManager } from "./user-model.js";
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 
@@ -143,8 +141,7 @@ function insertChunk(
 }
 
 /** No-op embed function for dream engine tests that don't need real embeddings. */
-const noopEmbedBatch: EmbedBatchFn = async (texts) =>
-  texts.map(() => fakeEmbedding(Math.random()));
+const noopEmbedBatch: EmbedBatchFn = async (texts) => texts.map(() => fakeEmbedding(Math.random()));
 
 /** No-op synthesize function. */
 const noopSynthesize: SynthesizeFn = async () => [];
@@ -153,9 +150,11 @@ const noopSynthesize: SynthesizeFn = async () => [];
 function mockLlmCall(responses?: string[]): (prompt: string) => Promise<string> {
   let callCount = 0;
   return async (_prompt: string) => {
-    const response = responses?.[callCount] ?? JSON.stringify([
-      { content: "Mock insight from LLM", confidence: 0.8, keywords: ["test", "mock"] },
-    ]);
+    const response =
+      responses?.[callCount] ??
+      JSON.stringify([
+        { content: "Mock insight from LLM", confidence: 0.8, keywords: ["test", "mock"] },
+      ]);
     callCount++;
     return response;
   };
@@ -180,26 +179,40 @@ describe("Crystal Foundation", () => {
     });
 
     it("detects preference patterns", () => {
-      expect(inferSemanticType("I prefer TypeScript over JavaScript", "memory", "indexed")).toBe("preference");
+      expect(inferSemanticType("I prefer TypeScript over JavaScript", "memory", "indexed")).toBe(
+        "preference",
+      );
       expect(inferSemanticType("I always use dark mode", "memory", "indexed")).toBe("preference");
     });
 
     it("detects goal patterns", () => {
-      expect(inferSemanticType("My goal is to ship the feature by Friday", "memory", "indexed")).toBe("goal");
-      expect(inferSemanticType("I plan to refactor the auth module", "memory", "indexed")).toBe("goal");
+      expect(
+        inferSemanticType("My goal is to ship the feature by Friday", "memory", "indexed"),
+      ).toBe("goal");
+      expect(inferSemanticType("I plan to refactor the auth module", "memory", "indexed")).toBe(
+        "goal",
+      );
     });
 
     it("detects task patterns", () => {
-      expect(inferSemanticType("My workflow involves running tests every time", "memory", "indexed")).toBe("task_pattern");
-      expect(inferSemanticType("Step 1: lint, Step 2: test, Step 3: deploy", "memory", "indexed")).toBe("task_pattern");
+      expect(
+        inferSemanticType("My workflow involves running tests every time", "memory", "indexed"),
+      ).toBe("task_pattern");
+      expect(
+        inferSemanticType("Step 1: lint, Step 2: test, Step 3: deploy", "memory", "indexed"),
+      ).toBe("task_pattern");
     });
 
     it("detects relationship patterns", () => {
-      expect(inferSemanticType("My team works with the platform group", "memory", "indexed")).toBe("relationship");
+      expect(inferSemanticType("My team works with the platform group", "memory", "indexed")).toBe(
+        "relationship",
+      );
     });
 
     it("classifies sessions as episodes", () => {
-      expect(inferSemanticType("We discussed deployment strategies", "sessions", "session")).toBe("episode");
+      expect(inferSemanticType("We discussed deployment strategies", "sessions", "session")).toBe(
+        "episode",
+      );
     });
 
     it("classifies memory files as facts", () => {
@@ -260,7 +273,10 @@ describe("Crystal Foundation", () => {
         provenance_chain: JSON.stringify(["parent-1"]),
       });
 
-      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(id) as Record<string, unknown>;
+      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(id) as Record<
+        string,
+        unknown
+      >;
       const crystal = rowToCrystal(row);
 
       expect(crystal.id).toBe(id);
@@ -286,7 +302,10 @@ describe("Crystal Foundation", () => {
         lifecycle: null as any,
         lifecycle_state: "forgotten",
       });
-      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(id) as Record<string, unknown>;
+      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(id) as Record<
+        string,
+        unknown
+      >;
       const crystal = rowToCrystal(row);
       expect(crystal.lifecycle).toBe("expired");
     });
@@ -297,7 +316,10 @@ describe("Crystal Foundation", () => {
         lifecycle_state: "active",
         memory_type: "skill",
       });
-      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(id) as Record<string, unknown>;
+      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(id) as Record<
+        string,
+        unknown
+      >;
       const crystal = rowToCrystal(row);
       expect(crystal.lifecycle).toBe("frozen");
     });
@@ -308,7 +330,10 @@ describe("Crystal Foundation", () => {
         lifecycle_state: "active",
         importance_score: 0.9,
       });
-      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(id) as Record<string, unknown>;
+      const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(id) as Record<
+        string,
+        unknown
+      >;
       const crystal = rowToCrystal(row);
       expect(crystal.lifecycle).toBe("activated");
     });
@@ -359,7 +384,9 @@ describe("Crystal Foundation", () => {
       const result = runMigrations(db);
       expect(result.ran).toBe(7); // v1 (crystal columns) + v2 (skill tracking, reputation, etc.) + v3 (ban/blocklist, EigenTrust) + v4 (management verification, bounties) + v5 (lineage_hash, peer_origin) + v6 (bitemporal columns) + v7 (session extraction)
 
-      const row = db.prepare("SELECT created_at FROM chunks WHERE id = ?").get("legacy-1") as { created_at: number };
+      const row = db.prepare("SELECT created_at FROM chunks WHERE id = ?").get("legacy-1") as {
+        created_at: number;
+      };
       expect(row.created_at).toBe(1700000000000);
     });
   });
@@ -400,8 +427,8 @@ describe("Consolidation Engine", () => {
       importance_score: 0.9,
       lifecycle: "generated",
       lifecycle_state: "active",
-      access_count: 50,          // high access count → high frequency factor
-      last_accessed_at: now,     // just accessed → no time decay
+      access_count: 50, // high access count → high frequency factor
+      last_accessed_at: now, // just accessed → no time decay
       updated_at: now,
     });
 
@@ -410,7 +437,9 @@ describe("Consolidation Engine", () => {
 
     expect(stats.forgottenChunks).toBeGreaterThanOrEqual(1);
 
-    const low = db.prepare("SELECT lifecycle, lifecycle_state FROM chunks WHERE id = ?").get("low-1") as any;
+    const low = db
+      .prepare("SELECT lifecycle, lifecycle_state FROM chunks WHERE id = ?")
+      .get("low-1") as any;
     expect(low.lifecycle).toBe("expired");
     expect(low.lifecycle_state).toBe("forgotten");
 
@@ -555,9 +584,11 @@ describe("Dream Engine", () => {
     it("boosts importance scores without creating new insights", async () => {
       seedChunksForDream();
 
-      const before = db.prepare(
-        "SELECT id, importance_score, dream_count FROM chunks ORDER BY importance_score DESC LIMIT 5",
-      ).all() as Array<{ id: string; importance_score: number; dream_count: number }>;
+      const before = db
+        .prepare(
+          "SELECT id, importance_score, dream_count FROM chunks ORDER BY importance_score DESC LIMIT 5",
+        )
+        .all() as Array<{ id: string; importance_score: number; dream_count: number }>;
 
       const engine = new DreamEngine(db, undefined, noopSynthesize, noopEmbedBatch);
       const stats = await engine.run({ modes: ["replay"] });
@@ -567,9 +598,9 @@ describe("Dream Engine", () => {
 
       // Verify importance boosted and dream_count incremented
       for (const chunk of before) {
-        const after = db.prepare(
-          "SELECT importance_score, dream_count FROM chunks WHERE id = ?",
-        ).get(chunk.id) as { importance_score: number; dream_count: number };
+        const after = db
+          .prepare("SELECT importance_score, dream_count FROM chunks WHERE id = ?")
+          .get(chunk.id) as { importance_score: number; dream_count: number };
 
         expect(after.importance_score).toBeGreaterThanOrEqual(chunk.importance_score);
         expect(after.dream_count).toBeGreaterThan(chunk.dream_count);
@@ -592,11 +623,23 @@ describe("Dream Engine", () => {
 
       const llm = mockLlmCall([
         JSON.stringify([
-          { content: "Use interactive rebase with autosquash for cleaner workflow", confidence: 0.85, keywords: ["git", "rebase"] },
-          { content: "Consider git merge --squash for feature branches", confidence: 0.7, keywords: ["git", "merge"] },
+          {
+            content: "Use interactive rebase with autosquash for cleaner workflow",
+            confidence: 0.85,
+            keywords: ["git", "rebase"],
+          },
+          {
+            content: "Consider git merge --squash for feature branches",
+            confidence: 0.7,
+            keywords: ["git", "merge"],
+          },
         ]),
         JSON.stringify([
-          { content: "Adopt trunk-based development with short-lived branches", confidence: 0.9, keywords: ["trunk", "branches"] },
+          {
+            content: "Adopt trunk-based development with short-lived branches",
+            confidence: 0.9,
+            keywords: ["trunk", "branches"],
+          },
         ]),
       ]);
 
@@ -619,12 +662,7 @@ describe("Dream Engine", () => {
     it("skips mutation mode when no LLM is configured", async () => {
       seedChunksForDream(25, { memory_type: "skill", semantic_type: "skill" });
 
-      const engine = new DreamEngine(
-        db,
-        { minChunksForDream: 5 },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
+      const engine = new DreamEngine(db, { minChunksForDream: 5 }, noopSynthesize, noopEmbedBatch);
       const stats = await engine.run({ modes: ["mutation"] });
 
       expect(stats).not.toBeNull();
@@ -648,7 +686,11 @@ describe("Dream Engine", () => {
 
       const llm = mockLlmCall([
         JSON.stringify([
-          { content: "User will likely need TypeScript tooling improvements", confidence: 0.75, keywords: ["typescript", "tooling"] },
+          {
+            content: "User will likely need TypeScript tooling improvements",
+            confidence: 0.75,
+            keywords: ["typescript", "tooling"],
+          },
         ]),
       ]);
 
@@ -719,9 +761,9 @@ describe("Dream Engine", () => {
       expect(stats).not.toBeNull();
 
       // Some cluster members should now be archived
-      const archived = db.prepare(
-        "SELECT COUNT(*) as c FROM chunks WHERE lifecycle = 'archived'",
-      ).get() as { c: number };
+      const archived = db
+        .prepare("SELECT COUNT(*) as c FROM chunks WHERE lifecycle = 'archived'")
+        .get() as { c: number };
       expect(archived.c).toBeGreaterThan(0);
 
       // Compression insights should exist
@@ -744,7 +786,11 @@ describe("Dream Engine", () => {
 
       const llm = mockLlmCall([
         JSON.stringify([
-          { content: "Cross-domain connection between domains", confidence: 0.8, keywords: ["cross", "domain"] },
+          {
+            content: "Cross-domain connection between domains",
+            confidence: 0.8,
+            keywords: ["cross", "domain"],
+          },
         ]),
       ]);
 
@@ -772,11 +818,25 @@ describe("Dream Engine", () => {
       db.prepare(
         `INSERT INTO curiosity_targets (id, type, description, priority, region_id, metadata, created_at, resolved_at, expires_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run("target-1", "knowledge_gap", "How does WebSocket scaling work?", 0.8, null, "{}", Date.now(), null, Date.now() + 86400000);
+      ).run(
+        "target-1",
+        "knowledge_gap",
+        "How does WebSocket scaling work?",
+        0.8,
+        null,
+        "{}",
+        Date.now(),
+        null,
+        Date.now() + 86400000,
+      );
 
       const llm = mockLlmCall([
         JSON.stringify([
-          { content: "Investigate WebSocket load balancing with sticky sessions", confidence: 0.7, keywords: ["websocket", "scaling"] },
+          {
+            content: "Investigate WebSocket load balancing with sticky sessions",
+            confidence: 0.7,
+            keywords: ["websocket", "scaling"],
+          },
         ]),
       ]);
 
@@ -811,15 +871,13 @@ describe("Dream Engine", () => {
 
   describe("Mode 7: Research — empirical prompt optimization", () => {
     /** Insert a skill chunk and record N executions for it. */
-    function seedSkillWithExecutions(
-      opts: {
-        skillText?: string;
-        executions: number;
-        successRate?: number;
-        avgReward?: number;
-        errorType?: string;
-      },
-    ): { skillId: string; tracker: SkillExecutionTracker } {
+    function seedSkillWithExecutions(opts: {
+      skillText?: string;
+      executions: number;
+      successRate?: number;
+      avgReward?: number;
+      errorType?: string;
+    }): { skillId: string; tracker: SkillExecutionTracker } {
       const skillId = insertChunk(db, {
         text: opts.skillText ?? "Skill: deploy via docker compose with health checks",
         importance_score: 0.7,
@@ -853,8 +911,16 @@ describe("Dream Engine", () => {
 
       const llm = mockLlmCall([
         JSON.stringify([
-          { content: "Add connection timeout with exponential backoff", confidence: 0.85, keywords: ["timeout", "retry"] },
-          { content: "Use health check endpoint before deploy", confidence: 0.7, keywords: ["health", "deploy"] },
+          {
+            content: "Add connection timeout with exponential backoff",
+            confidence: 0.85,
+            keywords: ["timeout", "retry"],
+          },
+          {
+            content: "Use health check endpoint before deploy",
+            confidence: 0.7,
+            keywords: ["health", "deploy"],
+          },
         ]),
       ]);
 
@@ -933,12 +999,8 @@ describe("Dream Engine", () => {
 
       expect(candidates.length).toBe(2);
       // Low performer should be ranked first (higher opportunity)
-      expect(candidates[0]!.metrics.successRate).toBeLessThan(
-        candidates[1]!.metrics.successRate,
-      );
-      expect(candidates[0]!.opportunityScore).toBeGreaterThan(
-        candidates[1]!.opportunityScore,
-      );
+      expect(candidates[0]!.metrics.successRate).toBeLessThan(candidates[1]!.metrics.successRate);
+      expect(candidates[0]!.opportunityScore).toBeGreaterThan(candidates[1]!.opportunityScore);
     });
 
     it("calculateOpportunity scores low success rate higher", () => {
@@ -977,7 +1039,11 @@ describe("Dream Engine", () => {
       const llm = async (prompt: string) => {
         if (!capturedPrompt) capturedPrompt = prompt; // Capture the FIRST call (research prompt), not the sandbox rating prompt
         return JSON.stringify([
-          { content: "Handle connection timeout with retry logic", confidence: 0.8, keywords: ["timeout"] },
+          {
+            content: "Handle connection timeout with retry logic",
+            confidence: 0.8,
+            keywords: ["timeout"],
+          },
         ]);
       };
 
@@ -1066,7 +1132,11 @@ describe("Dream Engine", () => {
       // Run mutation mode (which generates insights and triggers pruneInsights)
       const llm = mockLlmCall([
         JSON.stringify([
-          { content: "Improved deployment with better monitoring", confidence: 0.8, keywords: ["deploy"] },
+          {
+            content: "Improved deployment with better monitoring",
+            confidence: 0.8,
+            keywords: ["deploy"],
+          },
         ]),
       ]);
 
@@ -1078,7 +1148,8 @@ describe("Dream Engine", () => {
       );
       await engine.run({ modes: ["mutation"] });
 
-      const count = (db.prepare("SELECT COUNT(*) as c FROM dream_insights").get() as { c: number }).c;
+      const count = (db.prepare("SELECT COUNT(*) as c FROM dream_insights").get() as { c: number })
+        .c;
       expect(count).toBeLessThanOrEqual(4);
     });
   });
@@ -1111,9 +1182,9 @@ describe("Curiosity Engine", () => {
     const novelEmb = fakeEmbedding(999); // very different
     engine.assessChunk("novel-chunk-1", novelEmb, "hash-novel");
 
-    const surprise = db.prepare(
-      "SELECT * FROM curiosity_surprises WHERE chunk_id = ?",
-    ).get("novel-chunk-1") as any;
+    const surprise = db
+      .prepare("SELECT * FROM curiosity_surprises WHERE chunk_id = ?")
+      .get("novel-chunk-1") as any;
 
     expect(surprise).toBeDefined();
     expect(surprise.novelty_score).toBeGreaterThanOrEqual(0);
@@ -1130,7 +1201,9 @@ describe("Curiosity Engine", () => {
 
     engine.recordSearchQuery("how to deploy", fakeEmbedding(50), 0, 0, 0);
 
-    const query = db.prepare("SELECT * FROM curiosity_queries ORDER BY timestamp DESC LIMIT 1").get() as any;
+    const query = db
+      .prepare("SELECT * FROM curiosity_queries ORDER BY timestamp DESC LIMIT 1")
+      .get() as any;
     expect(query).toBeDefined();
     expect(query.query).toBe("how to deploy");
     expect(query.result_count).toBe(0);
@@ -1152,9 +1225,9 @@ describe("Curiosity Engine", () => {
 
     engine.run(); // should detect gaps
 
-    const targets = db.prepare(
-      "SELECT * FROM curiosity_targets WHERE type = 'knowledge_gap'",
-    ).all();
+    const targets = db
+      .prepare("SELECT * FROM curiosity_targets WHERE type = 'knowledge_gap'")
+      .all();
     // May or may not find gaps depending on region clustering; just verify no crash
     expect(targets).toBeDefined();
   });
@@ -1197,7 +1270,9 @@ describe("Curiosity Engine", () => {
 
       engine.assessDreamInsight(insight);
 
-      const target = db.prepare("SELECT resolved_at FROM curiosity_targets WHERE id = ?").get("gap-1") as any;
+      const target = db
+        .prepare("SELECT resolved_at FROM curiosity_targets WHERE id = ?")
+        .get("gap-1") as any;
       // High confidence insight near region should resolve the gap
       expect(target.resolved_at).not.toBeNull();
     });
@@ -1239,7 +1314,7 @@ describe("Hormonal State Manager", () => {
     // Homeostasis baseline: dopamine=0.15, cortisol=0.02, oxytocin=0.10
     expect(state.dopamine).toBeCloseTo(0.15);
     expect(state.cortisol).toBeCloseTo(0.02);
-    expect(state.oxytocin).toBeCloseTo(0.10);
+    expect(state.oxytocin).toBeCloseTo(0.1);
   });
 
   it("stimulates correct hormones per event type", () => {
@@ -1297,7 +1372,10 @@ describe("Hormonal State Manager", () => {
   it("computes per-crystal hormonal influence from text", () => {
     const manager = new HormonalStateManager();
 
-    const success = manager.computeCrystalInfluence("We successfully shipped the feature!", "memory");
+    const success = manager.computeCrystalInfluence(
+      "We successfully shipped the feature!",
+      "memory",
+    );
     expect(success.dopamine).toBeGreaterThan(0); // "successfully" → reward
 
     const error = manager.computeCrystalInfluence("Critical bug crashed production", "memory");
@@ -1327,7 +1405,9 @@ describe("Hormonal State Manager", () => {
   it("stimulateFromText returns empty for neutral text", () => {
     const manager = new HormonalStateManager();
     const baseline = manager.getState();
-    const events = manager.stimulateFromText("The function takes two parameters and returns a string.");
+    const events = manager.stimulateFromText(
+      "The function takes two parameters and returns a string.",
+    );
     expect(events).toHaveLength(0);
     const state = manager.getState();
     // Should remain at homeostasis baseline (no stimulation)
@@ -1512,11 +1592,15 @@ describe("Skill Refiner", () => {
     // Insert the dream_insights table is already created by ensureDreamSchema
     const refiner = new SkillRefiner(db, { promotionThreshold: 0.5 });
 
-    const original = { id: "skill-orig", text: "Use git rebase for clean history with squash fixups" };
+    const original = {
+      id: "skill-orig",
+      text: "Use git rebase for clean history with squash fixups",
+    };
 
     const mutation: DreamInsight = {
       id: "mut-1",
-      content: "Use interactive rebase with autosquash. Handle edge case when conflicts arise. More general approach with fallback to merge.",
+      content:
+        "Use interactive rebase with autosquash. Handle edge case when conflicts arise. More general approach with fallback to merge.",
       embedding: [],
       confidence: 0.8,
       mode: "mutation",
@@ -1543,9 +1627,9 @@ describe("Skill Refiner", () => {
     expect(result.mutations[0]!.score).toBeGreaterThanOrEqual(0.5);
 
     // Verify audit log entry was created
-    const log = db.prepare(
-      "SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted'",
-    ).all();
+    const log = db
+      .prepare("SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted'")
+      .all();
     expect(log.length).toBeGreaterThan(0);
   });
 
@@ -1575,19 +1659,23 @@ describe("Skill Refiner", () => {
 
     expect(result.mutations[0]!.promoted).toBe(false);
 
-    const archiveLogs = db.prepare(
-      "SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_archived'",
-    ).all();
+    const archiveLogs = db
+      .prepare("SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_archived'")
+      .all();
     expect(archiveLogs.length).toBeGreaterThan(0);
   });
 
   it("scores mutation based on keyword coverage, novelty, and structure", () => {
     const refiner = new SkillRefiner(db);
 
-    const original = { id: "s2", text: "Deploy application using Docker containers with monitoring" };
+    const original = {
+      id: "s2",
+      text: "Deploy application using Docker containers with monitoring",
+    };
     const goodMutation: DreamInsight = {
       id: "mut-good",
-      content: "Deploy application using Docker containers with monitoring. Handle edge case for resource limits. More general approach with Kubernetes fallback.",
+      content:
+        "Deploy application using Docker containers with monitoring. Handle edge case for resource limits. More general approach with Kubernetes fallback.",
       embedding: [],
       confidence: 0.9,
       mode: "mutation",
@@ -1620,7 +1708,8 @@ describe("Skill Refiner", () => {
 
     const mutation: DreamInsight = {
       id: "callback-mut",
-      content: "Improved approach with edge case handling and fallback mechanism for broader coverage",
+      content:
+        "Improved approach with edge case handling and fallback mechanism for broader coverage",
       embedding: [],
       confidence: 0.9,
       mode: "mutation",
@@ -1639,10 +1728,9 @@ describe("Skill Refiner", () => {
        VALUES (?, ?, '[]', 0.9, 'mutation', '[]', '[]', 'c1', 0.5, 0, ?, ?)`,
     ).run(mutation.id, mutation.content, Date.now(), Date.now());
 
-    refiner.evaluateMutations(
-      { id: "orig", text: "Basic deployment process for applications" },
-      [mutation],
-    );
+    refiner.evaluateMutations({ id: "orig", text: "Basic deployment process for applications" }, [
+      mutation,
+    ]);
 
     // Callback receives the new crystal chunk ID (not the mutation ID)
     expect(callbackId).not.toBeNull();
@@ -1728,14 +1816,16 @@ describe("Memory Governance", () => {
         metadata: { reason: "consolidation" },
       });
 
-      const row = db.prepare("SELECT provenance_chain FROM chunks WHERE id = ?").get(id) as { provenance_chain: string };
+      const row = db.prepare("SELECT provenance_chain FROM chunks WHERE id = ?").get(id) as {
+        provenance_chain: string;
+      };
       const chain = JSON.parse(row.provenance_chain);
       expect(chain).toContain("parent-crystal-1");
 
       // Verify audit log entry
-      const logs = db.prepare(
-        "SELECT * FROM memory_audit_log WHERE chunk_id = ? AND operation = 'provenance'",
-      ).all(id);
+      const logs = db
+        .prepare("SELECT * FROM memory_audit_log WHERE chunk_id = ? AND operation = 'provenance'")
+        .all(id);
       expect(logs.length).toBeGreaterThan(0);
     });
   });
@@ -1755,7 +1845,9 @@ describe("Memory Governance", () => {
       const expired = gov.enforceLifespan();
       expect(expired).toBeGreaterThanOrEqual(1);
 
-      const row = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(id) as { lifecycle: string };
+      const row = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(id) as {
+        lifecycle: string;
+      };
       expect(row.lifecycle).toBe("expired");
     });
 
@@ -1772,7 +1864,9 @@ describe("Memory Governance", () => {
 
       gov.enforceLifespan();
 
-      const row = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(id) as { lifecycle: string };
+      const row = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(id) as {
+        lifecycle: string;
+      };
       expect(row.lifecycle).toBe("generated");
     });
 
@@ -1789,7 +1883,9 @@ describe("Memory Governance", () => {
 
       gov.enforceLifespan();
 
-      const row = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(id) as { lifecycle: string };
+      const row = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(id) as {
+        lifecycle: string;
+      };
       expect(row.lifecycle).toBe("frozen");
     });
   });
@@ -1801,9 +1897,9 @@ describe("Memory Governance", () => {
 
       gov.logAccess(id, "search", { actor: "agent", purpose: "answer_query" });
 
-      const logs = db.prepare(
-        "SELECT * FROM memory_audit_log WHERE chunk_id = ? AND operation = 'search'",
-      ).all(id);
+      const logs = db
+        .prepare("SELECT * FROM memory_audit_log WHERE chunk_id = ? AND operation = 'search'")
+        .all(id);
       expect(logs.length).toBe(1);
     });
   });
@@ -1898,7 +1994,7 @@ describe("Task Memory Manager", () => {
 
     const goals = manager.detectGoals(
       "I want to refactor the authentication module. I need to set up monitoring for the API. " +
-      "Also, we should migrate to PostgreSQL from MySQL.",
+        "Also, we should migrate to PostgreSQL from MySQL.",
     );
 
     expect(goals.length).toBeGreaterThanOrEqual(2);
@@ -1967,7 +2063,10 @@ describe("Memory Scheduler", () => {
       type: "embed",
       priority: 0.1,
       estimatedCost: 1,
-      execute: async () => { await new Promise((r) => setTimeout(r, 20)); executed.push("slow"); },
+      execute: async () => {
+        await new Promise((r) => setTimeout(r, 20));
+        executed.push("slow");
+      },
       createdAt: Date.now(),
     });
     // These two are added while "slow" is processing, so they queue up sorted by priority
@@ -1976,7 +2075,9 @@ describe("Memory Scheduler", () => {
       type: "embed",
       priority: 0.2,
       estimatedCost: 1,
-      execute: async () => { executed.push("low"); },
+      execute: async () => {
+        executed.push("low");
+      },
       createdAt: Date.now(),
     });
     scheduler.schedule({
@@ -1984,7 +2085,9 @@ describe("Memory Scheduler", () => {
       type: "embed",
       priority: 0.9,
       estimatedCost: 1,
-      execute: async () => { executed.push("high"); },
+      execute: async () => {
+        executed.push("high");
+      },
       createdAt: Date.now(),
     });
 
@@ -2005,7 +2108,9 @@ describe("Memory Scheduler", () => {
       type: "dream", // needs LLM budget
       priority: 1,
       estimatedCost: 1,
-      execute: async () => { executed = true; },
+      execute: async () => {
+        executed = true;
+      },
       createdAt: Date.now(),
     });
 
@@ -2017,8 +2122,22 @@ describe("Memory Scheduler", () => {
     const scheduler = new MemoryScheduler();
     const noop = async () => {};
 
-    scheduler.schedule({ id: "a", type: "embed", priority: 0.5, estimatedCost: 1, execute: noop, createdAt: Date.now() });
-    scheduler.schedule({ id: "b", type: "dream", priority: 0.5, estimatedCost: 1, execute: noop, createdAt: Date.now() });
+    scheduler.schedule({
+      id: "a",
+      type: "embed",
+      priority: 0.5,
+      estimatedCost: 1,
+      execute: noop,
+      createdAt: Date.now(),
+    });
+    scheduler.schedule({
+      id: "b",
+      type: "dream",
+      priority: 0.5,
+      estimatedCost: 1,
+      execute: noop,
+      createdAt: Date.now(),
+    });
 
     // Queue may have processed already, but getQueueStatus should not throw
     const status = scheduler.getQueueStatus();
@@ -2048,7 +2167,9 @@ describe("MemStore", () => {
     expect(result).not.toBeNull();
     expect(result!.visibility).toBe("shared");
 
-    const row = db.prepare("SELECT governance_json, publish_visibility FROM chunks WHERE id = ?").get(id) as any;
+    const row = db
+      .prepare("SELECT governance_json, publish_visibility FROM chunks WHERE id = ?")
+      .get(id) as any;
     expect(JSON.parse(row.governance_json).accessScope).toBe("shared");
     expect(row.publish_visibility).toBe("shared");
   });
@@ -2237,7 +2358,9 @@ describe("Memory Pipeline", () => {
       .store()
       .execute(db);
 
-    const row = db.prepare("SELECT importance_score, semantic_type FROM chunks WHERE id = ?").get(id) as any;
+    const row = db
+      .prepare("SELECT importance_score, semantic_type FROM chunks WHERE id = ?")
+      .get(id) as any;
     expect(row.importance_score).toBeCloseTo(0.95);
     expect(row.semantic_type).toBe("insight");
   });
@@ -2245,9 +2368,7 @@ describe("Memory Pipeline", () => {
   it("reports timing information", async () => {
     insertChunk(db);
 
-    const result = await MemoryPipeline.create()
-      .retrieve("test")
-      .execute(db);
+    const result = await MemoryPipeline.create().retrieve("test").execute(db);
 
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
@@ -2330,9 +2451,9 @@ describe("Integration: Cross-system feedback loops", () => {
       curiosity.assessDreamInsight(insight);
 
       // Gap should be resolved
-      const target = db.prepare(
-        "SELECT resolved_at FROM curiosity_targets WHERE id = 'loop-gap'",
-      ).get() as any;
+      const target = db
+        .prepare("SELECT resolved_at FROM curiosity_targets WHERE id = 'loop-gap'")
+        .get() as any;
       expect(target.resolved_at).not.toBeNull();
     });
   });
@@ -2392,15 +2513,18 @@ describe("Integration: Cross-system feedback loops", () => {
       }
 
       // Count skill chunks before dream
-      const skillsBefore = (db.prepare(
-        "SELECT COUNT(*) as c FROM chunks WHERE memory_type = 'skill'",
-      ).get() as { c: number }).c;
+      const skillsBefore = (
+        db.prepare("SELECT COUNT(*) as c FROM chunks WHERE memory_type = 'skill'").get() as {
+          c: number;
+        }
+      ).c;
 
       // 2. Run dream mutation mode
       const llm = mockLlmCall([
         JSON.stringify([
           {
-            content: "Deploy using Docker with health checks, monitoring, and edge case handling for resource limits. More general approach with Kubernetes fallback.",
+            content:
+              "Deploy using Docker with health checks, monitoring, and edge case handling for resource limits. More general approach with Kubernetes fallback.",
             confidence: 0.9,
             keywords: ["docker", "deploy", "kubernetes"],
           },
@@ -2435,9 +2559,7 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // 4. Verify crystallization: new skill chunk was created
       expect(crystallizedId).not.toBeNull();
-      const newSkill = db.prepare(
-        "SELECT * FROM chunks WHERE id = ?",
-      ).get(crystallizedId!) as any;
+      const newSkill = db.prepare("SELECT * FROM chunks WHERE id = ?").get(crystallizedId!) as any;
 
       expect(newSkill).toBeDefined();
       expect(newSkill.memory_type).toBe("skill");
@@ -2454,15 +2576,17 @@ describe("Integration: Cross-system feedback loops", () => {
       expect(provenance).toContain(sourceId);
 
       // 5. Verify skill count increased
-      const skillsAfter = (db.prepare(
-        "SELECT COUNT(*) as c FROM chunks WHERE memory_type = 'skill'",
-      ).get() as { c: number }).c;
+      const skillsAfter = (
+        db.prepare("SELECT COUNT(*) as c FROM chunks WHERE memory_type = 'skill'").get() as {
+          c: number;
+        }
+      ).c;
       expect(skillsAfter).toBeGreaterThan(skillsBefore);
 
       // 6. Verify audit trail
-      const auditLog = db.prepare(
-        "SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted'",
-      ).all() as any[];
+      const auditLog = db
+        .prepare("SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted'")
+        .all() as any[];
       expect(auditLog.length).toBeGreaterThan(0);
       const logEntry = auditLog[0];
       expect(logEntry.chunk_id).toBe(crystallizedId);
@@ -2483,7 +2607,8 @@ describe("Integration: Cross-system feedback loops", () => {
 
       const mutation: DreamInsight = {
         id: "mut-survive",
-        content: "Improved deployment with Docker, Kubernetes, and edge case handling for resource limits. More general approach with fallback.",
+        content:
+          "Improved deployment with Docker, Kubernetes, and edge case handling for resource limits. More general approach with fallback.",
         embedding: [],
         confidence: 0.9,
         mode: "mutation",
@@ -2500,20 +2625,32 @@ describe("Integration: Cross-system feedback loops", () => {
       db.prepare(
         `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
          VALUES (?, ?, '[]', ?, 'mutation', '[]', '[]', ?, 0.7, 0, ?, ?)`,
-      ).run(mutation.id, mutation.content, mutation.confidence, mutation.dreamCycleId, Date.now(), Date.now());
+      ).run(
+        mutation.id,
+        mutation.content,
+        mutation.confidence,
+        mutation.dreamCycleId,
+        Date.now(),
+        Date.now(),
+      );
 
       let crystallizedId: string | null = null;
       const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
         crystallizedId = id;
       });
-      refiner.evaluateMutations({ id: originalId, text: "Original deployment skill with Docker and Kubernetes" }, [mutation]);
+      refiner.evaluateMutations(
+        { id: originalId, text: "Original deployment skill with Docker and Kubernetes" },
+        [mutation],
+      );
       expect(crystallizedId).not.toBeNull();
 
       // 2. Run consolidation — the new skill should survive because lifecycle='frozen'
       const engine = new ConsolidationEngine(db, { forgetThreshold: 0.1 });
       engine.run();
 
-      const skill = db.prepare("SELECT lifecycle, lifecycle_state FROM chunks WHERE id = ?").get(crystallizedId!) as any;
+      const skill = db
+        .prepare("SELECT lifecycle, lifecycle_state FROM chunks WHERE id = ?")
+        .get(crystallizedId!) as any;
       expect(skill.lifecycle).toBe("frozen");
       expect(skill.lifecycle_state).not.toBe("forgotten");
     });
@@ -2565,8 +2702,8 @@ describe("Integration: Cross-system feedback loops", () => {
       expect(mutations.length).toBeGreaterThan(0);
 
       // The mutation's source should be our crystallized skill (it's the highest importance skill)
-      const sourcedFromCrystallized = mutations.some(
-        (m) => m.sourceChunkIds.includes(crystallizedId),
+      const sourcedFromCrystallized = mutations.some((m) =>
+        m.sourceChunkIds.includes(crystallizedId),
       );
       expect(sourcedFromCrystallized).toBe(true);
     });
@@ -2596,7 +2733,8 @@ describe("Integration: Cross-system feedback loops", () => {
       const llm1 = mockLlmCall([
         JSON.stringify([
           {
-            content: "Deploy application using Docker containers with monitoring. Handle edge case for resource limits. More general approach with Kubernetes fallback.",
+            content:
+              "Deploy application using Docker containers with monitoring. Handle edge case for resource limits. More general approach with Kubernetes fallback.",
             confidence: 0.9,
             keywords: ["docker", "deploy"],
           },
@@ -2632,7 +2770,8 @@ describe("Integration: Cross-system feedback loops", () => {
       const llm2 = mockLlmCall([
         JSON.stringify([
           {
-            content: "Deploy application using Docker with health checks, resource limits, Kubernetes orchestration, and CI/CD pipeline integration for automated rollbacks. Handle edge case when services fail.",
+            content:
+              "Deploy application using Docker with health checks, resource limits, Kubernetes orchestration, and CI/CD pipeline integration for automated rollbacks. Handle edge case when services fail.",
             confidence: 0.92,
             keywords: ["docker", "kubernetes", "ci-cd"],
           },
@@ -2652,8 +2791,8 @@ describe("Integration: Cross-system feedback loops", () => {
       // Verify the gen1 crystal was used as a source (highest-importance skill)
       // It should be one of: the original or the gen1 crystal
       const allSkillIds = new Set([origId, gen1CrystalId!]);
-      const sourcedFromSkill = muts2.some(
-        (m) => m.sourceChunkIds.some((id) => allSkillIds.has(id)),
+      const sourcedFromSkill = muts2.some((m) =>
+        m.sourceChunkIds.some((id) => allSkillIds.has(id)),
       );
       expect(sourcedFromSkill).toBe(true);
 
@@ -2662,7 +2801,9 @@ describe("Integration: Cross-system feedback loops", () => {
       const refiner2 = new SkillRefiner(db, { promotionThreshold: 0.4 }, (id) => {
         gen2CrystalId = id;
       });
-      const source2 = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(muts2[0]!.sourceChunkIds[0]!) as any;
+      const source2 = db
+        .prepare("SELECT id, text FROM chunks WHERE id = ?")
+        .get(muts2[0]!.sourceChunkIds[0]!) as any;
       refiner2.evaluateMutations(source2, muts2);
       expect(gen2CrystalId).not.toBeNull();
 
@@ -2677,9 +2818,11 @@ describe("Integration: Cross-system feedback loops", () => {
       expect(gen2Provenance.length).toBeGreaterThan(0);
 
       // Verify we now have 3+ skill chunks (original + gen1 + gen2)
-      const totalSkills = (db.prepare(
-        "SELECT COUNT(*) as c FROM chunks WHERE memory_type = 'skill'",
-      ).get() as { c: number }).c;
+      const totalSkills = (
+        db.prepare("SELECT COUNT(*) as c FROM chunks WHERE memory_type = 'skill'").get() as {
+          c: number;
+        }
+      ).c;
       expect(totalSkills).toBeGreaterThanOrEqual(3);
 
       // Verify all 3 survive consolidation (frozen lifecycle)
@@ -2722,19 +2865,29 @@ describe("Integration: Cross-system feedback loops", () => {
       db.prepare(
         `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
          VALUES (?, ?, '[]', ?, 'mutation', '[]', '[]', ?, 0.6, 0, ?, ?)`,
-      ).run(gen1Mutation.id, gen1Mutation.content, gen1Mutation.confidence, gen1Mutation.dreamCycleId, Date.now(), Date.now());
+      ).run(
+        gen1Mutation.id,
+        gen1Mutation.content,
+        gen1Mutation.confidence,
+        gen1Mutation.dreamCycleId,
+        Date.now(),
+        Date.now(),
+      );
 
       let gen1Id: string | null = null;
       const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
         gen1Id = id;
       });
-      refiner.evaluateMutations({ id: gen0Id, text: "Base skill: deploy with Docker" }, [gen1Mutation]);
+      refiner.evaluateMutations({ id: gen0Id, text: "Base skill: deploy with Docker" }, [
+        gen1Mutation,
+      ]);
       expect(gen1Id).not.toBeNull();
 
       // Gen2: mutated from gen1
       const gen2Mutation: DreamInsight = {
         id: "lineage-mut-2",
-        content: "Deploy with Docker, Kubernetes fallback, resource edge cases, auto-scaling. More robust.",
+        content:
+          "Deploy with Docker, Kubernetes fallback, resource edge cases, auto-scaling. More robust.",
         embedding: [],
         confidence: 0.9,
         mode: "mutation",
@@ -2751,7 +2904,14 @@ describe("Integration: Cross-system feedback loops", () => {
       db.prepare(
         `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
          VALUES (?, ?, '[]', ?, 'mutation', '[]', '[]', ?, 0.7, 0, ?, ?)`,
-      ).run(gen2Mutation.id, gen2Mutation.content, gen2Mutation.confidence, gen2Mutation.dreamCycleId, Date.now(), Date.now());
+      ).run(
+        gen2Mutation.id,
+        gen2Mutation.content,
+        gen2Mutation.confidence,
+        gen2Mutation.dreamCycleId,
+        Date.now(),
+        Date.now(),
+      );
 
       let gen2Id: string | null = null;
       const refiner2 = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
@@ -2764,20 +2924,26 @@ describe("Integration: Cross-system feedback loops", () => {
       // Verify lineage:
       // gen0 → gen1 (parent_id = gen0)
       // gen1 → gen2 (parent_id = gen1)
-      const gen1Row = db.prepare("SELECT parent_id, provenance_chain FROM chunks WHERE id = ?").get(gen1Id!) as any;
+      const gen1Row = db
+        .prepare("SELECT parent_id, provenance_chain FROM chunks WHERE id = ?")
+        .get(gen1Id!) as any;
       expect(gen1Row.parent_id).toBe(gen0Id);
       const gen1Prov = JSON.parse(gen1Row.provenance_chain);
       expect(gen1Prov).toContain(gen0Id);
 
-      const gen2Row = db.prepare("SELECT parent_id, provenance_chain FROM chunks WHERE id = ?").get(gen2Id!) as any;
+      const gen2Row = db
+        .prepare("SELECT parent_id, provenance_chain FROM chunks WHERE id = ?")
+        .get(gen2Id!) as any;
       expect(gen2Row.parent_id).toBe(gen1Id);
       const gen2Prov = JSON.parse(gen2Row.provenance_chain);
       expect(gen2Prov).toContain(gen1Id!);
 
       // Audit trail should show both promotions
-      const auditLogs = db.prepare(
-        "SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted' ORDER BY timestamp ASC",
-      ).all() as any[];
+      const auditLogs = db
+        .prepare(
+          "SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted' ORDER BY timestamp ASC",
+        )
+        .all() as any[];
       expect(auditLogs.length).toBeGreaterThanOrEqual(2);
     });
 
@@ -2791,7 +2957,13 @@ describe("Integration: Cross-system feedback loops", () => {
         origin: "dream",
         source: "skills",
         importance_score: 0.9,
-        governance_json: JSON.stringify({ accessScope: "shared", lifespanPolicy: "permanent", priority: 0.9, sensitivity: "normal", provenanceChain: [] }),
+        governance_json: JSON.stringify({
+          accessScope: "shared",
+          lifespanPolicy: "permanent",
+          priority: 0.9,
+          sensitivity: "normal",
+          provenanceChain: [],
+        }),
       });
 
       // 2. Publish it via MemStore
@@ -2811,7 +2983,9 @@ describe("Integration: Cross-system feedback loops", () => {
 
       const envelope = {
         version: 1,
-        skill_md: Buffer.from("Advanced Docker deployment with Kubernetes and monitoring").toString("base64"),
+        skill_md: Buffer.from("Advanced Docker deployment with Kubernetes and monitoring").toString(
+          "base64",
+        ),
         name: "docker-k8s-deploy",
         author_peer_id: "peer-123",
         author_pubkey: "pubkey-abc",
@@ -2825,9 +2999,9 @@ describe("Integration: Cross-system feedback loops", () => {
       expect(importResult.action).toBe("accepted");
 
       // 5. Verify the imported skill is a proper skill chunk on the peer
-      const importedRow = peerDb.prepare(
-        "SELECT * FROM chunks WHERE id = ?",
-      ).get(importResult.crystalId!) as any;
+      const importedRow = peerDb
+        .prepare("SELECT * FROM chunks WHERE id = ?")
+        .get(importResult.crystalId!) as any;
       expect(importedRow.source).toBe("skills");
       expect(importedRow.semantic_type).toBe("skill");
       expect(importedRow.text).toContain("Docker");
@@ -2894,8 +3068,8 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // Compute hormonal influence
       const influence = hormonal.computeCrystalInfluence(text, "sessions");
-      expect(influence.dopamine).toBeGreaterThan(0);  // "successfully"
-      expect(influence.oxytocin).toBeGreaterThan(0);  // "thank" + "team" + sessions baseline
+      expect(influence.dopamine).toBeGreaterThan(0); // "successfully"
+      expect(influence.oxytocin).toBeGreaterThan(0); // "thank" + "team" + sessions baseline
     });
   });
 
@@ -2960,12 +3134,36 @@ describe("Full E2E Pipeline: ingest → consolidate → dream → curiosity", ()
 
     // Phase 1: Ingest — seed 30 diverse chunks simulating real usage
     const types: Array<{ type: string; count: number; textPrefix: string }> = [
-      { type: "episode", count: 10, textPrefix: "User discussed project architecture with detailed analysis of" },
-      { type: "preference", count: 5, textPrefix: "User prefers TypeScript over JavaScript because of strong typing" },
-      { type: "task_pattern", count: 5, textPrefix: "When deploying, always run health checks first then verify the" },
-      { type: "goal", count: 3, textPrefix: "Goal: ship the beta release by end of March with full coverage" },
-      { type: "relationship", count: 3, textPrefix: "User Vic is the creator of Bitterbot, a neuroscientist who builds" },
-      { type: "fact", count: 4, textPrefix: "Bitterbot uses SQLite for crystal storage with vector search via" },
+      {
+        type: "episode",
+        count: 10,
+        textPrefix: "User discussed project architecture with detailed analysis of",
+      },
+      {
+        type: "preference",
+        count: 5,
+        textPrefix: "User prefers TypeScript over JavaScript because of strong typing",
+      },
+      {
+        type: "task_pattern",
+        count: 5,
+        textPrefix: "When deploying, always run health checks first then verify the",
+      },
+      {
+        type: "goal",
+        count: 3,
+        textPrefix: "Goal: ship the beta release by end of March with full coverage",
+      },
+      {
+        type: "relationship",
+        count: 3,
+        textPrefix: "User Vic is the creator of Bitterbot, a neuroscientist who builds",
+      },
+      {
+        type: "fact",
+        count: 4,
+        textPrefix: "Bitterbot uses SQLite for crystal storage with vector search via",
+      },
     ];
 
     let chunkIndex = 0;
@@ -2992,7 +3190,11 @@ describe("Full E2E Pipeline: ingest → consolidate → dream → curiosity", ()
     // Phase 3: Dream — run replay (heuristic) then mutation (LLM)
     const llmResponses = [
       JSON.stringify([
-        { content: "Optimized deployment: add canary stage before full rollout", confidence: 0.8, keywords: ["deploy", "canary"] },
+        {
+          content: "Optimized deployment: add canary stage before full rollout",
+          confidence: 0.8,
+          keywords: ["deploy", "canary"],
+        },
       ]),
     ];
 
@@ -3020,9 +3222,9 @@ describe("Full E2E Pipeline: ingest → consolidate → dream → curiosity", ()
     expect(mutationStats).not.toBeNull();
 
     // Phase 4: Curiosity assessment on chunks
-    const recentChunks = db.prepare(
-      "SELECT id, embedding, hash FROM chunks LIMIT 10",
-    ).all() as Array<{ id: string; embedding: string; hash: string }>;
+    const recentChunks = db
+      .prepare("SELECT id, embedding, hash FROM chunks LIMIT 10")
+      .all() as Array<{ id: string; embedding: string; hash: string }>;
 
     for (const chunk of recentChunks) {
       const embedding = JSON.parse(chunk.embedding) as number[];

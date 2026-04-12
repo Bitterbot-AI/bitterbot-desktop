@@ -27,16 +27,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
-import { DEFAULT_GATEWAY_PORT, resolveGatewayPort } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
+import type { GatewayWizardSettings, WizardFlow } from "./onboarding.types.js";
+import type { WizardPrompter } from "./prompts.js";
+import { DEFAULT_GATEWAY_PORT, resolveGatewayPort } from "../config/config.js";
 import { resolveBootstrapDns } from "../infra/dns-bootstrap.js";
 import {
   parseMultiaddr,
   probeOrchestratorBinary,
   probeTcpReachable,
 } from "../infra/orchestrator-binary.js";
-import type { GatewayWizardSettings, WizardFlow } from "./onboarding.types.js";
-import type { WizardPrompter } from "./prompts.js";
 
 export async function setupP2pForOnboarding(params: {
   config: BitterbotConfig;
@@ -227,7 +227,7 @@ async function maybeGenerateDesktopEnv(params: {
   const gatewayHost =
     settings.bind === "loopback" || settings.bind === "auto"
       ? "127.0.0.1"
-      : settings.customBindHost ?? "127.0.0.1";
+      : (settings.customBindHost ?? "127.0.0.1");
   const port = gatewayPort || DEFAULT_GATEWAY_PORT;
 
   const lines = [
@@ -238,9 +238,7 @@ async function maybeGenerateDesktopEnv(params: {
   if (token) {
     lines.push(`VITE_GATEWAY_TOKEN=${token}`);
   } else {
-    lines.push(
-      "# VITE_GATEWAY_TOKEN not set: your gateway uses password auth or no auth.",
-    );
+    lines.push("# VITE_GATEWAY_TOKEN not set: your gateway uses password auth or no auth.");
   }
   lines.push("");
 

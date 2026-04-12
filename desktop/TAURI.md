@@ -27,6 +27,7 @@ The Tauri shell does NOT embed the orchestrator as a Rust crate (yet). It spawns
 **Tauri system deps** — Tauri uses the OS system webview. Each platform needs different packages.
 
 **Linux (Debian/Ubuntu):**
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
@@ -59,6 +60,7 @@ pnpm tauri:dev
 ```
 
 This does three things:
+
 1. Starts the Vite dev server on `:5173` (same as `pnpm dev`)
 2. Builds the Tauri shell Rust code (`cargo build` inside `src-tauri/`)
 3. Opens the native window pointed at `http://localhost:5173`
@@ -74,6 +76,7 @@ pnpm tauri:build
 ```
 
 Produces platform-specific bundles in `src-tauri/target/release/bundle/`:
+
 - **Linux:** `.AppImage` + `.deb`
 - **macOS:** `.app` + `.dmg`
 - **Windows:** `.msi` + `.exe`

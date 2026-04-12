@@ -87,8 +87,7 @@ export function createGatewayHooksRequestHandler(params: {
           (hasError ? "error" : "ok");
         const summary = summaryText;
         const status = hasError ? "error" : "ok";
-        const prefix =
-          status === "ok" ? `Hook ${value.name}` : `Hook ${value.name} (${status})`;
+        const prefix = status === "ok" ? `Hook ${value.name}` : `Hook ${value.name} (${status})`;
         enqueueSystemEvent(`${prefix}: ${summary}`.trim(), {
           sessionKey: mainSessionKey,
         });

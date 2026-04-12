@@ -19,7 +19,11 @@ export type PipelineResult = {
 };
 
 type PipelineStep =
-  | { type: "retrieve"; query: string; opts?: { limit?: number; semanticType?: CrystalSemanticType; lifecycle?: CrystalLifecycle } }
+  | {
+      type: "retrieve";
+      query: string;
+      opts?: { limit?: number; semanticType?: CrystalSemanticType; lifecycle?: CrystalLifecycle };
+    }
   | { type: "filter"; predicate: (c: KnowledgeCrystal) => boolean }
   | { type: "augment"; transform: (c: KnowledgeCrystal) => KnowledgeCrystal }
   | { type: "store"; opts?: { updateExisting?: boolean } };
@@ -121,7 +125,12 @@ export class MemoryPipeline {
               `UPDATE chunks SET importance_score = ?, semantic_type = ?, lifecycle = ? WHERE id = ?`,
             );
             for (const crystal of crystals) {
-              stmt.run(crystal.importanceScore, crystal.semanticType, crystal.lifecycle, crystal.id);
+              stmt.run(
+                crystal.importanceScore,
+                crystal.semanticType,
+                crystal.lifecycle,
+                crystal.id,
+              );
             }
             result.stored = crystals.length;
           }

@@ -3,13 +3,13 @@
  * Tests Phases 2-7 using a real SQLite database.
  */
 
-import { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
+import { ConsolidationEngine } from "./consolidation.js";
 import { ensureDreamSchema, recordDreamTelemetry } from "./dream-schema.js";
 import { HormonalStateManager, type HormonalEvent } from "./hormonal.js";
-import { ConsolidationEngine } from "./consolidation.js";
+import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 
 // ── Helpers ──
 
@@ -83,14 +83,14 @@ function insertChunk(
 function randomEmbedding(dim: number = 10): number[] {
   const v = Array.from({ length: dim }, () => Math.random() - 0.5);
   const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
-  return norm > 0 ? v.map(x => x / norm) : v;
+  return norm > 0 ? v.map((x) => x / norm) : v;
 }
 
 // Generate a similar embedding (high cosine) by adding small noise
 function similarEmbedding(base: number[], noise: number = 0.05): number[] {
-  const v = base.map(x => x + (Math.random() - 0.5) * noise);
+  const v = base.map((x) => x + (Math.random() - 0.5) * noise);
   const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
-  return norm > 0 ? v.map(x => x / norm) : v;
+  return norm > 0 ? v.map((x) => x / norm) : v;
 }
 
 // ── Phase 2: Ripple-Timing Tests ──
@@ -112,7 +112,7 @@ describe("Phase 2: Ripple-timing replay", () => {
     }
 
     // All values in [1, 7]
-    expect(samples.every(s => s >= 1 && s <= 7)).toBe(true);
+    expect(samples.every((s) => s >= 1 && s <= 7)).toBe(true);
 
     // Mean should be close to 3 (Poisson λ=3, with clamping)
     const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
@@ -125,11 +125,11 @@ describe("Phase 2: Ripple-timing replay", () => {
     const decayRate = 0.6;
 
     // 3 ripples: 0.1 + 0.06 + 0.036 = 0.196
-    const boost3 = baseBoost * (1 - Math.pow(decayRate, 3)) / (1 - decayRate);
+    const boost3 = (baseBoost * (1 - Math.pow(decayRate, 3))) / (1 - decayRate);
     expect(boost3).toBeCloseTo(0.196, 3);
 
     // 7 ripples converges toward limit (0.1 * (1 - 0.6^7) / 0.4 ≈ 0.243)
-    const boost7 = baseBoost * (1 - Math.pow(decayRate, 7)) / (1 - decayRate);
+    const boost7 = (baseBoost * (1 - Math.pow(decayRate, 7))) / (1 - decayRate);
     expect(boost7).toBeCloseTo(0.243, 2);
 
     // Limit = baseBoost / (1 - decayRate) = 0.25
@@ -144,7 +144,7 @@ describe("Phase 2: Ripple-timing replay", () => {
 
     // Simulate what replay mode does
     const rippleCount = 4;
-    const totalBoost = 0.1 * (1 - Math.pow(0.6, rippleCount)) / (1 - 0.6);
+    const totalBoost = (0.1 * (1 - Math.pow(0.6, rippleCount))) / (1 - 0.6);
 
     db.prepare(
       `UPDATE chunks SET
@@ -155,8 +155,12 @@ describe("Phase 2: Ripple-timing replay", () => {
        WHERE id = ?`,
     ).run(totalBoost, Date.now(), rippleCount, id);
 
-    const row = db.prepare(`SELECT importance_score, dream_count, last_ripple_count FROM chunks WHERE id = ?`).get(id) as {
-      importance_score: number; dream_count: number; last_ripple_count: number;
+    const row = db
+      .prepare(`SELECT importance_score, dream_count, last_ripple_count FROM chunks WHERE id = ?`)
+      .get(id) as {
+      importance_score: number;
+      dream_count: number;
+      last_ripple_count: number;
     };
 
     expect(row.dream_count).toBe(1);
@@ -266,14 +270,20 @@ describe("Phase 3: SNN merge discovery", () => {
     ).run("a", "b", 0.87, 0.6, 6, Date.now());
 
     const row = db.prepare(`SELECT * FROM near_merge_hints WHERE chunk_id_a = 'a'`).get() as {
-      chunk_id_a: string; snn_similarity: number; consumed_at: number | null;
+      chunk_id_a: string;
+      snn_similarity: number;
+      consumed_at: number | null;
     };
     expect(row.snn_similarity).toBe(0.6);
     expect(row.consumed_at).toBeNull();
 
     // Consume hint
-    db.prepare(`UPDATE near_merge_hints SET consumed_at = ? WHERE chunk_id_a = 'a'`).run(Date.now());
-    const consumed = db.prepare(`SELECT consumed_at FROM near_merge_hints WHERE chunk_id_a = 'a'`).get() as { consumed_at: number };
+    db.prepare(`UPDATE near_merge_hints SET consumed_at = ? WHERE chunk_id_a = 'a'`).run(
+      Date.now(),
+    );
+    const consumed = db
+      .prepare(`SELECT consumed_at FROM near_merge_hints WHERE chunk_id_a = 'a'`)
+      .get() as { consumed_at: number };
     expect(consumed.consumed_at).toBeGreaterThan(0);
   });
 });
@@ -353,9 +363,12 @@ describe("Phase 6: Dream readiness check", () => {
       `INSERT INTO dream_cycles (cycle_id, started_at, completed_at, state) VALUES (?, ?, ?, ?)`,
     ).run("cycle-1", Date.now() - 1000, Date.now(), "DORMANT");
 
-    const newChunks = (db.prepare(
-      `SELECT COUNT(*) as c FROM chunks WHERE created_at > ?`,
-    ).get(Date.now() - 1000) as { c: number })?.c ?? 0;
+    const newChunks =
+      (
+        db
+          .prepare(`SELECT COUNT(*) as c FROM chunks WHERE created_at > ?`)
+          .get(Date.now() - 1000) as { c: number }
+      )?.c ?? 0;
 
     expect(newChunks).toBe(0);
   });
@@ -374,13 +387,16 @@ describe("Phase 6: Dream readiness check", () => {
       insertChunk(db, { created_at: Date.now(), updated_at: Date.now() });
     }
 
-    const lastDream = db.prepare(
-      `SELECT MAX(started_at) as last FROM dream_cycles WHERE completed_at IS NOT NULL`,
-    ).get() as { last: number };
+    const lastDream = db
+      .prepare(`SELECT MAX(started_at) as last FROM dream_cycles WHERE completed_at IS NOT NULL`)
+      .get() as { last: number };
 
-    const newChunks = (db.prepare(
-      `SELECT COUNT(*) as c FROM chunks WHERE created_at > ? OR updated_at > ?`,
-    ).get(lastDream.last, lastDream.last) as { c: number })?.c ?? 0;
+    const newChunks =
+      (
+        db
+          .prepare(`SELECT COUNT(*) as c FROM chunks WHERE created_at > ? OR updated_at > ?`)
+          .get(lastDream.last, lastDream.last) as { c: number }
+      )?.c ?? 0;
 
     expect(newChunks).toBe(5);
   });
@@ -393,9 +409,12 @@ describe("Phase 6: Dream readiness check", () => {
        VALUES (?, ?, ?, ?, ?, ?)`,
     ).run("a", "b", 0.87, 0.5, 5, Date.now());
 
-    const hints = (db.prepare(
-      `SELECT COUNT(*) as c FROM near_merge_hints WHERE consumed_at IS NULL`,
-    ).get() as { c: number })?.c ?? 0;
+    const hints =
+      (
+        db
+          .prepare(`SELECT COUNT(*) as c FROM near_merge_hints WHERE consumed_at IS NULL`)
+          .get() as { c: number }
+      )?.c ?? 0;
 
     expect(hints).toBe(1);
   });
@@ -408,9 +427,12 @@ describe("Phase 6: Dream readiness check", () => {
        VALUES (?, ?, ?, ?)`,
     ).run("orphan-1", 0.6, 3, Date.now());
 
-    const queue = (db.prepare(
-      `SELECT COUNT(*) as c FROM orphan_replay_queue WHERE consumed_at IS NULL`,
-    ).get() as { c: number })?.c ?? 0;
+    const queue =
+      (
+        db
+          .prepare(`SELECT COUNT(*) as c FROM orphan_replay_queue WHERE consumed_at IS NULL`)
+          .get() as { c: number }
+      )?.c ?? 0;
 
     expect(queue).toBe(1);
   });
@@ -503,9 +525,12 @@ describe("Phase 7: Anti-catastrophic forgetting", () => {
     expect(queued).toBeGreaterThan(0);
 
     // Check orphan_replay_queue has entries
-    const queueCount = (db.prepare(
-      `SELECT COUNT(*) as c FROM orphan_replay_queue WHERE consumed_at IS NULL`,
-    ).get() as { c: number })?.c ?? 0;
+    const queueCount =
+      (
+        db
+          .prepare(`SELECT COUNT(*) as c FROM orphan_replay_queue WHERE consumed_at IS NULL`)
+          .get() as { c: number }
+      )?.c ?? 0;
     expect(queueCount).toBe(queued);
   });
 
@@ -543,9 +568,9 @@ describe("Dream telemetry", () => {
     recordDreamTelemetry(db, "cycle-1", "ripple", "ripple_count", 3);
     recordDreamTelemetry(db, "cycle-1", "snn_merge", "candidates_found", 5);
 
-    const rows = db.prepare(
-      `SELECT * FROM dream_telemetry WHERE cycle_id = 'cycle-1' ORDER BY phase`,
-    ).all() as Array<{ phase: string; metric_name: string; metric_value: number }>;
+    const rows = db
+      .prepare(`SELECT * FROM dream_telemetry WHERE cycle_id = 'cycle-1' ORDER BY phase`)
+      .all() as Array<{ phase: string; metric_name: string; metric_value: number }>;
 
     expect(rows).toHaveLength(3);
     expect(rows[0]!.phase).toBe("fsho");
@@ -568,14 +593,15 @@ describe("Dream telemetry", () => {
 describe("Schema additions", () => {
   it("dream_telemetry table exists and is queryable", () => {
     const db = createTestDb();
-    const count = (db.prepare(`SELECT COUNT(*) as c FROM dream_telemetry`).get() as { c: number }).c;
+    const count = (db.prepare(`SELECT COUNT(*) as c FROM dream_telemetry`).get() as { c: number })
+      .c;
     expect(count).toBe(0);
   });
 
   it("near_merge_hints table exists with correct columns", () => {
     const db = createTestDb();
     const cols = db.prepare("PRAGMA table_info(near_merge_hints)").all() as Array<{ name: string }>;
-    const colNames = cols.map(c => c.name);
+    const colNames = cols.map((c) => c.name);
     expect(colNames).toContain("chunk_id_a");
     expect(colNames).toContain("snn_similarity");
     expect(colNames).toContain("shared_neighbors");
@@ -584,8 +610,10 @@ describe("Schema additions", () => {
 
   it("orphan_replay_queue table exists with correct columns", () => {
     const db = createTestDb();
-    const cols = db.prepare("PRAGMA table_info(orphan_replay_queue)").all() as Array<{ name: string }>;
-    const colNames = cols.map(c => c.name);
+    const cols = db.prepare("PRAGMA table_info(orphan_replay_queue)").all() as Array<{
+      name: string;
+    }>;
+    const colNames = cols.map((c) => c.name);
     expect(colNames).toContain("chunk_id");
     expect(colNames).toContain("cluster_importance");
     expect(colNames).toContain("cluster_size");
@@ -595,7 +623,7 @@ describe("Schema additions", () => {
   it("chunks table has last_ripple_count column", () => {
     const db = createTestDb();
     const cols = db.prepare("PRAGMA table_info(chunks)").all() as Array<{ name: string }>;
-    const colNames = cols.map(c => c.name);
+    const colNames = cols.map((c) => c.name);
     expect(colNames).toContain("last_ripple_count");
   });
 });

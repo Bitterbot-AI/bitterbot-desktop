@@ -1,9 +1,9 @@
-import { useCallback, useEffect } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useWalletStore } from "../../stores/wallet-store";
-import { useUIStore, type TabId } from "../../stores/ui-store";
-import { cn } from "../../lib/utils";
 import { Wallet, ExternalLink, Copy, RefreshCw } from "lucide-react";
+import { useCallback, useEffect } from "react";
+import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
+import { useUIStore, type TabId } from "../../stores/ui-store";
+import { useWalletStore } from "../../stores/wallet-store";
 
 function truncateAddress(address: string): string {
   if (address.length <= 12) return address;
@@ -33,21 +33,17 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
     setLoading(true);
     setError(null);
     try {
-      const addrRes = await request<{ address: string; network: string }>(
-        "wallet.getAddress",
-      );
+      const addrRes = await request<{ address: string; network: string }>("wallet.getAddress");
       setAddress(addrRes.address, addrRes.network);
 
       // Fetch ETH and USDC balances in parallel
       const [ethBal, usdcBal] = await Promise.allSettled([
-        request<{ token: string; balance: string; usdValue?: string }>(
-          "wallet.getBalance",
-          { token: "ETH" },
-        ),
-        request<{ token: string; balance: string; usdValue?: string }>(
-          "wallet.getBalance",
-          { token: "USDC" },
-        ),
+        request<{ token: string; balance: string; usdValue?: string }>("wallet.getBalance", {
+          token: "ETH",
+        }),
+        request<{ token: string; balance: string; usdValue?: string }>("wallet.getBalance", {
+          token: "USDC",
+        }),
       ]);
 
       const bals = [];
@@ -146,9 +142,7 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
                 key={bal.token}
                 className="flex items-center justify-between px-2 py-1 rounded-md"
               >
-                <span className="text-[11px] text-[var(--sidebar-text-muted)]">
-                  {bal.token}
-                </span>
+                <span className="text-[11px] text-[var(--sidebar-text-muted)]">{bal.token}</span>
                 <span
                   className={cn(
                     "text-[12px] font-medium tabular-nums",

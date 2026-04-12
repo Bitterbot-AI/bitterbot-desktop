@@ -1,6 +1,14 @@
+import {
+  Globe,
+  ArrowLeft,
+  ArrowRight,
+  RotateCw,
+  CheckCircle,
+  AlertTriangle,
+  Image,
+} from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import type { ToolViewProps } from "./ToolViewRegistry";
-import { Globe, ArrowLeft, ArrowRight, RotateCw, CheckCircle, AlertTriangle, Image } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { extractScreenshot, extractDomain } from "./tool-view-utils";
 
@@ -12,8 +20,7 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
       : typeof args?.target_url === "string"
         ? args.target_url
         : null;
-  const action =
-    typeof args?.action === "string" ? args.action : null;
+  const action = typeof args?.action === "string" ? args.action : null;
 
   const output = toolCall.result ?? toolCall.partialResult;
   const isRunning = toolCall.status === "running";
@@ -83,9 +90,7 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
           {url ?? "about:blank"}
         </div>
         {url && (
-          <span className="text-[9px] text-zinc-600 flex-shrink-0">
-            {extractDomain(url)}
-          </span>
+          <span className="text-[9px] text-zinc-600 flex-shrink-0">{extractDomain(url)}</span>
         )}
       </div>
 
@@ -164,9 +169,7 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
               <CheckCircle className="w-6 h-6 text-emerald-400" />
             </div>
             <span className="text-sm text-zinc-300 font-medium">Browser action completed</span>
-            {url && (
-              <span className="text-xs text-zinc-500 font-mono">{url}</span>
-            )}
+            {url && <span className="text-xs text-zinc-500 font-mono">{url}</span>}
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-zinc-600 text-sm">

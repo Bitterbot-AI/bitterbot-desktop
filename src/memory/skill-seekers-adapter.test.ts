@@ -224,7 +224,9 @@ describe("SkillSeekersAdapter", () => {
       adapter.setEpistemicDirectiveEngine(mockEngine);
 
       // Access processConflicts via adapter internals
-      const processConflicts = (adapter as unknown as { processConflicts: Function }).processConflicts.bind(adapter);
+      const processConflicts = (
+        adapter as unknown as { processConflicts: Function }
+      ).processConflicts.bind(adapter);
       processConflicts(
         [
           {
@@ -263,7 +265,9 @@ describe("SkillSeekersAdapter", () => {
       const mockEngine = { createDirective: vi.fn() };
       adapter.setEpistemicDirectiveEngine(mockEngine);
 
-      const processConflicts = (adapter as unknown as { processConflicts: Function }).processConflicts.bind(adapter);
+      const processConflicts = (
+        adapter as unknown as { processConflicts: Function }
+      ).processConflicts.bind(adapter);
       processConflicts(
         Array.from({ length: 5 }, (_, i) => ({
           type: "missing_in_code" as const,

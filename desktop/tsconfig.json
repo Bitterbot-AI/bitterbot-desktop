@@ -21,9 +21,5 @@
     },
     "baseUrl": "."
   },
-  "include": [
-    "renderer/src/**/*.ts",
-    "renderer/src/**/*.tsx",
-    "env.d.ts"
-  ]
+  "include": ["renderer/src/**/*.ts", "renderer/src/**/*.tsx", "env.d.ts"]
 }

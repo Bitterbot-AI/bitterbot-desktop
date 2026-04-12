@@ -46,9 +46,9 @@ See [Voice Call](/plugins/voice-call) for a concrete example plugin.
 - Google Antigravity OAuth (provider auth) — bundled as `google-antigravity-auth` (disabled by default)
 - Gemini CLI OAuth (provider auth) — bundled as `google-gemini-cli-auth` (disabled by default)
 - Qwen OAuth (provider auth) — bundled as `qwen-portal-auth` (disabled by default)
-Bitterbot plugins are **TypeScript modules** loaded at runtime via jiti. **Config
-validation does not execute plugin code**; it uses the plugin manifest and JSON
-Schema instead. See [Plugin manifest](/plugins/manifest).
+  Bitterbot plugins are **TypeScript modules** loaded at runtime via jiti. **Config
+  validation does not execute plugin code**; it uses the plugin manifest and JSON
+  Schema instead. See [Plugin manifest](/plugins/manifest).
 
 Plugins can register:
 

@@ -41,23 +41,75 @@ function ThinkingEyes({ size }: { size: number }) {
     >
       {/* Left eye — white/glow */}
       <ellipse cx={lx} cy={ey} rx={eyeR} ry={eyeR} fill="#e9d5ff" opacity="0.9">
-        <animateTransform attributeName="transform" type="translate" values={wander} keyTimes={wanderTimes} dur="2.5s" repeatCount="indefinite" />
-        <animate attributeName="ry" values={blinkEye} keyTimes={blinkTimes} dur="3.5s" repeatCount="indefinite" />
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values={wander}
+          keyTimes={wanderTimes}
+          dur="2.5s"
+          repeatCount="indefinite"
+        />
+        <animate
+          attributeName="ry"
+          values={blinkEye}
+          keyTimes={blinkTimes}
+          dur="3.5s"
+          repeatCount="indefinite"
+        />
       </ellipse>
       {/* Left eye — pupil */}
       <ellipse cx={lx} cy={ey} rx={pupilR} ry={pupilR} fill="#4c1d95">
-        <animateTransform attributeName="transform" type="translate" values={wander} keyTimes={wanderTimes} dur="2.5s" repeatCount="indefinite" />
-        <animate attributeName="ry" values={blinkPupil} keyTimes={blinkTimes} dur="3.5s" repeatCount="indefinite" />
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values={wander}
+          keyTimes={wanderTimes}
+          dur="2.5s"
+          repeatCount="indefinite"
+        />
+        <animate
+          attributeName="ry"
+          values={blinkPupil}
+          keyTimes={blinkTimes}
+          dur="3.5s"
+          repeatCount="indefinite"
+        />
       </ellipse>
       {/* Right eye — white/glow */}
       <ellipse cx={rx} cy={ey} rx={eyeR} ry={eyeR} fill="#e9d5ff" opacity="0.9">
-        <animateTransform attributeName="transform" type="translate" values={wander} keyTimes={wanderTimes} dur="2.5s" repeatCount="indefinite" />
-        <animate attributeName="ry" values={blinkEye} keyTimes={blinkTimes} dur="3.5s" repeatCount="indefinite" />
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values={wander}
+          keyTimes={wanderTimes}
+          dur="2.5s"
+          repeatCount="indefinite"
+        />
+        <animate
+          attributeName="ry"
+          values={blinkEye}
+          keyTimes={blinkTimes}
+          dur="3.5s"
+          repeatCount="indefinite"
+        />
       </ellipse>
       {/* Right eye — pupil */}
       <ellipse cx={rx} cy={ey} rx={pupilR} ry={pupilR} fill="#4c1d95">
-        <animateTransform attributeName="transform" type="translate" values={wander} keyTimes={wanderTimes} dur="2.5s" repeatCount="indefinite" />
-        <animate attributeName="ry" values={blinkPupil} keyTimes={blinkTimes} dur="3.5s" repeatCount="indefinite" />
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values={wander}
+          keyTimes={wanderTimes}
+          dur="2.5s"
+          repeatCount="indefinite"
+        />
+        <animate
+          attributeName="ry"
+          values={blinkPupil}
+          keyTimes={blinkTimes}
+          dur="3.5s"
+          repeatCount="indefinite"
+        />
       </ellipse>
     </svg>
   );
@@ -98,10 +150,7 @@ export function BitterBotAvatar({
         boxShadow: "0 2px 8px rgba(139, 92, 246, 0.3)",
       }}
     >
-      <span
-        className="text-white font-bold"
-        style={{ fontSize: size * 0.4 }}
-      >
+      <span className="text-white font-bold" style={{ fontSize: size * 0.4 }}>
         BB
       </span>
     </div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useChatStore } from "../../stores/chat-store";
 import { cn } from "../../lib/utils";
+import { useChatStore } from "../../stores/chat-store";
 
 export function SessionSelector() {
   const sessionKey = useChatStore((s) => s.sessionKey);

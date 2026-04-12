@@ -31,10 +31,10 @@ During each dream cycle, the `SessionExtractor` processes **changed session tran
 
 ```typescript
 interface ExtractedFact {
-  text: string;                    // "User prefers dark mode"
-  epistemicType: EpistemicType;    // "directive"
-  confidence: number;              // 0.9
-  category: string;                // "ui_preference"
+  text: string; // "User prefers dark mode"
+  epistemicType: EpistemicType; // "directive"
+  confidence: number; // 0.9
+  category: string; // "ui_preference"
 }
 ```
 
@@ -44,12 +44,12 @@ interface ExtractedFact {
 
 Each extracted fact is classified into one of four epistemic types:
 
-| Type | Meaning | Example | Storage |
-|------|---------|---------|---------|
-| `experience` | Autobiographical event | "User deployed to prod on March 15" | Crystal with `epistemic_layer` column |
-| `directive` | Explicit preference/correction | "User prefers tabs over spaces" | `user_preferences` table (high priority) |
-| `world_fact` | External knowledge | "Their company uses Kubernetes" | Crystal with `epistemic_layer` column |
-| `mental_model` | Inferred behavioral pattern | "User works late on Wednesdays" | Crystal with `epistemic_layer` column |
+| Type           | Meaning                        | Example                             | Storage                                  |
+| -------------- | ------------------------------ | ----------------------------------- | ---------------------------------------- |
+| `experience`   | Autobiographical event         | "User deployed to prod on March 15" | Crystal with `epistemic_layer` column    |
+| `directive`    | Explicit preference/correction | "User prefers tabs over spaces"     | `user_preferences` table (high priority) |
+| `world_fact`   | External knowledge             | "Their company uses Kubernetes"     | Crystal with `epistemic_layer` column    |
+| `mental_model` | Inferred behavioral pattern    | "User works late on Wednesdays"     | Crystal with `epistemic_layer` column    |
 
 **Directives override inferred knowledge.** If the user explicitly says "I prefer X," this takes priority over any pattern the system has inferred. The `working_memory_note` tool supports a `type="correction"` parameter for user-initiated overrides.
 
@@ -57,13 +57,13 @@ Each extracted fact is classified into one of four epistemic types:
 
 The `UserModelManager` aggregates directive-type facts into a `user_preferences` table organized by category:
 
-| Category | Examples |
-|----------|----------|
-| `communication_style` | "Prefers casual tone," "Likes emoji" |
-| `technical_preferences` | "Uses TypeScript," "Prefers vim" |
-| `work_patterns` | "Most productive mornings," "Deploys Fridays" |
-| `personal_context` | "Has a dog named Max," "Lives in Toronto" |
-| `ui_preference` | "Dark mode," "Compact layout" |
+| Category                | Examples                                      |
+| ----------------------- | --------------------------------------------- |
+| `communication_style`   | "Prefers casual tone," "Likes emoji"          |
+| `technical_preferences` | "Uses TypeScript," "Prefers vim"              |
+| `work_patterns`         | "Most productive mornings," "Deploys Fridays" |
+| `personal_context`      | "Has a dog named Max," "Lives in Toronto"     |
+| `ui_preference`         | "Dark mode," "Compact layout"                 |
 
 The `upsertFromDirective()` method handles updates. Confidence calibration uses Bayesian-style updates:
 
@@ -80,11 +80,11 @@ The Theory of Mind ("The Bond" section in MEMORY.md) evolves through dream cycle
 overlap = |terms_old ∩ terms_new| / |terms_old ∪ terms_new|
 ```
 
-| Overlap | Action |
-|---------|--------|
-| ≥ 50% | Accept new Bond (normal evolution) |
-| 30-50% | Accept with warning log |
-| < 30% | **Collapse to previous Bond** (rollback) |
+| Overlap | Action                                   |
+| ------- | ---------------------------------------- |
+| ≥ 50%   | Accept new Bond (normal evolution)       |
+| 30-50%  | Accept with warning log                  |
+| < 30%   | **Collapse to previous Bond** (rollback) |
 
 This prevents a single bad LLM call from erasing the accumulated understanding of the user.
 
@@ -94,18 +94,21 @@ When a session ends (or during dream cycles), a **handover brief** is generated 
 
 ```markdown
 ## Last Session Summary
+
 - Discussed GCCRF implementation, found 3 bugs
 - User was stressed about launch deadline (cortisol elevated)
 - Decided to defer P2P mesh delegation to post-launch
 - Emotional state: focused, slightly anxious, collaborative
 
 ## Entities Touched
+
 - dream-engine.ts (file) — edited
 - computeGCCRFReward() (function) — debugged
 - CURIOSITY_THRESHOLD (config) — discussed
 ```
 
 The brief is:
+
 1. **Written** to `memory/handover/*.md` and indexed as searchable chunks
 2. **Gated** by the Session Continuity Gate — cosine similarity between the brief's purpose and the user's opening message determines whether to inject it. Below 0.25 similarity = fresh start, brief skipped. This prevents stale context pollution (e.g., injecting database migration context when the user wants help writing an email).
 3. **Loaded** by `endocrine-state.ts` at next session start (if the gate passes)
@@ -131,7 +134,7 @@ flowchart TB
     H --> I{Bond Drift Guard}
     I -->|overlap ≥ 30%| J[Accept]
     I -->|overlap < 30%| K[Rollback to previous]
-    
+
     B -->|Dream cycle| L[Handover Brief Generator]
     L --> M[memory/handover/*.md]
     M -->|Next session| N[endocrine-state.ts]
@@ -181,12 +184,12 @@ The system prompt includes guidance for the agent to reference this profile natu
 
 The session extraction and handover systems existed as **scaffolded but unwired code** prior to Plan 4:
 
-| File | Was | Now |
-|------|-----|-----|
-| `session-extractor.ts` | Complete implementation, never called | Called during dream cycles for changed sessions |
-| `session-handover.ts` | `formatCompactSummary()` existed | Called, briefs stored and loaded at session start |
-| `epistemic_layer` column | Column existed in schema | Populated by extraction pipeline |
-| `user_preferences` table | Table existed | Fed into working memory synthesis |
+| File                     | Was                                   | Now                                               |
+| ------------------------ | ------------------------------------- | ------------------------------------------------- |
+| `session-extractor.ts`   | Complete implementation, never called | Called during dream cycles for changed sessions   |
+| `session-handover.ts`    | `formatCompactSummary()` existed      | Called, briefs stored and loaded at session start |
+| `epistemic_layer` column | Column existed in schema              | Populated by extraction pipeline                  |
+| `user_preferences` table | Table existed                         | Fed into working memory synthesis                 |
 
 No new files were created — the infrastructure was activated and wired together.
 

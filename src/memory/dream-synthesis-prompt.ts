@@ -44,7 +44,10 @@ export function buildDreamSynthesisPrompt(
  */
 export function parseDreamSynthesisResponse(raw: string): DreamSynthesisResult[] {
   try {
-    const cleaned = raw.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
+    const cleaned = raw
+      .trim()
+      .replace(/^```json?\s*/i, "")
+      .replace(/```\s*$/, "");
     const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) {
       return [];
@@ -78,9 +81,7 @@ export function heuristicSynthesize(
   chunkTexts: Map<string, string>,
 ): DreamSynthesisResult[] {
   return clusters.map((cluster) => {
-    const texts = cluster.chunkIds
-      .map((id) => chunkTexts.get(id) ?? "")
-      .filter(Boolean);
+    const texts = cluster.chunkIds.map((id) => chunkTexts.get(id) ?? "").filter(Boolean);
 
     // Collect word frequencies across all texts in cluster
     const wordFreq = new Map<string, number>();

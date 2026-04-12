@@ -8,11 +8,11 @@ Bitterbot's emotional system models three neuromodulators — dopamine, cortisol
 
 ## Three Hormones
 
-| Hormone | Half-Life | Role | Homeostasis |
-|---------|-----------|------|-------------|
-| **Dopamine** | 30 min | Reward, achievement, enthusiasm | 0.30 |
-| **Cortisol** | 60 min | Urgency, stress, focus | 0.15 |
-| **Oxytocin** | 45 min | Social bonding, warmth | 0.20 |
+| Hormone      | Half-Life | Role                            | Homeostasis |
+| ------------ | --------- | ------------------------------- | ----------- |
+| **Dopamine** | 30 min    | Reward, achievement, enthusiasm | 0.30        |
+| **Cortisol** | 60 min    | Urgency, stress, focus          | 0.15        |
+| **Oxytocin** | 45 min    | Social bonding, warmth          | 0.20        |
 
 All hormones decay exponentially toward their homeostasis baseline (configured in GENOME.md). The decay formula:
 
@@ -24,17 +24,17 @@ value = baseline + (value - baseline) × 2^(-elapsed / halfLife)
 
 Events stimulate specific hormones. Each event has a magnitude (how much to add) and a target hormone:
 
-| Event | Hormone | Magnitude | Trigger |
-|-------|---------|-----------|---------|
-| `achievement` | dopamine | +0.15 | Task completion, breakthrough |
-| `curiosity_high` | dopamine | +0.15 | Curiosity reward > 0.7 |
-| `friction` | cortisol | +0.10 | Bug, error, frustration |
-| `deadline` | cortisol | +0.10 | Time pressure detected |
-| `bonding` | oxytocin | +0.10 | Personal sharing, trust building |
-| `marketplace_sale` | dopamine | +0.10 | Skill sold on marketplace |
-| `recall_positive` | dopamine | +0.05 | Retrieved positive memories |
-| `recall_negative` | cortisol | +0.05 | Retrieved negative memories |
-| `recall_relational` | oxytocin | +0.05 | Retrieved personal/relational memories |
+| Event               | Hormone  | Magnitude | Trigger                                |
+| ------------------- | -------- | --------- | -------------------------------------- |
+| `achievement`       | dopamine | +0.15     | Task completion, breakthrough          |
+| `curiosity_high`    | dopamine | +0.15     | Curiosity reward > 0.7                 |
+| `friction`          | cortisol | +0.10     | Bug, error, frustration                |
+| `deadline`          | cortisol | +0.10     | Time pressure detected                 |
+| `bonding`           | oxytocin | +0.10     | Personal sharing, trust building       |
+| `marketplace_sale`  | dopamine | +0.10     | Skill sold on marketplace              |
+| `recall_positive`   | dopamine | +0.05     | Retrieved positive memories            |
+| `recall_negative`   | cortisol | +0.05     | Retrieved negative memories            |
+| `recall_relational` | oxytocin | +0.05     | Retrieved personal/relational memories |
 
 Note the **recall events** have smaller magnitudes (0.05) than direct events (0.10-0.15) to prevent runaway feedback loops.
 
@@ -120,11 +120,11 @@ These biases are applied when ranking search results, meaning the agent's emotio
 
 After memories are retrieved, their emotional content feeds back into the hormonal state:
 
-| Retrieved Content | Event Triggered | Effect |
-|-------------------|----------------|--------|
-| Positive memories (valence > 0.3) | `recall_positive` | Mild dopamine boost |
-| Negative memories (valence < -0.3) | `recall_negative` | Mild cortisol bump |
-| Relational/preference memories | `recall_relational` | Mild oxytocin boost |
+| Retrieved Content                  | Event Triggered     | Effect              |
+| ---------------------------------- | ------------------- | ------------------- |
+| Positive memories (valence > 0.3)  | `recall_positive`   | Mild dopamine boost |
+| Negative memories (valence < -0.3) | `recall_negative`   | Mild cortisol bump  |
+| Relational/preference memories     | `recall_relational` | Mild oxytocin boost |
 
 ### Why This Matters
 
@@ -138,12 +138,13 @@ If a recall-triggered cortisol spike pushes cortisol above 0.8, it can trigger a
 
 When hormonal spikes cross significance thresholds, an immediate mini-dream cycle fires:
 
-| Spike | Threshold | Mode | Rationale |
-|-------|-----------|------|-----------|
-| Dopamine > 0.7 | 10 min cooldown | `replay` | Reinforce the positive experience |
-| Cortisol > 0.8 | 10 min cooldown | `compression` | Process the stressful event |
+| Spike          | Threshold       | Mode          | Rationale                         |
+| -------------- | --------------- | ------------- | --------------------------------- |
+| Dopamine > 0.7 | 10 min cooldown | `replay`      | Reinforce the positive experience |
+| Cortisol > 0.8 | 10 min cooldown | `compression` | Process the stressful event       |
 
 Mini-dreams:
+
 - Use the same `run()` pipeline as normal dreams (inherit ripple-enhanced replay, etc.)
 - Run only 1 non-LLM mode (zero cost)
 - Bypass the dream readiness check (emotional urgency overrides efficiency)
@@ -190,6 +191,7 @@ emotional_valence = (dopamine + oxytocin - cortisol) / 2
 ```
 
 This value influences:
+
 - **Dream seed selection** — emotionally charged memories are preferentially replayed
 - **Importance decay** — emotional memories resist Ebbinghaus forgetting
 - **Limbic bridge** — retrieved memory valence feeds back into current emotional state
@@ -202,9 +204,9 @@ Homeostasis baselines are configured in GENOME.md:
 
 ```yaml
 homeostasis:
-  dopamine: 0.3    # Resting enthusiasm
-  cortisol: 0.15   # Resting urgency
-  oxytocin: 0.20   # Resting warmth
+  dopamine: 0.3 # Resting enthusiasm
+  cortisol: 0.15 # Resting urgency
+  oxytocin: 0.20 # Resting warmth
 ```
 
 The dream engine may propose adjusted baselines based on observed interaction patterns, but only with user approval (respecting Phenotype Constraints).

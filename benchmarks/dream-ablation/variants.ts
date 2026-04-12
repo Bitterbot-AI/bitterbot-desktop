@@ -26,7 +26,15 @@ function disableModes(...modes: string[]): Record<string, { enabled: boolean }> 
 }
 
 function onlyModes(...modes: string[]): Record<string, { enabled: boolean }> {
-  const all = ["replay", "compression", "mutation", "extrapolation", "simulation", "exploration", "research"];
+  const all = [
+    "replay",
+    "compression",
+    "mutation",
+    "extrapolation",
+    "simulation",
+    "exploration",
+    "research",
+  ];
   const overrides: Record<string, { enabled: boolean }> = {};
   for (const mode of all) {
     overrides[mode] = { enabled: modes.includes(mode) };
@@ -46,8 +54,10 @@ export const VARIANTS: Record<string, VariantConfig> = {
   "no-dreams": {
     id: "no-dreams",
     name: "No Dreams",
-    description: "Dream engine completely disabled; consolidation and other subsystems still active",
-    expectedImpact: "Multi-session reasoning and knowledge update accuracy should drop — no offline synthesis",
+    description:
+      "Dream engine completely disabled; consolidation and other subsystems still active",
+    expectedImpact:
+      "Multi-session reasoning and knowledge update accuracy should drop — no offline synthesis",
     memoryOverrides: {
       dream: { enabled: false },
     },
@@ -57,7 +67,8 @@ export const VARIANTS: Record<string, VariantConfig> = {
     id: "replay-only",
     name: "Replay Only",
     description: "Only replay mode (no LLM calls). Tests whether memory strengthening alone helps",
-    expectedImpact: "Early-session fact retention should be better than no-dreams, but no cross-domain synthesis",
+    expectedImpact:
+      "Early-session fact retention should be better than no-dreams, but no cross-domain synthesis",
     memoryOverrides: {
       dream: {
         enabled: true,
@@ -82,7 +93,8 @@ export const VARIANTS: Record<string, VariantConfig> = {
   "no-llm-modes": {
     id: "no-llm-modes",
     name: "No LLM Dream Modes",
-    description: "Only replay + compression (free modes). Tests whether the zero-cost dream path is sufficient",
+    description:
+      "Only replay + compression (free modes). Tests whether the zero-cost dream path is sufficient",
     expectedImpact: "Memory maintenance without creative synthesis — baseline for LLM mode value",
     memoryOverrides: {
       dream: {
@@ -121,7 +133,8 @@ export const VARIANTS: Record<string, VariantConfig> = {
   "no-curiosity": {
     id: "no-curiosity",
     name: "No Curiosity Engine",
-    description: "Curiosity (GCCRF) disabled. Dream seeds chosen without curiosity-weighted importance",
+    description:
+      "Curiosity (GCCRF) disabled. Dream seeds chosen without curiosity-weighted importance",
     expectedImpact: "Worse seed selection for dreams, no gap detection, no exploration targets",
     memoryOverrides: {
       curiosity: { enabled: false },
@@ -131,7 +144,8 @@ export const VARIANTS: Record<string, VariantConfig> = {
   "no-hormonal": {
     id: "no-hormonal",
     name: "No Hormonal Modulation",
-    description: "Hormonal system disabled. Dream mode selection uses flat temperature (no emotional influence)",
+    description:
+      "Hormonal system disabled. Dream mode selection uses flat temperature (no emotional influence)",
     expectedImpact: "Loss of mood-congruent retrieval and emotion-weighted dream prioritization",
     memoryOverrides: {
       emotional: {
@@ -144,8 +158,10 @@ export const VARIANTS: Record<string, VariantConfig> = {
   "no-fsho": {
     id: "no-fsho",
     name: "No FSHO Oscillator",
-    description: "FSHO disabled (uniform mode weights). Tests whether the oscillator adds signal or noise",
-    expectedImpact: "If FSHO is noise, this should match or beat baseline. If signal, accuracy drops",
+    description:
+      "FSHO disabled (uniform mode weights). Tests whether the oscillator adds signal or noise",
+    expectedImpact:
+      "If FSHO is noise, this should match or beat baseline. If signal, accuracy drops",
     memoryOverrides: {
       dream: {
         enabled: true,

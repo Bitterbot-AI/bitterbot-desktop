@@ -1345,7 +1345,7 @@ Defaults for Talk mode.
 | `group:automation` | `cron`, `gateway`                                                                        |
 | `group:messaging`  | `message`                                                                                |
 | `group:nodes`      | `nodes`                                                                                  |
-| `group:bitterbot`   | All built-in tools (excludes provider plugins)                                           |
+| `group:bitterbot`  | All built-in tools (excludes provider plugins)                                           |
 
 ### `tools.allow` / `tools.deny`
 
@@ -1827,7 +1827,7 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
         apiKey: "GEMINI_KEY_HERE",
         env: { GEMINI_API_KEY: "GEMINI_KEY_HERE" },
       },
-      
+
       sag: { enabled: false },
     },
   },
@@ -1995,6 +1995,7 @@ The Control UI authenticates using `gateway.auth.token` — the same shared toke
 **Device auth is NOT required for the Control UI.** Device identity (Ed25519 keypair pairing) is only used by non-browser clients: the CLI, iOS/Android apps, and remote gateways. The Control UI authenticates purely with the shared token.
 
 **`controlUi` fields:**
+
 - `enabled` (default `true`): controls whether the gateway accepts Control UI WebSocket connections.
 - `basePath`: optional prefix path for the gateway's built-in dashboard endpoint.
 - `allowedOrigins`: browser origins allowed to open WebSocket connections. When unset, the gateway allows loopback origins and origins matching the request Host header (including `http://localhost:5173`) automatically.
@@ -2002,6 +2003,7 @@ The Control UI authenticates using `gateway.auth.token` — the same shared toke
 - `dangerouslyDisableDeviceAuth` (default `false`): break-glass flag that strips device identity checks. Not needed for normal browser access — only use for emergency recovery.
 
 **If the Control UI cannot connect**, check:
+
 1. The `VITE_GATEWAY_TOKEN` in `desktop/.env` matches `gateway.auth.token` in `~/.bitterbot/bitterbot.json`.
 2. The gateway is running: `bitterbot gateway status`.
 3. Both the gateway and Control UI processes are running (two terminals).
@@ -2040,17 +2042,17 @@ The P2P orchestrator runs as a Rust sidecar daemon using libp2p. It handles peer
 ```json5
 {
   p2p: {
-    enabled: true,                    // default: true
-    listenAddrs: ["/ip4/0.0.0.0/tcp/9100"],  // default if omitted
+    enabled: true, // default: true
+    listenAddrs: ["/ip4/0.0.0.0/tcp/9100"], // default if omitted
     bootstrapDns: "p2p.bitterbot.ai", // DNS-based bootstrap discovery
-    bootstrapPeers: [],               // additional static bootstrap peers
-    relayMode: "auto",                // off | client | server | auto
-    relayServers: [],                 // explicit relay server multiaddresses
-    keyDir: "~/.bitterbot/keys",      // Ed25519 keypair for node identity
-    httpAddr: "127.0.0.1:9847",       // orchestrator dashboard (loopback)
-    httpAuthToken: "...",             // bearer token for dashboard API
+    bootstrapPeers: [], // additional static bootstrap peers
+    relayMode: "auto", // off | client | server | auto
+    relayServers: [], // explicit relay server multiaddresses
+    keyDir: "~/.bitterbot/keys", // Ed25519 keypair for node identity
+    httpAddr: "127.0.0.1:9847", // orchestrator dashboard (loopback)
+    httpAuthToken: "...", // bearer token for dashboard API
     security: {
-      maxSkillSizeBytes: 262144,      // 256KB
+      maxSkillSizeBytes: 262144, // 256KB
       maxSkillsPerMinutePerPeer: 10,
       requireSignature: true,
     },
@@ -2083,6 +2085,7 @@ The P2P orchestrator runs as a Rust sidecar daemon using libp2p. It handles peer
 Most nodes behind home routers or firewalls work automatically with no configuration needed. The orchestrator detects NAT via AutoNAT and reserves a circuit relay slot on the bootstrap node.
 
 **How it works:**
+
 1. AutoNAT probes whether the node is publicly reachable on port 9100
 2. If behind NAT, the relay client connects to a bootstrap node and reserves a relay slot
 3. Other peers reach this node via the relay: `/p2p/<relay>/p2p-circuit/p2p/<this-node>`
@@ -2276,15 +2279,15 @@ fast-iterating during development, running a lightweight P2P-only node, or
 minimizing side effects while debugging. Set to `1` / `true` to skip the
 subsystem; leave unset for normal behavior.
 
-| Var | Effect |
-|---|---|
-| `BITTERBOT_SKIP_CHANNELS` | Don't start configured channels (WhatsApp, Telegram, Discord, etc.). Your agent stays reachable via the gateway API but won't auto-reply on external messaging surfaces. |
-| `BITTERBOT_SKIP_PROVIDERS` | Legacy alias for `BITTERBOT_SKIP_CHANNELS`. |
-| `BITTERBOT_SKIP_GMAIL_WATCHER` | Don't start the Gmail watcher hook. Mail polling stays off until the gateway is restarted without this flag. |
-| `BITTERBOT_SKIP_CRON` | Don't start the internal cron scheduler. Scheduled jobs won't fire. |
-| `BITTERBOT_SKIP_CANVAS_HOST` | Don't start the local canvas rendering host. Canvas-related tool calls fall back to no-op. |
-| `BITTERBOT_SKIP_BROWSER_CONTROL_SERVER` | Don't start the Bitterbot browser control server. Browser tools will fail at runtime. |
-| `BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD` | Skip the `postinstall` download of the prebuilt P2P orchestrator binary. For airgapped installs — the gateway will still attempt to use a local cargo build if you have one. |
+| Var                                     | Effect                                                                                                                                                                       |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BITTERBOT_SKIP_CHANNELS`               | Don't start configured channels (WhatsApp, Telegram, Discord, etc.). Your agent stays reachable via the gateway API but won't auto-reply on external messaging surfaces.     |
+| `BITTERBOT_SKIP_PROVIDERS`              | Legacy alias for `BITTERBOT_SKIP_CHANNELS`.                                                                                                                                  |
+| `BITTERBOT_SKIP_GMAIL_WATCHER`          | Don't start the Gmail watcher hook. Mail polling stays off until the gateway is restarted without this flag.                                                                 |
+| `BITTERBOT_SKIP_CRON`                   | Don't start the internal cron scheduler. Scheduled jobs won't fire.                                                                                                          |
+| `BITTERBOT_SKIP_CANVAS_HOST`            | Don't start the local canvas rendering host. Canvas-related tool calls fall back to no-op.                                                                                   |
+| `BITTERBOT_SKIP_BROWSER_CONTROL_SERVER` | Don't start the Bitterbot browser control server. Browser tools will fail at runtime.                                                                                        |
+| `BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD`  | Skip the `postinstall` download of the prebuilt P2P orchestrator binary. For airgapped installs — the gateway will still attempt to use a local cargo build if you have one. |
 
 These flags are primarily for development, tests, and narrow P2P-only
 deployments. Production gateways should usually leave all subsystems enabled

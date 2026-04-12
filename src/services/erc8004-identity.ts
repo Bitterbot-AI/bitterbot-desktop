@@ -23,7 +23,7 @@ const log = createSubsystemLogger("erc8004");
 
 // Canonical ERC-8004 registry addresses
 const REGISTRIES = {
-  "base": {
+  base: {
     identity: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const,
     reputation: "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63" as const,
   },
@@ -132,7 +132,10 @@ export interface AgentRegistrationFile {
 
 export class AgentIdentityService {
   private readonly network: ERC8004Network;
-  private readonly registryAddresses: { readonly identity: `0x${string}`; readonly reputation: `0x${string}` };
+  private readonly registryAddresses: {
+    readonly identity: `0x${string}`;
+    readonly reputation: `0x${string}`;
+  };
   private agentId: bigint | null = null;
 
   constructor(private readonly config: ERC8004Config) {
@@ -144,7 +147,9 @@ export class AgentIdentityService {
    * Check if the ERC-8004 ecosystem has meaningful traction.
    * Returns false if fewer than minAgents are registered — defer integration.
    */
-  async checkEcosystemTraction(minAgents?: number): Promise<{ hasTraction: boolean; totalAgents: number }> {
+  async checkEcosystemTraction(
+    minAgents?: number,
+  ): Promise<{ hasTraction: boolean; totalAgents: number }> {
     const threshold = minAgents ?? this.config.minAgentsForTraction ?? 100;
     try {
       const { createPublicClient, http } = await import("viem");
@@ -152,14 +157,18 @@ export class AgentIdentityService {
       const chain = this.network === "base" ? base : baseSepolia;
 
       const client = createPublicClient({ chain, transport: http() });
-      const totalSupply = await client.readContract({
+      const totalSupply = (await client.readContract({
         address: this.registryAddresses.identity,
         abi: IDENTITY_ABI,
         functionName: "totalSupply",
-      }) as bigint;
+      })) as bigint;
 
       const count = Number(totalSupply);
-      log.debug("ERC-8004 traction check", { network: this.network, totalAgents: count, threshold });
+      log.debug("ERC-8004 traction check", {
+        network: this.network,
+        totalAgents: count,
+        threshold,
+      });
       return { hasTraction: count >= threshold, totalAgents: count };
     } catch (err) {
       log.warn(`ERC-8004 traction check failed: ${String(err)}`);
@@ -174,7 +183,10 @@ export class AgentIdentityService {
    */
   async register(walletClient: {
     writeContract(args: {
-      address: string; abi: readonly unknown[]; functionName: string; args: unknown[];
+      address: string;
+      abi: readonly unknown[];
+      functionName: string;
+      args: unknown[];
     }): Promise<string>;
   }): Promise<{ agentId: string; txHash: string }> {
     const txHash = await walletClient.writeContract({
@@ -195,7 +207,10 @@ export class AgentIdentityService {
   async giveFeedback(
     walletClient: {
       writeContract(args: {
-        address: string; abi: readonly unknown[]; functionName: string; args: unknown[];
+        address: string;
+        abi: readonly unknown[];
+        functionName: string;
+        args: unknown[];
       }): Promise<string>;
     },
     params: {
@@ -226,7 +241,11 @@ export class AgentIdentityService {
       ],
     });
 
-    log.debug("ERC-8004 feedback given", { agentId: String(params.agentId), value: params.value, txHash });
+    log.debug("ERC-8004 feedback given", {
+      agentId: String(params.agentId),
+      value: params.value,
+      txHash,
+    });
     return txHash;
   }
 
@@ -243,16 +262,15 @@ export class AgentIdentityService {
       const chain = this.network === "base" ? base : baseSepolia;
 
       const client = createPublicClient({ chain, transport: http() });
-      const [count, summaryValue, decimals] = await client.readContract({
+      const [count, summaryValue, decimals] = (await client.readContract({
         address: this.registryAddresses.reputation,
         abi: REPUTATION_ABI,
         functionName: "getSummary",
         args: [agentId, [], "", ""], // All clients, no tag filter
-      }) as [bigint, bigint, number];
+      })) as [bigint, bigint, number];
 
-      const avgScore = decimals > 0
-        ? Number(summaryValue) / Math.pow(10, decimals)
-        : Number(summaryValue);
+      const avgScore =
+        decimals > 0 ? Number(summaryValue) / Math.pow(10, decimals) : Number(summaryValue);
 
       return { count: Number(count), averageScore: avgScore };
     } catch (err) {
@@ -279,10 +297,12 @@ export class AgentIdentityService {
       services: params.services,
       x402Support: true,
       active: true,
-      registrations: [{
-        agentId: params.agentId,
-        agentRegistry: `eip155:${chainId}:${this.registryAddresses.identity}`,
-      }],
+      registrations: [
+        {
+          agentId: params.agentId,
+          agentRegistry: `eip155:${chainId}:${this.registryAddresses.identity}`,
+        },
+      ],
       supportedTrust: ["reputation"],
     };
   }

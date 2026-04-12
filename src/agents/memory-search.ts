@@ -266,7 +266,9 @@ function mergeConfig(
   };
 
   const importanceWeight = clampNumber(
-    overrides?.query?.importanceWeight ?? defaults?.query?.importanceWeight ?? DEFAULT_IMPORTANCE_WEIGHT,
+    overrides?.query?.importanceWeight ??
+      defaults?.query?.importanceWeight ??
+      DEFAULT_IMPORTANCE_WEIGHT,
     0,
     1,
   );
@@ -315,22 +317,28 @@ function mergeConfig(
       recency: {
         enabled:
           (overrides?.query as Record<string, unknown>)?.recency != null
-            ? ((overrides?.query as Record<string, unknown>)?.recency as Record<string, unknown>)?.enabled as boolean ?? DEFAULT_RECENCY_ENABLED
+            ? ((((overrides?.query as Record<string, unknown>)?.recency as Record<string, unknown>)
+                ?.enabled as boolean) ?? DEFAULT_RECENCY_ENABLED)
             : (defaults?.query as Record<string, unknown>)?.recency != null
-              ? ((defaults?.query as Record<string, unknown>)?.recency as Record<string, unknown>)?.enabled as boolean ?? DEFAULT_RECENCY_ENABLED
+              ? ((((defaults?.query as Record<string, unknown>)?.recency as Record<string, unknown>)
+                  ?.enabled as boolean) ?? DEFAULT_RECENCY_ENABLED)
               : DEFAULT_RECENCY_ENABLED,
         alpha: clampNumber(
-          ((overrides?.query as Record<string, unknown>)?.recency as Record<string, unknown>)?.alpha as number ??
-          ((defaults?.query as Record<string, unknown>)?.recency as Record<string, unknown>)?.alpha as number ??
-          DEFAULT_RECENCY_ALPHA,
+          (((overrides?.query as Record<string, unknown>)?.recency as Record<string, unknown>)
+            ?.alpha as number) ??
+            (((defaults?.query as Record<string, unknown>)?.recency as Record<string, unknown>)
+              ?.alpha as number) ??
+            DEFAULT_RECENCY_ALPHA,
           0,
           1,
         ),
         halfLifeHours: Math.max(
           0.1,
-          ((overrides?.query as Record<string, unknown>)?.recency as Record<string, unknown>)?.halfLifeHours as number ??
-          ((defaults?.query as Record<string, unknown>)?.recency as Record<string, unknown>)?.halfLifeHours as number ??
-          DEFAULT_RECENCY_HALF_LIFE_HOURS,
+          (((overrides?.query as Record<string, unknown>)?.recency as Record<string, unknown>)
+            ?.halfLifeHours as number) ??
+            (((defaults?.query as Record<string, unknown>)?.recency as Record<string, unknown>)
+              ?.halfLifeHours as number) ??
+            DEFAULT_RECENCY_HALF_LIFE_HOURS,
         ),
       },
     },

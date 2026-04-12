@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useGatewayStore } from "../../stores/gateway-store";
-import { useConfigStore, type ConfigSnapshot } from "../../stores/config-store";
 import { cn } from "../../lib/utils";
+import { useConfigStore, type ConfigSnapshot } from "../../stores/config-store";
+import { useGatewayStore } from "../../stores/gateway-store";
 
 function ConfigFormView({
   snapshot,
@@ -18,41 +18,34 @@ function ConfigFormView({
   return (
     <div className="space-y-4">
       {sections.length === 0 ? (
-        <div className="p-4 text-sm text-muted-foreground text-center">
-          Empty configuration
-        </div>
+        <div className="p-4 text-sm text-muted-foreground text-center">Empty configuration</div>
       ) : (
         sections.map((section) => {
           const value = config[section];
-          const isObject =
-            typeof value === "object" && value !== null && !Array.isArray(value);
+          const isObject = typeof value === "object" && value !== null && !Array.isArray(value);
           return (
             <div
               key={section}
               className="rounded-lg border border-border/10 bg-muted/20 overflow-hidden"
             >
               <div className="px-3 py-2 bg-muted/30 border-b border-border/10">
-                <span className="text-xs font-semibold text-foreground">
-                  {section}
-                </span>
+                <span className="text-xs font-semibold text-foreground">{section}</span>
               </div>
               <div className="p-3">
                 {isObject ? (
                   <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(value as Record<string, unknown>).map(
-                      ([key, val]) => (
-                        <div key={key} className="text-xs">
-                          <span className="text-muted-foreground">{key}: </span>
-                          <span className="text-foreground font-mono">
-                            {typeof val === "string" && val.startsWith("***")
-                              ? "••••••"
-                              : typeof val === "object"
-                                ? JSON.stringify(val).slice(0, 80)
-                                : String(val)}
-                          </span>
-                        </div>
-                      ),
-                    )}
+                    {Object.entries(value as Record<string, unknown>).map(([key, val]) => (
+                      <div key={key} className="text-xs">
+                        <span className="text-muted-foreground">{key}: </span>
+                        <span className="text-foreground font-mono">
+                          {typeof val === "string" && val.startsWith("***")
+                            ? "••••••"
+                            : typeof val === "object"
+                              ? JSON.stringify(val).slice(0, 80)
+                              : String(val)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <span className="text-xs text-foreground font-mono">
@@ -241,8 +234,8 @@ export function ConfigView() {
         </div>
       )}
 
-      {snapshot && (
-        rawMode ? (
+      {snapshot &&
+        (rawMode ? (
           <ConfigRawView
             draft={rawDraft}
             onDraftChange={setRawDraft}
@@ -254,13 +247,8 @@ export function ConfigView() {
             baseHash={snapshot.baseHash ?? ""}
           />
         ) : (
-          <ConfigFormView
-            snapshot={snapshot}
-            onSave={handleSave}
-            saving={saving}
-          />
-        )
-      )}
+          <ConfigFormView snapshot={snapshot} onSave={handleSave} saving={saving} />
+        ))}
     </div>
   );
 }

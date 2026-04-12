@@ -38,6 +38,7 @@ Anything environment-specific that your skills need to know:
 ### Skills
 
 Skills are loaded from multiple sources (highest priority last):
+
 1. Bundled skills (shipped with Bitterbot)
 2. Managed skills (`~/.bitterbot/skills`)
 3. Workspace skills (`workspace/skills`)

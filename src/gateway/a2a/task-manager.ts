@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type {
   A2aArtifact,
@@ -139,9 +139,7 @@ export class A2aTaskManager {
     offset?: number;
   }): A2aTask[] {
     const rows = this.store.listTasks(params);
-    return rows
-      .map((row) => this.buildTask(row.id))
-      .filter((t): t is A2aTask => t !== undefined);
+    return rows.map((row) => this.buildTask(row.id)).filter((t): t is A2aTask => t !== undefined);
   }
 
   /**

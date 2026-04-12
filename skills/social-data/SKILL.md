@@ -85,6 +85,7 @@ curl -s "https://api.twitter.com/2/tweets/search/recent?query=from:elonmusk&max_
 ```
 
 Query operators:
+
 - `from:username` — tweets by user
 - `to:username` — replies to user
 - `#hashtag` — hashtag search

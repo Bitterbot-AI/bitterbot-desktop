@@ -28,6 +28,7 @@ import {
   type ResolvedGatewayAuth,
 } from "./auth.js";
 import { handleAvatarRequest } from "./avatar-http.js";
+import { renderDreamDashboardPage } from "./dream-dashboard-page.js";
 import { applyHookMappings } from "./hooks-mapping.js";
 import {
   extractHookToken,
@@ -51,7 +52,6 @@ import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
-import { renderDreamDashboardPage } from "./dream-dashboard-page.js";
 import { renderWalletFundingPage } from "./wallet-funding-page.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;

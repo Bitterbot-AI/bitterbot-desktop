@@ -19,13 +19,13 @@
 import type { DreamMode } from "./dream-types.js";
 
 export interface FSHOConfig {
-  N: number;       // Number of oscillators (= number of memory samples)
-  K: number;       // Coupling strength (default: 1.0)
-  gamma: number;   // Damping coefficient (default: 0.1)
-  eta: number;     // Noise strength (default: 0.3)
-  H: number;       // Hurst parameter — 0.5 = no memory, >0.5 = persistence (default: 0.7)
-  T: number;       // Simulation time (default: 50)
-  dt: number;      // Time step (default: 0.05)
+  N: number; // Number of oscillators (= number of memory samples)
+  K: number; // Coupling strength (default: 1.0)
+  gamma: number; // Damping coefficient (default: 0.1)
+  eta: number; // Noise strength (default: 0.3)
+  H: number; // Hurst parameter — 0.5 = no memory, >0.5 = persistence (default: 0.7)
+  T: number; // Simulation time (default: 50)
+  dt: number; // Time step (default: 0.05)
 }
 
 export const DEFAULT_FSHO_CONFIG: FSHOConfig = {
@@ -39,9 +39,9 @@ export const DEFAULT_FSHO_CONFIG: FSHOConfig = {
 };
 
 export interface FSHOResult {
-  orderParameter: number;  // R ∈ [0,1] — mean field coherence
-  meanPhase: number;       // ψ — mean phase angle
-  phases: number[];        // Final oscillator phases
+  orderParameter: number; // R ∈ [0,1] — mean field coherence
+  meanPhase: number; // ψ — mean phase angle
+  phases: number[]; // Final oscillator phases
 }
 
 /**
@@ -61,11 +61,11 @@ function generateFGN(steps: number, H: number): number[] {
   const windowSize = Math.min(steps, 50); // Truncate correlation window
   const gamma = new Float64Array(windowSize);
   for (let k = 0; k < windowSize; k++) {
-    gamma[k] = 0.5 * (
-      Math.pow(Math.abs(k + 1), 2 * H) -
-      2 * Math.pow(Math.abs(k), 2 * H) +
-      Math.pow(Math.abs(k - 1), 2 * H)
-    );
+    gamma[k] =
+      0.5 *
+      (Math.pow(Math.abs(k + 1), 2 * H) -
+        2 * Math.pow(Math.abs(k), 2 * H) +
+        Math.pow(Math.abs(k - 1), 2 * H));
   }
 
   // Cholesky decomposition of Toeplitz autocovariance matrix
@@ -84,9 +84,7 @@ function generateFGN(steps: number, H: number): number[] {
         s += L[j * windowSize + k]! * L[i * windowSize + k]!;
       }
       const diag = L[i * windowSize + i]!;
-      L[j * windowSize + i] = diag > 1e-10
-        ? (gamma[Math.abs(j - i)]! - s) / diag
-        : 0;
+      L[j * windowSize + i] = diag > 1e-10 ? (gamma[Math.abs(j - i)]! - s) / diag : 0;
     }
   }
 
@@ -113,16 +111,13 @@ function generateFGN(steps: number, H: number): number[] {
  *   θ_i += v_i * dt  (mod 2π)
  *   R = |⟨exp(i*θ)⟩|
  */
-export function simulateFSHO(
-  salienceValues: number[],
-  config?: Partial<FSHOConfig>,
-): FSHOResult {
+export function simulateFSHO(salienceValues: number[], config?: Partial<FSHOConfig>): FSHOResult {
   const cfg = { ...DEFAULT_FSHO_CONFIG, ...config };
   const N = Math.min(salienceValues.length, cfg.N);
   const steps = Math.floor(cfg.T / cfg.dt);
 
   // Map salience [0,1] → initial phase [0, 2π]
-  const theta = salienceValues.slice(0, N).map(s => s * 2 * Math.PI);
+  const theta = salienceValues.slice(0, N).map((s) => s * 2 * Math.PI);
   const v = new Array<number>(N).fill(0);
   // Natural frequencies drawn from uniform [-1, 1]
   const omega = Array.from({ length: N }, () => Math.random() * 2 - 1);
@@ -145,8 +140,8 @@ export function simulateFSHO(
       coupling *= cfg.K / N;
 
       // Velocity update: deterministic + stochastic
-      v[i]! += (omega[i]! + coupling - cfg.gamma * v[i]!) * cfg.dt +
-               cfg.eta * noise[i]![t]! * sqrtDt;
+      v[i]! +=
+        (omega[i]! + coupling - cfg.gamma * v[i]!) * cfg.dt + cfg.eta * noise[i]![t]! * sqrtDt;
 
       // Phase update
       theta[i] = (theta[i]! + v[i]! * cfg.dt) % (2 * Math.PI);
@@ -180,12 +175,12 @@ export function fshoModeAdjustments(
   if (R > 0.7) {
     // High coherence: consolidate and strengthen
     adj.compression = 0.15;
-    adj.replay = 0.10;
+    adj.replay = 0.1;
     adj.research = 0.05;
   } else if (R > 0.3) {
     // Edge of synchronization: creative zone (criticality)
     adj.mutation = 0.15;
-    adj.simulation = 0.10;
+    adj.simulation = 0.1;
     // Hormonal modulation at criticality
     if (hormones) {
       if (hormones.dopamine > 0.5) adj.mutation = (adj.mutation ?? 0) + 0.05;
@@ -194,10 +189,10 @@ export function fshoModeAdjustments(
   } else {
     // Low coherence: explore and discover
     adj.exploration = 0.15;
-    adj.extrapolation = 0.10;
+    adj.extrapolation = 0.1;
     // High cortisol + low coherence → replay for grounding
     if (hormones && hormones.cortisol > 0.6) {
-      adj.replay = 0.10;
+      adj.replay = 0.1;
     }
   }
 

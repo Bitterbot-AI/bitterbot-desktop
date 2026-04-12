@@ -1,12 +1,12 @@
+import crypto from "node:crypto";
 /**
  * Tests for PromptOptimizationExperiment: candidate finding and mutation generation.
  */
 import { DatabaseSync } from "node:sqlite";
-import crypto from "node:crypto";
 import { describe, it, expect, beforeEach } from "vitest";
+import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 import { PromptOptimizationExperiment } from "./prompt-optimization.js";
 import { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 
 function createTestDb(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
@@ -273,7 +273,13 @@ describe("PromptOptimizationExperiment", () => {
 
       const results = await exp.optimize(candidate!, async () => MUTATION_LLM_RESPONSE);
       // Strategy should be one of the valid strategies
-      const validStrategies = ["generic", "error_driven", "adversarial", "compositional", "parametric"];
+      const validStrategies = [
+        "generic",
+        "error_driven",
+        "adversarial",
+        "compositional",
+        "parametric",
+      ];
       expect(validStrategies).toContain(results[0]!.strategy);
     });
   });

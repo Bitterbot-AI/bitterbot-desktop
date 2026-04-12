@@ -93,8 +93,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setMessages: (msgs) => set({ messages: msgs, error: null }),
 
-  addMessage: (msg) =>
-    set((s) => ({ messages: [...s.messages, msg] })),
+  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
 
   setSessionKey: (key) => set({ sessionKey: key }),
 
@@ -121,9 +120,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   finalizeRun: (runId, message) =>
     set((s) => {
       if (s.activeRun?.runId !== runId) return s;
-      const newMessages = message
-        ? [...s.messages, message]
-        : s.messages;
+      const newMessages = message ? [...s.messages, message] : s.messages;
       return { activeRun: null, messages: newMessages };
     }),
 
@@ -146,21 +143,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearMessages: () => set({ messages: [], activeRun: null, error: null, toolCalls: [] }),
 
-  addToolCall: (tc) =>
-    set((s) => ({ toolCalls: [...s.toolCalls, tc] })),
+  addToolCall: (tc) => set((s) => ({ toolCalls: [...s.toolCalls, tc] })),
 
   updateToolCallPartial: (id, partialResult) =>
     set((s) => ({
-      toolCalls: s.toolCalls.map((tc) =>
-        tc.id === id ? { ...tc, partialResult } : tc,
-      ),
+      toolCalls: s.toolCalls.map((tc) => (tc.id === id ? { ...tc, partialResult } : tc)),
     })),
 
   updateToolCallResult: (id, result, status = "completed") =>
     set((s) => ({
-      toolCalls: s.toolCalls.map((tc) =>
-        tc.id === id ? { ...tc, result, status } : tc,
-      ),
+      toolCalls: s.toolCalls.map((tc) => (tc.id === id ? { ...tc, result, status } : tc)),
     })),
 
   clearToolCalls: () => set({ toolCalls: [] }),

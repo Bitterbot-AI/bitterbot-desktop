@@ -3,7 +3,6 @@
  * and KnowledgeCrystal objects, plus semantic type inference.
  */
 
-import type { MemorySource } from "./types.js";
 import type {
   CrystalGovernance,
   CrystalLifecycle,
@@ -12,6 +11,7 @@ import type {
   HormonalInfluence,
   KnowledgeCrystal,
 } from "./crystal-types.js";
+import type { MemorySource } from "./types.js";
 import { parseEmbedding } from "./internal.js";
 
 /**
@@ -52,7 +52,9 @@ export function rowToCrystal(row: Record<string, unknown>): KnowledgeCrystal {
     if (typeof raw === "string" && raw.length > 2) {
       provenanceChain = JSON.parse(raw);
     }
-  } catch { /* empty */ }
+  } catch {
+    /* empty */
+  }
   governance.provenanceChain = provenanceChain;
 
   const hormonalDopamine = row.hormonal_dopamine as number | null;
@@ -153,9 +155,7 @@ export function inferSemanticType(
   const lower = text.toLowerCase();
 
   // Preference patterns
-  if (
-    /\b(?:prefer|favorite|always use|i like|i want|i need|my style|i choose)\b/i.test(lower)
-  ) {
+  if (/\b(?:prefer|favorite|always use|i like|i want|i need|my style|i choose)\b/i.test(lower)) {
     return "preference";
   }
 
@@ -229,8 +229,14 @@ export function defaultGovernance(source: MemorySource): CrystalGovernance {
 
 function mapOrigin(row: Record<string, unknown>): CrystalOrigin {
   const origin = row.origin as string | null;
-  if (origin === "indexed" || origin === "session" || origin === "skill" ||
-      origin === "dream" || origin === "user_input" || origin === "inferred") {
+  if (
+    origin === "indexed" ||
+    origin === "session" ||
+    origin === "skill" ||
+    origin === "dream" ||
+    origin === "user_input" ||
+    origin === "inferred"
+  ) {
     return origin;
   }
   // Map legacy origins
@@ -244,9 +250,14 @@ function mapLifecycle(row: Record<string, unknown>): CrystalLifecycle {
   // Prefer new 'lifecycle' column if it exists
   const lifecycle = row.lifecycle as string | null;
   if (lifecycle && lifecycle !== "generated") {
-    if (lifecycle === "generated" || lifecycle === "activated" ||
-        lifecycle === "consolidated" || lifecycle === "archived" ||
-        lifecycle === "expired" || lifecycle === "frozen") {
+    if (
+      lifecycle === "generated" ||
+      lifecycle === "activated" ||
+      lifecycle === "consolidated" ||
+      lifecycle === "archived" ||
+      lifecycle === "expired" ||
+      lifecycle === "frozen"
+    ) {
       return lifecycle;
     }
   }
