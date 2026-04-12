@@ -332,7 +332,9 @@ export class ConsolidationEngine {
       return [];
     }
 
-    if (neglected.length < 3) return [];
+    if (neglected.length < 3) {
+      return [];
+    }
 
     const embeddings = neglected.map((r) => parseEmbedding(r.embedding));
     const assigned = new Set<number>();
@@ -346,15 +348,23 @@ export class ConsolidationEngine {
 
     // Greedy single-linkage clustering
     for (let i = 0; i < neglected.length && clusters.length < maxClusters; i++) {
-      if (assigned.has(i)) continue;
-      if (embeddings[i]!.length === 0) continue;
+      if (assigned.has(i)) {
+        continue;
+      }
+      if (embeddings[i]!.length === 0) {
+        continue;
+      }
 
       const cluster: number[] = [i];
       assigned.add(i);
 
       for (let j = i + 1; j < neglected.length; j++) {
-        if (assigned.has(j)) continue;
-        if (embeddings[j]!.length === 0) continue;
+        if (assigned.has(j)) {
+          continue;
+        }
+        if (embeddings[j]!.length === 0) {
+          continue;
+        }
         if (cosineSimilarity(embeddings[i]!, embeddings[j]!) > 0.75) {
           cluster.push(j);
           assigned.add(j);
@@ -390,7 +400,9 @@ export class ConsolidationEngine {
    */
   rescueOrphanClusters(): number {
     const orphans = this.detectOrphanClusters();
-    if (orphans.length === 0) return 0;
+    if (orphans.length === 0) {
+      return 0;
+    }
 
     let queued = 0;
     try {
@@ -438,7 +450,9 @@ export class ConsolidationEngine {
     k: number = 10,
     minShared: number = 4,
   ): NearMergeCandidate[] {
-    if (chunks.length < k + 1) return [];
+    if (chunks.length < k + 1) {
+      return [];
+    }
 
     const nearMissFloor = 0.82;
     const nearMissCeiling = this.config.mergeOverlapThreshold; // 0.92
@@ -450,7 +464,9 @@ export class ConsolidationEngine {
     for (let i = 0; i < chunks.length; i++) {
       const distances: Array<{ idx: number; sim: number }> = [];
       for (let j = 0; j < chunks.length; j++) {
-        if (i === j) continue;
+        if (i === j) {
+          continue;
+        }
         const key = i < j ? `${i}:${j}` : `${j}:${i}`;
         let sim = pairwiseSim.get(key);
         if (sim === undefined) {
@@ -469,18 +485,24 @@ export class ConsolidationEngine {
     for (let i = 0; i < chunks.length; i++) {
       for (let j = i + 1; j < chunks.length; j++) {
         // Same-path constraint (existing merge behavior)
-        if (chunks[i]!.path && chunks[j]!.path && chunks[i]!.path !== chunks[j]!.path) continue;
+        if (chunks[i]!.path && chunks[j]!.path && chunks[i]!.path !== chunks[j]!.path) {
+          continue;
+        }
 
         const key = `${i}:${j}`;
         const baseSim = pairwiseSim.get(key) ?? 0;
-        if (baseSim < nearMissFloor || baseSim >= nearMissCeiling) continue;
+        if (baseSim < nearMissFloor || baseSim >= nearMissCeiling) {
+          continue;
+        }
 
         // Count shared k-NN members
         const knnA = knnSets.get(i)!;
         const knnB = knnSets.get(j)!;
         let shared = 0;
         for (const neighbor of knnA) {
-          if (knnB.has(neighbor)) shared++;
+          if (knnB.has(neighbor)) {
+            shared++;
+          }
         }
 
         if (shared >= minShared) {

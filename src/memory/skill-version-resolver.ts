@@ -255,7 +255,9 @@ export class SkillVersionResolver {
       created_at: number;
     }>;
 
-    if (rows.length === 0) return null;
+    if (rows.length === 0) {
+      return null;
+    }
 
     // Score each variant
     const scored = rows.map((r) => {

@@ -51,7 +51,9 @@ function loadOrCreateSyntheticKeypair(db: DatabaseSync): SyntheticKeypair {
       .get() as { value: string } | undefined;
     if (row) {
       const parsed = JSON.parse(row.value) as SyntheticKeypair;
-      if (parsed.publicKeyBase64 && parsed.privateKeyPem) return parsed;
+      if (parsed.publicKeyBase64 && parsed.privateKeyPem) {
+        return parsed;
+      }
     }
   } catch {
     // Table may not exist or row missing — generate new
@@ -177,8 +179,12 @@ export class SkillSeekersAdapter {
   // ── Availability detection ──
 
   async isAvailable(): Promise<boolean> {
-    if (!this.config.enabled) return false;
-    if (this.available !== null) return this.available;
+    if (!this.config.enabled) {
+      return false;
+    }
+    if (this.available !== null) {
+      return this.available;
+    }
     this.available = detectSkillSeekersCli();
     if (this.available) {
       log.info("Skill Seekers CLI detected");
@@ -384,7 +390,9 @@ export class SkillSeekersAdapter {
   }
 
   private processConflicts(conflicts: SkillSeekersConflict[], sourceUrl: string): void {
-    if (!this.epistemicDirectiveEngine || conflicts.length === 0) return;
+    if (!this.epistemicDirectiveEngine || conflicts.length === 0) {
+      return;
+    }
 
     const highSeverity = conflicts.filter((c) => c.severity === "high");
     // Cap at 2 directives per ingestion to avoid noise
@@ -465,13 +473,17 @@ function runSkillSeekersCli(source: SkillSeekersSource, outputDir: string): void
 // ── Output parsing ──
 
 function findSkillDir(outputDir: string): string | null {
-  if (!fs.existsSync(outputDir)) return null;
+  if (!fs.existsSync(outputDir)) {
+    return null;
+  }
 
   // Skill Seekers creates output/{name}/ or output/{name}_data/
   // Look for a directory containing SKILL.md
   const entries = fs.readdirSync(outputDir, { withFileTypes: true });
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory()) {
+      continue;
+    }
     const candidate = path.join(outputDir, entry.name);
     if (fs.existsSync(path.join(candidate, "SKILL.md"))) {
       return candidate;
@@ -495,7 +507,9 @@ type ParsedSkill = {
 
 function parseSkillDirectory(skillDir: string, source: SkillSeekersSource): ParsedSkill | null {
   const skillMdPath = path.join(skillDir, "SKILL.md");
-  if (!fs.existsSync(skillMdPath)) return null;
+  if (!fs.existsSync(skillMdPath)) {
+    return null;
+  }
 
   const skillMd = fs.readFileSync(skillMdPath, "utf8");
 
@@ -510,9 +524,15 @@ function parseSkillDirectory(skillDir: string, source: SkillSeekersSource): Pars
     const nameMatch = fm.match(/^name:\s*(.+)$/m);
     const descMatch = fm.match(/^description:\s*(.+)$/m);
     const verMatch = fm.match(/^version:\s*(.+)$/m);
-    if (nameMatch) name = nameMatch[1].trim();
-    if (descMatch) description = descMatch[1].trim();
-    if (verMatch) version = verMatch[1].trim();
+    if (nameMatch) {
+      name = nameMatch[1].trim();
+    }
+    if (descMatch) {
+      description = descMatch[1].trim();
+    }
+    if (verMatch) {
+      version = verMatch[1].trim();
+    }
   }
 
   // Concatenate SKILL.md + all references/*.md
@@ -522,7 +542,7 @@ function parseSkillDirectory(skillDir: string, source: SkillSeekersSource): Pars
     const refs = fs
       .readdirSync(refsDir)
       .filter((f) => f.endsWith(".md"))
-      .sort();
+      .toSorted();
     for (const ref of refs) {
       const refContent = fs.readFileSync(path.join(refsDir, ref), "utf8");
       content += `\n\n---\n\n<!-- reference: ${ref} -->\n\n${refContent}`;
@@ -541,11 +561,15 @@ function parseConflicts(skillDir: string): SkillSeekersConflict[] {
   ];
 
   for (const candidate of candidates) {
-    if (!fs.existsSync(candidate)) continue;
+    if (!fs.existsSync(candidate)) {
+      continue;
+    }
     try {
       const raw = JSON.parse(fs.readFileSync(candidate, "utf8"));
       const conflicts = raw?.conflicts;
-      if (!Array.isArray(conflicts)) continue;
+      if (!Array.isArray(conflicts)) {
+        continue;
+      }
       return conflicts
         .filter(
           (c: Record<string, unknown>) =>
@@ -605,9 +629,15 @@ function createEnvelope(
 function inferCategory(url: string): string {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
-    if (hostname.includes("github.com")) return "github";
-    if (hostname.includes("docs.") || hostname.includes("documentation")) return "docs";
-    if (hostname.includes("api.") || hostname.includes("reference")) return "api";
+    if (hostname.includes("github.com")) {
+      return "github";
+    }
+    if (hostname.includes("docs.") || hostname.includes("documentation")) {
+      return "docs";
+    }
+    if (hostname.includes("api.") || hostname.includes("reference")) {
+      return "api";
+    }
     return "docs";
   } catch {
     return "docs";

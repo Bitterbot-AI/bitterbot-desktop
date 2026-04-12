@@ -1034,7 +1034,9 @@ describe("Dream Engine", () => {
 
       let capturedPrompt = "";
       const llm = async (prompt: string) => {
-        if (!capturedPrompt) capturedPrompt = prompt; // Capture the FIRST call (research prompt), not the sandbox rating prompt
+        if (!capturedPrompt) {
+          capturedPrompt = prompt;
+        } // Capture the FIRST call (research prompt), not the sandbox rating prompt
         return JSON.stringify([
           {
             content: "Handle connection timeout with retry logic",
@@ -1240,7 +1242,9 @@ describe("Curiosity Engine", () => {
 
       // Manually create a knowledge_gap target
       const regionRow = db.prepare("SELECT * FROM curiosity_regions LIMIT 1").get() as any;
-      if (!regionRow) return; // Skip if no regions were created (too few chunks)
+      if (!regionRow) {
+        return;
+      } // Skip if no regions were created (too few chunks)
 
       db.prepare(
         `INSERT INTO curiosity_targets (id, type, description, priority, region_id, metadata, created_at, expires_at)
@@ -1346,7 +1350,9 @@ describe("Hormonal State Manager", () => {
 
   it("clamps hormones at 1.0 maximum", () => {
     const manager = new HormonalStateManager();
-    for (let i = 0; i < 10; i++) manager.stimulate("reward");
+    for (let i = 0; i < 10; i++) {
+      manager.stimulate("reward");
+    }
     expect(manager.getState().dopamine).toBeLessThanOrEqual(1);
   });
 
@@ -2419,7 +2425,9 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // Create a knowledge gap
       const region = db.prepare("SELECT * FROM curiosity_regions LIMIT 1").get() as any;
-      if (!region) return;
+      if (!region) {
+        return;
+      }
 
       db.prepare(
         `INSERT INTO curiosity_targets (id, type, description, priority, region_id, metadata, created_at, expires_at)
@@ -2506,7 +2514,9 @@ describe("Integration: Cross-system feedback loops", () => {
           memory_type: i < 3 ? "skill" : "plaintext",
           semantic_type: i < 3 ? "skill" : "general",
         });
-        if (i < 3) originalSkillIds.push(id);
+        if (i < 3) {
+          originalSkillIds.push(id);
+        }
       }
 
       // Count skill chunks before dream

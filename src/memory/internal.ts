@@ -268,7 +268,9 @@ export function remapChunkLines(chunks: MemoryChunk[], lineMap: number[] | undef
 }
 
 export function computeCentroid(embeddings: number[][]): number[] {
-  if (embeddings.length === 0) return [];
+  if (embeddings.length === 0) {
+    return [];
+  }
   const dims = embeddings[0]!.length;
   const centroid = new Array<number>(dims).fill(0);
   for (const emb of embeddings) {

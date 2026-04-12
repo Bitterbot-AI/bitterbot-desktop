@@ -129,7 +129,9 @@ export class SkillExecutionTracker {
     const errorBreakdown: Record<string, number> = {};
 
     for (const row of rows) {
-      if (row.success === 1) successes++;
+      if (row.success === 1) {
+        successes++;
+      }
       if (row.reward_score != null) {
         totalReward += row.reward_score;
         rewardCount++;

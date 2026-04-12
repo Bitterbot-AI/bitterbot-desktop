@@ -58,7 +58,9 @@ export function moodCongruentBonus(params: {
   config?: Partial<MoodCongruentConfig>;
 }): number {
   const cfg = { ...DEFAULT_MOOD_CONGRUENT_CONFIG, ...params.config };
-  if (!cfg.enabled) return 0;
+  if (!cfg.enabled) {
+    return 0;
+  }
 
   const { hormonalState, emotionalValence, semanticType } = params;
   let bonus = 0;

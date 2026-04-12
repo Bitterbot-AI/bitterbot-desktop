@@ -210,7 +210,9 @@ export class ManagementKeyAuth {
     trustList: string[],
   ): boolean {
     // Pubkey must be in trust list
-    if (!trustList.includes(envelope.pubkey)) return false;
+    if (!trustList.includes(envelope.pubkey)) {
+      return false;
+    }
 
     // Reconstruct canonical form and verify signature
     const canonical = JSON.stringify({

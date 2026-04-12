@@ -48,8 +48,12 @@ const projectsUpdate: GatewayRequestHandler = async ({ params, respond }) => {
     return;
   }
   const updates: Record<string, unknown> = {};
-  if (typeof params.name === "string") updates.name = params.name;
-  if (typeof params.systemPrompt === "string") updates.systemPrompt = params.systemPrompt;
+  if (typeof params.name === "string") {
+    updates.name = params.name;
+  }
+  if (typeof params.systemPrompt === "string") {
+    updates.systemPrompt = params.systemPrompt;
+  }
   const project = updateProject(id, updates as { name?: string; systemPrompt?: string });
   if (!project) {
     respond(false, undefined, { code: "NOT_FOUND", message: "project not found" });

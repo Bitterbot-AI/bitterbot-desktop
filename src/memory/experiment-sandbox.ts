@@ -150,12 +150,16 @@ export class ExperimentSandbox {
       const errorTypes = new Set<string>();
 
       for (const row of rows) {
-        if (row.success === 1) successes++;
+        if (row.success === 1) {
+          successes++;
+        }
         if (row.reward_score != null) {
           rewardTotal += row.reward_score;
           rewardCount++;
         }
-        if (row.error_type) errorTypes.add(row.error_type);
+        if (row.error_type) {
+          errorTypes.add(row.error_type);
+        }
       }
 
       return {
@@ -225,7 +229,9 @@ export class ExperimentSandbox {
       cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
 
       const parsed = JSON.parse(cleaned);
-      if (!parsed || typeof parsed !== "object") return null;
+      if (!parsed || typeof parsed !== "object") {
+        return null;
+      }
 
       // Validate and extract criteriaScores
       const criteriaScores: Record<string, number> = {};

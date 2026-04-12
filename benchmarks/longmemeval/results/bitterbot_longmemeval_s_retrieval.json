@@ -1,0 +1,93 @@
+{
+  "dataset": "/mnt/d/Bitterbot/bitterbot-desktop/benchmarks/longmemeval/data/longmemeval_s.json",
+  "n_questions": 5,
+  "elapsed_seconds": 2729.7,
+  "overall": {
+    "n": 0,
+    "R@5": "—",
+    "R@10": "—",
+    "R@5(all)": "—",
+    "R@10(all)": "—"
+  },
+  "by_question_type": {
+    "single-session-user": {
+      "n": 0,
+      "R@5": "—",
+      "R@10": "—",
+      "R@5(all)": "—",
+      "R@10(all)": "—"
+    }
+  },
+  "per_question": [
+    {
+      "question_id": "e47becba",
+      "question_type": "single-session-user",
+      "num_haystack_sessions": 53,
+      "num_answer_sessions": 1,
+      "retrieved_sessions": [],
+      "answer_session_ids": ["answer_280352e9"],
+      "recall_any_5": 0,
+      "recall_any_10": 0,
+      "recall_all_5": 0,
+      "recall_all_10": 0,
+      "num_chunks_returned": 0,
+      "error": "fetch failed"
+    },
+    {
+      "question_id": "118b2229",
+      "question_type": "single-session-user",
+      "num_haystack_sessions": 45,
+      "num_answer_sessions": 1,
+      "retrieved_sessions": [],
+      "answer_session_ids": ["answer_40a90d51"],
+      "recall_any_5": 0,
+      "recall_any_10": 0,
+      "recall_all_5": 0,
+      "recall_all_10": 0,
+      "num_chunks_returned": 0,
+      "error": "memory embeddings batch timed out after 120s"
+    },
+    {
+      "question_id": "51a45a95",
+      "question_type": "single-session-user",
+      "num_haystack_sessions": 50,
+      "num_answer_sessions": 1,
+      "retrieved_sessions": [],
+      "answer_session_ids": ["answer_d61669c7"],
+      "recall_any_5": 0,
+      "recall_any_10": 0,
+      "recall_all_5": 0,
+      "recall_all_10": 0,
+      "num_chunks_returned": 0,
+      "error": "memory embeddings batch timed out after 120s"
+    },
+    {
+      "question_id": "58bf7951",
+      "question_type": "single-session-user",
+      "num_haystack_sessions": 57,
+      "num_answer_sessions": 1,
+      "retrieved_sessions": [],
+      "answer_session_ids": ["answer_355c48bb"],
+      "recall_any_5": 0,
+      "recall_any_10": 0,
+      "recall_all_5": 0,
+      "recall_all_10": 0,
+      "num_chunks_returned": 0,
+      "error": "fetch failed"
+    },
+    {
+      "question_id": "1e043500",
+      "question_type": "single-session-user",
+      "num_haystack_sessions": 50,
+      "num_answer_sessions": 1,
+      "retrieved_sessions": [],
+      "answer_session_ids": ["answer_3e012175"],
+      "recall_any_5": 0,
+      "recall_any_10": 0,
+      "recall_all_5": 0,
+      "recall_all_10": 0,
+      "num_chunks_returned": 0,
+      "error": "fetch failed"
+    }
+  ]
+}

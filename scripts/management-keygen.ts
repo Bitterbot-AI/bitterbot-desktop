@@ -67,7 +67,9 @@ console.log();
 if (trustListFile) {
   // Append to the trust list file
   const dir = trustListFile.substring(0, trustListFile.lastIndexOf("/"));
-  if (dir) fs.mkdirSync(dir, { recursive: true });
+  if (dir) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 
   const existing = fs.existsSync(trustListFile) ? fs.readFileSync(trustListFile, "utf-8") : "";
   const lines = existing

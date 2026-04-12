@@ -13,8 +13,12 @@ import { cosineSimilarity, parseEmbedding } from "./internal.js";
  * (pure vector-similarity hit) or when the text fits within the limit.
  */
 function extractQuerySnippet(text: string, maxChars: number, query?: string): string {
-  if (!text || text.length <= maxChars) return text;
-  if (!query || !query.trim()) return truncateUtf16Safe(text, maxChars);
+  if (!text || text.length <= maxChars) {
+    return text;
+  }
+  if (!query || !query.trim()) {
+    return truncateUtf16Safe(text, maxChars);
+  }
 
   // Extract meaningful query terms (>2 chars, lowercased)
   const terms = query
@@ -24,7 +28,9 @@ function extractQuerySnippet(text: string, maxChars: number, query?: string): st
     .map((t) => t.replace(/[^a-z0-9]/g, ""))
     .filter(Boolean);
 
-  if (terms.length === 0) return truncateUtf16Safe(text, maxChars);
+  if (terms.length === 0) {
+    return truncateUtf16Safe(text, maxChars);
+  }
 
   const lower = text.toLowerCase();
 
@@ -34,13 +40,17 @@ function extractQuerySnippet(text: string, maxChars: number, query?: string): st
     let pos = 0;
     while (pos < lower.length) {
       const idx = lower.indexOf(term, pos);
-      if (idx === -1) break;
+      if (idx === -1) {
+        break;
+      }
       hits.push(idx);
       pos = idx + term.length;
     }
   }
 
-  if (hits.length === 0) return truncateUtf16Safe(text, maxChars);
+  if (hits.length === 0) {
+    return truncateUtf16Safe(text, maxChars);
+  }
 
   // Find the window of `maxChars` width with the most hits
   hits.sort((a, b) => a - b);

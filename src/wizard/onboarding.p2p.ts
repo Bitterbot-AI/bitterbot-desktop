@@ -71,7 +71,7 @@ export async function setupP2pForOnboarding(params: {
     if (!joinNetwork) {
       nextConfig = {
         ...config,
-        p2p: { ...(config.p2p ?? {}), enabled: false },
+        p2p: { ...config.p2p, enabled: false },
       };
       await prompter.note(
         "P2P disabled. Your agent will run local-only. Re-enable later via `p2p.enabled = true` in the gateway config.",

@@ -83,7 +83,9 @@ export class TaskMemoryManager {
       .prepare(`SELECT related_crystal_ids FROM task_goals WHERE id = ?`)
       .get(goalId) as { related_crystal_ids: string } | undefined;
 
-    if (!row) return;
+    if (!row) {
+      return;
+    }
 
     let ids: string[] = [];
     try {

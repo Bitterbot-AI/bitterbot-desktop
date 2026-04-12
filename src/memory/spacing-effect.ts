@@ -42,10 +42,12 @@ export const DEFAULT_SPACING_CONFIG: SpacingConfig = {
  * @returns Normalized spacing score in [0, 1]. Higher = more spaced access.
  */
 export function computeSpacingScore(accessTimestamps: number[]): number {
-  if (accessTimestamps.length < 2) return 0;
+  if (accessTimestamps.length < 2) {
+    return 0;
+  }
 
   // Sort chronologically
-  const sorted = [...accessTimestamps].sort((a, b) => a - b);
+  const sorted = [...accessTimestamps].toSorted((a, b) => a - b);
 
   // Compute inter-access intervals in hours
   const intervals: number[] = [];
@@ -53,7 +55,9 @@ export function computeSpacingScore(accessTimestamps: number[]): number {
     intervals.push((sorted[i]! - sorted[i - 1]!) / ONE_HOUR_MS);
   }
 
-  if (intervals.length === 0) return 0;
+  if (intervals.length === 0) {
+    return 0;
+  }
 
   const avgInterval = intervals.reduce((sum, v) => sum + v, 0) / intervals.length;
 
@@ -74,7 +78,9 @@ export function spacingImportanceMultiplier(
   config?: Partial<SpacingConfig>,
 ): number {
   const cfg = { ...DEFAULT_SPACING_CONFIG, ...config };
-  if (!cfg.enabled) return 1.0;
+  if (!cfg.enabled) {
+    return 1.0;
+  }
   return 1 + cfg.maxBoostFraction * Math.min(1, Math.max(0, spacingScore));
 }
 
@@ -88,14 +94,18 @@ export function recordAccess(
   config?: Partial<SpacingConfig>,
 ): void {
   const cfg = { ...DEFAULT_SPACING_CONFIG, ...config };
-  if (!cfg.enabled) return;
+  if (!cfg.enabled) {
+    return;
+  }
 
   try {
     const row = db.prepare(`SELECT access_timestamps FROM chunks WHERE id = ?`).get(chunkId) as
       | { access_timestamps: string | null }
       | undefined;
 
-    if (!row) return;
+    if (!row) {
+      return;
+    }
 
     const timestamps: number[] = JSON.parse(row.access_timestamps || "[]");
     timestamps.push(Date.now());

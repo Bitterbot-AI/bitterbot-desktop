@@ -32,11 +32,11 @@ function wrapReactArtifact(title: string, content: string): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)}</title>
-  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" crossorigin><\/script>
-  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin><\/script>
-  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"><\/script>
-  <script src="https://cdn.tailwindcss.com"><\/script>
-  <script src="https://cdn.jsdelivr.net/npm/recharts@2/umd/Recharts.min.js" crossorigin><\/script>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/recharts@2/umd/Recharts.min.js" crossorigin></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@latest/font/lucide.min.css" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -48,7 +48,7 @@ function wrapReactArtifact(title: string, content: string): string {
   <div id="root"></div>
   <script type="text/babel" data-type="module">
     ${content}
-  <\/script>
+  </script>
   <script>
     window.onerror = function(msg, src, line, col, err) {
       try {
@@ -67,7 +67,7 @@ function wrapReactArtifact(title: string, content: string): string {
       }
     });
     ro.observe(document.getElementById('root'));
-  <\/script>
+  </script>
 </body>
 </html>`;
 }
@@ -90,7 +90,7 @@ function wrapHtmlArtifact(title: string, content: string): string {
     window.onerror = function(msg, src, line, col) {
       try { window.parent.postMessage({ type: 'artifact-error', error: String(msg), line, col }, '*'); } catch(e) {}
     };
-  <\/script>
+  </script>
 </body>
 </html>`;
 }
@@ -118,7 +118,7 @@ function wrapMermaidArtifact(title: string, content: string): string {
 <head>
   <meta charset="utf-8" />
   <title>${escapeHtml(title)}</title>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"><\/script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     body { margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #0a0a0a; color: #fafafa; }
   </style>
@@ -129,7 +129,7 @@ ${escapeHtml(content)}
   </pre>
   <script>
     mermaid.initialize({ startOnLoad: true, theme: 'dark' });
-  <\/script>
+  </script>
 </body>
 </html>`;
 }
@@ -170,7 +170,7 @@ function wrapJavaScriptArtifact(title: string, content: string): string {
     } catch(e) {
       console.error(e);
     }
-  <\/script>
+  </script>
 </body>
 </html>`;
 }

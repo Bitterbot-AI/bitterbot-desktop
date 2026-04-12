@@ -38,27 +38,37 @@ export function createMarketplaceHandler(marketplace: SkillMarketplace | null) {
       query: string;
       filters?: MarketplaceFilters;
     }): MarketplaceEntry[] {
-      if (!marketplace) return [];
+      if (!marketplace) {
+        return [];
+      }
       return marketplace.search(params.query, params.filters);
     },
 
     "marketplace.trending"(params: { limit?: number }): MarketplaceEntry[] {
-      if (!marketplace) return [];
+      if (!marketplace) {
+        return [];
+      }
       return marketplace.getTrending(params.limit);
     },
 
     "marketplace.recommendations"(params: { limit?: number }): MarketplaceEntry[] {
-      if (!marketplace) return [];
+      if (!marketplace) {
+        return [];
+      }
       return marketplace.getRecommendations(params.limit);
     },
 
     "marketplace.detail"(params: { stableSkillId: string }): SkillDetail | null {
-      if (!marketplace) return null;
+      if (!marketplace) {
+        return null;
+      }
       return marketplace.getSkillDetail(params.stableSkillId);
     },
 
     "marketplace.list"(params: { crystalId: string; description?: string }): { ok: boolean } {
-      if (!marketplace) return { ok: false };
+      if (!marketplace) {
+        return { ok: false };
+      }
       return { ok: marketplace.listSkill(params.crystalId, params.description) };
     },
   };

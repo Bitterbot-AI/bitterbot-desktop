@@ -67,14 +67,16 @@ export class ToolCache {
 
   /** Generate a deterministic cache key from tool name + sorted args. */
   generateKey(toolName: string, args: Record<string, unknown>): string {
-    const sorted = JSON.stringify(args, Object.keys(args).sort());
+    const sorted = JSON.stringify(args, Object.keys(args).toSorted());
     const hash = createHash("sha256").update(`${toolName}:${sorted}`).digest("hex").slice(0, 16);
     return `${toolName}:${hash}`;
   }
 
   /** Retrieve a cached result. Returns undefined on miss or expiry. */
   get<T = unknown>(toolName: string, args: Record<string, unknown>): T | undefined {
-    if (!this.enabled) return undefined;
+    if (!this.enabled) {
+      return undefined;
+    }
     const key = this.generateKey(toolName, args);
     const entry = this.cache.get(key);
     if (!entry) {
@@ -100,7 +102,9 @@ export class ToolCache {
     result: T,
     ttlMs?: number,
   ): void {
-    if (!this.enabled) return;
+    if (!this.enabled) {
+      return;
+    }
     const key = this.generateKey(toolName, args);
     // Evict oldest if at capacity
     if (this.cache.size >= this.maxEntries && !this.cache.has(key)) {

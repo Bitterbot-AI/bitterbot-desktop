@@ -6,14 +6,24 @@ import { ErrorCodes, errorShape } from "../protocol/index.js";
 
 function describeMood(s: { dopamine: number; cortisol: number; oxytocin: number }): string {
   const p: string[] = [];
-  if (s.dopamine > 0.6) p.push("energized");
-  else if (s.dopamine > 0.3) p.push("motivated");
-  if (s.cortisol > 0.6) p.push("stressed");
-  else if (s.cortisol > 0.3) p.push("alert");
-  if (s.oxytocin > 0.6) p.push("deeply connected");
-  else if (s.oxytocin > 0.3) p.push("socially engaged");
-  if (p.length === 0)
+  if (s.dopamine > 0.6) {
+    p.push("energized");
+  } else if (s.dopamine > 0.3) {
+    p.push("motivated");
+  }
+  if (s.cortisol > 0.6) {
+    p.push("stressed");
+  } else if (s.cortisol > 0.3) {
+    p.push("alert");
+  }
+  if (s.oxytocin > 0.6) {
+    p.push("deeply connected");
+  } else if (s.oxytocin > 0.3) {
+    p.push("socially engaged");
+  }
+  if (p.length === 0) {
     return s.dopamine < 0.1 && s.cortisol < 0.1 && s.oxytocin < 0.1 ? "dormant" : "calm";
+  }
   return p.join(", ");
 }
 
@@ -21,7 +31,9 @@ async function getManager() {
   const cfg = loadConfig();
   const agentId = resolveDefaultAgentId(cfg);
   const { manager, error } = await getMemorySearchManager({ cfg, agentId });
-  if (!manager) throw new Error(error ?? "memory manager unavailable");
+  if (!manager) {
+    throw new Error(error ?? "memory manager unavailable");
+  }
   return manager;
 }
 
@@ -213,7 +225,9 @@ export const dreamHandlers: GatewayRequestHandlers = {
       for (const row of modeRows) {
         try {
           const modes = JSON.parse(row.modes_used) as string[];
-          for (const m of modes) modeFreq[m] = (modeFreq[m] ?? 0) + 1;
+          for (const m of modes) {
+            modeFreq[m] = (modeFreq[m] ?? 0) + 1;
+          }
         } catch {
           /* skip */
         }
@@ -300,7 +314,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
              ORDER BY updated_at DESC LIMIT 50`,
             )
             .all() as Array<{ reward: number; timestamp: number }>;
-          rewardHistory = recent.reverse();
+          rewardHistory = recent.toReversed();
         } catch {
           /* columns may not exist */
         }
@@ -362,7 +376,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
       const entries = content
         .split(/\n(?=## Dream Cycle)/)
         .filter((e) => e.trim().startsWith("## Dream Cycle"));
-      const recent = entries.slice(-limit).reverse();
+      const recent = entries.slice(-limit).toReversed();
       respond(true, { entries: recent.map((e) => ({ content: e.trim() })) });
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));

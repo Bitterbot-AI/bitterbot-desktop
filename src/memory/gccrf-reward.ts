@@ -307,7 +307,9 @@ export class GCCRFRewardFunction {
     let nearestRegionId: string | null = null;
 
     for (const [regionId, centroid] of regionCentroids) {
-      if (centroid.length === 0) continue;
+      if (centroid.length === 0) {
+        continue;
+      }
       const sim = cosineSimilarity(chunkEmbedding, centroid);
       if (sim > maxSim) {
         maxSim = sim;
@@ -327,7 +329,9 @@ export class GCCRFRewardFunction {
   // Original: positive difference between long-term EMA and current batch error.
 
   private computeLearningProgress(regionId: string | null, currentEta: number): number {
-    if (!regionId) return 0;
+    if (!regionId) {
+      return 0;
+    }
 
     // Get or initialize per-region ETA state
     let state = this.regionEta.get(regionId);
@@ -399,7 +403,7 @@ export class GCCRFRewardFunction {
     const adjustedDistances = distances.map((d) => (d - dMin) / dRange);
 
     // Adaptive bandwidth = median of adjusted distances
-    const sorted = [...adjustedDistances].sort((a, b) => a - b);
+    const sorted = [...adjustedDistances].toSorted((a, b) => a - b);
     const bandwidth = sorted[Math.floor(sorted.length / 2)]! || 0.5;
     const bwSq = bandwidth * bandwidth || 0.25;
 
@@ -480,9 +484,13 @@ export class GCCRFRewardFunction {
 
     let maxSim = 0;
     for (const target of strategicTargets) {
-      if (target.length === 0) continue;
+      if (target.length === 0) {
+        continue;
+      }
       const sim = cosineSimilarity(chunkEmbedding, target);
-      if (sim > maxSim) maxSim = sim;
+      if (sim > maxSim) {
+        maxSim = sim;
+      }
     }
 
     return maxSim;
@@ -576,7 +584,9 @@ export class GCCRFRewardFunction {
       const row = this.db.prepare(`SELECT MIN(created_at) as earliest FROM chunks`).get() as
         | { earliest: number | null }
         | undefined;
-      if (!row?.earliest) return 0;
+      if (!row?.earliest) {
+        return 0;
+      }
       return Math.max(0, (Date.now() - row.earliest) / (24 * 60 * 60_000));
     } catch {
       return 0;
@@ -629,7 +639,7 @@ export class GCCRFRewardFunction {
         return { id: r.id, similarity: emb.length > 0 ? cosineSimilarity(embedding, emb) : 0 };
       })
       .filter((r) => r.similarity > 0)
-      .sort((a, b) => b.similarity - a.similarity)
+      .toSorted((a, b) => b.similarity - a.similarity)
       .slice(0, k);
 
     return withSim;
@@ -659,7 +669,9 @@ export class GCCRFRewardFunction {
         const row = this.db
           .prepare(`SELECT region_id FROM curiosity_surprises WHERE chunk_id = ?`)
           .get(nId) as { region_id: string | null } | undefined;
-        if (row?.region_id) regionIds.add(row.region_id);
+        if (row?.region_id) {
+          regionIds.add(row.region_id);
+        }
       } catch {
         /* table may not exist yet */
       }
@@ -669,7 +681,9 @@ export class GCCRFRewardFunction {
         const row = this.db.prepare(`SELECT semantic_type FROM chunks WHERE id = ?`).get(nId) as
           | { semantic_type: string | null }
           | undefined;
-        if (row?.semantic_type) types.add(row.semantic_type);
+        if (row?.semantic_type) {
+          types.add(row.semantic_type);
+        }
       } catch {
         /* column may not exist */
       }
@@ -686,22 +700,30 @@ export class GCCRFRewardFunction {
           const chunk = this.db.prepare(`SELECT embedding FROM chunks WHERE id = ?`).get(nId) as
             | { embedding: string }
             | undefined;
-          if (!chunk) continue;
+          if (!chunk) {
+            continue;
+          }
           const emb = parseEmbedding(chunk.embedding);
-          if (emb.length === 0) continue;
+          if (emb.length === 0) {
+            continue;
+          }
 
           let bestRegion: string | null = null;
           let bestSim = -1;
           for (const region of regions) {
             const centroid = parseEmbedding(region.centroid);
-            if (centroid.length === 0) continue;
+            if (centroid.length === 0) {
+              continue;
+            }
             const sim = cosineSimilarity(emb, centroid);
             if (sim > bestSim) {
               bestSim = sim;
               bestRegion = region.id;
             }
           }
-          if (bestRegion && bestSim > 0.5) regionIds.add(bestRegion);
+          if (bestRegion && bestSim > 0.5) {
+            regionIds.add(bestRegion);
+          }
         }
       } catch {
         /* curiosity_regions may not exist */
@@ -717,7 +739,9 @@ export class GCCRFRewardFunction {
   // ── Eta Variability (for μ_t) ──
 
   private computeEtaVariability(): number {
-    if (this.recentEtas.length < 3) return 0;
+    if (this.recentEtas.length < 3) {
+      return 0;
+    }
 
     const n = this.recentEtas.length;
     const mean = this.recentEtas.reduce((a, b) => a + b, 0) / n;
@@ -758,7 +782,9 @@ export class GCCRFRewardFunction {
   loadState(): void {
     try {
       const state = loadGCCRFState(this.db);
-      if (!state) return;
+      if (!state) {
+        return;
+      }
 
       const alpha = this.config.etaEmaAlpha;
 

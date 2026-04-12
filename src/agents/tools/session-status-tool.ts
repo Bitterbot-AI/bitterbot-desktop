@@ -467,7 +467,9 @@ export function createSessionStatusTool(opts?: {
         try {
           const cache = getGlobalToolCache();
           const stats = cache.getStats();
-          if (stats.hits + stats.misses === 0) return "";
+          if (stats.hits + stats.misses === 0) {
+            return "";
+          }
           return (
             `\n🗄️ Tool Cache: ${stats.size} entries, ` +
             `${stats.hits} hits / ${stats.misses} misses ` +

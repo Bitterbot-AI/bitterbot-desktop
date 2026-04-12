@@ -526,10 +526,15 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
 
     // Developmental stage
     let stage: string;
-    if (maturity < 0.15) stage = "Nascent";
-    else if (maturity < 0.5) stage = "Developing";
-    else if (maturity < 0.85) stage = "Maturing";
-    else stage = "Mature";
+    if (maturity < 0.15) {
+      stage = "Nascent";
+    } else if (maturity < 0.5) {
+      stage = "Developing";
+    } else if (maturity < 0.85) {
+      stage = "Maturing";
+    } else {
+      stage = "Mature";
+    }
 
     results.push(info(`GCCRF maturity: ${maturity.toFixed(3)} (${stage})`));
     results.push(info(`Current alpha: ${alpha.toFixed(3)} (range: ${alphaStart} to ${alphaEnd})`));
@@ -579,7 +584,9 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
 // ── Section Renderer ──
 
 function renderSection(title: string, results: DoctorCheckResult[]): void {
-  if (results.length === 0) return;
+  if (results.length === 0) {
+    return;
+  }
   const lines = results.map(formatLevel);
   note(lines.join("\n"), title);
 }

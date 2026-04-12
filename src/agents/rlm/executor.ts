@@ -55,7 +55,9 @@ export class RLMExecutor {
   getCachedResult(query: string, scope: string): string | null {
     const hash = this.hashQuery(query, scope);
     const cached = this.cache.get(hash);
-    if (!cached) return null;
+    if (!cached) {
+      return null;
+    }
     if (Date.now() - cached.timestamp > this.cacheTtlMs) {
       this.cache.delete(hash);
       return null;
@@ -68,8 +70,12 @@ export class RLMExecutor {
     this.cache.set(hash, { answer, timestamp: Date.now(), queryHash: hash });
     // Cap cache size
     if (this.cache.size > 50) {
-      const oldest = [...this.cache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
-      if (oldest) this.cache.delete(oldest[0]);
+      const oldest = [...this.cache.entries()].toSorted(
+        (a, b) => a[1].timestamp - b[1].timestamp,
+      )[0];
+      if (oldest) {
+        this.cache.delete(oldest[0]);
+      }
     }
   }
 

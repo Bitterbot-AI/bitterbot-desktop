@@ -51,7 +51,7 @@ describe("browser chrome profile decoration", () => {
     const userDataDir = await createUserDataDir();
     decorateBitterbotProfile(userDataDir, { color: DEFAULT_BITTERBOT_BROWSER_COLOR });
 
-    const expectedSignedArgb = ((0xff << 24) | 0xff4500) >> 0;
+    const expectedSignedArgb = ((0xff << 24) | 0x8b5cf6) >> 0;
 
     const localState = await readJson(path.join(userDataDir, "Local State"));
     const profile = localState.profile as Record<string, unknown>;

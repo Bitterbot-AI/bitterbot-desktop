@@ -149,8 +149,12 @@ export function inferSemanticType(
   source: MemorySource,
   origin: CrystalOrigin,
 ): CrystalSemanticType {
-  if (source === "skills" || origin === "skill") return "skill";
-  if (origin === "dream") return "insight";
+  if (source === "skills" || origin === "skill") {
+    return "skill";
+  }
+  if (origin === "dream") {
+    return "insight";
+  }
 
   const lower = text.toLowerCase();
 
@@ -240,9 +244,15 @@ function mapOrigin(row: Record<string, unknown>): CrystalOrigin {
     return origin;
   }
   // Map legacy origins
-  if (origin === "dream_synthesis") return "dream";
-  if (origin === "crystallized") return "skill";
-  if (origin === "curiosity_probe") return "inferred";
+  if (origin === "dream_synthesis") {
+    return "dream";
+  }
+  if (origin === "crystallized") {
+    return "skill";
+  }
+  if (origin === "curiosity_probe") {
+    return "inferred";
+  }
   return "indexed";
 }
 
@@ -266,14 +276,24 @@ function mapLifecycle(row: Record<string, unknown>): CrystalLifecycle {
   const state = (row.lifecycle_state as string) ?? "active";
   const memoryType = (row.memory_type as string) ?? "plaintext";
 
-  if (memoryType === "skill") return "frozen";
-  if (state === "forgotten") return "expired";
-  if (state === "archived") return "archived";
-  if (state === "consolidating") return "consolidated";
+  if (memoryType === "skill") {
+    return "frozen";
+  }
+  if (state === "forgotten") {
+    return "expired";
+  }
+  if (state === "archived") {
+    return "archived";
+  }
+  if (state === "consolidating") {
+    return "consolidated";
+  }
 
   // 'active' — check importance to differentiate generated vs activated
   const importance = (row.importance_score as number) ?? 1.0;
-  if (importance >= 0.8) return "activated";
+  if (importance >= 0.8) {
+    return "activated";
+  }
   return "generated";
 }
 

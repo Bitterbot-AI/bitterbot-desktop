@@ -148,7 +148,9 @@ describe("Management Node Integration", () => {
     try {
       expect(() => ManagementKeyAuth.init(trustList)).toThrow(ManagementKeyAuthError);
     } finally {
-      if (saved) process.env.BITTERBOT_MANAGEMENT_KEY = saved;
+      if (saved) {
+        process.env.BITTERBOT_MANAGEMENT_KEY = saved;
+      }
     }
 
     // Service without auth refuses to start

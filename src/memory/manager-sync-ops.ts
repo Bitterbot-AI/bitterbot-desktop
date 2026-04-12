@@ -772,7 +772,9 @@ class MemoryManagerSyncOps {
         } catch {}
         // Check for <skillName>/SKILL.md subdirectories
         for (const entry of entries) {
-          if (!entry.isDirectory()) continue;
+          if (!entry.isDirectory()) {
+            continue;
+          }
           const subSkill = path.join(skillRoot, entry.name, "SKILL.md");
           try {
             const stat = await fs.stat(subSkill);

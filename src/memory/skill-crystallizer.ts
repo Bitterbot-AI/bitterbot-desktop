@@ -118,7 +118,9 @@ export class SkillCrystallizer {
         )
         .get(skillCrystalId) as { id: string } | undefined;
 
-      if (existing) return true;
+      if (existing) {
+        return true;
+      }
 
       // Check if a crystallized version already exists from this parent
       if (toolName) {
@@ -132,7 +134,9 @@ export class SkillCrystallizer {
           )
           .get(skillCrystalId) as { id: string } | undefined;
 
-        if (byParent) return true;
+        if (byParent) {
+          return true;
+        }
       }
 
       return false;

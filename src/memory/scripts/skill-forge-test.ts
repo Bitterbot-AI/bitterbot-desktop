@@ -441,10 +441,7 @@ Key improvements over base workflow:
   let ingestResult: { ok: boolean; action?: string; reason?: string; crystalId?: string };
   try {
     ingestResult = bridge.ingestNetworkSkill(peerSkillEnvelope);
-    assert(
-      ingestResult.ok === true,
-      `Peer skill ingested successfully (action: ${ingestResult.action})`,
-    );
+    assert(ingestResult.ok, `Peer skill ingested successfully (action: ${ingestResult.action})`);
 
     if (ingestResult.ok && ingestResult.crystalId) {
       const imported = db
@@ -460,7 +457,7 @@ Key improvements over base workflow:
   // Test duplicate rejection
   try {
     const dupeResult = bridge.ingestNetworkSkill(peerSkillEnvelope);
-    assert(dupeResult.ok === false, "Duplicate skill rejected");
+    assert(!dupeResult.ok, "Duplicate skill rejected");
   } catch (err) {
     // Some implementations throw on duplicate — that's also acceptable
     assert(true, "Duplicate skill rejected (via exception)");

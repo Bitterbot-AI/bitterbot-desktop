@@ -178,9 +178,15 @@ export class ManagementNodeService {
   }
 
   stop(): void {
-    if (this.censusInterval) clearInterval(this.censusInterval);
-    if (this.anomalyInterval) clearInterval(this.anomalyInterval);
-    if (this.economicInterval) clearInterval(this.economicInterval);
+    if (this.censusInterval) {
+      clearInterval(this.censusInterval);
+    }
+    if (this.anomalyInterval) {
+      clearInterval(this.anomalyInterval);
+    }
+    if (this.economicInterval) {
+      clearInterval(this.economicInterval);
+    }
     this.censusInterval = null;
     this.anomalyInterval = null;
     this.economicInterval = null;
@@ -191,7 +197,9 @@ export class ManagementNodeService {
   async runCensus(): Promise<NetworkCensus | null> {
     try {
       const result = await (this.bridge as any).sendCommand("get_network_census", {});
-      if (!result?.ok) return null;
+      if (!result?.ok) {
+        return null;
+      }
 
       const census: NetworkCensus = {
         totalPeersSeen: result.total_peers_seen ?? 0,
@@ -234,7 +242,9 @@ export class ManagementNodeService {
   async getAnomalyAlerts(): Promise<AnomalyAlert[]> {
     try {
       const result = await (this.bridge as any).sendCommand("get_anomaly_alerts", {});
-      if (!result?.ok) return this.anomalyHistory;
+      if (!result?.ok) {
+        return this.anomalyHistory;
+      }
 
       const alerts = (result.alerts ?? []).map((a: any) => ({
         alertType: a.alert_type,
@@ -324,7 +334,9 @@ export class ManagementNodeService {
   }): void {
     try {
       const data = event.data as Record<string, unknown> | undefined;
-      if (!data) return;
+      if (!data) {
+        return;
+      }
 
       // Track marketplace events from peer telemetry
       if (
@@ -406,7 +418,9 @@ export class ManagementNodeService {
     author_pubkey?: string;
   }): void {
     const data = event.data as { peer_pubkey?: string; reason?: string } | undefined;
-    if (!data?.peer_pubkey) return;
+    if (!data?.peer_pubkey) {
+      return;
+    }
 
     // Verify the ban came from a management node (genesis trust list check)
     const authorPubkey = (event as any).author_pubkey;
@@ -446,7 +460,9 @@ export class ManagementNodeService {
     },
     claimerPeerId: string,
   ): Promise<void> {
-    if (!claim.bountyId || !claim.rewardUsdc || claim.rewardUsdc <= 0) return;
+    if (!claim.bountyId || !claim.rewardUsdc || claim.rewardUsdc <= 0) {
+      return;
+    }
 
     // 1. Check that this bounty exists and hasn't been fulfilled yet
     try {
@@ -526,7 +542,9 @@ export class ManagementNodeService {
 
   /** Capture economic snapshot from local MarketplaceEconomics. */
   private captureEconomicSnapshot(): void {
-    if (!this.economics) return;
+    if (!this.economics) {
+      return;
+    }
     try {
       const summary = this.economics.getEconomicSummary();
       this.db

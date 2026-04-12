@@ -221,7 +221,9 @@ async function run() {
   console.log(`  Data: ${dataFile}`);
   console.log(`  Model: ${model}`);
   console.log(`  Variants: ${variantsToRun.map((v) => v.id).join(", ")}`);
-  if (limit) console.log(`  Limit: ${limit} questions`);
+  if (limit) {
+    console.log(`  Limit: ${limit} questions`);
+  }
   console.log("");
 
   const dataset = loadDataset(dataFile);
@@ -302,7 +304,9 @@ function summarizeDreamMetrics(metrics: QuestionMetrics[]): Record<string, unkno
 }
 
 function summarizeMemoryMetrics(metrics: QuestionMetrics[]): Record<string, unknown> {
-  if (metrics.length === 0) return {};
+  if (metrics.length === 0) {
+    return {};
+  }
 
   const avgChunks = metrics.reduce((s, m) => s + m.memoryMetrics.activeChunks, 0) / metrics.length;
   const avgInsights =

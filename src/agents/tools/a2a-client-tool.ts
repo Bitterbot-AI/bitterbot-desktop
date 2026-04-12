@@ -32,8 +32,12 @@ const A2aClientSchema = Type.Object({
 
 export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg?.a2a?.enabled) return null;
-  if (cfg.a2a.marketplace?.client === undefined && !cfg.a2a.marketplace?.enabled) return null;
+  if (!cfg?.a2a?.enabled) {
+    return null;
+  }
+  if (cfg.a2a.marketplace?.client === undefined && !cfg.a2a.marketplace?.enabled) {
+    return null;
+  }
 
   const clientConfig = cfg.a2a.marketplace?.client;
   let client: A2aClient | null = null;

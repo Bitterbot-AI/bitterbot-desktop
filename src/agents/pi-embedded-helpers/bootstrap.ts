@@ -97,10 +97,14 @@ const MEMORY_MD_BUDGET_MAP: Array<{ minContextK: number; budgetChars: number }> 
 ];
 
 export function resolveMemoryMdBudgetChars(contextWindowTokens?: number): number {
-  if (!contextWindowTokens || contextWindowTokens <= 0) return 8000;
+  if (!contextWindowTokens || contextWindowTokens <= 0) {
+    return 8000;
+  }
   const contextK = contextWindowTokens / 1000;
   for (const tier of MEMORY_MD_BUDGET_MAP) {
-    if (contextK >= tier.minContextK) return tier.budgetChars;
+    if (contextK >= tier.minContextK) {
+      return tier.budgetChars;
+    }
   }
   return 3200; // minimum
 }

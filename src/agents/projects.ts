@@ -135,11 +135,17 @@ export async function updateProject(
 ): Promise<Project | undefined> {
   const configs = readProjectsFromConfig();
   const idx = configs.findIndex((p) => p.id === projectId);
-  if (idx < 0) return undefined;
+  if (idx < 0) {
+    return undefined;
+  }
 
   const existing = toProject(configs[idx]);
-  if (updates.name !== undefined) existing.name = updates.name;
-  if (updates.systemPrompt !== undefined) existing.systemPrompt = updates.systemPrompt;
+  if (updates.name !== undefined) {
+    existing.name = updates.name;
+  }
+  if (updates.systemPrompt !== undefined) {
+    existing.systemPrompt = updates.systemPrompt;
+  }
   existing.updatedAt = Date.now();
 
   configs[idx] = toConfig(existing);
@@ -150,7 +156,9 @@ export async function updateProject(
 export async function deleteProject(projectId: string): Promise<boolean> {
   const configs = readProjectsFromConfig();
   const idx = configs.findIndex((p) => p.id === projectId);
-  if (idx < 0) return false;
+  if (idx < 0) {
+    return false;
+  }
 
   configs.splice(idx, 1);
   await writeProjectsToConfig(configs);
@@ -164,7 +172,9 @@ export async function addProjectFile(
 ): Promise<ProjectKBFile | undefined> {
   const configs = readProjectsFromConfig();
   const idx = configs.findIndex((p) => p.id === projectId);
-  if (idx < 0) return undefined;
+  if (idx < 0) {
+    return undefined;
+  }
 
   const kbDir = resolveProjectKnowledgeDir(projectId);
   await ensureDir(kbDir);
@@ -200,11 +210,15 @@ export function listProjectFiles(projectId: string): ProjectKBFile[] {
 export async function deleteProjectFile(projectId: string, fileId: string): Promise<boolean> {
   const configs = readProjectsFromConfig();
   const idx = configs.findIndex((p) => p.id === projectId);
-  if (idx < 0) return false;
+  if (idx < 0) {
+    return false;
+  }
 
   const existing = toProject(configs[idx]);
   const fileIdx = existing.knowledgeBase.files.findIndex((f) => f.id === fileId);
-  if (fileIdx < 0) return false;
+  if (fileIdx < 0) {
+    return false;
+  }
 
   const [removed] = existing.knowledgeBase.files.splice(fileIdx, 1);
   existing.updatedAt = Date.now();

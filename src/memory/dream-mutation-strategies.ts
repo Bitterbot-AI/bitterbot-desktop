@@ -17,17 +17,25 @@ export function selectStrategy(
   if (metrics && metrics.totalExecutions >= 3) {
     // High error rate → fix the errors
     const topErrorCount = Object.values(metrics.errorBreakdown).reduce((a, b) => a + b, 0);
-    if (topErrorCount >= 2) return "error_driven";
+    if (topErrorCount >= 2) {
+      return "error_driven";
+    }
 
     // High success rate → find edge cases
-    if (metrics.successRate > 0.9) return "adversarial";
+    if (metrics.successRate > 0.9) {
+      return "adversarial";
+    }
   }
 
   // Multiple related skills in the same category → combine them
-  if (relatedSkillCount != null && relatedSkillCount >= 2) return "compositional";
+  if (relatedSkillCount != null && relatedSkillCount >= 2) {
+    return "compositional";
+  }
 
   // Has numeric parameters → try tuning them
-  if (hasNumericParameters(skill.text)) return "parametric";
+  if (hasNumericParameters(skill.text)) {
+    return "parametric";
+  }
 
   return "generic";
 }
@@ -76,7 +84,7 @@ function buildGenericPrompt(skillText: string): string {
 function buildErrorDrivenPrompt(skillText: string, context: StrategyContext): string {
   const errors = context.metrics?.errorBreakdown ?? {};
   const topErrors = Object.entries(errors)
-    .sort(([, a], [, b]) => b - a)
+    .toSorted(([, a], [, b]) => b - a)
     .slice(0, 3);
   const errorSummary =
     topErrors.length > 0

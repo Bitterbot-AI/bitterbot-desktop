@@ -69,7 +69,9 @@ export function captureNearbyWeakChunks(
   const cfg = { ...DEFAULT_STC_CONFIG, ...config };
   const result: CaptureResult = { strongChunkId, capturedChunkIds: [], totalCaptured: 0 };
 
-  if (!cfg.enabled) return result;
+  if (!cfg.enabled) {
+    return result;
+  }
 
   try {
     // Get the strong chunk
@@ -90,10 +92,14 @@ export function captureNearbyWeakChunks(
         }
       | undefined;
 
-    if (!strong || strong.importance_score < cfg.strongThreshold) return result;
+    if (!strong || strong.importance_score < cfg.strongThreshold) {
+      return result;
+    }
 
     const strongEmb = parseEmbedding(strong.embedding);
-    if (strongEmb.length === 0) return result;
+    if (strongEmb.length === 0) {
+      return result;
+    }
 
     const windowStart = strong.created_at - cfg.windowBeforeMs;
     const windowEnd = strong.created_at + cfg.windowAfterMs;
@@ -119,7 +125,9 @@ export function captureNearbyWeakChunks(
 
     for (const candidate of candidates) {
       const candidateEmb = parseEmbedding(candidate.embedding);
-      if (candidateEmb.length === 0) continue;
+      if (candidateEmb.length === 0) {
+        continue;
+      }
 
       const similarity = cosineSimilarity(strongEmb, candidateEmb);
       if (similarity >= cfg.minSimilarity) {

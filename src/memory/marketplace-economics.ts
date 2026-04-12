@@ -234,7 +234,9 @@ export class MarketplaceEconomics {
             now,
           );
 
-        if (pricing.listable) listedCount++;
+        if (pricing.listable) {
+          listedCount++;
+        }
       }
       this.db.exec("COMMIT");
     } catch (err) {
@@ -509,7 +511,9 @@ export class MarketplaceEconomics {
 
   /** Count similar skills on the network for scarcity pricing. */
   private countSimilarSkills(category: string | null): number {
-    if (!category) return 5; // Default fallback
+    if (!category) {
+      return 5;
+    } // Default fallback
     try {
       const row = this.db
         .prepare(`
@@ -576,7 +580,9 @@ export class MarketplaceEconomics {
     amountUsdc: number;
     role: string;
   }): void {
-    if (params.amountUsdc < MarketplaceEconomics.DUST_THRESHOLD_USDC) return;
+    if (params.amountUsdc < MarketplaceEconomics.DUST_THRESHOLD_USDC) {
+      return;
+    }
     const now = Date.now();
     this.db
       .prepare(`

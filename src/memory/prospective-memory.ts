@@ -67,7 +67,9 @@ export class ProspectiveMemoryEngine {
     sourceSession?: string;
     priority?: number;
   }): ProspectiveMemory | null {
-    if (!this.config.enabled) return null;
+    if (!this.config.enabled) {
+      return null;
+    }
 
     const activeCount = this.getActiveCount();
     if (activeCount >= this.config.maxActive) {
@@ -128,7 +130,9 @@ export class ProspectiveMemoryEngine {
    * 2. Keyword: substring match of trigger_condition in message text
    */
   checkTriggers(params: { messageText: string; messageEmbedding?: number[] }): ProspectiveMemory[] {
-    if (!this.config.enabled) return [];
+    if (!this.config.enabled) {
+      return [];
+    }
 
     const now = Date.now();
     const triggered: ProspectiveMemory[] = [];

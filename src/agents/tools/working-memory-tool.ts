@@ -47,12 +47,16 @@ function resolveWorkingMemoryToolContext(options: {
   agentSessionKey?: string;
 }) {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
   const agentId = resolveSessionAgentId({
     sessionKey: options.agentSessionKey,
     config: cfg,
   });
-  if (!resolveMemorySearchConfig(cfg, agentId)) return null;
+  if (!resolveMemorySearchConfig(cfg, agentId)) {
+    return null;
+  }
   return { cfg, agentId };
 }
 
@@ -61,7 +65,9 @@ export function createWorkingMemoryNoteTool(options: {
   agentSessionKey?: string;
 }): AnyAgentTool | null {
   const ctx = resolveWorkingMemoryToolContext(options);
-  if (!ctx) return null;
+  if (!ctx) {
+    return null;
+  }
   const { cfg, agentId } = ctx;
 
   return {

@@ -78,7 +78,7 @@ export function buildAgentCard(params: {
       const price = params.skillPrices.get(skill.id);
       if (price !== undefined && price > 0) {
         (skill as A2aSkill & { extensions?: Record<string, unknown> }).extensions = {
-          ...((skill as A2aSkill & { extensions?: Record<string, unknown> }).extensions ?? {}),
+          ...(skill as A2aSkill & { extensions?: Record<string, unknown> }).extensions,
           pricing: {
             priceUsdc: price,
             chain: "base",

@@ -118,7 +118,9 @@ export class SkillNetworkBridge {
     // Governance check: only publish shared or public crystals
     let governance: Record<string, unknown> = {};
     try {
-      if (row.governance_json) governance = JSON.parse(row.governance_json);
+      if (row.governance_json) {
+        governance = JSON.parse(row.governance_json);
+      }
     } catch {}
 
     const scope = governance.accessScope;
@@ -457,7 +459,7 @@ export class SkillNetworkBridge {
     }
 
     // Always attempt publish (priority upload for bounty matches)
-    if (this.config.autoPublishOnCrystallize !== false) {
+    if (this.config.autoPublishOnCrystallize) {
       this.publishCrystalSkill(crystalId).catch((err) => {
         log.warn(`onSkillCrystallized publish failed: ${String(err)}`);
       });
@@ -472,14 +474,20 @@ export class SkillNetworkBridge {
     // 1. SkillVerifier must pass
     if (this.skillVerifier) {
       const result = this.skillVerifier.verify(text, null);
-      if (!result.passed) return false;
+      if (!result.passed) {
+        return false;
+      }
     }
 
     // 2. Execution metrics: 3+ runs, >70% success
     if (this.executionTracker) {
       const metrics = this.executionTracker.getSkillMetrics(crystalId);
-      if (metrics.totalExecutions < 3) return false;
-      if (metrics.successRate < 0.7) return false;
+      if (metrics.totalExecutions < 3) {
+        return false;
+      }
+      if (metrics.successRate < 0.7) {
+        return false;
+      }
     }
 
     return true;
@@ -522,7 +530,9 @@ export class SkillNetworkBridge {
     poster_peer_id?: string;
     poster_wallet_address?: string;
   }): void {
-    if (!this.curiosityEngine) return;
+    if (!this.curiosityEngine) {
+      return;
+    }
     const validTypes = ["knowledge_gap", "contradiction", "stale_region", "frontier"];
     const targetType = (
       validTypes.includes(bounty.target_type) ? bounty.target_type : "knowledge_gap"
@@ -575,8 +585,12 @@ export class SkillNetworkBridge {
     compositeReward: number;
     noveltyScore: number;
   }): Promise<void> {
-    if (!this.orchestratorBridge?.publishTelemetry) return;
-    if (!this.curiosityEngine) return;
+    if (!this.orchestratorBridge?.publishTelemetry) {
+      return;
+    }
+    if (!this.curiosityEngine) {
+      return;
+    }
 
     // Look up region label
     let regionLabel = "unknown";
@@ -584,7 +598,9 @@ export class SkillNetworkBridge {
       const row = this.db
         .prepare(`SELECT label FROM curiosity_regions WHERE id = ?`)
         .get(assessment.regionId) as { label: string } | undefined;
-      if (row) regionLabel = row.label;
+      if (row) {
+        regionLabel = row.label;
+      }
     }
 
     try {
@@ -611,7 +627,9 @@ export class SkillNetworkBridge {
     domain_hint?: string;
     author_peer_id: string;
   }): Promise<void> {
-    if (!this.curiosityEngine || !this.orchestratorBridge) return;
+    if (!this.curiosityEngine || !this.orchestratorBridge) {
+      return;
+    }
 
     // Use CuriosityEngine to match query against local knowledge regions
     const matches = this.curiosityEngine.matchQuery(event.query);
@@ -641,10 +659,16 @@ export class SkillNetworkBridge {
       // Governance check
       let gov: Record<string, unknown> = {};
       try {
-        if (crystal.governance_json) gov = JSON.parse(crystal.governance_json);
+        if (crystal.governance_json) {
+          gov = JSON.parse(crystal.governance_json);
+        }
       } catch {}
-      if (gov.accessScope !== "shared" && gov.accessScope !== "public") continue;
-      if (gov.sensitivity === "confidential") continue;
+      if (gov.accessScope !== "shared" && gov.accessScope !== "public") {
+        continue;
+      }
+      if (gov.sensitivity === "confidential") {
+        continue;
+      }
 
       const skillMd = this.generateSkillMd(crystal.text, crystal.path, crystal.id);
       const skillMdBase64 = Buffer.from(skillMd, "utf-8").toString("base64");
@@ -664,7 +688,9 @@ export class SkillNetworkBridge {
    * Called during the curiosity cycle when high-priority targets have no local resolution.
    */
   async emitNetworkQuery(description: string, domainHint?: string): Promise<void> {
-    if (!this.orchestratorBridge?.publishQuery) return;
+    if (!this.orchestratorBridge?.publishQuery) {
+      return;
+    }
 
     const queryId = crypto.randomUUID();
     try {
@@ -718,7 +744,9 @@ export class SkillNetworkBridge {
         }
       | undefined;
 
-    if (!row) return true;
+    if (!row) {
+      return true;
+    }
 
     // Collect all ancestor IDs from both provenance sources
     const ancestorIds = new Set<string>();
@@ -727,7 +755,9 @@ export class SkillNetworkBridge {
     if (row.provenance_chain) {
       try {
         const chain: string[] = JSON.parse(row.provenance_chain);
-        for (const id of chain) ancestorIds.add(id);
+        for (const id of chain) {
+          ancestorIds.add(id);
+        }
       } catch {
         log.debug(`invalid provenance_chain JSON for crystal ${crystalId}`);
       }
@@ -742,7 +772,9 @@ export class SkillNetworkBridge {
         }>;
         for (const node of dag) {
           if (node.parentIds) {
-            for (const id of node.parentIds) ancestorIds.add(id);
+            for (const id of node.parentIds) {
+              ancestorIds.add(id);
+            }
           }
         }
       } catch {
@@ -750,7 +782,9 @@ export class SkillNetworkBridge {
       }
     }
 
-    if (ancestorIds.size === 0) return true;
+    if (ancestorIds.size === 0) {
+      return true;
+    }
 
     // Check each ancestor for confidential sensitivity
     for (const ancestorId of ancestorIds) {
@@ -761,7 +795,9 @@ export class SkillNetworkBridge {
       if (ancestor?.governance_json) {
         try {
           const gov = JSON.parse(ancestor.governance_json);
-          if (gov.sensitivity === "confidential") return false;
+          if (gov.sensitivity === "confidential") {
+            return false;
+          }
         } catch {
           log.debug(`invalid governance_json for ancestor ${ancestorId}`);
         }

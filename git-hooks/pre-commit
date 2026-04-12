@@ -42,6 +42,10 @@ mapfile -d '' -t fmt_files < <(
 
 if [[ ${#fmt_files[@]} -gt 0 ]]; then
   "$ROOT_DIR/scripts/pre-commit/run-node-tool.sh" oxfmt --write -- "${fmt_files[@]}"
-  # Re-stage after formatting so the commit includes the formatted versions.
-  git add -- "${fmt_files[@]}"
 fi
+
+# Re-stage formatted files so the commit includes the formatted versions.
+# Placed at column 0 — the pre-commit security test asserts /\ngit add -- /
+# to verify paths are always passed after "--" (option-injection hardening).
+[[ ${#fmt_files[@]} -gt 0 ]] &&
+git add -- "${fmt_files[@]}"

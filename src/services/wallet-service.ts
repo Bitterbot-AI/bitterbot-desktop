@@ -176,7 +176,9 @@ export function createWalletService(config: WalletConfig): WalletService {
         history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
       } catch {}
       history.push(record);
-      if (history.length > 500) history = history.slice(-500);
+      if (history.length > 500) {
+        history = history.slice(-500);
+      }
       await fs.writeFile(historyPath, JSON.stringify(history, null, 2), "utf-8");
     } finally {
       await release();
@@ -184,11 +186,15 @@ export function createWalletService(config: WalletConfig): WalletService {
   }
 
   function formatBalance(raw: bigint, decimals: number): string {
-    if (raw < 0n) return "-" + formatBalance(-raw, decimals);
+    if (raw < 0n) {
+      return "-" + formatBalance(-raw, decimals);
+    }
     const divisor = 10n ** BigInt(decimals);
     const whole = raw / divisor;
     const frac = raw % divisor;
-    if (frac === 0n) return whole.toString();
+    if (frac === 0n) {
+      return whole.toString();
+    }
     const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
     return `${whole}.${fracStr}`;
   }
@@ -235,6 +241,7 @@ export function createWalletService(config: WalletConfig): WalletService {
       } catch (err) {
         throw new Error(
           `Failed to get balance for ${tokenSymbol}: ${err instanceof Error ? err.message : String(err)}`,
+          { cause: err },
         );
       }
     },
@@ -269,7 +276,10 @@ export function createWalletService(config: WalletConfig): WalletService {
           status: "pending",
         };
       } catch (err) {
-        throw new Error(`Failed to send USDC: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(
+          `Failed to send USDC: ${err instanceof Error ? err.message : String(err)}`,
+          { cause: err },
+        );
       }
     },
 

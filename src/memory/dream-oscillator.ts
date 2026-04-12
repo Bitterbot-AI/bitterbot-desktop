@@ -135,7 +135,9 @@ export function simulateFSHO(salienceValues: number[], config?: Partial<FSHOConf
       // Kuramoto coupling
       let coupling = 0;
       for (let j = 0; j < N; j++) {
-        if (i !== j) coupling += Math.sin(theta[j]! - theta[i]!);
+        if (i !== j) {
+          coupling += Math.sin(theta[j]! - theta[i]!);
+        }
       }
       coupling *= cfg.K / N;
 
@@ -145,7 +147,9 @@ export function simulateFSHO(salienceValues: number[], config?: Partial<FSHOConf
 
       // Phase update
       theta[i] = (theta[i]! + v[i]! * cfg.dt) % (2 * Math.PI);
-      if (theta[i]! < 0) theta[i]! += 2 * Math.PI;
+      if (theta[i]! < 0) {
+        theta[i]! += 2 * Math.PI;
+      }
     }
   }
 
@@ -183,8 +187,12 @@ export function fshoModeAdjustments(
     adj.simulation = 0.1;
     // Hormonal modulation at criticality
     if (hormones) {
-      if (hormones.dopamine > 0.5) adj.mutation = (adj.mutation ?? 0) + 0.05;
-      if (hormones.oxytocin > 0.5) adj.simulation = (adj.simulation ?? 0) + 0.05;
+      if (hormones.dopamine > 0.5) {
+        adj.mutation = (adj.mutation ?? 0) + 0.05;
+      }
+      if (hormones.oxytocin > 0.5) {
+        adj.simulation = (adj.simulation ?? 0) + 0.05;
+      }
     }
   } else {
     // Low coherence: explore and discover

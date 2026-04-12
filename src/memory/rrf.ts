@@ -36,7 +36,9 @@ export function rrfFuse<T = Record<string, unknown>>(
   lists: Array<{ name: string; entries: Array<RankedEntry<T>> }>,
   k = 60,
 ): Array<FusedEntry<T>> {
-  if (lists.length === 0) return [];
+  if (lists.length === 0) {
+    return [];
+  }
 
   const scores = new Map<
     string,
@@ -68,5 +70,5 @@ export function rrfFuse<T = Record<string, unknown>>(
       sourceRanks: data.sourceRanks,
       payload: data.payload,
     }))
-    .sort((a, b) => b.score - a.score);
+    .toSorted((a, b) => b.score - a.score);
 }

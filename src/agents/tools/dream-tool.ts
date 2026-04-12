@@ -20,13 +20,19 @@ const DreamStatusSchema = Type.Object({});
 
 function resolveDreamToolContext(options: { config?: BitterbotConfig; agentSessionKey?: string }) {
   const cfg = options.config;
-  if (!cfg) return null;
-  if (!cfg.memory?.dream?.enabled) return null;
+  if (!cfg) {
+    return null;
+  }
+  if (!cfg.memory?.dream?.enabled) {
+    return null;
+  }
   const agentId = resolveSessionAgentId({
     sessionKey: options.agentSessionKey,
     config: cfg,
   });
-  if (!resolveMemorySearchConfig(cfg, agentId)) return null;
+  if (!resolveMemorySearchConfig(cfg, agentId)) {
+    return null;
+  }
   return { cfg, agentId };
 }
 
@@ -35,7 +41,9 @@ export function createDreamSearchTool(options: {
   agentSessionKey?: string;
 }): AnyAgentTool | null {
   const ctx = resolveDreamToolContext(options);
-  if (!ctx) return null;
+  if (!ctx) {
+    return null;
+  }
   const { cfg, agentId } = ctx;
 
   return {
@@ -73,7 +81,9 @@ export function createDreamStatusTool(options: {
   agentSessionKey?: string;
 }): AnyAgentTool | null {
   const ctx = resolveDreamToolContext(options);
-  if (!ctx) return null;
+  if (!ctx) {
+    return null;
+  }
   const { cfg, agentId } = ctx;
 
   return {

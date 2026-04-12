@@ -57,7 +57,9 @@ export function computeRecencyBoost(
   config: RecencyConfig,
   nowMs?: number,
 ): number {
-  if (!config.enabled || config.alpha <= 0) return 1.0;
+  if (!config.enabled || config.alpha <= 0) {
+    return 1.0;
+  }
 
   const now = nowMs ?? Date.now();
   // Use the most recent timestamp as the reference point
@@ -65,7 +67,9 @@ export function computeRecencyBoost(
   const deltaMs = Math.max(0, now - referenceTime);
 
   const halfLifeMs = config.halfLifeHours * MS_PER_HOUR;
-  if (halfLifeMs <= 0) return 1.0;
+  if (halfLifeMs <= 0) {
+    return 1.0;
+  }
 
   const lambda = Math.LN2 / halfLifeMs;
   const boost = config.alpha * Math.exp(-lambda * deltaMs);

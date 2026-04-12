@@ -30,7 +30,9 @@ function chunkText(text: string, maxTokens: number, overlapTokens: number): stri
   while (offset < text.length) {
     const end = Math.min(offset + charLimit, text.length);
     chunks.push(text.slice(offset, end));
-    if (end >= text.length) break;
+    if (end >= text.length) {
+      break;
+    }
     offset = end - overlapChars;
   }
   return chunks;
@@ -211,7 +213,9 @@ export async function runSkillBootstrap(params: {
         /* try next */
       }
     }
-    if (!content?.trim()) continue;
+    if (!content?.trim()) {
+      continue;
+    }
 
     // Deterministic UUID from folder name for idempotent re-runs
     const stableId = crypto

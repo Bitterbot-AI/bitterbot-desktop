@@ -92,10 +92,16 @@ export class PromptOptimizationExperiment {
         const metrics = this.executionTracker.getSkillMetrics(row.id);
 
         // Must have enough executions for meaningful data
-        if (metrics.totalExecutions < MIN_EXECUTIONS) continue;
+        if (metrics.totalExecutions < MIN_EXECUTIONS) {
+          continue;
+        }
         // Must have room for improvement (not too broken, not too good)
-        if (metrics.successRate < MIN_SUCCESS_RATE) continue;
-        if (metrics.successRate > MAX_SUCCESS_RATE) continue;
+        if (metrics.successRate < MIN_SUCCESS_RATE) {
+          continue;
+        }
+        if (metrics.successRate > MAX_SUCCESS_RATE) {
+          continue;
+        }
 
         const opportunityScore = (1 - metrics.successRate) * row.importance_score;
 
@@ -117,7 +123,9 @@ export class PromptOptimizationExperiment {
       // Sort by opportunity (highest first), then prefer un-dreamed skills
       candidates.sort((a, b) => {
         const scoreDiff = b.opportunityScore - a.opportunityScore;
-        if (Math.abs(scoreDiff) > 0.01) return scoreDiff;
+        if (Math.abs(scoreDiff) > 0.01) {
+          return scoreDiff;
+        }
         // Prefer skills that haven't been dreamed recently
         const aAge = a.lastDreamedAt ?? 0;
         const bAge = b.lastDreamedAt ?? 0;
@@ -195,7 +203,9 @@ export class PromptOptimizationExperiment {
   // ── Internals ──────────────────────────────────────────────────────────
 
   private countRelatedSkills(skillId: string, category: string | null): number {
-    if (!category) return 0;
+    if (!category) {
+      return 0;
+    }
     try {
       const row = this.db
         .prepare(
@@ -217,7 +227,9 @@ export class PromptOptimizationExperiment {
     category: string | null,
     limit: number,
   ): Array<{ text: string; id: string }> {
-    if (!category) return [];
+    if (!category) {
+      return [];
+    }
     try {
       return this.db
         .prepare(
@@ -250,7 +262,9 @@ export class PromptOptimizationExperiment {
       cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
 
       const parsed = JSON.parse(cleaned);
-      if (!Array.isArray(parsed)) return [];
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
 
       const results: Array<{ content: string; confidence: number }> = [];
       for (const item of parsed) {

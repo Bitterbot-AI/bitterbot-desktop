@@ -102,7 +102,9 @@ export class ExperienceSignalCollector {
    * This is the primary collection trigger — called after DreamEngine.run() completes.
    */
   collectFromDreamCycle(dreamStats: DreamStats): SignalBatch | null {
-    if (!dreamStats.cycle.completedAt || dreamStats.cycle.error) return null;
+    if (!dreamStats.cycle.completedAt || dreamStats.cycle.error) {
+      return null;
+    }
 
     const signals: ExperienceSignal[] = [];
     const cycleId = dreamStats.cycle.cycleId;
@@ -111,7 +113,9 @@ export class ExperienceSignalCollector {
     // 1. Dream insights → signals
     for (const insight of dreamStats.newInsights) {
       const signal = this.scoreDreamInsight(insight, cycleId, now);
-      if (signal) signals.push(signal);
+      if (signal) {
+        signals.push(signal);
+      }
     }
 
     // 2. Recent curiosity spikes → signals
@@ -120,7 +124,9 @@ export class ExperienceSignalCollector {
       for (const surprise of state.recentSurprises.slice(0, 5)) {
         if (surprise.compositeReward > 0.5) {
           const signal = this.scoreCuriositySpike(surprise, cycleId, now);
-          if (signal) signals.push(signal);
+          if (signal) {
+            signals.push(signal);
+          }
         }
       }
     }
@@ -129,14 +135,20 @@ export class ExperienceSignalCollector {
     const recentExecs = this.getRecentExecutions(5);
     for (const exec of recentExecs) {
       const signal = this.scoreExecutionOutcome(exec, cycleId, now);
-      if (signal) signals.push(signal);
+      if (signal) {
+        signals.push(signal);
+      }
     }
 
     // 4. Emotional state shift → signal (if significant)
     const emotionalSignal = this.scoreEmotionalState(cycleId, now);
-    if (emotionalSignal) signals.push(emotionalSignal);
+    if (emotionalSignal) {
+      signals.push(emotionalSignal);
+    }
 
-    if (signals.length === 0) return null;
+    if (signals.length === 0) {
+      return null;
+    }
 
     // Build batch
     const batch = this.buildBatch(signals, cycleId, now);
@@ -292,16 +304,22 @@ export class ExperienceSignalCollector {
   }
 
   private scoreEmotionalState(cycleId: string, now: number): ExperienceSignal | null {
-    if (!this.hormonalManager) return null;
+    if (!this.hormonalManager) {
+      return null;
+    }
 
     const state = this.hormonalManager.getState();
     const trajectory = this.hormonalManager.emotionalTrajectory();
 
     // Only emit if there's significant emotional activity
-    if (!trajectory || trajectory.trend === "stable") return null;
+    if (!trajectory || trajectory.trend === "stable") {
+      return null;
+    }
 
     const emotionalWeight = this.computeEmotionalWeight();
-    if (emotionalWeight < 0.3) return null;
+    if (emotionalWeight < 0.3) {
+      return null;
+    }
 
     const novelty = trajectory.trend === "volatile" ? 0.7 : 0.4;
     const trainingRelevance =
@@ -331,7 +349,9 @@ export class ExperienceSignalCollector {
   }
 
   private computeEmotionalWeight(): number {
-    if (!this.hormonalManager) return 0.3;
+    if (!this.hormonalManager) {
+      return 0.3;
+    }
     const state = this.hormonalManager.getState();
     return (
       Math.abs(state.dopamine) * EMOTION_BLEND.valence +
@@ -341,7 +361,9 @@ export class ExperienceSignalCollector {
   }
 
   private computeNoveltyVsRecent(contentHash: string): number {
-    if (this.recentSignalHashes.includes(contentHash)) return 0.1;
+    if (this.recentSignalHashes.includes(contentHash)) {
+      return 0.1;
+    }
 
     this.recentSignalHashes.push(contentHash);
     if (this.recentSignalHashes.length > MAX_RECENT_SIGNALS) {
@@ -412,7 +434,9 @@ export class ExperienceSignalCollector {
   }
 
   private async publishBatch(batch: SignalBatch): Promise<void> {
-    if (!this.orchestratorBridge?.publishTelemetry) return;
+    if (!this.orchestratorBridge?.publishTelemetry) {
+      return;
+    }
 
     try {
       await this.orchestratorBridge.publishTelemetry("experience", {

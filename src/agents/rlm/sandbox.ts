@@ -41,7 +41,9 @@ export class RLMSandbox {
 
     // Chunk text into pieces of `size` characters with optional overlap
     function chunk(text: string, size: number, overlap = 0): string[] {
-      if (!text || size <= 0) return [];
+      if (!text || size <= 0) {
+        return [];
+      }
       const step = Math.max(1, size - overlap);
       const chunks: string[] = [];
       for (let i = 0; i < text.length; i += step) {
@@ -58,7 +60,9 @@ export class RLMSandbox {
 
     // Count lines in text
     function lineCount(text: string): number {
-      if (!text) return 0;
+      if (!text) {
+        return 0;
+      }
       return text.split("\n").length;
     }
 
@@ -238,10 +242,14 @@ export class RLMSandbox {
 
   /** Resolve the final answer: check FINAL first, then FINAL_VAR, then null. */
   resolveFinalAnswer(): string | null {
-    if (this.finalAnswer !== null) return this.finalAnswer;
+    if (this.finalAnswer !== null) {
+      return this.finalAnswer;
+    }
     if (this.finalVarName !== null) {
       const value = this.persistentStore.get(this.finalVarName);
-      if (value !== undefined) return String(value);
+      if (value !== undefined) {
+        return String(value);
+      }
     }
     return null;
   }

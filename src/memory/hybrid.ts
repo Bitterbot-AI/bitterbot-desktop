@@ -198,16 +198,24 @@ export function mergeHybridResultsRRF(params: {
     const existing = payloads.get(r.id);
     if (existing) {
       // Prefer keyword snippet if available (often more relevant)
-      if (r.snippet && r.snippet.length > 0) existing.snippet = r.snippet;
+      if (r.snippet && r.snippet.length > 0) {
+        existing.snippet = r.snippet;
+      }
       if (r.importanceScore != null) {
         existing.importanceScore =
           existing.importanceScore != null
             ? Math.max(existing.importanceScore, r.importanceScore)
             : r.importanceScore;
       }
-      if (r.updatedAt != null) existing.updatedAt = r.updatedAt;
-      if (r.lastAccessedAt != null) existing.lastAccessedAt = r.lastAccessedAt;
-      if (r.emotionalValence != null) existing.emotionalValence = r.emotionalValence;
+      if (r.updatedAt != null) {
+        existing.updatedAt = r.updatedAt;
+      }
+      if (r.lastAccessedAt != null) {
+        existing.lastAccessedAt = r.lastAccessedAt;
+      }
+      if (r.emotionalValence != null) {
+        existing.emotionalValence = r.emotionalValence;
+      }
     } else {
       payloads.set(r.id, {
         path: r.path,
@@ -224,8 +232,8 @@ export function mergeHybridResultsRRF(params: {
   }
 
   // Sort each modality by its native score, assign 1-based ranks
-  const vectorSorted = [...params.vector].sort((a, b) => b.vectorScore - a.vectorScore);
-  const keywordSorted = [...params.keyword].sort((a, b) => b.textScore - a.textScore);
+  const vectorSorted = [...params.vector].toSorted((a, b) => b.vectorScore - a.vectorScore);
+  const keywordSorted = [...params.keyword].toSorted((a, b) => b.textScore - a.textScore);
 
   type PayloadType = { id: string };
   const vectorRanked: Array<RankedEntry<PayloadType>> = vectorSorted.map((r, i) => ({
@@ -240,8 +248,12 @@ export function mergeHybridResultsRRF(params: {
   }));
 
   const lists: Array<{ name: string; entries: Array<RankedEntry<PayloadType>> }> = [];
-  if (vectorRanked.length > 0) lists.push({ name: "vector", entries: vectorRanked });
-  if (keywordRanked.length > 0) lists.push({ name: "keyword", entries: keywordRanked });
+  if (vectorRanked.length > 0) {
+    lists.push({ name: "vector", entries: vectorRanked });
+  }
+  if (keywordRanked.length > 0) {
+    lists.push({ name: "keyword", entries: keywordRanked });
+  }
 
   const fused = rrfFuse(lists);
 

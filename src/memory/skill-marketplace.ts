@@ -51,7 +51,9 @@ export class SkillMarketplace {
       .prepare(`SELECT id, stable_skill_id FROM chunks WHERE id = ?`)
       .get(crystalId) as { id: string; stable_skill_id: string | null } | undefined;
 
-    if (!row) return false;
+    if (!row) {
+      return false;
+    }
 
     this.db
       .prepare(`UPDATE chunks SET marketplace_listed = 1, marketplace_description = ? WHERE id = ?`)
@@ -187,7 +189,9 @@ export class SkillMarketplace {
       )
       .get(stableSkillId) as Record<string, unknown> | undefined;
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
 
     const entry = this.rowToEntry(row);
 
@@ -241,7 +245,9 @@ export class SkillMarketplace {
     for (const row of rows) {
       let governance: Record<string, unknown> = {};
       try {
-        if (row.governance_json) governance = JSON.parse(String(row.governance_json));
+        if (row.governance_json) {
+          governance = JSON.parse(String(row.governance_json));
+        }
       } catch {}
       const pubkey = String(governance.peerOrigin ?? "");
       if (pubkey && !reputationCache.has(pubkey)) {
@@ -267,7 +273,9 @@ export class SkillMarketplace {
   ): MarketplaceEntry {
     let governance: Record<string, unknown> = {};
     try {
-      if (row.governance_json) governance = JSON.parse(String(row.governance_json));
+      if (row.governance_json) {
+        governance = JSON.parse(String(row.governance_json));
+      }
     } catch {
       log.debug(`rowToEntry: corrupted governance_json for crystal ${String(row.id)}`);
     }
@@ -279,7 +287,9 @@ export class SkillMarketplace {
 
     let tags: string[] = [];
     try {
-      if (row.skill_tags) tags = JSON.parse(String(row.skill_tags));
+      if (row.skill_tags) {
+        tags = JSON.parse(String(row.skill_tags));
+      }
     } catch {
       log.debug(`rowToEntry: corrupted skill_tags JSON for crystal ${String(row.id)}`);
     }

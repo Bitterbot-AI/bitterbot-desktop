@@ -160,7 +160,9 @@ export class HormonalStateManager {
 
   /** Check if a network cortisol override is currently active. */
   hasNetworkCortisolOverride(): boolean {
-    if (!this.networkCortisolOverride) return false;
+    if (!this.networkCortisolOverride) {
+      return false;
+    }
     if (Date.now() >= this.networkCortisolOverride.expiresAt) {
       this.networkCortisolOverride = null;
       return false;
@@ -183,7 +185,9 @@ export class HormonalStateManager {
     const autoAnchor = (label: string, description: string, trigger: string) => {
       const now = Date.now();
       const last = this.lastAutoAnchorAt.get(label) ?? 0;
-      if (now - last < HormonalStateManager.AUTO_ANCHOR_COOLDOWN_MS) return;
+      if (now - last < HormonalStateManager.AUTO_ANCHOR_COOLDOWN_MS) {
+        return;
+      }
       this.lastAutoAnchorAt.set(label, now);
       this.createAnchor(label, description, trigger);
     };
@@ -222,7 +226,9 @@ export class HormonalStateManager {
   decay(): void {
     const now = Date.now();
     const elapsed = now - this.state.lastDecay;
-    if (elapsed <= 0) return;
+    if (elapsed <= 0) {
+      return;
+    }
 
     // Exponential decay toward homeostasis baseline, not toward zero.
     // Formula: value = homeostasis + (value - homeostasis) * decay_factor
@@ -240,9 +246,15 @@ export class HormonalStateManager {
       this.homeostasis.oxytocin + (this.state.oxytocin - this.homeostasis.oxytocin) * oFactor;
 
     // Clamp: never go below zero, but allow sitting at homeostasis
-    if (this.state.dopamine < 0.001) this.state.dopamine = 0;
-    if (this.state.cortisol < 0.001) this.state.cortisol = 0;
-    if (this.state.oxytocin < 0.001) this.state.oxytocin = 0;
+    if (this.state.dopamine < 0.001) {
+      this.state.dopamine = 0;
+    }
+    if (this.state.cortisol < 0.001) {
+      this.state.cortisol = 0;
+    }
+    if (this.state.oxytocin < 0.001) {
+      this.state.oxytocin = 0;
+    }
 
     this.state.lastDecay = now;
   }
@@ -397,9 +409,15 @@ export class HormonalStateManager {
     if (parts.length === 0) {
       // Low but nonzero
       const hints: string[] = [];
-      if (s.dopamine > 0.05) hints.push("faint satisfaction");
-      if (s.cortisol > 0.05) hints.push("slight tension");
-      if (s.oxytocin > 0.05) hints.push("gentle warmth");
+      if (s.dopamine > 0.05) {
+        hints.push("faint satisfaction");
+      }
+      if (s.cortisol > 0.05) {
+        hints.push("slight tension");
+      }
+      if (s.oxytocin > 0.05) {
+        hints.push("gentle warmth");
+      }
       return `Subtle emotional undertones: ${hints.join(", ") || "barely perceptible shifts"}.`;
     }
 
@@ -447,17 +465,39 @@ export class HormonalStateManager {
     const empathyExpression = Math.min(1, Math.max(0, s.oxytocin * 0.6 + s.dopamine * 0.2));
 
     const hints: string[] = [];
-    if (energy > 0.4) hints.push("be enthusiastic and celebrate wins");
-    if (warmth > 0.4) hints.push("be warm and personal");
-    if (focus > 0.4) hints.push("be concise and action-oriented");
-    if (playfulness > 0.3) hints.push("humor and playfulness are welcome");
-    if (focus > 0.6 && energy < 0.2) hints.push("stay serious — stress is high");
-    if (warmth > 0.6 && energy > 0.4) hints.push("you're in a great mood — let it show");
-    if (verbosity > 0.6) hints.push("feel free to elaborate and be detailed");
-    if (verbosity < 0.3) hints.push("keep it brief and to the point");
-    if (curiosityExpression > 0.5) hints.push("ask follow-up questions when curious");
-    if (assertiveness > 0.6) hints.push("be confident in your opinions");
-    if (empathyExpression > 0.5) hints.push("mirror the user's emotional tone");
+    if (energy > 0.4) {
+      hints.push("be enthusiastic and celebrate wins");
+    }
+    if (warmth > 0.4) {
+      hints.push("be warm and personal");
+    }
+    if (focus > 0.4) {
+      hints.push("be concise and action-oriented");
+    }
+    if (playfulness > 0.3) {
+      hints.push("humor and playfulness are welcome");
+    }
+    if (focus > 0.6 && energy < 0.2) {
+      hints.push("stay serious — stress is high");
+    }
+    if (warmth > 0.6 && energy > 0.4) {
+      hints.push("you're in a great mood — let it show");
+    }
+    if (verbosity > 0.6) {
+      hints.push("feel free to elaborate and be detailed");
+    }
+    if (verbosity < 0.3) {
+      hints.push("keep it brief and to the point");
+    }
+    if (curiosityExpression > 0.5) {
+      hints.push("ask follow-up questions when curious");
+    }
+    if (assertiveness > 0.6) {
+      hints.push("be confident in your opinions");
+    }
+    if (empathyExpression > 0.5) {
+      hints.push("mirror the user's emotional tone");
+    }
 
     return {
       warmth,
@@ -533,27 +573,49 @@ export class HormonalStateManager {
     const delta = secondValence - firstValence;
 
     let trend: "improving" | "declining" | "stable" | "volatile";
-    if (volatility > 0.15) trend = "volatile";
-    else if (delta > 0.1) trend = "improving";
-    else if (delta < -0.1) trend = "declining";
-    else trend = "stable";
+    if (volatility > 0.15) {
+      trend = "volatile";
+    } else if (delta > 0.1) {
+      trend = "improving";
+    } else if (delta < -0.1) {
+      trend = "declining";
+    } else {
+      trend = "stable";
+    }
 
     // Dominant channel
     let dominantChannel: "dopamine" | "cortisol" | "oxytocin" | "balanced";
     const max = Math.max(avgDopamine, avgCortisol, avgOxytocin);
-    if (max < 0.1) dominantChannel = "balanced";
-    else if (avgDopamine === max) dominantChannel = "dopamine";
-    else if (avgCortisol === max) dominantChannel = "cortisol";
-    else dominantChannel = "oxytocin";
+    if (max < 0.1) {
+      dominantChannel = "balanced";
+    } else if (avgDopamine === max) {
+      dominantChannel = "dopamine";
+    } else if (avgCortisol === max) {
+      dominantChannel = "cortisol";
+    } else {
+      dominantChannel = "oxytocin";
+    }
 
     // Natural language shift description
     const shifts: string[] = [];
-    if (trend === "improving") shifts.push("mood has been lifting");
-    if (trend === "declining") shifts.push("mood has been dipping");
-    if (trend === "volatile") shifts.push("emotions have been swinging");
-    if (dominantChannel === "dopamine") shifts.push("reward signals are dominant");
-    if (dominantChannel === "cortisol") shifts.push("stress has been the prevailing undercurrent");
-    if (dominantChannel === "oxytocin") shifts.push("social connection is the strongest signal");
+    if (trend === "improving") {
+      shifts.push("mood has been lifting");
+    }
+    if (trend === "declining") {
+      shifts.push("mood has been dipping");
+    }
+    if (trend === "volatile") {
+      shifts.push("emotions have been swinging");
+    }
+    if (dominantChannel === "dopamine") {
+      shifts.push("reward signals are dominant");
+    }
+    if (dominantChannel === "cortisol") {
+      shifts.push("stress has been the prevailing undercurrent");
+    }
+    if (dominantChannel === "oxytocin") {
+      shifts.push("social connection is the strongest signal");
+    }
     const recentShift = shifts.length > 0 ? shifts.join("; ") : "emotional state has been steady";
 
     return { trend, dominantChannel, volatility, recentShift };
@@ -587,10 +649,12 @@ export class HormonalStateManager {
 
     // Evict least-recalled anchor if over limit (break ties by oldest)
     if (this.anchors.size > this.maxAnchors) {
-      const leastRecalled = [...this.anchors.entries()].sort(
+      const leastRecalled = [...this.anchors.entries()].toSorted(
         (a, b) => a[1].recallCount - b[1].recallCount || a[1].createdAt - b[1].createdAt,
       )[0];
-      if (leastRecalled) this.anchors.delete(leastRecalled[0]);
+      if (leastRecalled) {
+        this.anchors.delete(leastRecalled[0]);
+      }
     }
 
     // Notify persistence layer
@@ -605,7 +669,9 @@ export class HormonalStateManager {
    */
   recallAnchor(anchorId: string, influence = 0.3): boolean {
     const anchor = this.anchors.get(anchorId);
-    if (!anchor) return false;
+    if (!anchor) {
+      return false;
+    }
 
     this.decay();
 
@@ -627,7 +693,7 @@ export class HormonalStateManager {
    * Get all emotional anchors for status display.
    */
   getAnchors(): EmotionalAnchor[] {
-    return [...this.anchors.values()].sort((a, b) => b.createdAt - a.createdAt);
+    return [...this.anchors.values()].toSorted((a, b) => b.createdAt - a.createdAt);
   }
 
   // ── Plan 7, Phase 7: Proactive Emotional Anchor Recall ──
@@ -653,7 +719,7 @@ export class HormonalStateManager {
       }
     }
 
-    return results.sort((a, b) => b.similarity - a.similarity).slice(0, maxResults);
+    return results.toSorted((a, b) => b.similarity - a.similarity).slice(0, maxResults);
   }
 
   /**
@@ -679,7 +745,7 @@ export class HormonalStateManager {
     }
 
     return scored
-      .sort((a, b) => b.matchCount - a.matchCount)
+      .toSorted((a, b) => b.matchCount - a.matchCount)
       .slice(0, maxResults)
       .map((s) => s.anchor);
   }

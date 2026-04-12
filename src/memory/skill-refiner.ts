@@ -190,7 +190,9 @@ export class SkillRefiner {
 
     let overlap = 0;
     for (const word of originalWords) {
-      if (mutationWords.has(word)) overlap++;
+      if (mutationWords.has(word)) {
+        overlap++;
+      }
     }
     const coverage = originalWords.size > 0 ? overlap / originalWords.size : 0;
     score += coverage * 0.3;
@@ -198,7 +200,9 @@ export class SkillRefiner {
     // Novelty: mutation should introduce some new concepts
     let novelWords = 0;
     for (const word of mutationWords) {
-      if (!originalWords.has(word)) novelWords++;
+      if (!originalWords.has(word)) {
+        novelWords++;
+      }
     }
     const novelty = mutationWords.size > 0 ? novelWords / mutationWords.size : 0;
     score += Math.min(0.3, novelty * 0.5);
@@ -209,7 +213,9 @@ export class SkillRefiner {
       /\b(?:more general|broader|flexible|robust|efficient|scalable)\b/i,
     ];
     for (const pattern of structurePatterns) {
-      if (pattern.test(mutation)) score += 0.1;
+      if (pattern.test(mutation)) {
+        score += 0.1;
+      }
     }
 
     return Math.min(1, score);

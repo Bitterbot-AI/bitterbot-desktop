@@ -47,10 +47,14 @@ export class MemoryGovernance {
       .prepare(`SELECT governance_json, lifecycle FROM chunks WHERE id = ?`)
       .get(crystalId) as { governance_json: string | null; lifecycle: string | null } | undefined;
 
-    if (!row) return false;
+    if (!row) {
+      return false;
+    }
 
     // Expired crystals are not accessible
-    if (row.lifecycle === "expired") return false;
+    if (row.lifecycle === "expired") {
+      return false;
+    }
 
     try {
       const governance = row.governance_json ? JSON.parse(row.governance_json) : {};
@@ -67,13 +71,19 @@ export class MemoryGovernance {
 
       // Shared: local agent + authenticated sessions
       if (governance.accessScope === "shared") {
-        if (context.actor === "local_agent") return true;
-        if (context.sessionKey) return true; // authenticated session
+        if (context.actor === "local_agent") {
+          return true;
+        }
+        if (context.sessionKey) {
+          return true;
+        } // authenticated session
         return false;
       }
 
       // Public: anyone
-      if (governance.accessScope === "public") return true;
+      if (governance.accessScope === "public") {
+        return true;
+      }
     } catch (err) {
       log.warn(`canAccess: failed to parse governance for crystal ${crystalId}: ${String(err)}`);
     }
@@ -241,7 +251,9 @@ export class MemoryGovernance {
 
       let dag: ProvenanceNode[] = [];
       try {
-        if (row?.provenance_dag) dag = JSON.parse(row.provenance_dag);
+        if (row?.provenance_dag) {
+          dag = JSON.parse(row.provenance_dag);
+        }
       } catch (err) {
         log.debug(`invalid provenance_dag JSON for crystal ${crystalId}: ${String(err)}`);
       }
@@ -264,7 +276,9 @@ export class MemoryGovernance {
       | { provenance_dag: string | null }
       | undefined;
 
-    if (!row?.provenance_dag) return [];
+    if (!row?.provenance_dag) {
+      return [];
+    }
     try {
       return JSON.parse(row.provenance_dag);
     } catch {
@@ -277,10 +291,14 @@ export class MemoryGovernance {
    */
   getDerivationTree(crystalId: string, maxDepth = 5): ProvenanceTree | null {
     const dag = this.getProvenanceDAG(crystalId);
-    if (dag.length === 0) return null;
+    if (dag.length === 0) {
+      return null;
+    }
 
     const rootNode = dag[dag.length - 1]; // most recent operation
-    if (!rootNode) return null;
+    if (!rootNode) {
+      return null;
+    }
 
     return this.buildTree(rootNode, maxDepth, new Set());
   }
@@ -295,14 +313,18 @@ export class MemoryGovernance {
 
     while (queue.length > 0) {
       const id = queue.shift()!;
-      if (visited.has(id)) continue;
+      if (visited.has(id)) {
+        continue;
+      }
       visited.add(id);
 
       const dag = this.getProvenanceDAG(id);
       for (const node of dag) {
         actors.add(node.actor);
         for (const parentId of node.parentIds) {
-          if (!visited.has(parentId)) queue.push(parentId);
+          if (!visited.has(parentId)) {
+            queue.push(parentId);
+          }
         }
       }
     }
@@ -316,7 +338,9 @@ export class MemoryGovernance {
 
     if (depth > 0) {
       for (const parentId of node.parentIds) {
-        if (visited.has(parentId)) continue;
+        if (visited.has(parentId)) {
+          continue;
+        }
         const parentDag = this.getProvenanceDAG(parentId);
         const parentNode = parentDag[parentDag.length - 1];
         if (parentNode) {

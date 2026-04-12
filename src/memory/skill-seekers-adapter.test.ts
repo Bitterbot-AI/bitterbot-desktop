@@ -61,7 +61,9 @@ describe("SkillSeekersAdapter", () => {
 
     it("returns true when direct CLI is available", async () => {
       mockExecFileSync.mockImplementation((cmd: string) => {
-        if (cmd === "skill-seekers") return "3.4.0\n";
+        if (cmd === "skill-seekers") {
+          return "3.4.0\n";
+        }
         throw new Error("not found");
       });
 
@@ -115,7 +117,9 @@ describe("SkillSeekersAdapter", () => {
   describe("domain filtering", () => {
     it("blocks domains on the blocklist", async () => {
       mockExecFileSync.mockImplementation((cmd: string) => {
-        if (cmd === "skill-seekers") return "3.4.0\n";
+        if (cmd === "skill-seekers") {
+          return "3.4.0\n";
+        }
         throw new Error("not found");
       });
 
@@ -150,7 +154,9 @@ describe("SkillSeekersAdapter", () => {
   describe("rate limiting", () => {
     it("respects maxSkillsPerCycle", async () => {
       mockExecFileSync.mockImplementation((cmd: string) => {
-        if (cmd === "skill-seekers") return "3.4.0\n";
+        if (cmd === "skill-seekers") {
+          return "3.4.0\n";
+        }
         throw new Error("not found");
       });
 
@@ -181,7 +187,9 @@ describe("SkillSeekersAdapter", () => {
   describe("fillKnowledgeGap", () => {
     it("returns gracefully when no URL in gap description", async () => {
       mockExecFileSync.mockImplementation((cmd: string) => {
-        if (cmd === "skill-seekers") return "3.4.0\n";
+        if (cmd === "skill-seekers") {
+          return "3.4.0\n";
+        }
         throw new Error("not found");
       });
 
@@ -197,7 +205,9 @@ describe("SkillSeekersAdapter", () => {
 
     it("extracts URL from gap description and delegates to ingestFromSource", async () => {
       mockExecFileSync.mockImplementation((cmd: string) => {
-        if (cmd === "skill-seekers") return "3.4.0\n";
+        if (cmd === "skill-seekers") {
+          return "3.4.0\n";
+        }
         throw new Error("not found");
       });
 

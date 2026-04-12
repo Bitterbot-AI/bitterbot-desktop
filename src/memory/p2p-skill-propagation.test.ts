@@ -205,7 +205,9 @@ function mockOrchestratorBridge(opts?: {
     publishCalls,
     async publishSkill(skillMd: string, name: string) {
       publishCalls.push({ skillMd, name });
-      if (opts?.shouldFail) throw new Error("publish failed");
+      if (opts?.shouldFail) {
+        throw new Error("publish failed");
+      }
       return opts?.publishResult ?? { ok: true, content_hash: `hash-${crypto.randomUUID()}` };
     },
   };
@@ -588,8 +590,12 @@ describe("PeerReputationManager", () => {
     repManager.recordSkillReceived(pubkey, "peer-formula");
 
     // Accept 8 out of 10 skills
-    for (let i = 0; i < 8; i++) repManager.recordIngestionResult(pubkey, true);
-    for (let i = 0; i < 2; i++) repManager.recordIngestionResult(pubkey, false);
+    for (let i = 0; i < 8; i++) {
+      repManager.recordIngestionResult(pubkey, true);
+    }
+    for (let i = 0; i < 2; i++) {
+      repManager.recordIngestionResult(pubkey, false);
+    }
 
     // Set first_seen_at to 60 days ago for max longevity
     db.prepare(

@@ -134,7 +134,9 @@ export class PeerReputationManager {
    */
   updatePeerQuality(peerPubkey: string): void {
     const peerMetrics = this.executionTracker.getPeerSkillMetrics(peerPubkey);
-    if (peerMetrics.totalSkills === 0) return;
+    if (peerMetrics.totalSkills === 0) {
+      return;
+    }
 
     const quality = peerMetrics.avgSuccessRate;
     const reputation = this.computeReputation(peerPubkey, quality);
@@ -154,7 +156,9 @@ export class PeerReputationManager {
       .prepare(`SELECT * FROM peer_reputation WHERE peer_pubkey = ?`)
       .get(peerPubkey) as Record<string, unknown> | undefined;
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
     return this.rowToReputation(row);
   }
 
@@ -171,19 +175,27 @@ export class PeerReputationManager {
       | { reputation_score: number; is_trusted: number; is_banned: number; anomaly_flag: number }
       | undefined;
 
-    if (row?.is_banned === 1) return "banned";
+    if (row?.is_banned === 1) {
+      return "banned";
+    }
 
     // Manual trust override
-    if (this.trustList.includes(peerPubkey)) return "verified";
+    if (this.trustList.includes(peerPubkey)) {
+      return "verified";
+    }
 
-    if (!row) return "untrusted";
+    if (!row) {
+      return "untrusted";
+    }
 
     // Cap anomalous peers at "provisional"
     if (row.anomaly_flag === 1) {
       const score = Number(row.reputation_score ?? 0.5);
       const isTrusted = row.is_trusted === 1;
       const level = this.computeTrustLevelFromScore(score, isTrusted);
-      if (level === "trusted" || level === "verified") return "provisional";
+      if (level === "trusted" || level === "verified") {
+        return "provisional";
+      }
       return level;
     }
 
@@ -282,7 +294,9 @@ export class PeerReputationManager {
       .prepare(`SELECT truster_pubkey, trustee_pubkey, trust_weight FROM peer_trust_edges`)
       .all() as Array<{ truster_pubkey: string; trustee_pubkey: string; trust_weight: number }>;
 
-    if (edges.length === 0) return;
+    if (edges.length === 0) {
+      return;
+    }
 
     const trustEdges: Array<[string, string, number]> = edges.map((e) => [
       e.truster_pubkey,
@@ -345,7 +359,9 @@ export class PeerReputationManager {
     }
     const peers = Array.from(peerSet);
     const n = peers.length;
-    if (n === 0) return {};
+    if (n === 0) {
+      return {};
+    }
 
     const idx = new Map<string, number>();
     peers.forEach((p, i) => idx.set(p, i));
@@ -377,7 +393,9 @@ export class PeerReputationManager {
       p.fill(0);
       for (const pk of preTrusted) {
         const i = idx.get(pk);
-        if (i !== undefined) p[i] = 1 / preTrusted.length;
+        if (i !== undefined) {
+          p[i] = 1 / preTrusted.length;
+        }
       }
     }
 
@@ -405,7 +423,9 @@ export class PeerReputationManager {
       }
 
       t = tNew;
-      if (maxDiff < convergenceThreshold) break;
+      if (maxDiff < convergenceThreshold) {
+        break;
+      }
     }
 
     const scores: Record<string, number> = {};
@@ -438,7 +458,9 @@ export class PeerReputationManager {
         .prepare(`SELECT skills_received, first_seen_at FROM peer_reputation WHERE peer_pubkey = ?`)
         .get(peer_pubkey) as { skills_received: number; first_seen_at: number } | undefined;
 
-      if (!rep) continue;
+      if (!rep) {
+        continue;
+      }
 
       const ageMs = Math.max(windowMs, now - rep.first_seen_at);
       const windowCount = Math.ceil(ageMs / windowMs);
@@ -473,7 +495,9 @@ export class PeerReputationManager {
         }
       | undefined;
 
-    if (!row) return 0.5;
+    if (!row) {
+      return 0.5;
+    }
 
     const acceptanceRate = row.skills_accepted / Math.max(1, row.skills_received);
     const daysSinceFirst = (Date.now() - row.first_seen_at) / (1000 * 60 * 60 * 24);
@@ -490,10 +514,18 @@ export class PeerReputationManager {
    * Compute trust level from a score and trusted flag without DB lookup.
    */
   private computeTrustLevelFromScore(score: number, isTrusted: boolean): TrustLevel {
-    if (isTrusted) return "verified";
-    if (score >= 0.85) return "verified";
-    if (score >= 0.6) return "trusted";
-    if (score >= 0.3) return "provisional";
+    if (isTrusted) {
+      return "verified";
+    }
+    if (score >= 0.85) {
+      return "verified";
+    }
+    if (score >= 0.6) {
+      return "trusted";
+    }
+    if (score >= 0.3) {
+      return "provisional";
+    }
     return "untrusted";
   }
 

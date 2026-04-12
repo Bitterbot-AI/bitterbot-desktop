@@ -67,7 +67,9 @@ export class A2aClient {
    * (Gemini peer review fix)
    */
   checkDailySpendLimit(): { allowed: boolean; spent: number; remaining: number } {
-    if (!this.db) return { allowed: true, spent: 0, remaining: this.config.dailySpendLimitUsdc };
+    if (!this.db) {
+      return { allowed: true, spent: 0, remaining: this.config.dailySpendLimitUsdc };
+    }
 
     try {
       const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
@@ -94,7 +96,9 @@ export class A2aClient {
     const cardUrl = `${agentUrl.replace(/\/+$/, "")}/.well-known/agent.json`;
     try {
       const response = await fetch(cardUrl, { signal: AbortSignal.timeout(10_000) });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        return null;
+      }
       const card = (await response.json()) as {
         url: string;
         name: string;

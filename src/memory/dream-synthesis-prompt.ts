@@ -103,7 +103,7 @@ export function heuristicSynthesize(
     // Words appearing in multiple texts are cross-cutting themes
     const shared = [...wordFreq.entries()]
       .filter(([, count]) => count >= Math.max(2, Math.ceil(texts.length * 0.5)))
-      .sort((a, b) => b[1] - a[1])
+      .toSorted((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([word]) => word);
 

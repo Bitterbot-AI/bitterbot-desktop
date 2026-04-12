@@ -35,16 +35,26 @@ export class CostTracker {
 
   /** Check if any budget/limit is exceeded. */
   isExceeded(): "budget" | "sub_calls" | "iterations" | null {
-    if (this.totalCost > this.maxBudget) return "budget";
-    if (this.subCallCount > this.maxSubCalls) return "sub_calls";
-    if (this.iterationCount > this.maxIterations) return "iterations";
+    if (this.totalCost > this.maxBudget) {
+      return "budget";
+    }
+    if (this.subCallCount > this.maxSubCalls) {
+      return "sub_calls";
+    }
+    if (this.iterationCount > this.maxIterations) {
+      return "iterations";
+    }
     return null;
   }
 
   /** Check if we can afford another sub-call (heuristic: average cost so far). */
   canAffordSubCall(): boolean {
-    if (this.subCallCount >= this.maxSubCalls) return false;
-    if (this.subCallCount === 0) return this.totalCost < this.maxBudget;
+    if (this.subCallCount >= this.maxSubCalls) {
+      return false;
+    }
+    if (this.subCallCount === 0) {
+      return this.totalCost < this.maxBudget;
+    }
     const avgCost = this.totalCost / this.subCallCount;
     return this.totalCost + avgCost <= this.maxBudget;
   }

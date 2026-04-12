@@ -42,7 +42,9 @@ export async function backfillEmbeddings(
 
   for (const perspective of cfg.perspectives) {
     const column = PERSPECTIVE_COLUMNS[perspective];
-    if (!column) continue;
+    if (!column) {
+      continue;
+    }
 
     // Find chunks missing this perspective's embedding
     const chunks = db

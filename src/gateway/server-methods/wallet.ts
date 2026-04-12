@@ -214,12 +214,18 @@ export const walletHandlers: GatewayRequestHandlers = {
     // Actual persistence goes through the config system; this validates and returns ok.
     try {
       const updates: Record<string, unknown> = {};
-      if (typeof params.enabled === "boolean") updates.enabled = params.enabled;
-      if (typeof params.network === "string") updates.network = params.network;
-      if (typeof params.sessionSpendCapUsd === "number")
+      if (typeof params.enabled === "boolean") {
+        updates.enabled = params.enabled;
+      }
+      if (typeof params.network === "string") {
+        updates.network = params.network;
+      }
+      if (typeof params.sessionSpendCapUsd === "number") {
         updates.sessionSpendCapUsd = params.sessionSpendCapUsd;
-      if (typeof params.perTransactionCapUsd === "number")
+      }
+      if (typeof params.perTransactionCapUsd === "number") {
         updates.perTransactionCapUsd = params.perTransactionCapUsd;
+      }
 
       // Reset cached service so next call picks up new config
       cachedService = null;

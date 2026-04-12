@@ -52,10 +52,14 @@ describe("BioMemEval > Zeigarnik Proactivity", () => {
     let correctResolved = 0;
 
     for (const text of openTexts) {
-      if (detectOpenLoop(text) !== null) correctOpen++;
+      if (detectOpenLoop(text) !== null) {
+        correctOpen++;
+      }
     }
     for (const text of resolvedTexts) {
-      if (detectOpenLoop(text) === null || detectResolution(text)) correctResolved++;
+      if (detectOpenLoop(text) === null || detectResolution(text)) {
+        correctResolved++;
+      }
     }
 
     s.score(`detected ${correctOpen}/5 open loops correctly`, correctOpen >= 4, 2);

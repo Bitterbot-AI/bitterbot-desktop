@@ -144,7 +144,9 @@ export function probeTcpReachable(
     let settled = false;
     const socket = createConnection({ host, port, family: 0 });
     const done = (res: TcpProbeResult) => {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
       settled = true;
       try {
         socket.destroy();
@@ -182,11 +184,15 @@ export type ParsedMultiaddr = {
  */
 export function parseMultiaddr(ma: string): ParsedMultiaddr | null {
   const hostMatch = ma.match(/^\/(ip4|ip6|dns4|dns6|dns)\/([^/]+)\/tcp\/(\d+)/);
-  if (!hostMatch) return null;
+  if (!hostMatch) {
+    return null;
+  }
   const hostProto = hostMatch[1];
   const host = hostMatch[2];
   const port = Number.parseInt(hostMatch[3], 10);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    return null;
+  }
   const peerMatch = ma.match(/\/p2p\/([^/]+)/);
   return { host, hostProto, port, peerId: peerMatch ? peerMatch[1] : null };
 }

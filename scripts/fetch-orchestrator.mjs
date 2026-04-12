@@ -45,11 +45,21 @@ const warn = (msg) => console.warn(`${LOG_PREFIX} ${msg}`);
 /** Map Node platform+arch to our release asset target string. */
 function detectTarget() {
   const { platform, arch } = process;
-  if (platform === "linux" && arch === "x64") return { target: "linux-x64", ext: "" };
-  if (platform === "linux" && arch === "arm64") return { target: "linux-arm64", ext: "" };
-  if (platform === "darwin" && arch === "x64") return { target: "darwin-x64", ext: "" };
-  if (platform === "darwin" && arch === "arm64") return { target: "darwin-arm64", ext: "" };
-  if (platform === "win32" && arch === "x64") return { target: "win32-x64", ext: ".exe" };
+  if (platform === "linux" && arch === "x64") {
+    return { target: "linux-x64", ext: "" };
+  }
+  if (platform === "linux" && arch === "arm64") {
+    return { target: "linux-arm64", ext: "" };
+  }
+  if (platform === "darwin" && arch === "x64") {
+    return { target: "darwin-x64", ext: "" };
+  }
+  if (platform === "darwin" && arch === "arm64") {
+    return { target: "darwin-arm64", ext: "" };
+  }
+  if (platform === "win32" && arch === "x64") {
+    return { target: "win32-x64", ext: ".exe" };
+  }
   return null;
 }
 
@@ -96,10 +106,16 @@ async function sha256File(path) {
 function parseChecksums(content, filename) {
   for (const rawLine of content.split("\n")) {
     const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
     const match = line.match(/^([0-9a-f]{64})\s+\*?(.+)$/i);
-    if (!match) continue;
-    if (match[2] === filename) return match[1].toLowerCase();
+    if (!match) {
+      continue;
+    }
+    if (match[2] === filename) {
+      return match[1].toLowerCase();
+    }
   }
   return null;
 }

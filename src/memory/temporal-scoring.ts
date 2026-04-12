@@ -22,9 +22,15 @@ const TIMELESS_PATTERNS =
  * Detect the temporal intent of a search query.
  */
 export function detectTemporalIntent(query: string): QueryTemporalIntent {
-  if (CURRENT_PATTERNS.test(query)) return "current";
-  if (HISTORICAL_PATTERNS.test(query)) return "historical";
-  if (TIMELESS_PATTERNS.test(query)) return "timeless";
+  if (CURRENT_PATTERNS.test(query)) {
+    return "current";
+  }
+  if (HISTORICAL_PATTERNS.test(query)) {
+    return "historical";
+  }
+  if (TIMELESS_PATTERNS.test(query)) {
+    return "timeless";
+  }
   return "default";
 }
 
@@ -59,12 +65,16 @@ export function temporalRelevanceMultiplier(params: {
   const { intent, epistemicLayer, createdAt, updatedAt } = params;
   const now = params.now ?? Date.now();
 
-  if (intent === "timeless") return 1.0;
+  if (intent === "timeless") {
+    return 1.0;
+  }
 
   const layer = epistemicLayer ?? "experience";
   const halfLifeDays = LAYER_HALF_LIVES[layer] ?? DEFAULT_HALF_LIFE;
 
-  if (halfLifeDays === Infinity && intent !== "current") return 1.0;
+  if (halfLifeDays === Infinity && intent !== "current") {
+    return 1.0;
+  }
 
   const effectiveTimestamp = updatedAt ?? createdAt;
   const ageDays = (now - effectiveTimestamp) / (24 * 60 * 60 * 1000);
@@ -85,6 +95,8 @@ export function temporalRelevanceMultiplier(params: {
   }
 
   // "default" intent: standard layer-based decay
-  if (halfLifeDays === Infinity) return 1.0;
+  if (halfLifeDays === Infinity) {
+    return 1.0;
+  }
   return Math.pow(0.5, ageDays / halfLifeDays);
 }

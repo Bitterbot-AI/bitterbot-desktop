@@ -51,31 +51,41 @@ export function formatHandoverBrief(brief: SessionHandoverBrief): string {
 
   if (brief.milestones.length > 0) {
     lines.push(`## Milestones Achieved`);
-    for (const m of brief.milestones) lines.push(`- ${m}`);
+    for (const m of brief.milestones) {
+      lines.push(`- ${m}`);
+    }
     lines.push("");
   }
 
   if (brief.decisions.length > 0) {
     lines.push(`## Decisions Made`);
-    for (const d of brief.decisions) lines.push(`- ${d}`);
+    for (const d of brief.decisions) {
+      lines.push(`- ${d}`);
+    }
     lines.push("");
   }
 
   if (brief.blockers.length > 0) {
     lines.push(`## Open Blockers`);
-    for (const b of brief.blockers) lines.push(`- ${b}`);
+    for (const b of brief.blockers) {
+      lines.push(`- ${b}`);
+    }
     lines.push("");
   }
 
   if (brief.nextSteps.length > 0) {
     lines.push(`## Next Steps`);
-    for (const s of brief.nextSteps) lines.push(`- ${s}`);
+    for (const s of brief.nextSteps) {
+      lines.push(`- ${s}`);
+    }
     lines.push("");
   }
 
   if (brief.entities && brief.entities.length > 0) {
     lines.push(`## Entities Touched`);
-    for (const e of brief.entities) lines.push(`- ${e.name} (${e.type}) — ${e.lastAction}`);
+    for (const e of brief.entities) {
+      lines.push(`- ${e.name} (${e.type}) — ${e.lastAction}`);
+    }
     lines.push("");
   }
 
@@ -148,7 +158,9 @@ export function formatCompactSummary(brief: SessionHandoverBrief): string {
   const summary = `[${dateStr}] ${brief.purpose}.${highlightStr}.${nextStr}${entityStr}`;
 
   // Truncate gracefully at ~200 chars
-  if (summary.length <= 200) return summary;
+  if (summary.length <= 200) {
+    return summary;
+  }
   return summary.slice(0, 197) + "...";
 }
 
@@ -160,12 +172,16 @@ export function parseHandoverBrief(
   sessionId?: string,
 ): SessionHandoverBrief | null {
   const purposeMatch = markdown.match(/## Purpose\n([^\n]+)/);
-  if (!purposeMatch) return null;
+  if (!purposeMatch) {
+    return null;
+  }
 
   const extractList = (header: string): string[] => {
     const re = new RegExp(`## ${header}\\n([\\s\\S]*?)(?=\\n## |$)`);
     const match = markdown.match(re);
-    if (!match) return [];
+    if (!match) {
+      return [];
+    }
     return match[1]
       .split("\n")
       .map((l) => l.replace(/^- /, "").trim())
@@ -182,7 +198,9 @@ export function parseHandoverBrief(
   const entities: HandoverEntity[] = entityLines
     .map((line) => {
       const match = line.match(/^(.+?)\s*\((\w+)\)\s*[—–-]\s*(.+)$/);
-      if (!match) return null;
+      if (!match) {
+        return null;
+      }
       return { name: match[1]!.trim(), type: match[2]!.trim(), lastAction: match[3]!.trim() };
     })
     .filter((e): e is HandoverEntity => e !== null);
@@ -209,9 +227,11 @@ export async function loadLatestHandoverBrief(
   const handoverDir = path.join(workspaceDir, "memory", "handover");
   try {
     const entries = await fs.readdir(handoverDir);
-    const mdFiles = entries.filter((name) => name.endsWith(".md")).sort(); // YYYY-MM-DD-HH.md sorts chronologically
+    const mdFiles = entries.filter((name) => name.endsWith(".md")).toSorted(); // YYYY-MM-DD-HH.md sorts chronologically
 
-    if (mdFiles.length === 0) return null;
+    if (mdFiles.length === 0) {
+      return null;
+    }
 
     const latestFile = mdFiles[mdFiles.length - 1]!;
     const content = await fs.readFile(path.join(handoverDir, latestFile), "utf-8");

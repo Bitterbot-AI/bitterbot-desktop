@@ -68,7 +68,9 @@ export class DiscoveryAgent {
     };
 
     const skills = this.loadSkills();
-    if (skills.length < 2) return result;
+    if (skills.length < 2) {
+      return result;
+    }
 
     // 1. Embedding-based similarity edges
     const similarEdges = this.discoverSimilarEdges(skills);
@@ -79,7 +81,9 @@ export class DiscoveryAgent {
       const prereqs = await this.discoverPrerequisites(skills);
       result.prerequisitesFound = prereqs.length;
       result.edgesDiscovered += prereqs.length;
-      if (prereqs.length >= 0) result.llmCallsUsed++; // 1 call for prerequisites
+      if (prereqs.length >= 0) {
+        result.llmCallsUsed++;
+      } // 1 call for prerequisites
 
       const { edges: composites, llmCalls: compositeLlmCalls } =
         await this.discoverCompositesWithCount(skills);
@@ -90,7 +94,9 @@ export class DiscoveryAgent {
       const contradictions = await this.discoverContradictions(skills);
       result.contradictionsFound = contradictions.length;
       result.edgesDiscovered += contradictions.length;
-      if (contradictions.length >= 0) result.llmCallsUsed++; // 1 call for contradictions
+      if (contradictions.length >= 0) {
+        result.llmCallsUsed++;
+      } // 1 call for contradictions
     }
 
     log.debug("discovery cycle complete", result);
@@ -101,11 +107,15 @@ export class DiscoveryAgent {
    * Discover prerequisite relationships between skills using LLM.
    */
   async discoverPrerequisites(skills: SkillRow[]): Promise<SkillEdge[]> {
-    if (!this.llmCall || skills.length < 2) return [];
+    if (!this.llmCall || skills.length < 2) {
+      return [];
+    }
 
     // Pick unconnected skill pairs within the same category
     const pairs = this.findUnconnectedPairs(skills, 3);
-    if (pairs.length === 0) return [];
+    if (pairs.length === 0) {
+      return [];
+    }
 
     const pairDescriptions = pairs
       .map(
@@ -131,8 +141,12 @@ export class DiscoveryAgent {
 
       for (const item of parsed) {
         const pairIdx = (Number(item.pair) || 1) - 1;
-        if (pairIdx < 0 || pairIdx >= pairs.length) continue;
-        if (item.relationship === "none") continue;
+        if (pairIdx < 0 || pairIdx >= pairs.length) {
+          continue;
+        }
+        if (item.relationship === "none") {
+          continue;
+        }
 
         const [a, b] = pairs[pairIdx]!;
         const source = item.direction === "b_to_a" ? b : a;
@@ -145,7 +159,9 @@ export class DiscoveryAgent {
           Number(item.confidence) || 0.5,
           "llm",
         );
-        if (edge) edges.push(edge);
+        if (edge) {
+          edges.push(edge);
+        }
       }
 
       return edges;
@@ -170,20 +186,26 @@ export class DiscoveryAgent {
   private async discoverCompositesWithCount(
     skills: SkillRow[],
   ): Promise<{ edges: SkillEdge[]; llmCalls: number }> {
-    if (!this.llmCall || skills.length < 3) return { edges: [], llmCalls: 0 };
+    if (!this.llmCall || skills.length < 3) {
+      return { edges: [], llmCalls: 0 };
+    }
 
     // Take up to 5 skills in the same category
     const sameCategory = new Map<string, SkillRow[]>();
     for (const skill of skills) {
       const cat = skill.skill_category ?? "general";
-      if (!sameCategory.has(cat)) sameCategory.set(cat, []);
+      if (!sameCategory.has(cat)) {
+        sameCategory.set(cat, []);
+      }
       sameCategory.get(cat)!.push(skill);
     }
 
     const edges: SkillEdge[] = [];
     let llmCalls = 0;
     for (const [cat, catSkills] of sameCategory) {
-      if (catSkills.length < 3) continue;
+      if (catSkills.length < 3) {
+        continue;
+      }
       const sample = catSkills.slice(0, 5);
 
       const skillList = sample.map((s, i) => `Skill ${i + 1}: ${s.text.slice(0, 200)}`).join("\n");
@@ -204,14 +226,18 @@ export class DiscoveryAgent {
 
         for (const item of parsed) {
           const skillNums = item.skills as number[] | undefined;
-          if (!skillNums || skillNums.length < 2) continue;
+          if (!skillNums || skillNums.length < 2) {
+            continue;
+          }
 
           // Create "composes" edges between all pairs
           for (let i = 0; i < skillNums.length; i++) {
             for (let j = i + 1; j < skillNums.length; j++) {
               const a = sample[(skillNums[i] ?? 1) - 1];
               const b = sample[(skillNums[j] ?? 1) - 1];
-              if (!a || !b) continue;
+              if (!a || !b) {
+                continue;
+              }
 
               const edge = this.storeEdge(
                 a.id,
@@ -220,7 +246,9 @@ export class DiscoveryAgent {
                 Number(item.confidence) || 0.5,
                 "llm",
               );
-              if (edge) edges.push(edge);
+              if (edge) {
+                edges.push(edge);
+              }
             }
           }
         }
@@ -237,11 +265,15 @@ export class DiscoveryAgent {
    * Discover contradictions between skills.
    */
   async discoverContradictions(skills: SkillRow[]): Promise<SkillEdge[]> {
-    if (!this.llmCall || skills.length < 2) return [];
+    if (!this.llmCall || skills.length < 2) {
+      return [];
+    }
 
     // Find highly similar skills that might contradict
     const candidates = this.findSimilarPairs(skills, 0.7, 3);
-    if (candidates.length === 0) return [];
+    if (candidates.length === 0) {
+      return [];
+    }
 
     const pairDescriptions = candidates
       .map(
@@ -267,9 +299,13 @@ export class DiscoveryAgent {
       const edges: SkillEdge[] = [];
 
       for (const item of parsed) {
-        if (!item.contradicts) continue;
+        if (!item.contradicts) {
+          continue;
+        }
         const pairIdx = (Number(item.pair) || 1) - 1;
-        if (pairIdx < 0 || pairIdx >= candidates.length) continue;
+        if (pairIdx < 0 || pairIdx >= candidates.length) {
+          continue;
+        }
 
         const [a, b] = candidates[pairIdx]!;
         const edge = this.storeEdge(
@@ -279,7 +315,9 @@ export class DiscoveryAgent {
           Number(item.confidence) || 0.5,
           "llm",
         );
-        if (edge) edges.push(edge);
+        if (edge) {
+          edges.push(edge);
+        }
       }
 
       return edges;
@@ -315,7 +353,9 @@ export class DiscoveryAgent {
     for (let depth = 0; depth < maxDepth; depth++) {
       const nextQueue: string[] = [];
       for (const id of queue) {
-        if (visited.has(id)) continue;
+        if (visited.has(id)) {
+          continue;
+        }
         visited.add(id);
 
         const prereqs = this.db
@@ -333,7 +373,9 @@ export class DiscoveryAgent {
           }
         }
       }
-      if (nextQueue.length === 0) break;
+      if (nextQueue.length === 0) {
+        break;
+      }
       queue.length = 0;
       queue.push(...nextQueue);
     }
@@ -383,7 +425,9 @@ export class DiscoveryAgent {
 
       for (const fq of frictionQueries) {
         const queryEmb = parseEmbedding(fq.query_embedding);
-        if (queryEmb.length === 0) continue;
+        if (queryEmb.length === 0) {
+          continue;
+        }
 
         const match = this.findMarketplaceSkillsByEmbedding(queryEmb, 1);
         if (match.length > 0 && match[0]!) {
@@ -417,7 +461,9 @@ export class DiscoveryAgent {
           .replace(/[^a-z0-9\s]/g, "")
           .split(/\s+/)
           .filter((w) => w.length > 3);
-        if (keywords.length === 0) continue;
+        if (keywords.length === 0) {
+          continue;
+        }
 
         const keywordPattern = keywords.slice(0, 3).join("%");
         const matchingSkills = this.db
@@ -460,7 +506,9 @@ export class DiscoveryAgent {
           .replace(/[^a-z0-9\s]/g, "")
           .split(/\s+/)
           .filter((w) => w.length > 3);
-        if (keywords.length === 0) continue;
+        if (keywords.length === 0) {
+          continue;
+        }
 
         const keywordPattern = keywords.slice(0, 3).join("%");
         const matchingSkills = this.db
@@ -499,7 +547,9 @@ export class DiscoveryAgent {
         .all() as Array<{ id: string; path: string; download_count: number }>;
 
       for (const t of trending) {
-        if (t.download_count < 1) continue;
+        if (t.download_count < 1) {
+          continue;
+        }
         suggestions.push({
           skillId: t.id,
           skillName: this.extractNameFromPath(t.path),
@@ -524,7 +574,7 @@ export class DiscoveryAgent {
     // Filter by minConfidence and return top results
     return Array.from(deduped.values())
       .filter((s) => s.confidence >= minConfidence)
-      .sort((a, b) => b.confidence - a.confidence)
+      .toSorted((a, b) => b.confidence - a.confidence)
       .slice(0, maxResults);
   }
 
@@ -546,12 +596,14 @@ export class DiscoveryAgent {
     const scored = rows
       .map((row) => {
         const emb = parseEmbedding(row.embedding);
-        if (emb.length === 0) return null;
+        if (emb.length === 0) {
+          return null;
+        }
         const similarity = cosineSimilarity(queryEmbedding, emb);
         return { id: row.id, name: this.extractNameFromPath(row.path), similarity };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null)
-      .sort((a, b) => b.similarity - a.similarity);
+      .toSorted((a, b) => b.similarity - a.similarity);
 
     return scored.slice(0, limit);
   }
@@ -584,20 +636,28 @@ export class DiscoveryAgent {
     const embeddings = new Map<string, number[]>();
     for (const skill of skills) {
       const emb = parseEmbedding(skill.embedding);
-      if (emb.length > 0) embeddings.set(skill.id, emb);
+      if (emb.length > 0) {
+        embeddings.set(skill.id, emb);
+      }
     }
 
     let count = 0;
     for (let i = 0; i < skills.length; i++) {
       const embA = embeddings.get(skills[i]!.id);
-      if (!embA) continue;
+      if (!embA) {
+        continue;
+      }
       for (let j = i + 1; j < skills.length; j++) {
         const embB = embeddings.get(skills[j]!.id);
-        if (!embB) continue;
+        if (!embB) {
+          continue;
+        }
         const sim = cosineSimilarity(embA, embB);
         if (sim >= 0.8) {
           const edge = this.storeEdge(skills[i]!.id, skills[j]!.id, "similar", sim, "embedding");
-          if (edge) count++;
+          if (edge) {
+            count++;
+          }
         }
       }
     }
@@ -634,16 +694,22 @@ export class DiscoveryAgent {
     const embeddings = new Map<string, number[]>();
     for (const skill of skills) {
       const emb = parseEmbedding(skill.embedding);
-      if (emb.length > 0) embeddings.set(skill.id, emb);
+      if (emb.length > 0) {
+        embeddings.set(skill.id, emb);
+      }
     }
 
     const pairs: Array<[SkillRow, SkillRow]> = [];
     for (let i = 0; i < skills.length && pairs.length < limit; i++) {
       const embA = embeddings.get(skills[i]!.id);
-      if (!embA) continue;
+      if (!embA) {
+        continue;
+      }
       for (let j = i + 1; j < skills.length && pairs.length < limit; j++) {
         const embB = embeddings.get(skills[j]!.id);
-        if (!embB) continue;
+        if (!embB) {
+          continue;
+        }
         if (cosineSimilarity(embA, embB) >= threshold) {
           pairs.push([skills[i]!, skills[j]!]);
         }
@@ -667,7 +733,9 @@ export class DiscoveryAgent {
       )
       .get(sourceId, targetId, edgeType);
 
-    if (existing) return null;
+    if (existing) {
+      return null;
+    }
 
     const id = crypto.randomUUID();
     const now = Date.now();

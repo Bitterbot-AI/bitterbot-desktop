@@ -455,7 +455,9 @@ export class MemoryIndexManager implements MemorySearchManager {
    * emotional state reacts in real-time, not retroactively at index time.
    */
   stimulateFromLiveMessage(text: string): void {
-    if (!this.hormonalManager || !text) return;
+    if (!this.hormonalManager || !text) {
+      return;
+    }
     const events = this.hormonalManager.stimulateFromText(text);
     if (events.length > 0) {
       log.debug(`live hormonal stimulation: ${events.join(", ")}`);
@@ -488,10 +490,14 @@ export class MemoryIndexManager implements MemorySearchManager {
    * the manager as the orchestration layer — consistent with existing wiring patterns.
    */
   private checkEmotionalDreamTrigger(): void {
-    if (!this.hormonalManager || !this.dreamEngine) return;
+    if (!this.hormonalManager || !this.dreamEngine) {
+      return;
+    }
 
     const now = Date.now();
-    if (now - this.lastMiniDreamTrigger < this.miniDreamCooldown) return;
+    if (now - this.lastMiniDreamTrigger < this.miniDreamCooldown) {
+      return;
+    }
 
     const state = this.hormonalManager.getState();
 
@@ -574,7 +580,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     const applyImportanceBoost = <T extends { score: number; importanceScore?: number }>(
       items: T[],
     ): T[] => {
-      if (importanceWeight <= 0) return items;
+      if (importanceWeight <= 0) {
+        return items;
+      }
       return items.map((r) => {
         const imp = r.importanceScore ?? 1.0;
         const boost = 1 - importanceWeight + importanceWeight * imp;
@@ -1115,7 +1123,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         )
         .all() as Array<{ lc: string; c: number }>;
       const lifecycleCounts: Record<string, number> = {};
-      for (const row of lifecycleRows) lifecycleCounts[row.lc] = row.c;
+      for (const row of lifecycleRows) {
+        lifecycleCounts[row.lc] = row.c;
+      }
       result.lifecycleCounts = lifecycleCounts;
     } catch {}
 
@@ -1127,7 +1137,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         )
         .all() as Array<{ st: string; c: number }>;
       const semanticCounts: Record<string, number> = {};
-      for (const row of semanticRows) semanticCounts[row.st] = row.c;
+      for (const row of semanticRows) {
+        semanticCounts[row.st] = row.c;
+      }
       result.semanticTypeCounts = semanticCounts;
     } catch {}
 
@@ -1193,7 +1205,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           openTargets: openTargets.length,
           resolvedTargets: curiosity.targets.filter((t) => t.resolvedAt !== null).length,
           topTargets: openTargets
-            .sort((a, b) => b.priority - a.priority)
+            .toSorted((a, b) => b.priority - a.priority)
             .slice(0, 5)
             .map((t) => ({
               type: t.type,
@@ -1366,8 +1378,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (this.executionTracker) {
           const crystallizer = new SkillCrystallizer(this.db, this.executionTracker);
           const newSkills = crystallizer.crystallizePatterns();
-          if (newSkills > 0)
+          if (newSkills > 0) {
             log.info(`crystallized ${newSkills} new skill(s) from execution patterns`);
+          }
         }
         // 9. Decay steering rewards to prevent unbounded accumulation
         {
@@ -1453,7 +1466,9 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private ensureDreamEngine(): void {
     const dreamCfg = this.cfg.memory?.dream;
-    if (dreamCfg?.enabled === false) return;
+    if (dreamCfg?.enabled === false) {
+      return;
+    }
 
     // Build a real llmCall function if one isn't already provided.
     // IMPORTANT: llmCall functions must NOT be placed on the config object
@@ -1539,7 +1554,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         });
       }, initialDelayMs);
       // Don't let the initial timer prevent Node from exiting
-      if (this.dreamInitialTimer.unref) this.dreamInitialTimer.unref();
+      if (this.dreamInitialTimer.unref) {
+        this.dreamInitialTimer.unref();
+      }
 
       this.dreamTimer = setInterval(() => {
         void this.dream().catch((err) => {
@@ -1555,7 +1572,9 @@ export class MemoryIndexManager implements MemorySearchManager {
    */
   private buildLlmCallFn(modelSpec: string): ((prompt: string) => Promise<string>) | null {
     const parts = modelSpec.split("/");
-    if (parts.length < 2) return null;
+    if (parts.length < 2) {
+      return null;
+    }
     const provider = parts[0]!;
     const modelId = parts.slice(1).join("/");
 
@@ -1565,7 +1584,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");
         const { getApiKeyForModel } = await import("../agents/model-auth.js");
         const resolved = resolveModel(provider, modelId, undefined, this.cfg);
-        if (!resolved.model) return null;
+        if (!resolved.model) {
+          return null;
+        }
         const auth = await getApiKeyForModel({ model: resolved.model, cfg: this.cfg });
         return { model: resolved.model, apiKey: auth?.apiKey };
       };
@@ -1573,7 +1594,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       return async (prompt: string): Promise<string> => {
         const { completeSimple } = await import("@mariozechner/pi-ai");
         const ctx = await resolveModelFn();
-        if (!ctx) throw new Error(`Cannot resolve model: ${modelSpec}`);
+        if (!ctx) {
+          throw new Error(`Cannot resolve model: ${modelSpec}`);
+        }
 
         const res = await completeSimple(
           ctx.model,
@@ -1601,7 +1624,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   async dream(): Promise<DreamStats | null> {
-    if (!this.dreamEngine) return null;
+    if (!this.dreamEngine) {
+      return null;
+    }
     const stats = await this.dreamEngine.run();
 
     if (stats && stats.newInsights.length > 0) {
@@ -1634,7 +1659,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (refinableInsights.length > 0) {
           for (const insight of refinableInsights) {
             const sourceId = insight.sourceChunkIds[0];
-            if (!sourceId) continue;
+            if (!sourceId) {
+              continue;
+            }
             try {
               const sourceChunk = this.db
                 .prepare(`SELECT id, text FROM chunks WHERE id = ?`)
@@ -1741,7 +1768,9 @@ export class MemoryIndexManager implements MemorySearchManager {
    */
   private async runSessionExtraction(): Promise<void> {
     const extractionCfg = this.cfg.memory?.extraction;
-    if (extractionCfg?.enabled === false) return;
+    if (extractionCfg?.enabled === false) {
+      return;
+    }
 
     const llmCall = this.dreamLlmCall;
     if (!llmCall) {
@@ -1759,7 +1788,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       : undefined;
 
     const sessionFiles = await listSessionFilesForAgent(this.agentId);
-    if (sessionFiles.length === 0) return;
+    if (sessionFiles.length === 0) {
+      return;
+    }
 
     let extractedCount = 0;
 
@@ -1768,7 +1799,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         // Read session content
         const { buildSessionEntry } = await import("./session-files.js");
         const entry = await buildSessionEntry(absPath);
-        if (!entry || entry.content.length < minDelta) continue;
+        if (!entry || entry.content.length < minDelta) {
+          continue;
+        }
 
         // Check if already extracted with same content hash
         const contentHash = crypto.createHash("sha256").update(entry.content).digest("hex");
@@ -1776,7 +1809,9 @@ export class MemoryIndexManager implements MemorySearchManager {
           .prepare(`SELECT last_extracted_hash FROM session_extractions WHERE session_path = ?`)
           .get(absPath) as { last_extracted_hash: string } | undefined;
 
-        if (existing?.last_extracted_hash === contentHash) continue;
+        if (existing?.last_extracted_hash === contentHash) {
+          continue;
+        }
 
         // Run LLM extraction
         const result = await extractSessionFacts(
@@ -1786,7 +1821,9 @@ export class MemoryIndexManager implements MemorySearchManager {
           maxFacts,
           hormonalBias,
         );
-        if (!result) continue;
+        if (!result) {
+          continue;
+        }
 
         const now = Date.now();
 
@@ -1958,7 +1995,9 @@ export class MemoryIndexManager implements MemorySearchManager {
               `SELECT id FROM chunks WHERE path = ? AND source = 'sessions' AND created_at >= ? LIMIT 50`,
             )
             .all(absPath, now - 60000) as Array<{ id: string }>;
-          for (const r of factRows) factIds.push(r.id);
+          for (const r of factRows) {
+            factIds.push(r.id);
+          }
           if (factIds.length > 0) {
             scanForOpenLoops(this.db, factIds);
           }
@@ -2335,7 +2374,9 @@ export class MemoryIndexManager implements MemorySearchManager {
    * Queries published skills, imported skills, peer count, and reputation.
    */
   private getNetworkIdentityForSynthesis(): WorkingMemoryContext["networkIdentity"] {
-    if (!this.skillNetworkBridge) return undefined;
+    if (!this.skillNetworkBridge) {
+      return undefined;
+    }
 
     try {
       // Published skills with marketplace download counts
@@ -2374,7 +2415,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         let fromPeer = "unknown";
         try {
           const dag = JSON.parse(row.provenance_dag);
-          if (Array.isArray(dag) && dag[0]?.peer) fromPeer = dag[0].peer.slice(0, 16);
+          if (Array.isArray(dag) && dag[0]?.peer) {
+            fromPeer = dag[0].peer.slice(0, 16);
+          }
         } catch {
           /* ignore parse errors */
         }
@@ -2424,7 +2467,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     // Check if Phenotype already exists in MEMORY.md
     try {
       const memoryMd = await fs.readFile(path.join(this.workspaceDir, "MEMORY.md"), "utf-8");
-      if (memoryMd.includes("## The Phenotype")) return false;
+      if (memoryMd.includes("## The Phenotype")) {
+        return false;
+      }
     } catch {
       // No MEMORY.md yet — that's fine, might need first breath
     }
@@ -2436,14 +2481,18 @@ export class MemoryIndexManager implements MemorySearchManager {
         "utf-8",
       );
       const noteCount = (scratch.match(/^- \[/gm) || []).length;
-      if (scratch.length < 500 && noteCount < 5) return false;
+      if (scratch.length < 500 && noteCount < 5) {
+        return false;
+      }
     } catch {
       return false; // No scratch → no content to synthesize
     }
 
     // Check that a dream cycle isn't already running
     const dreamStatus = this.dreamEngine?.status();
-    if (dreamStatus && dreamStatus.state !== "DORMANT") return false;
+    if (dreamStatus && dreamStatus.state !== "DORMANT") {
+      return false;
+    }
 
     return true;
   }
@@ -2474,7 +2523,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         )
         .all() as Array<{ id: string; path: string }>;
 
-      if (skillChunks.length === 0) return 0;
+      if (skillChunks.length === 0) {
+        return 0;
+      }
 
       let removed = 0;
       const deleteStmt = this.db.prepare(
@@ -2533,9 +2584,15 @@ export class MemoryIndexManager implements MemorySearchManager {
       valence: number | null,
       semanticType: string | null,
     ): string | undefined => {
-      if (valence !== null && valence > 0.3) return "dopamine";
-      if (valence !== null && valence < -0.3) return "cortisol";
-      if (semanticType === "relationship") return "oxytocin";
+      if (valence !== null && valence > 0.3) {
+        return "dopamine";
+      }
+      if (valence !== null && valence < -0.3) {
+        return "cortisol";
+      }
+      if (semanticType === "relationship") {
+        return "oxytocin";
+      }
       return undefined;
     };
 
@@ -2606,7 +2663,9 @@ export class MemoryIndexManager implements MemorySearchManager {
           emotional_valence: number | null;
         }>;
         for (const r of fillRows) {
-          if (results.length >= limit) break;
+          if (results.length >= limit) {
+            break;
+          }
           if (!seenIds.has(r.id)) {
             seenIds.add(r.id);
             results.push({
@@ -2627,10 +2686,12 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private getCuriosityTargetsForSynthesis(): WorkingMemoryContext["curiosityTargets"] {
     const state = this.curiosityState();
-    if (!state) return [];
+    if (!state) {
+      return [];
+    }
     return state.targets
       .filter((t) => t.resolvedAt === null)
-      .sort((a, b) => b.priority - a.priority)
+      .toSorted((a, b) => b.priority - a.priority)
       .slice(0, 5)
       .map((t) => ({ description: t.description, priority: t.priority }));
   }
@@ -2685,7 +2746,9 @@ export class MemoryIndexManager implements MemorySearchManager {
           .replace(/^-\s*\[[^\]]*\]\s*/, "") // remove "- [timestamp] "
           .replace(/^\(importance:\s*[\d.]+\)\s*/, "") // remove optional "(importance: N) "
           .trim();
-        if (!text || text.length < 10) continue;
+        if (!text || text.length < 10) {
+          continue;
+        }
         const id = `scratch_${crypto.randomUUID()}`;
         const hash = crypto.createHash("sha256").update(text).digest("hex");
         // Note: chunks table requires model + embedding (NOT NULL). We insert placeholder
@@ -2788,7 +2851,9 @@ export class MemoryIndexManager implements MemorySearchManager {
    * the hormonal system captures important moments automatically.
    */
   private autoScratchFromHormonalSpike(): void {
-    if (!this.hormonalManager) return;
+    if (!this.hormonalManager) {
+      return;
+    }
     const state = this.hormonalManager.getState();
     const scratchPath = path.join(this.workspaceDir, "memory", "scratch.md");
 
@@ -2797,12 +2862,20 @@ export class MemoryIndexManager implements MemorySearchManager {
     const highCortisol = state.cortisol > 0.7;
     const highOxytocin = state.oxytocin > 0.7;
 
-    if (!highDopamine && !highCortisol && !highOxytocin) return;
+    if (!highDopamine && !highCortisol && !highOxytocin) {
+      return;
+    }
 
     const parts: string[] = [];
-    if (highDopamine) parts.push("dopamine spike (achievement/breakthrough detected)");
-    if (highCortisol) parts.push("cortisol spike (friction/urgency detected)");
-    if (highOxytocin) parts.push("oxytocin spike (bonding moment detected)");
+    if (highDopamine) {
+      parts.push("dopamine spike (achievement/breakthrough detected)");
+    }
+    if (highCortisol) {
+      parts.push("cortisol spike (friction/urgency detected)");
+    }
+    if (highOxytocin) {
+      parts.push("oxytocin spike (bonding moment detected)");
+    }
 
     const briefing = this.hormonalManager.emotionalBriefing?.() ?? "";
     const note = `[AUTO] Hormonal event: ${parts.join(", ")}. ${briefing}`.trim();
@@ -2836,7 +2909,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   dreamStatus(): Record<string, unknown> {
-    if (!this.dreamEngine) return { enabled: false };
+    if (!this.dreamEngine) {
+      return { enabled: false };
+    }
     return this.dreamEngine.status();
   }
 
@@ -2844,7 +2919,9 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private ensureHormonalManager(): void {
     const emotionalCfg = this.cfg.memory?.emotional;
-    if (emotionalCfg?.hormonal?.enabled === false) return;
+    if (emotionalCfg?.hormonal?.enabled === false) {
+      return;
+    }
 
     // Parse GENOME.md for hormonal baseline (overrides default homeostasis)
     // The config type doesn't include homeostasis, but HormonalStateManager accepts it
@@ -2888,7 +2965,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   private loadEmotionalAnchors(): void {
-    if (!this.hormonalManager) return;
+    if (!this.hormonalManager) {
+      return;
+    }
     try {
       const rows = this.db
         .prepare("SELECT * FROM emotional_anchors ORDER BY created_at DESC LIMIT 20")
@@ -2972,13 +3051,17 @@ export class MemoryIndexManager implements MemorySearchManager {
     label: string,
     description?: string,
   ): import("./hormonal.js").EmotionalAnchor | null {
-    if (!this.hormonalManager) return null;
+    if (!this.hormonalManager) {
+      return null;
+    }
     return this.hormonalManager.createAnchor(label, description ?? "", "manual");
   }
 
   /** Recall an emotional anchor (public API for agent tools). */
   recallEmotionalAnchor(anchorId: string, influence?: number): boolean {
-    if (!this.hormonalManager) return false;
+    if (!this.hormonalManager) {
+      return false;
+    }
     return this.hormonalManager.recallAnchor(anchorId, influence);
   }
 
@@ -2988,7 +3071,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   hormonalState(): { dopamine: number; cortisol: number; oxytocin: number } | null {
-    if (!this.hormonalManager) return null;
+    if (!this.hormonalManager) {
+      return null;
+    }
     const state = this.hormonalManager.getState();
     return { dopamine: state.dopamine, cortisol: state.cortisol, oxytocin: state.oxytocin };
   }
@@ -2997,12 +3082,16 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private ensureUserModelManager(): void {
     const emotionalCfg = this.cfg.memory?.emotional;
-    if (emotionalCfg?.userModel?.enabled === false) return;
+    if (emotionalCfg?.userModel?.enabled === false) {
+      return;
+    }
     this.userModelManager = new UserModelManager(this.db, emotionalCfg?.userModel);
   }
 
   userProfile(): import("./user-model.js").UserProfile | null {
-    if (!this.userModelManager) return null;
+    if (!this.userModelManager) {
+      return null;
+    }
     return this.userModelManager.getUserProfile();
   }
 
@@ -3017,7 +3106,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     stats: { totalPreferences: number; categories: Record<string, number>; avgConfidence: number };
   } | null> {
     const profile = this.userProfile();
-    if (!profile) return null;
+    if (!profile) {
+      return null;
+    }
 
     // Aggregate stats by category
     const categories: Record<string, number> = {};
@@ -3177,8 +3268,12 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     // Initialize experience signal collector
     this.experienceCollector = new ExperienceSignalCollector(this.db);
-    if (this.hormonalManager) this.experienceCollector.setHormonalManager(this.hormonalManager);
-    if (this.curiosityEngine) this.experienceCollector.setCuriosityEngine(this.curiosityEngine);
+    if (this.hormonalManager) {
+      this.experienceCollector.setHormonalManager(this.hormonalManager);
+    }
+    if (this.curiosityEngine) {
+      this.experienceCollector.setCuriosityEngine(this.curiosityEngine);
+    }
 
     // Skill Seekers adapter (optional external skill generation)
     const ssConfig = this.cfg.skills?.skillSeekers;
@@ -3269,7 +3364,9 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private ensureCuriosityEngine(): void {
     const curiosityCfg = this.cfg.memory?.curiosity;
-    if (curiosityCfg?.enabled === false) return;
+    if (curiosityCfg?.enabled === false) {
+      return;
+    }
 
     this.curiosityEngine = new CuriosityEngine(this.db, {
       ...curiosityCfg,
@@ -3289,12 +3386,16 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   curiosityState(): CuriosityState | null {
-    if (!this.curiosityEngine) return null;
+    if (!this.curiosityEngine) {
+      return null;
+    }
     return this.curiosityEngine.getState();
   }
 
   curiosityResolve(targetId: string): boolean {
-    if (!this.curiosityEngine) return false;
+    if (!this.curiosityEngine) {
+      return false;
+    }
     return this.curiosityEngine.resolveTarget(targetId);
   }
 
@@ -3340,7 +3441,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     state: Record<string, unknown>;
     config: Record<string, unknown>;
   } | null {
-    if (!this.curiosityEngine) return null;
+    if (!this.curiosityEngine) {
+      return null;
+    }
     return this.curiosityEngine.gccrfDiagnostics();
   }
 
@@ -3349,10 +3452,14 @@ export class MemoryIndexManager implements MemorySearchManager {
    * Only emits 1 query per consolidation cycle to stay within rate limits.
    */
   private emitTopTargetsAsQueries(): void {
-    if (!this.curiosityEngine || !this.skillNetworkBridge) return;
+    if (!this.curiosityEngine || !this.skillNetworkBridge) {
+      return;
+    }
     const state = this.curiosityEngine.getState();
     const topTarget = state.targets[0];
-    if (!topTarget || topTarget.priority < 0.6) return; // Only query for high-priority targets
+    if (!topTarget || topTarget.priority < 0.6) {
+      return;
+    } // Only query for high-priority targets
 
     const domainHint = topTarget.regionId
       ? state.regions.find((r) => r.id === topTarget.regionId)?.label
@@ -3430,7 +3537,9 @@ export class MemoryIndexManager implements MemorySearchManager {
  * Extract a named section from working memory content.
  */
 function extractWorkingMemorySection(content: string, sectionName: string): string | null {
-  if (!content) return null;
+  if (!content) {
+    return null;
+  }
   const pattern = new RegExp(`## ${sectionName}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`);
   const match = content.match(pattern);
   return match?.[1]?.trim() || null;
@@ -3441,14 +3550,26 @@ function extractWorkingMemorySection(content: string, sectionName: string): stri
  * Returns 0 (identical) to 1 (completely different).
  */
 function bigramDiffRatio(a: string, b: string): number {
-  if (a === b) return 0;
-  if (!a || !b) return 1;
+  if (a === b) {
+    return 0;
+  }
+  if (!a || !b) {
+    return 1;
+  }
   const bigramsA = new Set<string>();
   const bigramsB = new Set<string>();
-  for (let i = 0; i < a.length - 1; i++) bigramsA.add(a.slice(i, i + 2));
-  for (let i = 0; i < b.length - 1; i++) bigramsB.add(b.slice(i, i + 2));
+  for (let i = 0; i < a.length - 1; i++) {
+    bigramsA.add(a.slice(i, i + 2));
+  }
+  for (let i = 0; i < b.length - 1; i++) {
+    bigramsB.add(b.slice(i, i + 2));
+  }
   let intersection = 0;
-  for (const bg of bigramsA) if (bigramsB.has(bg)) intersection++;
+  for (const bg of bigramsA) {
+    if (bigramsB.has(bg)) {
+      intersection++;
+    }
+  }
   const union = bigramsA.size + bigramsB.size - intersection;
   return union === 0 ? 0 : 1 - intersection / union;
 }
@@ -3460,14 +3581,23 @@ function describeHormonalMood(state: {
 }): string {
   const parts: string[] = [];
 
-  if (state.dopamine > 0.6) parts.push("energized");
-  else if (state.dopamine > 0.3) parts.push("motivated");
+  if (state.dopamine > 0.6) {
+    parts.push("energized");
+  } else if (state.dopamine > 0.3) {
+    parts.push("motivated");
+  }
 
-  if (state.cortisol > 0.6) parts.push("stressed");
-  else if (state.cortisol > 0.3) parts.push("alert");
+  if (state.cortisol > 0.6) {
+    parts.push("stressed");
+  } else if (state.cortisol > 0.3) {
+    parts.push("alert");
+  }
 
-  if (state.oxytocin > 0.6) parts.push("deeply connected");
-  else if (state.oxytocin > 0.3) parts.push("socially engaged");
+  if (state.oxytocin > 0.6) {
+    parts.push("deeply connected");
+  } else if (state.oxytocin > 0.3) {
+    parts.push("socially engaged");
+  }
 
   if (parts.length === 0) {
     if (state.dopamine < 0.1 && state.cortisol < 0.1 && state.oxytocin < 0.1) {

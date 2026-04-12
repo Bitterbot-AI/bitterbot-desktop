@@ -84,7 +84,9 @@ export function clearTruncatedOriginals(): void {
  * with a marker in between.
  */
 export function middleOutTruncate(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
+  if (text.length <= maxChars) {
+    return text;
+  }
   const half = Math.floor(maxChars / 2);
   const head = text.slice(0, half);
   const tail = text.slice(-half);
@@ -96,7 +98,9 @@ export function middleOutTruncate(text: string, maxChars: number): string {
  * expand_message tool can retrieve it later.
  */
 export function truncateWithReference(content: string, maxChars: number): string {
-  if (content.length <= maxChars) return content;
+  if (content.length <= maxChars) {
+    return content;
+  }
   const fingerprint = storeOriginal(content);
   const truncated = middleOutTruncate(content, maxChars);
   return `${truncated}\n\n[Content truncated. Reference: ${fingerprint} — use expand_message tool to retrieve full content]`;
@@ -108,13 +112,21 @@ export function truncateWithReference(content: string, maxChars: number): string
 
 function getMessageText(msg: AgentMessage): string {
   const content = (msg as { content?: unknown }).content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
   const parts: string[] = [];
   for (const block of content) {
-    if (!block || typeof block !== "object") continue;
+    if (!block || typeof block !== "object") {
+      continue;
+    }
     const text = (block as { text?: unknown }).text;
-    if (typeof text === "string") parts.push(text);
+    if (typeof text === "string") {
+      parts.push(text);
+    }
   }
   return parts.join("\n");
 }
@@ -183,9 +195,13 @@ function compressToolResults(
   const sparedIndices = new Set(toolResultIndices.slice(-spareRecent));
   let compressed = 0;
   const out = messages.map((msg, i) => {
-    if (!toolResultIndices.includes(i) || sparedIndices.has(i)) return msg;
+    if (!toolResultIndices.includes(i) || sparedIndices.has(i)) {
+      return msg;
+    }
     const tokens = estimateMessageTokens(msg);
-    if (tokens <= threshold) return msg;
+    if (tokens <= threshold) {
+      return msg;
+    }
     const text = getMessageText(msg);
     // Use ~4 chars per token as rough estimate for maxChars
     const maxChars = threshold * 4;
@@ -216,9 +232,13 @@ function compressMessagesByRole(
   const sparedIndices = new Set(roleIndices.slice(-spareRecent));
   let compressed = 0;
   const out = messages.map((msg, i) => {
-    if (!roleIndices.includes(i) || sparedIndices.has(i)) return msg;
+    if (!roleIndices.includes(i) || sparedIndices.has(i)) {
+      return msg;
+    }
     const tokens = estimateMessageTokens(msg);
-    if (tokens <= threshold) return msg;
+    if (tokens <= threshold) {
+      return msg;
+    }
     const text = getMessageText(msg);
     const maxChars = threshold * 4;
     const truncated = truncateWithReference(text, maxChars);
@@ -233,7 +253,9 @@ function compressMessagesByRole(
  * Keep the first N and last N messages, drop the middle.
  */
 function middleOutMessages(messages: AgentMessage[], maxMessages: number): AgentMessage[] {
-  if (messages.length <= maxMessages) return messages;
+  if (messages.length <= maxMessages) {
+    return messages;
+  }
   const half = Math.floor(maxMessages / 2);
   const head = messages.slice(0, half);
   const tail = messages.slice(-half);
@@ -305,7 +327,9 @@ export function compressOldMessages(
     totalCompressed += toolPass.compressed;
     passesRun++;
 
-    if (estimateAllTokens(current) <= contextBudget) break;
+    if (estimateAllTokens(current) <= contextBudget) {
+      break;
+    }
 
     // Pass 2: Compress user messages
     const userPass = compressMessagesByRole(current, "user", msgThreshold, cfg.spareRecentMessages);
@@ -313,7 +337,9 @@ export function compressOldMessages(
     totalCompressed += userPass.compressed;
     passesRun++;
 
-    if (estimateAllTokens(current) <= contextBudget) break;
+    if (estimateAllTokens(current) <= contextBudget) {
+      break;
+    }
 
     // Pass 3: Compress assistant messages
     const assistantPass = compressMessagesByRole(
@@ -326,7 +352,9 @@ export function compressOldMessages(
     totalCompressed += assistantPass.compressed;
     passesRun++;
 
-    if (estimateAllTokens(current) <= contextBudget) break;
+    if (estimateAllTokens(current) <= contextBudget) {
+      break;
+    }
 
     // Halve thresholds for next iteration
     toolThreshold = Math.max(256, Math.floor(toolThreshold / 2));

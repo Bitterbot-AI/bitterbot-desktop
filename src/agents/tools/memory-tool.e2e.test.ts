@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-let backend: "builtin" = "builtin";
+let backend = "builtin" as const;
 let searchImpl: () => Promise<unknown[]> = async () => [
   {
     path: "MEMORY.md",

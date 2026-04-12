@@ -78,7 +78,9 @@ export class EpistemicDirectiveEngine {
     priority?: number;
     sourceEntityIds?: string[];
   }): EpistemicDirective | null {
-    if (!this.config.enabled) return null;
+    if (!this.config.enabled) {
+      return null;
+    }
 
     // Check active count
     const activeCount = this.getActiveCount();
@@ -147,7 +149,9 @@ export class EpistemicDirectiveEngine {
    * Returns top-priority unresolved directives, limited by maxPerSession.
    */
   getDirectivesForSession(): EpistemicDirective[] {
-    if (!this.config.enabled) return [];
+    if (!this.config.enabled) {
+      return [];
+    }
 
     try {
       const rows = this.db
@@ -242,7 +246,9 @@ export class EpistemicDirectiveEngine {
           priority: 0.7,
           sourceEntityIds: [c.source_entity_id, c.target_entity_id],
         });
-        if (directive) directives.push(directive);
+        if (directive) {
+          directives.push(directive);
+        }
       }
     } catch (err) {
       log.debug(`detectContradictions failed: ${String(err)}`);

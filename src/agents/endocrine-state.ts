@@ -36,11 +36,15 @@ export async function resolveEndocrineState(params: {
       agentId: params.agentId,
       purpose: "status",
     });
-    if (!manager) return undefined;
+    if (!manager) {
+      return undefined;
+    }
 
     // Get hormonal state via the public hormonalState() method
     const hormones = manager.hormonalState();
-    if (!hormones) return undefined;
+    if (!hormones) {
+      return undefined;
+    }
 
     // Get response modulation briefing via the hormonal manager
     const hormonalMgr = (manager as Record<string, unknown>).hormonalManager as {

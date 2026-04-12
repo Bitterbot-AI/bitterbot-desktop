@@ -35,13 +35,19 @@ const RecallAnchorSchema = Type.Object({
 
 function resolveAnchorToolContext(options: { config?: BitterbotConfig; agentSessionKey?: string }) {
   const cfg = options.config;
-  if (!cfg) return null;
-  if (cfg.memory?.emotional?.hormonal?.enabled === false) return null;
+  if (!cfg) {
+    return null;
+  }
+  if (cfg.memory?.emotional?.hormonal?.enabled === false) {
+    return null;
+  }
   const agentId = resolveSessionAgentId({
     sessionKey: options.agentSessionKey,
     config: cfg,
   });
-  if (!resolveMemorySearchConfig(cfg, agentId)) return null;
+  if (!resolveMemorySearchConfig(cfg, agentId)) {
+    return null;
+  }
   return { cfg, agentId };
 }
 
@@ -50,7 +56,9 @@ export function createEmotionalAnchorTool(options: {
   agentSessionKey?: string;
 }): AnyAgentTool | null {
   const ctx = resolveAnchorToolContext(options);
-  if (!ctx) return null;
+  if (!ctx) {
+    return null;
+  }
   const { cfg, agentId } = ctx;
 
   return {
@@ -97,7 +105,9 @@ export function createRecallEmotionalAnchorTool(options: {
   agentSessionKey?: string;
 }): AnyAgentTool | null {
   const ctx = resolveAnchorToolContext(options);
-  if (!ctx) return null;
+  if (!ctx) {
+    return null;
+  }
   const { cfg, agentId } = ctx;
 
   return {

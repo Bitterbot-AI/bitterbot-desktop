@@ -61,7 +61,9 @@ export class ReconsolidationEngine {
    * during search. The chunk enters a window where it can be updated.
    */
   markLabile(chunkId: string): boolean {
-    if (!this.config.enabled) return false;
+    if (!this.config.enabled) {
+      return false;
+    }
 
     const now = Date.now();
     const labileUntil = now + this.config.labileWindowMs;
@@ -76,7 +78,9 @@ export class ReconsolidationEngine {
         | { id: string; importance_score: number; labile_until: number | null }
         | undefined;
 
-      if (!chunk) return false;
+      if (!chunk) {
+        return false;
+      }
 
       // Already labile? Extend the window
       if (chunk.labile_until && chunk.labile_until > now) {
@@ -138,7 +142,9 @@ export class ReconsolidationEngine {
    * Applies a larger importance boost than passive restabilization.
    */
   strengthen(chunkId: string): boolean {
-    if (!this.isLabile(chunkId)) return false;
+    if (!this.isLabile(chunkId)) {
+      return false;
+    }
 
     try {
       const now = Date.now();
@@ -167,7 +173,9 @@ export class ReconsolidationEngine {
    * that conflicts with the recalled memory. Will be reviewed in next dream cycle.
    */
   flagContradiction(chunkId: string, contradictingInfo: string): boolean {
-    if (!this.isLabile(chunkId)) return false;
+    if (!this.isLabile(chunkId)) {
+      return false;
+    }
 
     try {
       this.db

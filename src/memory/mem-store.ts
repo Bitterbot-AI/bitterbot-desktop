@@ -237,7 +237,9 @@ export class MemStore {
       )
       .get(stableSkillId) as Record<string, unknown> | undefined;
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
     return rowToCrystal(row);
   }
 
@@ -268,7 +270,9 @@ export class MemStore {
       | Record<string, unknown>
       | undefined;
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
     return rowToCrystal(row);
   }
 
@@ -296,7 +300,9 @@ export class MemStore {
     }
     if (filter.maxAge != null) {
       const age = Date.now() - crystal.createdAt;
-      if (age > filter.maxAge) return false;
+      if (age > filter.maxAge) {
+        return false;
+      }
     }
     return true;
   }

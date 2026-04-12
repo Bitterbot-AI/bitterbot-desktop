@@ -73,7 +73,9 @@ export class SessionCoherenceTracker {
     messages: Array<{ role: string; content: string; turn: number }>,
     currentTurn: number,
   ): void {
-    if (currentTurn - this.state.lastUpdatedTurn < this.updateInterval) return;
+    if (currentTurn - this.state.lastUpdatedTurn < this.updateInterval) {
+      return;
+    }
 
     const recentWindow = messages.slice(-this.updateInterval * 2);
 
@@ -164,7 +166,7 @@ export class SessionCoherenceTracker {
       return "elaborate";
     }
     if (
-      /\?$/.test(lower) ||
+      lower.endsWith("?") ||
       /^(?:how|what|why|when|where|which|can you|do you|is there|does)/i.test(lower)
     ) {
       return "question";
@@ -182,7 +184,9 @@ export class SessionCoherenceTracker {
 
   private summarizeIntentFlow(): string {
     const recent = this.intentState.actHistory.slice(-5);
-    if (recent.length < 2) return "";
+    if (recent.length < 2) {
+      return "";
+    }
 
     const transitions: string[] = [];
 
@@ -222,7 +226,9 @@ export class SessionCoherenceTracker {
 
     // Filter to terms mentioned 2+ times
     for (const [term, count] of counts) {
-      if (count < 2) counts.delete(term);
+      if (count < 2) {
+        counts.delete(term);
+      }
     }
     return counts;
   }
@@ -277,7 +283,9 @@ export class SessionCoherenceTracker {
       const answered = msgs.some(
         (m) => m.turn > q.turn && m.role !== q.role && this.wordOverlap(qWords, m.content) > 0.3,
       );
-      if (!answered) open.push(q.text);
+      if (!answered) {
+        open.push(q.text);
+      }
     }
     return open.slice(-3);
   }
@@ -290,7 +298,9 @@ export class SessionCoherenceTracker {
 
     const pivots: Array<{ from: string; to: string }> = [];
     for (const msg of msgs) {
-      if (msg.role !== "user") continue;
+      if (msg.role !== "user") {
+        continue;
+      }
       const text = typeof msg.content === "string" ? msg.content : "";
       pivotPattern.lastIndex = 0;
       const match = pivotPattern.exec(text);
@@ -344,7 +354,9 @@ export class SessionCoherenceTracker {
     );
     let overlap = 0;
     for (const w of qWords) {
-      if (cWords.has(w)) overlap++;
+      if (cWords.has(w)) {
+        overlap++;
+      }
     }
     return qWords.size > 0 ? overlap / qWords.size : 0;
   }
@@ -354,7 +366,9 @@ export class SessionCoherenceTracker {
    */
   formatForPrompt(): string | null {
     const active = this.state.threads.filter((t) => t.status === "active");
-    if (active.length === 0 && !this.intentState.intentSummary) return null;
+    if (active.length === 0 && !this.intentState.intentSummary) {
+      return null;
+    }
 
     const lines: string[] = ["Session context (do not announce):"];
 

@@ -67,7 +67,9 @@ export function loadGCCRFState(db: DatabaseSync): GCCRFState | null {
     const stmt = db.prepare(`SELECT key, value FROM gccrf_state`);
     const rows = stmt.all() as Array<{ key: string; value: string }>;
 
-    if (rows.length === 0) return null;
+    if (rows.length === 0) {
+      return null;
+    }
 
     const map = new Map(rows.map((r) => [r.key, r.value]));
 

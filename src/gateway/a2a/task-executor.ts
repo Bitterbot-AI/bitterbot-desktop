@@ -116,7 +116,9 @@ export async function executeA2aTask(params: {
         // Walk backwards to find the last assistant message with text content.
         for (let i = history.messages.length - 1; i >= 0; i--) {
           const msg = history.messages[i];
-          if (msg?.role !== "assistant") continue;
+          if (msg?.role !== "assistant") {
+            continue;
+          }
           if (typeof msg.content === "string" && msg.content.trim()) {
             resultText = msg.content;
             break;

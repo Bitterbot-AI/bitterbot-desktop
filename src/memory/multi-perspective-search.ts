@@ -80,7 +80,9 @@ export function multiPerspectiveSearchWithEmbeddings(
     )
     .all() as ChunkRow[];
 
-  if (chunks.length === 0) return [];
+  if (chunks.length === 0) {
+    return [];
+  }
 
   const perspectives: EmbeddingPerspective[] = ["semantic", "procedural", "causal", "entity"];
 
@@ -91,10 +93,14 @@ export function multiPerspectiveSearchWithEmbeddings(
   >();
 
   for (const perspective of perspectives) {
-    if (weights[perspective] === 0) continue;
+    if (weights[perspective] === 0) {
+      continue;
+    }
 
     const queryEmb = queryEmbeddings[perspective];
-    if (queryEmb.length === 0) continue;
+    if (queryEmb.length === 0) {
+      continue;
+    }
 
     const scored: Array<{ id: string; sim: number }> = [];
     for (const chunk of chunks) {
@@ -107,9 +113,13 @@ export function multiPerspectiveSearchWithEmbeddings(
               ? chunk.embedding_causal
               : chunk.embedding_entity;
 
-      if (!embCol) continue;
+      if (!embCol) {
+        continue;
+      }
       const emb = parseEmbedding(embCol);
-      if (emb.length === 0) continue;
+      if (emb.length === 0) {
+        continue;
+      }
 
       scored.push({ id: chunk.id, sim: cosineSimilarity(queryEmb, emb) });
     }
@@ -152,10 +162,14 @@ export function multiPerspectiveSearchWithEmbeddings(
 
     for (const perspective of perspectives) {
       const w = weights[perspective];
-      if (w === 0) continue;
+      if (w === 0) {
+        continue;
+      }
 
       const ranking = perspectiveRankings.get(perspective);
-      if (!ranking) continue;
+      if (!ranking) {
+        continue;
+      }
 
       const entry = ranking.get(id);
       if (entry) {
@@ -175,7 +189,7 @@ export function multiPerspectiveSearchWithEmbeddings(
 
   // Sort by fused score and return top-K
   const results = [...fusedScores.entries()]
-    .sort(([, a], [, b]) => b.score - a.score)
+    .toSorted(([, a], [, b]) => b.score - a.score)
     .slice(0, limit)
     .map(([id, { score, ranks, sims }]) => ({
       id,

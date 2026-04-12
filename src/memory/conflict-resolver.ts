@@ -70,13 +70,15 @@ export function resolveFactConflict(
   const scored = candidates
     .map((c) => {
       const emb = parseEmbedding(c.embedding);
-      if (emb.length === 0) return null;
+      if (emb.length === 0) {
+        return null;
+      }
       return { id: c.id, similarity: cosineSimilarity(factEmbedding, emb) };
     })
     .filter(
       (c): c is { id: string; similarity: number } => c !== null && Number.isFinite(c.similarity),
     )
-    .sort((a, b) => b.similarity - a.similarity)
+    .toSorted((a, b) => b.similarity - a.similarity)
     .slice(0, MAX_CANDIDATES);
 
   if (scored.length === 0) {

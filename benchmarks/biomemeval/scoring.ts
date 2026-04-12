@@ -101,7 +101,9 @@ export class SuiteScorer {
 
 export function computeComposite(suites: SuiteResult[]): number {
   const totalWeight = suites.reduce((sum, s) => sum + s.weight, 0);
-  if (totalWeight === 0) return 0;
+  if (totalWeight === 0) {
+    return 0;
+  }
   return suites.reduce((sum, s) => sum + s.percentage * s.weight, 0) / totalWeight;
 }
 

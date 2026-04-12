@@ -52,7 +52,9 @@ async function parseSessionFile(absPath: string): Promise<SessionTranscript | nu
     let sessionId = path.basename(absPath, ".jsonl");
 
     for (const line of lines) {
-      if (!line.trim()) continue;
+      if (!line.trim()) {
+        continue;
+      }
       let record: any;
       try {
         record = JSON.parse(line);
@@ -67,13 +69,21 @@ async function parseSessionFile(absPath: string): Promise<SessionTranscript | nu
       }
 
       // Extract messages
-      if (record.type !== "message") continue;
+      if (record.type !== "message") {
+        continue;
+      }
       const msg = record.message;
-      if (!msg || typeof msg.role !== "string") continue;
-      if (msg.role !== "user" && msg.role !== "assistant") continue;
+      if (!msg || typeof msg.role !== "string") {
+        continue;
+      }
+      if (msg.role !== "user" && msg.role !== "assistant") {
+        continue;
+      }
 
       const text = extractText(msg.content);
-      if (!text) continue;
+      if (!text) {
+        continue;
+      }
 
       messages.push({
         role: msg.role,
@@ -82,7 +92,9 @@ async function parseSessionFile(absPath: string): Promise<SessionTranscript | nu
       });
     }
 
-    if (messages.length === 0) return null;
+    if (messages.length === 0) {
+      return null;
+    }
 
     const timestamps = messages.map((m) => m.timestamp).filter((t): t is number => t !== undefined);
     return {
@@ -100,8 +112,12 @@ async function parseSessionFile(absPath: string): Promise<SessionTranscript | nu
 
 /** Extract text content from a message content field (string or content blocks). */
 function extractText(content: unknown): string | null {
-  if (typeof content === "string") return content.trim() || null;
-  if (!Array.isArray(content)) return null;
+  if (typeof content === "string") {
+    return content.trim() || null;
+  }
+  if (!Array.isArray(content)) {
+    return null;
+  }
   const parts: string[] = [];
   for (const block of content) {
     if (
@@ -111,7 +127,9 @@ function extractText(content: unknown): string | null {
       typeof (block as any).text === "string"
     ) {
       const text = (block as any).text.trim();
-      if (text) parts.push(text);
+      if (text) {
+        parts.push(text);
+      }
     }
   }
   return parts.length > 0 ? parts.join("\n") : null;
@@ -143,7 +161,7 @@ async function listSessionFiles(
 
     return stats
       .filter((s): s is { path: string; mtimeMs: number } => s !== null)
-      .sort((a, b) => b.mtimeMs - a.mtimeMs); // newest first
+      .toSorted((a, b) => b.mtimeMs - a.mtimeMs); // newest first
   } catch {
     return [];
   }
@@ -190,7 +208,9 @@ export async function buildDeepRecallContext(params: {
 
   const transcripts: SessionTranscript[] = [];
   for (const file of filesToLoad) {
-    if (currentChars >= maxChars) break;
+    if (currentChars >= maxChars) {
+      break;
+    }
     const transcript = await parseSessionFile(file.path);
     if (transcript) {
       transcripts.push(transcript);
@@ -200,8 +220,7 @@ export async function buildDeepRecallContext(params: {
   if (transcripts.length > 0) {
     const totalMessages = transcripts.reduce((sum, t) => sum + t.messageCount, 0);
     const allTimestamps = transcripts
-      .map((t) => [t.firstTimestamp, t.lastTimestamp])
-      .flat()
+      .flatMap((t) => [t.firstTimestamp, t.lastTimestamp])
       .filter((t): t is number => t !== undefined);
     const dateRange =
       allTimestamps.length >= 2
@@ -215,7 +234,9 @@ export async function buildDeepRecallContext(params: {
     sections.push(`---`);
 
     for (const transcript of transcripts) {
-      if (currentChars >= maxChars) break;
+      if (currentChars >= maxChars) {
+        break;
+      }
 
       sections.push(
         `\n--- Session: ${transcript.sessionId} (${transcript.messageCount} messages) ---`,
@@ -276,7 +297,9 @@ export async function buildDeepRecallContext(params: {
     if (allResults.length > 0) {
       sections.push(`\n=== KNOWLEDGE CRYSTALS (${allResults.length} entries) ===`);
       for (const r of allResults) {
-        if (currentChars >= maxChars) break;
+        if (currentChars >= maxChars) {
+          break;
+        }
         const sourceTag =
           r.source === "memory" ? "memory" : r.source === "sessions" ? "session" : r.source;
         const line = `[${sourceTag}] ${r.snippet}`;

@@ -27,7 +27,9 @@ export function parseGenomeHomeostasis(genomeContent: string): {
   const yamlMatch = genomeContent.match(
     /## Hormonal Homeostasis[\s\S]*?```ya?ml\s*\n([\s\S]*?)```/,
   );
-  if (!yamlMatch?.[1]) return null;
+  if (!yamlMatch?.[1]) {
+    return null;
+  }
 
   const yaml = yamlMatch[1];
   const result: Record<string, number> = {};
@@ -52,7 +54,9 @@ export function parseGenomeHomeostasis(genomeContent: string): {
  */
 export function parsePhenotypeConstraints(genomeContent: string): string[] {
   const section = genomeContent.match(/## Phenotype Constraints[\s\S]*?\n([\s\S]*?)(?=\n## |$)/);
-  if (!section?.[1]) return [];
+  if (!section?.[1]) {
+    return [];
+  }
 
   return section[1]
     .split("\n")

@@ -133,11 +133,11 @@ function run() {
   }
 
   // Build matrix for table display
-  const sortedTypes = [...allTypes].sort();
+  const sortedTypes = [...allTypes].toSorted();
   const header = ["variant", "overall", ...sortedTypes];
   const matrix: (string | number)[][] = [header];
 
-  for (const [variantId, summary] of Object.entries(comparison).sort(
+  for (const [variantId, summary] of Object.entries(comparison).toSorted(
     (a, b) => b[1].overall.accuracy - a[1].overall.accuracy,
   )) {
     const row: (string | number)[] = [variantId];
@@ -178,7 +178,7 @@ function run() {
   console.log("-".repeat(headerLine.length));
 
   // Rows
-  for (const [variantId, summary] of Object.entries(comparison).sort(
+  for (const [variantId, summary] of Object.entries(comparison).toSorted(
     (a, b) => b[1].overall.accuracy - a[1].overall.accuracy,
   )) {
     const isBaseline = variantId === baselineId;

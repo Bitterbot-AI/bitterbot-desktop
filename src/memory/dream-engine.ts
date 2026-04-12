@@ -163,17 +163,25 @@ export class DreamEngine {
   getLlmCallForMode(mode: DreamMode): ((prompt: string) => Promise<string>) | null {
     const tier = this.modeTiers[mode];
 
-    if (tier === "none") return null;
+    if (tier === "none") {
+      return null;
+    }
 
     if (tier === "local") {
-      if (this.llmCallLocal) return this.llmCallLocal;
+      if (this.llmCallLocal) {
+        return this.llmCallLocal;
+      }
       // Fallback chain: local → cloud (if allowed)
-      if (this.fallbackToCloud && this.llmCallCloud) return this.llmCallCloud;
+      if (this.fallbackToCloud && this.llmCallCloud) {
+        return this.llmCallCloud;
+      }
       return null;
     }
 
     // tier === "cloud"
-    if (this.llmCallCloud) return this.llmCallCloud;
+    if (this.llmCallCloud) {
+      return this.llmCallCloud;
+    }
     return null;
   }
 
@@ -315,9 +323,15 @@ export class DreamEngine {
 
     // 6. Compute score
     let score = infoRatio;
-    if (pendingHints > 0) score = Math.max(score, 0.3);
-    if (orphanQueue > 0) score = Math.max(score, 0.3);
-    if (curiosityTargets > 0) score = Math.max(score, 0.2);
+    if (pendingHints > 0) {
+      score = Math.max(score, 0.3);
+    }
+    if (orphanQueue > 0) {
+      score = Math.max(score, 0.3);
+    }
+    if (curiosityTargets > 0) {
+      score = Math.max(score, 0.2);
+    }
 
     // 7. Determine readiness
     if (newChunks === 0 && pendingHints === 0 && orphanQueue === 0 && curiosityTargets === 0) {
@@ -558,7 +572,9 @@ export class DreamEngine {
    * Both modes can run without LLM calls, so mini-dreams are free.
    */
   async runMiniDream(reason: string): Promise<DreamStats | null> {
-    if (this.state !== "DORMANT") return null;
+    if (this.state !== "DORMANT") {
+      return null;
+    }
 
     const mode: DreamMode = reason === "dopamine_spike" ? "replay" : "compression";
     log.info(`emotional mini-dream triggered: ${reason} → ${mode}`);
@@ -573,7 +589,9 @@ export class DreamEngine {
       Object.entries(this.config.modes) as [DreamMode, DreamModeConfig][]
     ).filter(([, cfg]) => cfg.enabled && cfg.weight > 0);
 
-    if (enabledModes.length === 0) return ["replay"];
+    if (enabledModes.length === 0) {
+      return ["replay"];
+    }
 
     // --- Three complementary adjustment sources (Plan 6, Phase 1) ---
 
@@ -764,7 +782,9 @@ export class DreamEngine {
         | { avg_reward: number | null; cnt: number }
         | undefined;
 
-      if (!recentRow || !recentRow.avg_reward || recentRow.cnt < 5) return adj;
+      if (!recentRow || !recentRow.avg_reward || recentRow.cnt < 5) {
+        return adj;
+      }
 
       const avgReward = recentRow.avg_reward;
 
@@ -787,20 +807,29 @@ export class DreamEngine {
         const SCALE = 0.15;
 
         // High η → exploration mode (investigate the surprising)
-        if (etaMean > 0.6) adj.exploration = (adj.exploration ?? 0) + (etaMean - 0.5) * SCALE;
+        if (etaMean > 0.6) {
+          adj.exploration = (adj.exploration ?? 0) + (etaMean - 0.5) * SCALE;
+        }
 
         // High Δη → compression mode (consolidate what's being learned)
-        if (deltaEtaMean > 0.6)
+        if (deltaEtaMean > 0.6) {
           adj.compression = (adj.compression ?? 0) + (deltaEtaMean - 0.5) * SCALE;
+        }
 
         // High Iα → simulation mode (cross-domain connections in novel space)
-        if (iAlphaMean > 0.6) adj.simulation = (adj.simulation ?? 0) + (iAlphaMean - 0.5) * SCALE;
+        if (iAlphaMean > 0.6) {
+          adj.simulation = (adj.simulation ?? 0) + (iAlphaMean - 0.5) * SCALE;
+        }
 
         // High E → mutation mode (optimize high-agency skills)
-        if (empMean > 0.6) adj.mutation = (adj.mutation ?? 0) + (empMean - 0.5) * SCALE;
+        if (empMean > 0.6) {
+          adj.mutation = (adj.mutation ?? 0) + (empMean - 0.5) * SCALE;
+        }
 
         // High S → research mode (goal-directed investigation)
-        if (stratMean > 0.6) adj.research = (adj.research ?? 0) + (stratMean - 0.5) * SCALE;
+        if (stratMean > 0.6) {
+          adj.research = (adj.research ?? 0) + (stratMean - 0.5) * SCALE;
+        }
       }
     } catch {
       // gccrf_state table may not exist yet
@@ -863,7 +892,9 @@ export class DreamEngine {
         const consumeStmt = this.db.prepare(
           `UPDATE orphan_replay_queue SET consumed_at = ? WHERE chunk_id = ?`,
         );
-        for (const seed of orphanSeeds) consumeStmt.run(Date.now(), seed.id);
+        for (const seed of orphanSeeds) {
+          consumeStmt.run(Date.now(), seed.id);
+        }
       }
     } catch {
       // orphan_replay_queue table may not exist yet
@@ -1000,7 +1031,9 @@ export class DreamEngine {
     // Phase 7: Process up to 5 skills per cycle with strategy-based mutation
     const maxPerCycle = Math.min(seeds.length, 5);
     for (const seed of seeds.slice(0, maxPerCycle)) {
-      if (llmCalls >= this.config.maxLlmCallsPerCycle) break;
+      if (llmCalls >= this.config.maxLlmCallsPerCycle) {
+        break;
+      }
 
       // Select strategy based on execution metrics (if available)
       const relatedCount = this.countRelatedSkills(seed.id, seed.semantic_type);
@@ -1187,7 +1220,9 @@ export class DreamEngine {
     for (let i = 0; i < denseClusters.length; i++) {
       const cluster = denseClusters[i]!;
       const result = heuristic[i];
-      if (!result) continue;
+      if (!result) {
+        continue;
+      }
 
       insights.push({
         id: crypto.randomUUID(),
@@ -1441,7 +1476,9 @@ export class DreamEngine {
               .slice(0, 2);
             for (const gap of gaps) {
               const meta = JSON.parse(gap.metadata || "{}") as Record<string, unknown>;
-              if (meta.externalResearched) continue;
+              if (meta.externalResearched) {
+                continue;
+              }
               const result = await this.skillSeekersAdapter.fillKnowledgeGap(gap.description, {
                 category: typeof meta.category === "string" ? meta.category : undefined,
               });
@@ -1500,7 +1537,9 @@ export class DreamEngine {
     let llmCalls = 0;
 
     for (const candidate of candidates) {
-      if (llmCalls >= this.config.maxLlmCallsPerCycle) break;
+      if (llmCalls >= this.config.maxLlmCallsPerCycle) {
+        break;
+      }
 
       try {
         const results = await experiment.optimize(candidate, llmCall);
@@ -1604,7 +1643,9 @@ export class DreamEngine {
           }
         | undefined;
 
-      if (!row) return;
+      if (!row) {
+        return;
+      }
 
       const newVersion = (row.skill_version ?? 1) + 1;
 
@@ -1783,17 +1824,25 @@ export class DreamEngine {
     const th = threshold ?? this.config.clusterSimilarityThreshold;
 
     for (const seed of seeds) {
-      if (assigned.has(seed.id)) continue;
+      if (assigned.has(seed.id)) {
+        continue;
+      }
       const embA = embeddings.get(seed.id);
-      if (!embA) continue;
+      if (!embA) {
+        continue;
+      }
 
       const cluster: string[] = [seed.id];
       assigned.add(seed.id);
 
       for (const other of seeds) {
-        if (assigned.has(other.id)) continue;
+        if (assigned.has(other.id)) {
+          continue;
+        }
         const embB = embeddings.get(other.id);
-        if (!embB) continue;
+        if (!embB) {
+          continue;
+        }
 
         if (cosineSimilarity(embA, embB) >= th) {
           cluster.push(other.id);
@@ -1801,7 +1850,9 @@ export class DreamEngine {
         }
       }
 
-      if (cluster.length < 2) continue;
+      if (cluster.length < 2) {
+        continue;
+      }
 
       const centroid = computeCentroid(cluster.map((id) => embeddings.get(id)!).filter(Boolean));
       const keywords = this.extractKeywords(cluster.map((id) => seedMap.get(id)?.text ?? ""));
@@ -1825,16 +1876,22 @@ export class DreamEngine {
   }
 
   private pickDiverseChunks(chunks: ChunkRow[], count: number): ChunkRow[] {
-    if (chunks.length <= count) return chunks;
+    if (chunks.length <= count) {
+      return chunks;
+    }
 
     const embeddings = new Map<string, number[]>();
     for (const chunk of chunks) {
       const emb = parseEmbedding(chunk.embedding);
-      if (emb.length > 0) embeddings.set(chunk.id, emb);
+      if (emb.length > 0) {
+        embeddings.set(chunk.id, emb);
+      }
     }
 
     const withEmb = chunks.filter((c) => embeddings.has(c.id));
-    if (withEmb.length <= count) return withEmb;
+    if (withEmb.length <= count) {
+      return withEmb;
+    }
 
     // Greedy farthest-point sampling
     const selected: ChunkRow[] = [withEmb[0]!];
@@ -1845,13 +1902,17 @@ export class DreamEngine {
       let bestMinDist = -1;
 
       for (const candidate of withEmb) {
-        if (used.has(candidate.id)) continue;
+        if (used.has(candidate.id)) {
+          continue;
+        }
         const candEmb = embeddings.get(candidate.id)!;
         let minDist = Infinity;
         for (const sel of selected) {
           const selEmb = embeddings.get(sel.id)!;
           const dist = 1 - cosineSimilarity(candEmb, selEmb);
-          if (dist < minDist) minDist = dist;
+          if (dist < minDist) {
+            minDist = dist;
+          }
         }
         if (minDist > bestMinDist) {
           bestMinDist = minDist;
@@ -1859,7 +1920,9 @@ export class DreamEngine {
         }
       }
 
-      if (!bestChunk) break;
+      if (!bestChunk) {
+        break;
+      }
       selected.push(bestChunk);
       used.add(bestChunk.id);
     }
@@ -1885,7 +1948,7 @@ export class DreamEngine {
     }
     return [...freq.entries()]
       .filter(([, count]) => count >= 2)
-      .sort((a, b) => b[1] - a[1])
+      .toSorted((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([word]) => word);
   }
@@ -1978,7 +2041,9 @@ export class DreamEngine {
     const row = this.db.prepare(`SELECT COUNT(*) as c FROM dream_insights`).get() as {
       c: number;
     };
-    if (row.c <= max) return;
+    if (row.c <= max) {
+      return;
+    }
 
     const excess = row.c - max;
     this.db
@@ -2041,7 +2106,9 @@ export class DreamEngine {
     const simInsights = insights.filter((i) => i.mode === "simulation");
     const otherInsights = insights.filter((i) => i.mode !== "simulation");
 
-    if (simInsights.length === 0) return insights;
+    if (simInsights.length === 0) {
+      return insights;
+    }
 
     const gated: DreamInsight[] = [];
     let rejected = 0;
@@ -2061,7 +2128,9 @@ export class DreamEngine {
             | undefined;
           if (row) {
             const emb = parseEmbedding(row.embedding);
-            if (emb.length > 0) sourceEmbs.push(emb);
+            if (emb.length > 0) {
+              sourceEmbs.push(emb);
+            }
           }
         } catch {
           /* skip */
@@ -2077,7 +2146,9 @@ export class DreamEngine {
       let maxSim = 0;
       for (const sourceEmb of sourceEmbs) {
         const sim = cosineSimilarity(insight.embedding, sourceEmb);
-        if (sim > maxSim) maxSim = sim;
+        if (sim > maxSim) {
+          maxSim = sim;
+        }
       }
 
       if (maxSim >= 0.4) {
@@ -2102,7 +2173,9 @@ export class DreamEngine {
   // ── Phase 7: Strategy helpers ──
 
   private countRelatedSkills(skillId: string, semanticType?: string | null): number {
-    if (!semanticType) return 0;
+    if (!semanticType) {
+      return 0;
+    }
     try {
       const row = this.db
         .prepare(
@@ -2124,7 +2197,9 @@ export class DreamEngine {
     semanticType: string | null | undefined,
     limit: number,
   ): Array<{ text: string; id: string }> {
-    if (!semanticType) return [];
+    if (!semanticType) {
+      return [];
+    }
     try {
       return this.db
         .prepare(
@@ -2150,7 +2225,9 @@ export class DreamEngine {
           `SELECT id FROM mutation_queue WHERE skill_crystal_id = ? AND attempts < max_attempts`,
         )
         .get(skillCrystalId);
-      if (existing) return;
+      if (existing) {
+        return;
+      }
 
       this.db
         .prepare(

@@ -50,7 +50,9 @@ async function buildTree(
   depth: number,
   counter: TreeCounter,
 ): Promise<FileTreeNode[]> {
-  if (depth > MAX_TREE_DEPTH || counter.value > MAX_TREE_ENTRIES) return [];
+  if (depth > MAX_TREE_DEPTH || counter.value > MAX_TREE_ENTRIES) {
+    return [];
+  }
 
   let entries;
   try {
@@ -63,14 +65,18 @@ async function buildTree(
   entries.sort((a, b) => {
     const aDir = a.isDirectory() ? 0 : 1;
     const bDir = b.isDirectory() ? 0 : 1;
-    if (aDir !== bDir) return aDir - bDir;
+    if (aDir !== bDir) {
+      return aDir - bDir;
+    }
     return a.name.localeCompare(b.name);
   });
 
   const nodes: FileTreeNode[] = [];
 
   for (const entry of entries) {
-    if (counter.value > MAX_TREE_ENTRIES) break;
+    if (counter.value > MAX_TREE_ENTRIES) {
+      break;
+    }
     counter.value++;
 
     const entryRelPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
@@ -214,7 +220,9 @@ const workspaceSearch: GatewayRequestHandler = async ({ params, respond }) => {
   const results: { path: string; line: number; column: number; content: string }[] = [];
 
   async function searchDir(absDir: string, relDir: string) {
-    if (results.length >= maxResults) return;
+    if (results.length >= maxResults) {
+      return;
+    }
     let entries;
     try {
       entries = await fs.readdir(absDir, { withFileTypes: true });
@@ -223,18 +231,24 @@ const workspaceSearch: GatewayRequestHandler = async ({ params, respond }) => {
     }
 
     for (const entry of entries) {
-      if (results.length >= maxResults) break;
+      if (results.length >= maxResults) {
+        break;
+      }
       const entryRel = relDir ? `${relDir}/${entry.name}` : entry.name;
       const entryAbs = path.join(absDir, entry.name);
 
       if (entry.isDirectory()) {
-        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+        if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith(".")) {
+          continue;
+        }
         await searchDir(entryAbs, entryRel);
       } else if (entry.isFile()) {
         // Skip large files (>1MB)
         try {
           const stat = await fs.stat(entryAbs);
-          if (stat.size > 1024 * 1024) continue;
+          if (stat.size > 1024 * 1024) {
+            continue;
+          }
         } catch {
           continue;
         }
@@ -248,7 +262,9 @@ const workspaceSearch: GatewayRequestHandler = async ({ params, respond }) => {
 
         const lines = content.split("\n");
         for (let i = 0; i < lines.length; i++) {
-          if (results.length >= maxResults) break;
+          if (results.length >= maxResults) {
+            break;
+          }
           pattern.lastIndex = 0;
           const match = pattern.exec(lines[i]);
           if (match) {

@@ -79,7 +79,9 @@ async function queryLiveStats(
   const url = `http://${httpAddr}/api/stats`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return { error: `HTTP ${res.status}` };
+    if (!res.ok) {
+      return { error: `HTTP ${res.status}` };
+    }
     const data = (await res.json()) as Record<string, unknown>;
     return {
       peerId: typeof data.peer_id === "string" ? data.peer_id : undefined,
@@ -230,6 +232,8 @@ export async function runP2pNetworkChecks(params: {
 }
 
 function renderSection(results: CheckResult[]): void {
-  if (results.length === 0) return;
+  if (results.length === 0) {
+    return;
+  }
   note(results.map(formatLevel).join("\n"), "P2P Network");
 }

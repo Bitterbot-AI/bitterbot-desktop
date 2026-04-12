@@ -41,7 +41,9 @@ function extractEntities(text: string): string {
   for (const pattern of patterns) {
     const matches = text.match(pattern);
     if (matches) {
-      for (const m of matches) entities.add(m.toLowerCase());
+      for (const m of matches) {
+        entities.add(m.toLowerCase());
+      }
     }
   }
 
@@ -109,7 +111,9 @@ export async function batchEmbedWithPerspectives(
   texts: string[],
   provider: EmbeddingProvider,
 ): Promise<MultiPerspectiveEmbedding[]> {
-  if (texts.length === 0) return [];
+  if (texts.length === 0) {
+    return [];
+  }
 
   // Build all inputs: 4 per text
   const allInputs: string[] = [];

@@ -12,10 +12,13 @@ async function getManagementService() {
   const cfg = loadConfig();
   const agentId = resolveDefaultAgentId(cfg);
   const { manager } = await getMemorySearchManager({ cfg, agentId });
-  if (!manager) throw new Error("memory manager unavailable");
+  if (!manager) {
+    throw new Error("memory manager unavailable");
+  }
   const service = (manager as any).managementNodeService;
-  if (!service)
+  if (!service) {
     throw new Error("management node service not available (this node is not a management node)");
+  }
   return service;
 }
 

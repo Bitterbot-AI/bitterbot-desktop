@@ -48,10 +48,14 @@ export function searchDreamInsights(
   const scored: DreamSearchResult[] = [];
   for (const row of rows) {
     const emb = parseEmbedding(row.embedding);
-    if (emb.length === 0) continue;
+    if (emb.length === 0) {
+      continue;
+    }
 
     const score = cosineSimilarity(queryEmbedding, emb);
-    if (score < minScore) continue;
+    if (score < minScore) {
+      continue;
+    }
 
     let sourceChunkIds: string[] = [];
     try {

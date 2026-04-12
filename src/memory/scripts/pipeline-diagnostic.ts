@@ -47,13 +47,17 @@ const byLifecycle = query<{ lifecycle: string | null; c: number }>(
   "SELECT COALESCE(lifecycle, 'null') as lifecycle, COUNT(*) as c FROM chunks GROUP BY lifecycle ORDER BY c DESC",
 );
 console.log("\nBy lifecycle:");
-for (const r of byLifecycle) console.log(`  ${r.lifecycle}: ${r.c}`);
+for (const r of byLifecycle) {
+  console.log(`  ${r.lifecycle}: ${r.c}`);
+}
 
 const byType = query<{ st: string | null; c: number }>(
   "SELECT COALESCE(semantic_type, 'null') as st, COUNT(*) as c FROM chunks GROUP BY semantic_type ORDER BY c DESC",
 );
 console.log("\nBy semantic type:");
-for (const r of byType) console.log(`  ${r.st}: ${r.c}`);
+for (const r of byType) {
+  console.log(`  ${r.st}: ${r.c}`);
+}
 
 const highImportance =
   queryOne<{ c: number }>("SELECT COUNT(*) as c FROM chunks WHERE importance_score >= 0.8")?.c ?? 0;
@@ -127,14 +131,16 @@ const modeCounts: Record<string, number> = {};
 for (const row of modeBreakdown) {
   try {
     const modes = JSON.parse(row.modesUsed) as string[];
-    for (const m of modes) modeCounts[m] = (modeCounts[m] ?? 0) + 1;
+    for (const m of modes) {
+      modeCounts[m] = (modeCounts[m] ?? 0) + 1;
+    }
   } catch {
     /* ignore */
   }
 }
 if (Object.keys(modeCounts).length > 0) {
   console.log("\nMode usage across all cycles:");
-  for (const [mode, count] of Object.entries(modeCounts).sort((a, b) => b[1] - a[1])) {
+  for (const [mode, count] of Object.entries(modeCounts).toSorted((a, b) => b[1] - a[1])) {
     console.log(`  ${mode}: ${count} cycles`);
   }
 }
@@ -169,7 +175,9 @@ try {
   );
   if (dupes.length > 0) {
     console.log(`\n⚠️ Duplicate unresolved targets: ${dupes.length}`);
-    for (const d of dupes) console.log(`  "${d.description.slice(0, 80)}" x ${d.c}`);
+    for (const d of dupes) {
+      console.log(`  "${d.description.slice(0, 80)}" x ${d.c}`);
+    }
   }
 
   const regionCount =
@@ -210,7 +218,9 @@ try {
       "SELECT action, COUNT(*) as c FROM consolidation_audit_log GROUP BY action ORDER BY c DESC",
     );
     console.log("Actions:");
-    for (const a of recentAudit) console.log(`  ${a.action}: ${a.c}`);
+    for (const a of recentAudit) {
+      console.log(`  ${a.action}: ${a.c}`);
+    }
   }
 } catch {
   console.log("⚠️ No consolidation audit log table");
@@ -264,7 +274,9 @@ try {
     "SELECT hormone, COUNT(*) as c FROM hormonal_events GROUP BY hormone ORDER BY c DESC",
   );
   console.log(`Hormonal events by type:`);
-  for (const e of events) console.log(`  ${e.hormone}: ${e.c}`);
+  for (const e of events) {
+    console.log(`  ${e.hormone}: ${e.c}`);
+  }
 
   const recentEvents = query<{ hormone: string; delta: number; created_at: number }>(
     "SELECT hormone, delta, created_at FROM hormonal_events ORDER BY created_at DESC LIMIT 5",

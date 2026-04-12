@@ -171,7 +171,7 @@ export class MarketplaceIntelligence {
         expectedRevenueUsdc: opp.revenue,
         targetDescription: `High demand for ${category} skills (demand: ${opp.demand.toFixed(2)}, readiness: ${opp.readiness.toFixed(2)})`,
       }))
-      .sort((a, b) => b.demandScore - a.demandScore)
+      .toSorted((a, b) => b.demandScore - a.demandScore)
       .slice(0, limit);
   }
 
@@ -181,10 +181,14 @@ export class MarketplaceIntelligence {
    * Returns empty object when no marketplace activity (weight fallback).
    */
   getDreamModeAdjustments(): Partial<Record<DreamMode, number>> {
-    if (!this.hasActivity()) return {};
+    if (!this.hasActivity()) {
+      return {};
+    }
 
     const opportunities = this.analyzeOpportunities(3);
-    if (opportunities.length === 0) return {};
+    if (opportunities.length === 0) {
+      return {};
+    }
 
     const topDemand = opportunities[0]!.demandScore;
     return {

@@ -198,7 +198,9 @@ describe("BioMemEval > Prospective Memory", () => {
         messageText: msg,
         messageEmbedding: orthoEmb,
       });
-      if (triggered.length > 0) falsePositives++;
+      if (triggered.length > 0) {
+        falsePositives++;
+      }
     }
 
     s.score("zero false positives across 5 unrelated messages", falsePositives === 0, 2);

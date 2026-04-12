@@ -91,7 +91,9 @@ export function proactiveRecall(params: {
       for (const pref of identityPrefs) {
         const key = `pref:${pref.category}:${pref.key}`;
         const lastTurn = params.recentlySurfaced.get(key) ?? -Infinity;
-        if (params.currentTurn - lastTurn < cfg.cooldownTurns) continue;
+        if (params.currentTurn - lastTurn < cfg.cooldownTurns) {
+          continue;
+        }
 
         facts.push({
           text: `${pref.key}: ${pref.value}`,
@@ -135,14 +137,20 @@ export function proactiveRecall(params: {
         }>;
 
         for (const row of candidateRows) {
-          if (facts.length >= cfg.maxFacts) break;
+          if (facts.length >= cfg.maxFacts) {
+            break;
+          }
 
           const score = 1 - row.distance;
-          if (score < cfg.minScore) continue;
+          if (score < cfg.minScore) {
+            continue;
+          }
 
           // Cooldown check
           const lastTurn = params.recentlySurfaced.get(row.id) ?? -Infinity;
-          if (params.currentTurn - lastTurn < cfg.cooldownTurns) continue;
+          if (params.currentTurn - lastTurn < cfg.cooldownTurns) {
+            continue;
+          }
 
           // Truncate crystal text for prompt injection
           const truncated = row.text.length > 120 ? row.text.slice(0, 117) + "..." : row.text;
@@ -167,10 +175,14 @@ export function proactiveRecall(params: {
     try {
       const openLoops = getActiveOpenLoops(params.db, 2);
       for (const loop of openLoops) {
-        if (facts.length >= cfg.maxFacts) break;
+        if (facts.length >= cfg.maxFacts) {
+          break;
+        }
         const key = `openloop:${loop.id}`;
         const lastTurn = params.recentlySurfaced.get(key) ?? -Infinity;
-        if (params.currentTurn - lastTurn < cfg.cooldownTurns * 2) continue;
+        if (params.currentTurn - lastTurn < cfg.cooldownTurns * 2) {
+          continue;
+        }
 
         facts.push({
           text: `Unfinished: ${loop.context || loop.text}`,
@@ -233,7 +245,9 @@ export function proactiveRecall(params: {
  * Terse, one-line-per-fact format that the LLM embodies naturally.
  */
 export function formatProactiveFacts(facts: ProactiveFact[]): string {
-  if (facts.length === 0) return "";
+  if (facts.length === 0) {
+    return "";
+  }
   const lines = facts.map((f) => {
     const prefix = f.confidence < 0.4 ? "(uncertain) " : "";
     return `- ${prefix}${f.text}`;

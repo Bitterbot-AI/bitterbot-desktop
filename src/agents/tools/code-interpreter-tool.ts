@@ -23,7 +23,9 @@ const MAX_OUTPUT_CHARS = 50_000;
 const jsSessions = new Map<string, vm.Context>();
 
 function truncate(s: string, max: number): string {
-  if (s.length <= max) return s;
+  if (s.length <= max) {
+    return s;
+  }
   return s.slice(0, max) + `\n... (truncated, ${s.length - max} chars omitted)`;
 }
 
@@ -272,10 +274,18 @@ export function createCodeInterpreterTool(): AnyAgentTool {
 
       // Build a structured result the agent can reason about
       const outputParts: string[] = [];
-      if (result.stdout) outputParts.push(`stdout:\n${result.stdout}`);
-      if (result.stderr) outputParts.push(`stderr:\n${result.stderr}`);
-      if (result.returnValue) outputParts.push(`return value: ${result.returnValue}`);
-      if (result.error) outputParts.push(`error: ${result.error}`);
+      if (result.stdout) {
+        outputParts.push(`stdout:\n${result.stdout}`);
+      }
+      if (result.stderr) {
+        outputParts.push(`stderr:\n${result.stderr}`);
+      }
+      if (result.returnValue) {
+        outputParts.push(`return value: ${result.returnValue}`);
+      }
+      if (result.error) {
+        outputParts.push(`error: ${result.error}`);
+      }
 
       const hasOutput = outputParts.length > 0;
 

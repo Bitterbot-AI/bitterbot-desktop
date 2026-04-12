@@ -25,15 +25,25 @@ const log = createSubsystemLogger("memory/exec-hook");
  * - 0.5-0.8 scaled by result content length (for non-error, non-trivial results)
  */
 export function computeReward(result: unknown, error: string | undefined): number {
-  if (error) return 0.0;
-  if (result == null) return 0.5;
+  if (error) {
+    return 0.0;
+  }
+  if (result == null) {
+    return 0.5;
+  }
 
   const str = typeof result === "string" ? result : JSON.stringify(result);
   const len = str.length;
 
-  if (len === 0) return 0.5;
-  if (len < 50) return 0.6;
-  if (len < 200) return 0.7;
+  if (len === 0) {
+    return 0.5;
+  }
+  if (len < 50) {
+    return 0.6;
+  }
+  if (len < 200) {
+    return 0.7;
+  }
   return 0.8;
 }
 
@@ -94,7 +104,9 @@ export function createExecutionTrackingHook(
       }
 
       const skillId = findMatchingSkill(db, event.toolName);
-      if (!skillId) return;
+      if (!skillId) {
+        return;
+      }
 
       const execId = tracker.startExecution(skillId, ctx.sessionKey);
 

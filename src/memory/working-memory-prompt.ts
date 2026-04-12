@@ -314,10 +314,18 @@ function describeMoodFromState(state: {
   oxytocin: number;
 }): string {
   const parts: string[] = [];
-  if (state.dopamine > 0.4) parts.push("high dopamine");
-  if (state.cortisol > 0.4) parts.push("elevated cortisol");
-  if (state.oxytocin > 0.4) parts.push("high oxytocin");
-  if (parts.length === 0) return "calm baseline";
+  if (state.dopamine > 0.4) {
+    parts.push("high dopamine");
+  }
+  if (state.cortisol > 0.4) {
+    parts.push("elevated cortisol");
+  }
+  if (state.oxytocin > 0.4) {
+    parts.push("high oxytocin");
+  }
+  if (parts.length === 0) {
+    return "calm baseline";
+  }
   return parts.join(", ");
 }
 
@@ -381,7 +389,9 @@ function buildNetworkIdentityInputBlock(ctx: WorkingMemoryContext): string {
  * Build the phenotype constraint guardrails block for the synthesis prompt.
  */
 function buildPhenotypeConstraintBlock(ctx: WorkingMemoryContext): string {
-  if (!ctx.phenotypeConstraints || ctx.phenotypeConstraints.length === 0) return "";
+  if (!ctx.phenotypeConstraints || ctx.phenotypeConstraints.length === 0) {
+    return "";
+  }
 
   return [
     "## Phenotype Guardrails (from Genome — DO NOT violate)",
@@ -718,7 +728,9 @@ export function validateWorkingMemory(
       if (oldTerms.size > 0) {
         let intersection = 0;
         for (const term of oldTerms) {
-          if (newTerms.has(term)) intersection++;
+          if (newTerms.has(term)) {
+            intersection++;
+          }
         }
         bondDriftRatio = intersection / oldTerms.size;
         if (bondDriftRatio < 0.3) {
@@ -749,9 +761,13 @@ export function validateWorkingMemory(
  * Extract a section from an existing working memory document.
  */
 function extractSection(content: string, sectionName: string): string | null {
-  if (!content) return null;
+  if (!content) {
+    return null;
+  }
   const pattern = new RegExp(`## ${sectionName}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`);
   const match = content.match(pattern);
-  if (!match?.[1]) return null;
+  if (!match?.[1]) {
+    return null;
+  }
   return match[1].trim() || null;
 }

@@ -440,7 +440,9 @@ function getSchemaVersion(db: DatabaseSync): number {
     const row = db.prepare(`SELECT value FROM meta WHERE key = ?`).get(SCHEMA_VERSION_KEY) as
       | { value: string }
       | undefined;
-    if (!row?.value) return 0;
+    if (!row?.value) {
+      return 0;
+    }
     const version = parseInt(row.value, 10);
     return Number.isFinite(version) ? version : 0;
   } catch {

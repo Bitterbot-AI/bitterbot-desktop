@@ -143,7 +143,9 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
       const row = db
         .prepare("SELECT importance_score, labile_until FROM chunks WHERE id = ?")
         .get(id) as any;
-      if (engine.isLabile(id)) allBoosted = false;
+      if (engine.isLabile(id)) {
+        allBoosted = false;
+      }
     }
 
     s.score("none are labile after restabilization", allBoosted, 1.25);

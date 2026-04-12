@@ -106,6 +106,8 @@ export function shouldForget(score: number, forgetThreshold = DEFAULT_FORGET): b
  * - weight=0                            → boost=1.0 always (disabled)
  */
 export function computeImportanceBoost(importanceScore: number, weight: number): number {
-  if (weight <= 0) return 1;
+  if (weight <= 0) {
+    return 1;
+  }
   return 1 - weight + weight * importanceScore;
 }

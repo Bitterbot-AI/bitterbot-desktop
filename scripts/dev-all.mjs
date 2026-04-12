@@ -40,12 +40,16 @@ function pipePrefixed(stream, tagger) {
     while (i !== -1) {
       const line = buf.slice(0, i);
       buf = buf.slice(i + 1);
-      if (line.length > 0) process.stdout.write(`${tagger(line)}\n`);
+      if (line.length > 0) {
+        process.stdout.write(`${tagger(line)}\n`);
+      }
       i = buf.indexOf("\n");
     }
   });
   stream.on("end", () => {
-    if (buf.length > 0) process.stdout.write(`${tagger(buf)}\n`);
+    if (buf.length > 0) {
+      process.stdout.write(`${tagger(buf)}\n`);
+    }
   });
 }
 
@@ -76,7 +80,9 @@ const ui = startChild("ui", colors.ui, "pnpm", ["dev"], {
 let shuttingDown = false;
 
 function shutdown(signal) {
-  if (shuttingDown) return;
+  if (shuttingDown) {
+    return;
+  }
   shuttingDown = true;
   process.stdout.write(`${colors.meta}[dev:all] received ${signal}, stopping children${reset}\n`);
   const killSig = process.platform === "win32" ? "SIGKILL" : "SIGINT";
@@ -99,7 +105,9 @@ function onExit(name) {
     );
     exited++;
     // If one dies, take the other down too — dev:all is an all-or-nothing thing.
-    if (!shuttingDown) shutdown(`${name}-exit`);
+    if (!shuttingDown) {
+      shutdown(`${name}-exit`);
+    }
     if (exited >= 2) {
       process.exit(code ?? 0);
     }

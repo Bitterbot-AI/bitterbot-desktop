@@ -32,7 +32,9 @@ export interface ProjectContext {
  */
 export async function buildProjectContext(projectId: string): Promise<ProjectContext | null> {
   const project = getProject(projectId);
-  if (!project) return null;
+  if (!project) {
+    return null;
+  }
 
   const kb = project.knowledgeBase;
   const files = kb.files;

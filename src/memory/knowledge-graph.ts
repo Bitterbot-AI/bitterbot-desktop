@@ -128,7 +128,7 @@ export class KnowledgeGraphManager {
     const existing = this.findEntityByNameType(normalizedName, entity.type);
     if (existing) {
       // Merge properties and update
-      const mergedProps = { ...existing.properties, ...(entity.properties ?? {}) };
+      const mergedProps = { ...existing.properties, ...entity.properties };
       this.db
         .prepare(
           `UPDATE entities SET properties = ?, last_seen_at = ?, mention_count = mention_count + 1
@@ -295,7 +295,9 @@ export class KnowledgeGraphManager {
    */
   traverseEntity(entityId: string, currentOnly = true): GraphTraversalResult | null {
     const entity = this.findEntityById(entityId);
-    if (!entity) return null;
+    if (!entity) {
+      return null;
+    }
 
     const temporalFilter = currentOnly ? " AND valid_until IS NULL" : "";
 
@@ -349,14 +351,20 @@ export class KnowledgeGraphManager {
 
     for (const qe of queryEntities) {
       const entity = this.findEntityByNameType(qe.name, qe.type);
-      if (!entity) continue;
+      if (!entity) {
+        continue;
+      }
 
       const traversal = this.traverseEntity(entity.id, true);
-      if (!traversal) continue;
+      if (!traversal) {
+        continue;
+      }
 
       // Add the entity itself
       for (const { relationship, connectedEntity } of traversal.relationships) {
-        if (seen.has(connectedEntity.id)) continue;
+        if (seen.has(connectedEntity.id)) {
+          continue;
+        }
         seen.add(connectedEntity.id);
 
         const score = relationship.weight * connectedEntity.importance;
@@ -385,7 +393,9 @@ export class KnowledgeGraphManager {
     atTime: number,
   ): Array<{ entity: Entity; relationship: Relationship }> {
     const source = this.findEntityByNameType(entityName, entityType);
-    if (!source) return [];
+    if (!source) {
+      return [];
+    }
 
     const rows = this.db
       .prepare(
@@ -493,7 +503,9 @@ export class KnowledgeGraphManager {
     let merged = 0;
     for (const dupe of dupes) {
       const ids = dupe.ids.split(",");
-      if (ids.length < 2) continue;
+      if (ids.length < 2) {
+        continue;
+      }
 
       const keepId = ids[0]!;
       const removeIds = ids.slice(1);

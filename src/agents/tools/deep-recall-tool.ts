@@ -92,9 +92,15 @@ async function resolveSubModel(
   }
 
   // Last resort: try OpenAI (most common)
-  if (process.env.OPENAI_API_KEY) return CHEAP_SUB_MODELS.openai!;
-  if (process.env.ANTHROPIC_API_KEY) return CHEAP_SUB_MODELS.anthropic!;
-  if (process.env.GOOGLE_API_KEY) return CHEAP_SUB_MODELS.google!;
+  if (process.env.OPENAI_API_KEY) {
+    return CHEAP_SUB_MODELS.openai!;
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    return CHEAP_SUB_MODELS.anthropic!;
+  }
+  if (process.env.GOOGLE_API_KEY) {
+    return CHEAP_SUB_MODELS.google!;
+  }
 
   return null;
 }
@@ -149,7 +155,9 @@ export function createDeepRecallTool(options: {
   agentSessionKey?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   const agentId = resolveSessionAgentId({
     sessionKey: options.agentSessionKey,
@@ -157,11 +165,15 @@ export function createDeepRecallTool(options: {
   });
 
   // Check if memory is configured (deep recall needs session access)
-  if (!resolveMemorySearchConfig(cfg, agentId)) return null;
+  if (!resolveMemorySearchConfig(cfg, agentId)) {
+    return null;
+  }
 
   // Check if RLM is enabled
   const rlmCfg = cfg.memory?.rlm;
-  if (rlmCfg?.enabled === false) return null;
+  if (rlmCfg?.enabled === false) {
+    return null;
+  }
 
   return {
     label: "Deep Recall",
@@ -269,7 +281,9 @@ export function createDeepRecallTool(options: {
                     `SELECT id FROM chunks WHERE path = ? AND start_line = ? AND end_line = ?`,
                   )
                   .get(r.path, r.startLine, r.endLine) as { id: string } | undefined;
-                if (row) chunkIds.push(row.id);
+                if (row) {
+                  chunkIds.push(row.id);
+                }
               } catch {
                 /* non-critical */
               }

@@ -144,17 +144,23 @@ export class UserModelManager {
    * Returns newly detected or updated preferences.
    */
   extractPreferences(text: string, evidenceChunkId?: string): UserPreference[] {
-    if (!this.config.enabled || !this.config.extractPreferences) return [];
+    if (!this.config.enabled || !this.config.extractPreferences) {
+      return [];
+    }
 
     const extracted: UserPreference[] = [];
     const now = Date.now();
 
     for (const spec of PREFERENCE_PATTERNS) {
       const match = text.match(spec.pattern);
-      if (!match) continue;
+      if (!match) {
+        continue;
+      }
 
       const value = spec.extractValue(match).toLowerCase().trim();
-      if (!value) continue;
+      if (!value) {
+        continue;
+      }
 
       const id = crypto.randomUUID();
       const evidence = evidenceChunkId ? [evidenceChunkId] : [];
@@ -262,8 +268,12 @@ export class UserModelManager {
    * Detect recurring patterns from crystal data. Called during dream extrapolation.
    */
   detectPatterns(texts: string[]): UserPattern[] {
-    if (!this.config.enabled || !this.config.detectPatterns) return [];
-    if (texts.length < 3) return [];
+    if (!this.config.enabled || !this.config.detectPatterns) {
+      return [];
+    }
+    if (texts.length < 3) {
+      return [];
+    }
 
     const patterns: UserPattern[] = [];
     const now = Date.now();
@@ -293,7 +303,7 @@ export class UserModelManager {
       }
     }
 
-    return patterns.sort((a, b) => b.frequency - a.frequency).slice(0, 10);
+    return patterns.toSorted((a, b) => b.frequency - a.frequency).slice(0, 10);
   }
 
   /**
@@ -305,9 +315,13 @@ export class UserModelManager {
     confidence: number;
     sessionId: string;
   }): UserPreference | null {
-    if (!this.config.enabled) return null;
+    if (!this.config.enabled) {
+      return null;
+    }
     const text = fact.text.trim();
-    if (!text || text.length < 5) return null;
+    if (!text || text.length < 5) {
+      return null;
+    }
 
     const lower = text.toLowerCase();
     const now = Date.now();

@@ -129,8 +129,12 @@ export class CuriosityEngine {
     chunkHash: string,
     _perspectiveEmbeddings?: Partial<Record<EmbeddingPerspective, number[]>>,
   ): SurpriseAssessment | null {
-    if (!this.config.enabled) return null;
-    if (chunkEmbedding.length === 0) return null;
+    if (!this.config.enabled) {
+      return null;
+    }
+    if (chunkEmbedding.length === 0) {
+      return null;
+    }
 
     const regions = this.loadRegions();
 
@@ -138,7 +142,9 @@ export class CuriosityEngine {
     const regionCentroids = new Map<string, number[]>();
     for (const region of regions) {
       const centroid = parseEmbedding(region.centroid);
-      if (centroid.length > 0) regionCentroids.set(region.id, centroid);
+      if (centroid.length > 0) {
+        regionCentroids.set(region.id, centroid);
+      }
     }
 
     // Build strategic target embeddings from active exploration targets
@@ -154,7 +160,9 @@ export class CuriosityEngine {
       for (const t of targets) {
         if (t.region_id) {
           const centroid = regionCentroids.get(t.region_id);
-          if (centroid) strategicTargets.push(centroid);
+          if (centroid) {
+            strategicTargets.push(centroid);
+          }
         }
       }
     } catch {
@@ -221,7 +229,9 @@ export class CuriosityEngine {
     topScore: number,
     meanScore: number,
   ): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled) {
+      return;
+    }
 
     // Find nearest region for the query
     const regions = this.loadRegions();
@@ -229,7 +239,9 @@ export class CuriosityEngine {
     let maxSim = -1;
     for (const region of regions) {
       const centroid = parseEmbedding(region.centroid);
-      if (centroid.length === 0) continue;
+      if (centroid.length === 0) {
+        continue;
+      }
       const sim = cosineSimilarity(queryEmbedding, centroid);
       if (sim > maxSim) {
         maxSim = sim;
@@ -264,7 +276,9 @@ export class CuriosityEngine {
    * Hook 3: Periodic consolidation -- rebuild regions, detect gaps, generate targets.
    */
   run(): { regions: number; targets: number; expired: number } {
-    if (!this.config.enabled) return { regions: 0, targets: 0, expired: 0 };
+    if (!this.config.enabled) {
+      return { regions: 0, targets: 0, expired: 0 };
+    }
 
     const regionsBuilt = this.rebuildRegions();
     const expired = this.expireTargets();
@@ -447,16 +461,22 @@ export class CuriosityEngine {
     posterPeerId?: string;
     posterWalletAddress?: string;
   }): boolean {
-    if (!this.config.enabled) return false;
+    if (!this.config.enabled) {
+      return false;
+    }
 
     // Validate: not expired
-    if (bounty.expiresAt <= Date.now()) return false;
+    if (bounty.expiresAt <= Date.now()) {
+      return false;
+    }
 
     // Check for duplicate bounty
     const existing = this.db
       .prepare(`SELECT id FROM curiosity_targets WHERE description LIKE ? AND resolved_at IS NULL`)
       .get(`[BOUNTY ${bounty.bountyId}]%`) as { id: string } | undefined;
-    if (existing) return false;
+    if (existing) {
+      return false;
+    }
 
     const now = Date.now();
     const boostedPriority = Math.min(1.5, bounty.priority * 2.0);
@@ -508,7 +528,9 @@ export class CuriosityEngine {
     posterPeerId: string | null;
     posterWalletAddress: string | null;
   } | null {
-    if (!this.config.enabled) return null;
+    if (!this.config.enabled) {
+      return null;
+    }
 
     const now = Date.now();
     const bountyTargets = this.db
@@ -575,7 +597,9 @@ export class CuriosityEngine {
     contradictions: number;
     frontiersOpened: number;
   } {
-    if (!this.config.enabled) return { gapsFilled: 0, contradictions: 0, frontiersOpened: 0 };
+    if (!this.config.enabled) {
+      return { gapsFilled: 0, contradictions: 0, frontiersOpened: 0 };
+    }
 
     const result = { gapsFilled: 0, contradictions: 0, frontiersOpened: 0 };
     const now = Date.now();
@@ -632,7 +656,9 @@ export class CuriosityEngine {
       let maxSim = 0;
       for (const c of centroids) {
         const sim = cosineSimilarity(insight.embedding, c);
-        if (sim > maxSim) maxSim = sim;
+        if (sim > maxSim) {
+          maxSim = sim;
+        }
       }
       const novelty = centroids.length === 0 ? 1.0 : Math.max(0, 1 - maxSim);
 
@@ -685,10 +711,14 @@ export class CuriosityEngine {
     actualScore: number,
     queryEmbedding?: number[],
   ): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled) {
+      return;
+    }
 
     const predictionError = Math.abs(expectedScore - actualScore);
-    if (predictionError <= 0.1) return; // too small to be meaningful
+    if (predictionError <= 0.1) {
+      return;
+    } // too small to be meaningful
 
     log.debug("search surprise detected", { query: query.slice(0, 50), predictionError });
 
@@ -699,7 +729,9 @@ export class CuriosityEngine {
       let maxSim = -1;
       for (const region of regions) {
         const centroid = parseEmbedding(region.centroid);
-        if (centroid.length === 0) continue;
+        if (centroid.length === 0) {
+          continue;
+        }
         const sim = cosineSimilarity(queryEmbedding, centroid);
         if (sim > maxSim) {
           maxSim = sim;
@@ -759,7 +791,9 @@ export class CuriosityEngine {
    * Used by DreamEngine to influence mode selection.
    */
   getDreamModeWeightAdjustments(): Partial<Record<DreamMode, number>> {
-    if (!this.config.enabled) return {};
+    if (!this.config.enabled) {
+      return {};
+    }
 
     const adjustments: Partial<Record<DreamMode, number>> = {};
     const now = Date.now();
@@ -798,7 +832,9 @@ export class CuriosityEngine {
    * specifically looks for this knowledge in the next cycle.
    */
   registerBlindSpot(params: { query: string; scope: string; timestamp: number }): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled) {
+      return;
+    }
     try {
       const id = crypto.randomUUID();
       const expiresAt = params.timestamp + 7 * 24 * 60 * 60 * 1000; // 7 day TTL
@@ -828,7 +864,9 @@ export class CuriosityEngine {
 
   private detectEmergence(): EmergenceEvent[] {
     const regions = this.loadRegions();
-    if (regions.length < 2) return [];
+    if (regions.length < 2) {
+      return [];
+    }
 
     const events: EmergenceEvent[] = [];
     const now = Date.now();
@@ -837,10 +875,14 @@ export class CuriosityEngine {
     // Convergence detection: pairs of regions with high similarity (> 0.75)
     for (let i = 0; i < regions.length; i++) {
       const cA = centroids[i];
-      if (!cA || cA.length === 0) continue;
+      if (!cA || cA.length === 0) {
+        continue;
+      }
       for (let j = i + 1; j < regions.length; j++) {
         const cB = centroids[j];
-        if (!cB || cB.length === 0) continue;
+        if (!cB || cB.length === 0) {
+          continue;
+        }
         const sim = cosineSimilarity(cA, cB);
         if (sim > 0.75) {
           events.push({
@@ -868,12 +910,16 @@ export class CuriosityEngine {
 
     for (const surprise of recentSurprises) {
       const emb = parseEmbedding(surprise.embedding);
-      if (emb.length === 0) continue;
+      if (emb.length === 0) {
+        continue;
+      }
 
       const highSimRegions: string[] = [];
       for (let i = 0; i < regions.length; i++) {
         const c = centroids[i];
-        if (!c || c.length === 0) continue;
+        if (!c || c.length === 0) {
+          continue;
+        }
         if (cosineSimilarity(emb, c) > 0.6) {
           highSimRegions.push(regions[i]!.id);
         }
@@ -939,7 +985,7 @@ export class CuriosityEngine {
         return { embedding: emb, hash: r.hash, sim: cosineSimilarity(embedding, emb) };
       })
       .filter((r) => r.embedding.length > 0)
-      .sort((a, b) => b.sim - a.sim)
+      .toSorted((a, b) => b.sim - a.sim)
       .slice(0, limit);
 
     return withSim.map(({ embedding: emb, hash }) => ({ embedding: emb, hash }));
@@ -955,13 +1001,17 @@ export class CuriosityEngine {
       )
       .all() as ChunkRow[];
 
-    if (chunks.length < 5) return 0;
+    if (chunks.length < 5) {
+      return 0;
+    }
 
     // Simple greedy clustering to form knowledge regions
     const embeddings = new Map<string, number[]>();
     for (const chunk of chunks) {
       const emb = parseEmbedding(chunk.embedding);
-      if (emb.length > 0) embeddings.set(chunk.id, emb);
+      if (emb.length > 0) {
+        embeddings.set(chunk.id, emb);
+      }
     }
 
     const assigned = new Set<string>();
@@ -973,9 +1023,13 @@ export class CuriosityEngine {
     }> = [];
 
     for (const chunk of chunks) {
-      if (assigned.has(chunk.id)) continue;
+      if (assigned.has(chunk.id)) {
+        continue;
+      }
       const embA = embeddings.get(chunk.id);
-      if (!embA) continue;
+      if (!embA) {
+        continue;
+      }
 
       const cluster = [chunk.id];
       assigned.add(chunk.id);
@@ -983,9 +1037,13 @@ export class CuriosityEngine {
       let totalImportance = chunk.importance_score;
 
       for (const other of chunks) {
-        if (assigned.has(other.id)) continue;
+        if (assigned.has(other.id)) {
+          continue;
+        }
         const embB = embeddings.get(other.id);
-        if (!embB) continue;
+        if (!embB) {
+          continue;
+        }
         if (cosineSimilarity(embA, embB) >= 0.7) {
           cluster.push(other.id);
           assigned.add(other.id);
@@ -1004,7 +1062,9 @@ export class CuriosityEngine {
         });
       }
 
-      if (newRegions.length >= this.config.maxRegions) break;
+      if (newRegions.length >= this.config.maxRegions) {
+        break;
+      }
     }
 
     // Update DB: clear old regions and insert new (in a transaction)
@@ -1076,7 +1136,9 @@ export class CuriosityEngine {
     } catch {
       return "";
     }
-    if (texts.length === 0) return "";
+    if (texts.length === 0) {
+      return "";
+    }
 
     // Count word frequencies, filtering stopwords and short words
     const stopwords = new Set([
@@ -1160,14 +1222,16 @@ export class CuriosityEngine {
     for (const text of texts) {
       const words = text.toLowerCase().match(/[a-z_][a-z0-9_]{2,}/g) ?? [];
       for (const word of words) {
-        if (stopwords.has(word)) continue;
+        if (stopwords.has(word)) {
+          continue;
+        }
         wordCounts.set(word, (wordCounts.get(word) ?? 0) + 1);
       }
     }
 
     // Take top 3 words by frequency
     const sorted = [...wordCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
+      .toSorted((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([word]) => word);
 
@@ -1188,7 +1252,9 @@ export class CuriosityEngine {
           .get(now) as { c: number }
       )?.c ?? 0;
 
-    if (activeCount >= this.config.maxTargets) return 0;
+    if (activeCount >= this.config.maxTargets) {
+      return 0;
+    }
 
     // Dedup: fetch types of existing active targets so we don't create duplicates
     const existingTypes = new Set(
@@ -1301,7 +1367,7 @@ export class CuriosityEngine {
 
     // Store targets up to limit
     const slotsAvailable = this.config.maxTargets - activeCount;
-    const toStore = targets.sort((a, b) => b.priority - a.priority).slice(0, slotsAvailable);
+    const toStore = targets.toSorted((a, b) => b.priority - a.priority).slice(0, slotsAvailable);
 
     const insertStmt = this.db.prepare(
       `INSERT INTO curiosity_targets
@@ -1370,7 +1436,9 @@ export class CuriosityEngine {
     const row = this.db.prepare(`SELECT COUNT(*) as c FROM curiosity_queries`).get() as {
       c: number;
     };
-    if (row.c <= max) return;
+    if (row.c <= max) {
+      return;
+    }
 
     const excess = row.c - max;
     this.db
@@ -1388,9 +1456,13 @@ export class CuriosityEngine {
    * explores that area sooner.
    */
   handleNoveltySignal(signal: NoveltySignal): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled) {
+      return;
+    }
     const regions = this.loadRegions();
-    if (regions.length === 0) return;
+    if (regions.length === 0) {
+      return;
+    }
 
     // Find region matching the domain_hint label (fuzzy match)
     let matchedRegion: RegionRow | null = null;
@@ -1438,7 +1510,9 @@ export class CuriosityEngine {
    * - Low density → frontier regions
    */
   generateGCCRFTargets(): number {
-    if (!this.config.enabled) return 0;
+    if (!this.config.enabled) {
+      return 0;
+    }
 
     const now = Date.now();
     const ttlMs = this.config.targetTtlHours * 60 * 60 * 1000;
@@ -1453,7 +1527,9 @@ export class CuriosityEngine {
           .get(now) as { c: number }
       )?.c ?? 0;
 
-    if (activeCount >= this.config.maxTargets) return 0;
+    if (activeCount >= this.config.maxTargets) {
+      return 0;
+    }
 
     // Try reading GCCRF region ETA state
     let regionEta: Record<string, { emaLong: number; emaShort: number; sampleCount: number }> = {};
@@ -1461,7 +1537,9 @@ export class CuriosityEngine {
       const row = this.db.prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`).get() as
         | { value: string }
         | undefined;
-      if (row) regionEta = JSON.parse(row.value);
+      if (row) {
+        regionEta = JSON.parse(row.value);
+      }
     } catch {
       /* gccrf_state may not exist yet */
     }
@@ -1477,7 +1555,9 @@ export class CuriosityEngine {
 
     for (const region of regions) {
       const eta = regionEta[region.id];
-      if (!eta || eta.sampleCount < 3) continue;
+      if (!eta || eta.sampleCount < 3) {
+        continue;
+      }
 
       // High mean η (emaShort) → region is still surprising → worth investigating
       if (eta.emaShort > 0.7 && activeCount + targets.length < this.config.maxTargets) {
@@ -1510,7 +1590,7 @@ export class CuriosityEngine {
 
     // Store targets
     const slotsAvailable = this.config.maxTargets - activeCount;
-    const toStore = targets.sort((a, b) => b.priority - a.priority).slice(0, slotsAvailable);
+    const toStore = targets.toSorted((a, b) => b.priority - a.priority).slice(0, slotsAvailable);
     const stmt = this.db.prepare(
       `INSERT INTO curiosity_targets (id, type, description, priority, region_id, metadata, created_at, resolved_at, expires_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1540,14 +1620,18 @@ export class CuriosityEngine {
    * - density has increased significantly (no longer frontier)
    */
   retireGCCRFTargets(): number {
-    if (!this.config.enabled) return 0;
+    if (!this.config.enabled) {
+      return 0;
+    }
 
     let regionEta: Record<string, { emaLong: number; emaShort: number; sampleCount: number }> = {};
     try {
       const row = this.db.prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`).get() as
         | { value: string }
         | undefined;
-      if (row) regionEta = JSON.parse(row.value);
+      if (row) {
+        regionEta = JSON.parse(row.value);
+      }
     } catch {
       return 0;
     }
@@ -1565,7 +1649,9 @@ export class CuriosityEngine {
 
     for (const target of activeTargets) {
       const eta = regionEta[target.region_id];
-      if (!eta || eta.sampleCount < 5) continue;
+      if (!eta || eta.sampleCount < 5) {
+        continue;
+      }
 
       // Retire if Δη is consistently high (making good progress)
       const deltaEta = Math.max(0, eta.emaLong - eta.emaShort);
@@ -1627,7 +1713,9 @@ export class CuriosityEngine {
         const regionMap = new Map(regions.map((r) => [r.id, r.label]));
 
         for (const [regionId, eta] of Object.entries(regionEta)) {
-          if (eta.sampleCount < 2) continue;
+          if (eta.sampleCount < 2) {
+            continue;
+          }
           regionProgress.push({
             regionId,
             label: regionMap.get(regionId) ?? regionId,
@@ -1709,15 +1797,21 @@ export class CuriosityEngine {
    * Returns the full result so the caller can trigger hormonal responses.
    */
   computeReward(chunkId: string, chunkEmbedding: number[]): GCCRFRewardResult | null {
-    if (!this.config.enabled) return null;
-    if (chunkEmbedding.length === 0) return null;
+    if (!this.config.enabled) {
+      return null;
+    }
+    if (chunkEmbedding.length === 0) {
+      return null;
+    }
 
     try {
       const regions = this.loadRegions();
       const regionCentroids = new Map<string, number[]>();
       for (const region of regions) {
         const centroid = parseEmbedding(region.centroid);
-        if (centroid.length > 0) regionCentroids.set(region.id, centroid);
+        if (centroid.length > 0) {
+          regionCentroids.set(region.id, centroid);
+        }
       }
 
       const strategicTargets: number[][] = [];
@@ -1732,7 +1826,9 @@ export class CuriosityEngine {
         for (const t of targets) {
           if (t.region_id) {
             const c = regionCentroids.get(t.region_id);
-            if (c) strategicTargets.push(c);
+            if (c) {
+              strategicTargets.push(c);
+            }
           }
         }
       } catch {
@@ -1757,7 +1853,9 @@ export class CuriosityEngine {
    * Called during consolidation cycle.
    */
   scorePendingChunks(): number {
-    if (!this.config.enabled) return 0;
+    if (!this.config.enabled) {
+      return 0;
+    }
 
     try {
       const pendingRows = this.db
@@ -1770,14 +1868,18 @@ export class CuriosityEngine {
         )
         .all() as Array<{ id: string; embedding: string }>;
 
-      if (pendingRows.length === 0) return 0;
+      if (pendingRows.length === 0) {
+        return 0;
+      }
 
       // Gather shared context once
       const regions = this.loadRegions();
       const regionCentroids = new Map<string, number[]>();
       for (const region of regions) {
         const centroid = parseEmbedding(region.centroid);
-        if (centroid.length > 0) regionCentroids.set(region.id, centroid);
+        if (centroid.length > 0) {
+          regionCentroids.set(region.id, centroid);
+        }
       }
 
       const strategicTargets: number[][] = [];
@@ -1792,7 +1894,9 @@ export class CuriosityEngine {
         for (const t of targets) {
           if (t.region_id) {
             const c = regionCentroids.get(t.region_id);
-            if (c) strategicTargets.push(c);
+            if (c) {
+              strategicTargets.push(c);
+            }
           }
         }
       } catch {
@@ -1805,7 +1909,9 @@ export class CuriosityEngine {
       for (const row of pendingRows) {
         try {
           const emb = JSON.parse(row.embedding) as number[];
-          if (emb.length === 0) continue;
+          if (emb.length === 0) {
+            continue;
+          }
           const result = this.gccrfReward.compute(emb, regionCentroids, strategicTargets);
           updateStmt.run(result.reward, row.id);
           scored++;
@@ -1850,7 +1956,9 @@ export class CuriosityEngine {
     chunkHash: string,
     neighborEmbeddings: Array<{ embedding: number[]; hash: string }>,
   ): number {
-    if (neighborEmbeddings.length === 0) return 0;
+    if (neighborEmbeddings.length === 0) {
+      return 0;
+    }
 
     let maxContradiction = 0;
     for (const neighbor of neighborEmbeddings) {
@@ -1872,7 +1980,9 @@ export class CuriosityEngine {
   private computeLearningProgressFromHistory(
     errorHistory: Array<{ error: number; timestamp: number }>,
   ): number {
-    if (errorHistory.length < 2) return 0;
+    if (errorHistory.length < 2) {
+      return 0;
+    }
 
     const n = errorHistory.length;
     let sumX = 0,
@@ -1891,7 +2001,9 @@ export class CuriosityEngine {
     }
 
     const denom = n * sumX2 - sumX * sumX;
-    if (Math.abs(denom) < 1e-10) return 0;
+    if (Math.abs(denom) < 1e-10) {
+      return 0;
+    }
 
     const slope = (n * sumXY - sumX * sumY) / denom;
     return Math.max(-1, Math.min(1, -slope * 100));
@@ -1902,7 +2014,9 @@ export class CuriosityEngine {
    * Returns descriptions of regions that might satisfy the query.
    */
   matchQuery(query: string): Array<{ regionId: string; label: string; score: number }> {
-    if (!this.config.enabled) return [];
+    if (!this.config.enabled) {
+      return [];
+    }
     const regions = this.loadRegions();
     const results: Array<{ regionId: string; label: string; score: number }> = [];
 
@@ -1917,7 +2031,7 @@ export class CuriosityEngine {
       }
     }
 
-    return results.sort((a, b) => b.score - a.score).slice(0, 5);
+    return results.toSorted((a, b) => b.score - a.score).slice(0, 5);
   }
 }
 

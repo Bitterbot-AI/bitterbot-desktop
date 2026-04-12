@@ -56,7 +56,9 @@ export const DEFAULT_ZEIGARNIK_CONFIG: ZeigarnikConfig = {
  */
 export function detectOpenLoop(text: string, config?: Partial<ZeigarnikConfig>): string | null {
   const cfg = { ...DEFAULT_ZEIGARNIK_CONFIG, ...config };
-  if (!cfg.enabled || text.length < cfg.minTextLength) return null;
+  if (!cfg.enabled || text.length < cfg.minTextLength) {
+    return null;
+  }
 
   for (const pattern of OPEN_LOOP_PATTERNS) {
     const match = pattern.exec(text);
@@ -163,7 +165,9 @@ export function scanForOpenLoops(
         | { text: string; open_loop: number }
         | undefined;
 
-      if (!row || row.open_loop === 1) continue;
+      if (!row || row.open_loop === 1) {
+        continue;
+      }
 
       const context = detectOpenLoop(row.text, config);
       if (context) {

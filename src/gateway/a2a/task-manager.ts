@@ -189,7 +189,7 @@ export class A2aTaskManager {
     const history = this.store.getMessages(taskId, historyLength);
     const artifacts = this.store.getArtifacts(taskId);
 
-    const lastAgentMessage = [...history].reverse().find((m) => m.role === "agent");
+    const lastAgentMessage = [...history].toReversed().find((m) => m.role === "agent");
 
     return {
       id: row.id,

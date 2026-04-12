@@ -37,7 +37,9 @@ export function detectDivergence(
     let maxSim = 0;
     for (const result of topResults) {
       const sim = result.perspectiveScores[perspective] ?? 0;
-      if (sim > maxSim) maxSim = sim;
+      if (sim > maxSim) {
+        maxSim = sim;
+      }
     }
     novelScores[perspective] = 1 - maxSim;
   }

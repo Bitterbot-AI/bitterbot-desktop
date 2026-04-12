@@ -34,7 +34,9 @@ function buildEndocrineStateSection(params: {
   isMinimal: boolean;
 }): string[] {
   const { endocrineState, isMinimal } = params;
-  if (!endocrineState) return [];
+  if (!endocrineState) {
+    return [];
+  }
 
   const {
     dopamine,
@@ -51,8 +53,12 @@ function buildEndocrineStateSection(params: {
   // Determine dominant hormone
   const max = Math.max(dopamine, cortisol, oxytocin);
   const dominantLabel = (value: number) => {
-    if (value >= max - 0.05 && value >= 0.2) return `${value.toFixed(2)} (DOMINANT)`;
-    if (value >= 0.2) return `${value.toFixed(2)} (active)`;
+    if (value >= max - 0.05 && value >= 0.2) {
+      return `${value.toFixed(2)} (DOMINANT)`;
+    }
+    if (value >= 0.2) {
+      return `${value.toFixed(2)} (active)`;
+    }
     return `${value.toFixed(2)} (baseline)`;
   };
 

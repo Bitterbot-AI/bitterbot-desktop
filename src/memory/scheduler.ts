@@ -169,13 +169,17 @@ export class MemoryScheduler {
   }
 
   private async processQueue(): Promise<void> {
-    if (this.processing) return;
+    if (this.processing) {
+      return;
+    }
     this.processing = true;
 
     try {
       while (this.queue.length > 0) {
         const op = this.queue[0];
-        if (!op) break;
+        if (!op) {
+          break;
+        }
 
         if (!this.hasBudget(op.type)) {
           log.debug(`deferring ${op.type} operation: budget exhausted`);

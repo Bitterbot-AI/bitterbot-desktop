@@ -49,7 +49,9 @@ const EPISTEMIC_TO_SEMANTIC: Record<EpistemicLayer, string> = {
 };
 
 function buildHormonalGuidance(hormones?: HormonalBias): string {
-  if (!hormones) return "";
+  if (!hormones) {
+    return "";
+  }
   const lines: string[] = [];
   if (hormones.cortisol > 0.3) {
     lines.push(
@@ -137,7 +139,9 @@ function parseExtractionResponse(
       };
     };
 
-    if (!parsed.facts || !Array.isArray(parsed.facts)) return null;
+    if (!parsed.facts || !Array.isArray(parsed.facts)) {
+      return null;
+    }
 
     const validLayers = new Set<string>(["world_fact", "experience", "mental_model", "directive"]);
 
@@ -228,7 +232,9 @@ export async function extractSessionFacts(
   }
 
   const parsed = parseExtractionResponse(response, sessionId);
-  if (!parsed) return null;
+  if (!parsed) {
+    return null;
+  }
 
   return {
     facts: parsed.facts.slice(0, maxFacts),

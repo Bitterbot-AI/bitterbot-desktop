@@ -207,7 +207,9 @@ export function analyzeSignalCorrelation(
       )
       .all(windowCycles) as Array<{ fsho_r: number; dqs: number }>;
 
-    if (rows.length < 5) return { fshoCorrelation: 0, sampleSize: rows.length };
+    if (rows.length < 5) {
+      return { fshoCorrelation: 0, sampleSize: rows.length };
+    }
 
     const n = rows.length;
     const sumX = rows.reduce((s, r) => s + r.fsho_r, 0);

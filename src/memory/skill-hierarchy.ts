@@ -93,7 +93,9 @@ export function quickCapabilityCheck(db: DatabaseSync, category: string): number
     )
     .all(category) as Array<{ skill_hierarchy: string }>;
 
-  if (rows.length === 0) return 0;
+  if (rows.length === 0) {
+    return 0;
+  }
 
   let totalScore = 0;
   let counted = 0;
@@ -153,7 +155,9 @@ export function getLatestVersion(
     )
     .get(stableSkillId) as { id: string; skill_version: number } | undefined;
 
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
   return { crystalId: row.id, version: row.skill_version };
 }
 

@@ -870,7 +870,9 @@ class MemoryManagerEmbeddingOps {
  */
 function deriveValenceFromHormonal(h: HormonalInfluence): number | null {
   const raw = h.dopamine + h.oxytocin - h.cortisol;
-  if (Math.abs(raw) < 0.05) return null;
+  if (Math.abs(raw) < 0.05) {
+    return null;
+  }
   return Math.max(-1, Math.min(1, raw));
 }
 
