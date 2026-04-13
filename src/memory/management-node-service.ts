@@ -196,20 +196,24 @@ export class ManagementNodeService {
   /** Pull network census from Rust orchestrator via IPC. */
   async runCensus(): Promise<NetworkCensus | null> {
     try {
-      const result = await (this.bridge as any).sendCommand("get_network_census", {});
+      const result = (await (
+        this.bridge as unknown as {
+          sendCommand(type: string, payload: unknown): Promise<Record<string, unknown>>;
+        }
+      ).sendCommand("get_network_census", {})) as Record<string, unknown> | undefined;
       if (!result?.ok) {
         return null;
       }
 
       const census: NetworkCensus = {
-        totalPeersSeen: result.total_peers_seen ?? 0,
-        peersByTier: result.peers_by_tier ?? {},
-        skillsPublishedNetworkWide: result.skills_published_network_wide ?? 0,
-        telemetryCountsByType: result.telemetry_counts_by_type ?? {},
-        networkHealthScore: result.network_health_score ?? 1.0,
-        lastCensusAt: result.last_census_at ?? 0,
-        connectedPeers: result.connected_peers ?? 0,
-        peerCountHistory: result.peer_count_history ?? [],
+        totalPeersSeen: (result.total_peers_seen as number) ?? 0,
+        peersByTier: (result.peers_by_tier as Record<string, number>) ?? {},
+        skillsPublishedNetworkWide: (result.skills_published_network_wide as number) ?? 0,
+        telemetryCountsByType: (result.telemetry_counts_by_type as Record<string, number>) ?? {},
+        networkHealthScore: (result.network_health_score as number) ?? 1.0,
+        lastCensusAt: (result.last_census_at as number) ?? 0,
+        connectedPeers: (result.connected_peers as number) ?? 0,
+        peerCountHistory: (result.peer_count_history as Array<[number, number]>) ?? [],
       };
 
       this.latestCensus = census;
@@ -241,18 +245,23 @@ export class ManagementNodeService {
   /** Get anomaly alerts from Rust orchestrator. */
   async getAnomalyAlerts(): Promise<AnomalyAlert[]> {
     try {
-      const result = await (this.bridge as any).sendCommand("get_anomaly_alerts", {});
+      const result = (await (
+        this.bridge as unknown as {
+          sendCommand(type: string, payload: unknown): Promise<Record<string, unknown>>;
+        }
+      ).sendCommand("get_anomaly_alerts", {})) as Record<string, unknown> | undefined;
       if (!result?.ok) {
         return this.anomalyHistory;
       }
 
-      const alerts = (result.alerts ?? []).map((a: any) => ({
-        alertType: a.alert_type,
-        severity: a.severity,
-        peerIds: a.peer_ids ?? [],
-        description: a.description ?? "",
-        detectedAt: a.detected_at ?? Date.now(),
-        autoAction: a.auto_action,
+      const rawAlerts = (result.alerts ?? []) as Array<Record<string, unknown>>;
+      const alerts = rawAlerts.map((a) => ({
+        alertType: a.alert_type as string,
+        severity: a.severity as AnomalyAlert["severity"],
+        peerIds: (a.peer_ids as string[]) ?? [],
+        description: (a.description as string) ?? "",
+        detectedAt: (a.detected_at as number) ?? Date.now(),
+        autoAction: a.auto_action as string | undefined,
       }));
 
       // Persist new alerts
@@ -306,7 +315,11 @@ export class ManagementNodeService {
         reason,
       });
 
-      const result = await (this.bridge as any).sendCommand("propagate_ban", {
+      const result = await (
+        this.bridge as unknown as {
+          sendCommand(type: string, payload: unknown): Promise<Record<string, unknown>>;
+        }
+      ).sendCommand("propagate_ban", {
         peer_pubkey: peerPubkey,
         reason,
         management_pubkey: signedEnvelope.pubkey,
@@ -423,7 +436,7 @@ export class ManagementNodeService {
     }
 
     // Verify the ban came from a management node (genesis trust list check)
-    const authorPubkey = (event as any).author_pubkey;
+    const authorPubkey = event.author_pubkey;
     if (!authorPubkey || !this.peerReputation?.isManagementNode(authorPubkey)) {
       log.warn(
         `Rejected management ban from non-management peer ${event.author_peer_id} (pubkey: ${authorPubkey ?? "missing"})`,

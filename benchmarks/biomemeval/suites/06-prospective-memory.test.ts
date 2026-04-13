@@ -117,7 +117,7 @@ describe("BioMemEval > Prospective Memory", () => {
       .prepare(
         "SELECT COUNT(*) as c FROM prospective_memories WHERE expires_at IS NOT NULL AND expires_at < ?",
       )
-      .get(Date.now()) as any;
+      .get(Date.now()) as { c: number } | undefined;
 
     s.score("expired PM removed from database", (expiredRemaining?.c ?? 0) === 0, 1);
 
@@ -126,7 +126,7 @@ describe("BioMemEval > Prospective Memory", () => {
       .prepare(
         "SELECT COUNT(*) as c FROM prospective_memories WHERE triggered_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
       )
-      .get(Date.now()) as any;
+      .get(Date.now()) as { c: number } | undefined;
 
     s.score("non-expired PM survives cleanup", (activeRemaining?.c ?? 0) >= 1, 1);
 

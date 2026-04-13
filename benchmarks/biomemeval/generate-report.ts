@@ -33,18 +33,35 @@ try {
   const raw = JSON.parse(fs.readFileSync(inputPath, "utf-8"));
   const testResults = raw.testResults ?? [];
 
-  const suites = testResults.map((file: any) => {
+  interface VitestFileResult {
+    name?: string;
+    assertionResults?: Array<{
+      title?: string;
+      fullName?: string;
+      status: string;
+      duration?: number;
+    }>;
+  }
+  interface ScenarioResult {
+    name: string;
+    status: string;
+    duration?: number;
+  }
+
+  const suites = testResults.map((file: VitestFileResult) => {
     const suiteId = extractSuiteId(file.name ?? "");
     const meta = SUITE_META[suiteId] ?? { name: suiteId, weight: 0 };
 
-    const scenarios = (file.assertionResults ?? []).map((test: any) => ({
-      name: test.title ?? test.fullName ?? "unknown",
-      status: test.status,
-      duration: test.duration,
-    }));
+    const scenarios: ScenarioResult[] = (file.assertionResults ?? []).map(
+      (test: { title?: string; fullName?: string; status: string; duration?: number }) => ({
+        name: test.title ?? test.fullName ?? "unknown",
+        status: test.status,
+        duration: test.duration,
+      }),
+    );
 
-    const passed = scenarios.filter((s: any) => s.status === "passed").length;
-    const failed = scenarios.filter((s: any) => s.status === "failed").length;
+    const passed = scenarios.filter((s) => s.status === "passed").length;
+    const failed = scenarios.filter((s) => s.status === "failed").length;
     const total = passed + failed;
     const percentage = total > 0 ? (passed / total) * 100 : 0;
 
@@ -59,11 +76,23 @@ try {
     };
   });
 
-  const totalWeight = suites.reduce((s: number, suite: any) => s + suite.weight, 0);
+  interface SuiteResult {
+    suiteId: string;
+    suiteName: string;
+    weight: number;
+    scenarios: number;
+    passed: number;
+    failed: number;
+    percentage: number;
+  }
+
+  const totalWeight = (suites as SuiteResult[]).reduce((s: number, suite) => s + suite.weight, 0);
   const composite =
     totalWeight > 0
-      ? suites.reduce((s: number, suite: any) => s + suite.percentage * suite.weight, 0) /
-        totalWeight
+      ? (suites as SuiteResult[]).reduce(
+          (s: number, suite) => s + suite.percentage * suite.weight,
+          0,
+        ) / totalWeight
       : 0;
 
   const report = {

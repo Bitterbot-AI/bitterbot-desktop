@@ -221,7 +221,7 @@ function checkMemoryDatabase(dbPath: string): DoctorCheckResult[] {
 
   let db: DatabaseSync | null = null;
   try {
-    db = new DatabaseSync(dbPath, { open: true, readOnly: true } as any);
+    db = new DatabaseSync(dbPath, { open: true, readOnly: true });
 
     // Integrity check — quick_check skips index consistency (fast on large DBs)
     try {
@@ -329,7 +329,7 @@ function checkDreamEngine(dbPath: string, isGatewayRunning: boolean): DoctorChec
 
   let db: DatabaseSync | null = null;
   try {
-    db = new DatabaseSync(dbPath, { open: true, readOnly: true } as any);
+    db = new DatabaseSync(dbPath, { open: true, readOnly: true });
 
     if (!tableExists(db, "dream_cycles")) {
       results.push(warn("dream_cycles table not found — dream engine has not run"));
@@ -478,7 +478,7 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
 
   let db: DatabaseSync | null = null;
   try {
-    db = new DatabaseSync(dbPath, { open: true, readOnly: true } as any);
+    db = new DatabaseSync(dbPath, { open: true, readOnly: true });
 
     // Compute maturity from dream cycles + crystal count + age (same logic as GCCRFRewardFunction.getMaturity)
     const expectedMatureCycles =

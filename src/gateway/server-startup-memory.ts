@@ -1,4 +1,5 @@
 import type { BitterbotConfig } from "../config/config.js";
+import type { OrchestratorBridge } from "../infra/orchestrator-bridge.js";
 import type { OrchestratorBridgeLike } from "../memory/skill-network-bridge.js";
 import type { SkillNetworkBridge } from "../memory/skill-network-bridge.js";
 import type { PluginHookHandlerMap } from "../plugins/types.js";
@@ -57,18 +58,22 @@ export async function startGatewayMemoryBackend(params: {
           p2pCfg.genesisTrustList,
         );
         const auth = ManagementKeyAuth.init(trustList);
-        const db = (managerAny as any).db;
-        const peerRep = (managerAny as any).peerReputationManager ?? null;
-        const economics = (managerAny as any).marketplaceEconomics ?? null;
+        const db = managerAny.db as import("node:sqlite").DatabaseSync;
+        const peerRep = (managerAny.peerReputationManager ?? null) as
+          | import("../memory/peer-reputation.js").PeerReputationManager
+          | null;
+        const economics = (managerAny.marketplaceEconomics ?? null) as
+          | import("../memory/marketplace-economics.js").MarketplaceEconomics
+          | null;
         const svc = new ManagementNodeService(
           db,
-          params.orchestratorBridge as any,
+          params.orchestratorBridge as unknown as OrchestratorBridge,
           peerRep,
           economics,
           auth,
         );
         svc.start();
-        (managerAny as any).managementNodeService = svc;
+        managerAny.managementNodeService = svc;
         params.log.warn?.(
           `Management node service started (pubkey: ${auth.publicKeyBase64.substring(0, 8)}...)`,
         );

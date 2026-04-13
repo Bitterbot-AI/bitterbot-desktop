@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import type { OrchestratorBridge } from "../infra/orchestrator-bridge.js";
 import {
   ManagementKeyAuth,
   ManagementKeyAuthError,
@@ -47,9 +48,17 @@ function createTestDb(): DatabaseSync {
   return db;
 }
 
+interface MockTelemetryEvent {
+  signal_type: string;
+  data: unknown;
+  author_peer_id: string;
+  author_pubkey?: string;
+  timestamp: number;
+}
+
 function createMockBridge() {
   const commands: Array<{ cmd: string; args: unknown }> = [];
-  const telemetryCbs: Array<(event: any) => void> = [];
+  const telemetryCbs: Array<(event: MockTelemetryEvent) => void> = [];
   return {
     commands,
     telemetryCbs,
@@ -57,7 +66,7 @@ function createMockBridge() {
       commands.push({ cmd, args });
       return { ok: true };
     },
-    onTelemetryReceived: (cb: (event: any) => void) => {
+    onTelemetryReceived: (cb: (event: MockTelemetryEvent) => void) => {
       telemetryCbs.push(cb);
     },
   };
@@ -100,7 +109,13 @@ describe("Management Node Integration", () => {
     const bridge = createMockBridge();
     const tracker = new SkillExecutionTracker(db);
     const peerRep = new PeerReputationManager(db, tracker, trustList);
-    const service = new ManagementNodeService(db, bridge as any, peerRep, null, auth);
+    const service = new ManagementNodeService(
+      db,
+      bridge as unknown as OrchestratorBridge,
+      peerRep,
+      null,
+      auth,
+    );
 
     expect(service.isAuthorized).toBe(true);
     expect(service.publicKey).toBe(mgmtKey.pubkeyBase64);
@@ -156,7 +171,7 @@ describe("Management Node Integration", () => {
     // Service without auth refuses to start
     const db = createTestDb();
     const bridge = createMockBridge();
-    const service = new ManagementNodeService(db, bridge as any);
+    const service = new ManagementNodeService(db, bridge as unknown as OrchestratorBridge);
     expect(() => service.start()).toThrow("cannot start without cryptographic authorization");
   });
 
@@ -192,7 +207,13 @@ describe("Management Node Integration", () => {
     const bridge1 = createMockBridge();
     const tracker1 = new SkillExecutionTracker(db1);
     const rep1 = new PeerReputationManager(db1, tracker1, trustList);
-    const svc1 = new ManagementNodeService(db1, bridge1 as any, rep1, null, auth1);
+    const svc1 = new ManagementNodeService(
+      db1,
+      bridge1 as unknown as OrchestratorBridge,
+      rep1,
+      null,
+      auth1,
+    );
     svc1.start();
 
     // Node 2 creates services
@@ -200,7 +221,13 @@ describe("Management Node Integration", () => {
     const bridge2 = createMockBridge();
     const tracker2 = new SkillExecutionTracker(db2);
     const rep2 = new PeerReputationManager(db2, tracker2, trustList);
-    const svc2 = new ManagementNodeService(db2, bridge2 as any, rep2, null, auth2);
+    const svc2 = new ManagementNodeService(
+      db2,
+      bridge2 as unknown as OrchestratorBridge,
+      rep2,
+      null,
+      auth2,
+    );
     svc2.start();
 
     // Node 1 bans a peer
@@ -238,7 +265,13 @@ describe("Management Node Integration", () => {
     const tracker = new SkillExecutionTracker(db);
     const rep = new PeerReputationManager(db, tracker, trustList);
     const auth = ManagementKeyAuth.init(trustList, mgmtKey.seedBase64);
-    const service = new ManagementNodeService(db, bridge as any, rep, null, auth);
+    const service = new ManagementNodeService(
+      db,
+      bridge as unknown as OrchestratorBridge,
+      rep,
+      null,
+      auth,
+    );
     service.start();
 
     // Simulate receiving a ban from another management node (via telemetry callback)

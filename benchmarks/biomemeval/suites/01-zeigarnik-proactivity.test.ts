@@ -145,8 +145,12 @@ describe("BioMemEval > Zeigarnik Proactivity", () => {
     const normalId = insertChunk(db, { text: "Cache was implemented", importance_score: 0.5 });
 
     // Verify the open_loop flag is set
-    const loopRow = db.prepare("SELECT open_loop FROM chunks WHERE id = ?").get(loopId) as any;
-    const normalRow = db.prepare("SELECT open_loop FROM chunks WHERE id = ?").get(normalId) as any;
+    const loopRow = db.prepare("SELECT open_loop FROM chunks WHERE id = ?").get(loopId) as
+      | { open_loop: number }
+      | undefined;
+    const normalRow = db.prepare("SELECT open_loop FROM chunks WHERE id = ?").get(normalId) as
+      | { open_loop: number }
+      | undefined;
 
     s.score("open loop chunk has open_loop = 1", loopRow?.open_loop === 1, 2);
     s.score("normal chunk has open_loop = 0", normalRow?.open_loop === 0, 2);

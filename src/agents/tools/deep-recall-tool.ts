@@ -11,6 +11,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
+import type { MemorySearchManager } from "../../memory/types.js";
 import type { RLMScope, RLMLLMCallFn } from "../rlm/types.js";
 import type { AnyAgentTool } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
@@ -268,11 +269,13 @@ export function createDeepRecallTool(options: {
       if (manager) {
         try {
           const { assessSomaticMarkers } = await import("../../memory/somatic-markers.js");
-          const memManager = manager as any;
+          const memManager = manager as MemorySearchManager & {
+            db?: import("node:sqlite").DatabaseSync;
+          };
           // Use quick search results as proxy for the knowledge region
           const quickResults = await memManager.search(query, { maxResults: 10 });
-          if (quickResults.length >= 3) {
-            const db = memManager.db as import("node:sqlite").DatabaseSync;
+          if (quickResults.length >= 3 && memManager.db) {
+            const db = memManager.db;
             const chunkIds: string[] = [];
             for (const r of quickResults) {
               try {
@@ -326,7 +329,12 @@ export function createDeepRecallTool(options: {
       // Step 5: Trigger hormonal event based on result + Plan 7 self-improvement
       if (manager) {
         try {
-          const memManager = manager as any;
+          const memManager = manager as MemorySearchManager & {
+            hormonalManager?: { stimulate(event: string): void } | null;
+            curiosityEngine?: {
+              registerBlindSpot?(params: { query: string; scope: string; timestamp: number }): void;
+            } | null;
+          };
           if (memManager.hormonalManager) {
             if (result.success && result.answer) {
               memManager.hormonalManager.stimulate("reward");

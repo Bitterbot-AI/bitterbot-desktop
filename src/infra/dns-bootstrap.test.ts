@@ -54,8 +54,9 @@ describe("resolveBootstrapDns", () => {
   });
 
   it("returns empty array for ENODATA (no TXT records)", async () => {
-    const err = new Error("queryTxt ENODATA _dnsaddr.nope.example.com");
-    (err as any).code = "ENODATA";
+    const err = Object.assign(new Error("queryTxt ENODATA _dnsaddr.nope.example.com"), {
+      code: "ENODATA",
+    });
     mockResolveTxt.mockRejectedValue(err);
 
     const peers = await resolveBootstrapDns("nope.example.com");
@@ -63,8 +64,9 @@ describe("resolveBootstrapDns", () => {
   });
 
   it("returns empty array for ENOTFOUND (domain doesn't exist)", async () => {
-    const err = new Error("queryTxt ENOTFOUND _dnsaddr.nope.example.com");
-    (err as any).code = "ENOTFOUND";
+    const err = Object.assign(new Error("queryTxt ENOTFOUND _dnsaddr.nope.example.com"), {
+      code: "ENOTFOUND",
+    });
     mockResolveTxt.mockRejectedValue(err);
 
     const peers = await resolveBootstrapDns("nope.example.com");
@@ -72,8 +74,7 @@ describe("resolveBootstrapDns", () => {
   });
 
   it("retries on transient errors", async () => {
-    const transientErr = new Error("DNS timeout");
-    (transientErr as any).code = "ETIMEOUT";
+    const transientErr = Object.assign(new Error("DNS timeout"), { code: "ETIMEOUT" });
 
     mockResolveTxt
       .mockRejectedValueOnce(transientErr)
@@ -85,8 +86,7 @@ describe("resolveBootstrapDns", () => {
   });
 
   it("returns empty after all retries exhausted", async () => {
-    const err = new Error("DNS timeout");
-    (err as any).code = "ETIMEOUT";
+    const err = Object.assign(new Error("DNS timeout"), { code: "ETIMEOUT" });
     mockResolveTxt.mockRejectedValue(err);
 
     const peers = await resolveBootstrapDns("dead.example.com");

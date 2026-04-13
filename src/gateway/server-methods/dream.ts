@@ -1,8 +1,126 @@
+import type { DatabaseSync } from "node:sqlite";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+
+/* ------------------------------------------------------------------ */
+/*  Narrow interface for the MemoryIndexManager properties we access  */
+/* ------------------------------------------------------------------ */
+
+interface HormonalManagerView {
+  getState(): { dopamine: number; cortisol: number; oxytocin: number };
+  emotionalTrajectory?(): {
+    trend: "improving" | "declining" | "stable" | "volatile";
+    dominantChannel: "dopamine" | "cortisol" | "oxytocin" | "balanced";
+    volatility: number;
+    recentShift: string;
+  } | null;
+  emotionalBriefing?(): string;
+}
+
+interface CuriosityEngineView {
+  getGCCRFSummary?(): {
+    alpha: number | null;
+    maturity: number | null;
+    regionProgress: Array<{ regionId: string; label: string; deltaEta: number; eta: number }>;
+  };
+}
+
+interface GccrfDiagnosticsResult {
+  alpha: number;
+  maturity: number;
+  state: Record<string, unknown>;
+  config: Record<string, unknown>;
+}
+
+interface CuriosityTarget {
+  description: string;
+  priority: number;
+  type: string;
+}
+
+interface SkillMarketplaceView {
+  search(
+    query: string,
+    opts: { category?: string; tags?: string[]; sort?: string; limit?: number },
+  ): unknown[];
+  getTrending(limit: number): unknown[];
+  getRecommendations(limit: number): unknown[];
+  getSkillDetail(stableSkillId: string): unknown;
+}
+
+interface MarketplaceEconomicsView {
+  getEconomicSummary(): unknown;
+  getListableSkills(): unknown[];
+}
+
+/** Properties of MemoryIndexManager that dream handlers access beyond MemorySearchManager. */
+interface DreamManagerView {
+  db?: DatabaseSync;
+  cfg?: { memory?: { dream?: { intervalMinutes?: number } } };
+  hormonalManager?: HormonalManagerView | null;
+  curiosityEngine?: CuriosityEngineView | null;
+  dream?(): Promise<{
+    cycle?: { cycleId?: string };
+    newInsights?: unknown[];
+  } | null>;
+  suggestSkills?(): Promise<unknown[]>;
+  gccrfDiagnostics?(): GccrfDiagnosticsResult | null;
+  curiosityState?(): { targets?: CuriosityTarget[] } | null;
+  getSkillMarketplace?(): SkillMarketplaceView | null;
+  getMarketplaceEconomics?(): MarketplaceEconomicsView | null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Row types for SQLite query results                                 */
+/* ------------------------------------------------------------------ */
+
+type CountRow = { c: number };
+
+type DreamCycleRow = {
+  cycle_id: string;
+  started_at: number;
+  completed_at: number | null;
+  duration_ms: number | null;
+  modes_used: string | null;
+  insights_generated: number;
+  chunks_analyzed: number;
+  llm_calls_used: number;
+  error: string | null;
+};
+
+type DreamInsightRow = {
+  id: string;
+  content: string;
+  confidence: number;
+  mode: string;
+  importance_score: number | null;
+  created_at: number;
+};
+
+type DreamAnalyticsSummaryRow = {
+  total: number;
+  totalDuration: number | null;
+  avgDuration: number | null;
+  totalChunks: number | null;
+  totalInsights: number | null;
+  totalLlmCalls: number | null;
+};
+
+type ModesUsedRow = { modes_used: string };
+
+type StartedAtRow = { started_at: number };
+
+type DailyTrendRow = { started_at: number; insights_generated: number };
+
+type RewardStatsRow = {
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+  count: number;
+};
 
 function describeMood(s: { dopamine: number; cortisol: number; oxytocin: number }): string {
   const p: string[] = [];
@@ -41,9 +159,10 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "dream.status": async ({ respond }) => {
     try {
       const manager = await getManager();
-      const status = (manager as any).dreamStatus?.();
-      const hormones = (manager as any).hormonalManager?.getState() ?? null;
-      const dreamCfg = (manager as any).cfg?.memory?.dream;
+      const mgr = manager as unknown as DreamManagerView;
+      const status = manager.dreamStatus?.();
+      const hormones = mgr.hormonalManager?.getState() ?? null;
+      const dreamCfg = mgr.cfg?.memory?.dream;
       const intervalMs = (dreamCfg?.intervalMinutes ?? 120) * 60 * 1000;
       const lastCycleAt = status?.lastCycle?.completedAt ?? null;
       const nextDreamEta = lastCycleAt ? lastCycleAt + intervalMs : null;
@@ -66,29 +185,31 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "dream.history": async ({ params, respond }) => {
     try {
       const manager = await getManager();
-      const db = (manager as any).db;
+      const db = (manager as unknown as DreamManagerView).db;
       if (!db) {
         respond(true, { total: 0, cycles: [] });
         return;
       }
       const limit = Math.min(Number(params.limit) || 10, 50);
       const offset = Number(params.offset) || 0;
-      const total = (db.prepare("SELECT COUNT(*) as c FROM dream_cycles").get() as any)?.c ?? 0;
+      const total =
+        (db.prepare("SELECT COUNT(*) as c FROM dream_cycles").get() as CountRow | undefined)?.c ??
+        0;
       const cycles = db
         .prepare(
           `SELECT cycle_id, started_at, completed_at, duration_ms, modes_used,
                 insights_generated, chunks_analyzed, llm_calls_used, error
          FROM dream_cycles ORDER BY started_at DESC LIMIT ? OFFSET ?`,
         )
-        .all(limit, offset) as any[];
+        .all(limit, offset) as DreamCycleRow[];
 
       const insightStmt = db.prepare(
         `SELECT id, content, confidence, mode, importance_score, created_at
          FROM dream_insights WHERE dream_cycle_id = ? ORDER BY confidence DESC LIMIT 10`,
       );
 
-      const result = cycles.map((c: any) => {
-        const insights = insightStmt.all(c.cycle_id) as any[];
+      const result = cycles.map((c: DreamCycleRow) => {
+        const insights = insightStmt.all(c.cycle_id) as DreamInsightRow[];
         return {
           cycleId: c.cycle_id,
           startedAt: c.started_at,
@@ -99,7 +220,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
           chunksAnalyzed: c.chunks_analyzed,
           llmCallsUsed: c.llm_calls_used,
           error: c.error,
-          insights: insights.map((i: any) => ({
+          insights: insights.map((i: DreamInsightRow) => ({
             id: i.id,
             content: i.content,
             confidence: i.confidence,
@@ -118,7 +239,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "dream.insights": async ({ params, respond }) => {
     try {
       const manager = await getManager();
-      const db = (manager as any).db;
+      const db = (manager as unknown as DreamManagerView).db;
       if (!db) {
         respond(true, { total: 0, insights: [] });
         return;
@@ -135,11 +256,13 @@ export const dreamHandlers: GatewayRequestHandlers = {
       }
       sql += " ORDER BY created_at DESC LIMIT ?";
       args.push(limit);
-      const total = (db.prepare("SELECT COUNT(*) as c FROM dream_insights").get() as any)?.c ?? 0;
-      const rows = db.prepare(sql).all(...args) as any[];
+      const total =
+        (db.prepare("SELECT COUNT(*) as c FROM dream_insights").get() as CountRow | undefined)?.c ??
+        0;
+      const rows = db.prepare(sql).all(...args) as DreamInsightRow[];
       respond(true, {
         total,
-        insights: rows.map((r: any) => ({
+        insights: rows.map((r: DreamInsightRow) => ({
           id: r.id,
           content: r.content,
           confidence: r.confidence,
@@ -156,11 +279,12 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "dream.trigger": async ({ respond }) => {
     try {
       const manager = await getManager();
-      if (typeof (manager as any).dream !== "function") {
+      const mgr = manager as unknown as DreamManagerView;
+      if (typeof mgr.dream !== "function") {
         respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "dream engine not available"));
         return;
       }
-      const stats = await (manager as any).dream();
+      const stats = await mgr.dream();
       respond(true, {
         success: true,
         cycleId: stats?.cycle?.cycleId ?? null,
@@ -174,7 +298,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "dream.emotional": async ({ respond }) => {
     try {
       const manager = await getManager();
-      const hm = (manager as any).hormonalManager;
+      const hm = (manager as unknown as DreamManagerView).hormonalManager;
       if (!hm) {
         respond(true, { hormones: null });
         return;
@@ -198,7 +322,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "dream.analytics": async ({ params, respond }) => {
     try {
       const manager = await getManager();
-      const db = (manager as any).db;
+      const db = (manager as unknown as DreamManagerView).db;
       if (!db) {
         respond(true, { totalCycles: 0 });
         return;
@@ -213,14 +337,14 @@ export const dreamHandlers: GatewayRequestHandlers = {
                 SUM(insights_generated) as totalInsights, SUM(llm_calls_used) as totalLlmCalls
          FROM dream_cycles WHERE started_at >= ?`,
         )
-        .get(since) as any;
+        .get(since) as DreamAnalyticsSummaryRow | undefined;
 
       // Mode frequency
       const modeRows = db
         .prepare(
           `SELECT modes_used FROM dream_cycles WHERE started_at >= ? AND modes_used IS NOT NULL`,
         )
-        .all(since) as any[];
+        .all(since) as ModesUsedRow[];
       const modeFreq: Record<string, number> = {};
       for (const row of modeRows) {
         try {
@@ -236,7 +360,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
       // Time-of-day pattern (hour buckets)
       const hourRows = db
         .prepare(`SELECT started_at FROM dream_cycles WHERE started_at >= ?`)
-        .all(since) as any[];
+        .all(since) as StartedAtRow[];
       const hourBuckets = Array.from<number>({ length: 24 }).fill(0);
       for (const row of hourRows) {
         const hour = new Date(row.started_at).getHours();
@@ -249,7 +373,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
           `SELECT started_at, insights_generated FROM dream_cycles
          WHERE started_at >= ? ORDER BY started_at ASC`,
         )
-        .all(since) as any[];
+        .all(since) as DailyTrendRow[];
       const dailyMap = new Map<string, { cycles: number; insights: number }>();
       for (const row of dailyRows) {
         const day = new Date(row.started_at).toISOString().slice(0, 10);
@@ -278,8 +402,9 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "dream.curiosityReward": async ({ respond }) => {
     try {
       const manager = await getManager();
-      const gccrf = (manager as any).gccrfDiagnostics?.() ?? null;
-      const curiosityState = (manager as any).curiosityState?.() ?? null;
+      const mgr = manager as unknown as DreamManagerView;
+      const gccrf = mgr.gccrfDiagnostics?.() ?? null;
+      const curiosityState = mgr.curiosityState?.() ?? null;
 
       if (!gccrf) {
         respond(true, { enabled: false });
@@ -287,7 +412,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
       }
 
       // Get recent reward statistics from chunks
-      const db = (manager as any).db;
+      const db = mgr.db;
       let rewardStats = { avg: 0, min: 0, max: 0, count: 0 };
       let rewardHistory: Array<{ reward: number; timestamp: number }> = [];
       if (db) {
@@ -298,7 +423,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
                     MAX(curiosity_reward) as max, COUNT(*) as count
              FROM chunks WHERE curiosity_reward IS NOT NULL`,
             )
-            .get() as any;
+            .get() as RewardStatsRow | undefined;
           rewardStats = {
             avg: stats?.avg ?? 0,
             min: stats?.min ?? 0,
@@ -321,7 +446,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
       }
 
       // Get region progress from curiosity engine
-      const curiosityEngine = (manager as any).curiosityEngine;
+      const curiosityEngine = mgr.curiosityEngine;
       const gccrfSummary = curiosityEngine?.getGCCRFSummary?.() ?? {
         alpha: null,
         maturity: null,
@@ -329,12 +454,18 @@ export const dreamHandlers: GatewayRequestHandlers = {
       };
 
       // Get top strategic targets
-      const topTargets = (curiosityState?.targets ?? []).slice(0, 5).map((t: any) => ({
+      const topTargets = (curiosityState?.targets ?? []).slice(0, 5).map((t: CuriosityTarget) => ({
         description: t.description,
         priority: t.priority,
         type: t.type,
       }));
 
+      const gccrfConfig = gccrf.config as {
+        alphaStart?: number;
+        alphaEnd?: number;
+        expectedMatureCycles?: number;
+        weights?: Record<string, number>;
+      };
       respond(true, {
         enabled: true,
         alpha: gccrf.alpha,
@@ -345,10 +476,10 @@ export const dreamHandlers: GatewayRequestHandlers = {
         regionProgress: gccrfSummary.regionProgress,
         topTargets,
         config: {
-          alphaStart: (gccrf.config as any)?.alphaStart,
-          alphaEnd: (gccrf.config as any)?.alphaEnd,
-          expectedMatureCycles: (gccrf.config as any)?.expectedMatureCycles,
-          weights: (gccrf.config as any)?.weights,
+          alphaStart: gccrfConfig.alphaStart,
+          alphaEnd: gccrfConfig.alphaEnd,
+          expectedMatureCycles: gccrfConfig.expectedMatureCycles,
+          weights: gccrfConfig.weights,
         },
       });
     } catch (err) {
@@ -386,7 +517,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "dream.suggestSkills": async ({ respond }) => {
     try {
       const manager = await getManager();
-      const suggestions = await (manager as any).suggestSkills?.();
+      const suggestions = await (manager as unknown as DreamManagerView).suggestSkills?.();
       respond(true, { suggestions: suggestions ?? [] });
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
@@ -397,7 +528,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "marketplace.search": async ({ params, respond }) => {
     try {
       const manager = await getManager();
-      const marketplace = (manager as any).getSkillMarketplace?.();
+      const marketplace = (manager as unknown as DreamManagerView).getSkillMarketplace?.();
       if (!marketplace) {
         respond(true, []);
         return;
@@ -416,7 +547,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "marketplace.trending": async ({ params, respond }) => {
     try {
       const manager = await getManager();
-      const marketplace = (manager as any).getSkillMarketplace?.();
+      const marketplace = (manager as unknown as DreamManagerView).getSkillMarketplace?.();
       if (!marketplace) {
         respond(true, []);
         return;
@@ -429,7 +560,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "marketplace.recommendations": async ({ params, respond }) => {
     try {
       const manager = await getManager();
-      const marketplace = (manager as any).getSkillMarketplace?.();
+      const marketplace = (manager as unknown as DreamManagerView).getSkillMarketplace?.();
       if (!marketplace) {
         respond(true, []);
         return;
@@ -442,7 +573,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "marketplace.detail": async ({ params, respond }) => {
     try {
       const manager = await getManager();
-      const marketplace = (manager as any).getSkillMarketplace?.();
+      const marketplace = (manager as unknown as DreamManagerView).getSkillMarketplace?.();
       if (!marketplace) {
         respond(true, null);
         return;
@@ -456,7 +587,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
   "dream.marketplaceStatus": async ({ respond }) => {
     try {
       const manager = await getManager();
-      const marketplace = (manager as any).getMarketplaceEconomics?.();
+      const marketplace = (manager as unknown as DreamManagerView).getMarketplaceEconomics?.();
       if (!marketplace) {
         respond(true, { enabled: false, message: "Marketplace not initialized" });
         return;

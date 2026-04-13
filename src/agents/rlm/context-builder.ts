@@ -50,16 +50,16 @@ async function parseSessionFile(absPath: string): Promise<SessionTranscript | nu
       if (!line.trim()) {
         continue;
       }
-      let record: any;
+      let record: Record<string, unknown>;
       try {
-        record = JSON.parse(line);
+        record = JSON.parse(line) as Record<string, unknown>;
       } catch {
         continue;
       }
 
       // Extract session metadata from header
       if (record.type === "session" && record.id) {
-        sessionId = record.id;
+        sessionId = record.id as string;
         continue;
       }
 
@@ -67,7 +67,7 @@ async function parseSessionFile(absPath: string): Promise<SessionTranscript | nu
       if (record.type !== "message") {
         continue;
       }
-      const msg = record.message;
+      const msg = record.message as Record<string, unknown> | undefined;
       if (!msg || typeof msg.role !== "string") {
         continue;
       }
@@ -118,10 +118,10 @@ function extractText(content: unknown): string | null {
     if (
       block &&
       typeof block === "object" &&
-      (block as any).type === "text" &&
-      typeof (block as any).text === "string"
+      (block as Record<string, unknown>).type === "text" &&
+      typeof (block as Record<string, unknown>).text === "string"
     ) {
-      const text = (block as any).text.trim();
+      const text = ((block as Record<string, unknown>).text as string).trim();
       if (text) {
         parts.push(text);
       }

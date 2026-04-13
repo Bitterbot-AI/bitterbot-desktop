@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import type { OrchestratorBridge } from "../infra/orchestrator-bridge.js";
 import {
   ManagementKeyAuth,
   ManagementKeyAuthError,
@@ -48,7 +49,14 @@ function generateTestKeypair(): { seedBase64: string; pubkeyBase64: string } {
 
 function createMockBridge() {
   const commands: Array<{ cmd: string; args: unknown }> = [];
-  const telemetryCallbacks: Array<(event: any) => void> = [];
+  const telemetryCallbacks: Array<
+    (event: {
+      signal_type: string;
+      data: unknown;
+      author_peer_id: string;
+      timestamp: number;
+    }) => void
+  > = [];
   return {
     commands,
     telemetryCallbacks,
@@ -56,7 +64,14 @@ function createMockBridge() {
       commands.push({ cmd, args });
       return { ok: true };
     },
-    onTelemetryReceived: (cb: (event: any) => void) => {
+    onTelemetryReceived: (
+      cb: (event: {
+        signal_type: string;
+        data: unknown;
+        author_peer_id: string;
+        timestamp: number;
+      }) => void,
+    ) => {
       telemetryCallbacks.push(cb);
     },
   };
@@ -352,14 +367,20 @@ describe("ManagementNodeService with auth", () => {
 
   it("refuses to start without auth", () => {
     const bridge = createMockBridge();
-    const service = new ManagementNodeService(db, bridge as any);
+    const service = new ManagementNodeService(db, bridge as unknown as OrchestratorBridge);
     expect(() => service.start()).toThrow("cannot start without cryptographic authorization");
   });
 
   it("starts successfully with valid auth", () => {
     const bridge = createMockBridge();
     const auth = ManagementKeyAuth.init([kp.pubkeyBase64], kp.seedBase64);
-    const service = new ManagementNodeService(db, bridge as any, null, null, auth);
+    const service = new ManagementNodeService(
+      db,
+      bridge as unknown as OrchestratorBridge,
+      null,
+      null,
+      auth,
+    );
     expect(service.isAuthorized).toBe(true);
     expect(service.publicKey).toBe(kp.pubkeyBase64);
     service.start();
@@ -368,14 +389,14 @@ describe("ManagementNodeService with auth", () => {
 
   it("reports unauthorized when constructed without auth", () => {
     const bridge = createMockBridge();
-    const service = new ManagementNodeService(db, bridge as any);
+    const service = new ManagementNodeService(db, bridge as unknown as OrchestratorBridge);
     expect(service.isAuthorized).toBe(false);
     expect(service.publicKey).toBeNull();
   });
 
   it("propagateBan fails without auth", async () => {
     const bridge = createMockBridge();
-    const service = new ManagementNodeService(db, bridge as any);
+    const service = new ManagementNodeService(db, bridge as unknown as OrchestratorBridge);
     const result = await service.propagateBan("badpeer", "spam");
     expect(result).toBe(false);
     expect(bridge.commands.length).toBe(0);
@@ -384,7 +405,13 @@ describe("ManagementNodeService with auth", () => {
   it("propagateBan sends signed command with auth", async () => {
     const bridge = createMockBridge();
     const auth = ManagementKeyAuth.init([kp.pubkeyBase64], kp.seedBase64);
-    const service = new ManagementNodeService(db, bridge as any, null, null, auth);
+    const service = new ManagementNodeService(
+      db,
+      bridge as unknown as OrchestratorBridge,
+      null,
+      null,
+      auth,
+    );
 
     const result = await service.propagateBan("badpeer", "spam");
     expect(result).toBe(true);
@@ -406,7 +433,13 @@ describe("ManagementNodeService with auth", () => {
 
     const bridge = createMockBridge();
     const auth = ManagementKeyAuth.init(trustList, kp.seedBase64);
-    const service = new ManagementNodeService(db, bridge as any, null, null, auth);
+    const service = new ManagementNodeService(
+      db,
+      bridge as unknown as OrchestratorBridge,
+      null,
+      null,
+      auth,
+    );
 
     await service.propagateBan("badpeer", "spam");
 

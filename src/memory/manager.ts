@@ -200,59 +200,59 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.dreamEngine.updateDb(this.db);
     }
     if (this.curiosityEngine) {
-      (this.curiosityEngine as any).db = this.db;
+      (this.curiosityEngine as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.executionTracker) {
-      (this.executionTracker as any).db = this.db;
+      (this.executionTracker as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.skillRefiner) {
-      (this.skillRefiner as any).db = this.db;
+      (this.skillRefiner as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.memStore) {
-      (this.memStore as any).db = this.db;
+      (this.memStore as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.skillNetworkBridge) {
-      (this.skillNetworkBridge as any).db = this.db;
+      (this.skillNetworkBridge as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.marketplaceEconomics) {
-      (this.marketplaceEconomics as any).db = this.db;
+      (this.marketplaceEconomics as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.governance) {
-      (this.governance as any).db = this.db;
+      (this.governance as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.taskMemory) {
-      (this.taskMemory as any).db = this.db;
+      (this.taskMemory as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.peerReputationManager) {
-      (this.peerReputationManager as any).db = this.db;
+      (this.peerReputationManager as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.experienceCollector) {
-      (this.experienceCollector as any).db = this.db;
+      (this.experienceCollector as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.discoveryAgent) {
-      (this.discoveryAgent as any).db = this.db;
+      (this.discoveryAgent as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.userModelManager) {
-      (this.userModelManager as any).db = this.db;
+      (this.userModelManager as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.hormonalManager) {
-      (this.hormonalManager as any).db = this.db;
+      (this.hormonalManager as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.curiosityEngine) {
       this.curiosityEngine.updateDb(this.db);
     }
     // PLAN-9 subsystems
     if (this.knowledgeGraph) {
-      (this.knowledgeGraph as any).db = this.db;
+      (this.knowledgeGraph as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.reconsolidationEngine) {
-      (this.reconsolidationEngine as any).db = this.db;
+      (this.reconsolidationEngine as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.epistemicDirectiveEngine) {
-      (this.epistemicDirectiveEngine as any).db = this.db;
+      (this.epistemicDirectiveEngine as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.prospectiveMemoryEngine) {
-      (this.prospectiveMemoryEngine as any).db = this.db;
+      (this.prospectiveMemoryEngine as unknown as { db: DatabaseSync }).db = this.db;
     }
     // Re-ensure subsystem schemas on the new DB.
     // The main chunks/meta/dream/curiosity schemas are re-created by ensureSchema()
@@ -260,7 +260,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     // skill_executions) need explicit re-creation here.
     try {
       if (this.marketplaceEconomics) {
-        (this.marketplaceEconomics as any).ensureSchema();
+        (this.marketplaceEconomics as unknown as { ensureSchema(): void }).ensureSchema();
       }
       // Skill execution tracking table
       this.db.exec(`CREATE TABLE IF NOT EXISTS skill_executions (
@@ -294,12 +294,12 @@ export class MemoryIndexManager implements MemorySearchManager {
       // Re-run subsystem ensureSchema methods
       if (this.taskMemory) {
         try {
-          (this.taskMemory as any).ensureSchema();
+          (this.taskMemory as unknown as { ensureSchema(): void }).ensureSchema();
         } catch {}
       }
       if (this.governance) {
         try {
-          (this.governance as any).ensureSchema?.();
+          (this.governance as unknown as { ensureSchema?(): void }).ensureSchema?.();
         } catch {}
       }
     } catch (err) {

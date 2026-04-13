@@ -106,7 +106,7 @@ describe("BioMemEval > Identity Continuity", () => {
     // Verify resolution is stored
     const row = db
       .prepare("SELECT resolution, resolved_at FROM epistemic_directives WHERE id = ?")
-      .get(d1!.id) as any;
+      .get(d1!.id) as { resolution: string | null; resolved_at: number | null } | undefined;
     s.score(
       "resolution stored correctly",
       row?.resolution === "It's PostgreSQL 15" && row?.resolved_at !== null,
@@ -139,7 +139,7 @@ describe("BioMemEval > Identity Continuity", () => {
       (
         db
           .prepare("SELECT COUNT(*) as c FROM epistemic_directives WHERE resolved_at IS NULL")
-          .get() as any
+          .get() as { c: number } | undefined
       )?.c ?? 0;
 
     s.score("only 1 unresolved directive exists (deduped)", count === 1, 1.5);
@@ -238,9 +238,9 @@ describe("BioMemEval > Identity Continuity", () => {
     // Recent should survive
     const remaining = db
       .prepare("SELECT COUNT(*) as c FROM epistemic_directives WHERE resolved_at IS NULL")
-      .get() as any;
+      .get() as { c: number } | undefined;
 
-    s.score("recent directive survives expiry", remaining?.c >= 1, 1.5);
+    s.score("recent directive survives expiry", (remaining?.c ?? 0) >= 1, 1.5);
 
     const result = s.result();
     suite.addScenario(result);

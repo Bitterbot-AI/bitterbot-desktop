@@ -114,7 +114,7 @@ export class CuriosityEngine {
     this.db = db;
     ensureCuriositySchema(db);
     // Propagate to GCCRF (it needs to re-ensure its schema too)
-    (this.gccrfReward as any).db = db;
+    (this.gccrfReward as unknown as { db: DatabaseSync }).db = db;
   }
 
   /**

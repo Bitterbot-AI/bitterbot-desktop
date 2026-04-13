@@ -98,7 +98,7 @@ export function createA2aHttpHandler(opts: {
           const marketplace = memManager?.getMarketplaceEconomics?.();
           if (marketplace) {
             const listings = marketplace.getListableSkills();
-            skillPrices = new Map(listings.map((l: any) => [l.skillCrystalId, l.priceUsdc]));
+            skillPrices = new Map(listings.map((l) => [l.skillCrystalId, l.priceUsdc]));
           }
         } catch {
           /* non-critical */
@@ -199,7 +199,10 @@ export function createA2aHttpHandler(opts: {
         req,
         config,
         marketplace,
-        rpcRequest.params as any,
+        rpcRequest.params as {
+          skillId?: string;
+          message?: { parts?: Array<{ type: string; text?: string }> };
+        },
       );
       if (!paymentResult.paid) {
         // Plan 8, Phase 6: x402 native payment gate — spec-verified headers

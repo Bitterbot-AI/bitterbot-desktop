@@ -216,7 +216,7 @@ describe("Crystal Foundation", () => {
     });
 
     it("falls back to general for unknown", () => {
-      expect(inferSemanticType("some text", "memory" as any, "inferred")).toBe("fact");
+      expect(inferSemanticType("some text", "memory", "inferred")).toBe("fact");
     });
   });
 
@@ -295,7 +295,7 @@ describe("Crystal Foundation", () => {
 
     it("maps legacy lifecycle_state to new lifecycle", () => {
       const id = insertChunk(db, {
-        lifecycle: null as any,
+        lifecycle: null as unknown as string,
         lifecycle_state: "forgotten",
       });
       const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(id) as Record<
@@ -308,7 +308,7 @@ describe("Crystal Foundation", () => {
 
     it("maps skill memory_type to frozen lifecycle", () => {
       const id = insertChunk(db, {
-        lifecycle: null as any,
+        lifecycle: null as unknown as string,
         lifecycle_state: "active",
         memory_type: "skill",
       });
@@ -322,7 +322,7 @@ describe("Crystal Foundation", () => {
 
     it("maps high-importance active chunks to activated lifecycle", () => {
       const id = insertChunk(db, {
-        lifecycle: null as any,
+        lifecycle: null as unknown as string,
         lifecycle_state: "active",
         importance_score: 0.9,
       });
@@ -435,12 +435,14 @@ describe("Consolidation Engine", () => {
 
     const low = db
       .prepare("SELECT lifecycle, lifecycle_state FROM chunks WHERE id = ?")
-      .get("low-1") as any;
+      .get("low-1") as { lifecycle: string; lifecycle_state: string } | undefined;
     expect(low.lifecycle).toBe("expired");
     expect(low.lifecycle_state).toBe("forgotten");
 
-    const high = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get("high-1") as any;
-    expect(high.lifecycle).not.toBe("expired");
+    const high = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get("high-1") as
+      | { lifecycle: string }
+      | undefined;
+    expect(high!.lifecycle).not.toBe("expired");
   });
 
   it("protects frozen (skill) chunks from decay", () => {
@@ -455,8 +457,10 @@ describe("Consolidation Engine", () => {
     const engine = new ConsolidationEngine(db, { forgetThreshold: 0.1 });
     engine.run();
 
-    const skill = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get("skill-1") as any;
-    expect(skill.lifecycle).toBe("frozen");
+    const skill = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get("skill-1") as
+      | { lifecycle: string }
+      | undefined;
+    expect(skill!.lifecycle).toBe("frozen");
   });
 
   it("merges overlapping chunks from the same path", () => {
@@ -496,9 +500,13 @@ describe("Consolidation Engine", () => {
     expect(stats.mergedChunks).toBeGreaterThanOrEqual(1);
 
     // One should be archived, the other consolidated
-    const a = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get("merge-a") as any;
-    const b = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get("merge-b") as any;
-    const lifecycles = [a.lifecycle, b.lifecycle];
+    const a = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get("merge-a") as
+      | { lifecycle: string }
+      | undefined;
+    const b = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get("merge-b") as
+      | { lifecycle: string }
+      | undefined;
+    const lifecycles = [a!.lifecycle, b!.lifecycle];
     expect(lifecycles).toContain("archived");
     expect(lifecycles).toContain("consolidated");
   });
@@ -1100,7 +1108,9 @@ describe("Curiosity Engine", () => {
 
     const surprise = db
       .prepare("SELECT * FROM curiosity_surprises WHERE chunk_id = ?")
-      .get("novel-chunk-1") as any;
+      .get("novel-chunk-1") as
+      | { chunk_id: string; novelty_score: number; composite_reward: number }
+      | undefined;
 
     expect(surprise).toBeDefined();
     expect(surprise.novelty_score).toBeGreaterThanOrEqual(0);
@@ -1119,10 +1129,10 @@ describe("Curiosity Engine", () => {
 
     const query = db
       .prepare("SELECT * FROM curiosity_queries ORDER BY timestamp DESC LIMIT 1")
-      .get() as any;
+      .get() as { query: string; result_count: number } | undefined;
     expect(query).toBeDefined();
-    expect(query.query).toBe("how to deploy");
-    expect(query.result_count).toBe(0);
+    expect(query!.query).toBe("how to deploy");
+    expect(query!.result_count).toBe(0);
   });
 
   it("detects knowledge gaps from low-scoring repeated queries", () => {
@@ -1158,7 +1168,9 @@ describe("Curiosity Engine", () => {
       engine.run();
 
       // Manually create a knowledge_gap target
-      const regionRow = db.prepare("SELECT * FROM curiosity_regions LIMIT 1").get() as any;
+      const regionRow = db.prepare("SELECT * FROM curiosity_regions LIMIT 1").get() as
+        | { id: string; centroid: string }
+        | undefined;
       if (!regionRow) {
         return;
       } // Skip if no regions were created (too few chunks)
@@ -1190,9 +1202,9 @@ describe("Curiosity Engine", () => {
 
       const target = db
         .prepare("SELECT resolved_at FROM curiosity_targets WHERE id = ?")
-        .get("gap-1") as any;
+        .get("gap-1") as { resolved_at: number | null } | undefined;
       // High confidence insight near region should resolve the gap
-      expect(target.resolved_at).not.toBeNull();
+      expect(target!.resolved_at).not.toBeNull();
     });
   });
 
@@ -1655,10 +1667,12 @@ describe("Skill Refiner", () => {
     // Callback receives the new crystal chunk ID (not the mutation ID)
     expect(callbackId).not.toBeNull();
     // Verify a new chunk was created with that ID
-    const newChunk = db.prepare("SELECT * FROM chunks WHERE id = ?").get(callbackId!) as any;
+    const newChunk = db.prepare("SELECT * FROM chunks WHERE id = ?").get(callbackId!) as
+      | { memory_type: string; lifecycle: string }
+      | undefined;
     expect(newChunk).toBeDefined();
-    expect(newChunk.memory_type).toBe("skill");
-    expect(newChunk.lifecycle).toBe("frozen");
+    expect(newChunk!.memory_type).toBe("skill");
+    expect(newChunk!.lifecycle).toBe("frozen");
   });
 });
 
@@ -2089,9 +2103,9 @@ describe("MemStore", () => {
 
     const row = db
       .prepare("SELECT governance_json, publish_visibility FROM chunks WHERE id = ?")
-      .get(id) as any;
-    expect(JSON.parse(row.governance_json).accessScope).toBe("shared");
-    expect(row.publish_visibility).toBe("shared");
+      .get(id) as { governance_json: string; publish_visibility: string } | undefined;
+    expect(JSON.parse(row!.governance_json).accessScope).toBe("shared");
+    expect(row!.publish_visibility).toBe("shared");
   });
 
   it("returns null when publishing non-existent crystal", () => {
@@ -2183,10 +2197,12 @@ describe("MemStore", () => {
     expect(result.crystalId).toBeDefined();
 
     // Verify it's stored correctly
-    const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(result.crystalId!) as any;
-    expect(row.source).toBe("skills");
-    expect(row.semantic_type).toBe("skill");
-    expect(row.text).toContain("Imported Skill");
+    const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(result.crystalId!) as
+      | { source: string; semantic_type: string; text: string }
+      | undefined;
+    expect(row!.source).toBe("skills");
+    expect(row!.semantic_type).toBe("skill");
+    expect(row!.text).toContain("Imported Skill");
   });
 
   it("rejects duplicate P2P imports", () => {
@@ -2280,9 +2296,9 @@ describe("Memory Pipeline", () => {
 
     const row = db
       .prepare("SELECT importance_score, semantic_type FROM chunks WHERE id = ?")
-      .get(id) as any;
-    expect(row.importance_score).toBeCloseTo(0.95);
-    expect(row.semantic_type).toBe("insight");
+      .get(id) as { importance_score: number; semantic_type: string } | undefined;
+    expect(row!.importance_score).toBeCloseTo(0.95);
+    expect(row!.semantic_type).toBe("insight");
   });
 
   it("reports timing information", async () => {
@@ -2341,7 +2357,9 @@ describe("Integration: Cross-system feedback loops", () => {
       curiosity.run(); // build regions
 
       // Create a knowledge gap
-      const region = db.prepare("SELECT * FROM curiosity_regions LIMIT 1").get() as any;
+      const region = db.prepare("SELECT * FROM curiosity_regions LIMIT 1").get() as
+        | { id: string; centroid: string }
+        | undefined;
       if (!region) {
         return;
       }
@@ -2375,8 +2393,8 @@ describe("Integration: Cross-system feedback loops", () => {
       // Gap should be resolved
       const target = db
         .prepare("SELECT resolved_at FROM curiosity_targets WHERE id = 'loop-gap'")
-        .get() as any;
-      expect(target.resolved_at).not.toBeNull();
+        .get() as { resolved_at: number | null } | undefined;
+      expect(target!.resolved_at).not.toBeNull();
     });
   });
 
@@ -2474,7 +2492,9 @@ describe("Integration: Cross-system feedback loops", () => {
       });
 
       const sourceId = mutations[0]!.sourceChunkIds[0]!;
-      const source = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(sourceId) as any;
+      const source = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(sourceId) as
+        | { id: string; text: string }
+        | undefined;
 
       // Dream engine already stored insights in dream_insights during run() — no manual insert needed
       const result = refiner.evaluateMutations(source, mutations);
@@ -2483,20 +2503,31 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // 4. Verify crystallization: new skill chunk was created
       expect(crystallizedId).not.toBeNull();
-      const newSkill = db.prepare("SELECT * FROM chunks WHERE id = ?").get(crystallizedId!) as any;
+      const newSkill = db.prepare("SELECT * FROM chunks WHERE id = ?").get(crystallizedId!) as
+        | {
+            memory_type: string;
+            semantic_type: string;
+            lifecycle: string;
+            origin: string;
+            source: string;
+            parent_id: string | null;
+            text: string;
+            provenance_chain: string;
+          }
+        | undefined;
 
       expect(newSkill).toBeDefined();
-      expect(newSkill.memory_type).toBe("skill");
-      expect(newSkill.semantic_type).toBe("skill");
-      expect(newSkill.lifecycle).toBe("frozen");
-      expect(newSkill.origin).toBe("dream");
-      expect(newSkill.source).toBe("skills");
-      expect(newSkill.parent_id).toBe(sourceId);
-      expect(newSkill.text).toContain("Docker");
-      expect(newSkill.text).toContain("edge case");
+      expect(newSkill!.memory_type).toBe("skill");
+      expect(newSkill!.semantic_type).toBe("skill");
+      expect(newSkill!.lifecycle).toBe("frozen");
+      expect(newSkill!.origin).toBe("dream");
+      expect(newSkill!.source).toBe("skills");
+      expect(newSkill!.parent_id).toBe(sourceId);
+      expect(newSkill!.text).toContain("Docker");
+      expect(newSkill!.text).toContain("edge case");
 
       // Provenance chain should link back to original + mutation
-      const provenance = JSON.parse(newSkill.provenance_chain);
+      const provenance = JSON.parse(newSkill!.provenance_chain);
       expect(provenance).toContain(sourceId);
 
       // 5. Verify skill count increased
@@ -2510,9 +2541,9 @@ describe("Integration: Cross-system feedback loops", () => {
       // 6. Verify audit trail
       const auditLog = db
         .prepare("SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted'")
-        .all() as any[];
+        .all() as Array<{ chunk_id: string; actor: string; metadata: string }>;
       expect(auditLog.length).toBeGreaterThan(0);
-      const logEntry = auditLog[0];
+      const logEntry = auditLog[0]!;
       expect(logEntry.chunk_id).toBe(crystallizedId);
       expect(logEntry.actor).toBe("skill_refiner");
       const metadata = JSON.parse(logEntry.metadata);
@@ -2574,9 +2605,9 @@ describe("Integration: Cross-system feedback loops", () => {
 
       const skill = db
         .prepare("SELECT lifecycle, lifecycle_state FROM chunks WHERE id = ?")
-        .get(crystallizedId!) as any;
-      expect(skill.lifecycle).toBe("frozen");
-      expect(skill.lifecycle_state).not.toBe("forgotten");
+        .get(crystallizedId!) as { lifecycle: string; lifecycle_state: string } | undefined;
+      expect(skill!.lifecycle).toBe("frozen");
+      expect(skill!.lifecycle_state).not.toBe("forgotten");
     });
 
     it("crystallized skill is picked up by the next dream mutation cycle", async () => {
@@ -2680,15 +2711,19 @@ describe("Integration: Cross-system feedback loops", () => {
       const refiner1 = new SkillRefiner(db, { promotionThreshold: 0.4 }, (id) => {
         gen1CrystalId = id;
       });
-      const source1 = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(origId) as any;
+      const source1 = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(origId) as
+        | { id: string; text: string }
+        | undefined;
       refiner1.evaluateMutations(source1, muts1);
       expect(gen1CrystalId).not.toBeNull();
 
       // Verify gen1 skill crystal exists
-      const gen1 = db.prepare("SELECT * FROM chunks WHERE id = ?").get(gen1CrystalId!) as any;
-      expect(gen1.memory_type).toBe("skill");
-      expect(gen1.lifecycle).toBe("frozen");
-      expect(gen1.parent_id).toBe(origId);
+      const gen1 = db.prepare("SELECT * FROM chunks WHERE id = ?").get(gen1CrystalId!) as
+        | { memory_type: string; lifecycle: string; parent_id: string | null }
+        | undefined;
+      expect(gen1!.memory_type).toBe("skill");
+      expect(gen1!.lifecycle).toBe("frozen");
+      expect(gen1!.parent_id).toBe(origId);
 
       // ── Cycle 2: Dream should pick up the gen1 crystal ──
       const llm2 = mockLlmCall([
@@ -2727,18 +2762,25 @@ describe("Integration: Cross-system feedback loops", () => {
       });
       const source2 = db
         .prepare("SELECT id, text FROM chunks WHERE id = ?")
-        .get(muts2[0]!.sourceChunkIds[0]!) as any;
+        .get(muts2[0]!.sourceChunkIds[0]!) as { id: string; text: string } | undefined;
       refiner2.evaluateMutations(source2, muts2);
       expect(gen2CrystalId).not.toBeNull();
 
       // Verify gen2 skill has correct lineage
-      const gen2 = db.prepare("SELECT * FROM chunks WHERE id = ?").get(gen2CrystalId!) as any;
-      expect(gen2.memory_type).toBe("skill");
-      expect(gen2.lifecycle).toBe("frozen");
-      expect(gen2.origin).toBe("dream");
+      const gen2 = db.prepare("SELECT * FROM chunks WHERE id = ?").get(gen2CrystalId!) as
+        | {
+            memory_type: string;
+            lifecycle: string;
+            origin: string;
+            provenance_chain: string;
+          }
+        | undefined;
+      expect(gen2!.memory_type).toBe("skill");
+      expect(gen2!.lifecycle).toBe("frozen");
+      expect(gen2!.origin).toBe("dream");
 
       // Verify the provenance chain
-      const gen2Provenance = JSON.parse(gen2.provenance_chain);
+      const gen2Provenance = JSON.parse(gen2!.provenance_chain);
       expect(gen2Provenance.length).toBeGreaterThan(0);
 
       // Verify we now have 3+ skill chunks (original + gen1 + gen2)
@@ -2754,8 +2796,10 @@ describe("Integration: Cross-system feedback loops", () => {
       consolidation.run();
 
       for (const skillId of [origId, gen1CrystalId!, gen2CrystalId!]) {
-        const after = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(skillId) as any;
-        expect(after.lifecycle).toBe("frozen");
+        const after = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(skillId) as
+          | { lifecycle: string }
+          | undefined;
+        expect(after!.lifecycle).toBe("frozen");
       }
     });
 
@@ -2841,7 +2885,9 @@ describe("Integration: Cross-system feedback loops", () => {
       const refiner2 = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
         gen2Id = id;
       });
-      const gen1Chunk = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(gen1Id!) as any;
+      const gen1Chunk = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(gen1Id!) as
+        | { id: string; text: string }
+        | undefined;
       refiner2.evaluateMutations(gen1Chunk, [gen2Mutation]);
       expect(gen2Id).not.toBeNull();
 
@@ -2850,16 +2896,16 @@ describe("Integration: Cross-system feedback loops", () => {
       // gen1 → gen2 (parent_id = gen1)
       const gen1Row = db
         .prepare("SELECT parent_id, provenance_chain FROM chunks WHERE id = ?")
-        .get(gen1Id!) as any;
-      expect(gen1Row.parent_id).toBe(gen0Id);
-      const gen1Prov = JSON.parse(gen1Row.provenance_chain);
+        .get(gen1Id!) as { parent_id: string | null; provenance_chain: string } | undefined;
+      expect(gen1Row!.parent_id).toBe(gen0Id);
+      const gen1Prov = JSON.parse(gen1Row!.provenance_chain);
       expect(gen1Prov).toContain(gen0Id);
 
       const gen2Row = db
         .prepare("SELECT parent_id, provenance_chain FROM chunks WHERE id = ?")
-        .get(gen2Id!) as any;
-      expect(gen2Row.parent_id).toBe(gen1Id);
-      const gen2Prov = JSON.parse(gen2Row.provenance_chain);
+        .get(gen2Id!) as { parent_id: string | null; provenance_chain: string } | undefined;
+      expect(gen2Row!.parent_id).toBe(gen1Id);
+      const gen2Prov = JSON.parse(gen2Row!.provenance_chain);
       expect(gen2Prov).toContain(gen1Id!);
 
       // Audit trail should show both promotions
@@ -2867,7 +2913,7 @@ describe("Integration: Cross-system feedback loops", () => {
         .prepare(
           "SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted' ORDER BY timestamp ASC",
         )
-        .all() as any[];
+        .all() as Array<{ chunk_id: string; actor: string; metadata: string }>;
       expect(auditLogs.length).toBeGreaterThanOrEqual(2);
     });
 
@@ -2925,10 +2971,12 @@ describe("Integration: Cross-system feedback loops", () => {
       // 5. Verify the imported skill is a proper skill chunk on the peer
       const importedRow = peerDb
         .prepare("SELECT * FROM chunks WHERE id = ?")
-        .get(importResult.crystalId!) as any;
-      expect(importedRow.source).toBe("skills");
-      expect(importedRow.semantic_type).toBe("skill");
-      expect(importedRow.text).toContain("Docker");
+        .get(importResult.crystalId!) as
+        | { source: string; semantic_type: string; text: string }
+        | undefined;
+      expect(importedRow!.source).toBe("skills");
+      expect(importedRow!.semantic_type).toBe("skill");
+      expect(importedRow!.text).toContain("Docker");
     });
   });
 
@@ -2973,8 +3021,10 @@ describe("Integration: Cross-system feedback loops", () => {
       // Publish changes visibility
       store.publish(id, "shared");
 
-      const row = db.prepare("SELECT governance_json FROM chunks WHERE id = ?").get(id) as any;
-      const gov_data = JSON.parse(row.governance_json);
+      const row = db.prepare("SELECT governance_json FROM chunks WHERE id = ?").get(id) as
+        | { governance_json: string }
+        | undefined;
+      const gov_data = JSON.parse(row!.governance_json);
       expect(gov_data.accessScope).toBe("shared");
     });
   });
@@ -3005,7 +3055,7 @@ describe("Integration: Cross-system feedback loops", () => {
           text: `Memory chunk ${i} about ${["coding", "deployment", "testing", "design", "review"][i % 5]}`,
           embedding: JSON.stringify(fakeEmbedding(i + 1)),
           importance_score: 0.1 + (i % 10) * 0.09,
-          semantic_type: ["fact", "preference", "episode", "skill", "general"][i % 5] as any,
+          semantic_type: (["fact", "preference", "episode", "skill", "general"] as const)[i % 5],
           lifecycle: "generated",
         });
       }
