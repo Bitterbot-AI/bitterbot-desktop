@@ -37,8 +37,6 @@ export class RLMSandbox {
   }
 
   private buildContext(): Context {
-    const self = this;
-
     // Chunk text into pieces of `size` characters with optional overlap
     function chunk(text: string, size: number, overlap = 0): string[] {
       if (!text || size <= 0) {
@@ -99,33 +97,33 @@ export class RLMSandbox {
 
     return createContext({
       // The context data to explore
-      context: self.options.context,
+      context: this.options.context,
 
       // Output capture
       print: (...args: unknown[]) => {
-        self.output.push(args.map(String).join(" "));
+        this.output.push(args.map(String).join(" "));
       },
       console: {
         log: (...args: unknown[]) => {
-          self.output.push(args.map(String).join(" "));
+          this.output.push(args.map(String).join(" "));
         },
         error: (...args: unknown[]) => {
-          self.output.push(`ERROR: ${args.map(String).join(" ")}`);
+          this.output.push(`ERROR: ${args.map(String).join(" ")}`);
         },
         warn: (...args: unknown[]) => {
-          self.output.push(`WARN: ${args.map(String).join(" ")}`);
+          this.output.push(`WARN: ${args.map(String).join(" ")}`);
         },
       },
 
       // LLM recursive sub-calls
-      llm_query: self.options.onLLMQuery,
+      llm_query: this.options.onLLMQuery,
       llm_query_parallel:
-        self.options.onLLMQueryParallel ??
+        this.options.onLLMQueryParallel ??
         (async (queries: Array<{ prompt: string; context?: string }>) => {
           // Fallback: sequential execution if parallel not provided
           const results: string[] = [];
           for (const q of queries) {
-            results.push(await self.options.onLLMQuery(q.prompt, q.context));
+            results.push(await this.options.onLLMQuery(q.prompt, q.context));
           }
           return results;
         }),
@@ -154,18 +152,18 @@ export class RLMSandbox {
 
       // Persistent storage across code blocks
       store: (name: string, value: unknown) => {
-        self.persistentStore.set(name, value);
+        this.persistentStore.set(name, value);
         return value;
       },
-      get: (name: string) => self.persistentStore.get(name),
-      has: (name: string) => self.persistentStore.has(name),
+      get: (name: string) => this.persistentStore.get(name),
+      has: (name: string) => this.persistentStore.has(name),
 
       // Completion signals
       FINAL: (answer: string) => {
-        self.finalAnswer = String(answer);
+        this.finalAnswer = String(answer);
       },
       FINAL_VAR: (varName: string) => {
-        self.finalVarName = String(varName);
+        this.finalVarName = String(varName);
       },
 
       // Standard builtins (safe subset)

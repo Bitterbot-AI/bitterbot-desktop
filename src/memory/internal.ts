@@ -272,7 +272,7 @@ export function computeCentroid(embeddings: number[][]): number[] {
     return [];
   }
   const dims = embeddings[0]!.length;
-  const centroid = new Array<number>(dims).fill(0);
+  const centroid = Array.from<number>({ length: dims }).fill(0);
   for (const emb of embeddings) {
     for (let i = 0; i < dims; i++) {
       centroid[i] += emb[i] ?? 0;

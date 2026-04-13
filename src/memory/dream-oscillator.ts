@@ -90,7 +90,7 @@ function generateFGN(steps: number, H: number): number[] {
 
   // Generate correlated noise
   const white = Array.from({ length: steps }, () => gaussianRandom());
-  const result = new Array<number>(steps).fill(0);
+  const result = Array.from<number>({ length: steps }).fill(0);
 
   for (let t = 0; t < steps; t++) {
     for (let k = 0; k < Math.min(windowSize, t + 1); k++) {
@@ -118,7 +118,7 @@ export function simulateFSHO(salienceValues: number[], config?: Partial<FSHOConf
 
   // Map salience [0,1] → initial phase [0, 2π]
   const theta = salienceValues.slice(0, N).map((s) => s * 2 * Math.PI);
-  const v = new Array<number>(N).fill(0);
+  const v = Array.from<number>({ length: N }).fill(0);
   // Natural frequencies drawn from uniform [-1, 1]
   const omega = Array.from({ length: N }, () => Math.random() * 2 - 1);
 

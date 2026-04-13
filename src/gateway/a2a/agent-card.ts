@@ -95,7 +95,7 @@ export function buildAgentCard(params: {
     const registryAddress = (params as Record<string, unknown>).erc8004Registry as string;
     const erc8004Chain = ((params as Record<string, unknown>).erc8004Chain as string) ?? "base";
     (card as Record<string, unknown>).extensions = {
-      ...(((card as Record<string, unknown>).extensions as Record<string, unknown>) ?? {}),
+      ...((card as Record<string, unknown>).extensions as Record<string, unknown>),
       erc8004: {
         tokenId,
         registry: registryAddress,

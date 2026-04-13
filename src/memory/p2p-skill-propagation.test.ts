@@ -1201,15 +1201,15 @@ describe("DiscoveryAgent", () => {
     expect(prereqs).toContain(a);
   });
 
-  it("prevents duplicate edges", () => {
+  it("prevents duplicate edges", async () => {
     const a = createSkillChunk(db, "Skill A", { embedding: JSON.stringify(fakeEmbedding(1)) });
     const b = createSkillChunk(db, "Skill B", { embedding: JSON.stringify(fakeEmbedding(1.001)) });
 
     const agent = new DiscoveryAgent(db, null);
 
     // Run twice — second run should not create duplicate edges
-    agent.runCycle();
-    agent.runCycle();
+    await agent.runCycle();
+    await agent.runCycle();
 
     const edges = db.prepare("SELECT COUNT(*) as c FROM skill_edges").get() as { c: number };
     // At most 1 "similar" edge between a and b

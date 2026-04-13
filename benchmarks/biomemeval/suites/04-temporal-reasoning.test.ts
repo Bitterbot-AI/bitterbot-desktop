@@ -73,12 +73,12 @@ describe("BioMemEval > Temporal Reasoning", () => {
 
     s.score(
       "alice managed something in Feb",
-      aliceFeb.length > 0 && aliceFeb.some((r) => r.entity.name === "project alpha"),
+      aliceFeb.some((r) => r.entity.name === "project alpha"),
       1.5,
     );
     s.score(
       "bob manages something in Apr",
-      bobApr.length > 0 && bobApr.some((r) => r.entity.name === "project alpha"),
+      bobApr.some((r) => r.entity.name === "project alpha"),
       1.5,
     );
 

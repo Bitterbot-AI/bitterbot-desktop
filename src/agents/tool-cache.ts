@@ -130,7 +130,7 @@ export class ToolCache {
     if (args) {
       this.cache.delete(this.generateKey(toolName, args));
     } else {
-      for (const key of [...this.cache.keys()]) {
+      for (const key of this.cache.keys()) {
         if (key.startsWith(`${toolName}:`)) {
           this.cache.delete(key);
         }

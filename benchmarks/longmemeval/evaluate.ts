@@ -106,7 +106,7 @@ Reply with ONLY the word "correct" or "incorrect". Nothing else.`;
 
 // ── Simple heuristic judge (no LLM cost) ──
 
-function heuristicJudge(expected: string | unknown, hypothesis: string | unknown): number {
+function heuristicJudge(expected: unknown, hypothesis: unknown): number {
   const exp = String(expected ?? "")
     .toLowerCase()
     .trim();

@@ -333,7 +333,7 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
 
     async cleanup() {
       try {
-        manager.close();
+        await manager.close();
       } catch {
         // ignore
       }

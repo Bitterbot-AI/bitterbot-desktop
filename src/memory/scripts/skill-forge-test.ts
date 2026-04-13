@@ -153,7 +153,7 @@ function setupTestDb(): DatabaseSync {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 function fakeEmbedding(seed: number): number[] {
-  const arr = new Array(1536).fill(0);
+  const arr = Array.from<number>({ length: 1536 }).fill(0);
   for (let i = 0; i < 10; i++) {
     arr[(seed * 7 + i * 13) % 1536] = ((seed + i) % 10) / 10;
   }

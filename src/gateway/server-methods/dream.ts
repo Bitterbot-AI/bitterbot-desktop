@@ -237,7 +237,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
       const hourRows = db
         .prepare(`SELECT started_at FROM dream_cycles WHERE started_at >= ?`)
         .all(since) as any[];
-      const hourBuckets = new Array(24).fill(0);
+      const hourBuckets = Array.from<number>({ length: 24 }).fill(0);
       for (const row of hourRows) {
         const hour = new Date(row.started_at).getHours();
         hourBuckets[hour]++;

@@ -401,7 +401,7 @@ export async function createAblationBridge(
 
     async cleanup() {
       try {
-        manager.close();
+        await manager.close();
       } catch {
         /* ignore */
       }

@@ -225,7 +225,7 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
 
     async cleanup() {
       try {
-        manager.close();
+        await manager.close();
       } catch {
         // ignore
       }

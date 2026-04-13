@@ -339,7 +339,7 @@ export class DiscoveryAgent {
       )
       .all(skillId, skillId) as Array<Record<string, unknown>>;
 
-    return rows.map(this.rowToEdge);
+    return rows.map((row) => this.rowToEdge(row));
   }
 
   /**
