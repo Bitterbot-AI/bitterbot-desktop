@@ -82,8 +82,8 @@ export const managementHandlers: GatewayRequestHandlers = {
   "management.propagateBan": async ({ params, respond }) => {
     try {
       const service = await getManagementService();
-      const peerPubkey = String(params?.peerPubkey ?? "");
-      const reason = String(params?.reason ?? "manual ban");
+      const peerPubkey = String((params?.peerPubkey as string) ?? "");
+      const reason = String((params?.reason as string) ?? "manual ban");
       if (!peerPubkey) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "peerPubkey required"));
         return;

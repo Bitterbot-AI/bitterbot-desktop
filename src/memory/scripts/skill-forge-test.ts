@@ -305,7 +305,7 @@ common edge cases including build failures and health check timeouts.`;
     assert(skill.semantic_type === "skill", "Skill semantic_type is skill");
     assert(!!skill.stable_skill_id, "Has stable_skill_id for versioning");
     if (VERBOSE) {
-      console.log("  Skill text preview:", String(skill.text ?? "").slice(0, 200));
+      console.log("  Skill text preview:", String((skill.text as string) ?? "").slice(0, 200));
     }
   }
 
@@ -395,11 +395,11 @@ Key improvements over base workflow:
       .prepare("SELECT text, path FROM chunks WHERE id = ?")
       .get(String(bestSkill.id)) as Record<string, unknown> | undefined;
     if (skillRow) {
-      const pathParts = String(skillRow.path || "").split("/");
+      const pathParts = String((skillRow.path as string) || "").split("/");
       const name = (pathParts[pathParts.length - 1] || String(bestSkill.id).slice(0, 8))
         .replace(/[^a-z0-9-]/gi, "-")
         .slice(0, 64);
-      const skillMd = `---\nname: ${name}\ndescription: Dream-generated skill crystal\ncrystal_id: ${bestSkill.id}\n---\n\n${skillRow.text}`;
+      const skillMd = `---\nname: ${name}\ndescription: Dream-generated skill crystal\ncrystal_id: ${String(bestSkill.id)}\n---\n\n${String(skillRow.text as string)}`;
 
       const lines = skillMd.split("\n");
       assert(lines[0] === "---", "SKILL.md starts with YAML frontmatter delimiter");
@@ -473,7 +473,7 @@ Key improvements over base workflow:
 
     if (skillWithProvenance?.governance_json) {
       try {
-        const gov = JSON.parse(String(skillWithProvenance.governance_json));
+        const gov = JSON.parse(skillWithProvenance.governance_json as string);
         assert(gov.accessScope === "shared", `Governance scope is shared (got ${gov.accessScope})`);
         console.log(`  Governance: ${JSON.stringify(gov)}`);
       } catch {
@@ -508,9 +508,9 @@ Key improvements over base workflow:
       .get(String(allSkills[0]!.id)) as Record<string, unknown> | undefined;
 
     if (marketplaceRow) {
-      console.log(`  Steering reward: ${marketplaceRow.steering_reward}`);
-      console.log(`  Marketplace listed: ${marketplaceRow.marketplace_listed}`);
-      console.log(`  Download count: ${marketplaceRow.download_count ?? 0}`);
+      console.log(`  Steering reward: ${String(marketplaceRow.steering_reward)}`);
+      console.log(`  Marketplace listed: ${String(marketplaceRow.marketplace_listed)}`);
+      console.log(`  Download count: ${String((marketplaceRow.download_count as number) ?? 0)}`);
     }
   }
 

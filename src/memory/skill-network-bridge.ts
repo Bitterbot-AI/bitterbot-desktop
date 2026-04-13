@@ -125,7 +125,7 @@ export class SkillNetworkBridge {
 
     const scope = governance.accessScope;
     if (scope !== "shared" && scope !== "public") {
-      log.debug(`crystal ${crystalId} is ${scope}, skipping network publish`);
+      log.debug(`crystal ${crystalId} is ${String(scope)}, skipping network publish`);
       return null;
     }
 

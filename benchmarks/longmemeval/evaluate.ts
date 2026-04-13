@@ -102,10 +102,10 @@ Reply with ONLY the word "correct" or "incorrect". Nothing else.`;
 // ── Simple heuristic judge (no LLM cost) ──
 
 function heuristicJudge(expected: unknown, hypothesis: unknown): number {
-  const exp = String(expected ?? "")
+  const exp = String((expected as string) ?? "")
     .toLowerCase()
     .trim();
-  const hyp = String(hypothesis ?? "")
+  const hyp = String((hypothesis as string) ?? "")
     .toLowerCase()
     .trim();
   if (!exp || !hyp) {

@@ -477,7 +477,7 @@ export class MarketplaceEconomics {
     return rows.map((r) => ({
       skillCrystalId: String(r.skill_crystal_id),
       name: String(r.name),
-      description: String(r.description ?? ""),
+      description: String((r.description as string) ?? ""),
       priceUsdc: Number(r.price_usdc),
       listable: true,
       metrics: {

@@ -70,7 +70,7 @@ export function createPlanTool(): AnyAgentTool {
         return jsonResult({ ok: false, error: "At least one task is required" });
       }
 
-      const normalized = tasks.map((t: Record<string, unknown>) => ({
+      const normalized = tasks.map((t: Record<string, string | undefined>) => ({
         id: String(t.id ?? ""),
         label: String(t.label ?? ""),
         parent_id: typeof t.parent_id === "string" ? t.parent_id : undefined,

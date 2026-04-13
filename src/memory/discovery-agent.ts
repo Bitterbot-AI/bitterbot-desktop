@@ -776,17 +776,18 @@ export class DiscoveryAgent {
   }
 
   private rowToEdge(row: Record<string, unknown>): SkillEdge {
+    const r = row as Record<string, string | number | null>;
     return {
-      id: String(row.id ?? ""),
-      sourceSkillId: String(row.source_skill_id ?? ""),
-      targetSkillId: String(row.target_skill_id ?? ""),
-      edgeType: String(row.edge_type ?? "similar") as SkillEdgeType,
-      weight: Number(row.weight ?? 0.5),
-      steeringReward: Number(row.steering_reward ?? 0),
-      confidence: Number(row.confidence ?? 0.5),
-      discoveredBy: String(row.discovered_by ?? "embedding") as SkillEdge["discoveredBy"],
-      createdAt: Number(row.created_at ?? 0),
-      updatedAt: Number(row.updated_at ?? 0),
+      id: String(r.id ?? ""),
+      sourceSkillId: String(r.source_skill_id ?? ""),
+      targetSkillId: String(r.target_skill_id ?? ""),
+      edgeType: String(r.edge_type ?? "similar") as SkillEdgeType,
+      weight: Number(r.weight ?? 0.5),
+      steeringReward: Number(r.steering_reward ?? 0),
+      confidence: Number(r.confidence ?? 0.5),
+      discoveredBy: String(r.discovered_by ?? "embedding") as SkillEdge["discoveredBy"],
+      createdAt: Number(r.created_at ?? 0),
+      updatedAt: Number(r.updated_at ?? 0),
     };
   }
 }

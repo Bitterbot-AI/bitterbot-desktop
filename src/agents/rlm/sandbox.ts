@@ -246,7 +246,7 @@ export class RLMSandbox {
     if (this.finalVarName !== null) {
       const value = this.persistentStore.get(this.finalVarName);
       if (value !== undefined) {
-        return String(value);
+        return String(value as string | number);
       }
     }
     return null;

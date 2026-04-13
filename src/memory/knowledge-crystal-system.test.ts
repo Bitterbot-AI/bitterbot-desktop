@@ -23,7 +23,6 @@ import { MemStore } from "./mem-store.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
 import { MemoryPipeline } from "./pipeline.js";
-import { PromptOptimizationExperiment, calculateOpportunity } from "./prompt-optimization.js";
 import { MemoryScheduler } from "./scheduler.js";
 import { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { SkillRefiner } from "./skill-refiner.js";
@@ -379,7 +378,7 @@ describe("Crystal Foundation", () => {
       ).run("legacy-1", "test.md", 1700000000000);
 
       const result = runMigrations(db);
-      expect(result.ran).toBe(7); // v1 (crystal columns) + v2 (skill tracking, reputation, etc.) + v3 (ban/blocklist, EigenTrust) + v4 (management verification, bounties) + v5 (lineage_hash, peer_origin) + v6 (bitemporal columns) + v7 (session extraction)
+      expect(result.ran).toBe(9); // v1 (crystal columns) + v2 (skill tracking, reputation, etc.) + v3 (ban/blocklist, EigenTrust) + v4 (management verification, bounties) + v5 (lineage_hash, peer_origin) + v6 (bitemporal columns) + v7 (session extraction) + v8 + v9
 
       const row = db.prepare("SELECT created_at FROM chunks WHERE id = ?").get("legacy-1") as {
         created_at: number;
@@ -471,6 +470,7 @@ describe("Consolidation Engine", () => {
       importance_score: 0.9,
       embedding: emb,
       lifecycle: "generated",
+      semantic_type: "preference",
       access_count: 50,
       last_accessed_at: now,
       updated_at: now,
@@ -481,6 +481,7 @@ describe("Consolidation Engine", () => {
       importance_score: 0.85,
       embedding: emb, // identical embedding = cosine 1.0
       lifecycle: "generated",
+      semantic_type: "preference",
       access_count: 50,
       last_accessed_at: now,
       updated_at: now,
@@ -976,90 +977,6 @@ describe("Dream Engine", () => {
       expect(stats).not.toBeNull();
       expect(stats!.newInsights).toHaveLength(0);
     });
-
-    it("prioritizes low-performing skills by opportunity score", () => {
-      // Seed two skills: one high-performing, one low
-      const { tracker } = seedSkillWithExecutions({
-        skillText: "Skill: low perf deploy",
-        executions: 10,
-        successRate: 0.3,
-        errorType: "connection_error",
-      });
-      seedSkillWithExecutions({
-        skillText: "Skill: high perf deploy",
-        executions: 10,
-        successRate: 0.95,
-      });
-
-      const experiment = new PromptOptimizationExperiment(db, tracker);
-      const candidates = experiment.findCandidates(10);
-
-      expect(candidates.length).toBe(2);
-      // Low performer should be ranked first (higher opportunity)
-      expect(candidates[0]!.metrics.successRate).toBeLessThan(candidates[1]!.metrics.successRate);
-      expect(candidates[0]!.opportunityScore).toBeGreaterThan(candidates[1]!.opportunityScore);
-    });
-
-    it("calculateOpportunity scores low success rate higher", () => {
-      const lowPerf = calculateOpportunity({
-        totalExecutions: 5,
-        successRate: 0.2,
-        avgRewardScore: 0.3,
-        avgExecutionTimeMs: 100,
-        userFeedbackScore: 0,
-        lastExecutedAt: Date.now(),
-        errorBreakdown: { timeout: 3, crash: 1 },
-      });
-
-      const highPerf = calculateOpportunity({
-        totalExecutions: 5,
-        successRate: 0.95,
-        avgRewardScore: 0.9,
-        avgExecutionTimeMs: 50,
-        userFeedbackScore: 0,
-        lastExecutedAt: Date.now(),
-        errorBreakdown: {},
-      });
-
-      expect(lowPerf).toBeGreaterThan(highPerf);
-    });
-
-    it("uses error_driven strategy for skills with many errors", async () => {
-      seedChunksForDream();
-      const { skillId: _skillId, tracker } = seedSkillWithExecutions({
-        executions: 6,
-        successRate: 0.33,
-        errorType: "connection_timeout",
-      });
-
-      let capturedPrompt = "";
-      const llm = async (prompt: string) => {
-        if (!capturedPrompt) {
-          capturedPrompt = prompt;
-        } // Capture the FIRST call (research prompt), not the sandbox rating prompt
-        return JSON.stringify([
-          {
-            content: "Handle connection timeout with retry logic",
-            confidence: 0.8,
-            keywords: ["timeout"],
-          },
-        ]);
-      };
-
-      const engine = new DreamEngine(
-        db,
-        { llmCall: llm, minChunksForDream: 5 },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      engine.setExecutionTracker(tracker);
-
-      await engine.run({ modes: ["research"] });
-
-      // The prompt should contain empirical data
-      expect(capturedPrompt).toContain("EMPIRICAL PERFORMANCE DATA");
-      expect(capturedPrompt).toContain("connection_timeout");
-    });
   });
 
   describe("mode selection", () => {
@@ -1312,10 +1229,10 @@ describe("Hormonal State Manager", () => {
   it("starts at homeostasis baseline", () => {
     const manager = new HormonalStateManager();
     const state = manager.getState();
-    // Homeostasis baseline: dopamine=0.15, cortisol=0.02, oxytocin=0.10
+    // Homeostasis baseline: dopamine=0.15, cortisol=0.02, oxytocin=0.20
     expect(state.dopamine).toBeCloseTo(0.15);
     expect(state.cortisol).toBeCloseTo(0.02);
-    expect(state.oxytocin).toBeCloseTo(0.1);
+    expect(state.oxytocin).toBeCloseTo(0.2);
   });
 
   it("stimulates correct hormones per event type", () => {

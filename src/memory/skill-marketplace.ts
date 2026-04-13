@@ -213,7 +213,7 @@ export class SkillMarketplace {
 
     return {
       ...entry,
-      text: String(row.text ?? ""),
+      text: String((row.text as string) ?? ""),
       versionHistory: versions.map((v) => ({
         version: v.skill_version,
         crystalId: v.id,
@@ -246,10 +246,10 @@ export class SkillMarketplace {
       let governance: Record<string, unknown> = {};
       try {
         if (row.governance_json) {
-          governance = JSON.parse(String(row.governance_json));
+          governance = JSON.parse(row.governance_json as string);
         }
       } catch {}
-      const pubkey = String(governance.peerOrigin ?? "");
+      const pubkey = String((governance.peerOrigin as string) ?? "");
       if (pubkey && !reputationCache.has(pubkey)) {
         reputationCache.set(pubkey, this.reputationManager.getReputation(pubkey));
       }
@@ -274,13 +274,13 @@ export class SkillMarketplace {
     let governance: Record<string, unknown> = {};
     try {
       if (row.governance_json) {
-        governance = JSON.parse(String(row.governance_json));
+        governance = JSON.parse(row.governance_json as string);
       }
     } catch {
       log.debug(`rowToEntry: corrupted governance_json for crystal ${String(row.id)}`);
     }
 
-    const peerPubkey = String(governance.peerOrigin ?? "");
+    const peerPubkey = String((governance.peerOrigin as string) ?? "");
     const rep = peerPubkey
       ? (reputationCache?.get(peerPubkey) ?? this.reputationManager.getReputation(peerPubkey))
       : null;
@@ -288,7 +288,7 @@ export class SkillMarketplace {
     let tags: string[] = [];
     try {
       if (row.skill_tags) {
-        tags = JSON.parse(String(row.skill_tags));
+        tags = JSON.parse(row.skill_tags as string);
       }
     } catch {
       log.debug(`rowToEntry: corrupted skill_tags JSON for crystal ${String(row.id)}`);
@@ -297,19 +297,23 @@ export class SkillMarketplace {
     const metrics = this.executionTracker.getSkillMetrics(String(row.id));
 
     return {
-      stableSkillId: String(row.stable_skill_id ?? row.id ?? ""),
-      name: String(row.marketplace_description ?? row.skill_category ?? "Skill"),
-      description: String(row.marketplace_description ?? String(row.text ?? "").slice(0, 200)),
+      stableSkillId: String((row.stable_skill_id as string) ?? (row.id as string) ?? ""),
+      name: String(
+        (row.marketplace_description as string) ?? (row.skill_category as string) ?? "Skill",
+      ),
+      description: String(
+        (row.marketplace_description as string) ?? String((row.text as string) ?? "").slice(0, 200),
+      ),
       version: Number(row.skill_version ?? 1),
       authorPeerId: peerPubkey,
       authorReputation: rep?.reputationScore ?? 0.5,
       successRate: metrics.successRate,
       downloadCount: Number(row.download_count ?? 0),
       tags,
-      category: String(row.skill_category ?? "general"),
+      category: String((row.skill_category as string) ?? "general"),
       createdAt: Number(row.created_at ?? 0),
       isVerified: row.is_verified === 1,
-      verifiedBy: row.verified_by ? String(row.verified_by) : null,
+      verifiedBy: row.verified_by ? String(row.verified_by as string) : null,
     };
   }
 }

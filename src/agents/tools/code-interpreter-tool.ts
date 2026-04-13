@@ -118,10 +118,10 @@ function formatArg(a: unknown): string {
     try {
       return JSON.stringify(a, null, 2);
     } catch {
-      return String(a);
+      return String(a as string);
     }
   }
-  return String(a);
+  return String(a as string);
 }
 
 /**

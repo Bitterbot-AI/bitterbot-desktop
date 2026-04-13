@@ -530,10 +530,11 @@ export class PeerReputationManager {
   }
 
   private rowToReputation(row: Record<string, unknown>): PeerReputation {
-    const peerPubkey = String(row.peer_pubkey ?? "");
-    const isBanned = row.is_banned === 1;
-    const isTrusted = !isBanned && (row.is_trusted === 1 || this.trustList.includes(peerPubkey));
-    const reputationScore = Number(row.reputation_score ?? 0.5);
+    const r = row as Record<string, string | number | null>;
+    const peerPubkey = String(r.peer_pubkey ?? "");
+    const isBanned = r.is_banned === 1;
+    const isTrusted = !isBanned && (r.is_trusted === 1 || this.trustList.includes(peerPubkey));
+    const reputationScore = Number(r.reputation_score ?? 0.5);
 
     let trustLevel: TrustLevel;
     if (isBanned) {
@@ -544,12 +545,12 @@ export class PeerReputationManager {
 
     return {
       peerPubkey,
-      peerId: row.peer_id ? String(row.peer_id) : null,
-      displayName: row.display_name ? String(row.display_name) : null,
-      skillsReceived: Number(row.skills_received ?? 0),
-      skillsAccepted: Number(row.skills_accepted ?? 0),
-      skillsRejected: Number(row.skills_rejected ?? 0),
-      avgSkillQuality: Number(row.avg_skill_quality ?? 0),
+      peerId: r.peer_id ? String(r.peer_id) : null,
+      displayName: r.display_name ? String(r.display_name) : null,
+      skillsReceived: Number(r.skills_received ?? 0),
+      skillsAccepted: Number(r.skills_accepted ?? 0),
+      skillsRejected: Number(r.skills_rejected ?? 0),
+      avgSkillQuality: Number(r.avg_skill_quality ?? 0),
       reputationScore,
       firstSeenAt: Number(row.first_seen_at ?? 0),
       lastSeenAt: Number(row.last_seen_at ?? 0),

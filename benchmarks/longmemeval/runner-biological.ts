@@ -203,7 +203,7 @@ async function run() {
       const consolidationStats = bridge.consolidate();
       if (verbose && consolidationStats) {
         console.log(
-          `   Consolidation: merged=${consolidationStats.merged ?? 0}, decayed=${consolidationStats.decayed ?? 0}`,
+          `   Consolidation: merged=${String((consolidationStats.merged as number) ?? 0)}, decayed=${String((consolidationStats.decayed as number) ?? 0)}`,
         );
       }
 

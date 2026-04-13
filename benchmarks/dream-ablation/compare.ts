@@ -77,7 +77,7 @@ function run() {
       const data = JSON.parse(readFileSync(join(resultsDir, file), "utf-8")) as EvaluatedResult;
       results.set(variantId, data);
     } catch (err) {
-      console.warn(`  Skipping ${file}: ${err}`);
+      console.warn(`  Skipping ${file}: ${String(err)}`);
     }
   }
 
@@ -212,7 +212,7 @@ function run() {
   for (const [variantId, dm] of dreamMetrics) {
     const ds = dm.dreamSummary;
     console.log(
-      `  ${variantId}: ${ds?.totalInsights ?? 0} insights, ${ds?.totalLlmCalls ?? 0} LLM calls, modes: ${JSON.stringify(ds?.modeFrequency ?? {})}`,
+      `  ${variantId}: ${String((ds?.totalInsights as number) ?? 0)} insights, ${String((ds?.totalLlmCalls as number) ?? 0)} LLM calls, modes: ${JSON.stringify(ds?.modeFrequency ?? {})}`,
     );
   }
 

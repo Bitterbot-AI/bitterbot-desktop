@@ -330,7 +330,7 @@ export async function createCanvasHostHandler(
         opened = await resolveFileWithinRoot(rootReal, urlPath);
       } catch (resolveErr) {
         console.error(
-          `[canvas] resolveFileWithinRoot error: rootReal=${rootReal} urlPath=${urlPath} err=${resolveErr}`,
+          `[canvas] resolveFileWithinRoot error: rootReal=${rootReal} urlPath=${urlPath} err=${String(resolveErr)}`,
         );
         opened = null;
       }
