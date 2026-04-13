@@ -21,9 +21,7 @@ export interface VariantConfig {
  */
 function disableModes(...modes: string[]): Record<string, { enabled: boolean }> {
   const overrides: Record<string, { enabled: boolean }> = {};
-  for (const mode of modes) {
-    overrides[mode] = { enabled: false };
-  }
+  for (const mode of modes) overrides[mode] = { enabled: false };
   return overrides;
 }
 

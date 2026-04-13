@@ -132,9 +132,7 @@ describe("BioMemEval > Mood-Congruent Retrieval", () => {
         emotionalValence: 0.9,
         semanticType: type,
       });
-      if (bonus !== 0) {
-        allZero = false;
-      }
+      if (bonus !== 0) allZero = false;
     }
 
     s.score("all bonuses are 0 when hormones below threshold", allZero, 4);
@@ -159,12 +157,8 @@ describe("BioMemEval > Mood-Congruent Retrieval", () => {
         emotionalValence: 1.0,
         semanticType: type,
       });
-      if (bonus > 0.15) {
-        allClamped = false;
-      }
-      if (bonus > 0) {
-        anyNonZero = true;
-      }
+      if (bonus > 0.15) allClamped = false;
+      if (bonus > 0) anyNonZero = true;
     }
 
     s.score("no bonus exceeds maxBonus (0.15)", allClamped, 2);

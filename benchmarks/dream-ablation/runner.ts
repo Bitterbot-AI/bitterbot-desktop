@@ -20,13 +20,19 @@ const __dirname = dirname(__filename);
 import {
   type LongMemEvalItem,
   type LongMemEvalResult,
+  type MemoryChunk,
   loadDataset,
   sessionToMarkdown,
   buildAnswerPrompt,
   writeResults,
   cleanWorkDir,
 } from "../longmemeval/adapter.js";
-import { createAblationBridge, type AggregatedDreamMetrics, type MemoryMetrics } from "./bridge.js";
+import {
+  createAblationBridge,
+  type AblationBridge,
+  type AggregatedDreamMetrics,
+  type MemoryMetrics,
+} from "./bridge.js";
 import { VARIANTS, VARIANT_IDS, type VariantConfig } from "./variants.js";
 
 // ── CLI Args ──
@@ -215,9 +221,7 @@ async function run() {
   console.log(`  Data: ${dataFile}`);
   console.log(`  Model: ${model}`);
   console.log(`  Variants: ${variantsToRun.map((v) => v.id).join(", ")}`);
-  if (limit) {
-    console.log(`  Limit: ${limit} questions`);
-  }
+  if (limit) console.log(`  Limit: ${limit} questions`);
   console.log("");
 
   const dataset = loadDataset(dataFile);
@@ -298,9 +302,7 @@ function summarizeDreamMetrics(metrics: QuestionMetrics[]): Record<string, unkno
 }
 
 function summarizeMemoryMetrics(metrics: QuestionMetrics[]): Record<string, unknown> {
-  if (metrics.length === 0) {
-    return {};
-  }
+  if (metrics.length === 0) return {};
 
   const avgChunks = metrics.reduce((s, m) => s + m.memoryMetrics.activeChunks, 0) / metrics.length;
   const avgInsights =

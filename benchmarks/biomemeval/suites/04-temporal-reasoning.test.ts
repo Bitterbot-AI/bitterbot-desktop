@@ -67,18 +67,18 @@ describe("BioMemEval > Temporal Reasoning", () => {
     // The API queries from source entity. Let's query per-person instead.
 
     const aliceFeb = kg.queryAtTime("alice", "person", "manages", FEB_1);
-    kg.queryAtTime("bob", "person", "manages", FEB_1);
+    const bobFeb = kg.queryAtTime("bob", "person", "manages", FEB_1);
     const bobApr = kg.queryAtTime("bob", "person", "manages", APR_1);
-    kg.queryAtTime("alice", "person", "manages", APR_1);
+    const aliceApr = kg.queryAtTime("alice", "person", "manages", APR_1);
 
     s.score(
       "alice managed something in Feb",
-      aliceFeb.some((r) => r.entity.name === "project alpha"),
+      aliceFeb.length > 0 && aliceFeb.some((r) => r.entity.name === "project alpha"),
       1.5,
     );
     s.score(
       "bob manages something in Apr",
-      bobApr.some((r) => r.entity.name === "project alpha"),
+      bobApr.length > 0 && bobApr.some((r) => r.entity.name === "project alpha"),
       1.5,
     );
 

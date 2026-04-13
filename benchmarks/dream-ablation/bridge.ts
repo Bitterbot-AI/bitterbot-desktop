@@ -133,7 +133,7 @@ function buildBaselineMemoryConfig(): Record<string, unknown> {
 
 export async function createAblationBridge(
   variant: VariantConfig,
-  _opts: { model?: string } = {},
+  opts: { model?: string } = {},
 ): Promise<AblationBridge> {
   const runId = randomUUID().slice(0, 8);
   const benchDir = join(__dirname, ".bench-runs", `${variant.id}-${runId}`);
@@ -154,9 +154,7 @@ export async function createAblationBridge(
   );
 
   const openaiApiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!openaiApiKey) {
-    throw new Error("OPENAI_API_KEY required");
-  }
+  if (!openaiApiKey) throw new Error("OPENAI_API_KEY required");
   const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim();
 
   // Deep-merge variant overrides with baseline memory config
@@ -199,9 +197,7 @@ export async function createAblationBridge(
   } as BitterbotConfig;
 
   const manager = await MemoryIndexManager.get({ cfg: config, agentId });
-  if (!manager) {
-    throw new Error("Failed to create MemoryIndexManager");
-  }
+  if (!manager) throw new Error("Failed to create MemoryIndexManager");
 
   const markDirty = () => {
     (manager as unknown as { dirty: boolean }).dirty = true;
@@ -247,9 +243,7 @@ export async function createAblationBridge(
           messages: [{ role: "user", content: prompt }],
         }),
       });
-      if (!res.ok) {
-        throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
-      }
+      if (!res.ok) throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
       const data = (await res.json()) as { content?: Array<{ text?: string }> };
       return data.content?.[0]?.text ?? "";
     }
@@ -264,9 +258,7 @@ export async function createAblationBridge(
         max_tokens: tokens,
       }),
     });
-    if (!res.ok) {
-      throw new Error(`OpenAI API error ${res.status}: ${await res.text()}`);
-    }
+    if (!res.ok) throw new Error(`OpenAI API error ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     return data.choices?.[0]?.message?.content ?? "";
   };
@@ -306,9 +298,7 @@ export async function createAblationBridge(
         const stats = await (
           manager as unknown as { dream(): Promise<Record<string, unknown> | null> }
         ).dream();
-        if (!stats) {
-          return null;
-        }
+        if (!stats) return null;
 
         const cycle = stats.cycle as
           | { modesUsed?: string[]; llmCallsUsed?: number; chunksAnalyzed?: number }
@@ -341,9 +331,7 @@ export async function createAblationBridge(
     async search(query: string, opts?: { maxResults?: number }): Promise<MemoryChunk[]> {
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          if (attempt > 0) {
-            await new Promise((r) => setTimeout(r, 2000 * attempt));
-          }
+          if (attempt > 0) await new Promise((r) => setTimeout(r, 2000 * attempt));
           const results: MemorySearchResult[] = await manager.search(query, opts);
           return results.map((r) => ({
             id: `${r.path}:${r.startLine}-${r.endLine}`,
@@ -355,9 +343,7 @@ export async function createAblationBridge(
             source: r.source,
           }));
         } catch (err) {
-          if (attempt === 2) {
-            throw err;
-          }
+          if (attempt === 2) throw err;
         }
       }
       return [];
@@ -380,9 +366,7 @@ export async function createAblationBridge(
     async reset() {
       const entries = readdirSync(memoryDir);
       for (const f of entries) {
-        if (f === "MEMORY.md") {
-          continue;
-        }
+        if (f === "MEMORY.md") continue;
         rmSync(join(memoryDir, f), { force: true });
       }
       markDirty();
@@ -401,7 +385,7 @@ export async function createAblationBridge(
 
     async cleanup() {
       try {
-        await manager.close();
+        manager.close();
       } catch {
         /* ignore */
       }

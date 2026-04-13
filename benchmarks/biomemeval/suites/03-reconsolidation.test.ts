@@ -35,10 +35,8 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
     s.score("isLabile returns true immediately after marking", engine.isLabile(id), 1);
 
     // Verify the chunk has labile_until set in the DB
-    const row = db.prepare("SELECT labile_until FROM chunks WHERE id = ?").get(id) as
-      | { labile_until: number }
-      | undefined;
-    s.score("labile_until is set in database", (row?.labile_until ?? 0) > Date.now(), 1);
+    const row = db.prepare("SELECT labile_until FROM chunks WHERE id = ?").get(id) as any;
+    s.score("labile_until is set in database", row?.labile_until > Date.now(), 1);
 
     // Verify labile chunks list includes this chunk
     const labileChunks = engine.getLabileChunks();
@@ -61,8 +59,8 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
 
     const beforeRow = db
       .prepare("SELECT importance_score, reconsolidation_count FROM chunks WHERE id = ?")
-      .get(id) as { importance_score: number; reconsolidation_count: number | null } | undefined;
-    const beforeImportance = beforeRow!.importance_score;
+      .get(id) as any;
+    const beforeImportance = beforeRow.importance_score;
 
     const strengthened = engine.strengthen(id);
 
@@ -70,24 +68,18 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
       .prepare(
         "SELECT importance_score, reconsolidation_count, labile_until FROM chunks WHERE id = ?",
       )
-      .get(id) as
-      | {
-          importance_score: number;
-          reconsolidation_count: number | null;
-          labile_until: number | null;
-        }
-      | undefined;
+      .get(id) as any;
 
     s.score("strengthen returns true", strengthened, 1.5);
     s.score(
       "importance increased by confirmation boost",
-      afterRow!.importance_score > beforeImportance,
+      afterRow.importance_score > beforeImportance,
       1,
     );
     s.score("chunk is no longer labile after strengthening", !engine.isLabile(id), 0.75);
     s.score(
       "reconsolidation_count incremented",
-      (afterRow!.reconsolidation_count ?? 0) > (beforeRow!.reconsolidation_count ?? 0),
+      afterRow.reconsolidation_count > (beforeRow.reconsolidation_count ?? 0),
       0.75,
     );
 
@@ -106,9 +98,7 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
 
     const row = db
       .prepare("SELECT labile_until, open_loop, open_loop_context FROM chunks WHERE id = ?")
-      .get(id) as
-      | { labile_until: number | null; open_loop: number; open_loop_context: string | null }
-      | undefined;
+      .get(id) as any;
 
     s.score("flagContradiction returns true", flagged, 1.5);
     s.score("chunk is no longer labile after flagging", !engine.isLabile(id), 1);
@@ -150,20 +140,18 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
     // All should have received the recall boost
     let allBoosted = true;
     for (const id of ids) {
-      db.prepare("SELECT importance_score, labile_until FROM chunks WHERE id = ?").get(id);
-      if (engine.isLabile(id)) {
-        allBoosted = false;
-      }
+      const row = db
+        .prepare("SELECT importance_score, labile_until FROM chunks WHERE id = ?")
+        .get(id) as any;
+      if (engine.isLabile(id)) allBoosted = false;
     }
 
     s.score("none are labile after restabilization", allBoosted, 1.25);
     s.score(
       "all chunks received recall boost",
       ids.every((id) => {
-        const row = db.prepare("SELECT importance_score FROM chunks WHERE id = ?").get(id) as
-          | { importance_score: number }
-          | undefined;
-        return (row?.importance_score ?? 0) >= 0.5; // at least the original + boost
+        const row = db.prepare("SELECT importance_score FROM chunks WHERE id = ?").get(id) as any;
+        return row.importance_score >= 0.5; // at least the original + boost
       }),
       1.25,
     );

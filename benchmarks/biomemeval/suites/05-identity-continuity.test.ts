@@ -83,12 +83,12 @@ describe("BioMemEval > Identity Continuity", () => {
       question: "Is the DB Postgres or MySQL?",
       priority: 0.9,
     });
-    directives.createDirective({
+    const d2 = directives.createDirective({
       type: "knowledge_gap",
       question: "What CI system is used?",
       priority: 0.7,
     });
-    directives.createDirective({
+    const d3 = directives.createDirective({
       type: "low_confidence",
       question: "Is the app on Kubernetes?",
       priority: 0.5,
@@ -106,7 +106,7 @@ describe("BioMemEval > Identity Continuity", () => {
     // Verify resolution is stored
     const row = db
       .prepare("SELECT resolution, resolved_at FROM epistemic_directives WHERE id = ?")
-      .get(d1!.id) as { resolution: string | null; resolved_at: number | null } | undefined;
+      .get(d1!.id) as any;
     s.score(
       "resolution stored correctly",
       row?.resolution === "It's PostgreSQL 15" && row?.resolved_at !== null,
@@ -121,14 +121,14 @@ describe("BioMemEval > Identity Continuity", () => {
   it("Scenario 3: Deduplication (3 pts)", () => {
     const s = new ScenarioScorer("Deduplication", 3);
 
-    directives.createDirective({
+    const d1 = directives.createDirective({
       type: "contradiction",
       question: "Is the production DB Postgres or MySQL?",
       priority: 0.5,
     });
 
     // Create same question again with higher priority
-    directives.createDirective({
+    const d2 = directives.createDirective({
       type: "contradiction",
       question: "Is the production DB Postgres or MySQL?",
       priority: 0.9,
@@ -139,7 +139,7 @@ describe("BioMemEval > Identity Continuity", () => {
       (
         db
           .prepare("SELECT COUNT(*) as c FROM epistemic_directives WHERE resolved_at IS NULL")
-          .get() as { c: number } | undefined
+          .get() as any
       )?.c ?? 0;
 
     s.score("only 1 unresolved directive exists (deduped)", count === 1, 1.5);
@@ -225,7 +225,7 @@ describe("BioMemEval > Identity Continuity", () => {
     );
 
     // Create recent directive
-    directives.createDirective({
+    const recent = directives.createDirective({
       type: "knowledge_gap",
       question: "What's the deploy process?",
       priority: 0.7,
@@ -238,9 +238,9 @@ describe("BioMemEval > Identity Continuity", () => {
     // Recent should survive
     const remaining = db
       .prepare("SELECT COUNT(*) as c FROM epistemic_directives WHERE resolved_at IS NULL")
-      .get() as { c: number } | undefined;
+      .get() as any;
 
-    s.score("recent directive survives expiry", (remaining?.c ?? 0) >= 1, 1.5);
+    s.score("recent directive survives expiry", remaining?.c >= 1, 1.5);
 
     const result = s.result();
     suite.addScenario(result);

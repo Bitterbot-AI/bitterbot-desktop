@@ -41,9 +41,7 @@ export default class BioMemEvalReporter implements Reporter {
   }
 
   onFinished(files?: File[]): void {
-    if (!files) {
-      return;
-    }
+    if (!files) return;
 
     const suites: SuiteScore[] = [];
 
@@ -57,11 +55,8 @@ export default class BioMemEvalReporter implements Reporter {
       const countTasks = (tasks: Task[]) => {
         for (const task of tasks) {
           if (task.type === "test") {
-            if (task.result?.state === "pass") {
-              passed++;
-            } else if (task.result?.state === "fail") {
-              failed++;
-            }
+            if (task.result?.state === "pass") passed++;
+            else if (task.result?.state === "fail") failed++;
           } else if (task.type === "suite" && task.tasks) {
             countTasks(task.tasks);
           }

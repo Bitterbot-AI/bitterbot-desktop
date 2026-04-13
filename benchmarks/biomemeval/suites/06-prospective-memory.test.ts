@@ -75,7 +75,7 @@ describe("BioMemEval > Prospective Memory", () => {
     s.score("high-similarity message triggers", triggered.length >= 1, 0.75);
 
     // Low similarity message should NOT trigger (create a new PM for this test)
-    engine.create({
+    const pm2 = engine.create({
       triggerCondition: "budget meeting",
       triggerEmbedding: deterministicEmbedding("budget-meeting"),
       action: "Bring Q1 numbers",
@@ -97,27 +97,27 @@ describe("BioMemEval > Prospective Memory", () => {
     const s = new ScenarioScorer("Expiration Cleanup", 2);
 
     // Create expired PM
-    engine.create({
+    const expired = engine.create({
       triggerCondition: "old trigger",
       action: "old action",
       expiresAt: Date.now() - 1000, // already expired
     });
 
     // Create non-expired PM
-    engine.create({
+    const active = engine.create({
       triggerCondition: "active trigger",
       action: "active action",
       expiresAt: Date.now() + 60_000,
     });
 
-    engine.cleanExpired();
+    const cleaned = engine.cleanExpired();
 
     // Check that the expired PM was actually removed from the DB
     const expiredRemaining = db
       .prepare(
         "SELECT COUNT(*) as c FROM prospective_memories WHERE expires_at IS NOT NULL AND expires_at < ?",
       )
-      .get(Date.now()) as { c: number } | undefined;
+      .get(Date.now()) as any;
 
     s.score("expired PM removed from database", (expiredRemaining?.c ?? 0) === 0, 1);
 
@@ -126,7 +126,7 @@ describe("BioMemEval > Prospective Memory", () => {
       .prepare(
         "SELECT COUNT(*) as c FROM prospective_memories WHERE triggered_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
       )
-      .get(Date.now()) as { c: number } | undefined;
+      .get(Date.now()) as any;
 
     s.score("non-expired PM survives cleanup", (activeRemaining?.c ?? 0) >= 1, 1);
 
@@ -198,9 +198,7 @@ describe("BioMemEval > Prospective Memory", () => {
         messageText: msg,
         messageEmbedding: orthoEmb,
       });
-      if (triggered.length > 0) {
-        falsePositives++;
-      }
+      if (triggered.length > 0) falsePositives++;
     }
 
     s.score("zero false positives across 5 unrelated messages", falsePositives === 0, 2);

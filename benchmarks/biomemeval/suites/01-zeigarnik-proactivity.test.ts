@@ -15,6 +15,7 @@ import {
   markOpenLoop,
   closeOpenLoop,
   getActiveOpenLoops,
+  scanForOpenLoops,
 } from "../../../src/memory/zeigarnik-effect.js";
 import { createBenchmarkDb } from "../db-setup.js";
 import { insertChunk } from "../helpers.js";
@@ -51,14 +52,10 @@ describe("BioMemEval > Zeigarnik Proactivity", () => {
     let correctResolved = 0;
 
     for (const text of openTexts) {
-      if (detectOpenLoop(text) !== null) {
-        correctOpen++;
-      }
+      if (detectOpenLoop(text) !== null) correctOpen++;
     }
     for (const text of resolvedTexts) {
-      if (detectOpenLoop(text) === null || detectResolution(text)) {
-        correctResolved++;
-      }
+      if (detectOpenLoop(text) === null || detectResolution(text)) correctResolved++;
     }
 
     s.score(`detected ${correctOpen}/5 open loops correctly`, correctOpen >= 4, 2);
@@ -145,12 +142,8 @@ describe("BioMemEval > Zeigarnik Proactivity", () => {
     const normalId = insertChunk(db, { text: "Cache was implemented", importance_score: 0.5 });
 
     // Verify the open_loop flag is set
-    const loopRow = db.prepare("SELECT open_loop FROM chunks WHERE id = ?").get(loopId) as
-      | { open_loop: number }
-      | undefined;
-    const normalRow = db.prepare("SELECT open_loop FROM chunks WHERE id = ?").get(normalId) as
-      | { open_loop: number }
-      | undefined;
+    const loopRow = db.prepare("SELECT open_loop FROM chunks WHERE id = ?").get(loopId) as any;
+    const normalRow = db.prepare("SELECT open_loop FROM chunks WHERE id = ?").get(normalId) as any;
 
     s.score("open loop chunk has open_loop = 1", loopRow?.open_loop === 1, 2);
     s.score("normal chunk has open_loop = 0", normalRow?.open_loop === 0, 2);

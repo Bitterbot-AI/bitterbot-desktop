@@ -77,7 +77,7 @@ function run() {
       const data = JSON.parse(readFileSync(join(resultsDir, file), "utf-8")) as EvaluatedResult;
       results.set(variantId, data);
     } catch (err) {
-      console.warn(`  Skipping ${file}: ${String(err)}`);
+      console.warn(`  Skipping ${file}: ${err}`);
     }
   }
 
@@ -133,11 +133,11 @@ function run() {
   }
 
   // Build matrix for table display
-  const sortedTypes = [...allTypes].toSorted();
+  const sortedTypes = [...allTypes].sort();
   const header = ["variant", "overall", ...sortedTypes];
   const matrix: (string | number)[][] = [header];
 
-  for (const [variantId, summary] of Object.entries(comparison).toSorted(
+  for (const [variantId, summary] of Object.entries(comparison).sort(
     (a, b) => b[1].overall.accuracy - a[1].overall.accuracy,
   )) {
     const row: (string | number)[] = [variantId];
@@ -178,7 +178,7 @@ function run() {
   console.log("-".repeat(headerLine.length));
 
   // Rows
-  for (const [variantId, summary] of Object.entries(comparison).toSorted(
+  for (const [variantId, summary] of Object.entries(comparison).sort(
     (a, b) => b[1].overall.accuracy - a[1].overall.accuracy,
   )) {
     const isBaseline = variantId === baselineId;
@@ -212,7 +212,7 @@ function run() {
   for (const [variantId, dm] of dreamMetrics) {
     const ds = dm.dreamSummary;
     console.log(
-      `  ${variantId}: ${String((ds?.totalInsights as number) ?? 0)} insights, ${String((ds?.totalLlmCalls as number) ?? 0)} LLM calls, modes: ${JSON.stringify(ds?.modeFrequency ?? {})}`,
+      `  ${variantId}: ${ds?.totalInsights ?? 0} insights, ${ds?.totalLlmCalls ?? 0} LLM calls, modes: ${JSON.stringify(ds?.modeFrequency ?? {})}`,
     );
   }
 
