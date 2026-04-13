@@ -66,14 +66,18 @@ This spawns the gateway and the Vite dev server for the Control UI side-by-side 
 If you want the two processes in separate terminals (useful when debugging one of them in isolation):
 
 ```bash
-# Terminal 1 — Gateway
-pnpm start gateway
+# Terminal 1 — Gateway (auto-rebuilds on TS changes)
+pnpm gateway:watch
 
-# Terminal 2 — Control UI
+# Terminal 2 — Control UI (Vite hot-reload)
 cd desktop && pnpm dev
 ```
 
-The Control UI's connection to the gateway is wired up automatically: the onboarding wizard writes `desktop/.env` for you with the gateway token and URL. If you skipped the wizard or need to regenerate it, copy `desktop/.env.example` and paste the token from `~/.bitterbot/bitterbot.json → gateway.auth.token`.
+> **`pnpm gateway:watch`** rebuilds and restarts the gateway automatically when you edit TypeScript files — use this for development. **`pnpm start gateway`** is one-shot (no file watching) and is meant for production use.
+>
+> The **orchestrator** (P2P sidecar) is spawned automatically by the gateway — you do not need to start it separately.
+
+The Control UI's connection to the gateway is wired up automatically: the onboarding wizard writes `desktop/.env` for you with the gateway token and URL. If you skipped the wizard or need to regenerate it, copy `desktop/.env.example` to `desktop/.env` and paste the token from `~/.bitterbot/bitterbot.json → gateway.auth.token`.
 
 Open [http://localhost:5173](http://localhost:5173) to chat, view dreams, manage skills, and monitor the agent. The Control UI connects to the gateway on port 19001 automatically.
 
