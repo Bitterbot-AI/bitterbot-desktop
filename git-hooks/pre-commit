@@ -49,3 +49,5 @@ fi
 # to verify paths are always passed after "--" (option-injection hardening).
 [[ ${#fmt_files[@]} -gt 0 ]] &&
 git add -- "${fmt_files[@]}"
+
+exit 0
