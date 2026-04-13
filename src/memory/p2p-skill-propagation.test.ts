@@ -1202,8 +1202,8 @@ describe("DiscoveryAgent", () => {
   });
 
   it("prevents duplicate edges", async () => {
-    const a = createSkillChunk(db, "Skill A", { embedding: JSON.stringify(fakeEmbedding(1)) });
-    const b = createSkillChunk(db, "Skill B", { embedding: JSON.stringify(fakeEmbedding(1.001)) });
+    createSkillChunk(db, "Skill A", { embedding: JSON.stringify(fakeEmbedding(1)) });
+    createSkillChunk(db, "Skill B", { embedding: JSON.stringify(fakeEmbedding(1.001)) });
 
     const agent = new DiscoveryAgent(db, null);
 

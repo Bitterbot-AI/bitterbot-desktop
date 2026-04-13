@@ -9,7 +9,6 @@
 
 import type {
   MemorySystemAdapter,
-  HormonalState,
   StoredMemory,
   SomaticVerdict,
   TemporalRelationship,

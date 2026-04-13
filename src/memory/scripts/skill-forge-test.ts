@@ -458,7 +458,7 @@ Key improvements over base workflow:
   try {
     const dupeResult = bridge.ingestNetworkSkill(peerSkillEnvelope);
     assert(!dupeResult.ok, "Duplicate skill rejected");
-  } catch (err) {
+  } catch {
     // Some implementations throw on duplicate — that's also acceptable
     assert(true, "Duplicate skill rejected (via exception)");
   }

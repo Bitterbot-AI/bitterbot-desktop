@@ -3,7 +3,7 @@
  */
 import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect, beforeEach } from "vitest";
-import { ExperimentSandbox, type MutationVerdict } from "./experiment-sandbox.js";
+import { ExperimentSandbox } from "./experiment-sandbox.js";
 import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 
 function createTestDb(): DatabaseSync {

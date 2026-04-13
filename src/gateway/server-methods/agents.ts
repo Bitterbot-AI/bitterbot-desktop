@@ -171,10 +171,6 @@ function resolveAgentIdOrError(agentIdRaw: string, cfg: ReturnType<typeof loadCo
   return agentId;
 }
 
-function sanitizeIdentityLine(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
-
 function resolveOptionalStringParam(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -303,7 +299,7 @@ export const agentsHandlers: GatewayRequestHandlers = {
         : undefined;
 
     const model = resolveOptionalStringParam(params.model);
-    const avatar = resolveOptionalStringParam(params.avatar);
+    const _avatar = resolveOptionalStringParam(params.avatar);
 
     const nextConfig = applyAgentConfig(cfg, {
       agentId,

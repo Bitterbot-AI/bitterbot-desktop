@@ -15,7 +15,7 @@ export function resolveWideAreaDiscoveryDomain(params?: {
   env?: NodeJS.ProcessEnv;
   configDomain?: string | null;
 }): string | null {
-  const env = params?.env ?? process.env;
+  const _env = params?.env ?? process.env;
   const candidate = params?.configDomain ?? null;
   return normalizeWideAreaDomain(candidate);
 }

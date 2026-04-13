@@ -76,7 +76,7 @@ export class MemStore {
     if (row.governance_json) {
       try {
         governance = JSON.parse(row.governance_json);
-      } catch (err) {
+      } catch {
         log.warn(
           `corrupted governance_json for crystal ${crystalId}, updating publish fields only`,
         );

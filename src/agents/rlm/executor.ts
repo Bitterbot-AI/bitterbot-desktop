@@ -153,7 +153,7 @@ export class RLMExecutor {
         return result.text;
       },
       onLLMQueryParallel: async (queries) => {
-        const results: string[] = [];
+        const _results: string[] = [];
         // Execute in parallel but track each call
         const promises = queries.map(async (q) => {
           if (!costTracker.canAffordSubCall()) {

@@ -209,8 +209,8 @@ describe("browser server-context listKnownProfileNames", () => {
     };
 
     expect(listKnownProfileNames(state).toSorted()).toEqual([
-      "chrome",
       "bitterbot",
+      "chrome",
       "stale-removed",
     ]);
   });

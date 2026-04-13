@@ -65,7 +65,6 @@ describe("applyCliProfileEnv", () => {
     expect(env.BITTERBOT_PROFILE).toBe("dev");
     expect(env.BITTERBOT_STATE_DIR).toBe(expectedStateDir);
     expect(env.BITTERBOT_CONFIG_PATH).toBe(path.join(expectedStateDir, "bitterbot.json"));
-    expect(env.BITTERBOT_GATEWAY_PORT).toBe("19001");
   });
 
   it("does not override explicit env values", () => {

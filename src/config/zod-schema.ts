@@ -6,12 +6,7 @@ import { HexColorSchema, ModelsConfigSchema } from "./zod-schema.core.js";
 import { HookMappingSchema, HooksGmailSchema, InternalHooksSchema } from "./zod-schema.hooks.js";
 import { ChannelsSchema } from "./zod-schema.providers.js";
 import { sensitive } from "./zod-schema.sensitive.js";
-import {
-  CommandsSchema,
-  MessagesSchema,
-  SessionSchema,
-  SessionSendPolicySchema,
-} from "./zod-schema.session.js";
+import { CommandsSchema, MessagesSchema, SessionSchema } from "./zod-schema.session.js";
 
 const BrowserSnapshotDefaultsSchema = z
   .object({
@@ -41,7 +36,7 @@ const MemorySchema = z
   .strict()
   .optional();
 
-const HttpUrlSchema = z
+const _HttpUrlSchema = z
   .string()
   .url()
   .refine((value) => {

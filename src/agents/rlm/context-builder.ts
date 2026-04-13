@@ -9,7 +9,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { MemorySearchManager } from "../../memory/types.js";
-import type { ContextBuildParams, RLMScope } from "./types.js";
+import type { RLMScope } from "./types.js";
 import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
 
 type SessionTranscriptMessage = {
@@ -26,11 +26,6 @@ type SessionTranscript = {
   firstTimestamp?: number;
   lastTimestamp?: number;
 };
-
-/** Estimate token count from character count (~4 chars/token). */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
 
 /** Format epoch ms to readable date string. */
 function formatTimestamp(ts: number): string {

@@ -75,7 +75,7 @@ describe("BioMemEval > Prospective Memory", () => {
     s.score("high-similarity message triggers", triggered.length >= 1, 0.75);
 
     // Low similarity message should NOT trigger (create a new PM for this test)
-    const pm2 = engine.create({
+    engine.create({
       triggerCondition: "budget meeting",
       triggerEmbedding: deterministicEmbedding("budget-meeting"),
       action: "Bring Q1 numbers",
@@ -97,20 +97,20 @@ describe("BioMemEval > Prospective Memory", () => {
     const s = new ScenarioScorer("Expiration Cleanup", 2);
 
     // Create expired PM
-    const expired = engine.create({
+    engine.create({
       triggerCondition: "old trigger",
       action: "old action",
       expiresAt: Date.now() - 1000, // already expired
     });
 
     // Create non-expired PM
-    const active = engine.create({
+    engine.create({
       triggerCondition: "active trigger",
       action: "active action",
       expiresAt: Date.now() + 60_000,
     });
 
-    const cleaned = engine.cleanExpired();
+    engine.cleanExpired();
 
     // Check that the expired PM was actually removed from the DB
     const expiredRemaining = db

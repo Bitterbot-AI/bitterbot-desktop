@@ -37,7 +37,6 @@ import {
   type DreamModeConfig,
   type DreamState,
   type DreamStats,
-  type DreamSynthesisResult,
   type EmbedBatchFn,
   type SynthesizeFn,
   DEFAULT_DREAM_CONFIG,
@@ -689,7 +688,7 @@ export class DreamEngine {
     });
 
     // Weighted random selection, pick 1-3 modes
-    const totalWeight = adjustedModes.reduce((sum, [, cfg]) => sum + cfg.weight, 0);
+    const _totalWeight = adjustedModes.reduce((sum, [, cfg]) => sum + cfg.weight, 0);
     const selected: DreamMode[] = [];
     const numModes = Math.min(3, Math.max(1, adjustedModes.length));
 
@@ -786,7 +785,7 @@ export class DreamEngine {
         return adj;
       }
 
-      const avgReward = recentRow.avg_reward;
+      const _avgReward = recentRow.avg_reward;
 
       // Also check the gccrf_state for more detailed component info
       const stateRow = this.db

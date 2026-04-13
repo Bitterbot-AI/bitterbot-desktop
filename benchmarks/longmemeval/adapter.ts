@@ -9,8 +9,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);

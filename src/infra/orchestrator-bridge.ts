@@ -214,7 +214,7 @@ export class OrchestratorBridge {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    for (const [id, req] of this.pending) {
+    for (const [_id, req] of this.pending) {
       clearTimeout(req.timer);
       req.reject(new Error("bridge shutting down"));
     }

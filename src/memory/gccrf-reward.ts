@@ -437,7 +437,7 @@ export class GCCRFRewardFunction {
   // The interoceptive modulator μ_t gates empowerment by uncertainty:
   // when prediction errors are volatile (confused), seek agency.
 
-  private computeEmpowerment(chunkEmbedding: number[], currentEta: number): number {
+  private computeEmpowerment(chunkEmbedding: number[], _currentEta: number): number {
     const targetK = this.config.empowermentK;
 
     // Get total chunk count for cold start check

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { simulateFSHO, fshoModeAdjustments, DEFAULT_FSHO_CONFIG } from "./dream-oscillator.js";
+import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
 
 describe("simulateFSHO", () => {
   it("returns order parameter in [0, 1]", () => {

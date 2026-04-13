@@ -11,7 +11,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { RLMScope, RLMMessage, RLMLLMCallFn } from "../rlm/types.js";
+import type { RLMScope, RLMLLMCallFn } from "../rlm/types.js";
 import type { AnyAgentTool } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId, resolveAgentModelPrimary } from "../agent-scope.js";

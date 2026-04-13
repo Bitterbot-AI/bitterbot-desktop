@@ -20,19 +20,13 @@ const __dirname = dirname(__filename);
 import {
   type LongMemEvalItem,
   type LongMemEvalResult,
-  type MemoryChunk,
   loadDataset,
   sessionToMarkdown,
   buildAnswerPrompt,
   writeResults,
   cleanWorkDir,
 } from "../longmemeval/adapter.js";
-import {
-  createAblationBridge,
-  type AblationBridge,
-  type AggregatedDreamMetrics,
-  type MemoryMetrics,
-} from "./bridge.js";
+import { createAblationBridge, type AggregatedDreamMetrics, type MemoryMetrics } from "./bridge.js";
 import { VARIANTS, VARIANT_IDS, type VariantConfig } from "./variants.js";
 
 // ── CLI Args ──

@@ -28,7 +28,7 @@ import { parseArgs } from "node:util";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-import { type LongMemEvalItem, loadDataset, sessionToMarkdown, cleanWorkDir } from "./adapter.js";
+import { loadDataset, sessionToMarkdown, cleanWorkDir } from "./adapter.js";
 import { createBenchmarkMemoryManager } from "./bitterbot-bridge.js";
 
 // ── CLI Args ──

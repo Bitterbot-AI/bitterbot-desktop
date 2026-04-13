@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { getProject, type Project, type ProjectKBFile } from "./projects.js";
+import { getProject, type ProjectKBFile } from "./projects.js";
 
 /**
  * Estimate token count from file content.

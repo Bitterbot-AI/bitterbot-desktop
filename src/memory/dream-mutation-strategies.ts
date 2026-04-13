@@ -3,7 +3,7 @@
  * strategy-specific LLM prompts for the advanced dream mutation engine.
  */
 
-import type { KnowledgeCrystal, MutationStrategy, SkillMetrics } from "./crystal-types.js";
+import type { MutationStrategy, SkillMetrics } from "./crystal-types.js";
 
 /**
  * Select the best mutation strategy for a skill based on its execution metrics

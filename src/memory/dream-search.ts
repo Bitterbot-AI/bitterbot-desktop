@@ -3,7 +3,6 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { DreamInsight, DreamMode } from "./dream-types.js";
 import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 export type DreamSearchResult = {

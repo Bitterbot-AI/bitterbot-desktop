@@ -8,7 +8,7 @@ import crypto from "node:crypto";
 import type { ExecutionOutcome, SkillMetrics, PeerSkillMetrics } from "./crystal-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
-const log = createSubsystemLogger("memory/execution-tracker");
+const _log = createSubsystemLogger("memory/execution-tracker");
 
 export class SkillExecutionTracker {
   private readonly db: DatabaseSync;

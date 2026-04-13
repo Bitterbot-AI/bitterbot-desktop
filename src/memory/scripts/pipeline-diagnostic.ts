@@ -8,7 +8,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const dbPath =

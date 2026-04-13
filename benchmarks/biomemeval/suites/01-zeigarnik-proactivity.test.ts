@@ -15,7 +15,6 @@ import {
   markOpenLoop,
   closeOpenLoop,
   getActiveOpenLoops,
-  scanForOpenLoops,
 } from "../../../src/memory/zeigarnik-effect.js";
 import { createBenchmarkDb } from "../db-setup.js";
 import { insertChunk } from "../helpers.js";

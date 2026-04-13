@@ -9,7 +9,7 @@
  *   npx tsx benchmarks/longmemeval/evaluate.ts [--results FILE] [--data FILE]
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -17,12 +17,7 @@ import { parseArgs } from "node:util";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-import {
-  type LongMemEvalItem,
-  type LongMemEvalResult,
-  readResults,
-  loadDataset,
-} from "./adapter.js";
+import { type LongMemEvalItem, readResults, loadDataset } from "./adapter.js";
 
 const { values: args } = parseArgs({
   options: {

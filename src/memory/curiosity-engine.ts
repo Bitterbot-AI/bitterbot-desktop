@@ -31,7 +31,6 @@ import {
   type EmergenceEvent,
   type ExplorationTarget,
   type ExplorationTargetType,
-  type KnowledgeRegion,
   type SurpriseAssessment,
   DEFAULT_CURIOSITY_CONFIG,
   DEFAULT_CURIOSITY_WEIGHTS,

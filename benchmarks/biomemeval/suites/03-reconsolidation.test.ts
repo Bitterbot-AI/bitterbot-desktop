@@ -140,9 +140,7 @@ describe("BioMemEval > Reconsolidation Accuracy", () => {
     // All should have received the recall boost
     let allBoosted = true;
     for (const id of ids) {
-      const row = db
-        .prepare("SELECT importance_score, labile_until FROM chunks WHERE id = ?")
-        .get(id) as any;
+      db.prepare("SELECT importance_score, labile_until FROM chunks WHERE id = ?").get(id) as any;
       if (engine.isLabile(id)) {
         allBoosted = false;
       }

@@ -161,7 +161,7 @@ describe("buildSlackSlashCommandMatcher", () => {
     const matcher = buildSlackSlashCommandMatcher("bitterbot");
 
     expect(matcher.test("bitterbot")).toBe(true);
-    expect(matcher.test(".bitterbot")).toBe(true);
+    expect(matcher.test("/bitterbot")).toBe(true);
   });
 
   it("does not match similar names", () => {

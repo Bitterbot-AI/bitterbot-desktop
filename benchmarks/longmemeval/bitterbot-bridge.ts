@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync, readdirSync, readFileSync, copyFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, readdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 

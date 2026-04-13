@@ -1,7 +1,7 @@
 /**
  * Tests for RLM Deep Recall: sandbox, executor, cost tracker, and context builder.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import type { RLMLLMCallFn, RLMExecutorOptions } from "./types.js";
 import { CostTracker } from "./cost-tracker.js";
 import { RLMExecutor } from "./executor.js";
@@ -247,7 +247,7 @@ describe("RLMExecutor", () => {
     let callCount = 0;
     const mockLlm: RLMLLMCallFn = async ({ messages }) => {
       callCount++;
-      const lastMsg = messages[messages.length - 1]!;
+      const _lastMsg = messages[messages.length - 1]!;
 
       if (callCount === 1) {
         // First call: explore
@@ -339,7 +339,7 @@ describe("RLMExecutor", () => {
 
   it("tracks sub-calls via llm_query", async () => {
     let callCount = 0;
-    const mockLlm: RLMLLMCallFn = async ({ messages }) => {
+    const mockLlm: RLMLLMCallFn = async ({ messages: _messages }) => {
       callCount++;
       if (callCount === 1) {
         return {

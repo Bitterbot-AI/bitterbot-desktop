@@ -254,7 +254,7 @@ export async function finalizeOnboardingWizard(
     resolveUserPath(options.workspaceDir),
     DEFAULT_BOOTSTRAP_FILENAME,
   );
-  const hasBootstrap = await fs
+  const _hasBootstrap = await fs
     .access(bootstrapPath)
     .then(() => true)
     .catch(() => false);

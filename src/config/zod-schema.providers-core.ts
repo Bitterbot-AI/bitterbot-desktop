@@ -15,7 +15,6 @@ import {
   GroupPolicySchema,
   HexColorSchema,
   MarkdownConfigSchema,
-  MSTeamsReplyStyleSchema,
   ProviderCommandsSchema,
   ReplyToModeSchema,
   RetryConfigSchema,

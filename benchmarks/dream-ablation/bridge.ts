@@ -133,7 +133,7 @@ function buildBaselineMemoryConfig(): Record<string, unknown> {
 
 export async function createAblationBridge(
   variant: VariantConfig,
-  opts: { model?: string } = {},
+  _opts: { model?: string } = {},
 ): Promise<AblationBridge> {
   const runId = randomUUID().slice(0, 8);
   const benchDir = join(__dirname, ".bench-runs", `${variant.id}-${runId}`);

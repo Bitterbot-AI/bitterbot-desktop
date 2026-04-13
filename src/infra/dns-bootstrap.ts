@@ -17,7 +17,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 const log = createSubsystemLogger("p2p/dns-bootstrap");
 
 const DNSADDR_PREFIX = "dnsaddr=";
-const DNS_TIMEOUT_MS = 10_000;
+const _DNS_TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1_000;
 

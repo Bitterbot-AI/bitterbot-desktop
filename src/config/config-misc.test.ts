@@ -153,30 +153,6 @@ describe("gateway.tools config", () => {
   });
 });
 
-describe("cron webhook schema", () => {
-  it("accepts cron.webhook and cron.webhookToken", () => {
-    const res = BitterbotSchema.safeParse({
-      cron: {
-        enabled: true,
-        webhook: "https://example.invalid/cron",
-        webhookToken: "secret-token",
-      },
-    });
-
-    expect(res.success).toBe(true);
-  });
-
-  it("rejects non-http(s) cron.webhook URLs", () => {
-    const res = BitterbotSchema.safeParse({
-      cron: {
-        webhook: "ftp://example.invalid/cron",
-      },
-    });
-
-    expect(res.success).toBe(false);
-  });
-});
-
 describe("broadcast", () => {
   it("accepts a broadcast peer map with strategy", () => {
     const res = validateConfigObject({

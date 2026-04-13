@@ -23,7 +23,7 @@ import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
-import { CuriosityEngine, type GCCRFRewardResult } from "./curiosity-engine.js";
+import { CuriosityEngine } from "./curiosity-engine.js";
 import {
   DiscoveryAgent,
   type SkillSuggestion,
@@ -66,11 +66,7 @@ import { ReconsolidationEngine } from "./reconsolidation.js";
 import { MemoryScheduler } from "./scheduler.js";
 import { runSeedCrystalMigration, runSkillBootstrap } from "./seed-crystal-migration.js";
 import { SessionCoherenceTracker } from "./session-coherence.js";
-import {
-  extractSessionFacts,
-  type ExtractionResult,
-  type HormonalBias,
-} from "./session-extractor.js";
+import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
 import { SkillCrystallizer } from "./skill-crystallizer.js";
@@ -79,7 +75,6 @@ import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
 import { SkillRefiner } from "./skill-refiner.js";
 import { SkillVerifier } from "./skill-verifier.js";
-import { assessSomaticMarkers } from "./somatic-markers.js";
 import { recordAccess } from "./spacing-effect.js";
 import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
 import { TaskMemoryManager } from "./task-memory.js";
@@ -91,7 +86,7 @@ import {
   WORKING_MEMORY_SECTIONS,
   type WorkingMemoryContext,
 } from "./working-memory-prompt.js";
-import { scanForOpenLoops, getActiveOpenLoops } from "./zeigarnik-effect.js";
+import { scanForOpenLoops } from "./zeigarnik-effect.js";
 
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
@@ -1947,7 +1942,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         // Knowledge Graph population: extract entities and relationships from facts
         if (this.knowledgeGraph && result.facts.length > 0) {
           try {
-            const factChunkIds = result.facts.map((_, i) => `fact_${i}`); // approximate IDs
+            const _factChunkIds = result.facts.map((_, i) => `fact_${i}`); // approximate IDs
             const kgEntities: Array<{
               name: string;
               type: import("./knowledge-graph.js").EntityType;
@@ -2051,7 +2046,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
       // Plan 7, Phase 8: Invalidate RLM cache — new facts make cached results stale
       try {
-        const { RLMExecutor } = await import("../agents/rlm/executor.js");
+        const { RLMExecutor: _RLMExecutor } = await import("../agents/rlm/executor.js");
         // The executor is typically a singleton per agent session; if we can reach it, invalidate.
         // This is a best-effort invalidation — the tool-level cache will also TTL-expire.
         (globalThis as Record<string, unknown>).__rlmCacheInvalidation = Date.now();

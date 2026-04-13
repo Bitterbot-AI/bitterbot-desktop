@@ -5,10 +5,10 @@
 
 import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ConsolidationEngine } from "./consolidation.js";
-import { ensureDreamSchema, recordDreamTelemetry } from "./dream-schema.js";
-import { HormonalStateManager, type HormonalEvent } from "./hormonal.js";
+import { recordDreamTelemetry } from "./dream-schema.js";
+import { HormonalStateManager } from "./hormonal.js";
 import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 
 // ── Helpers ──

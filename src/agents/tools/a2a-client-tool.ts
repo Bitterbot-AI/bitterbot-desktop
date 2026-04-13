@@ -14,7 +14,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { A2aClient } from "../../services/a2a-client.js";
 import { jsonResult, readStringParam } from "./common.js";
 
-const log = createSubsystemLogger("tool/a2a-client");
+const _log = createSubsystemLogger("tool/a2a-client");
 
 const A2aClientSchema = Type.Object({
   action: Type.Union([

@@ -10,8 +10,8 @@
  *   npx tsx benchmarks/longmemeval/runner.ts [--oracle] [--limit N] [--model MODEL]
  */
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -21,13 +21,10 @@ const __dirname = dirname(__filename);
 import {
   type LongMemEvalItem,
   type LongMemEvalResult,
-  type AdapterConfig,
   type MemoryChunk,
-  DEFAULT_CONFIG,
   loadDataset,
   convertItemToDocument,
   buildAnswerPrompt,
-  isAbstentionQuestion,
   writeResults,
   cleanWorkDir,
 } from "./adapter.js";

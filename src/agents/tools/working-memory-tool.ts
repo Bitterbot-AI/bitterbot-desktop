@@ -10,7 +10,6 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import crypto from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";

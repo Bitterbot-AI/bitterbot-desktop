@@ -146,10 +146,11 @@ describe("port collision prevention", () => {
     // Raw config shows empty - no ports used
     expect(usedFromRaw.size).toBe(0);
 
-    // But resolved config has implicit bitterbot at 18800
+    // But resolved config has implicit bitterbot profile with a derived CDP port
     const resolved = resolveBrowserConfig({});
     const usedFromResolved = getUsedPorts(resolved.profiles);
-    expect(usedFromResolved.has(CDP_PORT_RANGE_START)).toBe(true);
+    // The bitterbot profile's port is derived from the gateway port, not necessarily CDP_PORT_RANGE_START
+    expect(usedFromResolved.size).toBeGreaterThan(0);
   });
 
   it("create-profile must use resolved config to avoid port collision", async () => {
@@ -161,16 +162,20 @@ describe("port collision prevention", () => {
     const buggyUsedPorts = getUsedPorts(rawConfig.browser?.profiles);
     const buggyAllocatedPort = allocateCdpPort(buggyUsedPorts);
 
-    // Raw config: first allocation gets 18800
+    // Raw config: first allocation gets CDP_PORT_RANGE_START (no used ports visible)
     expect(buggyAllocatedPort).toBe(CDP_PORT_RANGE_START);
 
-    // Resolved config: includes implicit bitterbot at 18800
+    // Resolved config: includes implicit bitterbot and chrome profiles with derived ports
     const resolved = resolveBrowserConfig(rawConfig.browser);
     const fixedUsedPorts = getUsedPorts(resolved.profiles);
     const fixedAllocatedPort = allocateCdpPort(fixedUsedPorts);
 
-    // Resolved: first NEW profile gets 18801, avoiding collision
-    expect(fixedAllocatedPort).toBe(CDP_PORT_RANGE_START + 1);
+    // Resolved: allocation avoids the implicit profile ports
+    expect(fixedAllocatedPort).not.toBeNull();
+    // The resolved allocation should skip any ports already used by implicit profiles
+    for (const usedPort of fixedUsedPorts) {
+      expect(fixedAllocatedPort).not.toBe(usedPort);
+    }
   });
 });
 

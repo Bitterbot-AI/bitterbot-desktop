@@ -9,7 +9,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { DreamStats, DreamMode } from "./dream-types.js";
+import type { DreamStats } from "./dream-types.js";
 
 export interface DreamOutcomeComponents {
   crystalYield: number;

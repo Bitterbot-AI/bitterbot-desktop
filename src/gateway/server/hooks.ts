@@ -22,7 +22,7 @@ export function createGatewayHooksRequestHandler(params: {
   port: number;
   logHooks: SubsystemLogger;
 }) {
-  const { deps, getHooksConfig, bindHost, port, logHooks } = params;
+  const { deps: _deps, getHooksConfig, bindHost, port, logHooks } = params;
 
   const dispatchWakeHook = (value: { text: string; mode: "now" | "next-heartbeat" }) => {
     const sessionKey = resolveMainSessionKeyFromConfig();

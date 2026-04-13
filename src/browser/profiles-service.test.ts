@@ -55,9 +55,9 @@ describe("BrowserProfilesService", () => {
     const service = createBrowserProfilesService(ctx);
     const result = await service.createProfile({ name: "work" });
 
-    expect(result.cdpPort).toBe(18801);
+    expect(result.cdpPort).toBe(19013);
     expect(result.isRemote).toBe(false);
-    expect(state.resolved.profiles.work?.cdpPort).toBe(18801);
+    expect(state.resolved.profiles.work?.cdpPort).toBe(19013);
     expect(writeConfigFile).toHaveBeenCalled();
   });
 

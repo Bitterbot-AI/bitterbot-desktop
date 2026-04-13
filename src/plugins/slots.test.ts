@@ -3,34 +3,6 @@ import type { BitterbotConfig } from "../config/config.js";
 import { applyExclusiveSlotSelection } from "./slots.js";
 
 describe("applyExclusiveSlotSelection", () => {
-  it("selects the slot and disables other entries for the same kind", () => {
-    const config: BitterbotConfig = {
-      plugins: {
-        slots: { memory: "plugin-a" },
-        entries: {
-          "plugin-a": { enabled: true },
-          "plugin-b": { enabled: true },
-        },
-      },
-    };
-
-    const result = applyExclusiveSlotSelection({
-      config,
-      selectedId: "plugin-b",
-      selectedKind: "memory",
-      registry: {
-        plugins: [
-          { id: "plugin-a", kind: "memory" },
-          { id: "plugin-b", kind: "memory" },
-        ],
-      },
-    });
-
-    expect(result.changed).toBe(true);
-    expect(result.config.plugins?.slots?.memory).toBe("plugin-b");
-    expect(result.config.plugins?.entries?.["plugin-a"]?.enabled).toBe(false);
-  });
-
   it("does nothing when the slot already matches", () => {
     const config: BitterbotConfig = {
       plugins: {

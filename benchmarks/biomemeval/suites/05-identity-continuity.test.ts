@@ -83,12 +83,12 @@ describe("BioMemEval > Identity Continuity", () => {
       question: "Is the DB Postgres or MySQL?",
       priority: 0.9,
     });
-    const d2 = directives.createDirective({
+    directives.createDirective({
       type: "knowledge_gap",
       question: "What CI system is used?",
       priority: 0.7,
     });
-    const d3 = directives.createDirective({
+    directives.createDirective({
       type: "low_confidence",
       question: "Is the app on Kubernetes?",
       priority: 0.5,
@@ -121,14 +121,14 @@ describe("BioMemEval > Identity Continuity", () => {
   it("Scenario 3: Deduplication (3 pts)", () => {
     const s = new ScenarioScorer("Deduplication", 3);
 
-    const d1 = directives.createDirective({
+    directives.createDirective({
       type: "contradiction",
       question: "Is the production DB Postgres or MySQL?",
       priority: 0.5,
     });
 
     // Create same question again with higher priority
-    const d2 = directives.createDirective({
+    directives.createDirective({
       type: "contradiction",
       question: "Is the production DB Postgres or MySQL?",
       priority: 0.9,
@@ -225,7 +225,7 @@ describe("BioMemEval > Identity Continuity", () => {
     );
 
     // Create recent directive
-    const recent = directives.createDirective({
+    directives.createDirective({
       type: "knowledge_gap",
       question: "What's the deploy process?",
       priority: 0.7,

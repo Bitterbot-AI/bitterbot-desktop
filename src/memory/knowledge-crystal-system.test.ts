@@ -16,11 +16,11 @@ import type { DreamInsight, SynthesizeFn, EmbedBatchFn } from "./dream-types.js"
 import { ConsolidationEngine } from "./consolidation.js";
 import { rowToCrystal, crystalToRow, inferSemanticType, defaultGovernance } from "./crystal.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
-import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
+import { DreamEngine } from "./dream-engine.js";
 import { MemoryGovernance } from "./governance.js";
 import { HormonalStateManager } from "./hormonal.js";
 import { MemStore } from "./mem-store.js";
-import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
+import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
 import { MemoryPipeline } from "./pipeline.js";
 import { PromptOptimizationExperiment, calculateOpportunity } from "./prompt-optimization.js";
@@ -1026,7 +1026,7 @@ describe("Dream Engine", () => {
 
     it("uses error_driven strategy for skills with many errors", async () => {
       seedChunksForDream();
-      const { skillId, tracker } = seedSkillWithExecutions({
+      const { skillId: _skillId, tracker } = seedSkillWithExecutions({
         executions: 6,
         successRate: 0.33,
         errorType: "connection_timeout",

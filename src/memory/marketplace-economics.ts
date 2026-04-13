@@ -494,7 +494,7 @@ export class MarketplaceEconomics {
    * Count unique buyers for a skill (anti-sybil: distinct peer IDs only).
    */
   /** Count active bounties that this skill could fulfill. */
-  private countBountyMatches(skillCrystalId: string): number {
+  private countBountyMatches(_skillCrystalId: string): number {
     try {
       const row = this.db
         .prepare(`

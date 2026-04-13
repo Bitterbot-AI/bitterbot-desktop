@@ -123,15 +123,6 @@ async function writeFileIfMissing(filePath: string, content: string): Promise<bo
   }
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function resolveWorkspaceStatePath(dir: string): string {
   return path.join(dir, WORKSPACE_STATE_DIRNAME, WORKSPACE_STATE_FILENAME);
 }
@@ -186,22 +177,6 @@ export async function isWorkspaceOnboardingCompleted(dir: string): Promise<boole
   return (
     typeof state.onboardingCompletedAt === "string" && state.onboardingCompletedAt.trim().length > 0
   );
-}
-
-async function writeWorkspaceOnboardingState(
-  statePath: string,
-  state: WorkspaceOnboardingState,
-): Promise<void> {
-  await fs.mkdir(path.dirname(statePath), { recursive: true });
-  const payload = `${JSON.stringify(state, null, 2)}\n`;
-  const tmpPath = `${statePath}.tmp-${process.pid}-${Date.now().toString(36)}`;
-  try {
-    await fs.writeFile(tmpPath, payload, { encoding: "utf-8" });
-    await fs.rename(tmpPath, statePath);
-  } catch (err) {
-    await fs.unlink(tmpPath).catch(() => {});
-    throw err;
-  }
 }
 
 async function hasGitRepo(dir: string): Promise<boolean> {

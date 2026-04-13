@@ -46,7 +46,7 @@ export async function executeA2aTask(params: {
   config: BitterbotConfig;
   taskManager: A2aTaskManager;
 }): Promise<void> {
-  const { taskId, taskText, config, taskManager } = params;
+  const { taskId, taskText, config: _config, taskManager } = params;
   const childSessionKey = `agent:default:a2a-task:${crypto.randomUUID()}`;
   const idempotencyKey = crypto.randomUUID();
 

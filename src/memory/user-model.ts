@@ -7,8 +7,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { ensureColumn } from "./memory-schema.js";
-
 const log = createSubsystemLogger("memory/user-model");
 
 export type UserPreference = {

@@ -15,7 +15,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { CuriosityEngine } from "./curiosity-engine.js";
-import type { DreamInsight, DreamStats, DreamMode } from "./dream-types.js";
+import type { DreamInsight, DreamStats } from "./dream-types.js";
 import type { HormonalStateManager } from "./hormonal.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { OrchestratorBridgeLike } from "./skill-network-bridge.js";

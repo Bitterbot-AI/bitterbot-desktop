@@ -46,7 +46,7 @@ export interface BiologicalBridge {
 
 // ── Factory ──
 
-export async function createBiologicalBenchmarkBridge(opts: {
+export async function createBiologicalBenchmarkBridge(_opts: {
   model?: string;
 }): Promise<BiologicalBridge> {
   const runId = randomUUID().slice(0, 8);

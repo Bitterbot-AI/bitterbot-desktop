@@ -15,7 +15,7 @@ import type { ChannelOutboundAdapter, ChannelPlugin } from "./types.js";
 import type { BaseProbeResult, BaseTokenResolution } from "./types.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createTestRegistry } from "../../test-utils/channel-plugins.js";
-import { getChannelPluginCatalogEntry, listChannelPluginCatalogEntries } from "./catalog.js";
+import { listChannelPluginCatalogEntries } from "./catalog.js";
 import { resolveChannelConfigWrites } from "./config-writes.js";
 import {
   listDiscordDirectoryGroupsFromConfig,
@@ -73,17 +73,6 @@ describe("channel plugin registry", () => {
 });
 
 describe("channel plugin catalog", () => {
-  it("includes Microsoft Teams", () => {
-    const entry = getChannelPluginCatalogEntry("msteams");
-    expect(entry?.install.npmSpec).toBe("@bitterbot/msteams");
-    expect(entry?.meta.aliases).toContain("teams");
-  });
-
-  it("lists plugin catalog entries", () => {
-    const ids = listChannelPluginCatalogEntries().map((entry) => entry.id);
-    expect(ids).toContain("msteams");
-  });
-
   it("includes external catalog entries", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bitterbot-catalog-"));
     const catalogPath = path.join(dir, "catalog.json");

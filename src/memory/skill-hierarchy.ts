@@ -12,9 +12,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { SkillHierarchy, DomainProfile, MultiPerspectiveEmbedding } from "./crystal-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { cosineSimilarity, parseEmbedding } from "./internal.js";
+import { cosineSimilarity } from "./internal.js";
 
-const log = createSubsystemLogger("memory/skill-hierarchy");
+const _log = createSubsystemLogger("memory/skill-hierarchy");
 
 /**
  * Compute the 4-level hierarchy from multi-perspective embeddings.

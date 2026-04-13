@@ -9,7 +9,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { execFileSync } from "node:child_process";
-import { createHash, generateKeyPairSync, sign, randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
