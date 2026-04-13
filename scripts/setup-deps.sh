@@ -8,7 +8,7 @@
 
 set -e
 
-echo "🦞 Bitterbot dependency setup"
+echo "🤖 Bitterbot dependency setup"
 echo ""
 
 # ── Detect OS ──

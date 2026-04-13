@@ -5,7 +5,7 @@ read_when:
 title: "Bitterbot"
 ---
 
-# Bitterbot 🦞
+# Bitterbot 🤖
 
 <p align="center">
     <img

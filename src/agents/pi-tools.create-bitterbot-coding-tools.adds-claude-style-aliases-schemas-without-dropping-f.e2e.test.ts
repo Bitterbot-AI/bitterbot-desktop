@@ -132,13 +132,13 @@ describe("createBitterbotCodingTools", () => {
         path: "structured-write.js",
         content: [
           { type: "text", text: "const path = require('path');\n" },
-          { type: "input_text", text: "const root = path.join(process.env.HOME, 'clawd');\n" },
+          { type: "input_text", text: "const root = path.join(process.env.HOME, 'bitterbot');\n" },
         ],
       });
 
       const written = await fs.readFile(path.join(tmpDir, "structured-write.js"), "utf8");
       expect(written).toBe(
-        "const path = require('path');\nconst root = path.join(process.env.HOME, 'clawd');\n",
+        "const path = require('path');\nconst root = path.join(process.env.HOME, 'bitterbot');\n",
       );
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });

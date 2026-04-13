@@ -64,7 +64,7 @@ In `~/.bitterbot/bitterbot.json`:
   "canvasHost": {
     "enabled": true,
     "port": 18793,
-    "root": "/Users/you/clawd/canvas",
+    "root": "/Users/you/bitterbot/canvas",
     "liveReload": true
   },
   "gateway": {
@@ -87,10 +87,10 @@ Great for development!
 
 ### 1. Create HTML content
 
-Place files in the canvas root directory (default `~/clawd/canvas/`):
+Place files in the canvas root directory (default `~/bitterbot/canvas/`):
 
 ```bash
-cat > ~/clawd/canvas/my-game.html << 'HTML'
+cat > ~/bitterbot/canvas/my-game.html << 'HTML'
 <!DOCTYPE html>
 <html>
 <head><title>My Game</title></head>
@@ -183,8 +183,8 @@ If live reload isn't working:
 The canvas host serves from `/__bitterbot__/canvas/` prefix:
 
 ```
-http://<host>:18793/__bitterbot__/canvas/index.html  → ~/clawd/canvas/index.html
-http://<host>:18793/__bitterbot__/canvas/games/snake.html → ~/clawd/canvas/games/snake.html
+http://<host>:18793/__bitterbot__/canvas/index.html  → ~/bitterbot/canvas/index.html
+http://<host>:18793/__bitterbot__/canvas/games/snake.html → ~/bitterbot/canvas/games/snake.html
 ```
 
 The `/__bitterbot__/canvas/` prefix is defined by `CANVAS_HOST_PATH` constant.

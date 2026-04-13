@@ -44,7 +44,7 @@ bitterbot agents set-identity --name "Bitterbot" --emoji "🤖"
 Override fields explicitly:
 
 ```bash
-bitterbot agents set-identity --agent main --name "Bitterbot" --emoji "🦞" --avatar avatars/bitterbot.png
+bitterbot agents set-identity --agent main --name "Bitterbot" --emoji "🤖" --avatar avatars/bitterbot.png
 ```
 
 Config sample:
@@ -58,7 +58,7 @@ Config sample:
         identity: {
           name: "Bitterbot",
           theme: "assistant",
-          emoji: "🦞",
+          emoji: "🤖",
           avatar: "avatars/bitterbot.png",
         },
       },

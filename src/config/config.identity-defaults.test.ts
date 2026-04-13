@@ -88,7 +88,7 @@ describe("config identity defaults", () => {
       const cfg = await writeAndLoadConfig(home, {
         messages: {
           messagePrefix: "[bitterbot]",
-          responsePrefix: "🦞",
+          responsePrefix: "🤖",
         },
         channels: {
           whatsapp: { allowFrom: ["+15555550123"], textChunkLimit: 4444 },

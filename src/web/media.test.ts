@@ -419,7 +419,7 @@ describe("local media root guard", () => {
     const readFile = vi.fn(async () => Buffer.from("generated-media"));
 
     await expect(
-      loadWebMedia(path.join(stateDir, "workspace-clawdy", "tmp", "render.bin"), {
+      loadWebMedia(path.join(stateDir, "workspace-bitterbot", "tmp", "render.bin"), {
         maxBytes: 1024 * 1024,
         readFile,
       }),
@@ -430,7 +430,7 @@ describe("local media root guard", () => {
     const { resolveStateDir } = await import("../config/paths.js");
     const stateDir = resolveStateDir();
     const readFile = vi.fn(async () => Buffer.from("generated-media"));
-    const agentWorkspaceDir = path.join(stateDir, "workspace-clawdy");
+    const agentWorkspaceDir = path.join(stateDir, "workspace-bitterbot");
 
     await expect(
       loadWebMedia(path.join(agentWorkspaceDir, "tmp", "render.bin"), {

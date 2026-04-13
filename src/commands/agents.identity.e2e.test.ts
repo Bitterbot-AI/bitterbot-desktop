@@ -52,7 +52,7 @@ describe("agents set-identity command", () => {
     });
 
     await agentsSetIdentityCommand(
-      { agent: "main", name: "Bitterbot", emoji: "🦞", theme: "helpful companion" },
+      { agent: "main", name: "Bitterbot", emoji: "🤖", theme: "helpful companion" },
       runtime,
     );
 
@@ -63,7 +63,7 @@ describe("agents set-identity command", () => {
     const main = written.agents?.list?.find((entry: { id: string }) => entry.id === "main");
     expect(main?.identity).toEqual({
       name: "Bitterbot",
-      emoji: "🦞",
+      emoji: "🤖",
       theme: "helpful companion",
     });
   });

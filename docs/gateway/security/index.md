@@ -315,9 +315,9 @@ Assume “compromised” means: someone got into a room that can trigger the bot
 
 ## Lessons Learned (The Hard Way)
 
-### The `find ~` Incident 🦞
+### The `find ~` Incident 🤖
 
-On Day 1, a friendly tester asked Clawd to run `find ~` and share the output. Clawd happily dumped the entire home directory structure to a group chat.
+On Day 1, a friendly tester asked the agent to run `find ~` and share the output. It happily dumped the entire home directory structure to a group chat.
 
 **Lesson:** Even "innocent" requests can leak sensitive info. Directory structures reveal project names, tool configs, and system layout.
 
@@ -777,7 +777,7 @@ Commit the updated `.secrets.baseline` once it reflects the intended state.
 
 ```mermaid
 flowchart TB
-    A["Owner (Peter)"] -- Full trust --> B["AI (Clawd)"]
+    A["Owner (Peter)"] -- Full trust --> B["AI (Bitterbot)"]
     B -- Trust but verify --> C["Friends in allowlist"]
     C -- Limited trust --> D["Strangers"]
     D -- No trust --> E["Mario asking for find ~"]

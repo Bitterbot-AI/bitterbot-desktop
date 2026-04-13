@@ -497,7 +497,7 @@ function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readT
     `Bitterbot docs: ${docsPath}`,
     "Mirror: https://docs.bitterbot.ai",
     "Source: https://github.com/bitterbot/bitterbot",
-    "Community: https://discord.com/invite/clawd",
+    "Source: https://github.com/Bitterbot-AI/bitterbot-desktop",
     "Find new skills: https://github.com/bitterbot/bitterbot",
     "For Bitterbot behavior, commands, config, or architecture: consult local docs first.",
     "When diagnosing issues, run `bitterbot status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",

@@ -353,7 +353,7 @@ export async function launchBitterbotChrome(
         name: profile.name,
         color: profile.color,
       });
-      log.info(`🦞 bitterbot browser profile decorated (${profile.color})`);
+      log.info(`🤖 bitterbot browser profile decorated (${profile.color})`);
     } catch (err) {
       log.warn(`bitterbot browser profile decoration failed: ${String(err)}`);
     }
@@ -389,7 +389,7 @@ export async function launchBitterbotChrome(
   const pid = proc.pid ?? -1;
   const cdpHost = wslHostIp ?? "127.0.0.1";
   log.info(
-    `🦞 bitterbot browser started (${exe.kind}) profile "${profile.name}" on ${cdpHost}:${profile.cdpPort} (pid ${pid})`,
+    `🤖 bitterbot browser started (${exe.kind}) profile "${profile.name}" on ${cdpHost}:${profile.cdpPort} (pid ${pid})`,
   );
 
   return {
