@@ -332,7 +332,7 @@ The gateway runs on port 19001 (WebSocket + HTTP). Port 9100 is used for P2P pee
 
 ## Agent Interoperability
 
-- **[A2A Protocol](docs/a2a-protocol.md)** (Agent2Agent v1.0.0) — External agents (Salesforce, SAP, Google ADK) discover your agent at `/.well-known/agent.json` and delegate tasks via JSON-RPC. SSE streaming, SQLite persistence.
+- **[A2A Protocol](docs/marketplace/a2a-integration.md)** (Agent2Agent v1.0.0) — External agents (Salesforce, SAP, Google ADK) discover your agent at `/.well-known/agent.json` and delegate tasks via JSON-RPC. SSE streaming, SQLite persistence.
 - **[ACP](src/acp/)** — Agent Client Protocol server for IDE and external agent connections.
 
 ---
@@ -373,7 +373,7 @@ Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic fai
 | Tools            | [Browser, Canvas, Nodes, Cron, Skills](docs/tools/)                           |
 | Channels         | [Per-Channel Setup Guides](docs/channels/)                                    |
 | Wallet & Economy | [Agent Wallet](docs/wallet/) · [Skill Marketplace](docs/marketplace/)         |
-| A2A Protocol     | [Agent Interoperability Spec](docs/a2a-protocol.md)                           |
+| A2A Protocol     | [Agent Interoperability Spec](docs/marketplace/a2a-integration.md)            |
 | Security         | [DM Policies, Sandboxing, Tailscale](docs/security/)                          |
 | Troubleshooting  | [Common Issues + `bitterbot doctor`](docs/channels/troubleshooting.md)        |
 
