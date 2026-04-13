@@ -2,26 +2,21 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["unicorn", "typescript", "oxc"],
   "categories": {
-    "correctness": "warn",
-    "perf": "warn",
-    "suspicious": "warn"
+    "correctness": "error",
+    "perf": "error",
+    "suspicious": "error"
   },
   "rules": {
-    "curly": "warn",
     "eslint-plugin-unicorn/prefer-array-find": "off",
     "eslint/no-await-in-loop": "off",
     "eslint/no-new": "off",
-    "no-unused-vars": "warn",
     "oxc/no-accumulating-spread": "off",
     "oxc/no-async-endpoint-handlers": "off",
     "oxc/no-map-spread": "off",
-    "typescript/no-base-to-string": "warn",
-    "typescript/no-explicit-any": "warn",
     "typescript/no-extraneous-class": "off",
     "typescript/no-unnecessary-type-assertion": "off",
     "typescript/no-unsafe-type-assertion": "off",
     "typescript/tsconfig-error": "warn",
-    "typescript/restrict-template-expressions": "warn",
     "unicorn/consistent-function-scoping": "off",
     "unicorn/require-post-message-target-origin": "off"
   },
