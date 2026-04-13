@@ -164,7 +164,8 @@ export const dreamHandlers: GatewayRequestHandlers = {
       const hormones = mgr.hormonalManager?.getState() ?? null;
       const dreamCfg = mgr.cfg?.memory?.dream;
       const intervalMs = (dreamCfg?.intervalMinutes ?? 120) * 60 * 1000;
-      const lastCycleAt = status?.lastCycle?.completedAt ?? null;
+      const lastCycle = status?.lastCycle as { completedAt?: number } | undefined;
+      const lastCycleAt = lastCycle?.completedAt ?? null;
       const nextDreamEta = lastCycleAt ? lastCycleAt + intervalMs : null;
       respond(true, {
         ...status,
@@ -249,7 +250,7 @@ export const dreamHandlers: GatewayRequestHandlers = {
       const minConf = Number(params.minConfidence) || 0;
       let sql = `SELECT id, content, confidence, mode, importance_score, created_at
                  FROM dream_insights WHERE confidence >= ?`;
-      const args: unknown[] = [minConf];
+      const args: (string | number)[] = [minConf];
       if (mode) {
         sql += " AND mode = ?";
         args.push(mode);
@@ -533,10 +534,10 @@ export const dreamHandlers: GatewayRequestHandlers = {
         respond(true, []);
         return;
       }
-      const results = marketplace.search(params.query ?? "", {
-        category: params.category,
-        tags: params.tags,
-        sort: params.sort ?? "relevance",
+      const results = marketplace.search(String((params.query as string) ?? ""), {
+        category: params.category as string | undefined,
+        tags: params.tags as string[] | undefined,
+        sort: String((params.sort as string) ?? "relevance"),
         limit: Math.min(Number(params.limit) || 20, 50),
       });
       respond(true, results);

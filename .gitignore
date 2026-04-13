@@ -213,3 +213,5 @@ research/
 
 # Wallet seed data (should never be in repo)
 wallet-data.json
+benchmarks/longmemeval/data/longmemeval_s.json
+benchmarks/longmemeval/data/

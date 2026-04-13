@@ -118,10 +118,10 @@ function formatArg(a: unknown): string {
     try {
       return JSON.stringify(a, null, 2);
     } catch {
-      return String(a as string);
+      return JSON.stringify(a);
     }
   }
-  return String(a as string);
+  return typeof a === "string" ? a : String(a as string | number | boolean);
 }
 
 /**
