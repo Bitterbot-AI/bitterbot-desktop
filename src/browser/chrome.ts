@@ -233,7 +233,12 @@ export async function launchBitterbotChrome(
   const exe = resolveBrowserExecutable(resolved);
   if (!exe) {
     throw new Error(
-      "No supported browser found (Chrome/Brave/Edge/Chromium on macOS, Linux, or Windows).",
+      "No supported browser found (Chrome/Brave/Edge/Chromium on macOS, Linux, or Windows).\n\n" +
+        "Quick fixes:\n" +
+        "  1. Install Playwright Chromium:  npx playwright install chromium\n" +
+        "  2. Or install a system browser:  sudo apt install chromium-browser  (Linux)\n" +
+        "  3. Or set a custom path:         browser.executablePath in your config\n\n" +
+        "Docs: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/tools/browser.md",
     );
   }
 

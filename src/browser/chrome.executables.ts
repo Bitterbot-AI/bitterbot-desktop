@@ -678,7 +678,10 @@ export function resolveBrowserExecutableForPlatform(
 ): BrowserExecutable | null {
   if (resolved.executablePath) {
     if (!exists(resolved.executablePath)) {
-      throw new Error(`browser.executablePath not found: ${resolved.executablePath}`);
+      throw new Error(
+        `browser.executablePath not found: ${resolved.executablePath}\n` +
+          "Verify the path exists, or remove the setting to auto-detect a system browser.",
+      );
     }
     return { kind: "custom", path: resolved.executablePath };
   }
