@@ -161,12 +161,20 @@ async function handleMissingSandboxImage(
 
   let built = false;
   if (params.buildScript) {
-    const build = await prompter.confirmSkipInNonInteractive({
-      message: `Build ${params.kind} sandbox image now?`,
-      initialValue: true,
-    });
-    if (build) {
-      built = await runSandboxScript(params.buildScript, runtime);
+    const scriptInfo = resolveSandboxScript(params.buildScript);
+    if (!scriptInfo) {
+      note(
+        `Build script ${params.buildScript} not found. Run from the repo root or build the image manually.`,
+        "Sandbox",
+      );
+    } else {
+      const build = await prompter.confirmSkipInNonInteractive({
+        message: `Build ${params.kind} sandbox image now?`,
+        initialValue: true,
+      });
+      if (build) {
+        built = await runSandboxScript(params.buildScript, runtime);
+      }
     }
   }
 

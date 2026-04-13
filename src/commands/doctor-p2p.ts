@@ -13,6 +13,7 @@
  *   - Live orchestrator state → HTTP /api/stats when gateway is running
  */
 
+import fs from "node:fs";
 import type { BitterbotConfig } from "../config/config.js";
 import { resolveBootstrapDns } from "../infra/dns-bootstrap.js";
 import {
@@ -115,7 +116,24 @@ export async function runP2pNetworkChecks(params: {
   // ── Binary availability ──
   const probe = probeOrchestratorBinary(config.p2p);
   if (probe.found) {
-    if (probe.source === "debug") {
+    // Verify the binary is actually executable, not just present on disk.
+    let isExecutable = true;
+    if (process.platform !== "win32") {
+      try {
+        fs.accessSync(probe.path, fs.constants.X_OK);
+      } catch {
+        isExecutable = false;
+      }
+    }
+
+    if (!isExecutable) {
+      results.push(
+        warn(
+          `Orchestrator found at ${probe.path} but is not executable.\n` +
+            `  Fix: chmod +x ${probe.path}`,
+        ),
+      );
+    } else if (probe.source === "debug") {
       results.push(
         warn(
           `Orchestrator: ${describeSource(probe.source)} — run \`cargo build --release --manifest-path orchestrator/Cargo.toml\` for production`,

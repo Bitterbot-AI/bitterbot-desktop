@@ -126,7 +126,10 @@ export async function doctorCommand(
       authConfig: cfg.gateway?.auth,
       tailscaleMode: cfg.gateway?.tailscale?.mode ?? "off",
     });
-    const needsToken = auth.mode !== "password" && (auth.mode !== "token" || !auth.token);
+    const needsToken =
+      auth.mode !== "password" &&
+      auth.mode !== "trusted-proxy" &&
+      (auth.mode !== "token" || !auth.token);
     if (needsToken) {
       note(
         "Gateway auth is off or missing a token. Token auth is now the recommended default (including loopback).",
@@ -177,7 +180,14 @@ export async function doctorCommand(
       defaultProvider: DEFAULT_PROVIDER,
     });
     if (!hooksModelRef) {
-      note(`- hooks.gmail.model "${cfg.hooks.gmail.model}" could not be resolved`, "Hooks");
+      note(
+        [
+          `- hooks.gmail.model "${cfg.hooks.gmail.model}" could not be resolved.`,
+          `  Fix: set a valid model ref or remove hooks.gmail.model from your config.`,
+          `  Example: ${formatCliCommand('bitterbot config set hooks.gmail.model "anthropic/claude-sonnet-4-5-20250514"')}`,
+        ].join("\n"),
+        "Hooks",
+      );
     } else {
       const { provider: defaultProvider, model: defaultModel } = resolveConfiguredModelRef({
         cfg,

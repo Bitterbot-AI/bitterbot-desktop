@@ -395,8 +395,29 @@ export async function finalizeOnboardingWizard(
     );
   }
 
-  const webSearchKey = (nextConfig.tools?.web?.search?.apiKey ?? "").trim();
-  const webSearchEnv = (process.env.BRAVE_API_KEY ?? "").trim();
+  const searchProvider = nextConfig.tools?.web?.search?.provider ?? "brave";
+  const searchCfg = nextConfig.tools?.web?.search;
+  const providerEnvVars: Record<string, string> = {
+    brave: "BRAVE_API_KEY",
+    perplexity: "PERPLEXITY_API_KEY",
+    grok: "XAI_API_KEY",
+    tavily: "TAVILY_API_KEY",
+  };
+  const envVar = providerEnvVars[searchProvider] ?? "BRAVE_API_KEY";
+  const providerLabels: Record<string, string> = {
+    brave: "Brave Search",
+    perplexity: "Perplexity",
+    grok: "Grok (xAI)",
+    tavily: "Tavily",
+  };
+  const providerLabel = providerLabels[searchProvider] ?? searchProvider;
+  const configKey =
+    searchProvider === "brave"
+      ? searchCfg?.apiKey
+      : (searchCfg as Record<string, Record<string, unknown>> | undefined)?.[searchProvider]
+          ?.apiKey;
+  const webSearchKey = (typeof configKey === "string" ? configKey : "").trim();
+  const webSearchEnv = (process.env[envVar] ?? "").trim();
   const hasWebSearchKey = Boolean(webSearchKey || webSearchEnv);
   await prompter.note(
     hasWebSearchKey
@@ -404,20 +425,20 @@ export async function finalizeOnboardingWizard(
           "Web search is enabled, so your agent can look things up online when needed.",
           "",
           webSearchKey
-            ? "API key: stored in config (tools.web.search.apiKey)."
-            : "API key: provided via BRAVE_API_KEY env var (Gateway environment).",
+            ? `API key: stored in config (provider: ${providerLabel}).`
+            : `API key: provided via ${envVar} env var (Gateway environment).`,
           "Docs: https://docs.bitterbot.ai/tools/web",
         ].join("\n")
       : [
           "If you want your agent to be able to search the web, you’ll need an API key.",
           "",
-          "Bitterbot uses Brave Search for the `web_search` tool. Without a Brave Search API key, web search won’t work.",
+          `Bitterbot supports Brave Search, Perplexity, Grok (xAI), and Tavily for the \`web_search\` tool.`,
           "",
           "Set it up interactively:",
           `- Run: ${formatCliCommand("bitterbot configure --section web")}`,
-          "- Enable web_search and paste your Brave Search API key",
+          "- Choose a provider and paste your API key",
           "",
-          "Alternative: set BRAVE_API_KEY in the Gateway environment (no config changes).",
+          `Alternative: set ${envVar} in the Gateway environment (no config changes).`,
           "Docs: https://docs.bitterbot.ai/tools/web",
         ].join("\n"),
     "Web search (optional)",

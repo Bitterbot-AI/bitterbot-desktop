@@ -125,18 +125,50 @@ async function promptChannelMode(runtime: RuntimeEnv): Promise<ChannelsWizardMod
   ) as ChannelsWizardMode;
 }
 
+type SearchProviderChoice = "brave" | "perplexity" | "grok" | "tavily";
+
+const SEARCH_PROVIDER_META: Record<
+  SearchProviderChoice,
+  { label: string; hint: string; envVar: string; keyPlaceholder: string }
+> = {
+  brave: {
+    label: "Brave Search",
+    hint: "Default. Requires BRAVE_API_KEY",
+    envVar: "BRAVE_API_KEY",
+    keyPlaceholder: "BSA...",
+  },
+  perplexity: {
+    label: "Perplexity",
+    hint: "Uses PERPLEXITY_API_KEY or OPENROUTER_API_KEY",
+    envVar: "PERPLEXITY_API_KEY",
+    keyPlaceholder: "pplx-...",
+  },
+  grok: {
+    label: "Grok (xAI)",
+    hint: "Uses XAI_API_KEY",
+    envVar: "XAI_API_KEY",
+    keyPlaceholder: "xai-...",
+  },
+  tavily: {
+    label: "Tavily",
+    hint: "Uses TAVILY_API_KEY",
+    envVar: "TAVILY_API_KEY",
+    keyPlaceholder: "tvly-...",
+  },
+};
+
 async function promptWebToolsConfig(
   nextConfig: BitterbotConfig,
   runtime: RuntimeEnv,
 ): Promise<BitterbotConfig> {
   const existingSearch = nextConfig.tools?.web?.search;
   const existingFetch = nextConfig.tools?.web?.fetch;
-  const hasSearchKey = Boolean(existingSearch?.apiKey);
+  const existingProvider = existingSearch?.provider ?? "brave";
 
   note(
     [
       "Web search lets your agent look things up online using the `web_search` tool.",
-      "It requires a Brave Search API key (you can store it in the config or set BRAVE_API_KEY in the Gateway environment).",
+      "Supported providers: Brave Search, Perplexity, Grok (xAI), and Tavily.",
       "Docs: https://docs.bitterbot.ai/tools/web",
     ].join("\n"),
     "Web search",
@@ -144,8 +176,8 @@ async function promptWebToolsConfig(
 
   const enableSearch = guardCancel(
     await confirm({
-      message: "Enable web_search (Brave Search)?",
-      initialValue: existingSearch?.enabled ?? hasSearchKey,
+      message: "Enable web_search?",
+      initialValue: existingSearch?.enabled ?? Boolean(existingSearch?.apiKey),
     }),
     runtime,
   );
@@ -156,23 +188,59 @@ async function promptWebToolsConfig(
   };
 
   if (enableSearch) {
+    const provider = guardCancel(
+      await select<SearchProviderChoice>({
+        message: "Search provider",
+        options: Object.entries(SEARCH_PROVIDER_META).map(([value, meta]) => ({
+          value: value as SearchProviderChoice,
+          label: meta.label,
+          hint: meta.hint,
+        })),
+        initialValue: existingProvider as SearchProviderChoice,
+      }),
+      runtime,
+    );
+    nextSearch = { ...nextSearch, provider };
+
+    const meta = SEARCH_PROVIDER_META[provider];
+    const hasExistingKey =
+      provider === "brave"
+        ? Boolean(existingSearch?.apiKey)
+        : Boolean(
+            (existingSearch as Record<string, Record<string, unknown>> | undefined)?.[provider]
+              ?.apiKey,
+          );
+
     const keyInput = guardCancel(
       await text({
-        message: hasSearchKey
-          ? "Brave Search API key (leave blank to keep current or use BRAVE_API_KEY)"
-          : "Brave Search API key (paste it here; leave blank to use BRAVE_API_KEY)",
-        placeholder: hasSearchKey ? "Leave blank to keep current" : "BSA...",
+        message: hasExistingKey
+          ? `${meta.label} API key (leave blank to keep current or use ${meta.envVar})`
+          : `${meta.label} API key (paste it here; leave blank to use ${meta.envVar})`,
+        placeholder: hasExistingKey ? "Leave blank to keep current" : meta.keyPlaceholder,
       }),
       runtime,
     );
     const key = String(keyInput ?? "").trim();
+
     if (key) {
-      nextSearch = { ...nextSearch, apiKey: key };
-    } else if (!hasSearchKey) {
+      if (provider === "brave") {
+        nextSearch = { ...nextSearch, apiKey: key };
+      } else {
+        nextSearch = {
+          ...nextSearch,
+          [provider]: {
+            ...((nextSearch as Record<string, unknown>)[provider] as
+              | Record<string, unknown>
+              | undefined),
+            apiKey: key,
+          },
+        };
+      }
+    } else if (!hasExistingKey) {
       note(
         [
-          "No key stored yet, so web_search will stay unavailable.",
-          "Store a key here or set BRAVE_API_KEY in the Gateway environment.",
+          `No key stored yet, so web_search (${meta.label}) will stay unavailable.`,
+          `Store a key here or set ${meta.envVar} in the Gateway environment.`,
           "Docs: https://docs.bitterbot.ai/tools/web",
         ].join("\n"),
         "Web search",

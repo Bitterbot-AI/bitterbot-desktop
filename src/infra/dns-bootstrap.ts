@@ -17,7 +17,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 const log = createSubsystemLogger("p2p/dns-bootstrap");
 
 const DNSADDR_PREFIX = "dnsaddr=";
-const _DNS_TIMEOUT_MS = 10_000;
+const DNS_TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1_000;
 
@@ -36,7 +36,15 @@ export async function resolveBootstrapDns(domain: string): Promise<string[]> {
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const records = await dns.resolveTxt(hostname);
+      const records = await Promise.race([
+        dns.resolveTxt(hostname),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`DNS lookup timed out after ${DNS_TIMEOUT_MS}ms`)),
+            DNS_TIMEOUT_MS,
+          ),
+        ),
+      ]);
       const multiaddrs: string[] = [];
 
       for (const record of records) {
