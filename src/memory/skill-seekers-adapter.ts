@@ -37,7 +37,9 @@ import type { BitterbotConfig } from "../config/config.js";
 import type { SkillSeekersConfig } from "../config/types.skill-seekers.js";
 import { ingestSkill } from "../agents/skills/ingest.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { CONFIG_DIR } from "../utils.js";
 import { classifyNativeSource, runNativeScraper } from "./skill-seekers-native.js";
+import { reconcileEnvelope } from "./skill-seekers-reconciler.js";
 
 const log = createSubsystemLogger("skill-seekers");
 const execFileAsync = promisify(execFile);
@@ -422,7 +424,7 @@ export class SkillSeekersAdapter {
         ...(marketplaceTagged ? ["marketplace-demand"] : []),
       ];
 
-      const envelope = createEnvelope(parsed.name, parsed.content, this.keypair, {
+      let envelope = createEnvelope(parsed.name, parsed.content, this.keypair, {
         category: source.type ?? source.marketplace?.category ?? inferCategory(source.url),
         tags,
         sourceUrl: source.url,
@@ -430,8 +432,61 @@ export class SkillSeekersAdapter {
         provenance,
       });
 
+      // PLAN-11 Gap 3: reconcile against existing scraped skills with the
+      // same stable_skill_id before ingesting. Merges provenance forward,
+      // skips redundant scrapes, replaces weaker versions, or writes as a
+      // variant when quality is comparable.
+      const quarantineDir =
+        this.bitterbotConfig?.skills?.p2p?.quarantineDir ??
+        path.join(CONFIG_DIR, "skills-incoming");
+      const skillsDir = path.join(CONFIG_DIR, "skills");
+      const skillMdBytes = Buffer.byteLength(parsed.content, "utf8");
+      const decision = await reconcileEnvelope(envelope, skillMdBytes, {
+        skillsDir,
+        quarantineDir,
+      });
+
       // Ingest through existing pipeline
       const ingested: IngestResult[] = [];
+      if (decision.action === "skip-incoming") {
+        log.info(
+          `Skill Seekers skipped "${parsed.name}" (reconciled): ${decision.reason}. Kept existing "${decision.existingName}".`,
+        );
+        return {
+          ...base,
+          ok: true,
+          envelopes: [envelope],
+          ingested: [
+            {
+              ok: false,
+              action: "rejected",
+              reason: `reconciled:skip-incoming:${decision.reason}`,
+            },
+          ],
+          conflicts,
+          elapsedMs: Date.now() - start,
+          transport,
+        };
+      }
+      if (decision.action === "replace") {
+        // Attach merged provenance so downstream ingest writes the richer history.
+        envelope = { ...envelope, provenance: decision.mergedProvenance };
+      }
+      if (decision.action === "write-as-variant") {
+        // Suffix the name + stable_skill_id so it lands beside the existing one.
+        const variantName = `${parsed.name}-${decision.suffix}`;
+        envelope = {
+          ...envelope,
+          name: variantName,
+          stable_skill_id: envelope.stable_skill_id
+            ? `${envelope.stable_skill_id}-${decision.suffix}`
+            : undefined,
+          tags: [...(envelope.tags ?? []), `variant:${decision.suffix}`],
+        };
+        log.info(
+          `Skill Seekers keeping "${variantName}" as variant (reconciled): ${decision.reason}`,
+        );
+      }
       if (this.bitterbotConfig) {
         const result = await ingestSkill({
           envelope,
@@ -439,8 +494,14 @@ export class SkillSeekersAdapter {
         });
         ingested.push(result);
         this.skillsGeneratedThisCycle++;
+        const reconcileNote =
+          decision.action === "replace"
+            ? ` (replaced "${decision.existingName}")`
+            : decision.action === "write-as-variant"
+              ? ` (variant of existing)`
+              : "";
         log.info(
-          `Skill Seekers ingested "${parsed.name}" from ${source.url} via ${transport}: ${result.action}`,
+          `Skill Seekers ingested "${envelope.name}" from ${source.url} via ${transport}: ${result.action}${reconcileNote}`,
         );
       }
 
