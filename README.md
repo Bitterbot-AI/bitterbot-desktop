@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="docs/public/bitterbot-hero.gif" alt="Bitterbot demo — chat interface and Dream Engine" width="880">
-</p>
-
-<p align="center">
   <img src="docs/public/Bitterbot_logo.svg" alt="Bitterbot logo" width="72">
 </p>
 
@@ -24,6 +20,10 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A5%2022-c084fc?style=flat-square&logo=node.js&logoColor=white" alt="Node >= 22">
   <img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-9333ea?style=flat-square" alt="Platform">
   <a href="https://x.com/Bitterbot_AI"><img src="https://img.shields.io/badge/@Bitterbot__AI-000000?style=flat-square&logo=x&logoColor=white" alt="X / Twitter"></a>
+</p>
+
+<p align="center">
+  <img src="docs/public/bitterbot-hero.gif" alt="Bitterbot demo — chat interface and Dream Engine" width="880">
 </p>
 
 Most AI agents are stateless wrappers around an LLM API. Close the terminal, and they forget you exist.
