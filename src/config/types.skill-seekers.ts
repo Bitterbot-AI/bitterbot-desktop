@@ -10,7 +10,7 @@ export type SkillSeekersConfig = {
   enabled?: boolean;
   /** Max skills to generate per dream cycle. Default: 3. */
   maxSkillsPerCycle?: number;
-  /** Max concurrent scrape operations. Default: 1. */
+  /** Max concurrent scrape operations. Default: 2. */
   maxConcurrentScrapes?: number;
   /** Allowed source domains (empty = allow all). */
   allowedDomains?: string[];
@@ -18,4 +18,21 @@ export type SkillSeekersConfig = {
   blockedDomains?: string[];
   /** TTL in days for auto-generated skills. Default: 30. */
   defaultTtlDays?: number;
+  /**
+   * Optional MCP server endpoint (HTTP or stdio command) to use instead of the CLI.
+   * Useful for containerized/remote deployments where the Python CLI isn't installed locally.
+   */
+  mcpEndpoint?: string;
+  /**
+   * When true, fillKnowledgeGap will use the configured web_search tool to find
+   * authoritative docs URLs for gaps that don't contain a URL directly.
+   * Requires tools.web.search to be enabled. Default: true when search is enabled.
+   */
+  useWebSearchFallback?: boolean;
+  /**
+   * Allow market-demand-driven skill generation. When a curiosity target of
+   * type "market_demand" is processed, the adapter tags the resulting envelope
+   * with marketplace metadata so revenue can be attributed. Default: true.
+   */
+  enableMarketplaceDemand?: boolean;
 };

@@ -5,21 +5,42 @@
  * Converts external documentation sources into Bitterbot SkillEnvelopes via the
  * existing trust/quality pipeline. Skills enter as untrusted (synthetic peer)
  * and are promoted through execution feedback.
+ *
+ * Transports (priority order):
+ *   1. Native TypeScript scraper (docs + GitHub) — zero-install, always available
+ *   2. Configured MCP endpoint (HTTP POST) — containerized/remote setups
+ *   3. Local `skill-seekers` CLI binary — covers 17+ source types
+ *   4. Python module fallback (`python3 -m skill_seekers`) — same coverage as CLI
+ *
+ * Source-type routing: the native scraper handles HTML docs and GitHub repos.
+ * For PDFs, video transcripts, Jupyter notebooks, Confluence, Notion, and
+ * other complex sources, the adapter falls through to the upstream transports.
+ * See `classifyNativeSource()` in skill-seekers-native.ts for routing.
+ *
+ * Feedback loops this adapter participates in:
+ *   - Curiosity: knowledge_gap targets drive exploration-mode scraping
+ *   - Marketplace: market_demand targets are tagged so revenue can be attributed
+ *   - Epistemic directives: high-severity conflicts in scraped skills are promoted
+ *     to directives, creating new curiosity targets that close the loop
+ *   - TTL: auto-generated skills expire; the memory lifecycle can prune stale ones
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import type { SkillEnvelope, IngestResult } from "../agents/skills/ingest.js";
 import type { BitterbotConfig } from "../config/config.js";
 import type { SkillSeekersConfig } from "../config/types.skill-seekers.js";
 import { ingestSkill } from "../agents/skills/ingest.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { classifyNativeSource, runNativeScraper } from "./skill-seekers-native.js";
 
 const log = createSubsystemLogger("skill-seekers");
+const execFileAsync = promisify(execFile);
 
 // ── Constants ──
 
@@ -29,7 +50,12 @@ const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---/;
 // Ed25519 SPKI DER prefix for raw 32-byte public keys
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 const DEFAULT_MAX_SKILLS_PER_CYCLE = 3;
+const DEFAULT_MAX_CONCURRENT = 2;
 const DEFAULT_TTL_DAYS = 30;
+const MS_PER_DAY = 86_400_000;
+const CLI_VERSION_TIMEOUT_MS = 5_000;
+const CLI_RUN_TIMEOUT_MS = 120_000;
+const MCP_HTTP_TIMEOUT_MS = 150_000;
 
 // ── Ed25519 keypair for signing envelopes ──
 
@@ -96,6 +122,15 @@ export type SkillSeekersSource = {
   type?: "docs" | "github" | "pdf" | "video" | "codebase";
   name?: string;
   description?: string;
+  /** Optional marketplace context — when present, envelope is tagged for revenue attribution. */
+  marketplace?: {
+    category: string;
+    expectedRevenueUsdc?: number;
+    demandScore?: number;
+    opportunityId?: string;
+  };
+  /** Free-form provenance fields that flow through to .provenance.json. */
+  provenance?: Record<string, unknown>;
 };
 
 export type SkillSeekersResult = {
@@ -105,6 +140,16 @@ export type SkillSeekersResult = {
   conflicts: SkillSeekersConflict[];
   error?: string;
   sourceUrl: string;
+  elapsedMs: number;
+  /** Transport used to produce this result (for observability). */
+  transport?: "native" | "mcp" | "cli" | "python";
+};
+
+export type SkillSeekersBatchResult = {
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: SkillSeekersResult[];
   elapsedMs: number;
 };
 
@@ -116,7 +161,7 @@ export type SkillSeekersConflict = {
   suggestion: string | null;
 };
 
-// ── Epistemic directive engine interface (lazy-injected) ──
+// ── Dependency interfaces (lazy-injected) ──
 
 type EpistemicDirectiveEngineLike = {
   createDirective(params: {
@@ -126,6 +171,20 @@ type EpistemicDirectiveEngineLike = {
     priority?: number;
     sourceEntityIds?: string[];
   }): unknown;
+};
+
+type MarketplaceIntelligenceLike = {
+  analyzeOpportunities(limit?: number): Array<{
+    category: string;
+    demandScore: number;
+    readinessScore: number;
+    expectedRevenueUsdc: number;
+    targetDescription: string;
+  }>;
+};
+
+type WebSearchLike = {
+  findAuthoritativeUrl(query: string, hints?: { category?: string }): Promise<string | null>;
 };
 
 // ── Adapter ──
@@ -140,11 +199,19 @@ export class SkillSeekersAdapter {
     enabled: boolean;
     allowedDomains: string[];
     blockedDomains: string[];
+    mcpEndpoint: string | null;
+    useWebSearchFallback: boolean;
+    enableMarketplaceDemand: boolean;
   };
   private epistemicDirectiveEngine: EpistemicDirectiveEngineLike | null = null;
+  private marketplaceIntelligence: MarketplaceIntelligenceLike | null = null;
+  private webSearch: WebSearchLike | null = null;
   private bitterbotConfig: BitterbotConfig | null = null;
   private skillsGeneratedThisCycle = 0;
-  private available: boolean | null = null;
+  private transportProbe: {
+    kind: "native" | "mcp" | "cli" | "python";
+    probedAt: number;
+  } | null = null;
 
   constructor(db: DatabaseSync, config?: SkillSeekersConfig) {
     this.db = db;
@@ -153,10 +220,13 @@ export class SkillSeekersAdapter {
     this.config = {
       enabled: config?.enabled !== false,
       maxSkillsPerCycle: config?.maxSkillsPerCycle ?? DEFAULT_MAX_SKILLS_PER_CYCLE,
-      maxConcurrentScrapes: config?.maxConcurrentScrapes ?? 1,
+      maxConcurrentScrapes: config?.maxConcurrentScrapes ?? DEFAULT_MAX_CONCURRENT,
       allowedDomains: config?.allowedDomains ?? [],
       blockedDomains: config?.blockedDomains ?? [],
       defaultTtlDays: config?.defaultTtlDays ?? DEFAULT_TTL_DAYS,
+      mcpEndpoint: config?.mcpEndpoint ?? null,
+      useWebSearchFallback: config?.useWebSearchFallback ?? true,
+      enableMarketplaceDemand: config?.enableMarketplaceDemand ?? true,
     };
     this.ensureSyntheticPeer();
   }
@@ -165,6 +235,14 @@ export class SkillSeekersAdapter {
 
   setEpistemicDirectiveEngine(engine: EpistemicDirectiveEngineLike | null): void {
     this.epistemicDirectiveEngine = engine;
+  }
+
+  setMarketplaceIntelligence(mi: MarketplaceIntelligenceLike | null): void {
+    this.marketplaceIntelligence = mi;
+  }
+
+  setWebSearch(search: WebSearchLike | null): void {
+    this.webSearch = search;
   }
 
   setBitterbotConfig(cfg: BitterbotConfig): void {
@@ -176,20 +254,70 @@ export class SkillSeekersAdapter {
     this.skillsGeneratedThisCycle = 0;
   }
 
+  /** How many skills generated this cycle (for observability / dream engine pacing). */
+  skillsThisCycle(): number {
+    return this.skillsGeneratedThisCycle;
+  }
+
+  /** Remaining budget this cycle. */
+  budgetRemaining(): number {
+    return Math.max(0, this.config.maxSkillsPerCycle - this.skillsGeneratedThisCycle);
+  }
+
   // ── Availability detection ──
 
   async isAvailable(): Promise<boolean> {
     if (!this.config.enabled) {
       return false;
     }
-    if (this.available !== null) {
-      return this.available;
+    // Native is always available (pure TS), so when enabled, at least the
+    // common-case path always works. Upstream detection is best-effort and
+    // only matters for source types native can't handle.
+    return true;
+  }
+
+  /**
+   * Pick the best transport for a specific source URL.
+   *
+   *   1. If the URL is a docs site or GitHub repo, prefer the native scraper
+   *      (zero install, reuses our SSRF-hardened fetch + Mozilla Readability).
+   *   2. Otherwise probe upstream transports (MCP → CLI → Python module) for
+   *      PDF / video / Jupyter / Confluence / Notion / codebase support.
+   *
+   * Upstream probes are cached for 5 minutes to avoid re-probing during bursts.
+   */
+  private async resolveTransport(
+    sourceUrl: string,
+  ): Promise<"native" | "mcp" | "cli" | "python" | null> {
+    // Step 1: native scraper for URLs it can handle
+    if (classifyNativeSource(sourceUrl) !== null) {
+      return "native";
     }
-    this.available = detectSkillSeekersCli();
-    if (this.available) {
+
+    // Step 2: upstream probe (cached)
+    const now = Date.now();
+    if (this.transportProbe && now - this.transportProbe.probedAt < 5 * 60_000) {
+      return this.transportProbe.kind;
+    }
+
+    if (this.config.mcpEndpoint) {
+      if (await probeMcpEndpoint(this.config.mcpEndpoint)) {
+        this.transportProbe = { kind: "mcp", probedAt: now };
+        log.info(`Skill Seekers MCP endpoint reachable: ${this.config.mcpEndpoint}`);
+        return "mcp";
+      }
+    }
+    if (probeCliBinary("skill-seekers")) {
+      this.transportProbe = { kind: "cli", probedAt: now };
       log.info("Skill Seekers CLI detected");
+      return "cli";
     }
-    return this.available;
+    if (probePythonModule()) {
+      this.transportProbe = { kind: "python", probedAt: now };
+      log.info("Skill Seekers Python module detected");
+      return "python";
+    }
+    return null;
   }
 
   // ── Core: ingest from URL source ──
@@ -201,13 +329,16 @@ export class SkillSeekersAdapter {
       sourceUrl: source.url,
     };
 
-    if (!(await this.isAvailable())) {
+    const transport = await this.resolveTransport(source.url);
+    if (!transport) {
       return {
         ...base,
         ok: false,
         envelopes: [],
         ingested: [],
-        error: "skill-seekers not installed",
+        error:
+          "skill-seekers transport not available for this source type " +
+          "(install `skill-seekers` CLI or configure skills.skillSeekers.mcpEndpoint for PDF/video/Jupyter/Confluence/Notion URLs)",
         elapsedMs: Date.now() - start,
       };
     }
@@ -236,9 +367,9 @@ export class SkillSeekersAdapter {
 
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ss-"));
     try {
-      // Run skill-seekers CLI
+      // Run skill-seekers via chosen transport
       const outputDir = path.join(tmpDir, "output");
-      runSkillSeekersCli(source, outputDir);
+      await runSkillSeekers(source, outputDir, transport, this.config.mcpEndpoint);
 
       // Find the generated skill directory
       const skillDir = findSkillDir(outputDir);
@@ -250,6 +381,7 @@ export class SkillSeekersAdapter {
           ingested: [],
           error: "no skill output generated",
           elapsedMs: Date.now() - start,
+          transport,
         };
       }
 
@@ -263,17 +395,39 @@ export class SkillSeekersAdapter {
           ingested: [],
           error: "failed to parse SKILL.md",
           elapsedMs: Date.now() - start,
+          transport,
         };
       }
 
       // Parse conflicts if available
       const conflicts = parseConflicts(skillDir);
 
-      // Create SkillEnvelope with valid Ed25519 signature
+      // Build envelope with TTL + marketplace provenance
+      const expiresAt = Date.now() + this.config.defaultTtlDays * MS_PER_DAY;
+      const marketplaceTagged = this.config.enableMarketplaceDemand && source.marketplace;
+      const provenance: Record<string, unknown> = {
+        ...source.provenance,
+        source_url: source.url,
+        ttl_days: this.config.defaultTtlDays,
+        transport,
+      };
+      if (marketplaceTagged) {
+        provenance.marketplace_opportunity = source.marketplace;
+      }
+
+      const tags = [
+        "external-generated",
+        "auto-research",
+        `transport:${transport}`,
+        ...(marketplaceTagged ? ["marketplace-demand"] : []),
+      ];
+
       const envelope = createEnvelope(parsed.name, parsed.content, this.keypair, {
-        category: source.type ?? inferCategory(source.url),
-        tags: ["external-generated", "auto-research"],
+        category: source.type ?? source.marketplace?.category ?? inferCategory(source.url),
+        tags,
         sourceUrl: source.url,
+        expiresAt,
+        provenance,
       });
 
       // Ingest through existing pipeline
@@ -285,7 +439,9 @@ export class SkillSeekersAdapter {
         });
         ingested.push(result);
         this.skillsGeneratedThisCycle++;
-        log.info(`Skill Seekers ingested "${parsed.name}" from ${source.url}: ${result.action}`);
+        log.info(
+          `Skill Seekers ingested "${parsed.name}" from ${source.url} via ${transport}: ${result.action}`,
+        );
       }
 
       // Convert high-severity conflicts to epistemic directives
@@ -298,6 +454,7 @@ export class SkillSeekersAdapter {
         ingested,
         conflicts,
         elapsedMs: Date.now() - start,
+        transport,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -309,6 +466,7 @@ export class SkillSeekersAdapter {
         ingested: [],
         error: msg,
         elapsedMs: Date.now() - start,
+        transport,
       };
     } finally {
       // Cleanup tmp
@@ -320,27 +478,132 @@ export class SkillSeekersAdapter {
     }
   }
 
+  // ── Batch ingestion with concurrency ──
+
+  /**
+   * Ingest multiple sources with a concurrency cap. Honors maxSkillsPerCycle
+   * across the entire batch — sources past the cap return rate_limit_exceeded
+   * without spawning a subprocess.
+   */
+  async ingestBatch(sources: SkillSeekersSource[]): Promise<SkillSeekersBatchResult> {
+    const start = Date.now();
+    const results: SkillSeekersResult[] = [];
+    const queue = [...sources];
+    const concurrency = Math.max(1, this.config.maxConcurrentScrapes);
+
+    const worker = async (): Promise<void> => {
+      while (queue.length > 0) {
+        const source = queue.shift();
+        if (!source) {
+          return;
+        }
+        if (this.skillsGeneratedThisCycle >= this.config.maxSkillsPerCycle) {
+          results.push({
+            ok: false,
+            envelopes: [],
+            ingested: [],
+            conflicts: [],
+            sourceUrl: source.url,
+            error: "rate_limit_exceeded",
+            elapsedMs: 0,
+          });
+          continue;
+        }
+        results.push(await this.ingestFromSource(source));
+      }
+    };
+
+    const workers = Array.from({ length: Math.min(concurrency, sources.length) }, () => worker());
+    await Promise.all(workers);
+
+    const succeeded = results.filter((r) => r.ok).length;
+    return {
+      total: sources.length,
+      succeeded,
+      failed: sources.length - succeeded,
+      results,
+      elapsedMs: Date.now() - start,
+    };
+  }
+
   // ── Knowledge gap filling (for dream exploration mode) ──
 
+  /**
+   * Fill a knowledge gap by scraping relevant docs.
+   *
+   * Resolution order:
+   *   1. If the gap description contains a URL, use it directly
+   *   2. Otherwise, if web search is wired, find an authoritative docs URL
+   *   3. Otherwise return `no_url_in_gap_description`
+   */
   async fillKnowledgeGap(
     gapDescription: string,
-    hints?: { category?: string; tags?: string[] },
+    hints?: {
+      category?: string;
+      tags?: string[];
+      marketplace?: SkillSeekersSource["marketplace"];
+      targetId?: string;
+    },
   ): Promise<SkillSeekersResult> {
-    // For knowledge gaps, we use the description as a search query
-    // Skill Seekers can take a URL; for gap filling we'd ideally search first.
-    // For now, treat the gap as a topic and attempt docs scraping if it looks like a URL,
-    // otherwise return gracefully — full web search integration comes in Phase 2.
+    // Step 1: direct URL extraction
     const urlMatch = gapDescription.match(/https?:\/\/\S+/);
     if (urlMatch) {
+      const url = urlMatch[0];
+      if (!this.isDomainAllowed(url)) {
+        return {
+          ok: false,
+          envelopes: [],
+          ingested: [],
+          conflicts: [],
+          sourceUrl: url,
+          error: "domain_blocked",
+          elapsedMs: 0,
+        };
+      }
       return this.ingestFromSource({
-        url: urlMatch[0],
+        url,
         name: hints?.category,
         type: "docs",
+        marketplace: hints?.marketplace,
+        provenance: { gap_description: gapDescription, target_id: hints?.targetId },
       });
     }
 
-    // No URL in gap description — can't scrape without a target.
-    // Future: integrate with web search to find authoritative docs for the topic.
+    // Step 2: web search fallback
+    if (this.config.useWebSearchFallback && this.webSearch) {
+      try {
+        const url = await this.webSearch.findAuthoritativeUrl(gapDescription, {
+          category: hints?.category,
+        });
+        if (url) {
+          if (!this.isDomainAllowed(url)) {
+            return {
+              ok: false,
+              envelopes: [],
+              ingested: [],
+              conflicts: [],
+              sourceUrl: url,
+              error: "domain_blocked_via_search",
+              elapsedMs: 0,
+            };
+          }
+          return this.ingestFromSource({
+            url,
+            name: hints?.category,
+            type: "docs",
+            marketplace: hints?.marketplace,
+            provenance: {
+              gap_description: gapDescription,
+              discovered_via: "web_search",
+              target_id: hints?.targetId,
+            },
+          });
+        }
+      } catch (err) {
+        log.debug(`Web search fallback failed: ${String(err)}`);
+      }
+    }
+
     return {
       ok: false,
       envelopes: [],
@@ -350,6 +613,50 @@ export class SkillSeekersAdapter {
       error: "no_url_in_gap_description",
       elapsedMs: 0,
     };
+  }
+
+  // ── Marketplace-driven ingestion (PLAN-10 + PLAN-8 Phase 7 closed loop) ──
+
+  /**
+   * Generate skills for the top marketplace opportunities that have a
+   * known docs URL. Called during dream cycles when MarketplaceIntelligence
+   * reports activity — completes the Demand → Skill → Sale loop.
+   *
+   * Caller supplies a `resolveUrl` callback because URL discovery depends on
+   * strategy (curated allowlist, web search, etc.). Return null to skip.
+   */
+  async ingestFromMarketOpportunities(
+    resolveUrl: (category: string) => Promise<string | null> | string | null,
+    limit?: number,
+  ): Promise<SkillSeekersBatchResult> {
+    if (!this.marketplaceIntelligence || !this.config.enableMarketplaceDemand) {
+      return { total: 0, succeeded: 0, failed: 0, results: [], elapsedMs: 0 };
+    }
+    const opportunities = this.marketplaceIntelligence.analyzeOpportunities(
+      limit ?? this.config.maxSkillsPerCycle,
+    );
+    const sources: SkillSeekersSource[] = [];
+    for (const opp of opportunities) {
+      const url = await Promise.resolve(resolveUrl(opp.category));
+      if (!url) {
+        continue;
+      }
+      sources.push({
+        url,
+        type: "docs",
+        name: opp.category,
+        marketplace: {
+          category: opp.category,
+          demandScore: opp.demandScore,
+          expectedRevenueUsdc: opp.expectedRevenueUsdc,
+        },
+        provenance: {
+          opportunity: opp.targetDescription,
+          readiness_score: opp.readinessScore,
+        },
+      });
+    }
+    return this.ingestBatch(sources);
   }
 
   // ── Internals ──
@@ -412,41 +719,83 @@ export class SkillSeekersAdapter {
   }
 }
 
-// ── CLI detection ──
+// ── Transport probes ──
 
-function detectSkillSeekersCli(): boolean {
-  // Try direct CLI
+function probeCliBinary(bin: string): boolean {
   try {
-    execFileSync("skill-seekers", ["--version"], {
-      timeout: 5000,
+    execFileSync(bin, ["--version"], {
+      timeout: CLI_VERSION_TIMEOUT_MS,
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
     });
     return true;
   } catch {
-    // fall through
+    return false;
   }
-
-  // Try as Python module
-  try {
-    execFileSync("python3", ["-m", "skill_seekers", "--version"], {
-      timeout: 5000,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    return true;
-  } catch {
-    // fall through
-  }
-
-  return false;
 }
 
-// ── CLI execution ──
+function probePythonModule(): boolean {
+  try {
+    execFileSync("python3", ["-m", "skill_seekers", "--version"], {
+      timeout: CLI_VERSION_TIMEOUT_MS,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-function runSkillSeekersCli(source: SkillSeekersSource, outputDir: string): void {
+async function probeMcpEndpoint(endpoint: string): Promise<boolean> {
+  // Only HTTP(S) endpoints are probed here — stdio MCP would need a separate
+  // handshake harness and is left for a future pass.
+  if (!/^https?:\/\//.test(endpoint)) {
+    return false;
+  }
+  try {
+    const res = await fetch(`${endpoint.replace(/\/$/, "")}/health`, {
+      signal: AbortSignal.timeout(CLI_VERSION_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ── Execution via chosen transport ──
+
+async function runSkillSeekers(
+  source: SkillSeekersSource,
+  outputDir: string,
+  transport: "native" | "mcp" | "cli" | "python",
+  mcpEndpoint: string | null,
+): Promise<void> {
+  if (transport === "native") {
+    const result = await runNativeScraper({
+      url: source.url,
+      name: source.name,
+      description: source.description,
+      outputDir,
+    });
+    if (!result.ok) {
+      throw new Error(result.error ?? "native_scraper_failed");
+    }
+    return;
+  }
+  if (transport === "mcp" && mcpEndpoint) {
+    await runSkillSeekersViaMcp(source, outputDir, mcpEndpoint);
+    return;
+  }
+  await runSkillSeekersViaCli(source, outputDir, transport === "python");
+}
+
+async function runSkillSeekersViaCli(
+  source: SkillSeekersSource,
+  outputDir: string,
+  pythonModule: boolean,
+): Promise<void> {
   const args = ["create", source.url, "--target", "claude", "--output", outputDir, "--quiet"];
-
   if (source.name) {
     args.push("--name", source.name);
   }
@@ -454,20 +803,82 @@ function runSkillSeekersCli(source: SkillSeekersSource, outputDir: string): void
     args.push("--description", source.description);
   }
 
-  // Prefer direct CLI, fall back to python module
-  try {
-    execFileSync("skill-seekers", args, {
-      timeout: 120_000,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-  } catch {
-    execFileSync("python3", ["-m", "skill_seekers", ...args], {
-      timeout: 120_000,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+  const bin = pythonModule ? "python3" : "skill-seekers";
+  const fullArgs = pythonModule ? ["-m", "skill_seekers", ...args] : args;
+  await execFileAsync(bin, fullArgs, {
+    timeout: CLI_RUN_TIMEOUT_MS,
+    encoding: "utf8",
+  });
+}
+
+/**
+ * MCP HTTP transport: POSTs a "create" request and writes the returned files
+ * into outputDir. Expected response shape:
+ *
+ *   { files: [{ path: "SKILL.md", content: "..." }, { path: "references/foo.md", ... }] }
+ *
+ * This matches the shape of the skill-seekers Python CLI's `--json` output
+ * and is a thin convention most MCP wrappers already support.
+ */
+async function runSkillSeekersViaMcp(
+  source: SkillSeekersSource,
+  outputDir: string,
+  endpoint: string,
+): Promise<void> {
+  const url = `${endpoint.replace(/\/$/, "")}/create`;
+  const body = {
+    url: source.url,
+    target: "claude",
+    name: source.name,
+    description: source.description,
+    type: source.type,
+  };
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(MCP_HTTP_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(`MCP endpoint returned HTTP ${res.status}`);
   }
+  const payload = (await res.json()) as {
+    files?: Array<{ path: string; content: string }>;
+    conflicts?: unknown;
+  };
+  if (!Array.isArray(payload.files) || payload.files.length === 0) {
+    throw new Error("MCP endpoint returned no files");
+  }
+  // Write payload files into outputDir/<slug>/
+  const skillDir = path.join(outputDir, slugForMcp(source));
+  fs.mkdirSync(skillDir, { recursive: true });
+  for (const file of payload.files) {
+    // Prevent path traversal
+    const relPath = file.path.replace(/^\/+/, "");
+    if (relPath.includes("..")) {
+      continue;
+    }
+    const target = path.join(skillDir, relPath);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, file.content, "utf8");
+  }
+  if (payload.conflicts !== undefined) {
+    fs.writeFileSync(
+      path.join(skillDir, "conflicts.json"),
+      JSON.stringify({ conflicts: payload.conflicts }, null, 2),
+      "utf8",
+    );
+  }
+}
+
+function slugForMcp(source: SkillSeekersSource): string {
+  const base = source.name ?? new URL(source.url).hostname;
+  return (
+    base
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "skill"
+  );
 }
 
 // ── Output parsing ──
@@ -598,7 +1009,13 @@ function createEnvelope(
   name: string,
   content: string,
   keypair: SyntheticKeypair,
-  opts: { category?: string; tags?: string[]; sourceUrl?: string },
+  opts: {
+    category?: string;
+    tags?: string[];
+    sourceUrl?: string;
+    expiresAt?: number;
+    provenance?: Record<string, unknown>;
+  },
 ): SkillEnvelope {
   const skillMdBase64 = Buffer.from(content).toString("base64");
   const contentHash = createHash("sha256").update(content).digest("hex");
@@ -621,6 +1038,8 @@ function createEnvelope(
     skill_version: 1,
     tags: [...(opts.tags ?? []), ...(opts.sourceUrl ? [`source:${opts.sourceUrl}`] : [])],
     category: opts.category,
+    expires_at: opts.expiresAt,
+    provenance: opts.provenance,
   };
 }
 

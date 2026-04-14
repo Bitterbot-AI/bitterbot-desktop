@@ -111,9 +111,20 @@ export class DreamEngine {
     isAvailable(): Promise<boolean>;
     fillKnowledgeGap(
       desc: string,
-      hints?: { category?: string },
+      hints?: {
+        category?: string;
+        tags?: string[];
+        marketplace?: {
+          category: string;
+          expectedRevenueUsdc?: number;
+          demandScore?: number;
+          opportunityId?: string;
+        };
+        targetId?: string;
+      },
     ): Promise<{ ok: boolean; envelopes: unknown[] }>;
     resetCycleCounter(): void;
+    budgetRemaining(): number;
   } | null = null;
   private state: DreamState = "DORMANT";
   private lastModeUsed: DreamMode | null = null;
@@ -243,9 +254,20 @@ export class DreamEngine {
       isAvailable(): Promise<boolean>;
       fillKnowledgeGap(
         desc: string,
-        hints?: { category?: string },
+        hints?: {
+          category?: string;
+          tags?: string[];
+          marketplace?: {
+            category: string;
+            expectedRevenueUsdc?: number;
+            demandScore?: number;
+            opportunityId?: string;
+          };
+          targetId?: string;
+        },
       ): Promise<{ ok: boolean; envelopes: unknown[] }>;
       resetCycleCounter(): void;
+      budgetRemaining(): number;
     } | null,
   ): void {
     this.skillSeekersAdapter = adapter;
@@ -1465,21 +1487,45 @@ export class DreamEngine {
         }
       }
 
-      // PLAN-10: External research via Skill Seekers for knowledge gaps with URLs
+      // PLAN-10: External research via Skill Seekers for knowledge gaps
+      // Budget is enforced by the adapter (maxSkillsPerCycle); we just provide
+      // the raw pipeline and let it decide when to stop.
       if (this.skillSeekersAdapter) {
         try {
           if (await this.skillSeekersAdapter.isAvailable()) {
             this.skillSeekersAdapter.resetCycleCounter();
-            const gaps = targets
-              .filter((t) => t.type === "knowledge_gap" || t.type === "market_demand")
-              .slice(0, 2);
+            const gaps = targets.filter(
+              (t) => t.type === "knowledge_gap" || t.type === "market_demand",
+            );
             for (const gap of gaps) {
+              if (this.skillSeekersAdapter.budgetRemaining() <= 0) {
+                break;
+              }
               const meta = JSON.parse(gap.metadata || "{}") as Record<string, unknown>;
               if (meta.externalResearched) {
                 continue;
               }
+              const category = typeof meta.category === "string" ? meta.category : undefined;
+              // Build marketplace hint when this is a market_demand target so the
+              // envelope is tagged for revenue attribution downstream.
+              const marketplace =
+                gap.type === "market_demand" && category
+                  ? {
+                      category,
+                      expectedRevenueUsdc:
+                        typeof meta.expectedRevenueUsdc === "number"
+                          ? meta.expectedRevenueUsdc
+                          : undefined,
+                      demandScore:
+                        typeof meta.demandScore === "number" ? meta.demandScore : undefined,
+                      opportunityId:
+                        typeof meta.opportunityId === "string" ? meta.opportunityId : undefined,
+                    }
+                  : undefined;
               const result = await this.skillSeekersAdapter.fillKnowledgeGap(gap.description, {
-                category: typeof meta.category === "string" ? meta.category : undefined,
+                category,
+                marketplace,
+                targetId: gap.id,
               });
               if (result.ok && result.envelopes.length > 0) {
                 try {

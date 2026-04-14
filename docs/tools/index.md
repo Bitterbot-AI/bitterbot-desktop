@@ -455,6 +455,28 @@ Notes:
 - Result is restricted to per-agent allowlists (`agents.list[].subagents.allowAgents`).
 - When `["*"]` is configured, the tool includes all configured agents and marks `allowAny: true`.
 
+### `skill_seekers_ingest`
+
+Generate a new skill on demand by scraping a documentation URL. Use this when an agent encounters an unfamiliar library, API, or tool and wants to learn it before continuing. The generated skill is Ed25519-signed, enters quarantine by default, and expires per `skills.skillSeekers.defaultTtlDays`.
+
+Parameters:
+
+- `url` (required) — Documentation URL to scrape
+- `name` (optional) — Display name override
+- `description` (optional) — One-line description
+- `type` (optional) — `docs` | `github` | `pdf` | `video` | `codebase`
+
+Returns: `{ ok, transport, skillsIngested, budgetRemaining, conflicts, highSeverityConflicts }`.
+
+Notes:
+
+- **Zero install** for HTML docs and GitHub repos — a native TypeScript scraper ships with Bitterbot.
+- For PDFs, video transcripts, Jupyter notebooks, Confluence, Notion, and other complex sources, also install upstream [Skill Seekers](https://github.com/yusufkaraaslan/Skill_Seekers) (`pip install skill-seekers`) or configure `skills.skillSeekers.mcpEndpoint`.
+- Respects the same per-cycle budget (`skills.skillSeekers.maxSkillsPerCycle`) as the dream engine's exploration mode.
+- Enforces `allowedDomains` / `blockedDomains`.
+- Reports the transport used (`native` / `mcp` / `cli` / `python`) in the response.
+- See [External Skill Ingestion](/memory/external-skill-ingestion) for the full integration, including the hybrid architecture, marketplace-demand attribution, and web-search fallback.
+
 ## Parameters (common)
 
 Gateway-backed tools (`canvas`, `nodes`, `cron`):

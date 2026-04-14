@@ -29,6 +29,7 @@ import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
 import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
+import { createSkillSeekersIngestTool } from "./tools/skill-seekers-tool.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
 import { createWalletTool } from "./tools/wallet-tool.js";
@@ -189,6 +190,7 @@ export function createBitterbotTools(options?: {
     createEmotionalAnchorTool(memoryOpts),
     createRecallEmotionalAnchorTool(memoryOpts),
     createDeepRecallTool(memoryOpts),
+    createSkillSeekersIngestTool(memoryOpts),
   ]) {
     if (tool) {
       tools.push(tool);

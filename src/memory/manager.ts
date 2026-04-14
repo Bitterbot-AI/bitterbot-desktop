@@ -3273,12 +3273,19 @@ export class MemoryIndexManager implements MemorySearchManager {
     // Skill Seekers adapter (optional external skill generation)
     const ssConfig = this.cfg.skills?.skillSeekers;
     if (ssConfig?.enabled !== false) {
-      import("./skill-seekers-adapter.js")
-        .then(({ SkillSeekersAdapter }) => {
+      Promise.all([import("./skill-seekers-adapter.js"), import("./skill-seekers-url-finder.js")])
+        .then(([{ SkillSeekersAdapter }, { buildUrlFinder }]) => {
           this.skillSeekersAdapter = new SkillSeekersAdapter(this.db, ssConfig);
           this.skillSeekersAdapter.setBitterbotConfig(this.cfg);
           if (this.epistemicDirectiveEngine) {
             this.skillSeekersAdapter.setEpistemicDirectiveEngine(this.epistemicDirectiveEngine);
+          }
+          // Marketplace-demand driven skill generation
+          this.skillSeekersAdapter.setMarketplaceIntelligence(new MarketplaceIntelligence(this.db));
+          // Web-search fallback for URL-less knowledge gaps
+          const urlFinder = buildUrlFinder(this.cfg);
+          if (urlFinder) {
+            this.skillSeekersAdapter.setWebSearch(urlFinder);
           }
           // Late-wire into dream engine if already created
           if (this.dreamEngine) {
@@ -3392,6 +3399,15 @@ export class MemoryIndexManager implements MemorySearchManager {
       return false;
     }
     return this.curiosityEngine.resolveTarget(targetId);
+  }
+
+  /**
+   * PLAN-10: Accessor for the Skill Seekers adapter.
+   * Returns null if the adapter has not been initialized yet (e.g. during startup,
+   * before the async wiring in ensureSkillNetworkBridge completes).
+   */
+  getSkillSeekersAdapter(): import("./skill-seekers-adapter.js").SkillSeekersAdapter | null {
+    return this.skillSeekersAdapter;
   }
 
   /**

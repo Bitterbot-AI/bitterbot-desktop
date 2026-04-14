@@ -33,6 +33,10 @@ export type SkillEnvelope = {
   // Management verification (Phase 3)
   management_signature?: string;
   management_pubkey?: string;
+  /** Unix ms expiration for auto-generated skills (PLAN-10 Skill Seekers TTL). */
+  expires_at?: number;
+  /** Free-form provenance metadata (e.g. marketplace_opportunity, source_url). */
+  provenance?: Record<string, unknown>;
 };
 
 export type IngestResult = {
@@ -152,6 +156,8 @@ export async function ingestSkill(params: {
           content_hash: envelope.content_hash,
           timestamp: envelope.timestamp,
           ingested_at: Date.now(),
+          expires_at: envelope.expires_at,
+          provenance: envelope.provenance,
         },
         null,
         2,

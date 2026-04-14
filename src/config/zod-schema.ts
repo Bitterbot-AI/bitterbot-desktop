@@ -526,6 +526,9 @@ export const BitterbotSchema = z
             allowedDomains: z.array(z.string()).optional(),
             blockedDomains: z.array(z.string()).optional(),
             defaultTtlDays: z.number().int().min(1).optional(),
+            mcpEndpoint: z.string().optional(),
+            useWebSearchFallback: z.boolean().optional(),
+            enableMarketplaceDemand: z.boolean().optional(),
           })
           .strict()
           .optional(),

@@ -109,4 +109,22 @@ export interface MemorySearchManager {
     createdAt: number;
     recallCount: number;
   }>;
+  // PLAN-10: Skill Seekers (on-demand external skill ingestion)
+  getSkillSeekersAdapter?(): {
+    isAvailable(): Promise<boolean>;
+    budgetRemaining(): number;
+    ingestFromSource(source: {
+      url: string;
+      type?: "docs" | "github" | "pdf" | "video" | "codebase";
+      name?: string;
+      description?: string;
+    }): Promise<{
+      ok: boolean;
+      error?: string;
+      transport?: "native" | "mcp" | "cli" | "python";
+      elapsedMs: number;
+      ingested: Array<{ action: "accepted" | "quarantined" | "rejected"; skillName?: string }>;
+      conflicts: Array<{ severity: "low" | "medium" | "high" }>;
+    }>;
+  } | null;
 }

@@ -405,6 +405,8 @@ If the doctor can't figure it out, open an issue with the full doctor output att
 
 Bitterbot uses [OpenClaw](https://github.com/nicepkg/openclaw) (MIT License) as scaffolding for its channel surface (WhatsApp/Telegram/Discord/Signal/Slack message routing) and the base embedded agent runner, originally built by [Mario Zechner](https://mariozechner.at/) as [pi-mono](https://github.com/badlogic/pi-mono). The Dream Engine's Research mode was inspired by [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch) loop. Deep Recall implements the [Recursive Language Model](https://arxiv.org/abs/2512.24601) pattern via [hampton-io/RLM](https://github.com/hampton-io/RLM) (MIT License).
 
+External skill generation uses a **hybrid** architecture: a native TypeScript scraper ships with Bitterbot for zero-install coverage of HTML docs and GitHub repos, and the upstream [Skill Seekers](https://github.com/yusufkaraaslan/Skill_Seekers) (MIT License) by [Yusuf Karaaslan](https://github.com/yusufkaraaslan) is an optional add-on that handles PDFs, video transcripts, Jupyter notebooks, Confluence, Notion, and 17+ other source types. Bitterbot's native scraper targets the same SKILL.md output format so either path produces interchangeable skills; all credit for the original format and source-type matrix belongs upstream. See [external skill ingestion docs](docs/memory/external-skill-ingestion.md).
+
 Everything else - the memory system, dream engine, curiosity engine, hormonal system, evolving identity, economic layer, P2P skills marketplace, A2A interoperability, and the biological identity framework, is original Bitterbot work.
 
 ---
