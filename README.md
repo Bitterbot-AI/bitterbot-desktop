@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="docs/public/bitterbot-hero.gif" alt="Bitterbot demo — chat interface and Dream Engine" width="880">
+</p>
+
+<p align="center">
   <img src="docs/public/Bitterbot_logo.svg" alt="Bitterbot logo" width="72">
 </p>
 
@@ -120,15 +124,7 @@ Every 2 hours, the agent goes offline to dream. Seven specialized modes optimize
 
 Each cycle is scored by a **Dream Quality Score** that measures crystal yield, merge efficiency, orphan rescue, Bond stability, and token efficiency, closing the feedback loop so the dream engine learns which modes work best.
 
-<p align="center">
-  <img src="docs/public/dream-engine-live.png" alt="Dream Engine, live dream fragments and emotional radar" width="880">
-</p>
-
 Dreams rewrite the agent's working memory, updating its self-concept, theory of mind about you, and active context. The personality is an _output_ of experience, not a static prompt. On first launch, the agent develops a persistent personality within hours.
-
-<p align="center">
-  <img src="docs/public/curiosity.png" alt="Curiosity Engine — reward components and exploration targets" width="880">
-</p>
 
 ### Continuous Memory
 
