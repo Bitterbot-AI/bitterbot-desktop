@@ -49,4 +49,27 @@ export type MemoryConfig = {
     /** Maximum facts to extract per session (default: 20). */
     maxFactsPerSession?: number;
   };
+  /** PLAN-11 Gap 6: daily digest of autonomous skill-pipeline activity. */
+  digest?: {
+    /** Enable the daily digest (default: true). */
+    enabled?: boolean;
+    /** Local clock time in 24h "HH:MM" format for daily delivery. Default: "09:00". */
+    time?: string;
+    /** Lookback window in hours. Default: 24. */
+    lookbackHours?: number;
+    /** Delivery channels. Empty = file only. */
+    channels?: Array<
+      | {
+          kind: "file";
+          /** Directory override. Default: <state>/memory/digest/ */
+          dir?: string;
+        }
+      | { kind: "log" }
+      | {
+          kind: "message";
+          /** Channel target (e.g. "telegram:user:123"). Uses the agent's configured channel routing. */
+          target: string;
+        }
+    >;
+  };
 };

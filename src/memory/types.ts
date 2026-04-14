@@ -109,6 +109,11 @@ export interface MemorySearchManager {
     createdAt: number;
     recallCount: number;
   }>;
+  // PLAN-11 Gap 6: Daily digest of autonomous skill-pipeline activity
+  runDigest?(opts?: { deliver?: boolean; lookbackHours?: number }): Promise<{
+    markdown: string;
+    report: unknown;
+  }>;
   // PLAN-10: Skill Seekers (on-demand external skill ingestion)
   getSkillSeekersAdapter?(): {
     isAvailable(): Promise<boolean>;

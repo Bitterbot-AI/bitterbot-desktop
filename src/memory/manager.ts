@@ -162,6 +162,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private consolidationTimer: NodeJS.Timeout | null = null;
   private dreamTimer: NodeJS.Timeout | null = null;
   private dreamInitialTimer: NodeJS.Timeout | null = null;
+  private digestTimer: NodeJS.Timeout | null = null;
   private dreamEngine: DreamEngine | null = null;
   private dreamLlmCall: ((prompt: string) => Promise<string>) | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
@@ -399,6 +400,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.ensureIntervalSync();
     this.ensureConsolidationInterval();
     this.ensureDreamEngine();
+    this.ensureDigestInterval();
     this.ensureCuriosityEngine();
     this.ensureHormonalManager();
     this.ensureUserModelManager();
@@ -1559,6 +1561,93 @@ export class MemoryIndexManager implements MemorySearchManager {
         });
       }, ms);
     }
+  }
+
+  /**
+   * PLAN-11 Gap 6: schedule the daily digest.
+   *
+   * Uses a self-rescheduling setTimeout rather than setInterval because the
+   * trigger time is wall-clock (09:00 local by default), not a fixed
+   * millisecond cadence. Missed fires (laptop closed overnight) are
+   * backfilled on next wake because the SQL window is always "last N hours".
+   */
+  private ensureDigestInterval(): void {
+    const digestCfg = this.cfg.memory?.digest;
+    if (digestCfg?.enabled === false || this.digestTimer) {
+      return;
+    }
+    const time = digestCfg?.time ?? "09:00";
+    void import("./skill-pipeline-digest.js").then(({ msUntilLocalTime }) => {
+      const msUntilNext = msUntilLocalTime(time);
+      this.scheduleDigestFire(msUntilNext);
+    });
+  }
+
+  private scheduleDigestFire(msUntilNext: number): void {
+    this.digestTimer = setTimeout(() => {
+      this.digestTimer = null;
+      void this.runDigest({ deliver: true })
+        .catch((err) => {
+          log.warn(`digest delivery failed: ${String(err)}`);
+        })
+        .finally(() => {
+          // Reschedule for the same time next day.
+          this.ensureDigestInterval();
+        });
+    }, msUntilNext);
+    if (this.digestTimer.unref) {
+      this.digestTimer.unref();
+    }
+  }
+
+  /**
+   * Build and optionally deliver the daily digest. Exposed publicly so the
+   * skill_pipeline_digest agent tool can render on demand without waiting
+   * for the scheduled fire.
+   */
+  async runDigest(opts: { deliver?: boolean; lookbackHours?: number } = {}): Promise<{
+    markdown: string;
+    report: import("./skill-pipeline-digest.js").DigestReport;
+  }> {
+    const { buildDigest, renderMarkdown, deliverDigest } =
+      await import("./skill-pipeline-digest.js");
+    const digestCfg = this.cfg.memory?.digest ?? {};
+    const lookbackHours = opts.lookbackHours ?? digestCfg.lookbackHours ?? 24;
+    const now = Date.now();
+    const report = buildDigest(this.db, {
+      sinceMs: now - lookbackHours * 60 * 60 * 1000,
+      untilMs: now,
+    });
+    const markdown = renderMarkdown(report);
+    if (opts.deliver !== false) {
+      const channels = digestCfg.channels?.length
+        ? digestCfg.channels
+            .map((c) => {
+              if (c.kind === "file") {
+                return {
+                  kind: "file" as const,
+                  dir:
+                    c.dir ?? path.join(resolveAgentDir(this.cfg, this.agentId), "memory", "digest"),
+                };
+              }
+              if (c.kind === "log") {
+                return { kind: "log" as const };
+              }
+              // "message" channels are resolved by the caller wiring — the
+              // manager doesn't itself know how to reach channel plugins. The
+              // gateway wires this up separately via setDigestMessageSender().
+              return null;
+            })
+            .filter((c): c is { kind: "file"; dir: string } | { kind: "log" } => c !== null)
+        : [
+            {
+              kind: "file" as const,
+              dir: path.join(resolveAgentDir(this.cfg, this.agentId), "memory", "digest"),
+            },
+          ];
+      await deliverDigest(report, channels);
+    }
+    return { markdown, report };
   }
 
   /**
@@ -3526,6 +3615,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (this.dreamTimer) {
       clearInterval(this.dreamTimer);
       this.dreamTimer = null;
+    }
+    if (this.digestTimer) {
+      clearTimeout(this.digestTimer);
+      this.digestTimer = null;
     }
     if (this.watcher) {
       await this.watcher.close();
