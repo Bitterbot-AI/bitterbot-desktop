@@ -533,6 +533,42 @@ export const BitterbotSchema = z
             mcpEndpoint: z.string().optional(),
             useWebSearchFallback: z.boolean().optional(),
             enableMarketplaceDemand: z.boolean().optional(),
+            trending: z
+              .object({
+                enabled: z.boolean().optional(),
+                intervalHours: z.number().positive().optional(),
+                maxPerSweep: z.number().int().positive().optional(),
+                sources: z
+                  .array(
+                    z.union([
+                      z
+                        .object({
+                          kind: z.literal("github"),
+                          since: z.enum(["daily", "weekly", "monthly"]).optional(),
+                          minStars: z.number().int().nonnegative().optional(),
+                          limit: z.number().int().positive().optional(),
+                        })
+                        .strict(),
+                      z
+                        .object({
+                          kind: z.literal("hackernews"),
+                          minPoints: z.number().int().nonnegative().optional(),
+                          limit: z.number().int().positive().optional(),
+                        })
+                        .strict(),
+                      z
+                        .object({
+                          kind: z.literal("curated"),
+                          urls: z.array(z.string()),
+                          limit: z.number().int().positive().optional(),
+                        })
+                        .strict(),
+                    ]),
+                  )
+                  .optional(),
+              })
+              .strict()
+              .optional(),
           })
           .strict()
           .optional(),

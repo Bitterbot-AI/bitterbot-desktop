@@ -35,4 +35,32 @@ export type SkillSeekersConfig = {
    * with marketplace metadata so revenue can be attributed. Default: true.
    */
   enableMarketplaceDemand?: boolean;
+  /** PLAN-11 Gap 2: proactive trending sweep on a fixed cadence. */
+  trending?: {
+    /** Enable the trending sweep (default: false — opt-in). */
+    enabled?: boolean;
+    /** Interval in hours between sweeps. Default: 24. */
+    intervalHours?: number;
+    /** Max URLs to scrape per sweep. Default: 5. */
+    maxPerSweep?: number;
+    /** Sources to pull candidates from. */
+    sources?: Array<
+      | {
+          kind: "github";
+          since?: "daily" | "weekly" | "monthly";
+          minStars?: number;
+          limit?: number;
+        }
+      | {
+          kind: "hackernews";
+          minPoints?: number;
+          limit?: number;
+        }
+      | {
+          kind: "curated";
+          urls: string[];
+          limit?: number;
+        }
+    >;
+  };
 };

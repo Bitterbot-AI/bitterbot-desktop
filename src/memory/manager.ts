@@ -163,6 +163,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private dreamTimer: NodeJS.Timeout | null = null;
   private dreamInitialTimer: NodeJS.Timeout | null = null;
   private digestTimer: NodeJS.Timeout | null = null;
+  private trendingSweepTimer: NodeJS.Timeout | null = null;
   private marketplaceIntelligence: MarketplaceIntelligence | null = null;
   private adaptiveIntervalController:
     | import("./dream-adaptive-interval.js").AdaptiveIntervalController
@@ -405,6 +406,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.ensureConsolidationInterval();
     this.ensureDreamEngine();
     this.ensureDigestInterval();
+    this.ensureTrendingSweepInterval();
     this.ensureCuriosityEngine();
     this.ensureHormonalManager();
     this.ensureUserModelManager();
@@ -1701,6 +1703,65 @@ export class MemoryIndexManager implements MemorySearchManager {
       await deliverDigest(report, channels);
     }
     return { markdown, report };
+  }
+
+  /**
+   * PLAN-11 Gap 2: proactive trending sweep.
+   *
+   * Scheduled independently of dream cycles. Pulls "what's trending" from
+   * configured sources (github / hackernews / curated feeds), dedups against
+   * already-scraped URLs, and hands the top N to the Skill Seekers adapter
+   * for batch ingestion.
+   *
+   * Disabled by default — opt in via skills.skillSeekers.trending.enabled.
+   */
+  private ensureTrendingSweepInterval(): void {
+    const trendingCfg = this.cfg.skills?.skillSeekers?.trending;
+    if (!trendingCfg?.enabled || this.trendingSweepTimer) {
+      return;
+    }
+    const intervalHours = trendingCfg.intervalHours ?? 24;
+    if (intervalHours <= 0) {
+      return;
+    }
+    const ms = intervalHours * 60 * 60 * 1000;
+    this.trendingSweepTimer = setInterval(() => {
+      void this.runTrendingSweep().catch((err) => {
+        log.warn(`trending sweep failed: ${String(err)}`);
+      });
+    }, ms);
+    if (this.trendingSweepTimer.unref) {
+      this.trendingSweepTimer.unref();
+    }
+    // First sweep after the initial delay so node startup isn't immediately
+    // pulling from external APIs.
+    const initialDelayMs = Math.min(ms, 10 * 60 * 1000); // 10 min or 1 interval
+    setTimeout(() => {
+      void this.runTrendingSweep().catch((err) => {
+        log.warn(`trending sweep failed: ${String(err)}`);
+      });
+    }, initialDelayMs).unref?.();
+  }
+
+  /**
+   * Execute one trending sweep. Public so an agent tool / CLI command can
+   * trigger it on demand without waiting for the interval.
+   */
+  async runTrendingSweep(): Promise<{ scraped: number; skipped: number; elapsedMs: number }> {
+    const trendingCfg = this.cfg.skills?.skillSeekers?.trending;
+    if (!trendingCfg?.enabled || !this.skillSeekersAdapter) {
+      return { scraped: 0, skipped: 0, elapsedMs: 0 };
+    }
+    const { runTrendingSweep } = await import("./skill-seekers-trending.js");
+    const sources = trendingCfg.sources ?? [{ kind: "github" as const }];
+    const result = await runTrendingSweep(this.skillSeekersAdapter, sources, {
+      maxPerSweep: trendingCfg.maxPerSweep ?? 5,
+    });
+    return {
+      scraped: result.scraped,
+      skipped: result.skipped,
+      elapsedMs: result.elapsedMs,
+    };
   }
 
   /**
@@ -3704,6 +3765,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (this.digestTimer) {
       clearTimeout(this.digestTimer);
       this.digestTimer = null;
+    }
+    if (this.trendingSweepTimer) {
+      clearInterval(this.trendingSweepTimer);
+      this.trendingSweepTimer = null;
     }
     if (this.watcher) {
       await this.watcher.close();
