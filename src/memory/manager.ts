@@ -1719,23 +1719,25 @@ export class MemoryIndexManager implements MemorySearchManager {
     import("./skill-marketability-predictor.js").SkillMarketabilityPredictor | null
   > {
     const predictorCfg = this.cfg.skills?.marketability?.predictor;
-    if (!predictorCfg?.enabled) {
+    // Default-on: only skip when explicitly disabled. When no LLM is configured,
+    // the predictor uses the heuristic fallback so no token spend occurs.
+    if (predictorCfg?.enabled === false) {
       return null;
     }
     if (this.marketabilityPredictor) {
       return this.marketabilityPredictor;
     }
     const { SkillMarketabilityPredictor } = await import("./skill-marketability-predictor.js");
-    const modelSpec = predictorCfg.model ?? this.cfg.memory?.dream?.model ?? "openai/gpt-4o-mini";
+    const modelSpec = predictorCfg?.model ?? this.cfg.memory?.dream?.model ?? "openai/gpt-4o-mini";
     const llmCall = this.buildLlmCallFn(modelSpec);
     this.marketabilityPredictor = new SkillMarketabilityPredictor(
       this.db,
       {
         enabled: true,
-        maxPerCycle: predictorCfg.maxPerCycle,
-        predictionTtlDays: predictorCfg.predictionTtlDays,
-        pricingInfluence: predictorCfg.pricingInfluence,
-        refinerBlendWeight: predictorCfg.refinerBlendWeight,
+        maxPerCycle: predictorCfg?.maxPerCycle,
+        predictionTtlDays: predictorCfg?.predictionTtlDays,
+        pricingInfluence: predictorCfg?.pricingInfluence,
+        refinerBlendWeight: predictorCfg?.refinerBlendWeight,
         model: modelSpec,
       },
       llmCall,
@@ -1755,10 +1757,12 @@ export class MemoryIndexManager implements MemorySearchManager {
    */
   private ensureTrendingSweepInterval(): void {
     const trendingCfg = this.cfg.skills?.skillSeekers?.trending;
-    if (!trendingCfg?.enabled || this.trendingSweepTimer) {
+    // Default-on: only skip if explicitly disabled. Sources default to
+    // GitHub trending; users can override or disable entirely.
+    if (trendingCfg?.enabled === false || this.trendingSweepTimer) {
       return;
     }
-    const intervalHours = trendingCfg.intervalHours ?? 24;
+    const intervalHours = trendingCfg?.intervalHours ?? 24;
     if (intervalHours <= 0) {
       return;
     }
@@ -1787,13 +1791,13 @@ export class MemoryIndexManager implements MemorySearchManager {
    */
   async runTrendingSweep(): Promise<{ scraped: number; skipped: number; elapsedMs: number }> {
     const trendingCfg = this.cfg.skills?.skillSeekers?.trending;
-    if (!trendingCfg?.enabled || !this.skillSeekersAdapter) {
+    if (trendingCfg?.enabled === false || !this.skillSeekersAdapter) {
       return { scraped: 0, skipped: 0, elapsedMs: 0 };
     }
     const { runTrendingSweep } = await import("./skill-seekers-trending.js");
-    const sources = trendingCfg.sources ?? [{ kind: "github" as const }];
+    const sources = trendingCfg?.sources ?? [{ kind: "github" as const }];
     const result = await runTrendingSweep(this.skillSeekersAdapter, sources, {
-      maxPerSweep: trendingCfg.maxPerSweep ?? 5,
+      maxPerSweep: trendingCfg?.maxPerSweep ?? 5,
     });
     return {
       scraped: result.scraped,

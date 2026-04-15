@@ -20,7 +20,9 @@
  *     a truly failing execution record.
  *   - Heuristic fallback when LLM call fails so the rest of the pipeline
  *     keeps working.
- *   - Off by default — opt in via skills.marketability.predictor.enabled.
+ *   - On by default; disable via skills.marketability.predictor.enabled = false.
+ *     When no LLM is configured the heuristic path is used so no token
+ *     spend occurs.
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -31,7 +33,7 @@ const log = createSubsystemLogger("skill-marketability-predictor");
 // ── Types ──
 
 export type PredictorConfig = {
-  /** Enable the predictor. Default: false. */
+  /** Enable the predictor. Default: true (falls back to heuristic when no LLM is configured). */
   enabled?: boolean;
   /** Minutes of the LLM budget per dream cycle. Default: 10 predictions per cycle. */
   maxPerCycle?: number;
@@ -103,7 +105,7 @@ export class SkillMarketabilityPredictor {
   constructor(db: DatabaseSync, config: PredictorConfig = {}, llmCall: LlmCall | null = null) {
     this.db = db;
     this.config = {
-      enabled: config.enabled ?? false,
+      enabled: config.enabled ?? true,
       maxPerCycle: config.maxPerCycle ?? 10,
       predictionTtlDays: config.predictionTtlDays ?? 30,
       pricingInfluence: config.pricingInfluence ?? 0.2,

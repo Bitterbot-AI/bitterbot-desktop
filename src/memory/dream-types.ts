@@ -178,7 +178,7 @@ export const DEFAULT_DREAM_CONFIG: Required<
   intervalMinutes: 120,
   initialDelayMinutes: 5,
   adaptiveInterval: {
-    enabled: false,
+    enabled: true,
     minMinutes: 30,
     maxMinutes: 240,
     windowHours: 8,

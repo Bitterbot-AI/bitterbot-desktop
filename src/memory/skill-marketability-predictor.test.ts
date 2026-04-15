@@ -122,9 +122,17 @@ describe("skill-marketability-predictor", () => {
   });
 
   describe("SkillMarketabilityPredictor", () => {
-    it("returns null when disabled (default)", async () => {
+    it("is on by default and falls back to heuristic with no LLM", async () => {
       const db = createTestDb();
       const p = new SkillMarketabilityPredictor(db);
+      const result = await p.predict(makeInput());
+      expect(result).not.toBeNull();
+      expect(result?.model).toBe("heuristic");
+    });
+
+    it("returns null when explicitly disabled", async () => {
+      const db = createTestDb();
+      const p = new SkillMarketabilityPredictor(db, { enabled: false });
       const result = await p.predict(makeInput());
       expect(result).toBeNull();
     });
