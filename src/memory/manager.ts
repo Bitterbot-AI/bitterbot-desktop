@@ -165,6 +165,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   private digestTimer: NodeJS.Timeout | null = null;
   private trendingSweepTimer: NodeJS.Timeout | null = null;
   private marketplaceIntelligence: MarketplaceIntelligence | null = null;
+  private marketabilityPredictor:
+    | import("./skill-marketability-predictor.js").SkillMarketabilityPredictor
+    | null = null;
   private adaptiveIntervalController:
     | import("./dream-adaptive-interval.js").AdaptiveIntervalController
     | null = null;
@@ -1703,6 +1706,41 @@ export class MemoryIndexManager implements MemorySearchManager {
       await deliverDigest(report, channels);
     }
     return { markdown, report };
+  }
+
+  /**
+   * PLAN-11 Gap 4: lazy-init the marketability predictor.
+   *
+   * Returns the predictor instance when enabled+ready, null otherwise. The
+   * predictor is intentionally lazy because it's opt-in and needs the dream
+   * model's LLM call function which is resolved later in init.
+   */
+  async getMarketabilityPredictor(): Promise<
+    import("./skill-marketability-predictor.js").SkillMarketabilityPredictor | null
+  > {
+    const predictorCfg = this.cfg.skills?.marketability?.predictor;
+    if (!predictorCfg?.enabled) {
+      return null;
+    }
+    if (this.marketabilityPredictor) {
+      return this.marketabilityPredictor;
+    }
+    const { SkillMarketabilityPredictor } = await import("./skill-marketability-predictor.js");
+    const modelSpec = predictorCfg.model ?? this.cfg.memory?.dream?.model ?? "openai/gpt-4o-mini";
+    const llmCall = this.buildLlmCallFn(modelSpec);
+    this.marketabilityPredictor = new SkillMarketabilityPredictor(
+      this.db,
+      {
+        enabled: true,
+        maxPerCycle: predictorCfg.maxPerCycle,
+        predictionTtlDays: predictorCfg.predictionTtlDays,
+        pricingInfluence: predictorCfg.pricingInfluence,
+        refinerBlendWeight: predictorCfg.refinerBlendWeight,
+        model: modelSpec,
+      },
+      llmCall,
+    );
+    return this.marketabilityPredictor;
   }
 
   /**

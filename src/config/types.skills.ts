@@ -45,4 +45,21 @@ export type SkillsConfig = {
   p2p?: SkillsP2pConfig;
   /** External skill generation via Skill Seekers. */
   skillSeekers?: SkillSeekersConfig;
+  /** PLAN-11 Gap 4: LLM-based marketability prediction (opt-in). */
+  marketability?: {
+    predictor?: {
+      /** Enable the predictor. Default: false. */
+      enabled?: boolean;
+      /** Max predictions per dream cycle. Default: 10. */
+      maxPerCycle?: number;
+      /** Days to cache predictions before re-predicting. Default: 30. */
+      predictionTtlDays?: number;
+      /** Max influence on skill pricing as a multiplier (0-1). Default: 0.2. */
+      pricingInfluence?: number;
+      /** Blending weight in refiner scores (0-1). Default: 0.2. */
+      refinerBlendWeight?: number;
+      /** Model spec "provider/model" for prediction. */
+      model?: string;
+    };
+  };
 };

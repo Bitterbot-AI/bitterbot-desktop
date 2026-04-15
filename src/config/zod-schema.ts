@@ -572,6 +572,22 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        marketability: z
+          .object({
+            predictor: z
+              .object({
+                enabled: z.boolean().optional(),
+                maxPerCycle: z.number().int().positive().optional(),
+                predictionTtlDays: z.number().positive().optional(),
+                pricingInfluence: z.number().min(0).max(1).optional(),
+                refinerBlendWeight: z.number().min(0).max(1).optional(),
+                model: z.string().optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
