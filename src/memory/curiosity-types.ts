@@ -117,6 +117,19 @@ export type CuriosityConfig = {
   gccrf?:
     | import("./gccrf-reward.js").GCCRFConfig
     | Partial<import("./gccrf-reward.js").GCCRFConfig>;
+  /** PLAN-11 Gap 1: converts repeated user queries into knowledge_gap targets. */
+  requestFrequency?: {
+    /** Enable the analyzer (default: true). */
+    enabled?: boolean;
+    /** Lookback window in days for scanning curiosity_queries. Default: 7. */
+    lookbackDays?: number;
+    /** Minimum phrase frequency to surface as a signal. Default: 3. */
+    minFrequency?: number;
+    /** Only emit the top N signals per run. Default: 5. */
+    maxSignals?: number;
+    /** TTL in days for injected knowledge_gap targets. Default: 14. */
+    ttlDays?: number;
+  };
 };
 
 export const DEFAULT_CURIOSITY_WEIGHTS: CuriosityWeights = {

@@ -1345,6 +1345,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (curiosityResult && curiosityResult.targets > 0 && this.skillNetworkBridge) {
           this.emitTopTargetsAsQueries();
         }
+        // 3c. PLAN-11 Gap 1: convert repeated user queries into knowledge_gap targets
+        void this.runRequestFrequencyAnalyzer();
         // 4. Governance: enforce TTL lifespan policies
         this.governance?.enforceLifespan();
         // 5. Task memory: mark stalled goals
@@ -1648,6 +1650,35 @@ export class MemoryIndexManager implements MemorySearchManager {
       await deliverDigest(report, channels);
     }
     return { markdown, report };
+  }
+
+  /**
+   * PLAN-11 Gap 1: request-frequency analyzer. Converts repeated user queries
+   * (captured in curiosity_queries) into knowledge_gap targets that the dream
+   * engine's exploration mode can pick up. Runs on the consolidation interval;
+   * errors are swallowed because this is an observability/enhancement pass,
+   * not load-bearing.
+   */
+  private async runRequestFrequencyAnalyzer(): Promise<void> {
+    const rfCfg = this.cfg.memory?.curiosity?.requestFrequency;
+    if (rfCfg?.enabled === false) {
+      return;
+    }
+    try {
+      const { analyzeRequestFrequency, injectFrequencyTargets } =
+        await import("./request-frequency-analyzer.js");
+      const signals = analyzeRequestFrequency(this.db, {
+        lookbackDays: rfCfg?.lookbackDays,
+        minFrequency: rfCfg?.minFrequency,
+        maxSignals: rfCfg?.maxSignals,
+      });
+      if (signals.length === 0) {
+        return;
+      }
+      injectFrequencyTargets(this.db, signals, { ttlDays: rfCfg?.ttlDays });
+    } catch (err) {
+      log.debug(`request-frequency analyzer failed: ${String(err)}`);
+    }
   }
 
   /**

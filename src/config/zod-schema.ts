@@ -33,7 +33,11 @@ const MemorySchema = z
     backend: z.literal("builtin").optional(),
     citations: z.union([z.literal("auto"), z.literal("on"), z.literal("off")]).optional(),
   })
-  .strict()
+  // Memory subsystems (dream, curiosity, consolidation, digest, requestFrequency, etc.)
+  // are typed in src/config/types.memory.ts but haven't all been mirrored into zod.
+  // Passthrough keeps user configs from being rejected for those fields until the
+  // schema catches up; strong typing at the code-read sites still applies.
+  .passthrough()
   .optional();
 
 const _HttpUrlSchema = z

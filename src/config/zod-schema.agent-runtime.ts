@@ -527,36 +527,6 @@ export const MemorySearchSchema = z
       })
       .strict()
       .optional(),
-    digest: z
-      .object({
-        enabled: z.boolean().optional(),
-        time: z
-          .string()
-          .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "time must be 24h HH:MM format")
-          .optional(),
-        lookbackHours: z.number().positive().optional(),
-        channels: z
-          .array(
-            z.union([
-              z
-                .object({
-                  kind: z.literal("file"),
-                  dir: z.string().optional(),
-                })
-                .strict(),
-              z.object({ kind: z.literal("log") }).strict(),
-              z
-                .object({
-                  kind: z.literal("message"),
-                  target: z.string(),
-                })
-                .strict(),
-            ]),
-          )
-          .optional(),
-      })
-      .strict()
-      .optional(),
   })
   .strict()
   .optional();
