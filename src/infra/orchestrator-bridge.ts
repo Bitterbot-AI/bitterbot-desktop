@@ -248,6 +248,42 @@ export class OrchestratorBridge {
     return this.sendCommand("get_stats", {});
   }
 
+  /**
+   * Fetch the orchestrator's identity over IPC: the Ed25519 libp2p pubkey
+   * (base64), the libp2p PeerId, and the configured node tier.
+   *
+   * The base64 pubkey is the canonical management-node identity — it is what
+   * the genesis trust list contains and what management-action signatures
+   * verify against. Cached after the first successful call since it never
+   * changes for a running orchestrator.
+   */
+  private cachedIdentity: { pubkey: string; peerId: string; nodeTier: string } | null = null;
+
+  async getIdentity(): Promise<{ pubkey: string; peerId: string; nodeTier: string }> {
+    if (this.cachedIdentity) {
+      return this.cachedIdentity;
+    }
+    const result = (await this.sendCommand("get_identity", {})) as
+      | { pubkey?: string; peer_id?: string; node_tier?: string }
+      | undefined;
+    if (!result?.pubkey || !result.peer_id || typeof result.node_tier !== "string") {
+      throw new Error(
+        `Orchestrator returned malformed identity payload: ${JSON.stringify(result)}`,
+      );
+    }
+    this.cachedIdentity = {
+      pubkey: result.pubkey,
+      peerId: result.peer_id,
+      nodeTier: result.node_tier,
+    };
+    return this.cachedIdentity;
+  }
+
+  /** True if the IPC socket is connected and ready to accept commands. */
+  isConnected(): boolean {
+    return this.socket !== null && !this.socket.destroyed;
+  }
+
   onSkillReceived(callback: (event: SkillReceivedEvent) => void): () => void {
     this.skillReceivedCallbacks.push(callback);
     return () => {
@@ -702,11 +738,19 @@ export class OrchestratorBridge {
     for (const relay of this.config.relayServers ?? []) {
       args.push("--relay-servers", relay);
     }
-    // Management tier auth is handled in TypeScript (ManagementKeyAuth).
-    // The Rust orchestrator runs as edge — it doesn't verify management pubkeys.
-    // Do NOT pass --node-tier or --genesis-trust-list to the Rust binary as it
-    // will reject startup if the orchestrator's own libp2p pubkey isn't in the
-    // trust list (which contains the TypeScript management key, not the libp2p key).
+    // Management tier: the orchestrator's libp2p Ed25519 keypair IS the
+    // management identity. When configured as management, pass the tier and
+    // trust list so the Rust side activates census, anomaly detection, and
+    // signing — and self-verifies that its pubkey is in the trust list at
+    // startup. The TypeScript ManagementKeyAuth reads the same pubkey via
+    // IPC (getIdentity) so both sides agree on identity.
+    if (this.config.nodeTier === "management") {
+      args.push("--node-tier", "management");
+      const trustListPath = this.config.genesisTrustListPath;
+      if (trustListPath) {
+        args.push("--genesis-trust-list", trustListPath);
+      }
+    }
     return args;
   }
 }

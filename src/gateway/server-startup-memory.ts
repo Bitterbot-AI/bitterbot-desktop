@@ -57,7 +57,8 @@ export async function startGatewayMemoryBackend(params: {
           p2pCfg.genesisTrustListPath,
           p2pCfg.genesisTrustList,
         );
-        const auth = ManagementKeyAuth.init(trustList);
+        const bridge = params.orchestratorBridge as unknown as OrchestratorBridge;
+        const auth = await ManagementKeyAuth.init(trustList, bridge);
         const db = managerAny.db as import("node:sqlite").DatabaseSync;
         const peerRep = (managerAny.peerReputationManager ?? null) as
           | import("../memory/peer-reputation.js").PeerReputationManager
@@ -65,13 +66,7 @@ export async function startGatewayMemoryBackend(params: {
         const economics = (managerAny.marketplaceEconomics ?? null) as
           | import("../memory/marketplace-economics.js").MarketplaceEconomics
           | null;
-        const svc = new ManagementNodeService(
-          db,
-          params.orchestratorBridge as unknown as OrchestratorBridge,
-          peerRep,
-          economics,
-          auth,
-        );
+        const svc = new ManagementNodeService(db, bridge, peerRep, economics, auth);
         svc.start();
         managerAny.managementNodeService = svc;
         params.log.warn?.(

@@ -129,9 +129,9 @@ export class ManagementNodeService {
   start(): void {
     if (!this.auth) {
       throw new Error(
-        "ManagementNodeService cannot start without cryptographic authorization. " +
-          "Set BITTERBOT_MANAGEMENT_KEY env var with a base64 Ed25519 private key " +
-          "whose public key is in the genesis trust list.",
+        "ManagementNodeService cannot start without management-node authorization. " +
+          "Ensure p2p.nodeTier is 'management' and the orchestrator's libp2p pubkey " +
+          "(keys/node.pub) is listed in the genesis trust list.",
       );
     }
 
@@ -302,30 +302,25 @@ export class ManagementNodeService {
     }
   }
 
-  /** Propagate a ban decision to the network. Requires auth to sign the command. */
+  /**
+   * Propagate a ban decision to the network. The orchestrator signs and
+   * broadcasts using its libp2p management key — no JS-side signing needed.
+   */
   async propagateBan(peerPubkey: string, reason: string): Promise<boolean> {
     if (!this.auth) {
-      log.warn("Cannot propagate ban without management key authorization");
+      log.warn("Cannot propagate ban without management node authorization");
       return false;
     }
 
     try {
-      const signedEnvelope = this.auth.signCommand("propagate_ban", {
-        peer_pubkey: peerPubkey,
-        reason,
-      });
-
-      const result = await (
+      const result = (await (
         this.bridge as unknown as {
-          sendCommand(type: string, payload: unknown): Promise<Record<string, unknown>>;
+          sendCommand(type: string, payload: unknown): Promise<Record<string, unknown> | undefined>;
         }
       ).sendCommand("propagate_ban", {
         peer_pubkey: peerPubkey,
         reason,
-        management_pubkey: signedEnvelope.pubkey,
-        management_signature: signedEnvelope.signature,
-        timestamp: signedEnvelope.timestamp,
-      });
+      })) as Record<string, unknown> | undefined;
       if (result?.ok) {
         this.peerReputation?.banPeer(peerPubkey);
         log.info(`Signed ban propagated for ${peerPubkey}: ${reason}`);
