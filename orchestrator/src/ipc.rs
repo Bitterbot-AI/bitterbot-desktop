@@ -70,6 +70,10 @@ pub enum IpcCommand {
         id: String,
         respond: tokio::sync::oneshot::Sender<serde_json::Value>,
     },
+    GetIdentity {
+        id: String,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
     ComputeEigenTrust {
         id: String,
         payload: EigenTrustPayload,
@@ -286,6 +290,10 @@ async fn handle_client_line(
             respond: resp_tx,
         },
         "get_stats" => IpcCommand::GetStats {
+            id: msg.id,
+            respond: resp_tx,
+        },
+        "get_identity" => IpcCommand::GetIdentity {
             id: msg.id,
             respond: resp_tx,
         },

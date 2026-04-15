@@ -962,6 +962,23 @@ impl SwarmHandle {
                     }
                 }));
             }
+            IpcCommand::GetIdentity { id, respond } => {
+                // Expose the orchestrator's Ed25519 libp2p pubkey (base64) so the
+                // TypeScript layer can use it as the management-node identity and
+                // verify it against the genesis trust list. Peer ID is the libp2p
+                // multihash form; node_tier reflects startup config.
+                let pubkey_b64 = base64::engine::general_purpose::STANDARD
+                    .encode(self.signing_key.verifying_key().to_bytes());
+                let _ = respond.send(serde_json::json!({
+                    "type": "response",
+                    "id": id,
+                    "payload": {
+                        "pubkey": pubkey_b64,
+                        "peer_id": self.local_peer_id.to_string(),
+                        "node_tier": self.node_tier,
+                    }
+                }));
+            }
             IpcCommand::ComputeEigenTrust {
                 id,
                 payload,
