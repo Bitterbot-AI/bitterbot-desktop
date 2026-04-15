@@ -237,12 +237,14 @@ The P2P layer uses a Rust binary (`orchestrator`) built on libp2p:
 
 ### Two-Tiered Topology
 
-| Tier           | Role                                                    | Dashboard                 | How Set                                                                    |
-| -------------- | ------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------- |
-| **Management** | Full birds-eye view, signed broadcasts, bounty issuance | Full management dashboard | TypeScript-side `ManagementKeyAuth` via `BITTERBOT_MANAGEMENT_KEY` env var |
-| **Edge**       | Basic P2P info, skill trading, gossip participation     | Basic P2P status          | Default                                                                    |
+| Tier           | Role                                                    | Dashboard                 | How Set                                                                                |
+| -------------- | ------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------- |
+| **Management** | Full birds-eye view, signed broadcasts, bounty issuance | Full management dashboard | `p2p.nodeTier: "management"` + orchestrator pubkey (`keys/node.pub`) in the trust list |
+| **Edge**       | Basic P2P info, skill trading, gossip participation     | Basic P2P status          | Default                                                                                |
 
-**Important:** The `--node-tier` flag is NOT passed to the Rust binary. Management tier authorization is handled entirely in TypeScript via `ManagementKeyAuth` (`src/memory/management-key-auth.ts`), which derives an Ed25519 public key from the `BITTERBOT_MANAGEMENT_KEY` environment variable and verifies it against the genesis trust list. The Rust orchestrator always runs as an edge node.
+**Identity model.** The orchestrator's libp2p Ed25519 keypair (`keys/node.{key,pub}`) IS the management-node identity — the same key used for libp2p peer identity, Noise handshakes, and signing management broadcasts (bans, bounties, weather). There is no separate TypeScript-side management key; `ManagementKeyAuth` (`src/memory/management-key-auth.ts`) fetches the orchestrator's pubkey over IPC and verifies it against the genesis trust list. When `p2p.nodeTier` is `"management"`, the orchestrator is launched with `--node-tier=management --genesis-trust-list=<path>` and self-verifies at startup that its pubkey is on the list (aborting if not).
+
+**Signing flow.** All management-action signing is done by the Rust orchestrator using its libp2p private key. The TypeScript `ManagementNodeService` never holds key material — it forwards commands (`propagate_ban`, etc.) to the orchestrator over IPC, which signs and broadcasts them on Gossipsub. Other nodes verify signatures against the trust list via `ManagementKeyAuth.verifyCommand` (a pure static helper, no local key required).
 
 ### Gossipsub Topics (5)
 

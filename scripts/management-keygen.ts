@@ -1,72 +1,80 @@
 #!/usr/bin/env npx tsx
 /**
- * Management Node Key Generator
+ * Management Node Identity Helper
  *
- * Generates an Ed25519 keypair for management node authorization.
- * Outputs the private key (for BITTERBOT_MANAGEMENT_KEY env var)
- * and the public key (for the genesis trust list).
+ * The orchestrator's libp2p Ed25519 keypair IS the management-node identity.
+ * This script reads that keypair (at `keys/node.pub`, generated on first
+ * orchestrator start) and outputs the base64 pubkey for the genesis trust
+ * list, optionally appending it to a trust list file.
+ *
+ * No new key material is generated — the orchestrator owns its private key.
  *
  * Usage:
  *   npx tsx scripts/management-keygen.ts
+ *   npx tsx scripts/management-keygen.ts --key-dir /path/to/keys
  *   npx tsx scripts/management-keygen.ts --trust-list-file ~/.bitterbot/genesis-trust.txt
+ *
+ * Flags:
+ *   --key-dir <path>           Directory containing node.key/node.pub.
+ *                              Defaults to ./keys (the orchestrator's default).
+ *   --trust-list-file <path>   Append the pubkey to this file (creates if missing).
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 
 const args = process.argv.slice(2);
-const trustListFileIdx = args.indexOf("--trust-list-file");
-const trustListFile = trustListFileIdx >= 0 ? args[trustListFileIdx + 1] : null;
 
-// Generate Ed25519 keypair
-const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
+function argValue(flag: string): string | null {
+  const idx = args.indexOf(flag);
+  if (idx < 0 || idx === args.length - 1) {
+    return null;
+  }
+  return args[idx + 1] ?? null;
+}
 
-// Extract raw 32-byte seed from PKCS8 DER
-const pkcs8Der = privateKey.export({ format: "der", type: "pkcs8" });
-const seed = Buffer.from(pkcs8Der.subarray(pkcs8Der.length - 32));
-const seedBase64 = seed.toString("base64");
+const keyDir = argValue("--key-dir") ?? "./keys";
+const trustListFile = argValue("--trust-list-file");
 
-// Extract raw 32-byte public key from SPKI DER
-const spkiDer = publicKey.export({ format: "der", type: "spki" });
-const rawPub = Buffer.from(spkiDer.subarray(12));
-const pubBase64 = rawPub.toString("base64");
+const pubPath = path.join(keyDir, "node.pub");
 
-// Verify round-trip
-const pkcs8Prefix = Buffer.from("302e020100300506032b657004220420", "hex");
-const testPk = crypto.createPrivateKey({
-  key: Buffer.concat([pkcs8Prefix, seed]),
-  format: "der",
-  type: "pkcs8",
-});
-const testPub = crypto.createPublicKey(testPk);
-const testSpki = testPub.export({ format: "der", type: "spki" });
-const testRawPub = Buffer.from(testSpki.subarray(12));
-if (testRawPub.toString("base64") !== pubBase64) {
-  console.error("ERROR: Round-trip verification failed!");
+if (!fs.existsSync(pubPath)) {
+  console.error(`ERROR: No orchestrator pubkey found at ${pubPath}`);
+  console.error();
+  console.error("The orchestrator generates its keypair on first start. To generate it:");
+  console.error("  1. Build the orchestrator:");
+  console.error("       cargo build --release --manifest-path orchestrator/Cargo.toml");
+  console.error("  2. Run it once to create the keys:");
+  console.error(`       ./orchestrator/target/release/bitterbot-orchestrator --key-dir ${keyDir}`);
+  console.error('     (Ctrl+C after it prints "Local peer ID: ...")');
+  console.error();
+  console.error("Then re-run this script.");
   process.exit(1);
 }
 
-// Sign a test message to verify the key works
-const testSig = crypto.sign(null, Buffer.from("keygen-test"), testPk);
-const valid = crypto.verify(null, Buffer.from("keygen-test"), testPub, testSig);
-if (!valid) {
-  console.error("ERROR: Signature verification failed!");
+// The orchestrator stores the pubkey as raw 32 bytes.
+const pubBytes = fs.readFileSync(pubPath);
+if (pubBytes.length !== 32) {
+  console.error(
+    `ERROR: ${pubPath} is ${pubBytes.length} bytes; expected 32 (raw Ed25519 public key)`,
+  );
+  console.error("The file may be corrupt or from a different keypair format.");
   process.exit(1);
 }
+
+const pubBase64 = pubBytes.toString("base64");
 
 console.log("═══════════════════════════════════════════════════════════════");
-console.log("  Management Node Ed25519 Keypair Generated");
+console.log("  Orchestrator Management Identity");
 console.log("═══════════════════════════════════════════════════════════════");
 console.log();
-console.log("PRIVATE KEY (set as env var — NEVER commit or share):");
-console.log(`  export BITTERBOT_MANAGEMENT_KEY="${seedBase64}"`);
+console.log(`Key directory: ${path.resolve(keyDir)}`);
 console.log();
 console.log("PUBLIC KEY (add to genesis trust list):");
 console.log(`  ${pubBase64}`);
 console.log();
 
 if (trustListFile) {
-  // Append to the trust list file
-  const dir = trustListFile.substring(0, trustListFile.lastIndexOf("/"));
+  const dir = path.dirname(trustListFile);
   if (dir) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -80,7 +88,8 @@ if (trustListFile) {
   if (lines.includes(pubBase64)) {
     console.log(`Public key already in ${trustListFile}`);
   } else {
-    fs.appendFileSync(trustListFile, `${pubBase64}\n`);
+    const separator = existing && !existing.endsWith("\n") ? "\n" : "";
+    fs.appendFileSync(trustListFile, `${separator}${pubBase64}\n`);
     console.log(`Public key appended to ${trustListFile}`);
   }
 } else {
@@ -89,7 +98,7 @@ if (trustListFile) {
 }
 
 console.log();
-console.log("Config (bitterbot.yaml):");
+console.log("Config (bitterbot.json):");
 console.log("  p2p:");
 console.log('    nodeTier: "management"');
 if (trustListFile) {
@@ -100,4 +109,10 @@ if (trustListFile) {
 console.log("    # OR inline:");
 console.log("    genesisTrustList:");
 console.log(`      - "${pubBase64}"`);
+console.log();
+console.log("Notes:");
+console.log("  - The orchestrator's private key (node.key) signs management broadcasts.");
+console.log("  - Never copy node.key off the machine running the management node.");
+console.log("  - To rotate the key, delete both node.key and node.pub and restart the");
+console.log("    orchestrator. The new pubkey must be added to the trust list.");
 console.log();

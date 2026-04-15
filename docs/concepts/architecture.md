@@ -157,7 +157,7 @@ Specialized oversight nodes that aggregate network analytics:
 - Network health scoring
 - Dashboard at `/management` route
 
-Management nodes require cryptographic authorization via `BITTERBOT_MANAGEMENT_KEY` and genesis trust list verification.
+Management nodes require cryptographic authorization: the orchestrator's libp2p Ed25519 pubkey (`keys/node.pub`) must be in the genesis trust list, and `p2p.nodeTier` must be `"management"`. The orchestrator self-verifies at startup and signs management broadcasts with its libp2p private key. See [Core Systems — P2P Topology](../network/core-systems.md#two-tiered-topology).
 
 ### Bootstrap & Discovery
 
