@@ -199,6 +199,91 @@ export class MarketplaceIntelligence {
   }
 
   /**
+   * PLAN-11 Gap 5: smoothed marketplace activity over a rolling window.
+   *
+   * Returns a normalized 0-1 score reflecting "how busy the marketplace has
+   * been lately." Used by the dream scheduler to decide how often to dream.
+   *
+   * Methodology:
+   *   - Read purchase events in the window, newer events weighted higher
+   *     (exponential decay with half-life = window/2).
+   *   - Normalize by dividing by a reference activity level (10 purchases in
+   *     the window is already "busy"; anything beyond saturates at 1.0).
+   *   - Add a small listing activity signal so nodes still scaling up get
+   *     some signal even before their first sale.
+   *
+   * @param windowHours Rolling window size in hours. Default 8.
+   * @param now Override "now" for deterministic tests.
+   */
+  getSmoothedActivityScore(windowHours: number = 8, now: number = Date.now()): number {
+    const windowMs = windowHours * 60 * 60 * 1000;
+    const since = now - windowMs;
+    const halfLife = windowMs / 2;
+
+    try {
+      const purchases = this.db
+        .prepare(
+          `SELECT purchased_at FROM marketplace_purchases
+           WHERE purchased_at >= ? AND purchased_at <= ?`,
+        )
+        .all(since, now) as Array<{ purchased_at: number }>;
+
+      // Exponentially weight recent purchases.
+      let weighted = 0;
+      for (const p of purchases) {
+        const age = now - p.purchased_at;
+        weighted += 2 ** (-age / halfLife);
+      }
+
+      // Listings contribute a small baseline.
+      let listingCount = 0;
+      try {
+        const listings = this.db
+          .prepare(
+            `SELECT COUNT(*) AS c FROM marketplace_listings
+             WHERE listed_at IS NOT NULL AND listed_at >= ? AND listed_at <= ?`,
+          )
+          .get(since, now) as { c: number } | undefined;
+        listingCount = listings?.c ?? 0;
+      } catch {
+        // marketplace_listings table may not exist
+      }
+
+      // Normalize: ~10 decay-weighted purchases + 5 listings → saturation.
+      const score = weighted / 10 + listingCount / 20;
+      return Math.min(1, Math.max(0, score));
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * PLAN-11 Gap 5: allocate mutation-mode budget proportionally to category demand.
+   *
+   * Returns a {category → fraction} map summing to ≤ 1.0. Categories outside
+   * the top N get implicitly 0. The dream engine's mutation pass can use this
+   * to skew skill selection toward hot categories.
+   *
+   * If no marketplace activity, returns empty object — caller should apply
+   * uniform allocation as usual.
+   */
+  getCategoryBudgetAllocation(topN: number = 5): Record<string, number> {
+    const opportunities = this.analyzeOpportunities(topN);
+    if (opportunities.length === 0) {
+      return {};
+    }
+    const totalDemand = opportunities.reduce((sum, opp) => sum + opp.demandScore, 0);
+    if (totalDemand <= 0) {
+      return {};
+    }
+    const allocation: Record<string, number> = {};
+    for (const opp of opportunities) {
+      allocation[opp.category] = opp.demandScore / totalDemand;
+    }
+    return allocation;
+  }
+
+  /**
    * Generate exploration targets from market demand.
    * These become curiosity targets for the dream engine.
    */

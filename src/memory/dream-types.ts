@@ -122,6 +122,23 @@ export type DreamEngineConfig = {
   /** Initial delay in minutes before the first dream cycle. Default: 5.
    * Prevents hot reloads from resetting the 2-hour timer indefinitely. */
   initialDelayMinutes?: number;
+  /** PLAN-11 Gap 5: adaptive interval driven by smoothed marketplace activity. */
+  adaptiveInterval?: {
+    /** Enable adaptive scheduling (default: false — falls back to fixed interval). */
+    enabled?: boolean;
+    /** Minimum interval in minutes (floor). Default: 30. */
+    minMinutes?: number;
+    /** Maximum interval in minutes (ceiling). Default: 240. */
+    maxMinutes?: number;
+    /** Rolling-window hours for activity smoothing. Default: 8. */
+    windowHours?: number;
+    /** Cooldown in minutes between interval changes (anti-flap). Default: 60. */
+    cooldownMinutes?: number;
+    /** Activity score above which the interval halves. Default: 0.7. */
+    highThreshold?: number;
+    /** Activity score below which the interval doubles. Default: 0.3. */
+    lowThreshold?: number;
+  };
   /** Max chunks to process per dream cycle. Default: 50. */
   maxChunksPerCycle?: number;
   /** Max LLM calls per dream cycle. Default: 5. */
@@ -160,6 +177,15 @@ export const DEFAULT_DREAM_CONFIG: Required<
   enabled: true,
   intervalMinutes: 120,
   initialDelayMinutes: 5,
+  adaptiveInterval: {
+    enabled: false,
+    minMinutes: 30,
+    maxMinutes: 240,
+    windowHours: 8,
+    cooldownMinutes: 60,
+    highThreshold: 0.7,
+    lowThreshold: 0.3,
+  },
   maxChunksPerCycle: 50,
   maxLlmCallsPerCycle: 5,
   clusterSimilarityThreshold: 0.65,

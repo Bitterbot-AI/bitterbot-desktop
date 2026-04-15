@@ -163,6 +163,10 @@ export class MemoryIndexManager implements MemorySearchManager {
   private dreamTimer: NodeJS.Timeout | null = null;
   private dreamInitialTimer: NodeJS.Timeout | null = null;
   private digestTimer: NodeJS.Timeout | null = null;
+  private marketplaceIntelligence: MarketplaceIntelligence | null = null;
+  private adaptiveIntervalController:
+    | import("./dream-adaptive-interval.js").AdaptiveIntervalController
+    | null = null;
   private dreamEngine: DreamEngine | null = null;
   private dreamLlmCall: ((prompt: string) => Promise<string>) | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
@@ -1532,15 +1536,15 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
 
     // Plan 8, Phase 7: Wire marketplace intelligence for demand-driven dreams
-    this.dreamEngine.setMarketplaceIntelligence(new MarketplaceIntelligence(this.db));
+    const marketplaceIntelligence = new MarketplaceIntelligence(this.db);
+    this.dreamEngine.setMarketplaceIntelligence(marketplaceIntelligence);
+    this.marketplaceIntelligence = marketplaceIntelligence;
 
     // PLAN-10: Skill Seekers adapter is wired via the async .then() callback
     // in ensureSkillNetworkBridge() — no need to wire here (adapter may not exist yet).
 
     const minutes = dreamCfg?.intervalMinutes ?? 120;
     if (minutes > 0) {
-      const ms = minutes * 60 * 1000;
-
       // Trigger-on-start: run the first dream cycle after a short initial delay
       // instead of waiting the full interval. This ensures dreams actually fire
       // even when hot reloads reset the timer every 30-60 minutes.
@@ -1557,11 +1561,58 @@ export class MemoryIndexManager implements MemorySearchManager {
         this.dreamInitialTimer.unref();
       }
 
-      this.dreamTimer = setInterval(() => {
-        void this.dream().catch((err) => {
-          log.warn(`dream cycle failed: ${String(err)}`);
+      // PLAN-11 Gap 5: adaptive interval. When adaptiveInterval.enabled, we
+      // self-reschedule after each cycle using the smoothed marketplace signal
+      // + hysteresis + cooldown. Otherwise behave as a fixed setInterval.
+      const adaptiveCfg = dreamCfg?.adaptiveInterval;
+      if (adaptiveCfg?.enabled) {
+        void import("./dream-adaptive-interval.js").then(({ AdaptiveIntervalController }) => {
+          this.adaptiveIntervalController = new AdaptiveIntervalController({
+            baseMinutes: minutes,
+            minMinutes: adaptiveCfg.minMinutes,
+            maxMinutes: adaptiveCfg.maxMinutes,
+            windowHours: adaptiveCfg.windowHours,
+            cooldownMinutes: adaptiveCfg.cooldownMinutes,
+            highThreshold: adaptiveCfg.highThreshold,
+            lowThreshold: adaptiveCfg.lowThreshold,
+          });
+          this.scheduleAdaptiveDreamFire();
         });
-      }, ms);
+      } else {
+        const ms = minutes * 60 * 1000;
+        this.dreamTimer = setInterval(() => {
+          void this.dream().catch((err) => {
+            log.warn(`dream cycle failed: ${String(err)}`);
+          });
+        }, ms);
+      }
+    }
+  }
+
+  /**
+   * PLAN-11 Gap 5: one cycle of the adaptive scheduler. Runs the dream, then
+   * asks the controller for the next interval based on current marketplace
+   * activity and reschedules.
+   */
+  private scheduleAdaptiveDreamFire(): void {
+    if (!this.adaptiveIntervalController || !this.marketplaceIntelligence) {
+      return;
+    }
+    const minutes = this.adaptiveIntervalController.evaluate(this.marketplaceIntelligence);
+    const ms = minutes * 60 * 1000;
+    this.dreamTimer = setTimeout(() => {
+      this.dreamTimer = null;
+      void this.dream()
+        .catch((err) => {
+          log.warn(`dream cycle failed: ${String(err)}`);
+        })
+        .finally(() => {
+          // Re-evaluate and reschedule after each cycle completes.
+          this.scheduleAdaptiveDreamFire();
+        });
+    }, ms);
+    if ((this.dreamTimer as NodeJS.Timeout).unref) {
+      (this.dreamTimer as NodeJS.Timeout).unref();
     }
   }
 
@@ -3644,7 +3695,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.dreamInitialTimer = null;
     }
     if (this.dreamTimer) {
+      // May be either setInterval (fixed) or setTimeout (adaptive); clearing both
+      // is a no-op after the first call, but clearInterval handles timeouts on Node.
       clearInterval(this.dreamTimer);
+      clearTimeout(this.dreamTimer);
       this.dreamTimer = null;
     }
     if (this.digestTimer) {
