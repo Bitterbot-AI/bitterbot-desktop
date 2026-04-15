@@ -93,7 +93,8 @@ export async function finalizeOnboardingWizard(
     installDaemon = true;
   } else {
     installDaemon = await prompter.confirm({
-      message: "Install Gateway service (recommended)",
+      message:
+        "Install the gateway as a system service? (recommended — it stays running, restarts after reboots, dreams happen even when you forget about it)",
       initialValue: true,
     });
   }
@@ -125,11 +126,11 @@ export async function finalizeOnboardingWizard(
     const loaded = await service.isLoaded({ env: process.env });
     if (loaded) {
       const action = await prompter.select({
-        message: "Gateway service already installed",
+        message: "A gateway service is already installed. What now?",
         options: [
-          { value: "restart", label: "Restart" },
-          { value: "reinstall", label: "Reinstall" },
-          { value: "skip", label: "Skip" },
+          { value: "restart", label: "Restart it", hint: "Pick up new config without reinstall" },
+          { value: "reinstall", label: "Reinstall", hint: "Replace the service definition" },
+          { value: "skip", label: "Leave it alone", hint: "Don't touch the existing service" },
         ],
       });
       if (action === "restart") {
@@ -445,16 +446,35 @@ export async function finalizeOnboardingWizard(
   );
 
   await prompter.note(
-    'What now: https://bitterbot.ai/showcase ("What People Are Building").',
+    [
+      "Your agent is alive. A few good first moves:",
+      "",
+      "  1. Open the Control UI and have a real conversation —",
+      "     the dream engine learns from session content, not from prompts.",
+      "  2. Tune your GENOME.md (workspace root) — set hormonal baselines,",
+      "     core values, and immutable safety axioms. The Phenotype evolves",
+      "     within these constraints.",
+      "  3. Fund the wallet with a small float you can afford to lose.",
+      "     `bitterbot wallet status` shows the address; send a few USDC on Base.",
+      "  4. Browse the marketplace once dreams have run a few cycles —",
+      "     `bitterbot skills marketplace`.",
+      "  5. See what other operators are building: https://bitterbot.ai/showcase",
+      "",
+      "If you're developing locally and want hot-reload on the Control UI:",
+      "  - Single terminal: `pnpm dev:all` (gateway + Vite, color-tagged logs)",
+      "  - Two terminals: `pnpm gateway:watch` + `cd desktop && pnpm dev`",
+      "",
+      "When something feels off: `bitterbot doctor` walks ~25 subsystem checks.",
+    ].join("\n"),
     "What now",
   );
 
   await prompter.outro(
     controlUiOpened
-      ? "Onboarding complete. Dashboard opened; keep that tab to control Bitterbot."
+      ? "Setup done. Dashboard's open — keep that tab to drive Bitterbot."
       : seededInBackground
-        ? "Onboarding complete. Web UI seeded in the background; open it anytime with the dashboard link above."
-        : "Onboarding complete. Use the dashboard link above to control Bitterbot.",
+        ? "Setup done. Control UI is seeding in the background; open it anytime via the dashboard link above."
+        : "Setup done. Open the dashboard link above to drive Bitterbot.",
   );
 
   return { launchedTui: false };

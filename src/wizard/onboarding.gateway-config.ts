@@ -55,6 +55,34 @@ export async function configureGatewayForOnboarding(
   const { flow, localPort, quickstartGateway, prompter } = opts;
   let { nextConfig } = opts;
 
+  // Explain what the gateway actually IS before asking operators to
+  // configure ports/binds/auth. The gateway isn't just a network
+  // endpoint — it's the process that hosts the agent's brain.
+  if (flow === "advanced") {
+    await prompter.note(
+      [
+        "The gateway is where your agent lives. It hosts:",
+        "  - the biological memory system (crystals, dreams, hormonal state)",
+        "  - the USDC wallet on Base and x402 payment flow",
+        "  - the P2P orchestrator (libp2p peer, skill marketplace, EigenTrust)",
+        "  - the channel router (WhatsApp, Telegram, Discord, etc.)",
+        "  - the Control UI WebSocket that powers /chat, /dreams, /skills views",
+        "",
+        "Every other surface — browser, desktop app, CLI, iOS — is a thin",
+        "client that talks to this gateway. Keep it healthy; it's the node.",
+        "",
+        "The choices below control HOW the gateway is reachable:",
+        "  port  → which TCP port it listens on (default 19001)",
+        "  bind  → which networks can connect (loopback, LAN, Tailnet, …)",
+        "  auth  → how clients prove they're you (token recommended)",
+        "",
+        "Auth runs on every request regardless of bind, so bind mainly",
+        "controls attack surface. Default: loopback + token = safest.",
+      ].join("\n"),
+      "Gateway",
+    );
+  }
+
   const port =
     flow === "quickstart"
       ? quickstartGateway.port
@@ -73,13 +101,25 @@ export async function configureGatewayForOnboarding(
     flow === "quickstart"
       ? quickstartGateway.bind
       : await prompter.select<GatewayWizardSettings["bind"]>({
-          message: "Gateway bind",
+          message: "Who should be able to reach the gateway?",
           options: [
-            { value: "loopback", label: "Loopback (127.0.0.1)" },
-            { value: "lan", label: "LAN (0.0.0.0)" },
-            { value: "tailnet", label: "Tailnet (Tailscale IP)" },
-            { value: "auto", label: "Auto (Loopback → LAN)" },
-            { value: "custom", label: "Custom IP" },
+            {
+              value: "loopback",
+              label: "Loopback (127.0.0.1)",
+              hint: "Only this machine — safest default",
+            },
+            { value: "lan", label: "LAN (0.0.0.0)", hint: "Any device on your local network" },
+            {
+              value: "tailnet",
+              label: "Tailnet (Tailscale IP)",
+              hint: "Only peers on your Tailscale net",
+            },
+            {
+              value: "auto",
+              label: "Auto (Loopback → LAN)",
+              hint: "Loopback if possible, else LAN",
+            },
+            { value: "custom", label: "Custom IP", hint: "Specific interface address" },
           ],
         });
 
@@ -101,14 +141,18 @@ export async function configureGatewayForOnboarding(
     flow === "quickstart"
       ? quickstartGateway.authMode
       : ((await prompter.select({
-          message: "Gateway auth",
+          message: "How do clients authenticate to the gateway?",
           options: [
             {
               value: "token",
               label: "Token",
-              hint: "Recommended default (local + remote)",
+              hint: "Random bearer token — recommended for local and remote",
             },
-            { value: "password", label: "Password" },
+            {
+              value: "password",
+              label: "Password",
+              hint: "Required for Tailscale Funnel; weaker than tokens otherwise",
+            },
           ],
           initialValue: "token",
         })) as GatewayAuthChoice);
@@ -160,8 +204,8 @@ export async function configureGatewayForOnboarding(
       gatewayToken = quickstartGateway.token ?? randomToken();
     } else {
       const tokenInput = await prompter.text({
-        message: "Gateway token (blank to generate)",
-        placeholder: "Needed for multi-machine or non-loopback access",
+        message: "Gateway token (leave blank to generate a fresh one)",
+        placeholder: "Every client — Control UI, CLI, iOS — uses this token",
         initialValue: quickstartGateway.token ?? "",
       });
       gatewayToken = normalizeGatewayTokenInput(tokenInput) || randomToken();

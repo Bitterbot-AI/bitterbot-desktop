@@ -12,10 +12,22 @@ export async function setupInternalHooks(
 ): Promise<BitterbotConfig> {
   await prompter.note(
     [
-      "Hooks let you automate actions when agent commands are issued.",
-      "Example: Save session context to memory when you issue /new.",
+      "Hooks are autonomous background triggers — they run when something",
+      "happens, not because you asked. They are how the agent learns,",
+      "remembers, and acts while you're not looking.",
       "",
-      "Learn more: https://docs.bitterbot.ai/automation/hooks",
+      "A few of the built-ins:",
+      "  - session-memory — crystallize session context into memory on /new",
+      "    (the dream engine works on what this captures)",
+      "  - command-logger — record every /command for replay + audit",
+      "  - boot-md       — prime working memory from MEMORY.md at start",
+      "  - bootstrap-extra-files — pull referenced files on workspace init",
+      "",
+      "Plugins register their own hooks too (gmail-watcher for inbox",
+      "processing, wake-up for scheduled triggers, heartbeat for liveness).",
+      "",
+      "Enable more later with `bitterbot hooks enable <name>`.",
+      "Docs: https://docs.bitterbot.ai/automation/hooks",
     ].join("\n"),
     "Hooks",
   );
@@ -36,9 +48,9 @@ export async function setupInternalHooks(
   }
 
   const toEnable = await prompter.multiselect({
-    message: "Enable hooks?",
+    message: "Which hooks should fire autonomously?",
     options: [
-      { value: "__skip__", label: "Skip for now" },
+      { value: "__skip__", label: "None for now — I'll enable them later" },
       ...eligibleHooks.map((hook) => ({
         value: hook.name,
         label: `${hook.emoji ?? "🔗"} ${hook.name}`,

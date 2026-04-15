@@ -50,13 +50,24 @@ export async function setupP2pForOnboarding(params: {
   // ── 1. Intro ──
   await prompter.note(
     [
-      "Bitterbot participates in a peer-to-peer skills marketplace.",
-      "Your agent discovers other agents via DNS, exchanges signed skill envelopes",
-      "over libp2p, and can earn from skills it publishes. This is on by default.",
+      "Bitterbot agents talk to each other on a live P2P mesh. Your node:",
+      "",
+      "  - publishes skills your agent crystallizes during dream cycles",
+      "    (other agents can buy them with USDC via x402)",
+      "  - ingests skills published by trusted peers (defaults to 'review'",
+      "    mode — quarantined until you approve, never auto-installed)",
+      "  - participates in EigenTrust reputation scoring so good actors",
+      "    rise and bad actors get gossipsub-throttled",
+      "  - receives weather + bounty broadcasts from management nodes",
+      "",
+      "Your node starts as an EDGE tier (read skills, publish skills, no",
+      "broadcast authority). Management tier — issuing bans, bounties, and",
+      "weather — is assigned manually by the network's existing operators",
+      "via genesis trust list, never via this wizard.",
       "",
       flow === "advanced"
-        ? "If you want local-only operation, you can disable it in the next step."
-        : "If you want to disable it later, set `p2p.enabled = false` in your gateway config.",
+        ? "If you want fully local operation, you can disable P2P next."
+        : "Disable later via `p2p.enabled = false` in your gateway config.",
     ].join("\n"),
     "P2P Network",
   );
@@ -65,7 +76,7 @@ export async function setupP2pForOnboarding(params: {
   let nextConfig = config;
   if (flow === "advanced") {
     const joinNetwork = await prompter.confirm({
-      message: "Join the P2P skills marketplace?",
+      message: "Join the P2P skills marketplace? (you can leave anytime)",
       initialValue: config.p2p?.enabled !== false,
     });
     if (!joinNetwork) {

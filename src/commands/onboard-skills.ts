@@ -74,7 +74,8 @@ export async function setupSkills(
   );
 
   const shouldConfigure = await prompter.confirm({
-    message: "Configure skills now? (recommended)",
+    message:
+      "Set up skills now? (these are the workflows your agent crystallizes during dreams; recommended)",
     initialValue: true,
   });
   if (!shouldConfigure) {

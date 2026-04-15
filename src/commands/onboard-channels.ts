@@ -191,12 +191,20 @@ async function noteChannelPrimer(
   );
   await prompter.note(
     [
-      "DM security: default is pairing; unknown DMs get a pairing code.",
-      `Approve with: ${formatCliCommand("bitterbot pairing approve <channel> <code>")}`,
-      'Public DMs require dmPolicy="open" + allowFrom=["*"].',
-      "Multi-user DMs: run: " +
+      "Once a channel is connected, your agent can autonomously read and",
+      "respond to messages on it — not just reply when you ping it. The",
+      "channel becomes a full surface for agent-to-human and agent-to-agent",
+      "conversation. Plan the blast radius accordingly.",
+      "",
+      "Safety rails:",
+      "  - DM pairing (default) — unknown senders get a pairing code.",
+      `    Approve with: ${formatCliCommand("bitterbot pairing approve <channel> <code>")}`,
+      '  - Public DMs require dmPolicy="open" + allowFrom=["*"] — off by default.',
+      "  - Multi-user DMs isolate per-peer sessions when you run: " +
         formatCliCommand('bitterbot config set session.dmScope "per-channel-peer"') +
-        ' (or "per-account-channel-peer" for multi-account channels) to isolate sessions.',
+        ' (or "per-account-channel-peer" for multi-account channels).',
+      "  - Mention gating, sandboxing, and allowlists configured per channel.",
+      "",
       `Docs: ${formatDocsLink("/start/pairing", "start/pairing")}`,
       "",
       ...channelLines,
@@ -235,7 +243,8 @@ async function maybeConfigureDmPolicies(params: {
   }
 
   const wants = await prompter.confirm({
-    message: "Configure DM access policies now? (default: pairing)",
+    message:
+      "Tune DM access policies now? (default 'pairing' is the safest — strangers must request access)",
     initialValue: false,
   });
   if (!wants) {
@@ -312,7 +321,8 @@ export async function setupChannels(
   const shouldConfigure = options?.skipConfirm
     ? true
     : await prompter.confirm({
-        message: "Configure chat channels now?",
+        message:
+          "Connect messaging channels now? (your agent will read and act on them autonomously)",
         initialValue: true,
       });
   if (!shouldConfigure) {

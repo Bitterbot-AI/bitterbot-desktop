@@ -24,7 +24,7 @@ export async function promptAuthChoiceGrouped(params: {
     ];
 
     const providerSelection = (await params.prompter.select({
-      message: "Model/auth provider",
+      message: "Pick the LLM provider that powers your agent",
       options: providerOptions,
     })) as string;
 
@@ -47,8 +47,8 @@ export async function promptAuthChoiceGrouped(params: {
     }
 
     const methodSelection = await params.prompter.select({
-      message: `${group.label} auth method`,
-      options: [...group.options, { value: BACK_VALUE, label: "Back" }],
+      message: `How will you authenticate with ${group.label}?`,
+      options: [...group.options, { value: BACK_VALUE, label: "← Back to providers" }],
     });
 
     if (methodSelection === BACK_VALUE) {

@@ -28,32 +28,51 @@ async function requireRiskAcknowledgement(params: {
 
   await params.prompter.note(
     [
-      "Security warning — please read.",
+      "Read this before going further.",
       "",
-      "Bitterbot is a hobby project and still in beta. Expect sharp edges.",
-      "This bot can read files and run actions if tools are enabled.",
-      "A bad prompt can trick it into doing unsafe things.",
+      "Bitterbot is in open beta. It remembers your life, runs real tools,",
+      "moves real USDC, and talks to other agents on a live P2P mesh.",
+      "That is the whole point — and it is also how you get hurt if you",
+      "skip the safety rails.",
       "",
-      "If you’re not comfortable with basic security and access control, don’t run Bitterbot.",
-      "Ask someone experienced to help before enabling tools or exposing it to the internet.",
+      "What this agent can actually do once you enable its tools:",
+      "- Read and write files in its workspace",
+      "- Run code, browse the web, execute shell commands",
+      "- Send and receive messages on channels you connect (WhatsApp, Telegram, etc.)",
+      "- Hold a USDC wallet on Base, pay for paywalled APIs via x402, receive payments",
+      "- Publish skills to the P2P marketplace and ingest skills from other agents",
+      "",
+      "LLMs can be tricked. A malicious message, a hostile webpage, or a",
+      "poisoned skill from the network can steer the agent toward actions",
+      "you did not intend. Plan for that, not against it.",
+      "",
+      "Run Bitterbot at your own risk. We ship fast, patch fast, and trust",
+      "operators to harden their own nodes. If basic security and access",
+      "control are unfamiliar territory, pair with someone who can help",
+      "before enabling tools, channels, or the wallet.",
       "",
       "Recommended baseline:",
-      "- Pairing/allowlists + mention gating.",
-      "- Sandbox + least-privilege tools.",
-      "- Keep secrets out of the agent’s reachable filesystem.",
-      "- Use the strongest available model for any bot with tools or untrusted inboxes.",
+      "- Pairing, allowlists, and mention gating for inbound messages.",
+      "- Sandbox + least-privilege tools. Start minimal; expand as you trust it.",
+      "- Keep secrets out of the agent's reachable filesystem (no .env in workspace).",
+      "- Use the strongest model available for any bot with tools or untrusted inboxes.",
+      "- Start the wallet with a small float you can afford to lose while you learn.",
+      "- P2P skill ingestion defaults to 'review' — don't flip to 'auto' until you",
+      "  have a trust list and understand the SkillVerifier + reputation gates.",
       "",
       "Run regularly:",
-      "bitterbot security audit --deep",
-      "bitterbot security audit --fix",
+      "  bitterbot security audit --deep",
+      "  bitterbot security audit --fix",
+      "  bitterbot doctor",
       "",
       "Must read: https://docs.bitterbot.ai/gateway/security",
     ].join("\n"),
-    "Security",
+    "Security — at your own risk",
   );
 
   const ok = await params.prompter.confirm({
-    message: "I understand this is powerful and inherently risky. Continue?",
+    message:
+      "I understand Bitterbot can act on my behalf, move funds, and connect to a live P2P network. I accept the risk. Continue?",
     initialValue: false,
   });
   if (!ok) {
@@ -113,10 +132,10 @@ export async function runOnboardingWizard(
   let flow: WizardFlow =
     explicitFlow ??
     (await prompter.select({
-      message: "Onboarding mode",
+      message: "How do you want to set this up?",
       options: [
-        { value: "quickstart", label: "QuickStart", hint: quickstartHint },
-        { value: "advanced", label: "Manual", hint: manualHint },
+        { value: "quickstart", label: "QuickStart", hint: `Sane defaults; ${quickstartHint}` },
+        { value: "advanced", label: "Manual", hint: `Walk every choice — ${manualHint}` },
       ],
       initialValue: "quickstart",
     }));
@@ -136,11 +155,19 @@ export async function runOnboardingWizard(
     );
 
     const action = await prompter.select({
-      message: "Config handling",
+      message: "We found an existing config. What should we do with it?",
       options: [
-        { value: "keep", label: "Use existing values" },
-        { value: "modify", label: "Update values" },
-        { value: "reset", label: "Reset" },
+        { value: "keep", label: "Use what's there", hint: "Skip ahead, leave settings alone" },
+        {
+          value: "modify",
+          label: "Update some values",
+          hint: "Walk through prompts, edit as you go",
+        },
+        {
+          value: "reset",
+          label: "Reset",
+          hint: "Wipe and start over (config / creds / workspace)",
+        },
       ],
     });
 
@@ -148,16 +175,18 @@ export async function runOnboardingWizard(
       const workspaceDefault =
         baseConfig.agents?.defaults?.workspace ?? onboardHelpers.DEFAULT_WORKSPACE;
       const resetScope = (await prompter.select({
-        message: "Reset scope",
+        message: "How deep should the reset go?",
         options: [
-          { value: "config", label: "Config only" },
+          { value: "config", label: "Config only", hint: "Wipe gateway/auth/channel settings" },
           {
             value: "config+creds+sessions",
             label: "Config + creds + sessions",
+            hint: "Above + auth profiles + chat history",
           },
           {
             value: "full",
-            label: "Full reset (config + creds + sessions + workspace)",
+            label: "Full reset",
+            hint: "Above + workspace (memory, dreams, skills, MEMORY.md)",
           },
         ],
       })) as ResetScope;
@@ -250,22 +279,25 @@ export async function runOnboardingWizard(
     };
     const quickstartLines = quickstartGateway.hasExisting
       ? [
-          "Keeping your current gateway settings:",
-          `Gateway port: ${quickstartGateway.port}`,
-          `Gateway bind: ${formatBind(quickstartGateway.bind)}`,
+          "Keeping your current gateway settings (re-run with --flow=manual to change):",
+          `  port: ${quickstartGateway.port}`,
+          `  bind: ${formatBind(quickstartGateway.bind)}`,
           ...(quickstartGateway.bind === "custom" && quickstartGateway.customBindHost
-            ? [`Gateway custom IP: ${quickstartGateway.customBindHost}`]
+            ? [`  custom IP: ${quickstartGateway.customBindHost}`]
             : []),
-          `Gateway auth: ${formatAuth(quickstartGateway.authMode)}`,
-          `Tailscale exposure: ${formatTailscale(quickstartGateway.tailscaleMode)}`,
-          "Direct to chat channels.",
+          `  auth: ${formatAuth(quickstartGateway.authMode)}`,
+          `  Tailscale: ${formatTailscale(quickstartGateway.tailscaleMode)}`,
+          "",
+          "Skipping straight to channel setup.",
         ]
       : [
-          `Gateway port: ${DEFAULT_GATEWAY_PORT}`,
-          "Gateway bind: Loopback (127.0.0.1)",
-          "Gateway auth: Token (default)",
-          "Tailscale exposure: Off",
-          "Direct to chat channels.",
+          "QuickStart defaults (re-run with --flow=manual or `bitterbot configure` to change):",
+          `  port: ${DEFAULT_GATEWAY_PORT}`,
+          "  bind: Loopback (127.0.0.1) — only this machine can reach it",
+          "  auth: Token (random, auto-generated)",
+          "  Tailscale: off",
+          "",
+          "Skipping straight to channel setup.",
         ];
     await prompter.note(quickstartLines.join("\n"), "QuickStart");
   }
@@ -290,18 +322,18 @@ export async function runOnboardingWizard(
     (flow === "quickstart"
       ? "local"
       : ((await prompter.select({
-          message: "What do you want to set up?",
+          message: "Where will the gateway run?",
           options: [
             {
               value: "local",
-              label: "Local gateway (this machine)",
+              label: "Local — this machine hosts the agent",
               hint: localProbe.ok
-                ? `Gateway reachable (${localUrl})`
-                : `No gateway detected (${localUrl})`,
+                ? `Gateway already reachable (${localUrl})`
+                : `Will start fresh (${localUrl})`,
             },
             {
               value: "remote",
-              label: "Remote gateway (info-only)",
+              label: "Remote — point this CLI at a gateway running elsewhere",
               hint: !remoteUrl
                 ? "No remote URL configured yet"
                 : remoteProbe?.ok
@@ -327,7 +359,8 @@ export async function runOnboardingWizard(
     (flow === "quickstart"
       ? (baseConfig.agents?.defaults?.workspace ?? onboardHelpers.DEFAULT_WORKSPACE)
       : await prompter.text({
-          message: "Workspace directory",
+          message:
+            "Workspace directory (where GENOME.md, MEMORY.md, skills/, and dream output live)",
           initialValue: baseConfig.agents?.defaults?.workspace ?? onboardHelpers.DEFAULT_WORKSPACE,
         }));
 
@@ -456,6 +489,21 @@ export async function runOnboardingWizard(
   } else {
     const { setupSkills } = await import("../commands/onboard-skills.js");
     nextConfig = await setupSkills(nextConfig, workspaceDir, runtime, prompter);
+  }
+
+  // Genome step — surface GENOME.md and let the operator tune it before the
+  // agent starts shaping its personality. No-op in quickstart.
+  {
+    const { setupGenomeForOnboarding } = await import("./onboarding.genome.js");
+    await setupGenomeForOnboarding({ workspaceDir, flow, prompter });
+  }
+
+  // Wallet step — explain the economic layer and confirm enable + spend caps.
+  // After skills (the agent needs to know it CAN earn from them before we
+  // explain the wallet) and before hooks (so hooks recs can assume wallet state).
+  {
+    const { setupWalletForOnboarding } = await import("./onboarding.wallet.js");
+    nextConfig = await setupWalletForOnboarding({ config: nextConfig, flow, prompter });
   }
 
   // Setup hooks (session memory on /new)

@@ -31,8 +31,11 @@ const AUTH_CHOICE_GROUP_DEFS: {
   {
     value: "anthropic",
     label: "Anthropic",
-    hint: "setup-token + API key",
-    choices: ["token", "apiKey"],
+    // As of 2026-04-04, Anthropic restricts Claude Pro/Max OAuth to Claude Code
+    // and claude.ai only — third-party tools must use API keys. Setup-token
+    // flow removed from the picker; validator retained for legacy configs.
+    hint: "API key (Pro/Max OAuth disabled by Anthropic for 3rd-party tools)",
+    choices: ["apiKey"],
   },
   {
     value: "chutes",
@@ -165,8 +168,8 @@ const AUTH_CHOICE_GROUP_DEFS: {
 const BASE_AUTH_CHOICE_OPTIONS: ReadonlyArray<AuthChoiceOption> = [
   {
     value: "token",
-    label: "Anthropic token (paste setup-token)",
-    hint: "run `claude setup-token` elsewhere, then paste the token here",
+    label: "Anthropic setup-token (deprecated — no longer works for 3rd-party tools)",
+    hint: "Anthropic blocked Pro/Max OAuth for 3rd-party use on 2026-04-04. Use API key instead.",
   },
   {
     value: "openai-codex",

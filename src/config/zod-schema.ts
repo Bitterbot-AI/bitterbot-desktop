@@ -588,6 +588,15 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        p2p: z
+          .object({
+            ingestPolicy: z.enum(["auto", "review", "deny"]).optional(),
+            trustList: z.array(z.string()).optional(),
+            quarantineDir: z.string().optional(),
+            maxIngestedPerHour: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

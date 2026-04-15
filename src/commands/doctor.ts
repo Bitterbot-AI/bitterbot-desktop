@@ -31,6 +31,7 @@ import {
   maybeRepairAnthropicOAuthProfileId,
   noteAuthProfileHealth,
 } from "./doctor-auth.js";
+import { runCanvasChecks } from "./doctor-canvas.js";
 import { doctorShellCompletion } from "./doctor-completion.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
 import { maybeRepairGatewayDaemon } from "./doctor-gateway-daemon-flow.js";
@@ -52,6 +53,7 @@ import { maybeRepairSandboxImages, noteSandboxScopeWarnings } from "./doctor-san
 import { noteSecurityWarnings } from "./doctor-security.js";
 import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integrity.js";
 import { maybeOfferUpdateBeforeDoctor } from "./doctor-update.js";
+import { runWalletChecks } from "./doctor-wallet.js";
 import { noteWorkspaceStatus } from "./doctor-workspace-status.js";
 import { MEMORY_SYSTEM_PROMPT, shouldSuggestMemorySystem } from "./doctor-workspace.js";
 import { applyWizardMetadata, printWizardHeader, randomToken } from "./onboard-helpers.js";
@@ -285,6 +287,12 @@ export async function doctorCommand(
       isGatewayRunning: healthOk,
     });
   }
+
+  // ── Wallet (USDC on Base) ──
+  await runWalletChecks({ config: cfg });
+
+  // ── Canvas (A2UI rendering) ──
+  await runCanvasChecks({ config: cfg });
 
   const shouldWriteConfig = prompter.shouldRepair || configResult.shouldWriteConfig;
   if (shouldWriteConfig) {
