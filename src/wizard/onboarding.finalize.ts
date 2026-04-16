@@ -396,54 +396,40 @@ export async function finalizeOnboardingWizard(
     );
   }
 
-  const searchProvider = nextConfig.tools?.web?.search?.provider ?? "brave";
-  const searchCfg = nextConfig.tools?.web?.search;
-  const providerEnvVars: Record<string, string> = {
-    brave: "BRAVE_API_KEY",
-    perplexity: "PERPLEXITY_API_KEY",
-    grok: "XAI_API_KEY",
-    tavily: "TAVILY_API_KEY",
-  };
-  const envVar = providerEnvVars[searchProvider] ?? "BRAVE_API_KEY";
-  const providerLabels: Record<string, string> = {
-    brave: "Brave Search",
-    perplexity: "Perplexity",
-    grok: "Grok (xAI)",
-    tavily: "Tavily",
-  };
-  const providerLabel = providerLabels[searchProvider] ?? searchProvider;
-  const configKey =
-    searchProvider === "brave"
-      ? searchCfg?.apiKey
-      : (searchCfg as Record<string, Record<string, unknown>> | undefined)?.[searchProvider]
-          ?.apiKey;
-  const webSearchKey = (typeof configKey === "string" ? configKey : "").trim();
-  const webSearchEnv = (process.env[envVar] ?? "").trim();
-  const hasWebSearchKey = Boolean(webSearchKey || webSearchEnv);
-  await prompter.note(
-    hasWebSearchKey
-      ? [
-          "Web search is enabled, so your agent can look things up online when needed.",
+  // Web search status note — simplified since the wizard now prompts
+  // for the key inline. This just confirms what the user set up.
+  {
+    const searchProvider = nextConfig.tools?.web?.search?.provider ?? "brave";
+    const searchCfg = nextConfig.tools?.web?.search;
+    const providerEnvVars: Record<string, string> = {
+      brave: "BRAVE_API_KEY",
+      perplexity: "PERPLEXITY_API_KEY",
+      grok: "XAI_API_KEY",
+      tavily: "TAVILY_API_KEY",
+    };
+    const envVar = providerEnvVars[searchProvider] ?? "BRAVE_API_KEY";
+    const configKey =
+      searchProvider === "brave"
+        ? searchCfg?.apiKey
+        : (searchCfg as Record<string, Record<string, unknown>> | undefined)?.[searchProvider]
+            ?.apiKey;
+    const webSearchKey = (typeof configKey === "string" ? configKey : "").trim();
+    const webSearchEnv = (process.env[envVar] ?? "").trim();
+    const hasWebSearchKey = Boolean(webSearchKey || webSearchEnv);
+    if (!hasWebSearchKey) {
+      await prompter.note(
+        [
+          "Web search is not yet configured. Your agent won’t be able to look",
+          "things up online — the curiosity engine and dream research mode",
+          "will be limited to what’s in memory.",
           "",
-          webSearchKey
-            ? `API key: stored in config (provider: ${providerLabel}).`
-            : `API key: provided via ${envVar} env var (Gateway environment).`,
-          "Docs: https://docs.bitterbot.ai/tools/web",
-        ].join("\n")
-      : [
-          "If you want your agent to be able to search the web, you’ll need an API key.",
-          "",
-          `Bitterbot supports Brave Search, Perplexity, Grok (xAI), and Tavily for the \`web_search\` tool.`,
-          "",
-          "Set it up interactively:",
-          `- Run: ${formatCliCommand("bitterbot configure --section web")}`,
-          "- Choose a provider and paste your API key",
-          "",
-          `Alternative: set ${envVar} in the Gateway environment (no config changes).`,
-          "Docs: https://docs.bitterbot.ai/tools/web",
+          `Set it up later: ${formatCliCommand("bitterbot configure --section web")}`,
+          `Or just export ${envVar} in the gateway environment.`,
         ].join("\n"),
-    "Web search (optional)",
-  );
+        "Web search (not configured)",
+      );
+    }
+  }
 
   await prompter.note(
     [

@@ -65,7 +65,7 @@ async function requireRiskAcknowledgement(params: {
       "  bitterbot security audit --fix",
       "  bitterbot doctor",
       "",
-      "Must read: https://docs.bitterbot.ai/gateway/security",
+      "Must read: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/SECURITY.md",
     ].join("\n"),
     "Security — at your own risk",
   );
@@ -428,6 +428,14 @@ export async function runOnboardingWizard(
   }
 
   await warnIfModelConfigLooksOff(nextConfig, prompter);
+
+  // Web search — set up an API key so web_search/curiosity/dreams work.
+  // Runs after auth (the user already committed to a provider) and before
+  // gateway config (so the key is in config before the gateway starts).
+  {
+    const { setupWebSearchForOnboarding } = await import("./onboarding.web-search.js");
+    nextConfig = await setupWebSearchForOnboarding({ config: nextConfig, flow, prompter });
+  }
 
   const { configureGatewayForOnboarding } = await import("./onboarding.gateway-config.js");
   const gateway = await configureGatewayForOnboarding({
