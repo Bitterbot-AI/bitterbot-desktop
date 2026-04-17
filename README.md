@@ -44,46 +44,47 @@ bash scripts/setup-deps.sh    # installs Chromium, ffmpeg, ripgrep, etc.
 pnpm install && pnpm build
 ```
 
-Set up your API keys:
+Run the onboarding wizard — it walks you through model auth (API keys), web search, channels, wallet, and workspace setup:
 
 ```bash
-cp .env.example .env
-# Edit .env with your Anthropic, OpenAI, and Tavily API keys
+pnpm bitterbot onboard
 ```
 
-Run the onboarding wizard:
-
-```bash
-pnpm bitterbot onboard --install-daemon
-```
-
-The wizard walks you through model auth, channel setup, and workspace configuration. Works on **macOS, Linux, and Windows (WSL2)**.
-
-Start both the gateway and the Control UI in one terminal:
+Start both the gateway and the Control UI:
 
 ```bash
 pnpm dev:all
 ```
 
-This spawns the gateway and the Vite dev server for the Control UI side-by-side with prefixed, color-tagged logs so you can read both at once. Ctrl+C stops both cleanly.
+Open [http://localhost:5173](http://localhost:5173) — that's the Bitterbot Control UI where you chat, view dreams, manage skills, and monitor the agent. The gateway (backend API on port 19001) and the P2P orchestrator start automatically.
 
-If you want the two processes in separate terminals (useful when debugging one of them in isolation):
-
-```bash
-# Terminal 1 — Gateway (auto-rebuilds on TS changes)
-pnpm gateway:watch
-
-# Terminal 2 — Control UI (Vite hot-reload)
-cd desktop && pnpm dev
-```
-
-> **`pnpm gateway:watch`** rebuilds and restarts the gateway automatically when you edit TypeScript files — use this for development. **`pnpm start gateway`** is one-shot (no file watching) and is meant for production use.
+> **`pnpm dev:all`** spawns the gateway + the Vite Control UI in one terminal with color-tagged logs. Ctrl+C stops both.
+>
+> **Two-terminal alternative** (useful when debugging one process in isolation):
+>
+> ```bash
+> pnpm gateway:watch          # Terminal 1 — auto-rebuilds on TS changes
+> cd desktop && pnpm dev      # Terminal 2 — Vite hot-reload
+> ```
 >
 > The **orchestrator** (P2P sidecar) is spawned automatically by the gateway — you do not need to start it separately.
 
 The Control UI's connection to the gateway is wired up automatically: the onboarding wizard writes `desktop/.env` for you with the gateway token and URL. If you skipped the wizard or need to regenerate it, copy `desktop/.env.example` to `desktop/.env` and paste the token from `~/.bitterbot/bitterbot.json → gateway.auth.token`.
 
-Open [http://localhost:5173](http://localhost:5173) to chat, view dreams, manage skills, and monitor the agent. The Control UI connects to the gateway on port 19001 automatically.
+<details>
+<summary><strong>Manual setup without the wizard</strong></summary>
+
+If you prefer to configure everything by hand instead of using the wizard:
+
+```bash
+cp .env.example .env
+# Edit .env with your Anthropic API key (ANTHROPIC_API_KEY)
+# and optionally: TAVILY_API_KEY, BRAVE_API_KEY, OPENAI_API_KEY
+```
+
+Then run `pnpm bitterbot configure` to set gateway port/bind/auth, channels, and other options interactively. Or edit `~/.bitterbot/bitterbot.json` directly.
+
+</details>
 
 | Service    | URL                     | Purpose                       |
 | ---------- | ----------------------- | ----------------------------- |

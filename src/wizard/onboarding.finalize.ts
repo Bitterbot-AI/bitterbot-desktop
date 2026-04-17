@@ -1,11 +1,8 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import type { OnboardOptions } from "../commands/onboard-types.js";
 import type { BitterbotConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { GatewayWizardSettings, WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
-import { DEFAULT_BOOTSTRAP_FILENAME } from "../agents/workspace.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import {
   buildGatewayInstallPlan,
@@ -19,15 +16,11 @@ import { formatHealthCheckFailure } from "../commands/health-format.js";
 import { healthCommand } from "../commands/health.js";
 import {
   detectBrowserOpenSupport,
-  formatControlUiSshHint,
   openUrl,
   probeGatewayReachable,
-  waitForGatewayReachable,
-  resolveControlUiLinks,
 } from "../commands/onboard-helpers.js";
 import { resolveGatewayService } from "../daemon/service.js";
 import { isSystemdUserServiceAvailable } from "../daemon/systemd.js";
-import { resolveUserPath } from "../utils.js";
 import { setupOnboardingShellCompletion } from "./onboarding.completion.js";
 
 type FinalizeOnboardingOptions = {
@@ -44,7 +37,7 @@ type FinalizeOnboardingOptions = {
 export async function finalizeOnboardingWizard(
   options: FinalizeOnboardingOptions,
 ): Promise<{ launchedTui: boolean }> {
-  const { flow, opts, baseConfig, nextConfig, settings, prompter, runtime } = options;
+  const { flow, opts, nextConfig, settings, prompter, runtime } = options;
 
   const withWizardProgress = async <T>(
     label: string,
@@ -195,30 +188,21 @@ export async function finalizeOnboardingWizard(
     }
   }
 
-  if (!opts.skipHealth) {
-    const probeLinks = resolveControlUiLinks({
-      bind: nextConfig.gateway?.bind ?? "loopback",
-      port: settings.port,
-      customBindHost: nextConfig.gateway?.customBindHost,
-      basePath: undefined,
-    });
-    // Daemon install/restart can briefly flap the WS; wait a bit so health check doesn't false-fail.
-    await waitForGatewayReachable({
-      url: probeLinks.wsUrl,
-      token: settings.gatewayToken,
-      deadlineMs: 15_000,
-    });
+  if (!opts.skipHealth && installDaemon) {
+    const probeWsUrl = `ws://127.0.0.1:${settings.port}`;
     try {
+      // Daemon install/restart can briefly flap the WS; give it a moment.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       await healthCommand({ json: false, timeoutMs: 10_000 }, runtime);
     } catch (err) {
       runtime.error(formatHealthCheckFailure(err));
       await prompter.note(
         [
-          "Docs:",
-          "https://docs.bitterbot.ai/gateway/health",
-          "https://docs.bitterbot.ai/gateway/troubleshooting",
+          `Gateway not responding at ${probeWsUrl}.`,
+          "If you just installed the daemon, it may still be starting.",
+          "Run `bitterbot health` in a minute to re-check.",
         ].join("\n"),
-        "Health check help",
+        "Health check",
       );
     }
   }
@@ -233,74 +217,44 @@ export async function finalizeOnboardingWizard(
     "Optional apps",
   );
 
-  const controlUiBasePath =
-    nextConfig.gateway?.controlUi?.basePath ?? baseConfig.gateway?.controlUi?.basePath;
-  const links = resolveControlUiLinks({
-    bind: settings.bind,
-    port: settings.port,
-    customBindHost: settings.customBindHost,
-    basePath: controlUiBasePath,
-  });
-  const authedUrl =
-    settings.authMode === "token" && settings.gatewayToken
-      ? `${links.httpUrl}#token=${encodeURIComponent(settings.gatewayToken)}`
-      : links.httpUrl;
+  // The Control UI is the `desktop/` React SPA served by Vite on port 5173.
+  // The gateway (port 19001) is the WebSocket API backend — not user-facing.
+  // `pnpm dev:all` starts both in one terminal.
+  const CONTROL_UI_PORT = 5173;
+  const controlUiUrl = `http://localhost:${CONTROL_UI_PORT}/`;
+  const gatewayWsUrl = `ws://127.0.0.1:${settings.port}`;
+
   const gatewayProbe = await probeGatewayReachable({
-    url: links.wsUrl,
+    url: gatewayWsUrl,
     token: settings.authMode === "token" ? settings.gatewayToken : undefined,
     password: settings.authMode === "password" ? nextConfig.gateway?.auth?.password : "",
   });
-  const gatewayStatusLine = gatewayProbe.ok
-    ? "Gateway: reachable"
-    : `Gateway: not detected${gatewayProbe.detail ? ` (${gatewayProbe.detail})` : ""}`;
-  const bootstrapPath = path.join(
-    resolveUserPath(options.workspaceDir),
-    DEFAULT_BOOTSTRAP_FILENAME,
-  );
-  const _hasBootstrap = await fs
-    .access(bootstrapPath)
-    .then(() => true)
-    .catch(() => false);
 
   await prompter.note(
     [
-      `Web UI: ${links.httpUrl}`,
-      settings.authMode === "token" && settings.gatewayToken
-        ? `Web UI (with token): ${authedUrl}`
-        : undefined,
-      `Gateway WS: ${links.wsUrl}`,
-      gatewayStatusLine,
-      "Docs: https://docs.bitterbot.ai/web/control-ui",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+      `Control UI:   ${controlUiUrl}`,
+      `Gateway API:  ${gatewayWsUrl}`,
+      gatewayProbe.ok
+        ? "Gateway: reachable"
+        : "Gateway: not running (start with `pnpm dev:all` or `pnpm start gateway`)",
+      "",
+      "The Control UI is the Bitterbot interface — chat, dreams, skills, marketplace.",
+      "The gateway is the backend API. Both must be running.",
+      "",
+      "Start both in one terminal:  pnpm dev:all",
+      "Or separately:               pnpm gateway:watch  +  cd desktop && pnpm dev",
+    ].join("\n"),
     "Control UI",
   );
 
   let controlUiOpened = false;
-  let controlUiOpenHint: string | undefined;
-  let seededInBackground = false;
-  let hatchChoice: "web" | "later" | null = null;
 
-  if (!opts.skipUi && gatewayProbe.ok) {
-    await prompter.note(
-      [
-        "Gateway token: shared auth for the Gateway + Control UI.",
-        "Stored in: ~/.bitterbot/bitterbot.json (gateway.auth.token) or BITTERBOT_GATEWAY_TOKEN.",
-        `View token: ${formatCliCommand("bitterbot config get gateway.auth.token")}`,
-        `Generate token: ${formatCliCommand("bitterbot doctor --generate-gateway-token")}`,
-        "Web UI stores a copy in this browser's localStorage (bitterbot.control.settings.v1).",
-        `Open the dashboard anytime: ${formatCliCommand("bitterbot dashboard --no-open")}`,
-        "If prompted: paste the token into Control UI settings (or use the tokenized dashboard URL).",
-      ].join("\n"),
-      "Token",
-    );
-
-    hatchChoice = await prompter.select({
-      message: "How do you want to hatch your bot?",
+  if (!opts.skipUi) {
+    const hatchChoice = await prompter.select({
+      message: "Open the Control UI now?",
       options: [
-        { value: "web", label: "Open the Web UI (recommended)" },
-        { value: "later", label: "Do this later" },
+        { value: "web", label: "Yes — open in my browser", hint: controlUiUrl },
+        { value: "later", label: "Not now — I'll start things myself" },
       ],
       initialValue: "web",
     });
@@ -308,41 +262,33 @@ export async function finalizeOnboardingWizard(
     if (hatchChoice === "web") {
       const browserSupport = await detectBrowserOpenSupport();
       if (browserSupport.ok) {
-        controlUiOpened = await openUrl(authedUrl);
-        if (!controlUiOpened) {
-          controlUiOpenHint = formatControlUiSshHint({
-            port: settings.port,
-            basePath: controlUiBasePath,
-            token: settings.authMode === "token" ? settings.gatewayToken : undefined,
-          });
-        }
-      } else {
-        controlUiOpenHint = formatControlUiSshHint({
-          port: settings.port,
-          basePath: controlUiBasePath,
-          token: settings.authMode === "token" ? settings.gatewayToken : undefined,
-        });
+        controlUiOpened = await openUrl(controlUiUrl);
       }
       await prompter.note(
         [
-          `Dashboard link (with token): ${authedUrl}`,
           controlUiOpened
-            ? "Opened in your browser. Keep that tab to control Bitterbot."
-            : "Copy/paste this URL in a browser on this machine to control Bitterbot.",
-          controlUiOpenHint,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        "Dashboard ready",
+            ? `Opened ${controlUiUrl} in your browser.`
+            : `Open this URL in your browser: ${controlUiUrl}`,
+          "",
+          !gatewayProbe.ok
+            ? "The gateway isn't running yet. Start it first:\n  pnpm dev:all"
+            : "The gateway is running. If the Control UI shows 'Disconnected', verify\n" +
+              "  desktop/.env has the correct VITE_GATEWAY_TOKEN.",
+        ].join("\n"),
+        "Dashboard",
       );
     } else {
       await prompter.note(
-        `When you're ready: ${formatCliCommand("bitterbot dashboard --no-open")}`,
+        [
+          "When you're ready:",
+          "  pnpm dev:all                          # starts gateway + Control UI",
+          `  Then open: ${controlUiUrl}`,
+        ].join("\n"),
         "Later",
       );
     }
-  } else if (opts.skipUi) {
-    await prompter.note("Skipping Control UI/TUI prompts.", "Control UI");
+  } else {
+    await prompter.note("Skipping Control UI prompts.", "Control UI");
   }
 
   await prompter.note(
@@ -360,43 +306,9 @@ export async function finalizeOnboardingWizard(
 
   await setupOnboardingShellCompletion({ flow, prompter });
 
-  const shouldOpenControlUi =
-    !opts.skipUi &&
-    settings.authMode === "token" &&
-    Boolean(settings.gatewayToken) &&
-    hatchChoice === null;
-  if (shouldOpenControlUi) {
-    const browserSupport = await detectBrowserOpenSupport();
-    if (browserSupport.ok) {
-      controlUiOpened = await openUrl(authedUrl);
-      if (!controlUiOpened) {
-        controlUiOpenHint = formatControlUiSshHint({
-          port: settings.port,
-          basePath: controlUiBasePath,
-          token: settings.gatewayToken,
-        });
-      }
-    } else {
-      controlUiOpenHint = formatControlUiSshHint({
-        port: settings.port,
-        basePath: controlUiBasePath,
-        token: settings.gatewayToken,
-      });
-    }
-
-    await prompter.note(
-      [
-        `Dashboard link (with token): ${authedUrl}`,
-        controlUiOpened
-          ? "Opened in your browser. Keep that tab to control Bitterbot."
-          : "Copy/paste this URL in a browser on this machine to control Bitterbot.",
-        controlUiOpenHint,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      "Dashboard ready",
-    );
-  }
+  // If we haven't already prompted to open the Control UI above (e.g.
+  // because skipUi was not set but the earlier hatch prompt was shown),
+  // this is a no-op. The Control UI URL and guidance were already shown.
 
   // Web search status note — simplified since the wizard now prompts
   // for the key inline. This just confirms what the user set up.
@@ -459,10 +371,8 @@ export async function finalizeOnboardingWizard(
 
   await prompter.outro(
     controlUiOpened
-      ? "Setup done. Dashboard's open — keep that tab to drive Bitterbot."
-      : seededInBackground
-        ? "Setup done. Control UI is seeding in the background; open it anytime via the dashboard link above."
-        : "Setup done. Open the dashboard link above to drive Bitterbot.",
+      ? `Setup done. Control UI is at ${controlUiUrl} — start the gateway with \`pnpm dev:all\` if it's not running.`
+      : `Setup done. Run \`pnpm dev:all\` then open ${controlUiUrl} to drive Bitterbot.`,
   );
 
   return { launchedTui: false };
