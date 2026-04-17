@@ -249,17 +249,86 @@ export async function finalizeOnboardingWizard(
 
   let controlUiOpened = false;
 
+  let spawnedDevAll = false;
   if (!opts.skipUi) {
+    // If the gateway isn't reachable and daemon install was skipped (WSL, or
+    // user declined), offer to spawn `pnpm dev:all` right here so the user
+    // doesn't have to open a second terminal and remember the command.
+    const canSpawnDevAll = !gatewayProbe.ok && !installDaemon;
     const hatchChoice = await prompter.select({
-      message: "Open the Control UI now?",
-      options: [
-        { value: "web", label: "Yes — open in my browser", hint: controlUiUrl },
-        { value: "later", label: "Not now — I'll start things myself" },
-      ],
-      initialValue: "web",
+      message: canSpawnDevAll ? "Ready to fire it up?" : "Open the Control UI now?",
+      options: canSpawnDevAll
+        ? [
+            {
+              value: "spawn",
+              label: "Start gateway + Control UI now",
+              hint: "Runs `pnpm dev:all` in the background and opens the browser",
+            },
+            {
+              value: "web",
+              label: "Just open the browser",
+              hint: "I'll start the gateway myself",
+            },
+            { value: "later", label: "Not now — I'll handle it" },
+          ]
+        : [
+            { value: "web", label: "Yes — open in my browser", hint: controlUiUrl },
+            { value: "later", label: "Not now — I'll start things myself" },
+          ],
+      initialValue: canSpawnDevAll ? "spawn" : "web",
     });
 
-    if (hatchChoice === "web") {
+    if (hatchChoice === "spawn") {
+      // Spawn `pnpm dev:all` detached so it survives the wizard exiting.
+      // stdio is ignored so the wizard's exit doesn't pipe-break the child.
+      try {
+        const { spawn } = await import("node:child_process");
+        const { detectBrowserOpenSupport, openUrl } =
+          await import("../commands/onboard-helpers.js");
+        const devAll = spawn("pnpm", ["dev:all"], {
+          cwd: process.cwd(),
+          detached: true,
+          stdio: "ignore",
+          shell: process.platform === "win32",
+          env: process.env,
+        });
+        devAll.unref();
+        spawnedDevAll = true;
+
+        await prompter.note(
+          [
+            "Started gateway + Control UI in the background.",
+            "Both may take ~10 seconds to be ready.",
+            "",
+            "Follow logs later with: `pnpm dev:all` in a terminal (will reconnect).",
+            "Stop everything: `pkill -f 'bitterbot-gateway|vite'`",
+          ].join("\n"),
+          "Starting up",
+        );
+
+        // Give them ~4s to come up, then open browser
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        const browserSupport = await detectBrowserOpenSupport();
+        if (browserSupport.ok) {
+          controlUiOpened = await openUrl(controlUiUrl);
+        }
+        await prompter.note(
+          controlUiOpened
+            ? `Opened ${controlUiUrl} in your browser. If it shows a blank page, wait a few seconds and refresh — Vite takes a moment to boot.`
+            : `Open this URL when ready: ${controlUiUrl}`,
+          "Control UI",
+        );
+      } catch (err) {
+        await prompter.note(
+          [
+            `Couldn't spawn dev:all: ${err instanceof Error ? err.message : String(err)}`,
+            "Run it manually: pnpm dev:all",
+            `Then open: ${controlUiUrl}`,
+          ].join("\n"),
+          "Start failed",
+        );
+      }
+    } else if (hatchChoice === "web") {
       const browserSupport = await detectBrowserOpenSupport();
       if (browserSupport.ok) {
         controlUiOpened = await openUrl(controlUiUrl);
@@ -271,7 +340,7 @@ export async function finalizeOnboardingWizard(
             : `Open this URL in your browser: ${controlUiUrl}`,
           "",
           !gatewayProbe.ok
-            ? "The gateway isn't running yet. Start it first:\n  pnpm dev:all"
+            ? "The gateway isn't running yet. Start it:\n  pnpm dev:all"
             : "The gateway is running. If the Control UI shows 'Disconnected', verify\n" +
               "  desktop/.env has the correct VITE_GATEWAY_TOKEN.",
         ].join("\n"),
@@ -370,9 +439,11 @@ export async function finalizeOnboardingWizard(
   );
 
   await prompter.outro(
-    controlUiOpened
-      ? `Setup done. Control UI is at ${controlUiUrl} — start the gateway with \`pnpm dev:all\` if it's not running.`
-      : `Setup done. Run \`pnpm dev:all\` then open ${controlUiUrl} to drive Bitterbot.`,
+    spawnedDevAll
+      ? `Setup done. Gateway + Control UI starting in the background; ${controlUiUrl} should load in a few seconds.`
+      : controlUiOpened
+        ? `Setup done. Control UI is at ${controlUiUrl} — start the gateway with \`pnpm dev:all\` if it's not running.`
+        : `Setup done. Run \`pnpm dev:all\` then open ${controlUiUrl} to drive Bitterbot.`,
   );
 
   return { launchedTui: false };

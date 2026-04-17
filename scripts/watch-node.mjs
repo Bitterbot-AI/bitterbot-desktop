@@ -23,7 +23,12 @@ if (initialBuild.status !== 0) {
   process.exit(initialBuild.status ?? 1);
 }
 
-const compilerProcess = spawn("pnpm", ["exec", compiler, "--watch"], {
+// --no-clean is critical here: in watch mode, tsdown would otherwise wipe
+// dist/ on every rebuild, which races with node --watch reloading. The running
+// CLI throws ENOENT on hashed chunks (e.g. dist/genome-parser-XXXX.js) that
+// got cleaned mid-execution. The initial spawnSync build above already did
+// a full clean, so skipping cleans on incremental rebuilds is safe.
+const compilerProcess = spawn("pnpm", ["exec", compiler, "--watch", "--no-clean"], {
   cwd,
   env,
   stdio: "inherit",
