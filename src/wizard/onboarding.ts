@@ -429,6 +429,15 @@ export async function runOnboardingWizard(
 
   await warnIfModelConfigLooksOff(nextConfig, prompter);
 
+  // Memory embeddings — set up a vector provider so long-term memory works.
+  // Runs after auth (the LLM provider just got configured, often the same
+  // API key works for embeddings) and before web search so the flow of
+  // "here's one more key we need" questions lands together.
+  {
+    const { setupEmbeddingsForOnboarding } = await import("./onboarding.embeddings.js");
+    nextConfig = await setupEmbeddingsForOnboarding({ config: nextConfig, flow, prompter });
+  }
+
   // Web search — set up an API key so web_search/curiosity/dreams work.
   // Runs after auth (the user already committed to a provider) and before
   // gateway config (so the key is in config before the gateway starts).
