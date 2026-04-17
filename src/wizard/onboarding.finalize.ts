@@ -101,7 +101,9 @@ export async function finalizeOnboardingWizard(
 
   if (process.platform === "linux" && !systemdAvailable && installDaemon) {
     await prompter.note(
-      "Systemd user services are unavailable; skipping service install. Use your container supervisor or `docker compose up -d`.",
+      "Systemd user services are unavailable; skipping service install.\n" +
+        "Start the gateway manually: `pnpm start gateway` (one-shot) or `pnpm dev:all` (dev + Control UI).\n" +
+        "On WSL2, leave the terminal open or use tmux/screen. On Docker, use your container supervisor.",
       "Gateway service",
     );
     installDaemon = false;
@@ -444,7 +446,7 @@ export async function finalizeOnboardingWizard(
       "     `bitterbot wallet status` shows the address; send a few USDC on Base.",
       "  4. Browse the marketplace once dreams have run a few cycles —",
       "     `bitterbot skills marketplace`.",
-      "  5. See what other operators are building: https://bitterbot.ai/showcase",
+      "  5. See what other operators are building: https://github.com/Bitterbot-AI/bitterbot-desktop/discussions",
       "",
       "If you're developing locally and want hot-reload on the Control UI:",
       "  - Single terminal: `pnpm dev:all` (gateway + Vite, color-tagged logs)",

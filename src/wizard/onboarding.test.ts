@@ -64,6 +64,9 @@ const setupInternalHooks = vi.hoisted(() => vi.fn(async (cfg) => cfg));
 
 const setupChannels = vi.hoisted(() => vi.fn(async (cfg) => cfg));
 const setupSkills = vi.hoisted(() => vi.fn(async (cfg) => cfg));
+const setupWebSearchForOnboarding = vi.hoisted(() => vi.fn(async (args) => args.config));
+const setupWalletForOnboarding = vi.hoisted(() => vi.fn(async (args) => args.config));
+const setupGenomeForOnboarding = vi.hoisted(() => vi.fn(async () => {}));
 const healthCommand = vi.hoisted(() => vi.fn(async () => {}));
 const ensureWorkspaceAndSessions = vi.hoisted(() => vi.fn(async () => {}));
 const writeConfigFile = vi.hoisted(() => vi.fn(async () => {}));
@@ -176,6 +179,18 @@ vi.mock("./onboarding.finalize.js", () => ({
 
 vi.mock("./onboarding.completion.js", () => ({
   setupOnboardingShellCompletion,
+}));
+
+vi.mock("./onboarding.web-search.js", () => ({
+  setupWebSearchForOnboarding,
+}));
+
+vi.mock("./onboarding.wallet.js", () => ({
+  setupWalletForOnboarding,
+}));
+
+vi.mock("./onboarding.genome.js", () => ({
+  setupGenomeForOnboarding,
 }));
 
 function createWizardPrompter(overrides?: Partial<WizardPrompter>): WizardPrompter {

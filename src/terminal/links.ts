@@ -1,6 +1,6 @@
 import { formatTerminalLink } from "../utils.js";
 
-export const DOCS_ROOT = "https://docs.bitterbot.ai";
+export const DOCS_ROOT = "https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs";
 
 export function formatDocsLink(
   path: string,
