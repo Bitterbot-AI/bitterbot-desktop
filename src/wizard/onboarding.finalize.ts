@@ -18,10 +18,14 @@ import {
   detectBrowserOpenSupport,
   openUrl,
   probeGatewayReachable,
+  waitForGatewayReachable,
 } from "../commands/onboard-helpers.js";
 import { resolveGatewayService } from "../daemon/service.js";
 import { isSystemdUserServiceAvailable } from "../daemon/systemd.js";
+import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
+import { formatDocsLink } from "../terminal/links.js";
 import { setupOnboardingShellCompletion } from "./onboarding.completion.js";
+import { writeControlUiEnv } from "./onboarding.control-ui-env.js";
 
 type FinalizeOnboardingOptions = {
   flow: WizardFlow;
@@ -226,6 +230,42 @@ export async function finalizeOnboardingWizard(
   const controlUiUrl = `http://localhost:${CONTROL_UI_PORT}/`;
   const gatewayWsUrl = `ws://127.0.0.1:${settings.port}`;
 
+  // Resolve the Bitterbot repo root once. Only when it's present (and has a
+  // dev:all script) do we offer to auto-spawn — a global npm install of
+  // bitterbot has no repo to run `pnpm dev:all` in.
+  const repoRoot = await resolveBitterbotPackageRoot({
+    moduleUrl: import.meta.url,
+    argv1: process.argv[1],
+    cwd: process.cwd(),
+  });
+  const devAllAvailable = await hasDevAllScript(repoRoot);
+
+  // Write `<repoRoot>/desktop/.env` so the Control UI boots with the gateway
+  // token + URL pre-wired. Without this, the UI loads but shows "Disconnected"
+  // until the user hand-copies the token from `~/.bitterbot/bitterbot.json`.
+  // The README claimed this was auto-generated for months; now it actually is.
+  if (repoRoot && !opts.skipUi) {
+    const envResult = await writeControlUiEnv({ settings, moduleUrl: import.meta.url });
+    if (envResult.ok) {
+      await prompter.note(
+        envResult.created
+          ? `Wrote ${envResult.path} (gateway URL + token).`
+          : `Updated ${envResult.path} (refreshed gateway URL + token, preserved other lines).`,
+        "Control UI config",
+      );
+    } else if (envResult.reason === "write-failed") {
+      await prompter.note(
+        [
+          `Couldn't write desktop/.env: ${envResult.detail ?? "unknown error"}`,
+          "Control UI will show 'Disconnected' until you copy the gateway token",
+          "from ~/.bitterbot/bitterbot.json into desktop/.env by hand.",
+        ].join("\n"),
+        "Control UI config",
+      );
+    }
+    // reason === "no-repo" / "no-desktop-dir": silent — this isn't a dev clone.
+  }
+
   const gatewayProbe = await probeGatewayReachable({
     url: gatewayWsUrl,
     token: settings.authMode === "token" ? settings.gatewayToken : undefined,
@@ -255,8 +295,10 @@ export async function finalizeOnboardingWizard(
   if (!opts.skipUi) {
     // If the gateway isn't reachable and daemon install was skipped (WSL, or
     // user declined), offer to spawn `pnpm dev:all` right here so the user
-    // doesn't have to open a second terminal and remember the command.
-    const canSpawnDevAll = !gatewayProbe.ok && !installDaemon;
+    // doesn't have to open a second terminal and remember the command. Gate
+    // on actually finding a repo root + dev:all script — no point offering
+    // something that will silently fail for global installs.
+    const canSpawnDevAll = !gatewayProbe.ok && !installDaemon && devAllAvailable;
     const hatchChoice = await prompter.select({
       message: canSpawnDevAll ? "Ready to fire it up?" : "Open the Control UI now?",
       options: canSpawnDevAll
@@ -281,53 +323,34 @@ export async function finalizeOnboardingWizard(
     });
 
     if (hatchChoice === "spawn") {
-      // Spawn `pnpm dev:all` detached so it survives the wizard exiting.
-      // stdio is ignored so the wizard's exit doesn't pipe-break the child.
-      try {
-        const { spawn } = await import("node:child_process");
-        const { detectBrowserOpenSupport, openUrl } =
-          await import("../commands/onboard-helpers.js");
-        const devAll = spawn("pnpm", ["dev:all"], {
-          cwd: process.cwd(),
-          detached: true,
-          stdio: "ignore",
-          shell: process.platform === "win32",
-          env: process.env,
-        });
-        devAll.unref();
-        spawnedDevAll = true;
-
-        await prompter.note(
-          [
-            "Started gateway + Control UI in the background.",
-            "Both may take ~10 seconds to be ready.",
-            "",
-            "Follow logs later with: `pnpm dev:all` in a terminal (will reconnect).",
-            "Stop everything: `pkill -f 'bitterbot-gateway|vite'`",
-          ].join("\n"),
-          "Starting up",
-        );
-
-        // Give them ~4s to come up, then open browser
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+      const spawnOutcome = await spawnDevAllHardened({
+        repoRoot: repoRoot as string, // canSpawnDevAll guarantees this is set
+        gatewayWsUrl,
+        settings,
+        nextConfig,
+        prompter,
+      });
+      spawnedDevAll = spawnOutcome.spawned;
+      if (spawnedDevAll && spawnOutcome.gatewayUp) {
         const browserSupport = await detectBrowserOpenSupport();
         if (browserSupport.ok) {
           controlUiOpened = await openUrl(controlUiUrl);
         }
         await prompter.note(
           controlUiOpened
-            ? `Opened ${controlUiUrl} in your browser. If it shows a blank page, wait a few seconds and refresh — Vite takes a moment to boot.`
-            : `Open this URL when ready: ${controlUiUrl}`,
+            ? `Opened ${controlUiUrl} in your browser. The Control UI may take a moment to finish hydrating — refresh if it's blank.`
+            : `Gateway is up. Open this URL when ready: ${controlUiUrl}`,
           "Control UI",
         );
-      } catch (err) {
+      } else if (spawnedDevAll) {
         await prompter.note(
           [
-            `Couldn't spawn dev:all: ${err instanceof Error ? err.message : String(err)}`,
-            "Run it manually: pnpm dev:all",
-            `Then open: ${controlUiUrl}`,
+            "Started dev:all in the background but the gateway didn't come up within the wait window.",
+            "Open a terminal and run `pnpm dev:all` to watch the logs directly:",
+            `  cd ${repoRoot} && pnpm dev:all`,
+            `Logs also written to: ${spawnOutcome.logPath}`,
           ].join("\n"),
-          "Start failed",
+          "Still starting",
         );
       }
     } else if (hatchChoice === "web") {
@@ -365,13 +388,16 @@ export async function finalizeOnboardingWizard(
   await prompter.note(
     [
       "Back up your agent workspace.",
-      "Docs: https://docs.bitterbot.ai/concepts/agent-workspace",
+      `Docs: ${formatDocsLink("/memory/architecture-overview.md", "Memory Architecture")}`,
     ].join("\n"),
     "Workspace backup",
   );
 
   await prompter.note(
-    "Running agents on your computer is risky — harden your setup: https://docs.bitterbot.ai/security",
+    `Running agents on your computer is risky — harden your setup: ${formatDocsLink(
+      "/security/",
+      "Security guide",
+    )}`,
     "Security",
   );
 
@@ -449,4 +475,158 @@ export async function finalizeOnboardingWizard(
   );
 
   return { launchedTui: false };
+}
+
+/**
+ * Verify the repo root has a `dev:all` script. If this returns false, the
+ * wizard won't offer to auto-spawn — no point pretending to launch
+ * something that would silently fail.
+ */
+async function hasDevAllScript(repoRoot: string | null): Promise<boolean> {
+  if (!repoRoot) {
+    return false;
+  }
+  try {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const raw = await fs.readFile(path.join(repoRoot, "package.json"), "utf8");
+    const pkg = JSON.parse(raw) as { scripts?: Record<string, string> };
+    return typeof pkg.scripts?.["dev:all"] === "string";
+  } catch {
+    return false;
+  }
+}
+
+type SpawnOutcome = {
+  spawned: boolean;
+  gatewayUp: boolean;
+  logPath: string;
+};
+
+/**
+ * Spawn `pnpm dev:all` as a background process, poll the gateway until it
+ * responds, and report the outcome. Hardened vs. the old fire-and-forget
+ * version in three ways:
+ *
+ *   1. Uses the resolved repo root as cwd (not process.cwd() which could be
+ *      anywhere — the user may have installed Bitterbot globally).
+ *   2. Redirects stderr to a log file under the OS temp dir so "silent
+ *      failure" becomes "failure with a path to read". The path is returned
+ *      so the wizard can show it in the error note.
+ *   3. Polls the gateway WS endpoint with waitForGatewayReachable instead of
+ *      a blind 4-second sleep — opens the browser only when the gateway
+ *      actually answers, giving tsdown + Vite + orchestrator time to warm up.
+ *
+ * On Windows, shell=true is required so the `pnpm` PATH shim (pnpm.cmd) is
+ * resolved. On macOS/Linux we spawn pnpm directly.
+ */
+async function spawnDevAllHardened(params: {
+  repoRoot: string;
+  gatewayWsUrl: string;
+  settings: GatewayWizardSettings;
+  nextConfig: BitterbotConfig;
+  prompter: WizardPrompter;
+}): Promise<SpawnOutcome> {
+  const { repoRoot, gatewayWsUrl, settings, nextConfig, prompter } = params;
+  const { spawn } = await import("node:child_process");
+  const fs = await import("node:fs");
+  const fsp = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+
+  const logDir = path.join(os.tmpdir(), "bitterbot-wizard");
+  await fsp.mkdir(logDir, { recursive: true });
+  const logPath = path.join(logDir, `dev-all-${Date.now()}.log`);
+  const logFd = fs.openSync(logPath, "w");
+
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn("pnpm", ["dev:all"], {
+      cwd: repoRoot,
+      detached: true,
+      stdio: ["ignore", logFd, logFd],
+      shell: process.platform === "win32",
+      env: process.env,
+    });
+  } catch (err) {
+    fs.closeSync(logFd);
+    await prompter.note(
+      [
+        `Couldn't spawn \`pnpm dev:all\`: ${err instanceof Error ? err.message : String(err)}`,
+        "Run it yourself:",
+        `  cd ${repoRoot} && pnpm dev:all`,
+      ].join("\n"),
+      "Start failed",
+    );
+    return { spawned: false, gatewayUp: false, logPath };
+  }
+
+  // Close our file descriptor — the child owns its duplicate now. Avoids
+  // a leak if the child outlives the wizard.
+  fs.closeSync(logFd);
+
+  // Detect early exit — if pnpm dies within ~2s the spawn probably hit a
+  // missing pnpm, a broken script, or an immediate build failure.
+  type ExitInfo = { code: number | null; signal: NodeJS.Signals | null };
+  const exitRef: { value: ExitInfo | null } = { value: null };
+  child.on("exit", (code, signal) => {
+    exitRef.value = { code, signal };
+  });
+
+  await prompter.note(
+    [
+      "Started `pnpm dev:all` in the background.",
+      "Waiting for the gateway to respond…",
+      "",
+      `Logs streaming to: ${logPath}`,
+    ].join("\n"),
+    "Starting up",
+  );
+
+  // Give the process a beat to fail fast if it's going to
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  const exited = exitRef.value;
+  if (exited) {
+    const tail = await readTail(logPath, 20);
+    await prompter.note(
+      [
+        `\`pnpm dev:all\` exited early (code=${exited.code ?? "null"}, signal=${
+          exited.signal ?? "null"
+        }).`,
+        "",
+        tail ? `Last log lines:\n${tail}` : `Log: ${logPath}`,
+        "",
+        "Common causes: pnpm not on PATH, port 19001 already in use, or tsdown build error.",
+        `Run it yourself to see the full output: cd ${repoRoot} && pnpm dev:all`,
+      ].join("\n"),
+      "Start failed",
+    );
+    return { spawned: false, gatewayUp: false, logPath };
+  }
+
+  // Detach after we've confirmed it's alive — survives wizard exit.
+  child.unref();
+
+  // Now poll the gateway WS for up to 45s. Cold start on a fresh clone
+  // (tsdown + Vite + orchestrator) can hit 30s on slow disks.
+  const probe = await waitForGatewayReachable({
+    url: gatewayWsUrl,
+    token: settings.authMode === "token" ? settings.gatewayToken : undefined,
+    password: settings.authMode === "password" ? nextConfig.gateway?.auth?.password : undefined,
+    deadlineMs: 45_000,
+    pollMs: 700,
+  });
+
+  return { spawned: true, gatewayUp: probe.ok, logPath };
+}
+
+async function readTail(logPath: string, lineCount: number): Promise<string> {
+  try {
+    const fs = await import("node:fs/promises");
+    const body = await fs.readFile(logPath, "utf8");
+    const lines = body.split("\n");
+    return lines.slice(-lineCount).join("\n").trim();
+  } catch {
+    return "";
+  }
 }
