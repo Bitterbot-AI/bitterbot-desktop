@@ -32,6 +32,7 @@ import {
   noteAuthProfileHealth,
 } from "./doctor-auth.js";
 import { runCanvasChecks } from "./doctor-canvas.js";
+import { runChannelsChecks } from "./doctor-channels.js";
 import { doctorShellCompletion } from "./doctor-completion.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
 import { maybeRepairGatewayDaemon } from "./doctor-gateway-daemon-flow.js";
@@ -40,6 +41,7 @@ import {
   maybeRepairGatewayServiceConfig,
   maybeScanExtraGatewayServices,
 } from "./doctor-gateway-services.js";
+import { runIdentityChecks } from "./doctor-identity.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
 import { noteMemorySearchHealth } from "./doctor-memory-search.js";
 import { runMemorySystemChecks } from "./doctor-memory-system.js";
@@ -49,11 +51,14 @@ import {
   noteMacLaunchctlGatewayEnvOverrides,
 } from "./doctor-platform-notes.js";
 import { createDoctorPrompter, type DoctorOptions } from "./doctor-prompter.js";
+import { runRuntimeChecks } from "./doctor-runtime.js";
 import { maybeRepairSandboxImages, noteSandboxScopeWarnings } from "./doctor-sandbox.js";
 import { noteSecurityWarnings } from "./doctor-security.js";
+import { runSkillsChecks } from "./doctor-skills.js";
 import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integrity.js";
 import { maybeOfferUpdateBeforeDoctor } from "./doctor-update.js";
 import { runWalletChecks } from "./doctor-wallet.js";
+import { runWebSearchChecks } from "./doctor-web-search.js";
 import { noteWorkspaceStatus } from "./doctor-workspace-status.js";
 import { MEMORY_SYSTEM_PROMPT, shouldSuggestMemorySystem } from "./doctor-workspace.js";
 import { applyWizardMetadata, printWizardHeader, randomToken } from "./onboard-helpers.js";
@@ -98,6 +103,10 @@ export async function doctorCommand(
     confirm: (p) => prompter.confirm(p),
   });
   let cfg: BitterbotConfig = configResult.cfg;
+
+  // Runtime (Node version, pnpm, platform posture) first — every check
+  // below assumes the runtime itself is viable. Runs config-only / fast.
+  runRuntimeChecks({ config: cfg });
 
   const configPath = configResult.path ?? CONFIG_PATH;
   if (!cfg.gateway?.mode) {
@@ -272,6 +281,12 @@ export async function doctorCommand(
   // ── P2P Network (core infra; promoted from the memory architecture block) ──
   await runP2pNetworkChecks({ config: cfg, isGatewayRunning: healthOk });
 
+  // ── P2P Identity (node tier, keypair, genesis trust list for management) ──
+  runIdentityChecks({ config: cfg });
+
+  // ── Skills (P2P ingest policy, quarantine dir, trust list for auto-accept) ──
+  runSkillsChecks({ config: cfg });
+
   // ── Biological Memory Architecture ──
   {
     const agentId = resolveDefaultAgentId(cfg);
@@ -290,6 +305,12 @@ export async function doctorCommand(
 
   // ── Wallet (USDC on Base) ──
   await runWalletChecks({ config: cfg });
+
+  // ── Web Search (agent's look-things-up capability) ──
+  runWebSearchChecks({ config: cfg });
+
+  // ── Channels (offline static config: creds + DM policy) ──
+  runChannelsChecks({ config: cfg });
 
   // ── Canvas (A2UI rendering) ──
   await runCanvasChecks({ config: cfg });
