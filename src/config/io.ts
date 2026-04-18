@@ -930,6 +930,14 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       if (isVitest && !shouldLogInVitest) {
         return;
       }
+      // During the interactive wizard, the user IS the one driving every write,
+      // so the sha256+backup forensic line is pure noise that bleeds into the
+      // polished clack output. Wizard sets BITTERBOT_WIZARD_QUIET=1 at entry
+      // and clears it on exit; non-wizard callers (daemon, doctor, direct
+      // config edits) still get the audit trail.
+      if (deps.env.BITTERBOT_WIZARD_QUIET === "1") {
+        return;
+      }
       const changeSummary =
         typeof changedPathCount === "number" ? `, changedPaths=${changedPathCount}` : "";
       deps.logger.warn(

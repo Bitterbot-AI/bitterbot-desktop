@@ -85,6 +85,28 @@ export async function runOnboardingWizard(
   runtime: RuntimeEnv = defaultRuntime,
   prompter: WizardPrompter,
 ) {
+  // Silence the config-io audit log ("Config overwrite: sha256 ...") while
+  // the wizard is running — the user is the one writing, so the forensic
+  // line is pure noise in the clack output. io.ts keeps the log for
+  // non-wizard callers (daemon, doctor, direct edits).
+  const previousWizardQuiet = process.env.BITTERBOT_WIZARD_QUIET;
+  process.env.BITTERBOT_WIZARD_QUIET = "1";
+  try {
+    await runOnboardingWizardInner(opts, runtime, prompter);
+  } finally {
+    if (previousWizardQuiet === undefined) {
+      delete process.env.BITTERBOT_WIZARD_QUIET;
+    } else {
+      process.env.BITTERBOT_WIZARD_QUIET = previousWizardQuiet;
+    }
+  }
+}
+
+async function runOnboardingWizardInner(
+  opts: OnboardOptions,
+  runtime: RuntimeEnv,
+  prompter: WizardPrompter,
+) {
   const onboardHelpers = await import("../commands/onboard-helpers.js");
   onboardHelpers.printWizardHeader(runtime);
   await prompter.intro("Bitterbot onboarding");

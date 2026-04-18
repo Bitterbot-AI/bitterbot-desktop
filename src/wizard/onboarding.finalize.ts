@@ -54,12 +54,12 @@ export async function finalizeOnboardingWizard(
 
   const systemdAvailable =
     process.platform === "linux" ? await isSystemdUserServiceAvailable() : true;
-  if (process.platform === "linux" && !systemdAvailable) {
-    await prompter.note(
-      "Systemd user services are unavailable. Skipping lingering checks and service install.",
-      "Systemd",
-    );
-  }
+  // On Linux without systemd (WSL2, containers, slim VMs) we silently skip
+  // lingering + daemon install — the wizard's auto-spawn step later will
+  // offer to run `pnpm dev:all`, so there's nothing the user needs to do
+  // differently here. No upfront "systemd unavailable" note: we used to
+  // fire one here AND another one in the daemon-install branch, which
+  // read as two scary warnings for something that isn't actually wrong.
 
   if (process.platform === "linux" && systemdAvailable) {
     const { ensureSystemdUserLingerInteractive } = await import("../commands/systemd-linger.js");
@@ -93,10 +93,12 @@ export async function finalizeOnboardingWizard(
   }
 
   if (process.platform === "linux" && !systemdAvailable && installDaemon) {
+    // Explicit --install-daemon on a host without systemd: quick heads-up
+    // then fall through to the auto-spawn offer. Deliberately does NOT
+    // tell the user to run pnpm dev:all themselves — the finalize step
+    // below asks if they want us to spawn it for them.
     await prompter.note(
-      "Systemd user services are unavailable; skipping service install.\n" +
-        "Start the gateway manually: `pnpm start gateway` (one-shot) or `pnpm dev:all` (dev + Control UI).\n" +
-        "On WSL2, leave the terminal open or use tmux/screen. On Docker, use your container supervisor.",
+      "No systemd here — can't install a background service. I'll offer to start the gateway + Control UI for you in a moment.",
       "Gateway service",
     );
     installDaemon = false;
