@@ -44,13 +44,13 @@ bash scripts/setup-deps.sh    # installs Chromium, ffmpeg, ripgrep, etc.
 pnpm install && pnpm build
 ```
 
-Run the onboarding wizard — it walks you through model auth (API keys), web search, channels, wallet, and workspace setup:
+Run the onboarding wizard — it walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, and offers to spawn the gateway + Control UI for you at the end:
 
 ```bash
 pnpm bitterbot onboard
 ```
 
-Start both the gateway and the Control UI:
+When the wizard finishes, accept the "Ready to fire it up?" prompt and it runs `pnpm dev:all` in the background and opens the browser. If you skip it or come back later:
 
 ```bash
 pnpm dev:all
@@ -384,7 +384,7 @@ If something feels off, start with:
 pnpm bitterbot doctor
 ```
 
-The doctor command walks ~25 subsystem checks — workspace integrity, config validity, auth profile health, gateway reachability, memory database, dream engine, curiosity engine, hormonal baselines, and a dedicated **P2P Network** section that probes orchestrator binary availability, DNS bootstrap, fallback peer reachability, and live peer count. Run it before filing a bug, and run it after any config change.
+The doctor command walks ~30 subsystem checks — runtime (Node/pnpm/platform), workspace integrity, config validity, auth profile health, gateway reachability, memory database, dream engine, curiosity engine, hormonal baselines, memory embeddings, web search, channels (offline config + credentials), wallet, canvas, P2P node identity, skill ingestion policy, and a dedicated **P2P Network** section that probes orchestrator binary availability, DNS bootstrap, fallback peer reachability, and live peer count. Run it before filing a bug, and run it after any config change.
 
 Common fast fixes:
 
