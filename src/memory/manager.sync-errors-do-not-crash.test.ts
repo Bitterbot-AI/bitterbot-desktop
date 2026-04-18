@@ -35,7 +35,6 @@ describe("memory manager sync failures", () => {
   let manager: MemoryIndexManager | null = null;
 
   beforeEach(async () => {
-    vi.useFakeTimers();
     workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-mem-"));
     indexPath = path.join(workspaceDir, "index.sqlite");
     await fs.mkdir(path.join(workspaceDir, "memory"));
@@ -43,7 +42,6 @@ describe("memory manager sync failures", () => {
   });
 
   afterEach(async () => {
-    vi.useRealTimers();
     if (manager) {
       await manager.close();
       manager = null;
@@ -66,7 +64,7 @@ describe("memory manager sync failures", () => {
             provider: "openai",
             model: "mock-embed",
             store: { path: indexPath },
-            sync: { watch: true, watchDebounceMs: 1, onSessionStart: false, onSearch: false },
+            sync: { watch: true, watchDebounceMs: 0, onSessionStart: false, onSearch: false },
           },
         },
         list: [{ id: "main", default: true }],
@@ -79,17 +77,22 @@ describe("memory manager sync failures", () => {
       throw new Error("manager missing");
     }
     manager = result.manager;
-    const syncSpy = vi.spyOn(manager, "sync");
+    // The behavior under test is just the fire-and-forget `.catch` wiring in
+    // scheduleWatchSync — we don't need to run a real reindex to verify it.
+    // Stubbing sync() keeps the test fast and independent of embedding providers.
+    const syncSpy = vi.spyOn(manager, "sync").mockRejectedValue(new Error("mock sync failure"));
 
     // Call the internal scheduler directly; it uses fire-and-forget sync.
     (manager as unknown as { scheduleWatchSync: () => void }).scheduleWatchSync();
 
-    await vi.runOnlyPendingTimersAsync();
+    // Wait for the debounce setTimeout(0) to fire and the spy to capture the sync promise.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(syncSpy).toHaveBeenCalled();
     const syncPromise = syncSpy.mock.results[0]?.value as Promise<void> | undefined;
-    vi.useRealTimers();
-    if (syncPromise) {
-      await syncPromise.catch(() => undefined);
-    }
+    expect(syncPromise).toBeDefined();
+    await syncPromise?.catch(() => undefined);
+    // Flush microtasks so any unhandledRejection has a chance to surface.
+    await new Promise((resolve) => setImmediate(resolve));
 
     process.off("unhandledRejection", handler);
     expect(unhandled).toHaveLength(0);
