@@ -66,6 +66,7 @@ const setupChannels = vi.hoisted(() => vi.fn(async (cfg) => cfg));
 const setupSkills = vi.hoisted(() => vi.fn(async (cfg) => cfg));
 const setupWebSearchForOnboarding = vi.hoisted(() => vi.fn(async (args) => args.config));
 const setupEmbeddingsForOnboarding = vi.hoisted(() => vi.fn(async (args) => args.config));
+const gateNodeVersion = vi.hoisted(() => vi.fn(async () => {}));
 const setupWalletForOnboarding = vi.hoisted(() => vi.fn(async (args) => args.config));
 const setupGenomeForOnboarding = vi.hoisted(() => vi.fn(async () => {}));
 const healthCommand = vi.hoisted(() => vi.fn(async () => {}));
@@ -188,6 +189,10 @@ vi.mock("./onboarding.web-search.js", () => ({
 
 vi.mock("./onboarding.embeddings.js", () => ({
   setupEmbeddingsForOnboarding,
+}));
+
+vi.mock("./onboarding.node-version.js", () => ({
+  gateNodeVersion,
 }));
 
 vi.mock("./onboarding.wallet.js", () => ({

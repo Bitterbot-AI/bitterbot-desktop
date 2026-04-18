@@ -107,6 +107,14 @@ async function runOnboardingWizardInner(
   runtime: RuntimeEnv,
   prompter: WizardPrompter,
 ) {
+  // Node version gate — runs before the intro so a bad-Node user gets only
+  // the upgrade guidance and nothing else. The gateway uses Rolldown which
+  // pulls in node:util#styleText (Node 20.12+); Node 18 fails with a
+  // cryptic SyntaxError deep in startup, so we stop here instead of
+  // walking the user through the whole wizard and then crashing at spawn.
+  const { gateNodeVersion } = await import("./onboarding.node-version.js");
+  await gateNodeVersion({ prompter, runtime });
+
   const onboardHelpers = await import("../commands/onboard-helpers.js");
   onboardHelpers.printWizardHeader(runtime);
   await prompter.intro("Bitterbot onboarding");
