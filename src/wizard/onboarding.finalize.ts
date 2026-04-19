@@ -345,10 +345,15 @@ export async function finalizeOnboardingWizard(
       } else if (spawnedDevAll) {
         await prompter.note(
           [
-            "Started dev:all in the background but the gateway didn't come up within the wait window.",
-            "Open a terminal and run `pnpm dev:all` to watch the logs directly:",
-            `  cd ${repoRoot} && pnpm dev:all`,
-            `Logs also written to: ${spawnOutcome.logPath}`,
+            "Started dev:all in the background. The gateway hadn't finished booting",
+            "when the 90-second wait window expired, but it's probably still coming",
+            "up — cold starts on fresh clones can run over a minute once the P2P",
+            "orchestrator and channel plugins warm up.",
+            "",
+            `Give it another minute, then open: ${controlUiUrl}`,
+            "",
+            `Tail the live logs: tail -f ${spawnOutcome.logPath}`,
+            `Or follow in a terminal: cd ${repoRoot} && pnpm dev:all`,
           ].join("\n"),
           "Still starting",
         );
@@ -607,14 +612,19 @@ async function spawnDevAllHardened(params: {
   // Detach after we've confirmed it's alive — survives wizard exit.
   child.unref();
 
-  // Now poll the gateway WS for up to 45s. Cold start on a fresh clone
-  // (tsdown + Vite + orchestrator) can hit 30s on slow disks.
+  // Now poll the gateway WS. Cold start on a fresh clone includes:
+  //   - tsdown full build (~15s of 294 chunks)
+  //   - gateway bootstrap (channels, hooks, heartbeat, canvas mount)
+  //   - P2P orchestrator handshake (IPC + DNS bootstrap + management auth)
+  // Measured end-to-end ~60s on WSL2; 90s gives comfortable headroom.
+  // If we bail early the gateway is probably still coming up — we surface
+  // the log path so the user can confirm rather than assume failure.
   const probe = await waitForGatewayReachable({
     url: gatewayWsUrl,
     token: settings.authMode === "token" ? settings.gatewayToken : undefined,
     password: settings.authMode === "password" ? nextConfig.gateway?.auth?.password : undefined,
-    deadlineMs: 45_000,
-    pollMs: 700,
+    deadlineMs: 90_000,
+    pollMs: 1000,
   });
 
   return { spawned: true, gatewayUp: probe.ok, logPath };
