@@ -374,7 +374,7 @@ export async function promptModelAllowlist(params: {
         params.message ??
         "Allowlist models (comma-separated provider/model; blank to keep current)",
       initialValue: existingKeys.join(", "),
-      placeholder: `${OPENAI_CODEX_DEFAULT_MODEL}, anthropic/claude-opus-4-6`,
+      placeholder: `${OPENAI_CODEX_DEFAULT_MODEL}, anthropic/claude-opus-4-7`,
     });
     const parsed = String(raw ?? "")
       .split(",")

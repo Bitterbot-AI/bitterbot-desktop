@@ -9,7 +9,7 @@ describe("applyModelDefaults", () => {
       agents: {
         defaults: {
           models: {
-            "anthropic/claude-opus-4-6": {},
+            "anthropic/claude-opus-4-7": {},
             "openai/gpt-5.2": {},
           },
         },
@@ -17,7 +17,7 @@ describe("applyModelDefaults", () => {
     } satisfies BitterbotConfig;
     const next = applyModelDefaults(cfg);
 
-    expect(next.agents?.defaults?.models?.["anthropic/claude-opus-4-6"]?.alias).toBe("opus");
+    expect(next.agents?.defaults?.models?.["anthropic/claude-opus-4-7"]?.alias).toBe("opus");
     expect(next.agents?.defaults?.models?.["openai/gpt-5.2"]?.alias).toBe("gpt");
   });
 

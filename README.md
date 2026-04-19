@@ -351,7 +351,7 @@ To report a vulnerability, email **security@bitterbot.net**.
 
 ## Models
 
-Works with any LLM provider. Recommended: **Anthropic Claude Opus 4.6** via Pro/Max subscription for long-context strength and prompt-injection resistance.
+Works with any LLM provider. Recommended: **Anthropic Claude Opus 4.7** (released 2026-04-19) via Anthropic API key for long-context strength and prompt-injection resistance.
 
 Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic failover between providers.
 
