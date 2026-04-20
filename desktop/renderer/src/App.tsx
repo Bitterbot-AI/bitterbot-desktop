@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FirstRun } from "./components/first-run/FirstRun";
 import { AppShell } from "./components/layout/AppShell";
+import { Toaster } from "./components/ui/sonner";
 import {
   readStoredGatewayToken,
   readStoredGatewayUrl,
@@ -30,8 +31,18 @@ export function App() {
   }, []);
 
   if (!hasCredentials) {
-    return <FirstRun onComplete={handleFirstRunComplete} />;
+    return (
+      <>
+        <FirstRun onComplete={handleFirstRunComplete} />
+        <Toaster richColors position="top-right" />
+      </>
+    );
   }
 
-  return <AppShell />;
+  return (
+    <>
+      <AppShell />
+      <Toaster richColors position="top-right" />
+    </>
+  );
 }

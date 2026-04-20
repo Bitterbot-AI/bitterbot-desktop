@@ -36,7 +36,7 @@ import { isLoopbackAddress, isTrustedProxyAddress, resolveGatewayClientIp } from
 import { resolveHostName } from "../../net.js";
 import { resolveNodeCommandAllowlist } from "../../node-command-policy.js";
 import { checkBrowserOrigin } from "../../origin-check.js";
-import { GATEWAY_CLIENT_IDS } from "../../protocol/client-info.js";
+import { GATEWAY_CLIENT_IDS, isTrustedLocalUiClientId } from "../../protocol/client-info.js";
 import {
   type ConnectParams,
   ErrorCodes,
@@ -303,6 +303,13 @@ export function attachGatewayWsMessageHandler(params: {
 
         const isControlUi = connectParams.client.id === GATEWAY_CLIENT_IDS.CONTROL_UI;
         const isWebchat = isWebchatConnect(connectParams);
+        // Trusted local UI family: Control UI, Webchat, and the native
+        // desktop/macOS/iOS/Android apps. Any of these connecting over
+        // loopback should keep its scopes and skip device pairing — the
+        // user is on the machine, which is the trust boundary we care
+        // about. Prior behaviour only whitelisted Control UI, which
+        // caused #4 (scope stripping) and surfaced as #6 (spinner).
+        const isTrustedLocalUiClient = isTrustedLocalUiClientId(connectParams.client.id);
         if (isControlUi || isWebchat) {
           const originCheck = checkBrowserOrigin({
             requestHost,
@@ -342,9 +349,13 @@ export function attachGatewayWsMessageHandler(params: {
           isControlUi && configSnapshot.gateway?.controlUi?.allowInsecureAuth === true;
         const disableControlUiDeviceAuth =
           isControlUi && configSnapshot.gateway?.controlUi?.dangerouslyDisableDeviceAuth === true;
-        const localControlUiBypass = isControlUi && isLocalClient;
+        // Loopback bypass applies to the full UI family (Control UI + webchat
+        // + native apps). The two config-flag bypasses above remain
+        // Control-UI-specific — they're operator-driven escape hatches for
+        // the browser-served Control UI and don't translate to native apps.
+        const localUiBypass = isTrustedLocalUiClient && isLocalClient;
         const allowControlUiBypass =
-          allowInsecureControlUi || disableControlUiDeviceAuth || localControlUiBypass;
+          allowInsecureControlUi || disableControlUiDeviceAuth || localUiBypass;
         const device = disableControlUiDeviceAuth ? null : deviceRaw;
 
         const hasDeviceTokenCandidate = Boolean(
@@ -437,8 +448,8 @@ export function attachGatewayWsMessageHandler(params: {
           }
           const canSkipDevice = sharedAuthOk;
 
-          if (isControlUi && !allowControlUiBypass) {
-            const errorMessage = "control ui requires HTTPS or localhost (secure context)";
+          if (isTrustedLocalUiClient && !allowControlUiBypass) {
+            const errorMessage = `${connectParams.client.id} requires HTTPS or localhost (secure context)`;
             setHandshakeState("failed");
             setCloseCause("control-ui-insecure-auth", {
               client: connectParams.client.id,

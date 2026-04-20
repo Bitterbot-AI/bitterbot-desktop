@@ -1,5 +1,49 @@
+import { toast } from "sonner";
 import { create } from "zustand";
-import { GatewayClient, type GatewayEventFrame, type GatewayHelloOk } from "../lib/gateway-client";
+import {
+  GatewayClient,
+  type GatewayEventFrame,
+  type GatewayHelloOk,
+  type GatewayRequestError,
+} from "../lib/gateway-client";
+
+// Rapid-fire errors (same method + code within this window) collapse into
+// a single toast to avoid spamming the user when a whole view re-issues
+// failing requests. 2s is long enough to dedupe a React re-render storm,
+// short enough that a genuinely recurring failure still surfaces.
+const TOAST_DEDUPE_WINDOW_MS = 2000;
+const recentErrorKeys = new Map<string, number>();
+
+function dispatchErrorToast(err: GatewayRequestError): void {
+  const key = `${err.kind}:${err.method}:${err.code ?? ""}`;
+  const now = Date.now();
+  const lastAt = recentErrorKeys.get(key);
+  if (lastAt !== undefined && now - lastAt < TOAST_DEDUPE_WINDOW_MS) {
+    return;
+  }
+  recentErrorKeys.set(key, now);
+  // Sweep stale keys opportunistically so the map doesn't grow unbounded
+  // in long-lived sessions. Cheap linear pass; there are rarely many.
+  for (const [k, ts] of recentErrorKeys) {
+    if (now - ts > TOAST_DEDUPE_WINDOW_MS * 4) {
+      recentErrorKeys.delete(k);
+    }
+  }
+
+  const title =
+    err.kind === "timeout"
+      ? "Request timed out"
+      : err.kind === "disconnect"
+        ? "Gateway disconnected"
+        : "Request failed";
+  const description =
+    err.kind === "timeout"
+      ? `${err.method} didn't respond in time`
+      : err.code
+        ? `${err.method}: ${err.message} (${err.code})`
+        : `${err.method}: ${err.message}`;
+  toast.error(title, { description });
+}
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
@@ -116,6 +160,12 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
           status: s.status === "connected" ? "connecting" : s.status,
           error: reason || `Connection closed (${code})`,
         }));
+      },
+      onRequestError: (err) => {
+        // One central place for all RPC failure UX. Individual callers
+        // still see the rejection and can override, but silent failures
+        // are gone — every `ok: false` / timeout / disconnect lands here.
+        dispatchErrorToast(err);
       },
     });
 

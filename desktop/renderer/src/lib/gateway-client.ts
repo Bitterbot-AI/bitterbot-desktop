@@ -20,6 +20,40 @@ export type GatewayResponseFrame = {
   error?: { code: string; message: string; details?: unknown };
 };
 
+/**
+ * Structured rejection for any failed gateway request. Carries enough
+ * context for the store layer to route toasts without every call site
+ * having to construct the error itself.
+ *
+ *   - kind: "remote"     → gateway replied `{ ok: false, error: ... }`
+ *   - kind: "timeout"    → no response within the deadline
+ *   - kind: "disconnect" → socket closed or client stopped with the
+ *                          request still in flight
+ */
+export type GatewayRequestErrorKind = "remote" | "timeout" | "disconnect";
+
+export class GatewayRequestError extends Error {
+  readonly method: string;
+  readonly code: string | null;
+  readonly kind: GatewayRequestErrorKind;
+  readonly details?: unknown;
+
+  constructor(params: {
+    message: string;
+    method: string;
+    code?: string | null;
+    kind: GatewayRequestErrorKind;
+    details?: unknown;
+  }) {
+    super(params.message);
+    this.name = "GatewayRequestError";
+    this.method = params.method;
+    this.code = params.code ?? null;
+    this.kind = params.kind;
+    this.details = params.details;
+  }
+}
+
 export type GatewayHelloOk = {
   type: "hello-ok";
   protocol: number;
@@ -40,8 +74,10 @@ export type GatewayHelloOk = {
 };
 
 type Pending = {
+  method: string;
   resolve: (value: unknown) => void;
   reject: (err: unknown) => void;
+  timer: ReturnType<typeof setTimeout> | null;
 };
 
 export type GatewayClientOptions = {
@@ -50,11 +86,26 @@ export type GatewayClientOptions = {
   password?: string;
   clientName?: string;
   clientVersion?: string;
+  /** Default per-request timeout in ms. Override per-call via request() options. */
+  defaultRequestTimeoutMs?: number;
   onHello?: (hello: GatewayHelloOk) => void;
   onEvent?: (evt: GatewayEventFrame) => void;
   onClose?: (info: { code: number; reason: string }) => void;
   onGap?: (info: { expected: number; received: number }) => void;
+  /**
+   * Fires whenever a request rejects for any reason (remote ok:false,
+   * timeout, or disconnect mid-request). The store wires this to a
+   * toast dispatcher so silent failures become visible. The original
+   * Promise rejection still propagates, so per-call-site handling
+   * (retry, fallback, etc.) keeps working unchanged.
+   */
+  onRequestError?: (err: GatewayRequestError) => void;
 };
+
+// Requests that typically take a while and should not be force-killed
+// by the default 30s timeout (model prompts, long tool calls). Callers
+// can still pass an explicit timeoutMs to override per-call.
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 let idCounter = 0;
 function nextId(): string {
@@ -102,14 +153,48 @@ export class GatewayClient {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  request<T = unknown>(method: string, params?: unknown): Promise<T> {
+  request<T = unknown>(
+    method: string,
+    params?: unknown,
+    options?: { timeoutMs?: number },
+  ): Promise<T> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("gateway not connected"));
+      const err = new GatewayRequestError({
+        message: "gateway not connected",
+        method,
+        kind: "disconnect",
+      });
+      this.opts.onRequestError?.(err);
+      return Promise.reject(err);
     }
     const id = nextId();
     const frame = { type: "req", id, method, params };
+    const timeoutMs =
+      options?.timeoutMs ?? this.opts.defaultRequestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     const p = new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: (v) => resolve(v as T), reject });
+      const timer =
+        timeoutMs > 0
+          ? setTimeout(() => {
+              const pending = this.pending.get(id);
+              if (!pending) {
+                return;
+              }
+              this.pending.delete(id);
+              const err = new GatewayRequestError({
+                message: `request "${method}" timed out after ${timeoutMs}ms`,
+                method,
+                kind: "timeout",
+              });
+              this.opts.onRequestError?.(err);
+              reject(err);
+            }, timeoutMs)
+          : null;
+      this.pending.set(id, {
+        method,
+        resolve: (v) => resolve(v as T),
+        reject,
+        timer,
+      });
     });
     this.ws.send(JSON.stringify(frame));
     return p;
@@ -222,10 +307,21 @@ export class GatewayClient {
       const pending = this.pending.get(res.id);
       if (!pending) return;
       this.pending.delete(res.id);
+      if (pending.timer) {
+        clearTimeout(pending.timer);
+      }
       if (res.ok) {
         pending.resolve(res.payload);
       } else {
-        pending.reject(new Error(res.error?.message ?? "request failed"));
+        const err = new GatewayRequestError({
+          message: res.error?.message ?? "request failed",
+          method: pending.method,
+          code: res.error?.code ?? null,
+          kind: "remote",
+          details: res.error?.details,
+        });
+        this.opts.onRequestError?.(err);
+        pending.reject(err);
       }
       return;
     }
@@ -259,7 +355,22 @@ export class GatewayClient {
 
   private flushPending(err: Error) {
     for (const [, p] of this.pending) {
-      p.reject(err);
+      if (p.timer) {
+        clearTimeout(p.timer);
+      }
+      // Promote plain Errors to structured disconnect errors so the
+      // toast layer can distinguish "connection dropped mid-request"
+      // from genuine remote failures.
+      const structured =
+        err instanceof GatewayRequestError
+          ? err
+          : new GatewayRequestError({
+              message: err.message,
+              method: p.method,
+              kind: "disconnect",
+            });
+      this.opts.onRequestError?.(structured);
+      p.reject(structured);
     }
     this.pending.clear();
   }
