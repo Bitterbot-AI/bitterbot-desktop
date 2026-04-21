@@ -1,0 +1,22 @@
+# Tessl Skill Review — runs on PRs that change any SKILL.md; posts scores as one PR comment.
+# Docs: https://github.com/tesslio/skill-review
+name: Tessl Skill Review
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/SKILL.md"
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: tesslio/skill-review@main
+      # Optional quality gate (off by default — do not enable unless user asked):
+      # with:
+      #   fail-threshold: 70
