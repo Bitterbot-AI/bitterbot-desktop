@@ -1,0 +1,185 @@
+name: Desktop Release
+
+# Tag-triggered Tauri 2 cross-platform build + publish of the Bitterbot
+# desktop shell (desktop/src-tauri). Bump desktop/src-tauri/tauri.conf.json
+# version, commit, and push a `desktop-v<version>` tag.
+#
+# See research/TAURI-PRODUCTION-PLAN.md for the full design rationale.
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (must already exist)"
+        required: true
+        type: string
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # 1. Create the draft release once, share its id with the matrix.
+  create-release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - id: meta
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#desktop-v}" >> "$GITHUB_OUTPUT"
+
+      - id: create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Idempotent: reuse draft if already present.
+          ID=$(gh release view "${{ steps.meta.outputs.tag }}" --json id -q .id 2>/dev/null || true)
+          if [ -z "$ID" ]; then
+            ID=$(gh release create "${{ steps.meta.outputs.tag }}" \
+                  --draft \
+                  --title "Bitterbot Desktop ${{ steps.meta.outputs.version }}" \
+                  --notes "Automated release. See CHANGELOG." \
+                  --json id -q .id)
+          fi
+          echo "release_id=$ID" >> "$GITHUB_OUTPUT"
+
+  # 2. Build each platform, upload bundles + signed updater manifest to draft.
+  build:
+    name: Build ${{ matrix.label }}
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos-arm64
+            os: macos-14
+            rust-target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+          - label: macos-x64
+            os: macos-13
+            rust-target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+          - label: linux-x64
+            os: ubuntu-22.04
+            rust-target: x86_64-unknown-linux-gnu
+            args: "--target x86_64-unknown-linux-gnu --bundles appimage,deb"
+          - label: windows-x64
+            os: windows-2022
+            rust-target: x86_64-pc-windows-msvc
+            args: "--target x86_64-pc-windows-msvc --bundles nsis"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            patchelf \
+            lld
+          echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          shared-key: desktop-${{ matrix.label }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build renderer
+        working-directory: desktop
+        run: pnpm build
+
+      - name: Build SEA gateway sidecar
+        shell: bash
+        run: node scripts/build-sea.mjs --target ${{ matrix.rust-target }}
+
+      - name: Prepare Apple API key file
+        if: runner.os == 'macOS' && env.APPLE_API_KEY_BASE64 != ''
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+
+      - name: Tauri build + upload to draft
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tauri 2 updater signing. Note: Tauri 1 used TAURI_PRIVATE_KEY /
+          # TAURI_KEY_PASSWORD. Tauri 2 renamed these. Most Google results
+          # are stale on this.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # macOS signing/notarization (Tier 1). Empty at Tier 0; tauri-action
+          # skips signing when these are blank and emits an unsigned bundle.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        with:
+          projectPath: desktop
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: ${{ matrix.args }}
+
+  # 3. Only flip draft -> published if every matrix leg succeeded.
+  publish-release:
+    name: Publish release
+    needs: [create-release, build]
+    if: success()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit \
+            "desktop-v${{ needs.create-release.outputs.version }}" \
+            --repo "${{ github.repository }}" \
+            --draft=false \
+            --latest

@@ -81,34 +81,127 @@ Produces platform-specific bundles in `src-tauri/target/release/bundle/`:
 - **macOS:** `.app` + `.dmg`
 - **Windows:** `.msi` + `.exe`
 
-### Current limitation: Node required at runtime
+### Gateway sidecar: Node SEA (Phase 1)
 
-The MVP gateway sidecar spawns `node scripts/run-node.mjs gateway`, which requires Node ≥ 22 to be installed on the end-user's machine. This is acceptable for the current developer/power-user audience, but for true "click an icon, it just works" distribution, the gateway needs to be compiled into a standalone executable.
+The gateway is compiled into a single-executable Node.js binary via
+[Single Executable Applications](https://nodejs.org/api/single-executable-applications.html)
+(stable since Node 22). The resulting binary is ~90 MB per platform, has no
+runtime dependency on a system Node install, and is shipped as a Tauri
+sidecar via `bundle.externalBin` in `tauri.conf.json`.
 
-**Planned path:** Use `bun build --compile` to produce a single-file gateway binary, then ship it as a Tauri sidecar via `bundle.externalBin` in `tauri.conf.json`. This removes the Node dependency for end users entirely. Not yet implemented.
+Build the sidecar locally:
+
+```bash
+node scripts/build-sea.mjs --target x86_64-unknown-linux-gnu
+# or: aarch64-apple-darwin, x86_64-apple-darwin, x86_64-pc-windows-msvc
+```
+
+Output lands at `desktop/src-tauri/binaries/bitterbot-gateway-<target>[.exe]`,
+which is the filename Tauri's sidecar resolver expects.
+
+**Why SEA and not `bun --compile`?** `better-sqlite3` is a C++ N-API addon
+resolved at runtime via `node-gyp-build`/`bindings`. Bun's bundler can't
+follow that resolution; attempting to embed it silently drops the `.node`
+file, and Bun's JSC-based Node shim has had regressions with `better-sqlite3`
+tracked in [oven-sh/bun#4619](https://github.com/oven-sh/bun/issues/4619).
+Node SEA keeps the persistence layer intact. See
+`research/TAURI-PRODUCTION-PLAN.md` §2 for the full decision.
+
+During development (`pnpm tauri:dev`), `src-tauri/src/main.rs` still spawns
+the gateway via `node scripts/run-node.mjs` to avoid the SEA rebuild on every
+code change. The swap to the sidecar API (`app.shell().sidecar(...)`) is
+guarded by a TODO in `spawn_gateway()` and happens in Phase 2 once the
+dev-loop is sorted.
+
+## Auto-updater
+
+Wired via `tauri-plugin-updater` and `tauri-plugin-process`. The update
+manifest is hosted at
+`https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/latest.json`,
+which GitHub auto-redirects to the newest non-prerelease release. The
+`desktop-release.yml` workflow generates and signs the manifest via
+`tauri-action` with `includeUpdaterJson: true`.
+
+The renderer calls into `desktop/renderer/src/lib/updater.ts`, which:
+
+- Checks on app launch (30s delay) and every 4 hours thereafter
+- Surfaces update status via a subscribable `UpdateStatus` store
+- No-ops gracefully when running in a plain browser (dev)
+
+**Setup required before the first release:**
+
+1. `cd desktop && pnpm tauri signer generate -w ~/.tauri/bitterbot-updater.key`
+2. Paste the public key contents into `tauri.conf.json` `plugins.updater.pubkey`
+3. Add GitHub secrets `TAURI_SIGNING_PRIVATE_KEY` (private key contents) and
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+4. Back up the private key offline. Losing it means no future updates can be
+   signed for the current public key.
+
+## Release pipeline
+
+`/.github/workflows/desktop-release.yml` triggers on `desktop-v*` tag push.
+Matrix builds on `macos-14` (arm64), `macos-13` (x64), `ubuntu-22.04`, and
+`windows-2022`. Produces `.dmg`, `.app.tar.gz`, `.AppImage`, `.deb`, and NSIS
+`.exe` plus signed `latest.json`. Draft-then-publish pattern gates publish
+on all legs green.
+
+Estimated CI: ~93 billed minutes per release (free on public repos).
+
+## Tray and close-to-tray behavior
+
+The main window closes to the tray instead of quitting the process, so the
+gateway and memory state stay warm. Right-click the tray icon for Show/Quit,
+left-click to raise the window. See `main.rs` setup closure.
+
+`macOSPrivateApi: true` in `tauri.conf.json` keeps the app alive on macOS
+when the window is closed (otherwise the OS kills the process). To switch to
+a true menubar-only mode (no dock icon), set `LSUIElement = true` in the
+bundled `Info.plist`.
 
 ## Project structure
 
 ```
 desktop/
 ├── src-tauri/
-│   ├── Cargo.toml          ← Rust deps (tauri 2, tauri-plugin-shell, libc)
-│   ├── build.rs            ← Standard Tauri build hook
-│   ├── tauri.conf.json     ← App config (window size, dev URL, bundle ID)
-│   ├── icons/              ← App icons (placeholder — replace with real ones)
+│   ├── Cargo.toml              ← Rust deps (tauri 2 + plugins)
+│   ├── build.rs                ← Standard Tauri build hook
+│   ├── tauri.conf.json         ← App config (window, bundle, updater, entitlements)
+│   ├── Entitlements.plist      ← macOS hardened-runtime entitlements
+│   ├── capabilities/default.json ← Tauri 2 permission set
+│   ├── icons/                  ← App icons (populate before first bundle)
+│   ├── binaries/               ← SEA gateway sidecar (produced by build-sea.mjs; gitignored)
+│   ├── resources/              ← Native module addons (better_sqlite3.node, etc.)
 │   └── src/
-│       └── main.rs         ← Entry: spawns gateway child, manages lifecycle
-├── renderer/               ← React SPA (existing Control UI)
-├── package.json            ← @tauri-apps/cli in devDeps, tauri:dev/tauri:build scripts
-└── TAURI.md                ← This file
+│       └── main.rs             ← Entry: spawns gateway, tray, updater wiring
+├── renderer/
+│   └── src/lib/updater.ts      ← Renderer-side updater hook
+├── package.json                ← @tauri-apps/cli in devDeps, tauri:dev/tauri:build scripts
+└── TAURI.md                    ← This file
 ```
 
-## What's NOT in this MVP
+## Phase 1 status (see research/TAURI-PHASE-1-STATUS.md)
 
-- **Bun-compiled gateway sidecar** — gateway still requires system Node
-- **Orchestrator as embedded Rust crate** — still spawned externally; merging it would save a process but is architecturally complex
-- **Auto-updater** — Tauri has a built-in updater; needs a release server (GitHub Releases works)
-- **Code signing** — macOS notarization requires an Apple Developer account ($99/yr), Windows SmartScreen requires an EV cert ($300/yr). Both deferred until traction warrants it.
-- **CI cross-platform Tauri builds** — new workflow needed (`.github/workflows/desktop-release.yml`). Same pattern as the orchestrator release workflow but with Tauri-specific matrix config.
-- **App icons** — the `icons/` directory has a placeholder. Replace with real app icons before any public distribution.
-- **Tray icon / background mode** — possible with Tauri but not wired yet
+Wired and ready for testing:
+
+- Cross-platform release workflow (unsigned Tier 0)
+- SEA sidecar build script
+- Auto-updater plugins + renderer hook
+- Tray icon + close-to-tray
+- macOS entitlements for signed gateway sidecar
+- `externalBin` + capability permissions
+
+Still to do:
+
+- Real app icons (run `pnpm tauri icon path/to/source.png` once the designed PNG exists)
+- Generate the Tauri updater minisign key pair and back it up offline
+- Add `@tauri-apps/plugin-updater`, `@tauri-apps/plugin-process`, `@tauri-apps/api` to `desktop/package.json`
+- First end-to-end test of `pnpm tauri:build` with the SEA sidecar populated
+- Apple Developer enrollment ($99/yr) for Tier 1 macOS signing
+
+## What's NOT in Phase 1 (deferred)
+
+- **Orchestrator as embedded Rust crate.** Keeping the 3-process topology for libp2p crash isolation. Revisit if bundle size becomes a distribution blocker. See `research/TAURI-PRODUCTION-PLAN.md` §11.
+- **Windows code signing.** Tier 2; apply to SignPath Foundation (free for OSS) or use Azure Artifact Signing ($10/mo).
+- **Mac App Store, Microsoft Store, Flathub, Snap.** Out of scope.
+- **Launch on boot.** Ship `tauri-plugin-autostart` later if users ask.
+- **Crash reporting / telemetry.** Not planned.

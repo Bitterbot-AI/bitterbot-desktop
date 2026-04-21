@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required for V8/JSC inside WebKit. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- Required because the Node SEA sidecar allocates executable memory
+         for V8 JIT. Without this, the gateway crashes on first invoke
+         of any JITted function. -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Required because the sidecar loads better_sqlite3.node and
+         (soon) sqlite-vec shared libraries that are not signed by us.
+         Gatekeeper enforces library validation by default; this opts out. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Enable outbound network access for gateway HTTP + P2P. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- Enable inbound server sockets (orchestrator listens). -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+</dict>
+</plist>
