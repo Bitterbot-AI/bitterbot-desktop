@@ -447,6 +447,34 @@ export async function finalizeOnboardingWizard(
     }
   }
 
+  // Ask for a star while we still have their attention — the wizard is
+  // the one moment every new operator passes through at peak engagement
+  // (agent just came to life). Friendly, skippable, and offers to open
+  // the page for users whose browser is already supported. Non-interactive
+  // runs (opts.skipUi) skip entirely so CI/automation pipelines stay quiet.
+  if (!opts.skipUi) {
+    const repoUrl = "https://github.com/Bitterbot-AI/bitterbot-desktop";
+    const wantStar = await prompter.confirm({
+      message: `If Bitterbot earned its keep, a GitHub star goes a long way — stars are how other operators find the project. Open ${repoUrl} in your browser?`,
+      initialValue: true,
+    });
+    if (wantStar) {
+      const { detectBrowserOpenSupport, openUrl } = await import("../commands/onboard-helpers.js");
+      const browserSupport = await detectBrowserOpenSupport();
+      if (browserSupport.ok) {
+        const opened = await openUrl(repoUrl);
+        if (!opened) {
+          await prompter.note(`Couldn't open a browser here. Star manually: ${repoUrl}`, "Star");
+        }
+      } else {
+        await prompter.note(
+          `No browser available in this shell. Star manually: ${repoUrl}`,
+          "Star",
+        );
+      }
+    }
+  }
+
   await prompter.note(
     [
       "Your agent is alive. A few good first moves:",
