@@ -1,8 +1,8 @@
 ---
 name: discord
-description: "Discord ops via the message tool (channel=discord)."
+description: "Send, read, edit, delete, and search Discord messages, reactions, polls, pins, and threads via the message tool. Use when interacting with Discord channels, sending media or embeds, creating polls or threads, managing presence, or moderating messages."
 metadata: { "bitterbot": { "emoji": "🎮", "requires": { "config": ["channels.discord.token"] } } }
-allowed-tools: ["message"]
+allowed-tools: "message"
 ---
 
 # Discord (Via `message`)

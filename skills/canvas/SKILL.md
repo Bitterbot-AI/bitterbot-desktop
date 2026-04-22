@@ -1,4 +1,10 @@
-# Canvas Skill
+---
+name: canvas
+description: "Display and control HTML content on connected Bitterbot nodes (Mac, iOS, Android) via the canvas host server. Use when presenting games, visualizations, dashboards, or interactive demos on a connected device, navigating canvas URLs, capturing canvas snapshots, or debugging canvas connectivity."
+metadata: { "bitterbot": { "emoji": "🖼️", "requires": { "config": ["canvasHost.enabled"] } } }
+---
+
+# Canvas
 
 Display HTML content on connected Bitterbot nodes (Mac app, iOS, Android).
 
