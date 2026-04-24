@@ -189,7 +189,46 @@ class MemoryManagerSyncOps {
     const dir = path.dirname(dbPath);
     ensureDir(dir);
     const { DatabaseSync } = requireNodeSqlite();
-    return new DatabaseSync(dbPath, { allowExtension: this.settings.store.vector.enabled });
+    const db = new DatabaseSync(dbPath, {
+      allowExtension: this.settings.store.vector.enabled,
+    });
+    // Tune for concurrent writer workload. Without WAL, the default
+    // rollback journal + synchronous=FULL + busy_timeout=0 serialized
+    // every writer and failed reads on contention — dream cycles,
+    // management census, RLM writes, and skill ops all fought for the
+    // exclusive lock and readers saw SQLITE_BUSY. On WSL's ext4-backed
+    // VHDX, the resulting jbd2 journal-commit waits also stalled the
+    // Node event loop in 2–60 s bursts.
+    //   - journal_mode=WAL:   writers append to WAL, readers never
+    //                         block writers, only one writer at a time
+    //                         but the lock window is short.
+    //   - synchronous=NORMAL: fsync only at checkpoint boundaries
+    //                         instead of every commit. Crash-safe; on
+    //                         power loss, only the last few commits in
+    //                         the WAL may be lost. DB itself won't corrupt.
+    //   - busy_timeout=5000:  if a lock IS contended, wait up to 5 s
+    //                         before returning SQLITE_BUSY so callers
+    //                         don't fail instantly.
+    //   - wal_autocheckpoint=1000: default is 1000 pages (~4 MB) which
+    //                         is fine; stating it explicitly documents
+    //                         the expectation.
+    // journal_mode returns a result row (the new mode), which db.exec()
+    // of a multi-statement string swallows incorrectly under node:sqlite —
+    // use prepare().get() for it and exec() for the rest. Each PRAGMA is
+    // guarded independently so one failure doesn't skip the others.
+    try {
+      db.prepare("PRAGMA journal_mode = WAL").get();
+    } catch {}
+    try {
+      db.exec("PRAGMA synchronous = NORMAL");
+    } catch {}
+    try {
+      db.exec("PRAGMA busy_timeout = 5000");
+    } catch {}
+    try {
+      db.exec("PRAGMA wal_autocheckpoint = 1000");
+    } catch {}
+    return db;
   }
 
   private seedEmbeddingCache(sourceDb: DatabaseSync): void {

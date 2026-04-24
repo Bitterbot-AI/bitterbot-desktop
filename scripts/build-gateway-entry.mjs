@@ -9,10 +9,17 @@
  *
  * Externalized (left as runtime imports):
  *  - Native addons (must resolve to platform .node files at runtime).
- *  - @coinbase/agentkit + @coinbase/cdp-sdk — these are dynamic-imported
- *    on first wallet RPC, so they don't sit on the boot critical path.
- *    Keeping them external avoids inflating the bundle size (~60 MB of
- *    cross-chain SDK surface) for code that's rarely used.
+ *  - Playwright / chromium-bidi — dynamic-require chains into subpaths
+ *    not in chromium-bidi's exports map; off the boot/wallet critical
+ *    path so leaving them external saves bundle size.
+ *
+ * @coinbase/agentkit + @coinbase/cdp-sdk are NOT external despite being
+ * dynamic-imported. Keeping them external made the first lazy import walk
+ * ~60 MB of transitive deps over 9P and took 476 s, blocking every RPC
+ * queued behind the wallet provider. They're now bundled in-place, and
+ * the agentkit barrel is aliased below to just CdpSmartWalletProvider
+ * (the only symbol we use) to drop Solana/Privy/ZeroDev/sushi/Clanker/
+ * grammy/twitter-api-v2 dead-weight.
  */
 import { build } from "esbuild";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
