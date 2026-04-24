@@ -11,12 +11,8 @@ export default defineConfig([
     fixedExtension: false,
     platform: "node",
   },
-  {
-    entry: "src/entry.ts",
-    env,
-    fixedExtension: false,
-    platform: "node",
-  },
+  // src/entry.ts is bundled separately by scripts/build-gateway-entry.mjs
+  // (esbuild, single-file) to avoid tsdown's ~1455-chunk split.
   {
     // Ensure this module is bundled as an entry so legacy CLI shims can resolve its exports.
     entry: "src/cli/daemon-cli.ts",
