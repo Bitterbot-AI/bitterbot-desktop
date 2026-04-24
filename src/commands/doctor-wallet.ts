@@ -117,20 +117,33 @@ export async function runWalletChecks(params: { config: BitterbotConfig }): Prom
   }
 
   // ── CDP credentials (config or env) ──
+  // CDP SDK v2 requires THREE secrets, not two:
+  //   - CDP_API_KEY_ID     (identifies the API key)
+  //   - CDP_API_KEY_SECRET (authenticates API calls)
+  //   - CDP_WALLET_SECRET  (authenticates wallet operations)
+  // The wallet secret is deliberately env-only (no config-file path) to
+  // keep it out of serialized JSON.
   const cdpKeyId = wallet.cdpApiKeyId || process.env.CDP_API_KEY_ID;
   const cdpKeySecret = wallet.cdpApiKeySecret || process.env.CDP_API_KEY_SECRET;
-  if (cdpKeyId && cdpKeySecret) {
-    results.push(ok("CDP credentials present (signing will work)"));
-  } else if (cdpKeyId || cdpKeySecret) {
-    results.push(
-      warn(
-        "CDP credentials partially configured — both CDP_API_KEY_ID and CDP_API_KEY_SECRET required for signing",
-      ),
-    );
+  const cdpWalletSecret = process.env.CDP_WALLET_SECRET;
+  const haveAll = Boolean(cdpKeyId && cdpKeySecret && cdpWalletSecret);
+  const haveSome = Boolean(cdpKeyId || cdpKeySecret || cdpWalletSecret);
+  if (haveAll) {
+    results.push(ok("CDP credentials present (API key + wallet secret — signing will work)"));
+  } else if (haveSome) {
+    const missing = [
+      !cdpKeyId && "CDP_API_KEY_ID",
+      !cdpKeySecret && "CDP_API_KEY_SECRET",
+      !cdpWalletSecret && "CDP_WALLET_SECRET",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    results.push(warn(`CDP credentials partially configured — missing: ${missing}`));
   } else {
     results.push(
       warn(
-        "CDP credentials missing — set CDP_API_KEY_ID + CDP_API_KEY_SECRET (or tools.wallet.cdpApiKeyId/Secret) to enable signing",
+        "CDP credentials missing — set CDP_API_KEY_ID, CDP_API_KEY_SECRET, and CDP_WALLET_SECRET. " +
+          "Get API keys at portal.cdp.coinbase.com → API Keys; get the wallet secret at portal.cdp.coinbase.com → Wallets → Wallet Secret.",
       ),
     );
   }

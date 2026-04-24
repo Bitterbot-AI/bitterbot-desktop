@@ -129,6 +129,15 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
   connect: (url: string, tokenOverride?: string) => {
     const existing = get().client;
+    // Idempotent: if we already have a live client pointed at the same
+    // URL and no explicit token override is being tested, do nothing.
+    // React StrictMode double-invokes the mount effect in dev, and the
+    // previous behavior (unconditionally stop() on re-entry) would kill
+    // the first WebSocket mid-handshake on every page load. Symptom was
+    // every RPC timing out at 30s because no WS ever completed.
+    if (existing && !tokenOverride && existing.url === url) {
+      return;
+    }
     if (existing) {
       existing.stop();
     }

@@ -16,6 +16,19 @@ export type SkillInstallSpec = {
   targetDir?: string;
 };
 
+export type SkillOrigin = {
+  /** Registry the skill was imported from, e.g. "agentskills.io". */
+  registry?: string;
+  /** Registry-side identifier for the skill. */
+  slug?: string;
+  /** Upstream version string, if advertised. */
+  version?: string;
+  /** SPDX license identifier reported by upstream. */
+  license?: string;
+  /** Direct URL to the upstream source (SKILL.md or repo page). */
+  upstreamUrl?: string;
+};
+
 export type BitterbotSkillMetadata = {
   always?: boolean;
   skillKey?: string;
@@ -30,6 +43,8 @@ export type BitterbotSkillMetadata = {
     config?: string[];
   };
   install?: SkillInstallSpec[];
+  /** Provenance for imported/derived skills. Gates marketplace promotion. */
+  origin?: SkillOrigin;
 };
 
 export type SkillInvocationPolicy = {
@@ -96,4 +111,11 @@ export type CrystallizationCandidate = {
   rewardScore: number;
   sessionKey: string;
   timestamp: number;
+  /** Upstream provenance (present when this crystal descends from an imported skill). */
+  origin?: SkillOrigin;
+  /**
+   * Degree of transformation over the upstream source (0-1). Required for marketplace
+   * promotion of derivatives; gates P2P publish when origin.registry is set.
+   */
+  transformScore?: number;
 };

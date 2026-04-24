@@ -185,15 +185,23 @@ export function renderWalletFundingPage(gatewayWsUrl: string, gatewayToken?: str
         container.classList.remove("hidden");
         container.innerHTML = "";
 
-        const stripe = Stripe(resp.publishableKey);
-        const onramp = stripe.createCryptoOnrampSession({
+        // Current Stripe Crypto Onramp JS API: crypto-onramp-outer.js
+        // exposes window.StripeOnramp. stripe.createCryptoOnrampSession
+        // was an older beta API that has been removed.
+        if (typeof window.StripeOnramp !== "function") {
+          throw new Error(
+            "StripeOnramp global missing — crypto-onramp-outer.js failed to load",
+          );
+        }
+        const onramp = window.StripeOnramp(resp.publishableKey);
+        const session = onramp.createSession({
           clientSecret: resp.clientSecret,
           appearance: { theme: "dark" },
         });
-        onramp.mount("#onramp-container");
+        session.mount("#onramp-container");
 
-        onramp.addEventListener("onramp_session_updated", async (e) => {
-          if (e.payload?.status === "fulfillment_complete") {
+        session.addEventListener("onramp_session_updated", async (e) => {
+          if (e.payload?.session?.status === "fulfillment_complete") {
             showStatus("Funding complete! Refreshing balance…", "success");
             // Refresh balance after a short delay for chain confirmation
             setTimeout(async () => {
@@ -218,26 +226,30 @@ export function renderWalletFundingPage(gatewayWsUrl: string, gatewayToken?: str
     function connectWs() {
       wsConnected = false;
       ws = new WebSocket(WS_URL);
-      ws.onopen = () => {};
+      // Protocol v3 is client-initiated: send the connect RPC immediately
+      // on WS open. (Earlier v1 had the gateway send a connect.challenge
+      // event first; that path is gone in v3 and waiting for it just
+      // leaves the page stuck on "Disconnected from gateway".)
+      ws.onopen = () => {
+        const connId = String(++rpcId);
+        pending.set(connId, {
+          resolve: () => { wsConnected = true; loadWalletInfo(); },
+          reject: () => { wsConnected = true; loadWalletInfo(); }
+        });
+        ws.send(JSON.stringify({
+          type: "req", id: connId, method: "connect",
+          params: {
+            minProtocol: 3, maxProtocol: 3,
+            client: { id: "bitterbot-control-ui", version: "1.0.0", platform: "browser", mode: "ui" },
+            role: "operator",
+            scopes: ["operator.admin", "operator.approvals", "operator.pairing"],
+            auth: GW_TOKEN ? { token: GW_TOKEN } : undefined
+          }
+        }));
+      };
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === "event" && msg.event === "connect.challenge") {
-            const connId = String(++rpcId);
-            pending.set(connId, {
-              resolve: () => { wsConnected = true; loadWalletInfo(); },
-              reject: () => { wsConnected = true; loadWalletInfo(); }
-            });
-            ws.send(JSON.stringify({
-              type: "req", id: connId, method: "connect",
-              params: {
-                minProtocol: 1, maxProtocol: 1,
-                client: { id: "bitterbot-control-ui", version: "1.0.0", platform: "browser", mode: "ui" },
-                auth: GW_TOKEN ? { token: GW_TOKEN } : undefined
-              }
-            }));
-            return;
-          }
           if (msg.type === "res" && msg.id && pending.has(msg.id)) {
             const { resolve, reject } = pending.get(msg.id);
             pending.delete(msg.id);

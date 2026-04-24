@@ -5,6 +5,7 @@ import type {
   SkillEntry,
   SkillInstallSpec,
   SkillInvocationPolicy,
+  SkillOrigin,
 } from "./types.js";
 import { parseFrontmatterBlock } from "../../markdown/frontmatter.js";
 import {
@@ -79,6 +80,36 @@ function parseInstallSpec(input: unknown): SkillInstallSpec | undefined {
   return spec;
 }
 
+function parseOrigin(input: unknown): SkillOrigin | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as Record<string, unknown>;
+  const origin: SkillOrigin = {};
+  if (typeof raw.registry === "string" && raw.registry.trim()) {
+    origin.registry = raw.registry.trim();
+  }
+  if (typeof raw.slug === "string" && raw.slug.trim()) {
+    origin.slug = raw.slug.trim();
+  }
+  if (typeof raw.version === "string" && raw.version.trim()) {
+    origin.version = raw.version.trim();
+  }
+  if (typeof raw.license === "string" && raw.license.trim()) {
+    origin.license = raw.license.trim();
+  }
+  const upstream =
+    typeof raw.upstreamUrl === "string"
+      ? raw.upstreamUrl
+      : typeof raw.upstream_url === "string"
+        ? raw.upstream_url
+        : undefined;
+  if (upstream && upstream.trim()) {
+    origin.upstreamUrl = upstream.trim();
+  }
+  return Object.keys(origin).length > 0 ? origin : undefined;
+}
+
 export function resolveBitterbotMetadata(
   frontmatter: ParsedSkillFrontmatter,
 ): BitterbotSkillMetadata | undefined {
@@ -89,6 +120,7 @@ export function resolveBitterbotMetadata(
   const requires = resolveBitterbotManifestRequires(metadataObj);
   const install = resolveBitterbotManifestInstall(metadataObj, parseInstallSpec);
   const osRaw = resolveBitterbotManifestOs(metadataObj);
+  const origin = parseOrigin(metadataObj.origin);
   return {
     always: typeof metadataObj.always === "boolean" ? metadataObj.always : undefined,
     emoji: typeof metadataObj.emoji === "string" ? metadataObj.emoji : undefined,
@@ -98,6 +130,7 @@ export function resolveBitterbotMetadata(
     os: osRaw.length > 0 ? osRaw : undefined,
     requires: requires,
     install: install.length > 0 ? install : undefined,
+    origin: origin,
   };
 }
 

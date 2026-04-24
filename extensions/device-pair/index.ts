@@ -320,9 +320,26 @@ function encodeSetupCode(payload: SetupPayload): string {
   return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
+function wsUrlToHttpUrl(wsUrl: string): string {
+  return wsUrl
+    .replace(/^wss:\/\//i, "https://")
+    .replace(/^ws:\/\//i, "http://")
+    .replace(/\/+$/g, "");
+}
+
+function buildMobileWebUrl(payload: SetupPayload): string | undefined {
+  const http = wsUrlToHttpUrl(payload.url);
+  if (!http) return undefined;
+  const auth = payload.token ?? payload.password;
+  if (!auth) return `${http}/m`;
+  const encoded = encodeURIComponent(auth);
+  return `${http}/m?t=${encoded}`;
+}
+
 function formatSetupReply(payload: SetupPayload, authLabel: string): string {
   const setupCode = encodeSetupCode(payload);
-  return [
+  const mobileUrl = buildMobileWebUrl(payload);
+  const lines = [
     "Pairing setup code generated.",
     "",
     "1) Open the iOS app → Settings → Gateway",
@@ -334,7 +351,11 @@ function formatSetupReply(payload: SetupPayload, authLabel: string): string {
     "",
     `Gateway: ${payload.url}`,
     `Auth: ${authLabel}`,
-  ].join("\n");
+  ];
+  if (mobileUrl) {
+    lines.push("", "Or open this URL on your phone for the browser chat:", mobileUrl);
+  }
+  return lines.join("\n");
 }
 
 function formatSetupInstructions(): string {

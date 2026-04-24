@@ -19,6 +19,7 @@ import { bumpSkillsSnapshotVersion } from "./refresh.js";
 const log = createSubsystemLogger("skills/crystallize");
 
 const SUCCESS_THRESHOLD = 0.85;
+const DEFAULT_TRANSFORM_THRESHOLD = 0.5;
 
 export type CrystallizationResult = {
   ok: boolean;
@@ -26,6 +27,8 @@ export type CrystallizationResult = {
   skillName?: string;
   published?: boolean;
   error?: string;
+  /** Set when P2P publish was intentionally withheld (e.g. upstream-attribution gate). */
+  publishSkipped?: string;
 };
 
 export async function crystallizeSkill(params: {
@@ -68,9 +71,24 @@ export async function crystallizeSkill(params: {
 
   log.info(`Crystallized skill: ${skillName} at ${skillPath}`);
 
-  // 6. If P2P enabled, publish to network
+  // 6. Marketplace promotion gate: derivatives of upstream-imported skills
+  //    may not be published to the paid/P2P marketplace unless they show
+  //    sufficient transformation over the original source. This is the
+  //    attribution wedge — free imports stay free; genuinely new work can
+  //    still be listed, and origin provenance rides along for credit.
+  let publishSkipped: string | undefined;
+  if (candidate.origin?.registry) {
+    const threshold = config.skills?.agentskills?.transformThreshold ?? DEFAULT_TRANSFORM_THRESHOLD;
+    const transformScore = candidate.transformScore ?? 0;
+    if (transformScore < threshold) {
+      publishSkipped = `origin=${candidate.origin.registry} transformScore=${transformScore} < threshold=${threshold}`;
+      log.info(`Withholding P2P publish for ${skillName}: ${publishSkipped}`);
+    }
+  }
+
+  // 7. If P2P enabled and no upstream gate, publish to network
   let published = false;
-  if (config.p2p?.enabled && bridge) {
+  if (config.p2p?.enabled && bridge && !publishSkipped) {
     try {
       const base64Md = Buffer.from(skillMd, "utf-8").toString("base64");
       await bridge.publishSkill(base64Md, skillName);
@@ -81,7 +99,7 @@ export async function crystallizeSkill(params: {
     }
   }
 
-  return { ok: true, skillPath, skillName, published };
+  return { ok: true, skillPath, skillName, published, publishSkipped };
 }
 
 export async function crystallizeViaPython(params: {

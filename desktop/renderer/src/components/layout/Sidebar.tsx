@@ -12,6 +12,7 @@ import {
   PanelLeftOpen,
   BrainCircuit,
   Shield,
+  Clock,
   X,
   ChevronDown,
   ChevronUp,
@@ -58,6 +59,7 @@ const NAV_ITEMS: NavItem[] = [
   // Agent
   { id: "agents", label: "Agents", icon: Bot, group: "agent" },
   { id: "skills", label: "Skills", icon: Puzzle, group: "agent" },
+  { id: "cron", label: "Cron", icon: Clock, group: "agent" },
   { id: "dreams", label: "Dreams (beta)", icon: BrainCircuit, group: "agent" },
   // Settings
   { id: "config", label: "Config", icon: Settings, group: "settings" },

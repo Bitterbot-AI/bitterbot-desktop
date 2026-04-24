@@ -48,6 +48,7 @@ import {
 } from "./hooks.js";
 import { sendGatewayAuthFailure } from "./http-common.js";
 import { getBearerToken, getHeader } from "./http-utils.js";
+import { renderMobileUiPage } from "./mobile-ui-page.js";
 import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
@@ -549,6 +550,33 @@ export function createGatewayHttpServer(opts: {
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.end(renderManagementDashboardPage(wsUrl, gatewayToken));
+        return;
+      }
+      // Mobile chat UI — auth-protected, serves self-contained HTML.
+      // Accepts token via Bearer header OR ?t= query param (for QR-code pairing).
+      if ((requestPath === "/m" || requestPath === "/m/") && req.method === "GET") {
+        const tokenFromQuery = new URL(req.url ?? "/", "http://localhost").searchParams.get("t");
+        const bearerToken = getBearerToken(req);
+        const token = bearerToken || tokenFromQuery || "";
+        const authResult = await authorizeGatewayConnect({
+          auth: resolvedAuth,
+          connectAuth: token ? { token, password: token } : null,
+          req,
+          trustedProxies,
+          rateLimiter,
+        });
+        if (!authResult.ok && !isLocalDirectRequest(req, trustedProxies)) {
+          sendGatewayAuthFailure(res, authResult);
+          return;
+        }
+        const proto = opts.tlsOptions ? "wss" : "ws";
+        const host = req.headers.host ?? "localhost";
+        const wsUrl = `${proto}://${host}`;
+        const gatewayToken = resolvedAuth?.token ?? "";
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(renderMobileUiPage(wsUrl, gatewayToken));
         return;
       }
       // Wallet funding page — auth-protected, serves self-contained HTML

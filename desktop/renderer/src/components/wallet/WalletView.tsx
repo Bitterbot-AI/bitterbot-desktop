@@ -204,7 +204,18 @@ export function WalletView() {
     try {
       const res = await request<{ fundingUrl: string; network: string }>("wallet.fund");
       if (res.fundingUrl) {
-        window.open(res.fundingUrl, "_blank");
+        // wallet.fund returns a relative path (e.g. `/wallet/fund`) when the
+        // gateway serves the Stripe Onramp widget locally. window.open()
+        // resolves relative paths against the renderer's origin (Vite at
+        // :5173), which just renders the SPA and lands us on chat. Resolve
+        // against the gateway HTTP origin instead.
+        let targetUrl = res.fundingUrl;
+        if (targetUrl.startsWith("/")) {
+          const wsUrl = import.meta.env.VITE_GATEWAY_URL ?? "ws://127.0.0.1:19001";
+          const httpOrigin = wsUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+          targetUrl = httpOrigin.replace(/\/+$/, "") + targetUrl;
+        }
+        window.open(targetUrl, "_blank");
         return;
       }
     } catch {
@@ -267,13 +278,13 @@ export function WalletView() {
                 >
                   portal.cdp.coinbase.com
                 </a>{" "}
-                and create an API key
+                and create a Secret API Key (no workspace) plus a Wallet Secret
               </li>
               <li>
-                Add <code className="text-xs bg-muted/40 px-1 py-0.5 rounded">CDP_API_KEY_ID</code>{" "}
-                and{" "}
-                <code className="text-xs bg-muted/40 px-1 py-0.5 rounded">CDP_API_KEY_SECRET</code>{" "}
-                to your environment or config
+                Add all three to your environment:{" "}
+                <code className="text-xs bg-muted/40 px-1 py-0.5 rounded">CDP_API_KEY_ID</code>,{" "}
+                <code className="text-xs bg-muted/40 px-1 py-0.5 rounded">CDP_API_KEY_SECRET</code>,{" "}
+                <code className="text-xs bg-muted/40 px-1 py-0.5 rounded">CDP_WALLET_SECRET</code>
               </li>
               <li>Restart the gateway</li>
             </ol>

@@ -56,9 +56,13 @@ export interface WalletService {
 
 const DEFAULT_WALLET_STORE = path.join(os.homedir(), ".bitterbot", "wallet");
 
-const NETWORK_IDS: Record<string, string> = {
-  base: "base-mainnet",
-  "base-sepolia": "base-sepolia",
+// Persistence shape. v1 stored an encrypted blob; v2 only needs the
+// smart-account name and addresses — CDP holds the wallet state server-side,
+// authenticated by the Wallet Secret.
+type PersistedWallet = {
+  name?: string;
+  address: string;
+  ownerAddress: string;
 };
 
 const TOKEN_CONTRACTS: Record<string, Record<string, string>> = {
@@ -91,57 +95,121 @@ const ERC20_BALANCE_ABI = [
 
 export function createWalletService(config: WalletConfig): WalletService {
   const network = config.network ?? "base-sepolia";
-  const networkId = NETWORK_IDS[network] ?? "base-sepolia";
+  // CDP SDK v2 accepts "base" / "base-sepolia" directly as networkId,
+  // no translation needed.
+  const networkId = network;
   const storePath = config.walletStorePath ?? DEFAULT_WALLET_STORE;
   const perTxCap = config.perTransactionCapUsd ?? 25;
 
   // Lazily initialized wallet provider
-  let walletProviderPromise: Promise<import("@coinbase/agentkit").CdpWalletProvider> | null = null;
+  let walletProviderPromise: Promise<import("@coinbase/agentkit").CdpSmartWalletProvider> | null =
+    null;
 
   async function ensureStoreDir(): Promise<void> {
     await fs.mkdir(storePath, { recursive: true });
   }
 
-  async function loadWalletData(): Promise<string | undefined> {
-    try {
-      const filePath = path.join(storePath, "wallet-data.json");
-      const data = await fs.readFile(filePath, "utf-8");
-      return data;
-    } catch {
-      return undefined;
-    }
-  }
-
-  async function saveWalletData(data: string): Promise<void> {
+  async function savePersistedWallet(data: PersistedWallet): Promise<void> {
     await ensureStoreDir();
     const filePath = path.join(storePath, "wallet-data.json");
-    await fs.writeFile(filePath, data, "utf-8");
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
   }
 
-  async function getProvider(): Promise<import("@coinbase/agentkit").CdpWalletProvider> {
+  async function getProvider(): Promise<import("@coinbase/agentkit").CdpSmartWalletProvider> {
     if (!walletProviderPromise) {
       walletProviderPromise = initProvider();
     }
     return walletProviderPromise;
   }
 
-  async function initProvider(): Promise<import("@coinbase/agentkit").CdpWalletProvider> {
-    const { CdpWalletProvider } = await import("@coinbase/agentkit");
+  async function initProvider(): Promise<import("@coinbase/agentkit").CdpSmartWalletProvider> {
+    const { CdpSmartWalletProvider } = await import("@coinbase/agentkit");
+    const { CdpClient } = await import("@coinbase/cdp-sdk");
 
-    const existingData = await loadWalletData();
+    const apiKeyId = config.cdpApiKeyId ?? process.env.CDP_API_KEY_ID;
+    const apiKeySecret = config.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET;
+    const walletSecret = process.env.CDP_WALLET_SECRET;
+    if (!apiKeyId || !apiKeySecret || !walletSecret) {
+      throw new Error(
+        "Missing required CDP credentials. Set CDP_API_KEY_ID, CDP_API_KEY_SECRET, " +
+          "and CDP_WALLET_SECRET in your environment.",
+      );
+    }
 
-    const provider = await CdpWalletProvider.configureWithWallet({
-      apiKeyName: config.cdpApiKeyId ?? process.env.CDP_API_KEY_ID ?? "",
-      apiKeyPrivateKey: config.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET ?? "",
-      cdpWalletData: existingData,
+    // Resolve owner + smart account via the CDP SDK directly before handing
+    // off to AgentKit's provider. The provider's built-in configure path
+    // tries to create a fresh smart account on every init where no
+    // smartAccountName is persisted locally, which blows up the second time
+    // because CDP refuses multiple smart accounts per owner. Resolving
+    // explicitly makes init idempotent regardless of local persistence
+    // state.
+    const cdp = new CdpClient({ apiKeyId, apiKeySecret, walletSecret });
+
+    const ownerName = `bitterbot-owner-${network}`;
+    const smartName = `bitterbot-smart-${network}`;
+
+    // Owner: always the same account for a given network.
+    const ownerAccount = await cdp.evm.getOrCreateAccount({ name: ownerName });
+
+    // Smart account: prefer the one named "bitterbot-smart-<network>". If
+    // that name doesn't exist yet, the SDK will try to create it. If the
+    // owner already has an orphaned smart account (created by an earlier
+    // nameless attempt), CDP rejects the create with "Multiple smart
+    // wallets with the same owner" — in that case, list the owner's
+    // existing smart accounts, pick the first, and attach to it.
+    let smartAccountAddress: `0x${string}`;
+    try {
+      const sa = await cdp.evm.getOrCreateSmartAccount({
+        name: smartName,
+        owner: ownerAccount,
+      });
+      smartAccountAddress = sa.address as `0x${string}`;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/multiple smart wallets|same owner/i.test(msg)) {
+        throw err;
+      }
+      // Orphan reclaim: walk pages until we find one owned by ourselves.
+      let pageToken: string | undefined;
+      let found: `0x${string}` | undefined;
+      do {
+        const page = await cdp.evm.listSmartAccounts({ pageToken });
+        for (const sa of page.accounts) {
+          if (
+            sa.owners?.some((o: string) => o.toLowerCase() === ownerAccount.address.toLowerCase())
+          ) {
+            found = sa.address as `0x${string}`;
+            break;
+          }
+        }
+        pageToken = page.nextPageToken;
+      } while (!found && pageToken);
+
+      if (!found) {
+        throw new Error(
+          `CDP reported a pre-existing smart wallet for owner ${ownerAccount.address} ` +
+            `but listSmartAccounts returned none.`,
+          { cause: err },
+        );
+      }
+      smartAccountAddress = found;
+    }
+
+    const provider = await CdpSmartWalletProvider.configureWithWallet({
+      apiKeyId,
+      apiKeySecret,
+      // walletSecret falls through to process.env.CDP_WALLET_SECRET.
       networkId,
+      address: smartAccountAddress,
+      owner: ownerAccount,
     });
 
-    // Persist wallet data for future sessions
-    const exportedData = await provider.exportWallet();
-    if (exportedData) {
-      await saveWalletData(JSON.stringify(exportedData));
-    }
+    const exported = await provider.exportWallet();
+    await savePersistedWallet({
+      name: exported.name,
+      address: exported.address,
+      ownerAddress: exported.ownerAddress,
+    });
 
     return provider;
   }
