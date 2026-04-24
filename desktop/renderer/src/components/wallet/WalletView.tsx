@@ -204,7 +204,18 @@ export function WalletView() {
     try {
       const res = await request<{ fundingUrl: string; network: string }>("wallet.fund");
       if (res.fundingUrl) {
-        window.open(res.fundingUrl, "_blank");
+        // wallet.fund returns a relative path (e.g. `/wallet/fund`) when the
+        // gateway serves the Stripe Onramp widget locally. window.open()
+        // resolves relative paths against the renderer's origin (Vite at
+        // :5173), which just renders the SPA and lands us on chat. Resolve
+        // against the gateway HTTP origin instead.
+        let targetUrl = res.fundingUrl;
+        if (targetUrl.startsWith("/")) {
+          const wsUrl = import.meta.env.VITE_GATEWAY_URL ?? "ws://127.0.0.1:19001";
+          const httpOrigin = wsUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+          targetUrl = httpOrigin.replace(/\/+$/, "") + targetUrl;
+        }
+        window.open(targetUrl, "_blank");
         return;
       }
     } catch {
