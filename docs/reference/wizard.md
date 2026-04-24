@@ -97,6 +97,28 @@ For a high-level overview, see [Onboarding Wizard](/start/wizard).
     - Lets you choose a node manager: **npm / pnpm** (bun not recommended).
     - Installs optional dependencies (some use Homebrew on macOS).
   </Step>
+  <Step title="Wallet (USDC on Base)">
+    - Confirms whether to enable the agent's USDC smart wallet.
+    - If enabled and CDP credentials are not already present, walks through
+      creating them on [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com):
+      - **API Key** (Project → API Keys → Create API key): yields an ID (UUID)
+        and Secret (Ed25519 base64). Secret is shown once.
+      - **Wallet Secret** (Wallets → Wallet Secret → Create): separate key
+        that authorizes signing. Also shown once.
+    - The wizard opens each portal page for you; pick **"I already have keys"**
+      to skip the browser opens and paste existing values, or **"Skip for now"**
+      to defer setup (wallet stays disabled until you re-run
+      `bitterbot configure --section wallet` or set the env vars yourself).
+    - Persists the API Key pair to `wallet.cdpApiKeyId` /
+      `wallet.cdpApiKeySecret` in `~/.bitterbot/bitterbot.json`; persists
+      the Wallet Secret as `CDP_WALLET_SECRET` in `~/.bitterbot/.env`
+      (mode 0600).
+    - Defaults to `base-sepolia` (testnet). Switch to mainnet only after
+      watching agent behavior for a while.
+    - In **advanced** mode, lets you tune per-transaction, daily, and
+      per-session spend caps (defaults: $25 / $50 / $50).
+    - More detail: [Agent wallet](/wallet)
+  </Step>
   <Step title="Finish">
     - Summary + next steps.
   </Step>
@@ -254,6 +276,12 @@ Typical fields in `~/.bitterbot/bitterbot.json`:
 
 WhatsApp credentials go under `~/.bitterbot/credentials/whatsapp/<accountId>/`.
 Sessions are stored under `~/.bitterbot/agents/<agentId>/sessions/`.
+
+CDP wallet credentials split between two places for security:
+
+- **API Key pair** (`wallet.cdpApiKeyId`, `wallet.cdpApiKeySecret`) → `~/.bitterbot/bitterbot.json`
+- **Wallet Secret** (`CDP_WALLET_SECRET`) → `~/.bitterbot/.env` (read by the gateway's dotenv loader)
+- Smart wallet metadata (address, owner address) → `~/.bitterbot/wallet/wallet-data.json`
 
 Some channels are delivered as plugins. When you pick one during onboarding, the wizard
 will prompt to install it (npm or a local path) before it can be configured.

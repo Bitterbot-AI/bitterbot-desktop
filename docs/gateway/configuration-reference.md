@@ -1552,6 +1552,75 @@ Notes:
 - `model`: default model for spawned sub-agents. If omitted, sub-agents inherit the caller's model.
 - Per-subagent tool policy: `tools.subagents.tools.allow` / `tools.subagents.tools.deny`.
 
+### `tools.wallet`
+
+USDC smart wallet on Base. The wallet is what lets the agent earn from
+published skills, pay paywalled APIs via x402, and claim management-node
+bounties. The wizard (`bitterbot configure --section wallet`) will
+collect the Coinbase Developer Platform (CDP) credentials and write them
+to the right places.
+
+```json5
+{
+  tools: {
+    wallet: {
+      enabled: true,
+      network: "base-sepolia", // base | base-sepolia (default: base-sepolia)
+      cdpApiKeyId: "00000000-0000-0000-0000-000000000000",
+      cdpApiKeySecret: "base64-ed25519-secret",
+      perTransactionCapUsd: 25,
+      dailySpendLimitUsd: 50,
+      sessionSpendCapUsd: 50,
+      walletStorePath: "~/.bitterbot/wallet",
+      onrampUrl: "https://onramp.bitterbot.ai", // Tier 1/3 — see below
+      stripe: {
+        enabled: false,
+        // secretKey: "sk_live_...",        // or STRIPE_SECRET_KEY
+        // publishableKey: "pk_live_...",   // or STRIPE_PUBLISHABLE_KEY
+      },
+      x402: {
+        enabled: false,
+        maxCostPerRequestUsd: 1,
+        // facilitatorUrl: "https://x402.example.com",
+      },
+    },
+  },
+}
+```
+
+| Field                       | Default               | Notes                                                                                                                                                             |
+| --------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                   | `true`                | When `false`, all `wallet.*` RPCs return an error.                                                                                                                |
+| `network`                   | `base-sepolia`        | `base` (mainnet) or `base-sepolia` (testnet). Switch to mainnet only after watching behavior.                                                                     |
+| `cdpApiKeyId`               | —                     | CDP API Key ID. Env fallback: `CDP_API_KEY_ID`.                                                                                                                   |
+| `cdpApiKeySecret`           | —                     | CDP API Key Secret (Ed25519 base64). Env fallback: `CDP_API_KEY_SECRET`.                                                                                          |
+| _(wallet secret)_           | env-only              | Must be set via env: `CDP_WALLET_SECRET`. The wizard writes it to `~/.bitterbot/.env`.                                                                            |
+| `perTransactionCapUsd`      | `25`                  | Cap on a single outbound transaction.                                                                                                                             |
+| `dailySpendLimitUsd`        | `50`                  | Rolling 24 h cap.                                                                                                                                                 |
+| `sessionSpendCapUsd`        | `50`                  | Cap per agent session.                                                                                                                                            |
+| `walletStorePath`           | `~/.bitterbot/wallet` | Directory for persisted smart-account metadata (not the signing key).                                                                                             |
+| `onrampUrl`                 | —                     | Tier 3 hosted onramp override. When unset and Stripe keys are also unset, Tier 1 defaults to `https://onramp.bitterbot.ai`. Env fallback: `BITTERBOT_ONRAMP_URL`. |
+| `stripe.enabled`            | `false`               | Tier 2 (BYO Stripe). Creates onramp sessions locally.                                                                                                             |
+| `stripe.secretKey`          | —                     | Env fallback: `STRIPE_SECRET_KEY`.                                                                                                                                |
+| `stripe.publishableKey`     | —                     | Env fallback: `STRIPE_PUBLISHABLE_KEY`.                                                                                                                           |
+| `x402.enabled`              | `false`               | Enable x402 micropayment flows for paywalled APIs.                                                                                                                |
+| `x402.maxCostPerRequestUsd` | `1`                   | Per-request cap inside the agent's per-tx cap.                                                                                                                    |
+| `x402.facilitatorUrl`       | —                     | Optional x402 facilitator endpoint.                                                                                                                               |
+
+Spend caps are enforced inside the wallet service **before** signing, and
+the agent cannot override them from inside a session. Bump them
+explicitly here if an autonomous use case needs more headroom.
+
+**Onramp resolution order** (for `wallet.stripeOnramp` / `wallet.fund`):
+
+1. **Tier 2** — `stripe.enabled: true` or `STRIPE_SECRET_KEY` set → creates the onramp session locally.
+2. **Tier 3** — `onrampUrl` set → POSTs to that endpoint.
+3. **Tier 1** — neither of the above → defaults to `https://onramp.bitterbot.ai`.
+
+On **testnet** (`base-sepolia`), an additional faucet URL is returned alongside the onramp URL so you can grab test USDC without a card.
+
+See also: [Agent wallet](/wallet), [Wallet funding](/wallet/wallet-funding).
+
 ---
 
 ## Custom providers and base URLs
