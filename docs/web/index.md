@@ -16,6 +16,12 @@ The Gateway serves a small **browser Control UI** (Vite + Lit) from the same por
 Capabilities live in [Control UI](/web/control-ui).
 This page focuses on bind modes, security, and web-facing surfaces.
 
+Other web surfaces on the same port:
+
+- [Mobile Chat UI](/web/mobile) at `/m` — phone-friendly chat, paired via `/pair`.
+- [WebChat](/web/webchat) — chat tab inside the Control UI.
+- [Dashboard](/web/dashboard) — dream/management pages.
+
 ## Webhooks
 
 When `hooks.enabled=true`, the Gateway also exposes a small webhook endpoint on the same HTTP server.

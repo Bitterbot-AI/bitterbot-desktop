@@ -9,6 +9,7 @@ import {
 import { installSkill } from "../../agents/skills-install.js";
 import { buildWorkspaceSkillStatus } from "../../agents/skills-status.js";
 import { loadWorkspaceSkillEntries, type SkillEntry } from "../../agents/skills.js";
+import { importAgentskillsSkill } from "../../agents/skills/agentskills-ingest.js";
 import { crystallizeSkill } from "../../agents/skills/crystallize.js";
 import {
   acceptIncomingSkill,
@@ -295,6 +296,31 @@ export const skillsHandlers: GatewayRequestHandlers = {
       result.ok,
       result,
       result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "reject failed"),
+    );
+  },
+  "skills.import.agentskills": async ({ params, respond }) => {
+    const input = typeof params?.input === "string" ? params.input.trim() : "";
+    if (!input) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "input required (slug or https URL)"),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const workspaceDir = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
+    const result = await importAgentskillsSkill({
+      input,
+      config: cfg,
+      workspaceDir,
+    });
+    respond(
+      result.ok,
+      result,
+      result.ok
+        ? undefined
+        : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "agentskills import failed"),
     );
   },
 };

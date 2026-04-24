@@ -33,6 +33,21 @@ export type SkillsP2pConfig = {
   maxIngestedPerHour?: number;
 };
 
+export type SkillsAgentskillsConfig = {
+  /** Enable the agentskills.io import bridge. Default: false (opt-in). */
+  enabled?: boolean;
+  /** Base URL for slug resolution. Default: "https://agentskills.io". */
+  registryBaseUrl?: string;
+  /** Trust level for imported skills. Default: "review" (quarantine first). */
+  defaultTrust?: "auto" | "review";
+  /** Minimum transformScore (0-1) required before an origin-derived crystal may be published to the paid marketplace. Default: 0.5. */
+  transformThreshold?: number;
+  /** Royalty split (basis points) retained for the upstream registry. Default: 0. */
+  royaltyBps?: number;
+  /** Maximum bytes for an imported SKILL.md or tarball. Default: 1 MB. */
+  maxBytes?: number;
+};
+
 import type { SkillSeekersConfig } from "./types.skill-seekers.js";
 
 export type SkillsConfig = {
@@ -43,6 +58,8 @@ export type SkillsConfig = {
   entries?: Record<string, SkillConfig>;
   /** P2P skill ingestion settings. */
   p2p?: SkillsP2pConfig;
+  /** agentskills.io import bridge. */
+  agentskills?: SkillsAgentskillsConfig;
   /** External skill generation via Skill Seekers. */
   skillSeekers?: SkillSeekersConfig;
   /** PLAN-11 Gap 4: LLM-based marketability prediction (opt-in). */

@@ -73,6 +73,8 @@ Stored under `~/.bitterbot/devices/`:
 
 - The legacy `node.pair.*` API (CLI: `bitterbot nodes pending/approve`) is a
   separate gateway-owned pairing store. WS nodes still require device pairing.
+- The `/pair` chat command also emits a phone-ready URL alongside the iOS setup
+  code — paste it into a phone browser to open the [Mobile Chat UI](/web/mobile).
 
 ## Related docs
 

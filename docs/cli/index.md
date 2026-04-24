@@ -427,13 +427,17 @@ bitterbot status --deep
 
 ### `skills`
 
-List and inspect available skills plus readiness info.
+List, inspect, and import skills plus readiness info.
 
 Subcommands:
 
 - `skills list`: list skills (default when no subcommand).
 - `skills info <name>`: show details for one skill.
 - `skills check`: summary of ready vs missing requirements.
+- `skills import agentskills <slug-or-url>`: import from the [agentskills.io](https://agentskills.io) registry (opt-in — requires `skills.agentskills.enabled = true`; pass `--accept` to skip quarantine).
+- `skills incoming list`: list quarantined skills (P2P gossip + agentskills.io imports).
+- `skills incoming accept <name>`: move a quarantined skill into the active set.
+- `skills incoming reject <name>`: delete a quarantined skill.
 
 Options:
 
@@ -441,7 +445,7 @@ Options:
 - `--json`: output JSON (no styling).
 - `-v`, `--verbose`: include missing requirements detail.
 
-Tip: use `bitterbot skills` to search, install, and sync skills.
+See [Skills → Importing from agentskills.io](/tools/skills#importing-from-agentskillsio) for the import flow and [Skills config](/tools/skills-config) for the `skills.agentskills.*` settings.
 
 ### `pairing`
 

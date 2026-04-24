@@ -57,6 +57,62 @@ Install a skill into your workspace:
 
 Bitterbot picks up workspace skills from `<workspace>/skills` on the next session.
 
+## Importing from agentskills.io
+
+Bitterbot can pull skills from [agentskills.io](https://agentskills.io) — the community registry for AgentSkills-compatible skills. Imports arrive as signed quarantined skills by default, so the existing P2P review flow applies.
+
+```bash
+# Import by slug (resolved against skills.agentskills.registryBaseUrl)
+bitterbot skills import agentskills github-release
+
+# Import directly from a URL
+bitterbot skills import agentskills https://example.com/path/SKILL.md
+
+# Skip quarantine for trusted imports
+bitterbot skills import agentskills github-release --accept
+
+# Review the quarantine
+bitterbot skills incoming list
+bitterbot skills incoming accept <name>
+bitterbot skills incoming reject <name>
+```
+
+Gating:
+
+- Must opt in via `skills.agentskills.enabled = true`.
+- Default trust level is `review` (quarantine); set `skills.agentskills.defaultTrust = "auto"` to skip.
+- Every imported skill is sha256-deduped against existing installs.
+- Origin metadata is written to `<skill>/.provenance.json` and the SKILL.md frontmatter.
+
+### Origin provenance (`bitterbot.origin`)
+
+Imported skills carry an `origin` block that downstream machinery uses to decide marketplace promotion:
+
+```markdown
+---
+name: github-release
+description: ...
+metadata:
+  {
+    "bitterbot":
+      {
+        "origin":
+          {
+            "registry": "agentskills.io",
+            "slug": "github-release",
+            "version": "1.2.0",
+            "license": "MIT",
+            "upstreamUrl": "https://agentskills.io/skills/github-release/SKILL.md",
+          },
+      },
+  }
+---
+```
+
+When the crystallizer later produces a derivative of an origin-bearing skill, it checks `skills.agentskills.transformThreshold` (default `0.5`): derivatives below the threshold stay local and free; derivatives above it can be published to the paid marketplace with upstream attribution intact.
+
+See [Skills config](/tools/skills-config) for the full `skills.agentskills.*` surface.
+
 ## Security notes
 
 - Treat third-party skills as **untrusted code**. Read them before enabling.
@@ -124,6 +180,7 @@ Fields under `metadata.bitterbot`:
 - `requires.config` — list of `bitterbot.json` paths that must be truthy.
 - `primaryEnv` — env var name associated with `skills.entries.<name>.apiKey`.
 - `install` — optional array of installer specs used by the Skills UI (brew/node/go/uv/download).
+- `origin` — provenance for imported/derived skills (see [Importing from agentskills.io](#importing-from-agentskillsio)).
 
 Note on sandboxing:
 
