@@ -16,7 +16,7 @@
  */
 import { build } from "esbuild";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import process from "node:process";
 
 // Strip the source shebang from src/entry.ts so esbuild doesn't emit it
@@ -61,8 +61,15 @@ const NATIVE_EXTERNALS = [
 ];
 
 const LAZY_EXTERNALS = [
-  "@coinbase/agentkit",
-  "@coinbase/cdp-sdk",
+  // @coinbase/agentkit and @coinbase/cdp-sdk were previously external on the
+  // theory that "lazy loading keeps them off the boot path." In practice the
+  // first lazy import walks ~60 MB of transitive deps (Solana, Privy, ZeroDev,
+  // Zora, Jupiter, Clanker, etc.) from /mnt/d over 9P and took 476 s in
+  // production — blocking every RPC queued behind the wallet provider and
+  // trashing the page cache so subsequent SQLite fsyncs stalled for ~60 s
+  // apiece. Bundle them instead: the bundle grows ~60 MB but the cost is paid
+  // once as a single-file read instead of a multi-minute fs walk.
+  //
   // Playwright / chromium-bidi do dynamic-require chains into submodule
   // paths that aren't in chromium-bidi's exports map. Externalize wholesale
   // rather than patching every subpath; this code is lazy (browser automation)
@@ -96,6 +103,19 @@ const result = await build({
   loader: { ".node": "file" },
   banner: { js: BANNER },
   plugins: [stripShebangPlugin],
+  // Redirect the @coinbase/agentkit barrel to its one wallet provider we
+  // actually use. The barrel re-exports every chain/provider (Solana, Privy,
+  // ZeroDev, Zora, OpenSea, sushi, Jupiter, Clanker, grammy/Telegram,
+  // twitter-api-v2, discord-api-types, ...), which dragged ~30 MB of
+  // dead-weight into the bundle and made the first lazy load a multi-minute
+  // fs walk. We only use CdpSmartWalletProvider.
+  alias: {
+    // Absolute path — bypasses agentkit's strict `exports` map (which only
+    // exposes `"."`) so we can point at a specific provider file.
+    "@coinbase/agentkit": resolve(
+      "node_modules/@coinbase/agentkit/dist/wallet-providers/cdpSmartWalletProvider.js",
+    ),
+  },
 }).catch((e) => {
   console.error(e);
   process.exit(1);
