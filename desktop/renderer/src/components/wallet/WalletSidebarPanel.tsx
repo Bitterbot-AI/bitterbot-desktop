@@ -80,8 +80,24 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
     );
   }
 
+  // Whole panel navigates to the wallet tab. Inner buttons (copy, refresh)
+  // stop propagation so they don't double-fire navigation.
+  const openWalletTab = () => setActiveTab("wallet" as TabId);
+
   return (
-    <div className="border-b border-[var(--sidebar-border-subtle)] px-4 py-3">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={openWalletTab}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openWalletTab();
+        }
+      }}
+      className="border-b border-[var(--sidebar-border-subtle)] px-4 py-3 cursor-pointer hover:bg-[var(--sidebar-hover)] transition-colors"
+      title="Open wallet"
+    >
       {/* Section header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
@@ -102,7 +118,10 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
           )}
         </div>
         <button
-          onClick={refresh}
+          onClick={(e) => {
+            e.stopPropagation();
+            refresh();
+          }}
           disabled={loading}
           className={cn(
             "w-5 h-5 flex items-center justify-center rounded text-[var(--sidebar-text-muted)] hover:text-[var(--sidebar-text-primary)] transition-colors",
@@ -124,7 +143,10 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
           {/* Address */}
           {address && (
             <button
-              onClick={() => copyToClipboard(address)}
+              onClick={(e) => {
+                e.stopPropagation();
+                copyToClipboard(address);
+              }}
               className="group flex items-center gap-1.5 w-full px-2 py-1 rounded-md hover:bg-[var(--sidebar-hover)] transition-colors mb-1.5"
               title={`Copy: ${address}`}
             >
@@ -168,14 +190,12 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
             )}
           </div>
 
-          {/* View full wallet link */}
-          <button
-            onClick={() => setActiveTab("wallet" as TabId)}
-            className="flex items-center gap-1 mt-2 px-2 py-1 text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
-          >
-            <span>View wallet</span>
+          {/* "Open wallet" affordance — the whole panel is clickable, this
+              just makes the affordance visible. */}
+          <div className="flex items-center gap-1 mt-2 px-2 py-1 text-[10px] text-purple-400">
+            <span>Open wallet</span>
             <ExternalLink className="w-2.5 h-2.5" />
-          </button>
+          </div>
         </>
       )}
     </div>
