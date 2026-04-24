@@ -138,12 +138,19 @@ export async function runWalletChecks(params: { config: BitterbotConfig }): Prom
     ]
       .filter(Boolean)
       .join(", ");
-    results.push(warn(`CDP credentials partially configured — missing: ${missing}`));
+    results.push(
+      warn(
+        `CDP credentials partially configured — missing: ${missing}. ` +
+          "Run `bitterbot configure --section wallet` to finish setup.",
+      ),
+    );
   } else {
     results.push(
       warn(
-        "CDP credentials missing — set CDP_API_KEY_ID, CDP_API_KEY_SECRET, and CDP_WALLET_SECRET. " +
-          "Get API keys at portal.cdp.coinbase.com → API Keys; get the wallet secret at portal.cdp.coinbase.com → Wallets → Wallet Secret.",
+        "CDP credentials missing. Easiest: run `bitterbot configure --section wallet` — " +
+          "the wizard opens the CDP portal and walks you through both keys. " +
+          "Manual: set CDP_API_KEY_ID, CDP_API_KEY_SECRET (portal.cdp.coinbase.com → API Keys) " +
+          "and CDP_WALLET_SECRET (portal.cdp.coinbase.com → Wallets → Wallet Secret).",
       ),
     );
   }
