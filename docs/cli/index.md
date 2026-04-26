@@ -43,6 +43,7 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`cron`](/cli/cron)
 - [`dns`](/cli/dns)
 - [`docs`](/cli/docs)
+- [`heartbeat`](/cli/heartbeat) (inspect heartbeat considerations)
 - [`hooks`](/cli/hooks)
 - [`webhooks`](/cli/webhooks)
 - [`pairing`](/cli/pairing)

@@ -35,6 +35,44 @@ You’ll see:
 Before compaction, Bitterbot can run a **silent memory flush** turn to store
 durable notes to disk. See [Memory](/concepts/memory) for details and config.
 
+## Mid-turn budget guard
+
+A long single-turn tool loop (e.g. 50 tool calls each adding 100KB+ of
+output) can grow context unboundedly between LLM calls within one
+agent run. The mid-turn guard fires after every tool result:
+
+1. Cheap char check — skip if total session message chars < 80,000.
+2. Token estimate — skip if estimated tokens < 80% of the model's context window.
+3. Otherwise, run **progressive compression** (deterministic, no LLM call) targeting 65% of the context window, and replace session messages in place via `session.agent.replaceMessages`.
+
+This is the same operation pi-coding-agent uses for its own auto-compaction,
+so it's safe to invoke from inside an active run. Heavy LLM-based summary
+compaction stays in the existing flow and runs between turns.
+
+The guard emits a `compaction` agent event with `phase=mid-turn-budget`
+when it fires, including before/after token and message counts.
+
+## Compaction circuit breaker
+
+If full LLM-based compaction fails repeatedly for the same session
+(malformed transcript, persistent provider 5xx, summary failure), the
+breaker opens after **3 consecutive failures** and short-circuits
+subsequent attempts with a 10-minute cooldown. Cooldown doubles on each
+re-open up to 1 hour.
+
+States:
+
+- **closed** — compaction runs normally.
+- **open** — compaction is short-circuited; the caller falls back to oldest-tool-result truncation. The user is told via system event.
+- **half-open** — after the cooldown elapses, exactly one trial compaction is allowed. Success returns to closed; failure returns to open with the doubled cooldown.
+
+"We deliberately chose not to compact" outcomes (`below_threshold`,
+`no_compactable_entries`, `already_compacted_recently`, `guard_blocked`)
+do not count toward the threshold and reset the failure counter.
+
+Live state is observable via the `agent.runtime.health` RPC and surfaced
+in `bitterbot doctor`.
+
 ## Manual compaction
 
 Use `/compact` (optionally with instructions) to force a compaction pass:

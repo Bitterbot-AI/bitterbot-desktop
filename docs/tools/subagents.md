@@ -45,12 +45,44 @@ Use `sessions_spawn`:
 Tool params:
 
 - `task` (required)
+- `handoff?` (optional structured envelope; see below)
 - `label?` (optional)
 - `agentId?` (optional; spawn under another agent id if allowed)
 - `model?` (optional; overrides the sub-agent model; invalid values are skipped and the sub-agent runs on the default model with a warning in the tool result)
 - `thinking?` (optional; overrides thinking level for the sub-agent run)
 - `runTimeoutSeconds?` (default `0`; when set, the sub-agent run is aborted after N seconds)
 - `cleanup?` (`delete|keep`, default `keep`)
+
+### Handoff envelope (recommended)
+
+Spawning with just a free-form `task` is the most common cause of
+shallow sub-agent work: the child receives an ambiguous brief, asks
+redundant clarification questions, and produces output the parent
+has to redo. The optional `handoff` envelope forces the parent to
+articulate intent up front, and the structure is rendered as a
+Markdown block at the top of the child's system prompt.
+
+```json
+{
+  "tool": "sessions_spawn",
+  "task": "Audit the wallet onboarding flow for the 30s timeout reported last night.",
+  "handoff": {
+    "goal": "Identify the root cause of the wallet view stalling for 30s on a fresh install.",
+    "inputs": ["src/agents/usage.ts", "session-key chat-1234"],
+    "success_criteria": ["Root cause identified", "Reproducer documented"],
+    "out_of_scope": ["Don't change the Stripe integration"],
+    "parent_context": ["User reported 30s timeout last night.", "Stripe Onramp itself is healthy."]
+  }
+}
+```
+
+Validation:
+
+- `goal` is required, must be ≥ 8 characters, and rejects vague phrases ("do the thing", "stuff", "figure it out").
+- Each list field accepts up to 12 entries, 3-400 chars each.
+- A malformed envelope rejects the spawn with a structured error so the parent can see which field is wrong.
+
+When `handoff` is omitted, plain `task` continues to work unchanged.
 
 Allowlist:
 

@@ -148,6 +148,7 @@ Spawn a sub-agent run in an isolated session and announce the result back to the
 Parameters:
 
 - `task` (required)
+- `handoff?` (optional structured envelope with `goal`, `inputs`, `success_criteria`, `out_of_scope`, `parent_context`; rendered above the task in the child's system prompt; see [Subagents](/tools/subagents#handoff-envelope-recommended))
 - `label?` (optional; used for logs/UI)
 - `agentId?` (optional; spawn under another agent id if allowed)
 - `model?` (optional; overrides the sub-agent model; invalid values error)

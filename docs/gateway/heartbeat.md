@@ -362,3 +362,22 @@ off in group chats.
 Heartbeats run full agent turns. Shorter intervals burn more tokens. Keep
 `HEARTBEAT.md` small and consider a cheaper `model` or `target: "none"` if you
 only want internal state updates.
+
+## Considerations log (`heartbeat why`)
+
+In addition to `emitHeartbeatEvent` (which records what the heartbeat acted
+on), each meaningful decision point also calls `recordConsideration` —
+including options the heartbeat ultimately skipped, blocked, or deferred.
+The log is persisted at `~/.bitterbot/heartbeat/considerations-YYYY-MM-DD.ndjson`
+with 30-day retention.
+
+Inspect from the CLI:
+
+```bash
+bitterbot heartbeat why                 # last 50, in-memory ring
+bitterbot heartbeat why --session KEY   # filter by session
+bitterbot heartbeat why --decision blocked
+bitterbot heartbeat why --day 2026-04-25 --limit 100
+```
+
+Full reference: [bitterbot heartbeat](/cli/heartbeat).

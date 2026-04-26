@@ -132,7 +132,7 @@ Treat skill folders as **trusted code** and restrict who can modify them.
 
 Your AI assistant can:
 
-- Execute arbitrary shell commands
+- Execute arbitrary shell commands (gated by the [pre-shell sanitizer](/tools/bash-command-sanitizer) for known evasion patterns + the exec approval system)
 - Read/write files
 - Access network services
 - Send messages to anyone (if you give it WhatsApp access)

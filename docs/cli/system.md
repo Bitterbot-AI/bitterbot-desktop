@@ -58,3 +58,7 @@ Flags:
 
 - Requires a running Gateway reachable by your current config (local or remote).
 - System events are ephemeral and not persisted across restarts.
+
+## See also
+
+- `bitterbot heartbeat why` — inspect what the heartbeat **considered** at each tick (acted, skipped, blocked, deferred), including options not represented as system events. Persistent across restarts. Full reference: [bitterbot heartbeat](/cli/heartbeat).

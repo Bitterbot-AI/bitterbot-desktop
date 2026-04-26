@@ -1410,6 +1410,14 @@ Controls elevated (host) exec access:
         enabled: false,
         allowModels: ["gpt-5.2"],
       },
+      // Pre-shell sanitizer rule opt-outs. Use sparingly — fail-closed is the point.
+      // Valid rule ids: no-null-byte, no-zero-width-unicode, no-non-ascii-binary-name,
+      // no-ifs-injection, no-equals-expansion, no-pipe-to-shell-from-net,
+      // no-process-substitution-exec, no-zsh-builtin-smuggling.
+      // Full reference: /tools/bash-command-sanitizer
+      commandRules: {
+        allow: [],
+      },
     },
   },
 }

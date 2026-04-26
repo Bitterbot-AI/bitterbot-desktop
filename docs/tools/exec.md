@@ -38,6 +38,7 @@ Notes:
   from `PATH` to avoid fish-incompatible scripts, then falls back to `SHELL` if neither exists.
 - Host execution (`gateway`/`node`) rejects `env.PATH` and loader overrides (`LD_*`/`DYLD_*`) to
   prevent binary hijacking or injected code.
+- Every command, regardless of host, passes through a pre-shell sanitizer that blocks zero-width / bidi Unicode injection, IFS reassignment, `${var=value}` smuggling, `curl|bash` supply-chain, and more. See [Bash command sanitizer](/tools/bash-command-sanitizer).
 - Important: sandboxing is **off by default**. If sandboxing is off, `host=sandbox` runs directly on
   the gateway host (no container) and **does not require approvals**. To require approvals, run with
   `host=gateway` and configure exec approvals (or enable sandboxing).
@@ -52,6 +53,7 @@ Notes:
 - `tools.exec.node` (default: unset)
 - `tools.exec.pathPrepend`: list of directories to prepend to `PATH` for exec runs (gateway + sandbox only).
 - `tools.exec.safeBins`: stdin-only safe binaries that can run without explicit allowlist entries.
+- `tools.exec.commandRules.allow`: optional list of sanitizer rule ids to skip. Use sparingly — the gate is fail-closed by design. See [Bash command sanitizer](/tools/bash-command-sanitizer) for the full rule list.
 
 Example:
 
