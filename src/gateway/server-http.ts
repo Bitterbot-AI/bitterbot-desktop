@@ -48,7 +48,7 @@ import {
 } from "./hooks.js";
 import { sendGatewayAuthFailure } from "./http-common.js";
 import { getBearerToken, getHeader } from "./http-utils.js";
-import { renderMobileUiPage } from "./mobile-ui-page.js";
+import { getMobileAvatarBytes, renderMobileUiPage } from "./mobile-ui-page.js";
 import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
@@ -550,6 +550,18 @@ export function createGatewayHttpServer(opts: {
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.end(renderManagementDashboardPage(wsUrl, gatewayToken));
+        return;
+      }
+      // Mobile UI avatar — small static PNG, served unauthenticated.
+      // The image itself isn't sensitive (it's the public bitterbot logo)
+      // and the parent /m HTML page is what gates access via the token.
+      if (requestPath === "/m/avatar.png" && req.method === "GET") {
+        const bytes = getMobileAvatarBytes();
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+        res.setHeader("Content-Length", String(bytes.length));
+        res.end(bytes);
         return;
       }
       // Mobile chat UI — auth-protected, serves self-contained HTML.
