@@ -172,6 +172,16 @@ export type ExecToolConfig = {
   ask?: "off" | "on-miss" | "always";
   /** Default node binding for exec.host=node (node id/name). */
   node?: string;
+  /**
+   * Command-string sanitization rules (named) that pre-screen every exec
+   * before the shell sees it. `allow` opts specific rule IDs out.
+   * Defaults to the full rule set with no opt-outs. See
+   * src/agents/bash-tools.command-sanitize.ts for the rule registry.
+   */
+  commandRules?: {
+    /** Rule IDs to skip globally. Use sparingly — fail-closed is the point. */
+    allow?: string[];
+  };
   /** Directories to prepend to PATH when running exec (gateway/sandbox). */
   pathPrepend?: string[];
   /** Safe stdin-only binaries that can run without allowlist entries. */

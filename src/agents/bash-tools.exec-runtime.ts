@@ -20,6 +20,11 @@ import {
   tail,
 } from "./bash-process-registry.js";
 import {
+  formatSanitizeError,
+  sanitizeBashCommand,
+  type SanitizeShell,
+} from "./bash-tools.command-sanitize.js";
+import {
   buildDockerExecArgs,
   chunkString,
   clampWithDefault,
@@ -49,6 +54,56 @@ const DANGEROUS_HOST_ENV_VARS = new Set([
   "SSLKEYLOGFILE",
 ]);
 const DANGEROUS_HOST_ENV_PREFIXES = ["DYLD_", "LD_"];
+
+/**
+ * Tagged error class so callers can distinguish "command rejected by the
+ * pre-shell sanitizer" from "spawn failed for other reasons" and surface
+ * a clean denial frame to the agent.
+ */
+export class BashSanitizationError extends Error {
+  readonly ruleId: string;
+  readonly evidence: string;
+  constructor(ruleId: string, message: string, evidence: string) {
+    super(message);
+    this.name = "BashSanitizationError";
+    this.ruleId = ruleId;
+    this.evidence = evidence;
+  }
+}
+
+/**
+ * Map a shell binary path (e.g. "/bin/zsh") to the sanitizer's shell hint.
+ * Used so zsh-only rules only fire on zsh.
+ */
+export function detectSanitizeShell(shellPath?: string | null): SanitizeShell {
+  if (!shellPath) return "unknown";
+  const base = path.basename(shellPath).toLowerCase();
+  if (base.startsWith("bash")) return "bash";
+  if (base.startsWith("zsh")) return "zsh";
+  if (base.startsWith("dash")) return "dash";
+  if (base.startsWith("ksh")) return "ksh";
+  if (base.startsWith("ash")) return "ash";
+  if (base.startsWith("fish")) return "fish";
+  if (base === "sh") return "sh";
+  return "unknown";
+}
+
+/**
+ * Throw a `BashSanitizationError` if the command would be blocked by the
+ * sanitizer rule set. No-op otherwise. Callers should invoke this BEFORE
+ * any approval flow so denials surface as proper errors, not "spawn-failed".
+ */
+export function assertCommandSafe(
+  command: string,
+  opts?: { shell?: SanitizeShell; allow?: string[] },
+): void {
+  const result = sanitizeBashCommand(command, {
+    shell: opts?.shell,
+    allow: opts?.allow,
+  });
+  if (result.ok) return;
+  throw new BashSanitizationError(result.ruleId, formatSanitizeError(result), result.evidence);
+}
 
 // Centralized sanitization helper.
 // Throws an error if dangerous variables or PATH modifications are detected on the host.
@@ -294,11 +349,21 @@ export async function runExecProcess(opts: {
   scopeKey?: string;
   sessionKey?: string;
   timeoutSec: number;
+  /** Sanitizer rule IDs to skip for this exec. Defense-in-depth check still
+   *  runs; this just lets the caller mirror its own opt-outs here. */
+  commandRulesAllow?: string[];
   onUpdate?: (partialResult: AgentToolResult<ExecToolDetails>) => void;
 }): Promise<ExecProcessHandle> {
   const startedAt = Date.now();
   const sessionId = createSessionSlug();
   const execCommand = opts.execCommand ?? opts.command;
+  // Defense-in-depth: every code path that reaches the supervisor goes
+  // through this gate, even if the higher-level exec tool was bypassed.
+  // Container shell vs host shell affects which rules fire (e.g. zsh-only).
+  assertCommandSafe(execCommand, {
+    shell: opts.sandbox ? "bash" : detectSanitizeShell(getShellConfig().shell),
+    allow: opts.commandRulesAllow,
+  });
   const supervisor = getProcessSupervisor();
 
   const session: ProcessSession = {

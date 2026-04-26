@@ -113,6 +113,7 @@ function resolveExecConfig(params: { cfg?: BitterbotConfig; agentId?: string }) 
     notifyOnExitEmptySuccess:
       agentExec?.notifyOnExitEmptySuccess ?? globalExec?.notifyOnExitEmptySuccess,
     applyPatch: agentExec?.applyPatch ?? globalExec?.applyPatch,
+    commandRulesAllow: agentExec?.commandRules?.allow ?? globalExec?.commandRules?.allow,
   };
 }
 
@@ -337,6 +338,7 @@ export function createBitterbotCodingTools(options?: {
     notifyOnExit: options?.exec?.notifyOnExit ?? execConfig.notifyOnExit,
     notifyOnExitEmptySuccess:
       options?.exec?.notifyOnExitEmptySuccess ?? execConfig.notifyOnExitEmptySuccess,
+    commandRulesAllow: options?.exec?.commandRulesAllow ?? execConfig.commandRulesAllow,
     sandbox: sandbox
       ? {
           containerName: sandbox.containerName,

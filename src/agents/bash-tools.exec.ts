@@ -35,7 +35,9 @@ import {
   DEFAULT_PENDING_MAX_OUTPUT,
   applyPathPrepend,
   applyShellPath,
+  assertCommandSafe,
   createApprovalSlug,
+  detectSanitizeShell,
   emitExecSystemEvent,
   normalizeExecAsk,
   normalizeExecHost,
@@ -58,6 +60,7 @@ import {
   resolveWorkdir,
   truncateMiddle,
 } from "./bash-tools.shared.js";
+import { getShellConfig } from "./shell-utils.js";
 import { callGatewayTool } from "./tools/gateway.js";
 import { listNodes, resolveNodeIdFromList } from "./tools/nodes-utils.js";
 
@@ -81,6 +84,8 @@ export type ExecToolDefaults = {
   notifyOnExit?: boolean;
   notifyOnExitEmptySuccess?: boolean;
   cwd?: string;
+  /** Sanitizer rule IDs to skip globally for this agent's exec calls. */
+  commandRulesAllow?: string[];
 };
 
 export type { BashSandboxConfig } from "./bash-tools.shared.js";
@@ -170,6 +175,14 @@ export function createExecTool(
       if (!params.command) {
         throw new Error("Provide a command to start.");
       }
+
+      // Pre-shell sanitization. Fires before any approval / allowlist logic
+      // so denials produce a clean error frame instead of "spawn-failed".
+      // Defense-in-depth check still runs inside runExecProcess later.
+      assertCommandSafe(params.command, {
+        shell: defaults?.sandbox ? "bash" : detectSanitizeShell(getShellConfig().shell),
+        allow: defaults?.commandRulesAllow,
+      });
 
       const maxOutput = DEFAULT_MAX_OUTPUT;
       const pendingMaxOutput = DEFAULT_PENDING_MAX_OUTPUT;
