@@ -145,6 +145,14 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "heartbeat",
+    description: "Inspect heartbeat considerations",
+    register: async (program) => {
+      const mod = await import("../heartbeat-cli.js");
+      mod.registerHeartbeatCli(program);
+    },
+  },
+  {
     name: "webhooks",
     description: "Webhook helpers",
     register: async (program) => {

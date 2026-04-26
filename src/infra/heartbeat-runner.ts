@@ -42,6 +42,7 @@ import { normalizeAgentId, toAgentStoreSessionKey } from "../routing/session-key
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import { formatErrorMessage } from "./errors.js";
 import { isWithinActiveHours } from "./heartbeat-active-hours.js";
+import { recordConsideration } from "./heartbeat-considerations.js";
 import {
   buildCronEventPrompt,
   isCronSystemEvent,
@@ -426,6 +427,12 @@ export async function runHeartbeatOnce(opts: {
         reason: "empty-heartbeat-file",
         durationMs: Date.now() - startedAt,
       });
+      recordConsideration({
+        category: "trigger",
+        subject: "heartbeat-tick",
+        decision: "skipped",
+        reason: "heartbeat file is empty (no prompt to run)",
+      });
       return { status: "skipped", reason: "empty-heartbeat-file" };
     }
   } catch {
@@ -503,6 +510,17 @@ export async function runHeartbeatOnce(opts: {
       durationMs: Date.now() - startedAt,
       channel: delivery.channel !== "none" ? delivery.channel : undefined,
       accountId: delivery.accountId,
+    });
+    recordConsideration({
+      sessionKey,
+      category: "channel-route",
+      subject: `heartbeat → ${delivery.channel ?? "(none)"}`,
+      decision: "blocked",
+      reason: "heartbeat alerts/ok/indicator all disabled for this channel",
+      payload: {
+        channel: delivery.channel,
+        accountId: delivery.accountId,
+      },
     });
     return { status: "skipped", reason: "alerts-disabled" };
   }
