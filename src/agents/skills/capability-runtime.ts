@@ -79,6 +79,10 @@ export function createCapabilityRuntime(opts: CapabilityRuntimeOptions): Capabil
   const gateContext: CapabilityGateContext = {
     getTrustTier,
     getGrants,
+    // PLAN-13 Phase B.7: surface blocked-skill notifications inline.
+    // Same callback as the dispatch enforcer so a single sink covers both
+    // load-time and runtime denials.
+    notifyBlocked: notify,
   };
 
   const recordDenial =

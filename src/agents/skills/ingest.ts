@@ -336,6 +336,55 @@ export async function rejectIncomingSkill(params: {
   }
 }
 
+/**
+ * PLAN-13 Phase C: bulk-reject every quarantined skill from a single peer.
+ *
+ * The natural use case: an operator just learned a peer is compromised
+ * and wants to drop everything that peer has staged for review without
+ * clicking through each entry. Built on top of `rejectIncomingSkill` so
+ * the per-skill behavior (and any future quarantine cleanup hooks) stays
+ * single-sourced.
+ *
+ * The match is on `author_peer_id` from each envelope.json. If a skill
+ * in quarantine has no envelope (corruption, partial write), it is left
+ * in place — the operator can deal with it manually.
+ */
+export async function rejectIncomingSkillsByPeer(params: {
+  authorPeerId: string;
+  config: BitterbotConfig;
+}): Promise<{
+  ok: boolean;
+  rejected: string[];
+  errored: Array<{ name: string; reason: string }>;
+}> {
+  const { authorPeerId, config } = params;
+  const incoming = await listIncomingSkills(config);
+  const matches = incoming.filter((s) => s.author_peer_id === authorPeerId);
+
+  const rejected: string[] = [];
+  const errored: Array<{ name: string; reason: string }> = [];
+
+  for (const match of matches) {
+    try {
+      const result = await rejectIncomingSkill({ skillName: match.name, config });
+      if (result.ok) {
+        rejected.push(match.name);
+      } else {
+        errored.push({ name: match.name, reason: result.reason ?? "rejection failed" });
+      }
+    } catch (err) {
+      errored.push({ name: match.name, reason: String(err) });
+    }
+  }
+
+  log.info(
+    `Bulk-rejected ${rejected.length} skill(s) from peer ${authorPeerId}` +
+      (errored.length > 0 ? ` (${errored.length} errored)` : ""),
+  );
+
+  return { ok: errored.length === 0, rejected, errored };
+}
+
 export async function listIncomingSkills(config: BitterbotConfig): Promise<
   Array<{
     name: string;

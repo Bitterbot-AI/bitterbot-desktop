@@ -15,6 +15,7 @@ import {
   acceptIncomingSkill,
   listIncomingSkills,
   rejectIncomingSkill,
+  rejectIncomingSkillsByPeer,
 } from "../../agents/skills/ingest.js";
 import { listAgentWorkspaceDirs } from "../../agents/workspace-dirs.js";
 import { loadConfig, writeConfigFile } from "../../config/config.js";
@@ -296,6 +297,28 @@ export const skillsHandlers: GatewayRequestHandlers = {
       result.ok,
       result,
       result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "reject failed"),
+    );
+  },
+  // PLAN-13 Phase C: bulk-reject every quarantined skill from a single
+  // peer. Useful when a peer turns out to be compromised and the operator
+  // wants to drop everything they've staged for review in one call.
+  "skills.incoming.rejectByPeer": async ({ params, respond }) => {
+    const authorPeerId = typeof params?.authorPeerId === "string" ? params.authorPeerId.trim() : "";
+    if (!authorPeerId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "authorPeerId required"));
+      return;
+    }
+    const cfg = loadConfig();
+    const result = await rejectIncomingSkillsByPeer({ authorPeerId, config: cfg });
+    respond(
+      result.ok,
+      result,
+      result.ok
+        ? undefined
+        : errorShape(
+            ErrorCodes.UNAVAILABLE,
+            `bulk reject partial: ${result.errored.length} errored`,
+          ),
     );
   },
   "skills.import.agentskills": async ({ params, respond }) => {

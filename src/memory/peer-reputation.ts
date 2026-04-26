@@ -479,6 +479,90 @@ export class PeerReputationManager {
   }
 
   /**
+   * PLAN-13 Phase C: Ebbinghaus-style decay on inactive peers.
+   *
+   * Caps the "publish nothing for a year, then a worm" attack pattern by
+   * eroding accumulated reputation over time when a peer goes silent. The
+   * decay is conservative:
+   *
+   *   - 14-day grace window: peers active in the last two weeks are not
+   *     touched, regardless of score.
+   *   - After grace, exponential decay at λ=0.007/day. Half-life ≈ 99 days.
+   *     A peer at 0.85 reputation who goes silent fades to ≈0.40 after a
+   *     year. A peer at 0.60 fades to ≈0.30 in the same window.
+   *   - Floor at 0.1: we never decay below "demonstrably untrusted" via
+   *     this path. A peer that should never be trusted again should be
+   *     banned, not decayed.
+   *   - Banned peers and the genesis trust list are skipped — banning is
+   *     absolute and the trust list is the operator's explicit floor.
+   *
+   * Returns the number of peers whose reputation was actually adjusted
+   * (small enough deltas are no-ops). Production callers schedule this
+   * alongside detectAnomalies; tests can supply `now` for determinism.
+   */
+  decayInactivePeers(opts: { now?: number; minScoreDelta?: number } = {}): {
+    examined: number;
+    decayed: number;
+  } {
+    const now = opts.now ?? Date.now();
+    const graceMs = 14 * 86_400_000;
+    const lambdaPerDay = 0.007;
+    const floor = 0.1;
+    const minDelta = opts.minScoreDelta ?? 0.005;
+
+    let examined = 0;
+    let decayed = 0;
+
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT peer_pubkey, reputation_score, last_seen_at, is_banned
+           FROM peer_reputation
+           WHERE COALESCE(is_banned, 0) = 0`,
+        )
+        .all() as Array<{
+        peer_pubkey: string;
+        reputation_score: number | null;
+        last_seen_at: number | null;
+        is_banned: number | null;
+      }>;
+
+      const update = this.db.prepare(
+        `UPDATE peer_reputation SET reputation_score = ? WHERE peer_pubkey = ?`,
+      );
+
+      for (const row of rows) {
+        examined++;
+        // Genesis trust list members are never decayed; their reputation
+        // is operator-asserted and shouldn't drift.
+        if (this.trustList.includes(row.peer_pubkey)) continue;
+        const last = Number(row.last_seen_at ?? 0);
+        if (last <= 0) continue;
+        const idleMs = now - last;
+        if (idleMs <= graceMs) continue;
+        const idleDays = (idleMs - graceMs) / 86_400_000;
+        const score = Number(row.reputation_score ?? 0.5);
+        if (score <= floor) continue;
+        const factor = Math.exp(-lambdaPerDay * idleDays);
+        const decayedScore = Math.max(floor, score * factor);
+        if (score - decayedScore < minDelta) continue;
+        update.run(decayedScore, row.peer_pubkey);
+        decayed++;
+      }
+    } catch (err) {
+      log.debug(`decayInactivePeers failed: ${String(err)}`);
+    }
+
+    if (decayed > 0) {
+      log.debug(
+        `peer reputation decay: examined=${examined} decayed=${decayed} (lambda=${lambdaPerDay}/day, grace=14d, floor=${floor})`,
+      );
+    }
+
+    return { examined, decayed };
+  }
+
+  /**
    * Detect anomalous peers based on recent activity rate spikes.
    * Flags peers with >3x their historical average skill publication rate.
    */

@@ -1381,6 +1381,24 @@ export class MemoryIndexManager implements MemorySearchManager {
           } catch (err) {
             log.debug(`peer quality update failed: ${String(err)}`);
           }
+          // 7c. PLAN-13 Phase C: Ebbinghaus decay on inactive peers.
+          // Erodes accumulated reputation when a peer goes silent for
+          // >14d so a long-dormant compromised key can't ride past
+          // baselines into auto-accept.
+          try {
+            this.peerReputationManager.decayInactivePeers();
+          } catch (err) {
+            log.debug(`peer decay failed: ${String(err)}`);
+          }
+          // 7d. PLAN-13 Phase C: quarantine TTL sweep. Lazy-imported so
+          // the memory subsystem doesn't pull the skill ingest layer at
+          // startup; fire-and-forget because the sweep is best-effort.
+          const cfgAtTick = this.cfg;
+          void import("../agents/skills/quarantine-sweeper.js")
+            .then(({ sweepQuarantine }) => sweepQuarantine({ config: cfgAtTick }))
+            .catch((err) => {
+              log.debug(`quarantine sweep failed: ${String(err)}`);
+            });
         }
         // 8. Crystallize successful execution patterns into skills
         if (this.executionTracker) {

@@ -253,9 +253,26 @@ export async function runEmbeddedAttempt(
     // the enforcer. Reload is cheap relative to the LLM call ahead.
     const enforcerEntries =
       skillEntries.length > 0 ? skillEntries : loadWorkspaceSkillEntries(effectiveWorkspace);
+    // PLAN-13 Phase B.7: wire enqueueSystemEvent so gate-blocks and
+    // tool-denials surface inline on the main session instead of being
+    // silent. Best-effort; failures swallowed so notifications never
+    // break the actual run.
     const capabilityRuntime = await createCapabilityRuntimeFromMemory({
       config: params.config,
       agentId: params.agentId,
+      notify: (message) => {
+        void (async () => {
+          try {
+            const [{ enqueueSystemEvent }, { resolveMainSessionKeyFromConfig }] = await Promise.all(
+              [import("../../../infra/system-events.js"), import("../../../config/sessions.js")],
+            );
+            const sessionKey = resolveMainSessionKeyFromConfig();
+            if (sessionKey) enqueueSystemEvent(message, { sessionKey });
+          } catch {
+            // notification is non-critical
+          }
+        })();
+      },
     });
     const capabilityEnforcer = capabilityRuntime?.buildEnforcerContext(enforcerEntries);
     restoreSkillEnv = params.skillsSnapshot

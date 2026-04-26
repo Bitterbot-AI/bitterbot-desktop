@@ -595,6 +595,7 @@ export const BitterbotSchema = z
             quarantineDir: z.string().optional(),
             maxIngestedPerHour: z.number().int().positive().optional(),
             injectionScanner: z.enum(["regex", "off"]).optional(),
+            quarantineTtlDays: z.number().int().nonnegative().optional(),
           })
           .strict()
           .optional(),
@@ -675,6 +676,16 @@ export const BitterbotSchema = z
         nodeTier: z.enum(["edge", "management"]).optional(),
         genesisTrustListPath: z.string().optional(),
         genesisTrustList: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
+    cron: z
+      .object({
+        enabled: z.boolean().optional(),
+        store: z.string().optional(),
+        maxConcurrentRuns: z.number().int().positive().optional(),
+        webhook: z.string().optional(),
+        webhookToken: z.string().optional(),
       })
       .strict()
       .optional(),

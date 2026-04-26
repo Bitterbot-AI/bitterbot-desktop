@@ -74,9 +74,20 @@ function filterSkillEntries(
     const { permitted, blocked } = applyCapabilityGate(filtered, capabilityGate);
     for (const { entry, verdict } of blocked) {
       if (!verdict.ok) {
-        skillsLogger.warn(
-          `skill blocked by capability gate: ${entry.skill.name} (tier=${verdict.tier}, blocked=[${verdict.blockedAxes.join(", ")}])`,
-        );
+        const summary = `skill blocked by capability gate: ${entry.skill.name} (tier=${verdict.tier}, blocked=[${verdict.blockedAxes.join(", ")}])`;
+        skillsLogger.warn(summary);
+        // PLAN-13 Phase B.7: surface to the operator inline so they're
+        // not surprised by a missing skill. Mirrors the Phase A
+        // quarantine notification pattern.
+        if (capabilityGate.notifyBlocked) {
+          try {
+            capabilityGate.notifyBlocked(
+              `Skill "${entry.skill.name}" excluded from prompt: tier=${verdict.tier} clips capabilities [${verdict.blockedAxes.join(", ")}]. Run "skills.quarantine.list" or update grants to admit.`,
+            );
+          } catch (err) {
+            skillsLogger.debug(`notifyBlocked threw: ${String(err)}`);
+          }
+        }
       }
     }
     filtered = permitted;

@@ -35,6 +35,13 @@ export type CapabilityGateContext = {
   getTrustTier: (pubkey: string) => SkillTrustTier;
   /** Look up persisted operator grants for a content hash. */
   getGrants?: (contentHash: string) => CapabilityGrant[];
+  /**
+   * PLAN-13 Phase B.7: optional sink for "skill blocked" operator
+   * notifications. Fired once per skill the gate excludes from the
+   * active prompt. Production wiring uses `enqueueSystemEvent`; tests
+   * can supply a vi.fn to assert messages.
+   */
+  notifyBlocked?: (message: string) => void;
 };
 
 export type CapabilityGateVerdict =

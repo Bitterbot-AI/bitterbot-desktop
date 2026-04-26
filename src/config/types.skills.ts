@@ -38,6 +38,12 @@ export type SkillsP2pConfig = {
    * The "classifier" mode is reserved for Phase C.
    */
   injectionScanner?: "regex" | "off";
+  /**
+   * PLAN-13 Phase C: TTL in days for quarantined skills. After this
+   * window, the sweeper auto-rejects without operator action. Default 30.
+   * Set to 0 to disable auto-rejection (skills accumulate forever).
+   */
+  quarantineTtlDays?: number;
 };
 
 export type SkillsAgentskillsConfig = {
