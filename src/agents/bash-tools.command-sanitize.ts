@@ -89,11 +89,16 @@ function sliceEvidence(command: string, position: number, span = 40): string {
 
 // ── Default rules ──
 
-/** Invisible Unicode characters that survive visual review and re-introduce
- *  attacker-controlled tokens.
- *  U+200B ZWSP, U+200C ZWNJ, U+200D ZWJ, U+200E LRM, U+200F RLM, U+2060 WJ,
- *  U+FEFF ZWNBSP/BOM. Built from `\u` escapes so the regex is reviewable. */
-const ZERO_WIDTH_RE = new RegExp("[\\u200B-\\u200F\\u2060\\uFEFF]");
+/** Invisible / direction-overriding Unicode characters that survive visual
+ *  review and re-introduce attacker-controlled tokens (Trojan-Source class).
+ *  U+200B-U+200F: zero-width + LRM/RLM marks.
+ *  U+202A-U+202E: bidi formatting + LRO/RLO overrides.
+ *  U+2060:       word joiner.
+ *  U+2066-U+2069: isolate + pop directional isolate.
+ *  U+FEFF:       ZWNBSP / BOM.
+ *  Built from `\u` escapes so the regex stays reviewable.
+ */
+const ZERO_WIDTH_RE = new RegExp("[\\u200B-\\u200F\\u202A-\\u202E\\u2060\\u2066-\\u2069\\uFEFF]");
 const RULE_NO_ZERO_WIDTH_UNICODE: SanitizeRule = {
   id: "no-zero-width-unicode",
   description: "Command contains invisible Unicode (zero-width / bidi) characters.",
