@@ -59,6 +59,11 @@ import {
   type SkillSnapshot,
 } from "../skills.js";
 import { resolveTranscriptPolicy } from "../transcript-policy.js";
+import {
+  checkCompactionBreaker,
+  recordCompactionFailure,
+  recordCompactionSuccess,
+} from "./compaction-circuit-breaker.js";
 import { compactWithSafetyTimeout } from "./compaction-safety-timeout.js";
 import { buildEmbeddedExtensionPaths } from "./extensions.js";
 import {
@@ -251,6 +256,20 @@ export async function compactEmbeddedPiSessionDirect(
   const runId = params.runId ?? params.sessionId;
   const resolvedWorkspace = resolveUserPath(params.workspaceDir);
   const prevCwd = process.cwd();
+  const breakerSessionKey = params.sessionKey?.trim() || params.sessionId;
+
+  // Circuit breaker: if compaction has failed repeatedly for this session,
+  // short-circuit before any work. The caller's fallback path (oldest-tool
+  // truncation, then plain truncation) takes over. This protects against
+  // bugs where a malformed transcript would otherwise loop the LLM.
+  const breakerCheck = checkCompactionBreaker(breakerSessionKey);
+  if (!breakerCheck.allow) {
+    const reason = `compaction breaker open: ${breakerCheck.reason} (cooldown ${breakerCheck.cooldownRemainingMs}ms)`;
+    log.warn(
+      `[compaction-diag] short-circuit runId=${runId} sessionKey=${breakerSessionKey} diagId=${diagId} ${reason}`,
+    );
+    return { ok: false, compacted: false, reason };
+  }
 
   const provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
   const modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
@@ -261,6 +280,12 @@ export async function compactEmbeddedPiSessionDirect(
         `attempt=${attempt} maxAttempts=${maxAttempts} outcome=failed reason=${classifyCompactionReason(reason)} ` +
         `durationMs=${Date.now() - startedAt}`,
     );
+    const fr = recordCompactionFailure(breakerSessionKey, classifyCompactionReason(reason));
+    if (fr.opened) {
+      log.warn(
+        `compaction breaker opened for ${breakerSessionKey} after ${fr.consecutiveFailures} consecutive failures; cooldown ${fr.cooldownUntil - Date.now()}ms`,
+      );
+    }
     return {
       ok: false,
       compacted: false,
@@ -717,6 +742,7 @@ export async function compactEmbeddedPiSessionDirect(
               `delta.estTokens=${typeof preMetrics.estTokens === "number" && typeof postMetrics.estTokens === "number" ? postMetrics.estTokens - preMetrics.estTokens : "unknown"}`,
           );
         }
+        recordCompactionSuccess(breakerSessionKey);
         return {
           ok: true,
           compacted: true,
