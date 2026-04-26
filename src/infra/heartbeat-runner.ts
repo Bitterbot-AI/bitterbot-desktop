@@ -587,6 +587,14 @@ export async function runHeartbeatOnce(opts: {
         silent: !okSent,
         indicatorType: visibility.useIndicator ? resolveIndicatorType("ok-empty") : undefined,
       });
+      recordConsideration({
+        sessionKey,
+        category: "trigger",
+        subject: "heartbeat-tick",
+        decision: "acted",
+        reason: "agent ran but produced no output to send",
+        payload: { channel: delivery.channel, reason: opts.reason },
+      });
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
 
@@ -620,6 +628,14 @@ export async function runHeartbeatOnce(opts: {
         accountId: delivery.accountId,
         silent: !okSent,
         indicatorType: visibility.useIndicator ? resolveIndicatorType("ok-token") : undefined,
+      });
+      recordConsideration({
+        sessionKey,
+        category: "trigger",
+        subject: "heartbeat-tick",
+        decision: "acted",
+        reason: "agent returned only an ack token (no message to deliver)",
+        payload: { channel: delivery.channel, reason: opts.reason },
       });
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
@@ -656,6 +672,14 @@ export async function runHeartbeatOnce(opts: {
         channel: delivery.channel !== "none" ? delivery.channel : undefined,
         accountId: delivery.accountId,
       });
+      recordConsideration({
+        sessionKey,
+        category: "trigger",
+        subject: "heartbeat-output",
+        decision: "skipped",
+        reason: "agent reply matched the previous heartbeat output (deduped)",
+        payload: { channel: delivery.channel, preview: normalized.text.slice(0, 80) },
+      });
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
 
@@ -676,6 +700,14 @@ export async function runHeartbeatOnce(opts: {
         hasMedia: mediaUrls.length > 0,
         accountId: delivery.accountId,
       });
+      recordConsideration({
+        sessionKey,
+        category: "channel-route",
+        subject: "heartbeat-delivery",
+        decision: "blocked",
+        reason: `no delivery target (${delivery.reason ?? "no-target"})`,
+        payload: { channel: delivery.channel, accountId: delivery.accountId },
+      });
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
 
@@ -694,6 +726,14 @@ export async function runHeartbeatOnce(opts: {
         hasMedia: mediaUrls.length > 0,
         accountId: delivery.accountId,
         indicatorType: visibility.useIndicator ? resolveIndicatorType("sent") : undefined,
+      });
+      recordConsideration({
+        sessionKey,
+        category: "channel-route",
+        subject: `heartbeat → ${delivery.channel}`,
+        decision: "blocked",
+        reason: "alerts disabled for this channel/account; indicator only",
+        payload: { channel: delivery.channel, accountId: delivery.accountId },
       });
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
@@ -719,6 +759,14 @@ export async function runHeartbeatOnce(opts: {
         log.info("heartbeat: channel not ready", {
           channel: delivery.channel,
           reason: readiness.reason,
+        });
+        recordConsideration({
+          sessionKey,
+          category: "channel-route",
+          subject: `heartbeat → ${delivery.channel}`,
+          decision: "deferred",
+          reason: `channel not ready: ${readiness.reason}`,
+          payload: { channel: delivery.channel, accountId: delivery.accountId },
         });
         return { status: "skipped", reason: readiness.reason };
       }
@@ -767,6 +815,19 @@ export async function runHeartbeatOnce(opts: {
       channel: delivery.channel,
       accountId: delivery.accountId,
       indicatorType: visibility.useIndicator ? resolveIndicatorType("sent") : undefined,
+    });
+    recordConsideration({
+      sessionKey,
+      category: "channel-route",
+      subject: `heartbeat → ${delivery.channel}`,
+      decision: "acted",
+      reason: "delivered heartbeat payload",
+      payload: {
+        channel: delivery.channel,
+        to: delivery.to,
+        accountId: delivery.accountId,
+        chars: previewText?.length ?? 0,
+      },
     });
     return { status: "ran", durationMs: Date.now() - startedAt };
   } catch (err) {
