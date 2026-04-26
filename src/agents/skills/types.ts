@@ -29,6 +29,32 @@ export type SkillOrigin = {
   upstreamUrl?: string;
 };
 
+/**
+ * PLAN-13 Phase B: declarative capability surface for skills.
+ *
+ * Each axis is independently negotiated. Absent fields are not auto-granted;
+ * the profile resolver fills them with the trust-tier default for the
+ * publisher (`verified` honors declarations, `provisional` strict-profile,
+ * etc.). Operator grants are persisted in `skill_capability_grants` and
+ * override defaults but never weaken explicit denies.
+ *
+ * Network/fs accept either `false` (deny axis entirely) or a structured
+ * scope. The `${SKILL_WORKSPACE}` placeholder in fs paths resolves to the
+ * skill's own baseDir at enforcement time.
+ */
+export type SkillCapabilitiesDeclaration = {
+  /** Outbound network access. `false` = deny; object = host allowlist. */
+  network?: false | { outbound?: string[] };
+  /** Filesystem access. `false` = sandbox only (workspace read+write implicit). */
+  fs?: false | { read?: string[]; write?: string[] };
+  /** Wallet operations (USDC on Base). High-risk; first invocation prompts. */
+  wallet?: boolean;
+  /** Shell / arbitrary command execution. High-risk; first invocation prompts. */
+  shell?: boolean;
+  /** Sub-process spawn (separate from shell since it's lower-level). */
+  process?: boolean;
+};
+
 export type BitterbotSkillMetadata = {
   always?: boolean;
   skillKey?: string;
@@ -45,6 +71,12 @@ export type BitterbotSkillMetadata = {
   install?: SkillInstallSpec[];
   /** Provenance for imported/derived skills. Gates marketplace promotion. */
   origin?: SkillOrigin;
+  /**
+   * Phase B: declared capability surface. Required for skills ingested
+   * from the P2P mesh; locally-authored skills can omit it and inherit the
+   * `verified` (full-trust) default.
+   */
+  capabilities?: SkillCapabilitiesDeclaration;
 };
 
 export type SkillInvocationPolicy = {

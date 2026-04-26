@@ -430,6 +430,29 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 10,
+    description: "PLAN-13 Phase B: per-skill capability grants table, keyed on content hash",
+    up: (db: DatabaseSync) => {
+      // Persists operator decisions on capability requests from ingested
+      // skills. Keyed on content_hash (not skill name) so a swap-out of a
+      // malicious update under the same name does not inherit grants.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS skill_capability_grants (
+          content_hash TEXT NOT NULL,
+          capability TEXT NOT NULL,
+          decision TEXT NOT NULL CHECK(decision IN ('allow', 'deny')),
+          scope_json TEXT DEFAULT '{}',
+          granted_at INTEGER NOT NULL,
+          granted_by TEXT,
+          PRIMARY KEY (content_hash, capability)
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_skill_grants_hash ON skill_capability_grants(content_hash)`,
+      );
+    },
+  },
 ];
 
 /**

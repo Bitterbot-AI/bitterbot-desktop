@@ -2,6 +2,7 @@ import type { Skill } from "@mariozechner/pi-coding-agent";
 import type {
   BitterbotSkillMetadata,
   ParsedSkillFrontmatter,
+  SkillCapabilitiesDeclaration,
   SkillEntry,
   SkillInstallSpec,
   SkillInvocationPolicy,
@@ -80,6 +81,57 @@ function parseInstallSpec(input: unknown): SkillInstallSpec | undefined {
   return spec;
 }
 
+/**
+ * PLAN-13 Phase B: parse the `bitterbot.capabilities` block.
+ *
+ * Each axis has two acceptable shapes:
+ *  - boolean (deny axis on `false`, allow axis on `true` for wallet/shell/process)
+ *  - object with axis-specific scope keys
+ *
+ * Anything malformed is dropped silently. We never expand a missing field
+ * to "allow"; the profile resolver fills missing axes from the trust-tier
+ * default, not from the parser.
+ */
+function parseCapabilities(input: unknown): SkillCapabilitiesDeclaration | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as Record<string, unknown>;
+  const out: SkillCapabilitiesDeclaration = {};
+
+  if (raw.network === false) {
+    out.network = false;
+  } else if (raw.network && typeof raw.network === "object") {
+    const net = raw.network as Record<string, unknown>;
+    const outbound = normalizeStringList(net.outbound);
+    out.network = outbound.length > 0 ? { outbound } : { outbound: [] };
+  }
+
+  if (raw.fs === false) {
+    out.fs = false;
+  } else if (raw.fs && typeof raw.fs === "object") {
+    const fsRaw = raw.fs as Record<string, unknown>;
+    const read = normalizeStringList(fsRaw.read);
+    const write = normalizeStringList(fsRaw.write);
+    const fs: { read?: string[]; write?: string[] } = {};
+    if (read.length > 0) fs.read = read;
+    if (write.length > 0) fs.write = write;
+    out.fs = fs;
+  }
+
+  if (typeof raw.wallet === "boolean") {
+    out.wallet = raw.wallet;
+  }
+  if (typeof raw.shell === "boolean") {
+    out.shell = raw.shell;
+  }
+  if (typeof raw.process === "boolean") {
+    out.process = raw.process;
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function parseOrigin(input: unknown): SkillOrigin | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
@@ -121,6 +173,7 @@ export function resolveBitterbotMetadata(
   const install = resolveBitterbotManifestInstall(metadataObj, parseInstallSpec);
   const osRaw = resolveBitterbotManifestOs(metadataObj);
   const origin = parseOrigin(metadataObj.origin);
+  const capabilities = parseCapabilities(metadataObj.capabilities);
   return {
     always: typeof metadataObj.always === "boolean" ? metadataObj.always : undefined,
     emoji: typeof metadataObj.emoji === "string" ? metadataObj.emoji : undefined,
@@ -131,6 +184,7 @@ export function resolveBitterbotMetadata(
     requires: requires,
     install: install.length > 0 ? install : undefined,
     origin: origin,
+    capabilities: capabilities,
   };
 }
 

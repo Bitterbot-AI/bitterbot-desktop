@@ -18,6 +18,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CONFIG_DIR, resolveUserPath } from "../../utils.js";
 import { resolveSandboxPath } from "../sandbox-paths.js";
 import { resolveBundledSkillsDir } from "./bundled-dir.js";
+import { applyCapabilityGate, type CapabilityGateContext } from "./capability-gate.js";
 import { shouldIncludeSkill } from "./config.js";
 import { normalizeSkillFilter } from "./filter.js";
 import {
@@ -49,6 +50,7 @@ function filterSkillEntries(
   config?: BitterbotConfig,
   skillFilter?: string[],
   eligibility?: SkillEligibilityContext,
+  capabilityGate?: CapabilityGateContext,
 ): SkillEntry[] {
   let filtered = entries.filter((entry) => shouldIncludeSkill({ entry, config, eligibility }));
   // If skillFilter is provided, only include skills in the filter list.
@@ -63,6 +65,21 @@ function filterSkillEntries(
     skillsLogger.debug(
       `After skill filter: ${filtered.map((entry) => entry.skill.name).join(", ") || "(none)"}`,
     );
+  }
+  // PLAN-13 Phase B: load-time capability gate. Skills whose declared
+  // capabilities exceed their trust tier (after operator grants) are excluded
+  // from the active prompt. Opt-in via capabilityGate; behavior is unchanged
+  // when callers don't supply one.
+  if (capabilityGate) {
+    const { permitted, blocked } = applyCapabilityGate(filtered, capabilityGate);
+    for (const { entry, verdict } of blocked) {
+      if (!verdict.ok) {
+        skillsLogger.warn(
+          `skill blocked by capability gate: ${entry.skill.name} (tier=${verdict.tier}, blocked=[${verdict.blockedAxes.join(", ")}])`,
+        );
+      }
+    }
+    filtered = permitted;
   }
   return filtered;
 }
@@ -259,6 +276,8 @@ export function buildWorkspaceSkillSnapshot(
     skillFilter?: string[];
     eligibility?: SkillEligibilityContext;
     snapshotVersion?: number;
+    /** PLAN-13 Phase B: load-time capability gate for ingested skills. */
+    capabilityGate?: CapabilityGateContext;
   },
 ): SkillSnapshot {
   const skillEntries = opts?.entries ?? loadSkillEntries(workspaceDir, opts);
@@ -267,6 +286,7 @@ export function buildWorkspaceSkillSnapshot(
     opts?.config,
     opts?.skillFilter,
     opts?.eligibility,
+    opts?.capabilityGate,
   );
   const promptEntries = eligible.filter(
     (entry) => entry.invocation?.disableModelInvocation !== true,
@@ -301,6 +321,8 @@ export function buildWorkspaceSkillsPrompt(
     /** If provided, only include skills with these names */
     skillFilter?: string[];
     eligibility?: SkillEligibilityContext;
+    /** PLAN-13 Phase B: load-time capability gate for ingested skills. */
+    capabilityGate?: CapabilityGateContext;
   },
 ): string {
   const skillEntries = opts?.entries ?? loadSkillEntries(workspaceDir, opts);
@@ -309,6 +331,7 @@ export function buildWorkspaceSkillsPrompt(
     opts?.config,
     opts?.skillFilter,
     opts?.eligibility,
+    opts?.capabilityGate,
   );
   const promptEntries = eligible.filter(
     (entry) => entry.invocation?.disableModelInvocation !== true,
@@ -469,6 +492,8 @@ export function buildWorkspaceSkillCommandSpecs(
     skillFilter?: string[];
     eligibility?: SkillEligibilityContext;
     reservedNames?: Set<string>;
+    /** PLAN-13 Phase B: load-time capability gate for ingested skills. */
+    capabilityGate?: CapabilityGateContext;
   },
 ): SkillCommandSpec[] {
   const skillEntries = opts?.entries ?? loadSkillEntries(workspaceDir, opts);
@@ -477,6 +502,7 @@ export function buildWorkspaceSkillCommandSpecs(
     opts?.config,
     opts?.skillFilter,
     opts?.eligibility,
+    opts?.capabilityGate,
   );
   const userInvocable = eligible.filter((entry) => entry.invocation?.userInvocable !== false);
   const used = new Set<string>();

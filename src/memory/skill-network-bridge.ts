@@ -17,6 +17,7 @@ import type { PeerReputationManager } from "./peer-reputation.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { SkillVerifier } from "./skill-verifier.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { scanSkillForInjection } from "../security/skill-injection-scanner.js";
 import { SkillVersionResolver } from "./skill-version-resolver.js";
 
 const log = createSubsystemLogger("memory/skill-network-bridge");
@@ -281,6 +282,29 @@ export class SkillNetworkBridge {
       content = Buffer.from(envelope.skill_md, "base64").toString("utf-8");
     } catch {
       return { ok: false, action: "rejected", reason: "invalid content encoding" };
+    }
+
+    // PLAN-13 Phase A.5: prompt-injection scan on the bridge ingestion path.
+    // The filesystem ingest in src/agents/skills/ingest.ts already runs this,
+    // but crystals reach memory via this parallel route too. Same threat,
+    // same defense: a critical hit rejects the skill outright (the bridge
+    // has no quarantine concept; rejection is the analog) and feeds a
+    // negative reputation signal scaled by severity.
+    const scan = scanSkillForInjection(content);
+    if (scan.severity !== "ok") {
+      log.warn("P2P skill flagged by injection scanner", {
+        author: envelope.author_peer_id,
+        severity: scan.severity,
+        flags: scan.flags,
+      });
+      this.peerReputation?.recordInjectionFlag?.(envelope.author_pubkey, scan.severity);
+      if (scan.severity === "critical") {
+        return {
+          ok: false,
+          action: "rejected",
+          reason: `injection scan critical: ${scan.flags.join(", ")}`,
+        };
+      }
     }
 
     // Plan 8, Phase 3: Safety gate — verify inbound skill content
