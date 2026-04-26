@@ -35,6 +35,12 @@ export type SubscribeEmbeddedPiSessionParams = {
   enforceFinalTag?: boolean;
   config?: BitterbotConfig;
   sessionKey?: string;
+  /**
+   * Model context window in tokens. When provided, enables the mid-turn
+   * budget guard that proactively compresses session messages between
+   * tool calls so long tool loops don't overflow context.
+   */
+  contextWindowTokens?: number;
 };
 
 export type { BlockReplyChunking } from "./pi-embedded-block-chunker.js";

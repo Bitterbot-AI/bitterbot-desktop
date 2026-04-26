@@ -63,6 +63,7 @@ import {
   loadWorkspaceSkillEntries,
   resolveSkillsPromptForRun,
 } from "../../skills.js";
+import { createCapabilityRuntimeFromMemory } from "../../skills/capability-runtime.js";
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { getGlobalToolCache } from "../../tool-cache.js";
@@ -246,6 +247,17 @@ export async function runEmbeddedAttempt(
     const skillEntries = shouldLoadSkillEntries
       ? loadWorkspaceSkillEntries(effectiveWorkspace)
       : [];
+    // PLAN-13 Phase B.5: build the capability runtime once per attempt.
+    // The enforcer needs full SkillEntry list (with metadata.capabilities),
+    // so when the snapshot was preloaded we still need entries to feed
+    // the enforcer. Reload is cheap relative to the LLM call ahead.
+    const enforcerEntries =
+      skillEntries.length > 0 ? skillEntries : loadWorkspaceSkillEntries(effectiveWorkspace);
+    const capabilityRuntime = await createCapabilityRuntimeFromMemory({
+      config: params.config,
+      agentId: params.agentId,
+    });
+    const capabilityEnforcer = capabilityRuntime?.buildEnforcerContext(enforcerEntries);
     restoreSkillEnv = params.skillsSnapshot
       ? applySkillEnvOverridesFromSnapshot({
           snapshot: params.skillsSnapshot,
@@ -321,6 +333,7 @@ export async function runEmbeddedAttempt(
             defaultTtlMs: params.config?.agents?.defaults?.toolCache?.defaultTtlMs,
             cacheableTools: params.config?.agents?.defaults?.toolCache?.cacheableTools,
           }),
+          capabilityEnforcer,
         });
     const tools = sanitizeToolsForGoogle({ tools: toolsRaw, provider: params.provider });
     logToolSchemasForGoogle({ tools, provider: params.provider });
@@ -758,6 +771,7 @@ export async function runEmbeddedAttempt(
         enforceFinalTag: params.enforceFinalTag,
         config: params.config,
         sessionKey: params.sessionKey ?? params.sessionId,
+        contextWindowTokens: params.model.contextWindow,
       });
 
       const {

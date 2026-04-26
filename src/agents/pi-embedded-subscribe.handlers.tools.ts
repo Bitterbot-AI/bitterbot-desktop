@@ -8,6 +8,7 @@ import { emitAgentEvent } from "../infra/agent-events.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { normalizeTextForComparison } from "./pi-embedded-helpers.js";
 import { isMessagingTool, isMessagingToolSendAction } from "./pi-embedded-messaging.js";
+import { applyMidTurnBudget } from "./pi-embedded-runner/mid-turn-budget.js";
 import {
   extractToolErrorMessage,
   extractToolResultMediaPaths,
@@ -312,5 +313,45 @@ export async function handleToolExecutionEnd(
       });
   } else {
     toolStartData.delete(toolCallId);
+  }
+
+  // Mid-turn budget guard. Cheap deterministic compression after each
+  // tool result so long tool loops can't overflow context before the
+  // next LLM call. Only fires when contextWindowTokens is plumbed
+  // through from the run attempt and a session+agent are present.
+  const ctxWindow = ctx.params.contextWindowTokens;
+  const session = ctx.params.session as
+    | { messages?: unknown; agent?: { replaceMessages?: unknown } }
+    | undefined;
+  if (
+    typeof ctxWindow === "number" &&
+    ctxWindow > 0 &&
+    Array.isArray(session?.messages) &&
+    typeof session?.agent?.replaceMessages === "function"
+  ) {
+    try {
+      const result = applyMidTurnBudget({
+        session: session as Parameters<typeof applyMidTurnBudget>[0]["session"],
+        contextWindowTokens: ctxWindow,
+      });
+      if (result.applied) {
+        ctx.log.debug(
+          `[mid-turn-budget] runId=${ctx.params.runId} compressed ${result.messagesBefore}→${result.messagesAfter} msgs, ${result.tokensBefore}→${result.tokensAfter} est tokens (passes=${result.passes})`,
+        );
+        emitAgentEvent({
+          runId: ctx.params.runId,
+          stream: "compaction",
+          data: {
+            phase: "mid-turn-budget",
+            tokensBefore: result.tokensBefore,
+            tokensAfter: result.tokensAfter,
+            messagesBefore: result.messagesBefore,
+            messagesAfter: result.messagesAfter,
+          },
+        });
+      }
+    } catch (err) {
+      ctx.log.warn(`[mid-turn-budget] check failed runId=${ctx.params.runId}: ${String(err)}`);
+    }
   }
 }
