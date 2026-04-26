@@ -18,6 +18,7 @@ import {
 } from "./pi-embedded-helpers.js";
 import { createEmbeddedPiSessionEventHandler } from "./pi-embedded-subscribe.handlers.js";
 import { formatReasoningMessage, stripDowngradedToolCallText } from "./pi-embedded-utils.js";
+import { recordCacheTurn } from "./prompt-cache-monitor.js";
 import { hasNonzeroUsage, normalizeUsage, type UsageLike } from "./usage.js";
 
 const THINKING_TAG_SCAN_RE = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
@@ -257,6 +258,19 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       usage.total ??
       (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
     usageTotals.total += usageTotal;
+
+    // Observe per-turn cache behavior. Bust events are logged so an operator
+    // can correlate them with config changes; the heuristic is deliberately
+    // approximate (we don't see the prompt bytes).
+    const sessionKey = params.sessionKey?.trim();
+    if (sessionKey) {
+      const result = recordCacheTurn(sessionKey, usage);
+      if (result.bust) {
+        log.info(
+          `[cache] bust detected for ${sessionKey}: previous turn read from cache, this turn wrote without compensating read`,
+        );
+      }
+    }
   };
   const getUsageTotals = () => {
     const hasUsage =
