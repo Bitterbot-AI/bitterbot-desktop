@@ -57,6 +57,39 @@ export function getMobileAvatarBytes(): Buffer {
 
 const TITLE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 56" width="120" height="22" aria-label="bitterbot"><text x="0" y="40" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="42" font-weight="800" letter-spacing="-1"><tspan fill="#f9fafb">bitter</tspan><tspan fill="#a855f7">bot</tspan></text></svg>`;
 
+// Animated eyes overlay for the welcome avatar — direct port of
+// desktop/renderer/.../BitterBotAvatar.tsx ThinkingEyes (same wander +
+// blink timings: 2.5s wander cycle, 3.5s blink cycle, eyes positioned
+// at ~33% / ~67% x and ~37% y of the upper square portion of the
+// avatar). Pure SVG so it works in the inline page without React.
+const EYES_SVG = (() => {
+  const size = 96;
+  const eyeR = size * 0.09;
+  const pupilR = size * 0.05;
+  const lx = (size * 0.335).toFixed(1);
+  const rx = (size * 0.665).toFixed(1);
+  const ey = (size * 0.37).toFixed(1);
+  const t = (f: number) => (size * f).toFixed(1);
+  const wander = `0,0; ${t(0.02)},0; ${t(0.02)},${t(-0.01)}; ${t(-0.01)},${t(0.01)}; ${t(-0.02)},0; 0,${t(-0.01)}; ${t(0.01)},${t(0.01)}; 0,0`;
+  const wT = "0; 0.15; 0.3; 0.45; 0.6; 0.75; 0.9; 1";
+  const blinkE = `${eyeR}; ${eyeR}; ${(eyeR * 0.1).toFixed(2)}; ${eyeR}; ${eyeR}`;
+  const blinkP = `${pupilR}; ${pupilR}; ${(pupilR * 0.1).toFixed(2)}; ${pupilR}; ${pupilR}`;
+  const bT = "0; 0.85; 0.9; 0.95; 1";
+  const eye = (cx: string, color: string, r: number, blink: string) =>
+    `<ellipse cx="${cx}" cy="${ey}" rx="${r}" ry="${r}" fill="${color}" opacity="${color === "#e9d5ff" ? "0.9" : "1"}">` +
+    `<animateTransform attributeName="transform" type="translate" values="${wander}" keyTimes="${wT}" dur="2.5s" repeatCount="indefinite"/>` +
+    `<animate attributeName="ry" values="${blink}" keyTimes="${bT}" dur="3.5s" repeatCount="indefinite"/>` +
+    `</ellipse>`;
+  return (
+    `<svg class="eyes" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">` +
+    eye(lx, "#e9d5ff", eyeR, blinkE) +
+    eye(lx, "#4c1d95", pupilR, blinkP) +
+    eye(rx, "#e9d5ff", eyeR, blinkE) +
+    eye(rx, "#4c1d95", pupilR, blinkP) +
+    `</svg>`
+  );
+})();
+
 export function renderMobileUiPage(gatewayWsUrl: string, gatewayToken?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -143,21 +176,67 @@ body::before {
   display: flex; flex-direction: column; gap: 10px;
   scroll-behavior: smooth;
 }
+/* Faint custom scrollbar that matches the chrome — mostly invisible until hover */
+.scroll::-webkit-scrollbar { width: 6px; }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+.scroll::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 999px; }
+.scroll::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.35); }
+
 /* Welcome / empty state */
 .empty {
   margin: auto; padding: 24px;
-  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
   color: var(--muted); font-size: 0.92rem; text-align: center;
+  max-width: 360px;
 }
-.empty .avatar { width: 64px; height: 80px; }
+.welcome-avatar {
+  position: relative;
+  width: 96px; height: 120px;
+}
+.welcome-avatar img { width: 96px; height: 120px; object-fit: contain; }
+.welcome-avatar svg.eyes {
+  position: absolute; inset: 0;
+  width: 96px; height: 96px;
+  /* Eyes overlay sits within the upper-square portion of the 96×120 avatar */
+  pointer-events: none;
+}
 .empty .hello {
   background: linear-gradient(135deg, #ffffff 0%, #e9d5ff 30%, #c084fc 60%, #a855f7 100%);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent;
-  font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em;
+  font-weight: 700; font-size: 1.25rem; letter-spacing: -0.01em;
+  line-height: 1.2;
 }
+.empty .sub { font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+.suggestions {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  justify-content: center;
+  margin-top: 6px;
+}
+.suggestions button {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.suggestions button:hover { border-color: var(--border-strong); background: rgba(139,92,246,0.12); }
+.suggestions button:active { transform: scale(0.97); }
 /* Bubble row groups avatar + bubble */
-.row { display: flex; align-items: flex-end; gap: 8px; max-width: 100%; }
+.row {
+  display: flex; align-items: flex-end; gap: 8px; max-width: 100%;
+  animation: row-in 0.22s cubic-bezier(0.2, 0, 0, 1);
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 .row.user { flex-direction: row-reverse; }
 .row.agent + .row.agent .avatar-slot { visibility: hidden; }
 .avatar-slot { width: 28px; flex: 0 0 28px; }
@@ -213,6 +292,37 @@ body::before {
   white-space: pre;
 }
 .bubble pre code { background: none; border: none; padding: 0; }
+/* Markdown niceties: only the things people actually paste — bold,
+   italic, links, lists, headings, blockquote, hr. Everything else falls
+   through to plain text via white-space: pre-wrap on .bubble. */
+.bubble strong { font-weight: 700; }
+.bubble em { font-style: italic; }
+.bubble a { color: #c4b5fd; text-decoration: underline; text-underline-offset: 2px; }
+.row.user .bubble a { color: #fff; opacity: 0.95; }
+.bubble h1, .bubble h2, .bubble h3 {
+  font-weight: 700; line-height: 1.25; margin: 4px 0 2px;
+  letter-spacing: -0.01em;
+}
+.bubble h1 { font-size: 1.05em; }
+.bubble h2 { font-size: 1.0em; }
+.bubble h3 { font-size: 0.95em; color: var(--muted); }
+.bubble ul, .bubble ol { margin: 4px 0; padding-left: 1.25em; }
+.bubble li { margin: 2px 0; }
+.bubble blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: 10px; margin: 6px 0;
+  color: var(--muted); font-style: italic;
+}
+.bubble hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 8px 0;
+}
+/* When a bubble holds Markdown blocks, drop pre-wrap so HTML elements
+   control spacing themselves. .md mode is set by the renderer when
+   any block-level markdown is detected. */
+.bubble.md { white-space: normal; }
+
 /* Typing dots — three bouncing purple circles */
 .typing { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; }
 .typing span {
@@ -284,9 +394,17 @@ body::before {
 </div>
 <div class="scroll" id="scroll">
   <div class="empty" id="empty">
-    <img class="avatar" src="/m/avatar.png" alt="bitterbot avatar"/>
+    <div class="welcome-avatar">
+      <img src="/m/avatar.png" alt="bitterbot"/>
+      ${EYES_SVG}
+    </div>
     <div class="hello">Say hi to your agent.</div>
-    <div>Messages stream live. Pull-to-refresh isn't a thing here — just type.</div>
+    <div class="sub">Messages stream live. Tap a suggestion below or just start typing.</div>
+    <div class="suggestions">
+      <button data-prompt="What can you help me with right now?">What can you help with?</button>
+      <button data-prompt="Show me what skills you have available.">Show me your skills</button>
+      <button data-prompt="What's on my schedule today?">What's on today?</button>
+    </div>
   </div>
 </div>
 <div class="footer">
@@ -344,36 +462,149 @@ function ensureEmptyHidden() {
   if (empty) empty.remove();
 }
 
-// Light-touch markdown: fenced code, inline code. Anything richer is left
-// to the agent's text formatting. Renders into the element safely — no
-// innerHTML on user-controlled text.
+// Markdown-lite renderer. Handles the formats agents actually produce:
+// fenced code, inline code, **bold**, *italic*, [link](url), - and 1.
+// lists, # headings, > blockquote, ---. Built around document.createElement
+// so user content never touches innerHTML.
 function renderTextInto(el, text) {
   el.textContent = "";
+  el.classList.remove("md");
   if (!text) return;
-  const fenceRe = /\\\`\\\`\\\`([\\s\\S]*?)\\\`\\\`\\\`/g;
-  let last = 0;
-  let m;
-  while ((m = fenceRe.exec(text)) !== null) {
-    if (m.index > last) appendInline(el, text.slice(last, m.index));
-    const pre = document.createElement("pre");
-    const code = document.createElement("code");
-    code.textContent = m[1].replace(/^\\n/, "");
-    pre.appendChild(code);
-    el.appendChild(pre);
-    last = m.index + m[0].length;
+  // Fast path: short string with no block-level markdown markers.
+  // Render as plain pre-wrap text + inline-only formatting.
+  const hasBlocks = /(^|\\n)(\\\`\\\`\\\`|#{1,3} |[-*] |\\d+\\. |> |---)/.test(text);
+  if (!hasBlocks) {
+    appendInline(el, text);
+    return;
   }
-  if (last < text.length) appendInline(el, text.slice(last));
+  el.classList.add("md");
+  // Block parser — split on blank lines + fenced code, then dispatch.
+  const lines = text.split("\\n");
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // Fenced code block
+    if (/^\\\`\\\`\\\`/.test(line)) {
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^\\\`\\\`\\\`/.test(lines[i])) { buf.push(lines[i]); i++; }
+      i++; // closing fence
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = buf.join("\\n");
+      pre.appendChild(code);
+      el.appendChild(pre);
+      continue;
+    }
+    // Heading
+    const h = line.match(/^(#{1,3}) +(.+)$/);
+    if (h) {
+      const tag = "h" + h[1].length;
+      const node = document.createElement(tag);
+      appendInline(node, h[2]);
+      el.appendChild(node);
+      i++;
+      continue;
+    }
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      el.appendChild(document.createElement("hr"));
+      i++;
+      continue;
+    }
+    // Blockquote (collect consecutive > lines)
+    if (/^> /.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^> /.test(lines[i])) { buf.push(lines[i].slice(2)); i++; }
+      const bq = document.createElement("blockquote");
+      appendInline(bq, buf.join("\\n"));
+      el.appendChild(bq);
+      continue;
+    }
+    // Unordered list
+    if (/^[-*] +/.test(line)) {
+      const ul = document.createElement("ul");
+      while (i < lines.length && /^[-*] +/.test(lines[i])) {
+        const li = document.createElement("li");
+        appendInline(li, lines[i].replace(/^[-*] +/, ""));
+        ul.appendChild(li);
+        i++;
+      }
+      el.appendChild(ul);
+      continue;
+    }
+    // Ordered list
+    if (/^\\d+\\. +/.test(line)) {
+      const ol = document.createElement("ol");
+      while (i < lines.length && /^\\d+\\. +/.test(lines[i])) {
+        const li = document.createElement("li");
+        appendInline(li, lines[i].replace(/^\\d+\\. +/, ""));
+        ol.appendChild(li);
+        i++;
+      }
+      el.appendChild(ol);
+      continue;
+    }
+    // Blank line — preserve paragraph spacing
+    if (line.trim() === "") {
+      // collapse runs of blanks; rely on default block margins
+      while (i < lines.length && lines[i].trim() === "") i++;
+      continue;
+    }
+    // Paragraph — gather contiguous non-block lines
+    const buf = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !/^\\\`\\\`\\\`|^#{1,3} |^[-*] |^\\d+\\. |^> |^---+$/.test(lines[i])
+    ) {
+      buf.push(lines[i]);
+      i++;
+    }
+    const p = document.createElement("p");
+    p.style.margin = "4px 0";
+    appendInline(p, buf.join("\\n"));
+    el.appendChild(p);
+  }
 }
 
+// Inline formatting: \\\`code\\\`, **bold**, *italic*, [text](url). Order
+// matters — code first so its contents aren't re-parsed. Splits the
+// remaining text on alternating tokens and emits text nodes / elements.
 function appendInline(el, text) {
-  const inlineRe = /\\\`([^\\\`]+)\\\`/g;
+  // Tokens: code, bold, italic, link. Keep in priority order.
+  const re = /(\\\`[^\\\`]+\\\`)|(\\*\\*[^*]+\\*\\*)|(\\*[^*\\n]+\\*)|(\\[[^\\]]+\\]\\([^)]+\\))/g;
   let last = 0;
   let m;
-  while ((m = inlineRe.exec(text)) !== null) {
+  while ((m = re.exec(text)) !== null) {
     if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
-    const code = document.createElement("code");
-    code.textContent = m[1];
-    el.appendChild(code);
+    const tok = m[0];
+    if (tok.startsWith("\\\`")) {
+      const c = document.createElement("code");
+      c.textContent = tok.slice(1, -1);
+      el.appendChild(c);
+    } else if (tok.startsWith("**")) {
+      const s = document.createElement("strong");
+      s.textContent = tok.slice(2, -2);
+      el.appendChild(s);
+    } else if (tok.startsWith("*")) {
+      const s = document.createElement("em");
+      s.textContent = tok.slice(1, -1);
+      el.appendChild(s);
+    } else {
+      // [text](url)
+      const lm = tok.match(/^\\[([^\\]]+)\\]\\(([^)]+)\\)$/);
+      if (lm) {
+        const a = document.createElement("a");
+        a.textContent = lm[1];
+        a.href = lm[2];
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        el.appendChild(a);
+      } else {
+        el.appendChild(document.createTextNode(tok));
+      }
+    }
     last = m.index + m[0].length;
   }
   if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
@@ -430,13 +661,24 @@ function clearTyping() {
 function renderMessages(messages) {
   clearScroll();
   if (!messages || messages.length === 0) {
+    // Re-create the welcome state. The original copy lives in the page
+    // template; we mirror its structure here so a chat.history that
+    // returns empty (e.g. fresh session) still gets the suggestion chips.
     const empty = document.createElement("div");
     empty.className = "empty";
     empty.id = "empty";
     empty.innerHTML =
-      '<img class="avatar" src="' + AVATAR_SRC + '" alt="bitterbot avatar"/>' +
+      '<div class="welcome-avatar">' +
+      '<img src="' + AVATAR_SRC + '" alt="bitterbot"/>' +
+      ${JSON.stringify(EYES_SVG)} +
+      "</div>" +
       '<div class="hello">Say hi to your agent.</div>' +
-      "<div>Messages stream live. Pull-to-refresh isn't a thing here — just type.</div>";
+      '<div class="sub">Messages stream live. Tap a suggestion below or just start typing.</div>' +
+      '<div class="suggestions">' +
+      '<button data-prompt="What can you help me with right now?">What can you help with?</button>' +
+      '<button data-prompt="Show me what skills you have available.">Show me your skills</button>' +
+      '<button data-prompt="What\\'s on my schedule today?">What\\'s on today?</button>' +
+      "</div>";
     document.getElementById("scroll").appendChild(empty);
     return;
   }
@@ -619,6 +861,18 @@ document.getElementById("input").addEventListener("keydown", (e) => {
 document.getElementById("input").addEventListener("input", (e) => {
   e.target.style.height = "auto";
   e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+});
+// Suggestion chips on the welcome screen — tap drops the prompt into
+// the composer and focuses it. Delegated so chips that come and go
+// (when history reloads to empty) keep working.
+document.getElementById("scroll").addEventListener("click", (e) => {
+  const btn = e.target.closest(".suggestions button");
+  if (!btn) return;
+  const input = document.getElementById("input");
+  input.value = btn.dataset.prompt || btn.textContent || "";
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, 120) + "px";
+  input.focus();
 });
 
 connect();
