@@ -8,6 +8,7 @@ import { callGateway } from "../../gateway/call.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import { normalizeDeliveryContext } from "../../utils/delivery-context.js";
 import { resolveAgentConfig } from "../agent-scope.js";
+import { type HandoffEnvelope, validateHandoffEnvelope } from "../handoff-envelope.js";
 import { AGENT_LANE_SUBAGENT } from "../lanes.js";
 import { resolveDefaultModelForAgent } from "../model-selection.js";
 import { optionalStringEnum } from "../schema/typebox.js";
@@ -22,7 +23,43 @@ import {
 } from "./sessions-helpers.js";
 
 const SessionsSpawnToolSchema = Type.Object({
-  task: Type.String(),
+  task: Type.String({
+    description:
+      "What the sub-agent should do. Prefer also passing `handoff` (structured envelope) to reduce ambiguity.",
+  }),
+  /**
+   * Optional structured handoff envelope. When provided, fields are
+   * validated and rendered above the task in the child's system prompt.
+   * This is the recommended path; plain `task` continues to work.
+   */
+  handoff: Type.Optional(
+    Type.Object({
+      goal: Type.String({
+        description:
+          "One-sentence statement of what the sub-agent should achieve. Required, must not be vague.",
+      }),
+      inputs: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "Files, sessions, or upstream context the child needs.",
+        }),
+      ),
+      success_criteria: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "How the parent will know the child succeeded.",
+        }),
+      ),
+      out_of_scope: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "Things the child should NOT do.",
+        }),
+      ),
+      parent_context: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "1-3 bullets the parent already knows so the child doesn't re-ask.",
+        }),
+      ),
+    }),
+  ),
   label: Type.Optional(Type.String()),
   agentId: Type.Optional(Type.String()),
   model: Type.Optional(Type.String()),
@@ -173,6 +210,22 @@ export function createSessionsSpawnTool(opts?: {
           });
         }
       }
+      // Validate the optional handoff envelope. Reject the spawn outright
+      // if the parent provided one but it's malformed — that's a clearer
+      // signal than silently ignoring the field.
+      let validatedHandoff: HandoffEnvelope | undefined;
+      if (params.handoff !== undefined) {
+        const v = validateHandoffEnvelope(params.handoff);
+        if (!v.ok) {
+          return jsonResult({
+            status: "error",
+            error: `invalid handoff envelope: ${v.message}`,
+            field: v.field,
+          });
+        }
+        validatedHandoff = v.value;
+      }
+
       const childSessionKey = `agent:${targetAgentId}:subagent:${crypto.randomUUID()}`;
       const childDepth = callerDepth + 1;
       const spawnedByKey = requesterInternalKey;
@@ -271,6 +324,7 @@ export function createSessionsSpawnTool(opts?: {
         childSessionKey,
         label: label || undefined,
         task,
+        handoff: validatedHandoff,
         childDepth,
         maxSpawnDepth,
       });

@@ -20,6 +20,7 @@ import {
   buildAnnounceIdempotencyKey,
   resolveQueueAnnounceId,
 } from "./announce-idempotency.js";
+import { renderHandoffEnvelope } from "./handoff-envelope.js";
 import {
   isEmbeddedPiRunActive,
   queueEmbeddedPiMessage,
@@ -265,6 +266,8 @@ export function buildSubagentSystemPrompt(params: {
   childSessionKey: string;
   label?: string;
   task?: string;
+  /** Optional structured handoff envelope; rendered above the task block. */
+  handoff?: import("./handoff-envelope.js").HandoffEnvelope;
   /** Depth of the child being spawned (1 = sub-agent, 2 = sub-sub-agent). */
   childDepth?: number;
   /** Config value: max allowed spawn depth. */
@@ -279,7 +282,12 @@ export function buildSubagentSystemPrompt(params: {
   const canSpawn = childDepth < maxSpawnDepth;
   const parentLabel = childDepth >= 2 ? "parent orchestrator" : "main agent";
 
-  const lines = [
+  const lines: string[] = [];
+  if (params.handoff) {
+    lines.push(renderHandoffEnvelope(params.handoff));
+    lines.push("");
+  }
+  lines.push(
     "# Subagent Context",
     "",
     `You are a **subagent** spawned by the ${parentLabel} for a specific task.`,
@@ -309,7 +317,7 @@ export function buildSubagentSystemPrompt(params: {
     `- NO pretending to be the ${parentLabel}`,
     `- Only use the \`message\` tool when explicitly instructed to contact a specific external recipient; otherwise return plain text and let the ${parentLabel} deliver it`,
     "",
-  ];
+  );
 
   if (canSpawn) {
     lines.push(
