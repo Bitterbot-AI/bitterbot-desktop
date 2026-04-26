@@ -1,19 +1,18 @@
 /**
  * Doctor section for agent-runtime observability.
  *
- * Surfaces what's accessible to a one-shot CLI invocation:
- *   - Today's heartbeat-considerations file: row count, top categories,
- *     top decisions. (Persistent on disk.)
+ * Surfaces:
+ *   - Today's heartbeat-considerations file (persistent on disk).
+ *   - When the gateway is running: live cache hit ratios and compaction
+ *     breaker state via the agent.runtime.health RPC.
  *
- * Deliberately omits:
- *   - Prompt cache hit ratio per session
- *   - Compaction circuit breaker state per session
- *   These live in the running gateway's process memory and require an
- *   RPC method to expose. Adding that surface is a follow-on.
+ * The RPC path fails fast and quietly when the gateway is unreachable,
+ * so doctor remains useful in offline / fresh-install scenarios.
  */
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { callGateway } from "../gateway/call.js";
 import {
   __considerationsConsts,
   __considerationsTodayKey,
@@ -105,12 +104,76 @@ export async function runAgentRuntimeChecks(): Promise<void> {
     }
   }
 
-  // Note for in-memory state that doctor can't reach without a running gateway.
-  results.push(
-    info(
-      "Cache hit ratio + compaction breaker state live in the running gateway. Use 'bitterbot heartbeat why' or attach to gateway logs for a live view.",
-    ),
-  );
+  // Live in-memory state via RPC (only available if the gateway is up).
+  type RuntimeHealthResp = {
+    cache?: Array<{
+      sessionKey: string;
+      turns: number;
+      busts: number;
+      hitRatio: number;
+      recentHitRatio: number;
+    }>;
+    breakers?: Array<{
+      sessionKey: string;
+      state: string;
+      consecutiveFailures: number;
+      lastReason?: string;
+    }>;
+    truncated?: { cache: boolean; breakers: boolean };
+  };
+  let runtimeHealth: RuntimeHealthResp | null = null;
+  try {
+    runtimeHealth = (await callGateway<RuntimeHealthResp>({
+      method: "agent.runtime.health",
+      params: { limit: 10 },
+      timeoutMs: 3_000,
+    })) as RuntimeHealthResp;
+  } catch {
+    // Gateway not reachable — common in fresh installs and during doctor
+    // before gateway start. Skip live info silently.
+  }
+
+  if (runtimeHealth) {
+    const cache = runtimeHealth.cache ?? [];
+    if (cache.length === 0) {
+      results.push(info("Prompt cache: no traffic observed yet."));
+    } else {
+      const top = cache
+        .toSorted((a, b) => b.turns - a.turns)
+        .slice(0, 5)
+        .map(
+          (m) =>
+            `${m.sessionKey} hit=${(m.hitRatio * 100).toFixed(0)}% recent=${(m.recentHitRatio * 100).toFixed(0)}% turns=${m.turns} busts=${m.busts}`,
+        );
+      results.push(ok(`Prompt cache (${cache.length} session${cache.length === 1 ? "" : "s"}):`));
+      for (const line of top) results.push(info(`  ${line}`));
+    }
+
+    const breakers = runtimeHealth.breakers ?? [];
+    if (breakers.length === 0) {
+      results.push(info("Compaction breaker: no failures recorded."));
+    } else {
+      const open = breakers.filter((b) => b.state !== "closed");
+      if (open.length === 0) {
+        results.push(ok(`Compaction breaker: ${breakers.length} tracked, all closed.`));
+      } else {
+        results.push(info(`Compaction breaker: ${open.length} of ${breakers.length} not closed:`));
+        for (const b of open.slice(0, 5)) {
+          results.push(
+            info(
+              `  ${b.sessionKey} state=${b.state} fails=${b.consecutiveFailures} reason=${b.lastReason ?? "?"}`,
+            ),
+          );
+        }
+      }
+    }
+  } else {
+    results.push(
+      info(
+        "Live cache + breaker state unavailable (gateway not reachable). Start the gateway and rerun for the live view.",
+      ),
+    );
+  }
 
   renderSection(results);
 }

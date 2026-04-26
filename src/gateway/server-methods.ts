@@ -1,5 +1,6 @@
 import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
 import { ErrorCodes, errorShape } from "./protocol/index.js";
+import { agentRuntimeHandlers } from "./server-methods/agent-runtime.js";
 import { agentHandlers } from "./server-methods/agent.js";
 import { agentsHandlers } from "./server-methods/agents.js";
 import { browserHandlers } from "./server-methods/browser.js";
@@ -68,6 +69,7 @@ const READ_METHODS = new Set([
   "models.list",
   "agents.list",
   "agent.identity.get",
+  "agent.runtime.health",
   "skills.status",
   "voicewake.get",
   "sessions.list",
@@ -229,6 +231,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...sendHandlers,
   ...usageHandlers,
   ...agentHandlers,
+  ...agentRuntimeHandlers,
   ...agentsHandlers,
   ...browserHandlers,
   ...projectsHandlers,
