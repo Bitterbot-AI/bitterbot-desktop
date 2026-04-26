@@ -594,6 +594,7 @@ export const BitterbotSchema = z
             trustList: z.array(z.string()).optional(),
             quarantineDir: z.string().optional(),
             maxIngestedPerHour: z.number().int().positive().optional(),
+            injectionScanner: z.enum(["regex", "off"]).optional(),
           })
           .strict()
           .optional(),

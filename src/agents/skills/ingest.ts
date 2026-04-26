@@ -10,6 +10,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import {
+  type InjectionScanResult,
+  type InjectionSeverity,
+  scanSkillForInjection,
+  shouldForceQuarantine,
+} from "../../security/skill-injection-scanner.js";
 import { CONFIG_DIR } from "../../utils.js";
 import { bumpSkillsSnapshotVersion } from "./refresh.js";
 
@@ -64,7 +70,10 @@ export async function ingestSkill(params: {
     getTrustLevel(pubkey: string): string;
     recordSkillReceived(pubkey: string, peerId: string): void;
     recordIngestionResult(pubkey: string, accepted: boolean): void;
+    recordInjectionFlag?(pubkey: string, severity: InjectionSeverity): void;
   };
+  /** Override system-event sink for tests; production uses the real queue. */
+  notifyQuarantine?: (message: string) => void;
 }): Promise<IngestResult> {
   const { envelope, config, workspaceDir } = params;
   const p2pConfig = config.skills?.p2p;
@@ -106,6 +115,22 @@ export async function ingestSkill(params: {
     return { ok: false, action: "rejected", reason: "invalid SKILL.md structure" };
   }
 
+  // 5b. Injection scan (PLAN-13 Phase A).
+  // Runs on the decoded bytes to catch adversarial content from a signed-but-
+  // malicious peer. A `critical` severity force-quarantines regardless of the
+  // configured policy or the publisher's trust level, on the grounds that we
+  // cannot solve content-layer attacks at the transport layer.
+  const scannerMode = p2pConfig?.injectionScanner ?? "regex";
+  const scanResult: InjectionScanResult | null =
+    scannerMode === "off" ? null : scanSkillForInjection(skillContent);
+  const forceQuarantine = scanResult ? shouldForceQuarantine(scanResult.severity) : false;
+  if (scanResult && scanResult.severity !== "ok") {
+    log.warn(
+      `Skill from ${envelope.author_peer_id} flagged by injection scan: ${scanResult.reason}`,
+    );
+    params.reputationManager?.recordInjectionFlag?.(envelope.author_pubkey, scanResult.severity);
+  }
+
   // 6. Check existing skills for content-hash dedup
   const existingSkillsDir = path.join(CONFIG_DIR, "skills");
   if (await skillExistsWithHash(existingSkillsDir, envelope.content_hash)) {
@@ -135,8 +160,9 @@ export async function ingestSkill(params: {
   // Record in reputation system if available
   params.reputationManager?.recordSkillReceived(envelope.author_pubkey, envelope.author_peer_id);
 
-  // 8. Determine destination based on policy and trust level
-  if (policy === "auto" && isAutoAccepted) {
+  // 8. Determine destination based on policy, trust level, and injection scan.
+  // `forceQuarantine` overrides auto-accept when the scanner returns critical.
+  if (policy === "auto" && isAutoAccepted && !forceQuarantine) {
     // Accept directly into skills directory
     const skillName = normalizeSkillName(envelope.name);
     const skillDir = path.join(CONFIG_DIR, "skills", skillName);
@@ -158,6 +184,7 @@ export async function ingestSkill(params: {
           ingested_at: Date.now(),
           expires_at: envelope.expires_at,
           provenance: envelope.provenance,
+          injection_scan: scanResult ?? undefined,
         },
         null,
         2,
@@ -176,7 +203,9 @@ export async function ingestSkill(params: {
     return { ok: true, action: "accepted", skillName, skillPath };
   }
 
-  // Quarantine: write to skills-incoming directory
+  // Quarantine: write to skills-incoming directory.
+  // We land here for any of: review/deny policy, untrusted publisher under auto,
+  // or `forceQuarantine === true` because the injection scan flagged critical.
   const quarantineDir = p2pConfig?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
   const skillName = normalizeSkillName(envelope.name);
   const incomingDir = path.join(quarantineDir, skillName);
@@ -184,12 +213,70 @@ export async function ingestSkill(params: {
   const skillPath = path.join(incomingDir, "SKILL.md");
   await fs.writeFile(skillPath, skillContent, "utf-8");
 
-  // Write full envelope for review
+  // Write full envelope plus the scan result so the operator review UX can
+  // show why this skill was held even if policy was `auto`.
   const envelopePath = path.join(incomingDir, ".envelope.json");
-  await fs.writeFile(envelopePath, JSON.stringify(envelope, null, 2), "utf-8");
+  await fs.writeFile(
+    envelopePath,
+    JSON.stringify(
+      {
+        ...envelope,
+        injection_scan: scanResult ?? undefined,
+        force_quarantined: forceQuarantine,
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
 
-  log.info(`Quarantined skill: ${skillName} from ${envelope.author_peer_id}`);
+  // Reputation: a force-quarantine on a previously-trusted peer is the loud
+  // signal we want to feed back into trust. Counts as a rejected ingestion.
+  if (forceQuarantine) {
+    params.reputationManager?.recordIngestionResult(envelope.author_pubkey, false);
+  }
+
+  // Notify the operator. Quarantined skills are invisible without this.
+  const reason = forceQuarantine
+    ? `injection scan ${scanResult?.severity} (${scanResult?.flags.join(", ") ?? "none"})`
+    : scanResult?.severity === "medium" || scanResult?.severity === "low"
+      ? `injection scan ${scanResult.severity}; trust=${trustLevel}`
+      : `trust=${trustLevel}`;
+  const notification =
+    `Skill "${skillName}" from peer ${envelope.author_peer_id} held in quarantine ` +
+    `(${reason}). Run "skills.quarantine.list" to review.`;
+  if (params.notifyQuarantine) {
+    try {
+      params.notifyQuarantine(notification);
+    } catch {
+      // Best-effort
+    }
+  } else {
+    await emitQuarantineSystemEvent(notification);
+  }
+
+  log.info(`Quarantined skill: ${skillName} from ${envelope.author_peer_id} (${reason})`);
   return { ok: true, action: "quarantined", skillName, skillPath };
+}
+
+/**
+ * Best-effort dispatch of a quarantine notification onto the main session's
+ * system-event queue. We resolve the dependencies dynamically because the
+ * reputation/system-events surface is gateway-runtime; tests typically pass
+ * `notifyQuarantine` directly to skip this path.
+ */
+async function emitQuarantineSystemEvent(message: string): Promise<void> {
+  try {
+    const [{ enqueueSystemEvent }, { resolveMainSessionKeyFromConfig }] = await Promise.all([
+      import("../../infra/system-events.js"),
+      import("../../config/sessions.js"),
+    ]);
+    const sessionKey = resolveMainSessionKeyFromConfig();
+    if (!sessionKey) return;
+    enqueueSystemEvent(message, { sessionKey });
+  } catch (err) {
+    log.debug(`quarantine notification skipped: ${String(err)}`);
+  }
 }
 
 export async function acceptIncomingSkill(params: {

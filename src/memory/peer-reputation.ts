@@ -130,6 +130,49 @@ export class PeerReputationManager {
   }
 
   /**
+   * PLAN-13 Phase A: record an injection-scan hit on an inbound skill.
+   *
+   * - `low` / `medium` push the trust edge negative without a hard penalty;
+   *   a peer who occasionally trips a low-weight pattern (false positives
+   *   from legitimate prose) shouldn't catastrophically lose reputation.
+   * - `critical` is the loud signal. Drops the edge to 0 and counts toward
+   *   the auto-ban rule below.
+   *
+   * Auto-ban: 3+ critical hits from the same pubkey within 24h trip the ban
+   * flag. This is the first auto-ban path in the system; manual ban via
+   * `banPeer` continues to work as before.
+   */
+  recordInjectionFlag(peerPubkey: string, severity: "low" | "medium" | "critical"): void {
+    this.logActivity(peerPubkey, `injection_flag:${severity}`);
+
+    const weight = severity === "critical" ? 0.0 : severity === "medium" ? 0.2 : 0.4;
+    this.recordTrustEdge("local", peerPubkey, weight);
+
+    if (severity !== "critical") {
+      return;
+    }
+
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    let count = 0;
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT COUNT(*) as c FROM peer_activity_log
+           WHERE peer_pubkey = ? AND event_type = 'injection_flag:critical' AND timestamp > ?`,
+        )
+        .get(peerPubkey, cutoff) as { c: number } | undefined;
+      count = Number(row?.c ?? 0);
+    } catch {
+      // Activity log may not exist on a fresh DB; treat as 0.
+    }
+
+    if (count >= 3) {
+      this.banPeer(peerPubkey);
+      log.warn(`peer auto-banned: ${peerPubkey} after ${count} critical injection flags in 24h`);
+    }
+  }
+
+  /**
    * Update peer quality scores based on execution data for this peer's skills.
    */
   updatePeerQuality(peerPubkey: string): void {

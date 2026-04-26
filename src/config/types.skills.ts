@@ -31,6 +31,13 @@ export type SkillsP2pConfig = {
   quarantineDir?: string;
   /** Maximum skills ingested per hour. Default: 20. */
   maxIngestedPerHour?: number;
+  /**
+   * PLAN-13 Phase A: prompt-injection scanner mode for inbound skill content.
+   * - "regex" (default): rule-based scan; force-quarantines on critical hits.
+   * - "off": skip scanning (not recommended; transport-layer crypto only).
+   * The "classifier" mode is reserved for Phase C.
+   */
+  injectionScanner?: "regex" | "off";
 };
 
 export type SkillsAgentskillsConfig = {
