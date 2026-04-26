@@ -26,6 +26,7 @@ import { defaultRuntime } from "../runtime.js";
 import { note } from "../terminal/note.js";
 import { stylePromptTitle } from "../terminal/prompt-style.js";
 import { shortenHomePath } from "../utils.js";
+import { runAgentRuntimeChecks } from "./doctor-agent-runtime.js";
 import {
   maybeRemoveDeprecatedCliAuthProfiles,
   maybeRepairAnthropicOAuthProfileId,
@@ -286,6 +287,9 @@ export async function doctorCommand(
 
   // ── Skills (P2P ingest policy, quarantine dir, trust list for auto-accept) ──
   runSkillsChecks({ config: cfg });
+
+  // ── Agent runtime observability (today's considerations log, in-memory state hints) ──
+  await runAgentRuntimeChecks();
 
   // ── Biological Memory Architecture ──
   {
