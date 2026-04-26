@@ -45,6 +45,10 @@ import {
   wrapToolParamNormalization,
 } from "./pi-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
+import {
+  type EnforcerContext,
+  wrapToolsWithCapabilityEnforcer,
+} from "./skills/capability-enforcer.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
 import { ToolCache } from "./tool-cache.js";
 import {
@@ -189,6 +193,13 @@ export function createBitterbotCodingTools(options?: {
   senderIsOwner?: boolean;
   /** Optional tool cache instance for caching cacheable tool results. */
   toolCache?: ToolCache;
+  /**
+   * PLAN-13 Phase B.5: per-turn capability enforcer context. When provided,
+   * sensitive tool calls (wallet, shell, process, off-list network) are
+   * checked against the union profile of active P2P skills. Absent =
+   * enforcer is not applied (today's behavior).
+   */
+  capabilityEnforcer?: EnforcerContext;
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
@@ -459,9 +470,15 @@ export function createBitterbotCodingTools(options?: {
       sessionKey: options?.sessionKey,
     }),
   );
+  // PLAN-13 Phase B.5: capability enforcer. Wraps each tool with a check
+  // that refuses sensitive calls (wallet/shell/process/network) when no
+  // active P2P skill profile permits them. No-op when the option is
+  // absent; preserves the agent's baseline behavior when no P2P skills
+  // are loaded (the enforcer's activeP2PProfiles getter returns []).
+  const withEnforcer = wrapToolsWithCapabilityEnforcer(withHooks, options?.capabilityEnforcer);
   const withAbort = options?.abortSignal
-    ? withHooks.map((tool) => wrapToolWithAbortSignal(tool, options.abortSignal))
-    : withHooks;
+    ? withEnforcer.map((tool) => wrapToolWithAbortSignal(tool, options.abortSignal))
+    : withEnforcer;
 
   // Wrap cacheable tools with the in-memory LRU cache.
   const withCache = options?.toolCache
