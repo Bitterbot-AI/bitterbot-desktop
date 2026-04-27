@@ -75,6 +75,13 @@ async function queryLiveStats(
   connectedPeers?: number;
   meshPeers?: number;
   subscribedTopics?: string[];
+  peakConcurrentPeers?: number;
+  lifetimeUniquePeerIds?: number;
+  routingTableSize?: number;
+  natStatus?: string;
+  timeToFirstPeerMs?: number | null;
+  skillLatencyP50Ms?: number | null;
+  skillLatencyP95Ms?: number | null;
   error?: string;
 }> {
   const url = `http://${httpAddr}/api/stats`;
@@ -91,6 +98,21 @@ async function queryLiveStats(
       subscribedTopics: Array.isArray(data.subscribed_topics)
         ? (data.subscribed_topics.filter((t) => typeof t === "string") as string[])
         : undefined,
+      peakConcurrentPeers:
+        typeof data.peak_concurrent_peers === "number" ? data.peak_concurrent_peers : undefined,
+      lifetimeUniquePeerIds:
+        typeof data.lifetime_unique_peer_ids === "number"
+          ? data.lifetime_unique_peer_ids
+          : undefined,
+      routingTableSize:
+        typeof data.routing_table_size === "number" ? data.routing_table_size : undefined,
+      natStatus: typeof data.nat_status === "string" ? data.nat_status : undefined,
+      timeToFirstPeerMs:
+        typeof data.time_to_first_peer_ms === "number" ? data.time_to_first_peer_ms : null,
+      skillLatencyP50Ms:
+        typeof data.skill_latency_p50_ms === "number" ? data.skill_latency_p50_ms : null,
+      skillLatencyP95Ms:
+        typeof data.skill_latency_p95_ms === "number" ? data.skill_latency_p95_ms : null,
     };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
@@ -240,6 +262,26 @@ export async function runP2pNetworkChecks(params: {
       }
       if (stats.subscribedTopics && stats.subscribedTopics.length > 0) {
         results.push(info(`Subscribed topics: ${stats.subscribedTopics.length}`));
+      }
+      if (typeof stats.peakConcurrentPeers === "number") {
+        results.push(info(`Peak concurrent peers (this session): ${stats.peakConcurrentPeers}`));
+      }
+      if (typeof stats.lifetimeUniquePeerIds === "number") {
+        results.push(info(`Distinct peer IDs seen this session: ${stats.lifetimeUniquePeerIds}`));
+      }
+      if (typeof stats.routingTableSize === "number" && stats.routingTableSize > 0) {
+        results.push(info(`Kademlia routing table size: ${stats.routingTableSize}`));
+      }
+      if (stats.natStatus && stats.natStatus !== "unknown") {
+        results.push(info(`NAT status: ${stats.natStatus}`));
+      }
+      if (typeof stats.timeToFirstPeerMs === "number") {
+        results.push(info(`Time to first peer: ${stats.timeToFirstPeerMs}ms`));
+      }
+      if (typeof stats.skillLatencyP50Ms === "number") {
+        const p95 =
+          typeof stats.skillLatencyP95Ms === "number" ? `, p95 ${stats.skillLatencyP95Ms}ms` : "";
+        results.push(info(`Skill propagation latency: p50 ${stats.skillLatencyP50Ms}ms${p95}`));
       }
     }
   } else {

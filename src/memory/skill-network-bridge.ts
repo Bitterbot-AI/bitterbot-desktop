@@ -71,6 +71,41 @@ export class SkillNetworkBridge {
   }
 
   /**
+   * Record a peer-identified observation against the local reputation table.
+   *
+   * Drives the lifetime-unique-peer count: every successful libp2p identify
+   * upserts a peer_reputation row with first_seen_at/last_seen_at, even when
+   * the peer never publishes a skill. `SELECT COUNT(*) FROM peer_reputation`
+   * is therefore the authoritative local "peers ever seen" number.
+   */
+  recordPeerSeen(peerPubkey: string, peerId: string): void {
+    if (!this.peerReputation || !peerPubkey) {
+      return;
+    }
+    try {
+      this.peerReputation.recordPeerSeen(peerPubkey, peerId);
+    } catch (err) {
+      log.debug(`recordPeerSeen failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Aggregate peer-network metrics for `/skills.network`. Returns null when
+   * no reputation manager is wired (e.g. during early startup).
+   */
+  getNetworkMetrics(): ReturnType<PeerReputationManager["getNetworkMetrics"]> | null {
+    if (!this.peerReputation) {
+      return null;
+    }
+    try {
+      return this.peerReputation.getNetworkMetrics();
+    } catch (err) {
+      log.debug(`getNetworkMetrics failed: ${String(err)}`);
+      return null;
+    }
+  }
+
+  /**
    * Wire or replace the orchestrator bridge after construction.
    * Useful when the P2P bridge starts after the memory subsystem.
    */

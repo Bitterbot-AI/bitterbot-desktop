@@ -1,4 +1,4 @@
-use crate::swarm::SharedStats;
+use crate::swarm::{SharedBootnodeRegistry, SharedStats};
 use axum::{
     extract::{ConnectInfo, Request, State},
     middleware::{self, Next},
@@ -49,6 +49,7 @@ struct AppState {
     stats: SharedStats,
     auth_token: Option<String>,
     rate_limiter: Arc<Mutex<HttpRateLimiter>>,
+    bootnode_registry: SharedBootnodeRegistry,
 }
 
 #[derive(Serialize)]
@@ -76,6 +77,27 @@ struct StatsResponse {
     mesh_peers_count: usize,
     subscribed_topics: Vec<String>,
     listen_addrs: Vec<String>,
+    // Tier 1 + Tier 3 metrics surfaced for dashboards / doctor-p2p / clients.
+    peak_concurrent_peers: usize,
+    lifetime_unique_peer_ids: u64,
+    peers_joined_total: u64,
+    peers_left_total: u64,
+    joins_per_minute: Vec<(u64, u32)>,
+    leaves_per_minute: Vec<(u64, u32)>,
+    mesh_peers_per_topic: HashMap<String, usize>,
+    routing_table_size: usize,
+    time_to_first_peer_ms: Option<u64>,
+    address_types: HashMap<String, usize>,
+    relay_reservations_accepted: u64,
+    relay_circuits_established: u64,
+    hole_punches_succeeded: u64,
+    hole_punches_failed: u64,
+    nat_status: String,
+    bytes_received_per_topic: HashMap<String, u64>,
+    bytes_published_per_topic: HashMap<String, u64>,
+    skill_latency_p50_ms: Option<u64>,
+    skill_latency_p95_ms: Option<u64>,
+    skill_latency_samples: usize,
 }
 
 #[derive(Serialize)]
@@ -176,7 +198,39 @@ async fn get_stats(State(state): State<AppState>) -> Json<StatsResponse> {
         mesh_peers_count: stats.mesh_peers_count,
         subscribed_topics: stats.subscribed_topics.clone(),
         listen_addrs: stats.listen_addrs.clone(),
+        peak_concurrent_peers: stats.peak_concurrent_peers,
+        lifetime_unique_peer_ids: stats.lifetime_unique_peer_ids,
+        peers_joined_total: stats.peers_joined_total,
+        peers_left_total: stats.peers_left_total,
+        joins_per_minute: stats.joins_per_minute.clone(),
+        leaves_per_minute: stats.leaves_per_minute.clone(),
+        mesh_peers_per_topic: stats.mesh_peers_per_topic.clone(),
+        routing_table_size: stats.routing_table_size,
+        time_to_first_peer_ms: stats.time_to_first_peer_ms,
+        address_types: stats.address_types.clone(),
+        relay_reservations_accepted: stats.relay_reservations_accepted,
+        relay_circuits_established: stats.relay_circuits_established,
+        hole_punches_succeeded: stats.hole_punches_succeeded,
+        hole_punches_failed: stats.hole_punches_failed,
+        nat_status: stats.nat_status.clone(),
+        bytes_received_per_topic: stats.bytes_received_per_topic.clone(),
+        bytes_published_per_topic: stats.bytes_published_per_topic.clone(),
+        skill_latency_p50_ms: stats.skill_latency_p50_ms,
+        skill_latency_p95_ms: stats.skill_latency_p95_ms,
+        skill_latency_samples: stats.skill_latency_samples,
     })
+}
+
+async fn get_bootstrap_census(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let registry = state
+        .bootnode_registry
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    Json(registry.census(now_secs))
 }
 
 async fn get_contributions(State(state): State<AppState>) -> Json<ContributionsResponse> {
@@ -278,12 +332,14 @@ pub async fn serve_http(
     addr: &str,
     stats: SharedStats,
     auth_token: Option<String>,
+    bootnode_registry: SharedBootnodeRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let has_auth = auth_token.is_some();
     let state = AppState {
         stats,
         auth_token,
         rate_limiter: Arc::new(Mutex::new(HttpRateLimiter::new())),
+        bootnode_registry,
     };
 
     // CORS: only allow localhost origins when auth is required.
@@ -307,6 +363,7 @@ pub async fn serve_http(
         .route("/api/contributions", get(get_contributions))
         .route("/api/network", get(get_network))
         .route("/api/leaderboard", get(get_leaderboard))
+        .route("/api/bootstrap/census", get(get_bootstrap_census))
         .route("/events", get(events))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .layer(cors)

@@ -191,11 +191,19 @@ export const skillsHandlers: GatewayRequestHandlers = {
     const cfg = loadConfig();
     const p2p = cfg.p2p;
     let stats = null;
+    let bootstrapCensus = null;
     if (context.orchestratorBridge) {
       try {
         stats = await context.orchestratorBridge.getStats();
       } catch {}
+      try {
+        bootstrapCensus = await context.orchestratorBridge.getBootstrapCensus();
+      } catch {}
     }
+    // Local lifetime metrics from the SQLite peer_reputation table — these
+    // are independent of the live swarm: they survive restarts and capture
+    // every peer the node has ever met.
+    const localMetrics = context.skillNetworkBridge?.getNetworkMetrics?.() ?? null;
     respond(
       true,
       {
@@ -203,6 +211,8 @@ export const skillsHandlers: GatewayRequestHandlers = {
         topics: p2p?.topics ?? {},
         security: p2p?.security ?? {},
         stats,
+        localMetrics,
+        bootstrapCensus,
       },
       undefined,
     );

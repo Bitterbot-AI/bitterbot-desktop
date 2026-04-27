@@ -4,18 +4,29 @@ import { ContributionCard } from "./ContributionCard";
 import { PeerMap } from "./PeerMap";
 
 export function P2pDashboard() {
-  const { stats, contributions, connected, loading, error, fetchStats, fetchContributions } =
-    useP2pStore();
+  const {
+    stats,
+    contributions,
+    connected,
+    loading,
+    error,
+    bootstrapCensus,
+    fetchStats,
+    fetchContributions,
+    fetchBootstrapCensus,
+  } = useP2pStore();
 
   useEffect(() => {
     fetchStats();
     fetchContributions();
+    fetchBootstrapCensus();
     const interval = setInterval(() => {
       fetchStats();
       fetchContributions();
+      fetchBootstrapCensus();
     }, 30_000);
     return () => clearInterval(interval);
-  }, [fetchStats, fetchContributions]);
+  }, [fetchStats, fetchContributions, fetchBootstrapCensus]);
 
   return (
     <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto">
@@ -74,6 +85,30 @@ export function P2pDashboard() {
           value={contributions?.score?.toFixed(1) ?? "0.0"}
           icon="trophy"
         />
+      </div>
+
+      {/* Network-wide and lifetime metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <ContributionCard
+          title={bootstrapCensus?.enabled ? "Network Peers (lifetime)" : "Peer IDs (this session)"}
+          value={
+            bootstrapCensus?.enabled
+              ? bootstrapCensus.lifetime_unique_peers
+              : (stats?.lifetime_unique_peer_ids ?? 0)
+          }
+          icon="users"
+        />
+        <ContributionCard
+          title="Peak Concurrent Peers"
+          value={stats?.peak_concurrent_peers ?? 0}
+          icon="users"
+        />
+        <ContributionCard
+          title="Routing Table Size"
+          value={stats?.routing_table_size ?? 0}
+          icon="users"
+        />
+        <ContributionCard title="NAT Status" value={stats?.nat_status ?? "unknown"} icon="users" />
       </div>
 
       {/* Uptime & Peer Info */}

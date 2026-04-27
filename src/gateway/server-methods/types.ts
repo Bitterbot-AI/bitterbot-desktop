@@ -3,6 +3,7 @@ import type { createDefaultDeps } from "../../cli/deps.js";
 import type { HealthSummary } from "../../commands/health.js";
 import type { OrchestratorBridge } from "../../infra/orchestrator-bridge.js";
 import type { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { SkillNetworkBridge } from "../../memory/skill-network-bridge.js";
 import type { WizardSession } from "../../wizard/session.js";
 import type { ChatAbortControllerEntry } from "../chat-abort.js";
 import type { ExecApprovalManager } from "../exec-approval-manager.js";
@@ -82,6 +83,7 @@ export type GatewayRequestContext = {
   ) => Promise<void>;
   broadcastVoiceWakeChanged: (triggers: string[]) => void;
   orchestratorBridge?: OrchestratorBridge;
+  skillNetworkBridge?: SkillNetworkBridge | null;
 };
 
 export type GatewayRequestOptions = {

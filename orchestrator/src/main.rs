@@ -65,6 +65,17 @@ struct Args {
     /// Format: /ip4/1.2.3.4/tcp/9100/p2p/12D3KooW...
     #[arg(long)]
     relay_servers: Vec<String>,
+
+    /// Bootnode mode: persist a lifetime registry of every distinct peer
+    /// observed. Required for /api/bootstrap/census. Off by default; turn it
+    /// on for the metro/Railway bootnode and other public bootstrap servers.
+    #[arg(long, env = "BITTERBOT_BOOTNODE_MODE")]
+    bootnode_mode: bool,
+
+    /// Path to the bootnode registry snapshot file. Defaults to
+    /// `<key_dir>/bootnode-peers.json`. Only used when --bootnode-mode is on.
+    #[arg(long, env = "BITTERBOT_BOOTNODE_STATE")]
+    bootnode_state: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -153,6 +164,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // Resolve bootnode state path if bootnode mode is on. Default to
+    // `<key_dir>/bootnode-peers.json` so it lands next to the keypair.
+    let bootnode_state_path = if args.bootnode_mode {
+        let path = args
+            .bootnode_state
+            .clone()
+            .unwrap_or_else(|| args.key_dir.join("bootnode-peers.json"));
+        info!("Bootnode mode enabled, registry: {:?}", path);
+        Some(path)
+    } else {
+        None
+    };
+
     // Build and start the libp2p swarm
     let (mut swarm_handle, ipc_event_rx) =
         swarm::build_swarm(
@@ -163,6 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             genesis_trust_list,
             relay_mode,
             &args.relay_servers,
+            bootnode_state_path,
         ).await?;
 
     // Start IPC listener — pass the swarm event channel so events are pushed
@@ -171,10 +196,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start HTTP API for dashboard
     let stats = swarm_handle.stats();
+    let bootnode_registry = swarm_handle.bootnode_registry();
     let http_addr = args.http_addr.clone();
     let http_auth_token = args.http_auth_token.clone();
     tokio::spawn(async move {
-        if let Err(e) = crate::swarm::http::serve_http(&http_addr, stats, http_auth_token).await {
+        if let Err(e) = crate::swarm::http::serve_http(
+            &http_addr,
+            stats,
+            http_auth_token,
+            bootnode_registry,
+        )
+        .await
+        {
             tracing::error!("HTTP API error: {}", e);
         }
     });

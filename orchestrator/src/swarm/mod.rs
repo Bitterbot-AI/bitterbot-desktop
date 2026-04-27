@@ -16,7 +16,8 @@ use libp2p::{
     swarm::behaviour::toggle::Toggle,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -136,6 +137,67 @@ pub struct SwarmStats {
     // Gossipsub mesh health
     pub mesh_peers_count: usize,
     pub subscribed_topics: Vec<String>,
+    /// Peak concurrent peer count seen this session (replaces the misleading
+    /// `total_peers_seen` from earlier management-state code).
+    #[serde(default)]
+    pub peak_concurrent_peers: usize,
+    /// Distinct peer IDs encountered this session (set cardinality, not count
+    /// of connection events). Persists across reconnects of the same peer.
+    #[serde(default)]
+    pub lifetime_unique_peer_ids: u64,
+    /// Cumulative peer-join events since process start.
+    #[serde(default)]
+    pub peers_joined_total: u64,
+    /// Cumulative peer-leave events since process start.
+    #[serde(default)]
+    pub peers_left_total: u64,
+    /// Rolling per-minute join history (timestamp_secs, count). Capped at 60.
+    #[serde(default)]
+    pub joins_per_minute: Vec<(u64, u32)>,
+    /// Rolling per-minute leave history (timestamp_secs, count). Capped at 60.
+    #[serde(default)]
+    pub leaves_per_minute: Vec<(u64, u32)>,
+    /// Per-topic gossipsub mesh size.
+    #[serde(default)]
+    pub mesh_peers_per_topic: HashMap<String, usize>,
+    /// Approximate Kademlia routing table size (sum of all k-bucket entries).
+    #[serde(default)]
+    pub routing_table_size: usize,
+    /// Milliseconds from process start to the first established peer connection.
+    #[serde(default)]
+    pub time_to_first_peer_ms: Option<u64>,
+    /// Distribution of peer-address types: ipv4_public, ipv4_private, ipv6, relay, other.
+    #[serde(default)]
+    pub address_types: HashMap<String, usize>,
+    // ── Relay/NAT counters ────────────────────────────────────────────
+    #[serde(default)]
+    pub relay_reservations_accepted: u64,
+    #[serde(default)]
+    pub relay_circuits_established: u64,
+    #[serde(default)]
+    pub hole_punches_succeeded: u64,
+    #[serde(default)]
+    pub hole_punches_failed: u64,
+    /// Latest AutoNAT verdict: "unknown", "public", or "private".
+    #[serde(default)]
+    pub nat_status: String,
+    // ── Bandwidth (gossipsub) ─────────────────────────────────────────
+    /// Bytes received per gossipsub topic.
+    #[serde(default)]
+    pub bytes_received_per_topic: HashMap<String, u64>,
+    /// Bytes published per gossipsub topic.
+    #[serde(default)]
+    pub bytes_published_per_topic: HashMap<String, u64>,
+    // ── Skill propagation latency (rolling p50/p95) ───────────────────
+    /// Median observed receive latency (ms), based on envelope.timestamp.
+    #[serde(default)]
+    pub skill_latency_p50_ms: Option<u64>,
+    /// 95th-percentile observed receive latency (ms).
+    #[serde(default)]
+    pub skill_latency_p95_ms: Option<u64>,
+    /// Number of latency samples in the rolling window.
+    #[serde(default)]
+    pub skill_latency_samples: usize,
 }
 
 pub type SharedStats = Arc<Mutex<SwarmStats>>;
@@ -210,6 +272,219 @@ pub struct AnomalyAlert {
 }
 
 pub type SharedManagementState = Arc<Mutex<ManagementState>>;
+
+// ── Bootnode Census Registry (Tier 2) ─────────────────────────────────────
+
+/// Per-peer record kept by a bootnode. Keyed on author_pubkey (base64) so it
+/// survives PeerId churn across reinstalls or transport changes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BootnodePeerRecord {
+    pub peer_pubkey: String,
+    pub last_peer_id: String,
+    pub first_seen_at: u64,
+    pub last_seen_at: u64,
+    pub tier: String,
+    pub address_type: String,
+    pub connection_count: u64,
+}
+
+/// Persistent registry of every distinct peer a bootnode has ever observed.
+///
+/// Backing store: a single JSON snapshot file rewritten on every flush. For
+/// the metro-scale fleet we expect (thousands of peers, not millions) this is
+/// trivially fast and sidesteps adding a SQLite dependency to the orchestrator.
+#[derive(Debug)]
+pub struct BootnodeRegistry {
+    enabled: bool,
+    state_path: Option<PathBuf>,
+    /// Pubkey-keyed (the canonical, persistent identity) lifetime registry.
+    peers: HashMap<String, BootnodePeerRecord>,
+    /// Marks the registry dirty so the periodic flush actually writes.
+    dirty: bool,
+}
+
+impl BootnodeRegistry {
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            state_path: None,
+            peers: HashMap::new(),
+            dirty: false,
+        }
+    }
+
+    pub fn load(state_path: PathBuf) -> Self {
+        let peers: HashMap<String, BootnodePeerRecord> = match std::fs::read(&state_path) {
+            Ok(bytes) => match serde_json::from_slice::<Vec<BootnodePeerRecord>>(&bytes) {
+                Ok(records) => {
+                    let mut m = HashMap::with_capacity(records.len());
+                    for r in records {
+                        m.insert(r.peer_pubkey.clone(), r);
+                    }
+                    info!("Bootnode registry loaded: {} peers from {:?}", m.len(), state_path);
+                    m
+                }
+                Err(e) => {
+                    warn!("Bootnode registry parse failed ({}); starting empty", e);
+                    HashMap::new()
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                info!("Bootnode registry file does not exist yet; starting empty");
+                HashMap::new()
+            }
+            Err(e) => {
+                warn!("Bootnode registry read error ({}); starting empty", e);
+                HashMap::new()
+            }
+        };
+
+        Self {
+            enabled: true,
+            state_path: Some(state_path),
+            peers,
+            dirty: false,
+        }
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn lifetime_unique(&self) -> usize {
+        self.peers.len()
+    }
+
+    pub fn record_seen(
+        &mut self,
+        peer_pubkey: &str,
+        peer_id: &str,
+        tier: &str,
+        address_type: &str,
+        now_secs: u64,
+    ) {
+        if !self.enabled || peer_pubkey.is_empty() {
+            return;
+        }
+        let entry = self
+            .peers
+            .entry(peer_pubkey.to_string())
+            .or_insert_with(|| BootnodePeerRecord {
+                peer_pubkey: peer_pubkey.to_string(),
+                last_peer_id: peer_id.to_string(),
+                first_seen_at: now_secs,
+                last_seen_at: now_secs,
+                tier: tier.to_string(),
+                address_type: address_type.to_string(),
+                connection_count: 0,
+            });
+        entry.last_peer_id = peer_id.to_string();
+        entry.last_seen_at = now_secs;
+        if !tier.is_empty() {
+            entry.tier = tier.to_string();
+        }
+        if !address_type.is_empty() {
+            entry.address_type = address_type.to_string();
+        }
+        entry.connection_count = entry.connection_count.saturating_add(1);
+        self.dirty = true;
+    }
+
+    pub fn flush_if_dirty(&mut self) {
+        if !self.enabled || !self.dirty {
+            return;
+        }
+        let Some(ref path) = self.state_path else { return };
+        let records: Vec<&BootnodePeerRecord> = self.peers.values().collect();
+        match serde_json::to_vec(&records) {
+            Ok(bytes) => {
+                let tmp_path = path.with_extension("tmp");
+                if let Err(e) = std::fs::write(&tmp_path, &bytes) {
+                    warn!("Bootnode registry write failed ({:?}): {}", tmp_path, e);
+                    return;
+                }
+                if let Err(e) = std::fs::rename(&tmp_path, path) {
+                    warn!("Bootnode registry rename failed ({:?} -> {:?}): {}", tmp_path, path, e);
+                    return;
+                }
+                self.dirty = false;
+            }
+            Err(e) => warn!("Bootnode registry serialize failed: {}", e),
+        }
+    }
+
+    /// Return aggregated census suitable for /api/bootstrap/census.
+    pub fn census(&self, now_secs: u64) -> serde_json::Value {
+        let day = 24 * 3600u64;
+        let week = 7 * day;
+        let mut by_tier: HashMap<String, usize> = HashMap::new();
+        let mut by_address_type: HashMap<String, usize> = HashMap::new();
+        let mut active_24h = 0usize;
+        let mut active_7d = 0usize;
+        for record in self.peers.values() {
+            let tier_label = if record.tier.is_empty() { "unknown" } else { record.tier.as_str() };
+            *by_tier.entry(tier_label.to_string()).or_insert(0) += 1;
+            let addr_label = if record.address_type.is_empty() {
+                "unknown"
+            } else {
+                record.address_type.as_str()
+            };
+            *by_address_type.entry(addr_label.to_string()).or_insert(0) += 1;
+            if now_secs.saturating_sub(record.last_seen_at) <= day {
+                active_24h += 1;
+            }
+            if now_secs.saturating_sub(record.last_seen_at) <= week {
+                active_7d += 1;
+            }
+        }
+        serde_json::json!({
+            "enabled": self.enabled,
+            "lifetime_unique_peers": self.peers.len(),
+            "active_last_24h": active_24h,
+            "active_last_7d": active_7d,
+            "by_tier": by_tier,
+            "by_address_type": by_address_type,
+            "generated_at": now_secs,
+        })
+    }
+}
+
+pub type SharedBootnodeRegistry = Arc<Mutex<BootnodeRegistry>>;
+
+/// Categorize a multiaddr into a coarse address-type bucket suitable for
+/// dashboards: ipv4_public, ipv4_private, ipv6, relay, dns, other.
+pub fn classify_address(addr: &Multiaddr) -> &'static str {
+    use libp2p::multiaddr::Protocol;
+    let mut has_circuit = false;
+    let mut ip4: Option<std::net::Ipv4Addr> = None;
+    let mut has_ip6 = false;
+    let mut has_dns = false;
+    for proto in addr.iter() {
+        match proto {
+            Protocol::P2pCircuit => has_circuit = true,
+            Protocol::Ip4(a) => ip4 = Some(a),
+            Protocol::Ip6(_) => has_ip6 = true,
+            Protocol::Dns(_) | Protocol::Dns4(_) | Protocol::Dns6(_) => has_dns = true,
+            _ => {}
+        }
+    }
+    if has_circuit {
+        return "relay";
+    }
+    if let Some(ip) = ip4 {
+        if ip.is_loopback() || ip.is_private() || ip.is_link_local() {
+            return "ipv4_private";
+        }
+        return "ipv4_public";
+    }
+    if has_ip6 {
+        return "ipv6";
+    }
+    if has_dns {
+        return "dns";
+    }
+    "other"
+}
 
 impl ManagementState {
     pub fn new() -> Self {
@@ -293,7 +568,23 @@ pub struct SwarmHandle {
     has_relay_reservation: bool,
     /// Relay mode configuration.
     relay_mode: RelayMode,
+    /// Distinct PeerIds observed since process start. Cardinality lands in
+    /// `SwarmStats::lifetime_unique_peer_ids`.
+    lifetime_peer_ids: HashSet<String>,
+    /// Process start (wall-clock) used to derive time-to-first-peer.
+    started_at: std::time::Instant,
+    /// In-progress per-minute join/leave counters. Snapshotted to the rolling
+    /// histories every 60s and reset.
+    current_minute_start: u64,
+    current_minute_joins: u32,
+    current_minute_leaves: u32,
+    /// Rolling buffer of skill receive latencies (ms), capped at LATENCY_WINDOW.
+    latency_window_ms: std::collections::VecDeque<u64>,
+    /// Bootnode registry — only flushes to disk if enabled.
+    bootnode_registry: SharedBootnodeRegistry,
 }
+
+const LATENCY_WINDOW: usize = 256;
 
 impl SwarmHandle {
     pub fn stats(&self) -> SharedStats {
@@ -302,6 +593,10 @@ impl SwarmHandle {
 
     pub fn management_state(&self) -> Option<SharedManagementState> {
         self.management_state.as_ref().map(Arc::clone)
+    }
+
+    pub fn bootnode_registry(&self) -> SharedBootnodeRegistry {
+        Arc::clone(&self.bootnode_registry)
     }
 
     /// Send a JSON-line event to the IPC event stream (consumed by Node.js).
@@ -351,7 +646,11 @@ impl SwarmHandle {
             state.peer_count_history.drain(0..drain_count);
         }
 
-        state.total_peers_seen = state.total_peers_seen.max(stats.connected_peers as u64);
+        // `total_peers_seen` was historically a high-water mark of concurrent
+        // peers, which is misleading. Set it to the true lifetime unique count
+        // we now track. Anything reading the field gets a more honest answer;
+        // peak concurrent is still available via SwarmStats::peak_concurrent_peers.
+        state.total_peers_seen = stats.lifetime_unique_peer_ids;
         state.last_census_at = now;
 
         drop(state);
@@ -564,20 +863,108 @@ impl SwarmHandle {
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_secs(10)) => {
-                    // Update uptime and mesh stats periodically
-                    let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
-                    stats.uptime_secs = start.elapsed().as_secs();
-                    stats.mesh_peers_count = self.swarm
+                    // Snapshot per-minute churn buckets before locking stats, so we
+                    // never hold the swarm/stats locks at the same time.
+                    let now_secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+
+                    // Compute per-topic mesh fanout and routing-table size.
+                    let routing_table_size: usize = self
+                        .swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .kbuckets()
+                        .map(|bucket| bucket.iter().count())
+                        .sum();
+                    let mut mesh_per_topic: HashMap<String, usize> = HashMap::new();
+                    let topic_hashes: Vec<gossipsub::TopicHash> = self
+                        .swarm
+                        .behaviour()
+                        .gossipsub
+                        .topics()
+                        .cloned()
+                        .collect();
+                    for topic_hash in &topic_hashes {
+                        let count = self
+                            .swarm
+                            .behaviour()
+                            .gossipsub
+                            .mesh_peers(topic_hash)
+                            .count();
+                        mesh_per_topic.insert(topic_hash.to_string(), count);
+                    }
+                    let total_mesh = self
+                        .swarm
                         .behaviour()
                         .gossipsub
                         .all_mesh_peers()
                         .count();
-                    stats.subscribed_topics = self.swarm
-                        .behaviour()
-                        .gossipsub
-                        .topics()
+                    let subscribed: Vec<String> = topic_hashes
+                        .iter()
                         .map(|t| t.to_string())
                         .collect();
+
+                    // Compute latency p50/p95 from rolling buffer.
+                    let (p50, p95, samples) = if self.latency_window_ms.is_empty() {
+                        (None, None, 0)
+                    } else {
+                        let mut buf: Vec<u64> = self.latency_window_ms.iter().copied().collect();
+                        buf.sort_unstable();
+                        let n = buf.len();
+                        let p50_idx = n / 2;
+                        let p95_idx = ((n as f64) * 0.95) as usize;
+                        let p95_idx = p95_idx.min(n - 1);
+                        (Some(buf[p50_idx]), Some(buf[p95_idx]), n)
+                    };
+
+                    // Roll the per-minute churn bucket if a new minute has begun.
+                    let bucket_start = now_secs - (now_secs % 60);
+                    let mut take_joins: Option<u32> = None;
+                    let mut take_leaves: Option<u32> = None;
+                    let bucket_to_close = self.current_minute_start;
+                    if bucket_start != self.current_minute_start {
+                        take_joins = Some(self.current_minute_joins);
+                        take_leaves = Some(self.current_minute_leaves);
+                        self.current_minute_start = bucket_start;
+                        self.current_minute_joins = 0;
+                        self.current_minute_leaves = 0;
+                    }
+
+                    let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                    stats.uptime_secs = start.elapsed().as_secs();
+                    stats.mesh_peers_count = total_mesh;
+                    stats.subscribed_topics = subscribed;
+                    stats.mesh_peers_per_topic = mesh_per_topic;
+                    stats.routing_table_size = routing_table_size;
+                    stats.skill_latency_p50_ms = p50;
+                    stats.skill_latency_p95_ms = p95;
+                    stats.skill_latency_samples = samples;
+                    if let (Some(joins), Some(leaves)) = (take_joins, take_leaves) {
+                        stats.joins_per_minute.push((bucket_to_close, joins));
+                        stats.leaves_per_minute.push((bucket_to_close, leaves));
+                        // Cap each history to the last 60 minutes.
+                        let cap = 60;
+                        if stats.joins_per_minute.len() > cap {
+                            let drain = stats.joins_per_minute.len() - cap;
+                            stats.joins_per_minute.drain(0..drain);
+                        }
+                        if stats.leaves_per_minute.len() > cap {
+                            let drain = stats.leaves_per_minute.len() - cap;
+                            stats.leaves_per_minute.drain(0..drain);
+                        }
+                    }
+                    drop(stats);
+
+                    // Persist the bootnode registry — no-op if disabled.
+                    {
+                        let mut registry = self
+                            .bootnode_registry
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        registry.flush_if_dirty();
+                    }
                 }
                 _ = prune_interval.tick() => {
                     self.security.prune();
@@ -712,24 +1099,60 @@ impl SwarmHandle {
                 let parts: Vec<&str> = info.agent_version.split('/').collect();
                 let claimed_tier = parts.get(2).unwrap_or(&"edge").to_string();
                 let mut tier_verified = false;
-                let mut pubkey_b64 = String::new();
+                // Always extract the peer's Ed25519 pubkey from the identify
+                // payload so downstream lifetime-peer accounting can key on
+                // it (not just management peers — edge peers count too).
+                let pubkey_b64 = info
+                    .public_key
+                    .clone()
+                    .try_into_ed25519()
+                    .ok()
+                    .map(|pk| base64::engine::general_purpose::STANDARD.encode(pk.to_bytes()))
+                    .unwrap_or_default();
 
-                if claimed_tier == "management" {
-                    // Extract pubkey from identify's public key and check against trust list
-                    if let Some(libp2p_pk) = info.public_key.clone().try_into_ed25519().ok() {
-                        pubkey_b64 = base64::engine::general_purpose::STANDARD
-                            .encode(libp2p_pk.to_bytes());
-                        tier_verified = self.genesis_trust_list.contains(&pubkey_b64);
-                    }
+                if claimed_tier == "management" && !pubkey_b64.is_empty() {
+                    tier_verified = self.genesis_trust_list.contains(&pubkey_b64);
                 }
 
                 // Update PeerDetail with tier info
-                {
+                let address_type_label = {
                     let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
-                    if let Some(detail) = stats.peer_details.get_mut(&peer_id.to_string()) {
+                    let label = if let Some(detail) = stats.peer_details.get_mut(&peer_id.to_string()) {
                         detail.tier = claimed_tier.clone();
                         detail.tier_verified = tier_verified;
-                    }
+                        detail
+                            .addrs
+                            .iter()
+                            .find_map(|s| s.parse::<Multiaddr>().ok())
+                            .as_ref()
+                            .map(classify_address)
+                            .unwrap_or("other")
+                            .to_string()
+                    } else {
+                        "other".to_string()
+                    };
+                    label
+                };
+
+                // Bootnode-mode persistence: record this peer (keyed on
+                // authenticated pubkey) so we have a true lifetime census
+                // even after the peer disconnects.
+                if !pubkey_b64.is_empty() {
+                    let now_secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let mut registry = self
+                        .bootnode_registry
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    registry.record_seen(
+                        &pubkey_b64,
+                        &peer_id.to_string(),
+                        &claimed_tier,
+                        &address_type_label,
+                        now_secs,
+                    );
                 }
 
                 // Emit peer_identified IPC event
@@ -745,6 +1168,31 @@ impl SwarmHandle {
             }
             BitterbotBehaviourEvent::Autonat(event) => {
                 info!("AutoNAT event: {:?}", event);
+                // Best-effort NAT verdict: AutoNAT v2 client gives us a
+                // probe-result event whose Debug includes the reachability
+                // outcome. We don't have a stable matcher across libp2p
+                // patch releases, so we sniff the formatted string. This is
+                // intentionally lenient — wrong is better than panicking.
+                let event_text = format!("{:?}", event);
+                let nat_label = if event_text.contains("Reachable")
+                    || event_text.contains("reachable: true")
+                    || event_text.contains("Public")
+                {
+                    "public"
+                } else if event_text.contains("Unreachable") || event_text.contains("Private") {
+                    "private"
+                } else {
+                    "unknown"
+                };
+                if nat_label != "unknown" {
+                    self.nat_status = match nat_label {
+                        "public" => NatStatus::Public,
+                        "private" => NatStatus::Private,
+                        _ => NatStatus::Unknown,
+                    };
+                    let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                    stats.nat_status = nat_label.to_string();
+                }
                 // When AutoNAT detects we're behind NAT, initiate relay reservations
                 if self.relay_mode == RelayMode::Client {
                     if !self.has_relay_reservation && !self.relay_server_addrs.is_empty() {
@@ -758,6 +1206,11 @@ impl SwarmHandle {
                     relay::client::Event::ReservationReqAccepted { relay_peer_id, renewal, .. } => {
                         info!("Relay reservation accepted by {} (renewal: {})", relay_peer_id, renewal);
                         self.has_relay_reservation = true;
+                        {
+                            let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                            stats.relay_reservations_accepted =
+                                stats.relay_reservations_accepted.saturating_add(1);
+                        }
 
                         // Advertise relay address so other peers can reach us
                         let relay_addr: Multiaddr = format!(
@@ -778,6 +1231,11 @@ impl SwarmHandle {
                     // Reservation failures surface as transport errors or connection failures.
                     relay::client::Event::OutboundCircuitEstablished { relay_peer_id, .. } => {
                         info!("Outbound circuit via relay {} established", relay_peer_id);
+                        {
+                            let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                            stats.relay_circuits_established =
+                                stats.relay_circuits_established.saturating_add(1);
+                        }
                         self.emit_ipc_event(serde_json::json!({
                             "type": "relay_circuit_established",
                             "payload": {
@@ -788,6 +1246,11 @@ impl SwarmHandle {
                     }
                     relay::client::Event::InboundCircuitEstablished { src_peer_id, .. } => {
                         info!("Inbound circuit from {} established", src_peer_id);
+                        {
+                            let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                            stats.relay_circuits_established =
+                                stats.relay_circuits_established.saturating_add(1);
+                        }
                         self.emit_ipc_event(serde_json::json!({
                             "type": "relay_circuit_established",
                             "payload": {
@@ -823,6 +1286,11 @@ impl SwarmHandle {
                 match result {
                     Ok(_) => {
                         info!("DCUtR hole-punch succeeded with {}", remote_peer_id);
+                        {
+                            let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                            stats.hole_punches_succeeded =
+                                stats.hole_punches_succeeded.saturating_add(1);
+                        }
                         self.emit_ipc_event(serde_json::json!({
                             "type": "hole_punch_succeeded",
                             "payload": {
@@ -832,6 +1300,11 @@ impl SwarmHandle {
                     }
                     Err(ref e) => {
                         warn!("DCUtR hole-punch failed with {}: {:?}", remote_peer_id, e);
+                        {
+                            let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                            stats.hole_punches_failed =
+                                stats.hole_punches_failed.saturating_add(1);
+                        }
                         self.emit_ipc_event(serde_json::json!({
                             "type": "hole_punch_failed",
                             "payload": {
@@ -892,8 +1365,15 @@ impl SwarmHandle {
                                     .gossipsub
                                     .all_mesh_peers()
                                     .count();
+                                let bytes_published = serde_json::to_vec(&envelope)
+                                    .map(|v| v.len() as u64)
+                                    .unwrap_or(0);
                                 let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
                                 stats.skills_published += 1;
+                                *stats
+                                    .bytes_published_per_topic
+                                    .entry(SKILLS_TOPIC.to_string())
+                                    .or_insert(0) += bytes_published;
                                 let _ = respond.send(serde_json::json!({
                                     "type": "response",
                                     "id": id,
@@ -958,7 +1438,27 @@ impl SwarmHandle {
                         "uptime_secs": stats.uptime_secs,
                         "mesh_peers_count": stats.mesh_peers_count,
                         "subscribed_topics": stats.subscribed_topics,
-                        "listen_addrs": stats.listen_addrs
+                        "listen_addrs": stats.listen_addrs,
+                        "peak_concurrent_peers": stats.peak_concurrent_peers,
+                        "lifetime_unique_peer_ids": stats.lifetime_unique_peer_ids,
+                        "peers_joined_total": stats.peers_joined_total,
+                        "peers_left_total": stats.peers_left_total,
+                        "joins_per_minute": stats.joins_per_minute,
+                        "leaves_per_minute": stats.leaves_per_minute,
+                        "mesh_peers_per_topic": stats.mesh_peers_per_topic,
+                        "routing_table_size": stats.routing_table_size,
+                        "time_to_first_peer_ms": stats.time_to_first_peer_ms,
+                        "address_types": stats.address_types,
+                        "relay_reservations_accepted": stats.relay_reservations_accepted,
+                        "relay_circuits_established": stats.relay_circuits_established,
+                        "hole_punches_succeeded": stats.hole_punches_succeeded,
+                        "hole_punches_failed": stats.hole_punches_failed,
+                        "nat_status": stats.nat_status,
+                        "bytes_received_per_topic": stats.bytes_received_per_topic,
+                        "bytes_published_per_topic": stats.bytes_published_per_topic,
+                        "skill_latency_p50_ms": stats.skill_latency_p50_ms,
+                        "skill_latency_p95_ms": stats.skill_latency_p95_ms,
+                        "skill_latency_samples": stats.skill_latency_samples,
                     }
                 }));
             }
@@ -1252,6 +1752,8 @@ impl SwarmHandle {
                     serde_json::json!({
                         "ok": true,
                         "total_peers_seen": state.total_peers_seen,
+                        "lifetime_unique_peer_ids": stats.lifetime_unique_peer_ids,
+                        "peak_concurrent_peers": stats.peak_concurrent_peers,
                         "peers_by_tier": state.peers_by_tier,
                         "skills_published_network_wide": state.skills_published_network_wide,
                         "telemetry_counts_by_type": state.telemetry_counts_by_type,
@@ -1361,10 +1863,37 @@ impl SwarmHandle {
                 // Validate management signature (strips invalid claims but never rejects)
                 self.security.validate_management_signature(&mut envelope);
 
+                // Skill propagation latency sample. envelope.timestamp is in
+                // seconds (see crypto::sign_skill); we approximate ms latency
+                // as max(0, now_secs - envelope.timestamp) * 1000. Coarse but
+                // good enough for p50/p95 tracking.
+                let now_secs_for_latency = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let latency_ms = now_secs_for_latency
+                    .saturating_sub(envelope.timestamp)
+                    .saturating_mul(1000);
+                if self.latency_window_ms.len() == LATENCY_WINDOW {
+                    self.latency_window_ms.pop_front();
+                }
+                self.latency_window_ms.push_back(latency_ms);
+
+                // Approximate gossipsub byte volume for the skills topic. We
+                // re-serialize the envelope here for the sake of accuracy —
+                // this is the same shape the publisher emitted.
+                let approx_bytes = serde_json::to_vec(&envelope)
+                    .map(|v| v.len() as u64)
+                    .unwrap_or(0);
+
                 // Update per-peer skills_received_from counter
                 {
                     let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
                     stats.skills_received += 1;
+                    *stats
+                        .bytes_received_per_topic
+                        .entry(SKILLS_TOPIC.to_string())
+                        .or_insert(0) += approx_bytes;
                     if let Some(detail) = stats.peer_details.get_mut(&envelope.author_peer_id) {
                         detail.skills_received_from += 1;
                         // Diminishing reputation gain: logarithmic scaling, capped at 100
@@ -1515,9 +2044,28 @@ impl SwarmHandle {
             }
             SwarmEvent::PeerConnected(peer_id, addrs) => {
                 let addr_strings: Vec<String> = addrs.iter().map(|a| a.to_string()).collect();
+                let address_type = addrs
+                    .first()
+                    .map(classify_address)
+                    .unwrap_or("other")
+                    .to_string();
+                let is_new_lifetime = self.lifetime_peer_ids.insert(peer_id.to_string());
+                let elapsed_ms = self.started_at.elapsed().as_millis() as u64;
+                self.current_minute_joins = self.current_minute_joins.saturating_add(1);
                 {
                     let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
                     stats.connected_peers += 1;
+                    if stats.connected_peers > stats.peak_concurrent_peers {
+                        stats.peak_concurrent_peers = stats.connected_peers;
+                    }
+                    if is_new_lifetime {
+                        stats.lifetime_unique_peer_ids = self.lifetime_peer_ids.len() as u64;
+                    }
+                    stats.peers_joined_total = stats.peers_joined_total.saturating_add(1);
+                    if stats.time_to_first_peer_ms.is_none() {
+                        stats.time_to_first_peer_ms = Some(elapsed_ms);
+                    }
+                    *stats.address_types.entry(address_type.clone()).or_insert(0) += 1;
                     let detail = PeerDetail {
                         addrs: addr_strings.clone(),
                         connected_at: std::time::SystemTime::now()
@@ -1539,16 +2087,20 @@ impl SwarmHandle {
                     "type": "peer_connected",
                     "payload": {
                         "peer_id": peer_id.to_string(),
-                        "addrs": addr_strings
+                        "addrs": addr_strings,
+                        "address_type": address_type,
+                        "is_new_lifetime": is_new_lifetime,
                     }
                 }));
 
                 info!("Peer connected: {} ({:?})", peer_id, addrs);
             }
             SwarmEvent::PeerDisconnected(peer_id) => {
+                self.current_minute_leaves = self.current_minute_leaves.saturating_add(1);
                 {
                     let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
                     stats.connected_peers = stats.connected_peers.saturating_sub(1);
+                    stats.peers_left_total = stats.peers_left_total.saturating_add(1);
                     // Clear connection addrs but preserve reputation data
                     if let Some(detail) = stats.peer_details.get_mut(&peer_id.to_string()) {
                         detail.addrs.clear();
@@ -1701,6 +2253,7 @@ pub async fn build_swarm(
     genesis_trust_list: Vec<String>,
     relay_mode: RelayMode,
     relay_servers: &[String],
+    bootnode_state_path: Option<PathBuf>,
 ) -> Result<
     (
         SwarmHandle,
@@ -1960,6 +2513,26 @@ pub async fn build_swarm(
         listen_addrs: vec![listen_addr.to_string()],
         mesh_peers_count: 0,
         subscribed_topics: vec![SKILLS_TOPIC.to_string(), TELEMETRY_TOPIC.to_string(), WEATHER_TOPIC.to_string(), BOUNTIES_TOPIC.to_string(), QUERIES_TOPIC.to_string()],
+        peak_concurrent_peers: 0,
+        lifetime_unique_peer_ids: 0,
+        peers_joined_total: 0,
+        peers_left_total: 0,
+        joins_per_minute: Vec::new(),
+        leaves_per_minute: Vec::new(),
+        mesh_peers_per_topic: HashMap::new(),
+        routing_table_size: 0,
+        time_to_first_peer_ms: None,
+        address_types: HashMap::new(),
+        relay_reservations_accepted: 0,
+        relay_circuits_established: 0,
+        hole_punches_succeeded: 0,
+        hole_punches_failed: 0,
+        nat_status: "unknown".to_string(),
+        bytes_received_per_topic: HashMap::new(),
+        bytes_published_per_topic: HashMap::new(),
+        skill_latency_p50_ms: None,
+        skill_latency_p95_ms: None,
+        skill_latency_samples: 0,
     }));
 
     let management_state = if node_tier == "management" {
@@ -1985,6 +2558,16 @@ pub async fn build_swarm(
         vec![]
     };
 
+    let bootnode_registry = match bootnode_state_path {
+        Some(path) => Arc::new(Mutex::new(BootnodeRegistry::load(path))),
+        None => Arc::new(Mutex::new(BootnodeRegistry::disabled())),
+    };
+
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
     let handle = SwarmHandle {
         signing_key: keypair.clone(),
         local_peer_id,
@@ -2004,6 +2587,13 @@ pub async fn build_swarm(
         relay_server_addrs,
         has_relay_reservation: false,
         relay_mode,
+        lifetime_peer_ids: HashSet::new(),
+        started_at: std::time::Instant::now(),
+        current_minute_start: now_secs - (now_secs % 60),
+        current_minute_joins: 0,
+        current_minute_leaves: 0,
+        latency_window_ms: std::collections::VecDeque::with_capacity(LATENCY_WINDOW),
+        bootnode_registry,
     };
 
     info!(
@@ -2012,4 +2602,65 @@ pub async fn build_swarm(
     );
 
     Ok((handle, ipc_event_rx))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_address_categorizes_common_multiaddrs() {
+        let public: Multiaddr = "/ip4/8.8.8.8/tcp/9100".parse().unwrap();
+        assert_eq!(classify_address(&public), "ipv4_public");
+
+        let private: Multiaddr = "/ip4/192.168.1.10/tcp/9100".parse().unwrap();
+        assert_eq!(classify_address(&private), "ipv4_private");
+
+        let loopback: Multiaddr = "/ip4/127.0.0.1/tcp/9100".parse().unwrap();
+        assert_eq!(classify_address(&loopback), "ipv4_private");
+
+        let v6: Multiaddr = "/ip6/2001:db8::1/tcp/9100".parse().unwrap();
+        assert_eq!(classify_address(&v6), "ipv6");
+
+        let dns: Multiaddr = "/dns4/example.com/tcp/9100".parse().unwrap();
+        assert_eq!(classify_address(&dns), "dns");
+
+        let relay: Multiaddr =
+            "/ip4/8.8.8.8/tcp/9100/p2p/12D3KooWCwCCFMHCVv8eXZnAGMTUjTDPPePfYRTJ1fZvRpqcQXKt/p2p-circuit"
+                .parse()
+                .unwrap();
+        assert_eq!(classify_address(&relay), "relay");
+    }
+
+    #[test]
+    fn bootnode_registry_persists_and_aggregates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bootnode-peers.json");
+
+        let mut reg = BootnodeRegistry::load(path.clone());
+        let now = 1_700_000_000u64;
+        reg.record_seen("pubkey-A", "peer-1", "edge", "ipv4_public", now);
+        reg.record_seen("pubkey-B", "peer-2", "management", "ipv4_public", now);
+        reg.record_seen("pubkey-A", "peer-1", "edge", "ipv4_public", now + 60);
+        reg.flush_if_dirty();
+
+        // Reload from disk and assert the registry survives a process restart.
+        let reloaded = BootnodeRegistry::load(path);
+        assert_eq!(reloaded.lifetime_unique(), 2);
+        let census = reloaded.census(now + 120);
+        assert_eq!(census["lifetime_unique_peers"], 2);
+        assert_eq!(census["active_last_24h"], 2);
+        assert_eq!(census["by_tier"]["edge"], 1);
+        assert_eq!(census["by_tier"]["management"], 1);
+        assert_eq!(census["by_address_type"]["ipv4_public"], 2);
+    }
+
+    #[test]
+    fn bootnode_registry_disabled_no_op() {
+        let mut reg = BootnodeRegistry::disabled();
+        reg.record_seen("pubkey", "peer", "edge", "ipv4_public", 1_700_000_000);
+        reg.flush_if_dirty();
+        assert!(!reg.enabled());
+        assert_eq!(reg.lifetime_unique(), 0);
+    }
 }

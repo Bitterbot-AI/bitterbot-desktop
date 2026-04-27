@@ -280,6 +280,98 @@ export class PeerReputationManager {
   }
 
   /**
+   * Aggregate peer-network metrics computed from the local peer_reputation
+   * table. Surfaced via the `skills.network` gateway method so dashboards can
+   * answer "how many distinct peers have we ever seen" and "what does the
+   * reputation distribution look like" without scraping every row.
+   */
+  getNetworkMetrics(): {
+    lifetimePeerCount: number;
+    bannedPeerCount: number;
+    trustedPeerCount: number;
+    activeLast24h: number;
+    activeLast7d: number;
+    reputationHistogram: { bucket: string; count: number }[];
+  } {
+    const lifetime = this.db.prepare(`SELECT COUNT(*) AS c FROM peer_reputation`).get() as
+      | { c: number }
+      | undefined;
+
+    const banned = this.db
+      .prepare(`SELECT COUNT(*) AS c FROM peer_reputation WHERE is_banned = 1`)
+      .get() as { c: number } | undefined;
+
+    const trusted = this.db
+      .prepare(`SELECT COUNT(*) AS c FROM peer_reputation WHERE is_trusted = 1`)
+      .get() as { c: number } | undefined;
+
+    const now = Date.now();
+    const day = 24 * 3600 * 1000;
+    const active24h = this.db
+      .prepare(`SELECT COUNT(*) AS c FROM peer_reputation WHERE last_seen_at >= ?`)
+      .get(now - day) as { c: number } | undefined;
+    const active7d = this.db
+      .prepare(`SELECT COUNT(*) AS c FROM peer_reputation WHERE last_seen_at >= ?`)
+      .get(now - 7 * day) as { c: number } | undefined;
+
+    const buckets: { bucket: string; lo: number; hi: number }[] = [
+      { bucket: "0.0-0.2", lo: 0.0, hi: 0.2 },
+      { bucket: "0.2-0.4", lo: 0.2, hi: 0.4 },
+      { bucket: "0.4-0.6", lo: 0.4, hi: 0.6 },
+      { bucket: "0.6-0.8", lo: 0.6, hi: 0.8 },
+      { bucket: "0.8-1.0", lo: 0.8, hi: 1.0001 },
+    ];
+    const reputationHistogram = buckets.map(({ bucket, lo, hi }) => {
+      const row = this.db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM peer_reputation WHERE reputation_score >= ? AND reputation_score < ?`,
+        )
+        .get(lo, hi) as { c: number } | undefined;
+      return { bucket, count: Number(row?.c ?? 0) };
+    });
+
+    return {
+      lifetimePeerCount: Number(lifetime?.c ?? 0),
+      bannedPeerCount: Number(banned?.c ?? 0),
+      trustedPeerCount: Number(trusted?.c ?? 0),
+      activeLast24h: Number(active24h?.c ?? 0),
+      activeLast7d: Number(active7d?.c ?? 0),
+      reputationHistogram,
+    };
+  }
+
+  /**
+   * Upsert a "we saw this peer at least once" record for lifetime accounting.
+   *
+   * Distinct from `recordSkillReceived` which only fires when a peer publishes
+   * a skill: this widens the trigger to every successful identify event so the
+   * row count is a true count of unique peers ever met (online or offline).
+   */
+  recordPeerSeen(peerPubkey: string, peerId: string): void {
+    if (!peerPubkey) {
+      return;
+    }
+    const now = Date.now();
+    const existing = this.db
+      .prepare(`SELECT peer_pubkey FROM peer_reputation WHERE peer_pubkey = ?`)
+      .get(peerPubkey) as { peer_pubkey: string } | undefined;
+
+    if (existing) {
+      this.db
+        .prepare(`UPDATE peer_reputation SET last_seen_at = ?, peer_id = ? WHERE peer_pubkey = ?`)
+        .run(now, peerId, peerPubkey);
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO peer_reputation
+           (peer_pubkey, peer_id, skills_received, first_seen_at, last_seen_at)
+           VALUES (?, ?, 0, ?, ?)`,
+        )
+        .run(peerPubkey, peerId, now, now);
+    }
+  }
+
+  /**
    * Rate a specific skill from a peer (for peer_skill_ratings table).
    */
   rateSkill(peerPubkey: string, skillCrystalId: string, rating: number): void {

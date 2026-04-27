@@ -40,6 +40,15 @@ export async function startGatewaySidecars(params: {
   };
   logChannels: { info: (msg: string) => void; error: (msg: string) => void };
   logBrowser: { error: (msg: string) => void };
+  /**
+   * Optional callback fired when the SkillNetworkBridge becomes available.
+   * The memory backend init is fire-and-forget so the gateway boots fast,
+   * but callers (e.g. the request-context wiring) need to be notified once
+   * the bridge instance exists so they can patch their own references.
+   */
+  onSkillNetworkBridgeReady?: (
+    bridge: import("../memory/skill-network-bridge.js").SkillNetworkBridge,
+  ) => void;
 }) {
   // Start Bitterbot browser control server (unless disabled via config).
   let browserControl: Awaited<ReturnType<typeof startBrowserControlServerIfEnabled>> = null;
@@ -183,6 +192,37 @@ export async function startGatewaySidecars(params: {
         const next = Math.max(0, getP2pStatus().peerCount - 1);
         patchP2pStatus({ peerCount: next, connected: next > 0 });
       });
+      // Lifetime peer accounting: every identify event upserts the peer into
+      // the local peer_reputation table so SELECT COUNT(*) is the true count
+      // of unique peers ever seen, not just peers we've received skills from.
+      //
+      // Identify can fire before the memory backend (and therefore the
+      // SkillNetworkBridge) is ready — buffer those events keyed on pubkey
+      // and drain once the bridge becomes available.
+      const pendingPeerSeen = new Map<string, { pubkey: string; peerId: string }>();
+      orchestratorBridge.onPeerIdentified((event) => {
+        if (!event.pubkey) {
+          return;
+        }
+        if (skillNetworkBridge) {
+          skillNetworkBridge.recordPeerSeen(event.pubkey, event.peer_id);
+          return;
+        }
+        pendingPeerSeen.set(event.pubkey, {
+          pubkey: event.pubkey,
+          peerId: event.peer_id,
+        });
+      });
+      // Compose with caller's onSkillNetworkBridgeReady so we can drain the
+      // buffer the moment the bridge is wired by the memory backend init.
+      const callerReady = params.onSkillNetworkBridgeReady;
+      params.onSkillNetworkBridgeReady = (bridge) => {
+        for (const { pubkey, peerId } of pendingPeerSeen.values()) {
+          bridge.recordPeerSeen(pubkey, peerId);
+        }
+        pendingPeerSeen.clear();
+        callerReady?.(bridge);
+      };
       // Wire skill_received → ingestion pipeline (with reputation manager support)
       orchestratorBridge.onSkillReceived(async (event) => {
         const { ingestSkill } = await import("../agents/skills/ingest.js");
@@ -247,6 +287,7 @@ export async function startGatewaySidecars(params: {
     .then((result) => {
       if (result.skillNetworkBridge) {
         skillNetworkBridge = result.skillNetworkBridge;
+        params.onSkillNetworkBridgeReady?.(result.skillNetworkBridge);
       }
     })
     .catch((err) => {

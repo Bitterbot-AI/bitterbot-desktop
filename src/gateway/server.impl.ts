@@ -2,6 +2,7 @@ import type { CanvasHostServer } from "../canvas-host/server.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { startBrowserControlServerIfEnabled } from "./server-browser.js";
+import type { GatewayRequestContext } from "./server-methods/types.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
@@ -465,6 +466,51 @@ export async function startGatewayServer(
 
   const canvasHostServerPort = (canvasHostServer as CanvasHostServer | null)?.port;
 
+  // Hoisted so we can patch orchestratorBridge / skillNetworkBridge into it
+  // once startGatewaySidecars resolves. The `buildRequestContext` thunk in
+  // server-ws-runtime returns this same reference, so mutations propagate to
+  // every subsequent handler invocation.
+  const requestContext: GatewayRequestContext = {
+    deps,
+    execApprovalManager,
+    loadGatewayModelCatalog,
+    getHealthCache,
+    refreshHealthSnapshot: refreshGatewayHealthSnapshot,
+    logHealth,
+    logGateway: log,
+    incrementPresenceVersion,
+    getHealthVersion,
+    broadcast,
+    broadcastToConnIds,
+    nodeSendToSession,
+    nodeSendToAllSubscribed,
+    nodeSubscribe,
+    nodeUnsubscribe,
+    nodeUnsubscribeAll,
+    hasConnectedMobileNode: hasMobileNodeConnected,
+    nodeRegistry,
+    agentRunSeq,
+    chatAbortControllers,
+    chatAbortedRuns: chatRunState.abortedRuns,
+    chatRunBuffers: chatRunState.buffers,
+    chatDeltaSentAt: chatRunState.deltaSentAt,
+    addChatRun,
+    removeChatRun,
+    registerToolEventRecipient: toolEventRecipients.add,
+    dedupe,
+    wizardSessions,
+    findRunningWizard,
+    purgeWizardSession,
+    getRuntimeSnapshot,
+    startChannel,
+    stopChannel,
+    markChannelLoggedOut,
+    wizardRunner,
+    broadcastVoiceWakeChanged,
+    orchestratorBridge: orchestratorBridge ?? undefined,
+    skillNetworkBridge: null,
+  };
+
   attachGatewayWsHandlers({
     wss,
     clients,
@@ -484,45 +530,7 @@ export async function startGatewayServer(
       ...execApprovalHandlers,
     },
     broadcast,
-    context: {
-      deps,
-      execApprovalManager,
-      loadGatewayModelCatalog,
-      getHealthCache,
-      refreshHealthSnapshot: refreshGatewayHealthSnapshot,
-      logHealth,
-      logGateway: log,
-      incrementPresenceVersion,
-      getHealthVersion,
-      broadcast,
-      broadcastToConnIds,
-      nodeSendToSession,
-      nodeSendToAllSubscribed,
-      nodeSubscribe,
-      nodeUnsubscribe,
-      nodeUnsubscribeAll,
-      hasConnectedMobileNode: hasMobileNodeConnected,
-      nodeRegistry,
-      agentRunSeq,
-      chatAbortControllers,
-      chatAbortedRuns: chatRunState.abortedRuns,
-      chatRunBuffers: chatRunState.buffers,
-      chatDeltaSentAt: chatRunState.deltaSentAt,
-      addChatRun,
-      removeChatRun,
-      registerToolEventRecipient: toolEventRecipients.add,
-      dedupe,
-      wizardSessions,
-      findRunningWizard,
-      purgeWizardSession,
-      getRuntimeSnapshot,
-      startChannel,
-      stopChannel,
-      markChannelLoggedOut,
-      wizardRunner,
-      broadcastVoiceWakeChanged,
-      orchestratorBridge: orchestratorBridge ?? undefined,
-    },
+    context: requestContext,
   });
   logGatewayStartup({
     cfg: cfgAtStart,
@@ -558,7 +566,16 @@ export async function startGatewayServer(
       logHooks,
       logChannels,
       logBrowser,
+      onSkillNetworkBridgeReady: (bridge) => {
+        // Memory backend init is fire-and-forget; this fires once the
+        // SkillNetworkBridge is wired so handlers see it.
+        requestContext.skillNetworkBridge = bridge;
+      },
     }));
+    // Patch the live request context so handlers see the actual orchestrator
+    // bridge — without this, the object literal would forever hold the
+    // pre-sidecar `undefined`.
+    requestContext.orchestratorBridge = orchestratorBridge ?? undefined;
   }
 
   // Run gateway_start plugin hook (fire-and-forget)

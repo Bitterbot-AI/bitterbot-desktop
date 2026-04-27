@@ -249,6 +249,45 @@ export class OrchestratorBridge {
   }
 
   /**
+   * Fetch the bootnode census via the orchestrator's HTTP API. Returns the
+   * lifetime peer registry maintained when --bootnode-mode is enabled. On
+   * non-bootnode deployments the response carries `enabled: false` and zero
+   * counts. Best-effort: returns null if the HTTP API is unreachable.
+   */
+  async getBootstrapCensus(): Promise<{
+    enabled: boolean;
+    lifetime_unique_peers: number;
+    active_last_24h: number;
+    active_last_7d: number;
+    by_tier: Record<string, number>;
+    by_address_type: Record<string, number>;
+    generated_at: number;
+  } | null> {
+    const httpAddr = this.config.httpAddr ?? "127.0.0.1:9847";
+    const url = `http://${httpAddr}/api/bootstrap/census`;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2000);
+      const resp = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!resp.ok) {
+        return null;
+      }
+      return (await resp.json()) as {
+        enabled: boolean;
+        lifetime_unique_peers: number;
+        active_last_24h: number;
+        active_last_7d: number;
+        by_tier: Record<string, number>;
+        by_address_type: Record<string, number>;
+        generated_at: number;
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Fetch the orchestrator's identity over IPC: the Ed25519 libp2p pubkey
    * (base64), the libp2p PeerId, and the configured node tier.
    *
