@@ -22,6 +22,20 @@ import { SkillVersionResolver } from "./skill-version-resolver.js";
 
 const log = createSubsystemLogger("memory/skill-network-bridge");
 
+/** Network-wide census snapshot received over gossipsub. Mirrors the JSON
+ * shape published by `BootnodeRegistry::census` on the Rust side, plus a
+ * `received_at` timestamp added on receipt. */
+export type NetworkCensusSnapshot = {
+  enabled: boolean;
+  lifetime_unique_peers: number;
+  active_last_24h: number;
+  active_last_7d: number;
+  by_tier: Record<string, number>;
+  by_address_type: Record<string, number>;
+  generated_at: number;
+  received_at?: number;
+};
+
 export type OrchestratorBridgeLike = {
   publishSkill(skillMd: string, name: string): Promise<unknown>;
   publishTelemetry?(signalType: string, data: unknown): Promise<unknown>;
@@ -42,6 +56,10 @@ export class SkillNetworkBridge {
   private versionResolver: SkillVersionResolver;
   private executionTracker: SkillExecutionTracker | null = null;
   private skillVerifier: SkillVerifier | null = null;
+  /** Latest bootnode census snapshot received over gossipsub. Per-source so
+   * multiple bootnodes don't overwrite each other; the freshest entry wins
+   * when getLatestNetworkCensus() is called. */
+  private censusSnapshots: Map<string, NetworkCensusSnapshot> = new Map();
 
   constructor(
     db: DatabaseSync,
@@ -87,6 +105,51 @@ export class SkillNetworkBridge {
     } catch (err) {
       log.debug(`recordPeerSeen failed: ${String(err)}`);
     }
+  }
+
+  /**
+   * Persist a bootnode census snapshot received over gossipsub. Keyed on
+   * the publishing peer's libp2p PeerId so distinct bootnodes don't trample
+   * each other; the freshest entry wins on read.
+   */
+  recordCensusSnapshot(sourcePeerId: string, snapshot: NetworkCensusSnapshot): void {
+    if (!sourcePeerId) {
+      return;
+    }
+    this.censusSnapshots.set(sourcePeerId, {
+      ...snapshot,
+      received_at: Date.now(),
+    });
+    // Cap to a small set so a misbehaving peer can't blow up memory.
+    const MAX_SOURCES = 32;
+    if (this.censusSnapshots.size > MAX_SOURCES) {
+      const oldestKey = [...this.censusSnapshots.entries()].toSorted(
+        (a, b) => (a[1].received_at ?? 0) - (b[1].received_at ?? 0),
+      )[0]?.[0];
+      if (oldestKey) {
+        this.censusSnapshots.delete(oldestKey);
+      }
+    }
+  }
+
+  /**
+   * Return the freshest network-wide census snapshot we've heard over
+   * gossipsub, or null if no bootnode broadcast has arrived yet.
+   */
+  getLatestNetworkCensus(): {
+    source_peer_id: string;
+    snapshot: NetworkCensusSnapshot;
+  } | null {
+    let best: { peer: string; snap: NetworkCensusSnapshot } | null = null;
+    for (const [peer, snap] of this.censusSnapshots.entries()) {
+      if (!best || (snap.generated_at ?? 0) > (best.snap.generated_at ?? 0)) {
+        best = { peer, snap };
+      }
+    }
+    if (!best) {
+      return null;
+    }
+    return { source_peer_id: best.peer, snapshot: best.snap };
   }
 
   /**

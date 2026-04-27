@@ -31,6 +31,11 @@ pub const TELEMETRY_TOPIC: &str = "bitterbot/telemetry/v1";
 pub const WEATHER_TOPIC: &str = "bitterbot/weather/v1";
 /// Gossipsub topic for global curriculum bounties.
 pub const BOUNTIES_TOPIC: &str = "bitterbot/bounties/v1";
+/// Gossipsub topic for bootnode census snapshots — periodic publishes
+/// from nodes running with `--bootnode-mode` so management nodes (and any
+/// other interested subscriber) get a real-time view of network-wide
+/// lifetime peer counts without polling the bootnode's HTTP endpoint.
+pub const CENSUS_TOPIC: &str = "bitterbot/census/v1";
 /// Gossipsub topic for peer-to-peer knowledge queries.
 pub const QUERIES_TOPIC: &str = "bitterbot/queries/v1";
 
@@ -554,6 +559,7 @@ pub struct SwarmHandle {
     weather_topic: gossipsub::IdentTopic,
     bounties_topic: gossipsub::IdentTopic,
     queries_topic: gossipsub::IdentTopic,
+    census_topic: gossipsub::IdentTopic,
     /// Channel for forwarding swarm events to Node.js via the IPC layer.
     ipc_event_tx: mpsc::UnboundedSender<serde_json::Value>,
     genesis_trust_list: Vec<String>,
@@ -603,6 +609,48 @@ impl SwarmHandle {
     fn emit_ipc_event(&self, event: serde_json::Value) {
         if let Err(e) = self.ipc_event_tx.send(event) {
             debug!("IPC event channel closed (no receiver): {}", e);
+        }
+    }
+
+    /// Publish the current bootnode census to the gossipsub CENSUS_TOPIC.
+    ///
+    /// Only fires when the registry is enabled (i.e. when the orchestrator
+    /// was started with `--bootnode-mode`). This is the push side of the
+    /// real-time network-wide peer view — every subscriber on CENSUS_TOPIC
+    /// receives the latest counts without polling the bootnode's HTTP API.
+    fn broadcast_bootnode_census(&mut self) {
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let snapshot = {
+            let registry = self
+                .bootnode_registry
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            // No-op on non-bootnode nodes — saves the gossip bandwidth and
+            // keeps the topic clean.
+            if !registry.enabled() {
+                return;
+            }
+            registry.census(now_secs)
+        };
+        let bytes = match serde_json::to_vec(&snapshot) {
+            Ok(b) => b,
+            Err(e) => {
+                warn!("census serialize failed: {}", e);
+                return;
+            }
+        };
+        let topic = self.census_topic.clone();
+        if let Err(e) = self
+            .swarm
+            .behaviour_mut()
+            .gossipsub
+            .publish(topic, bytes)
+        {
+            // Insufficient peers is normal early in life — only warn at debug.
+            debug!("census publish failed: {:?}", e);
         }
     }
 
@@ -819,6 +867,12 @@ impl SwarmHandle {
         let mut relay_renewal_interval = tokio::time::interval(Duration::from_secs(2700));
         relay_renewal_interval.tick().await;
 
+        // Bootnode census broadcast — every 60s when --bootnode-mode is on,
+        // publish the current registry census to the gossipsub CENSUS_TOPIC.
+        // No-op on non-bootnode deployments (registry.enabled is false).
+        let mut bootnode_broadcast_interval = tokio::time::interval(Duration::from_secs(60));
+        bootnode_broadcast_interval.tick().await;
+
         loop {
             tokio::select! {
                 Some(cmd) = ipc_rx.recv() => {
@@ -986,6 +1040,9 @@ impl SwarmHandle {
                         self.initiate_relay_reservations();
                     }
                 }
+                _ = bootnode_broadcast_interval.tick() => {
+                    self.broadcast_bootnode_census();
+                }
                 _ = tokio::signal::ctrl_c() => {
                     info!("Received shutdown signal");
                     break;
@@ -1048,6 +1105,28 @@ impl SwarmHandle {
                             self.handle_swarm_event(SwarmEvent::QueryReceived(envelope)).await;
                         }
                         Err(e) => warn!("Failed to deserialize query envelope: {}", e),
+                    }
+                } else if topic_str == CENSUS_TOPIC {
+                    // Bootnode census broadcast — forward the JSON snapshot
+                    // to the IPC layer so the gateway can cache the freshest
+                    // network-wide view. We don't validate the payload shape
+                    // here; the receiver is responsible for matching against
+                    // the documented schema.
+                    match serde_json::from_slice::<serde_json::Value>(&message.data) {
+                        Ok(snapshot) => {
+                            let source = match &message.source {
+                                Some(p) => p.to_string(),
+                                None => String::new(),
+                            };
+                            self.emit_ipc_event(serde_json::json!({
+                                "type": "census_received",
+                                "payload": {
+                                    "source_peer_id": source,
+                                    "snapshot": snapshot,
+                                }
+                            }));
+                        }
+                        Err(e) => warn!("Failed to deserialize census snapshot: {}", e),
                     }
                 }
             }
@@ -2339,12 +2418,17 @@ pub async fn build_swarm(
     let weather_topic = gossipsub::IdentTopic::new(WEATHER_TOPIC);
     let bounties_topic = gossipsub::IdentTopic::new(BOUNTIES_TOPIC);
     let queries_topic = gossipsub::IdentTopic::new(QUERIES_TOPIC);
+    let census_topic = gossipsub::IdentTopic::new(CENSUS_TOPIC);
     gossipsub_behaviour.subscribe(&skills_topic)?;
     gossipsub_behaviour.subscribe(&telemetry_topic)?;
     gossipsub_behaviour.subscribe(&weather_topic)?;
     gossipsub_behaviour.subscribe(&bounties_topic)?;
     gossipsub_behaviour.subscribe(&queries_topic)?;
-    info!("Subscribed to topics: {}, {}, {}, {}, {}", SKILLS_TOPIC, TELEMETRY_TOPIC, WEATHER_TOPIC, BOUNTIES_TOPIC, QUERIES_TOPIC);
+    gossipsub_behaviour.subscribe(&census_topic)?;
+    info!(
+        "Subscribed to topics: {}, {}, {}, {}, {}, {}",
+        SKILLS_TOPIC, TELEMETRY_TOPIC, WEATHER_TOPIC, BOUNTIES_TOPIC, QUERIES_TOPIC, CENSUS_TOPIC
+    );
 
     // --- Kademlia configuration ---
     let kademlia_store = MemoryStore::new(local_peer_id);
@@ -2579,6 +2663,7 @@ pub async fn build_swarm(
         weather_topic,
         bounties_topic,
         queries_topic,
+        census_topic,
         ipc_event_tx,
         genesis_trust_list,
         node_tier: node_tier.to_string(),

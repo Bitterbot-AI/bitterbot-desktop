@@ -246,6 +246,36 @@ export async function startGatewaySidecars(params: {
           }
         }
       });
+      // Cache bootnode census snapshots received over gossipsub. Buffer if
+      // the bridge isn't ready yet — same pattern as peer-identified above.
+      const pendingCensus = new Map<string, { source: string; snapshot: unknown }>();
+      orchestratorBridge.onCensusReceived((event) => {
+        if (!event?.source_peer_id || !event?.snapshot) {
+          return;
+        }
+        if (skillNetworkBridge) {
+          skillNetworkBridge.recordCensusSnapshot(
+            event.source_peer_id,
+            event.snapshot as Parameters<typeof skillNetworkBridge.recordCensusSnapshot>[1],
+          );
+          return;
+        }
+        pendingCensus.set(event.source_peer_id, {
+          source: event.source_peer_id,
+          snapshot: event.snapshot,
+        });
+      });
+      const callerReadyForCensus = params.onSkillNetworkBridgeReady;
+      params.onSkillNetworkBridgeReady = (bridge) => {
+        for (const { source, snapshot } of pendingCensus.values()) {
+          bridge.recordCensusSnapshot(
+            source,
+            snapshot as Parameters<typeof bridge.recordCensusSnapshot>[1],
+          );
+        }
+        pendingCensus.clear();
+        callerReadyForCensus?.(bridge);
+      };
       orchestratorBridge.onWeatherReceived((event) => {
         skillNetworkBridge?.handleWeatherEvent(event);
       });

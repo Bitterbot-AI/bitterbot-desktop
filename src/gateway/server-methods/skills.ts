@@ -204,6 +204,10 @@ export const skillsHandlers: GatewayRequestHandlers = {
     // are independent of the live swarm: they survive restarts and capture
     // every peer the node has ever met.
     const localMetrics = context.skillNetworkBridge?.getNetworkMetrics?.() ?? null;
+    // Latest network-wide census heard over gossipsub from a bootnode. Lets
+    // a management node answer "how many peers has the network ever seen?"
+    // in real time without polling the bootnode's HTTP endpoint.
+    const networkCensus = context.skillNetworkBridge?.getLatestNetworkCensus?.() ?? null;
     respond(
       true,
       {
@@ -213,6 +217,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
         stats,
         localMetrics,
         bootstrapCensus,
+        networkCensus,
       },
       undefined,
     );

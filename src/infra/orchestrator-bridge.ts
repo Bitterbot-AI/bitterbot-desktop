@@ -21,6 +21,19 @@ const DEFAULT_IPC_PATH =
 const RECONNECT_DELAY_MS = 3000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 
+/** Bootnode census snapshot, mirrored from /api/bootstrap/census on the
+ * publisher. Sent over gossipsub on `bitterbot/census/v1` and forwarded
+ * to TS-side subscribers via `onCensusReceived`. */
+export type CensusSnapshot = {
+  enabled: boolean;
+  lifetime_unique_peers: number;
+  active_last_24h: number;
+  active_last_7d: number;
+  by_tier: Record<string, number>;
+  by_address_type: Record<string, number>;
+  generated_at: number;
+};
+
 type SkillReceivedEvent = {
   version: number;
   skill_md: string; // base64
@@ -70,6 +83,9 @@ export class OrchestratorBridge {
   private peerDisconnectedCallbacks: Array<(peerId: string) => void> = [];
   private peerIdentifiedCallbacks: Array<
     (event: { peer_id: string; tier: string; verified: boolean; pubkey: string }) => void
+  > = [];
+  private censusReceivedCallbacks: Array<
+    (event: { source_peer_id: string; snapshot: CensusSnapshot }) => void
   > = [];
   private weatherReceivedCallbacks: Array<
     (event: {
@@ -355,6 +371,21 @@ export class OrchestratorBridge {
     };
   }
 
+  /**
+   * Subscribe to bootnode census snapshots received over gossipsub
+   * (`bitterbot/census/v1`). The bootnode publishes its lifetime registry
+   * snapshot every ~60s when started with `--bootnode-mode`; subscribers
+   * see real-time network-wide counts without polling.
+   */
+  onCensusReceived(
+    callback: (event: { source_peer_id: string; snapshot: CensusSnapshot }) => void,
+  ): () => void {
+    this.censusReceivedCallbacks.push(callback);
+    return () => {
+      this.censusReceivedCallbacks = this.censusReceivedCallbacks.filter((cb) => cb !== callback);
+    };
+  }
+
   onWeatherReceived(
     callback: (event: {
       global_cortisol_spike: number;
@@ -570,6 +601,21 @@ export class OrchestratorBridge {
             cb(payload);
           } catch (err) {
             log.warn(`peer_identified callback error: ${String(err)}`);
+          }
+        }
+        return;
+      }
+
+      if (msg.type === "census_received") {
+        const payload = msg.payload as {
+          source_peer_id: string;
+          snapshot: CensusSnapshot;
+        };
+        for (const cb of this.censusReceivedCallbacks) {
+          try {
+            cb(payload);
+          } catch (err) {
+            log.warn(`census_received callback error: ${String(err)}`);
           }
         }
         return;
