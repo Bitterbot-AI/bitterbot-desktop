@@ -2,18 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { CliDeps } from "../../cli/deps.js";
 import type { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { HookMessageChannel, HooksConfigResolved } from "../hooks.js";
-import { resolveDefaultAgentId, resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded-runner/run.js";
-import { loadConfig } from "../../config/config.js";
 import { resolveMainSessionKeyFromConfig } from "../../config/sessions.js";
-import { resolveSessionTranscriptPath } from "../../config/sessions/paths.js";
+import { runIsolatedAgentTurn } from "../../cron/isolated-agent.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createHooksRequestHandler } from "../server-http.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
-
-const DEFAULT_HOOK_TIMEOUT_MS = 120_000;
 
 export function createGatewayHooksRequestHandler(params: {
   deps: CliDeps;
@@ -52,43 +47,28 @@ export function createGatewayHooksRequestHandler(params: {
 
     void (async () => {
       try {
-        const cfg = loadConfig();
-        const agentId = value.agentId ?? resolveDefaultAgentId(cfg);
-        const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
-        const sessionId = `hook-${runId}`;
-        const sessionFile = resolveSessionTranscriptPath(sessionId, agentId);
-        const timeoutMs = value.timeoutSeconds
-          ? value.timeoutSeconds * 1_000
-          : DEFAULT_HOOK_TIMEOUT_MS;
-
-        const result = await runEmbeddedPiAgent({
-          sessionId,
+        const result = await runIsolatedAgentTurn({
           sessionKey,
-          agentId,
-          sessionFile,
-          workspaceDir,
-          config: cfg,
-          prompt: value.message,
-          model: value.model,
-          thinkLevel: value.thinking as "off" | "minimal" | "low" | "medium" | "high" | undefined,
-          timeoutMs,
           runId,
-          messageChannel: value.channel,
-          messageTo: value.to,
-          requireExplicitMessageTarget: !value.deliver,
-          disableMessageTool: !value.deliver,
           lane: "hook",
+          job: {
+            agentId: value.agentId,
+            name: value.name,
+            payload: {
+              message: value.message,
+              model: value.model,
+              thinking: value.thinking,
+              timeoutSeconds: value.timeoutSeconds,
+            },
+            channel: value.channel,
+            to: value.to,
+            deliver: value.deliver,
+            allowUnsafeExternalContent: value.allowUnsafeExternalContent,
+          },
         });
-
-        const hasError = result.meta?.error != null || result.meta?.aborted;
-        const summaryText =
-          result.payloads?.[0]?.text?.trim() ||
-          result.meta?.error?.message?.trim() ||
-          (hasError ? "error" : "ok");
-        const summary = summaryText;
-        const status = hasError ? "error" : "ok";
-        const prefix = status === "ok" ? `Hook ${value.name}` : `Hook ${value.name} (${status})`;
-        enqueueSystemEvent(`${prefix}: ${summary}`.trim(), {
+        const prefix =
+          result.status === "ok" ? `Hook ${value.name}` : `Hook ${value.name} (${result.status})`;
+        enqueueSystemEvent(`${prefix}: ${result.summary}`.trim(), {
           sessionKey: mainSessionKey,
         });
         if (value.wakeMode === "now") {

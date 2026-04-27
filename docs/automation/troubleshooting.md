@@ -48,7 +48,7 @@ Common signatures:
 
 - `cron: scheduler disabled; jobs will not run automatically` → cron disabled in config/env.
 - `cron: timer tick failed` → scheduler tick crashed; inspect surrounding stack/log context.
-- `reason: not-due` in run output → manual run called without `--force` and job not due yet.
+- `reason: not-due` in run output → manual run was invoked with `--due` and the job is not yet due. Drop the flag to force-run.
 
 ## Cron fired but no delivery
 

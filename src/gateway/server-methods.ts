@@ -8,6 +8,7 @@ import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
 import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
+import { cronHandlers } from "./server-methods/cron.js";
 import { deviceHandlers } from "./server-methods/devices.js";
 import { dreamHandlers } from "./server-methods/dream.js";
 import { execApprovalsHandlers } from "./server-methods/exec-approvals.js";
@@ -113,6 +114,9 @@ const READ_METHODS = new Set([
   "management.health",
   "management.economics",
   "management.censusHistory",
+  "cron.list",
+  "cron.status",
+  "cron.runs",
 ]);
 const WRITE_METHODS = new Set([
   "send",
@@ -137,6 +141,10 @@ const WRITE_METHODS = new Set([
   "workspace.write",
   "dream.trigger",
   "management.propagateBan",
+  "cron.add",
+  "cron.update",
+  "cron.remove",
+  "cron.run",
 ]);
 
 function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["client"]) {
@@ -239,6 +247,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...workspaceHandlers,
   ...dreamHandlers,
   ...managementHandlers,
+  ...cronHandlers,
 };
 
 export async function handleGatewayRequest(

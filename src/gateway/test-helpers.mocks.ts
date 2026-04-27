@@ -252,7 +252,9 @@ vi.mock("../agents/pi-model-discovery.js", async () => {
 });
 
 vi.mock("../cron/isolated-agent.js", () => ({
-  runCronIsolatedAgentTurn: (...args: unknown[]) =>
+  runIsolatedJob: (...args: unknown[]) =>
+    (cronIsolatedRun as (...args: unknown[]) => unknown)(...args),
+  runIsolatedAgentTurn: (...args: unknown[]) =>
     (cronIsolatedRun as (...args: unknown[]) => unknown)(...args),
 }));
 

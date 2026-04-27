@@ -8,6 +8,7 @@ import {
   resolveConfiguredModelRef,
   resolveHooksGmailModel,
 } from "../agents/model-selection.js";
+import { startCronEngine } from "../cron/runtime.js";
 import { startGmailWatcher } from "../hooks/gmail-watcher.js";
 import {
   clearInternalHooks,
@@ -251,6 +252,12 @@ export async function startGatewaySidecars(params: {
     .catch((err) => {
       params.log.warn(`memory startup initialization failed: ${String(err)}`);
     });
+
+  // Start the cron engine. Failures here are non-fatal — the rest of the
+  // gateway should boot even if cron jobs fail to load.
+  void startCronEngine(params.cfg).catch((err) => {
+    params.log.warn(`cron engine failed to start: ${String(err)}`);
+  });
 
   return { browserControl, pluginServices, orchestratorBridge, skillNetworkBridge };
 }

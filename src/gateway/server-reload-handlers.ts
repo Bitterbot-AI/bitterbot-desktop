@@ -60,6 +60,15 @@ export function createGatewayReloadHandlers(params: {
       nextState.heartbeatRunner.updateConfig(nextConfig);
     }
 
+    if (plan.restartCron) {
+      try {
+        const { restartCronEngine } = await import("../cron/runtime.js");
+        await restartCronEngine(nextConfig);
+      } catch (err) {
+        params.logReload.warn(`cron engine reload failed: ${String(err)}`);
+      }
+    }
+
     resetDirectoryCache();
 
     if (plan.restartBrowserControl) {

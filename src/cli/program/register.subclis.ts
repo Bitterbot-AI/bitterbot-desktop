@@ -231,6 +231,14 @@ const entries: SubCliEntry[] = [
       mod.registerCompletionCli(program);
     },
   },
+  {
+    name: "cron",
+    description: "Manage cron jobs for the gateway scheduler",
+    register: async (program) => {
+      const mod = await import("../cron-cli.js");
+      mod.registerCronCli(program);
+    },
+  },
 ];
 
 export function getSubCliEntries(): SubCliEntry[] {
