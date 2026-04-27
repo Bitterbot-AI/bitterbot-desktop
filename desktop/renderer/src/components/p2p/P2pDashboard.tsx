@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useP2pStore } from "../../stores/p2p-store";
+import { CensusBreakdown } from "./CensusBreakdown";
 import { ContributionCard } from "./ContributionCard";
+import { NetworkGrowthSparkline } from "./NetworkGrowthSparkline";
 import { PeerMap } from "./PeerMap";
 
 export function P2pDashboard() {
@@ -11,22 +13,41 @@ export function P2pDashboard() {
     loading,
     error,
     bootstrapCensus,
+    networkCensus,
+    censusHistory,
     fetchStats,
     fetchContributions,
     fetchBootstrapCensus,
+    fetchNetworkCensus,
+    fetchCensusHistory,
   } = useP2pStore();
 
   useEffect(() => {
     fetchStats();
     fetchContributions();
     fetchBootstrapCensus();
+    fetchNetworkCensus();
+    fetchCensusHistory({ limit: 500 });
     const interval = setInterval(() => {
       fetchStats();
       fetchContributions();
       fetchBootstrapCensus();
+      fetchNetworkCensus();
+      fetchCensusHistory({ limit: 500 });
     }, 30_000);
     return () => clearInterval(interval);
-  }, [fetchStats, fetchContributions, fetchBootstrapCensus]);
+  }, [
+    fetchStats,
+    fetchContributions,
+    fetchBootstrapCensus,
+    fetchNetworkCensus,
+    fetchCensusHistory,
+  ]);
+
+  // Pick the freshest census source for the breakdown panel: live
+  // gossipsub-pushed snapshot wins, fall back to the local HTTP polled
+  // bootstrapCensus when this node is itself a bootnode.
+  const breakdownSource = networkCensus?.snapshot ?? bootstrapCensus ?? null;
 
   return (
     <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto">
@@ -110,6 +131,19 @@ export function P2pDashboard() {
         />
         <ContributionCard title="NAT Status" value={stats?.nat_status ?? "unknown"} icon="users" />
       </div>
+
+      {/* Network-wide breakdown (gossipsub-pushed when available, falls back
+          to local bootstrap census when this node is the bootnode). */}
+      <CensusBreakdown
+        byTier={breakdownSource?.by_tier ?? null}
+        byAddressType={breakdownSource?.by_address_type ?? null}
+        source={networkCensus?.source_peer_id ?? null}
+        generatedAt={breakdownSource?.generated_at ?? null}
+      />
+
+      {/* Network growth over time, persisted across restarts in
+          network_census_history. */}
+      <NetworkGrowthSparkline rows={censusHistory} />
 
       {/* Uptime & Peer Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

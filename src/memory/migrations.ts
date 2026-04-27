@@ -453,6 +453,34 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 11,
+    description:
+      "Network census history: persist gossipsub-received bootnode snapshots " +
+      "so dashboards can render network growth over time across restarts.",
+    up: (db: DatabaseSync) => {
+      // One row per (publishing-bootnode, generated_at). PRIMARY KEY de-dups
+      // identical snapshots; an UPSERT path in the writer makes re-receipts
+      // a no-op. by_tier/by_address_type are stored as JSON to preserve the
+      // full breakdown without paying for an extra table.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS network_census_history (
+          source_peer_id TEXT NOT NULL,
+          generated_at INTEGER NOT NULL,
+          snapshot_at INTEGER NOT NULL,
+          lifetime_unique_peers INTEGER NOT NULL,
+          active_last_24h INTEGER NOT NULL,
+          active_last_7d INTEGER NOT NULL,
+          by_tier_json TEXT NOT NULL DEFAULT '{}',
+          by_address_type_json TEXT NOT NULL DEFAULT '{}',
+          PRIMARY KEY (source_peer_id, generated_at)
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_network_census_snapshot_at ON network_census_history(snapshot_at)`,
+      );
+    },
+  },
 ];
 
 /**

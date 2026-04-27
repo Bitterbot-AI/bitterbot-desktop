@@ -111,6 +111,11 @@ export class SkillNetworkBridge {
    * Persist a bootnode census snapshot received over gossipsub. Keyed on
    * the publishing peer's libp2p PeerId so distinct bootnodes don't trample
    * each other; the freshest entry wins on read.
+   *
+   * In addition to the in-memory cache (used for the live `skills.network`
+   * RPC tile), every snapshot is also persisted into network_census_history
+   * so dashboards can render a growth-over-time chart that survives gateway
+   * restarts.
    */
   recordCensusSnapshot(sourcePeerId: string, snapshot: NetworkCensusSnapshot): void {
     if (!sourcePeerId) {
@@ -129,6 +134,43 @@ export class SkillNetworkBridge {
       if (oldestKey) {
         this.censusSnapshots.delete(oldestKey);
       }
+    }
+    if (this.peerReputation) {
+      try {
+        this.peerReputation.persistCensusSnapshot({
+          sourcePeerId,
+          generatedAt: snapshot.generated_at,
+          lifetimeUniquePeers: snapshot.lifetime_unique_peers,
+          activeLast24h: snapshot.active_last_24h,
+          activeLast7d: snapshot.active_last_7d,
+          byTier: snapshot.by_tier ?? {},
+          byAddressType: snapshot.by_address_type ?? {},
+        });
+      } catch (err) {
+        log.debug(`persistCensusSnapshot failed: ${String(err)}`);
+      }
+    }
+  }
+
+  /**
+   * Read persisted census history rows for chart rendering.
+   * Returns null when no reputation manager is wired.
+   */
+  getNetworkCensusHistory(
+    opts: {
+      sourcePeerId?: string;
+      sinceMs?: number;
+      limit?: number;
+    } = {},
+  ): ReturnType<PeerReputationManager["getNetworkCensusHistory"]> | null {
+    if (!this.peerReputation) {
+      return null;
+    }
+    try {
+      return this.peerReputation.getNetworkCensusHistory(opts);
+    } catch (err) {
+      log.debug(`getNetworkCensusHistory failed: ${String(err)}`);
+      return null;
     }
   }
 

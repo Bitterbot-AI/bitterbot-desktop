@@ -372,6 +372,122 @@ export class PeerReputationManager {
   }
 
   /**
+   * Persist a network-wide census snapshot received over gossipsub from a
+   * bootnode. Idempotent on (source_peer_id, generated_at) — re-receipts
+   * become no-ops thanks to ON CONFLICT DO NOTHING. Auto-prunes rows older
+   * than 30 days at write time so the table never grows unbounded.
+   */
+  persistCensusSnapshot(args: {
+    sourcePeerId: string;
+    generatedAt: number;
+    lifetimeUniquePeers: number;
+    activeLast24h: number;
+    activeLast7d: number;
+    byTier: Record<string, number>;
+    byAddressType: Record<string, number>;
+  }): void {
+    if (!args.sourcePeerId || !Number.isFinite(args.generatedAt)) {
+      return;
+    }
+    const now = Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO network_census_history
+           (source_peer_id, generated_at, snapshot_at,
+            lifetime_unique_peers, active_last_24h, active_last_7d,
+            by_tier_json, by_address_type_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(source_peer_id, generated_at) DO NOTHING`,
+      )
+      .run(
+        args.sourcePeerId,
+        Math.floor(args.generatedAt),
+        now,
+        Math.floor(args.lifetimeUniquePeers),
+        Math.floor(args.activeLast24h),
+        Math.floor(args.activeLast7d),
+        JSON.stringify(args.byTier ?? {}),
+        JSON.stringify(args.byAddressType ?? {}),
+      );
+
+    // Cheap prune: only drop rows on roughly 1-in-50 writes so we don't
+    // pay the DELETE cost on every persist.
+    if (Math.random() < 0.02) {
+      const cutoff = now - 30 * 24 * 3600 * 1000;
+      this.db.prepare(`DELETE FROM network_census_history WHERE snapshot_at < ?`).run(cutoff);
+    }
+  }
+
+  /**
+   * Read network census history rows ordered by generated_at ascending.
+   * Suitable for rendering a growth-over-time chart on a dashboard.
+   */
+  getNetworkCensusHistory(
+    opts: {
+      sourcePeerId?: string;
+      sinceMs?: number;
+      limit?: number;
+    } = {},
+  ): Array<{
+    sourcePeerId: string;
+    generatedAt: number;
+    snapshotAt: number;
+    lifetimeUniquePeers: number;
+    activeLast24h: number;
+    activeLast7d: number;
+    byTier: Record<string, number>;
+    byAddressType: Record<string, number>;
+  }> {
+    const limit = Math.min(Math.max(opts.limit ?? 500, 1), 5000);
+    const since = opts.sinceMs ?? 0;
+    let rows: Array<{
+      source_peer_id: string;
+      generated_at: number;
+      snapshot_at: number;
+      lifetime_unique_peers: number;
+      active_last_24h: number;
+      active_last_7d: number;
+      by_tier_json: string;
+      by_address_type_json: string;
+    }>;
+    if (opts.sourcePeerId) {
+      rows = this.db
+        .prepare(
+          `SELECT source_peer_id, generated_at, snapshot_at,
+                  lifetime_unique_peers, active_last_24h, active_last_7d,
+                  by_tier_json, by_address_type_json
+             FROM network_census_history
+             WHERE source_peer_id = ? AND snapshot_at >= ?
+             ORDER BY generated_at ASC
+             LIMIT ?`,
+        )
+        .all(opts.sourcePeerId, since, limit) as typeof rows;
+    } else {
+      rows = this.db
+        .prepare(
+          `SELECT source_peer_id, generated_at, snapshot_at,
+                  lifetime_unique_peers, active_last_24h, active_last_7d,
+                  by_tier_json, by_address_type_json
+             FROM network_census_history
+             WHERE snapshot_at >= ?
+             ORDER BY generated_at ASC
+             LIMIT ?`,
+        )
+        .all(since, limit) as typeof rows;
+    }
+    return rows.map((r) => ({
+      sourcePeerId: r.source_peer_id,
+      generatedAt: r.generated_at,
+      snapshotAt: r.snapshot_at,
+      lifetimeUniquePeers: r.lifetime_unique_peers,
+      activeLast24h: r.active_last_24h,
+      activeLast7d: r.active_last_7d,
+      byTier: safeJson(r.by_tier_json),
+      byAddressType: safeJson(r.by_address_type_json),
+    }));
+  }
+
+  /**
    * Rate a specific skill from a peer (for peer_skill_ratings table).
    */
   rateSkill(peerPubkey: string, skillCrystalId: string, rating: number): void {
@@ -963,4 +1079,24 @@ export class PeerReputationManager {
       return [];
     }
   }
+}
+
+/** Defensive JSON parse: persist-time content is trusted, but a corrupted
+ * cell shouldn't crash the reader. Returns an empty record on any failure. */
+function safeJson(raw: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Record<string, number> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof v === "number" && Number.isFinite(v)) {
+          out[k] = v;
+        }
+      }
+      return out;
+    }
+  } catch {
+    // fall through
+  }
+  return {};
 }

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useGatewayStore } from "./gateway-store";
 
 export type P2pPeer = {
   peer_id: string;
@@ -45,6 +46,33 @@ export type P2pBootstrapCensus = {
   generated_at: number;
 };
 
+/** Live gossipsub-pushed network census from skills.network RPC. */
+export type P2pNetworkCensus = {
+  source_peer_id: string;
+  snapshot: {
+    enabled: boolean;
+    lifetime_unique_peers: number;
+    active_last_24h: number;
+    active_last_7d: number;
+    by_tier: Record<string, number>;
+    by_address_type: Record<string, number>;
+    generated_at: number;
+    received_at?: number;
+  };
+};
+
+/** Persisted census history row from skills.networkHistory RPC. */
+export type P2pCensusHistoryRow = {
+  sourcePeerId: string;
+  generatedAt: number;
+  snapshotAt: number;
+  lifetimeUniquePeers: number;
+  activeLast24h: number;
+  activeLast7d: number;
+  byTier: Record<string, number>;
+  byAddressType: Record<string, number>;
+};
+
 export type P2pContributions = {
   skills_published: number;
   skills_verified: number;
@@ -64,6 +92,8 @@ interface P2pState {
   contributions: P2pContributions | null;
   incomingSkills: P2pIncomingSkill[];
   bootstrapCensus: P2pBootstrapCensus | null;
+  networkCensus: P2pNetworkCensus | null;
+  censusHistory: P2pCensusHistoryRow[];
   error: string | null;
   loading: boolean;
 
@@ -71,6 +101,12 @@ interface P2pState {
   fetchContributions: (httpAddr?: string) => Promise<void>;
   fetchIncomingSkills: () => Promise<void>;
   fetchBootstrapCensus: (httpAddr?: string) => Promise<void>;
+  fetchNetworkCensus: () => Promise<void>;
+  fetchCensusHistory: (opts?: {
+    sourcePeerId?: string;
+    sinceMs?: number;
+    limit?: number;
+  }) => Promise<void>;
   setConnected: (connected: boolean) => void;
 }
 
@@ -82,6 +118,8 @@ export const useP2pStore = create<P2pState>((set) => ({
   contributions: null,
   incomingSkills: [],
   bootstrapCensus: null,
+  networkCensus: null,
+  censusHistory: [],
   error: null,
   loading: false,
 
@@ -125,6 +163,42 @@ export const useP2pStore = create<P2pState>((set) => ({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const bootstrapCensus = (await res.json()) as P2pBootstrapCensus;
       set({ bootstrapCensus });
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
+
+  fetchNetworkCensus: async () => {
+    // Goes through the gateway WS instead of the local orchestrator HTTP
+    // because the data is gossipsub-pushed and lives in the TS bridge cache.
+    try {
+      const request = useGatewayStore.getState().request;
+      const res = await request<{ networkCensus: P2pNetworkCensus | null }>("skills.network");
+      set({ networkCensus: res?.networkCensus ?? null });
+    } catch (err) {
+      // Silent — first-load races and disconnect noise shouldn't toast.
+      set({ error: String(err) });
+    }
+  },
+
+  fetchCensusHistory: async (opts) => {
+    try {
+      const request = useGatewayStore.getState().request;
+      const params: Record<string, unknown> = {};
+      if (opts?.sourcePeerId) {
+        params.sourcePeerId = opts.sourcePeerId;
+      }
+      if (typeof opts?.sinceMs === "number") {
+        params.sinceMs = opts.sinceMs;
+      }
+      if (typeof opts?.limit === "number") {
+        params.limit = opts.limit;
+      }
+      const res = await request<{ rows: P2pCensusHistoryRow[]; count: number }>(
+        "skills.networkHistory",
+        params,
+      );
+      set({ censusHistory: res?.rows ?? [] });
     } catch (err) {
       set({ error: String(err) });
     }

@@ -222,6 +222,23 @@ export const skillsHandlers: GatewayRequestHandlers = {
       undefined,
     );
   },
+  "skills.networkHistory": async ({ params, respond, context }) => {
+    // Persisted census history: every gossipsub-received bootnode snapshot
+    // is appended to network_census_history so we can render a growth-over-
+    // time chart. Returns rows ordered by generated_at ascending.
+    const sourcePeerId = typeof params?.sourcePeerId === "string" ? params.sourcePeerId : undefined;
+    const sinceMs =
+      typeof params?.sinceMs === "number" && Number.isFinite(params.sinceMs)
+        ? Math.max(0, Math.floor(params.sinceMs))
+        : undefined;
+    const limit =
+      typeof params?.limit === "number" && Number.isFinite(params.limit)
+        ? Math.max(1, Math.min(Math.floor(params.limit), 5000))
+        : undefined;
+    const rows =
+      context.skillNetworkBridge?.getNetworkCensusHistory?.({ sourcePeerId, sinceMs, limit }) ?? [];
+    respond(true, { rows: rows ?? [], count: rows?.length ?? 0 }, undefined);
+  },
   "skills.update": async ({ params, respond }) => {
     if (!validateSkillsUpdateParams(params)) {
       respond(

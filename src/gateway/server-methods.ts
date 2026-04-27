@@ -72,6 +72,8 @@ const READ_METHODS = new Set([
   "agent.identity.get",
   "agent.runtime.health",
   "skills.status",
+  "skills.network",
+  "skills.networkHistory",
   "voicewake.get",
   "sessions.list",
   "sessions.preview",

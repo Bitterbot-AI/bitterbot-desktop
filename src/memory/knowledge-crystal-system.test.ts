@@ -378,7 +378,7 @@ describe("Crystal Foundation", () => {
       ).run("legacy-1", "test.md", 1700000000000);
 
       const result = runMigrations(db);
-      expect(result.ran).toBe(10); // v1 (crystal columns) + v2 (skill tracking, reputation, etc.) + v3 (ban/blocklist, EigenTrust) + v4 (management verification, bounties) + v5 (lineage_hash, peer_origin) + v6 (bitemporal columns) + v7 (session extraction) + v8 + v9 + v10 (PLAN-13 Phase B skill_capability_grants)
+      expect(result.ran).toBe(11); // v1..v10 + v11 (network_census_history for gossipsub-pushed bootnode snapshots)
 
       const row = db.prepare("SELECT created_at FROM chunks WHERE id = ?").get("legacy-1") as {
         created_at: number;
