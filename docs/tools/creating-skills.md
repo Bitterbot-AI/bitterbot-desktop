@@ -10,9 +10,22 @@ Bitterbot is designed to be easily extensible. "Skills" are the primary way to a
 
 A skill is a directory containing a `SKILL.md` file (which provides instructions and tool definitions to the LLM) and optionally some scripts or resources.
 
-## Step-by-Step: Your First Skill
+## Two ways to author
 
-### 1. Create the Directory
+### Option A — In-app editor (recommended)
+
+The desktop app has a built-in skill editor. Open the **Skills** view, click **+ New skill**, pick a starter template (basic / API-backed / shell-tool), edit the SKILL.md inline, and save. The editor validates frontmatter client-side and writes the file via the `skills.create` gateway method. The new skill lands disabled by default and becomes visible to the agent on its next turn (no restart required).
+
+You can target either:
+
+- **Managed** (`~/.bitterbot/skills`) — shared across every agent on this machine.
+- **Workspace** — scoped to the currently selected agent.
+
+### Option B — Filesystem (CLI / editor)
+
+If you'd rather author the skill outside the app:
+
+#### 1. Create the directory
 
 Skills live in your workspace, usually `~/.bitterbot/workspace/skills/`. Create a new folder for your skill:
 
@@ -20,7 +33,7 @@ Skills live in your workspace, usually `~/.bitterbot/workspace/skills/`. Create 
 mkdir -p ~/.bitterbot/workspace/skills/hello-world
 ```
 
-### 2. Define the `SKILL.md`
+#### 2. Define the `SKILL.md`
 
 Create a `SKILL.md` file in that directory. This file uses YAML frontmatter for metadata and Markdown for instructions.
 
@@ -35,13 +48,13 @@ description: A simple skill that says hello.
 When the user asks for a greeting, use the `echo` tool to say "Hello from your custom skill!".
 ```
 
-### 3. Add Tools (Optional)
+#### 3. Add tools (optional)
 
 You can define custom tools in the frontmatter or instruct the agent to use existing system tools (like `bash` or `browser`).
 
-### 4. Refresh Bitterbot
+#### 4. Pick it up
 
-Ask your agent to "refresh skills" or restart the gateway. Bitterbot will discover the new directory and index the `SKILL.md`.
+The skills file watcher (enabled by default) bumps the snapshot version when it sees a new `SKILL.md`. The agent picks up the change on its next turn — no manual refresh or restart needed.
 
 ## Best Practices
 

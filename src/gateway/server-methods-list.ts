@@ -47,6 +47,7 @@ const BASE_METHODS = [
   "skills.network",
   "skills.networkHistory",
   "skills.update",
+  "skills.create",
   "skills.incoming.list",
   "skills.incoming.accept",
   "skills.incoming.reject",

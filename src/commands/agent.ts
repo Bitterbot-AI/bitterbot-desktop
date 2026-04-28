@@ -84,6 +84,27 @@ function resolveFallbackRetryPrompt(params: { body: string; isFallbackRetry: boo
   return "Continue where you left off. The previous model attempt failed or timed out.";
 }
 
+function formatSkillsChangeNote(
+  previous: { skills?: Array<{ name: string }> } | undefined,
+  next: { skills?: Array<{ name: string }> } | undefined,
+): string {
+  const prevNames = new Set((previous?.skills ?? []).map((s) => s.name));
+  const nextNames = new Set((next?.skills ?? []).map((s) => s.name));
+  const added: string[] = [];
+  for (const name of nextNames) {
+    if (!prevNames.has(name)) added.push(name);
+  }
+  const removed: string[] = [];
+  for (const name of prevNames) {
+    if (!nextNames.has(name)) removed.push(name);
+  }
+  if (added.length === 0 && removed.length === 0) return "";
+  const lines = ["[Skills change since last turn]"];
+  if (added.length > 0) lines.push(`Now available: ${added.toSorted().join(", ")}.`);
+  if (removed.length > 0) lines.push(`No longer available: ${removed.toSorted().join(", ")}.`);
+  return lines.join("\n");
+}
+
 function runAgentAttempt(params: {
   providerOverride: string;
   modelOverride: string;
@@ -312,9 +333,12 @@ export async function agentCommand(
       });
     }
 
-    const needsSkillsSnapshot = isNewSession || !sessionEntry?.skillsSnapshot;
     const skillsSnapshotVersion = getSkillsSnapshotVersion(workspaceDir);
+    const cachedSnapshotVersion = sessionEntry?.skillsSnapshot?.version ?? -1;
+    const snapshotIsStale = cachedSnapshotVersion < skillsSnapshotVersion;
+    const needsSkillsSnapshot = isNewSession || !sessionEntry?.skillsSnapshot || snapshotIsStale;
     const skillFilter = resolveAgentSkillsFilter(cfg, sessionAgentId);
+    const previousSnapshot = sessionEntry?.skillsSnapshot;
     const skillsSnapshot = needsSkillsSnapshot
       ? buildWorkspaceSkillSnapshot(workspaceDir, {
           config: cfg,
@@ -323,6 +347,17 @@ export async function agentCommand(
           skillFilter,
         })
       : sessionEntry?.skillsSnapshot;
+
+    // Hot-toggle awareness: if we rebuilt mid-session because the user (or
+    // marketplace) changed skills, surface the diff to the agent so its next
+    // turn can reflect "X is now available" / "Y was disabled" without the
+    // user needing to retell it.
+    if (needsSkillsSnapshot && !isNewSession && previousSnapshot && skillsSnapshot) {
+      const note = formatSkillsChangeNote(previousSnapshot, skillsSnapshot);
+      if (note) {
+        skillsSnapshot.prompt = `${note}\n\n${skillsSnapshot.prompt}`.trim();
+      }
+    }
 
     if (skillsSnapshot && sessionStore && sessionKey && needsSkillsSnapshot) {
       const current = sessionEntry ?? {

@@ -70,15 +70,22 @@ export function shouldIncludeSkill(params: {
   entry: SkillEntry;
   config?: BitterbotConfig;
   eligibility?: SkillEligibilityContext;
+  /**
+   * When true, ignore the user's `enabled: false` toggle while still applying
+   * physical/policy gates (OS, allowlist, missing requirements). Used to
+   * compute the "soft-disabled but otherwise eligible" tier surfaced to the
+   * agent as suggestable.
+   */
+  ignoreUserDisable?: boolean;
 }): boolean {
-  const { entry, config, eligibility } = params;
+  const { entry, config, eligibility, ignoreUserDisable } = params;
   const skillKey = resolveSkillKey(entry.skill, entry);
   const skillConfig = resolveSkillConfig(config, skillKey);
   const allowBundled = normalizeAllowlist(config?.skills?.allowBundled);
   const osList = entry.metadata?.os ?? [];
   const remotePlatforms = eligibility?.remote?.platforms ?? [];
 
-  if (skillConfig?.enabled === false) {
+  if (skillConfig?.enabled === false && !ignoreUserDisable) {
     return false;
   }
   if (!isBundledSkillAllowed(entry, allowBundled)) {

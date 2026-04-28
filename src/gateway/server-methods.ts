@@ -207,6 +207,7 @@ function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["c
     method === "agents.delete" ||
     method === "skills.install" ||
     method === "skills.update" ||
+    method === "skills.create" ||
     method === "sessions.patch" ||
     method === "sessions.reset" ||
     method === "sessions.delete" ||

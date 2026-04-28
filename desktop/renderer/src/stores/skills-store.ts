@@ -1,5 +1,29 @@
 import { create } from "zustand";
 
+export type SkillState =
+  | "ready"
+  | "disabled-by-user"
+  | "missing-os"
+  | "missing-bin"
+  | "missing-env"
+  | "missing-config"
+  | "blocked-by-allowlist";
+
+export type SkillInstallOption = {
+  id: string;
+  kind: string;
+  label: string;
+  bins: string[];
+};
+
+export type SkillOrigin = {
+  registry?: string;
+  slug?: string;
+  version?: string;
+  license?: string;
+  upstreamUrl?: string;
+};
+
 export type SkillStatus = {
   key: string;
   name: string;
@@ -7,9 +31,14 @@ export type SkillStatus = {
   category?: string;
   enabled: boolean;
   installed: boolean;
-  hasApiKey?: boolean;
+  hasApiKey: boolean;
+  state: SkillState;
+  reasons: string[];
+  platformLabel?: string;
+  primaryEnv?: string;
   requires?: { bins?: string[] };
-  metadata?: Record<string, unknown>;
+  install?: SkillInstallOption[];
+  origin?: SkillOrigin;
 };
 
 type SkillsState = {

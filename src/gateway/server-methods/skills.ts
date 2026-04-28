@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { CrystallizationCandidate } from "../../agents/skills/types.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { GatewayRequestHandlers } from "./types.js";
@@ -17,16 +19,19 @@ import {
   rejectIncomingSkill,
   rejectIncomingSkillsByPeer,
 } from "../../agents/skills/ingest.js";
+import { bumpSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
 import { listAgentWorkspaceDirs } from "../../agents/workspace-dirs.js";
 import { loadConfig, writeConfigFile } from "../../config/config.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
+import { CONFIG_DIR } from "../../utils.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
 import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
   validateSkillsBinsParams,
+  validateSkillsCreateParams,
   validateSkillsInstallParams,
   validateSkillsStatusParams,
   validateSkillsUpdateParams,
@@ -295,7 +300,86 @@ export const skillsHandlers: GatewayRequestHandlers = {
       skills,
     };
     await writeConfigFile(nextConfig);
+    bumpSkillsSnapshotVersion({ reason: "manual" });
     respond(true, { ok: true, skillKey: p.skillKey, config: current }, undefined);
+  },
+  "skills.create": async ({ params, respond }) => {
+    if (!validateSkillsCreateParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.create params: ${formatValidationErrors(validateSkillsCreateParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const p = params as {
+      name: string;
+      content: string;
+      target?: "managed" | "workspace";
+      agentId?: string;
+      overwrite?: boolean;
+    };
+    const sanitizedName = p.name
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 64);
+    if (!sanitizedName) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "name normalizes to empty after sanitization"),
+      );
+      return;
+    }
+    if (!p.content.startsWith("---")) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "SKILL.md must start with YAML frontmatter (---)"),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const target = p.target ?? "managed";
+    let baseDir: string;
+    if (target === "workspace") {
+      const agentId = p.agentId ? normalizeAgentId(p.agentId) : resolveDefaultAgentId(cfg);
+      const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
+      baseDir = path.join(workspaceDir, "skills");
+    } else {
+      baseDir = path.join(CONFIG_DIR, "skills");
+    }
+    const skillDir = path.join(baseDir, sanitizedName);
+    const skillPath = path.join(skillDir, "SKILL.md");
+    if (!p.overwrite) {
+      try {
+        await fs.access(skillPath);
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            `skill "${sanitizedName}" already exists at ${skillPath}; pass overwrite=true to replace`,
+          ),
+        );
+        return;
+      } catch {
+        // expected: file doesn't exist
+      }
+    }
+    try {
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(skillPath, p.content, "utf-8");
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, `write failed: ${String(err)}`));
+      return;
+    }
+    bumpSkillsSnapshotVersion({ reason: "manual", changedPath: skillPath });
+    respond(true, { ok: true, skillName: sanitizedName, skillPath, target }, undefined);
   },
   "skills.incoming.list": async ({ respond }) => {
     const cfg = loadConfig();

@@ -285,17 +285,54 @@ When an agent run starts, Bitterbot:
 
 This is **scoped to the agent run**, not a global shell environment.
 
-## Session snapshot (performance)
+## Session snapshot + hot reload
 
-Bitterbot snapshots the eligible skills **when a session starts** and reuses that list for subsequent turns in the same session. Changes to skills or config take effect on the next new session.
+Bitterbot snapshots eligible skills **when a session starts** and caches them for subsequent turns. The snapshot carries a `version` field that is bumped whenever the skill graph changes:
 
-Skills can also refresh mid-session when the skills watcher is enabled or when a new eligible remote node appears (see below). Think of this as a **hot reload**: the refreshed list is picked up on the next agent turn.
+- a user toggles a skill (`skills.update`)
+- a marketplace skill is accepted or rejected (`skills.incoming.accept` / `.reject`)
+- a P2P or `agentskills.io` import lands
+- a new skill is created via `skills.create` (or saved through the in-app editor)
+- the file watcher detects a `SKILL.md` add/change/unlink
+
+When the global version exceeds the cached version, the **next agent turn rebuilds the snapshot** automatically. The agent also receives a one-line diff like `[Skills change since last turn] Now available: foo. No longer available: bar.` so it can react in conversation. No session restart is needed.
+
+Cron jobs and other background runs go through the same path, so they always pick up the **fire-time** skill state, not whatever was current when the schedule was created.
+
+### `skills.changed` gateway event
+
+The gateway broadcasts `skills.changed` events to every connected client whenever the version bumps. The event payload is `{ reason, workspaceDir?, changedPath?, version }`. UI surfaces (the Skills view, Incoming queue, and any custom subscriber) refresh on this event without polling.
+
+## Two-tier prompt (agent self-awareness)
+
+The system prompt now includes two tiers of skill information:
+
+- **Tier A — eligible + enabled**: full skill metadata (name, description, location), exactly as before. The agent can invoke these directly.
+- **Tier B — soft-disabled but otherwise eligible**: skills the user has toggled off but that are installed and compatible with the current OS. The agent sees only `name: description` plus a strict policy:
+  - it MAY suggest enabling one only when it directly addresses the user's current task
+  - at most one suggestion per turn
+  - it must wait for explicit user approval before assuming the skill is available
+  - it must NOT enable skills on its own
+
+OS-incompatible skills, missing-requirement skills, and allowlist-blocked skills stay invisible to the agent (hard-disabled). This keeps the model from proposing things the user physically cannot run.
 
 ## Remote nodes (cross-platform skills)
 
 If the Gateway is running on one platform but a **remote node** on a different platform is connected **with `system.run` allowed** (Exec approvals security not set to `deny`), Bitterbot can treat platform-specific skills as eligible when the required binaries are present on that node. The agent should execute those skills via the `nodes` tool (typically `nodes.run`).
 
 This relies on the node reporting its command support and on a bin probe via `system.run`. If the remote node goes offline later, the skills remain visible; invocations may fail until the node reconnects.
+
+## Skills UI (desktop app)
+
+The desktop app's **Skills** view is the primary surface for managing skills:
+
+- **Installed tab**: every skill the agent can see, grouped by source. Each card shows a typed `state` badge (Ready / Disabled / Incompatible OS / Needs install / Needs API key / Needs config / Allowlisted off) plus reasons on hover. Filter tabs across the top scope to All / Ready / Disabled / Needs setup / Incompatible (Incompatible defaults to hidden inside the All tab).
+- **Incoming tab**: skills queued for review (P2P and agentskills.io imports). Shows author peer, signature status, injection-scan severity, content hash, and provenance. Accept moves the skill to `~/.bitterbot/skills` (still disabled until you toggle it on); Reject removes it from quarantine; Reject-all-from-peer bulk-cleans a compromised peer.
+- **Import from agentskills.io**: an inline form at the top of the Incoming tab takes a slug or full https URL and routes through the configured trust policy.
+- **Agent selector**: when more than one agent is configured, a dropdown scopes the view (and the underlying `skills.status` lookup) to that agent's workspace.
+- **+ New skill**: opens an in-app editor with three starter templates (basic / API-backed / shell-tool). Frontmatter is validated client-side. New skills land in `~/.bitterbot/skills` (or the active agent's workspace) and are immediately visible to the agent on its next turn.
+
+All UI surfaces subscribe to `skills.changed` and refresh automatically — no manual refresh required after a CLI command, P2P delivery, or another client's edit.
 
 ## Skills watcher (auto-refresh)
 
