@@ -207,3 +207,17 @@ export const SkillsUpdateParamsSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+
+export const SkillsCreateParamsSchema = Type.Object(
+  {
+    name: NonEmptyString,
+    content: NonEmptyString,
+    /** Where to write the skill: "managed" (~/.bitterbot/skills) or "workspace". */
+    target: Type.Optional(Type.Union([Type.Literal("managed"), Type.Literal("workspace")])),
+    /** Optional agent ID; only used when target = "workspace". */
+    agentId: Type.Optional(NonEmptyString),
+    /** Refuse to overwrite an existing skill at the same path. */
+    overwrite: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);

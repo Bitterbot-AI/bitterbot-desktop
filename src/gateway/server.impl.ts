@@ -5,7 +5,10 @@ import type { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
-import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
+import {
+  getSkillsSnapshotVersion,
+  registerSkillsChangeListener,
+} from "../agents/skills/refresh.js";
 import { initSubagentRegistry } from "../agents/subagent-registry.js";
 import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
@@ -380,6 +383,16 @@ export async function startGatewayServer(
   const skillsChangeUnsub = minimalTestGateway
     ? () => {}
     : registerSkillsChangeListener((event) => {
+        broadcast(
+          "skills.changed",
+          {
+            reason: event.reason,
+            workspaceDir: event.workspaceDir,
+            changedPath: event.changedPath,
+            version: getSkillsSnapshotVersion(event.workspaceDir),
+          },
+          { dropIfSlow: true },
+        );
         if (event.reason === "remote-node") {
           return;
         }

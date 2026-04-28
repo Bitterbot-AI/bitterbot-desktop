@@ -27,6 +27,15 @@ export type SkillInstallOption = {
   bins: string[];
 };
 
+export type SkillState =
+  | "ready"
+  | "disabled-by-user"
+  | "missing-os"
+  | "missing-bin"
+  | "missing-env"
+  | "missing-config"
+  | "blocked-by-allowlist";
+
 export type SkillStatusEntry = {
   name: string;
   description: string;
@@ -46,6 +55,25 @@ export type SkillStatusEntry = {
   missing: Requirements;
   configChecks: SkillStatusConfigCheck[];
   install: SkillInstallOption[];
+  /**
+   * Single-value lifecycle state used by the UI. OS mismatches are hard-disabled
+   * (the user cannot un-block them by toggling); user-disabled is soft.
+   */
+  state: SkillState;
+  /** Human-readable reasons explaining the state, suitable for tooltips. */
+  reasons: string[];
+  /** Friendly platform label (e.g. "macOS only") when os is constrained. */
+  platformLabel?: string;
+  /** True when an API key is configured (via config.skills.entries[*].apiKey or env). */
+  hasApiKey: boolean;
+  /** Marketplace/upstream provenance, when this skill was imported. */
+  origin?: {
+    registry?: string;
+    slug?: string;
+    version?: string;
+    license?: string;
+    upstreamUrl?: string;
+  };
 };
 
 export type SkillStatusReport = {
@@ -166,6 +194,61 @@ function normalizeInstallOptions(
   return [toOption(preferred.spec, preferred.index)];
 }
 
+const PLATFORM_LABELS: Record<string, string> = {
+  darwin: "macOS",
+  win32: "Windows",
+  linux: "Linux",
+};
+
+function formatPlatformList(platforms: string[]): string {
+  const labelled = platforms.map((p) => PLATFORM_LABELS[p] ?? p);
+  if (labelled.length === 1) return `${labelled[0]} only`;
+  if (labelled.length === 2) return `${labelled[0]} or ${labelled[1]} only`;
+  return `${labelled.slice(0, -1).join(", ")}, or ${labelled[labelled.length - 1]} only`;
+}
+
+function deriveSkillState(params: {
+  disabled: boolean;
+  blockedByAllowlist: boolean;
+  missing: Requirements;
+}): { state: SkillState; reasons: string[] } {
+  const reasons: string[] = [];
+  const { disabled, blockedByAllowlist, missing } = params;
+  // Hard-physical incompatibilities take precedence over user toggles: a
+  // disabled-by-user toggle on a Mac-only skill running on Windows is moot;
+  // the OS mismatch is what the user actually needs to know.
+  if (missing.os.length > 0) {
+    reasons.push(`Not compatible with this OS (requires ${formatPlatformList(missing.os)}).`);
+    return { state: "missing-os", reasons };
+  }
+  if (blockedByAllowlist) {
+    reasons.push("This bundled skill is not on the allowlist.");
+    return { state: "blocked-by-allowlist", reasons };
+  }
+  if (missing.bins.length > 0 || missing.anyBins.length > 0) {
+    if (missing.bins.length > 0) {
+      reasons.push(`Missing required binaries: ${missing.bins.join(", ")}.`);
+    }
+    if (missing.anyBins.length > 0) {
+      reasons.push(`Missing at least one of: ${missing.anyBins.join(", ")}.`);
+    }
+    return { state: "missing-bin", reasons };
+  }
+  if (missing.env.length > 0) {
+    reasons.push(`Missing environment variables: ${missing.env.join(", ")}.`);
+    return { state: "missing-env", reasons };
+  }
+  if (missing.config.length > 0) {
+    reasons.push(`Missing configuration: ${missing.config.join(", ")}.`);
+    return { state: "missing-config", reasons };
+  }
+  if (disabled) {
+    reasons.push("Disabled by user.");
+    return { state: "disabled-by-user", reasons };
+  }
+  return { state: "ready", reasons };
+}
+
 function buildSkillStatus(
   entry: SkillEntry,
   config?: BitterbotConfig,
@@ -184,6 +267,12 @@ function buildSkillStatus(
       ? bundledNames.has(entry.skill.name)
       : entry.skill.source === "bitterbot-bundled";
 
+  const primaryEnv = entry.metadata?.primaryEnv;
+  const hasApiKey = Boolean(
+    skillConfig?.apiKey ||
+    (primaryEnv && (process.env[primaryEnv] || skillConfig?.env?.[primaryEnv])),
+  );
+
   const { emoji, homepage, required, missing, requirementsSatisfied, configChecks } =
     evaluateEntryMetadataRequirements({
       always,
@@ -201,6 +290,9 @@ function buildSkillStatus(
       isConfigSatisfied: (pathStr) => isConfigPathTruthy(config, pathStr),
     });
   const eligible = !disabled && !blockedByAllowlist && requirementsSatisfied;
+  const { state, reasons } = deriveSkillState({ disabled, blockedByAllowlist, missing });
+  const declaredOs = entry.metadata?.os ?? [];
+  const platformLabel = declaredOs.length > 0 ? formatPlatformList(declaredOs) : undefined;
 
   return {
     name: entry.skill.name,
@@ -210,7 +302,7 @@ function buildSkillStatus(
     filePath: entry.skill.filePath,
     baseDir: entry.skill.baseDir,
     skillKey,
-    primaryEnv: entry.metadata?.primaryEnv,
+    primaryEnv,
     emoji,
     homepage,
     always,
@@ -221,6 +313,11 @@ function buildSkillStatus(
     missing,
     configChecks,
     install: normalizeInstallOptions(entry, prefs ?? resolveSkillsInstallPreferences(config)),
+    state,
+    reasons,
+    platformLabel,
+    hasApiKey,
+    origin: entry.metadata?.origin,
   };
 }
 

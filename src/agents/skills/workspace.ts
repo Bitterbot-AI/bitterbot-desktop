@@ -276,6 +276,44 @@ const P2P_SKILL_SECURITY_NOTICE = [
   "  wins.",
 ].join("\n");
 
+function buildSoftDisabledTier(
+  allEntries: SkillEntry[],
+  eligibleSet: Set<string>,
+  config: BitterbotConfig | undefined,
+  eligibility: SkillEligibilityContext | undefined,
+  skillFilter: string[] | undefined,
+): SkillEntry[] {
+  // A skill is "soft-disabled" iff the user toggled it off but it would
+  // otherwise be eligible (OS compatible, requirements met, allowlisted).
+  // We surface these to the agent as suggestable. Hard-disabled skills (OS
+  // mismatch, missing bins, etc.) stay hidden so the model cannot propose
+  // enabling something the user physically cannot run.
+  const filterSet = skillFilter && skillFilter.length > 0 ? new Set(skillFilter) : undefined;
+  return allEntries.filter((entry) => {
+    if (eligibleSet.has(entry.skill.name)) return false;
+    if (filterSet && !filterSet.has(entry.skill.name)) return false;
+    if (entry.invocation?.disableModelInvocation === true) return false;
+    return shouldIncludeSkill({ entry, config, eligibility, ignoreUserDisable: true });
+  });
+}
+
+function formatSoftDisabledTier(entries: SkillEntry[]): string {
+  if (entries.length === 0) return "";
+  const lines = [
+    "[Skills available but disabled by user]",
+    "Rules for these skills:",
+    "- They exist on disk and are compatible with the user's system, but the user has toggled them off.",
+    "- You MAY suggest enabling one only when it directly addresses what the user just asked for.",
+    "- Suggest at most one per turn. Name the user's task and explain why this skill specifically fits.",
+    "- Wait for explicit user approval before assuming the skill is available; do not enable any of them yourself.",
+  ];
+  for (const entry of entries.toSorted((a, b) => a.skill.name.localeCompare(b.skill.name))) {
+    const desc = entry.skill.description?.trim();
+    lines.push(`- ${entry.skill.name}${desc ? `: ${desc}` : ""}`);
+  }
+  return lines.join("\n");
+}
+
 export function buildWorkspaceSkillSnapshot(
   workspaceDir: string,
   opts?: {
@@ -306,7 +344,21 @@ export function buildWorkspaceSkillSnapshot(
   const remoteNote = opts?.eligibility?.remote?.note?.trim();
   const anyP2POrigin = resolvedSkills.some((s) => hasP2PProvenance(s));
   const securityNotice = anyP2POrigin ? P2P_SKILL_SECURITY_NOTICE : "";
-  const prompt = [remoteNote, securityNotice, formatSkillsForPrompt(resolvedSkills)]
+  const eligibleNames = new Set(eligible.map((e) => e.skill.name));
+  const softDisabled = buildSoftDisabledTier(
+    skillEntries,
+    eligibleNames,
+    opts?.config,
+    opts?.eligibility,
+    opts?.skillFilter,
+  );
+  const softDisabledNote = formatSoftDisabledTier(softDisabled);
+  const prompt = [
+    remoteNote,
+    securityNotice,
+    formatSkillsForPrompt(resolvedSkills),
+    softDisabledNote,
+  ]
     .filter(Boolean)
     .join("\n\n");
   const skillFilter = normalizeSkillFilter(opts?.skillFilter);

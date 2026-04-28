@@ -329,6 +329,7 @@ export async function rejectIncomingSkill(params: {
 
   try {
     await fs.rm(incomingDir, { recursive: true, force: true });
+    bumpSkillsSnapshotVersion({ reason: "manual", changedPath: incomingDir });
     log.info(`Rejected incoming skill: ${skillName}`);
     return { ok: true, action: "rejected", skillName };
   } catch (err) {
@@ -385,29 +386,79 @@ export async function rejectIncomingSkillsByPeer(params: {
   return { ok: errored.length === 0, rejected, errored };
 }
 
-export async function listIncomingSkills(config: BitterbotConfig): Promise<
-  Array<{
-    name: string;
-    author_peer_id?: string;
-    timestamp?: number;
-  }>
-> {
+export type IncomingSkillSummary = {
+  name: string;
+  author_peer_id?: string;
+  timestamp?: number;
+  description?: string;
+  category?: string;
+  tags?: string[];
+  signatureValid?: boolean;
+  injectionScan?: { severity?: InjectionSeverity; matches?: number };
+  provenance?: Record<string, unknown>;
+  contentHash?: string;
+  expiresAt?: number;
+};
+
+function extractDescriptionFromFrontmatter(content: string): string | undefined {
+  if (!content.startsWith("---")) return undefined;
+  const end = content.indexOf("\n---", 3);
+  if (end === -1) return undefined;
+  const block = content.slice(3, end);
+  for (const rawLine of block.split("\n")) {
+    const line = rawLine.trim();
+    if (line.startsWith("description:")) {
+      const value = line.slice("description:".length).trim();
+      // Strip surrounding quotes if present.
+      return value.replace(/^"|"$/g, "").replace(/^'|'$/g, "") || undefined;
+    }
+  }
+  return undefined;
+}
+
+export async function listIncomingSkills(config: BitterbotConfig): Promise<IncomingSkillSummary[]> {
   const quarantineDir =
     config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
   try {
     const entries = await fs.readdir(quarantineDir, { withFileTypes: true });
-    const skills: Array<{ name: string; author_peer_id?: string; timestamp?: number }> = [];
+    const skills: IncomingSkillSummary[] = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const envelopePath = path.join(quarantineDir, entry.name, ".envelope.json");
       let envelope: SkillEnvelope | undefined;
+      let envelopeMeta: Record<string, unknown> | undefined;
       try {
-        envelope = JSON.parse(await fs.readFile(envelopePath, "utf-8"));
+        const raw = await fs.readFile(envelopePath, "utf-8");
+        envelope = JSON.parse(raw);
+        envelopeMeta = envelope as unknown as Record<string, unknown>;
       } catch {}
+      let description: string | undefined;
+      if (envelope?.skill_md) {
+        try {
+          const decoded = Buffer.from(envelope.skill_md, "base64").toString("utf-8");
+          description = extractDescriptionFromFrontmatter(decoded);
+        } catch {}
+      }
+      const injectionScan = envelopeMeta?.injection_scan as
+        | { severity?: InjectionSeverity; matches?: { length?: number } | unknown[] }
+        | undefined;
+      const matchesLen = Array.isArray(injectionScan?.matches)
+        ? injectionScan.matches.length
+        : (injectionScan?.matches as { length?: number } | undefined)?.length;
       skills.push({
         name: entry.name,
         author_peer_id: envelope?.author_peer_id,
         timestamp: envelope?.timestamp,
+        description,
+        category: envelope?.category,
+        tags: envelope?.tags,
+        signatureValid: envelope ? verifySignature(envelope) : undefined,
+        injectionScan: injectionScan
+          ? { severity: injectionScan.severity, matches: matchesLen }
+          : undefined,
+        provenance: envelope?.provenance,
+        contentHash: envelope?.content_hash,
+        expiresAt: envelope?.expires_at,
       });
     }
     return skills;
