@@ -1,0 +1,16 @@
+# Terraform plugin cache (large, regenerable via `terraform init`)
+.terraform/
+
+# Terraform state (machine-local; switch to remote backend if multiple
+# operators need shared state). Contains droplet IDs and public IPs.
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+crash.log
+
+# Local override that some operators use to point at a personal Cloudflare
+# zone or a different SSH key
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
