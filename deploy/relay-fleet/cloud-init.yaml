@@ -11,7 +11,7 @@
 # build (harmless on small relays, useful for occasional traffic spikes).
 
 package_update: true
-package_upgrade: false  # don't slow first boot for security upgrades; unattended-upgrades will handle them later
+package_upgrade: false # don't slow first boot for security upgrades; unattended-upgrades will handle them later
 
 packages:
   - build-essential
