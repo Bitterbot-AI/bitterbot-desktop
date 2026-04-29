@@ -1254,31 +1254,40 @@ impl SwarmHandle {
                 }));
             }
             BitterbotBehaviourEvent::Autonat(event) => {
-                info!("AutoNAT event: {:?}", event);
-                // Best-effort NAT verdict: AutoNAT v2 client gives us a
-                // probe-result event whose Debug includes the reachability
-                // outcome. We don't have a stable matcher across libp2p
-                // patch releases, so we sniff the formatted string. This is
-                // intentionally lenient — wrong is better than panicking.
-                let event_text = format!("{:?}", event);
-                let nat_label = if event_text.contains("Reachable")
-                    || event_text.contains("reachable: true")
-                    || event_text.contains("Public")
-                {
-                    "public"
-                } else if event_text.contains("Unreachable") || event_text.contains("Private") {
-                    "private"
-                } else {
-                    "unknown"
+                // libp2p_autonat::v2::client::Event has a structured shape:
+                //   { tested_addr, bytes_sent, server, result: Result<(), Error> }
+                // The previous parser sniffed `format!("{:?}", event)` for words
+                // like "Reachable" / "Public" — those literals never appear in
+                // this Event's Debug output, so the verdict was permanently
+                // stuck at unknown. Now we match on the structured result:
+                // Ok ⇒ a peer successfully dialed us back ⇒ Public,
+                // Err ⇒ peer could not dial us back ⇒ Private. A single
+                // confirmed Public sticks; we never downgrade Public → Private
+                // on a later failed probe (the failure may just mean one
+                // particular probing peer can't reach us, while the network
+                // generally can).
+                let was_unknown = matches!(self.nat_status, NatStatus::Unknown);
+                let new_status = match &event.result {
+                    Ok(()) => NatStatus::Public,
+                    Err(_) if !matches!(self.nat_status, NatStatus::Public) => NatStatus::Private,
+                    Err(_) => self.nat_status,
                 };
-                if nat_label != "unknown" {
-                    self.nat_status = match nat_label {
-                        "public" => NatStatus::Public,
-                        "private" => NatStatus::Private,
-                        _ => NatStatus::Unknown,
+                if new_status != self.nat_status || was_unknown {
+                    let label = match new_status {
+                        NatStatus::Public => "public",
+                        NatStatus::Private => "private",
+                        NatStatus::Unknown => "unknown",
                     };
+                    info!(
+                        "AutoNAT verdict: {} (tested {} via {}, result {})",
+                        label,
+                        event.tested_addr,
+                        event.server,
+                        if event.result.is_ok() { "ok" } else { "err" },
+                    );
+                    self.nat_status = new_status;
                     let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
-                    stats.nat_status = nat_label.to_string();
+                    stats.nat_status = label.to_string();
                 }
                 // When AutoNAT detects we're behind NAT, initiate relay reservations
                 if self.relay_mode == RelayMode::Client {
