@@ -12,6 +12,7 @@ import {
 import { initSubagentRegistry } from "../agents/subagent-registry.js";
 import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
+import { startCheckpointWriter } from "../checkpoints/agent-event-writer.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { createDefaultDeps } from "../cli/deps.js";
 import {
@@ -170,6 +171,11 @@ export async function startGatewayServer(
   // PLAN-14 Pillar 6: bring up OpenTelemetry before any spans are created.
   // No-op when OTEL_TRACES_EXPORTER / OTEL_EXPORTER_OTLP_ENDPOINT is unset.
   await initOtel({ serviceName: "bitterbot-gateway" });
+
+  // PLAN-14 Pillar 6 #2: start the checkpoint writer (no-op unless
+  // BITTERBOT_CHECKPOINTS=1) so each agent run produces a forkable
+  // timeline in ~/.bitterbot/checkpoints.sqlite.
+  startCheckpointWriter();
 
   let configSnapshot = await readConfigFileSnapshot();
   if (configSnapshot.legacyIssues.length > 0) {
