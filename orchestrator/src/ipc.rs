@@ -119,6 +119,39 @@ pub enum IpcCommand {
         reason: String,
         respond: tokio::sync::oneshot::Sender<serde_json::Value>,
     },
+    // PLAN-14 Pillar 4: OS-level computer use over IPC. The handlers in
+    // src/computer.rs respect both the Cargo `computer-use` feature
+    // (build-time) and BITTERBOT_COMPUTER_USE=1 (runtime).
+    ComputerScreenshot {
+        id: String,
+        payload: crate::computer::ScreenshotArgs,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
+    ComputerScreenSize {
+        id: String,
+        payload: crate::computer::ScreenshotArgs,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
+    ComputerMouseMove {
+        id: String,
+        payload: crate::computer::MouseMoveArgs,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
+    ComputerMouseClick {
+        id: String,
+        payload: crate::computer::MouseClickArgs,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
+    ComputerType {
+        id: String,
+        payload: crate::computer::TypeArgs,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
+    ComputerKey {
+        id: String,
+        payload: crate::computer::KeyArgs,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -404,6 +437,52 @@ async fn handle_client_line(
                 reason,
                 respond: resp_tx,
             }
+        }
+        // PLAN-14 Pillar 4: computer use over IPC.
+        "computer_screenshot" => {
+            let payload: crate::computer::ScreenshotArgs =
+                serde_json::from_value(msg.payload).unwrap_or_default();
+            IpcCommand::ComputerScreenshot { id: msg.id, payload, respond: resp_tx }
+        }
+        "computer_screen_size" => {
+            let payload: crate::computer::ScreenshotArgs =
+                serde_json::from_value(msg.payload).unwrap_or_default();
+            IpcCommand::ComputerScreenSize { id: msg.id, payload, respond: resp_tx }
+        }
+        "computer_mouse_move" => {
+            let payload: crate::computer::MouseMoveArgs = match serde_json::from_value(msg.payload) {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Invalid computer_mouse_move payload: {}", e);
+                    return true;
+                }
+            };
+            IpcCommand::ComputerMouseMove { id: msg.id, payload, respond: resp_tx }
+        }
+        "computer_mouse_click" => {
+            let payload: crate::computer::MouseClickArgs =
+                serde_json::from_value(msg.payload).unwrap_or_default();
+            IpcCommand::ComputerMouseClick { id: msg.id, payload, respond: resp_tx }
+        }
+        "computer_type" => {
+            let payload: crate::computer::TypeArgs = match serde_json::from_value(msg.payload) {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Invalid computer_type payload: {}", e);
+                    return true;
+                }
+            };
+            IpcCommand::ComputerType { id: msg.id, payload, respond: resp_tx }
+        }
+        "computer_key" => {
+            let payload: crate::computer::KeyArgs = match serde_json::from_value(msg.payload) {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Invalid computer_key payload: {}", e);
+                    return true;
+                }
+            };
+            IpcCommand::ComputerKey { id: msg.id, payload, respond: resp_tx }
         }
         other => {
             warn!("Unknown IPC message type: {}", other);

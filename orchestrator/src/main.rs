@@ -1,3 +1,4 @@
+mod computer;
 mod crypto;
 mod ipc;
 mod security;

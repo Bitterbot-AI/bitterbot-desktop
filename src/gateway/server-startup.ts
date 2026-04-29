@@ -173,9 +173,14 @@ export async function startGatewaySidecars(params: {
     null;
   if (params.cfg.p2p?.enabled) {
     try {
-      const { OrchestratorBridge: Bridge } = await import("../infra/orchestrator-bridge.js");
+      const { OrchestratorBridge: Bridge, setActiveOrchestratorBridge } =
+        await import("../infra/orchestrator-bridge.js");
       orchestratorBridge = new Bridge(params.cfg.p2p);
       await orchestratorBridge.start();
+      // PLAN-14 Pillar 4: register the bridge for tool-side accessors
+      // (computer_use IPC, etc.) without threading it through every
+      // tool factory.
+      setActiveOrchestratorBridge(orchestratorBridge);
       // Publish initial status snapshot for system prompt / doctor / UI consumers.
       // peer_connected/peer_disconnected callbacks below maintain peerCount live.
       setP2pStatus({

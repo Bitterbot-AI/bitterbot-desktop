@@ -38,5 +38,19 @@ hex = "0.4"
 lru = "0.12"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
+# PLAN-14 Pillar 4: optional OS-control deps. Build with
+# `cargo build --features=computer-use` to enable. Off by default so
+# the relay fleet's headless Linux build doesn't pull in libxdo / X11.
+xcap = { version = "0.0.14", optional = true }
+enigo = { version = "0.2", optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+
+[features]
+default = []
+# Enables IPC commands for screen capture and input synthesis in the
+# orchestrator daemon. Required for headless / agent-driven OS control.
+# On Linux, the runtime needs libxdo / libxtst-dev installed.
+computer-use = ["xcap", "enigo", "image"]
+
 [dev-dependencies]
 tempfile = "3"
