@@ -542,6 +542,14 @@ pub struct BitterbotBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub kademlia: kad::Behaviour<MemoryStore>,
     pub autonat: autonat::v2::client::Behaviour,
+    /// AutoNAT v2 server. Without this on at least some peers in the
+    /// network, every node's NAT verdict stays "unknown" forever
+    /// because client probes have no one to answer them. Enabling on
+    /// every node (including NAT'd ones) is safe: a NAT'd server's
+    /// dial-back attempts that fail correctly tell the requesting peer
+    /// "you're not reachable from where I am" — the very signal AutoNAT
+    /// needs to flip a verdict to Private.
+    pub autonat_server: autonat::v2::server::Behaviour,
     pub identify: identify::Behaviour,
     pub relay_client: Toggle<relay::client::Behaviour>,
     pub relay_server: Toggle<relay::Behaviour>,
@@ -2466,11 +2474,12 @@ pub async fn build_swarm(
         }
     }
 
-    // --- AutoNAT v2 client configuration ---
-    let autonat_behaviour = autonat::v2::client::Behaviour::new(
-        rand::rngs::OsRng,
-        autonat::v2::client::Config::default(),
-    );
+    // --- AutoNAT v2 client + server configuration ---
+    // Inline-constructed inside each behaviour closure below because the
+    // builder closures are FnOnce that move the value, and the match has
+    // three arms each constructing its own closure. Constructing inside
+    // sidesteps the Rust borrow rules around moving the same value into
+    // multiple closures.
 
     // --- Identify configuration ---
     let identify_config = identify::Config::new(
@@ -2504,7 +2513,13 @@ pub async fn build_swarm(
                     Ok(BitterbotBehaviour {
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
-                        autonat: autonat_behaviour,
+                        autonat: autonat::v2::client::Behaviour::new(
+                            rand::rngs::OsRng,
+                            autonat::v2::client::Config::default(),
+                        ),
+                        autonat_server: autonat::v2::server::Behaviour::new(
+                            rand::rngs::OsRng,
+                        ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(Some(relay_client_behaviour)),
                         relay_server: Toggle::from(None),
@@ -2531,7 +2546,13 @@ pub async fn build_swarm(
                     Ok(BitterbotBehaviour {
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
-                        autonat: autonat_behaviour,
+                        autonat: autonat::v2::client::Behaviour::new(
+                            rand::rngs::OsRng,
+                            autonat::v2::client::Config::default(),
+                        ),
+                        autonat_server: autonat::v2::server::Behaviour::new(
+                            rand::rngs::OsRng,
+                        ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(None),
                         relay_server: Toggle::from(Some(relay::Behaviour::new(
@@ -2560,7 +2581,13 @@ pub async fn build_swarm(
                     Ok(BitterbotBehaviour {
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
-                        autonat: autonat_behaviour,
+                        autonat: autonat::v2::client::Behaviour::new(
+                            rand::rngs::OsRng,
+                            autonat::v2::client::Config::default(),
+                        ),
+                        autonat_server: autonat::v2::server::Behaviour::new(
+                            rand::rngs::OsRng,
+                        ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(None),
                         relay_server: Toggle::from(None),
