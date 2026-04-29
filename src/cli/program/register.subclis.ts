@@ -239,6 +239,14 @@ const entries: SubCliEntry[] = [
       mod.registerCronCli(program);
     },
   },
+  {
+    name: "checkpoints",
+    description: "Inspect, fork, and replay session checkpoint graphs",
+    register: async (program) => {
+      const mod = await import("../checkpoints-cli.js");
+      mod.registerCheckpointsCli(program);
+    },
+  },
 ];
 
 export function getSubCliEntries(): SubCliEntry[] {
