@@ -5,6 +5,7 @@ import type {
   ToolCallSummary,
 } from "./pi-embedded-subscribe.handlers.types.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
+import { startSpan } from "../observability/otel.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { normalizeTextForComparison } from "./pi-embedded-helpers.js";
 import { isMessagingTool, isMessagingToolSendAction } from "./pi-embedded-messaging.js";
@@ -23,6 +24,20 @@ import { normalizeToolName } from "./tool-policy.js";
 
 /** Track tool execution start times and args for after_tool_call hook */
 const toolStartData = new Map<string, { startTime: number; args: unknown }>();
+
+/**
+ * PLAN-14 Pillar 6: active OpenTelemetry spans keyed by toolCallId.
+ * Stored as the Promise from startSpan so the start handler doesn't
+ * block on dynamic import; the end handler awaits and ends. No-op span
+ * handles when OTel is disabled, so the cost is one map insert/delete.
+ */
+const toolSpansById = new Map<
+  string,
+  Promise<{
+    end: (s?: { ok: boolean; message?: string }) => void;
+    setAttribute: (k: string, v: string | number | boolean) => void;
+  }>
+>();
 
 function buildToolCallSummary(toolName: string, args: unknown, meta?: string): ToolCallSummary {
   const mutation = buildToolMutationState(toolName, args, meta);
@@ -73,6 +88,17 @@ export async function handleToolExecutionStart(
 
   // Track start time and args for after_tool_call hook
   toolStartData.set(toolCallId, { startTime: Date.now(), args });
+
+  // PLAN-14 Pillar 6: open a span for this tool call. Resolves to a
+  // no-op handle when OTel is disabled; non-blocking on enable.
+  toolSpansById.set(
+    toolCallId,
+    startSpan(`agent.tool.${toolName}`, {
+      "tool.name": toolName,
+      "tool.call_id": toolCallId,
+      "agent.run_id": ctx.params.runId,
+    }),
+  );
 
   if (toolName === "read") {
     const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
@@ -189,6 +215,18 @@ export async function handleToolExecutionEnd(
   const result = evt.result;
   const isToolError = isError || isToolResultError(result);
   const sanitizedResult = sanitizeToolResult(result);
+
+  // PLAN-14 Pillar 6: close the span opened in handleToolExecutionStart.
+  // Use detach + .then so we never await the span shutdown on the hot path.
+  const spanPromise = toolSpansById.get(toolCallId);
+  if (spanPromise) {
+    toolSpansById.delete(toolCallId);
+    void spanPromise.then((span) => {
+      span.setAttribute("tool.is_error", isToolError);
+      span.end({ ok: !isToolError, message: isToolError ? "tool reported error" : undefined });
+    });
+  }
+
   const callSummary = ctx.state.toolMetaById.get(toolCallId);
   const meta = callSummary?.meta;
   ctx.state.toolMetas.push({ toolName, meta });

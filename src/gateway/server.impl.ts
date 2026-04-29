@@ -40,6 +40,7 @@ import {
 import { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
 import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/diagnostic.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
+import { initOtel } from "../observability/otel.js";
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
@@ -165,6 +166,10 @@ export async function startGatewayServer(
     key: "BITTERBOT_RAW_STREAM_PATH",
     description: "raw stream log path override",
   });
+
+  // PLAN-14 Pillar 6: bring up OpenTelemetry before any spans are created.
+  // No-op when OTEL_TRACES_EXPORTER / OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+  await initOtel({ serviceName: "bitterbot-gateway" });
 
   let configSnapshot = await readConfigFileSnapshot();
   if (configSnapshot.legacyIssues.length > 0) {

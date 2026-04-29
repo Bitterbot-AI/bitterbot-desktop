@@ -126,6 +126,63 @@ export async function shutdownOtel(): Promise<void> {
 }
 
 /**
+ * Manually-paired span: start now, end later. Use this when the begin
+ * and end events are delivered separately (e.g., tool execution start/end
+ * events from the embedded runner). Returns a handle whose `end()` ends
+ * the span — safe to call when OTel is disabled (no-op handle).
+ */
+type ManualSpan = {
+  setAttribute: (k: string, v: string | number | boolean) => void;
+  recordException: (e: unknown) => void;
+  end: (status?: { ok: boolean; message?: string }) => void;
+};
+
+export async function startSpan(
+  name: string,
+  attrs?: Record<string, string | number | boolean>,
+): Promise<ManualSpan> {
+  const state = resolveState();
+  if (!state.enabled) {
+    return {
+      setAttribute: () => {},
+      recordException: () => {},
+      end: () => {},
+    };
+  }
+  try {
+    const api = await import("@opentelemetry/api" as string);
+    const tracer = api.trace.getTracer("bitterbot");
+    const span = tracer.startSpan(name) as unknown as {
+      setAttribute: (k: string, v: string | number | boolean) => void;
+      recordException: (e: unknown) => void;
+      setStatus: (s: { code: number; message?: string }) => void;
+      end: () => void;
+    };
+    if (attrs) {
+      for (const [k, v] of Object.entries(attrs)) {
+        span.setAttribute(k, v);
+      }
+    }
+    return {
+      setAttribute: (k, v) => span.setAttribute(k, v),
+      recordException: (e) => span.recordException(e),
+      end: (status) => {
+        if (status && !status.ok) {
+          span.setStatus({ code: 2, message: status.message });
+        }
+        span.end();
+      },
+    };
+  } catch {
+    return {
+      setAttribute: () => {},
+      recordException: () => {},
+      end: () => {},
+    };
+  }
+}
+
+/**
  * Wrap a function in a span. No-op when OTel is disabled — the function
  * runs unchanged and span creation costs nothing. Use this for adding
  * incremental instrumentation to gateway turns, tool calls, memory ops,
