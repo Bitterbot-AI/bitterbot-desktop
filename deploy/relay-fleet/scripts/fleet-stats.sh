@@ -47,16 +47,17 @@ trap "rm -rf $TMPDIR" EXIT
 
 fetch_relay() {
   local region="$1" ip="$2"
-  ssh -i "$SSH_KEY" \
+  # -n: don't read from stdin (safe even in `&` background; cheap insurance).
+  ssh -n -i "$SSH_KEY" \
       -o StrictHostKeyChecking=accept-new \
       -o ConnectTimeout=10 \
       -o BatchMode=yes \
       -o LogLevel=ERROR \
       "$SSH_USER@$ip" \
-      "curl -fsS http://127.0.0.1:9847/api/stats; echo '<<SEP>>'; curl -fsS http://127.0.0.1:9847/api/bootstrap/census" \
+      "curl -fsS http://127.0.0.1:9847/api/stats; printf '\n<<SEP>>\n'; cat /var/lib/bitterbot/bootnode-peers.json 2>/dev/null || echo '[]'" \
       > "$TMPDIR/$region.raw" 2>"$TMPDIR/$region.err" \
-      && echo "$region $ip ok" \
-      || echo "$region $ip ERR ($(cat $TMPDIR/$region.err 2>/dev/null | head -1))"
+      && echo "$region $ip ok" >&2 \
+      || echo "$region $ip ERR ($(cat $TMPDIR/$region.err 2>/dev/null | head -1))" >&2
 }
 
 while read -r region; do
@@ -68,13 +69,25 @@ done < <(echo "$RELAYS_JSON" | jq -r 'keys[]')
 wait
 [ "$MODE" = "summary" ] && echo
 
+# Tolerate empty globs below — for f in $TMPDIR/*.raw expands to the
+# literal pattern when no files match, and downstream jq on a nonexistent
+# path under `set -e` would kill the script.
+shopt -s nullglob
+
 # 3. Parse each relay's response into stats.json + census.json.
+#    Stats lines come first, then a "<<SEP>>" sentinel from fetch_relay's
+#    SSH command, then the census JSON. Splitting via awk -v keeps the
+#    output path as an awk variable (the prior shell-string interpolation
+#    was broken and silently produced nothing).
 for raw in "$TMPDIR"/*.raw; do
   region=$(basename "$raw" .raw)
-  if [ ! -s "$raw" ]; then
-    continue
-  fi
-  awk 'BEGIN{out="stats"} /^<<SEP>>$/{out="census"; next} {print > "'$TMPDIR/$region.'"out".json"}' "$raw"
+  [ ! -s "$raw" ] && continue
+  awk -v stats="$TMPDIR/$region.stats.json" \
+      -v census="$TMPDIR/$region.census.json" '
+    BEGIN { dest = stats }
+    /^<<SEP>>$/ { dest = census; next }
+    { print > dest }
+  ' "$raw"
 done
 
 # 4. Aggregate.
@@ -84,10 +97,14 @@ done
 #      peers connect to multiple relays).
 #    - Per-relay tear: stats per relay for ops debugging.
 
-ACTIVE_PEERS_TXT=$(for f in "$TMPDIR"/*.census.json; do
-  jq -r '.peers[]?.peer_pubkey // empty' "$f" 2>/dev/null
-done | sort -u)
-LIFETIME_UNIQUE=$(echo -n "$ACTIVE_PEERS_TXT" | grep -c '' || true)
+LIFETIME_UNIQUE=0
+if compgen -G "$TMPDIR/*.census.json" >/dev/null; then
+  # Each relay's bootnode-peers.json (orchestrator/src/swarm/mod.rs:302
+  # BootnodeRegistry) is an array of records keyed on peer_pubkey. Union
+  # them across the fleet to get the true deduped lifetime count.
+  LIFETIME_UNIQUE=$(jq -r '.[]?.peer_pubkey // empty' \
+    "$TMPDIR"/*.census.json 2>/dev/null | sort -u | wc -l | tr -d ' ')
+fi
 
 declare -A REGION_STATS
 TOTAL_CONNECTED=0
