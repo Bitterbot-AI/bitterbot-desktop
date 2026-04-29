@@ -1242,6 +1242,48 @@ impl SwarmHandle {
                     );
                 }
 
+                // Auto-discover relay servers from identify. A peer that
+                // advertises libp2p::relay::HOP_PROTOCOL_NAME is offering
+                // circuit-relay-v2 hop service. We collect their publicly
+                // reachable addresses so initiate_relay_reservations() has
+                // something to dial — closing the gap where Private-verdict
+                // nodes had nowhere to reserve a circuit because
+                // relay_server_addrs was empty unless --relay-servers was
+                // passed explicitly.
+                let supports_relay = info
+                    .protocols
+                    .iter()
+                    .any(|p| p == &libp2p::relay::HOP_PROTOCOL_NAME);
+                if supports_relay {
+                    let mut added = 0;
+                    for addr in &info.listen_addrs {
+                        if classify_address(addr) != "ipv4_public" {
+                            continue;
+                        }
+                        let entry = (addr.clone(), peer_id);
+                        if !self.relay_server_addrs.iter().any(|(a, p)| a == &entry.0 && p == &entry.1) {
+                            self.relay_server_addrs.push(entry);
+                            added += 1;
+                        }
+                    }
+                    if added > 0 {
+                        info!(
+                            "Discovered {} relay-server address(es) on peer {} (total relay servers: {})",
+                            added,
+                            peer_id,
+                            self.relay_server_addrs.len(),
+                        );
+                        // If we already know we're behind NAT and don't have
+                        // a reservation yet, try this newly-discovered relay.
+                        if matches!(self.nat_status, NatStatus::Private)
+                            && !self.has_relay_reservation
+                            && self.relay_mode == RelayMode::Client
+                        {
+                            self.initiate_relay_reservations();
+                        }
+                    }
+                }
+
                 // Emit peer_identified IPC event
                 self.emit_ipc_event(serde_json::json!({
                     "type": "peer_identified",
@@ -1250,6 +1292,7 @@ impl SwarmHandle {
                         "tier": claimed_tier,
                         "verified": tier_verified,
                         "pubkey": pubkey_b64,
+                        "supports_relay": supports_relay,
                     }
                 }));
             }
