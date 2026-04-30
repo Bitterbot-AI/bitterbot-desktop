@@ -147,7 +147,7 @@ function buildEndocrineStateSection(params: {
  * peers right now, claiming to "earn USDC from skills you publish"
  * would be a lie that erodes trust the moment a user asks about it.
  */
-function buildEconomicIdentitySection(): string[] {
+export function buildEconomicIdentitySection(): string[] {
   const status = getP2pStatus();
 
   if (!status.enabled) {
@@ -173,14 +173,93 @@ function buildEconomicIdentitySection(): string[] {
   }
 
   const peerWord = status.peerCount === 1 ? "peer" : "peers";
-  return [
+  const lines: string[] = [
     "### Economic Identity",
     "You participate in a P2P skills marketplace where you earn USDC from skills you publish.",
-    `You are currently connected to ${status.peerCount} ${peerWord} on the network.`,
+  ];
+
+  // ---- Live network-state block (PLAN-14 layer 1: agent self-awareness) ----
+  // Tight on purpose: this rides every system prompt. Each line should pay
+  // its token cost by either anchoring the agent's identity or letting it
+  // answer "what's happening on the network" without a tool call.
+  const identityBits: string[] = [];
+  if (status.peerId) {
+    identityBits.push(`you are ${shortenPeerId(status.peerId)}`);
+  }
+  if (status.nodeTier) {
+    identityBits.push(`${status.nodeTier} tier`);
+  }
+  if (identityBits.length > 0) {
+    lines.push(`On the network ${identityBits.join(", ")}.`);
+  }
+
+  const tierMix = formatTierMix(status.peersByTier);
+  lines.push(
+    tierMix
+      ? `Currently connected to ${status.peerCount} ${peerWord} (${tierMix}).`
+      : `Currently connected to ${status.peerCount} ${peerWord} on the network.`,
+  );
+
+  if (typeof status.networkHealthScore === "number") {
+    const pct = Math.round(status.networkHealthScore * 100);
+    const skills =
+      typeof status.skillsPublishedNetworkWide === "number"
+        ? `, ${status.skillsPublishedNetworkWide} skills published network-wide`
+        : "";
+    lines.push(`Network health: ${pct}%${skills}.`);
+  }
+
+  const pulse = formatTelemetryPulse(status.telemetryCountsByType);
+  if (pulse) {
+    lines.push(`Recent network pulse: ${pulse}.`);
+  }
+
+  if (status.anomalyAlertCount > 0) {
+    lines.push(
+      `Active anomaly alerts: ${status.anomalyAlertCount} — investigate via management.anomalies if asked.`,
+    );
+  }
+  // ---- end live block ----
+
+  lines.push(
     "Your marketplace performance (earnings, buyers, top-earning skills) is tracked in The Niche section of MEMORY.md.",
     "When users ask about your skills or earnings, use `memory_status` to check your marketplace data.",
     "Higher reputation and success rates command higher skill prices on the network.",
-  ];
+  );
+  return lines;
+}
+
+function shortenPeerId(peerId: string): string {
+  // libp2p peer IDs are ~52 chars (12D3KooW...). Show enough head + tail to
+  // be distinguishable in logs without bloating every prompt.
+  if (peerId.length <= 16) return peerId;
+  return `${peerId.slice(0, 10)}…${peerId.slice(-4)}`;
+}
+
+function formatTierMix(byTier: Record<string, number>): string | null {
+  const entries = Object.entries(byTier).filter(([, v]) => v > 0);
+  if (entries.length === 0) return null;
+  // Stable ordering: management first (more interesting), then edge, then others alpha.
+  entries.sort(([a], [b]) => {
+    const order = (k: string) => (k === "management" ? 0 : k === "edge" ? 1 : 2);
+    const oa = order(a);
+    const ob = order(b);
+    if (oa !== ob) return oa - ob;
+    return a.localeCompare(b);
+  });
+  return entries.map(([k, v]) => `${v} ${k}`).join(", ");
+}
+
+function formatTelemetryPulse(counts: Record<string, number>): string | null {
+  const entries = Object.entries(counts).filter(([, v]) => v > 0);
+  if (entries.length === 0) return null;
+  // Top-3 signal types by count, descending. Keeps the prompt compact even
+  // when the network publishes many bespoke signal types.
+  entries.sort(([, a], [, b]) => b - a);
+  return entries
+    .slice(0, 3)
+    .map(([k, v]) => `${v} ${k}`)
+    .join(", ");
 }
 
 function buildSkillsSection(params: {

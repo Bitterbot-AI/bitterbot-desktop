@@ -303,6 +303,50 @@ export class OrchestratorBridge {
   }
 
   /**
+   * Management census snapshot. Returns null on edge nodes (which do not
+   * produce a census) or when the orchestrator hasn't initialized
+   * management state yet. Used by the periodic agent-awareness poller
+   * and by management.census RPC consumers.
+   */
+  async getNetworkCensus(): Promise<{
+    ok: boolean;
+    total_peers_seen?: number;
+    lifetime_unique_peer_ids?: number;
+    peak_concurrent_peers?: number;
+    peers_by_tier?: Record<string, number>;
+    skills_published_network_wide?: number;
+    telemetry_counts_by_type?: Record<string, number>;
+    network_health_score?: number;
+    last_census_at?: number;
+    connected_peers?: number;
+    peer_count_history?: Array<[number, number]>;
+  } | null> {
+    try {
+      const result = (await this.sendCommand("get_network_census", {})) as {
+        ok?: boolean;
+      };
+      if (!result || result.ok === false) return null;
+      return result as Awaited<ReturnType<OrchestratorBridge["getNetworkCensus"]>>;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Active anomaly alerts (management-tier only). Empty list otherwise. */
+  async getAnomalyAlerts(): Promise<unknown[]> {
+    try {
+      const result = (await this.sendCommand("get_anomaly_alerts", {})) as {
+        ok?: boolean;
+        alerts?: unknown[];
+      };
+      if (!result || result.ok === false) return [];
+      return Array.isArray(result.alerts) ? result.alerts : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Fetch the bootnode census via the orchestrator's HTTP API. Returns the
    * lifetime peer registry maintained when --bootnode-mode is enabled. On
    * non-bootnode deployments the response carries `enabled: false` and zero

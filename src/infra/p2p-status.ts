@@ -8,6 +8,15 @@
  * request path and plumbing live state through every caller would be
  * a refactor sprawl with no benefit. The bridge has a single instance
  * per gateway process and writes here whenever its state changes.
+ *
+ * The snapshot has two tiers:
+ *   - lifecycle fields (enabled, connected, peerCount, lastError) are
+ *     written eagerly from libp2p connection callbacks.
+ *   - census fields (peerId, nodeTier, peersByTier, networkHealthScore,
+ *     skillsPublishedNetworkWide, telemetryCountsByType, anomalyAlertCount,
+ *     censusUpdatedAt) are refreshed on a slow poll (~30s) so the agent
+ *     gets a useful snapshot every turn without a synchronous IPC round-trip
+ *     on the prompt-build hot path.
  */
 
 export type P2pStatusSnapshot = {
@@ -19,6 +28,26 @@ export type P2pStatusSnapshot = {
   peerCount: number;
   /** Most recent unrecoverable bridge error, if any. */
   lastError: string | null;
+
+  // Identity (set once on bridge connect, stable until restart)
+  /** Our libp2p peer ID. Truncated when rendered for prompts. */
+  peerId: string | null;
+  /** Our node tier ("edge" | "management"). */
+  nodeTier: string | null;
+
+  // Census fields (refreshed periodically by the bridge poller)
+  /** Live peer count by tier (e.g. {edge: 3, management: 3}). */
+  peersByTier: Record<string, number>;
+  /** Network health score (0..1). null = no census yet. */
+  networkHealthScore: number | null;
+  /** Total skills published network-wide (management census). */
+  skillsPublishedNetworkWide: number | null;
+  /** Telemetry signal counts by signal_type (rolling). */
+  telemetryCountsByType: Record<string, number>;
+  /** Active anomaly alerts. Empty when none. */
+  anomalyAlertCount: number;
+  /** Timestamp (ms epoch) of the last census patch, for staleness checks. */
+  censusUpdatedAt: number | null;
 };
 
 const initial: P2pStatusSnapshot = {
@@ -26,6 +55,14 @@ const initial: P2pStatusSnapshot = {
   connected: false,
   peerCount: 0,
   lastError: null,
+  peerId: null,
+  nodeTier: null,
+  peersByTier: {},
+  networkHealthScore: null,
+  skillsPublishedNetworkWide: null,
+  telemetryCountsByType: {},
+  anomalyAlertCount: 0,
+  censusUpdatedAt: null,
 };
 
 let current: P2pStatusSnapshot = { ...initial };
