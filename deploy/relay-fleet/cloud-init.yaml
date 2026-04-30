@@ -1,0 +1,187 @@
+#cloud-config
+# Bitterbot relay node first-boot provisioning.
+#
+# Goal: every droplet that boots from this config ends up running the
+# orchestrator daemon as a systemd service, with persistent libp2p
+# identity, exposing TCP/9100 and ready to serve Circuit Relay v2 hops.
+#
+# Build target: 1 vCPU / 1 GB RAM. We add 2 GB of swap before invoking
+# cargo because libp2p release builds peak around 2-3 GB of RAM during
+# parallel codegen and would OOM on a stock 1 GB box. Swap stays on after
+# build (harmless on small relays, useful for occasional traffic spikes).
+
+package_update: true
+package_upgrade: false # don't slow first boot for security upgrades; unattended-upgrades will handle them later
+
+packages:
+  - build-essential
+  - pkg-config
+  - libssl-dev
+  - ca-certificates
+  - curl
+  - git
+  - ufw
+  - jq
+  - unattended-upgrades
+
+write_files:
+  - path: /etc/systemd/system/bitterbot-orchestrator.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Bitterbot libp2p relay/bootstrap orchestrator
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=bitterbot
+      Group=bitterbot
+      ExecStart=/usr/local/bin/bitterbot-orchestrator \
+        --ipc-path /run/bitterbot/orchestrator.sock \
+        --key-dir /var/lib/bitterbot \
+        --listen-addr /ip4/0.0.0.0/tcp/9100 \
+        --http-addr 127.0.0.1:9847 \
+        --node-tier management \
+        --relay-mode server \
+        --bootnode-mode \
+        --genesis-trust-list /var/lib/bitterbot/genesis_trust_list.txt
+      Restart=always
+      RestartSec=5
+      LimitNOFILE=65536
+      Environment=RUST_LOG=info
+      RuntimeDirectory=bitterbot
+      RuntimeDirectoryMode=0755
+      StateDirectory=bitterbot
+      StateDirectoryMode=0755
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /usr/local/sbin/bitterbot-relay-bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # First-boot installer. Re-runnable: skips steps that are already done.
+      set -euo pipefail
+
+      LOG=/var/log/bitterbot-bootstrap.log
+      exec > >(tee -a "$LOG") 2>&1
+      echo "==> bitterbot-relay-bootstrap starting at $(date -Iseconds)"
+
+      # 1. Add a service user.
+      if ! id bitterbot >/dev/null 2>&1; then
+        useradd --system --create-home --home-dir /var/lib/bitterbot \
+                --shell /usr/sbin/nologin bitterbot
+      fi
+
+      # 2. Add 2 GB swap so cargo build won't OOM on 1GB droplets. Idempotent.
+      if [ ! -f /swapfile ]; then
+        fallocate -l 2G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo "/swapfile none swap sw 0 0" >> /etc/fstab
+      fi
+
+      # 3. Install Rust toolchain into a system-wide path so root and
+      #    `bitterbot` users both see it.
+      if ! command -v cargo >/dev/null 2>&1; then
+        export RUSTUP_HOME=/usr/local/rustup
+        export CARGO_HOME=/usr/local/cargo
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+          | sh -s -- -y --default-toolchain stable --no-modify-path
+        ln -sf /usr/local/cargo/bin/cargo /usr/local/bin/cargo
+        ln -sf /usr/local/cargo/bin/rustc /usr/local/bin/rustc
+      fi
+
+      # 4. Clone the repo (idempotent).
+      mkdir -p /opt/bitterbot
+      if [ ! -d /opt/bitterbot/src ]; then
+        git clone --depth=1 --branch="${git_branch}" "${git_repo_url}" /opt/bitterbot/src
+      fi
+      cd /opt/bitterbot/src
+
+      # 5. Build the orchestrator. -j 2 keeps memory usage in check on a
+      #    1 vCPU / 1 GB box. Release build takes ~10-15 min from cold cache.
+      cd orchestrator
+      RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
+        cargo build --release -j 2
+
+      # 6. Install binary, ownership, dirs.
+      install -m 755 target/release/bitterbot-orchestrator /usr/local/bin/
+      mkdir -p /var/lib/bitterbot
+      chown -R bitterbot:bitterbot /var/lib/bitterbot
+
+      # 7. Genesis trust list: bootstrap with this node's own pubkey so
+      #    --node-tier management passes the startup check. Operators rotate
+      #    in additional pubkeys later by replacing this file (or by
+      #    publishing a global trust list that gets fetched).
+      if [ ! -f /var/lib/bitterbot/genesis_trust_list.txt ]; then
+        # Briefly start the orchestrator just to generate the keypair, then
+        # kill it. orchestrator/src/crypto.rs writes node.key (raw 32-byte
+        # secret) and node.pub (raw 32-byte public key) on first boot.
+        sudo -u bitterbot timeout 5 /usr/local/bin/bitterbot-orchestrator \
+          --key-dir /var/lib/bitterbot \
+          --ipc-path /tmp/bitterbot-init-$$.sock \
+          --listen-addr /ip4/127.0.0.1/tcp/0 \
+          --http-addr 127.0.0.1:0 \
+          --node-tier edge 2>/dev/null || true
+        rm -f /tmp/bitterbot-init-$$.sock
+
+        if [ -f /var/lib/bitterbot/node.pub ]; then
+          PUBKEY=$(base64 -w0 /var/lib/bitterbot/node.pub)
+          {
+            echo "# auto-generated on first boot at $(date -Iseconds)"
+            echo "$PUBKEY"
+          } > /var/lib/bitterbot/genesis_trust_list.txt
+          chown bitterbot:bitterbot /var/lib/bitterbot/genesis_trust_list.txt
+          echo "==> generated genesis_trust_list.txt with pubkey $PUBKEY"
+        else
+          echo "ERROR: node.pub was not generated; orchestrator binary may be broken"
+          exit 1
+        fi
+      fi
+
+      # 8. Firewall.
+      ufw --force reset
+      ufw default deny incoming
+      ufw default allow outgoing
+      ufw allow 22/tcp comment "ssh"
+      ufw allow 9100/tcp comment "libp2p TCP"
+      ufw allow 443/tcp comment "future libp2p WSS"
+      ufw allow 9101/udp comment "future libp2p QUIC"
+      ufw --force enable
+
+      # 9. Start the orchestrator service.
+      systemctl daemon-reload
+      systemctl enable bitterbot-orchestrator
+      systemctl restart bitterbot-orchestrator
+
+      # 10. Persist peer ID via journal extraction. The orchestrator logs
+      #     "Local peer ID: 12D3KooW..." once at startup
+      #     (orchestrator/src/main.rs:101). Sleep briefly so it lands in journald.
+      sleep 6
+      journalctl -u bitterbot-orchestrator --no-pager -n 200 \
+        | grep -oE 'Local peer ID: [A-Za-z0-9]+' | head -1 \
+        | awk '{print $4}' > /var/lib/bitterbot/peer-id.txt || true
+      chown bitterbot:bitterbot /var/lib/bitterbot/peer-id.txt
+
+      echo "==> bitterbot-relay-bootstrap finished at $(date -Iseconds)"
+      echo "==> peer ID: $(cat /var/lib/bitterbot/peer-id.txt 2>/dev/null || echo unknown)"
+
+  - path: /etc/apt/apt.conf.d/52unattended-upgrades-bitterbot
+    permissions: "0644"
+    content: |
+      // $${...} escapes the dollar through Terraform's templatefile() so the
+      // literal $${distro_id} reaches cloud-init for its own substitution.
+      Unattended-Upgrade::Allowed-Origins {
+        "$${distro_id}:$${distro_codename}-security";
+      };
+      Unattended-Upgrade::Automatic-Reboot "false";
+
+runcmd:
+  - bash /usr/local/sbin/bitterbot-relay-bootstrap.sh
+  - systemctl enable unattended-upgrades
+
+final_message: "Bitterbot relay node provisioned at $TIMESTAMP. Peer ID in /var/lib/bitterbot/peer-id.txt"

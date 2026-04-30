@@ -542,6 +542,14 @@ pub struct BitterbotBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub kademlia: kad::Behaviour<MemoryStore>,
     pub autonat: autonat::v2::client::Behaviour,
+    /// AutoNAT v2 server. Without this on at least some peers in the
+    /// network, every node's NAT verdict stays "unknown" forever
+    /// because client probes have no one to answer them. Enabling on
+    /// every node (including NAT'd ones) is safe: a NAT'd server's
+    /// dial-back attempts that fail correctly tell the requesting peer
+    /// "you're not reachable from where I am" — the very signal AutoNAT
+    /// needs to flip a verdict to Private.
+    pub autonat_server: autonat::v2::server::Behaviour,
     pub identify: identify::Behaviour,
     pub relay_client: Toggle<relay::client::Behaviour>,
     pub relay_server: Toggle<relay::Behaviour>,
@@ -1234,6 +1242,48 @@ impl SwarmHandle {
                     );
                 }
 
+                // Auto-discover relay servers from identify. A peer that
+                // advertises libp2p::relay::HOP_PROTOCOL_NAME is offering
+                // circuit-relay-v2 hop service. We collect their publicly
+                // reachable addresses so initiate_relay_reservations() has
+                // something to dial — closing the gap where Private-verdict
+                // nodes had nowhere to reserve a circuit because
+                // relay_server_addrs was empty unless --relay-servers was
+                // passed explicitly.
+                let supports_relay = info
+                    .protocols
+                    .iter()
+                    .any(|p| p == &libp2p::relay::HOP_PROTOCOL_NAME);
+                if supports_relay {
+                    let mut added = 0;
+                    for addr in &info.listen_addrs {
+                        if classify_address(addr) != "ipv4_public" {
+                            continue;
+                        }
+                        let entry = (addr.clone(), peer_id);
+                        if !self.relay_server_addrs.iter().any(|(a, p)| a == &entry.0 && p == &entry.1) {
+                            self.relay_server_addrs.push(entry);
+                            added += 1;
+                        }
+                    }
+                    if added > 0 {
+                        info!(
+                            "Discovered {} relay-server address(es) on peer {} (total relay servers: {})",
+                            added,
+                            peer_id,
+                            self.relay_server_addrs.len(),
+                        );
+                        // If we already know we're behind NAT and don't have
+                        // a reservation yet, try this newly-discovered relay.
+                        if matches!(self.nat_status, NatStatus::Private)
+                            && !self.has_relay_reservation
+                            && self.relay_mode == RelayMode::Client
+                        {
+                            self.initiate_relay_reservations();
+                        }
+                    }
+                }
+
                 // Emit peer_identified IPC event
                 self.emit_ipc_event(serde_json::json!({
                     "type": "peer_identified",
@@ -1242,35 +1292,45 @@ impl SwarmHandle {
                         "tier": claimed_tier,
                         "verified": tier_verified,
                         "pubkey": pubkey_b64,
+                        "supports_relay": supports_relay,
                     }
                 }));
             }
             BitterbotBehaviourEvent::Autonat(event) => {
-                info!("AutoNAT event: {:?}", event);
-                // Best-effort NAT verdict: AutoNAT v2 client gives us a
-                // probe-result event whose Debug includes the reachability
-                // outcome. We don't have a stable matcher across libp2p
-                // patch releases, so we sniff the formatted string. This is
-                // intentionally lenient — wrong is better than panicking.
-                let event_text = format!("{:?}", event);
-                let nat_label = if event_text.contains("Reachable")
-                    || event_text.contains("reachable: true")
-                    || event_text.contains("Public")
-                {
-                    "public"
-                } else if event_text.contains("Unreachable") || event_text.contains("Private") {
-                    "private"
-                } else {
-                    "unknown"
+                // libp2p_autonat::v2::client::Event has a structured shape:
+                //   { tested_addr, bytes_sent, server, result: Result<(), Error> }
+                // The previous parser sniffed `format!("{:?}", event)` for words
+                // like "Reachable" / "Public" — those literals never appear in
+                // this Event's Debug output, so the verdict was permanently
+                // stuck at unknown. Now we match on the structured result:
+                // Ok ⇒ a peer successfully dialed us back ⇒ Public,
+                // Err ⇒ peer could not dial us back ⇒ Private. A single
+                // confirmed Public sticks; we never downgrade Public → Private
+                // on a later failed probe (the failure may just mean one
+                // particular probing peer can't reach us, while the network
+                // generally can).
+                let was_unknown = matches!(self.nat_status, NatStatus::Unknown);
+                let new_status = match &event.result {
+                    Ok(()) => NatStatus::Public,
+                    Err(_) if !matches!(self.nat_status, NatStatus::Public) => NatStatus::Private,
+                    Err(_) => self.nat_status,
                 };
-                if nat_label != "unknown" {
-                    self.nat_status = match nat_label {
-                        "public" => NatStatus::Public,
-                        "private" => NatStatus::Private,
-                        _ => NatStatus::Unknown,
+                if new_status != self.nat_status || was_unknown {
+                    let label = match new_status {
+                        NatStatus::Public => "public",
+                        NatStatus::Private => "private",
+                        NatStatus::Unknown => "unknown",
                     };
+                    info!(
+                        "AutoNAT verdict: {} (tested {} via {}, result {})",
+                        label,
+                        event.tested_addr,
+                        event.server,
+                        if event.result.is_ok() { "ok" } else { "err" },
+                    );
+                    self.nat_status = new_status;
                     let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
-                    stats.nat_status = nat_label.to_string();
+                    stats.nat_status = label.to_string();
                 }
                 // When AutoNAT detects we're behind NAT, initiate relay reservations
                 if self.relay_mode == RelayMode::Client {
@@ -2505,11 +2565,12 @@ pub async fn build_swarm(
         }
     }
 
-    // --- AutoNAT v2 client configuration ---
-    let autonat_behaviour = autonat::v2::client::Behaviour::new(
-        rand::rngs::OsRng,
-        autonat::v2::client::Config::default(),
-    );
+    // --- AutoNAT v2 client + server configuration ---
+    // Inline-constructed inside each behaviour closure below because the
+    // builder closures are FnOnce that move the value, and the match has
+    // three arms each constructing its own closure. Constructing inside
+    // sidesteps the Rust borrow rules around moving the same value into
+    // multiple closures.
 
     // --- Identify configuration ---
     let identify_config = identify::Config::new(
@@ -2543,7 +2604,13 @@ pub async fn build_swarm(
                     Ok(BitterbotBehaviour {
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
-                        autonat: autonat_behaviour,
+                        autonat: autonat::v2::client::Behaviour::new(
+                            rand::rngs::OsRng,
+                            autonat::v2::client::Config::default(),
+                        ),
+                        autonat_server: autonat::v2::server::Behaviour::new(
+                            rand::rngs::OsRng,
+                        ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(Some(relay_client_behaviour)),
                         relay_server: Toggle::from(None),
@@ -2570,7 +2637,13 @@ pub async fn build_swarm(
                     Ok(BitterbotBehaviour {
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
-                        autonat: autonat_behaviour,
+                        autonat: autonat::v2::client::Behaviour::new(
+                            rand::rngs::OsRng,
+                            autonat::v2::client::Config::default(),
+                        ),
+                        autonat_server: autonat::v2::server::Behaviour::new(
+                            rand::rngs::OsRng,
+                        ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(None),
                         relay_server: Toggle::from(Some(relay::Behaviour::new(
@@ -2599,7 +2672,13 @@ pub async fn build_swarm(
                     Ok(BitterbotBehaviour {
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
-                        autonat: autonat_behaviour,
+                        autonat: autonat::v2::client::Behaviour::new(
+                            rand::rngs::OsRng,
+                            autonat::v2::client::Config::default(),
+                        ),
+                        autonat_server: autonat::v2::server::Behaviour::new(
+                            rand::rngs::OsRng,
+                        ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(None),
                         relay_server: Toggle::from(None),

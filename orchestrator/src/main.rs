@@ -148,16 +148,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Resolve relay mode: auto → server for management, client for edge
+    // Resolve relay mode: `auto` always picks Client. Server is an opt-in
+    // role because we can't tell at startup whether we're publicly
+    // reachable — a management node behind NAT (e.g. WSL2 + home router)
+    // that auto-resolves to Server advertises a relay it cannot fulfill,
+    // and never reserves a circuit on someone else who could. Real
+    // public relays (the DO fleet, the Railway bootnode) opt in via
+    // explicit `--relay-mode server` in their systemd units.
     let relay_mode = match args.relay_mode {
         RelayMode::Auto => {
-            if args.node_tier == "management" {
-                info!("Relay mode: auto → server (management tier)");
-                RelayMode::Server
-            } else {
-                info!("Relay mode: auto → client (edge tier)");
-                RelayMode::Client
-            }
+            info!("Relay mode: auto → client (default; pass --relay-mode server to host a relay)");
+            RelayMode::Client
         }
         mode => {
             info!("Relay mode: {:?}", mode);
