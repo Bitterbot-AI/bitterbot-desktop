@@ -784,6 +784,10 @@
                 "pages": ["concepts/multi-agent", "concepts/presence"]
               },
               {
+                "group": "Long-horizon runs",
+                "pages": ["agents/long-horizon"]
+              },
+              {
                 "group": "Messages and delivery",
                 "pages": [
                   "concepts/messages",
@@ -813,7 +817,9 @@
                   "tools/apply-patch",
                   "tools/elevated",
                   "tools/thinking",
-                  "tools/reactions"
+                  "tools/reactions",
+                  "tools/computer-use",
+                  "tools/checkpoints"
                 ]
               },
               {
@@ -942,6 +948,7 @@
                       "gateway/heartbeat",
                       "gateway/doctor",
                       "gateway/logging",
+                      "observability",
                       "gateway/gateway-lock",
                       "gateway/background-process",
                       "gateway/multiple-gateways",

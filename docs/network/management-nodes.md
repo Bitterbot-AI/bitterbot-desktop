@@ -88,6 +88,7 @@ On startup the orchestrator will:
 2. Verify its pubkey is in the trust list (aborts startup if not)
 3. Activate management-tier behaviors: census collection, anomaly detection, signed broadcasts (`weather`, `bounties`, etc.)
 4. Accept `sign_as_management`, `propagate_ban`, etc. IPC commands from the gateway
+5. Optionally accept `computer_screenshot` / `computer_mouse_*` / `computer_type` / `computer_key` commands when the orchestrator was built with `--features=computer-use` and `BITTERBOT_COMPUTER_USE=1` is set (see [Computer use](../tools/computer-use.md))
 
 > **Relay-server mode is no longer implied by management tier.** It used to be auto-enabled when `--relay-mode auto` was combined with `--node-tier management`, but that hurt management nodes running behind NAT (WSL2, home routers, corporate firewalls): they advertised a relay slot they couldn't fulfill and never reserved a circuit on someone who could. Now `--relay-mode auto` always resolves to **client**. Public, always-on relays opt in explicitly with `--relay-mode server` (the systemd unit on the bootstrap fleet at `deploy/relay-fleet/cloud-init.yaml` is the canonical example). A management node behind NAT runs as relay-client like everyone else, gets a `Private` AutoNAT verdict, and reserves a circuit on one of the public relays automatically.
 
