@@ -22,7 +22,7 @@
  * grammy/twitter-api-v2 dead-weight.
  */
 import { build } from "esbuild";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 
@@ -130,3 +130,22 @@ const result = await build({
 
 writeFileSync("dist/entry.meta.json", JSON.stringify(result.metafile, null, 2));
 console.log(`[build-gateway-entry] wrote ${outfile}`);
+
+// jiti's lazyTransform does `createRequire(import.meta.url)("../dist/babel.cjs")` at
+// runtime — an opaque string require that esbuild can't statically rewrite. esbuild
+// does inline babel.cjs into entry.js, but the runtime call still goes to disk
+// looking for `dist/babel.cjs` next to entry.js. Drop a copy alongside so any TS
+// plugin loaded by the gateway can transpile.
+// jiti is a transitive dep nested under pnpm's hashed .pnpm/ tree, so a top-
+// level require.resolve("@mariozechner/jiti") doesn't find it. esbuild already
+// resolved the path via its own walker — pull it back out of the metafile so
+// we don't duplicate resolution logic or hard-code the pnpm hash.
+const babelInput = Object.keys(result.metafile.inputs).find((p) =>
+  p.endsWith("jiti/dist/babel.cjs"),
+);
+if (!babelInput) {
+  console.error("[build-gateway-entry] could not locate jiti/dist/babel.cjs in metafile");
+  process.exit(1);
+}
+copyFileSync(babelInput, "dist/babel.cjs");
+console.log(`[build-gateway-entry] copied ${babelInput} -> dist/babel.cjs`);

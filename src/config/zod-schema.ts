@@ -676,6 +676,8 @@ export const BitterbotSchema = z
         nodeTier: z.enum(["edge", "management"]).optional(),
         genesisTrustListPath: z.string().optional(),
         genesisTrustList: z.array(z.string()).optional(),
+        relayMode: z.enum(["off", "client", "server", "auto"]).optional(),
+        relayServers: z.array(z.string()).optional(),
       })
       .strict()
       .optional(),
