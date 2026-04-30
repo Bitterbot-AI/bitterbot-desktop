@@ -34,6 +34,17 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
     expect(text).toContain("ENOENT");
   });
 
+  it("connected state includes a nudge to reach for network_status when fresh data is needed", () => {
+    patchP2pStatus({
+      enabled: true,
+      connected: true,
+      peerCount: 4,
+      peersByTier: { edge: 4 },
+    });
+    const text = buildEconomicIdentitySection().join("\n");
+    expect(text).toMatch(/use `network_status`/);
+  });
+
   it("connected with full census — peer id, tier, tier mix, health, pulse render", () => {
     patchP2pStatus({
       enabled: true,
