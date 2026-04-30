@@ -24,6 +24,7 @@ import { createImageTool } from "./tools/image-tool.js";
 import { createMemoryStatusTool } from "./tools/memory-status-tool.js";
 import { createMemoryGetTool, createMemorySearchTool } from "./tools/memory-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
+import { createNetworkStatusTool } from "./tools/network-status-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
@@ -120,6 +121,7 @@ export function createBitterbotTools(options?: {
       allowHostControl: options?.allowHostBrowserControl,
     }),
     createComputerUseTool(),
+    createNetworkStatusTool(),
     createCanvasTool(),
     createArtifactTool(),
     createCodeInterpreterTool(),
