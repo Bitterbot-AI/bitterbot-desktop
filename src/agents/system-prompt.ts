@@ -219,6 +219,13 @@ export function buildEconomicIdentitySection(): string[] {
       `Active anomaly alerts: ${status.anomalyAlertCount} — investigate via management.anomalies if asked.`,
     );
   }
+  // The numbers above are a 30s-cached ambient snapshot. When the user
+  // wants fresh data (full peer table, current anomaly detail, the live
+  // census, raw libp2p stats), reach for `network_status` rather than
+  // citing the cached values.
+  lines.push(
+    "When users ask for fresh peer detail, recent anomalies, or the full census, use `network_status` instead of citing the cached values above.",
+  );
   // ---- end live block ----
 
   lines.push(
