@@ -63,7 +63,6 @@ import {
   loadWorkspaceSkillEntries,
   resolveSkillsPromptForRun,
 } from "../../skills.js";
-import { createCapabilityRuntimeFromMemory } from "../../skills/capability-runtime.js";
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { getGlobalToolCache } from "../../tool-cache.js";
@@ -247,34 +246,15 @@ export async function runEmbeddedAttempt(
     const skillEntries = shouldLoadSkillEntries
       ? loadWorkspaceSkillEntries(effectiveWorkspace)
       : [];
-    // PLAN-13 Phase B.5: build the capability runtime once per attempt.
-    // The enforcer needs full SkillEntry list (with metadata.capabilities),
-    // so when the snapshot was preloaded we still need entries to feed
-    // the enforcer. Reload is cheap relative to the LLM call ahead.
-    const enforcerEntries =
-      skillEntries.length > 0 ? skillEntries : loadWorkspaceSkillEntries(effectiveWorkspace);
-    // PLAN-13 Phase B.7: wire enqueueSystemEvent so gate-blocks and
-    // tool-denials surface inline on the main session instead of being
-    // silent. Best-effort; failures swallowed so notifications never
-    // break the actual run.
-    const capabilityRuntime = await createCapabilityRuntimeFromMemory({
-      config: params.config,
-      agentId: params.agentId,
-      notify: (message) => {
-        void (async () => {
-          try {
-            const [{ enqueueSystemEvent }, { resolveMainSessionKeyFromConfig }] = await Promise.all(
-              [import("../../../infra/system-events.js"), import("../../../config/sessions.js")],
-            );
-            const sessionKey = resolveMainSessionKeyFromConfig();
-            if (sessionKey) enqueueSystemEvent(message, { sessionKey });
-          } catch {
-            // notification is non-critical
-          }
-        })();
-      },
-    });
-    const capabilityEnforcer = capabilityRuntime?.buildEnforcerContext(enforcerEntries);
+    // PLAN-13 Phase B.5 runtime enforcer disabled. Its conservative-union
+    // attribution model can't tell agent-baseline tool calls from skill-
+    // prompt-injected ones, so loading any P2P skill that doesn't declare
+    // shell/network breaks the agent's baseline (gateway, web_fetch, etc).
+    // The load-time gate (capability-gate.ts) is the correct layer for
+    // gating untrusted P2P skills; rewiring it into workspace loaders is a
+    // separate follow-up. Re-enable here once per-call skill attribution
+    // exists (PLAN-13 §B.5 follow-up).
+    const capabilityEnforcer = undefined;
     restoreSkillEnv = params.skillsSnapshot
       ? applySkillEnvOverridesFromSnapshot({
           snapshot: params.skillsSnapshot,
