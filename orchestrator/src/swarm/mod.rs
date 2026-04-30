@@ -895,14 +895,27 @@ impl SwarmHandle {
                         LibSwarmEvent::ConnectionEstablished {
                             peer_id,
                             endpoint,
+                            num_established,
                             ..
                         } => {
-                            let addr = endpoint.get_remote_address().clone();
-                            self.handle_swarm_event(SwarmEvent::PeerConnected(
-                                peer_id,
-                                vec![addr],
-                            ))
-                            .await;
+                            // Only emit PeerConnected on the FIRST connection to this peer.
+                            // libp2p fires ConnectionEstablished per-connection, and a single
+                            // peer can hold multiple simultaneously (direct + relay circuits,
+                            // QUIC + TCP, etc.). Without this guard the connected_peers
+                            // counter inflates while peer_details (keyed on peer_id) stays at
+                            // the true unique count — producing the dashboard mismatch where
+                            // "Connected Peers: N" disagreed with "edge + management" tier
+                            // totals. The matching ConnectionClosed branch already dedups by
+                            // checking is_connected(), so making this side symmetric closes
+                            // the loop.
+                            if num_established.get() == 1 {
+                                let addr = endpoint.get_remote_address().clone();
+                                self.handle_swarm_event(SwarmEvent::PeerConnected(
+                                    peer_id,
+                                    vec![addr],
+                                ))
+                                .await;
+                            }
                         }
                         LibSwarmEvent::ConnectionClosed {
                             peer_id,
