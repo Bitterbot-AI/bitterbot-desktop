@@ -1,4 +1,5 @@
 import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
+import { withSpan } from "../observability/otel.js";
 import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { agentRuntimeHandlers } from "./server-methods/agent-runtime.js";
 import { agentHandlers } from "./server-methods/agent.js";
@@ -271,12 +272,18 @@ export async function handleGatewayRequest(
     );
     return;
   }
-  await handler({
-    req,
-    params: (req.params ?? {}) as Record<string, unknown>,
-    client,
-    isWebchatConnect,
-    respond,
-    context,
-  });
+  await withSpan(
+    `gateway.rpc.${req.method}`,
+    async () => {
+      await handler({
+        req,
+        params: (req.params ?? {}) as Record<string, unknown>,
+        client,
+        isWebchatConnect,
+        respond,
+        context,
+      });
+    },
+    { "rpc.method": req.method, "rpc.system": "bitterbot-gateway" },
+  );
 }

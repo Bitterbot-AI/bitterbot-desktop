@@ -22,6 +22,7 @@ import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { withSpan } from "../observability/otel.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
 import {
@@ -539,6 +540,20 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   async search(
+    query: string,
+    opts?: {
+      maxResults?: number;
+      minScore?: number;
+      sessionKey?: string;
+    },
+  ): Promise<MemorySearchResult[]> {
+    return withSpan("memory.search", () => this.searchInner(query, opts), {
+      "memory.query_len": query.length,
+      "memory.max_results": opts?.maxResults ?? this.settings.query.maxResults,
+    });
+  }
+
+  private async searchInner(
     query: string,
     opts?: {
       maxResults?: number;
@@ -1914,7 +1929,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!this.dreamEngine) {
       return null;
     }
-    const stats = await this.dreamEngine.run();
+    const stats = await withSpan("memory.dream", () => this.dreamEngine!.run(), {
+      "dream.engine": "default",
+    });
 
     if (stats && stats.newInsights.length > 0) {
       // Post-dream curiosity assessment

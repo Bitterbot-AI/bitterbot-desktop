@@ -1985,6 +1985,45 @@ impl SwarmHandle {
                     }
                 }
             }
+            // PLAN-14 Pillar 4: computer use commands. Each handler in
+            // crate::computer::imp respects the runtime env-var gate
+            // and returns a JSON envelope. We just wrap the response.
+            IpcCommand::ComputerScreenshot { id, payload, respond } => {
+                let result = crate::computer::imp::screenshot(payload);
+                let _ = respond.send(serde_json::json!({
+                    "type": "response", "id": id, "payload": result
+                }));
+            }
+            IpcCommand::ComputerScreenSize { id, payload, respond } => {
+                let result = crate::computer::imp::screen_size(payload);
+                let _ = respond.send(serde_json::json!({
+                    "type": "response", "id": id, "payload": result
+                }));
+            }
+            IpcCommand::ComputerMouseMove { id, payload, respond } => {
+                let result = crate::computer::imp::mouse_move(payload);
+                let _ = respond.send(serde_json::json!({
+                    "type": "response", "id": id, "payload": result
+                }));
+            }
+            IpcCommand::ComputerMouseClick { id, payload, respond } => {
+                let result = crate::computer::imp::mouse_click(payload);
+                let _ = respond.send(serde_json::json!({
+                    "type": "response", "id": id, "payload": result
+                }));
+            }
+            IpcCommand::ComputerType { id, payload, respond } => {
+                let result = crate::computer::imp::type_text(payload);
+                let _ = respond.send(serde_json::json!({
+                    "type": "response", "id": id, "payload": result
+                }));
+            }
+            IpcCommand::ComputerKey { id, payload, respond } => {
+                let result = crate::computer::imp::key(payload);
+                let _ = respond.send(serde_json::json!({
+                    "type": "response", "id": id, "payload": result
+                }));
+            }
         }
     }
 

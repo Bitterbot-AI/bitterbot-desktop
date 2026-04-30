@@ -34,6 +34,28 @@ export type CensusSnapshot = {
   generated_at: number;
 };
 
+/**
+ * PLAN-14 Pillar 4: result envelope for computer-use IPC calls.
+ * `ok: true` carries side-channel fields (png_base64, width, etc.);
+ * `ok: false` carries `error` only. Build the orchestrator with
+ * `--features=computer-use` and set BITTERBOT_COMPUTER_USE=1 to
+ * receive ok=true responses.
+ */
+export type ComputerUseResult = {
+  ok: boolean;
+  error?: string;
+  png_base64?: string;
+  width?: number;
+  height?: number;
+  monitor_index?: number;
+  x?: number;
+  y?: number;
+  button?: string;
+  typed?: number;
+  key?: string;
+  [key: string]: unknown;
+};
+
 type SkillReceivedEvent = {
   version: number;
   skill_md: string; // base64
@@ -65,6 +87,22 @@ export type OrchestratorHealth = {
   /** Most recent unrecoverable error, if any. */
   lastError: string | null;
 };
+
+/**
+ * Module-scoped accessor so agent tools can reach the active bridge
+ * without needing it threaded through every factory. The gateway
+ * registers the live bridge on startup; tools that need P2P or
+ * computer-use IPC look it up here.
+ */
+let activeBridge: OrchestratorBridge | null = null;
+
+export function setActiveOrchestratorBridge(bridge: OrchestratorBridge | null): void {
+  activeBridge = bridge;
+}
+
+export function getActiveOrchestratorBridge(): OrchestratorBridge | null {
+  return activeBridge;
+}
 
 export class OrchestratorBridge {
   private process: ChildProcess | null = null;
@@ -454,6 +492,52 @@ export class OrchestratorBridge {
 
   async publishQuery(queryId: string, query: string, domainHint?: string): Promise<unknown> {
     return this.sendCommand("publish_query", { query_id: queryId, query, domain_hint: domainHint });
+  }
+
+  // PLAN-14 Pillar 4: OS-level computer use via the orchestrator daemon.
+  // Each method is a thin wrapper around the corresponding IPC command;
+  // payloads are validated on the Rust side. Responses are normalized
+  // to ComputerUseResult so callers can branch on `ok` without
+  // inspecting the raw IPC shape.
+  async computerScreenshot(monitorIndex?: number): Promise<ComputerUseResult> {
+    return this.computerCall("computer_screenshot", { monitor_index: monitorIndex });
+  }
+
+  async computerScreenSize(monitorIndex?: number): Promise<ComputerUseResult> {
+    return this.computerCall("computer_screen_size", { monitor_index: monitorIndex });
+  }
+
+  async computerMouseMove(x: number, y: number): Promise<ComputerUseResult> {
+    return this.computerCall("computer_mouse_move", { x, y });
+  }
+
+  async computerMouseClick(
+    button: "left" | "right" | "middle" = "left",
+  ): Promise<ComputerUseResult> {
+    return this.computerCall("computer_mouse_click", { button });
+  }
+
+  async computerType(text: string): Promise<ComputerUseResult> {
+    return this.computerCall("computer_type", { text });
+  }
+
+  async computerKey(key: string): Promise<ComputerUseResult> {
+    return this.computerCall("computer_key", { key });
+  }
+
+  private async computerCall(
+    type: string,
+    payload: Record<string, unknown>,
+  ): Promise<ComputerUseResult> {
+    const raw = (await this.sendCommand(type, payload)) as Record<string, unknown> | undefined;
+    if (!raw || typeof raw !== "object") {
+      return { ok: false, error: "no response from orchestrator" };
+    }
+    if (raw.ok === true) {
+      return { ok: true, ...raw };
+    }
+    const message = typeof raw.error === "string" ? raw.error : "unknown computer-use error";
+    return { ok: false, error: message };
   }
 
   onTelemetryReceived(
