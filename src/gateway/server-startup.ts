@@ -17,7 +17,7 @@ import {
 } from "../hooks/internal-hooks.js";
 import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
-import { getP2pStatus, patchP2pStatus, setP2pStatus } from "../infra/p2p-status.js";
+import { getP2pStatus, patchP2pStatus } from "../infra/p2p-status.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import {
@@ -183,7 +183,9 @@ export async function startGatewaySidecars(params: {
       setActiveOrchestratorBridge(orchestratorBridge);
       // Publish initial status snapshot for system prompt / doctor / UI consumers.
       // peer_connected/peer_disconnected callbacks below maintain peerCount live.
-      setP2pStatus({
+      // Use patch (not set) so the census/identity defaults from p2p-status.ts
+      // initial state stay intact while the bridge fills them in async.
+      patchP2pStatus({
         enabled: true,
         connected: false,
         peerCount: 0,
@@ -197,6 +199,53 @@ export async function startGatewaySidecars(params: {
         const next = Math.max(0, getP2pStatus().peerCount - 1);
         patchP2pStatus({ peerCount: next, connected: next > 0 });
       });
+
+      // Cache the orchestrator's identity once at startup. Stable until
+      // restart, so a single fetch is enough — the system prompt then sees
+      // peerId + tier on every turn without an IPC round-trip.
+      void orchestratorBridge
+        .getIdentity()
+        .then((identity) => {
+          patchP2pStatus({ peerId: identity.peerId, nodeTier: identity.nodeTier });
+        })
+        .catch((err) => {
+          params.log.warn(`failed to fetch orchestrator identity: ${String(err)}`);
+        });
+
+      // Periodic census poll. Refreshes the agent-visible network state
+      // (tier mix, health score, telemetry counts, anomaly count) every
+      // 30s. The census IPC is cheap; the agent feeling embedded in the
+      // network is worth the once-per-30s cost. Edge nodes return null
+      // (no management state) — that's fine, defaults stay empty.
+      const censusPollMs = 30_000;
+      const bridgeRef = orchestratorBridge;
+      const pollCensus = async () => {
+        const census = await bridgeRef.getNetworkCensus();
+        if (census) {
+          patchP2pStatus({
+            peersByTier: census.peers_by_tier ?? {},
+            networkHealthScore:
+              typeof census.network_health_score === "number" ? census.network_health_score : null,
+            skillsPublishedNetworkWide:
+              typeof census.skills_published_network_wide === "number"
+                ? census.skills_published_network_wide
+                : null,
+            telemetryCountsByType: census.telemetry_counts_by_type ?? {},
+            censusUpdatedAt: Date.now(),
+          });
+        }
+        const alerts = await bridgeRef.getAnomalyAlerts();
+        patchP2pStatus({ anomalyAlertCount: alerts.length });
+      };
+      const censusTimer = setInterval(() => {
+        void pollCensus();
+      }, censusPollMs);
+      // Run once after a short delay so identity has time to land first.
+      setTimeout(() => void pollCensus(), 5_000);
+      // Stop the poller when the bridge tears down. Stash the timer on
+      // the bridge so a future stop() can clear it cleanly.
+      (bridgeRef as unknown as { __censusPollTimer?: NodeJS.Timeout }).__censusPollTimer =
+        censusTimer;
       // Lifetime peer accounting: every identify event upserts the peer into
       // the local peer_reputation table so SELECT COUNT(*) is the true count
       // of unique peers ever seen, not just peers we've received skills from.
@@ -304,7 +353,7 @@ export async function startGatewaySidecars(params: {
       params.log.warn(
         `P2P orchestrator bridge FAILED to start — node will be isolated from the network.\n${String(err)}`,
       );
-      setP2pStatus({
+      patchP2pStatus({
         enabled: true,
         connected: false,
         peerCount: 0,
