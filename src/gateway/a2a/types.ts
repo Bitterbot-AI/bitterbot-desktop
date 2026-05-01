@@ -47,7 +47,13 @@ export type JsonRpcRequest = {
   jsonrpc: "2.0";
   method: string;
   params?: unknown;
-  id: string | number;
+  /**
+   * Per JSON-RPC 2.0 spec: id is String, Number, or omitted entirely
+   * (notification). `null` is technically valid but discouraged. A2A's
+   * defined methods all expect responses, so notifications are accepted-
+   * and-discarded rather than dispatched.
+   */
+  id?: string | number;
 };
 
 export type JsonRpcResponse = {

@@ -16,6 +16,37 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("a2a-client");
 
+export type SignedPaymentPayload = {
+  txHash: string;
+  amount: number;
+  sender: string;
+  recipient: string;
+  timestamp: number;
+  version: "v1";
+};
+
+/**
+ * Canonical signing string for a payment payload. Both signer and verifier
+ * MUST produce the same string for a given payload, so the field order is
+ * fixed (NOT JSON.stringify with object key order, which is not portable).
+ *
+ * Format: `bitterbot-x402:v1:<recipient>:<txHash>:<amount-usdc>:<sender>:<ts-ms>`
+ *
+ * Lower-cased addresses for canonical form. Amount is the human-readable USDC
+ * value (matches what the buyer signs and what the seller verifies).
+ */
+export function canonicalizePaymentPayload(payload: SignedPaymentPayload): string {
+  return [
+    "bitterbot-x402",
+    payload.version,
+    payload.recipient.toLowerCase(),
+    payload.txHash.toLowerCase(),
+    String(payload.amount),
+    payload.sender.toLowerCase(),
+    String(payload.timestamp),
+  ].join(":");
+}
+
 export interface A2aClientConfig {
   /** Maximum USDC to spend per A2A task. Default: 0.50 */
   maxTaskCostUsdc: number;
@@ -201,15 +232,36 @@ export class A2aClient {
         return { success: false, error: `Payment failed: ${String(err)}` };
       }
 
-      // Retry with payment token
-      const paymentToken = Buffer.from(
-        JSON.stringify({
-          txHash: payment.txHash,
-          amount: price,
-          sender: await params.walletService.getAddress(),
-          timestamp: Date.now(),
-        }),
-      ).toString("base64");
+      // Build a signed payment token. The signature binds the proof to
+      // (recipient, txHash, amount, sender, timestamp) so a leaked txHash
+      // can't be replayed against a different recipient by another agent.
+      // The verifier recovers the signer from the signature and confirms it
+      // matches the on-chain Transfer event sender.
+      const sender = await params.walletService.getAddress();
+      const timestamp = Date.now();
+      const tokenPayload = {
+        txHash: payment.txHash,
+        amount: price,
+        sender,
+        recipient: payTo,
+        timestamp,
+        version: "v1" as const,
+      };
+      let signature: string | undefined;
+      try {
+        signature = await params.walletService.signMessage(
+          canonicalizePaymentPayload(tokenPayload),
+        );
+      } catch (err) {
+        // Signing failure is non-fatal — fall back to unsigned token. The
+        // verifier still checks recipient/amount on-chain; the signature is
+        // defense-in-depth against off-chain replay vectors.
+        log.debug(`payment signature failed (continuing unsigned): ${String(err)}`);
+      }
+
+      const paymentToken = Buffer.from(JSON.stringify({ ...tokenPayload, signature })).toString(
+        "base64",
+      );
 
       try {
         response = await fetch(a2aUrl, {

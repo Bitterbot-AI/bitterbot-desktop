@@ -691,6 +691,99 @@ export const BitterbotSchema = z
       })
       .strict()
       .optional(),
+    a2a: z
+      .object({
+        enabled: z.boolean().optional(),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        url: z.string().url().optional(),
+        authentication: z
+          .object({
+            type: z.enum(["none", "bearer"]).optional(),
+            bearerToken: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+        skills: z
+          .object({
+            expose: z.enum(["all", "none"]).optional(),
+            allowlist: z.array(z.string()).optional(),
+          })
+          .strict()
+          .optional(),
+        payment: z
+          .object({
+            enabled: z.boolean().optional(),
+            x402: z
+              .object({
+                address: z
+                  .string()
+                  .regex(/^0x[a-fA-F0-9]{40}$/, "must be a 0x-prefixed 20-byte hex address")
+                  .optional(),
+                minPayment: z.number().nonnegative().optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional()
+          .superRefine((val, ctx) => {
+            if (val?.enabled && !val.x402?.address) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["x402", "address"],
+                message: "a2a.payment.x402.address is required when a2a.payment.enabled is true",
+              });
+            }
+          }),
+        mesh: z
+          .object({
+            delegation: z.boolean().optional(),
+            gatewayFeePercent: z.number().min(0).max(100).optional(),
+          })
+          .strict()
+          .optional(),
+        marketplace: z
+          .object({
+            enabled: z.boolean().optional(),
+            pricing: z
+              .object({
+                basePriceUsdc: z.number().nonnegative().optional(),
+                minPriceUsdc: z.number().nonnegative().optional(),
+                maxPriceUsdc: z.number().positive().optional(),
+                fixedPriceUsdc: z.number().nonnegative().optional(),
+                minExecutionsForListing: z.number().int().nonnegative().optional(),
+                minSuccessRateForListing: z.number().min(0).max(1).optional(),
+              })
+              .strict()
+              .optional(),
+            client: z
+              .object({
+                maxTaskCostUsdc: z.number().nonnegative().optional(),
+                dailySpendLimitUsdc: z.number().nonnegative().optional(),
+                taskTimeoutMs: z.number().int().positive().optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
+        // PLAN-8 Phase 5 — onchain identity via ERC-8004
+        erc8004: z
+          .object({
+            enabled: z.boolean().optional(),
+            tokenId: z.string().optional(),
+            registry: z
+              .string()
+              .regex(/^0x[a-fA-F0-9]{40}$/, "must be a 0x-prefixed 20-byte hex address")
+              .optional(),
+            chain: z.enum(["base", "base-sepolia"]).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {

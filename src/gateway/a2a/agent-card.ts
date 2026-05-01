@@ -89,23 +89,35 @@ export function buildAgentCard(params: {
     }
   }
 
-  // Plan 8, Phase 5: Add ERC-8004 identity extension if registered
-  if ((params as Record<string, unknown>).erc8004TokenId) {
-    const tokenId = (params as Record<string, unknown>).erc8004TokenId as string;
-    const registryAddress = (params as Record<string, unknown>).erc8004Registry as string;
-    const erc8004Chain = ((params as Record<string, unknown>).erc8004Chain as string) ?? "base";
-    (card as Record<string, unknown>).extensions = {
-      ...((card as Record<string, unknown>).extensions as Record<string, unknown>),
-      erc8004: {
-        tokenId,
-        registry: registryAddress,
-        chain: erc8004Chain,
-      },
+  // PLAN-8 Phase 5 / ERC-8004 mainnet (2026-01-29). When the operator has
+  // registered an onchain identity for this agent, advertise the tokenId
+  // + registry contract so callers can look up reputation/feedback history
+  // on the standard Identity + Reputation Registries.
+  if (a2a.erc8004?.enabled && a2a.erc8004.tokenId) {
+    const chain = a2a.erc8004.chain ?? "base";
+    const registry = a2a.erc8004.registry ?? CANONICAL_ERC8004_IDENTITY[chain];
+    extensions["erc8004"] = {
+      tokenId: a2a.erc8004.tokenId,
+      registry,
+      chain,
     };
+    if (!card.extensions) {
+      card.extensions = extensions;
+    }
   }
 
   return card;
 }
+
+/**
+ * Canonical ERC-8004 Identity Registry addresses on each supported chain.
+ * Source: src/services/erc8004-identity.ts (single source of truth).
+ * Mainnet went live 2026-01-29.
+ */
+const CANONICAL_ERC8004_IDENTITY: Record<"base" | "base-sepolia", string> = {
+  base: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+  "base-sepolia": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+};
 
 function mapSkills(skills: SkillEntry[], a2a: A2aConfig): A2aSkill[] {
   const expose = a2a.skills?.expose ?? "all";

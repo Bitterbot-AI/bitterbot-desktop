@@ -135,12 +135,15 @@ function handleTasksCancel(request: JsonRpcRequest, ctx: A2aServerContext): Json
 // Response helpers
 // ---------------------------------------------------------------------------
 
-function successResponse(id: string | number, result: unknown): JsonRpcResponse {
-  return { jsonrpc: "2.0", result, id };
+function successResponse(id: string | number | undefined, result: unknown): JsonRpcResponse {
+  // The HTTP handler filters notifications (no id) with a 204 before reaching
+  // dispatch, so id is always defined here. Coerce undefined → null defensively
+  // to keep the JSON-RPC envelope spec-shaped.
+  return { jsonrpc: "2.0", result, id: id ?? null };
 }
 
 function errorResponse(
-  id: string | number | null,
+  id: string | number | null | undefined,
   code: number,
   message: string,
   data?: unknown,

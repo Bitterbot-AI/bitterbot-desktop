@@ -79,6 +79,8 @@ export async function createGatewayRuntimeState(params: {
   ) => ChatRunEntry | undefined;
   chatAbortControllers: Map<string, ChatAbortControllerEntry>;
   toolEventRecipients: ReturnType<typeof createToolEventRecipientRegistry>;
+  /** Release the A2A SQLite handle. No-op when A2A is disabled. */
+  closeA2a: () => void;
 }> {
   let canvasHost: CanvasHostHandler | null = null;
   if (params.canvasHostEnabled) {
@@ -117,7 +119,7 @@ export async function createGatewayRuntimeState(params: {
     log: params.logPlugins,
   });
 
-  const handleA2aRequest = params.cfg.a2a?.enabled
+  const a2aHandler = params.cfg.a2a?.enabled
     ? createA2aHttpHandler({
         getConfig: () => params.cfg,
         getSkills: params.getSkills ?? (() => []),
@@ -126,6 +128,7 @@ export async function createGatewayRuntimeState(params: {
         getSkillsVersion: params.getSkillsVersion ?? (() => 0),
       })
     : undefined;
+  const handleA2aRequest = a2aHandler?.handle;
 
   const bindHosts = await resolveGatewayListenHosts(params.bindHost);
   const httpServers: HttpServer[] = [];
@@ -211,5 +214,6 @@ export async function createGatewayRuntimeState(params: {
     removeChatRun,
     chatAbortControllers,
     toolEventRecipients,
+    closeA2a: () => a2aHandler?.close(),
   };
 }

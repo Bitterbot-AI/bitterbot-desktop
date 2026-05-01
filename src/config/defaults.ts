@@ -497,6 +497,72 @@ export function applyP2pDefaults(cfg: BitterbotConfig): BitterbotConfig {
   };
 }
 
+/**
+ * A2A protocol defaults. The protocol is on by default so external A2A clients
+ * (other Bitterbot nodes, partner agents, etc.) can discover and call this
+ * agent. Authentication is bearer + loopback bypass; payment is off by default
+ * (operators must configure a USDC payout address before enabling x402).
+ *
+ * Defaults are deep-merged with user config so operators can override any
+ * single field without re-specifying the rest of the block.
+ */
+export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
+  const a2a = cfg.a2a ?? {};
+  return {
+    ...cfg,
+    a2a: {
+      enabled: a2a.enabled ?? true,
+      ...(a2a.name !== undefined ? { name: a2a.name } : {}),
+      ...(a2a.description !== undefined ? { description: a2a.description } : {}),
+      ...(a2a.url !== undefined ? { url: a2a.url } : {}),
+      authentication: {
+        type: "bearer",
+        ...a2a.authentication,
+      },
+      skills: {
+        expose: "all",
+        ...a2a.skills,
+      },
+      payment: {
+        enabled: false,
+        ...a2a.payment,
+        x402: {
+          minPayment: 0.01,
+          ...a2a.payment?.x402,
+        },
+      },
+      mesh: {
+        delegation: false,
+        gatewayFeePercent: 10,
+        ...a2a.mesh,
+      },
+      marketplace: {
+        enabled: true,
+        ...a2a.marketplace,
+        pricing: {
+          basePriceUsdc: 0.01,
+          minPriceUsdc: 0.001,
+          maxPriceUsdc: 1.0,
+          minExecutionsForListing: 3,
+          minSuccessRateForListing: 0.6,
+          ...a2a.marketplace?.pricing,
+        },
+        client: {
+          maxTaskCostUsdc: 0.5,
+          dailySpendLimitUsdc: 2.0,
+          taskTimeoutMs: 60_000,
+          ...a2a.marketplace?.client,
+        },
+      },
+      erc8004: {
+        enabled: false,
+        chain: "base",
+        ...a2a.erc8004,
+      },
+    },
+  };
+}
+
 export function resetSessionDefaultsWarningForTests() {
   defaultWarnState = { warned: false };
 }

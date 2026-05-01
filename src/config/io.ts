@@ -22,6 +22,7 @@ import {
   applyAgentDefaults,
   applyLoggingDefaults,
   applyMessageDefaults,
+  applyA2aDefaults,
   applyModelDefaults,
   applyP2pDefaults,
   applySessionDefaults,
@@ -580,12 +581,16 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         deps.logger.warn(`Config warnings:\\n${details}`);
       }
       warnIfConfigFromFuture(validated.config, deps.logger);
-      const cfg = applyP2pDefaults(
-        applyModelDefaults(
-          applyCompactionDefaults(
-            applyContextPruningDefaults(
-              applyAgentDefaults(
-                applySessionDefaults(applyLoggingDefaults(applyMessageDefaults(validated.config))),
+      const cfg = applyA2aDefaults(
+        applyP2pDefaults(
+          applyModelDefaults(
+            applyCompactionDefaults(
+              applyContextPruningDefaults(
+                applyAgentDefaults(
+                  applySessionDefaults(
+                    applyLoggingDefaults(applyMessageDefaults(validated.config)),
+                  ),
+                ),
               ),
             ),
           ),
@@ -635,11 +640,13 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
     if (!exists) {
       const hash = hashConfigRaw(null);
       const config = applyTalkApiKey(
-        applyP2pDefaults(
-          applyModelDefaults(
-            applyCompactionDefaults(
-              applyContextPruningDefaults(
-                applyAgentDefaults(applySessionDefaults(applyMessageDefaults({}))),
+        applyA2aDefaults(
+          applyP2pDefaults(
+            applyModelDefaults(
+              applyCompactionDefaults(
+                applyContextPruningDefaults(
+                  applyAgentDefaults(applySessionDefaults(applyMessageDefaults({}))),
+                ),
               ),
             ),
           ),
@@ -771,11 +778,13 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
           valid: true,
           config: normalizeConfigPaths(
             applyTalkApiKey(
-              applyP2pDefaults(
-                applyModelDefaults(
-                  applyAgentDefaults(
-                    applySessionDefaults(
-                      applyLoggingDefaults(applyMessageDefaults(validated.config)),
+              applyA2aDefaults(
+                applyP2pDefaults(
+                  applyModelDefaults(
+                    applyAgentDefaults(
+                      applySessionDefaults(
+                        applyLoggingDefaults(applyMessageDefaults(validated.config)),
+                      ),
                     ),
                   ),
                 ),

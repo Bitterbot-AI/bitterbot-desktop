@@ -25,29 +25,39 @@ const MAX_A2A_BODY_BYTES = 1_048_576; // 1 MB
 const WELL_KNOWN_PATH = "/.well-known/agent.json";
 const A2A_PATH = "/a2a";
 
-let taskManager: A2aTaskManager | null = null;
-let cachedAgentCard: { json: string; version: number } | null = null;
-
-function getOrCreateTaskManager(
-  config: BitterbotConfig,
-  externalDb?: DatabaseSync,
-): A2aTaskManager {
-  if (!taskManager) {
-    const db =
-      externalDb ??
-      (() => {
-        // Persist A2A tasks to a file-backed SQLite DB so they survive restarts.
-        const stateDir =
-          process.env.BITTERBOT_STATE_DIR?.trim() || path.join(os.homedir(), ".bitterbot");
-        const dbDir = path.join(stateDir, "a2a");
-        mkdirSync(dbDir, { recursive: true });
-        return new DatabaseSync(path.join(dbDir, "tasks.db"));
-      })();
-    db.exec("PRAGMA journal_mode = WAL");
-    taskManager = new A2aTaskManager(db, config);
+/**
+ * Open the persistent SQLite store for A2A tasks. Survives gateway restarts.
+ * The caller owns the returned handle and is responsible for closing it.
+ */
+function openA2aTaskDb(externalDb?: DatabaseSync): DatabaseSync {
+  if (externalDb) {
+    return externalDb;
   }
-  return taskManager;
+  const stateDir = process.env.BITTERBOT_STATE_DIR?.trim() || path.join(os.homedir(), ".bitterbot");
+  const dbDir = path.join(stateDir, "a2a");
+  mkdirSync(dbDir, { recursive: true });
+  const db = new DatabaseSync(path.join(dbDir, "tasks.db"));
+  db.exec("PRAGMA journal_mode = WAL");
+  return db;
 }
+
+export type A2aHttpHandler = {
+  /** Process a single inbound HTTP request. Returns `true` if handled. */
+  handle: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    authOpts: {
+      auth: ResolvedGatewayAuth;
+      trustedProxies: string[];
+      rateLimiter?: AuthRateLimiter;
+    },
+  ) => Promise<boolean>;
+  /**
+   * Release the SQLite handle backing the task manager. Call once during
+   * gateway shutdown. Safe to call multiple times.
+   */
+  close: () => void;
+};
 
 /**
  * Handle A2A HTTP requests in the gateway request pipeline.
@@ -56,25 +66,36 @@ function getOrCreateTaskManager(
  * - `GET /.well-known/agent.json` — Agent Card discovery (no auth)
  * - `POST /a2a` — JSON-RPC endpoint (auth required)
  *
- * Returns `true` if the request was handled, `false` to pass to next handler.
+ * State (task manager, DB handle, cached agent card) is owned by the returned
+ * handler — multiple call sites in the same process produce isolated state.
+ * Call `close()` during gateway shutdown to release the SQLite handle.
  */
 export function createA2aHttpHandler(opts: {
   getConfig: () => BitterbotConfig;
   getSkills: () => SkillEntry[];
   getGatewayUrl: () => string;
   getSkillsVersion: () => number;
-}): (
-  req: IncomingMessage,
-  res: ServerResponse,
-  authOpts: {
-    auth: ResolvedGatewayAuth;
-    trustedProxies: string[];
-    rateLimiter?: AuthRateLimiter;
-  },
-) => Promise<boolean> {
+  /** Optional pre-opened DB (for tests). */
+  taskDb?: DatabaseSync;
+}): A2aHttpHandler {
   const { getConfig, getSkills, getGatewayUrl, getSkillsVersion } = opts;
+  const db = openA2aTaskDb(opts.taskDb);
+  const ownsDb = opts.taskDb === undefined;
+  let taskManager: A2aTaskManager | null = null;
+  let cachedAgentCard: { json: string; version: number } | null = null;
+  let closed = false;
 
-  return async (req, res, authOpts) => {
+  function getTaskManager(config: BitterbotConfig): A2aTaskManager {
+    if (closed) {
+      throw new Error("A2A handler has been closed");
+    }
+    if (!taskManager) {
+      taskManager = new A2aTaskManager(db, config);
+    }
+    return taskManager;
+  }
+
+  const handle: A2aHttpHandler["handle"] = async (req, res, authOpts) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname;
 
@@ -152,16 +173,28 @@ export function createA2aHttpHandler(opts: {
     }
 
     const rpcRequest = body as JsonRpcRequest;
-    if (!rpcRequest.method || !rpcRequest.id) {
+    if (typeof rpcRequest.method !== "string" || rpcRequest.method.length === 0) {
       sendJson(res, 400, {
         jsonrpc: "2.0",
         error: { code: A2aErrorCodes.INVALID_REQUEST, message: "Invalid JSON-RPC request" },
-        id: rpcRequest?.id ?? null,
+        id: (rpcRequest as { id?: unknown })?.id !== undefined ? rpcRequest.id : null,
       });
       return true;
     }
 
-    const manager = getOrCreateTaskManager(config);
+    // JSON-RPC 2.0: a request without `id` is a notification. Per spec the
+    // server MUST NOT respond to notifications. A2A's defined methods all
+    // expect responses, so we accept-and-discard rather than error so a
+    // misbehaving notification client doesn't break later request handling
+    // on the same socket.
+    const isNotification = (rpcRequest as { id?: unknown }).id === undefined;
+    if (isNotification) {
+      res.statusCode = 204;
+      res.end();
+      return true;
+    }
+
+    const manager = getTaskManager(config);
 
     // Payment gate: if marketplace payments are enabled, verify x402 payment
     if (config.a2a?.payment?.enabled && rpcRequest.method === "message/send") {
@@ -324,6 +357,23 @@ export function createA2aHttpHandler(opts: {
     const httpStatus = rpcResponse.error ? mapErrorToHttpStatus(rpcResponse.error.code) : 200;
     sendJson(res, httpStatus, rpcResponse);
     return true;
+  };
+
+  return {
+    handle,
+    close: () => {
+      if (closed) return;
+      closed = true;
+      taskManager = null;
+      cachedAgentCard = null;
+      if (ownsDb) {
+        try {
+          db.close();
+        } catch {
+          // best-effort
+        }
+      }
+    },
   };
 }
 

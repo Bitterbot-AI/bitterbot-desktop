@@ -52,6 +52,12 @@ export interface WalletService {
   getFundingUrl(): Promise<string>;
   getNetwork(): string;
   payForResource(resourceUrl: string, amountUsdc: number): Promise<X402PaymentResult>;
+  /**
+   * Sign an arbitrary message with the wallet's signing key (EIP-191 personal_sign).
+   * Used by the A2A client to bind payment proofs to the buyer's wallet so a
+   * leaked txHash cannot be replayed against a different recipient by another agent.
+   */
+  signMessage(message: string): Promise<string>;
 }
 
 const DEFAULT_WALLET_STORE = path.join(os.homedir(), ".bitterbot", "wallet");
@@ -271,6 +277,11 @@ export function createWalletService(config: WalletConfig): WalletService {
     async getAddress(): Promise<string> {
       const provider = await getProvider();
       return provider.getAddress();
+    },
+
+    async signMessage(message: string): Promise<string> {
+      const provider = await getProvider();
+      return provider.signMessage(message);
     },
 
     async getBalance(token?: string): Promise<BalanceResult> {

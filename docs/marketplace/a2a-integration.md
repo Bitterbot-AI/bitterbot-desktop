@@ -2,6 +2,8 @@
 
 Technical documentation for integrating with the Bitterbot Skill Marketplace via the Agent-to-Agent (A2A) protocol and x402 payment flow.
 
+> **Status:** A2A is **on by default** as of 2026-04-30. Fresh installs serve `/.well-known/agent.json` and `/a2a` immediately; payment is **off by default** and requires an operator-supplied USDC address before the x402 gate becomes active. ERC-8004 onchain identity advertisement is opt-in (set `a2a.erc8004.enabled` and `a2a.erc8004.tokenId`).
+
 ---
 
 ## A2A Protocol Compliance
@@ -20,6 +22,8 @@ All A2A requests and responses use JSON-RPC 2.0. The `/a2a` endpoint accepts POS
 - `tasks/get` -- retrieve current task state by ID, with optional history length
 - `tasks/list` -- list tasks with optional filtering by context, status, limit, and offset
 - `tasks/cancel` -- cancel a running task
+
+Per JSON-RPC 2.0 spec, requests without an `id` field are notifications -- the server does not produce a response. Bitterbot accepts notifications with HTTP 204 (No Content). All defined A2A methods expect responses, so notifications are accepted-and-discarded rather than dispatched.
 
 Authentication is handled via bearer tokens in the `Authorization` header. Tokens are issued through the agent's auth configuration and validated on every request before the payment gate is evaluated. Local loopback connections are allowed without a token.
 
@@ -96,7 +100,27 @@ The x402 v2 protocol defines three standard HTTP headers for the payment handsha
 
 3. **On-chain payment.** The client transfers the specified USDC amount to the `payTo` address on Base. This is a standard ERC-20 transfer.
 
-4. **Retry with proof.** The client resends the original `message/send` request, adding a `PAYMENT-SIGNATURE` header with the Base64-encoded payment proof. The legacy `x-payment` and `x-payment-token` headers are also accepted for backwards compatibility. The value is a base64-encoded JSON object containing the transaction hash, amount, sender address, and timestamp.
+4. **Retry with proof.** The client resends the original `message/send` request, adding a `PAYMENT-SIGNATURE` header with the Base64-encoded payment proof. The legacy `x-payment` and `x-payment-token` headers are also accepted for backwards compatibility. The value is a base64-encoded JSON object with the following shape:
+
+   ```jsonc
+   {
+     "version": "v1",
+     "txHash": "0x…", // Base USDC transfer transaction hash
+     "amount": 0.05, // human-readable USDC amount (matches the on-chain Transfer)
+     "sender": "0x…", // buyer wallet address (matches Transfer.from)
+     "recipient": "0x…", // seller wallet address (matches Transfer.to)
+     "timestamp": 1735689600000, // ms epoch, must be within 5 minutes
+     "signature": "0x…", // EIP-191 personal_sign over the canonical string (see below)
+   }
+   ```
+
+   **Canonical signing string (v1):** the buyer signs
+
+   ```
+   bitterbot-x402:v1:<recipient-lower>:<txHash-lower>:<amount>:<sender-lower>:<timestamp-ms>
+   ```
+
+   with EIP-191 `personal_sign`. The seller recovers the signer with `recoverMessageAddress` and confirms it matches the on-chain `Transfer.from`. This binds the proof to the specific (recipient, txHash, amount) tuple, so a leaked txHash cannot be replayed against a different recipient. Tokens without a signature are still accepted by the verifier (with a deprecation warning) for transition compatibility -- new clients should always sign.
 
 5. **Verification and execution.** The selling agent verifies the transaction on-chain (see "On-Chain Verification" below), confirms the amount and recipient match, and then creates and executes the task.
 
@@ -154,6 +178,30 @@ The Agent Card at `/.well-known/agent.json` follows the standard A2A schema with
 ### Key fields
 
 **Top-level `extensions.x402-payment`** describes the agent's payment configuration -- chain, token, receiving wallet address, minimum per-task payment, and pricing model. This applies to all skills.
+
+**Top-level `extensions.erc8004`** is added when the operator has registered the agent on the [ERC-8004 Trustless Agents](https://eips.ethereum.org/EIPS/eip-8004) Identity Registry (mainnet went live 2026-01-29). The extension carries:
+
+```jsonc
+{
+  "tokenId": "42", // ERC-721 tokenId on the Identity Registry
+  "registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432", // canonical Base mainnet
+  "chain": "base",
+}
+```
+
+Callers can use the tokenId to look up reputation history on the Reputation Registry (canonical: `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` on Base, `0x8004B663056A597Dffe9eCcC1965A193B7388713` on Base Sepolia). Enable via:
+
+```jsonc
+{
+  "a2a": {
+    "erc8004": {
+      "enabled": true,
+      "tokenId": "<your-tokenId>",
+      "chain": "base",
+    },
+  },
+}
+```
 
 **A2aSkill fields:**
 
@@ -420,13 +468,30 @@ async function executeWithPayment(a2aUrl: string, input: string, authToken: stri
   // Step 4: wait for confirmation, then retry with payment proof
   // In production, wait for at least 1 confirmation.
 
-  // Build payment proof token (base64-encoded JSON)
+  // Build a SIGNED payment proof token. The signature binds the proof to the
+  // specific (recipient, txHash, amount) tuple so a leaked txHash cannot be
+  // replayed by another agent against a different recipient.
+  const timestamp = Date.now();
+  const canonical = [
+    "bitterbot-x402",
+    "v1",
+    payTo.toLowerCase(),
+    txHash.toLowerCase(),
+    String(price),
+    account.address.toLowerCase(),
+    String(timestamp),
+  ].join(":");
+  const signature = await account.signMessage({ message: canonical });
+
   const paymentToken = Buffer.from(
     JSON.stringify({
+      version: "v1",
       txHash,
       amount: price,
       sender: account.address,
-      timestamp: Date.now(),
+      recipient: payTo,
+      timestamp,
+      signature,
     }),
   ).toString("base64");
 
@@ -594,18 +659,72 @@ async function verifyPayment(
 
 ### What the Verification Checks
 
-| Check              | Detail                                                                                                                             |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Transaction status | `receipt.status` must be `"success"`. Reverted transactions are rejected.                                                          |
-| Contract address   | The log must originate from the USDC contract on Base (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`).                              |
-| Recipient          | The `to` address in the Transfer event must match the selling agent's configured `x402.address`.                                   |
-| Amount             | The transferred value (decoded from the log data, 6 decimal places for USDC) must be greater than or equal to the minimum payment. |
-| Uniqueness         | The transaction hash must not have been used for a prior task (checked against a local consumed-hashes store, not shown above).    |
+| Check              | Detail                                                                                                                                                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Transaction status | `receipt.status` must be `"success"`. Reverted transactions are rejected.                                                                                                                                                                                    |
+| Contract address   | The log must originate from the USDC contract on Base (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`).                                                                                                                                                        |
+| Recipient          | The `to` address in the Transfer event must EQUAL the selling agent's configured `x402.address` (exact 20-byte match). The previous substring check was tightened in 2026-04.                                                                                |
+| Amount             | The transferred value (decoded from the log data, 6 decimal places for USDC) must be greater than or equal to the minimum payment.                                                                                                                           |
+| Uniqueness         | The transaction hash must not have been used for a prior task (UNIQUE index on `marketplace_purchases.tx_hash`).                                                                                                                                             |
+| Signature (v1)     | When the token includes a `version: "v1"` and `signature`, the seller verifies via EIP-191 `recoverMessageAddress` and confirms the recovered address matches the on-chain Transfer's `from`. Unsigned tokens are still accepted with a deprecation warning. |
 
 If any check fails, the selling agent responds with 402 and a JSON-RPC error body describing the failure reason. The buying agent can then retry with a corrected payment.
 
 ---
 
+## Configuration Reference
+
+The `a2a` block in `~/.bitterbot/config.jsonc`:
+
+```jsonc
+{
+  "a2a": {
+    "enabled": true, // on by default; set to false to disable both endpoints
+    "name": "My Bitterbot Node", // displayed in the agent card; defaults to ui.assistant.name
+    "description": "…", // free-text description for callers
+    "url": "https://agent.example", // public URL when behind NAT/proxy; otherwise inferred
+    "authentication": {
+      "type": "bearer", // "bearer" | "none"
+      "bearerToken": "…", // optional; falls back to gateway auth token
+    },
+    "skills": {
+      "expose": "all", // "all" | "none"
+      "allowlist": ["summarize-webpage"], // narrows what's published in the agent card
+    },
+    "payment": {
+      "enabled": false, // off by default; requires x402.address when true
+      "x402": {
+        "address": "0x…", // USDC payout address on Base
+        "minPayment": 0.01, // floor in USDC
+      },
+    },
+    "marketplace": {
+      "enabled": true,
+      "pricing": { "basePriceUsdc": 0.01 },
+      "client": {
+        // outbound spend caps
+        "maxTaskCostUsdc": 0.5,
+        "dailySpendLimitUsdc": 2.0,
+        "taskTimeoutMs": 60000,
+      },
+    },
+    "erc8004": {
+      // optional onchain identity (EIP-8004, mainnet 2026-01-29)
+      "enabled": false,
+      "tokenId": "42", // ERC-721 tokenId from the Identity Registry
+      "chain": "base", // "base" | "base-sepolia"; canonical registry inferred
+    },
+  },
+}
+```
+
+The Zod schema validates this block at config load. Missing `payment.x402.address` while `payment.enabled: true` is rejected with a clear error — no silent fallthrough to `payTo: ""`.
+
+---
+
 ## Further Reading
 
+- [A2A Protocol Specification](https://a2a-protocol.org/latest/specification/) -- canonical Google A2A reference.
+- [x402 Protocol Specification](https://github.com/coinbase/x402) -- canonical Coinbase x402 reference and v2 transport spec.
+- [ERC-8004: Trustless Agents](https://eips.ethereum.org/EIPS/eip-8004) -- identity, reputation, validation registries.
 - [Skill Marketplace Guide](./skill-marketplace.md) -- user-facing overview of marketplace features, pricing configuration, and security.

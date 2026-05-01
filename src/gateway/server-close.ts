@@ -28,6 +28,8 @@ export function createGatewayCloseHandler(params: {
   wss: WebSocketServer;
   httpServer: HttpServer;
   httpServers?: HttpServer[];
+  /** Release the A2A SQLite handle. No-op when A2A is disabled. */
+  closeA2a?: () => void;
 }) {
   return async (opts?: { reason?: string; restartExpectedMs?: number | null }) => {
     const reasonRaw = typeof opts?.reason === "string" ? opts.reason.trim() : "";
@@ -117,6 +119,13 @@ export function createGatewayCloseHandler(params: {
       await new Promise<void>((resolve, reject) =>
         httpServer.close((err) => (err ? reject(err) : resolve())),
       );
+    }
+    if (params.closeA2a) {
+      try {
+        params.closeA2a();
+      } catch {
+        /* best-effort */
+      }
     }
   };
 }

@@ -15,7 +15,14 @@ import {
 
 const log = createSubsystemLogger("agents/sessions-send");
 
-export async function runSessionsSendA2AFlow(params: {
+/**
+ * Run the post-reply announce flow between two sessions in the same Bitterbot
+ * instance. Despite the legacy `.a2a.ts` filename it used to carry, this is
+ * NOT the Google A2A protocol — it is internal session-to-session announce/
+ * reply over `AGENT_LANE_NESTED`. The Google A2A implementation lives under
+ * `src/gateway/a2a/`.
+ */
+export async function runSessionsSendAnnounceFlow(params: {
   targetSessionKey: string;
   displayKey: string;
   message: string;
