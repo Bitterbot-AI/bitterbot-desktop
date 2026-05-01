@@ -557,6 +557,7 @@ export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
       erc8004: {
         enabled: false,
         chain: "base",
+        cacheTtlMs: 5 * 60 * 1000,
         ...a2a.erc8004,
       },
     },

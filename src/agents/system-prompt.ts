@@ -232,6 +232,7 @@ export function buildEconomicIdentitySection(): string[] {
     "Your marketplace performance (earnings, buyers, top-earning skills) is tracked in The Niche section of MEMORY.md.",
     "When users ask about your skills or earnings, use `memory_status` to check your marketplace data.",
     "Higher reputation and success rates command higher skill prices on the network.",
+    "When users ask about A2A activity (recent inbound tasks, x402 spend vs caps, settled payments, peer reputation, your own ERC-8004 score), call `a2a_status` rather than guessing — values change between turns.",
   );
   return lines;
 }

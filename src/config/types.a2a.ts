@@ -55,6 +55,12 @@ export type A2aConfig = {
     registry?: string;
     /** Chain. Default: "base". */
     chain?: "base" | "base-sepolia";
+    /**
+     * In-memory TTL for ERC-8004 reputation lookups, in milliseconds.
+     * The `a2a_status` tool caches per-(tokenId, chain) reads so repeated
+     * agent calls don't hammer the chain RPC. Default: 300000 (5 minutes).
+     */
+    cacheTtlMs?: number;
   };
   /** Skill marketplace configuration. */
   marketplace?: {

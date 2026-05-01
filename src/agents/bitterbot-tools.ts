@@ -5,6 +5,7 @@ import type { AnyAgentTool } from "./tools/common.js";
 import { resolvePluginTools } from "../plugins/tools.js";
 import { resolveSessionAgentId } from "./agent-scope.js";
 import { createA2aClientTool } from "./tools/a2a-client-tool.js";
+import { createA2aStatusTool } from "./tools/a2a-status-tool.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createArtifactTool } from "./tools/artifact-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
@@ -122,6 +123,7 @@ export function createBitterbotTools(options?: {
     }),
     createComputerUseTool(),
     createNetworkStatusTool(),
+    createA2aStatusTool(),
     createCanvasTool(),
     createArtifactTool(),
     createCodeInterpreterTool(),

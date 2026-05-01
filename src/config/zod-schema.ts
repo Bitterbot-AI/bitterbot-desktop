@@ -778,6 +778,7 @@ export const BitterbotSchema = z
               .regex(/^0x[a-fA-F0-9]{40}$/, "must be a 0x-prefixed 20-byte hex address")
               .optional(),
             chain: z.enum(["base", "base-sepolia"]).optional(),
+            cacheTtlMs: z.number().int().nonnegative().optional(),
           })
           .strict()
           .optional(),

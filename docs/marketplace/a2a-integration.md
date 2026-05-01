@@ -722,6 +722,26 @@ The Zod schema validates this block at config load. Missing `payment.x402.addres
 
 ---
 
+## Agent Introspection (`a2a_status` tool)
+
+The agent has a built-in tool, `a2a_status`, that returns a read-only snapshot of the A2A subsystem so it can answer questions about activity without guessing:
+
+```typescript
+{
+  scope?: "summary" | "inbound" | "outbound" | "earnings" | "peers" | "all",
+  recentLimit?: number,                                   // default 5, max 50
+  peerLookup?: { erc8004TokenId: string, chain?: "base" | "base-sepolia" }
+}
+```
+
+Default scope (`summary`) is cheap — config snapshot, today's inbound/outbound/earnings totals, your own ERC-8004 reputation if configured. No chain reads for arbitrary peers.
+
+`peers` scope or an explicit `peerLookup` triggers an ERC-8004 Reputation Registry read on Base. Results are TTL-cached in-memory per `(tokenId, chain)` key. Tune the TTL via `a2a.erc8004.cacheTtlMs` (default `300000` = 5 min; set `0` to disable caching).
+
+The tool also returns short, paraphrasable `hints[]` strings for the agent to surface when relevant — e.g. "Payment gate is off", "Daily outbound spend cap reached", "Pending revenue payouts: $0.05 held for the 48h dispute window". The agent's system prompt nudges it to call `a2a_status` whenever the user asks about A2A activity, earnings, spend, or peer reputation.
+
+---
+
 ## Further Reading
 
 - [A2A Protocol Specification](https://a2a-protocol.org/latest/specification/) -- canonical Google A2A reference.
