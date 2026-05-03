@@ -599,6 +599,18 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        agentskills: z
+          .object({
+            enabled: z.boolean().optional(),
+            registryBaseUrl: z.string().optional(),
+            defaultTrust: z.enum(["auto", "review"]).optional(),
+            transformThreshold: z.number().min(0).max(1).optional(),
+            royaltyBps: z.number().int().nonnegative().optional(),
+            maxBytes: z.number().int().positive().optional(),
+            apiKey: z.string().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

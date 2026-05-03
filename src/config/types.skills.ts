@@ -59,6 +59,8 @@ export type SkillsAgentskillsConfig = {
   royaltyBps?: number;
   /** Maximum bytes for an imported SKILL.md or tarball. Default: 1 MB. */
   maxBytes?: number;
+  /** API key for upload (uses agentskills.io's API). Read at upload time only. */
+  apiKey?: string;
 };
 
 import type { SkillSeekersConfig } from "./types.skill-seekers.js";

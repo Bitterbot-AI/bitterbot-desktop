@@ -3649,6 +3649,14 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   /**
+   * Expose the SkillExecutionTracker for read paths (gateway metrics surface).
+   * Returns null if telemetry has not been initialized.
+   */
+  getSkillExecutionTracker(): SkillExecutionTracker | null {
+    return this.executionTracker;
+  }
+
+  /**
    * Wire the P2P orchestrator bridge into the skill network bridge.
    * Called from gateway startup after the orchestrator starts.
    */

@@ -31,8 +31,20 @@ import type {
   SkillsBinsResultSchema,
   SkillsCreateParamsSchema,
   SkillsInstallParamsSchema,
+  SkillsMetricsParamsSchema,
+  SkillsMetricsResultSchema,
+  SkillsPublishParamsSchema,
+  SkillsPublishResultSchema,
   SkillsStatusParamsSchema,
+  SkillsUpdateAgentFilterParamsSchema,
+  SkillsUpdateAgentFilterResultSchema,
   SkillsUpdateParamsSchema,
+  SkillsUpdateTrustSettingsParamsSchema,
+  SkillsUpdateTrustSettingsResultSchema,
+  SkillsUploadAgentskillsParamsSchema,
+  SkillsUploadAgentskillsResultSchema,
+  SkillsValidateParamsSchema,
+  SkillsValidateResultSchema,
 } from "./agents-models-skills.js";
 import type {
   ChannelsLogoutParamsSchema,
@@ -204,6 +216,18 @@ export type SkillsBinsResult = Static<typeof SkillsBinsResultSchema>;
 export type SkillsInstallParams = Static<typeof SkillsInstallParamsSchema>;
 export type SkillsUpdateParams = Static<typeof SkillsUpdateParamsSchema>;
 export type SkillsCreateParams = Static<typeof SkillsCreateParamsSchema>;
+export type SkillsMetricsParams = Static<typeof SkillsMetricsParamsSchema>;
+export type SkillsMetricsResult = Static<typeof SkillsMetricsResultSchema>;
+export type SkillsUpdateAgentFilterParams = Static<typeof SkillsUpdateAgentFilterParamsSchema>;
+export type SkillsUpdateAgentFilterResult = Static<typeof SkillsUpdateAgentFilterResultSchema>;
+export type SkillsUpdateTrustSettingsParams = Static<typeof SkillsUpdateTrustSettingsParamsSchema>;
+export type SkillsUpdateTrustSettingsResult = Static<typeof SkillsUpdateTrustSettingsResultSchema>;
+export type SkillsValidateParams = Static<typeof SkillsValidateParamsSchema>;
+export type SkillsValidateResult = Static<typeof SkillsValidateResultSchema>;
+export type SkillsPublishParams = Static<typeof SkillsPublishParamsSchema>;
+export type SkillsPublishResult = Static<typeof SkillsPublishResultSchema>;
+export type SkillsUploadAgentskillsParams = Static<typeof SkillsUploadAgentskillsParamsSchema>;
+export type SkillsUploadAgentskillsResult = Static<typeof SkillsUploadAgentskillsResultSchema>;
 export type LogsTailParams = Static<typeof LogsTailParamsSchema>;
 export type LogsTailResult = Static<typeof LogsTailResultSchema>;
 export type ExecApprovalsGetParams = Static<typeof ExecApprovalsGetParamsSchema>;

@@ -8,8 +8,21 @@ import {
   type SkillStatus,
   useSkillsStore,
 } from "../../stores/skills-store";
+import { AgentAllowlistEditor } from "./AgentAllowlistEditor";
 import { IncomingPanel } from "./IncomingPanel";
 import { SkillEditor } from "./SkillEditor";
+import { TrustSettings } from "./TrustSettings";
+
+type SkillMetrics = {
+  skillKey: string;
+  totalExecutions: number;
+  successRate: number;
+  avgRewardScore: number;
+  avgExecutionTimeMs: number;
+  userFeedbackScore: number;
+  lastExecutedAt: number;
+  errorBreakdown: Record<string, number>;
+};
 
 type RawSkillEntry = {
   skillKey?: string;
@@ -137,13 +150,45 @@ function StateBadge({ state, reasons }: { state: SkillState; reasons: string[] }
   );
 }
 
+function MetricsLine({ metrics }: { metrics: SkillMetrics | undefined }) {
+  if (!metrics || metrics.totalExecutions === 0) return null;
+  const pct = Math.round(metrics.successRate * 100);
+  const avgMs =
+    metrics.avgExecutionTimeMs > 0 ? `${Math.round(metrics.avgExecutionTimeMs)}ms` : null;
+  return (
+    <div
+      className="text-[10px] text-muted-foreground mt-1 flex flex-wrap gap-x-3"
+      title={`Last run: ${new Date(metrics.lastExecutedAt).toLocaleString()}`}
+    >
+      <span>
+        {metrics.totalExecutions} run{metrics.totalExecutions === 1 ? "" : "s"} ·{" "}
+        <span
+          className={cn(
+            pct >= 80 ? "text-green-300" : pct >= 50 ? "text-amber-300" : "text-red-300",
+          )}
+        >
+          {pct}% success
+        </span>
+      </span>
+      {avgMs && <span>avg {avgMs}</span>}
+      {metrics.userFeedbackScore !== 0 && (
+        <span title="Aggregated user feedback score (-1..1)">
+          fb {metrics.userFeedbackScore.toFixed(2)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function SkillCard({
   skill,
+  metrics,
   onToggle,
   onInstall,
   installing,
 }: {
   skill: SkillStatus;
+  metrics: SkillMetrics | undefined;
   onToggle: (key: string, enabled: boolean) => void;
   onInstall: (skill: SkillStatus) => void;
   installing: boolean;
@@ -246,6 +291,7 @@ function SkillCard({
             {installing ? "Installing…" : (skill.install?.[0]?.label ?? "Install dependency")}
           </button>
         )}
+        <MetricsLine metrics={metrics} />
       </div>
     </div>
   );
@@ -268,6 +314,7 @@ export function SkillsView() {
   const [viewMode, setViewMode] = useState<ViewMode>("installed");
   const [incomingCount, setIncomingCount] = useState(0);
   const [showEditor, setShowEditor] = useState(false);
+  const [showTrustSettings, setShowTrustSettings] = useState(false);
   const gwStatus = useGatewayStore((s) => s.status);
   const request = useGatewayStore((s) => s.request);
   const subscribe = useGatewayStore((s) => s.subscribe);
@@ -298,12 +345,21 @@ export function SkillsView() {
     <div className="h-full overflow-y-auto p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Skills</h1>
-        <button
-          onClick={() => setShowEditor(true)}
-          className="px-3 py-1.5 text-xs rounded-md border bg-purple-500/10 text-purple-300 border-purple-500/20 hover:bg-purple-500/20 transition-colors"
-        >
-          + New skill
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTrustSettings(true)}
+            className="px-3 py-1.5 text-xs rounded-md border bg-card/50 text-muted-foreground border-border/30 hover:text-foreground transition-colors"
+            title="Configure how skills enter your network"
+          >
+            Trust settings
+          </button>
+          <button
+            onClick={() => setShowEditor(true)}
+            className="px-3 py-1.5 text-xs rounded-md border bg-purple-500/10 text-purple-300 border-purple-500/20 hover:bg-purple-500/20 transition-colors"
+          >
+            + New skill
+          </button>
+        </div>
       </div>
       <div className="flex items-center gap-2 border-b border-border/20 pb-2">
         <button
@@ -340,6 +396,7 @@ export function SkillsView() {
         <IncomingPanel onCountChange={setIncomingCount} />
       )}
       {showEditor && <SkillEditor onClose={() => setShowEditor(false)} />}
+      {showTrustSettings && <TrustSettings onClose={() => setShowTrustSettings(false)} />}
     </div>
   );
 }
@@ -361,6 +418,8 @@ function InstalledSkillsView() {
   const [installing, setInstalling] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [agentId, setAgentId] = useState<string>("");
+  const [metricsByKey, setMetricsByKey] = useState<Record<string, SkillMetrics>>({});
+  const [showAllowlistEditor, setShowAllowlistEditor] = useState(false);
 
   useEffect(() => {
     if (gwStatus !== "connected") return;
@@ -396,6 +455,20 @@ function InstalledSkillsView() {
       setError(err instanceof Error ? err.message : "Failed to load skills");
     } finally {
       setLoading(false);
+    }
+    // Per-skill telemetry — best-effort; older gateways without
+    // skills.metrics return an error and we just leave metrics empty.
+    try {
+      const m = (await request("skills.metrics", {})) as { metrics?: SkillMetrics[] };
+      if (Array.isArray(m?.metrics)) {
+        const map: Record<string, SkillMetrics> = {};
+        for (const entry of m.metrics) {
+          if (entry?.skillKey) map[entry.skillKey] = entry;
+        }
+        setMetricsByKey(map);
+      }
+    } catch {
+      // non-fatal: metrics are decorative
     }
   }, [gwStatus, agentId, request, setSkills, setLoading, setError]);
 
@@ -516,6 +589,19 @@ function InstalledSkillsView() {
               })}
             </select>
           )}
+          {agentId && (
+            <button
+              onClick={() => setShowAllowlistEditor(true)}
+              className={cn(
+                "px-3 py-1.5 text-xs rounded-lg",
+                "bg-card/50 text-muted-foreground hover:text-foreground",
+                "border border-border/30 transition-colors",
+              )}
+              title="Restrict which skills this agent can use"
+            >
+              Allowlist
+            </button>
+          )}
           <button
             onClick={refresh}
             disabled={loading}
@@ -578,6 +664,7 @@ function InstalledSkillsView() {
                 <SkillCard
                   key={skill.key}
                   skill={skill}
+                  metrics={metricsByKey[skill.key]}
                   onToggle={handleToggle}
                   onInstall={handleInstall}
                   installing={installing === skill.key}
@@ -586,6 +673,19 @@ function InstalledSkillsView() {
             </div>
           </div>
         ))
+      )}
+
+      {showAllowlistEditor && agentId && (
+        <AgentAllowlistEditor
+          agentId={agentId}
+          agentLabel={agents.find((a) => a.id === agentId)?.identity?.name?.trim() || agentId}
+          allSkills={skills}
+          onClose={() => setShowAllowlistEditor(false)}
+          onSaved={() => {
+            setShowAllowlistEditor(false);
+            void refresh();
+          }}
+        />
       )}
     </div>
   );

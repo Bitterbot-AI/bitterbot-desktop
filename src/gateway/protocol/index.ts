@@ -171,10 +171,28 @@ import {
   SkillsCreateParamsSchema,
   type SkillsInstallParams,
   SkillsInstallParamsSchema,
+  type SkillsMetricsParams,
+  SkillsMetricsParamsSchema,
+  type SkillsMetricsResult,
+  type SkillsPublishParams,
+  SkillsPublishParamsSchema,
+  type SkillsPublishResult,
   type SkillsStatusParams,
   SkillsStatusParamsSchema,
+  type SkillsUpdateAgentFilterParams,
+  SkillsUpdateAgentFilterParamsSchema,
+  type SkillsUpdateAgentFilterResult,
   type SkillsUpdateParams,
   SkillsUpdateParamsSchema,
+  type SkillsUpdateTrustSettingsParams,
+  SkillsUpdateTrustSettingsParamsSchema,
+  type SkillsUpdateTrustSettingsResult,
+  type SkillsUploadAgentskillsParams,
+  SkillsUploadAgentskillsParamsSchema,
+  type SkillsUploadAgentskillsResult,
+  type SkillsValidateParams,
+  SkillsValidateParamsSchema,
+  type SkillsValidateResult,
   type Snapshot,
   SnapshotSchema,
   type StateVersion,
@@ -303,6 +321,22 @@ export const validateSkillsInstallParams =
   ajv.compile<SkillsInstallParams>(SkillsInstallParamsSchema);
 export const validateSkillsUpdateParams = ajv.compile<SkillsUpdateParams>(SkillsUpdateParamsSchema);
 export const validateSkillsCreateParams = ajv.compile<SkillsCreateParams>(SkillsCreateParamsSchema);
+export const validateSkillsMetricsParams =
+  ajv.compile<SkillsMetricsParams>(SkillsMetricsParamsSchema);
+export const validateSkillsUpdateAgentFilterParams = ajv.compile<SkillsUpdateAgentFilterParams>(
+  SkillsUpdateAgentFilterParamsSchema,
+);
+export const validateSkillsUpdateTrustSettingsParams = ajv.compile<SkillsUpdateTrustSettingsParams>(
+  SkillsUpdateTrustSettingsParamsSchema,
+);
+export const validateSkillsValidateParams = ajv.compile<SkillsValidateParams>(
+  SkillsValidateParamsSchema,
+);
+export const validateSkillsPublishParams =
+  ajv.compile<SkillsPublishParams>(SkillsPublishParamsSchema);
+export const validateSkillsUploadAgentskillsParams = ajv.compile<SkillsUploadAgentskillsParams>(
+  SkillsUploadAgentskillsParamsSchema,
+);
 export const validateDevicePairListParams = ajv.compile<DevicePairListParams>(
   DevicePairListParamsSchema,
 );
@@ -458,6 +492,12 @@ export {
   SkillsInstallParamsSchema,
   SkillsUpdateParamsSchema,
   SkillsCreateParamsSchema,
+  SkillsMetricsParamsSchema,
+  SkillsPublishParamsSchema,
+  SkillsUpdateAgentFilterParamsSchema,
+  SkillsUpdateTrustSettingsParamsSchema,
+  SkillsUploadAgentskillsParamsSchema,
+  SkillsValidateParamsSchema,
   LogsTailParamsSchema,
   LogsTailResultSchema,
   ChatHistoryParamsSchema,
@@ -541,6 +581,18 @@ export type {
   SkillsInstallParams,
   SkillsUpdateParams,
   SkillsCreateParams,
+  SkillsMetricsParams,
+  SkillsMetricsResult,
+  SkillsPublishParams,
+  SkillsPublishResult,
+  SkillsUpdateAgentFilterParams,
+  SkillsUpdateAgentFilterResult,
+  SkillsUpdateTrustSettingsParams,
+  SkillsUpdateTrustSettingsResult,
+  SkillsUploadAgentskillsParams,
+  SkillsUploadAgentskillsResult,
+  SkillsValidateParams,
+  SkillsValidateResult,
   NodePairRejectParams,
   NodePairVerifyParams,
   NodeListParams,

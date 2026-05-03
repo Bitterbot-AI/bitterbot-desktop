@@ -64,8 +64,8 @@ export function NetworkGrowthSparkline({ rows, width = 360, height = 80 }: Spark
   const lastX = PADDING + ((lastPoint.t - minT) / tSpan) * innerW;
   const lastY = PADDING + innerH - ((lastPoint.v - minV) / vSpan) * innerH;
 
-  const firstSnapshot = new Date(points[0].generatedAt * 1000);
-  const lastSnapshot = new Date(lastPoint.t * 1000);
+  const firstSnapshot = new Date(points[0]!.t * 1000);
+  const lastSnapshot = new Date(lastPoint!.t * 1000);
 
   return (
     <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
