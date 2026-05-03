@@ -11,7 +11,9 @@ describe("git-hooks/pre-commit", () => {
     expect(script).toMatch(/--name-only/);
     expect(script).toMatch(/--diff-filter=ACMR/);
     expect(script).toMatch(/\s-z\b/);
-    expect(script).toMatch(/mapfile -d '' -t files/);
+    // Read NUL-delimited input with bash 3.2-compatible loop (macOS bash lacks `mapfile -d`).
+    expect(script).toMatch(/while IFS= read -r -d '' f; do/);
+    expect(script).toMatch(/files\+=\("\$f"\)/);
 
     // Option-injection hardening: always pass paths after "--".
     expect(script).toMatch(/\ngit add -- /);
