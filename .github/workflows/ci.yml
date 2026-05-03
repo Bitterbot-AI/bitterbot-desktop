@@ -13,11 +13,13 @@ concurrency:
 jobs:
   build:
     name: Build & Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
 
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node-version: [22]
 
     steps:
@@ -33,10 +35,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Type check
+      - name: Type check (root)
         run: npx tsc --noEmit
 
+      - name: Type check (desktop renderer)
+        run: pnpm --filter bitterbot-control-ui typecheck
+
       - name: Build
+        if: runner.os != 'Windows'
         run: pnpm build
 
       - name: Unit tests
