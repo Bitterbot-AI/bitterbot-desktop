@@ -51,7 +51,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(tmpDir, { recursive: true, force: true });
+  // maxRetries/retryDelay tolerate Windows briefly holding file locks after
+  // SQLite handles close (especially -wal/-shm sidecars in WAL mode).
+  rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   delete process.env.BITTERBOT_STATE_DIR;
 });
 
