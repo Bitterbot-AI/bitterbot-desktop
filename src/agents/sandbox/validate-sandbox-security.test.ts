@@ -74,7 +74,11 @@ describe("validateBindMounts", () => {
     expect(() => validateBindMounts(["//etc//passwd:/mnt/passwd"])).toThrow(/blocked path "\/etc"/);
   });
 
-  it("blocks symlink escapes into blocked directories", () => {
+  // Skipped on Windows: the sandbox is bubblewrap-on-Linux and the validator
+  // assumes POSIX-absolute paths. Symlinking "/etc" on Windows produces a
+  // mixed-path string the validator rejects with a different (but still safe)
+  // error before it can resolve the symlink.
+  it.skipIf(process.platform === "win32")("blocks symlink escapes into blocked directories", () => {
     const dir = mkdtempSync(join(tmpdir(), "bitterbot-sbx-"));
     const link = join(dir, "etc-link");
     symlinkSync("/etc", link);

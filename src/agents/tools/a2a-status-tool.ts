@@ -87,8 +87,9 @@ export function createA2aStatusTool(): AnyAgentTool {
         });
       }
 
+      let tasksDb: DatabaseSync | null = null;
       try {
-        const tasksDb = openA2aTasksDb();
+        tasksDb = openA2aTasksDb();
         const marketplace = await loadMarketplace(cfg);
 
         const result: Record<string, unknown> = {
@@ -150,6 +151,12 @@ export function createA2aStatusTool(): AnyAgentTool {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return jsonResult({ ok: false, error: `a2a_status failed: ${message}` });
+      } finally {
+        // Release the SQLite handle so the file isn't held open after the
+        // tool returns — Windows refuses to unlink open DB files.
+        try {
+          tasksDb?.close();
+        } catch {}
       }
     },
   };
