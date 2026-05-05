@@ -72,17 +72,17 @@ curl -X POST https://api.notte.cc/functions/{function_id}/runs/start \
 
 ## When to use Notte vs the bundled tools
 
-| Need | Use |
-|---|---|
-| Open a tab, click around, take a snapshot | **Bundled `browser` tool** (`src/browser/`) |
-| Pull a single page through a stealth fetch | **Firecrawl via `web_fetch`** (`docs/tools/firecrawl.md`) |
-| **Crystallize a recurring browser flow into a callable API endpoint** | **`notte functions`** |
-| **Schedule a browser flow on a cron (dream-cycle aligned)** | **`notte functions schedule-set`** |
-| Run a multi-step task on an authenticated site | **`notte` session** |
-| Log in without exposing the password to the LLM | **`notte` vault** |
-| The bundled browser is being challenged with captcha / Cloudflare / DataDome | **`notte`** (`--solve-captchas`, `--proxy`) |
-| Need a residential / geo-located IP | **`notte`** |
-| Hand a browsing goal to an agent and get a structured answer | **`notte agents`** |
+| Need                                                                         | Use                                                       |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Open a tab, click around, take a snapshot                                    | **Bundled `browser` tool** (`src/browser/`)               |
+| Pull a single page through a stealth fetch                                   | **Firecrawl via `web_fetch`** (`docs/tools/firecrawl.md`) |
+| **Crystallize a recurring browser flow into a callable API endpoint**        | **`notte functions`**                                     |
+| **Schedule a browser flow on a cron (dream-cycle aligned)**                  | **`notte functions schedule-set`**                        |
+| Run a multi-step task on an authenticated site                               | **`notte` session**                                       |
+| Log in without exposing the password to the LLM                              | **`notte` vault**                                         |
+| The bundled browser is being challenged with captcha / Cloudflare / DataDome | **`notte`** (`--solve-captchas`, `--proxy`)               |
+| Need a residential / geo-located IP                                          | **`notte`**                                               |
+| Hand a browsing goal to an agent and get a structured answer                 | **`notte agents`**                                        |
 
 `notte` does not replace the bundled browser. It's the deployment + infrastructure layer for browser flows that need to outlive a single agent run.
 
@@ -144,14 +144,14 @@ Agents are cheaper than authoring step-by-step CLI calls when the task has many 
 
 ## Stealth flags worth knowing
 
-| Flag                   | Effect                                                |
-| ---------------------- | ----------------------------------------------------- |
-| `--proxy`              | Route through Notte's residential proxy pool          |
-| `--proxy-country <c>`  | ISO country code (`us`, `gb`, `fr`, `de`, …)          |
-| `--solve-captchas`     | Auto-solve reCAPTCHA / hCaptcha / Cloudflare turnstile |
-| `--user-agent <ua>`    | Pin a specific UA string                              |
-| `--cdp-url <url>`      | Bring-your-own remote browser (e.g. Lightpanda)       |
-| `--headless=false`     | Required when `--cdp-url` points to Lightpanda Cloud  |
+| Flag                  | Effect                                                 |
+| --------------------- | ------------------------------------------------------ |
+| `--proxy`             | Route through Notte's residential proxy pool           |
+| `--proxy-country <c>` | ISO country code (`us`, `gb`, `fr`, `de`, …)           |
+| `--solve-captchas`    | Auto-solve reCAPTCHA / hCaptcha / Cloudflare turnstile |
+| `--user-agent <ua>`   | Pin a specific UA string                               |
+| `--cdp-url <url>`     | Bring-your-own remote browser (e.g. Lightpanda)        |
+| `--headless=false`    | Required when `--cdp-url` points to Lightpanda Cloud   |
 
 ## Page actions (cheat sheet)
 
@@ -201,12 +201,12 @@ notte sessions viewer
 
 ## Environment variables
 
-| Variable | Purpose |
-| --- | --- |
-| `NOTTE_API_KEY` | API key (alternative to `notte auth login`) |
-| `NOTTE_SESSION_ID` | Default session for `page` commands |
-| `NOTTE_API_URL` | Override API endpoint |
-| `NOTTE_MCP_SERVER_PROTOCOL` | `stdio` or `sse` (only for the MCP server) |
+| Variable                    | Purpose                                     |
+| --------------------------- | ------------------------------------------- |
+| `NOTTE_API_KEY`             | API key (alternative to `notte auth login`) |
+| `NOTTE_SESSION_ID`          | Default session for `page` commands         |
+| `NOTTE_API_URL`             | Override API endpoint                       |
+| `NOTTE_MCP_SERVER_PROTOCOL` | `stdio` or `sse` (only for the MCP server)  |
 
 ## Tips
 
@@ -219,11 +219,11 @@ notte sessions viewer
 
 ## Troubleshooting
 
-| Symptom                            | Fix                                                       |
-| ---------------------------------- | --------------------------------------------------------- |
-| Site keeps blocking / shows captcha | Restart with `--proxy --solve-captchas`                  |
-| Empty / partial scrape             | Add `notte page wait 1000` then re-`observe` before `scrape` |
-| `@B3` clicks the wrong thing       | Use a Playwright selector (`button:has-text('Submit')`)  |
-| Lightpanda CDP returns 500         | Add `--headless=false` to `sessions start`               |
-| Agent stuck on a captcha           | Stop session, restart with `--solve-captchas`            |
-| 401 / auth errors                  | Re-run `notte auth login` or set `NOTTE_API_KEY`         |
+| Symptom                             | Fix                                                          |
+| ----------------------------------- | ------------------------------------------------------------ |
+| Site keeps blocking / shows captcha | Restart with `--proxy --solve-captchas`                      |
+| Empty / partial scrape              | Add `notte page wait 1000` then re-`observe` before `scrape` |
+| `@B3` clicks the wrong thing        | Use a Playwright selector (`button:has-text('Submit')`)      |
+| Lightpanda CDP returns 500          | Add `--headless=false` to `sessions start`                   |
+| Agent stuck on a captcha            | Stop session, restart with `--solve-captchas`                |
+| 401 / auth errors                   | Re-run `notte auth login` or set `NOTTE_API_KEY`             |
