@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { SafeOpenError, openFileWithinRoot, type SafeOpenResult } from "../infra/fs-safe.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+
+const log = createSubsystemLogger("canvas/file-resolver");
 
 export function normalizeUrlPath(rawPath: string): string {
   const decoded = decodeURIComponent(rawPath || "/");
@@ -24,8 +27,8 @@ export async function resolveFileWithinRoot(
     } catch (err) {
       if (err instanceof SafeOpenError) {
         if (err.code !== "not-found") {
-          console.warn(
-            `[canvas] SafeOpenError: ${err.code} ${err.message} rootDir=${rootReal} rel=${relative}`,
+          log.debug(
+            `SafeOpenError: ${err.code} ${err.message} rootDir=${rootReal} rel=${relative}`,
           );
         }
         return null;
