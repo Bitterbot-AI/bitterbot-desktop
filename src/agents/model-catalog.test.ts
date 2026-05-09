@@ -8,6 +8,8 @@ import {
 
 type PiSdkModule = typeof import("./pi-model-discovery.js");
 
+const { warnMock } = vi.hoisted(() => ({ warnMock: vi.fn() }));
+
 vi.mock("./models-config.js", () => ({
   ensureBitterbotModelsJson: vi.fn().mockResolvedValue({ agentDir: "/tmp", wrote: false }),
 }));
@@ -16,9 +18,21 @@ vi.mock("./agent-paths.js", () => ({
   resolveBitterbotAgentDir: () => "/tmp/bitterbot",
 }));
 
+vi.mock("../logging/subsystem.js", () => ({
+  createSubsystemLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: warnMock,
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: () => ({}),
+  }),
+}));
+
 describe("loadModelCatalog", () => {
   beforeEach(() => {
     resetModelCatalogCacheForTest();
+    warnMock.mockClear();
   });
 
   afterEach(() => {
@@ -28,7 +42,6 @@ describe("loadModelCatalog", () => {
   });
 
   it("retries after import failure without poisoning the cache", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     let call = 0;
 
     __setModelCatalogImportForTest(async () => {
@@ -53,12 +66,10 @@ describe("loadModelCatalog", () => {
     const second = await loadModelCatalog({ config: cfg });
     expect(second).toEqual([{ id: "gpt-4.1", name: "GPT-4.1", provider: "openai" }]);
     expect(call).toBe(2);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnMock).toHaveBeenCalledTimes(1);
   });
 
   it("returns partial results on discovery errors", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
     __setModelCatalogImportForTest(
       async () =>
         ({
@@ -82,7 +93,7 @@ describe("loadModelCatalog", () => {
 
     const result = await loadModelCatalog({ config: {} as BitterbotConfig });
     expect(result).toEqual([{ id: "gpt-4.1", name: "GPT-4.1", provider: "openai" }]);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnMock).toHaveBeenCalledTimes(1);
   });
 
   it("adds openai-codex/gpt-5.3-codex-spark when base gpt-5.3-codex exists", async () => {
