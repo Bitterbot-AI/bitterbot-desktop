@@ -31,10 +31,16 @@ import type {
   SkillsBinsResultSchema,
   SkillsCreateParamsSchema,
   SkillsInstallParamsSchema,
+  SkillsManageParamsSchema,
+  SkillsManageResultSchema,
   SkillsMetricsParamsSchema,
   SkillsMetricsResultSchema,
+  SkillsPromoteParamsSchema,
+  SkillsPromoteResultSchema,
   SkillsPublishParamsSchema,
   SkillsPublishResultSchema,
+  SkillsRollbackParamsSchema,
+  SkillsRollbackResultSchema,
   SkillsStatusParamsSchema,
   SkillsUpdateAgentFilterParamsSchema,
   SkillsUpdateAgentFilterResultSchema,
@@ -226,6 +232,12 @@ export type SkillsValidateParams = Static<typeof SkillsValidateParamsSchema>;
 export type SkillsValidateResult = Static<typeof SkillsValidateResultSchema>;
 export type SkillsPublishParams = Static<typeof SkillsPublishParamsSchema>;
 export type SkillsPublishResult = Static<typeof SkillsPublishResultSchema>;
+export type SkillsManageParams = Static<typeof SkillsManageParamsSchema>;
+export type SkillsManageResult = Static<typeof SkillsManageResultSchema>;
+export type SkillsPromoteParams = Static<typeof SkillsPromoteParamsSchema>;
+export type SkillsPromoteResult = Static<typeof SkillsPromoteResultSchema>;
+export type SkillsRollbackParams = Static<typeof SkillsRollbackParamsSchema>;
+export type SkillsRollbackResult = Static<typeof SkillsRollbackResultSchema>;
 export type SkillsUploadAgentskillsParams = Static<typeof SkillsUploadAgentskillsParamsSchema>;
 export type SkillsUploadAgentskillsResult = Static<typeof SkillsUploadAgentskillsResultSchema>;
 export type LogsTailParams = Static<typeof LogsTailParamsSchema>;

@@ -181,7 +181,7 @@ export class SkillLifecycleStore {
                 consolidated_into, pinned, updated_at
          FROM skill_lifecycle WHERE skill_name = ?`,
       )
-      .get(trimmed) as DbRow | undefined;
+      .get(trimmed) as unknown as DbRow | undefined;
     return row ? rowToLifecycle(row) : null;
   }
 
@@ -197,7 +197,7 @@ export class SkillLifecycleStore {
          FROM skill_lifecycle
          ORDER BY last_used_at IS NULL, last_used_at DESC`,
       )
-      .all() as DbRow[];
+      .all() as unknown as DbRow[];
     return rows.map(rowToLifecycle);
   }
 
@@ -207,27 +207,25 @@ export class SkillLifecycleStore {
    * filtered out of every other selector so the curator never touches them.
    */
   listByState(state: SkillLifecycleState): SkillLifecycleRow[] {
-    const rows = (
-      state === "pinned"
-        ? this.db
-            .prepare(
-              `SELECT skill_name, origin, state, created_at, last_used_at,
+    const rows = (state === "pinned"
+      ? this.db
+          .prepare(
+            `SELECT skill_name, origin, state, created_at, last_used_at,
                     usage_count, success_count, error_count,
                     consolidated_into, pinned, updated_at
              FROM skill_lifecycle WHERE pinned = 1
              ORDER BY last_used_at IS NULL, last_used_at DESC`,
-            )
-            .all()
-        : this.db
-            .prepare(
-              `SELECT skill_name, origin, state, created_at, last_used_at,
+          )
+          .all()
+      : this.db
+          .prepare(
+            `SELECT skill_name, origin, state, created_at, last_used_at,
                     usage_count, success_count, error_count,
                     consolidated_into, pinned, updated_at
              FROM skill_lifecycle WHERE state = ? AND pinned = 0
              ORDER BY last_used_at IS NULL, last_used_at DESC`,
-            )
-            .all(state)
-    ) as DbRow[];
+          )
+          .all(state)) as unknown as DbRow[];
     return rows.map(rowToLifecycle);
   }
 
@@ -248,7 +246,7 @@ export class SkillLifecycleStore {
            AND state != 'archived'
          ORDER BY last_used_at IS NULL, last_used_at DESC`,
       )
-      .all() as DbRow[];
+      .all() as unknown as DbRow[];
     return rows.map(rowToLifecycle);
   }
 

@@ -1027,7 +1027,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const p = params as SkillManageParams;
+    const p = params as unknown as SkillManageParams;
     const roots = resolveStorageRoots();
     try {
       const result = await skillManage({ storageRoots: roots }, p);
