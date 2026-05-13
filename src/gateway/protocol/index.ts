@@ -171,12 +171,24 @@ import {
   SkillsCreateParamsSchema,
   type SkillsInstallParams,
   SkillsInstallParamsSchema,
+  type SkillsManageParams,
+  SkillsManageParamsSchema,
+  type SkillsManageResult,
+  SkillsManageResultSchema,
   type SkillsMetricsParams,
   SkillsMetricsParamsSchema,
   type SkillsMetricsResult,
+  type SkillsPromoteParams,
+  SkillsPromoteParamsSchema,
+  type SkillsPromoteResult,
+  SkillsPromoteResultSchema,
   type SkillsPublishParams,
   SkillsPublishParamsSchema,
   type SkillsPublishResult,
+  type SkillsRollbackParams,
+  SkillsRollbackParamsSchema,
+  type SkillsRollbackResult,
+  SkillsRollbackResultSchema,
   type SkillsStatusParams,
   SkillsStatusParamsSchema,
   type SkillsUpdateAgentFilterParams,
@@ -334,6 +346,12 @@ export const validateSkillsValidateParams = ajv.compile<SkillsValidateParams>(
 );
 export const validateSkillsPublishParams =
   ajv.compile<SkillsPublishParams>(SkillsPublishParamsSchema);
+export const validateSkillsManageParams = ajv.compile<SkillsManageParams>(SkillsManageParamsSchema);
+export const validateSkillsPromoteParams =
+  ajv.compile<SkillsPromoteParams>(SkillsPromoteParamsSchema);
+export const validateSkillsRollbackParams = ajv.compile<SkillsRollbackParams>(
+  SkillsRollbackParamsSchema,
+);
 export const validateSkillsUploadAgentskillsParams = ajv.compile<SkillsUploadAgentskillsParams>(
   SkillsUploadAgentskillsParamsSchema,
 );
@@ -492,8 +510,14 @@ export {
   SkillsInstallParamsSchema,
   SkillsUpdateParamsSchema,
   SkillsCreateParamsSchema,
+  SkillsManageParamsSchema,
+  SkillsManageResultSchema,
   SkillsMetricsParamsSchema,
+  SkillsPromoteParamsSchema,
+  SkillsPromoteResultSchema,
   SkillsPublishParamsSchema,
+  SkillsRollbackParamsSchema,
+  SkillsRollbackResultSchema,
   SkillsUpdateAgentFilterParamsSchema,
   SkillsUpdateTrustSettingsParamsSchema,
   SkillsUploadAgentskillsParamsSchema,
@@ -581,10 +605,16 @@ export type {
   SkillsInstallParams,
   SkillsUpdateParams,
   SkillsCreateParams,
+  SkillsManageParams,
+  SkillsManageResult,
   SkillsMetricsParams,
   SkillsMetricsResult,
+  SkillsPromoteParams,
+  SkillsPromoteResult,
   SkillsPublishParams,
   SkillsPublishResult,
+  SkillsRollbackParams,
+  SkillsRollbackResult,
   SkillsUpdateAgentFilterParams,
   SkillsUpdateAgentFilterResult,
   SkillsUpdateTrustSettingsParams,

@@ -21,6 +21,9 @@ import {
   rejectIncomingSkillsByPeer,
 } from "../../agents/skills/ingest.js";
 import { bumpSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
+import { skillManage, type SkillManageParams } from "../../agents/skills/skill-manage.js";
+import { promoteStaged, rollbackStaged } from "../../agents/skills/skill-promote.js";
+import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { listAgentWorkspaceDirs } from "../../agents/workspace-dirs.js";
 import { loadConfig, writeConfigFile } from "../../config/config.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
@@ -35,8 +38,11 @@ import {
   validateSkillsBinsParams,
   validateSkillsCreateParams,
   validateSkillsInstallParams,
+  validateSkillsManageParams,
   validateSkillsMetricsParams,
+  validateSkillsPromoteParams,
   validateSkillsPublishParams,
+  validateSkillsRollbackParams,
   validateSkillsStatusParams,
   validateSkillsUpdateAgentFilterParams,
   validateSkillsUpdateParams,
@@ -998,5 +1004,179 @@ export const skillsHandlers: GatewayRequestHandlers = {
     await writeConfigFile(nextConfig);
     bumpSkillsSnapshotVersion({ reason: "manual" });
     respond(true, { ok: true, p2p: skills.p2p, agentskills: skills.agentskills }, undefined);
+  },
+
+  // ── PLAN-15 Phase 2c: staging-gated skill mutation surface ──────────────
+  //
+  // The lifecycle store and live execution-tracker live inside the agent's
+  // memory manager and are not directly addressable from the gateway. The
+  // handlers below therefore omit `lifecycleStore` and `acceptHighRiskDiff`
+  // baseline metrics on the gate; the schema and injection checks still
+  // fire. A follow-up will wire the lifecycle store across the IPC boundary
+  // so the regression-baseline branch of the gate fires on gateway-driven
+  // mutations as well.
+  "skills.manage": async ({ params, respond }) => {
+    if (!validateSkillsManageParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.manage params: ${formatValidationErrors(validateSkillsManageParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const p = params as SkillManageParams;
+    const roots = resolveStorageRoots();
+    try {
+      const result = await skillManage({ storageRoots: roots }, p);
+      const payload = {
+        ok: result.ok,
+        action: result.action,
+        name: result.name,
+        ...(result.stagedFilePath ? { stagedFilePath: result.stagedFilePath } : {}),
+        ...(result.gate
+          ? {
+              gateOutcome: result.gate.outcome,
+              gateSummary: result.gateSummary,
+              gateIssues: result.gate.issues,
+              baselineRuns: result.gate.baselineRuns,
+              baselineSuccessRate: result.gate.baselineSuccessRate,
+            }
+          : {}),
+        ...(result.error ? { error: result.error } : {}),
+        ...(result.detail ? { detail: result.detail } : {}),
+      };
+      if (result.ok) {
+        bumpSkillsSnapshotVersion({ reason: "manual" });
+      }
+      respond(
+        result.ok,
+        payload,
+        result.ok
+          ? undefined
+          : errorShape(ErrorCodes.UNAVAILABLE, result.detail ?? "manage failed"),
+      );
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.manage threw: ${String(err)}`),
+      );
+    }
+  },
+
+  "skills.promote": async ({ params, respond }) => {
+    if (!validateSkillsPromoteParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.promote params: ${formatValidationErrors(validateSkillsPromoteParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const p = params as {
+      name: string;
+      reason?: string;
+      author?: string;
+      forceGate?: boolean;
+    };
+    const roots = resolveStorageRoots();
+    try {
+      const result = await promoteStaged(
+        { storageRoots: roots },
+        {
+          name: p.name,
+          ...(p.reason ? { reason: p.reason } : {}),
+          ...(p.author ? { author: p.author } : {}),
+          ...(p.forceGate ? { forceGate: true } : {}),
+        },
+      );
+      const payload = {
+        ok: result.ok,
+        ...(result.kind ? { kind: result.kind } : {}),
+        ...(result.previousArchived
+          ? { previousArchivedVersion: result.previousArchived.version }
+          : {}),
+        ...(result.error ? { error: result.error } : {}),
+        ...(result.detail ? { detail: result.detail } : {}),
+      };
+      if (result.ok) {
+        bumpSkillsSnapshotVersion({ reason: "manual" });
+      }
+      respond(
+        result.ok,
+        payload,
+        result.ok
+          ? undefined
+          : errorShape(ErrorCodes.UNAVAILABLE, result.detail ?? "promote failed"),
+      );
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.promote threw: ${String(err)}`),
+      );
+    }
+  },
+
+  "skills.rollback": async ({ params, respond }) => {
+    if (!validateSkillsRollbackParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.rollback params: ${formatValidationErrors(validateSkillsRollbackParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const p = params as {
+      name: string;
+      version: number;
+      reason?: string;
+      author?: string;
+    };
+    const roots = resolveStorageRoots();
+    try {
+      const result = await rollbackStaged(
+        { storageRoots: roots },
+        {
+          name: p.name,
+          version: p.version,
+          ...(p.reason ? { reason: p.reason } : {}),
+          ...(p.author ? { author: p.author } : {}),
+        },
+      );
+      const payload = {
+        ok: result.ok,
+        ...(result.previousArchived
+          ? { previousArchivedVersion: result.previousArchived.version }
+          : {}),
+        ...(result.error ? { error: result.error } : {}),
+        ...(result.detail ? { detail: result.detail } : {}),
+      };
+      if (result.ok) {
+        bumpSkillsSnapshotVersion({ reason: "manual" });
+      }
+      respond(
+        result.ok,
+        payload,
+        result.ok
+          ? undefined
+          : errorShape(ErrorCodes.UNAVAILABLE, result.detail ?? "rollback failed"),
+      );
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.rollback threw: ${String(err)}`),
+      );
+    }
   },
 };

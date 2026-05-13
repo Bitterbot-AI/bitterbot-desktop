@@ -391,6 +391,140 @@ export const SkillsPublishParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+// ── PLAN-15 Phase 2c: skill_manage / promote / rollback gateway surface ────
+
+const SkillManageBaseFields = {
+  name: NonEmptyString,
+  reason: NonEmptyString,
+  author: Type.Optional(NonEmptyString),
+};
+
+/**
+ * Stage a skill mutation through the SICA staging-gate pipeline. The action
+ * field discriminates the rest of the payload.
+ */
+export const SkillsManageParamsSchema = Type.Union([
+  Type.Object(
+    {
+      action: Type.Literal("create"),
+      ...SkillManageBaseFields,
+      content: NonEmptyString,
+      overwriteLive: Type.Optional(Type.Boolean()),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      action: Type.Literal("edit"),
+      ...SkillManageBaseFields,
+      content: NonEmptyString,
+      acceptHighRiskDiff: Type.Optional(Type.Boolean()),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      action: Type.Literal("patch"),
+      ...SkillManageBaseFields,
+      oldString: NonEmptyString,
+      newString: Type.String(),
+      replaceAll: Type.Optional(Type.Boolean()),
+      acceptHighRiskDiff: Type.Optional(Type.Boolean()),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      action: Type.Literal("delete"),
+      ...SkillManageBaseFields,
+      note: Type.Optional(Type.String()),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      action: Type.Literal("consolidate"),
+      ...SkillManageBaseFields,
+      into: NonEmptyString,
+    },
+    { additionalProperties: false },
+  ),
+]);
+
+export const SkillsManageGateIssueSchema = Type.Object(
+  {
+    kind: NonEmptyString,
+    detail: Type.String(),
+    severity: Type.Union([Type.Literal("info"), Type.Literal("warn"), Type.Literal("block")]),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillsManageResultSchema = Type.Object(
+  {
+    ok: Type.Boolean(),
+    action: NonEmptyString,
+    name: NonEmptyString,
+    stagedFilePath: Type.Optional(NonEmptyString),
+    gateOutcome: Type.Optional(
+      Type.Union([Type.Literal("pass"), Type.Literal("warn"), Type.Literal("fail")]),
+    ),
+    gateSummary: Type.Optional(Type.String()),
+    gateIssues: Type.Optional(Type.Array(SkillsManageGateIssueSchema)),
+    baselineRuns: Type.Optional(Type.Integer({ minimum: 0 })),
+    baselineSuccessRate: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+    error: Type.Optional(NonEmptyString),
+    detail: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/** Promote staged content to live. */
+export const SkillsPromoteParamsSchema = Type.Object(
+  {
+    name: NonEmptyString,
+    reason: Type.Optional(NonEmptyString),
+    author: Type.Optional(NonEmptyString),
+    /** Override a failed gate. Defaults false. */
+    forceGate: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillsPromoteResultSchema = Type.Object(
+  {
+    ok: Type.Boolean(),
+    kind: Type.Optional(
+      Type.Union([Type.Literal("edit"), Type.Literal("tombstone"), Type.Literal("consolidate")]),
+    ),
+    previousArchivedVersion: Type.Optional(Type.Integer({ minimum: 1 })),
+    error: Type.Optional(NonEmptyString),
+    detail: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/** Restore an archived version to live. */
+export const SkillsRollbackParamsSchema = Type.Object(
+  {
+    name: NonEmptyString,
+    version: Type.Integer({ minimum: 1 }),
+    reason: Type.Optional(NonEmptyString),
+    author: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillsRollbackResultSchema = Type.Object(
+  {
+    ok: Type.Boolean(),
+    previousArchivedVersion: Type.Optional(Type.Integer({ minimum: 1 })),
+    error: Type.Optional(NonEmptyString),
+    detail: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 export const SkillsPublishResultSchema = Type.Object(
   {
     ok: Type.Boolean(),
