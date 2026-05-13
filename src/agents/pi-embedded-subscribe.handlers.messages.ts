@@ -118,6 +118,19 @@ export function handleMessageUpdate(
     }
   }
 
+  // Strip <memory-context>...</memory-context> spans across chunk boundaries
+  // before the chunk reaches any downstream buffer. No-op when memoryFenceWrapping
+  // is off (the default).
+  chunk = ctx.scrubMemoryFenceChunk(chunk);
+  // On text_end, flush any held buffer so a trailing partial-prefix can land
+  // in the same message rather than being deferred to the next text_delta.
+  if (evtType === "text_end") {
+    const tail = ctx.flushMemoryFenceBuffer();
+    if (tail) {
+      chunk += tail;
+    }
+  }
+
   if (chunk) {
     ctx.state.deltaBuffer += chunk;
     if (ctx.blockChunker) {

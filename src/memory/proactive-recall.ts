@@ -240,11 +240,28 @@ export function proactiveRecall(params: {
   };
 }
 
+export interface FormatProactiveFactsOptions {
+  /**
+   * When true, wrap the block in <memory-context>...</memory-context> fence
+   * tags. Pairs with the StreamingContextScrubber on the consumer side so the
+   * model echoing the block does not leak the fence verbatim. Default false
+   * — flipping without a matching scrubber on the streaming pipeline will
+   * surface fence tags in the user transcript.
+   */
+  wrapInMemoryFence?: boolean;
+}
+
+export const MEMORY_FENCE_OPEN_TAG = "<memory-context>";
+export const MEMORY_FENCE_CLOSE_TAG = "</memory-context>";
+
 /**
  * Format proactive facts for system prompt injection.
  * Terse, one-line-per-fact format that the LLM embodies naturally.
  */
-export function formatProactiveFacts(facts: ProactiveFact[]): string {
+export function formatProactiveFacts(
+  facts: ProactiveFact[],
+  options: FormatProactiveFactsOptions = {},
+): string {
   if (facts.length === 0) {
     return "";
   }
@@ -252,5 +269,12 @@ export function formatProactiveFacts(facts: ProactiveFact[]): string {
     const prefix = f.confidence < 0.4 ? "(uncertain) " : "";
     return `- ${prefix}${f.text}`;
   });
-  return ["What you already know (act on this naturally, never announce it):", ...lines].join("\n");
+  const inner = [
+    "What you already know (act on this naturally, never announce it):",
+    ...lines,
+  ].join("\n");
+  if (options.wrapInMemoryFence) {
+    return `${MEMORY_FENCE_OPEN_TAG}\n${inner}\n${MEMORY_FENCE_CLOSE_TAG}`;
+  }
+  return inner;
 }

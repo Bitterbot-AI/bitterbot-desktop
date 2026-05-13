@@ -25,6 +25,8 @@ const THINKING_TAG_SCAN_RE = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\
 const FINAL_TAG_SCAN_RE = /<\s*(\/?)\s*final\s*>/gi;
 const log = createSubsystemLogger("agent/embedded");
 
+import { DEFAULT_MEMORY_FENCE, StreamingContextScrubber } from "./streaming-context-scrubber.js";
+
 export type {
   BlockReplyChunking,
   SubscribeEmbeddedPiSessionParams,
@@ -601,6 +603,17 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     }
   };
 
+  // Memory-fence scrubber: zero-cost no-op when memoryFenceWrapping is off.
+  // When on, an instance is constructed per subscribe (and reset on
+  // message_start) so each agent message starts with a clean buffer state.
+  const memoryFenceScrubber = params.memoryFenceWrapping
+    ? new StreamingContextScrubber(DEFAULT_MEMORY_FENCE)
+    : null;
+  const scrubMemoryFenceChunk = (chunk: string): string =>
+    memoryFenceScrubber ? memoryFenceScrubber.feed(chunk) : chunk;
+  const flushMemoryFenceBuffer = (): string =>
+    memoryFenceScrubber ? memoryFenceScrubber.flush() : "";
+
   const ctx: EmbeddedPiSubscribeContext = {
     params,
     state,
@@ -609,6 +622,8 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     blockChunker,
     hookRunner: params.hookRunner,
     noteLastAssistant,
+    scrubMemoryFenceChunk,
+    flushMemoryFenceBuffer,
     shouldEmitToolResult,
     shouldEmitToolOutput,
     emitToolSummary,

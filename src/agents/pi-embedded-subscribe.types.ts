@@ -41,6 +41,14 @@ export type SubscribeEmbeddedPiSessionParams = {
    * tool calls so long tool loops don't overflow context.
    */
   contextWindowTokens?: number;
+  /**
+   * When true, the assistant text stream is passed through a
+   * StreamingContextScrubber that strips <memory-context>...</memory-context>
+   * spans across chunk boundaries. Pairs with
+   * formatProactiveFacts({ wrapInMemoryFence: true }) on the prompt-build
+   * side. Default false — flipping requires both ends in sync.
+   */
+  memoryFenceWrapping?: boolean;
 };
 
 export type { BlockReplyChunking } from "./pi-embedded-block-chunker.js";

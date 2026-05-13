@@ -83,6 +83,18 @@ export type EmbeddedPiSubscribeContext = {
   blockChunker: EmbeddedBlockChunker | null;
   hookRunner?: HookRunner;
   noteLastAssistant: (msg: AgentMessage) => void;
+  /**
+   * Scrub a streaming chunk through the memory-context fence stripper.
+   * Returns the chunk unchanged when memoryFenceWrapping is off. Holds
+   * back partial-tag suffixes across chunk boundaries.
+   */
+  scrubMemoryFenceChunk: (chunk: string) => string;
+  /**
+   * Flush the held buffer at end-of-message; returns any trailing emit
+   * (empty string when off, or when the stream ended mid-span — that
+   * buffer is discarded for safety).
+   */
+  flushMemoryFenceBuffer: () => string;
 
   shouldEmitToolResult: () => boolean;
   shouldEmitToolOutput: () => boolean;
