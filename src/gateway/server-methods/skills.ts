@@ -21,6 +21,7 @@ import {
   rejectIncomingSkillsByPeer,
 } from "../../agents/skills/ingest.js";
 import { bumpSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
+import { withSkillLifecycleStore } from "../../agents/skills/skill-lifecycle-from-config.js";
 import { skillManage, type SkillManageParams } from "../../agents/skills/skill-manage.js";
 import { promoteStaged, rollbackStaged } from "../../agents/skills/skill-promote.js";
 import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
@@ -1008,13 +1009,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
 
   // ── PLAN-15 Phase 2c: staging-gated skill mutation surface ──────────────
   //
-  // The lifecycle store and live execution-tracker live inside the agent's
-  // memory manager and are not directly addressable from the gateway. The
-  // handlers below therefore omit `lifecycleStore` and `acceptHighRiskDiff`
-  // baseline metrics on the gate; the schema and injection checks still
-  // fire. A follow-up will wire the lifecycle store across the IPC boundary
-  // so the regression-baseline branch of the gate fires on gateway-driven
-  // mutations as well.
+  // Lifecycle metrics live in the per-agent memory DB; we open a short-lived
+  // WAL-mode connection per call so the regression-baseline branch of the
+  // gate fires even from this entry point. If the connection fails to open
+  // (missing DB, schema mismatch), we degrade to schema + injection gates
+  // only rather than failing the request.
   "skills.manage": async ({ params, respond }) => {
     if (!validateSkillsManageParams(params)) {
       respond(
@@ -1029,8 +1028,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
     }
     const p = params as unknown as SkillManageParams;
     const roots = resolveStorageRoots();
+    const cfg = loadConfig();
     try {
-      const result = await skillManage({ storageRoots: roots }, p);
+      const result = await withSkillLifecycleStore({ config: cfg }, (store) =>
+        skillManage({ storageRoots: roots, ...(store ? { lifecycleStore: store } : {}) }, p),
+      );
       const payload = {
         ok: result.ok,
         action: result.action,
@@ -1086,15 +1088,18 @@ export const skillsHandlers: GatewayRequestHandlers = {
       forceGate?: boolean;
     };
     const roots = resolveStorageRoots();
+    const cfg = loadConfig();
     try {
-      const result = await promoteStaged(
-        { storageRoots: roots },
-        {
-          name: p.name,
-          ...(p.reason ? { reason: p.reason } : {}),
-          ...(p.author ? { author: p.author } : {}),
-          ...(p.forceGate ? { forceGate: true } : {}),
-        },
+      const result = await withSkillLifecycleStore({ config: cfg }, (store) =>
+        promoteStaged(
+          { storageRoots: roots, ...(store ? { lifecycleStore: store } : {}) },
+          {
+            name: p.name,
+            ...(p.reason ? { reason: p.reason } : {}),
+            ...(p.author ? { author: p.author } : {}),
+            ...(p.forceGate ? { forceGate: true } : {}),
+          },
+        ),
       );
       const payload = {
         ok: result.ok,
@@ -1143,15 +1148,18 @@ export const skillsHandlers: GatewayRequestHandlers = {
       author?: string;
     };
     const roots = resolveStorageRoots();
+    const cfg = loadConfig();
     try {
-      const result = await rollbackStaged(
-        { storageRoots: roots },
-        {
-          name: p.name,
-          version: p.version,
-          ...(p.reason ? { reason: p.reason } : {}),
-          ...(p.author ? { author: p.author } : {}),
-        },
+      const result = await withSkillLifecycleStore({ config: cfg }, (store) =>
+        rollbackStaged(
+          { storageRoots: roots, ...(store ? { lifecycleStore: store } : {}) },
+          {
+            name: p.name,
+            version: p.version,
+            ...(p.reason ? { reason: p.reason } : {}),
+            ...(p.author ? { author: p.author } : {}),
+          },
+        ),
       );
       const payload = {
         ok: result.ok,

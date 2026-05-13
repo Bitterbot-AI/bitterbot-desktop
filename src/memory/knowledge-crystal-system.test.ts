@@ -378,7 +378,7 @@ describe("Crystal Foundation", () => {
       ).run("legacy-1", "test.md", 1700000000000);
 
       const result = runMigrations(db);
-      expect(result.ran).toBe(11); // v1..v10 + v11 (network_census_history for gossipsub-pushed bootnode snapshots)
+      expect(result.ran).toBe(12); // v1..v11 + v12 (PLAN-15 skill_lifecycle)
 
       const row = db.prepare("SELECT created_at FROM chunks WHERE id = ?").get("legacy-1") as {
         created_at: number;
