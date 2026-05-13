@@ -712,6 +712,101 @@ type DomainProfile = {
 
 ---
 
+## Procedural-Memory Curator (PLAN-15)
+
+The original pipeline above is **write-side**: it turns experience into crystallized skills. The
+curator is the **read/maintenance-side**: it walks the SKILL.md files already on disk and decides
+which to keep, mark stale, archive, or consolidate.
+
+It complements the dream-mutation flow rather than replacing it. The mutation flow is creative
+("here are some variations of this skill"); the curator is custodial ("this skill is unused, that
+one fails 80% of the time, this other one is subsumed by its neighbour").
+
+### Lifecycle table
+
+Migration v12 adds `skill_lifecycle`, one row per SKILL.md keyed on the canonical skill name:
+
+| column              | meaning                                                                 |
+| ------------------- | ----------------------------------------------------------------------- |
+| `skill_name`        | Primary key. Matches `chunks.skill_category` for joinability.           |
+| `origin`            | `agent_authored` / `managed` / `workspace` / `p2p` / `unknown`.         |
+| `state`             | `active` / `stale` / `archived` / `pinned`.                             |
+| `created_at`        | First-seen timestamp (ms).                                              |
+| `last_used_at`      | Most recent successful execution (ms), or NULL.                         |
+| `usage_count`       | Total executions recorded.                                              |
+| `success_count`     | Subset of `usage_count` that succeeded.                                 |
+| `error_count`       | Subset of `usage_count` that failed.                                    |
+| `consolidated_into` | If non-NULL, the skill this one was merged into.                        |
+| `pinned`            | 1 if the operator pinned it. Pinned rows are off-limits to the curator. |
+| `updated_at`        | Row-mutation timestamp.                                                 |
+
+The table is **backfilled on first migration** from existing `skill_executions` rows joined to
+`chunks.skill_category` so installs upgrading from v11 do not start with an empty lifecycle log.
+
+`SkillLifecycleStore` (`src/memory/skill-lifecycle.ts`) is the API. The execution pipeline calls
+`recordUsage()` after every skill invocation; the curator and `skill_manage` tool drive everything
+else.
+
+### Pass 1 — heuristic transitions (no LLM)
+
+`src/memory/skill-curator-heuristics.ts` is a pure-function classifier. Default thresholds:
+
+| from → to              | trigger                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- |
+| `active → stale`       | Idle ≥60d since last use, OR unused with age ≥14d (with a 3d fresh-skill grace window).                   |
+| `stale → archived`     | Idle ≥120d since last use.                                                                                |
+| `archived → active`    | Used within 7d of being archived (reactivation grace — defends against the curator clobbering a revival). |
+| **Flag for LLM judge** | `error_count / usage_count ≥ 50%` over ≥5 runs. Heuristic alone never auto-archives high-error skills.    |
+| `noop`                 | Any other case, or `origin != agent_authored`, or `pinned = 1`.                                           |
+
+Only `agent_authored` skills are eligible. Skills authored by the user, ingested from the P2P
+marketplace, or installed from `managed` are untouched.
+
+### Pass 2 — LLM judge on borderlines (A-MAC hybrid)
+
+`src/memory/skill-curator-judge.ts` runs the auxiliary model **only** on borderlines flagged by
+pass 1, mirroring the A-MAC paper's heuristic-first pattern (arXiv 2603.04549) that cuts
+LLM-judged cost ~10x with comparable quality.
+
+The judge reads the SKILL.md content plus a peer-summary list and returns one of:
+
+```yaml
+action: keep         # situational failures, leave alone
+action: archive      # clearly broken or no longer useful
+action: consolidate  # archive in favour of another existing skill
+  into: "<peer-name>"
+action: patch        # rewrite the frontmatter description only
+  new_description: "..."
+```
+
+**Hard rule:** the judge cannot delete. Archival is reversible; deletion is not. The only path
+that removes a SKILL.md from disk is the Phase 2c `skill_manage` tombstone flow, gated by the
+behavioural gate and the explicit operator-or-agent intent that drives it.
+
+### Driver and reports
+
+`runFullCuratorPass()` in `src/memory/skill-curator.ts` is the entry point. It:
+
+1. Runs the heuristic pass; applies confident transitions unless `dryRun: true`.
+2. Runs the LLM judge on at most `maxJudgeCalls` (default 10) borderlines per pass, so token
+   spend is bounded even when many skills are flagged.
+3. Writes a unified `REPORT.md` to `<CONFIG_DIR>/curator-reports/<ISO-ts>/` (atomic temp+rename).
+4. Returns a structured `FullCuratorPassResult` with the heuristic outcomes and per-skill judge
+   decisions.
+
+A dry-run produces the report without mutating the DB or rewriting any SKILL.md, so operators can
+preview what the curator would do before flipping it on.
+
+### Gateway and agent integration
+
+- The agent can drive the curator indirectly by calling `skill_manage` (next section); the
+  curator itself is invoked from the memory manager's schedule.
+- All gateway-side skill mutations open a short-lived WAL-mode connection via
+  `withSkillLifecycleStore` (`src/agents/skills/skill-lifecycle-from-config.ts`) so the
+  regression-baseline branch of the behavioural gate fires even from gateway entry points.
+
+---
+
 ## Related Documentation
 
 - [Architecture Overview](./architecture-overview.md) — system entry point and file map

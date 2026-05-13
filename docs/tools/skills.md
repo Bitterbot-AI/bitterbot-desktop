@@ -374,6 +374,110 @@ install (npm package). `~/.bitterbot/skills` exists for local
 overrides (for example, pinning/patching a skill without changing the bundled
 copy). Workspace skills are user-owned and override both on name conflicts.
 
+## Staging-gate pipeline (PLAN-15)
+
+Every mutation to a managed SKILL.md routes through a SICA-style staging gate
+before reaching the live directory the agent loads from. This applies to
+mutations driven by the desktop UI, the gateway RPC, and the agent's own
+`skill_manage` tool.
+
+### On-disk layout
+
+```
+~/.bitterbot/
+├── skills/<name>/SKILL.md                  # live, agent-visible
+├── skills-staging/<name>/SKILL.md          # staged edit, not yet live
+├── skills-staging/<name>/.staging-meta.json
+├── skills-archive/<name>/v<N>/SKILL.md     # historical snapshots
+├── skills-archive/<name>/v<N>/.archive-meta.json
+└── skills-archive/<name>/.next-version     # monotonic counter
+```
+
+Atomic writes (temp + rename) everywhere. The archive counter is monotonic
+across the lifetime of a skill — rolling back to an old version still creates
+a new archive entry for the prior live, so the archive grows linearly and
+never loses history.
+
+### Behavioural gate
+
+Three layers, run synchronously on every staged content payload:
+
+1. **Schema** — YAML frontmatter parses, `name` and `description` present,
+   body non-empty.
+2. **Injection scan** — re-runs the same `scanSkillForInjection` used on
+   inbound P2P skills. Severity `critical` blocks; `low` / `medium` surface
+   as a warn that does not block.
+3. **Regression risk** — if the previous live version has empirical
+   success rate ≥ 80% over ≥ 5 runs (from `skill_lifecycle`) and the staged
+   body shares < 50% of live's non-empty lines, the gate blocks. The caller
+   can override with `acceptHighRiskDiff=true` if the rewrite is
+   intentional.
+
+Implementation: `src/agents/skills/skill-gate.ts`.
+
+### Gateway methods
+
+The gateway exposes three RPCs against this pipeline. All three are schema-
+validated via TypeBox.
+
+#### `skills.manage`
+
+Stages a typed mutation. The `action` field is a discriminator:
+
+| action        | params                                          | result                                                       |
+| ------------- | ----------------------------------------------- | ------------------------------------------------------------ |
+| `create`      | `content`, optional `overwriteLive`             | Refuses to clobber live unless `overwriteLive=true`.         |
+| `edit`        | `content`, optional `acceptHighRiskDiff`        | Requires an existing live skill.                             |
+| `patch`       | `oldString`, `newString`, optional `replaceAll` | First-match wins; ambiguous matches error.                   |
+| `delete`      | optional `note`                                 | Stages a tombstone; publish removes the live copy from disk. |
+| `consolidate` | `into`                                          | Stages a manifest pointing at an existing live target.       |
+
+Every mutation lands in `skills-staging/<name>/` and runs the behavioural
+gate. The result carries `gateOutcome` (`pass` / `warn` / `fail`),
+`gateIssues`, and the baseline metrics that drove the regression check.
+
+#### `skills.promote`
+
+Moves a staged payload to live. Refuses to promote when
+`gateStatus !== "passed"` unless the caller passes `forceGate: true`.
+Three promotion paths, dispatched on the staged content's discriminator:
+
+- **Regular content** — archives the current live (if any), atomic-renames
+  staged → live.
+- **Tombstone** — archives the current live, removes it from disk,
+  flips the lifecycle state to `archived`.
+- **Consolidate manifest** — archives the source, removes it from disk,
+  calls `SkillLifecycleStore.consolidateInto(source, target)`. The target
+  is left untouched.
+
+#### `skills.rollback`
+
+Restores a specific archived version to live. The current live is
+snapshotted to a new archive entry first, so a rollback is itself
+rollback-able.
+
+### `skill_manage` agent tool
+
+The agent can drive the same pipeline through a registered tool. Single
+tool, seven actions: the five staging actions plus `promote` and `rollback`.
+Returns the gate outcome and baseline metrics so the agent can decide
+whether to follow up with a `promote` call or surface the gate failure to
+the user.
+
+The tool is registered in `src/agents/bitterbot-tools.ts` and the schema
+lives in `src/agents/tools/skill-manage-tool.ts`. The system prompt does
+not need to teach the agent about it explicitly — tools are surfaced
+through the tool list, and the tool's description explains the workflow.
+
+### Lifecycle store binding
+
+Gateway and tool entry points open a short-lived WAL-mode connection to
+the per-agent memory DB via `withSkillLifecycleStore` so the
+regression-baseline branch of the gate fires from every surface. When the
+DB is unavailable (missing, unwritable, schema mismatch), the helper
+returns `null` and the gate degrades to schema + injection checks only,
+rather than failing the request.
+
 ## Config reference
 
 See [Skills config](/tools/skills-config) for the full configuration schema.

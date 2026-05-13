@@ -79,6 +79,7 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 - **EigenTrust Reputation**: Peer reputation scoring determines skill trustworthiness.
 - **Bounty Routing**: Agents can post bounties for capabilities they lack; other agents bid and execute.
 - **Skill Refiner**: Dream mutation → evaluation → crystallization pipeline for discovering new skills from experience.
+- **Procedural-Memory Curator**: Per-SKILL.md lifecycle store + heuristic-then-LLM-judge pass that archives, patches, or consolidates agent-authored skills based on usage/error telemetry. Mutations route through a SICA-style staging → behavioural-gate → publish/rollback pipeline with a versioned archive. The agent can drive this via the `skill_manage` tool. (`src/memory/skill-lifecycle.ts`, `src/memory/skill-curator{,-heuristics,-judge}.ts`, `src/agents/skills/skill-{storage,gate,manage,promote}.ts`, `src/agents/tools/skill-manage-tool.ts`.)
 - **Network Bridge**: TypeScript interface between the memory system and the Rust P2P sidecar.
 
 ### 8. Agent Interoperability
