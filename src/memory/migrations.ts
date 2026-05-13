@@ -481,6 +481,67 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 12,
+    description:
+      "PLAN-15 procedural-memory curator: per-SKILL.md lifecycle table " +
+      "(origin, state, usage/error counts, last_used_at, pinned). Backfilled " +
+      "from skill_executions joined on chunks.skill_category.",
+    up: (db: DatabaseSync) => {
+      // One row per SKILL.md (keyed on the canonical skill_name slug). A
+      // single SKILL.md may map to N memory chunks (versions, mutations);
+      // lifecycle is tracked at the SKILL.md level because that is what the
+      // curator's heuristic + LLM-judge passes operate on.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS skill_lifecycle (
+          skill_name         TEXT PRIMARY KEY,
+          origin             TEXT NOT NULL DEFAULT 'unknown',
+          state              TEXT NOT NULL DEFAULT 'active',
+          created_at         INTEGER NOT NULL,
+          last_used_at       INTEGER,
+          usage_count        INTEGER NOT NULL DEFAULT 0,
+          success_count      INTEGER NOT NULL DEFAULT 0,
+          error_count        INTEGER NOT NULL DEFAULT 0,
+          consolidated_into  TEXT,
+          pinned             INTEGER NOT NULL DEFAULT 0,
+          updated_at         INTEGER NOT NULL
+        )
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_skill_lifecycle_state ON skill_lifecycle(state)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_skill_lifecycle_origin ON skill_lifecycle(origin)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_skill_lifecycle_last_used ON skill_lifecycle(last_used_at)`,
+      );
+
+      // Backfill from skill_executions. A skill_category is treated as the
+      // canonical skill_name slug; rows are aggregated to last_used_at /
+      // counts. origin defaults to 'unknown' on backfill — fresh writes via
+      // the gateway set it correctly.
+      db.exec(`
+        INSERT OR IGNORE INTO skill_lifecycle (
+          skill_name, origin, state, created_at, last_used_at,
+          usage_count, success_count, error_count, pinned, updated_at
+        )
+        SELECT
+          c.skill_category                       AS skill_name,
+          'unknown'                              AS origin,
+          'active'                               AS state,
+          MIN(se.started_at)                     AS created_at,
+          MAX(se.started_at)                     AS last_used_at,
+          COUNT(*)                               AS usage_count,
+          SUM(CASE WHEN se.success = 1 THEN 1 ELSE 0 END) AS success_count,
+          SUM(CASE WHEN se.success = 0 THEN 1 ELSE 0 END) AS error_count,
+          0                                      AS pinned,
+          CAST(strftime('%s','now') AS INTEGER) * 1000 AS updated_at
+        FROM skill_executions se
+        JOIN chunks c ON c.id = se.skill_crystal_id
+        WHERE c.skill_category IS NOT NULL
+          AND c.skill_category != ''
+          AND se.completed_at IS NOT NULL
+        GROUP BY c.skill_category
+      `);
+    },
+  },
 ];
 
 /**
