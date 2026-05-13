@@ -12,6 +12,7 @@
  * point we have to redirect to an RPC instead.
  */
 
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -21,7 +22,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { runMigrations } from "../../memory/migrations.js";
 import { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
-import { ensureDir, resolveUserPath } from "../../utils.js";
+import { resolveUserPath } from "../../utils.js";
 import { resolveAgentConfig, resolveDefaultAgentId } from "../agent-scope.js";
 
 const log = createSubsystemLogger("skills/lifecycle-from-config");
@@ -53,7 +54,10 @@ export function openSkillLifecycleStore(params: {
   }
   const dbPath = resolveAgentDbPath(params.config, agentId);
   try {
-    ensureDir(path.dirname(dbPath));
+    // Synchronous mkdir so the directory exists before sqlite opens.
+    // ensureDir from utils is async and we keep this helper sync to match
+    // node:sqlite's own sync API.
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     const db = new DatabaseSync(dbPath);
     // Match the agent runner's pragmas so we co-exist cleanly with the
     // long-lived writer connection. WAL is required for the second
