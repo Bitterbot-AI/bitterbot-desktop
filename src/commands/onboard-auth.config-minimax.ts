@@ -17,9 +17,10 @@ import {
 
 export function applyMinimaxProviderConfig(cfg: BitterbotConfig): BitterbotConfig {
   const models = { ...cfg.agents?.defaults?.models };
-  models["anthropic/claude-opus-4-6"] = {
-    ...models["anthropic/claude-opus-4-6"],
-    alias: models["anthropic/claude-opus-4-6"]?.alias ?? "Opus",
+  // PLAN-17 Phase 5: align with src/config/defaults.ts opus tier (claude-opus-4-7).
+  models["anthropic/claude-opus-4-7"] = {
+    ...models["anthropic/claude-opus-4-7"],
+    alias: models["anthropic/claude-opus-4-7"]?.alias ?? "Opus",
   };
   models["lmstudio/minimax-m2.1-gs32"] = {
     ...models["lmstudio/minimax-m2.1-gs32"],

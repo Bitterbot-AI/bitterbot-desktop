@@ -897,6 +897,86 @@ export function createTaskScheduleWakeupTool(): AnyAgentTool {
 }
 
 // ---------------------------------------------------------------------------
+// task_resume_inline (PLAN-17 Phase 4 — promote-to-foreground).
+// ---------------------------------------------------------------------------
+
+const ResumeInlineSchema = Type.Object({
+  task_id: Type.String({ minLength: 1 }),
+  reason: Type.Optional(
+    Type.String({
+      description: "Why you're pulling this task into the current chat. Recorded for audit.",
+      maxLength: 500,
+    }),
+  ),
+});
+
+export function createTaskResumeInlineTool(options: { agentSessionKey?: string }): AnyAgentTool {
+  return {
+    label: "Resume Task Inline",
+    name: "task_resume_inline",
+    description:
+      "Pull a paused long-horizon task into the current chat instead of letting it " +
+      "resume asynchronously via cron. The next turn in this session will receive a " +
+      "resume prompt (same protocol as a cron wakeup): read the latest handoff, then " +
+      "continue. Use this when the user says 'pick up the X task here', or when you " +
+      "want to drive a paused task to completion right now. The task's status moves " +
+      "to 'running' and its agentSessionKey is rebound to the current session.",
+    parameters: ResumeInlineSchema,
+    execute: safeExecute(async (_toolCallId, params) => {
+      const store = getActiveTaskStore();
+      if (!store) return storeUnavailable();
+      const sessionKey = options.agentSessionKey;
+      if (!sessionKey) {
+        return jsonResult({
+          ok: false,
+          error:
+            "task_resume_inline requires a current agent session; no agentSessionKey " +
+            "was plumbed to this tool factory.",
+        });
+      }
+      const taskId = readStringParam(params, "task_id", { required: true });
+      const reason =
+        readStringParam(params, "reason") ?? "inline resume requested by current agent";
+
+      const task = store.get(taskId);
+      if (!task) {
+        return jsonResult({ ok: false, error: `task ${taskId} not found` });
+      }
+      if (isTerminal(task.status)) {
+        return jsonResult({
+          ok: false,
+          error: `task ${taskId} is terminal (${task.status}); cannot resume`,
+        });
+      }
+
+      const handoff = store.latestHandoff(taskId);
+      const handoffId = handoff?.id;
+      const message = buildResumeMessage({ task, handoffId, reason });
+
+      store.update(taskId, {
+        status: "running",
+        agentSessionKey: sessionKey,
+      });
+
+      const { enqueueSystemEvent } = await import("../../infra/system-events.js");
+      enqueueSystemEvent(message, {
+        sessionKey,
+        contextKey: `task-resume:${taskId}`,
+      });
+      emitTaskEvent(taskId, "resumed_inline", { reason, handoffId });
+
+      return jsonResult({
+        ok: true,
+        taskId,
+        handoffId: handoffId ?? null,
+        sessionKey,
+        message,
+      });
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // task_judge (Phase D).
 // ---------------------------------------------------------------------------
 

@@ -8,11 +8,13 @@ import { readLatestAssistantReply } from "../agents/tools/agent-step.js";
 import { loadConfig } from "../config/config.js";
 import { resolveAgentMainSessionKey } from "../config/sessions.js";
 import { resolveSessionTranscriptPath } from "../config/sessions/paths.js";
+import { getCronEngine } from "../cron/active.js";
 import { callGateway } from "../gateway/call.js";
 import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
 import { deliverOutboundPayloads } from "../infra/outbound/deliver.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { acquireTaskSlot, releaseTaskSlot } from "../tasks/active-task-tracker.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 
 const log = createSubsystemLogger("gateway/cron");
@@ -29,7 +31,52 @@ export async function runIsolatedJob(job: CronJob): Promise<void> {
   const sessionKey = `cron:${job.jobId}`;
   const cfg = loadConfig();
   const agentId = job.agentId ?? resolveDefaultAgentId(cfg);
-  const reply = await invokeAgentTurn({ job, sessionKey, agentId });
+
+  // PLAN-17 Phase 2 E.3: when this is a long-horizon task wakeup,
+  // gate on the hormonal concurrency policy. If we're at capacity,
+  // re-schedule the wakeup 60s out and exit cleanly so other tasks can
+  // breathe. The cron engine will fire us again. Disable with
+  // BITTERBOT_TASKS_CONCURRENCY_GATE=0.
+  const payload = job.payload as CronPayloadAgentTurn;
+  const isTaskWakeup =
+    process.env.BITTERBOT_TASKS_CONCURRENCY_GATE !== "0" && typeof payload.taskId === "string";
+  let acquired = false;
+  if (isTaskWakeup) {
+    const slot = acquireTaskSlot({ jobId: job.jobId });
+    if (!slot.ok) {
+      const engine = getCronEngine();
+      if (engine) {
+        const nextAtMs = Date.now() + 60_000;
+        try {
+          await engine.upsertJob({
+            ...job,
+            schedule: { kind: "at", at: new Date(nextAtMs).toISOString() },
+            nextRunAt: nextAtMs,
+          });
+          log.info(
+            `cron ${job.jobId}: deferring task wakeup (${slot.reason}, inflight=${slot.inflight}/${slot.policy.maxConcurrent}, policy=${slot.policy.rationale})`,
+          );
+          return;
+        } catch (err) {
+          log.warn(
+            `cron ${job.jobId}: failed to defer task wakeup: ${formatErr(err)}; proceeding anyway`,
+          );
+        }
+      } else {
+        log.warn(`cron ${job.jobId}: at task capacity but no cron engine to defer; proceeding`);
+      }
+    }
+    acquired = true;
+  }
+
+  let reply: string | undefined;
+  try {
+    reply = await invokeAgentTurn({ job, sessionKey, agentId });
+  } finally {
+    if (acquired) {
+      releaseTaskSlot(job.jobId);
+    }
+  }
   const delivery = job.delivery;
   const mode = delivery?.mode ?? "announce";
   if (mode === "none") {

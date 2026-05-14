@@ -62,7 +62,15 @@ export const DEFAULT_CONCURRENCY_THRESHOLDS = {
   maxParallelExploration: 4,
 } as const;
 
-export type ConcurrencyThresholds = typeof DEFAULT_CONCURRENCY_THRESHOLDS;
+export type ConcurrencyThresholds = {
+  cortisolHigh: number;
+  cortisolMid: number;
+  dopamineHigh: number;
+  maxParallelFocused: number;
+  maxParallelConservative: number;
+  maxParallelBaseline: number;
+  maxParallelExploration: number;
+};
 
 export function computeTaskConcurrency(
   state: HormonalState,

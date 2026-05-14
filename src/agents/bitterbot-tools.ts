@@ -44,6 +44,7 @@ import {
   createTaskMonitorTool,
   createTaskOutputTool,
   createTaskReadHandoffTool,
+  createTaskResumeInlineTool,
   createTaskScheduleWakeupTool,
   createTaskStopTool,
   createTaskUpdateTool,
@@ -206,6 +207,7 @@ export function createBitterbotTools(options?: {
     createTaskWriteHandoffTool(),
     createTaskReadHandoffTool(),
     createTaskScheduleWakeupTool(),
+    createTaskResumeInlineTool({ agentSessionKey: options?.agentSessionKey }),
     createTaskJudgeTool(),
   ];
 

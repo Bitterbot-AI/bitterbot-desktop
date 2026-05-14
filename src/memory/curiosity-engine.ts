@@ -24,6 +24,7 @@ import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js
 export type { GCCRFRewardResult, GCCRFConfig };
 import type { EmbeddingPerspective } from "./crystal-types.js";
 import type { DreamInsight, DreamMode } from "./dream-types.js";
+import { maybeSpawnTaskFromCuriosity } from "../tasks/biology.js";
 import { ensureCuriositySchema } from "./curiosity-schema.js";
 import {
   type CuriosityConfig,
@@ -691,6 +692,28 @@ export class CuriosityEngine {
               now + ttlMs,
             );
           result.frontiersOpened++;
+
+          // PLAN-17 Phase 2 (E.1): turn the frontier into a long-horizon Task so
+          // the agent investigates instead of just rehearsing it in dreams.
+          // The adapter has its own novelty/alignment thresholds (and a 7-day
+          // dedupe window keyed on `topic`) so it can independently veto.
+          // Disable with BITTERBOT_CURIOSITY_SPAWN_TASKS=0.
+          if (process.env.BITTERBOT_CURIOSITY_SPAWN_TASKS !== "0") {
+            try {
+              maybeSpawnTaskFromCuriosity({
+                topic: insight.id,
+                description: insight.content.slice(0, 200),
+                novelty,
+                alignment: typeof insight.confidence === "number" ? insight.confidence : 0.5,
+                effort: 0.5,
+                seedCrystalId: insight.id,
+              });
+            } catch (err) {
+              log.warn(
+                `curiosity → task spawn failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          }
         }
       }
     }

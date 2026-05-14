@@ -17,6 +17,7 @@ import crypto from "node:crypto";
 import type { HormonalStateManager } from "./hormonal.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { scanPendingTasksForDream } from "../tasks/biology.js";
 import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
 import { selectStrategy, buildStrategyPrompt } from "./dream-mutation-strategies.js";
 import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
@@ -671,6 +672,35 @@ export class DreamEngine {
       }
     }
 
+    // 5. Pending long-horizon Tasks (PLAN-17 Phase 2 E.2):
+    // When tasks are waiting on a wakeup or stuck in planning, bias the
+    // cycle toward Simulation (plan refinement) and Replay (rehearsing
+    // the next move). Cheap SQL scan; safe to call every cycle. Disable
+    // with BITTERBOT_DREAM_TASK_BIAS=0.
+    let taskAdj: Partial<Record<DreamMode, number>> = {};
+    let pendingTaskCount = 0;
+    let stalledTaskCount = 0;
+    if (process.env.BITTERBOT_DREAM_TASK_BIAS !== "0") {
+      try {
+        const pending = scanPendingTasksForDream();
+        pendingTaskCount = pending.length;
+        if (pending.length > 0) {
+          taskAdj.simulation = 0.2;
+          if (pending.some((t) => t.status === "waiting_external")) {
+            taskAdj.replay = 0.1;
+          }
+          stalledTaskCount = pending.filter((t) => t.wakeupCount > 0).length;
+          log.debug("dream task bias active", {
+            pendingTaskCount,
+            stalledTaskCount,
+            adjustments: taskAdj,
+          });
+        }
+      } catch (err) {
+        log.warn(`dream task bias failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     // FSHO self-validation: scale FSHO weight by empirical correlation strength.
     // If FSHO R doesn't predict DQS after enough cycles, reduce its influence.
     let fshoWeightFactor = 1.0;
@@ -688,26 +718,33 @@ export class DreamEngine {
       /* non-critical */
     }
 
-    // Weighted combination with marketplace fallback:
-    // When marketplace is active, allocate 20% weight to market demand.
-    // When inactive, preserve original 3-signal weights (zero regression).
+    // Weighted combination with marketplace + task-pending fallback:
+    // - When marketplace is active, allocate 20% to market demand.
+    // - When tasks are pending, allocate 15% to task-driven bias (Simulation /
+    //   Replay refinement) — PLAN-17 Phase 2 E.2.
+    // - When neither is active, preserve original 3-signal weights (zero regression).
     // FSHO weight is scaled by empirical validation factor.
-    const CURIOSITY_W = hasMarketActivity ? 0.25 : 0.3;
-    const GCCRF_W = hasMarketActivity ? 0.25 : 0.3;
-    const FSHO_W = (hasMarketActivity ? 0.3 : 0.4) * fshoWeightFactor;
+    const hasPendingTasks = pendingTaskCount > 0;
+    const CURIOSITY_W = hasMarketActivity ? 0.25 : hasPendingTasks ? 0.275 : 0.3;
+    const GCCRF_W = hasMarketActivity ? 0.25 : hasPendingTasks ? 0.275 : 0.3;
+    const FSHO_W = (hasMarketActivity ? 0.3 : hasPendingTasks ? 0.3 : 0.4) * fshoWeightFactor;
     const MARKET_W = hasMarketActivity ? 0.2 : 0.0;
+    const TASK_W = hasPendingTasks && !hasMarketActivity ? 0.15 : 0.0;
 
     const adjustedModes = enabledModes.map(([mode, cfg]) => {
       const adj =
         CURIOSITY_W * (curiosityAdj[mode] ?? 0) +
         GCCRF_W * (gccrfAdj[mode] ?? 0) +
         FSHO_W * (fshoAdj[mode] ?? 0) +
-        MARKET_W * (marketAdj[mode] ?? 0);
+        MARKET_W * (marketAdj[mode] ?? 0) +
+        TASK_W * (taskAdj[mode] ?? 0);
       return [mode, { ...cfg, weight: Math.max(0, cfg.weight + adj) }] as [
         DreamMode,
         DreamModeConfig,
       ];
     });
+    // Silence unused-var lint for the stalled count — surfaced in telemetry below.
+    void stalledTaskCount;
 
     // Weighted random selection, pick 1-3 modes
     const _totalWeight = adjustedModes.reduce((sum, [, cfg]) => sum + cfg.weight, 0);

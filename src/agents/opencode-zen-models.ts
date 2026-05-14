@@ -17,7 +17,8 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 const log = createSubsystemLogger("agent/opencode-zen");
 
 export const OPENCODE_ZEN_API_BASE_URL = "https://opencode.ai/zen/v1";
-export const OPENCODE_ZEN_DEFAULT_MODEL = "claude-opus-4-6";
+// PLAN-17 Phase 5: opus tier aligned with src/config/defaults.ts:16 (claude-opus-4-7).
+export const OPENCODE_ZEN_DEFAULT_MODEL = "claude-opus-4-7";
 export const OPENCODE_ZEN_DEFAULT_MODEL_REF = `opencode/${OPENCODE_ZEN_DEFAULT_MODEL}`;
 
 // Cache for fetched models (1 hour TTL)

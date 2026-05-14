@@ -46,6 +46,8 @@ import { initOtel } from "../observability/otel.js";
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
+import { startCompletionNotifier } from "../tasks/completion-notifier.js";
+import { registerJudgeFromConfig } from "../tasks/judge-provider.js";
 import { startTaskStore } from "../tasks/store.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
@@ -188,6 +190,11 @@ export async function startGatewayServer(
   // backing rows. On by default; override path with BITTERBOT_TASKS_DB.
   startTaskStore();
 
+  // PLAN-17 Phase 4b: notify the owning agent's session when a task hits a
+  // terminal status. Channel monitor relays the next system-event reply.
+  // Disable with BITTERBOT_TASKS_COMPLETION_NOTIFY=0.
+  startCompletionNotifier();
+
   let configSnapshot = await readConfigFileSnapshot();
   if (configSnapshot.legacyIssues.length > 0) {
     if (isNixMode) {
@@ -239,6 +246,12 @@ export async function startGatewayServer(
   }
 
   const cfgAtStart = loadConfig();
+
+  // PLAN-17 Phase 1: wire the long-horizon Task Judge to a real LLM provider.
+  // No-op when no Anthropic credential is configured; `task_judge` then
+  // reports "judge LLM call is not registered" and the agent can route around it.
+  registerJudgeFromConfig(cfgAtStart);
+
   const diagnosticsEnabled = isDiagnosticsEnabled(cfgAtStart);
   if (diagnosticsEnabled) {
     startDiagnosticHeartbeat();

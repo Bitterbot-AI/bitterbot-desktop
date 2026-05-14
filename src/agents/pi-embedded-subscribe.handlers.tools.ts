@@ -7,6 +7,7 @@ import type {
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { startSpan } from "../observability/otel.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
+import { maybeNudgeTaskHandoff } from "../tasks/handoff-nudge.js";
 import { normalizeTextForComparison } from "./pi-embedded-helpers.js";
 import { isMessagingTool, isMessagingToolSendAction } from "./pi-embedded-messaging.js";
 import { applyMidTurnBudget } from "./pi-embedded-runner/mid-turn-budget.js";
@@ -367,11 +368,18 @@ export async function handleToolExecutionEnd(
     Array.isArray(session?.messages) &&
     typeof session?.agent?.replaceMessages === "function"
   ) {
+    let estimatedTokens: number | undefined;
     try {
       const result = applyMidTurnBudget({
         session: session as Parameters<typeof applyMidTurnBudget>[0]["session"],
         contextWindowTokens: ctxWindow,
       });
+      // Capture the most accurate token estimate for the nudge below.
+      if (result.applied) {
+        estimatedTokens = result.tokensAfter;
+      } else if (typeof result.tokensBefore === "number") {
+        estimatedTokens = result.tokensBefore;
+      }
       if (result.applied) {
         ctx.log.debug(
           `[mid-turn-budget] runId=${ctx.params.runId} compressed ${result.messagesBefore}→${result.messagesAfter} msgs, ${result.tokensBefore}→${result.tokensAfter} est tokens (passes=${result.passes})`,
@@ -390,6 +398,20 @@ export async function handleToolExecutionEnd(
       }
     } catch (err) {
       ctx.log.warn(`[mid-turn-budget] check failed runId=${ctx.params.runId}: ${String(err)}`);
+    }
+
+    // PLAN-17 Phase 3: multi-signal handoff nudge for task-correlated runs.
+    // Fires below the 80% compaction threshold so the agent has time to
+    // suspend cleanly via task_write_handoff + task_schedule_wakeup.
+    // No-op when the run has no taskId. Throttled to one nudge / 5 min.
+    try {
+      maybeNudgeTaskHandoff({
+        runId: ctx.params.runId,
+        estimatedTokens,
+        contextWindowTokens: ctxWindow,
+      });
+    } catch (err) {
+      ctx.log.warn(`[handoff-nudge] runId=${ctx.params.runId} failed: ${String(err)}`);
     }
   }
 }
