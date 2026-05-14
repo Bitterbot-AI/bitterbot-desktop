@@ -27,6 +27,7 @@ import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
 import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
+import { startEventJournal } from "../infra/event-journal.js";
 import { createExecApprovalForwarder } from "../infra/exec-approval-forwarder.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner, type HeartbeatRunner } from "../infra/heartbeat-runner.js";
@@ -45,6 +46,7 @@ import { initOtel } from "../observability/otel.js";
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
+import { startTaskStore } from "../tasks/store.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
@@ -176,6 +178,15 @@ export async function startGatewayServer(
   // BITTERBOT_CHECKPOINTS=1) so each agent run produces a forkable
   // timeline in ~/.bitterbot/checkpoints.sqlite.
   startCheckpointWriter();
+
+  // PLAN-16 Phase A: durable agent-event journal powering `task_monitor`
+  // and long-horizon task progress streams. On by default; disable with
+  // BITTERBOT_EVENT_JOURNAL=0.
+  startEventJournal();
+
+  // PLAN-16 Phase B: long-horizon Task store. Hosts `task_*` agent tools'
+  // backing rows. On by default; override path with BITTERBOT_TASKS_DB.
+  startTaskStore();
 
   let configSnapshot = await readConfigFileSnapshot();
   if (configSnapshot.legacyIssues.length > 0) {

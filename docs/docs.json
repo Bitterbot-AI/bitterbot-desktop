@@ -850,6 +850,7 @@
                   "automation/hooks",
                   "automation/cron-jobs",
                   "automation/cron-vs-heartbeat",
+                  "automation/long-horizon-tasks",
                   "automation/troubleshooting",
                   "automation/webhook",
                   "automation/gmail-pubsub",

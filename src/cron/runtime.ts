@@ -1,17 +1,16 @@
 import type { BitterbotConfig } from "../config/types.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { getCronEngine, setActiveCronEngine } from "./active.js";
 import { CronEngine, type CronEngineOptions } from "./engine.js";
 
 const log = createSubsystemLogger("gateway/cron");
-let active: CronEngine | null = null;
 
-export function getCronEngine(): CronEngine | null {
-  return active;
-}
+// Re-export the registry getters so existing callers don't break.
+export { getCronEngine };
 
 export function setCronEngineForTests(engine: CronEngine | null): void {
-  active = engine;
+  setActiveCronEngine(engine);
 }
 
 export function buildEngineOptions(cfg: BitterbotConfig): CronEngineOptions {
@@ -40,16 +39,14 @@ export async function startCronEngine(cfg: BitterbotConfig): Promise<CronEngine 
     log.warn(`cron engine failed to start: ${formatErr(err)}`);
     return null;
   }
-  active = engine;
+  setActiveCronEngine(engine);
   return engine;
 }
 
 export async function stopCronEngine(): Promise<void> {
-  if (!active) {
-    return;
-  }
-  const current = active;
-  active = null;
+  const current = getCronEngine();
+  if (!current) return;
+  setActiveCronEngine(null);
   try {
     await current.stop();
   } catch (err) {

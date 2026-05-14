@@ -36,6 +36,19 @@ import { createSkillManageTool } from "./tools/skill-manage-tool.js";
 import { createSkillPipelineDigestTool } from "./tools/skill-pipeline-digest-tool.js";
 import { createSkillSeekersIngestTool } from "./tools/skill-seekers-tool.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
+import {
+  createTaskCreateTool,
+  createTaskGetTool,
+  createTaskJudgeTool,
+  createTaskListTool,
+  createTaskMonitorTool,
+  createTaskOutputTool,
+  createTaskReadHandoffTool,
+  createTaskScheduleWakeupTool,
+  createTaskStopTool,
+  createTaskUpdateTool,
+  createTaskWriteHandoffTool,
+} from "./tools/task-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
 import { createWalletTool } from "./tools/wallet-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
@@ -183,6 +196,17 @@ export function createBitterbotTools(options?: {
     createExpandMessageTool(),
     createCompleteTool(),
     createPlanTool(),
+    createTaskCreateTool({ agentSessionKey: options?.agentSessionKey }),
+    createTaskUpdateTool(),
+    createTaskGetTool(),
+    createTaskListTool(),
+    createTaskMonitorTool(),
+    createTaskStopTool(),
+    createTaskOutputTool(),
+    createTaskWriteHandoffTool(),
+    createTaskReadHandoffTool(),
+    createTaskScheduleWakeupTool(),
+    createTaskJudgeTool(),
   ];
 
   // Memory tools — hardwired (no plugin indirection)

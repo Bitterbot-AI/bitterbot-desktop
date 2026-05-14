@@ -21,6 +21,26 @@ export type CronPayloadAgentTurn = {
   model?: string;
   thinking?: string;
   timeoutSeconds?: number;
+  /**
+   * PLAN-16 Phase C: when set, the agent invocation triggered by this
+   * job is correlated to a long-horizon Task. The receiving runner
+   * tags emitted events with `taskId` so `task_monitor` can stream the
+   * full lifecycle. Set automatically by `task_schedule_wakeup`.
+   */
+  taskId?: string;
+  /**
+   * PLAN-16 Phase C: handoff id (from `task_handoffs.id`) the woken
+   * agent should read on entry. Surfaced in the agent's prompt so the
+   * model knows to invoke `task_read_handoff` and rebuild context cold
+   * from the structured handoff rather than carrying compaction state.
+   */
+  handoffId?: number;
+  /**
+   * PLAN-16 Phase C: checkpoint ref the runner should consult when
+   * rebuilding state. Used for fine-grained replay; the handoff is the
+   * coarse-grained source of truth.
+   */
+  resumeFromCheckpoint?: { threadId: string; stepId: string };
 };
 export type CronPayload = CronPayloadSystemEvent | CronPayloadAgentTurn;
 

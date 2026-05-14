@@ -9,12 +9,16 @@ export type AgentEventPayload = {
   ts: number;
   data: Record<string, unknown>;
   sessionKey?: string;
+  /** PLAN-16: correlates a run to a long-horizon Task, when one exists. */
+  taskId?: string;
 };
 
 export type AgentRunContext = {
   sessionKey?: string;
   verboseLevel?: VerboseLevel;
   isHeartbeat?: boolean;
+  /** PLAN-16: when set, every event from this run carries the same taskId. */
+  taskId?: string;
 };
 
 // Keep per-run counters so streams stay strictly monotonic per runId.
@@ -40,6 +44,9 @@ export function registerAgentRunContext(runId: string, context: AgentRunContext)
   if (context.isHeartbeat !== undefined && existing.isHeartbeat !== context.isHeartbeat) {
     existing.isHeartbeat = context.isHeartbeat;
   }
+  if (context.taskId && existing.taskId !== context.taskId) {
+    existing.taskId = context.taskId;
+  }
 }
 
 export function getAgentRunContext(runId: string) {
@@ -62,9 +69,12 @@ export function emitAgentEvent(event: Omit<AgentEventPayload, "seq" | "ts">) {
     typeof event.sessionKey === "string" && event.sessionKey.trim()
       ? event.sessionKey
       : context?.sessionKey;
+  const taskId =
+    typeof event.taskId === "string" && event.taskId.trim() ? event.taskId : context?.taskId;
   const enriched: AgentEventPayload = {
     ...event,
     sessionKey,
+    ...(taskId ? { taskId } : {}),
     seq: nextSeq,
     ts: Date.now(),
   };
