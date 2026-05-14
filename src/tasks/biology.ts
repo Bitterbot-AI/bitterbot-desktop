@@ -30,6 +30,7 @@
  * wallet/payment code (per repo policy, wallet flows are Victor-only).
  */
 
+import type { DreamMode } from "../memory/dream-types.js";
 import type { HormonalState } from "../memory/hormonal.js";
 import type { Task, TaskStatus } from "./types.js";
 import { getActiveTaskStore } from "./store.js";
@@ -253,4 +254,44 @@ export function buildDreamPlanningSnapshot(
   const wakeupCap = opts.wakeupCap ?? 50;
   const stalled = pending.filter((p) => p.wakeupCount >= Math.floor(wakeupCap / 2));
   return { concurrency, pending, stalled };
+}
+
+// ---------------------------------------------------------------------------
+// Dream-mode bias from pending tasks (extracted from DreamEngine.selectModes
+// so the math is testable in isolation without spinning up the full engine).
+// ---------------------------------------------------------------------------
+
+export type DreamTaskAdjustments = {
+  /** Adjustments to mode weights, additive to the base configured weight. */
+  adjustments: Partial<Record<DreamMode, number>>;
+  /** Number of pending tasks the scan returned. */
+  pendingCount: number;
+  /** Subset of pending that have already used at least one wakeup. */
+  stalledCount: number;
+};
+
+/**
+ * Pure adjustment computation: given a list of pending tasks, return
+ * the dream-mode weight bumps the dream cycle should apply, plus
+ * telemetry counts for the operator dashboard.
+ *
+ * Bias policy (PLAN-17 Phase 2 E.2):
+ *   - Simulation gets +0.2 when ANY tasks are pending — plan refinement
+ *     is the most useful next step.
+ *   - Replay gets +0.1 when at least one task is `waiting_external` —
+ *     rehearsing the next move while the task is paused awaiting a
+ *     wakeup or external dependency.
+ *
+ * Returns empty adjustments when no tasks are pending.
+ */
+export function computeDreamTaskAdjustments(pending: PendingTaskSummary[]): DreamTaskAdjustments {
+  if (pending.length === 0) {
+    return { adjustments: {}, pendingCount: 0, stalledCount: 0 };
+  }
+  const adjustments: Partial<Record<DreamMode, number>> = { simulation: 0.2 };
+  if (pending.some((t) => t.status === "waiting_external")) {
+    adjustments.replay = 0.1;
+  }
+  const stalledCount = pending.filter((t) => t.wakeupCount > 0).length;
+  return { adjustments, pendingCount: pending.length, stalledCount };
 }

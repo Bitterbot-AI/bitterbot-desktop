@@ -47,6 +47,7 @@ import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
 import { startCompletionNotifier } from "../tasks/completion-notifier.js";
+import { startHormonalAccessor } from "../tasks/hormonal-accessor.js";
 import { registerJudgeFromConfig } from "../tasks/judge-provider.js";
 import { startTaskStore } from "../tasks/store.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
@@ -251,6 +252,11 @@ export async function startGatewayServer(
   // No-op when no Anthropic credential is configured; `task_judge` then
   // reports "judge LLM call is not registered" and the agent can route around it.
   registerJudgeFromConfig(cfgAtStart);
+
+  // PLAN-17 follow-up: feed live hormonal state into the long-horizon task
+  // concurrency gate. Refresh interval 30s; disable with
+  // BITTERBOT_TASKS_HORMONAL_GATE=0 to fall back to the baseline policy.
+  startHormonalAccessor(cfgAtStart);
 
   const diagnosticsEnabled = isDiagnosticsEnabled(cfgAtStart);
   if (diagnosticsEnabled) {

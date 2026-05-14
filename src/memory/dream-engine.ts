@@ -17,7 +17,7 @@ import crypto from "node:crypto";
 import type { HormonalStateManager } from "./hormonal.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { scanPendingTasksForDream } from "../tasks/biology.js";
+import { computeDreamTaskAdjustments, scanPendingTasksForDream } from "../tasks/biology.js";
 import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
 import { selectStrategy, buildStrategyPrompt } from "./dream-mutation-strategies.js";
 import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
@@ -675,21 +675,21 @@ export class DreamEngine {
     // 5. Pending long-horizon Tasks (PLAN-17 Phase 2 E.2):
     // When tasks are waiting on a wakeup or stuck in planning, bias the
     // cycle toward Simulation (plan refinement) and Replay (rehearsing
-    // the next move). Cheap SQL scan; safe to call every cycle. Disable
-    // with BITTERBOT_DREAM_TASK_BIAS=0.
+    // the next move). Cheap SQL scan; safe to call every cycle. The
+    // bias math lives in `computeDreamTaskAdjustments` in tasks/biology
+    // so it's testable without spinning up the full engine. Disable with
+    // BITTERBOT_DREAM_TASK_BIAS=0.
     let taskAdj: Partial<Record<DreamMode, number>> = {};
     let pendingTaskCount = 0;
     let stalledTaskCount = 0;
     if (process.env.BITTERBOT_DREAM_TASK_BIAS !== "0") {
       try {
         const pending = scanPendingTasksForDream();
-        pendingTaskCount = pending.length;
-        if (pending.length > 0) {
-          taskAdj.simulation = 0.2;
-          if (pending.some((t) => t.status === "waiting_external")) {
-            taskAdj.replay = 0.1;
-          }
-          stalledTaskCount = pending.filter((t) => t.wakeupCount > 0).length;
+        const adjResult = computeDreamTaskAdjustments(pending);
+        taskAdj = adjResult.adjustments;
+        pendingTaskCount = adjResult.pendingCount;
+        stalledTaskCount = adjResult.stalledCount;
+        if (pendingTaskCount > 0) {
           log.debug("dream task bias active", {
             pendingTaskCount,
             stalledTaskCount,
