@@ -22,9 +22,11 @@
  * Disable globally with `BITTERBOT_TASKS_NUDGE=0`.
  */
 
+import type { TaskHandoff } from "./types.js";
 import { getAgentRunContext } from "../infra/agent-events.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { getActiveTaskStore } from "./store.js";
 
 const log = createSubsystemLogger("tasks/handoff-nudge");
 
@@ -33,6 +35,17 @@ export type NudgeThresholds = {
   toolCallThreshold: number;
   msSinceProgressThreshold: number;
   nudgeThrottleMs: number;
+  /**
+   * PLAN-17 follow-up: when token usage exceeds this AND the run has
+   * already received {@link escalationNudgeCount} nudges without a
+   * handoff being written, the nudge module auto-writes a fallback
+   * handoff so the task state isn't lost. Default 0.78 — sits 2 points
+   * below the runner's 80% compaction safety net so we land before
+   * compaction obliterates the working messages.
+   */
+  escalationTokenThreshold: number;
+  /** Number of nudges before escalation fires. Default 3. */
+  escalationNudgeCount: number;
 };
 
 export const DEFAULT_THRESHOLDS: NudgeThresholds = {
@@ -40,12 +53,18 @@ export const DEFAULT_THRESHOLDS: NudgeThresholds = {
   toolCallThreshold: 30,
   msSinceProgressThreshold: 25 * 60_000,
   nudgeThrottleMs: 5 * 60_000,
+  escalationTokenThreshold: 0.78,
+  escalationNudgeCount: 3,
 };
 
 type RunState = {
   toolCallsSinceHandoff: number;
   lastProgressMs: number;
   lastNudgeMs: number;
+  /** Total nudges fired this run. Reset by resetNudgeStateAfterHandoff. */
+  nudgeCount: number;
+  /** True once escalation has auto-written a fallback handoff. Single-shot per run. */
+  escalated: boolean;
 };
 
 const stateByRun = new Map<string, RunState>();
@@ -66,12 +85,18 @@ export type NudgeArgs = {
   sessionKeyOverride?: string;
   /** Test seam: enqueue function. */
   enqueue?: (text: string, opts: { sessionKey: string; contextKey?: string }) => void;
+  /** Test seam: writer for the escalation salvage handoff. */
+  writeHandoff?: (args: EscalationHandoffArgs) => TaskHandoff | null;
 };
 
 export type NudgeResult = {
   fired: boolean;
   reason?: "throttled" | "not_task" | "no_session_key" | "disabled" | "below_thresholds";
   triggers?: string[];
+  /** True when escalation fired (fallback handoff was auto-written). */
+  escalated?: boolean;
+  /** Handoff id that escalation wrote, when escalated=true. */
+  escalationHandoffId?: number;
 };
 
 export function maybeNudgeTaskHandoff(args: NudgeArgs): NudgeResult {
@@ -92,6 +117,8 @@ export function maybeNudgeTaskHandoff(args: NudgeArgs): NudgeResult {
       toolCallsSinceHandoff: 0,
       lastProgressMs: now,
       lastNudgeMs: 0,
+      nudgeCount: 0,
+      escalated: false,
     } satisfies RunState);
   state.toolCallsSinceHandoff += 1;
   stateByRun.set(args.runId, state);
@@ -133,10 +160,102 @@ export function maybeNudgeTaskHandoff(args: NudgeArgs): NudgeResult {
   const enqueue = args.enqueue ?? enqueueSystemEvent;
   enqueue(text, { sessionKey, contextKey: `task-handoff-nudge:${taskId}` });
   state.lastNudgeMs = now;
+  state.nudgeCount += 1;
   log.debug(
     `task handoff nudge fired runId=${args.runId} taskId=${taskId} triggers=${triggers.join(",")}`,
   );
-  return { fired: true, triggers };
+
+  // Escalation: when the model has ignored enough nudges AND we're near the
+  // 80% compaction safety net, auto-write a fallback handoff so the task
+  // state survives even if the agent never calls task_write_handoff.
+  // Single-shot per run — once we've written a salvage handoff we trust
+  // the next normal nudge (post-reset) to do the rest.
+  let escalated = false;
+  let escalationHandoffId: number | undefined;
+  if (
+    !state.escalated &&
+    state.nudgeCount >= thresholds.escalationNudgeCount &&
+    tokenPct >= thresholds.escalationTokenThreshold
+  ) {
+    const writer = args.writeHandoff ?? defaultEscalationHandoffWriter;
+    try {
+      const handoff = writer({
+        taskId,
+        runId: args.runId,
+        tokenPct,
+        nudgeCount: state.nudgeCount,
+        toolCallsSinceHandoff: state.toolCallsSinceHandoff,
+        msSinceProgress,
+      });
+      if (handoff) {
+        escalated = true;
+        escalationHandoffId = handoff.id;
+        state.escalated = true;
+        enqueue(
+          `[long-horizon ESCALATION] Task ${taskId}: auto-wrote a salvage handoff (id ${handoff.id}) ` +
+            `because ${state.nudgeCount} prior nudges produced no task_write_handoff and tokens are at ` +
+            `${(tokenPct * 100).toFixed(0)}%. Read it with task_read_handoff and continue, or write your ` +
+            `own handoff to override.`,
+          { sessionKey, contextKey: `task-handoff-escalation:${taskId}` },
+        );
+        log.warn(
+          `escalation fired runId=${args.runId} taskId=${taskId} handoffId=${handoff.id} nudges=${state.nudgeCount}`,
+        );
+      }
+    } catch (err) {
+      log.warn(`escalation writer failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return {
+    fired: true,
+    triggers,
+    ...(escalated ? { escalated: true } : {}),
+    ...(typeof escalationHandoffId === "number" ? { escalationHandoffId } : {}),
+  };
+}
+
+export type EscalationHandoffArgs = {
+  taskId: string;
+  runId: string;
+  tokenPct: number;
+  nudgeCount: number;
+  toolCallsSinceHandoff: number;
+  msSinceProgress: number;
+};
+
+function defaultEscalationHandoffWriter(args: EscalationHandoffArgs): TaskHandoff | null {
+  const store = getActiveTaskStore();
+  if (!store) return null;
+  try {
+    return store.writeHandoff({
+      taskId: args.taskId,
+      runId: args.runId,
+      intent:
+        `[auto-escalation] agent ignored ${args.nudgeCount} prior nudges; tokens at ` +
+        `${(args.tokenPct * 100).toFixed(0)}%. Salvage handoff so task state survives ` +
+        `the impending compaction or context overflow.`,
+      decisions: [
+        `auto-written by handoff-nudge escalation`,
+        `tool-calls-since-last-handoff: ${args.toolCallsSinceHandoff}`,
+        `ms-since-last-progress: ${args.msSinceProgress}`,
+      ],
+      pending: [
+        "AGENT: review the worker's recent tool calls and write a richer handoff",
+        "AGENT: call task_schedule_wakeup or task_resume_inline to actually continue",
+      ],
+      context:
+        "This handoff was auto-written because the long-horizon nudge fired " +
+        `${args.nudgeCount} times without the agent calling task_write_handoff. ` +
+        "Treat it as a placeholder — the real intent/decisions/pending are lost " +
+        "unless the agent fills them in by writing a follow-up handoff.",
+      contextTokens: undefined,
+    });
+  } catch (err) {
+    log.warn(
+      `defaultEscalationHandoffWriter failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
 }
 
 /**
@@ -149,6 +268,8 @@ export function resetNudgeStateAfterHandoff(runId: string): void {
   if (!state) return;
   state.toolCallsSinceHandoff = 0;
   state.lastProgressMs = Date.now();
+  state.nudgeCount = 0;
+  state.escalated = false;
 }
 
 /**

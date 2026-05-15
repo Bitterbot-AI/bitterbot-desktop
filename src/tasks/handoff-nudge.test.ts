@@ -204,3 +204,241 @@ describe("maybeNudgeTaskHandoff", () => {
     recordTaskProgress("run-progress");
   });
 });
+
+describe("maybeNudgeTaskHandoff — escalation (PLAN-17 follow-up)", () => {
+  const enqueue = vi.fn();
+  const writeHandoff = vi.fn();
+  let timeMs: number;
+  const now = () => timeMs;
+
+  beforeEach(() => {
+    resetAgentRunContextForTest();
+    resetNudgeStateForTests();
+    enqueue.mockReset();
+    writeHandoff.mockReset();
+    timeMs = 1_000_000;
+  });
+
+  afterEach(() => {
+    delete process.env.BITTERBOT_TASKS_NUDGE;
+  });
+
+  function step(
+    runId: string,
+    overrides: { tokens?: number; window?: number } = {},
+  ): ReturnType<typeof maybeNudgeTaskHandoff> {
+    return maybeNudgeTaskHandoff({
+      runId,
+      estimatedTokens: overrides.tokens ?? 8_000,
+      contextWindowTokens: overrides.window ?? 10_000,
+      now,
+      enqueue,
+      writeHandoff,
+    });
+  }
+
+  it("does not escalate before the nudge-count threshold", () => {
+    registerAgentRunContext("run-esc-early", {
+      taskId: "task-esc-early",
+      sessionKey: "sess-esc-early",
+    });
+    writeHandoff.mockReturnValue({
+      id: 99,
+      taskId: "task-esc-early",
+      runId: "run-esc-early",
+      intent: "x",
+      decisions: [],
+      pending: [],
+      context: null,
+      contextTokens: null,
+      createdAt: timeMs,
+    });
+    // First nudge: tokens at 80%, but only 1 nudge — below the count threshold (3).
+    const r1 = step("run-esc-early", { tokens: 8_000 });
+    expect(r1.fired).toBe(true);
+    expect(r1.escalated).toBeUndefined();
+    expect(writeHandoff).not.toHaveBeenCalled();
+  });
+
+  it("does not escalate when tokens are below the escalation threshold", () => {
+    registerAgentRunContext("run-low-tok", {
+      taskId: "task-low-tok",
+      sessionKey: "sess-low-tok",
+    });
+    writeHandoff.mockReturnValue({
+      id: 100,
+      taskId: "task-low-tok",
+      runId: "run-low-tok",
+      intent: "x",
+      decisions: [],
+      pending: [],
+      context: null,
+      contextTokens: null,
+      createdAt: timeMs,
+    });
+    // Fire 5 nudges below 78% — should never escalate.
+    for (let i = 0; i < 5; i += 1) {
+      step("run-low-tok", { tokens: 6_700 }); // 67%
+      timeMs += DEFAULT_THRESHOLDS.nudgeThrottleMs + 1_000;
+    }
+    expect(writeHandoff).not.toHaveBeenCalled();
+  });
+
+  it("escalates after N nudges with tokens >= 78%", () => {
+    registerAgentRunContext("run-esc", {
+      taskId: "task-esc",
+      sessionKey: "sess-esc",
+    });
+    writeHandoff.mockReturnValue({
+      id: 42,
+      taskId: "task-esc",
+      runId: "run-esc",
+      intent: "auto-escalation",
+      decisions: ["auto-written"],
+      pending: [],
+      context: null,
+      contextTokens: null,
+      createdAt: timeMs,
+    });
+
+    // Three nudges at 80% tokens, spaced past the throttle window.
+    const r1 = step("run-esc", { tokens: 8_000 });
+    expect(r1.fired).toBe(true);
+    expect(r1.escalated).toBeUndefined();
+
+    timeMs += DEFAULT_THRESHOLDS.nudgeThrottleMs + 1_000;
+    const r2 = step("run-esc", { tokens: 8_000 });
+    expect(r2.fired).toBe(true);
+    expect(r2.escalated).toBeUndefined();
+
+    timeMs += DEFAULT_THRESHOLDS.nudgeThrottleMs + 1_000;
+    const r3 = step("run-esc", { tokens: 8_000 });
+    expect(r3.fired).toBe(true);
+    expect(r3.escalated).toBe(true);
+    expect(r3.escalationHandoffId).toBe(42);
+    expect(writeHandoff).toHaveBeenCalledOnce();
+
+    // The escalation also emits a second system event with the [ESCALATION] tag.
+    const escalationCall = enqueue.mock.calls.find(
+      (call) => typeof call[0] === "string" && call[0].includes("[long-horizon ESCALATION]"),
+    );
+    expect(escalationCall).toBeDefined();
+    expect((escalationCall![1] as { contextKey?: string }).contextKey).toBe(
+      `task-handoff-escalation:task-esc`,
+    );
+  });
+
+  it("escalation is single-shot per run (does not fire a second handoff)", () => {
+    registerAgentRunContext("run-once", {
+      taskId: "task-once",
+      sessionKey: "sess-once",
+    });
+    writeHandoff.mockReturnValue({
+      id: 7,
+      taskId: "task-once",
+      runId: "run-once",
+      intent: "x",
+      decisions: [],
+      pending: [],
+      context: null,
+      contextTokens: null,
+      createdAt: timeMs,
+    });
+    // Get to escalation.
+    for (let i = 0; i < 3; i += 1) {
+      step("run-once", { tokens: 8_000 });
+      timeMs += DEFAULT_THRESHOLDS.nudgeThrottleMs + 1_000;
+    }
+    expect(writeHandoff).toHaveBeenCalledOnce();
+    // Continue nudging — escalation should not re-fire.
+    for (let i = 0; i < 5; i += 1) {
+      step("run-once", { tokens: 8_500 });
+      timeMs += DEFAULT_THRESHOLDS.nudgeThrottleMs + 1_000;
+    }
+    expect(writeHandoff).toHaveBeenCalledOnce();
+  });
+
+  it("escalation re-arms after resetNudgeStateAfterHandoff (agent wrote real handoff)", () => {
+    registerAgentRunContext("run-rearm", {
+      taskId: "task-rearm",
+      sessionKey: "sess-rearm",
+    });
+    writeHandoff.mockReturnValue({
+      id: 1,
+      taskId: "task-rearm",
+      runId: "run-rearm",
+      intent: "x",
+      decisions: [],
+      pending: [],
+      context: null,
+      contextTokens: null,
+      createdAt: timeMs,
+    });
+    // Trigger escalation.
+    for (let i = 0; i < 3; i += 1) {
+      step("run-rearm", { tokens: 8_000 });
+      timeMs += DEFAULT_THRESHOLDS.nudgeThrottleMs + 1_000;
+    }
+    expect(writeHandoff).toHaveBeenCalledTimes(1);
+    // Agent writes a real handoff → reset.
+    resetNudgeStateAfterHandoff("run-rearm");
+    // Drive back up to the threshold and verify escalation can fire again.
+    for (let i = 0; i < 3; i += 1) {
+      step("run-rearm", { tokens: 8_000 });
+      timeMs += DEFAULT_THRESHOLDS.nudgeThrottleMs + 1_000;
+    }
+    expect(writeHandoff).toHaveBeenCalledTimes(2);
+  });
+
+  it("escalation tolerates the writer returning null without crashing the nudge", () => {
+    registerAgentRunContext("run-null", {
+      taskId: "task-null",
+      sessionKey: "sess-null",
+    });
+    writeHandoff.mockReturnValue(null);
+    for (let i = 0; i < 3; i += 1) {
+      const r = step("run-null", { tokens: 8_000 });
+      expect(r.fired).toBe(true);
+      // Even on the third nudge, escalated should be undefined/false when the writer returned null.
+      expect(r.escalated).toBeFalsy();
+      timeMs += DEFAULT_THRESHOLDS.nudgeThrottleMs + 1_000;
+    }
+    expect(writeHandoff).toHaveBeenCalled();
+  });
+
+  it("escalation thresholds are overridable", () => {
+    registerAgentRunContext("run-tune", {
+      taskId: "task-tune",
+      sessionKey: "sess-tune",
+    });
+    writeHandoff.mockReturnValue({
+      id: 5,
+      taskId: "task-tune",
+      runId: "run-tune",
+      intent: "x",
+      decisions: [],
+      pending: [],
+      context: null,
+      contextTokens: null,
+      createdAt: timeMs,
+    });
+    // Tighten the policy: escalate after just 1 nudge once tokens cross 60%.
+    // Tokens at 70% pass both the normal 65% nudge gate and the lowered 60%
+    // escalation gate, and escalationNudgeCount=1 means the first nudge
+    // itself escalates.
+    const r = maybeNudgeTaskHandoff({
+      runId: "run-tune",
+      estimatedTokens: 7_000,
+      contextWindowTokens: 10_000,
+      now,
+      enqueue,
+      writeHandoff,
+      thresholds: {
+        escalationNudgeCount: 1,
+        escalationTokenThreshold: 0.6,
+      },
+    });
+    expect(r.fired).toBe(true);
+    expect(r.escalated).toBe(true);
+  });
+});

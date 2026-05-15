@@ -900,12 +900,32 @@ export function createTaskScheduleWakeupTool(): AnyAgentTool {
 // task_resume_inline (PLAN-17 Phase 4 — promote-to-foreground).
 // ---------------------------------------------------------------------------
 
+/** Default recency window for the foreground/foreground race-guard. */
+const DEFAULT_RACE_GUARD_MS = 10 * 60_000;
+
+function readRaceGuardMs(): number {
+  const raw = process.env.BITTERBOT_TASKS_RACE_GUARD_MS;
+  if (!raw) return DEFAULT_RACE_GUARD_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_RACE_GUARD_MS;
+  return parsed;
+}
+
 const ResumeInlineSchema = Type.Object({
   task_id: Type.String({ minLength: 1 }),
   reason: Type.Optional(
     Type.String({
       description: "Why you're pulling this task into the current chat. Recorded for audit.",
       maxLength: 500,
+    }),
+  ),
+  force: Type.Optional(
+    Type.Boolean({
+      description:
+        "Override the race-guard. Use when you intentionally want to take over a " +
+        "task another agent is already running (e.g. the original is stuck). The " +
+        "previous owner's currentRunId is overwritten — its next task_update may " +
+        "fail because the task no longer matches its run.",
     }),
   ),
 });
@@ -949,6 +969,34 @@ export function createTaskResumeInlineTool(options: { agentSessionKey?: string }
         });
       }
 
+      // PLAN-17 follow-up: race-guard. If another runner is actively
+      // working this task (currentRunId set AND lastSeenAt within the
+      // recency window), refuse unless force=true. The cron isolated
+      // path already aborts on a mismatched currentRunId; this guard
+      // closes the foreground/foreground hole where two chats both try
+      // to claim the same task.
+      const force = params.force === true;
+      if (!force && task.currentRunId) {
+        const raceGuardMs = readRaceGuardMs();
+        const ageMs = Date.now() - task.lastSeenAt;
+        if (ageMs >= 0 && ageMs < raceGuardMs) {
+          return jsonResult({
+            ok: false,
+            error:
+              `task ${taskId} is already being run by ${task.currentRunId} ` +
+              `(last seen ${(ageMs / 1000).toFixed(1)}s ago, within the ` +
+              `${(raceGuardMs / 1000).toFixed(0)}s race-guard window). ` +
+              `Pass force=true to take over.`,
+            conflict: {
+              currentRunId: task.currentRunId,
+              lastSeenAt: task.lastSeenAt,
+              ageMs,
+              raceGuardMs,
+            },
+          });
+        }
+      }
+
       const handoff = store.latestHandoff(taskId);
       const handoffId = handoff?.id;
       const message = buildResumeMessage({ task, handoffId, reason });
@@ -956,6 +1004,10 @@ export function createTaskResumeInlineTool(options: { agentSessionKey?: string }
       store.update(taskId, {
         status: "running",
         agentSessionKey: sessionKey,
+        // Clear the old currentRunId so the previous owner's next update
+        // sees a mismatch and stops cleanly. The new runner's first
+        // task_update will set the field to its own run id.
+        currentRunId: null,
       });
 
       const { enqueueSystemEvent } = await import("../../infra/system-events.js");

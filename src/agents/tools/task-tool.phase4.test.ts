@@ -140,3 +140,125 @@ describe("PLAN-17 Phase 4: task_resume_inline", () => {
     expect(r.error).toMatch(/no agentSessionKey/);
   });
 });
+
+describe("PLAN-17 follow-up: task_resume_inline race-guard", () => {
+  let dir: string;
+  let prevJournal: string | undefined;
+  let prevRaceGuard: string | undefined;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-race-"));
+    prevJournal = process.env.BITTERBOT_EVENT_JOURNAL;
+    prevRaceGuard = process.env.BITTERBOT_TASKS_RACE_GUARD_MS;
+    process.env.BITTERBOT_EVENT_JOURNAL = "1";
+    resetSystemEventsForTest();
+    startTaskStore({ dbPath: path.join(dir, "tasks.sqlite") });
+    startEventJournal({ dbPath: path.join(dir, "journal.sqlite") });
+  });
+
+  afterEach(() => {
+    stopEventJournal();
+    stopTaskStore();
+    resetSystemEventsForTest();
+    if (prevJournal === undefined) {
+      delete process.env.BITTERBOT_EVENT_JOURNAL;
+    } else {
+      process.env.BITTERBOT_EVENT_JOURNAL = prevJournal;
+    }
+    if (prevRaceGuard === undefined) {
+      delete process.env.BITTERBOT_TASKS_RACE_GUARD_MS;
+    } else {
+      process.env.BITTERBOT_TASKS_RACE_GUARD_MS = prevRaceGuard;
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("refuses when another runner is active (currentRunId set, recent lastSeen)", async () => {
+    const create = createTaskCreateTool({ agentSessionKey: "owner" });
+    const update = createTaskUpdateTool();
+    const resume = createTaskResumeInlineTool({ agentSessionKey: "other-agent" });
+
+    const created = await callTool(create, { goal: "g", done_criteria: "d" });
+    const tid = created.task!.id;
+    // Original owner claims the task by setting currentRunId.
+    await callTool(update, { task_id: tid, status: "running", current_run_id: "run-owner" });
+
+    const r = await callTool(resume, { task_id: tid, reason: "trying to steal" });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/already being run by run-owner/);
+    expect(r.error).toMatch(/force=true/);
+    // Verify the task wasn't mutated.
+    const store = getActiveTaskStore()!;
+    const after = store.get(tid)!;
+    expect(after.currentRunId).toBe("run-owner");
+    expect(after.agentSessionKey).toBe("owner");
+  });
+
+  it("force=true overrides the race-guard and rebinds the task", async () => {
+    const create = createTaskCreateTool({ agentSessionKey: "owner" });
+    const update = createTaskUpdateTool();
+    const resume = createTaskResumeInlineTool({ agentSessionKey: "rescuer" });
+
+    const created = await callTool(create, { goal: "g", done_criteria: "d" });
+    const tid = created.task!.id;
+    await callTool(update, { task_id: tid, status: "running", current_run_id: "run-stuck" });
+
+    const r = await callTool(resume, {
+      task_id: tid,
+      reason: "original is stuck, taking over",
+      force: true,
+    });
+    expect(r.ok).toBe(true);
+    const store = getActiveTaskStore()!;
+    const after = store.get(tid)!;
+    expect(after.agentSessionKey).toBe("rescuer");
+    expect(after.currentRunId).toBeNull();
+    expect(after.status).toBe("running");
+  });
+
+  it("allows resume when there is no currentRunId at all", async () => {
+    const create = createTaskCreateTool({ agentSessionKey: "owner" });
+    const update = createTaskUpdateTool();
+    const resume = createTaskResumeInlineTool({ agentSessionKey: "other-agent" });
+
+    const created = await callTool(create, { goal: "g", done_criteria: "d" });
+    const tid = created.task!.id;
+    await callTool(update, { task_id: tid, status: "waiting_external" });
+    // currentRunId is still null — no race.
+
+    const r = await callTool(resume, { task_id: tid });
+    expect(r.ok).toBe(true);
+  });
+
+  it("allows resume when the claim is older than the race-guard window", async () => {
+    // Set a 1ms window so any waiting >1ms makes the claim 'stale'.
+    process.env.BITTERBOT_TASKS_RACE_GUARD_MS = "1";
+    const create = createTaskCreateTool({ agentSessionKey: "owner" });
+    const update = createTaskUpdateTool();
+    const resume = createTaskResumeInlineTool({ agentSessionKey: "other-agent" });
+
+    const created = await callTool(create, { goal: "g", done_criteria: "d" });
+    const tid = created.task!.id;
+    await callTool(update, { task_id: tid, status: "running", current_run_id: "run-old" });
+
+    // Wait so lastSeenAt becomes stale relative to the 1ms window.
+    await new Promise((r) => setTimeout(r, 20));
+
+    const r = await callTool(resume, { task_id: tid, reason: "stale claim" });
+    expect(r.ok).toBe(true);
+  });
+
+  it("BITTERBOT_TASKS_RACE_GUARD_MS=0 disables the guard entirely", async () => {
+    process.env.BITTERBOT_TASKS_RACE_GUARD_MS = "0";
+    const create = createTaskCreateTool({ agentSessionKey: "owner" });
+    const update = createTaskUpdateTool();
+    const resume = createTaskResumeInlineTool({ agentSessionKey: "other-agent" });
+
+    const created = await callTool(create, { goal: "g", done_criteria: "d" });
+    const tid = created.task!.id;
+    await callTool(update, { task_id: tid, status: "running", current_run_id: "run-owner" });
+
+    const r = await callTool(resume, { task_id: tid });
+    expect(r.ok).toBe(true);
+  });
+});
