@@ -26,7 +26,8 @@ export type DirectiveType =
   | "contradiction" // Conflicting relationships in KG
   | "knowledge_gap" // High GCCRF prediction error region
   | "low_confidence" // Entity with few evidence chunks
-  | "stale_fact"; // Relationship not reinforced recently
+  | "stale_fact" // Relationship not reinforced recently
+  | "graph_bridge"; // PLAN-18: SAGE reader missed a chunk vector/FTS found
 
 export interface EpistemicDirective {
   id: string;
@@ -153,6 +154,11 @@ export class EpistemicDirectiveEngine {
       return [];
     }
 
+    // PLAN-18 Phase 4 — pull any pending graph_bridge curiosity targets
+    // into the directive stream so the next session's extractor prompt
+    // sees them. Just-in-time harvest avoids needing a separate cron.
+    this.harvestGraphBridgeTargets();
+
     try {
       const rows = this.db
         .prepare(
@@ -255,6 +261,65 @@ export class EpistemicDirectiveEngine {
     }
 
     return directives;
+  }
+
+  /**
+   * PLAN-18 Phase 4 — convert active `graph_bridge` curiosity targets
+   * into epistemic directives. Each conversion marks the source target
+   * resolved so we don't re-harvest the same signal on every session.
+   *
+   * The directive `question` is the natural-language nudge built by
+   * `graph-bridge-target.ts` at signal-emit time. By the time the
+   * session extractor reads `getDirectivesForSession()`, the nudge is
+   * already shaped for prompt injection.
+   */
+  private harvestGraphBridgeTargets(): void {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT id, metadata, priority FROM curiosity_targets
+           WHERE type = 'graph_bridge' AND resolved_at IS NULL
+           ORDER BY priority DESC, created_at DESC LIMIT 5`,
+        )
+        .all() as Array<{ id: string; metadata: string; priority: number }>;
+      if (rows.length === 0) {
+        return;
+      }
+      const now = Date.now();
+      for (const row of rows) {
+        try {
+          const meta = JSON.parse(row.metadata) as {
+            nudge?: string;
+            query?: string;
+            truthEntityIds?: string[];
+          };
+          const nudge = meta.nudge ?? "Capture richer triples around recently-mentioned entities.";
+          const context = meta.query ? `Triggered by query: "${meta.query.slice(0, 120)}"` : "";
+          const directive = this.createDirective({
+            type: "graph_bridge",
+            question: nudge,
+            context,
+            priority: row.priority,
+            sourceEntityIds: meta.truthEntityIds ?? [],
+          });
+          // Always mark the curiosity target resolved — even if dedup
+          // returned an existing directive, the signal has been consumed.
+          this.db
+            .prepare(`UPDATE curiosity_targets SET resolved_at = ? WHERE id = ?`)
+            .run(now, row.id);
+          if (directive) {
+            log.debug("graph_bridge → directive", {
+              targetId: row.id.slice(0, 8),
+              directiveId: directive.id.slice(0, 8),
+            });
+          }
+        } catch (err) {
+          log.debug(`graph_bridge harvest skipped: ${String(err)}`);
+        }
+      }
+    } catch (err) {
+      log.debug(`harvestGraphBridgeTargets failed: ${String(err)}`);
+    }
   }
 
   private getActiveCount(): number {
