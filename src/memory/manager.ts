@@ -44,12 +44,15 @@ import { EpistemicDirectiveEngine } from "./epistemic-directives.js";
 import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
 import { ExperienceSignalCollector } from "./experience-signal-collector.js";
 import { MemoryGovernance } from "./governance.js";
+import { detectGraphGaps, emitGraphBridgeSignal } from "./graph-bridge-target.js";
+import { insertTrainingPair } from "./graph-optimizer.js";
 import { HormonalStateManager } from "./hormonal.js";
 import {
   bm25RankToScore,
   buildFtsQuery,
   mergeHybridResults,
   mergeHybridResultsRRF,
+  type HybridGraphResult,
 } from "./hybrid.js";
 import { isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
 import { KnowledgeGraphManager } from "./knowledge-graph.js";
@@ -64,6 +67,7 @@ import { PeerReputationManager } from "./peer-reputation.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
 import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
 import { ReconsolidationEngine } from "./reconsolidation.js";
+import { sageRetrieve, DEFAULT_SAGE_CONFIG, type SageConfig } from "./sage-memory.js";
 import { MemoryScheduler } from "./scheduler.js";
 import { runSeedCrystalMigration, runSkillBootstrap } from "./seed-crystal-migration.js";
 import { SessionCoherenceTracker } from "./session-coherence.js";
@@ -611,6 +615,12 @@ export class MemoryIndexManager implements MemorySearchManager {
       });
     };
 
+    // PLAN-18 Phase 4 — capture the channel snapshots so we can detect
+    // graph gaps and harvest training pairs after the merge.
+    let sageGraphChannel: HybridGraphResult[] = [];
+    let sageVectorTopIds: string[] = [];
+    let sageKeywordTopIds: string[] = [];
+
     let results: MemorySearchResult[];
     if (!hybrid.enabled) {
       const boosted = applyImportanceBoost(vectorResults);
@@ -638,6 +648,14 @@ export class MemoryIndexManager implements MemorySearchManager {
           emotionalValence: number | null;
         }
       >;
+      // PLAN-18 Phase 2/5 — graph reader as a 3rd RRF channel. Silently
+      // skipped if the knowledge graph isn't yet populated, or if the
+      // sage config disables the reader.
+      const graphChannel = await this.computeGraphChannel(cleaned).catch(() => []);
+      sageGraphChannel = graphChannel;
+      sageVectorTopIds = typedVector.slice(0, 5).map((r) => r.id);
+      sageKeywordTopIds = typedKeyword.slice(0, 5).map((r) => r.id);
+
       const merged = mergeHybridResultsRRF({
         vector: typedVector.map((r) => ({
           id: r.id,
@@ -665,6 +683,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           lastAccessedAt: r.lastAccessedAt,
           emotionalValence: r.emotionalValence,
         })),
+        graph: graphChannel,
       });
 
       // Hormonal retrieval modulation: emotional state influences what memories surface.
@@ -760,6 +779,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
 
     this.trackSearchHits(results);
+    this.recordSageSignals(cleaned, results, sageGraphChannel, sageVectorTopIds, sageKeywordTopIds);
 
     // Limbic memory bridge (Plan 6, Phase 5): retrieved memories influence emotional state.
     // This creates a feedback loop: emotional state → retrieval bias → recalled content → hormones.
@@ -855,6 +875,148 @@ export class MemoryIndexManager implements MemorySearchManager {
     } catch {
       // Non-critical: access tracking failure shouldn't break search
     }
+  }
+
+  /**
+   * PLAN-18 Phase 3/4 — best-effort SAGE signal collection on every search.
+   *
+   * 1. Harvest training pairs: with a small sampling probability, record
+   *    (query, top-result-chunk-id) into `graph_gate_training_pairs` so
+   *    the dream-engine optimizer hook eventually has fuel. We sample
+   *    instead of recording every search because the same conversation
+   *    often hits the same chunks repeatedly and the table would fill
+   *    with low-information duplicates. The 5 000-row cap in
+   *    `insertTrainingPair` provides a hard ceiling either way.
+   *
+   * 2. Emit graph-bridge signals: when a chunk is in the vector or
+   *    keyword top-K but missing from the graph channel's top-K, that
+   *    chunk is reachable in content-space but unreachable in
+   *    graph-space — a missing bridge edge the curiosity engine should
+   *    nudge the next extractor to capture.
+   *
+   * Never throws — all storage paths are wrapped.
+   */
+  private recordSageSignals(
+    query: string,
+    results: MemorySearchResult[],
+    graphChannel: HybridGraphResult[],
+    vectorTopIds: string[],
+    keywordTopIds: string[],
+  ): void {
+    if (results.length === 0 || query.length === 0) {
+      return;
+    }
+    try {
+      // Sample ~10% of searches for training-pair collection. Resolve
+      // the top result's chunk id from the chunks table.
+      if (Math.random() < 0.1) {
+        const top = results[0]!;
+        const idRow = this.db
+          .prepare(`SELECT id FROM chunks WHERE path = ? AND start_line = ? AND end_line = ?`)
+          .get(top.path, top.startLine, top.endLine) as { id: string } | undefined;
+        if (idRow) {
+          insertTrainingPair(this.db, query, idRow.id, "access_log");
+        }
+      }
+    } catch {
+      // Non-critical: training-pair persistence failures shouldn't break search.
+    }
+
+    try {
+      if (!this.knowledgeGraph || graphChannel.length === 0) {
+        return;
+      }
+      // Resolve the result paths back to chunk IDs so detectGraphGaps
+      // can compare apples-to-apples against the graph channel.
+      const usedChunkIds: string[] = [];
+      const lookup = this.db.prepare(
+        `SELECT id FROM chunks WHERE path = ? AND start_line = ? AND end_line = ?`,
+      );
+      for (const r of results.slice(0, 5)) {
+        const row = lookup.get(r.path, r.startLine, r.endLine) as { id: string } | undefined;
+        if (row) {
+          usedChunkIds.push(row.id);
+        }
+      }
+      const graphChunkIds = graphChannel.slice(0, 5).map((g) => g.id);
+      const vectorOrKeywordChunkIds = [...new Set([...vectorTopIds, ...keywordTopIds])];
+      const signals = detectGraphGaps({
+        query,
+        usedChunkIds,
+        graphReaderChunkIds: graphChunkIds,
+        vectorOrKeywordChunkIds,
+        graphReaderEntityIds: [],
+      });
+      for (const sig of signals) {
+        emitGraphBridgeSignal(this.db, sig);
+      }
+    } catch {
+      // Non-critical: signal emission failures shouldn't break search.
+    }
+  }
+
+  /**
+   * PLAN-18 Phase 2/5 — graph-reader channel for RRF fusion.
+   *
+   * Resolves the user query into a SAGE-style multi-anchor plan, runs
+   * graph propagation over the knowledge graph, joins the resulting
+   * chunk IDs back to the `chunks` table to recover the path/snippet
+   * metadata RRF needs, and returns a `HybridGraphResult[]`.
+   *
+   * Returns [] when the knowledge graph isn't initialized, no entities
+   * resolve from the query, or the SAGE config disables the reader.
+   * Caller is expected to catch and ignore errors.
+   */
+  private async computeGraphChannel(query: string): Promise<HybridGraphResult[]> {
+    if (!this.knowledgeGraph) {
+      return [];
+    }
+    const cfg: SageConfig = {
+      ...DEFAULT_SAGE_CONFIG,
+      hormonalModulation: this.hormonalManager
+        ? { enabled: true, getState: () => this.hormonalManager!.getState() }
+        : { enabled: false },
+    };
+    const { graph } = await sageRetrieve(this.db, this.knowledgeGraph, query, cfg);
+    if (!graph || graph.chunks.length === 0) {
+      return [];
+    }
+    const chunkIds = graph.chunks.map((c) => c.chunkId);
+    const placeholders = chunkIds.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(
+        `SELECT id, path, source, start_line AS startLine, end_line AS endLine,
+                substr(text, 1, ?) AS snippet, importance_score AS importanceScore,
+                updated_at AS updatedAt, last_accessed_at AS lastAccessedAt,
+                emotional_valence AS emotionalValence
+         FROM chunks WHERE id IN (${placeholders})`,
+      )
+      .all(SNIPPET_MAX_CHARS, ...chunkIds) as Array<{
+      id: string;
+      path: string;
+      source: string;
+      startLine: number;
+      endLine: number;
+      snippet: string;
+      importanceScore: number | null;
+      updatedAt: number | null;
+      lastAccessedAt: number | null;
+      emotionalValence: number | null;
+    }>;
+    const scoreById = new Map(graph.chunks.map((c) => [c.chunkId, c.score]));
+    return rows.map((r) => ({
+      id: r.id,
+      path: r.path,
+      startLine: r.startLine,
+      endLine: r.endLine,
+      source: r.source,
+      snippet: r.snippet,
+      graphScore: scoreById.get(r.id) ?? 0,
+      importanceScore: r.importanceScore ?? undefined,
+      updatedAt: r.updatedAt ?? undefined,
+      lastAccessedAt: r.lastAccessedAt,
+      emotionalValence: r.emotionalValence,
+    }));
   }
 
   private async searchVector(

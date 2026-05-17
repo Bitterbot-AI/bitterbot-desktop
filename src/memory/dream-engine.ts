@@ -566,6 +566,32 @@ export class DreamEngine {
         // Dream evaluator not available — non-critical
       }
 
+      // PLAN-18 Phase 3 — gradient-free gate optimization on the SAGE
+      // graph reader. Silently no-ops when disabled, when training pairs
+      // are below the floor, when the cooldown hasn't elapsed, or when
+      // hormonal arousal is too high. Wrapped so a misbehaving optimizer
+      // never breaks the dream cycle.
+      try {
+        const sageCfg = (this.config as { sageGraphOptimization?: { enabled?: boolean } })
+          ?.sageGraphOptimization;
+        if (sageCfg?.enabled) {
+          const { maybeRunGraphOptimization } = await import("./graph-optimization-hook.js");
+          const { KnowledgeGraphManager } = await import("./knowledge-graph.js");
+          const kg = new KnowledgeGraphManager(this.db);
+          maybeRunGraphOptimization(
+            this.db,
+            kg,
+            {
+              enabled: true,
+              hormonalState: this.hormonalManager?.getState(),
+            },
+            cycleId,
+          );
+        }
+      } catch (err) {
+        log.debug(`graph optimization hook failed: ${String(err)}`);
+      }
+
       log.debug("dream cycle complete", {
         cycleId,
         modes: selectedModes,

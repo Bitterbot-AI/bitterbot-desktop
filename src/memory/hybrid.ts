@@ -161,9 +161,25 @@ export type HybridMergedResult = {
  * rewarded ("consensus" documents), resolving the semantic-mismatch
  * failure mode where exact technical terms score poorly in vector search.
  */
+export type HybridGraphResult = {
+  id: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+  source: HybridSource;
+  snippet: string;
+  graphScore: number;
+  importanceScore?: number;
+  updatedAt?: number;
+  lastAccessedAt?: number | null;
+  emotionalValence?: number | null;
+};
+
 export function mergeHybridResultsRRF(params: {
   vector: HybridVectorResult[];
   keyword: HybridKeywordResult[];
+  /** Optional PLAN-18 graph-reader channel. */
+  graph?: HybridGraphResult[];
 }): HybridMergedResult[] {
   // Build payload lookup by id — store metadata from whichever source provides it
   const payloads = new Map<
@@ -231,9 +247,39 @@ export function mergeHybridResultsRRF(params: {
     }
   }
 
+  if (params.graph) {
+    for (const r of params.graph) {
+      const existing = payloads.get(r.id);
+      if (existing) {
+        if (
+          r.snippet &&
+          r.snippet.length > 0 &&
+          (!existing.snippet || existing.snippet.length === 0)
+        ) {
+          existing.snippet = r.snippet;
+        }
+      } else {
+        payloads.set(r.id, {
+          path: r.path,
+          startLine: r.startLine,
+          endLine: r.endLine,
+          snippet: r.snippet,
+          source: r.source,
+          importanceScore: r.importanceScore,
+          updatedAt: r.updatedAt,
+          lastAccessedAt: r.lastAccessedAt,
+          emotionalValence: r.emotionalValence,
+        });
+      }
+    }
+  }
+
   // Sort each modality by its native score, assign 1-based ranks
   const vectorSorted = [...params.vector].toSorted((a, b) => b.vectorScore - a.vectorScore);
   const keywordSorted = [...params.keyword].toSorted((a, b) => b.textScore - a.textScore);
+  const graphSorted = params.graph
+    ? [...params.graph].toSorted((a, b) => b.graphScore - a.graphScore)
+    : [];
 
   type PayloadType = { id: string };
   const vectorRanked: Array<RankedEntry<PayloadType>> = vectorSorted.map((r, i) => ({
@@ -246,6 +292,11 @@ export function mergeHybridResultsRRF(params: {
     rank: i + 1,
     payload: { id: r.id },
   }));
+  const graphRanked: Array<RankedEntry<PayloadType>> = graphSorted.map((r, i) => ({
+    id: r.id,
+    rank: i + 1,
+    payload: { id: r.id },
+  }));
 
   const lists: Array<{ name: string; entries: Array<RankedEntry<PayloadType>> }> = [];
   if (vectorRanked.length > 0) {
@@ -253,6 +304,9 @@ export function mergeHybridResultsRRF(params: {
   }
   if (keywordRanked.length > 0) {
     lists.push({ name: "keyword", entries: keywordRanked });
+  }
+  if (graphRanked.length > 0) {
+    lists.push({ name: "graph", entries: graphRanked });
   }
 
   const fused = rrfFuse(lists);

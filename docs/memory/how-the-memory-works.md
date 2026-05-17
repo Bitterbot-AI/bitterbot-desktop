@@ -110,7 +110,9 @@ The agent can answer "who was the lead in January?" differently from "who's the 
 
 The knowledge graph also acts as a third retrieval modality. When you search for something, the system doesn't just do vector similarity and keyword matching — it also extracts entities from your query, traverses the graph, and fuses graph results with the other two using Reciprocal Rank Fusion. Three independent retrieval strategies, merged into one ranked list.
 
-During dream cycles, the graph is maintained: stale relationships get pruned, duplicate entities get merged, and contradictions get flagged as questions for the user.
+That third channel got a major upgrade in PLAN-18 (the SAGE-style graph memory). Instead of flat one-hop traversal with uniform edge weights, the reader now plans the query into multi-anchor probes, propagates activation across two hops of the graph with learned per-edge gates, and gets its gate parameters tuned offline during dream cycles using real retrieval-outcome feedback. Sparse bridge edges get preserved; noisy hub edges get dampened. Hormonal state modulates breadth: under cortisol the reader narrows to high-confidence paths, under dopamine it widens to bridges, and oxytocin boosts social relations like "manages" or "knows". When the reader misses a chunk the agent later cites, it routes a graph-bridge signal back to the curiosity engine so the next session's extraction pass captures the missing relation. See [sage-graph-memory.md](./sage-graph-memory.md) for details.
+
+During dream cycles, the graph is maintained: stale relationships get pruned, duplicate entities get merged, contradictions get flagged as questions for the user, and (when enough QA training pairs have accumulated) the SAGE gate parameters get tuned against held-out evidence with a gradient-free optimizer.
 
 ---
 

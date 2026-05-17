@@ -27,7 +27,12 @@ export type SearchQueryRecord = {
   timestamp: number;
 };
 
-export type ExplorationTargetType = "knowledge_gap" | "contradiction" | "stale_region" | "frontier";
+export type ExplorationTargetType =
+  | "knowledge_gap"
+  | "contradiction"
+  | "stale_region"
+  | "frontier"
+  | "graph_bridge";
 
 export type ExplorationTarget = {
   id: string;

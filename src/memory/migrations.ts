@@ -542,7 +542,51 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 13,
+    description:
+      "PLAN-18 SAGE-style graph memory: per-edge gate value + cached topology " +
+      "features, training-pair table for the offline gate optimizer, and a " +
+      "dream_cycles column for graph-reward telemetry.",
+    up: (db: DatabaseSync) => {
+      // gate_value defaults to 1.0 so Phase 2 (uniform-gate) is the
+      // observable baseline; the optimizer overwrites it once Phase 3
+      // training pairs exist. gate_features holds an 8-Float32 BLOB.
+      addColumnIfMissing(db, "relationships", "gate_value", "REAL DEFAULT 1.0");
+      addColumnIfMissing(db, "relationships", "gate_features", "BLOB");
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS graph_gate_training_pairs (
+          id                     TEXT PRIMARY KEY,
+          query                  TEXT NOT NULL,
+          ground_truth_chunk_id  TEXT NOT NULL,
+          collected_at           INTEGER NOT NULL,
+          source                 TEXT NOT NULL DEFAULT 'access_log'
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_graph_gate_training_pairs_collected ` +
+          `ON graph_gate_training_pairs(collected_at)`,
+      );
+
+      addColumnIfMissing(db, "dream_cycles", "graph_reward_delta", "REAL");
+    },
+  },
 ];
+
+/**
+ * Idempotently add a column. PRAGMA table_info returns the live columns
+ * so we can no-op when a migration runs more than once (or against a DB
+ * that already has the column from a previous schema).
+ */
+function addColumnIfMissing(db: DatabaseSync, table: string, column: string, ddl: string): void {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  const exists = rows.some((r) => r.name === column);
+  if (exists) {
+    return;
+  }
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+}
 
 /**
  * Read the current schema version from the meta table.

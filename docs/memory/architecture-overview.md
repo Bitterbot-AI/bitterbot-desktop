@@ -302,6 +302,19 @@ See [Working Memory](./working-memory.md) for full documentation.
 | `src/memory/epistemic-directives.ts` | `EpistemicDirectiveEngine` — active inference, live knowledge gap questions (GAP-11)   |
 | `src/memory/somatic-markers.ts`      | Somatic marker fast-pathing — pre-retrieval emotional filtering (GAP-12)               |
 
+### PLAN-18: SAGE-style Self-Evolving Graph Memory
+
+| File                                    | Purpose                                                                                        |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `src/memory/query-planner.ts`           | Structured query planning — entities, aliases, hard constraints, pseudo-queries (Phase 1)      |
+| `src/memory/graph-reader.ts`            | L-hop message-passing graph reader with injectable per-edge gates (Phase 2)                    |
+| `src/memory/graph-topology.ts`          | Per-edge topology features (8-Float32 BLOB) stored on `relationships.gate_features` (Phase 3)  |
+| `src/memory/structural-gate.ts`         | Tiny 8→16→1 MLP implementing `g = 1 + δ·tanh(MLP)`, with hormonal δ modulation (Phase 3+5)     |
+| `src/memory/graph-optimizer.ts`         | Gradient-free CMA-ES-lite over gate parameters; recall/precision/deducibility reward (Phase 3) |
+| `src/memory/graph-optimization-hook.ts` | Dream-engine hook: runs the optimizer, rejects validation regressions, materializes gate_value |
+| `src/memory/graph-bridge-target.ts`     | Writer-reader coupling: emits `graph_bridge` curiosity targets from retrieval misses (Phase 4) |
+| `src/memory/sage-memory.ts`             | Public façade composing all phases — `sageRetrieve(db, kg, query, config)`                     |
+
 ### Skills & P2P
 
 | File                                    | Purpose                                                                                |
@@ -369,7 +382,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 
 **Engine:** Node.js built-in `node:sqlite` (`DatabaseSync`) + `sqlite-vec` extension for vector search + FTS5 for full-text search.
 
-**Schema versions:** 9 migrations in `migrations.ts`:
+**Schema versions:** 13 migrations in `migrations.ts`:
 
 | Version | Description                                                                                                                                                                                                             |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -382,33 +395,38 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 | v7      | Session extraction tracking — `session_extractions` table + `epistemic_layer` on `chunks`                                                                                                                               |
 | v8      | Persistent emotional anchors — `emotional_anchors` table                                                                                                                                                                |
 | v9      | **PLAN-9 Memory Supremacy** — `entities` + `relationships` tables (Knowledge Graph), `prospective_memories` table, `epistemic_directives` table, reconsolidation/spacing/Zeigarnik/synaptic-tagging columns on `chunks` |
+| v10     | PLAN-9 follow-ups — `regions_meta`, `curiosity_queries`, `epistemic_directives` table tweaks                                                                                                                            |
+| v11     | Skill curator follow-ups (PLAN-15 staging gate columns)                                                                                                                                                                 |
+| v12     | PLAN-15 procedural-memory curator — `skill_lifecycle` table backfilled from `skill_executions`                                                                                                                          |
+| v13     | **PLAN-18 SAGE graph memory** — `gate_value` + `gate_features` BLOB columns on `relationships`, `graph_gate_training_pairs` table, `graph_reward_delta` column on `dream_cycles`                                        |
 
 **Key tables:**
 
-| Table                  | Purpose                                                      |
-| ---------------------- | ------------------------------------------------------------ |
-| `chunks`               | Knowledge crystals (memory units) — ~50 columns              |
-| `chunks_vec`           | sqlite-vec virtual table for vector search                   |
-| `chunks_fts`           | FTS5 virtual table for keyword search                        |
-| `files`                | Tracked source files with hashes                             |
-| `meta`                 | Key-value store (schema version, provider key)               |
-| `dream_insights`       | Dream-generated insights with embeddings                     |
-| `dream_cycles`         | Dream cycle execution metadata                               |
-| `skill_executions`     | Skill execution outcomes                                     |
-| `peer_reputation`      | Per-peer trust scores                                        |
-| `peer_skill_ratings`   | Individual skill ratings by peer                             |
-| `peer_trust_edges`     | EigenTrust web-of-trust edges                                |
-| `peer_activity_log`    | Peer activity timestamps for anomaly detection               |
-| `mutation_queue`       | Pending dream mutation retries                               |
-| `skill_edges`          | Discovered skill relationships (prerequisite, enables, etc.) |
-| `embedding_cache`      | Cached embedding vectors                                     |
-| `memory_audit_log`     | Governance audit trail                                       |
-| `entities`             | Knowledge graph entities (person, project, concept, etc.)    |
-| `relationships`        | Temporal entity relationships with validity windows          |
-| `prospective_memories` | Event-triggered future recall ("remind me when X")           |
-| `epistemic_directives` | Active inference questions to resolve knowledge gaps         |
-| `emotional_anchors`    | Persistent emotional bookmarks                               |
-| `session_extractions`  | Session processing tracking                                  |
+| Table                       | Purpose                                                                            |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| `chunks`                    | Knowledge crystals (memory units) — ~50 columns                                    |
+| `chunks_vec`                | sqlite-vec virtual table for vector search                                         |
+| `chunks_fts`                | FTS5 virtual table for keyword search                                              |
+| `files`                     | Tracked source files with hashes                                                   |
+| `meta`                      | Key-value store (schema version, provider key)                                     |
+| `dream_insights`            | Dream-generated insights with embeddings                                           |
+| `dream_cycles`              | Dream cycle execution metadata                                                     |
+| `skill_executions`          | Skill execution outcomes                                                           |
+| `peer_reputation`           | Per-peer trust scores                                                              |
+| `peer_skill_ratings`        | Individual skill ratings by peer                                                   |
+| `peer_trust_edges`          | EigenTrust web-of-trust edges                                                      |
+| `peer_activity_log`         | Peer activity timestamps for anomaly detection                                     |
+| `mutation_queue`            | Pending dream mutation retries                                                     |
+| `skill_edges`               | Discovered skill relationships (prerequisite, enables, etc.)                       |
+| `embedding_cache`           | Cached embedding vectors                                                           |
+| `memory_audit_log`          | Governance audit trail                                                             |
+| `entities`                  | Knowledge graph entities (person, project, concept, etc.)                          |
+| `relationships`             | Temporal entity relationships + SAGE per-edge gate (`gate_value`, `gate_features`) |
+| `graph_gate_training_pairs` | (query, ground-truth chunk) tuples used by the SAGE optimizer                      |
+| `prospective_memories`      | Event-triggered future recall ("remind me when X")                                 |
+| `epistemic_directives`      | Active inference questions to resolve knowledge gaps                               |
+| `emotional_anchors`         | Persistent emotional bookmarks                                                     |
+| `session_extractions`       | Session processing tracking                                                        |
 
 ---
 
