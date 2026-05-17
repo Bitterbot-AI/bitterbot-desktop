@@ -896,18 +896,50 @@ export class MemoryIndexManager implements MemorySearchManager {
       return null;
     }
     this.sagePlannerLlmTried = true;
-    const candidates = [
-      "anthropic/claude-haiku-4-5-20251001",
-      "anthropic/claude-haiku-4-5",
-      "openai/gpt-4o-mini",
-    ];
+
+    // Synchronous fast-path check: do we actually have a credential
+    // a Haiku-class or fast-OpenAI model could use? Calling the
+    // resolver chain inside the search hot path is unsafe — the auth
+    // walk can hit OAuth refresh / 1Password CLI / keychain calls
+    // that take seconds. The env-var check is a cheap, deterministic
+    // gate that matches the most common production deployment shape
+    // and degrades safely in CI/test where env keys aren't set.
+    const hasAnthropic = !!process.env.ANTHROPIC_API_KEY?.trim();
+    const hasOpenAi = !!process.env.OPENAI_API_KEY?.trim();
+    if (!hasAnthropic && !hasOpenAi) {
+      log.debug("sage planner llm unavailable (no env api key); using heuristic");
+      return null;
+    }
+
+    const candidates = hasAnthropic
+      ? ["anthropic/claude-haiku-4-5-20251001", "anthropic/claude-haiku-4-5"]
+      : ["openai/gpt-4o-mini"];
     for (const spec of candidates) {
-      const call = this.buildLlmCallFn(spec);
-      if (call) {
-        this.sagePlannerLlmCall = call;
-        log.debug("sage planner llm wired", { model: spec });
-        return call;
+      const raw = this.buildLlmCallFn(spec);
+      if (!raw) {
+        continue;
       }
+      // Even with a key configured, wrap in a short timeout to bound
+      // worst-case search latency on first cold call. 800ms is enough
+      // for Haiku (typical p95 ~500ms) and well under the production
+      // search budget. On timeout we throw and the planner falls back
+      // to its heuristic decomposer.
+      this.sagePlannerLlmCall = async (prompt: string): Promise<string> => {
+        const TIMEOUT_MS = 800;
+        let timer: NodeJS.Timeout | null = null;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("sage planner llm timeout")), TIMEOUT_MS);
+        });
+        try {
+          return await Promise.race([raw(prompt), timeoutPromise]);
+        } finally {
+          if (timer) {
+            clearTimeout(timer);
+          }
+        }
+      };
+      log.debug("sage planner llm wired", { model: spec });
+      return this.sagePlannerLlmCall;
     }
     log.debug("sage planner llm unavailable; falling back to heuristic planner");
     return null;
@@ -1014,7 +1046,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         // PLAN-18 Phase 1 — pass an LLM call to the planner so query
         // decomposition uses Haiku rather than the pure heuristic. The
         // planner caches by query hash for 5 min so repeated turns in a
-        // session don't re-call.
+        // session don't re-call. Returns null when no env API key is
+        // configured (CI / test environments), so the planner falls
+        // through to its heuristic decomposer.
         llmCall: this.getSagePlannerLlmCall() ?? undefined,
       },
       hormonalModulation: this.hormonalManager
