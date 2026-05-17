@@ -179,6 +179,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   private dreamEngine: DreamEngine | null = null;
   private dreamLlmCall: ((prompt: string) => Promise<string>) | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
+  /** PLAN-18 Phase 1 — small fast LLM call for query decomposition. Lazy-built. */
+  private sagePlannerLlmCall: ((prompt: string) => Promise<string>) | null = null;
+  private sagePlannerLlmTried = false;
   private curiosityEngine: CuriosityEngine | null = null;
   private hormonalManager: HormonalStateManager | null = null;
   private userModelManager: UserModelManager | null = null;
@@ -878,6 +881,39 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   /**
+   * Lazy-construct an LLM call for the SAGE query planner. Returns the
+   * cached call on subsequent invocations. Returns null if no usable
+   * model could be resolved.
+   *
+   * Uses a small fast model (Haiku-class) by design — query decomposition
+   * is a tight bounded JSON-out task and doesn't need the dream model.
+   */
+  private getSagePlannerLlmCall(): ((prompt: string) => Promise<string>) | null {
+    if (this.sagePlannerLlmCall) {
+      return this.sagePlannerLlmCall;
+    }
+    if (this.sagePlannerLlmTried) {
+      return null;
+    }
+    this.sagePlannerLlmTried = true;
+    const candidates = [
+      "anthropic/claude-haiku-4-5-20251001",
+      "anthropic/claude-haiku-4-5",
+      "openai/gpt-4o-mini",
+    ];
+    for (const spec of candidates) {
+      const call = this.buildLlmCallFn(spec);
+      if (call) {
+        this.sagePlannerLlmCall = call;
+        log.debug("sage planner llm wired", { model: spec });
+        return call;
+      }
+    }
+    log.debug("sage planner llm unavailable; falling back to heuristic planner");
+    return null;
+  }
+
+  /**
    * PLAN-18 Phase 3/4 — best-effort SAGE signal collection on every search.
    *
    * 1. Harvest training pairs: with a small sampling probability, record
@@ -973,6 +1009,14 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     const cfg: SageConfig = {
       ...DEFAULT_SAGE_CONFIG,
+      queryPlanning: {
+        enabled: true,
+        // PLAN-18 Phase 1 — pass an LLM call to the planner so query
+        // decomposition uses Haiku rather than the pure heuristic. The
+        // planner caches by query hash for 5 min so repeated turns in a
+        // session don't re-call.
+        llmCall: this.getSagePlannerLlmCall() ?? undefined,
+      },
       hormonalModulation: this.hormonalManager
         ? { enabled: true, getState: () => this.hormonalManager!.getState() }
         : { enabled: false },

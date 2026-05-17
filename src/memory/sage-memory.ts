@@ -42,8 +42,14 @@ export const DEFAULT_SAGE_CONFIG: Required<Pick<SageConfig, "queryPlanning" | "g
   Pick<SageConfig, "structuralGating" | "hormonalModulation"> = {
   queryPlanning: { enabled: true },
   graphReader: { enabled: true, hops: 2, maxFrontier: 200, topK: 50 },
-  structuralGating: { enabled: false },
-  hormonalModulation: { enabled: false },
+  // Phase 3: on by default. When no gate file exists yet, the loader
+  // returns a fresh `createDefaultGate()` (Xavier-init, ~145 params).
+  // Output is clamped into [0, 2.5] regardless, and the benchmark
+  // confirms no regression versus uniform 1.0.
+  structuralGating: { enabled: true },
+  // Phase 5: on by default. Has effect only when Phase 3 is on (the
+  // gate forward pass is the sole consumer of hormonalState).
+  hormonalModulation: { enabled: true },
 };
 
 export type SageRetrievalResult = {

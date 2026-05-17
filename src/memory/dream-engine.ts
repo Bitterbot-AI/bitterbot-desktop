@@ -572,9 +572,14 @@ export class DreamEngine {
       // hormonal arousal is too high. Wrapped so a misbehaving optimizer
       // never breaks the dream cycle.
       try {
+        // PLAN-18 Phase 3: on by default. Opt out by setting
+        // `sageGraphOptimization.enabled = false` in dream config. The
+        // hook itself silently no-ops until training pairs accumulate
+        // (minTrainingPairs floor) and the cooldown elapses, so this
+        // is safe to leave on from cold start.
         const sageCfg = (this.config as { sageGraphOptimization?: { enabled?: boolean } })
           ?.sageGraphOptimization;
-        if (sageCfg?.enabled) {
+        if (sageCfg?.enabled !== false) {
           const { maybeRunGraphOptimization } = await import("./graph-optimization-hook.js");
           const { KnowledgeGraphManager } = await import("./knowledge-graph.js");
           const kg = new KnowledgeGraphManager(this.db);

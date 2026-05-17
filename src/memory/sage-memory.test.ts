@@ -84,6 +84,57 @@ describe("sage-memory façade", () => {
     });
   });
 
+  it("DEFAULT_SAGE_CONFIG has Phase 3 and Phase 5 enabled (PLAN-18 activation)", () => {
+    expect(DEFAULT_SAGE_CONFIG.structuralGating?.enabled).toBe(true);
+    expect(DEFAULT_SAGE_CONFIG.hormonalModulation?.enabled).toBe(true);
+    expect(DEFAULT_SAGE_CONFIG.queryPlanning.enabled).toBe(true);
+    expect(DEFAULT_SAGE_CONFIG.graphReader.enabled).toBe(true);
+  });
+
+  it("default config exercises the gate path even when no gate file exists", async () => {
+    const db = openDb();
+    const kg = new KnowledgeGraphManager(db);
+    seedGraph(kg);
+    // Point at a path that does not exist so the loader falls back to
+    // createDefaultGate(). Bounded output guarantees no regression.
+    const r = await sageRetrieve(db, kg, "Alice Project", {
+      ...DEFAULT_SAGE_CONFIG,
+      structuralGating: { enabled: true, gateFilePath: "/nonexistent/sage-gate.json" },
+    });
+    expect(r.graph).toBeTruthy();
+    expect(r.graph!.chunks.length).toBeGreaterThan(0);
+    for (const c of r.graph!.chunks) {
+      expect(c.score).toBeGreaterThanOrEqual(0);
+      expect(c.score).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("invokes the planner LLM call when supplied", async () => {
+    const db = openDb();
+    const kg = new KnowledgeGraphManager(db);
+    seedGraph(kg);
+    let llmCalls = 0;
+    const llmCall = async (prompt: string): Promise<string> => {
+      llmCalls++;
+      expect(prompt).toContain("retrieval query planner");
+      return JSON.stringify({
+        explicitEntities: ["Alice"],
+        aliases: ["alice"],
+        conceptualRelations: ["works_on"],
+        hardConstraints: [],
+        answerType: "factual",
+        pseudoQueries: ["who does Alice work with", "Alice projects"],
+      });
+    };
+    const r = await sageRetrieve(db, kg, "lower-case query no caps", {
+      ...DEFAULT_SAGE_CONFIG,
+      queryPlanning: { enabled: true, llmCall },
+    });
+    expect(llmCalls).toBeGreaterThan(0);
+    expect(r.plan.source).toBe("llm");
+    expect(r.plan.explicitEntities).toContain("Alice");
+  });
+
   it("loads a serialized gate from disk when structural gating is enabled", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sage-gate-"));
     const gatePath = path.join(dir, "gate.json");
