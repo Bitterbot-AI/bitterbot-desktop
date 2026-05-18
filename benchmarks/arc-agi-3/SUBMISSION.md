@@ -10,7 +10,9 @@ ARC Prize 2026 has three submission surfaces for ARC-AGI-3. They have different 
 | **Community leaderboard** | https://github.com/arcprize/ARC-AGI-Community-Leaderboard    | n/a (self-report)    | n/a                | No prize — public credit, scorecard URL                                            |
 | **Kaggle**                | https://www.kaggle.com/competitions/arc-prize-2026-arc-agi-3 | **No, offline only** | 12h on Kaggle GPU  | Milestone prizes via Kaggle submission                                             |
 
-Per [PLAN-19](../../research/plans/PLAN-19-ARC-AGI-3-AGENT.md) the primary target is **Verified Testing** (Opus 4.7 works, marketing story holds, eligible for milestone prizes via that track). The Kaggle track is a stretch goal that requires swapping the action policy to a local-weights model.
+Per [PLAN-19](../../research/plans/PLAN-19-ARC-AGI-3-AGENT.md) the primary target is **Verified Testing** (Opus 4.7 via Claude Code SDK works, marketing story holds, eligible for milestone prizes via that track). The Kaggle track is a stretch goal that requires swapping the Anthropic-hosted Claude Code for a local model behind an OpenAI-compatible server (vLLM or Ollama running Qwen 32B or similar).
+
+The agent itself follows the [Anthropic partner template](https://docs.arcprize.org/partner_templates/anthropic) for runtime (Claude Code SDK), file layout (action scripts in `actions/`, helpers in `helpers/`, filesystem state in `games/<id>/`), and instruction convention (`CLAUDE.md`). The Bitterbot Memory MCP server in `mcp-server/` is the differentiator on top of the template — it exposes biological-memory subsystems as MCP tools Claude Code calls natively.
 
 ## Verified Testing track
 
@@ -69,12 +71,12 @@ For the milestone prize ($25K / $10K / $2.5K to top-3 by RHAE):
 
 Kaggle eval is sandboxed offline. No internet, no external LLM API calls. To submit here:
 
-1. Swap the action policy LLM from Opus 4.7 to a local-weights model (Qwen 32B / Phi-3-medium / similar). The state encoder and transition harvester are unchanged. The hypothesis engine either drops or uses the same local model.
+1. **Replace Claude Code's Anthropic backend** with a local-model OpenAI-compatible server (vLLM or Ollama running Qwen 32B / Phi-3-medium / similar). The MCP server, action scripts, helpers, and `CLAUDE.md` are all unchanged on this path.
 2. Package the model weights inside the Kaggle notebook's `/kaggle/input/` mount (within Kaggle's GPU-image size limits, typically ~20-30 GB).
-3. Render the agent as a Kaggle notebook that imports `benchmarks/arc-agi-3/agent.ts` modules transpiled to Python wrappers, OR rewrite the loop as pure Python with a transformers backend.
+3. Either run Claude Code in "alternative-endpoint" mode pointing at the local server, or rewrite the agent loop as a pure-Python alternative driving the same MCP server.
 4. Submit via the Kaggle UI per the competition's submission tab.
 
-This track is **optional** for PLAN-19. Pursue it only if (a) time permits after the Verified Testing submission lands, and (b) the verified-track run shows enough signal to justify the local-model port effort.
+This track is **optional** for PLAN-19. Pursue it only if (a) time permits after the Verified Testing submission lands, and (b) the verified-track run shows enough signal to justify the local-model port effort. The MCP server's reusability across hosted vs local LLMs is exactly what makes this stretch goal tractable — only the runtime swaps, not the memory tools.
 
 ## Community leaderboard (no prize, fast credit)
 
