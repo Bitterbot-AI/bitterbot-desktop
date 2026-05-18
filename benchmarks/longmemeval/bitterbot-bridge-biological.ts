@@ -16,16 +16,31 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+import { readFileSync } from "node:fs";
 import type { BitterbotConfig } from "../../src/config/types.js";
+import type { KnowledgeGraphManager } from "../../src/memory/knowledge-graph.js";
 import type { MemorySearchResult } from "../../src/memory/types.js";
 import type { MemoryChunk } from "./adapter.js";
 import { MemoryIndexManager } from "../../src/memory/manager.js";
+import { extractEntitiesFromSession } from "./entity-extractor.js";
 
 // ── Types ──
 
 export interface BiologicalBridge {
   /** Ingest a single markdown file into memory */
   ingestFile(filepath: string): Promise<void>;
+  /**
+   * Ingest a session file AND run LLM-driven entity/relationship
+   * extraction so the knowledge graph is populated for SAGE retrieval.
+   * Returns extraction stats for monitoring.
+   */
+  ingestFileWithExtraction(filepath: string): Promise<{
+    entitiesAdded: number;
+    relationshipsAdded: number;
+    extractionMs: number;
+  }>;
+  /** Current knowledge-graph stats (for monitoring). */
+  graphStats(): { entities: number; relationships: number; active: number };
   /** Stimulate hormones from conversation text */
   stimulate(text: string): void;
   /** Run consolidation cycle */
@@ -240,12 +255,60 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
 
   // ── Bridge interface ──
 
+  // Reach into the manager for the knowledge graph instance — we need
+  // direct write access for benchmark-time entity extraction.
+  const getKnowledgeGraph = (): KnowledgeGraphManager | null => {
+    return (manager as unknown as { knowledgeGraph: KnowledgeGraphManager | null }).knowledgeGraph;
+  };
+
   const bridge: BiologicalBridge = {
     async ingestFile(filepath: string) {
       const basename = filepath.split("/").pop()!;
       copyFileSync(filepath, join(memoryDir, basename));
       markDirty();
       await manager.sync({ reason: "bio-bench-ingest" });
+    },
+
+    async ingestFileWithExtraction(filepath: string) {
+      const basename = filepath.split("/").pop()!;
+      copyFileSync(filepath, join(memoryDir, basename));
+      markDirty();
+      await manager.sync({ reason: "bio-bench-ingest" });
+
+      const extractionStart = Date.now();
+      let entitiesAdded = 0;
+      let relationshipsAdded = 0;
+      try {
+        const text = readFileSync(filepath, "utf-8");
+        const kg = getKnowledgeGraph();
+        if (kg && text.length > 200) {
+          const { entities, relationships } = await extractEntitiesFromSession(text, llmComplete);
+          if (entities.length > 0) {
+            const result = kg.ingestExtraction(entities, relationships, []);
+            entitiesAdded = result.entitiesUpserted;
+            relationshipsAdded = result.relationshipsUpserted;
+          }
+        }
+      } catch {
+        // Extraction failures must not break the benchmark — fall back
+        // to the no-graph case for this session.
+      }
+      return {
+        entitiesAdded,
+        relationshipsAdded,
+        extractionMs: Date.now() - extractionStart,
+      };
+    },
+
+    graphStats() {
+      const kg = getKnowledgeGraph();
+      if (!kg) return { entities: 0, relationships: 0, active: 0 };
+      const s = kg.getStats();
+      return {
+        entities: s.entityCount,
+        relationships: s.relationshipCount,
+        active: s.activeRelationships,
+      };
     },
 
     stimulate(text: string) {

@@ -34,6 +34,7 @@ import {
   type LongMemEvalItem,
   type LongMemEvalResult,
   type MemoryChunk,
+  appendResult,
   loadDataset,
   sessionToMarkdown,
   buildAnswerPrompt,
@@ -48,11 +49,13 @@ const { values: args } = parseArgs({
     oracle: { type: "boolean", default: false },
     limit: { type: "string", default: "0" },
     stratify: { type: "string", default: "0" },
-    model: { type: "string", default: "anthropic/claude-opus-4-6" },
+    model: { type: "string", default: "anthropic/claude-opus-4-7" },
     "max-results": { type: "string", default: "15" },
     "data-dir": { type: "string", default: join(__dirname, "data") },
     "output-dir": { type: "string", default: join(__dirname, "results") },
     verbose: { type: "boolean", default: false },
+    "skip-extraction": { type: "boolean", default: false },
+    "live-output": { type: "string", default: "" },
   },
   strict: true,
 });
@@ -77,12 +80,27 @@ async function run() {
   const maxResults = parseInt(args["max-results"]!, 10);
   const model = args.model!;
   const verbose = args.verbose!;
+  const skipExtraction = args["skip-extraction"]!;
+  // Live-output path for incremental JSONL appends. If empty, derive a
+  // timestamped default under outputDir so a long run is always
+  // observable. If user passes --live-output "", explicitly disable.
+  const livePathArg = args["live-output"]!;
+  const livePath =
+    livePathArg === "off"
+      ? ""
+      : livePathArg && livePathArg.length > 0
+        ? livePathArg
+        : join(outputDir, `live-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`);
 
   console.log("🧬 LongMemEval BIOLOGICAL Mode — Bitterbot");
   console.log(`   Data: ${dataFile}`);
   console.log(`   Model: ${model}`);
   console.log(`   Max search results: ${maxResults}`);
   console.log(`   Oracle mode: ${args.oracle}`);
+  console.log(`   Entity extraction: ${skipExtraction ? "OFF (baseline)" : "ON (SAGE)"}`);
+  if (livePath) {
+    console.log(`   Live JSONL: ${livePath}`);
+  }
   if (limit) {
     console.log(`   Limit: ${limit} questions`);
   }
@@ -170,14 +188,26 @@ async function run() {
       const itemWorkDir = join(workDir, item.question_id);
       mkdirSync(itemWorkDir, { recursive: true });
 
+      let totalEntitiesAdded = 0;
+      let totalRelsAdded = 0;
+      let totalExtractionMs = 0;
       for (let si = 0; si < indexed.length; si++) {
         const { session, date, id } = indexed[si];
         const md = sessionToMarkdown(session, date, id);
         const filepath = join(itemWorkDir, `${id}.md`);
         writeFileSync(filepath, md, "utf-8");
 
-        // Ingest this single session
-        await bridge.ingestFile(filepath);
+        // Ingest this single session. When SAGE extraction is on, we
+        // ALSO run an LLM-driven entity/relationship extractor that
+        // populates the knowledge graph for graph-channel retrieval.
+        if (args["skip-extraction"]) {
+          await bridge.ingestFile(filepath);
+        } else {
+          const ex = await bridge.ingestFileWithExtraction(filepath);
+          totalEntitiesAdded += ex.entitiesAdded;
+          totalRelsAdded += ex.relationshipsAdded;
+          totalExtractionMs += ex.extractionMs;
+        }
 
         // Stimulate hormones based on session content
         // Simulates the emotional impact of the conversation
@@ -188,6 +218,7 @@ async function run() {
           console.log(`   Ingested session 1/${indexed.length} (${date})`);
         }
       }
+      const graphStats = bridge.graphStats();
 
       if (verbose) {
         console.log(`   All ${indexed.length} sessions ingested`);
@@ -278,10 +309,16 @@ async function run() {
       );
       const hypothesis = await bridge.complete({ model, prompt, maxTokens: 256 });
 
-      results.push({
+      const resultRecord = {
         question_id: item.question_id,
         hypothesis: hypothesis.trim(),
-      });
+      };
+      results.push(resultRecord);
+      // Flush incrementally so a crashed run loses only the in-flight
+      // question, and so a watching monitor can read progress live.
+      if (livePath) {
+        appendResult(resultRecord, livePath);
+      }
 
       typeCounters[item.question_type].processed++;
 
@@ -290,13 +327,45 @@ async function run() {
         console.log(`   Expected: ${String(item.answer).slice(0, 100)}`);
       }
 
+      // Structured single-line summary for monitor streaming. Always
+      // emitted (verbose-independent). Format is grep-friendly.
+      const summary = {
+        i: i + 1,
+        n: items.length,
+        qid: item.question_id,
+        qtype: item.question_type,
+        haystack: item.haystack_sessions.length,
+        chunks: chunks.length,
+        r5: recall_any_5,
+        r10: recall_any_10,
+        kg_e: graphStats.entities,
+        kg_r: graphStats.active,
+        ents_added: totalEntitiesAdded,
+        rels_added: totalRelsAdded,
+        extract_ms: totalExtractionMs,
+        ans_preview: hypothesis.trim().slice(0, 60),
+      };
+      console.log(`LME ${JSON.stringify(summary)}`);
+
       rmSync(itemWorkDir, { recursive: true, force: true });
     } catch (err) {
       console.error(`   Error on ${item.question_id}:`, err);
-      results.push({
+      const errRecord = {
         question_id: item.question_id,
         hypothesis: "[ERROR]",
-      });
+      };
+      results.push(errRecord);
+      if (livePath) {
+        appendResult(errRecord, livePath);
+      }
+      console.log(
+        `LME ${JSON.stringify({
+          i: i + 1,
+          n: items.length,
+          qid: item.question_id,
+          error: String(err).slice(0, 120),
+        })}`,
+      );
     }
   }
 

@@ -8,7 +8,14 @@
  * LongMemEval (ICLR 2025): https://github.com/xiaowu0162/LongMemEval
  */
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
+import {
+  appendFileSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  rmSync,
+  existsSync,
+} from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -233,6 +240,15 @@ export function isAbstentionQuestion(item: LongMemEvalItem): boolean {
 export function writeResults(results: LongMemEvalResult[], outputPath: string): void {
   const lines = results.map((r) => JSON.stringify(r));
   writeFileSync(outputPath, lines.join("\n") + "\n", "utf-8");
+}
+
+/**
+ * Append a single result as a JSONL line. Used for live monitoring:
+ * the runner can flush after each question so progress is visible
+ * (and so a crashed run loses only the in-flight question).
+ */
+export function appendResult(result: LongMemEvalResult, outputPath: string): void {
+  appendFileSync(outputPath, JSON.stringify(result) + "\n", "utf-8");
 }
 
 export function readResults(path: string): LongMemEvalResult[] {
