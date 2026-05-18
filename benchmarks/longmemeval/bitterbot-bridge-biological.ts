@@ -208,6 +208,12 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
       zeigarnik: { enabled: true },
       prospective: { enabled: true },
     },
+    skills: {
+      // The trending GitHub sweep is default-on and fires 10 min after
+      // manager construction — it scrapes external repos and hangs the
+      // benchmark indefinitely. Hard-disable for the bench.
+      skillSeekers: { trending: { enabled: false } },
+    },
   } as BitterbotConfig;
 
   // Create the full manager with all subsystems
