@@ -38,17 +38,19 @@ export interface BiologicalBridge {
    */
   ingestFileWithExtraction(filepath: string): Promise<void>;
   /**
-   * Stage a file for batch ingestion: copy it into the workspace AND
-   * queue background entity extraction, but do NOT trigger a sync.
-   * The caller flushes the staged files via `flushStagedIngest()`.
-   * This pattern lets the haystack be sync'd in ONE pass instead of
-   * 50+ serial passes, which removes the dominant ingest bottleneck.
+   * Kick off LLM-driven entity extraction for the given session
+   * filepath as a background job. Does NOT touch the chunk index.
+   * Caller drains via `awaitPendingExtractions()`. Runs in parallel
+   * with any pending sync work, so extraction does not bottleneck the
+   * embed pipeline (and vice versa).
+   */
+  kickOffExtraction(filepath: string): void;
+  /**
+   * @deprecated Use `ingestFile` + `kickOffExtraction` instead. Kept
+   * for typecheck compatibility while the runner finishes migrating.
    */
   stageFileForBatchIngest(filepath: string): void;
-  /**
-   * Flush all staged files: run a single manager sync to index every
-   * pending file in one pass. Returns sync stats.
-   */
+  /** No-op shim retained for runner compatibility. */
   flushStagedIngest(): Promise<{ syncMs: number; filesStaged: number }>;
   /**
    * Wait for all in-flight background extractions to complete and
@@ -300,7 +302,6 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
     extractionMs: 0,
     extractionCalls: 0,
   };
-  let stagedFileCount = 0;
 
   const bridge: BiologicalBridge = {
     async ingestFile(filepath: string) {
@@ -348,51 +349,17 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
       pendingExtractions.push(promise);
     },
 
+    // Deprecated shim — copies file + kicks extraction without any
+    // staging. Equivalent to ingestFile + kickOffExtraction.
     stageFileForBatchIngest(filepath: string): void {
       const basename = filepath.split("/").pop()!;
       copyFileSync(filepath, join(memoryDir, basename));
-      stagedFileCount++;
-      // Kick off extraction immediately — it can run in parallel with
-      // the deferred sync. The extraction doesn't depend on chunk IDs.
-      const text = readFileSync(filepath, "utf-8");
-      if (text.length <= 200) {
-        return;
-      }
-      const promise = (async () => {
-        while (extractionSlotsInUse >= EXTRACTION_CONCURRENCY) {
-          await new Promise((r) => setTimeout(r, 10));
-        }
-        extractionSlotsInUse++;
-        const t0 = Date.now();
-        try {
-          const { entities, relationships } = await extractEntitiesFromSession(text, llmComplete);
-          const kg = getKnowledgeGraph();
-          if (kg && entities.length > 0) {
-            const r = kg.ingestExtraction(entities, relationships, []);
-            extractionStats.entitiesAdded += r.entitiesUpserted;
-            extractionStats.relationshipsAdded += r.relationshipsUpserted;
-          }
-        } catch {
-          // Extraction failures must not break the benchmark.
-        } finally {
-          extractionStats.extractionMs += Date.now() - t0;
-          extractionStats.extractionCalls++;
-          extractionSlotsInUse--;
-        }
-      })();
-      pendingExtractions.push(promise);
+      this.kickOffExtraction(filepath);
     },
 
     async flushStagedIngest() {
-      const t0 = Date.now();
-      const filesStaged = stagedFileCount;
-      stagedFileCount = 0;
-      if (filesStaged === 0) {
-        return { syncMs: 0, filesStaged: 0 };
-      }
-      markDirty();
-      await manager.sync({ reason: "bio-bench-batch-ingest" });
-      return { syncMs: Date.now() - t0, filesStaged };
+      // No-op: per-file sync runs inline via ingestFile now.
+      return { syncMs: 0, filesStaged: 0 };
     },
 
     async awaitPendingExtractions() {

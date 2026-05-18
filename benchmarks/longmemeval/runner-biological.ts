@@ -188,42 +188,29 @@ async function run() {
       const itemWorkDir = join(workDir, item.question_id);
       mkdirSync(itemWorkDir, { recursive: true });
 
-      // Stage all session files first. With SAGE extraction on, each
-      // staged file ALSO queues a background Haiku entity extraction —
-      // those run concurrently with each other and with the eventual
-      // batch sync, so total ingest time is dominated by the slowest
-      // path rather than the sum.
+      // Per-session ingest. Each `ingestFile` call runs a small sync
+      // (~5 chunks per session) which stays comfortably under the
+      // 120s remote-embed timeout. When SAGE extraction is on, we
+      // additionally kick off the Haiku entity extractor as a
+      // background job (concurrency-capped) so extraction overlaps
+      // with the next session's sync.
       for (let si = 0; si < indexed.length; si++) {
         const { session, date, id } = indexed[si];
         const md = sessionToMarkdown(session, date, id);
         const filepath = join(itemWorkDir, `${id}.md`);
         writeFileSync(filepath, md, "utf-8");
 
-        if (args["skip-extraction"]) {
-          // Baseline arm: copy file, defer sync, no extraction.
-          // Reuse the staged path so we get a single sync at the end.
-          bridge.stageFileForBatchIngest(filepath);
-        } else {
-          bridge.stageFileForBatchIngest(filepath);
+        await bridge.ingestFile(filepath);
+        if (!args["skip-extraction"]) {
+          bridge.kickOffExtraction(filepath);
         }
 
-        // Stimulate hormones based on session content. Hormonal events
-        // are sequence-sensitive in the production pipeline, so we
-        // still feed them in chronological order even though ingestion
-        // is now batched.
         const sessionText = session.map((t) => t.content).join(" ");
         bridge.stimulate(sessionText);
 
         if (verbose && si === 0) {
-          console.log(`   Staged session 1/${indexed.length} (${date})`);
+          console.log(`   Ingested session 1/${indexed.length} (${date})`);
         }
-      }
-
-      // Run ONE sync over everything we just staged. Replaces the
-      // previous serial per-session sync chain.
-      const flushStats = await bridge.flushStagedIngest();
-      if (verbose) {
-        console.log(`   Batch sync: ${flushStats.filesStaged} files in ${flushStats.syncMs}ms`);
       }
 
       // Drain pending background extractions. Search must not run until
