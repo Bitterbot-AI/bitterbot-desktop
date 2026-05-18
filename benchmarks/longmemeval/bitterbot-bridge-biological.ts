@@ -349,12 +349,42 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
       pendingExtractions.push(promise);
     },
 
+    kickOffExtraction(filepath: string): void {
+      const text = readFileSync(filepath, "utf-8");
+      if (text.length <= 200) {
+        return;
+      }
+      const promise = (async () => {
+        while (extractionSlotsInUse >= EXTRACTION_CONCURRENCY) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        extractionSlotsInUse++;
+        const t0 = Date.now();
+        try {
+          const { entities, relationships } = await extractEntitiesFromSession(text, llmComplete);
+          const kg = getKnowledgeGraph();
+          if (kg && entities.length > 0) {
+            const r = kg.ingestExtraction(entities, relationships, []);
+            extractionStats.entitiesAdded += r.entitiesUpserted;
+            extractionStats.relationshipsAdded += r.relationshipsUpserted;
+          }
+        } catch {
+          // Extraction failures must not break the benchmark.
+        } finally {
+          extractionStats.extractionMs += Date.now() - t0;
+          extractionStats.extractionCalls++;
+          extractionSlotsInUse--;
+        }
+      })();
+      pendingExtractions.push(promise);
+    },
+
     // Deprecated shim — copies file + kicks extraction without any
     // staging. Equivalent to ingestFile + kickOffExtraction.
     stageFileForBatchIngest(filepath: string): void {
       const basename = filepath.split("/").pop()!;
       copyFileSync(filepath, join(memoryDir, basename));
-      this.kickOffExtraction(filepath);
+      bridge.kickOffExtraction(filepath);
     },
 
     async flushStagedIngest() {
