@@ -32,7 +32,16 @@ export type EntityType =
   | "location"
   | "file"
   | "service"
-  | "event";
+  | "event"
+  // PLAN-19 ARC-AGI-3 entity kinds. Additive; do not remove existing
+  // values. arc_state = hash of an observed grid. arc_object = a
+  // connected component within a state. arc_action = ACTION{1..7} +
+  // RESET. arc_rule = a learned transition rule "ACTION3 from states
+  // matching X produces Y".
+  | "arc_state"
+  | "arc_object"
+  | "arc_action"
+  | "arc_rule";
 
 export interface Entity {
   id: string;
@@ -58,7 +67,16 @@ export type RelationType =
   | "part_of"
   | "knows"
   | "prefers"
-  | "caused_by";
+  | "caused_by"
+  // PLAN-19 ARC-AGI-3 relation kinds. Additive; do not remove existing
+  // values. transforms_into = applied to (state, action) pairs that
+  // produce a target state. produces = links an arc_rule to its
+  // typical outcome. observed_in = links an arc_object to an arc_state.
+  // refutes = a transition observation that refutes an arc_rule.
+  | "transforms_into"
+  | "produces"
+  | "observed_in"
+  | "refutes";
 
 export interface Relationship {
   id: string;

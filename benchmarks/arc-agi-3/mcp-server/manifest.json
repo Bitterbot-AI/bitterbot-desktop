@@ -1,0 +1,16 @@
+{
+  "name": "bitterbot-memory",
+  "version": "0.1.0",
+  "description": "Bitterbot's biological-memory subsystems (knowledge graph, SAGE retrieval, curiosity engine, epistemic-directive engine, hormonal state) exposed as MCP tools. Built for ARC-AGI-3 (PLAN-19) but usable by any Claude Code session.",
+  "license": "MIT",
+  "tools": [
+    "memory.query",
+    "memory.record_rule",
+    "memory.log_transition",
+    "memory.get_hypothesis",
+    "memory.update_hypothesis",
+    "memory.score_novelty",
+    "memory.get_hormonal_state",
+    "memory.list_rules"
+  ]
+}
