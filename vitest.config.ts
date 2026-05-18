@@ -33,7 +33,12 @@ export default defineConfig({
     unstubGlobals: true,
     pool: "forks",
     maxWorkers: isCI ? ciWorkers : localWorkers,
-    include: ["src/**/*.test.ts", "extensions/**/*.test.ts", "test/**/*.test.ts"],
+    include: [
+      "src/**/*.test.ts",
+      "extensions/**/*.test.ts",
+      "test/**/*.test.ts",
+      "benchmarks/arc-agi-3/**/*.test.ts",
+    ],
     setupFiles: ["test/setup.ts"],
     exclude: [
       "dist/**",
