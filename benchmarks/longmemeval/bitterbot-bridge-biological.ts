@@ -207,6 +207,10 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
       spacingEffect: { enabled: true },
       zeigarnik: { enabled: true },
       prospective: { enabled: true },
+      // Daily digest is wall-clock scheduled (9am local) and not
+      // relevant to the benchmark; disable so it doesn't fire
+      // mid-run if we cross 9am during a long run.
+      digest: { enabled: false },
     },
     skills: {
       // The trending GitHub sweep is default-on and fires 10 min after
