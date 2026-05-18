@@ -241,15 +241,14 @@ async function run() {
         );
       }
 
-      // ── Step 3: Trigger a dream cycle ──
-      // This runs replay, compression, exploration, and mutation modes
-      // The dream engine selects modes based on hormonal state and curiosity targets
-      const dreamStats = await bridge.dream();
-      if (verbose && dreamStats) {
-        console.log(
-          `   Dream: ${dreamStats.newInsights?.length ?? 0} insights, state=${dreamStats.cycle?.state ?? "?"}`,
-        );
-      }
+      // ── Step 3: Skip dream cycle ──
+      // Dream cycle can select the "research" mode which makes external
+      // HTTP calls to GitHub via skill-seekers — that hangs the
+      // benchmark for many minutes per question and doesn't measure
+      // anything we care about for retrieval quality. The retrieval
+      // path still benefits from consolidation, hormonal modulation,
+      // and the SAGE graph channel without an explicit dream cycle.
+      const dreamStats: { newInsights?: unknown[]; cycle?: { state?: string } } | null = null;
 
       // ── Step 4: Search with full pipeline ──
       // Brief cooldown lets the embedding API connection pool recover after heavy ingestion
