@@ -30,14 +30,36 @@ export interface BiologicalBridge {
   /** Ingest a single markdown file into memory */
   ingestFile(filepath: string): Promise<void>;
   /**
-   * Ingest a session file AND run LLM-driven entity/relationship
-   * extraction so the knowledge graph is populated for SAGE retrieval.
-   * Returns extraction stats for monitoring.
+   * Ingest a session file AND kick off LLM-driven entity/relationship
+   * extraction in the background. The extraction promise is queued
+   * with a concurrency cap; the caller must drain it via
+   * `awaitPendingExtractions()` before search (typically after all
+   * sessions are ingested).
    */
-  ingestFileWithExtraction(filepath: string): Promise<{
+  ingestFileWithExtraction(filepath: string): Promise<void>;
+  /**
+   * Stage a file for batch ingestion: copy it into the workspace AND
+   * queue background entity extraction, but do NOT trigger a sync.
+   * The caller flushes the staged files via `flushStagedIngest()`.
+   * This pattern lets the haystack be sync'd in ONE pass instead of
+   * 50+ serial passes, which removes the dominant ingest bottleneck.
+   */
+  stageFileForBatchIngest(filepath: string): void;
+  /**
+   * Flush all staged files: run a single manager sync to index every
+   * pending file in one pass. Returns sync stats.
+   */
+  flushStagedIngest(): Promise<{ syncMs: number; filesStaged: number }>;
+  /**
+   * Wait for all in-flight background extractions to complete and
+   * return aggregate stats. Always call this between the ingest loop
+   * and the search/answer step.
+   */
+  awaitPendingExtractions(): Promise<{
     entitiesAdded: number;
     relationshipsAdded: number;
     extractionMs: number;
+    extractionCalls: number;
   }>;
   /** Current knowledge-graph stats (for monitoring). */
   graphStats(): { entities: number; relationships: number; active: number };
@@ -137,7 +159,11 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
           },
           cache: { enabled: false },
           fts: { enabled: true },
-          batch: { enabled: false },
+          // PLAN-18 benchmark refactor: batch embedding ON so manager.sync()
+          // processes the 53-session haystack in batched OpenAI calls
+          // instead of one embed-per-file. Removes the dominant ingest
+          // bottleneck in the biological runner.
+          batch: { enabled: true, wait: true },
           chunking: { tokens: 384, overlap: 48 },
         },
       },
@@ -261,6 +287,21 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
     return (manager as unknown as { knowledgeGraph: KnowledgeGraphManager | null }).knowledgeGraph;
   };
 
+  // Concurrency-controlled background extraction state. Bounded at
+  // EXTRACTION_CONCURRENCY parallel Haiku calls — keeps API throughput
+  // up without saturating rate limits. Per-question stats reset on
+  // `awaitPendingExtractions`.
+  const EXTRACTION_CONCURRENCY = Number(process.env.LME_EXTRACTION_CONCURRENCY) || 5;
+  let extractionSlotsInUse = 0;
+  let pendingExtractions: Promise<void>[] = [];
+  let extractionStats = {
+    entitiesAdded: 0,
+    relationshipsAdded: 0,
+    extractionMs: 0,
+    extractionCalls: 0,
+  };
+  let stagedFileCount = 0;
+
   const bridge: BiologicalBridge = {
     async ingestFile(filepath: string) {
       const basename = filepath.split("/").pop()!;
@@ -269,35 +310,105 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
       await manager.sync({ reason: "bio-bench-ingest" });
     },
 
-    async ingestFileWithExtraction(filepath: string) {
+    async ingestFileWithExtraction(filepath: string): Promise<void> {
       const basename = filepath.split("/").pop()!;
       copyFileSync(filepath, join(memoryDir, basename));
       markDirty();
       await manager.sync({ reason: "bio-bench-ingest" });
 
-      const extractionStart = Date.now();
-      let entitiesAdded = 0;
-      let relationshipsAdded = 0;
-      try {
-        const text = readFileSync(filepath, "utf-8");
-        const kg = getKnowledgeGraph();
-        if (kg && text.length > 200) {
-          const { entities, relationships } = await extractEntitiesFromSession(text, llmComplete);
-          if (entities.length > 0) {
-            const result = kg.ingestExtraction(entities, relationships, []);
-            entitiesAdded = result.entitiesUpserted;
-            relationshipsAdded = result.relationshipsUpserted;
-          }
-        }
-      } catch {
-        // Extraction failures must not break the benchmark — fall back
-        // to the no-graph case for this session.
+      const text = readFileSync(filepath, "utf-8");
+      if (text.length <= 200) {
+        return;
       }
-      return {
-        entitiesAdded,
-        relationshipsAdded,
-        extractionMs: Date.now() - extractionStart,
+      // Queue background extraction with a concurrency cap. The runner
+      // drains via `awaitPendingExtractions` between ingest and search,
+      // so all extractions finish before retrieval depends on them.
+      const promise = (async () => {
+        while (extractionSlotsInUse >= EXTRACTION_CONCURRENCY) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        extractionSlotsInUse++;
+        const t0 = Date.now();
+        try {
+          const { entities, relationships } = await extractEntitiesFromSession(text, llmComplete);
+          const kg = getKnowledgeGraph();
+          if (kg && entities.length > 0) {
+            const r = kg.ingestExtraction(entities, relationships, []);
+            extractionStats.entitiesAdded += r.entitiesUpserted;
+            extractionStats.relationshipsAdded += r.relationshipsUpserted;
+          }
+        } catch {
+          // Extraction failures must not break the benchmark.
+        } finally {
+          extractionStats.extractionMs += Date.now() - t0;
+          extractionStats.extractionCalls++;
+          extractionSlotsInUse--;
+        }
+      })();
+      pendingExtractions.push(promise);
+    },
+
+    stageFileForBatchIngest(filepath: string): void {
+      const basename = filepath.split("/").pop()!;
+      copyFileSync(filepath, join(memoryDir, basename));
+      stagedFileCount++;
+      // Kick off extraction immediately — it can run in parallel with
+      // the deferred sync. The extraction doesn't depend on chunk IDs.
+      const text = readFileSync(filepath, "utf-8");
+      if (text.length <= 200) {
+        return;
+      }
+      const promise = (async () => {
+        while (extractionSlotsInUse >= EXTRACTION_CONCURRENCY) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        extractionSlotsInUse++;
+        const t0 = Date.now();
+        try {
+          const { entities, relationships } = await extractEntitiesFromSession(text, llmComplete);
+          const kg = getKnowledgeGraph();
+          if (kg && entities.length > 0) {
+            const r = kg.ingestExtraction(entities, relationships, []);
+            extractionStats.entitiesAdded += r.entitiesUpserted;
+            extractionStats.relationshipsAdded += r.relationshipsUpserted;
+          }
+        } catch {
+          // Extraction failures must not break the benchmark.
+        } finally {
+          extractionStats.extractionMs += Date.now() - t0;
+          extractionStats.extractionCalls++;
+          extractionSlotsInUse--;
+        }
+      })();
+      pendingExtractions.push(promise);
+    },
+
+    async flushStagedIngest() {
+      const t0 = Date.now();
+      const filesStaged = stagedFileCount;
+      stagedFileCount = 0;
+      if (filesStaged === 0) {
+        return { syncMs: 0, filesStaged: 0 };
+      }
+      markDirty();
+      await manager.sync({ reason: "bio-bench-batch-ingest" });
+      return { syncMs: Date.now() - t0, filesStaged };
+    },
+
+    async awaitPendingExtractions() {
+      if (pendingExtractions.length === 0) {
+        return { ...extractionStats };
+      }
+      await Promise.all(pendingExtractions);
+      pendingExtractions = [];
+      const snapshot = { ...extractionStats };
+      extractionStats = {
+        entitiesAdded: 0,
+        relationshipsAdded: 0,
+        extractionMs: 0,
+        extractionCalls: 0,
       };
+      return snapshot;
     },
 
     graphStats() {

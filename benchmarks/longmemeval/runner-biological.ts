@@ -188,36 +188,52 @@ async function run() {
       const itemWorkDir = join(workDir, item.question_id);
       mkdirSync(itemWorkDir, { recursive: true });
 
-      let totalEntitiesAdded = 0;
-      let totalRelsAdded = 0;
-      let totalExtractionMs = 0;
+      // Stage all session files first. With SAGE extraction on, each
+      // staged file ALSO queues a background Haiku entity extraction —
+      // those run concurrently with each other and with the eventual
+      // batch sync, so total ingest time is dominated by the slowest
+      // path rather than the sum.
       for (let si = 0; si < indexed.length; si++) {
         const { session, date, id } = indexed[si];
         const md = sessionToMarkdown(session, date, id);
         const filepath = join(itemWorkDir, `${id}.md`);
         writeFileSync(filepath, md, "utf-8");
 
-        // Ingest this single session. When SAGE extraction is on, we
-        // ALSO run an LLM-driven entity/relationship extractor that
-        // populates the knowledge graph for graph-channel retrieval.
         if (args["skip-extraction"]) {
-          await bridge.ingestFile(filepath);
+          // Baseline arm: copy file, defer sync, no extraction.
+          // Reuse the staged path so we get a single sync at the end.
+          bridge.stageFileForBatchIngest(filepath);
         } else {
-          const ex = await bridge.ingestFileWithExtraction(filepath);
-          totalEntitiesAdded += ex.entitiesAdded;
-          totalRelsAdded += ex.relationshipsAdded;
-          totalExtractionMs += ex.extractionMs;
+          bridge.stageFileForBatchIngest(filepath);
         }
 
-        // Stimulate hormones based on session content
-        // Simulates the emotional impact of the conversation
+        // Stimulate hormones based on session content. Hormonal events
+        // are sequence-sensitive in the production pipeline, so we
+        // still feed them in chronological order even though ingestion
+        // is now batched.
         const sessionText = session.map((t) => t.content).join(" ");
         bridge.stimulate(sessionText);
 
         if (verbose && si === 0) {
-          console.log(`   Ingested session 1/${indexed.length} (${date})`);
+          console.log(`   Staged session 1/${indexed.length} (${date})`);
         }
       }
+
+      // Run ONE sync over everything we just staged. Replaces the
+      // previous serial per-session sync chain.
+      const flushStats = await bridge.flushStagedIngest();
+      if (verbose) {
+        console.log(`   Batch sync: ${flushStats.filesStaged} files in ${flushStats.syncMs}ms`);
+      }
+
+      // Drain pending background extractions. Search must not run until
+      // the knowledge graph reflects all of the ingested haystack.
+      const extractionStats = args["skip-extraction"]
+        ? { entitiesAdded: 0, relationshipsAdded: 0, extractionMs: 0, extractionCalls: 0 }
+        : await bridge.awaitPendingExtractions();
+      const totalEntitiesAdded = extractionStats.entitiesAdded;
+      const totalRelsAdded = extractionStats.relationshipsAdded;
+      const totalExtractionMs = extractionStats.extractionMs;
       const graphStats = bridge.graphStats();
 
       if (verbose) {
