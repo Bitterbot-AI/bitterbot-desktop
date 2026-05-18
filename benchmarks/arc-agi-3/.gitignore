@@ -1,0 +1,14 @@
+# Per-run output
+results/*.jsonl
+results/*.json
+results/**/*.jsonl
+results/**/*.json
+
+# Captured game state from live runs
+fixtures/recorded-games/*.jsonl
+
+# Local model weights (Kaggle stretch)
+kaggle/weights/
+
+# Scorecard tokens
+.arc-session/
