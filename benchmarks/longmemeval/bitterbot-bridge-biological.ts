@@ -159,11 +159,11 @@ This agent is running a memory benchmark. It should be attentive, analytical, an
           },
           cache: { enabled: false },
           fts: { enabled: true },
-          // PLAN-18 benchmark refactor: batch embedding ON so manager.sync()
-          // processes the 53-session haystack in batched OpenAI calls
-          // instead of one embed-per-file. Removes the dominant ingest
-          // bottleneck in the biological runner.
-          batch: { enabled: true, wait: true },
+          // `batch: enabled` routes to OpenAI's ASYNC batch API (24-hour
+          // SLA) and times out at 120s every question — wrong knob.
+          // Manager.sync already does multi-text inline embed batching;
+          // leave the async batch API off.
+          batch: { enabled: false },
           chunking: { tokens: 384, overlap: 48 },
         },
       },
