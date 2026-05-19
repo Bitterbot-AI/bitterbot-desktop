@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bitterbot-memory"
+version = "0.1.0"
+description = "Python port of Bitterbot biological memory (knowledge graph, SAGE retrieval, hormonal state, curiosity, epistemic directives) targeting offline inference inside Kaggle ARC-AGI-3 competition containers."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "VGIL77", email = "vgil@soapbox.net" }]
+dependencies = [
+    # Embedding model loaded via transformers (Kaggle preinstalls transformers>=5).
+    # rank_bm25 is needed for hybrid retrieval; it's pure Python, tiny, no native deps.
+    "rank-bm25>=0.2.2",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+embedder = [
+    # Only needed at runtime if you want the embedder. On Kaggle these are
+    # already preinstalled in the base image, so the embedder extra is
+    # used for local dev only.
+    "transformers>=4.40",
+    "torch>=2.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["bitterbot_memory*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "embedder: tests that load the BGE embedder (require torch + transformers)",
+    "ts_parity: tests that snapshot TS reference outputs (require fixture files)",
+]

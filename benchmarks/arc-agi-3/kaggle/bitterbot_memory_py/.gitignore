@@ -1,0 +1,6 @@
+
+# bitterbot-memory Python venvs
+benchmarks/arc-agi-3/kaggle/**/.venv/
+benchmarks/arc-agi-3/kaggle/**/*.egg-info/
+benchmarks/arc-agi-3/kaggle/**/__pycache__/
+benchmarks/arc-agi-3/kaggle/**/.pytest_cache/
