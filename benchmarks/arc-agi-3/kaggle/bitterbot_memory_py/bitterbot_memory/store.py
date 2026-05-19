@@ -101,13 +101,17 @@ SCHEMA = [
     # ── Vector embeddings (BLOB-packed float32 little-endian) ────────
     # Keyed by entity id. Populated lazily when entities are upserted
     # with an embedder available.
+    # Composite PK so we can store multiple embedders' vectors per
+    # entity (useful for A/B'ing different models). In production
+    # Kaggle agent we use one model, but tests exercise both paths.
     """
     CREATE TABLE IF NOT EXISTS embeddings (
-        entity_id TEXT PRIMARY KEY REFERENCES entities(id),
+        entity_id TEXT NOT NULL REFERENCES entities(id),
         vector BLOB NOT NULL,
         dim INTEGER NOT NULL,
         model TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (entity_id, model)
     )
     """,
 ]
