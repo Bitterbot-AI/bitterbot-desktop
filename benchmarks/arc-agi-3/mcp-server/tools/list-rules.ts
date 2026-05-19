@@ -41,7 +41,7 @@ export async function runListRules(input: ListRulesInput): Promise<{ rules: ArcR
 }
 
 export const LIST_RULES_TOOL_DEF = {
-  name: "memory.list_rules",
+  name: "memory_list_rules",
   title: "List learned rules for a game",
   description:
     "Return all arc_rule entities recorded for the given game, with their natural-language text, confidence, and evidence counts. Call this at the start of each new level to refresh your working set.",

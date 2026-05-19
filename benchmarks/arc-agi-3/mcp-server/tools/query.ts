@@ -44,7 +44,7 @@ export async function runQuery(input: QueryInput): Promise<QueryResult> {
 }
 
 export const QUERY_TOOL_DEF = {
-  name: "memory.query",
+  name: "memory_query",
   title: "Query biological memory",
   description:
     "Run a SAGE retrieval over the knowledge graph. Returns chunks and entity activations relevant to the query. Use this BEFORE reasoning about your next action when you suspect you've seen similar states / rules before.",

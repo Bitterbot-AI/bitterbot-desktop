@@ -7,6 +7,7 @@
  *        [--max-turns 30] [--card CARD_ID] [--output FILE.jsonl]
  */
 
+import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -34,6 +35,9 @@ async function main(): Promise<void> {
   const eventLogPath = values.output
     ? path.resolve(values.output)
     : path.join(benchmarkRoot, "results", `single-${Date.now()}.jsonl`);
+  // Start every run with a fresh log so prior failed/aborted runs don't
+  // pollute the JSONL with interleaved turn numbers.
+  if (existsSync(eventLogPath)) rmSync(eventLogPath);
   const result = await playGame({
     gameId: values.game,
     cardId: values.card || undefined,

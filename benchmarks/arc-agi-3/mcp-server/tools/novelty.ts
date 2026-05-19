@@ -71,7 +71,7 @@ export async function runScoreNovelty(input: ScoreNoveltyInput): Promise<ScoreNo
 }
 
 export const SCORE_NOVELTY_TOOL_DEF = {
-  name: "memory.score_novelty",
+  name: "memory_score_novelty",
   title: "Score the novelty of a (state, action) pair",
   description:
     "Return a 0..1 novelty score for the prospective (state, action) pair. 1 = never seen, 0 = exhaustively explored. Use to bias toward unexplored actions when goal-hypothesis confidence is low.",

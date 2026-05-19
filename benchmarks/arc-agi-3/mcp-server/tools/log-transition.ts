@@ -90,7 +90,7 @@ export async function runLogTransition(input: LogTransitionInput): Promise<LogTr
 }
 
 export const LOG_TRANSITION_TOOL_DEF = {
-  name: "memory.log_transition",
+  name: "memory_log_transition",
   title: "Log a state→action→state transition",
   description:
     "Record one (prev_state, action, next_state) tuple into the knowledge graph as arc_state and arc_action entities with transforms_into / produces relationships. Call this after EVERY action so the graph reflects observed dynamics.",

@@ -68,7 +68,7 @@ export async function runRecordEvent(input: RecordEventInput): Promise<HormonalS
 }
 
 export const GET_HORMONAL_TOOL_DEF = {
-  name: "memory.get_hormonal_state",
+  name: "memory_get_hormonal_state",
   title: "Read hormonal state",
   description:
     "Return the agent's current {dopamine, cortisol, oxytocin} levels (each in 0..1). High cortisol → narrow exploration; high dopamine → broad exploration.",
@@ -76,7 +76,7 @@ export const GET_HORMONAL_TOOL_DEF = {
 } as const;
 
 export const RECORD_EVENT_TOOL_DEF = {
-  name: "memory.record_event",
+  name: "memory_record_event",
   title: "Record a hormonal event",
   description:
     "Record an event that modulates hormonal state. Use 'achievement' on level-up, 'error' on GAME_OVER, 'curiosity_high' on a novel action that produced a frame change.",

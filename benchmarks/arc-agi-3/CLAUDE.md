@@ -57,17 +57,19 @@ node --import=tsx actions/status.ts --game GAME_ID
 
 The `bitterbot-memory` MCP server is registered programmatically by the agent driver (`src/agent.ts`). It gives you persistent biological memory across turns, levels, and games. **Use these aggressively** — internal reasoning and tool calls don't count, so memory operations are free.
 
+The server connects lazily (its module graph takes ~75s to JIT on cold start). The MCP tools may not appear in your tool list on turn 1 — if you can't see them, call `ToolSearch` with `query: "bitterbot memory"` or `select:mcp__bitterbot-memory__memory_query` to load their schemas. Once loaded they call like any other tool: `mcp__bitterbot-memory__memory_query`, `mcp__bitterbot-memory__memory_record_rule`, etc. The first call pays the boot cost (~60s); every subsequent call is fast.
+
 | Tool                                                                                 | When to use it                                                                                                                                                 |
 | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `memory.query(text, topK?)`                                                          | **Before reasoning** about your next action when you suspect you've seen similar states or rules before. Returns ranked chunks + entity activations.           |
-| `memory.log_transition({gameId, prevStateHash, action, nextStateHash, pixelDelta?})` | **After every action** so the knowledge graph reflects observed dynamics.                                                                                      |
-| `memory.record_rule({gameId, rule, evidence?, confidence?})`                         | When you've observed a confirmed (state-pattern → action → outcome) transition. The rule becomes an `arc_rule` entity; repeated identical text reinforces it.  |
-| `memory.list_rules({gameId})`                                                        | **At the start of every new level** to refresh your working set of rules learned earlier.                                                                      |
-| `memory.get_hypothesis({gameId})`                                                    | Read your current best guess about the game's objective.                                                                                                       |
-| `memory.update_hypothesis({gameId, text, confidence})`                               | Refine the hypothesis. Pass `refute: true` on GAME_OVER to mark the current hypothesis refuted.                                                                |
-| `memory.score_novelty({gameId, stateHash, action})`                                  | Score how novel a (state, action) pair is. 1 = never seen, 0 = exhaustively explored. Use to bias toward unexplored actions when hypothesis confidence is low. |
-| `memory.get_hormonal_state()`                                                        | Read `{dopamine, cortisol, oxytocin}`. High cortisol → narrow exploration; high dopamine → broad.                                                              |
-| `memory.record_event({event})`                                                       | Modulate hormonal state. `achievement` on level-up; `error` on GAME_OVER; `curiosity_high` on a novel action that produced a frame change.                     |
+| `memory_query(text, topK?)`                                                          | **Before reasoning** about your next action when you suspect you've seen similar states or rules before. Returns ranked chunks + entity activations.           |
+| `memory_log_transition({gameId, prevStateHash, action, nextStateHash, pixelDelta?})` | **After every action** so the knowledge graph reflects observed dynamics.                                                                                      |
+| `memory_record_rule({gameId, rule, evidence?, confidence?})`                         | When you've observed a confirmed (state-pattern → action → outcome) transition. The rule becomes an `arc_rule` entity; repeated identical text reinforces it.  |
+| `memory_list_rules({gameId})`                                                        | **At the start of every new level** to refresh your working set of rules learned earlier.                                                                      |
+| `memory_get_hypothesis({gameId})`                                                    | Read your current best guess about the game's objective.                                                                                                       |
+| `memory_update_hypothesis({gameId, text, confidence})`                               | Refine the hypothesis. Pass `refute: true` on GAME_OVER to mark the current hypothesis refuted.                                                                |
+| `memory_score_novelty({gameId, stateHash, action})`                                  | Score how novel a (state, action) pair is. 1 = never seen, 0 = exhaustively explored. Use to bias toward unexplored actions when hypothesis confidence is low. |
+| `memory_get_hormonal_state()`                                                        | Read `{dopamine, cortisol, oxytocin}`. High cortisol → narrow exploration; high dopamine → broad.                                                              |
+| `memory_record_event({event})`                                                       | Modulate hormonal state. `achievement` on level-up; `error` on GAME_OVER; `curiosity_high` on a novel action that produced a frame change.                     |
 
 ### Grid analysis helpers (FREE — these are pure JS utilities)
 
@@ -94,16 +96,16 @@ You can also write your own analysis scripts in `games/<game-id>/scripts/` — t
 Run this loop in your head every turn:
 
 1. **Observe.** Look at the current frame. Use helpers (ASCII viz, connected components, side-by-side diff vs prior frame) to understand structure.
-2. **Recall.** Call `memory.query` and `memory.list_rules` to surface relevant past observations and learned rules.
-3. **Hypothesize.** Read the current hypothesis via `memory.get_hypothesis`. If new evidence contradicts it, update via `memory.update_hypothesis`.
-4. **Choose.** Pick the action that either (a) tests your hypothesis if confidence is high, or (b) maximizes novelty (`memory.score_novelty`) if confidence is low. Bias toward fewer actions — RHAE is quadratic.
+2. **Recall.** Call `memory_query` and `memory_list_rules` to surface relevant past observations and learned rules.
+3. **Hypothesize.** Read the current hypothesis via `memory_get_hypothesis`. If new evidence contradicts it, update via `memory_update_hypothesis`.
+4. **Choose.** Pick the action that either (a) tests your hypothesis if confidence is high, or (b) maximizes novelty (`memory_score_novelty`) if confidence is low. Bias toward fewer actions — RHAE is quadratic.
 5. **Act.** Submit via `actions/action.ts`. Attach a `--reasoning` JSON noting your strategy.
-6. **Record.** Call `memory.log_transition` with the observed (prev, action, next) tuple and `pixelDelta`. If the transition confirmed a rule, call `memory.record_rule`.
-7. **Modulate.** On level-up call `memory.record_event` with `achievement`. On GAME_OVER, `error`. On a frame-changing novel action, `curiosity_high`.
+6. **Record.** Call `memory_log_transition` with the observed (prev, action, next) tuple and `pixelDelta`. If the transition confirmed a rule, call `memory_record_rule`.
+7. **Modulate.** On level-up call `memory_record_event` with `achievement`. On GAME_OVER, `error`. On a frame-changing novel action, `curiosity_high`.
 
 ## Cross-level transfer is the whole point
 
-Frontier models at <0.5% on this benchmark fail because they treat every level independently. Your edge is biological memory: rules learned in level 1 are queryable in level 2. ALWAYS call `memory.list_rules` at the start of a new level. ALWAYS call `memory.log_transition` after an action so future levels can retrieve it.
+Frontier models at <0.5% on this benchmark fail because they treat every level independently. Your edge is biological memory: rules learned in level 1 are queryable in level 2. ALWAYS call `memory_list_rules` at the start of a new level. ALWAYS call `memory_log_transition` after an action so future levels can retrieve it.
 
 ## File structure you'll write to
 
@@ -124,6 +126,6 @@ The benchmark caps you at 5× the human action count per level. After that the l
 
 ## End-of-game
 
-When `state == WIN` or `state == GAME_OVER`, call `memory.record_event` (`achievement` or `error`) one last time, then `close-scorecard.ts` if this is the final game. The closed scorecard URL is your submission proof.
+When `state == WIN` or `state == GAME_OVER`, call `memory_record_event` (`achievement` or `error`) one last time, then `close-scorecard.ts` if this is the final game. The closed scorecard URL is your submission proof.
 
 That's all. Be careful, be efficient, use your memory aggressively. Internal thinking is free; game actions are quadratic. Win efficiently.

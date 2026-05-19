@@ -87,7 +87,7 @@ function shortHash(s: string): string {
 }
 
 export const RECORD_RULE_TOOL_DEF = {
-  name: "memory.record_rule",
+  name: "memory_record_rule",
   title: "Record a learned game rule",
   description:
     "Persist a natural-language rule into the knowledge graph as an arc_rule entity. Use after you observe a confirmed (state pattern → action → outcome) transition. Repeated calls with the same rule string reinforce confidence.",

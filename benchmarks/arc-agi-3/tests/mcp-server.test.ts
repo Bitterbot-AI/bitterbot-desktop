@@ -20,7 +20,7 @@ import { createServer } from "../mcp-server/index.js";
 // Best-effort: source the repo .env so OPENAI_API_KEY / ANTHROPIC_API_KEY
 // are available when running locally. The MemoryIndexManager probes
 // the embedding provider at boot, so without a real OPENAI key the
-// server can't initialize. Tests that DO need a live LLM (memory.query)
+// server can't initialize. Tests that DO need a live LLM (memory_query)
 // still gate on HAS_OPENAI below; the rest just need a working init.
 const envPath = path.resolve(__dirname, "..", "..", "..", ".env");
 if (!process.env.OPENAI_API_KEY && fs.existsSync(envPath)) {
@@ -93,22 +93,22 @@ describe("bitterbot-memory MCP server", () => {
   it.skipIf(!HAS_OPENAI)("lists all 9 tools", async () => {
     const tools = await client.listTools();
     const names = tools.tools.map((t) => t.name).toSorted();
-    expect(names).toContain("memory.query");
-    expect(names).toContain("memory.record_rule");
-    expect(names).toContain("memory.log_transition");
-    expect(names).toContain("memory.get_hypothesis");
-    expect(names).toContain("memory.update_hypothesis");
-    expect(names).toContain("memory.score_novelty");
-    expect(names).toContain("memory.get_hormonal_state");
-    expect(names).toContain("memory.record_event");
-    expect(names).toContain("memory.list_rules");
+    expect(names).toContain("memory_query");
+    expect(names).toContain("memory_record_rule");
+    expect(names).toContain("memory_log_transition");
+    expect(names).toContain("memory_get_hypothesis");
+    expect(names).toContain("memory_update_hypothesis");
+    expect(names).toContain("memory_score_novelty");
+    expect(names).toContain("memory_get_hormonal_state");
+    expect(names).toContain("memory_record_event");
+    expect(names).toContain("memory_list_rules");
   });
 
   it.skipIf(!HAS_OPENAI)(
     "log_transition + score_novelty: novelty decreases as transition is repeated",
     async () => {
       const gameId = "test-game-1";
-      const first = (await callTool("memory.score_novelty", {
+      const first = (await callTool("memory_score_novelty", {
         gameId,
         stateHash: "abc",
         action: "ACTION1",
@@ -116,14 +116,14 @@ describe("bitterbot-memory MCP server", () => {
       expect(first.novelty).toBeCloseTo(1, 5);
       expect(first.observedCount).toBe(0);
 
-      await callTool("memory.log_transition", {
+      await callTool("memory_log_transition", {
         gameId,
         prevStateHash: "abc",
         action: "ACTION1",
         nextStateHash: "def",
         pixelDelta: 3,
       });
-      const second = (await callTool("memory.score_novelty", {
+      const second = (await callTool("memory_score_novelty", {
         gameId,
         stateHash: "abc",
         action: "ACTION1",
@@ -131,14 +131,14 @@ describe("bitterbot-memory MCP server", () => {
       expect(second.observedCount).toBe(1);
       expect(second.novelty).toBeLessThan(first.novelty);
 
-      await callTool("memory.log_transition", {
+      await callTool("memory_log_transition", {
         gameId,
         prevStateHash: "abc",
         action: "ACTION1",
         nextStateHash: "ghi",
         pixelDelta: 2,
       });
-      const third = (await callTool("memory.score_novelty", {
+      const third = (await callTool("memory_score_novelty", {
         gameId,
         stateHash: "abc",
         action: "ACTION1",
@@ -150,7 +150,7 @@ describe("bitterbot-memory MCP server", () => {
 
   it.skipIf(!HAS_OPENAI)("record_rule + list_rules round-trip", async () => {
     const gameId = "test-game-rules";
-    const r1 = (await callTool("memory.record_rule", {
+    const r1 = (await callTool("memory_record_rule", {
       gameId,
       rule: "ACTION3 moves blue cells one row down",
       confidence: 0.8,
@@ -159,7 +159,7 @@ describe("bitterbot-memory MCP server", () => {
     expect(r1.totalRulesForGame).toBe(1);
 
     // Same rule string → reinforced.
-    const r2 = (await callTool("memory.record_rule", {
+    const r2 = (await callTool("memory_record_rule", {
       gameId,
       rule: "ACTION3 moves blue cells one row down",
       confidence: 0.85,
@@ -168,12 +168,12 @@ describe("bitterbot-memory MCP server", () => {
     expect(r2.totalRulesForGame).toBe(1);
 
     // New rule.
-    await callTool("memory.record_rule", {
+    await callTool("memory_record_rule", {
       gameId,
       rule: "ACTION5 toggles selected cell color",
       confidence: 0.6,
     });
-    const listing = (await callTool("memory.list_rules", { gameId })) as {
+    const listing = (await callTool("memory_list_rules", { gameId })) as {
       rules: Array<{ text: string; confidence: number }>;
     };
     expect(listing.rules).toHaveLength(2);
@@ -183,7 +183,7 @@ describe("bitterbot-memory MCP server", () => {
   });
 
   it.skipIf(!HAS_OPENAI)("get_hypothesis returns null before any update", async () => {
-    const got = (await callTool("memory.get_hypothesis", {
+    const got = (await callTool("memory_get_hypothesis", {
       gameId: "test-game-hyp",
     })) as { text: string | null; confidence: number };
     expect(got.text).toBeNull();
@@ -192,32 +192,32 @@ describe("bitterbot-memory MCP server", () => {
 
   it.skipIf(!HAS_OPENAI)("update_hypothesis + get_hypothesis + refute round-trip", async () => {
     const gameId = "test-game-hyp-2";
-    await callTool("memory.update_hypothesis", {
+    await callTool("memory_update_hypothesis", {
       gameId,
       text: "The goal is to collect all the red squares",
       confidence: 0.6,
     });
-    const got1 = (await callTool("memory.get_hypothesis", { gameId })) as {
+    const got1 = (await callTool("memory_get_hypothesis", { gameId })) as {
       text: string | null;
       confidence: number;
     };
     expect(got1.text).toContain("red squares");
     expect(got1.confidence).toBeCloseTo(0.6, 5);
 
-    await callTool("memory.update_hypothesis", {
+    await callTool("memory_update_hypothesis", {
       gameId,
       text: "(refuting)",
       confidence: 0,
       refute: true,
     });
-    const got2 = (await callTool("memory.get_hypothesis", { gameId })) as {
+    const got2 = (await callTool("memory_get_hypothesis", { gameId })) as {
       text: string | null;
     };
     expect(got2.text).toBeNull();
   });
 
   it.skipIf(!HAS_OPENAI)("get_hormonal_state returns a state shape", async () => {
-    const state = (await callTool("memory.get_hormonal_state", {})) as {
+    const state = (await callTool("memory_get_hormonal_state", {})) as {
       dopamine: number;
       cortisol: number;
       oxytocin: number;
@@ -231,17 +231,17 @@ describe("bitterbot-memory MCP server", () => {
   });
 
   it.skipIf(!HAS_OPENAI)("record_event raises cortisol on 'error'", async () => {
-    const before = (await callTool("memory.get_hormonal_state", {})) as {
+    const before = (await callTool("memory_get_hormonal_state", {})) as {
       cortisol: number;
     };
-    const after = (await callTool("memory.record_event", { event: "error" })) as {
+    const after = (await callTool("memory_record_event", { event: "error" })) as {
       cortisol: number;
     };
     expect(after.cortisol).toBeGreaterThanOrEqual(before.cortisol);
   });
 
-  it.skipIf(!HAS_OPENAI)("memory.query returns a structured plan + chunks", async () => {
-    const result = (await callTool("memory.query", {
+  it.skipIf(!HAS_OPENAI)("memory_query returns a structured plan + chunks", async () => {
+    const result = (await callTool("memory_query", {
       text: "ACTION3 effects on blue cells",
       topK: 5,
     })) as {

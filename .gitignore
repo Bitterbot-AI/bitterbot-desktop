@@ -218,3 +218,14 @@ benchmarks/longmemeval/data/
 
 # Claude Code per-project state (local IDE state)
 .claude/
+
+# Local-only repo traffic log (recorded periodically from `gh api .../traffic/clones`)
+docs/traffic-stats.md
+
+# ARC-AGI-3 local benchmark state (per-run, not source)
+benchmarks/arc-agi-3/config.json
+benchmarks/arc-agi-3/games.json
+benchmarks/arc-agi-3/sessions.json
+benchmarks/arc-agi-3/scorecards.json
+benchmarks/arc-agi-3/games/
+benchmarks/arc-agi-3/results/

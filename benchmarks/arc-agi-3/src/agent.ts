@@ -89,7 +89,7 @@ export async function playGame(opts: PlayGameOptions): Promise<PlayGameResult> {
     `Card ID: ${cardId}.`,
     `Read CLAUDE.md FIRST to learn how to play and how to use the bitterbot-memory MCP tools.`,
     `Goal: complete as many levels as possible with as FEW actions as possible — RHAE is quadratic in action efficiency.`,
-    `Start by calling memory.list_rules({gameId: "${opts.gameId}"}) to see if you've played this game before.`,
+    `Start by calling memory_list_rules({gameId: "${opts.gameId}"}) to see if you've played this game before.`,
     `Then call actions/start-game.ts --game ${opts.gameId} to begin the session.`,
   ].join("\n");
 
@@ -125,21 +125,38 @@ export async function playGame(opts: PlayGameOptions): Promise<PlayGameResult> {
         maxTurns: opts.maxTurns ?? 30,
         model: opts.model,
         abortController: opts.abortController,
-        mcpServers: [
-          {
-            "bitterbot-memory": {
-              type: "stdio",
-              command: "node",
-              args: ["--import=tsx", mcpEntry],
-              env: {
-                BITTERBOT_AGENT_DIR:
-                  process.env.BITTERBOT_AGENT_DIR ??
-                  path.join(process.env.HOME ?? repoRoot, ".bitterbot/agents/arc-agi-3"),
-                OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
-              },
+        // Bypass all permission prompts so the agent can run unattended
+        // inside the benchmark directory. This is a sandboxed eval, not
+        // a user-supervised session, so the standard ask-before-bash
+        // flow would just deadlock.
+        permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
+        allowedTools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "mcp__bitterbot-memory"],
+        // The public TS type says `AgentMcpServerSpec[]`, but the SDK's
+        // runtime validation (sdk.mjs) checks `K.record(K.string(),...)` —
+        // it expects a plain Record<name, config>, not an array wrapper.
+        // Pass the Record form and cast through unknown.
+        mcpServers: {
+          "bitterbot-memory": {
+            type: "stdio",
+            command: "node",
+            args: ["--import=tsx", mcpEntry],
+            env: {
+              BITTERBOT_AGENT_DIR:
+                process.env.BITTERBOT_AGENT_DIR ??
+                path.join(process.env.HOME ?? repoRoot, ".bitterbot/agents/arc-agi-3"),
+              OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
             },
+            // alwaysLoad is intentionally false. Setting it true imposes a
+            // 5s connect-timeout, but the MCP server's module graph (the
+            // full Bitterbot memory subsystem under tsx JIT) takes ~75s
+            // to import on cold start. We let the SDK connect lazily;
+            // the first MCP tool call pays the import cost (CLAUDE.md
+            // tells Claude to ToolSearch for `memory` tools).
+            alwaysLoad: false,
           },
-        ],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
       },
     });
     for await (const message of iter as AsyncIterable<SDKMessage>) {
@@ -178,10 +195,27 @@ interface MessageSummary {
   totalTokens?: number;
   costUsd?: number;
   isError?: boolean;
+  /** From the system init message: each MCP server's connection status. */
+  mcpServers?: string[];
+  /** Total tools surfaced to the model on turn 1. */
+  toolCount?: number;
+  /** Subset of toolCount that are MCP tools (prefixed `mcp__`). */
+  mcpToolCount?: number;
 }
 
 function summarizeMessage(message: SDKMessage): MessageSummary {
   switch (message.type) {
+    case "system": {
+      const m = message as Record<string, unknown>;
+      const mcp = (m.mcp_servers as Array<{ name?: string; status?: string }> | undefined) ?? [];
+      const tools = (m.tools as string[] | undefined) ?? [];
+      return {
+        type: "system",
+        mcpServers: mcp.map((s) => `${s.name ?? "?"}=${s.status ?? "?"}`),
+        toolCount: tools.length,
+        mcpToolCount: tools.filter((t) => typeof t === "string" && t.startsWith("mcp__")).length,
+      };
+    }
     case "assistant": {
       const content = message.message?.content ?? [];
       const toolUses: string[] = [];

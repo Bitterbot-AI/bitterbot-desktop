@@ -100,7 +100,7 @@ export async function runUpdateHypothesis(input: UpdateHypothesisInput): Promise
 }
 
 export const GET_HYPOTHESIS_TOOL_DEF = {
-  name: "memory.get_hypothesis",
+  name: "memory_get_hypothesis",
   title: "Read the current goal hypothesis",
   description:
     "Return the agent's current best guess about this game's objective, with confidence. Returns null fields if no hypothesis has been recorded yet.",
@@ -108,7 +108,7 @@ export const GET_HYPOTHESIS_TOOL_DEF = {
 } as const;
 
 export const UPDATE_HYPOTHESIS_TOOL_DEF = {
-  name: "memory.update_hypothesis",
+  name: "memory_update_hypothesis",
   title: "Update the goal hypothesis",
   description:
     "Set or refine the current hypothesis about the game's objective. Pass refute=true (with any text) to mark the current top hypothesis as refuted (typically called after GAME_OVER).",
