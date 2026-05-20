@@ -11,20 +11,20 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "VGIL77", email = "vgil@soapbox.net" }]
 dependencies = [
-    # Embedding model loaded via transformers (Kaggle preinstalls transformers>=5).
-    # rank_bm25 is needed for hybrid retrieval; it's pure Python, tiny, no native deps.
-    "rank-bm25>=0.2.2",
-    "numpy>=1.24",
+  # Embedding model loaded via transformers (Kaggle preinstalls transformers>=5).
+  # rank_bm25 is needed for hybrid retrieval; it's pure Python, tiny, no native deps.
+  "rank-bm25>=0.2.2",
+  "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 embedder = [
-    # Only needed at runtime if you want the embedder. On Kaggle these are
-    # already preinstalled in the base image, so the embedder extra is
-    # used for local dev only.
-    "transformers>=4.40",
-    "torch>=2.1",
+  # Only needed at runtime if you want the embedder. On Kaggle these are
+  # already preinstalled in the base image, so the embedder extra is
+  # used for local dev only.
+  "transformers>=4.40",
+  "torch>=2.1",
 ]
 
 [tool.setuptools.packages.find]
@@ -35,6 +35,6 @@ include = ["bitterbot_memory*"]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 markers = [
-    "embedder: tests that load the BGE embedder (require torch + transformers)",
-    "ts_parity: tests that snapshot TS reference outputs (require fixture files)",
+  "embedder: tests that load the BGE embedder (require torch + transformers)",
+  "ts_parity: tests that snapshot TS reference outputs (require fixture files)",
 ]
