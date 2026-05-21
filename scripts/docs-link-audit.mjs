@@ -51,6 +51,33 @@ function listTrackedDocs() {
   return out.split("\n").filter(Boolean);
 }
 
+/**
+ * Set of every git-tracked path in the repo (POSIX-style, repo-relative).
+ * Used by the resolvers below so a link can only resolve to a file that
+ * exists in the committed tree. Without this gate, files under gitignored
+ * directories (e.g. `research/` plan docs) would resolve locally but break
+ * on a clean CI checkout — exactly the failure that produced this gate.
+ */
+function loadTrackedFiles() {
+  const out = execSync("git ls-files", { cwd: REPO_ROOT, encoding: "utf8" });
+  const set = new Set();
+  for (const line of out.split("\n")) {
+    if (line) set.add(line);
+  }
+  return set;
+}
+
+/**
+ * Resolve an absolute filesystem path to its repo-relative POSIX form for
+ * membership testing against `loadTrackedFiles()`.
+ */
+function repoRelative(abs) {
+  let rel = path.relative(REPO_ROOT, abs);
+  // Normalize for Windows checkouts.
+  if (path.sep !== "/") rel = rel.split(path.sep).join("/");
+  return rel;
+}
+
 // ─── Mintlify path resolution ───────────────────────────────────────
 
 /**
@@ -112,10 +139,12 @@ function normalizeAbsolutePath(p) {
 
 /**
  * Resolve a Mintlify-style absolute path (`/foo/bar`) to a concrete
- * file under `docs/`. Returns the resolved absolute filesystem path,
- * or null if no candidate exists.
+ * file under `docs/`. A candidate is only accepted if it exists on
+ * disk AND is tracked by git (via the `tracked` set) — otherwise the
+ * link would only resolve in a dev checkout that happens to have
+ * gitignored content present, and would break in CI.
  */
-function resolveAbsoluteDocPath(p) {
+function resolveAbsoluteDocPath(p, tracked) {
   const norm = normalizeAbsolutePath(p);
   // Strip leading slash; if the path was just "/", treat as /index.
   const rel = norm === "/" ? "index" : norm.slice(1);
@@ -129,15 +158,19 @@ function resolveAbsoluteDocPath(p) {
     path.join(DOCS_ROOT, "public", rel),
   ];
   for (const c of candidates) {
-    if (existsSync(c)) return c;
+    if (existsSync(c) && tracked.has(repoRelative(c))) return c;
   }
   return null;
 }
 
 /**
  * Resolve a relative path (e.g. `../bar/baz.md` or `./foo`) from a source file.
+ * Same git-tracked gate as `resolveAbsoluteDocPath` for file targets. A trailing
+ * `/` (or any directory target) is accepted if at least one git-tracked file
+ * lives inside — this mirrors how README-style links to `docs/start/` work on
+ * the GitHub repo view, which renders a tree listing.
  */
-function resolveRelativeDocPath(rel, fromFile) {
+function resolveRelativeDocPath(rel, fromFile, tracked) {
   const baseDir = path.dirname(path.join(REPO_ROOT, fromFile));
   const tryPaths = [
     path.resolve(baseDir, rel),
@@ -147,7 +180,15 @@ function resolveRelativeDocPath(rel, fromFile) {
     path.resolve(baseDir, rel, "index.mdx"),
   ];
   for (const c of tryPaths) {
-    if (existsSync(c)) return c;
+    if (existsSync(c) && tracked.has(repoRelative(c))) return c;
+  }
+  // Directory target with tracked contents (GitHub tree-listing view).
+  const dirCandidate = path.resolve(baseDir, rel);
+  if (existsSync(dirCandidate)) {
+    const prefix = `${repoRelative(dirCandidate)}/`;
+    for (const t of tracked) {
+      if (t.startsWith(prefix)) return dirCandidate;
+    }
   }
   return null;
 }
@@ -330,7 +371,7 @@ async function validateLink(link, fromFile, ctx) {
 
   if (kind === "absolute") {
     if (ctx.redirects.match(urlPath)) return null;
-    const resolved = resolveAbsoluteDocPath(urlPath);
+    const resolved = resolveAbsoluteDocPath(urlPath, ctx.tracked);
     if (!resolved) return `target not found: ${urlPath}`;
     if (fragment) {
       // Cross-file anchor: best-effort check using the resolved file's
@@ -345,7 +386,7 @@ async function validateLink(link, fromFile, ctx) {
   }
 
   if (kind === "relative") {
-    const resolved = resolveRelativeDocPath(urlPath, fromFile);
+    const resolved = resolveRelativeDocPath(urlPath, fromFile, ctx.tracked);
     if (!resolved) return `relative target not found: ${urlPath}`;
     if (fragment) {
       const target = readFileSync(resolved, "utf8");
@@ -391,11 +432,13 @@ function ignoreKey(file, url) {
 
 async function main() {
   const docs = listTrackedDocs();
+  const tracked = loadTrackedFiles();
   const redirects = loadRedirects();
   const ignore = loadIgnoreList();
   if (VERBOSE) {
     console.log(
-      `Auditing ${docs.length} doc files. Redirects: ${redirects.size}. Ignore entries: ${ignore.size}.`,
+      `Auditing ${docs.length} doc files (${tracked.size} tracked total). ` +
+        `Redirects: ${redirects.size}. Ignore entries: ${ignore.size}.`,
     );
     console.log(`External link checks: ${CHECK_EXTERNAL ? "ON" : "off (use --check-external)"}.`);
   }
@@ -413,7 +456,7 @@ async function main() {
     const text = readFileSync(abs, "utf8");
     const links = extractLinks(text);
     const headings = extractHeadings(text);
-    const ctx = { redirects, headings };
+    const ctx = { redirects, headings, tracked };
 
     const externals = [];
     for (const link of links) {

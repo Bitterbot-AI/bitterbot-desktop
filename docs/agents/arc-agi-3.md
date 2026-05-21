@@ -13,7 +13,7 @@ A Claude Code SDK-driven agent for the [ARC-AGI-3](https://arcprize.org/arc-agi/
 
 The architecture exists because ARC-AGI-3 scores **Relative Human Action Efficiency** (RHAE) where `level_score = (human_actions / ai_actions)^2`. The quadratic ratio means a memory-augmented agent that remembers a rule from level 1 and uses it efficiently in level 2 wins hard. Bitterbot is, fundamentally, retrieval-augmented persistent memory.
 
-See [PLAN-19](../../research/plans/PLAN-19-ARC-AGI-3-AGENT.md) for the end-to-end engineering plan.
+See `research/plans/PLAN-19-ARC-AGI-3-AGENT.md` in the repository for the end-to-end engineering plan.
 
 ## What it is
 
@@ -205,7 +205,7 @@ The agent code lives in `benchmarks/arc-agi-3/` and inherits the repository's MI
 
 ## See also
 
-- [PLAN-19](../../research/plans/PLAN-19-ARC-AGI-3-AGENT.md) — the engineering plan (revised after reading the Anthropic partner template)
+- `research/plans/PLAN-19-ARC-AGI-3-AGENT.md` (in-repo, not on the docs site) — the engineering plan, revised after reading the Anthropic partner template
 - [Anthropic partner template](https://docs.arcprize.org/partner_templates/anthropic) — runtime + file layout we follow
 - [Reference repo: ThariqS/ARC-AGI-3-ClaudeCode-SDK](https://github.com/ThariqS/ARC-AGI-3-ClaudeCode-SDK)
 - [SAGE graph memory](../memory/sage-graph-memory.md) — the multi-hop retrieval the MCP server exposes
