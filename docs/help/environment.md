@@ -54,6 +54,7 @@ Set at least one to actually run the agent. The wizard writes whichever one you 
 | `AI_GATEWAY_API_KEY` | Vercel AI Gateway                        |
 | `MINIMAX_API_KEY`    | MiniMax                                  |
 | `SYNTHETIC_API_KEY`  | Synthetic (Anthropic-compatible)         |
+| `NEARAI_API_KEY`     | NEAR AI Cloud                            |
 | `ZAI_API_KEY`        | Z.AI                                     |
 
 Provider lookup order: auth profiles → env vars → `models.providers.*.apiKey` in config.

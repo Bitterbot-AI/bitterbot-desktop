@@ -145,6 +145,7 @@ export function registerOnboardCommand(program: Command) {
           minimaxApiKey: opts.minimaxApiKey as string | undefined,
           syntheticApiKey: opts.syntheticApiKey as string | undefined,
           veniceApiKey: opts.veniceApiKey as string | undefined,
+          nearaiApiKey: opts.nearaiApiKey as string | undefined,
           togetherApiKey: opts.togetherApiKey as string | undefined,
           huggingfaceApiKey: opts.huggingfaceApiKey as string | undefined,
           opencodeZenApiKey: opts.opencodeZenApiKey as string | undefined,

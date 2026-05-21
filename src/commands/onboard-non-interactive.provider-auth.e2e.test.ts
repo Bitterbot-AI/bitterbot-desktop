@@ -288,7 +288,7 @@ describe("onboard (non-interactive): provider auth", () => {
       expect(cfg.auth?.profiles?.["vercel-ai-gateway:default"]?.provider).toBe("vercel-ai-gateway");
       expect(cfg.auth?.profiles?.["vercel-ai-gateway:default"]?.mode).toBe("api_key");
       expect(cfg.agents?.defaults?.model?.primary).toBe(
-        "vercel-ai-gateway/anthropic/claude-opus-4.6",
+        "vercel-ai-gateway/anthropic/claude-opus-4.7",
       );
       await expectApiKeyProfile({
         profileId: "vercel-ai-gateway:default",
@@ -489,6 +489,38 @@ describe("onboard (non-interactive): provider auth", () => {
         profileId: "together:default",
         provider: "together",
         key: "together-test-key",
+      });
+    });
+  }, 60_000);
+
+  it("infers NEAR AI auth choice from --nearai-api-key and sets default model", async () => {
+    await withOnboardEnv("bitterbot-onboard-nearai-infer-", async ({ configPath, runtime }) => {
+      await runNonInteractive(
+        {
+          nonInteractive: true,
+          nearaiApiKey: "nearai-test-key",
+          skipHealth: true,
+          skipChannels: true,
+          skipSkills: true,
+          json: true,
+        },
+        runtime,
+      );
+
+      const cfg = await readJsonFile<{
+        auth?: { profiles?: Record<string, { provider?: string; mode?: string }> };
+        agents?: { defaults?: { model?: { primary?: string } } };
+        models?: { providers?: Record<string, { baseUrl?: string }> };
+      }>(configPath);
+
+      expect(cfg.auth?.profiles?.["nearai:default"]?.provider).toBe("nearai");
+      expect(cfg.auth?.profiles?.["nearai:default"]?.mode).toBe("api_key");
+      expect(cfg.models?.providers?.nearai?.baseUrl).toBe("https://cloud-api.near.ai/v1");
+      expect(cfg.agents?.defaults?.model?.primary).toBe("nearai/zai-org/GLM-5.1-FP8");
+      await expectApiKeyProfile({
+        profileId: "nearai:default",
+        provider: "nearai",
+        key: "nearai-test-key",
       });
     });
   }, 60_000);

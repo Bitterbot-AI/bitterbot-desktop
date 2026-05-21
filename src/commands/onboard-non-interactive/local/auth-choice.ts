@@ -19,6 +19,7 @@ import {
   applyMinimaxConfig,
   applyMoonshotConfig,
   applyMoonshotConfigCn,
+  applyNearAiConfig,
   applyOpencodeZenConfig,
   applyOpenrouterConfig,
   applySyntheticConfig,
@@ -38,6 +39,7 @@ import {
   setLitellmApiKey,
   setMinimaxApiKey,
   setMoonshotApiKey,
+  setNearAiApiKey,
   setOpencodeZenApiKey,
   setOpenrouterApiKey,
   setSyntheticApiKey,
@@ -553,6 +555,29 @@ export async function applyNonInteractiveAuthChoice(params: {
       mode: "api_key",
     });
     return applyVeniceConfig(nextConfig);
+  }
+
+  if (authChoice === "nearai-api-key") {
+    const resolved = await resolveNonInteractiveApiKey({
+      provider: "nearai",
+      cfg: baseConfig,
+      flagValue: opts.nearaiApiKey,
+      flagName: "--nearai-api-key",
+      envVar: "NEARAI_API_KEY",
+      runtime,
+    });
+    if (!resolved) {
+      return null;
+    }
+    if (resolved.source !== "profile") {
+      await setNearAiApiKey(resolved.key);
+    }
+    nextConfig = applyAuthProfileConfig(nextConfig, {
+      profileId: "nearai:default",
+      provider: "nearai",
+      mode: "api_key",
+    });
+    return applyNearAiConfig(nextConfig);
   }
 
   if (

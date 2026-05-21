@@ -50,6 +50,7 @@ See [Venice AI](/providers/venice).
 - [Xiaomi](/providers/xiaomi)
 - [GLM models](/providers/glm)
 - [MiniMax](/providers/minimax)
+- [NEAR AI Cloud (TEE inference)](/providers/nearai)
 - [Venice (Venice AI, privacy-focused)](/providers/venice)
 - [Hugging Face (Inference)](/providers/huggingface)
 - [Ollama (local models)](/providers/ollama)

@@ -46,6 +46,8 @@ For a high-level overview, see [Onboarding Wizard](/start/wizard).
     - More detail: [MiniMax](/providers/minimax)
     - **Synthetic (Anthropic-compatible)**: prompts for `SYNTHETIC_API_KEY`.
     - More detail: [Synthetic](/providers/synthetic)
+    - **NEAR AI Cloud**: prompts for `NEARAI_API_KEY`.
+    - More detail: [NEAR AI Cloud](/providers/nearai)
     - **Moonshot (Kimi K2)**: config is auto-written.
     - **Kimi Coding**: config is auto-written.
     - More detail: [Moonshot AI (Kimi + Kimi Coding)](/providers/moonshot)
@@ -210,6 +212,16 @@ Add `--json` for a machine‑readable summary.
       --mode local \
       --auth-choice synthetic-api-key \
       --synthetic-api-key "$SYNTHETIC_API_KEY" \
+      --gateway-port 19001 \
+      --gateway-bind loopback
+    ```
+  </Accordion>
+  <Accordion title="NEAR AI Cloud example">
+    ```bash
+    bitterbot onboard --non-interactive \
+      --mode local \
+      --auth-choice nearai-api-key \
+      --nearai-api-key "$NEARAI_API_KEY" \
       --gateway-port 19001 \
       --gateway-bind loopback
     ```

@@ -27,6 +27,8 @@ import {
   applyMoonshotConfigCn,
   applyMoonshotProviderConfig,
   applyMoonshotProviderConfigCn,
+  applyNearAiConfig,
+  applyNearAiProviderConfig,
   applyOpencodeZenConfig,
   applyOpencodeZenProviderConfig,
   applySyntheticConfig,
@@ -46,6 +48,7 @@ import {
   QIANFAN_DEFAULT_MODEL_REF,
   KIMI_CODING_MODEL_REF,
   MOONSHOT_DEFAULT_MODEL_REF,
+  NEARAI_DEFAULT_MODEL_REF,
   SYNTHETIC_DEFAULT_MODEL_REF,
   TOGETHER_DEFAULT_MODEL_REF,
   VENICE_DEFAULT_MODEL_REF,
@@ -57,6 +60,7 @@ import {
   setLitellmApiKey,
   setKimiCodingApiKey,
   setMoonshotApiKey,
+  setNearAiApiKey,
   setOpencodeZenApiKey,
   setSyntheticApiKey,
   setTogetherApiKey,
@@ -116,6 +120,8 @@ export async function applyAuthChoiceApiProviders(
       authChoice = "synthetic-api-key";
     } else if (params.opts.tokenProvider === "venice") {
       authChoice = "venice-api-key";
+    } else if (params.opts.tokenProvider === "nearai") {
+      authChoice = "nearai-api-key";
     } else if (params.opts.tokenProvider === "together") {
       authChoice = "together-api-key";
     } else if (params.opts.tokenProvider === "huggingface") {
@@ -776,6 +782,65 @@ export async function applyAuthChoiceApiProviders(
         applyDefaultConfig: applyVeniceConfig,
         applyProviderConfig: applyVeniceProviderConfig,
         noteDefault: VENICE_DEFAULT_MODEL_REF,
+        noteAgentModel,
+        prompter: params.prompter,
+      });
+      nextConfig = applied.config;
+      agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
+    }
+    return { config: nextConfig, agentModelOverride };
+  }
+
+  if (authChoice === "nearai-api-key") {
+    let hasCredential = false;
+
+    if (!hasCredential && params.opts?.token && params.opts?.tokenProvider === "nearai") {
+      await setNearAiApiKey(normalizeApiKeyInput(params.opts.token), params.agentDir);
+      hasCredential = true;
+    }
+
+    if (!hasCredential) {
+      await params.prompter.note(
+        [
+          "NEAR AI Cloud provides OpenAI-compatible TEE inference.",
+          "Get your API key at: https://cloud.near.ai",
+          "Bitterbot discovers available chat models from the public NEAR AI model list.",
+        ].join("\n"),
+        "NEAR AI Cloud",
+      );
+    }
+
+    const envKey = resolveEnvApiKey("nearai");
+    if (envKey) {
+      const useExisting = await params.prompter.confirm({
+        message: `Use existing NEARAI_API_KEY (${envKey.source}, ${formatApiKeyPreview(envKey.apiKey)})?`,
+        initialValue: true,
+      });
+      if (useExisting) {
+        await setNearAiApiKey(envKey.apiKey, params.agentDir);
+        hasCredential = true;
+      }
+    }
+    if (!hasCredential) {
+      const key = await params.prompter.text({
+        message: "Enter NEAR AI API key",
+        validate: validateApiKeyInput,
+      });
+      await setNearAiApiKey(normalizeApiKeyInput(String(key ?? "")), params.agentDir);
+    }
+    nextConfig = applyAuthProfileConfig(nextConfig, {
+      profileId: "nearai:default",
+      provider: "nearai",
+      mode: "api_key",
+    });
+    {
+      const applied = await applyDefaultModelChoice({
+        config: nextConfig,
+        setDefaultModel: params.setDefaultModel,
+        defaultModel: NEARAI_DEFAULT_MODEL_REF,
+        applyDefaultConfig: applyNearAiConfig,
+        applyProviderConfig: applyNearAiProviderConfig,
+        noteDefault: NEARAI_DEFAULT_MODEL_REF,
         noteAgentModel,
         prompter: params.prompter,
       });

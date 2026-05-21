@@ -79,7 +79,7 @@ If you prefer to configure everything by hand instead of using the wizard:
 ```bash
 cp .env.example .env
 # Edit .env with your Anthropic API key (ANTHROPIC_API_KEY)
-# and optionally: TAVILY_API_KEY, BRAVE_API_KEY, OPENAI_API_KEY
+# and optionally: TAVILY_API_KEY, BRAVE_API_KEY, OPENAI_API_KEY, NEARAI_API_KEY
 ```
 
 Then run `pnpm bitterbot configure` to set gateway port/bind/auth, channels, and other options interactively. Or edit `~/.bitterbot/bitterbot.json` directly.

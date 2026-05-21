@@ -146,6 +146,12 @@ const AUTH_CHOICE_GROUP_DEFS: {
     choices: ["venice-api-key"],
   },
   {
+    value: "nearai",
+    label: "NEAR AI Cloud",
+    hint: "TEE inference, OpenAI-compatible",
+    choices: ["nearai-api-key"],
+  },
+  {
     value: "litellm",
     label: "LiteLLM",
     hint: "Unified LLM gateway (100+ providers)",
@@ -219,6 +225,11 @@ const BASE_AUTH_CHOICE_OPTIONS: ReadonlyArray<AuthChoiceOption> = [
     value: "venice-api-key",
     label: "Venice AI API key",
     hint: "Privacy-focused inference (uncensored models)",
+  },
+  {
+    value: "nearai-api-key",
+    label: "NEAR AI API key",
+    hint: "TEE inference via OpenAI-compatible chat",
   },
   {
     value: "together-api-key",

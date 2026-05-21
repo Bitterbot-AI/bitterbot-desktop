@@ -166,6 +166,10 @@ What you set:
     Prompts for `SYNTHETIC_API_KEY`.
     More detail: [Synthetic](/providers/synthetic).
   </Accordion>
+  <Accordion title="NEAR AI Cloud">
+    Prompts for `NEARAI_API_KEY` and configures `nearai/zai-org/GLM-5.1-FP8`.
+    More detail: [NEAR AI Cloud](/providers/nearai).
+  </Accordion>
   <Accordion title="Moonshot and Kimi Coding">
     Moonshot (Kimi K2) and Kimi Coding configs are auto-written.
     More detail: [Moonshot AI (Kimi + Kimi Coding)](/providers/moonshot).

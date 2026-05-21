@@ -2,6 +2,7 @@ export {
   SYNTHETIC_DEFAULT_MODEL_ID,
   SYNTHETIC_DEFAULT_MODEL_REF,
 } from "../agents/synthetic-models.js";
+export { NEARAI_DEFAULT_MODEL_ID, NEARAI_DEFAULT_MODEL_REF } from "../agents/nearai-models.js";
 export { VENICE_DEFAULT_MODEL_ID, VENICE_DEFAULT_MODEL_REF } from "../agents/venice-models.js";
 export {
   applyAuthProfileConfig,
@@ -19,6 +20,8 @@ export {
   applyMoonshotConfigCn,
   applyMoonshotProviderConfig,
   applyMoonshotProviderConfigCn,
+  applyNearAiConfig,
+  applyNearAiProviderConfig,
   applyOpenrouterConfig,
   applyOpenrouterProviderConfig,
   applySyntheticConfig,
@@ -63,6 +66,7 @@ export {
   setKimiCodingApiKey,
   setMinimaxApiKey,
   setMoonshotApiKey,
+  setNearAiApiKey,
   setOpencodeZenApiKey,
   setOpenrouterApiKey,
   setSyntheticApiKey,

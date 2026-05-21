@@ -96,6 +96,16 @@ Add `--json` for a machine-readable summary.
       --gateway-bind loopback
     ```
   </Accordion>
+  <Accordion title="NEAR AI Cloud example">
+    ```bash
+    bitterbot onboard --non-interactive \
+      --mode local \
+      --auth-choice nearai-api-key \
+      --nearai-api-key "$NEARAI_API_KEY" \
+      --gateway-port 19001 \
+      --gateway-bind loopback
+    ```
+  </Accordion>
   <Accordion title="OpenCode Zen example">
     ```bash
     bitterbot onboard --non-interactive \

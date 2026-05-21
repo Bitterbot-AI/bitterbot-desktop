@@ -12,6 +12,12 @@ import {
   XIAOMI_DEFAULT_MODEL_ID,
 } from "../agents/models-config.providers.js";
 import {
+  buildNearAiModelDefinition,
+  NEARAI_BASE_URL,
+  NEARAI_DEFAULT_MODEL_REF,
+  NEARAI_MODEL_CATALOG,
+} from "../agents/nearai-models.js";
+import {
   buildSyntheticModelDefinition,
   SYNTHETIC_BASE_URL,
   SYNTHETIC_DEFAULT_MODEL_REF,
@@ -316,6 +322,34 @@ export function applyVeniceProviderConfig(cfg: BitterbotConfig): BitterbotConfig
 export function applyVeniceConfig(cfg: BitterbotConfig): BitterbotConfig {
   const next = applyVeniceProviderConfig(cfg);
   return applyAgentDefaultModelPrimary(next, VENICE_DEFAULT_MODEL_REF);
+}
+
+/**
+ * Apply NEAR AI Cloud provider configuration without changing the default model.
+ */
+export function applyNearAiProviderConfig(cfg: BitterbotConfig): BitterbotConfig {
+  const models = { ...cfg.agents?.defaults?.models };
+  models[NEARAI_DEFAULT_MODEL_REF] = {
+    ...models[NEARAI_DEFAULT_MODEL_REF],
+    alias: models[NEARAI_DEFAULT_MODEL_REF]?.alias ?? "NEAR AI GLM 5.1",
+  };
+
+  const nearAiModels = NEARAI_MODEL_CATALOG.map(buildNearAiModelDefinition);
+  return applyProviderConfigWithModelCatalog(cfg, {
+    agentModels: models,
+    providerId: "nearai",
+    api: "openai-completions",
+    baseUrl: NEARAI_BASE_URL,
+    catalogModels: nearAiModels,
+  });
+}
+
+/**
+ * Apply NEAR AI Cloud provider configuration AND set it as the default model.
+ */
+export function applyNearAiConfig(cfg: BitterbotConfig): BitterbotConfig {
+  const next = applyNearAiProviderConfig(cfg);
+  return applyAgentDefaultModelPrimary(next, NEARAI_DEFAULT_MODEL_REF);
 }
 
 /**

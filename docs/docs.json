@@ -96,6 +96,10 @@
       "destination": "/providers/openrouter"
     },
     {
+      "source": "/nearai",
+      "destination": "/providers/nearai"
+    },
+    {
       "source": "/opencode",
       "destination": "/providers/opencode"
     },
@@ -894,6 +898,7 @@
                   "providers/anthropic",
                   "providers/openai",
                   "providers/openrouter",
+                  "providers/nearai",
                   "providers/litellm",
                   "providers/bedrock",
                   "providers/vercel-ai-gateway",

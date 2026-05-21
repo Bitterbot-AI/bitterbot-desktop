@@ -370,6 +370,7 @@ setup_workspace() {
 # Model Providers
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
+NEARAI_API_KEY=
 
 # Web Search (powers web_search tool)
 BRAVE_API_KEY=

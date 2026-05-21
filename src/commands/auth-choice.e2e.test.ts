@@ -50,6 +50,7 @@ describe("applyAuthChoice", () => {
     "LITELLM_API_KEY",
     "AI_GATEWAY_API_KEY",
     "CLOUDFLARE_AI_GATEWAY_API_KEY",
+    "NEARAI_API_KEY",
     "SSH_TTY",
     "CHUTES_CLIENT_ID",
   ]);
@@ -262,6 +263,61 @@ describe("applyAuthChoice", () => {
       profiles?: Record<string, { key?: string }>;
     };
     expect(parsed.profiles?.["synthetic:default"]?.key).toBe("sk-synthetic-test");
+  });
+
+  it("prompts and writes NEAR AI API key when selecting nearai-api-key", async () => {
+    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-auth-"));
+    process.env.BITTERBOT_STATE_DIR = tempStateDir;
+    process.env.BITTERBOT_AGENT_DIR = path.join(tempStateDir, "agent");
+    process.env.PI_CODING_AGENT_DIR = process.env.BITTERBOT_AGENT_DIR;
+
+    const text = vi.fn().mockResolvedValue("nearai-test-key");
+    const select: WizardPrompter["select"] = vi.fn(
+      async (params) => params.options[0]?.value as never,
+    );
+    const multiselect: WizardPrompter["multiselect"] = vi.fn(async () => []);
+    const prompter: WizardPrompter = {
+      intro: vi.fn(noopAsync),
+      outro: vi.fn(noopAsync),
+      note: vi.fn(noopAsync),
+      select,
+      multiselect,
+      text,
+      confirm: vi.fn(async () => false),
+      progress: vi.fn(() => ({ update: noop, stop: noop })),
+    };
+    const runtime: RuntimeEnv = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn((code: number) => {
+        throw new Error(`exit:${code}`);
+      }),
+    };
+
+    const result = await applyAuthChoice({
+      authChoice: "nearai-api-key",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: true,
+    });
+
+    expect(text).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Enter NEAR AI API key" }),
+    );
+    expect(result.config.auth?.profiles?.["nearai:default"]).toMatchObject({
+      provider: "nearai",
+      mode: "api_key",
+    });
+    expect(result.config.models?.providers?.nearai?.baseUrl).toBe("https://cloud-api.near.ai/v1");
+    expect(result.config.agents?.defaults?.model?.primary).toBe("nearai/zai-org/GLM-5.1-FP8");
+
+    const authProfilePath = authProfilePathFor(requireAgentDir());
+    const raw = await fs.readFile(authProfilePath, "utf8");
+    const parsed = JSON.parse(raw) as {
+      profiles?: Record<string, { key?: string }>;
+    };
+    expect(parsed.profiles?.["nearai:default"]?.key).toBe("nearai-test-key");
   });
 
   it("prompts and writes Hugging Face API key when selecting huggingface-api-key", async () => {
@@ -625,7 +681,7 @@ describe("applyAuthChoice", () => {
     );
     expect(result.config.agents?.defaults?.model?.primary).toBe("anthropic/claude-opus-4-5");
     expect(result.config.models?.providers?.["opencode-zen"]).toBeUndefined();
-    expect(result.agentModelOverride).toBe("opencode/claude-opus-4-6");
+    expect(result.agentModelOverride).toBe("opencode/claude-opus-4-7");
   });
 
   it("does not persist literal 'undefined' when Anthropic API key prompt returns undefined", async () => {
@@ -925,7 +981,7 @@ describe("applyAuthChoice", () => {
       mode: "api_key",
     });
     expect(result.config.agents?.defaults?.model?.primary).toBe(
-      "vercel-ai-gateway/anthropic/claude-opus-4.6",
+      "vercel-ai-gateway/anthropic/claude-opus-4.7",
     );
 
     const authProfilePath = authProfilePathFor(requireAgentDir());
@@ -1305,6 +1361,10 @@ describe("resolvePreferredProviderForAuthChoice", () => {
 
   it("maps qwen-portal to the provider", () => {
     expect(resolvePreferredProviderForAuthChoice("qwen-portal")).toBe("qwen-portal");
+  });
+
+  it("maps nearai-api-key to the provider", () => {
+    expect(resolvePreferredProviderForAuthChoice("nearai-api-key")).toBe("nearai");
   });
 
   it("returns undefined for unknown choices", () => {

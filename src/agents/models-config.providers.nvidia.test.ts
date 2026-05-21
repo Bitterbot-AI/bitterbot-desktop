@@ -74,6 +74,25 @@ describe("MiniMax implicit provider (#15275)", () => {
   });
 });
 
+describe("NEAR AI provider", () => {
+  it("should include nearai when NEARAI_API_KEY is configured", async () => {
+    const agentDir = mkdtempSync(join(tmpdir(), "bitterbot-test-"));
+    const envSnapshot = captureEnv(["NEARAI_API_KEY"]);
+    process.env.NEARAI_API_KEY = "nearai-test-key";
+
+    try {
+      const providers = await resolveImplicitProviders({ agentDir });
+      expect(providers?.nearai).toBeDefined();
+      expect(providers?.nearai?.apiKey).toBe("NEARAI_API_KEY");
+      expect(providers?.nearai?.baseUrl).toBe("https://cloud-api.near.ai/v1");
+      expect(providers?.nearai?.api).toBe("openai-completions");
+      expect(providers?.nearai?.models?.map((model) => model.id)).toContain("zai-org/GLM-5.1-FP8");
+    } finally {
+      envSnapshot.restore();
+    }
+  });
+});
+
 describe("vLLM provider", () => {
   it("should not include vllm when no API key is configured", async () => {
     const agentDir = mkdtempSync(join(tmpdir(), "bitterbot-test-"));
