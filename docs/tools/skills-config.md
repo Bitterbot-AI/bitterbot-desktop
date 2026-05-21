@@ -67,7 +67,7 @@ Per-skill fields:
 ### agentskills.io import (`skills.agentskills.*`)
 
 Opt-in bridge to the [agentskills.io](https://agentskills.io) community registry.
-Disabled by default; see [Skills → Importing from agentskills.io](/tools/skills#importing-from-agentskillsio) for usage.
+Disabled by default; see [Skills → Importing from agentskills.io](/tools/skills#importing-from-agentskills-io) for usage.
 
 ```json5
 {

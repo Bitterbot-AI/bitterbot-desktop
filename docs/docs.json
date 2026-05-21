@@ -48,6 +48,86 @@
   },
   "redirects": [
     {
+      "source": "/concepts/sessions",
+      "destination": "/concepts/session"
+    },
+    {
+      "source": "/date-time",
+      "destination": "/reference/date-time"
+    },
+    {
+      "source": "/nodes",
+      "destination": "/cli/nodes"
+    },
+    {
+      "source": "/nodes/:slug*",
+      "destination": "/cli/nodes"
+    },
+    {
+      "source": "/install",
+      "destination": "/start/getting-started"
+    },
+    {
+      "source": "/install/:slug*",
+      "destination": "/start/getting-started"
+    },
+    {
+      "source": "/help/faq",
+      "destination": "/help"
+    },
+    {
+      "source": "/help/testing",
+      "destination": "/reference/test"
+    },
+    {
+      "source": "/help/troubleshooting",
+      "destination": "/gateway/troubleshooting"
+    },
+    {
+      "source": "/tools/wallet",
+      "destination": "/wallet"
+    },
+    {
+      "source": "/channels/imessage",
+      "destination": "/channels"
+    },
+    {
+      "source": "/channels/mattermost",
+      "destination": "/channels"
+    },
+    {
+      "source": "/plugins/voice-call",
+      "destination": "/plugins"
+    },
+    {
+      "source": "/providers/litellm",
+      "destination": "/providers"
+    },
+    {
+      "source": "/start/bitterbot",
+      "destination": "/start"
+    },
+    {
+      "source": "/security/formal-verification",
+      "destination": "/gateway/security"
+    },
+    {
+      "source": "/security/formal-verification/",
+      "destination": "/gateway/security"
+    },
+    {
+      "source": "/tts",
+      "destination": "/tools"
+    },
+    {
+      "source": "/brave-search",
+      "destination": "/tools/web"
+    },
+    {
+      "source": "/perplexity",
+      "destination": "/tools/web"
+    },
+    {
       "source": "/messages",
       "destination": "/concepts/messages"
     },

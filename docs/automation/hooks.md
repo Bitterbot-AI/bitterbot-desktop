@@ -927,4 +927,4 @@ node -e "import('./path/to/handler.ts').then(console.log)"
 - [CLI Reference: hooks](/cli/hooks)
 - [Bundled Hooks README](https://github.com/bitterbot/bitterbot/tree/main/src/hooks/bundled)
 - [Webhook Hooks](/automation/webhook)
-- [Configuration](/gateway/configuration#hooks)
+- [Configuration](/gateway/configuration)

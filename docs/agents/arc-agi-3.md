@@ -103,7 +103,7 @@ The Bitterbot agent targets the **Verified Testing track** primarily. Opus 4.7 i
 
 Prereqs:
 
-- `ARC_API_KEY` from https://arcprize.org/platform (Google or GitHub login).
+- `ARC_API_KEY` from <https://arcprize.org/platform> (Google or GitHub login).
 - `ANTHROPIC_API_KEY` for Claude Code SDK.
 - `OPENAI_API_KEY` for embeddings inside the MCP server (SAGE retrieval).
 

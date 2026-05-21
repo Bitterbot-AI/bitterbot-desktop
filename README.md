@@ -343,9 +343,9 @@ Bitterbot connects to real messaging surfaces. Inbound DMs are treated as **untr
 - **Memory governance** — Sensitivity tagging, TTL enforcement, audit trails, anti-catastrophic forgetting safeguards.
 - **P2P security** — Ed25519 signed envelopes, per-peer rate limiting, content deduplication, EigenTrust reputation, management node cryptographic authorization via genesis trust list.
 
-Run `bitterbot doctor` to surface risky configurations. [Security guide →](docs/security/)
+Run `bitterbot doctor` to surface risky configurations. [Security guide →](docs/gateway/security/)
 
-To report a vulnerability, email **security@bitterbot.net**.
+To report a vulnerability, email **[security@bitterbot.net](mailto:security@bitterbot.net)**.
 
 ---
 
@@ -371,7 +371,7 @@ Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic fai
 | Channels         | [Per-Channel Setup Guides](docs/channels/)                                    |
 | Wallet & Economy | [Agent Wallet](docs/wallet/) · [Skill Marketplace](docs/marketplace/)         |
 | A2A Protocol     | [Agent Interoperability Spec](docs/marketplace/a2a-integration.md)            |
-| Security         | [DM Policies, Sandboxing, Tailscale](docs/security/)                          |
+| Security         | [DM Policies, Sandboxing, Tailscale](docs/gateway/security/)                  |
 | Troubleshooting  | [Common Issues + `bitterbot doctor`](docs/channels/troubleshooting.md)        |
 
 ---

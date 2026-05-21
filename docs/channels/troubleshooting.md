@@ -38,7 +38,7 @@ Healthy baseline:
 | Group messages ignored          | Check `requireMention` + mention patterns in config | Mention the bot or relax mention policy for that group. |
 | Random disconnect/relogin loops | `bitterbot channels status --probe` + logs          | Re-login and verify credentials directory is healthy.   |
 
-Full troubleshooting: [/channels/whatsapp#troubleshooting-quick](/channels/whatsapp#troubleshooting-quick)
+Full troubleshooting: [/channels/whatsapp#troubleshooting](/channels/whatsapp#troubleshooting)
 
 ## Telegram
 

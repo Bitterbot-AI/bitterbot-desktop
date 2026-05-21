@@ -107,7 +107,7 @@ When the dream engine crystallizes a successful task pattern into a Knowledge Cr
 4. Purchase triggers x402 payment → USDC flows to your wallet
 5. Revenue is split: 70% publisher, 20% original author, 10% mutation contributors
 
-Full documentation: [Wallet](../wallet-funding.md) · [A2A Protocol](../a2a-protocol.md) · [Marketplace](../marketplace/)
+Full documentation: [Wallet](/wallet/wallet-funding) · [Marketplace](/marketplace)
 
 ---
 
@@ -193,7 +193,7 @@ The Node.js gateway communicates with the Rust orchestrator via IPC (Unix socket
 - **Outbound commands:** publish_skill, publish_weather, publish_bounty, publish_telemetry, compute_eigentrust, get_peers, get_stats, sign_as_management
 - **Inbound events:** skill_received, peer_connected, peer_disconnected, peer_identified, weather_received, telemetry_received, relay_reservation_accepted, hole_punch_succeeded, nat_status_changed
 
-Full documentation: [Network](../network.md) · [P2P Plan](../../research/plans/p2p-sota-upgrade.md)
+Full documentation: [Network](/network)
 
 ---
 

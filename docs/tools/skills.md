@@ -180,7 +180,7 @@ Fields under `metadata.bitterbot`:
 - `requires.config` — list of `bitterbot.json` paths that must be truthy.
 - `primaryEnv` — env var name associated with `skills.entries.<name>.apiKey`.
 - `install` — optional array of installer specs used by the Skills UI (brew/node/go/uv/download).
-- `origin` — provenance for imported/derived skills (see [Importing from agentskills.io](#importing-from-agentskillsio)).
+- `origin` — provenance for imported/derived skills (see [Importing from agentskills.io](#importing-from-agentskills-io)).
 
 Note on sandboxing:
 

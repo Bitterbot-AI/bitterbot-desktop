@@ -138,7 +138,7 @@ Once verified, the bot can decrypt messages in encrypted rooms.
 
 ## Multi-account
 
-Multi-account support: use `channels.matrix.accounts` with per-account credentials and optional `name`. See [`gateway/configuration`](/gateway/configuration#telegramaccounts--discordaccounts--slackaccounts--signalaccounts--imessageaccounts) for the shared pattern.
+Multi-account support: use `channels.matrix.accounts` with per-account credentials and optional `name`. See [`gateway/configuration`](/gateway/configuration) for the shared pattern.
 
 Each account runs as a separate Matrix user on any homeserver. Per-account config
 inherits from the top-level `channels.matrix` settings and can override any option

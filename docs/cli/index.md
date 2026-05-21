@@ -446,7 +446,7 @@ Options:
 - `--json`: output JSON (no styling).
 - `-v`, `--verbose`: include missing requirements detail.
 
-See [Skills → Importing from agentskills.io](/tools/skills#importing-from-agentskillsio) for the import flow and [Skills config](/tools/skills-config) for the `skills.agentskills.*` settings.
+See [Skills → Importing from agentskills.io](/tools/skills#importing-from-agentskills-io) for the import flow and [Skills config](/tools/skills-config) for the `skills.agentskills.*` settings.
 
 ### `pairing`
 

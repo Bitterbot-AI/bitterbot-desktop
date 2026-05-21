@@ -8,6 +8,21 @@
     "MD025": false,
     "MD029": false,
 
+    // MD051 (link-fragments) disabled here. markdownlint's slugify
+    // strips `.` from headings (e.g. `agentskills.io` → `agentskillsio`)
+    // whereas Mintlify's runtime uses github-slugger semantics where
+    // `.` becomes `-` (`agentskills-io`). They disagree.
+    // Our scripts/docs-link-audit.mjs runs the github-slugger
+    // algorithm and checks fragments end-to-end including cross-file,
+    // so MD051 here would just generate false positives.
+    "MD051": false,
+
+    // MD024 in siblings_only mode: identical heading text under
+    // different parent sections is fine (design docs like
+    // plan9-memory-supremacy.md legitimately re-use "Scientific
+    // Basis" / "How It Works" across each section).
+    "MD024": { "siblings_only": true },
+
     "MD033": {
       "allowed_elements": [
         "Note",

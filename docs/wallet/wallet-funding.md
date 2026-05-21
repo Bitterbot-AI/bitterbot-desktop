@@ -150,11 +150,12 @@ Creates a Stripe Crypto Onramp session and returns the credentials needed to ren
 ```
 
 **Errors:**
-| Status | Meaning |
-|--------|---------|
-| 400 | Invalid wallet address or network |
-| 429 | Rate limited |
-| 503 | Stripe unavailable |
+
+| Status | Meaning                           |
+| ------ | --------------------------------- |
+| 400    | Invalid wallet address or network |
+| 429    | Rate limited                      |
+| 503    | Stripe unavailable                |
 
 ### Rate Limiting
 
@@ -256,7 +257,7 @@ Spending is governed by per-transaction caps, per-request caps, and session spen
 
 ## Related
 
-- [Wallet Tool Reference](./tools/wallet.md) — Agent-facing wallet capabilities
+- [Wallet Tool Reference](/tools/wallet) — Agent-facing wallet capabilities
 - [x402 Protocol](https://www.x402.org/) — HTTP-native micropayment standard
 - [Stripe Crypto Onramp Docs](https://docs.stripe.com/crypto/onramp) — Stripe's official documentation
 - [Coinbase AgentKit](https://docs.cdp.coinbase.com/agentkit/docs/welcome) — Wallet infrastructure

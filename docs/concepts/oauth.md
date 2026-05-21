@@ -47,7 +47,7 @@ Legacy import-only file (still supported, but not the main store):
 
 - `~/.bitterbot/credentials/oauth.json` (imported into `auth-profiles.json` on first use)
 
-All of the above also respect `$BITTERBOT_STATE_DIR` (state dir override). Full reference: [/gateway/configuration](/gateway/configuration#auth-storage-oauth--api-keys)
+All of the above also respect `$BITTERBOT_STATE_DIR` (state dir override). Full reference: [/gateway/configuration](/gateway/configuration)
 
 ## Anthropic setup-token (subscription auth)
 

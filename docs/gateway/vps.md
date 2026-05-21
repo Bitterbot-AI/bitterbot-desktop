@@ -13,12 +13,12 @@ deployments work at a high level.
 
 ## Pick a provider
 
-- **Railway** (one‑click + browser setup): [Railway](/install/railway)
-- **Northflank** (one‑click + browser setup): [Northflank](/install/northflank)
-- **Fly.io**: [Fly.io](/install/fly)
-- **Hetzner (Docker)**: [Hetzner](/install/hetzner)
-- **GCP (Compute Engine)**: [GCP](/install/gcp)
-- **exe.dev** (VM + HTTPS proxy): [exe.dev](/install/exe-dev)
+- **Railway** (one‑click + browser setup)
+- **Northflank** (one‑click + browser setup)
+- **Fly.io**
+- **Hetzner (Docker)**
+- **GCP (Compute Engine)**
+- **exe.dev** (VM + HTTPS proxy)
 - **AWS (EC2/Lightsail/free tier)**: works well too. Video guide:
   [https://x.com/techfrenAJ/status/2014934471095812547](https://x.com/techfrenAJ/status/2014934471095812547)
 

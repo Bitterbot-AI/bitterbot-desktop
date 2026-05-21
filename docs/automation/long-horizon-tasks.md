@@ -250,7 +250,5 @@ header for the policy boundary.
 | `src/agents/tools/task-tool.ts` | All `task_*` agent tools                                                          |
 | `src/cron/active.ts`            | Lean cron-engine registry (refactored out of `runtime.ts` for clean test imports) |
 
-See [research/plans/PLAN-16-LONG-HORIZON-TASK-EXECUTION.md][plan] for
-the design rationale.
-
-[plan]: /research/plans/PLAN-16-LONG-HORIZON-TASK-EXECUTION
+See `research/plans/PLAN-16-LONG-HORIZON-TASK-EXECUTION.md` in the
+repository for the design rationale.

@@ -18,16 +18,12 @@ For a complete map of the docs, see [Docs hubs](/start/hubs).
 - [Configuration examples](/gateway/configuration-examples)
 - [Slash commands](/tools/slash-commands)
 - [Multi-agent routing](/concepts/multi-agent)
-- [Updating and rollback](/install/updating)
 - [Pairing (DM and nodes)](/channels/pairing)
-- [Nix mode](/install/nix)
-- [Bitterbot assistant setup](/start/bitterbot)
 - [Skills](/tools/skills)
 - [Skills config](/tools/skills-config)
-- [Workspace templates](/reference/templates/AGENTS)
 - [RPC adapters](/reference/rpc)
 - [Gateway runbook](/gateway)
-- [Nodes](/nodes)
+- [Nodes](/cli/nodes)
 - [Web surfaces (Control UI)](/web)
 - [Discovery and transports](/gateway/discovery)
 - [Remote access](/gateway/remote)
@@ -40,8 +36,6 @@ For a complete map of the docs, see [Docs hubs](/start/hubs).
 - [Discord](/channels/discord)
 - [Groups](/channels/groups)
 - [WhatsApp group messages](/channels/group-messages)
-- [Media images](/nodes/images)
-- [Media audio](/nodes/audio)
 
 ## Platforms
 

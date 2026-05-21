@@ -26,21 +26,11 @@ Use these hubs to discover every page, including deep dives and reference docs t
 - [Docs directory](/start/docs-directory)
 - [Configuration](/gateway/configuration)
 - [Configuration examples](/gateway/configuration-examples)
-- [Bitterbot assistant](/start/bitterbot)
 - [Showcase](/start/showcase)
-- [Lore](/start/lore)
-
-## Installation + updates
-
-- [Docker](/install/docker)
-- [Nix](/install/nix)
-- [Updating / rollback](/install/updating)
-- [Bun workflow (experimental)](/install/bun)
 
 ## Core concepts
 
 - [Architecture](/concepts/architecture)
-- [Features](/concepts/features)
 - [Network hub](/network)
 - [Agent runtime](/concepts/agent)
 - [Agent workspace](/concepts/agent-workspace)
@@ -50,7 +40,6 @@ Use these hubs to discover every page, including deep dives and reference docs t
 - [Multi-agent routing](/concepts/multi-agent)
 - [Compaction](/concepts/compaction)
 - [Sessions](/concepts/session)
-- [Sessions (alias)](/concepts/sessions)
 - [Session pruning](/concepts/session-pruning)
 - [Session tools](/concepts/session-tool)
 - [Queue](/concepts/queue)
@@ -120,13 +109,7 @@ Use these hubs to discover every page, including deep dives and reference docs t
 
 ## Nodes, media, voice
 
-- [Nodes overview](/nodes)
-- [Camera](/nodes/camera)
-- [Images](/nodes/images)
-- [Audio](/nodes/audio)
-- [Location command](/nodes/location-command)
-- [Voice wake](/nodes/voicewake)
-- [Talk mode](/nodes/talk)
+- [Nodes overview](/cli/nodes)
 
 ## Platforms
 
@@ -139,26 +122,9 @@ Use these hubs to discover every page, including deep dives and reference docs t
 
 - [Skills](/tools/skills)
 - [Skills config](/tools/skills-config)
-- [Default AGENTS](/reference/AGENTS.default)
-- [Templates: AGENTS](/reference/templates/AGENTS)
 - [Templates: BOOTSTRAP](/reference/templates/BOOTSTRAP)
 - [Templates: HEARTBEAT](/reference/templates/HEARTBEAT)
-- [Templates: IDENTITY](/reference/templates/IDENTITY)
-- [Templates: SOUL](/reference/templates/SOUL)
 - [Templates: TOOLS](/reference/templates/TOOLS)
-- [Templates: USER](/reference/templates/USER)
-
-## Experiments (exploratory)
-
-- [Onboarding config protocol](/experiments/onboarding-config-protocol)
-- [Cron hardening notes](/experiments/plans/cron-add-hardening)
-- [Group policy hardening notes](/experiments/plans/group-policy-hardening)
-- [Research: memory](/experiments/research/memory)
-- [Model config exploration](/experiments/proposals/model-config)
-
-## Project
-
-- [Credits](/reference/credits)
 
 ## Testing + release
 

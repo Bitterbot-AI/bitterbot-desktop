@@ -194,6 +194,6 @@ See [Multi-Agent Sandbox & Tools](/tools/multi-agent-sandbox-tools) for preceden
 
 ## Related docs
 
-- [Sandbox Configuration](/gateway/configuration#agentsdefaults-sandbox)
+- [Sandbox Configuration](/gateway/configuration-reference#agents-defaults-sandbox)
 - [Multi-Agent Sandbox & Tools](/tools/multi-agent-sandbox-tools)
 - [Security](/gateway/security)

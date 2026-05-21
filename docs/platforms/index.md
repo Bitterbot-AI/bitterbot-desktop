@@ -21,11 +21,11 @@ Linux and Windows are fully supported today.
 
 ## VPS & hosting
 
-- VPS hub: [VPS hosting](/vps)
-- Fly.io: [Fly.io](/install/fly)
-- Hetzner (Docker): [Hetzner](/install/hetzner)
-- GCP (Compute Engine): [GCP](/install/gcp)
-- exe.dev (VM + HTTPS proxy): [exe.dev](/install/exe-dev)
+- VPS hub: [VPS hosting](/gateway/vps)
+- Fly.io
+- Hetzner (Docker)
+- GCP (Compute Engine)
+- exe.dev (VM + HTTPS proxy)
 
 ## Common links
 

@@ -148,8 +148,8 @@ Current emotional state biases which memories are recalled. Happy people recall 
 
 Applied in the search pipeline after RRF fusion, before final ranking:
 
-| Hormone        | Threshold                                | Boosts                                | Mechanism |
-| -------------- | ---------------------------------------- | ------------------------------------- | --------- |
+| Hormone        | Threshold                                | Boost weight                          |
+| -------------- | ---------------------------------------- | ------------------------------------- |
 | Dopamine > 0.4 | Positive-valence memories                | `dopamineWeight * valence * dopamine` |
 | Cortisol > 0.4 | Task/goal/directive/skill memories       | `cortisolWeight * cortisol`           |
 | Oxytocin > 0.4 | Relationship/preference/episode memories | `oxytocinWeight * oxytocin`           |

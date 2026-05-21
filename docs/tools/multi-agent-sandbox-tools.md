@@ -393,5 +393,5 @@ After configuring multi-agent sandbox and tools:
 ## See Also
 
 - [Multi-Agent Routing](/concepts/multi-agent)
-- [Sandbox Configuration](/gateway/configuration#agentsdefaults-sandbox)
+- [Sandbox Configuration](/gateway/configuration-reference#agents-defaults-sandbox)
 - [Session Management](/concepts/session)
