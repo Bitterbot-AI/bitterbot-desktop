@@ -71,3 +71,6 @@ jobs:
 
       - name: Format check
         run: pnpm format:check
+
+      - name: Docs check (format + markdownlint + link audit)
+        run: pnpm check:docs
