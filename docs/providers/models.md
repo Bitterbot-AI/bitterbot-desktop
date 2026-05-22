@@ -44,6 +44,7 @@ See [Venice AI](/providers/venice).
 - [Z.AI](/providers/zai)
 - [GLM models](/providers/glm)
 - [MiniMax](/providers/minimax)
+- [NEAR AI Cloud](/providers/nearai)
 - [Venice (Venice AI)](/providers/venice)
 - [Amazon Bedrock](/providers/bedrock)
 - [Qianfan](/providers/qianfan)

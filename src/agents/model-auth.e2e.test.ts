@@ -215,6 +215,27 @@ describe("getApiKeyForModel", () => {
     }
   });
 
+  it("resolves NEAR AI API key from env", async () => {
+    const previous = process.env.NEARAI_API_KEY;
+
+    try {
+      process.env.NEARAI_API_KEY = "nearai-test-key";
+
+      const resolved = await resolveApiKeyForProvider({
+        provider: "nearai",
+        store: { version: 1, profiles: {} },
+      });
+      expect(resolved.apiKey).toBe("nearai-test-key");
+      expect(resolved.source).toContain("NEARAI_API_KEY");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.NEARAI_API_KEY;
+      } else {
+        process.env.NEARAI_API_KEY = previous;
+      }
+    }
+  });
+
   it("resolves Qianfan API key from env", async () => {
     const previous = process.env.QIANFAN_API_KEY;
 

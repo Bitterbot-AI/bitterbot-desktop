@@ -119,6 +119,7 @@ Bitterbot ships with the pi‑ai catalog. These providers require **no**
   - GLM models on Cerebras use ids `zai-glm-4.7` and `zai-glm-4.6`.
   - OpenAI-compatible base URL: `https://api.cerebras.ai/v1`.
 - Mistral: `mistral` (`MISTRAL_API_KEY`)
+- NEAR AI Cloud: `nearai` (`NEARAI_API_KEY`) - OpenAI-compatible TEE inference; example model: `nearai/zai-org/GLM-5.1-FP8`; CLI: `bitterbot onboard --auth-choice nearai-api-key`. See [NEAR AI Cloud](/providers/nearai).
 - GitHub Copilot: `github-copilot` (`COPILOT_GITHUB_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN`)
 - Hugging Face Inference: `huggingface` (`HUGGINGFACE_HUB_TOKEN` or `HF_TOKEN`) — OpenAI-compatible router; example model: `huggingface/deepseek-ai/DeepSeek-R1`; CLI: `bitterbot onboard --auth-choice huggingface-api-key`. See [Hugging Face (Inference)](/providers/huggingface).
 

@@ -41,4 +41,22 @@ describe("normalizeModelCompat", () => {
     const normalized = normalizeModelCompat(model);
     expect(normalized.compat?.supportsDeveloperRole).toBe(false);
   });
+
+  it("applies NEAR AI Cloud OpenAI-compatible overrides", () => {
+    const model = {
+      ...baseModel(),
+      provider: "nearai",
+      baseUrl: "https://cloud-api.near.ai/v1",
+      compat: { supportsUsageInStreaming: false },
+    };
+    const normalized = normalizeModelCompat(model);
+    expect(normalized.compat).toMatchObject({
+      supportsStore: false,
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: false,
+      supportsStrictMode: false,
+      supportsUsageInStreaming: false,
+      maxTokensField: "max_tokens",
+    });
+  });
 });

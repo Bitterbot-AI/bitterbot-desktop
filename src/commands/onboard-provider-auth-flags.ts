@@ -15,6 +15,7 @@ type OnboardProviderAuthOptionKey = keyof Pick<
   | "minimaxApiKey"
   | "syntheticApiKey"
   | "veniceApiKey"
+  | "nearaiApiKey"
   | "togetherApiKey"
   | "huggingfaceApiKey"
   | "opencodeZenApiKey"
@@ -123,6 +124,13 @@ export const ONBOARD_PROVIDER_AUTH_FLAGS: ReadonlyArray<OnboardProviderAuthFlag>
     cliFlag: "--venice-api-key",
     cliOption: "--venice-api-key <key>",
     description: "Venice API key",
+  },
+  {
+    optionKey: "nearaiApiKey",
+    authChoice: "nearai-api-key",
+    cliFlag: "--nearai-api-key",
+    cliOption: "--nearai-api-key <key>",
+    description: "NEAR AI API key",
   },
   {
     optionKey: "togetherApiKey",

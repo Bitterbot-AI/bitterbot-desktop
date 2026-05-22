@@ -110,6 +110,16 @@ describe("buildAuthChoiceOptions", () => {
     expect(options.some((opt) => opt.value === "synthetic-api-key")).toBe(true);
   });
 
+  it("includes NEAR AI Cloud auth choice", () => {
+    const store: AuthProfileStore = { version: 1, profiles: {} };
+    const options = buildAuthChoiceOptions({
+      store,
+      includeSkip: false,
+    });
+
+    expect(options.some((opt) => opt.value === "nearai-api-key")).toBe(true);
+  });
+
   it("includes Chutes OAuth auth choice", () => {
     const store: AuthProfileStore = { version: 1, profiles: {} };
     const options = buildAuthChoiceOptions({
@@ -188,5 +198,17 @@ describe("buildAuthChoiceOptions", () => {
 
     expect(chutesGroup).toBeDefined();
     expect(chutesGroup?.options.some((opt) => opt.value === "chutes")).toBe(true);
+  });
+
+  it("shows NEAR AI Cloud in grouped provider selection", () => {
+    const store: AuthProfileStore = { version: 1, profiles: {} };
+    const { groups } = buildAuthChoiceGroups({
+      store,
+      includeSkip: false,
+    });
+    const nearAiGroup = groups.find((group) => group.value === "nearai");
+
+    expect(nearAiGroup).toBeDefined();
+    expect(nearAiGroup?.options.some((opt) => opt.value === "nearai-api-key")).toBe(true);
   });
 });

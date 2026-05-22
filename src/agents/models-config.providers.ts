@@ -17,6 +17,7 @@ import {
   buildHuggingfaceModelDefinition,
 } from "./huggingface-models.js";
 import { resolveAwsSdkEnvVarName, resolveEnvApiKey } from "./model-auth.js";
+import { discoverNearAiModels, NEARAI_BASE_URL } from "./nearai-models.js";
 import { OLLAMA_NATIVE_BASE_URL } from "./ollama-stream.js";
 import {
   buildSyntheticModelDefinition,
@@ -545,6 +546,15 @@ async function buildVeniceProvider(): Promise<ProviderConfig> {
   };
 }
 
+async function buildNearAiProvider(): Promise<ProviderConfig> {
+  const models = await discoverNearAiModels();
+  return {
+    baseUrl: NEARAI_BASE_URL,
+    api: "openai-completions",
+    models,
+  };
+}
+
 async function buildOllamaProvider(configuredBaseUrl?: string): Promise<ProviderConfig> {
   const models = await discoverOllamaModels(configuredBaseUrl);
   return {
@@ -699,6 +709,13 @@ export async function resolveImplicitProviders(params: {
     resolveApiKeyFromProfiles({ provider: "venice", store: authStore });
   if (veniceKey) {
     providers.venice = { ...(await buildVeniceProvider()), apiKey: veniceKey };
+  }
+
+  const nearAiKey =
+    resolveEnvApiKeyVarName("nearai") ??
+    resolveApiKeyFromProfiles({ provider: "nearai", store: authStore });
+  if (nearAiKey) {
+    providers.nearai = { ...(await buildNearAiProvider()), apiKey: nearAiKey };
   }
 
   const qwenProfiles = listProfilesForProvider(authStore, "qwen-portal");
