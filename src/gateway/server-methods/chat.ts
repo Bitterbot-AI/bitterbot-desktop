@@ -540,6 +540,24 @@ export const chatHandlers: GatewayRequestHandlers = {
       return;
     }
     const inboundMessage = sanitizedMessageResult.message;
+
+    // PLAN-20: record the user turn in the session-context tracker so
+    // interceptors (recall-before-claim, protocol-quiet-in-groups,
+    // calibrate-claim-confidence) see real recent-turn previews, and
+    // attempt outcome backfill for any pending intervention records
+    // matched to the next-turn user reaction (thanks/wrong/cancel/etc).
+    void import("../../agents/skills/session-context-tracker.js")
+      .then((m) => m.recordTurn(p.sessionKey, "user", inboundMessage))
+      .catch(() => {
+        /* tracker is best-effort */
+      });
+    void import("../../agents/skills/outcome-backfill.js")
+      .then(({ backfillFromUserMessage }) => {
+        backfillFromUserMessage(p.sessionKey, inboundMessage);
+      })
+      .catch(() => {
+        /* best-effort */
+      });
     const stopCommand = isChatStopCommandText(inboundMessage);
     const normalizedAttachments = normalizeRpcAttachmentsToChatAttachments(p.attachments);
     const rawMessage = inboundMessage.trim();

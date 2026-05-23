@@ -243,6 +243,10 @@ _Patterns detected from repeated tasks. Pre-crystallization:_
 
 When context gets too massive, Bitterbot uses [Deep Recall](docs/memory/deep-recall.md) spawning a sandboxed sub-LLM that writes and executes its own search code against your full history, handling **10M+ tokens** seamlessly. Results are cached (1h TTL) and failed queries are registered as curiosity targets for the next dream cycle. Based on the [Recursive Language Model](https://arxiv.org/abs/2512.24601) pattern.
 
+### Pre-Action Interceptors (Executable Skills)
+
+Skills can ship with deterministic pre-action interceptors that read the agent's current hormonal + GCCRF state and modify, inject context into, require prerequisites for, or block any tool call before it executes. This closes the stochastic gap between "the skill prompt says do X" and "the agent actually does X." Inspired by [HASP (arXiv:2605.17734)](https://arxiv.org/abs/2605.17734); extended with neuromodulatory state binding no other framework offers. The Dream Engine's `interceptor_harvest` mode mines observed competence gaps and proposes new interceptors automatically. See [docs/agents/interceptors.md](docs/agents/interceptors.md) and the Active Guards UI tab.
+
 ---
 
 ## The Agent Economy

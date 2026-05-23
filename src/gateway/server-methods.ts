@@ -13,6 +13,7 @@ import { cronHandlers } from "./server-methods/cron.js";
 import { deviceHandlers } from "./server-methods/devices.js";
 import { dreamHandlers } from "./server-methods/dream.js";
 import { execApprovalsHandlers } from "./server-methods/exec-approvals.js";
+import { guardsHandlers } from "./server-methods/guards.js";
 import { healthHandlers } from "./server-methods/health.js";
 import { logsHandlers } from "./server-methods/logs.js";
 import { managementHandlers } from "./server-methods/management.js";
@@ -120,6 +121,7 @@ const READ_METHODS = new Set([
   "cron.list",
   "cron.status",
   "cron.runs",
+  "guards.status",
 ]);
 const WRITE_METHODS = new Set([
   "send",
@@ -229,6 +231,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...chatHandlers,
   ...deviceHandlers,
   ...execApprovalsHandlers,
+  ...guardsHandlers,
   ...webHandlers,
   ...modelsHandlers,
   ...configHandlers,

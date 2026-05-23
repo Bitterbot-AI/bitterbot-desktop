@@ -10,6 +10,7 @@ export type TabId =
   | "cron"
   | "agents"
   | "skills"
+  | "guards"
   | "nodes"
   | "projects"
   | "workspace"

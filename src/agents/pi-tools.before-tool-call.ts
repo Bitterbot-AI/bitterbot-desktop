@@ -2,6 +2,7 @@ import type { AnyAgentTool } from "./tools/common.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { isPlainObject } from "../utils.js";
+import { runInterceptors } from "./skills/interceptor-runner.js";
 import { normalizeToolName } from "./tool-policy.js";
 
 type HookContext = {
@@ -23,11 +24,68 @@ export async function runBeforeToolCallHook(args: {
   ctx?: HookContext;
 }): Promise<HookOutcome> {
   const toolName = normalizeToolName(args.toolName || "tool");
-  const params = args.params;
+  let params = args.params;
+
+  // PLAN-20: skill-owned interceptors run BEFORE plugin hooks so they can
+  // shape the action surface plugins observe. Wrapped in try/catch — an
+  // interceptor failure must never kill the tool call.
+  try {
+    const normalizedForInterceptors = isPlainObject(params)
+      ? (params as Record<string, unknown>)
+      : {};
+    const interceptorOutcome = await runInterceptors({
+      toolName,
+      params: normalizedForInterceptors,
+      sessionKey: args.ctx?.sessionKey,
+      agentId: args.ctx?.agentId,
+    });
+    switch (interceptorOutcome.kind) {
+      case "block":
+        return {
+          blocked: true,
+          reason: interceptorOutcome.userVisibleMessage ?? interceptorOutcome.reason,
+        };
+      case "modify":
+        params = interceptorOutcome.params;
+        break;
+      case "require_prereq": {
+        // PLAN-20: structured prereq message designed to be highly parseable
+        // by the agent — instead of a generic error, the agent reads a
+        // first-person directive that explicitly names the tool and args to
+        // run before retrying. The tool dispatcher inside the embedded
+        // runner shows this back as a tool-result message that the model
+        // then conditions on.
+        const args = JSON.stringify(interceptorOutcome.params);
+        const directive = [
+          `INTERCEPTOR: ${interceptorOutcome.reason}`,
+          ``,
+          `BEFORE you call \`${toolName}\` again, you MUST first call:`,
+          `  tool: ${interceptorOutcome.tool}`,
+          `  args: ${args}`,
+          ``,
+          `Then re-evaluate whether \`${toolName}\` still applies given the result of that call.`,
+        ].join("\n");
+        return {
+          blocked: true,
+          reason: directive,
+        };
+      }
+      case "inject":
+        // Inject-only interventions don't change params here; the runner
+        // already persisted/emitted the record. Future: pipe through to
+        // the working-memory context-injector.
+        break;
+      case "pass":
+      default:
+        break;
+    }
+  } catch (err) {
+    log.warn(`interceptor stage threw: tool=${toolName} err=${String(err)}`);
+  }
 
   const hookRunner = getGlobalHookRunner();
   if (!hookRunner?.hasHooks("before_tool_call")) {
-    return { blocked: false, params: args.params };
+    return { blocked: false, params };
   }
 
   try {

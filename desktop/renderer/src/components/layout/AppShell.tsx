@@ -8,6 +8,7 @@ import { ConfigView } from "../config/ConfigView";
 import { CronView } from "../cron/CronView";
 import { DebugView } from "../debug/DebugView";
 import { DreamsView } from "../dreams/DreamsView";
+import { ActiveGuardsView } from "../guards/ActiveGuardsView";
 import { InstancesView } from "../instances/InstancesView";
 import { LogsView } from "../logs/LogsView";
 import { ManagementView } from "../management/ManagementView";
@@ -33,6 +34,7 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   cron: () => <CronView />,
   agents: () => <AgentsView />,
   skills: () => <SkillsView />,
+  guards: () => <ActiveGuardsView />,
   nodes: () => <NodesView />,
   projects: () => <ProjectsView />,
   workspace: () => <WorkspaceView />,

@@ -5,7 +5,9 @@ import type {
   SkillCapabilitiesDeclaration,
   SkillEntry,
   SkillInstallSpec,
+  SkillInterceptorRef,
   SkillInvocationPolicy,
+  SkillMarketplaceTier,
   SkillOrigin,
 } from "./types.js";
 import { parseFrontmatterBlock } from "../../markdown/frontmatter.js";
@@ -162,11 +164,43 @@ function parseOrigin(input: unknown): SkillOrigin | undefined {
   return Object.keys(origin).length > 0 ? origin : undefined;
 }
 
+function parseTier(input: unknown): SkillMarketplaceTier | undefined {
+  if (typeof input !== "string") return undefined;
+  const v = input.trim().toLowerCase();
+  if (v === "executable" || v === "advisory" || v === "data") return v;
+  return undefined;
+}
+
+function parseInterceptorList(input: unknown): SkillInterceptorRef[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: SkillInterceptorRef[] = [];
+  for (const entry of input) {
+    if (!entry || typeof entry !== "object") continue;
+    const raw = entry as Record<string, unknown>;
+    if (typeof raw.id !== "string" || !raw.id.trim()) continue;
+    const ref: SkillInterceptorRef = { id: raw.id.trim() };
+    if (typeof raw.builtin === "boolean") ref.builtin = raw.builtin;
+    if (typeof raw.activates_on === "string") ref.activates_on = raw.activates_on;
+    if (typeof raw.intervention === "string") ref.intervention = raw.intervention;
+    if (typeof raw.activations_observed === "number")
+      ref.activations_observed = raw.activations_observed;
+    if (typeof raw.activation_rate === "number") ref.activation_rate = raw.activation_rate;
+    out.push(ref);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 export function resolveBitterbotMetadata(
   frontmatter: ParsedSkillFrontmatter,
 ): BitterbotSkillMetadata | undefined {
   const metadataObj = resolveBitterbotManifestBlock({ frontmatter });
+  // PLAN-20: tier is top-level (sibling to `name`/`description`), not nested
+  // inside the `bitterbot:` manifest block. Read it from the raw frontmatter.
+  const topLevelTier = parseTier((frontmatter as unknown as Record<string, unknown>).tier);
   if (!metadataObj) {
+    if (topLevelTier) {
+      return { tier: topLevelTier };
+    }
     return undefined;
   }
   const requires = resolveBitterbotManifestRequires(metadataObj);
@@ -174,6 +208,7 @@ export function resolveBitterbotMetadata(
   const osRaw = resolveBitterbotManifestOs(metadataObj);
   const origin = parseOrigin(metadataObj.origin);
   const capabilities = parseCapabilities(metadataObj.capabilities);
+  const interceptors = parseInterceptorList(metadataObj.interceptors);
   return {
     always: typeof metadataObj.always === "boolean" ? metadataObj.always : undefined,
     emoji: typeof metadataObj.emoji === "string" ? metadataObj.emoji : undefined,
@@ -185,6 +220,8 @@ export function resolveBitterbotMetadata(
     install: install.length > 0 ? install : undefined,
     origin: origin,
     capabilities: capabilities,
+    tier: topLevelTier ?? parseTier(metadataObj.tier),
+    interceptors,
   };
 }
 

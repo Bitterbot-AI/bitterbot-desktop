@@ -55,6 +55,31 @@ export type SkillCapabilitiesDeclaration = {
   process?: boolean;
 };
 
+/**
+ * PLAN-20 marketplace tier:
+ *  - executable: skill ships with one or more PreActionInterceptors and
+ *    advertises deterministic behavior (priced ~5-10x advisory).
+ *  - advisory:   markdown-only prompt-shaping skill (the legacy default).
+ *  - data:       assets / references / templates only, no behavioral lift.
+ */
+export type SkillMarketplaceTier = "executable" | "advisory" | "data";
+
+/**
+ * PLAN-20: declarative reference to a built-in or staged interceptor
+ * implementation. The runtime treats `builtin: true` entries as already
+ * compiled and registered via builtin-interceptors/index.ts. Non-builtin
+ * entries are still listed in the marketplace but are not instantiated
+ * until the capability sandbox lands (issue #21).
+ */
+export type SkillInterceptorRef = {
+  id: string;
+  builtin?: boolean;
+  activates_on?: string;
+  intervention?: string;
+  activations_observed?: number;
+  activation_rate?: number;
+};
+
 export type BitterbotSkillMetadata = {
   always?: boolean;
   skillKey?: string;
@@ -77,6 +102,10 @@ export type BitterbotSkillMetadata = {
    * `verified` (full-trust) default.
    */
   capabilities?: SkillCapabilitiesDeclaration;
+  /** PLAN-20: marketplace tier (executable/advisory/data). */
+  tier?: SkillMarketplaceTier;
+  /** PLAN-20: declared interceptor references. */
+  interceptors?: SkillInterceptorRef[];
 };
 
 export type SkillInvocationPolicy = {

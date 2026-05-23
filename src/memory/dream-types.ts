@@ -8,7 +8,7 @@ export type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" 
 /** @deprecated Use DreamMode instead */
 export type DreamCreativityMode = "associative" | "convergent" | "cross_domain";
 
-// ── 7 Dream Modes ──
+// ── 8 Dream Modes ──
 export type DreamMode =
   | "replay" // Strengthen important memory pathways
   | "mutation" // Generate skill/knowledge variations
@@ -16,7 +16,8 @@ export type DreamMode =
   | "compression" // Generalize into higher abstractions
   | "simulation" // Cross-domain creative recombination
   | "exploration" // Gap-filling from curiosity targets
-  | "research"; // Empirical prompt optimization using execution data
+  | "research" // Empirical prompt optimization using execution data
+  | "interceptor_harvest"; // PLAN-20: mine intervention records → propose new interceptors
 
 export type DreamModeConfig = {
   enabled: boolean;
@@ -26,13 +27,14 @@ export type DreamModeConfig = {
 };
 
 export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
-  replay: { enabled: true, weight: 0.2, maxChunks: 20, requiresLlm: false },
-  compression: { enabled: true, weight: 0.2, maxChunks: 30, requiresLlm: false },
-  mutation: { enabled: true, weight: 0.15, maxChunks: 10, requiresLlm: true },
-  simulation: { enabled: true, weight: 0.15, maxChunks: 10, requiresLlm: true },
-  extrapolation: { enabled: true, weight: 0.1, maxChunks: 15, requiresLlm: true },
-  exploration: { enabled: true, weight: 0.1, maxChunks: 10, requiresLlm: true },
-  research: { enabled: true, weight: 0.1, maxChunks: 5, requiresLlm: true },
+  replay: { enabled: true, weight: 0.18, maxChunks: 20, requiresLlm: false },
+  compression: { enabled: true, weight: 0.18, maxChunks: 30, requiresLlm: false },
+  mutation: { enabled: true, weight: 0.14, maxChunks: 10, requiresLlm: true },
+  simulation: { enabled: true, weight: 0.14, maxChunks: 10, requiresLlm: true },
+  extrapolation: { enabled: true, weight: 0.09, maxChunks: 15, requiresLlm: true },
+  exploration: { enabled: true, weight: 0.09, maxChunks: 10, requiresLlm: true },
+  research: { enabled: true, weight: 0.09, maxChunks: 5, requiresLlm: true },
+  interceptor_harvest: { enabled: true, weight: 0.09, maxChunks: 25, requiresLlm: true },
 };
 
 export type DreamCluster = {
@@ -79,6 +81,7 @@ export const DEFAULT_MODE_TIERS: Record<DreamMode, ComputeTier> = {
   extrapolation: "cloud",
   simulation: "cloud",
   research: "cloud",
+  interceptor_harvest: "cloud",
 };
 
 export type DreamCycleMetadata = {

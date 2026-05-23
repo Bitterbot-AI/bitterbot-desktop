@@ -948,8 +948,44 @@ export class DreamEngine {
         return this.runExplorationMode(cycleId);
       case "research":
         return this.runResearchMode(cycleId);
+      case "interceptor_harvest":
+        return this.runInterceptorHarvestMode(cycleId);
       default:
         return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    }
+  }
+
+  // ── Mode 8: Interceptor Harvest (PLAN-20) ──
+  //
+  // Mines the intervention_records corpus + shadow records (tool calls
+  // that fired with no interceptor and produced negative outcomes) to find
+  // recurring competence gaps. Proposes candidate interceptors that land in
+  // skills-staging/ for one-click user promotion via the SICA gate.
+  //
+  // The heavy work is delegated to `runInterceptorHarvest` in
+  // dream-modes/interceptor-harvest.ts. Kept thin here to match the
+  // pattern of the other 7 modes.
+  private async runInterceptorHarvestMode(
+    cycleId: string,
+  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
+    try {
+      const mod = await import("./dream-modes/interceptor-harvest.js");
+      const result = await mod.runInterceptorHarvest({
+        db: this.db,
+        cycleId,
+        synthesizeFn: this.synthesize,
+        embedFn: this.embedBatch,
+        nowMs: Date.now(),
+        maxRecords: this.config.modes.interceptor_harvest.maxChunks * 10,
+      });
+      return {
+        insights: result.insights,
+        llmCalls: result.llmCalls,
+        chunksAnalyzed: result.recordsAnalyzed,
+      };
+    } catch (err) {
+      log.warn(`interceptor_harvest mode failed: ${String(err)}`);
+      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
   }
 

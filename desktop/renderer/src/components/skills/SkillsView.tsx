@@ -39,6 +39,10 @@ type RawSkillEntry = {
   platformLabel?: string;
   hasApiKey?: boolean;
   origin?: SkillOrigin;
+  /** PLAN-20 marketplace tier: 'executable' | 'advisory' | 'data'. */
+  tier?: "executable" | "advisory" | "data";
+  /** PLAN-20: declared interceptors (count is the only thing we render today). */
+  interceptors?: Array<{ id: string }>;
 };
 
 type SkillReport = {
@@ -78,6 +82,8 @@ function normalizeSkill(raw: RawSkillEntry): SkillStatus | null {
     requires: raw.requirements?.bins?.length ? { bins: raw.requirements.bins } : undefined,
     install: Array.isArray(raw.install) ? raw.install : undefined,
     origin: raw.origin,
+    tier: raw.tier,
+    interceptorCount: Array.isArray(raw.interceptors) ? raw.interceptors.length : 0,
   };
 }
 
@@ -240,6 +246,19 @@ function SkillCard({
           {skill.category && (
             <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300">
               {skill.category}
+            </span>
+          )}
+          {skill.tier === "executable" && (
+            <span
+              title={`Executable tier — ships with ${skill.interceptorCount ?? "0"} deterministic interceptor${(skill.interceptorCount ?? 0) === 1 ? "" : "s"}`}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-cyan-400/40 bg-cyan-400/10 text-cyan-200 uppercase tracking-wider"
+            >
+              executable
+            </span>
+          )}
+          {skill.tier === "data" && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-400/40 bg-slate-400/10 text-slate-300 uppercase tracking-wider">
+              data
             </span>
           )}
         </div>

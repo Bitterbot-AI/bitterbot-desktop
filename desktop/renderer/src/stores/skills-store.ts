@@ -39,6 +39,10 @@ export type SkillStatus = {
   requires?: { bins?: string[] };
   install?: SkillInstallOption[];
   origin?: SkillOrigin;
+  /** PLAN-20 marketplace tier (executable / advisory / data). */
+  tier?: "executable" | "advisory" | "data";
+  /** PLAN-20 declared interceptor count. */
+  interceptorCount?: number;
 };
 
 type SkillsState = {

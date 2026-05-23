@@ -572,6 +572,82 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "dream_cycles", "graph_reward_delta", "REAL");
     },
   },
+  {
+    version: 14,
+    description:
+      "PLAN-20 executable skill interceptors: append-only intervention_records " +
+      "table capturing every pre-action interceptor activation with state " +
+      "snapshot, action diff, Ed25519 signature, and a later-patched outcome " +
+      "signal.",
+    up: (db: DatabaseSync) => {
+      // One row per non-NOOP interceptor activation. Outcome signal is
+      // backfilled 1-3 turns later by the experience-signal-collector;
+      // until then `outcome_tag` is NULL. We never UPDATE other columns
+      // after the initial insert (append-only invariant). Signed JSON in
+      // `record_json` is the canonical, transportable form for marketplace
+      // outcome statistics.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS intervention_records (
+          id                       TEXT PRIMARY KEY,
+          ts                       INTEGER NOT NULL,
+          session_key              TEXT NOT NULL,
+          skill                    TEXT NOT NULL,
+          interceptor_id           TEXT NOT NULL,
+          channel                  TEXT NOT NULL DEFAULT 'internal',
+          tool_name                TEXT NOT NULL,
+          intervention_type        TEXT NOT NULL,
+          action_original_json     TEXT NOT NULL,
+          action_final_json        TEXT,
+          intervention_json        TEXT NOT NULL,
+          state_summary_json       TEXT NOT NULL,
+          activation_latency_ms    REAL NOT NULL DEFAULT 0,
+          intervention_latency_ms  REAL NOT NULL DEFAULT 0,
+          outcome_tag              TEXT,
+          outcome_evidence         TEXT,
+          ed25519_sig              TEXT NOT NULL DEFAULT '',
+          pubkey_id                TEXT NOT NULL DEFAULT 'unsigned-local',
+          record_json              TEXT NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_intervention_records_skill_ts ` +
+          `ON intervention_records(skill, ts)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_intervention_records_interceptor_ts ` +
+          `ON intervention_records(interceptor_id, ts)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_intervention_records_session_ts ` +
+          `ON intervention_records(session_key, ts)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_intervention_records_outcome ` +
+          `ON intervention_records(skill, outcome_tag)`,
+      );
+
+      // Per-skill rollup view used by the marketplace + Active Guards UI.
+      // Drops and recreates idempotently — sqlite has no CREATE OR REPLACE
+      // VIEW so we drop first.
+      db.exec(`DROP VIEW IF EXISTS skill_interceptor_stats`);
+      db.exec(`
+        CREATE VIEW skill_interceptor_stats AS
+        SELECT
+          skill,
+          interceptor_id,
+          COUNT(*)                                                                  AS fire_count,
+          SUM(CASE WHEN outcome_tag = 'downstream-success' THEN 1 ELSE 0 END)       AS success_count,
+          SUM(CASE WHEN outcome_tag = 'downstream-failure' THEN 1 ELSE 0 END)       AS failure_count,
+          SUM(CASE WHEN outcome_tag = 'user-confirmed-block' THEN 1 ELSE 0 END)     AS user_confirmed_count,
+          SUM(CASE WHEN outcome_tag = 'user-overrode-block' THEN 1 ELSE 0 END)      AS user_override_count,
+          AVG(activation_latency_ms + intervention_latency_ms)                       AS avg_latency_ms,
+          MIN(ts)                                                                    AS first_seen_ts,
+          MAX(ts)                                                                    AS last_seen_ts
+        FROM intervention_records
+        GROUP BY skill, interceptor_id
+      `);
+    },
+  },
 ];
 
 /**

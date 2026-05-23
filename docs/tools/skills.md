@@ -10,6 +10,16 @@ title: "Skills"
 
 Bitterbot uses **[AgentSkills](https://agentskills.io)-compatible** skill folders to teach the agent how to use tools. Each skill is a directory containing a `SKILL.md` with YAML frontmatter and instructions. Bitterbot loads **bundled skills** plus optional local overrides, and filters them at load time based on environment, config, and binary presence.
 
+## Skill tiers (PLAN-20)
+
+Skills declare a `tier:` in their SKILL.md frontmatter:
+
+- **`executable`** — ships with one or more pre-action interceptors that deterministically modify, inject context, require prerequisites, or block tool calls. The behaviour is enforceable. See [Pre-Action Interceptors](../agents/interceptors.md).
+- **`advisory`** — markdown-only; the LLM may or may not follow the guidance. The legacy default.
+- **`data`** — assets, references, templates; no behavioral lift.
+
+In the marketplace, executable-tier listings carry signed activation/outcome statistics so a buyer can verify the skill's empirical effect before paying. Advisory and data skills are still useful but priced like prose.
+
 ## Locations and precedence
 
 Skills are loaded from **three** places:

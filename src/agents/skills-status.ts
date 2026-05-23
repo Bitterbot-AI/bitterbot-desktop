@@ -74,6 +74,10 @@ export type SkillStatusEntry = {
     license?: string;
     upstreamUrl?: string;
   };
+  /** PLAN-20 marketplace tier: 'executable' | 'advisory' | 'data'. */
+  tier?: "executable" | "advisory" | "data";
+  /** PLAN-20 declared interceptors (ids only — full registry status lives in guards.status). */
+  interceptors?: Array<{ id: string; builtin?: boolean }>;
 };
 
 export type SkillStatusReport = {
@@ -318,6 +322,8 @@ function buildSkillStatus(
     platformLabel,
     hasApiKey,
     origin: entry.metadata?.origin,
+    tier: entry.metadata?.tier,
+    interceptors: entry.metadata?.interceptors?.map((i) => ({ id: i.id, builtin: i.builtin })),
   };
 }
 

@@ -4,6 +4,8 @@ The skills pipeline handles the full lifecycle of autonomous skill generation: f
 
 **Key source files:** `skill-refiner.ts`, `skill-verifier.ts`, `skill-execution-tracker.ts`, `skill-crystallizer.ts`, `skill-network-bridge.ts`, `peer-reputation.ts`, `discovery-agent.ts`, `dream-mutation-strategies.ts`, `skill-marketplace.ts`, `skill-hierarchy.ts`, `skill-pricing.ts`, `marketplace-economics.ts`
 
+**PLAN-20 (May 2026) — executable skill interceptors:** skills can now carry `PreActionInterceptor` implementations that deterministically modify, inject context into, require prerequisites for, or block any tool call before it executes. The Dream Engine's `interceptor_harvest` mode mines the `intervention_records` corpus and auto-proposes new interceptor candidates. See [Pre-Action Interceptors](../agents/interceptors.md).
+
 ---
 
 ## Full Knowledge Crystal Pipeline

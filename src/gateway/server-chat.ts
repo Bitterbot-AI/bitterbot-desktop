@@ -345,6 +345,24 @@ export function createAgentEventHandler({
       return;
     }
 
+    // PLAN-20: pre-action interceptor activations get a dedicated
+    // "intervention.fired" broadcast so the desktop UI can render timeline
+    // badges and update the Active Guards panel.
+    if (evt.stream === "intervention") {
+      broadcast(
+        "intervention.fired",
+        {
+          runId: evt.runId,
+          seq: evt.seq,
+          ts: evt.ts,
+          sessionKey,
+          ...evt.data,
+        },
+        { dropIfSlow: true },
+      );
+      return;
+    }
+
     const isToolEvent = evt.stream === "tool";
 
     // Detect file-modifying tool completions and broadcast workspace change events
@@ -417,6 +435,29 @@ export function createAgentEventHandler({
       evt.stream === "lifecycle" && typeof evt.data?.phase === "string" ? evt.data.phase : null;
 
     if (sessionKey) {
+      // PLAN-20: maintain a per-session ring of recent assistant text +
+      // tool firings so interceptors have a real StepContext to read.
+      if (!isAborted && evt.stream === "assistant" && typeof evt.data?.text === "string") {
+        void import("../agents/skills/session-context-tracker.js")
+          .then((m) => {
+            m.recordTurn(sessionKey, "assistant", evt.data?.text as string);
+          })
+          .catch(() => {
+            /* tracker is best-effort */
+          });
+      }
+      if (isToolEvent && evt.data?.phase === "result") {
+        const toolName = typeof evt.data.name === "string" ? evt.data.name : "tool";
+        const success = !evt.data.isError;
+        void import("../agents/skills/session-context-tracker.js")
+          .then((m) => {
+            m.recordTool(sessionKey, toolName, success);
+          })
+          .catch(() => {
+            /* tracker is best-effort */
+          });
+      }
+
       // Send tool events to node/channel subscribers only when verbose is enabled;
       // WS clients already received the event above via broadcastToConnIds.
       if (!isToolEvent || toolVerbose !== "off") {
