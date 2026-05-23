@@ -62,6 +62,18 @@ interface BootstrapDeps {
 
 let booted = false;
 
+// Lazy import to avoid a top-of-module circular: interceptor-record.ts imports
+// nothing from bootstrap, but bootstrap calls back into it. The dynamic
+// require pattern below keeps load order safe.
+async function maybeGetStoreLazy(): Promise<unknown> {
+  try {
+    const { getInterventionStore } = await import("./intervention-record.js");
+    return getInterventionStore();
+  } catch {
+    return null;
+  }
+}
+
 export function bootstrapInterceptors(deps: BootstrapDeps): void {
   if (booted) {
     // Updating deps mid-run is supported — we just refresh providers.
@@ -72,8 +84,15 @@ export function bootstrapInterceptors(deps: BootstrapDeps): void {
 
   registerBuiltinInterceptors();
 
+  // Only set the store/signer when none has been registered by a higher
+  // layer (e.g. a test). Tests register their own and would be clobbered
+  // otherwise.
   if (deps.db) {
-    setInterventionStore(createSqliteInterventionStore(deps.db));
+    void maybeGetStoreLazy().then((existing) => {
+      if (!existing) {
+        setInterventionStore(createSqliteInterventionStore(deps.db!));
+      }
+    });
   }
 
   if (deps.signer) {

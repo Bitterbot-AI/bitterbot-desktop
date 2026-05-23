@@ -124,8 +124,26 @@ class InterceptorRegistry {
     }
   }
 
+  /**
+   * Apply a persistent (cross-session) disabled set, e.g. loaded from
+   * the SQLite-backed strikes store at autoboot.
+   */
+  loadPersistedDisabled(ids: ReadonlyArray<string>): void {
+    for (const id of ids) {
+      if (id) this.disabled.add(id);
+    }
+    if (ids.length > 0) {
+      this.cacheBust += 1;
+    }
+  }
+
   isDisabled(interceptorId: string): boolean {
     return this.disabled.has(interceptorId);
+  }
+
+  enableForOperator(interceptorId: string): void {
+    this.disabled.delete(interceptorId);
+    this.cacheBust += 1;
   }
 
   cacheKey(): number {

@@ -40,11 +40,25 @@ export async function runBeforeToolCallHook(args: {
       agentId: args.ctx?.agentId,
     });
     switch (interceptorOutcome.kind) {
-      case "block":
-        return {
-          blocked: true,
-          reason: interceptorOutcome.userVisibleMessage ?? interceptorOutcome.reason,
-        };
+      case "block": {
+        // PLAN-20: structured block directive. If the interceptor set a
+        // userVisibleMessage, wrap it in an `INTERCEPTOR-BLOCK:` envelope
+        // so the agent surfaces the message verbatim and waits for user
+        // confirmation rather than paraphrasing or burying the block
+        // behind a generic error.
+        const userMsg = interceptorOutcome.userVisibleMessage;
+        const blockReason = userMsg
+          ? [
+              `INTERCEPTOR-BLOCK: ${userMsg}`,
+              ``,
+              `Display this message to the user verbatim. Do NOT retry the action`,
+              `unless the user explicitly confirms ("yes", "do it", "proceed").`,
+              ``,
+              `(internal reason: ${interceptorOutcome.reason})`,
+            ].join("\n")
+          : `INTERCEPTOR-BLOCK: ${interceptorOutcome.reason}`;
+        return { blocked: true, reason: blockReason };
+      }
       case "modify":
         params = interceptorOutcome.params;
         break;

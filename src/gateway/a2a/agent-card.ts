@@ -68,6 +68,22 @@ export function buildAgentCard(params: {
     };
   }
 
+  // PLAN-20: advertise executable-tier skill capability so peer agents
+  // can negotiate over deterministic skill execution. Lists the
+  // executable-tier skill ids served by this node.
+  const executableSkills = skills
+    .filter((s) => s.metadata?.tier === "executable")
+    .map((s) => s.metadata?.skillKey ?? s.skill.name);
+  if (executableSkills.length > 0) {
+    extensions["bitterbot-executable-skills"] = {
+      version: "plan20/1.0",
+      tier: "executable",
+      skills: executableSkills,
+      interceptorContract: "should_activate + intervene",
+      meshExecution: "gated-on-issue-21",
+    };
+  }
+
   if (Object.keys(extensions).length > 0) {
     card.extensions = extensions;
   }
@@ -138,13 +154,32 @@ function mapSkills(skills: SkillEntry[], a2a: A2aConfig): A2aSkill[] {
     if (entry.metadata?.primaryEnv) {
       tags.push(entry.metadata.primaryEnv);
     }
+    // PLAN-20: tag executable-tier skills so peers querying the agent
+    // card can filter on deterministic behavior. Executable-tier skills
+    // ship with pre-action interceptors whose activation/outcome
+    // statistics are signed and verifiable.
+    if (entry.metadata?.tier === "executable") {
+      tags.push("executable");
+    } else if (entry.metadata?.tier === "data") {
+      tags.push("data");
+    }
 
-    mapped.push({
+    const skill: A2aSkill & { extensions?: Record<string, unknown> } = {
       id: entry.metadata?.skillKey ?? slugify(name),
       name,
       description: entry.skill.description ?? name,
       tags: tags.length > 0 ? tags : undefined,
-    });
+    };
+    if (entry.metadata?.tier === "executable" && entry.metadata.interceptors) {
+      skill.extensions = {
+        "bitterbot-interceptors": {
+          tier: "executable",
+          interceptorIds: entry.metadata.interceptors.map((i) => i.id),
+          builtin: entry.metadata.interceptors.every((i) => i.builtin === true),
+        },
+      };
+    }
+    mapped.push(skill);
   }
 
   return mapped;

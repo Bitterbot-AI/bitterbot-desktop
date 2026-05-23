@@ -648,6 +648,27 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 15,
+    description:
+      "PLAN-20 follow-up: persistent interceptor_strikes table so the " +
+      "3-strikes auto-disable counter survives gateway restarts.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS interceptor_strikes (
+          interceptor_id      TEXT PRIMARY KEY,
+          strikes             INTEGER NOT NULL DEFAULT 0,
+          disabled            INTEGER NOT NULL DEFAULT 0,
+          last_failure_ts     INTEGER,
+          last_failure_reason TEXT
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_interceptor_strikes_disabled ` +
+          `ON interceptor_strikes(disabled)`,
+      );
+    },
+  },
 ];
 
 /**

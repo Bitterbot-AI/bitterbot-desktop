@@ -190,10 +190,41 @@ function parseInterceptorList(input: unknown): SkillInterceptorRef[] | undefined
   return out.length > 0 ? out : undefined;
 }
 
+/**
+ * Read a top-level `bitterbot:` YAML block that was flattened into the
+ * frontmatter string map. The shared `metadata: { ... }` JSON5 form is
+ * handled by `resolveBitterbotManifestBlock`; this is the YAML-native
+ * fallback so SKILL.md authors can write `bitterbot:\n  always: false`
+ * without nesting inside a quoted JSON5 string.
+ */
+function readTopLevelBitterbotBlock(
+  frontmatter: ParsedSkillFrontmatter,
+): Record<string, unknown> | undefined {
+  const raw = (frontmatter as unknown as Record<string, unknown>).bitterbot;
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Not JSON — fall through to undefined.
+    }
+  }
+  return undefined;
+}
+
 export function resolveBitterbotMetadata(
   frontmatter: ParsedSkillFrontmatter,
 ): BitterbotSkillMetadata | undefined {
-  const metadataObj = resolveBitterbotManifestBlock({ frontmatter });
+  // Prefer the legacy `metadata: { ... }` JSON5 form when present;
+  // fall back to top-level YAML `bitterbot:` block.
+  const metadataObj =
+    resolveBitterbotManifestBlock({ frontmatter }) ?? readTopLevelBitterbotBlock(frontmatter);
   // PLAN-20: tier is top-level (sibling to `name`/`description`), not nested
   // inside the `bitterbot:` manifest block. Read it from the raw frontmatter.
   const topLevelTier = parseTier((frontmatter as unknown as Record<string, unknown>).tier);

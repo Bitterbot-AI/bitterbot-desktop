@@ -231,6 +231,9 @@ export const myGuard: PreActionInterceptor = {
 
 ## Related
 
+- [Author guide](interceptors-author-guide.md) — write a new interceptor end-to-end
+- [Operator runbook](interceptors-runbook.md) — observe, disable, promote, troubleshoot
+- [Troubleshooting](interceptors-troubleshooting.md) — quick FAQ
 - PLAN-20 design document: `research/plans/PLAN-20-EXECUTABLE-SKILL-INTERCEPTORS.md`
 - PLAN-15 (SICA staging gate): the promotion path for auto-harvested skills
 - Issue #21 (capability sandbox): the gate on mesh-PF execution

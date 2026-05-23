@@ -36,6 +36,11 @@ import { resolveAgentConfig, resolveDefaultAgentId } from "../agent-scope.js";
 import { bootstrapInterceptors } from "./interceptor-bootstrap.js";
 import { getInterceptorRegistry } from "./interceptor-registry.js";
 import {
+  createSqliteInterceptorStrikesStore,
+  setInterceptorStrikesStore,
+} from "./interceptor-strikes-store.js";
+import { getInterventionStore, setInterventionStore } from "./intervention-record.js";
+import {
   getRecentTurns,
   getSessionChannel,
   getToolHistory,
@@ -154,6 +159,21 @@ function readConfigDisabledList(): string[] {
 
 export function ensureInterceptorsAutoBoot(): void {
   if (booted) return;
+  // In tests, allow callers to install their own intervention store +
+  // signer before any interceptor fires. If either has been registered,
+  // we still register builtins but skip the heavy device-identity /
+  // memory-manager init that would clobber the test setup.
+  if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+    booted = true;
+    bootedAt = Date.now();
+    // Builtins still need to be registered so the registry has the four
+    // reference interceptors available. State providers and store stay
+    // as whatever the test wired.
+    void import("./builtin-interceptors/index.js").then((m) => {
+      m.registerBuiltinInterceptors();
+    });
+    return;
+  }
   booted = true;
   bootedAt = Date.now();
 
@@ -172,6 +192,24 @@ export function ensureInterceptorsAutoBoot(): void {
     }
   } catch (err) {
     log.debug(`read disabled list failed: ${String(err)}`);
+  }
+
+  // Wire the persistent strike counter (PLAN-20 follow-up). Interceptors
+  // that crossed the 3-strikes threshold in a prior session stay disabled.
+  if (db) {
+    try {
+      const strikesStore = createSqliteInterceptorStrikesStore(db);
+      setInterceptorStrikesStore(strikesStore);
+      const persistedDisabled = strikesStore.loadDisabled();
+      if (persistedDisabled.length > 0) {
+        getInterceptorRegistry().loadPersistedDisabled(persistedDisabled);
+        log.debug(
+          `interceptors: ${persistedDisabled.length} persisted as disabled: ${persistedDisabled.join(", ")}`,
+        );
+      }
+    } catch (err) {
+      log.debug(`wire strikes store failed: ${String(err)}`);
+    }
   }
 
   // The memory-manager accessor is async-cached; we hand bootstrap a sync

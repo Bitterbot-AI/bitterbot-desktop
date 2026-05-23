@@ -970,11 +970,13 @@ export class DreamEngine {
   ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
     try {
       const mod = await import("./dream-modes/interceptor-harvest.js");
+      const llmCall = this.getLlmCallForMode("interceptor_harvest");
       const result = await mod.runInterceptorHarvest({
         db: this.db,
         cycleId,
         synthesizeFn: this.synthesize,
         embedFn: this.embedBatch,
+        llmCall,
         nowMs: Date.now(),
         maxRecords: this.config.modes.interceptor_harvest.maxChunks * 10,
       });

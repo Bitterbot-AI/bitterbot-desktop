@@ -27,6 +27,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { ensureInterceptorsAutoBoot } from "./interceptor-autoboot.js";
 import { resolveStepContext } from "./interceptor-context.js";
 import { getInterceptorRegistry } from "./interceptor-registry.js";
+import { getInterceptorStrikesStore } from "./interceptor-strikes-store.js";
 import {
   getInterventionStore,
   signInterventionRecord,
@@ -91,15 +92,27 @@ interface RunArgs {
 
 const failureStrikesPerSession = new Map<string, Map<string, number>>();
 
-function bumpStrike(sessionKey: string, interceptorId: string): number {
+function bumpStrike(sessionKey: string, interceptorId: string, reason: string): number {
   let session = failureStrikesPerSession.get(sessionKey);
   if (!session) {
     session = new Map();
     failureStrikesPerSession.set(sessionKey, session);
   }
-  const next = (session.get(interceptorId) ?? 0) + 1;
-  session.set(interceptorId, next);
-  return next;
+  const sessionStrikes = (session.get(interceptorId) ?? 0) + 1;
+  session.set(interceptorId, sessionStrikes);
+
+  // Mirror to the persistent SQLite store when available. The persistent
+  // counter survives gateway restarts; the in-process Map handles the
+  // hot-path check. Both must agree on the 3-strikes threshold.
+  const store = getInterceptorStrikesStore();
+  if (store) {
+    try {
+      store.recordStrike(interceptorId, reason);
+    } catch {
+      // Best-effort.
+    }
+  }
+  return sessionStrikes;
 }
 
 function withinFireLimit(
@@ -130,7 +143,7 @@ async function evaluateOne(
   try {
     activated = await interceptor.shouldActivate(ctx, candidate);
   } catch (err) {
-    const strikes = bumpStrike(sessionKey, interceptor.id);
+    const strikes = bumpStrike(sessionKey, interceptor.id, String(err));
     getInterceptorRegistry().markFailure(interceptor.id, strikes);
     log.warn(
       `interceptor.shouldActivate threw: id=${interceptor.id} err=${String(err)} strikes=${strikes}`,
@@ -145,7 +158,7 @@ async function evaluateOne(
   try {
     intervention = await interceptor.intervene(ctx, candidate);
   } catch (err) {
-    const strikes = bumpStrike(sessionKey, interceptor.id);
+    const strikes = bumpStrike(sessionKey, interceptor.id, String(err));
     getInterceptorRegistry().markFailure(interceptor.id, strikes);
     log.warn(
       `interceptor.intervene threw: id=${interceptor.id} err=${String(err)} strikes=${strikes}`,

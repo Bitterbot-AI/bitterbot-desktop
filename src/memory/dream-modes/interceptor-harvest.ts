@@ -17,8 +17,17 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import type { DreamCluster, DreamInsight, EmbedBatchFn, SynthesizeFn } from "../dream-types.js";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import type { DreamInsight, EmbedBatchFn, SynthesizeFn } from "../dream-types.js";
+import { resolveStateDir } from "../../config/paths.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import {
+  renderSkillMd,
+  synthesizeInterceptorCandidate,
+  type CandidateSpec,
+} from "./synthesize-interceptor-candidate.js";
 
 const log = createSubsystemLogger("memory/dream/interceptor-harvest");
 
@@ -60,8 +69,12 @@ interface HarvestArgs {
   cycleId: string;
   synthesizeFn: SynthesizeFn | null;
   embedFn: EmbedBatchFn | null;
+  /** Direct LLM call (cloud-tier). Used for typed candidate synthesis. */
+  llmCall: ((prompt: string) => Promise<string>) | null;
   nowMs: number;
   maxRecords: number;
+  /** Override for tests. Defaults to <stateDir>/skills-staging. */
+  stagingDirOverride?: string;
 }
 
 function fingerprintParams(json: string): string {
@@ -162,22 +175,50 @@ export async function runInterceptorHarvest(args: HarvestArgs): Promise<HarvestR
   }
 
   // For each surviving cluster, propose a candidate interceptor.
-  // If a synthesizeFn (LLM) is available, ask it to draft the typed shape;
-  // otherwise emit a heuristic placeholder. The candidate is persisted as
-  // a DreamInsight whose content is the proposal text — the UI reads from
-  // this row.
+  // Priority: typed LLM synthesis (writes a SKILL.md to skills-staging)
+  // → heuristic text fallback. The DreamInsight content is always the
+  // human-readable summary so the Active Guards UI can render it.
   const insights: DreamInsight[] = [];
   let llmCalls = 0;
+  const stagingDir =
+    args.stagingDirOverride ??
+    path.join(resolveStateDir(process.env, os.homedir), "skills-staging");
 
   for (const cluster of top) {
-    const proposalText = await proposeCandidate({
-      cluster,
-      synthesizeFn: args.synthesizeFn,
-    });
-    if (proposalText.usedLlm) llmCalls += 1;
+    let candidateSpec: CandidateSpec | null = null;
+    let stagingPath: string | null = null;
+
+    if (args.llmCall) {
+      const sampleParams = await loadSampleParams(args.db, cluster.sampleRecordIds);
+      const result = await synthesizeInterceptorCandidate({
+        llmCall: args.llmCall,
+        cluster: {
+          toolName: cluster.toolName,
+          channel: cluster.channel,
+          shape: cluster.shape,
+          cohortSize: cluster.cohortSize,
+          failureRate: cluster.failureRate,
+          sampleParams,
+        },
+      });
+      llmCalls += 1;
+      if (result.ok) {
+        candidateSpec = result.spec;
+        try {
+          stagingPath = await writeStagedCandidate(stagingDir, result.spec);
+          log.debug(`harvest: staged candidate ${result.spec.id} at ${stagingPath}`);
+        } catch (err) {
+          log.debug(`harvest: failed to stage candidate ${result.spec.id}: ${String(err)}`);
+        }
+      } else {
+        log.debug(`harvest: candidate synthesis failed: ${result.reason}`);
+      }
+    }
+
+    const proposalText = buildProposalText(cluster, candidateSpec, stagingPath);
     insights.push({
       id: randomUUID(),
-      content: proposalText.text,
+      content: proposalText,
       embedding: [],
       confidence: clusterConfidence(cluster),
       mode: "interceptor_harvest",
@@ -192,26 +233,84 @@ export async function runInterceptorHarvest(args: HarvestArgs): Promise<HarvestR
     });
   }
 
-  // Persist insights table is owned by the dream engine; the engine
-  // writes them into `dream_insights` (or equivalent) on return. We just
-  // return them here.
-
   return { insights, llmCalls, recordsAnalyzed: rows.length };
 }
 
-function clusterConfidence(c: HarvestCluster): number {
-  // Confidence rises with cohort size + failure rate but caps at 0.95.
-  const size = Math.min(1, c.cohortSize / 20);
-  return Math.min(0.95, c.failureRate * 0.6 + size * 0.4);
+async function loadSampleParams(
+  db: DatabaseSync,
+  ids: ReadonlyArray<string>,
+): Promise<Array<Record<string, unknown>>> {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(",");
+  let rows: Array<{ action_original_json: string }> = [];
+  try {
+    rows = db
+      .prepare(
+        `SELECT action_original_json FROM intervention_records WHERE id IN (${placeholders})`,
+      )
+      .all(...ids) as unknown as Array<{ action_original_json: string }>;
+  } catch (err) {
+    log.debug(`loadSampleParams failed: ${String(err)}`);
+    return [];
+  }
+  return rows
+    .map((r) => {
+      try {
+        const parsed = JSON.parse(r.action_original_json) as { params?: unknown };
+        if (parsed?.params && typeof parsed.params === "object") {
+          return parsed.params as Record<string, unknown>;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    })
+    .filter((r): r is Record<string, unknown> => r !== null);
 }
 
-async function proposeCandidate(args: {
-  cluster: HarvestCluster;
-  synthesizeFn: SynthesizeFn | null;
-}): Promise<{ text: string; usedLlm: boolean }> {
-  const { cluster } = args;
-  const heuristicText = [
-    `## Candidate interceptor proposal`,
+async function writeStagedCandidate(stagingDir: string, spec: CandidateSpec): Promise<string> {
+  const skillDir = path.join(stagingDir, spec.skill);
+  await fs.mkdir(skillDir, { recursive: true });
+  const skillMd = renderSkillMd(spec);
+  const skillMdPath = path.join(skillDir, "SKILL.md");
+  await fs.writeFile(skillMdPath, skillMd, "utf8");
+  const metaPath = path.join(skillDir, ".staging-meta.json");
+  const meta = {
+    source: "interceptor_harvest",
+    stagedAt: Date.now(),
+    candidateId: spec.id,
+    requiresImplementation: true,
+  };
+  await fs.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+  return skillMdPath;
+}
+
+function buildProposalText(
+  cluster: HarvestCluster,
+  spec: CandidateSpec | null,
+  stagingPath: string | null,
+): string {
+  if (spec) {
+    return [
+      `## Candidate interceptor: ${spec.skill}`,
+      "",
+      `**Activation:** ${spec.activation.description}`,
+      `**Intervention:** ${spec.intervention.type} — ${spec.intervention.description || "(no description)"}`,
+      `**Rationale:** ${spec.rationale}`,
+      "",
+      `**Cohort:** ${cluster.cohortSize} records, ${(cluster.failureRate * 100).toFixed(0)}% negative outcomes`,
+      `**Tools:** ${spec.tools.join(", ")}`,
+      `**Priority:** ${spec.priority}`,
+      stagingPath ? `**Staged at:** ${stagingPath}` : "",
+      "",
+      "Promote via the Active Guards panel to land in `skills/`. A TypeScript implementation must be added under `src/agents/skills/builtin-interceptors/` before this skill becomes live; mesh-acquired user-authored interceptors remain gated on issue #21.",
+    ]
+      .filter((l) => l !== "")
+      .join("\n");
+  }
+  // Heuristic-only fallback.
+  return [
+    `## Candidate interceptor proposal (heuristic)`,
     `Tool: ${cluster.toolName}`,
     `Channel: ${cluster.channel}`,
     `Shape: ${cluster.shape}`,
@@ -223,37 +322,21 @@ async function proposeCandidate(args: {
     ``,
     `Sample records: ${cluster.sampleRecordIds.join(", ")}`,
     ``,
-    `Promote via the Active Guards panel to land in skills-staging.`,
+    `No LLM available this cycle. Re-run dream once an LLM provider is configured to produce a typed candidate.`,
   ].join("\n");
-
-  if (!args.synthesizeFn) {
-    return { text: heuristicText, usedLlm: false };
-  }
-
-  try {
-    const fakeClusters: DreamCluster[] = [
-      {
-        id: cluster.sampleRecordIds[0] ?? "harvest-0",
-        chunkIds: cluster.sampleRecordIds,
-        centroid: [],
-        mode: "convergent",
-        meanImportance: cluster.failureRate,
-        keywords: [cluster.toolName, cluster.channel, cluster.shape],
-      },
-    ];
-    const chunkTexts = new Map<string, string>([
-      [cluster.sampleRecordIds[0] ?? "harvest-0", heuristicText],
-    ]);
-    const synth = await args.synthesizeFn(fakeClusters, chunkTexts);
-    const refined = synth?.[0]?.content;
-    if (refined && refined.length > 50) {
-      return {
-        text: `${refined}\n\n---\n${heuristicText}`,
-        usedLlm: true,
-      };
-    }
-  } catch (err) {
-    log.debug(`synthesize candidate failed: ${String(err)}`);
-  }
-  return { text: heuristicText, usedLlm: false };
 }
+
+function clusterConfidence(c: HarvestCluster): number {
+  // Confidence rises with cohort size + failure rate but caps at 0.95.
+  const size = Math.min(1, c.cohortSize / 20);
+  return Math.min(0.95, c.failureRate * 0.6 + size * 0.4);
+}
+
+export const __testing = {
+  MIN_CLUSTER_SIZE,
+  MAX_CLUSTERS,
+  HARVEST_WINDOW_DAYS,
+  loadSampleParams,
+  writeStagedCandidate,
+  buildProposalText,
+};

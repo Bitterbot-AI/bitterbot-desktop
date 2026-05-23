@@ -211,6 +211,8 @@ function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["c
     method === "skills.install" ||
     method === "skills.update" ||
     method === "skills.create" ||
+    method === "guards.promote_candidate" ||
+    method === "guards.clear_strikes" ||
     method === "sessions.patch" ||
     method === "sessions.reset" ||
     method === "sessions.delete" ||

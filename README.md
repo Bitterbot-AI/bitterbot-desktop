@@ -243,9 +243,13 @@ _Patterns detected from repeated tasks. Pre-crystallization:_
 
 When context gets too massive, Bitterbot uses [Deep Recall](docs/memory/deep-recall.md) spawning a sandboxed sub-LLM that writes and executes its own search code against your full history, handling **10M+ tokens** seamlessly. Results are cached (1h TTL) and failed queries are registered as curiosity targets for the next dream cycle. Based on the [Recursive Language Model](https://arxiv.org/abs/2512.24601) pattern.
 
-### Pre-Action Interceptors (Executable Skills)
+### Executable Skills (Pre-Action Interceptors)
 
-Skills can ship with deterministic pre-action interceptors that read the agent's current hormonal + GCCRF state and modify, inject context into, require prerequisites for, or block any tool call before it executes. This closes the stochastic gap between "the skill prompt says do X" and "the agent actually does X." Inspired by [HASP (arXiv:2605.17734)](https://arxiv.org/abs/2605.17734); extended with neuromodulatory state binding no other framework offers. The Dream Engine's `interceptor_harvest` mode mines observed competence gaps and proposes new interceptors automatically. See [docs/agents/interceptors.md](docs/agents/interceptors.md) and the Active Guards UI tab.
+Most agent skills are markdown. The LLM may or may not follow them. Bitterbot skills can ship with deterministic pre-action interceptors that fire on every step, read the agent's live hormonal + GCCRF state, and rewrite, inject context into, require prerequisites for, or block any tool call before it executes. Citation rate jumps from "sometimes" to "always". Group-chat etiquette becomes enforceable. Relationship questions route to the right memory tool. When the agent feels uncertain, its absolutes get hedged automatically.
+
+The dream engine's `interceptor_harvest` mode watches what fails and drafts new interceptors overnight; one click in the **Active Guards** UI promotes them. Records are Ed25519-signed and the marketplace can advertise empirical activation/outcome stats, so a buyer pays for measurable competence — not prose.
+
+No other agent framework reads neuromodulatory state to decide whether to enforce a rule. Inspired by [HASP (arXiv:2605.17734)](https://arxiv.org/abs/2605.17734), extended with the biology only Bitterbot has. See [docs/agents/interceptors.md](docs/agents/interceptors.md).
 
 ---
 
