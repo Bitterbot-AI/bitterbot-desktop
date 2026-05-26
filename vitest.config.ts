@@ -38,6 +38,7 @@ export default defineConfig({
       "extensions/**/*.test.ts",
       "test/**/*.test.ts",
       "benchmarks/arc-agi-3/**/*.test.ts",
+      "benchmarks/longmemeval/**/*.test.ts",
     ],
     setupFiles: ["test/setup.ts"],
     exclude: [

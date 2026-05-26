@@ -17,6 +17,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   selectStrategy,
   buildStrategyPrompt,
+  type RecentRejection,
   type StrategyContext,
 } from "./dream-mutation-strategies.js";
 
@@ -154,6 +155,7 @@ export class PromptOptimizationExperiment {
   async optimize(
     candidate: OptimizationCandidate,
     llmCall: (prompt: string) => Promise<string>,
+    recentRejections?: ReadonlyArray<RecentRejection>,
   ): Promise<OptimizationResult[]> {
     try {
       const { skill, metrics } = candidate;
@@ -174,8 +176,9 @@ export class PromptOptimizationExperiment {
         context.relatedSkills = this.getRelatedSkills(skill.id, skill.skill_category, 2);
       }
 
-      // Build and send the mutation prompt
-      const prompt = buildStrategyPrompt(strategy, skill.text, context);
+      // Build and send the mutation prompt — recentRejections (PLAN-21 Phase C)
+      // are rendered as a "do not re-propose" block ahead of the strategy body.
+      const prompt = buildStrategyPrompt(strategy, skill.text, context, recentRejections);
       const raw = await llmCall(prompt);
 
       // Parse the LLM response

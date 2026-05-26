@@ -30,6 +30,8 @@ The agent thinks while it sleeps. Every 2 hours, the dream engine runs autonomou
 
 Dreams rewrite the agent's working memory (`MEMORY.md`), updating its self-concept (Phenotype), theory of mind about the user (Bond), ecosystem identity (Niche), and active context. FSHO oscillators modulate dream mode selection based on criticality state. SNN merge discovery identifies near-duplicate memories. Limbic memory bridge connects emotional state to dream triggering.
 
+Mutation outcomes pass through a two-gate validation pipeline (PLAN-21): a faithfulness gate verifies that key operational concepts survive the edit, then a paired-bootstrap performance gate scores both versions against a fixed held-out 20% of real `skill_executions`. Mutations clear the gate only when the 95% CI on the per-trial delta is strictly above zero. Across each cycle, surviving candidates are Pareto-ranked over (delta, faithfulness margin, token delta) and clipped to a cosine-decay edit budget so mature skills tighten while young ones still have room to move. Every K cycles, an epoch-wise slow update re-evaluates the live SKILL.md against the last three archived versions, classifies per-task outcomes (improvement / regression / persistent-failure / stable-success), and clusters regressions by the hormonal state captured on the original trajectory — yielding a falsifiable claim Bitterbot can make and no other framework can: skill regressions cluster non-randomly in hormonal-state space.
+
 ### 3. Curiosity Engine — GCCRF (`src/memory/gccrf.ts`)
 
 The Geodesic Crystal-Field Curiosity Reward Function — a novel intrinsic motivation system that drives self-directed learning:

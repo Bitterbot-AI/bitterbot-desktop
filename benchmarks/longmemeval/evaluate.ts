@@ -17,7 +17,14 @@ import { parseArgs } from "node:util";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-import { type LongMemEvalItem, readResults, loadDataset } from "./adapter.js";
+import {
+  type LongMemEvalItem,
+  loadDataset,
+  loadDatasetSplit,
+  readResults,
+  selectSplit,
+  type SplitName,
+} from "./adapter.js";
 
 const { values: args } = parseArgs({
   options: {
@@ -28,6 +35,11 @@ const { values: args } = parseArgs({
     data: { type: "string", default: join(__dirname, "data", "longmemeval_s.json") },
     "skip-llm": { type: "boolean", default: false },
     verbose: { type: "boolean", default: false },
+    // PLAN-21 Phase E: pick which split of the dataset to score against.
+    // Defaults to "all" so existing CI invocations are unchanged. Pass
+    // --split=test for publication-grade numbers free of train-on-test
+    // contamination from any skill optimization that ran during training.
+    split: { type: "string", default: "all" },
   },
   strict: true,
 });
@@ -133,7 +145,17 @@ async function run() {
   console.log("📊 LongMemEval Results Evaluator");
 
   const results = readResults(args.results!);
-  const dataset = loadDataset(args.data!);
+
+  // PLAN-21 Phase E: optionally restrict scoring to a deterministic split.
+  // "all" preserves the previous behaviour.
+  const splitName = (args.split ?? "all") as SplitName;
+  if (!["train", "selection", "test", "all"].includes(splitName)) {
+    throw new Error(`--split must be one of train|selection|test|all (got "${splitName}")`);
+  }
+  const dataset =
+    splitName === "all"
+      ? loadDataset(args.data!)
+      : selectSplit(loadDatasetSplit(args.data!), splitName);
 
   // Index dataset by question_id
   const dataMap = new Map<string, LongMemEvalItem>();
@@ -142,7 +164,7 @@ async function run() {
   }
 
   console.log(`   Results: ${results.length} answers`);
-  console.log(`   Dataset: ${dataset.length} questions`);
+  console.log(`   Dataset: ${dataset.length} questions (split=${splitName})`);
   console.log(`   LLM Judge: ${args["skip-llm"] ? "OFF (heuristic)" : "ON (GPT-4o)"}`);
   console.log("");
 

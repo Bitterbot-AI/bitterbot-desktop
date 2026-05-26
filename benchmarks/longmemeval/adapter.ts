@@ -8,6 +8,7 @@
  * LongMemEval (ICLR 2025): https://github.com/xiaowu0162/LongMemEval
  */
 
+import { createHash } from "node:crypto";
 import {
   appendFileSync,
   readFileSync,
@@ -261,6 +262,72 @@ export function readResults(path: string): LongMemEvalResult[] {
 export function loadDataset(path: string): LongMemEvalItem[] {
   const raw = readFileSync(path, "utf-8");
   return JSON.parse(raw);
+}
+
+/**
+ * PLAN-21 Phase E: deterministic 20/10/70 train/selection/test split over
+ * `question_id`. Same input file produces the same partition forever — uses
+ * a SHA-1 of `question_id` modulo 100, so bucket `<20` is train, `20–29` is
+ * selection, `≥30` is test. The selection split feeds the validation gate
+ * during skill optimization; test never touches the memory store.
+ */
+export interface LongMemEvalSplit {
+  train: LongMemEvalItem[];
+  selection: LongMemEvalItem[];
+  test: LongMemEvalItem[];
+  all: LongMemEvalItem[];
+}
+
+export const DEFAULT_TRAIN_BUCKET_CEILING = 20; // [0, 20) → train
+export const DEFAULT_SELECTION_BUCKET_CEILING = 30; // [20, 30) → selection
+// Anything at or above DEFAULT_SELECTION_BUCKET_CEILING is test.
+
+export function loadDatasetSplit(
+  path: string,
+  options: {
+    trainCeiling?: number;
+    selectionCeiling?: number;
+  } = {},
+): LongMemEvalSplit {
+  const trainCeiling = options.trainCeiling ?? DEFAULT_TRAIN_BUCKET_CEILING;
+  const selectionCeiling = options.selectionCeiling ?? DEFAULT_SELECTION_BUCKET_CEILING;
+  if (trainCeiling < 0 || trainCeiling > selectionCeiling || selectionCeiling > 100) {
+    throw new Error(
+      `loadDatasetSplit: invalid ceilings train=${trainCeiling} selection=${selectionCeiling}`,
+    );
+  }
+  const all = loadDataset(path);
+  const train: LongMemEvalItem[] = [];
+  const selection: LongMemEvalItem[] = [];
+  const test: LongMemEvalItem[] = [];
+  for (const item of all) {
+    const bucket = splitBucket(item.question_id);
+    if (bucket < trainCeiling) {
+      train.push(item);
+    } else if (bucket < selectionCeiling) {
+      selection.push(item);
+    } else {
+      test.push(item);
+    }
+  }
+  return { train, selection, test, all };
+}
+
+/**
+ * Deterministic [0, 99] bucket from a question id. Pure SHA-1 over the
+ * stringified id; same input always returns the same bucket. Exposed for
+ * tests and for callers that need to ask `which split does this id belong to`.
+ */
+export function splitBucket(questionId: string): number {
+  const hex = createHash("sha1").update(String(questionId)).digest("hex");
+  const n = parseInt(hex.slice(0, 8), 16);
+  return n % 100;
+}
+
+export type SplitName = "train" | "selection" | "test" | "all";
+
+export function selectSplit(split: LongMemEvalSplit, name: SplitName): LongMemEvalItem[] {
+  return split[name];
 }
 
 // ── Cleanup ──

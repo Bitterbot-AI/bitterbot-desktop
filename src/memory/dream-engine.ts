@@ -23,6 +23,17 @@ import { selectStrategy, buildStrategyPrompt } from "./dream-mutation-strategies
 import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
 import { ensureDreamSchema, recordDreamTelemetry } from "./dream-schema.js";
 import {
+  bindBiologicalContext,
+  DEFAULT_SLOW_UPDATE_CONFIG,
+  enqueueRegressionPriority,
+  ensureSlowUpdateSchema,
+  readSkillTextHistory,
+  runLongitudinalRegression,
+  shouldRunSlowUpdate,
+  snapshotSkillText,
+  summarize,
+} from "./dream-slow-update.js";
+import {
   buildDreamSynthesisPrompt,
   heuristicSynthesize,
   parseDreamSynthesisResponse,
@@ -48,6 +59,15 @@ import { ExperimentSandbox, type MutationVerdict } from "./experiment-sandbox.js
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
 import { ensureColumn } from "./memory-schema.js";
 import { PromptOptimizationExperiment } from "./prompt-optimization.js";
+import { listHeldOutExecutions, MIN_PAIRED_FOR_BOOTSTRAP } from "./skill-execution-selection.js";
+import {
+  cosineDecayBudget,
+  defaultPlan21Axes,
+  defaultPlan21TieBreak,
+  type MutationPoolCandidate,
+  paretoFront,
+  selectTopL,
+} from "./skill-mutation-pareto.js";
 
 const log = createSubsystemLogger("memory/dream");
 
@@ -165,6 +185,10 @@ export class DreamEngine {
     ensureDreamSchema(db);
     // Ensure modes_used column exists on dream_cycles
     ensureColumn(db, "dream_cycles", "modes_used", "TEXT DEFAULT '[]'");
+    // PLAN-21 Phase D: idempotent schema for skill text history + the
+    // context_annotation column on mutation_queue. Safe to call on every
+    // construction — internal CREATE / ALTER are guarded by IF NOT EXISTS.
+    ensureSlowUpdateSchema(db);
   }
 
   /**
@@ -564,6 +588,14 @@ export class DreamEngine {
         });
       } catch {
         // Dream evaluator not available — non-critical
+      }
+
+      // PLAN-21 Phase D — longitudinal slow update. Best-effort: a failure
+      // here logs and is swallowed so it never breaks the main cycle.
+      try {
+        await this.maybeRunPlan21SlowUpdate(cycleId);
+      } catch (err) {
+        log.debug(`plan21 slow update failed: ${String(err)}`);
       }
 
       // PLAN-18 Phase 3 — gradient-free gate optimization on the SAGE
@@ -1170,10 +1202,13 @@ export class DreamEngine {
         relatedCount,
       );
 
-      // Build context for strategy-specific prompt
+      // Build context for strategy-specific prompt. PLAN-21 Phase C: include
+      // recent rejection rationale so the LLM doesn't re-propose the same
+      // family of failed mutation.
       const relatedSkills =
         relatedCount > 0 ? this.getRelatedSkills(seed.id, seed.semantic_type, 2) : [];
-      const prompt = buildStrategyPrompt(strategy, seed.text, { relatedSkills });
+      const recentRejections = this.readRecentRejections(seed.id);
+      const prompt = buildStrategyPrompt(strategy, seed.text, { relatedSkills }, recentRejections);
 
       try {
         const raw = await llmCall(prompt);
@@ -1692,10 +1727,26 @@ export class DreamEngine {
         break;
       }
 
+      // PLAN-21 Phase C: feed prior rejection rationale into the optimizer
+      // so failed-family mutations don't get re-proposed.
+      const rejections = this.readRecentRejections(candidate.skill.id);
+
       try {
-        const results = await experiment.optimize(candidate, llmCall);
+        const results = await experiment.optimize(candidate, llmCall, rejections);
         llmCalls++;
         const now = Date.now();
+
+        // PLAN-21 Phase B: accumulate the cycle's mutation pool for this
+        // candidate, evaluate each via the validation gate, then Pareto-rank
+        // and clip to a cosine-decayed edit budget before promoting. Without
+        // this, every gate-passing mutation gets committed — over-mutating
+        // the skill and ignoring SkillReducer's less-is-more finding.
+        interface PoolEntry extends MutationPoolCandidate {
+          readonly resultContent: string;
+          readonly verdict: MutationVerdict;
+          readonly strategy: string | null;
+        }
+        const pool: PoolEntry[] = [];
 
         for (const result of results) {
           // Confidence incorporates both LLM confidence and opportunity score
@@ -1717,7 +1768,6 @@ export class DreamEngine {
             updatedAt: now,
           };
 
-          // Sandbox evaluation: A/B test the mutation against the original
           try {
             const verdict = await sandbox.evaluate(
               {
@@ -1728,24 +1778,23 @@ export class DreamEngine {
               },
               result.content,
             );
-            // Count sandbox LLM calls toward budget
             llmCalls += verdict.testCasesRun;
 
+            // Only enrol gate-passing candidates in the pool. Failures are
+            // archived immediately so the rejection log captures every miss.
             if (verdict.accepted && verdict.confidence >= 0.6) {
-              // Promote the mutation (git advance)
-              this.promoteSkillMutation(
-                candidate.skill.id,
-                result.content,
+              const examined = verdict.faithfulness?.examined.length ?? 0;
+              const missing = verdict.faithfulness?.missing.length ?? 0;
+              const faithfulnessMargin = examined === 0 ? 1.0 : Math.max(0, 1 - missing / examined);
+              pool.push({
+                resultContent: result.content,
                 verdict,
-                result.strategy ?? undefined,
-              );
-              log.debug("mutation promoted", {
-                skillId: candidate.skill.id,
-                delta: verdict.delta.toFixed(3),
-                confidence: verdict.confidence.toFixed(2),
+                strategy: result.strategy ?? null,
+                delta: verdict.statistical?.delta ?? verdict.delta,
+                faithfulnessMargin,
+                tokenDelta: result.content.length - candidate.skill.text.length,
               });
             } else {
-              // Archive the mutation (git reset)
               this.archiveMutationResult(candidate.skill.id, result.content, verdict);
             }
           } catch (sandboxErr) {
@@ -1755,11 +1804,46 @@ export class DreamEngine {
           insights.push(insight);
         }
 
+        // ── Pareto + cosine-decay budget over the candidate's pool ───────
+        if (pool.length > 0) {
+          const dreamCount = this.readSkillDreamCount(candidate.skill.id);
+          const budget = cosineDecayBudget(dreamCount);
+          const front = paretoFront(pool, defaultPlan21Axes<PoolEntry>());
+          const selected = selectTopL(front, budget, defaultPlan21TieBreak<PoolEntry>());
+          const selectedSet = new Set(selected);
+
+          for (const entry of pool) {
+            if (selectedSet.has(entry)) {
+              this.promoteSkillMutation(
+                candidate.skill.id,
+                entry.resultContent,
+                entry.verdict,
+                entry.strategy ?? undefined,
+              );
+              log.debug("mutation promoted (top-L_t)", {
+                skillId: candidate.skill.id,
+                delta: entry.delta.toFixed(3),
+                budget,
+                poolSize: pool.length,
+                frontSize: front.length,
+              });
+            } else {
+              const clippedVerdict: MutationVerdict = {
+                ...entry.verdict,
+                accepted: false,
+                reason: `${entry.verdict.reason}; clipped_by_budget (L_t=${budget})`,
+              };
+              this.archiveMutationResult(candidate.skill.id, entry.resultContent, clippedVerdict);
+            }
+          }
+        }
+
         log.debug("research experiment completed", {
           skillId: candidate.skill.id,
           strategy: results[0]?.strategy ?? "unknown",
           baselineSuccessRate: candidate.metrics.successRate,
           mutationsGenerated: results.length,
+          poolEnrolled: pool.length,
         });
       } catch (err) {
         log.debug(`research LLM call failed: ${String(err)}`);
@@ -1768,6 +1852,233 @@ export class DreamEngine {
 
     this.markChunksDreamed(candidates.map((c) => c.skill.id));
     return { insights, llmCalls, chunksAnalyzed: candidates.length };
+  }
+
+  /**
+   * Read recent rejection rationale for a skill (PLAN-21 Phase C). Pulled
+   * from `memory_audit_log` `skill_mutation_archived` events and rendered
+   * into the mutation prompt as a "do not re-propose" block. Returns the
+   * `MAX_REJECTIONS_TO_FETCH` most recent rejections, newest first.
+   */
+  private readRecentRejections(
+    skillId: string,
+    limit = 5,
+  ): Array<{ preview: string; reason: string; deltaDrop?: number }> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT metadata FROM memory_audit_log
+           WHERE chunk_id = ? AND event = 'skill_mutation_archived'
+           ORDER BY timestamp DESC
+           LIMIT ?`,
+        )
+        .all(skillId, limit) as Array<{ metadata: string | null }>;
+      const out: Array<{ preview: string; reason: string; deltaDrop?: number }> = [];
+      for (const row of rows) {
+        if (!row.metadata) {
+          continue;
+        }
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(row.metadata) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+        const preview = typeof parsed.mutationPreview === "string" ? parsed.mutationPreview : "";
+        const reason = typeof parsed.reason === "string" ? parsed.reason : "rejected";
+        if (!preview) {
+          continue;
+        }
+        const entry: { preview: string; reason: string; deltaDrop?: number } = {
+          preview,
+          reason,
+        };
+        if (typeof parsed.delta === "number") {
+          entry.deltaDrop = parsed.delta;
+        }
+        out.push(entry);
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * PLAN-21 Phase D epoch driver. Called once per cycle after the dream
+   * evaluator runs. When `shouldRunSlowUpdate` says it's time, picks the
+   * top-K most-dreamed skills and for each:
+   *
+   *   1. Loads its held-out selection set from `skill_executions`
+   *   2. Loads up to N prior versions from `skill_text_history`
+   *   3. Runs `runLongitudinalRegression` to classify per-task outcomes
+   *   4. Clusters regressions by hormonal state via `bindBiologicalContext`
+   *   5. Enqueues each cluster into `mutation_queue` with elevated priority
+   *
+   * Records cycle telemetry (improvement/regression/persistent/stable counts)
+   * via `dream_telemetry` so the slow-update signal is auditable. Best-effort:
+   * any failure here logs and is swallowed so it never breaks the main cycle.
+   */
+  private async maybeRunPlan21SlowUpdate(cycleId: string): Promise<void> {
+    const llmCall = this.getLlmCallForMode("research");
+    if (!llmCall) {
+      return;
+    }
+    const currentCycle = this.readCompletedCycleCount();
+    const lastSlow = this.readLastSlowUpdateCycle();
+    if (!shouldRunSlowUpdate(currentCycle, lastSlow)) {
+      return;
+    }
+
+    const topSkills = this.db
+      .prepare(
+        `SELECT id, text, COALESCE(skill_version, 1) AS skill_version
+         FROM chunks
+         WHERE (COALESCE(memory_type, 'plaintext') = 'skill'
+                OR COALESCE(semantic_type, 'general') = 'skill')
+           AND (COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
+                OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))
+         ORDER BY COALESCE(dream_count, 0) DESC, importance_score DESC
+         LIMIT 8`,
+      )
+      .all() as Array<{ id: string; text: string; skill_version: number }>;
+
+    if (topSkills.length === 0) {
+      this.writeLastSlowUpdateCycle(currentCycle);
+      return;
+    }
+
+    const sandbox = new ExperimentSandbox(this.db, llmCall);
+    let totalRegressions = 0;
+    let totalClusters = 0;
+
+    for (const skill of topSkills) {
+      const selectionSet = listHeldOutExecutions(this.db, skill.id, { limit: 12 });
+      if (selectionSet.length < MIN_PAIRED_FOR_BOOTSTRAP) {
+        continue;
+      }
+      const archive = readSkillTextHistory(
+        this.db,
+        skill.id,
+        DEFAULT_SLOW_UPDATE_CONFIG.archiveDepth,
+      );
+      if (archive.length === 0) {
+        continue;
+      }
+
+      let trajectories;
+      try {
+        trajectories = await runLongitudinalRegression({
+          db: this.db,
+          skillId: skill.id,
+          currentVersion: skill.skill_version,
+          currentSkillText: skill.text,
+          archiveVersions: archive,
+          selectionSet,
+          scorePair: async (a, b, set) => sandbox.scoreVersionPair(a, b, set),
+        });
+      } catch (err) {
+        log.debug(`runLongitudinalRegression failed for ${skill.id}: ${String(err)}`);
+        continue;
+      }
+
+      const summary = summarize(trajectories);
+      this.recordTelemetry(cycleId, "plan21_slow_update", "regression", summary.regression);
+      this.recordTelemetry(cycleId, "plan21_slow_update", "improvement", summary.improvement);
+      this.recordTelemetry(
+        cycleId,
+        "plan21_slow_update",
+        "persistent_failure",
+        summary.persistentFailure,
+      );
+      this.recordTelemetry(cycleId, "plan21_slow_update", "stable_success", summary.stableSuccess);
+
+      const regressions = trajectories.filter((t) => t.classification === "regression");
+      if (regressions.length === 0) {
+        continue;
+      }
+      totalRegressions += regressions.length;
+
+      const clusters = bindBiologicalContext(regressions);
+      for (const cluster of clusters) {
+        const enqueued = enqueueRegressionPriority(this.db, {
+          skillId: skill.id,
+          cluster,
+        });
+        if (enqueued) {
+          totalClusters++;
+        }
+      }
+    }
+
+    this.writeLastSlowUpdateCycle(currentCycle);
+    log.debug("plan21 slow update complete", {
+      cycle: currentCycle,
+      skillsExamined: topSkills.length,
+      regressions: totalRegressions,
+      clustersEnqueued: totalClusters,
+    });
+  }
+
+  /** Count of completed dream cycles. Used as the slow-update epoch counter. */
+  private readCompletedCycleCount(): number {
+    try {
+      const r = this.db
+        .prepare(`SELECT COUNT(*) AS c FROM dream_cycles WHERE completed_at IS NOT NULL`)
+        .get() as { c: number } | undefined;
+      return r?.c ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private readLastSlowUpdateCycle(): number {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT metadata FROM memory_audit_log
+           WHERE event = 'plan21_slow_update_fired'
+           ORDER BY timestamp DESC LIMIT 1`,
+        )
+        .get() as { metadata: string } | undefined;
+      if (!row?.metadata) {
+        return 0;
+      }
+      const parsed = JSON.parse(row.metadata) as { cycle?: number };
+      return typeof parsed.cycle === "number" ? parsed.cycle : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private writeLastSlowUpdateCycle(cycle: number): void {
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
+           VALUES (?, NULL, 'plan21_slow_update_fired', ?, 'dream_engine/plan21', ?)`,
+        )
+        .run(crypto.randomUUID(), Date.now(), JSON.stringify({ cycle }));
+    } catch {
+      // best-effort
+    }
+  }
+
+  /**
+   * Read the `dream_count` for a skill crystal. Used by PLAN-21 Phase B to
+   * decide the cosine-decay edit budget — young skills (dream_count near 0)
+   * receive a larger budget, mature skills tighten to the floor. Failures
+   * fall back to 0 so the budget defaults to its initial value.
+   */
+  private readSkillDreamCount(skillId: string): number {
+    try {
+      const row = this.db
+        .prepare(`SELECT COALESCE(dream_count, 0) AS dream_count FROM chunks WHERE id = ?`)
+        .get(skillId) as { dream_count: number } | undefined;
+      return row?.dream_count ?? 0;
+    } catch {
+      return 0;
+    }
   }
 
   /**
@@ -1783,14 +2094,18 @@ export class DreamEngine {
   ): void {
     const now = Date.now();
     try {
-      // Get current version info
+      // Get current version info (we also need the prior `text` for the
+      // PLAN-21 Phase D history snapshot).
       const row = this.db
-        .prepare(`SELECT skill_version, governance_json, importance_score FROM chunks WHERE id = ?`)
+        .prepare(
+          `SELECT skill_version, governance_json, importance_score, text FROM chunks WHERE id = ?`,
+        )
         .get(skillId) as
         | {
             skill_version: number | null;
             governance_json: string | null;
             importance_score: number;
+            text: string;
           }
         | undefined;
 
@@ -1798,7 +2113,20 @@ export class DreamEngine {
         return;
       }
 
-      const newVersion = (row.skill_version ?? 1) + 1;
+      const priorVersion = row.skill_version ?? 1;
+      const newVersion = priorVersion + 1;
+
+      // PLAN-21 Phase D: snapshot prior text into skill_text_history BEFORE
+      // overwriting chunks.text. Best-effort — failure here never blocks the
+      // promotion.
+      snapshotSkillText(this.db, {
+        skillId,
+        version: priorVersion,
+        text: row.text,
+        promotedAt: now,
+        delta: verdict.delta,
+        strategy,
+      });
 
       // Update governance with promotion provenance
       let governance: Record<string, unknown> = {};

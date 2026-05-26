@@ -196,7 +196,13 @@ Gap-filling driven by the curiosity engine. Loads unresolved `curiosity_targets`
 
 ### Research Mode (cloud LLM)
 
-Empirical prompt optimization. Analyzes skill execution data to identify underperforming prompts, generates variations, and uses the `ExperimentSandbox` to evaluate them against real metrics. The most effective variants are promoted.
+Empirical prompt optimization. Analyzes skill execution data to identify underperforming prompts, generates variations, and runs each through the PLAN-21 two-gate validation pipeline: a **faithfulness gate** (an LLM judge verifies that each key operational concept in the original survives in the mutation, short-circuiting before the expensive performance gate when intent is lost) followed by a **paired-bootstrap performance gate** (each held-out execution from a fixed 20% partition of `skill_executions` is replayed under both versions, producing paired binary outcomes that feed a 2000-iteration bootstrap on the per-trial delta; the mutation is accepted only when the 95% CI lower bound is strictly above zero). Surviving candidates across the cycle are **Pareto-ranked** over (delta, faithfulness margin, token delta) and clipped to a **cosine-decay edit budget** that tightens as the skill's `dream_count` grows. Rejected mutations are persisted to `memory_audit_log` and re-rendered as a "do not re-propose" block at the head of the next cycle's mutation prompt.
+
+Cold-start skills (fewer than five held-out executions) fall back to a legacy synthetic-scenario gate so brand-new skills are not blocked from optimization while real trajectories accumulate.
+
+### Slow Update (epoch-wise, PLAN-21 Phase D)
+
+Every ten dream cycles the engine runs a **longitudinal regression analysis** across the live `chunks.text` for each highly-active skill and its last three archived versions in `skill_text_history`. Per-task outcomes are classified into the four-way taxonomy (improvement / regression / persistent-failure / stable-success), and regressions are clustered by hormonal state (k-means++ over dopamine × cortisol × oxytocin recovered from the original `intervention_records` trajectories). Clusters with three or more members are enqueued into `mutation_queue` with elevated priority and a JSON `context_annotation` carrying the cluster centroid, so the next mutation cycle picks up the regression-prone biological context first. Per-classification counts are recorded in `dream_telemetry` under phase `plan21_slow_update`.
 
 ---
 

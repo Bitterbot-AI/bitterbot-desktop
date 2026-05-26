@@ -23,6 +23,9 @@ import {
   type LongMemEvalResult,
   type MemoryChunk,
   loadDataset,
+  loadDatasetSplit,
+  selectSplit,
+  type SplitName,
   convertItemToDocument,
   buildAnswerPrompt,
   writeResults,
@@ -41,6 +44,11 @@ const { values: args } = parseArgs({
     "output-dir": { type: "string", default: join(__dirname, "results") },
     verbose: { type: "boolean", default: false },
     "dry-run": { type: "boolean", default: false },
+    // PLAN-21 Phase E: restrict the runner to one deterministic split of the
+    // dataset. Defaults to "all" so existing CI invocations are unchanged.
+    // Use --split=test to produce publication-grade test numbers free of
+    // train-on-test contamination.
+    split: { type: "string", default: "all" },
   },
   strict: true,
 });
@@ -88,10 +96,18 @@ async function run() {
   }
   console.log("");
 
-  // Load dataset
-  const dataset = loadDataset(dataFile);
+  // Load dataset, optionally restricted to one split.
+  const splitName = (args.split ?? "all") as SplitName;
+  if (!["train", "selection", "test", "all"].includes(splitName)) {
+    console.error(`❌ --split must be one of train|selection|test|all (got "${splitName}")`);
+    process.exit(1);
+  }
+  const dataset: LongMemEvalItem[] =
+    splitName === "all"
+      ? loadDataset(dataFile)
+      : selectSplit(loadDatasetSplit(dataFile), splitName);
   const items = limit ? dataset.slice(0, limit) : dataset;
-  console.log(`📊 Loaded ${items.length} questions (of ${dataset.length} total)`);
+  console.log(`📊 Loaded ${items.length} questions (of ${dataset.length} in split=${splitName})`);
 
   // Import Bitterbot internals
   // These imports are deferred so the benchmark can be type-checked

@@ -41,30 +41,85 @@ export function selectStrategy(
 }
 
 /**
- * Build a mutation prompt specific to the chosen strategy.
+ * Build a mutation prompt specific to the chosen strategy. When
+ * `recentRejections` is supplied, the prompt is prefixed with a block that
+ * lists previously rejected mutations and why, so the LLM does not re-propose
+ * the same family of failed edit (PLAN-21 Phase C). The cap is enforced
+ * inside `renderRejectionsBlock` — callers can pass an unbounded array.
  */
 export function buildStrategyPrompt(
   strategy: MutationStrategy,
   skillText: string,
   context: StrategyContext,
+  recentRejections?: ReadonlyArray<RecentRejection>,
 ): string {
-  switch (strategy) {
-    case "error_driven":
-      return buildErrorDrivenPrompt(skillText, context);
-    case "adversarial":
-      return buildAdversarialPrompt(skillText);
-    case "compositional":
-      return buildCompositionalPrompt(skillText, context);
-    case "parametric":
-      return buildParametricPrompt(skillText);
-    default:
-      return buildGenericPrompt(skillText);
-  }
+  const body = (() => {
+    switch (strategy) {
+      case "error_driven":
+        return buildErrorDrivenPrompt(skillText, context);
+      case "adversarial":
+        return buildAdversarialPrompt(skillText);
+      case "compositional":
+        return buildCompositionalPrompt(skillText, context);
+      case "parametric":
+        return buildParametricPrompt(skillText);
+      default:
+        return buildGenericPrompt(skillText);
+    }
+  })();
+  const prefix = renderRejectionsBlock(recentRejections);
+  return prefix + body;
 }
 
 export type StrategyContext = {
   metrics?: SkillMetrics | null;
   relatedSkills?: Array<{ text: string; id: string }>;
+};
+
+/**
+ * One previously rejected mutation, surfaced from `memory_audit_log` rows of
+ * event `skill_mutation_archived`. The dream-engine maps audit-log payloads
+ * to this shape before passing to `buildStrategyPrompt`.
+ */
+export interface RecentRejection {
+  /** A short preview of the rejected mutation (≤200 chars matches existing audit-log payload). */
+  readonly preview: string;
+  /** The reason the validation gate gave (verdict.reason, or a faithfulness summary). */
+  readonly reason: string;
+  /** The score drop produced by this mutation, if recorded. */
+  readonly deltaDrop?: number;
+}
+
+/** Maximum rejections rendered into a prompt; older ones are silently dropped. */
+const MAX_REJECTIONS_IN_PROMPT = 5;
+/** Cap on the preview substring to keep prompt token cost predictable. */
+const MAX_REJECTION_PREVIEW_CHARS = 200;
+/** Cap on the reason substring rendered into the prompt. */
+const MAX_REJECTION_REASON_CHARS = 160;
+
+export function renderRejectionsBlock(
+  rejections: ReadonlyArray<RecentRejection> | undefined,
+): string {
+  if (!rejections || rejections.length === 0) {
+    return "";
+  }
+  const capped = rejections.slice(0, MAX_REJECTIONS_IN_PROMPT);
+  const lines: string[] = [
+    "Previously rejected mutations for this skill (do not re-propose patterns like these):",
+  ];
+  for (const r of capped) {
+    const preview = r.preview.slice(0, MAX_REJECTION_PREVIEW_CHARS);
+    const reason = r.reason.slice(0, MAX_REJECTION_REASON_CHARS);
+    const delta = typeof r.deltaDrop === "number" ? ` (Δ=${r.deltaDrop.toFixed(2)})` : "";
+    lines.push(`- ${preview} — rejected: ${reason}${delta}`);
+  }
+  lines.push(""); // blank line before strategy-specific body
+  return lines.join("\n");
+}
+
+export const __testing = {
+  MAX_REJECTIONS_IN_PROMPT,
+  MAX_REJECTION_PREVIEW_CHARS,
 };
 
 function buildGenericPrompt(skillText: string): string {

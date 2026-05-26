@@ -219,7 +219,23 @@ flowchart TB
 | `src/memory/dream-evaluator.ts`           | Dream outcome evaluation — DQS scoring, FSHO correlation, adaptive feedback             |
 | `src/memory/dream-synthesis-prompt.ts`    | LLM prompt building, heuristic synthesis, response parsing                              |
 | `src/memory/dream-search.ts`              | Vector search over dream insights                                                       |
-| `src/memory/dream-mutation-strategies.ts` | 5 mutation strategies + LLM prompt builders                                             |
+| `src/memory/dream-mutation-strategies.ts` | 5 mutation strategies + LLM prompt builders + rejected-edit context block (PLAN-21)     |
+
+### Skill Mutation Validation Gate (PLAN-21)
+
+| File                                      | Purpose                                                                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `src/memory/experiment-sandbox.ts`        | Two-gate validation: faithfulness gate + paired-bootstrap performance gate over a fixed held-out set          |
+| `src/memory/skill-execution-selection.ts` | Deterministic SHA-1 partition of `skill_executions` into a 20% held-out selection set                         |
+| `src/memory/skill-mutation-pareto.ts`     | Pareto-front ranking over (delta, faithfulness margin, token delta) + cosine-decay edit budget                |
+| `src/memory/dream-slow-update.ts`         | Epoch-wise longitudinal regression across `skill_text_history`; hormonal k-means++ clustering; queue priority |
+| `src/memory/prompt-optimization.ts`       | `optimize()` threads rejected-edit rationale through to `buildStrategyPrompt`                                 |
+
+Schema additions (PLAN-21):
+
+- `skill_text_history` — preserves prior `chunks.text` on every `promoteSkillMutation`, so the slow update has real archived versions to score against.
+- `mutation_queue.context_annotation` — JSON-encoded hormonal-cluster centroid attached to each `regression-priority` row.
+- `memory_audit_log` events: `plan21_slow_update_fired` (per-epoch checkpoint), `skill_mutation_promoted` and `skill_mutation_archived` (now consumed by `buildStrategyPrompt` as a "do not re-propose" block).
 
 ### Working Memory (RLM)
 
