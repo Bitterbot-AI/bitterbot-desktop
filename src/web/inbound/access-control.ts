@@ -55,7 +55,8 @@ export async function checkInboundAccessControl(params: {
   const groupAllowFrom =
     account.groupAllowFrom ??
     (configuredAllowFrom && configuredAllowFrom.length > 0 ? configuredAllowFrom : undefined);
-  const isSamePhone = params.from === params.selfE164;
+  const isSamePhone =
+    normalizeE164(params.from) === normalizeE164(params.selfE164 ?? "");
   const isSelfChat = isSelfChatMode(params.selfE164, configuredAllowFrom);
   const pairingGraceMs =
     typeof params.pairingGraceMs === "number" && params.pairingGraceMs > 0
@@ -103,9 +104,12 @@ export async function checkInboundAccessControl(params: {
         resolvedAccountId: account.accountId,
       };
     }
+    const normalizedSenderE164 =
+      params.senderE164 != null ? normalizeE164(params.senderE164) : null;
     const senderAllowed =
       groupHasWildcard ||
-      (params.senderE164 != null && normalizedGroupAllowFrom.includes(params.senderE164));
+      (normalizedSenderE164 != null &&
+        normalizedGroupAllowFrom.includes(normalizedSenderE164));
     if (!senderAllowed) {
       logVerbose(
         `Blocked group message from ${params.senderE164 ?? "unknown sender"} (groupPolicy: allowlist)`,
@@ -140,7 +144,7 @@ export async function checkInboundAccessControl(params: {
       };
     }
     if (dmPolicy !== "open" && !isSamePhone) {
-      const candidate = params.from;
+      const candidate = normalizeE164(params.from);
       const allowed =
         dmHasWildcard ||
         (normalizedAllowFrom.length > 0 && normalizedAllowFrom.includes(candidate));
