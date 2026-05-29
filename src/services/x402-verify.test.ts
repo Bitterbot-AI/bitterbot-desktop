@@ -35,7 +35,7 @@ let mockedReceiptStore: Record<
   {
     status: "success" | "reverted";
     to: string;
-    logs: { topics: string[]; data: string }[];
+    logs: { address?: string; topics: string[]; data: string }[];
   }
 > = {};
 function mockedReceipt(hash: string) {
@@ -57,6 +57,14 @@ function encodeToken(payload: Record<string, unknown>): string {
   return Buffer.from(JSON.stringify(payload)).toString("base64");
 }
 
+// Encode a USDC amount (human, e.g. 0.05) as a 32-byte big-endian hex string
+// in 6-decimal base units, matching the non-indexed `value` field of an
+// ERC-20 Transfer event.
+function encodeTransferValue(humanAmount: number): string {
+  const baseUnits = BigInt(Math.round(humanAmount * 1_000_000));
+  return "0x" + baseUnits.toString(16).padStart(64, "0");
+}
+
 describe("verifyX402Payment", () => {
   const recipient = "0x" + "11".repeat(20);
   const sender = "0x" + "22".repeat(20);
@@ -68,6 +76,8 @@ describe("verifyX402Payment", () => {
       status?: "success" | "reverted";
       to?: string;
       transferTo?: string;
+      tokenAddress?: string;
+      transferValue?: number; // human USDC amount, defaults to 1 USDC (covers all test minimums)
     },
   ) {
     mockedReceiptStore[hash.toLowerCase()] = {
@@ -75,12 +85,13 @@ describe("verifyX402Payment", () => {
       to: opts?.to ?? usdcContract,
       logs: [
         {
+          address: opts?.tokenAddress ?? usdcContract,
           topics: [
             TRANSFER_TOPIC,
             topicForAddress(sender),
             topicForAddress(opts?.transferTo ?? recipient),
           ],
-          data: "0x0",
+          data: encodeTransferValue(opts?.transferValue ?? 1),
         },
       ],
     };
@@ -135,7 +146,7 @@ describe("verifyX402Payment", () => {
       network: "base",
     });
     expect(r.valid).toBe(false);
-    expect(r.error).toMatch(/recipient does not match/);
+    expect(r.error).toMatch(/No USDC Transfer log to expected recipient/);
   });
 
   it("accepts valid unsigned legacy token (with deprecation warning)", async () => {
@@ -214,6 +225,79 @@ describe("verifyX402Payment", () => {
     });
     expect(r.valid).toBe(false);
     expect(r.error).toMatch(/recipient does not match expected/);
+  });
+
+  it("rejects when on-chain Transfer value is below declared amount (#38 inflation)", async () => {
+    // Declares 1.00 USDC but the on-chain Transfer only moved 0.0001 USDC.
+    // Pre-fix this would have passed and recorded amountUsdc: 1.00 in marketplace
+    // accounting, inflating revenue shares.
+    setReceipt("0xinflate", { transferValue: 0.0001 });
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({
+        txHash: "0xinflate",
+        amount: 1.0,
+        sender,
+        timestamp: Date.now(),
+      }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/below declared amount/);
+  });
+
+  it("accepts when on-chain Transfer value equals declared amount", async () => {
+    setReceipt("0xexact", { transferValue: 0.05 });
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({
+        txHash: "0xexact",
+        amount: 0.05,
+        sender,
+        timestamp: Date.now(),
+      }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(true);
+  });
+
+  it("accepts when on-chain Transfer value exceeds declared amount (overpayment)", async () => {
+    setReceipt("0xover", { transferValue: 0.5 });
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({
+        txHash: "0xover",
+        amount: 0.05,
+        sender,
+        timestamp: Date.now(),
+      }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(true);
+  });
+
+  it("rejects Transfer log emitted by a non-USDC contract (#38 fake-token)", async () => {
+    // Real Transfer to recipient with the right value, but emitted by an
+    // attacker-deployed contract instead of USDC. Pre-fix this would have
+    // passed because only the topic+recipient were checked.
+    const fakeToken = "0x" + "ff".repeat(20);
+    setReceipt("0xfake", { tokenAddress: fakeToken, transferValue: 1.0 });
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({
+        txHash: "0xfake",
+        amount: 0.05,
+        sender,
+        timestamp: Date.now(),
+      }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/No USDC Transfer log/);
   });
 
   it("rejects a token whose tx_hash has already been consumed (replay)", async () => {

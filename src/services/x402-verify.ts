@@ -10,7 +10,11 @@
  * 2. The transaction exists on-chain
  * 3. The recipient matches our wallet address (exact match against Transfer
  *    event log, not the substring check it used to do)
- * 4. The amount meets the minimum requirement
+ * 4. The Transfer log is emitted by the canonical USDC contract for the chain,
+ *    and its value is >= the declared amount (binds the token's declared amount
+ *    to the actual on-chain transfer; otherwise a real $0.0001 transfer can be
+ *    declared as $1000 and inflate accounting). The declared amount must also
+ *    be >= the configured minimum.
  * 5. The transaction is recent (within 5 minutes to prevent replay)
  * 6. The transaction hasn't already been consumed (UNIQUE on tx_hash)
  *
@@ -23,6 +27,22 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { canonicalizePaymentPayload } from "./a2a-client.js";
 
 const log = createSubsystemLogger("x402-verify");
+
+// Canonical USDC contract addresses on Base. Pinning these here lets us reject
+// Transfer events emitted by attacker-deployed fake tokens — without this, a
+// recipient-matching Transfer from any contract would pass verification.
+const USDC_CONTRACT: Record<"base" | "base-sepolia", string> = {
+  base: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+  "base-sepolia": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+};
+const USDC_DECIMALS = 6;
+
+function declaredAmountToBaseUnits(amount: number): bigint {
+  // amount is human USDC (e.g. 0.05). Multiply to 6-decimal base units with
+  // rounding so floating-point representation of "0.05" doesn't truncate to
+  // 49999 base units.
+  return BigInt(Math.round(amount * 10 ** USDC_DECIMALS));
+}
 
 export interface X402VerificationResult {
   valid: boolean;
@@ -146,26 +166,47 @@ export async function verifyX402Payment(params: {
         return { valid: false, error: "Transaction failed on-chain" };
       }
 
-      // Verify recipient matches our wallet address (case-insensitive).
-      // For ERC-20 (USDC), receipt.to is the token contract, not the recipient,
-      // so we decode Transfer event logs instead.
+      // Require a USDC Transfer log to our recipient with value >= declared
+      // amount. Three independent checks bound together:
+      //   (a) `log.address` is the canonical USDC contract for this chain —
+      //       blocks fake-token Transfer events emitted by attacker contracts.
+      //   (b) `topics[2]` (indexed `to`) equals expectedRecipient, exact match
+      //       on the last 20 bytes — blocks the substring false-positive that
+      //       a prior version had.
+      //   (c) `log.data` (non-indexed `value`) >= declared amount in base units
+      //       — blocks the "real $0.0001 transfer, declared $1000" inflation
+      //       (#38). Declared amount has already been checked vs minimumAmount.
+      const transferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
       const expectedRecipient = params.expectedRecipient.toLowerCase();
-      if (receipt.to?.toLowerCase() !== expectedRecipient) {
-        const transferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-        // ERC-20 Transfer indexed `to` is in topics[2] as a 32-byte left-padded
-        // hex string. Slice the last 20 bytes (40 hex chars) for exact equality
-        // — the previous .includes() check could false-positive against any
-        // address that happened to contain the recipient's hex as a substring.
-        const transferLog = receipt.logs.find((l) => {
-          if (l.topics[0] !== transferTopic) return false;
-          const topic2 = l.topics[2];
-          if (!topic2 || topic2.length < 26) return false;
-          const recipientFromLog = ("0x" + topic2.slice(26)).toLowerCase();
-          return recipientFromLog === expectedRecipient;
-        });
-        if (!transferLog) {
-          return { valid: false, error: "Transaction recipient does not match" };
-        }
+      const expectedToken = USDC_CONTRACT[params.network ?? "base-sepolia"];
+      const declaredBaseUnits = declaredAmountToBaseUnits(amount);
+
+      const transferLog = receipt.logs.find((l) => {
+        if (l.address?.toLowerCase() !== expectedToken) return false;
+        if (l.topics[0] !== transferTopic) return false;
+        const topic2 = l.topics[2];
+        if (!topic2 || topic2.length < 26) return false;
+        const recipientFromLog = ("0x" + topic2.slice(26)).toLowerCase();
+        return recipientFromLog === expectedRecipient;
+      });
+      if (!transferLog) {
+        return {
+          valid: false,
+          error: "No USDC Transfer log to expected recipient in transaction",
+        };
+      }
+
+      let onChainBaseUnits: bigint;
+      try {
+        onChainBaseUnits = BigInt(transferLog.data);
+      } catch {
+        return { valid: false, error: "Malformed Transfer log value" };
+      }
+      if (onChainBaseUnits < declaredBaseUnits) {
+        return {
+          valid: false,
+          error: `On-chain Transfer value ${onChainBaseUnits} below declared amount ${declaredBaseUnits} (USDC base units)`,
+        };
       }
     } catch (err) {
       return { valid: false, error: `On-chain verification failed: ${String(err)}` };
