@@ -222,10 +222,16 @@ export function WalletView() {
       // Fallback: construct URL client-side
     }
     if (address) {
-      const url =
-        network === "base-sepolia"
-          ? `https://portal.cdp.coinbase.com/products/faucet?address=${address}&network=base-sepolia`
-          : `https://pay.coinbase.com/buy?addresses={"${address}":["base"]}&assets=["USDC"]`;
+      let url: string;
+      if (network === "base-sepolia") {
+        url = `https://portal.cdp.coinbase.com/products/faucet?address=${address}&network=base-sepolia`;
+      } else {
+        const params = new URLSearchParams({
+          addresses: JSON.stringify({ [address]: ["base"] }),
+          assets: JSON.stringify(["USDC"]),
+        });
+        url = `https://pay.coinbase.com/buy?${params.toString()}`;
+      }
       window.open(url, "_blank");
     }
   };
