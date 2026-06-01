@@ -26,7 +26,7 @@ export interface PreTurnPayload {
 
 export interface PreTurnContext {
   sessionKey: string | null;
-  agentId: string;
+  agentId: string | undefined;
   runId: string;
   channel: string | undefined;
 }
