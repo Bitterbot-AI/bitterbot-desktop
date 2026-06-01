@@ -49,6 +49,7 @@ import { formatForLog } from "../ws-log.js";
 import { waitForAgentJob } from "./agent-job.js";
 import { injectTimestamp, timestampOptsFromConfig } from "./agent-timestamp.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
+import { applyPreTurnDecision } from "./pre-turn-decision.js";
 import { sessionsHandlers } from "./sessions.js";
 
 const RESET_COMMAND_RE = /^\/(new|reset)(?:\s+([\s\S]*))?$/i;
@@ -525,9 +526,17 @@ export const agentHandlers: GatewayRequestHandlers = {
 
     const resolvedThreadId = explicitThreadId ?? deliveryPlan.resolvedThreadId;
 
+    // PLAN-22 P0.1: fail-closed pre-turn decision seam. Runs after the ack,
+    // before dispatch; a no-op unless a decider is registered (Phase 3). Any
+    // throw/timeout/malformed result degrades to the unmodified payload.
+    const preTurn = await applyPreTurnDecision(
+      { message: message ?? "", extraSystemPrompt: request.extraSystemPrompt },
+      { sessionKey: resolvedSessionKey ?? null, agentId, runId, channel: resolvedChannel ?? "" },
+    );
+
     void agentCommand(
       {
-        message,
+        message: preTurn.message,
         images,
         to: resolvedTo,
         sessionId: resolvedSessionId,
@@ -555,7 +564,7 @@ export const agentHandlers: GatewayRequestHandlers = {
         messageChannel: resolvedChannel,
         runId,
         lane: request.lane,
-        extraSystemPrompt: request.extraSystemPrompt,
+        extraSystemPrompt: preTurn.extraSystemPrompt,
         inputProvenance,
       },
       defaultRuntime,
