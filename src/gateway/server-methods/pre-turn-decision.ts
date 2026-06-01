@@ -28,7 +28,7 @@ export interface PreTurnContext {
   sessionKey: string | null;
   agentId: string;
   runId: string;
-  channel: string;
+  channel: string | undefined;
 }
 
 export type PreTurnDecider = (
