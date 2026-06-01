@@ -63,6 +63,7 @@ import { applyGatewayLaneConcurrency } from "./server-lanes.js";
 import { startGatewayMaintenanceTimers } from "./server-maintenance.js";
 import { GATEWAY_EVENTS, listGatewayMethods } from "./server-methods-list.js";
 import { coreGatewayHandlers } from "./server-methods.js";
+import { registerAutoInitiation } from "./server-methods/auto-initiate-decider.js";
 import { createExecApprovalHandlers } from "./server-methods/exec-approval.js";
 import { safeParseJson } from "./server-methods/nodes.helpers.js";
 import { hasConnectedMobileNode } from "./server-mobile-nodes.js";
@@ -257,6 +258,8 @@ export async function startGatewayServer(
   // concurrency gate. Refresh interval 30s; disable with
   // BITTERBOT_TASKS_HORMONAL_GATE=0 to fall back to the baseline policy.
   startHormonalAccessor(cfgAtStart);
+  // PLAN-22 Phase 3: register the complexity gate as the pre-turn decider.
+  registerAutoInitiation();
 
   const diagnosticsEnabled = isDiagnosticsEnabled(cfgAtStart);
   if (diagnosticsEnabled) {
