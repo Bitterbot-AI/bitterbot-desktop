@@ -205,14 +205,58 @@ P2P bounty plumbing (`src/tasks/bounty.ts`) handles bid recording and
 listing for biddable tasks. **No wallet, no payouts** — see the file
 header for the policy boundary.
 
+## Automatic task initiation (PLAN-22)
+
+By default an agent only starts a long-horizon task when it explicitly
+calls `task_create` (or when the curiosity engine spawns one). PLAN-22
+adds an optional **complexity gate** that appraises every inbound user
+prompt and, when the work looks genuinely multi-step, auto-initiates a
+goal-oriented task before the turn runs.
+
+The gate is a two-stage cascade (a FrugalGPT-style design): a fast,
+pure heuristic scorer runs on every prompt, and the temp=0 Judge LLM is
+consulted only for prompts in an ambiguous middle band. Trivial replies
+and obvious large projects never pay for an LLM round-trip. The decision
+thresholds are modulated by live hormonal state: high cortisol raises
+them (be conservative under stress), high dopamine lowers them (be eager
+when rewarded). The raw text score is never modulated, and the shifted
+thresholds are clamped to fixed rails, so behaviour stays bounded.
+
+The gate is wired in as a fail-closed pre-turn decision: it runs after
+the gateway has acknowledged the request and before the agent run is
+dispatched, and it can only ever augment the run (it adds a first-step
+brief plus a user-facing acknowledgement to the system prompt). If the
+appraisal throws, times out (800ms), or returns a malformed result, the
+run proceeds exactly as it would have without the gate. A long but
+simple prompt (a pasted error log or a fenced code block) is discounted
+so it is not mistaken for a complex request.
+
+When a task is auto-initiated, the acknowledgement tells the user how to
+opt out for that turn (reply "just answer" to get an inline response
+instead of a plan).
+
+Both behaviours are gated by env flags and are conservative by default:
+
+- With only `BITTERBOT_TASKS_COMPLEXITY_GATE` on (the default), the gate
+  runs in **telemetry mode**: it appraises and logs, but never creates a
+  task or alters the run. This is the recommended first step, to observe
+  what would be escalated before enabling it.
+- Set `BITTERBOT_TASKS_AUTO_INITIATE=1` to let the gate actually create
+  tasks and brief the run.
+
+Once a task is created, it flows through the same handoff, wakeup, and
+Judge machinery described above.
+
 ## Configuration
 
-| Env var                       | Default                             | Effect                                   |
-| ----------------------------- | ----------------------------------- | ---------------------------------------- |
-| `BITTERBOT_EVENT_JOURNAL`     | `1` (on)                            | Set to `0` to disable the event journal  |
-| `BITTERBOT_EVENT_JOURNAL_DB`  | `~/.bitterbot/event-journal.sqlite` | Journal DB path                          |
-| `BITTERBOT_TASKS_DB`          | `~/.bitterbot/tasks.sqlite`         | Task store DB path                       |
-| `BITTERBOT_TASKS_MAX_WAKEUPS` | `50`                                | Per-task wakeup cap (runaway-loop guard) |
+| Env var                           | Default                             | Effect                                                                              |
+| --------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------- |
+| `BITTERBOT_EVENT_JOURNAL`         | `1` (on)                            | Set to `0` to disable the event journal                                             |
+| `BITTERBOT_EVENT_JOURNAL_DB`      | `~/.bitterbot/event-journal.sqlite` | Journal DB path                                                                     |
+| `BITTERBOT_TASKS_DB`              | `~/.bitterbot/tasks.sqlite`         | Task store DB path                                                                  |
+| `BITTERBOT_TASKS_MAX_WAKEUPS`     | `50`                                | Per-task wakeup cap (runaway-loop guard)                                            |
+| `BITTERBOT_TASKS_COMPLEXITY_GATE` | `1` (on)                            | Appraise prompt complexity per turn (telemetry only). Set to `0` to disable.        |
+| `BITTERBOT_TASKS_AUTO_INITIATE`   | `0` (off)                           | Let the complexity gate auto-create a task and brief the run. Set to `1` to enable. |
 
 ## Verification: end-to-end test plan
 
@@ -239,16 +283,21 @@ header for the policy boundary.
 
 ## Where the code lives
 
-| File                            | Purpose                                                                           |
-| ------------------------------- | --------------------------------------------------------------------------------- |
-| `src/infra/event-journal.ts`    | Persistent agent-event journal (Phase A)                                          |
-| `src/tasks/types.ts`            | Task / Plan / Handoff types                                                       |
-| `src/tasks/store.ts`            | SQLite-backed Task store + handoff table (Phase B)                                |
-| `src/tasks/judge.ts`            | Pure Judge prompt + parsing + orchestration (Phase D)                             |
-| `src/tasks/biology.ts`          | Curiosity / dream / hormonal adapters (Phase E.1–E.3)                             |
-| `src/tasks/bounty.ts`           | P2P bounty plumbing — no wallet (Phase E.4)                                       |
-| `src/agents/tools/task-tool.ts` | All `task_*` agent tools                                                          |
-| `src/cron/active.ts`            | Lean cron-engine registry (refactored out of `runtime.ts` for clean test imports) |
+| File                                                  | Purpose                                                                           |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `src/infra/event-journal.ts`                          | Persistent agent-event journal (Phase A)                                          |
+| `src/tasks/types.ts`                                  | Task / Plan / Handoff types                                                       |
+| `src/tasks/store.ts`                                  | SQLite-backed Task store + handoff table (Phase B)                                |
+| `src/tasks/judge.ts`                                  | Pure Judge prompt + parsing + orchestration (Phase D)                             |
+| `src/tasks/biology.ts`                                | Curiosity / dream / hormonal adapters (Phase E.1–E.3)                             |
+| `src/tasks/bounty.ts`                                 | P2P bounty plumbing — no wallet (Phase E.4)                                       |
+| `src/tasks/complexity.ts`                             | Pure prompt-complexity appraisal + hormonal threshold modulation (PLAN-22)        |
+| `src/tasks/auto-initiate.ts`                          | `maybeInitiateGoal`: the single mutating caller of the complexity gate (PLAN-22)  |
+| `src/tasks/zeigarnik.ts`                              | Zeigarnik tension adapters for resumption pressure (PLAN-22)                      |
+| `src/gateway/server-methods/pre-turn-decision.ts`     | Fail-closed pre-turn decision seam (PLAN-22)                                      |
+| `src/gateway/server-methods/auto-initiate-decider.ts` | Bridges the complexity gate to the seam (PLAN-22)                                 |
+| `src/agents/tools/task-tool.ts`                       | All `task_*` agent tools                                                          |
+| `src/cron/active.ts`                                  | Lean cron-engine registry (refactored out of `runtime.ts` for clean test imports) |
 
 See `research/plans/PLAN-16-LONG-HORIZON-TASK-EXECUTION.md` in the
 repository for the design rationale.
