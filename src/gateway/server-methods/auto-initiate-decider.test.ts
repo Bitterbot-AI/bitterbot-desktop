@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PreTurnContext, PreTurnPayload } from "./pre-turn-decision.js";
-import { buildAutoInitiationDecider } from "./auto-initiate-decider.js";
+import {
+  buildAutoInitiationDecider,
+  isAutoInitiateEnabled,
+  isComplexityGateEnabled,
+} from "./auto-initiate-decider.js";
 
 const CTX: PreTurnContext = { sessionKey: "s1", agentId: "a1", runId: "r1", channel: "web" };
 const BASE: PreTurnPayload = {
@@ -17,6 +21,37 @@ const taskDecision = {
   verdict: {} as never,
 };
 const inlineDecision = { mode: "inline" as const, reason: "below", verdict: {} as never };
+
+describe("env flag defaults", () => {
+  const prev = {
+    gate: process.env.BITTERBOT_TASKS_COMPLEXITY_GATE,
+    auto: process.env.BITTERBOT_TASKS_AUTO_INITIATE,
+  };
+  afterEach(() => {
+    if (prev.gate === undefined) delete process.env.BITTERBOT_TASKS_COMPLEXITY_GATE;
+    else process.env.BITTERBOT_TASKS_COMPLEXITY_GATE = prev.gate;
+    if (prev.auto === undefined) delete process.env.BITTERBOT_TASKS_AUTO_INITIATE;
+    else process.env.BITTERBOT_TASKS_AUTO_INITIATE = prev.auto;
+  });
+
+  it("complexity gate is on by default and off only when set to 0", () => {
+    delete process.env.BITTERBOT_TASKS_COMPLEXITY_GATE;
+    expect(isComplexityGateEnabled()).toBe(true);
+    process.env.BITTERBOT_TASKS_COMPLEXITY_GATE = "0";
+    expect(isComplexityGateEnabled()).toBe(false);
+  });
+
+  it("auto-initiate is on by default and off only when explicitly disabled", () => {
+    delete process.env.BITTERBOT_TASKS_AUTO_INITIATE;
+    expect(isAutoInitiateEnabled()).toBe(true);
+    process.env.BITTERBOT_TASKS_AUTO_INITIATE = "1";
+    expect(isAutoInitiateEnabled()).toBe(true);
+    process.env.BITTERBOT_TASKS_AUTO_INITIATE = "0";
+    expect(isAutoInitiateEnabled()).toBe(false);
+    process.env.BITTERBOT_TASKS_AUTO_INITIATE = "false";
+    expect(isAutoInitiateEnabled()).toBe(false);
+  });
+});
 
 describe("buildAutoInitiationDecider", () => {
   it("is a no-op when both flags are off", async () => {
