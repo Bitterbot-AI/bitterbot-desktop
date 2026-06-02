@@ -8,8 +8,9 @@
  * Two env flags gate behaviour:
  *   - BITTERBOT_TASKS_COMPLEXITY_GATE (default ON): appraise + log telemetry
  *     only. No task is created and the payload is never mutated.
- *   - BITTERBOT_TASKS_AUTO_INITIATE (default OFF): actually create the Task
+ *   - BITTERBOT_TASKS_AUTO_INITIATE (default ON): actually create the Task
  *     and augment the run's extraSystemPrompt with the first slice + ack.
+ *     Set to "0"/"false" to fall back to appraisal-only telemetry.
  *
  * The decider only ever augments `extraSystemPrompt`; combined with the
  * seam's fail-closed wrapper, it cannot block or alter the run on any
@@ -29,10 +30,10 @@ export function isComplexityGateEnabled(): boolean {
   return process.env.BITTERBOT_TASKS_COMPLEXITY_GATE !== "0";
 }
 
-/** Actual task creation, off by default. Enable with "1" / "true". */
+/** Actual task creation, on by default. Disable with "0" / "false". */
 export function isAutoInitiateEnabled(): boolean {
   const v = process.env.BITTERBOT_TASKS_AUTO_INITIATE;
-  return v === "1" || v === "true";
+  return v !== "0" && v !== "false";
 }
 
 /**

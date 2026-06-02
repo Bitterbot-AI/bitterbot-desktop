@@ -235,28 +235,29 @@ When a task is auto-initiated, the acknowledgement tells the user how to
 opt out for that turn (reply "just answer" to get an inline response
 instead of a plan).
 
-Both behaviours are gated by env flags and are conservative by default:
+Both behaviours are gated by env flags, both on by default:
 
-- With only `BITTERBOT_TASKS_COMPLEXITY_GATE` on (the default), the gate
-  runs in **telemetry mode**: it appraises and logs, but never creates a
-  task or alters the run. This is the recommended first step, to observe
-  what would be escalated before enabling it.
-- Set `BITTERBOT_TASKS_AUTO_INITIATE=1` to let the gate actually create
-  tasks and brief the run.
+- `BITTERBOT_TASKS_COMPLEXITY_GATE` (on by default) controls whether the
+  gate runs at all. Set to `0` to disable appraisal entirely.
+- `BITTERBOT_TASKS_AUTO_INITIATE` (on by default) controls whether the
+  gate actually creates a task and briefs the run. Set to `0` (or
+  `false`) to keep the gate in **telemetry mode**: it still appraises and
+  logs, but never creates a task or alters the run. Use this if you want
+  to observe what would be escalated before letting it act.
 
 Once a task is created, it flows through the same handoff, wakeup, and
 Judge machinery described above.
 
 ## Configuration
 
-| Env var                           | Default                             | Effect                                                                              |
-| --------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------- |
-| `BITTERBOT_EVENT_JOURNAL`         | `1` (on)                            | Set to `0` to disable the event journal                                             |
-| `BITTERBOT_EVENT_JOURNAL_DB`      | `~/.bitterbot/event-journal.sqlite` | Journal DB path                                                                     |
-| `BITTERBOT_TASKS_DB`              | `~/.bitterbot/tasks.sqlite`         | Task store DB path                                                                  |
-| `BITTERBOT_TASKS_MAX_WAKEUPS`     | `50`                                | Per-task wakeup cap (runaway-loop guard)                                            |
-| `BITTERBOT_TASKS_COMPLEXITY_GATE` | `1` (on)                            | Appraise prompt complexity per turn (telemetry only). Set to `0` to disable.        |
-| `BITTERBOT_TASKS_AUTO_INITIATE`   | `0` (off)                           | Let the complexity gate auto-create a task and brief the run. Set to `1` to enable. |
+| Env var                           | Default                             | Effect                                                                                       |
+| --------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| `BITTERBOT_EVENT_JOURNAL`         | `1` (on)                            | Set to `0` to disable the event journal                                                      |
+| `BITTERBOT_EVENT_JOURNAL_DB`      | `~/.bitterbot/event-journal.sqlite` | Journal DB path                                                                              |
+| `BITTERBOT_TASKS_DB`              | `~/.bitterbot/tasks.sqlite`         | Task store DB path                                                                           |
+| `BITTERBOT_TASKS_MAX_WAKEUPS`     | `50`                                | Per-task wakeup cap (runaway-loop guard)                                                     |
+| `BITTERBOT_TASKS_COMPLEXITY_GATE` | `1` (on)                            | Appraise prompt complexity per turn (telemetry only). Set to `0` to disable.                 |
+| `BITTERBOT_TASKS_AUTO_INITIATE`   | `1` (on)                            | Let the complexity gate auto-create a task and brief the run. Set to `0` for telemetry-only. |
 
 ## Verification: end-to-end test plan
 
