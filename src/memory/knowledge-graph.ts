@@ -18,8 +18,27 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { buildRelationshipTemporalWhereClause } from "./temporal-filter.js";
 
 const log = createSubsystemLogger("memory/knowledge-graph");
+
+/**
+ * PLAN-23 SABM: relation types whose target is expected to be functionally
+ * unique for a given source (one-to-one-ish). When a NEW edge of one of these
+ * types arrives for a source that already has a different active target, that
+ * is a candidate mutual contradiction worth flagging for dream-time
+ * adjudication. Unknown relation types default to many-to-many (no flag), the
+ * safe non-destructive choice. Cardinality is heuristic and only ever produces
+ * a non-destructive flag at write time; the irreversible close happens later in
+ * the reconsolidation dream mode after the labile window elapses.
+ */
+const MUTUALLY_EXCLUSIVE_RELATIONS: ReadonlySet<RelationType> = new Set<RelationType>([
+  "located_at",
+  "belongs_to",
+]);
+
+/** Belief-history action verbs recorded in relationship_belief_history. */
+export type BeliefAction = "strengthen" | "flag_contradiction" | "update" | "supersede";
 
 // ── Types ──
 
@@ -215,6 +234,9 @@ export class KnowledgeGraphManager {
    */
   upsertRelationship(rel: ExtractedRelationship, evidenceChunkIds: string[] = []): Relationship {
     const now = Date.now();
+    // SABM: set when a mutually-exclusive conflict against an existing active
+    // edge is detected, so the freshly-inserted edge can be flagged below.
+    let pendingContradictionWith: string | null = null;
 
     // Ensure both entities exist
     const source = this.upsertEntity({ name: rel.sourceName, type: rel.sourceType });
@@ -237,9 +259,12 @@ export class KnowledgeGraphManager {
       const newWeight = Math.min(1, (existing.weight + (rel.weight ?? 0.5)) / 2 + 0.05);
       this.db
         .prepare(
-          `UPDATE relationships SET weight = ?, evidence_chunk_ids = ?, updated_at = ? WHERE id = ?`,
+          `UPDATE relationships SET weight = ?, evidence_chunk_ids = ?, updated_at = ?,
+             last_reinforced_at = ? WHERE id = ?`,
         )
-        .run(newWeight, JSON.stringify(mergedEvidence), now, existing.id);
+        .run(newWeight, JSON.stringify(mergedEvidence), now, now, existing.id);
+      // SABM: non-destructive audit of the reinforcement.
+      this.recordBelief(existing.id, "strengthen", existing.weight, newWeight, mergedEvidence, now);
       return {
         id: existing.id,
         sourceEntityId: source.id,
@@ -254,13 +279,35 @@ export class KnowledgeGraphManager {
       };
     }
 
+    // SABM: deterministic, NON-DESTRUCTIVE write-time contradiction detection.
+    // For a mutually-exclusive relation type, a new edge whose source already
+    // has a DIFFERENT active target is a candidate mutual conflict. We only
+    // FLAG it (audit row); both edges stay active (valid_until NULL). The
+    // irreversible close is deferred to the reconsolidation dream mode after
+    // the supporting evidence's labile window elapses. Purely structural - no
+    // embeddings, no LLM, so the write path stays deterministic and cheap.
+    if (MUTUALLY_EXCLUSIVE_RELATIONS.has(rel.relationType)) {
+      const conflict = this.db
+        .prepare(
+          `SELECT id FROM relationships
+           WHERE source_entity_id = ? AND relation_type = ?
+             AND target_entity_id != ? AND valid_until IS NULL
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get(source.id, rel.relationType, target.id) as { id: string } | undefined;
+      if (conflict) {
+        // Flag the incoming edge id below once it is inserted.
+        pendingContradictionWith = conflict.id;
+      }
+    }
+
     // Create new relationship
     const id = crypto.randomUUID();
     this.db
       .prepare(
         `INSERT INTO relationships (id, source_entity_id, target_entity_id, relation_type, weight,
-           valid_from, valid_until, evidence_chunk_ids, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           valid_from, valid_until, evidence_chunk_ids, created_at, updated_at, last_reinforced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -273,7 +320,20 @@ export class KnowledgeGraphManager {
         JSON.stringify(evidenceChunkIds),
         now,
         now,
+        now,
       );
+
+    if (pendingContradictionWith) {
+      this.recordBelief(
+        id,
+        "flag_contradiction",
+        null,
+        rel.weight ?? 0.5,
+        evidenceChunkIds,
+        now,
+        pendingContradictionWith,
+      );
+    }
 
     return {
       id,
@@ -295,14 +355,74 @@ export class KnowledgeGraphManager {
    */
   supersedeRelationship(oldRelId: string, newRel?: ExtractedRelationship): Relationship | null {
     const now = Date.now();
+    const prior = this.db
+      .prepare(`SELECT weight, evidence_chunk_ids FROM relationships WHERE id = ?`)
+      .get(oldRelId) as { weight: number; evidence_chunk_ids: string } | undefined;
     this.db
       .prepare(`UPDATE relationships SET valid_until = ?, updated_at = ? WHERE id = ?`)
       .run(now, now, oldRelId);
+    // SABM: audit the destructive close (this is the irreversible step, only
+    // ever called from the reconsolidation dream mode post-labile-window).
+    this.recordBelief(
+      oldRelId,
+      "supersede",
+      prior?.weight ?? null,
+      null,
+      prior ? (JSON.parse(prior.evidence_chunk_ids || "[]") as string[]) : [],
+      now,
+    );
 
     if (newRel) {
       return this.upsertRelationship(newRel);
     }
     return null;
+  }
+
+  /**
+   * SABM: append a non-destructive row to relationship_belief_history. Tolerant
+   * of a pre-v16 DB (the table may not exist) so callers never throw on write.
+   */
+  private recordBelief(
+    relationshipId: string,
+    action: BeliefAction,
+    prevWeight: number | null,
+    newWeight: number | null,
+    evidenceChunkIds: string[],
+    now: number,
+    supersededByOrContradicts?: string,
+  ): void {
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO relationship_belief_history
+             (id, relationship_id, action, prev_weight, new_weight, evidence_chunk_ids,
+              valid_from, valid_until, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          crypto.randomUUID(),
+          relationshipId,
+          action,
+          prevWeight,
+          newWeight,
+          JSON.stringify(evidenceChunkIds),
+          // valid_from carries the contradicting/superseding peer id when present,
+          // reusing the column rather than widening the schema; null otherwise.
+          null,
+          null,
+          now,
+        );
+      if (supersededByOrContradicts) {
+        log.debug("belief flagged", {
+          rel: relationshipId.slice(0, 8),
+          action,
+          peer: supersededByOrContradicts.slice(0, 8),
+        });
+      }
+    } catch (err) {
+      // Pre-v16 DB or transient error: never break the write path.
+      log.debug(`recordBelief skipped: ${String(err)}`);
+    }
   }
 
   // ── Graph Traversal ──
@@ -355,6 +475,79 @@ export class KnowledgeGraphManager {
     ];
 
     return { entity, relationships };
+  }
+
+  /**
+   * SABM belief history: every active AND closed relationship for an entity as
+   * the belief stood at a given transaction time. Unlike `traverseEntity`,
+   * this surfaces superseded (closed) edges, so callers can answer "what did I
+   * believe about X as of T?". `validAt` filters by valid-time interval;
+   * omitting it returns the full interval chain (active + closed).
+   */
+  beliefHistory(
+    entityId: string,
+    opts: { validAt?: number } = {},
+  ): Array<{
+    relationship: Relationship;
+    connectedEntity: Entity;
+    direction: "outgoing" | "incoming";
+  }> {
+    const entity = this.findEntityById(entityId);
+    if (!entity) {
+      return [];
+    }
+    // includeClosed: true so superseded beliefs are visible; the universal
+    // valid_until IS NULL guard used elsewhere is deliberately dropped here.
+    const temporal = buildRelationshipTemporalWhereClause(
+      { validAt: opts.validAt, includeClosed: true },
+      "r",
+    );
+    const out = this.db
+      .prepare(
+        `SELECT r.*, e.id as eid, e.name, e.entity_type, e.properties, e.first_seen_at,
+                e.last_seen_at, e.mention_count, e.importance
+         FROM relationships r JOIN entities e ON e.id = r.target_entity_id
+         WHERE r.source_entity_id = ?${temporal.sql}
+         ORDER BY r.created_at DESC`,
+      )
+      .all(entityId, ...temporal.params) as Array<RelRow & EntityRow>;
+    const inc = this.db
+      .prepare(
+        `SELECT r.*, e.id as eid, e.name, e.entity_type, e.properties, e.first_seen_at,
+                e.last_seen_at, e.mention_count, e.importance
+         FROM relationships r JOIN entities e ON e.id = r.source_entity_id
+         WHERE r.target_entity_id = ?${temporal.sql}
+         ORDER BY r.created_at DESC`,
+      )
+      .all(entityId, ...temporal.params) as Array<RelRow & EntityRow>;
+    return [
+      ...out.map((r) => ({
+        relationship: rowToRelationship(r),
+        connectedEntity: rowToEntity(r),
+        direction: "outgoing" as const,
+      })),
+      ...inc.map((r) => ({
+        relationship: rowToRelationship(r),
+        connectedEntity: rowToEntity(r),
+        direction: "incoming" as const,
+      })),
+    ];
+  }
+
+  /**
+   * SABM: the belief about an entity as it stood at transaction time `ts` -
+   * only edges whose valid interval contained `ts`. Convenience wrapper over
+   * `beliefHistory({ validAt })`.
+   */
+  beliefAsOf(
+    entityId: string,
+    ts: number,
+  ): Array<{
+    relationship: Relationship;
+    connectedEntity: Entity;
+    direction: "outgoing" | "incoming";
+  }> {
+    return this.beliefHistory(entityId, { validAt: ts });
   }
 
   /**
@@ -561,7 +754,15 @@ export class KnowledgeGraphManager {
   /**
    * Get graph statistics for telemetry.
    */
-  getStats(): { entityCount: number; relationshipCount: number; activeRelationships: number } {
+  getStats(): {
+    entityCount: number;
+    relationshipCount: number;
+    activeRelationships: number;
+    closedRelationships: number;
+    flaggedContradictions: number;
+    beliefRevisions: number;
+    reinforcements: number;
+  } {
     const entityCount =
       (this.db.prepare(`SELECT COUNT(*) as c FROM entities`).get() as { c: number })?.c ?? 0;
     const relationshipCount =
@@ -572,8 +773,38 @@ export class KnowledgeGraphManager {
           .prepare(`SELECT COUNT(*) as c FROM relationships WHERE valid_until IS NULL`)
           .get() as { c: number }
       )?.c ?? 0;
+    const closedRelationships =
+      (
+        this.db
+          .prepare(`SELECT COUNT(*) as c FROM relationships WHERE valid_until IS NOT NULL`)
+          .get() as { c: number }
+      )?.c ?? 0;
 
-    return { entityCount, relationshipCount, activeRelationships };
+    // SABM belief-history counters. Defensive: a pre-v16 DB lacks the table,
+    // so any failure yields 0 rather than throwing.
+    const beliefCount = (action: string): number => {
+      try {
+        return (
+          (
+            this.db
+              .prepare(`SELECT COUNT(*) as c FROM relationship_belief_history WHERE action = ?`)
+              .get(action) as { c: number }
+          )?.c ?? 0
+        );
+      } catch {
+        return 0;
+      }
+    };
+
+    return {
+      entityCount,
+      relationshipCount,
+      activeRelationships,
+      closedRelationships,
+      flaggedContradictions: beliefCount("flag_contradiction"),
+      beliefRevisions: beliefCount("supersede"),
+      reinforcements: beliefCount("strengthen"),
+    };
   }
 }
 

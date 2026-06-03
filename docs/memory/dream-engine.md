@@ -451,3 +451,7 @@ The dream engine plays a central role in the skill marketplace:
 4. **Hormonal feedback:** Successful skill sales trigger `marketplace_sale` dopamine events, reinforcing the crystallization → sale → dopamine loop
 
 This creates a virtuous cycle: the agent's daily work generates episodes → dream engine distills patterns → skills crystallize → marketplace sells them → dopamine reinforces the behavior.
+
+## Relationship reconsolidation (PLAN-23 SABM)
+
+A 9th dream mode, `relationship_reconsolidation`, runs each cycle and is the only place the memory system performs a destructive belief revision. The write path merely _flags_ conflicting relationship edges (both stay active); this mode drains those flags and closes the losing edge only after (1) the supporting evidence has exited its labile window and (2) a hormonally-gated confidence floor is cleared (high cortisol makes it more conservative). Closed beliefs are retained and remain queryable. See `docs/memory/sabm-belief-adjudication.md`.

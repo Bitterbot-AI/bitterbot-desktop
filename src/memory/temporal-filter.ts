@@ -84,3 +84,46 @@ export function buildTemporalWhereClause(filter: TemporalFilter, alias = "c"): T
 export function currentFactsOnly(alias = "c"): TemporalClause {
   return buildTemporalWhereClause({ excludeSuperseded: true }, alias);
 }
+
+/**
+ * Relationship-aware temporal filter (PLAN-23 SABM).
+ *
+ * Relationships use a DIFFERENT bitemporal column vocabulary than chunks:
+ * `valid_from` / `valid_until` (not `valid_time_start` / `valid_time_end`),
+ * and they have no `transaction_time` axis. `buildTemporalWhereClause` above
+ * is hardcoded to the chunks vocabulary and its callers depend on that, so we
+ * do NOT parameterize column names there. This sibling is the single explicit
+ * bridge for the relationships vocabulary.
+ *
+ * - Default (`includeClosed` falsy): only active edges (`valid_until IS NULL`).
+ * - `includeClosed: true`: drop the active-only guard so superseded/closed
+ *   belief edges are surfaceable (belief-history reads).
+ * - `validAt`: point-in-time validity over `valid_from` / `valid_until`.
+ *
+ * @param filter  `{ validAt?, includeClosed? }`
+ * @param alias   Table alias prefix for the relationships table (default: "r")
+ */
+export function buildRelationshipTemporalWhereClause(
+  filter: { validAt?: number; includeClosed?: boolean } = {},
+  alias = "r",
+): TemporalClause {
+  const conditions: string[] = [];
+  const params: number[] = [];
+
+  if (!filter.includeClosed) {
+    conditions.push(`(${alias}.valid_until IS NULL)`);
+  }
+
+  if (filter.validAt != null) {
+    conditions.push(`(${alias}.valid_from IS NULL OR ${alias}.valid_from <= ?)`);
+    params.push(filter.validAt);
+    conditions.push(`(${alias}.valid_until IS NULL OR ${alias}.valid_until > ?)`);
+    params.push(filter.validAt);
+  }
+
+  if (conditions.length === 0) {
+    return { sql: "", params: [] };
+  }
+
+  return { sql: " AND " + conditions.join(" AND "), params };
+}
