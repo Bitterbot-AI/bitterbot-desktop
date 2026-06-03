@@ -669,6 +669,40 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 16,
+    description:
+      "PLAN-23 SABM: relationship belief history (non-destructive audit of " +
+      "every reinforce / flag / supersede) + a last_reinforced_at column on " +
+      "relationships. Relationship temporal columns stay valid_from/valid_until " +
+      "(NOT the chunks valid_time_* vocabulary).",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS relationship_belief_history (
+          id                 TEXT PRIMARY KEY,
+          relationship_id    TEXT NOT NULL,
+          action             TEXT NOT NULL,
+          prev_weight        REAL,
+          new_weight         REAL,
+          evidence_chunk_ids TEXT DEFAULT '[]',
+          valid_from         INTEGER,
+          valid_until        INTEGER,
+          created_at         INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_rel_belief_history_rel ` +
+          `ON relationship_belief_history(relationship_id)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_rel_belief_history_action ` +
+          `ON relationship_belief_history(action)`,
+      );
+      // Transaction-time / reinforcement bookkeeping on relationships.
+      // Idempotent: addColumnIfMissing no-ops on an already-upgraded DB.
+      addColumnIfMissing(db, "relationships", "last_reinforced_at", "INTEGER");
+    },
+  },
 ];
 
 /**
