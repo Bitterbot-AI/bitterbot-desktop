@@ -982,8 +982,78 @@ export class DreamEngine {
         return this.runResearchMode(cycleId);
       case "interceptor_harvest":
         return this.runInterceptorHarvestMode(cycleId);
+      case "relationship_reconsolidation":
+        return this.runRelationshipReconsolidationMode(cycleId);
       default:
         return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    }
+  }
+
+  // ── Mode 9: Relationship Reconsolidation (PLAN-23 SABM) ──
+  //
+  // Drains flagged belief contradictions: for each, after the supporting
+  // evidence's labile window has elapsed and a hormonally-gated confidence
+  // floor is cleared, the losing edge is closed via supersedeRelationship.
+  // This is the ONLY place SABM performs a destructive (reversible-by-audit)
+  // belief revision; the write path only ever flags. Kept thin to match the
+  // other modes; heavy work lives in dream-modes/relationship-reconsolidation.ts.
+  private async runRelationshipReconsolidationMode(
+    cycleId: string,
+  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
+    try {
+      const [mod, kgMod] = await Promise.all([
+        import("./dream-modes/relationship-reconsolidation.js"),
+        import("./knowledge-graph.js"),
+      ]);
+      const kg = new kgMod.KnowledgeGraphManager(this.db);
+      const llmCall = this.getLlmCallForMode("relationship_reconsolidation");
+      const hormones = this.hormonalStateGetter?.() ?? null;
+      const result = await mod.runRelationshipReconsolidation({
+        db: this.db,
+        kg,
+        hormones,
+        nowMs: Date.now(),
+        maxItems: this.config.modes.relationship_reconsolidation.maxChunks,
+        adjudicate: async ({ relationType, candidates }) => {
+          // No LLM available -> cannot adjudicate; defer (non-destructive).
+          if (!llmCall) {
+            return null;
+          }
+          const list = candidates
+            .map(
+              (c, i) =>
+                `${i + 1}. id=${c.relationshipId} target="${c.targetName}" weight=${c.weight.toFixed(2)}`,
+            )
+            .join("\n");
+          const prompt =
+            `Two or more "${relationType}" beliefs conflict (a source can have only one). ` +
+            `Pick the single most likely correct one and your confidence 0-1.\n${list}\n` +
+            `Reply as JSON: {"winnerRelationshipId":"<id>","confidence":<0-1>}.`;
+          try {
+            const raw = await llmCall(prompt);
+            const m = raw.match(/\{[\s\S]*\}/);
+            if (!m) return null;
+            const parsed = JSON.parse(m[0]) as {
+              winnerRelationshipId?: string;
+              confidence?: number;
+            };
+            if (!parsed.winnerRelationshipId || typeof parsed.confidence !== "number") {
+              return null;
+            }
+            return {
+              winnerRelationshipId: parsed.winnerRelationshipId,
+              confidence: parsed.confidence,
+            };
+          } catch {
+            return null;
+          }
+        },
+      });
+      log.debug(`relationship_reconsolidation cycle ${cycleId}: closed=${result.closed}`);
+      return { insights: [], llmCalls: result.llmCalls, chunksAnalyzed: result.flaggedSeen };
+    } catch (err) {
+      log.warn(`relationship_reconsolidation mode failed: ${String(err)}`);
+      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
   }
 

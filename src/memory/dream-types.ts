@@ -1,5 +1,5 @@
 /**
- * Dream Engine types: state machine, 7 dream modes, clustering,
+ * Dream Engine types: state machine, 9 dream modes, clustering,
  * synthesis, and configuration.
  */
 
@@ -8,7 +8,7 @@ export type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" 
 /** @deprecated Use DreamMode instead */
 export type DreamCreativityMode = "associative" | "convergent" | "cross_domain";
 
-// ── 8 Dream Modes ──
+// ── 9 Dream Modes ──
 export type DreamMode =
   | "replay" // Strengthen important memory pathways
   | "mutation" // Generate skill/knowledge variations
@@ -17,7 +17,8 @@ export type DreamMode =
   | "simulation" // Cross-domain creative recombination
   | "exploration" // Gap-filling from curiosity targets
   | "research" // Empirical prompt optimization using execution data
-  | "interceptor_harvest"; // PLAN-20: mine intervention records → propose new interceptors
+  | "interceptor_harvest" // PLAN-20: mine intervention records → propose new interceptors
+  | "relationship_reconsolidation"; // PLAN-23 SABM: adjudicate flagged belief contradictions, close losers post-labile-window
 
 export type DreamModeConfig = {
   enabled: boolean;
@@ -35,6 +36,7 @@ export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   exploration: { enabled: true, weight: 0.09, maxChunks: 10, requiresLlm: true },
   research: { enabled: true, weight: 0.09, maxChunks: 5, requiresLlm: true },
   interceptor_harvest: { enabled: true, weight: 0.09, maxChunks: 25, requiresLlm: true },
+  relationship_reconsolidation: { enabled: true, weight: 0.09, maxChunks: 25, requiresLlm: true },
 };
 
 export type DreamCluster = {
@@ -82,6 +84,7 @@ export const DEFAULT_MODE_TIERS: Record<DreamMode, ComputeTier> = {
   simulation: "cloud",
   research: "cloud",
   interceptor_harvest: "cloud",
+  relationship_reconsolidation: "cloud",
 };
 
 export type DreamCycleMetadata = {
