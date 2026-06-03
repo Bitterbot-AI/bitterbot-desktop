@@ -55,6 +55,7 @@ import {
   type HybridGraphResult,
 } from "./hybrid.js";
 import { isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
+import * as kgExtract from "./kg-relationship-extract.js";
 import { KnowledgeGraphManager } from "./knowledge-graph.js";
 import { memoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
 import { searchKeyword, searchVector } from "./manager-search.js";
@@ -2491,24 +2492,31 @@ export class MemoryIndexManager implements MemorySearchManager {
         // Knowledge Graph population: extract entities and relationships from facts
         if (this.knowledgeGraph && result.facts.length > 0) {
           try {
-            const _factChunkIds = result.facts.map((_, i) => `fact_${i}`); // approximate IDs
             const kgEntities: Array<{
               name: string;
               type: import("./knowledge-graph.js").EntityType;
             }> = [];
             const kgRelationships: Array<import("./knowledge-graph.js").ExtractedRelationship> = [];
 
+            // PLAN-23 SABM: deterministic relationship extraction is on by
+            // default; set BITTERBOT_KG_RELATIONSHIPS=0 to disable (mirrors the
+            // BITTERBOT_DREAM_TASK_BIAS opt-out convention). Pure helpers in
+            // kg-relationship-extract.ts (no LLM, no embeddings).
+            const populateRelationships = process.env.BITTERBOT_KG_RELATIONSHIPS !== "0";
+
             for (const fact of result.facts) {
               // Extract entities from fact text via simple NER heuristics
               // Person names (capitalized words in relationship/preference facts)
               if (fact.semanticType === "relationship" || fact.semanticType === "preference") {
-                const names = fact.text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g);
-                for (const name of names ?? []) {
-                  if (
-                    name.length > 2 &&
-                    !["The", "This", "That", "When", "What", "How", "Why"].includes(name)
-                  ) {
-                    kgEntities.push({ name, type: "person" });
+                for (const name of kgExtract.extractPersonNames(fact.text)) {
+                  kgEntities.push({ name, type: "person" });
+                }
+                // Pair the leading two distinct persons in a relationship fact
+                // into a deterministic edge (conservative: never a fan-out).
+                if (populateRelationships && fact.semanticType === "relationship") {
+                  const edge = kgExtract.extractRelationshipFromFact(fact.text);
+                  if (edge) {
+                    kgRelationships.push(edge);
                   }
                 }
               }
@@ -2523,8 +2531,24 @@ export class MemoryIndexManager implements MemorySearchManager {
               }
             }
 
-            if (kgEntities.length > 0) {
-              this.knowledgeGraph.ingestExtraction(kgEntities, kgRelationships);
+            if (kgEntities.length > 0 || kgRelationships.length > 0) {
+              // Source real persisted chunk ids for this session as evidence,
+              // reusing the same query shape the Zeigarnik block uses below so
+              // the relationship.evidenceChunkIds -> chunks.labile_until join the
+              // reconsolidation dream mode relies on is grounded in real rows.
+              let evidenceIds: string[] = [];
+              try {
+                evidenceIds = (
+                  this.db
+                    .prepare(
+                      `SELECT id FROM chunks WHERE path = ? AND source = 'sessions' AND created_at >= ? LIMIT 50`,
+                    )
+                    .all(absPath, now - 60000) as Array<{ id: string }>
+                ).map((r) => r.id);
+              } catch {
+                evidenceIds = [];
+              }
+              this.knowledgeGraph.ingestExtraction(kgEntities, kgRelationships, evidenceIds);
             }
           } catch (err) {
             log.debug(`KG extraction from session failed: ${String(err)}`);
