@@ -2,6 +2,7 @@ import type { SkillEntry } from "../../agents/skills/types.js";
 import type { A2aConfig } from "../../config/types.a2a.js";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type { A2aAgentCard, A2aSkill } from "./types.js";
+import { getLocalWalletCapability } from "../../infra/wallet-discovery.js";
 
 const A2A_PROTOCOL_VERSION = "a2a/1.0.0";
 const AGENT_CARD_VERSION = "1.0.0";
@@ -50,13 +51,16 @@ export function buildAgentCard(params: {
   // Extensions
   const extensions: Record<string, unknown> = {};
 
-  // x402 payment extension
-  if (a2a.payment?.enabled && a2a.payment.x402?.address) {
+  // x402 payment extension. Prefer the live wallet address advertised to the
+  // mesh (resolved once the gateway initializes the CDP wallet) so the card
+  // exposes the real receiving address even when it isn't hardcoded in config.
+  const paymentAddress = a2a.payment?.x402?.address ?? getLocalWalletCapability()?.address;
+  if (a2a.payment?.enabled && paymentAddress) {
     extensions["x402-payment"] = {
       chain: "base",
       token: "USDC",
-      address: a2a.payment.x402.address,
-      minPayment: String(a2a.payment.x402.minPayment ?? 0.01),
+      address: paymentAddress,
+      minPayment: String(a2a.payment.x402?.minPayment ?? 0.01),
       pricing: "per-task",
     };
   }

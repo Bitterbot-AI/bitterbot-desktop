@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { WalletConfig } from "../../config/types.wallet.js";
+import { getPeerWalletCapability } from "../../infra/wallet-discovery.js";
 import { createWalletService, type WalletService } from "../../services/wallet-service.js";
 import { stringEnum } from "../schema/typebox.js";
 import {
@@ -19,6 +20,7 @@ const WALLET_ACTIONS = [
   "get_transaction_history",
   "fund_wallet",
   "pay_for_resource",
+  "send_to_peer",
 ] as const;
 
 // NOTE: Using a flattened object schema instead of Type.Union([Type.Object(...), ...])
@@ -54,6 +56,13 @@ const WalletToolSchema = Type.Object({
   reason: Type.Optional(
     Type.String({
       description: "Brief explanation of why this resource is needed (for pay_for_resource).",
+    }),
+  ),
+  peer_id: Type.Optional(
+    Type.String({
+      description:
+        "libp2p peer ID of a connected peer to pay (for send_to_peer). The peer's wallet " +
+        "address is resolved from its advertised wallet_capability.",
     }),
   ),
 });
@@ -108,6 +117,7 @@ export function createWalletTool(opts?: WalletToolOptions): AnyAgentTool | undef
 - get_address: Get the wallet's address.
 - get_balance: Check token balance (default: ETH). Pass token="USDC" for USDC.
 - send_usdc: Send USDC to an address. Requires: address, amount.
+- send_to_peer: Send USDC to a connected peer by libp2p peer ID, resolving their advertised wallet address automatically. Requires: peer_id, amount. Use network_status action="wallets" to see payable peers.
 - trade: Swap tokens. Requires: fromToken, toToken, amount.
 - get_transaction_history: View recent transactions. Optional: limit (default 10).
 - fund_wallet: Get a URL to fund the wallet via Coinbase Onramp or faucet.
@@ -150,6 +160,47 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
             ...result,
             amount,
             to: address,
+            sessionSpent: sessionSpentUsd,
+            sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
+          });
+        }
+
+        case "send_to_peer": {
+          const peerId = readStringParam(params, "peer_id", {
+            required: true,
+            label: "peer ID",
+          });
+          const amount = readNumberParam(params, "amount", { required: true });
+
+          const capability = getPeerWalletCapability(peerId);
+          if (!capability) {
+            throw new ToolInputError(
+              `No fresh wallet advertised by peer ${peerId}. The peer may be offline, not ` +
+                `running a wallet, or hasn't advertised recently. Use network_status ` +
+                `action="wallets" to list payable peers.`,
+            );
+          }
+          if (!capability.acceptsPayments) {
+            throw new ToolInputError(
+              `Peer ${peerId} has advertised that it does not accept payments.`,
+            );
+          }
+          if (capability.network !== svc.getNetwork()) {
+            throw new ToolInputError(
+              `Peer ${peerId} is on network "${capability.network}" but this wallet is on ` +
+                `"${svc.getNetwork()}". Cross-network sends are not supported.`,
+            );
+          }
+
+          checkSessionCap(amount);
+          const result = await svc.sendUsdc(capability.address, amount);
+          recordSpend(amount);
+
+          return jsonResult({
+            ...result,
+            amount,
+            peerId,
+            to: capability.address,
             sessionSpent: sessionSpentUsd,
             sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
           });

@@ -46,6 +46,36 @@ const BANNER = `#!/usr/bin/env node
 import { createRequire as __bitterbot_cr } from "node:module";
 const require = __bitterbot_cr(import.meta.url);`;
 
+// The gateway only uses two symbols from the @coinbase/agentkit barrel:
+// CdpSmartWalletProvider (wallet ops) and X402ActionProvider (x402 paywalls).
+// The full barrel re-exports every chain/provider (~30 MB of Solana, Privy,
+// ZeroDev, Zora, Jupiter, ...), so instead of bundling it we resolve the bare
+// `@coinbase/agentkit` specifier to a virtual module that re-exports just those
+// two from their own files. Absolute paths bypass agentkit's strict `exports`
+// map (which only exposes "."). x402ActionProvider.js pulls in the @x402/*
+// client packages, which resolve correctly relative to its real location.
+const AGENTKIT_CDP_WALLET_PROVIDER = resolve(
+  "node_modules/@coinbase/agentkit/dist/wallet-providers/cdpSmartWalletProvider.js",
+);
+const AGENTKIT_X402_ACTION_PROVIDER = resolve(
+  "node_modules/@coinbase/agentkit/dist/action-providers/x402/x402ActionProvider.js",
+);
+const agentkitBarrelShimPlugin = {
+  name: "agentkit-barrel-shim",
+  setup(b) {
+    b.onResolve({ filter: /^@coinbase\/agentkit$/ }, () => ({
+      path: "agentkit-barrel-shim",
+      namespace: "agentkit-shim",
+    }));
+    b.onLoad({ filter: /^agentkit-barrel-shim$/, namespace: "agentkit-shim" }, () => ({
+      contents:
+        `export { CdpSmartWalletProvider } from ${JSON.stringify(AGENTKIT_CDP_WALLET_PROVIDER)};\n` +
+        `export { X402ActionProvider, x402ActionProvider } from ${JSON.stringify(AGENTKIT_X402_ACTION_PROVIDER)};\n`,
+      resolveDir: process.cwd(),
+    }));
+  },
+};
+
 const NATIVE_EXTERNALS = [
   "@napi-rs/canvas",
   "@napi-rs/canvas-*",
@@ -109,20 +139,10 @@ const result = await build({
   // tell esbuild to emit it as-is rather than erroring out.
   loader: { ".node": "file" },
   banner: { js: BANNER },
-  plugins: [stripShebangPlugin],
-  // Redirect the @coinbase/agentkit barrel to its one wallet provider we
-  // actually use. The barrel re-exports every chain/provider (Solana, Privy,
-  // ZeroDev, Zora, OpenSea, sushi, Jupiter, Clanker, grammy/Telegram,
-  // twitter-api-v2, discord-api-types, ...), which dragged ~30 MB of
-  // dead-weight into the bundle and made the first lazy load a multi-minute
-  // fs walk. We only use CdpSmartWalletProvider.
-  alias: {
-    // Absolute path — bypasses agentkit's strict `exports` map (which only
-    // exposes `"."`) so we can point at a specific provider file.
-    "@coinbase/agentkit": resolve(
-      "node_modules/@coinbase/agentkit/dist/wallet-providers/cdpSmartWalletProvider.js",
-    ),
-  },
+  // agentkitBarrelShimPlugin redirects the @coinbase/agentkit barrel to a
+  // virtual module exposing only CdpSmartWalletProvider + X402ActionProvider,
+  // keeping the barrel's ~30 MB of unused chain/provider deps out of the bundle.
+  plugins: [stripShebangPlugin, agentkitBarrelShimPlugin],
 }).catch((e) => {
   console.error(e);
   process.exit(1);

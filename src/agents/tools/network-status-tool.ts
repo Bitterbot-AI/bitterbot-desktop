@@ -4,6 +4,10 @@ import {
   type OrchestratorBridge,
 } from "../../infra/orchestrator-bridge.js";
 import { getP2pStatus } from "../../infra/p2p-status.js";
+import {
+  getLocalWalletCapability,
+  listPeerWalletCapabilities,
+} from "../../infra/wallet-discovery.js";
 import { stringEnum } from "../schema/typebox.js";
 import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 
@@ -31,6 +35,7 @@ const NETWORK_STATUS_ACTIONS = [
   "census",
   "stats",
   "identity",
+  "wallets",
 ] as const;
 
 const NetworkStatusSchema = Type.Object({
@@ -50,7 +55,8 @@ export function createNetworkStatusTool(): AnyAgentTool {
     description:
       "Probe the live P2P network state. Actions: summary (peers + tier + health), " +
       "peers (full peer table with tiers, addrs, reputation), anomalies (active alerts), " +
-      "census (full management census), stats (raw libp2p counters), identity (your peer ID + tier). " +
+      "census (full management census), stats (raw libp2p counters), identity (your peer ID + tier), " +
+      "wallets (peers advertising a payable wallet address, plus your own). " +
       "Read-only; agents publish via dedicated management tools.",
     parameters: NetworkStatusSchema,
     execute: async (_toolCallId, args) => {
@@ -82,6 +88,8 @@ export function createNetworkStatusTool(): AnyAgentTool {
             return jsonResult(await fetchStats(bridge));
           case "identity":
             return jsonResult(await fetchIdentity(bridge));
+          case "wallets":
+            return jsonResult(fetchWallets());
           default: {
             const _exhaustive: never = action;
             return jsonResult({ ok: false, error: `unknown action: ${String(_exhaustive)}` });
@@ -98,6 +106,32 @@ export function createNetworkStatusTool(): AnyAgentTool {
 function clampLimit(raw: unknown): number {
   if (typeof raw !== "number" || !Number.isFinite(raw)) return 50;
   return Math.max(1, Math.min(200, Math.floor(raw)));
+}
+
+/**
+ * Peer wallet capabilities learned from `wallet_capability` telemetry, plus our
+ * own advertised address. This is what makes `wallet send_to_peer <peerId>`
+ * possible — the agent can see which connected peers accept payments and at
+ * what address without an out-of-band exchange.
+ */
+function fetchWallets(): Record<string, unknown> {
+  const peers = listPeerWalletCapabilities().map((cap) => ({
+    peerId: cap.peerId,
+    address: cap.address,
+    network: cap.network,
+    acceptsPayments: cap.acceptsPayments,
+    a2aEnabled: cap.a2aEnabled ?? false,
+    lastSeenMsAgo: Date.now() - cap.updatedAt,
+  }));
+  const local = getLocalWalletCapability();
+  return {
+    ok: true,
+    self: local
+      ? { address: local.address, network: local.network, acceptsPayments: local.acceptsPayments }
+      : null,
+    peers,
+    peerCount: peers.length,
+  };
 }
 
 /**

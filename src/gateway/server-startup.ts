@@ -18,6 +18,7 @@ import {
 import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { getP2pStatus, patchP2pStatus } from "../infra/p2p-status.js";
+import { recordPeerWalletCapability, setLocalWalletCapability } from "../infra/wallet-discovery.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import {
@@ -337,6 +338,10 @@ export async function startGatewaySidecars(params: {
         skillNetworkBridge?.handleBountyEvent(event);
       });
       orchestratorBridge.onTelemetryReceived((event) => {
+        // Learn peer wallet addresses advertised via `wallet_capability`
+        // telemetry so the agent can pay a peer by peerId (no-op for other
+        // signal types).
+        recordPeerWalletCapability(event);
         skillNetworkBridge?.handleTelemetryEvent(event);
       });
       orchestratorBridge.onQueryReceived((event) => {
@@ -344,6 +349,52 @@ export async function startGatewaySidecars(params: {
           params.log.warn(`Query event handling failed: ${String(err)}`);
         });
       });
+      // Phase 2 wallet discoverability: advertise our receiving address to the
+      // mesh so peers can pay us by peerId without an out-of-band exchange.
+      // Best-effort and gated on CDP credentials being present — nodes without
+      // a configured wallet stay silent (no noisy init attempts). Addresses are
+      // public; advertising one exposes no signing capability.
+      const walletCfg = params.cfg.tools?.wallet;
+      const hasWalletCreds = Boolean(
+        (walletCfg?.cdpApiKeyId ?? process.env.CDP_API_KEY_ID) &&
+        (walletCfg?.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET) &&
+        process.env.CDP_WALLET_SECRET,
+      );
+      if (walletCfg?.enabled !== false && hasWalletCreds) {
+        const advertiseBridge = orchestratorBridge;
+        const a2aEnabled = params.cfg.a2a?.enabled === true;
+        const advertiseWallet = async () => {
+          try {
+            const { createWalletService } = await import("../services/wallet-service.js");
+            const svc = createWalletService(walletCfg ?? {});
+            const address = await svc.getAddress();
+            const network = svc.getNetwork();
+            setLocalWalletCapability({
+              address,
+              network,
+              acceptsPayments: true,
+              a2aEnabled,
+              updatedAt: Date.now(),
+            });
+            await advertiseBridge.publishTelemetry("wallet_capability", {
+              address,
+              network,
+              acceptsPayments: true,
+              a2aEnabled,
+            });
+          } catch (err) {
+            params.log.warn(`wallet capability advertise skipped: ${String(err)}`);
+          }
+        };
+        // First advertise after a short delay so wallet/CDP init doesn't
+        // compete with the rest of startup; then refresh every 30 min so
+        // freshly-joined peers still learn our address.
+        const walletAdvertiseTimer = setInterval(() => void advertiseWallet(), 30 * 60 * 1000);
+        setTimeout(() => void advertiseWallet(), 10_000);
+        (
+          advertiseBridge as unknown as { __walletAdvertiseTimer?: NodeJS.Timeout }
+        ).__walletAdvertiseTimer = walletAdvertiseTimer;
+      }
       params.log.warn(
         `P2P orchestrator bridge started (binary: ${orchestratorBridge.getHealth().binaryPath})`,
       );

@@ -101,9 +101,13 @@ const ERC20_BALANCE_ABI = [
 
 export function createWalletService(config: WalletConfig): WalletService {
   const network = config.network ?? "base-sepolia";
-  // CDP SDK v2 accepts "base" / "base-sepolia" directly as networkId,
-  // no translation needed.
-  const networkId = network;
+  // AgentKit's CdpSmartWalletProvider expects CDP network IDs ("base-mainnet",
+  // "base-sepolia"), NOT the short "base" alias we use everywhere else for
+  // USDC contracts, account names, and funding URLs. Passing "base" straight
+  // through makes sendTransaction() throw "Unsupported network for smart
+  // wallets: base". The x402 protocol's SUPPORTED_NETWORKS keys off
+  // "base-mainnet" too, so this mapping also unblocks pay_for_resource.
+  const networkId = network === "base" ? "base-mainnet" : network;
   const storePath = config.walletStorePath ?? DEFAULT_WALLET_STORE;
   const perTxCap = config.perTransactionCapUsd ?? 25;
 
@@ -397,73 +401,124 @@ export function createWalletService(config: WalletConfig): WalletService {
     async payForResource(resourceUrl: string, amountUsdc: number): Promise<X402PaymentResult> {
       validateTransactionAmount(amountUsdc);
       const provider = await getProvider();
-      const address = provider.getAddress();
+
+      // Use AgentKit's x402 action provider, which wraps the official @x402
+      // client (EIP-712 typed-data authorization signed by our smart account,
+      // settled on-chain by the CDP facilitator). The smart wallet satisfies
+      // the EvmWalletProvider contract toSigner() needs, and shares the same
+      // module identity, so the internal `instanceof` checks pass.
+      const { X402ActionProvider } = await import("@coinbase/agentkit");
+      const x402 = new X402ActionProvider();
 
       try {
-        // Build x402 payment payload
-        const smallestUnit = BigInt(Math.round(amountUsdc * 1e6));
-        const usdcContract = USDC_CONTRACTS[network];
-        if (!usdcContract) {
-          return { success: false, error: `No USDC contract for network: ${network}` };
-        }
-
-        // Sign x402 payment — transfer USDC to resource facilitator
-        const paymentPayload = JSON.stringify({
-          resource: resourceUrl,
-          amount: smallestUnit.toString(),
-          token: "USDC",
-          network,
-          payer: address,
+        // Pre-flight: discover the payment requirements WITHOUT paying. The
+        // auto-pay wrapper would settle whatever the server demands; we must
+        // confirm the *actual* price is within the caller's cap first. A
+        // non-402 response means the resource was free — return it directly.
+        const probeRaw = await x402.makeHttpRequest(provider, {
+          url: resourceUrl,
+          method: "GET",
         });
-        const signature = await provider.signMessage(paymentPayload);
+        const probe = JSON.parse(probeRaw) as {
+          status?: string;
+          success?: boolean;
+          statusCode?: number;
+          data?: unknown;
+          acceptablePaymentOptions?: Array<{
+            network?: string;
+            asset?: string;
+            maxAmountRequired?: string;
+            amount?: string;
+          }>;
+          message?: string;
+          error?: boolean;
+        };
 
-        // Encode payment header (base64 JSON)
-        const headerPayload = JSON.stringify({
-          signature,
-          payment: {
-            resource: resourceUrl,
-            amount: smallestUnit.toString(),
-            token: "USDC",
-            network,
-          },
-          address,
-        });
-        const paymentHeader = Buffer.from(headerPayload).toString("base64");
-
-        // Make HTTP request with x402 payment header
-        const response = await fetch(resourceUrl, {
-          headers: {
-            "X-PAYMENT": paymentHeader,
-            Accept: "application/json, text/plain, */*",
-          },
-        });
-
-        const contentType = response.headers.get("content-type") ?? "";
-        const body = await response.text();
-
-        if (response.ok) {
-          // Record successful payment
-          await recordTransaction({
-            txHash: `x402-${Date.now().toString(36)}`,
-            type: "x402_payment",
-            amount: amountUsdc.toString(),
-            token: "USDC",
-            timestamp: Date.now(),
-          });
-
+        if (probe.status !== "error_402_payment_required") {
+          if (probe.success) {
+            // No payment was required; the resource returned content for free.
+            const content =
+              typeof probe.data === "string" ? probe.data : JSON.stringify(probe.data);
+            return {
+              success: true,
+              statusCode: 200,
+              content: content.slice(0, 10_000),
+              amountPaid: 0,
+            };
+          }
           return {
-            success: true,
-            statusCode: response.status,
-            content: body.slice(0, 10_000),
-            contentType,
-            amountPaid: amountUsdc,
+            success: false,
+            error:
+              probe.message ?? `Resource did not return a payable 402: ${probeRaw.slice(0, 300)}`,
           };
         }
 
+        // Determine the cheapest USDC price the server will accept and enforce
+        // the per-request cap against it. USDC is 6 decimals; maxAmountRequired
+        // is in atomic units.
+        const options = probe.acceptablePaymentOptions ?? [];
+        const prices = options
+          .map((o) => Number(o.maxAmountRequired ?? o.amount))
+          .filter((n) => Number.isFinite(n) && n >= 0)
+          .map((atomic) => atomic / 1e6);
+        if (prices.length === 0) {
+          return {
+            success: false,
+            error: "402 response did not include a parseable payment amount.",
+          };
+        }
+        const requiredUsd = Math.min(...prices);
+        if (requiredUsd > amountUsdc) {
+          return {
+            success: false,
+            statusCode: 402,
+            error:
+              `Resource requires $${requiredUsd.toFixed(4)} USDC, which exceeds the ` +
+              `approved amount of $${amountUsdc.toFixed(4)}. Payment not sent.`,
+          };
+        }
+
+        // Within cap: pay and settle on-chain, then return the actual content.
+        const paidRaw = await x402.makeHttpRequestWithX402(provider, {
+          url: resourceUrl,
+          method: "GET",
+        });
+        const paid = JSON.parse(paidRaw) as {
+          success?: boolean;
+          status?: number;
+          data?: unknown;
+          message?: string;
+          paymentProof?: { transaction?: string; txHash?: string } | null;
+          error?: boolean;
+        };
+
+        if (!paid.success) {
+          return {
+            success: false,
+            statusCode: paid.status,
+            error: paid.message ?? `x402 payment failed: ${paidRaw.slice(0, 300)}`,
+          };
+        }
+
+        const txHash =
+          paid.paymentProof?.transaction ??
+          paid.paymentProof?.txHash ??
+          `x402-${Date.now().toString(36)}`;
+        await recordTransaction({
+          txHash,
+          type: "x402_payment",
+          amount: requiredUsd.toString(),
+          token: "USDC",
+          timestamp: Date.now(),
+        });
+
+        const content = typeof paid.data === "string" ? paid.data : JSON.stringify(paid.data);
         return {
-          success: false,
-          statusCode: response.status,
-          error: `Resource returned HTTP ${response.status}: ${body.slice(0, 500)}`,
+          success: true,
+          statusCode: paid.status ?? 200,
+          content: content.slice(0, 10_000),
+          amountPaid: requiredUsd,
+          txHash,
         };
       } catch (err) {
         return {
