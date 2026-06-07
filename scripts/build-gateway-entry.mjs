@@ -57,6 +57,9 @@ const require = __bitterbot_cr(import.meta.url);`;
 const AGENTKIT_CDP_WALLET_PROVIDER = resolve(
   "node_modules/@coinbase/agentkit/dist/wallet-providers/cdpSmartWalletProvider.js",
 );
+const AGENTKIT_CDP_EVM_WALLET_PROVIDER = resolve(
+  "node_modules/@coinbase/agentkit/dist/wallet-providers/cdpEvmWalletProvider.js",
+);
 const AGENTKIT_X402_ACTION_PROVIDER = resolve(
   "node_modules/@coinbase/agentkit/dist/action-providers/x402/x402ActionProvider.js",
 );
@@ -70,6 +73,7 @@ const agentkitBarrelShimPlugin = {
     b.onLoad({ filter: /^agentkit-barrel-shim$/, namespace: "agentkit-shim" }, () => ({
       contents:
         `export { CdpSmartWalletProvider } from ${JSON.stringify(AGENTKIT_CDP_WALLET_PROVIDER)};\n` +
+        `export { CdpEvmWalletProvider } from ${JSON.stringify(AGENTKIT_CDP_EVM_WALLET_PROVIDER)};\n` +
         `export { X402ActionProvider, x402ActionProvider } from ${JSON.stringify(AGENTKIT_X402_ACTION_PROVIDER)};\n`,
       resolveDir: process.cwd(),
     }));

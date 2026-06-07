@@ -53,6 +53,12 @@ export interface WalletService {
   getNetwork(): string;
   payForResource(resourceUrl: string, amountUsdc: number): Promise<X402PaymentResult>;
   /**
+   * Address of the EOA that x402 payments are sent from (the smart account's
+   * owner). Fund this address with USDC to enable pay_for_resource. Distinct
+   * from getAddress() (the smart account used for send_usdc and receiving).
+   */
+  getX402PayerAddress(): Promise<string>;
+  /**
    * Sign an arbitrary message with the wallet's signing key (EIP-191 personal_sign).
    * Used by the A2A client to bind payment proofs to the buyer's wallet so a
    * leaked txHash cannot be replayed against a different recipient by another agent.
@@ -101,18 +107,23 @@ const ERC20_BALANCE_ABI = [
 
 export function createWalletService(config: WalletConfig): WalletService {
   const network = config.network ?? "base-sepolia";
-  // AgentKit's CdpSmartWalletProvider expects CDP network IDs ("base-mainnet",
+  // AgentKit's CDP wallet providers expect CDP network IDs ("base-mainnet",
   // "base-sepolia"), NOT the short "base" alias we use everywhere else for
   // USDC contracts, account names, and funding URLs. Passing "base" straight
-  // through makes sendTransaction() throw "Unsupported network for smart
-  // wallets: base". The x402 protocol's SUPPORTED_NETWORKS keys off
-  // "base-mainnet" too, so this mapping also unblocks pay_for_resource.
+  // through makes the provider throw "Unsupported network ...: base". The x402
+  // protocol's SUPPORTED_NETWORKS keys off "base-mainnet" too, so this mapping
+  // also unblocks pay_for_resource.
   const networkId = network === "base" ? "base-mainnet" : network;
   const storePath = config.walletStorePath ?? DEFAULT_WALLET_STORE;
   const perTxCap = config.perTransactionCapUsd ?? 25;
 
-  // Lazily initialized wallet provider
-  let walletProviderPromise: Promise<import("@coinbase/agentkit").CdpSmartWalletProvider> | null =
+  // The wallet is a single CDP Server Wallet (MPC EOA) — CDP's intended agent
+  // wallet. It signs x402's EIP-3009 authorizations with a standard ECDSA
+  // signature, which USDC settles via ecrecover (no smart-account/ERC-1271
+  // edge cases) while the facilitator sponsors gas. Direct USDC sends are
+  // normal EOA transactions, so the account needs a small ETH balance for gas
+  // (gasless sends would require EIP-7702 delegation, deferred).
+  let walletProviderPromise: Promise<import("@coinbase/agentkit").CdpEvmWalletProvider> | null =
     null;
 
   async function ensureStoreDir(): Promise<void> {
@@ -125,15 +136,15 @@ export function createWalletService(config: WalletConfig): WalletService {
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
   }
 
-  async function getProvider(): Promise<import("@coinbase/agentkit").CdpSmartWalletProvider> {
+  async function getProvider(): Promise<import("@coinbase/agentkit").CdpEvmWalletProvider> {
     if (!walletProviderPromise) {
       walletProviderPromise = initProvider();
     }
     return walletProviderPromise;
   }
 
-  async function initProvider(): Promise<import("@coinbase/agentkit").CdpSmartWalletProvider> {
-    const { CdpSmartWalletProvider } = await import("@coinbase/agentkit");
+  async function initProvider(): Promise<import("@coinbase/agentkit").CdpEvmWalletProvider> {
+    const { CdpEvmWalletProvider } = await import("@coinbase/agentkit");
     const { CdpClient } = await import("@coinbase/cdp-sdk");
 
     const apiKeyId = config.cdpApiKeyId ?? process.env.CDP_API_KEY_ID;
@@ -146,79 +157,24 @@ export function createWalletService(config: WalletConfig): WalletService {
       );
     }
 
-    // Resolve owner + smart account via the CDP SDK directly before handing
-    // off to AgentKit's provider. The provider's built-in configure path
-    // tries to create a fresh smart account on every init where no
-    // smartAccountName is persisted locally, which blows up the second time
-    // because CDP refuses multiple smart accounts per owner. Resolving
-    // explicitly makes init idempotent regardless of local persistence
-    // state.
+    // Resolve (or create) the single server account (MPC EOA) for this network.
+    // This is the one wallet for receiving, send_usdc, and x402.
     const cdp = new CdpClient({ apiKeyId, apiKeySecret, walletSecret });
+    const accountName = `bitterbot-owner-${network}`;
+    const account = await cdp.evm.getOrCreateAccount({ name: accountName });
 
-    const ownerName = `bitterbot-owner-${network}`;
-    const smartName = `bitterbot-smart-${network}`;
-
-    // Owner: always the same account for a given network.
-    const ownerAccount = await cdp.evm.getOrCreateAccount({ name: ownerName });
-
-    // Smart account: prefer the one named "bitterbot-smart-<network>". If
-    // that name doesn't exist yet, the SDK will try to create it. If the
-    // owner already has an orphaned smart account (created by an earlier
-    // nameless attempt), CDP rejects the create with "Multiple smart
-    // wallets with the same owner" — in that case, list the owner's
-    // existing smart accounts, pick the first, and attach to it.
-    let smartAccountAddress: `0x${string}`;
-    try {
-      const sa = await cdp.evm.getOrCreateSmartAccount({
-        name: smartName,
-        owner: ownerAccount,
-      });
-      smartAccountAddress = sa.address as `0x${string}`;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!/multiple smart wallets|same owner/i.test(msg)) {
-        throw err;
-      }
-      // Orphan reclaim: walk pages until we find one owned by ourselves.
-      let pageToken: string | undefined;
-      let found: `0x${string}` | undefined;
-      do {
-        const page = await cdp.evm.listSmartAccounts({ pageToken });
-        for (const sa of page.accounts) {
-          if (
-            sa.owners?.some((o: string) => o.toLowerCase() === ownerAccount.address.toLowerCase())
-          ) {
-            found = sa.address as `0x${string}`;
-            break;
-          }
-        }
-        pageToken = page.nextPageToken;
-      } while (!found && pageToken);
-
-      if (!found) {
-        throw new Error(
-          `CDP reported a pre-existing smart wallet for owner ${ownerAccount.address} ` +
-            `but listSmartAccounts returned none.`,
-          { cause: err },
-        );
-      }
-      smartAccountAddress = found;
-    }
-
-    const provider = await CdpSmartWalletProvider.configureWithWallet({
+    const provider = await CdpEvmWalletProvider.configureWithWallet({
       apiKeyId,
       apiKeySecret,
       // walletSecret falls through to process.env.CDP_WALLET_SECRET.
       networkId,
-      address: smartAccountAddress,
-      owner: ownerAccount,
+      address: account.address as `0x${string}`,
     });
 
-    const exported = await provider.exportWallet();
     await savePersistedWallet({
-      name: exported.name,
-      address: exported.address,
-      ownerAddress: exported.ownerAddress,
+      name: accountName,
+      address: account.address,
+      ownerAddress: account.address,
     });
 
     return provider;
@@ -279,6 +235,12 @@ export function createWalletService(config: WalletConfig): WalletService {
 
   return {
     async getAddress(): Promise<string> {
+      const provider = await getProvider();
+      return provider.getAddress();
+    },
+
+    async getX402PayerAddress(): Promise<string> {
+      // Single-wallet model: x402 pays from the main wallet address.
       const provider = await getProvider();
       return provider.getAddress();
     },
@@ -400,13 +362,15 @@ export function createWalletService(config: WalletConfig): WalletService {
 
     async payForResource(resourceUrl: string, amountUsdc: number): Promise<X402PaymentResult> {
       validateTransactionAmount(amountUsdc);
-      const provider = await getProvider();
+      // The wallet is an EOA, so its EIP-3009 authorization settles via
+      // ecrecover and the facilitator sponsors gas.
+      const payer = await getProvider();
 
-      // Use AgentKit's x402 action provider, which wraps the official @x402
-      // client (EIP-712 typed-data authorization signed by our smart account,
-      // settled on-chain by the CDP facilitator). The smart wallet satisfies
-      // the EvmWalletProvider contract toSigner() needs, and shares the same
-      // module identity, so the internal `instanceof` checks pass.
+      // AgentKit's x402 action provider wraps the official @x402 client
+      // (EIP-712 typed-data authorization, settled on-chain by the CDP
+      // facilitator). The EOA payer satisfies the EvmWalletProvider contract
+      // toSigner() needs and shares the same module identity, so the internal
+      // `instanceof` checks pass.
       const { X402ActionProvider } = await import("@coinbase/agentkit");
       const x402 = new X402ActionProvider();
 
@@ -415,7 +379,7 @@ export function createWalletService(config: WalletConfig): WalletService {
         // auto-pay wrapper would settle whatever the server demands; we must
         // confirm the *actual* price is within the caller's cap first. A
         // non-402 response means the resource was free — return it directly.
-        const probeRaw = await x402.makeHttpRequest(provider, {
+        const probeRaw = await x402.makeHttpRequest(payer, {
           url: resourceUrl,
           method: "GET",
         });
@@ -479,7 +443,7 @@ export function createWalletService(config: WalletConfig): WalletService {
         }
 
         // Within cap: pay and settle on-chain, then return the actual content.
-        const paidRaw = await x402.makeHttpRequestWithX402(provider, {
+        const paidRaw = await x402.makeHttpRequestWithX402(payer, {
           url: resourceUrl,
           method: "GET",
         });
@@ -493,10 +457,13 @@ export function createWalletService(config: WalletConfig): WalletService {
         };
 
         if (!paid.success) {
+          const payerAddress = payer.getAddress();
           return {
             success: false,
             statusCode: paid.status,
-            error: paid.message ?? `x402 payment failed: ${paidRaw.slice(0, 300)}`,
+            error:
+              (paid.message ?? `x402 payment failed: ${paidRaw.slice(0, 300)}`) +
+              ` (paid from wallet ${payerAddress}; ensure it holds enough USDC on ${network}.)`,
           };
         }
 

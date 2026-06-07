@@ -133,6 +133,8 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
       switch (action) {
         case "get_address": {
           const address = await svc.getAddress();
+          // Single wallet for receiving, send_usdc, and x402. Fund this address
+          // with USDC (and a little ETH for send_usdc gas; x402 is gasless).
           return jsonResult({
             address,
             network: svc.getNetwork(),
