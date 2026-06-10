@@ -110,13 +110,14 @@ describe("a2a_status — summary scope (default)", () => {
     expect(r.peerReputation).toBeUndefined();
   });
 
-  it("warns when payment is enabled but no x402 address is set", async () => {
+  it("notes the local-wallet fallback when payment is enabled without an explicit x402 address", async () => {
     currentConfig = {
       a2a: { enabled: true, payment: { enabled: true } },
     };
     const r = await callTool({ scope: "summary" });
     const hints = r.hints as string[];
-    expect(hints.some((h) => /no x402.address/i.test(h))).toBe(true);
+    expect(hints.some((h) => /no explicit x402\.address/i.test(h))).toBe(true);
+    expect(hints.some((h) => /local wallet/i.test(h))).toBe(true);
   });
 
   it("warns when payment is off (default)", async () => {
