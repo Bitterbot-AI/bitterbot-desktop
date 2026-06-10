@@ -1,5 +1,5 @@
 import type { GatewayRequestHandlers } from "./types.js";
-import { loadConfig } from "../../config/config.js";
+import { loadConfig, writeConfigFile } from "../../config/config.js";
 import { createHostedOnrampSession, DEFAULT_ONRAMP_URL } from "../../services/hosted-onramp.js";
 import { createOnrampSession } from "../../services/stripe-onramp.js";
 import { createWalletService, type WalletService } from "../../services/wallet-service.js";
@@ -210,21 +210,35 @@ export const walletHandlers: GatewayRequestHandlers = {
   },
 
   "wallet.setConfig": async ({ params, respond }) => {
-    // Admin-only: update wallet configuration fields at runtime.
-    // Actual persistence goes through the config system; this validates and returns ok.
+    // Admin-only: update wallet configuration fields at runtime. Writes the
+    // merged config to disk so the change survives restarts, then drops the
+    // cached service so the next call picks it up.
     try {
       const updates: Record<string, unknown> = {};
       if (typeof params.enabled === "boolean") {
         updates.enabled = params.enabled;
       }
-      if (typeof params.network === "string") {
+      if (params.network === "base" || params.network === "base-sepolia") {
         updates.network = params.network;
       }
-      if (typeof params.sessionSpendCapUsd === "number") {
+      if (typeof params.sessionSpendCapUsd === "number" && params.sessionSpendCapUsd > 0) {
         updates.sessionSpendCapUsd = params.sessionSpendCapUsd;
       }
-      if (typeof params.perTransactionCapUsd === "number") {
+      if (typeof params.perTransactionCapUsd === "number" && params.perTransactionCapUsd > 0) {
         updates.perTransactionCapUsd = params.perTransactionCapUsd;
+      }
+      if (typeof params.dailySpendLimitUsd === "number" && params.dailySpendLimitUsd > 0) {
+        updates.dailySpendLimitUsd = params.dailySpendLimitUsd;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const cfg = loadConfig();
+        const tools = cfg.tools ? { ...cfg.tools } : {};
+        tools.wallet = {
+          ...tools.wallet,
+          ...(updates as Partial<NonNullable<typeof tools.wallet>>),
+        };
+        await writeConfigFile({ ...cfg, tools });
       }
 
       // Reset cached service so next call picks up new config

@@ -30,6 +30,12 @@ export type WalletCapability = {
   acceptsPayments: boolean;
   /** Whether the node also exposes an A2A endpoint. */
   a2aEnabled?: boolean;
+  /**
+   * Public base URL of the node's A2A endpoint, when one is configured.
+   * Lets peers resolve peerId -> URL and hire this node without an
+   * out-of-band address exchange (the cheapest possible discovery directory).
+   */
+  a2aUrl?: string;
   /** ms epoch when this entry was recorded/refreshed. */
   updatedAt: number;
 };
@@ -79,6 +85,8 @@ export function recordPeerWalletCapability(event: {
   if (!EVM_ADDRESS_RE.test(address)) {
     return false;
   }
+  const a2aUrl =
+    typeof data.a2aUrl === "string" && /^https?:\/\//.test(data.a2aUrl) ? data.a2aUrl : undefined;
   peerWallets.set(peerId, {
     peerId,
     address,
@@ -86,6 +94,7 @@ export function recordPeerWalletCapability(event: {
     // Default to accepting unless the peer explicitly opts out.
     acceptsPayments: data.acceptsPayments !== false,
     a2aEnabled: data.a2aEnabled === true,
+    a2aUrl,
     updatedAt: typeof event.timestamp === "number" ? event.timestamp : Date.now(),
   });
   return true;

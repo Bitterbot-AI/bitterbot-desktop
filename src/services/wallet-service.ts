@@ -15,11 +15,6 @@ export type SendResult = {
   status: string;
 };
 
-export type TradeResult = {
-  txHash: string;
-  status: string;
-};
-
 export type TransactionRecord = {
   txHash: string;
   type: string;
@@ -47,7 +42,6 @@ export interface WalletService {
   getAddress(): Promise<string>;
   getBalance(token?: string): Promise<BalanceResult>;
   sendUsdc(to: string, amount: number, opts?: SendUsdcOptions): Promise<SendResult>;
-  trade(fromToken: string, toToken: string, amount: number): Promise<TradeResult>;
   getTransactionHistory(limit?: number): Promise<TransactionRecord[]>;
   getFundingUrl(): Promise<string>;
   getNetwork(): string;
@@ -116,6 +110,7 @@ export function createWalletService(config: WalletConfig): WalletService {
   const networkId = network === "base" ? "base-mainnet" : network;
   const storePath = config.walletStorePath ?? DEFAULT_WALLET_STORE;
   const perTxCap = config.perTransactionCapUsd ?? 25;
+  const dailyLimit = config.dailySpendLimitUsd ?? 50;
 
   // The wallet is a single CDP Server Wallet (MPC EOA) — CDP's intended agent
   // wallet. It signs x402's EIP-3009 authorizations with a standard ECDSA
@@ -186,6 +181,34 @@ export function createWalletService(config: WalletConfig): WalletService {
     }
     if (amount > perTxCap) {
       throw new Error(`Transaction amount $${amount} exceeds per-transaction cap of $${perTxCap}`);
+    }
+  }
+
+  /**
+   * Enforce the rolling 24h spend cap across ALL outbound paths. This is the
+   * single choke point: sendUsdc and payForResource both call it, so A2A
+   * hires, revenue dispatch, and direct sends draw from one budget. Sums the
+   * persisted tx history (send + x402_payment rows), so the cap survives
+   * restarts — unlike per-session counters.
+   */
+  async function assertDailyLimit(amount: number): Promise<void> {
+    const historyPath = path.join(storePath, "tx-history.json");
+    let history: TransactionRecord[] = [];
+    try {
+      history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
+    } catch {
+      return; // no history yet — nothing spent
+    }
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const spent = history
+      .filter((r) => r.timestamp >= cutoff && (r.type === "send" || r.type === "x402_payment"))
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    if (spent + amount > dailyLimit) {
+      throw new Error(
+        `Daily spend limit would be exceeded: $${spent.toFixed(2)} spent in the last 24h, ` +
+          `$${amount.toFixed(2)} requested, cap is $${dailyLimit} ` +
+          `(tools.wallet.dailySpendLimitUsd)`,
+      );
     }
   }
 
@@ -293,6 +316,7 @@ export function createWalletService(config: WalletConfig): WalletService {
 
     async sendUsdc(to: string, amount: number, opts?: SendUsdcOptions): Promise<SendResult> {
       validateTransactionAmount(amount);
+      await assertDailyLimit(amount);
       const provider = await getProvider();
 
       const usdcContract = USDC_CONTRACTS[network];
@@ -326,10 +350,6 @@ export function createWalletService(config: WalletConfig): WalletService {
           { cause: err },
         );
       }
-    },
-
-    async trade(fromToken: string, toToken: string, _amount: number): Promise<TradeResult> {
-      throw new Error(`Token swaps (${fromToken} \u2192 ${toToken}) are not yet implemented.`);
     },
 
     async getTransactionHistory(limit?: number): Promise<TransactionRecord[]> {
@@ -442,7 +462,9 @@ export function createWalletService(config: WalletConfig): WalletService {
           };
         }
 
-        // Within cap: pay and settle on-chain, then return the actual content.
+        // Within cap: enforce the daily budget against the ACTUAL price
+        // (the probe above was free), then pay and settle on-chain.
+        await assertDailyLimit(requiredUsd);
         const paidRaw = await x402.makeHttpRequestWithX402(payer, {
           url: resourceUrl,
           method: "GET",

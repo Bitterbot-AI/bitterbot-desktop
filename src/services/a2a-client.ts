@@ -121,6 +121,40 @@ export class A2aClient {
   }
 
   /**
+   * Persist an outbound payment as a marketplace purchase row. These rows
+   * drive checkDailySpendLimit, spend reporting, and demand-driven dream
+   * intelligence, so a missing db (no marketplace) only degrades those —
+   * the payment itself already happened.
+   */
+  private recordOutboundPurchase(params: {
+    agentUrl: string;
+    amountUsdc: number;
+    txHash: string;
+  }): void {
+    if (!this.db) {
+      return;
+    }
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO marketplace_purchases
+             (id, skill_crystal_id, buyer_peer_id, amount_usdc, tx_hash, direction, purchased_at)
+           VALUES (?, ?, ?, ?, ?, 'purchase', ?)`,
+        )
+        .run(
+          crypto.randomUUID(),
+          `a2a:${params.agentUrl}`,
+          "local",
+          params.amountUsdc,
+          params.txHash,
+          Date.now(),
+        );
+    } catch (err) {
+      log.debug(`failed to record outbound purchase: ${String(err)}`);
+    }
+  }
+
+  /**
    * Discover a peer agent by fetching its Agent Card.
    */
   async discoverAgent(agentUrl: string): Promise<PeerAgent | null> {
@@ -231,6 +265,14 @@ export class A2aClient {
       } catch (err) {
         return { success: false, error: `Payment failed: ${String(err)}` };
       }
+
+      // Record the spend immediately — money has left the wallet even if the
+      // task fails after this point. The daily spend limit reads these rows.
+      this.recordOutboundPurchase({
+        agentUrl: params.agentUrl,
+        amountUsdc: price,
+        txHash: payment.txHash,
+      });
 
       // Build a signed payment token. The signature binds the proof to
       // (recipient, txHash, amount, sender, timestamp) so a leaked txHash

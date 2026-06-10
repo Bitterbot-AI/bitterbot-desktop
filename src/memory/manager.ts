@@ -427,8 +427,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.ensureTaskMemory();
     this.ensureScheduler();
     this.ensureMemStore();
-    this.ensureSkillNetworkBridge();
+    // Peer reputation must exist before the bridge: ensureSkillNetworkBridge
+    // gates SkillMarketplace creation on it (creating it after left the
+    // browse/search marketplace permanently uninstantiated).
     this.ensurePeerReputationManager();
+    this.ensureSkillNetworkBridge();
     const statusOnly = params.purpose === "status";
     this.dirty = this.sources.has("memory") && (statusOnly ? !meta : true);
     this.skillsDirty = this.sources.has("skills") && (statusOnly ? !meta : true);
@@ -1710,6 +1713,10 @@ export class MemoryIndexManager implements MemorySearchManager {
             if (released > 0) {
               log.info(`revenue queue: ${released} payments released from 48h hold`);
             }
+
+            // Dispatch released payments onchain. Fire-and-forget: USDC sends
+            // are slow network calls and must not block the consolidation tick.
+            void this.dispatchReleasedPayments();
 
             // Observability: log revenue queue stats
             const queueStats = this.marketplaceEconomics.getRevenueQueueStats();
@@ -3142,6 +3149,75 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.marketplaceEconomics;
   }
 
+  /** Guards against overlapping dispatch runs across consolidation ticks. */
+  private revenueDispatchInFlight = false;
+
+  /**
+   * Plan 8, Phase 1: dispatch released revenue-share payments onchain.
+   *
+   * Recipients without a known wallet address stay in 'released' status and
+   * retry on later ticks — their address can arrive any time via
+   * wallet_capability gossip. Send failures also return to 'released' (via
+   * markPaymentFailed) so transient RPC errors self-heal. Per-tick dispatch
+   * is capped so a backlog cannot turn one tick into a mass payout run.
+   */
+  private async dispatchReleasedPayments(): Promise<void> {
+    if (!this.marketplaceEconomics || this.revenueDispatchInFlight) {
+      return;
+    }
+    const walletCfg = this.cfg.tools?.wallet;
+    const hasWalletCreds = Boolean(
+      (walletCfg?.cdpApiKeyId ?? process.env.CDP_API_KEY_ID) &&
+      (walletCfg?.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET) &&
+      process.env.CDP_WALLET_SECRET,
+    );
+    if (walletCfg?.enabled === false || !hasWalletCreds) {
+      return;
+    }
+    const payments = this.marketplaceEconomics.getReleasedPayments();
+    if (payments.length === 0) {
+      return;
+    }
+    this.revenueDispatchInFlight = true;
+    try {
+      const [{ createWalletService }, { getPeerWalletCapability }] = await Promise.all([
+        import("../services/wallet-service.js"),
+        import("../infra/wallet-discovery.js"),
+      ]);
+      const wallet = createWalletService(walletCfg ?? {});
+      const MAX_DISPATCH_PER_TICK = 10;
+      for (const payment of payments.slice(0, MAX_DISPATCH_PER_TICK)) {
+        const address =
+          this.marketplaceEconomics.resolvePeerWalletAddress(payment.recipientPeerId) ??
+          getPeerWalletCapability(payment.recipientPeerId)?.address ??
+          null;
+        if (!address) {
+          log.debug(
+            `revenue dispatch: no wallet address for ${payment.recipientPeerId}; payment ${payment.id} stays queued`,
+          );
+          continue;
+        }
+        try {
+          const result = await wallet.sendUsdc(address, payment.amountUsdc);
+          this.marketplaceEconomics.markPaymentProcessed(payment.id, result.txHash);
+          log.info(
+            `revenue dispatch: paid ${payment.amountUsdc.toFixed(4)} USDC (${payment.role}) to ${address} tx=${result.txHash}`,
+          );
+          this.appendDreamJournalLine(
+            `**Revenue share:** paid $${payment.amountUsdc.toFixed(4)} USDC to ${payment.recipientPeerId} (${payment.role})`,
+          );
+        } catch (err) {
+          this.marketplaceEconomics.markPaymentFailed(payment.id, String(err));
+          log.warn(`revenue dispatch failed for payment ${payment.id}: ${String(err)}`);
+        }
+      }
+    } catch (err) {
+      log.debug(`revenue dispatch skipped: ${String(err)}`);
+    } finally {
+      this.revenueDispatchInFlight = false;
+    }
+  }
+
   /** Plan 8, Phase 2: Public accessor for SkillMarketplace. */
   getSkillMarketplace(): SkillMarketplace | null {
     return this.skillMarketplace;
@@ -3813,6 +3889,13 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     // Plan 8, Phase 3: Wire SkillVerifier for P2P ingest safety gate
     this.skillNetworkBridge.setSkillVerifier(new SkillVerifier(this.db));
+
+    // Peer reputation is created before this bridge (init order matters for
+    // SkillMarketplace below); wire it in here since ensurePeerReputationManager
+    // ran when the bridge didn't exist yet.
+    if (this.peerReputationManager) {
+      this.skillNetworkBridge.setPeerReputation(this.peerReputationManager);
+    }
 
     // Also wire bridge into SkillRefiner if it exists
     if (this.skillRefiner) {

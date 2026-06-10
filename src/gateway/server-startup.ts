@@ -363,6 +363,11 @@ export async function startGatewaySidecars(params: {
       if (walletCfg?.enabled !== false && hasWalletCreds) {
         const advertiseBridge = orchestratorBridge;
         const a2aEnabled = params.cfg.a2a?.enabled === true;
+        // Advertise the A2A endpoint URL alongside the wallet so peers can
+        // resolve peerId -> URL and hire this node without an out-of-band
+        // exchange. Only an explicitly configured public URL is useful to
+        // peers; a localhost fallback would just pollute the mesh.
+        const a2aUrl = a2aEnabled ? params.cfg.a2a?.url : undefined;
         const advertiseWallet = async () => {
           try {
             const { createWalletService } = await import("../services/wallet-service.js");
@@ -374,6 +379,7 @@ export async function startGatewaySidecars(params: {
               network,
               acceptsPayments: true,
               a2aEnabled,
+              a2aUrl,
               updatedAt: Date.now(),
             });
             await advertiseBridge.publishTelemetry("wallet_capability", {
@@ -381,6 +387,7 @@ export async function startGatewaySidecars(params: {
               network,
               acceptsPayments: true,
               a2aEnabled,
+              a2aUrl,
             });
           } catch (err) {
             params.log.warn(`wallet capability advertise skipped: ${String(err)}`);

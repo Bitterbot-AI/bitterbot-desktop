@@ -24,6 +24,8 @@ const A2aClientSchema = Type.Object({
   ]),
   /** Agent URL for discover/execute actions */
   agentUrl: Type.Optional(Type.String()),
+  /** libp2p peer ID — alternative to agentUrl; resolved via wallet_capability gossip */
+  peerId: Type.Optional(Type.String()),
   /** Message to send for execute action */
   message: Type.Optional(Type.String()),
   /** Maximum USDC to spend on this task (optional override) */
@@ -42,9 +44,28 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
   const clientConfig = cfg.a2a.marketplace?.client;
   let client: A2aClient | null = null;
 
-  const getClient = () => {
+  // Resolve the marketplace db so purchases are recorded and the daily
+  // spend limit reads real numbers (without it the limit always sees $0).
+  const getClient = async () => {
     if (!client) {
-      client = new A2aClient(clientConfig);
+      let db: import("node:sqlite").DatabaseSync | undefined;
+      try {
+        const { MemoryIndexManager } = await import("../../memory/manager.js");
+        const memManager = await MemoryIndexManager.get({
+          cfg,
+          agentId: "default",
+          purpose: "status",
+        });
+        db = (
+          memManager?.getMarketplaceEconomics?.() as
+            | { getDb?: () => import("node:sqlite").DatabaseSync | undefined }
+            | null
+            | undefined
+        )?.getDb?.();
+      } catch {
+        // No marketplace db — client still works, spend tracking degrades
+      }
+      client = new A2aClient(clientConfig, db);
     }
     return client;
   };
@@ -55,13 +76,14 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
     description:
       "Discover and interact with peer agents on the A2A network. Use 'discover' to see what skills " +
       "an agent offers and their pricing. Use 'execute' to send a task to a peer agent (may require " +
-      "x402 USDC payment). Use 'spend_status' to check daily spending limits.",
+      "x402 USDC payment). Use 'spend_status' to check daily spending limits. Target a peer by " +
+      "agentUrl, or by peerId if the peer advertised its A2A endpoint over the mesh.",
     parameters: A2aClientSchema,
     execute: async (_toolCallId, rawParams) => {
       const action = readStringParam(rawParams, "action");
 
       if (action === "spend_status") {
-        const a2aClient = getClient();
+        const a2aClient = await getClient();
         const status = a2aClient.checkDailySpendLimit();
         return jsonResult({
           allowed: status.allowed,
@@ -71,13 +93,30 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
         });
       }
 
-      const agentUrl = readStringParam(rawParams, "agentUrl");
+      let agentUrl = readStringParam(rawParams, "agentUrl");
       if (!agentUrl) {
-        return jsonResult({ error: "agentUrl is required for discover/execute actions" });
+        // Resolve a peerId to its advertised A2A URL via wallet_capability gossip.
+        const peerId = readStringParam(rawParams, "peerId");
+        if (peerId) {
+          const { getPeerWalletCapability } = await import("../../infra/wallet-discovery.js");
+          const cap = getPeerWalletCapability(peerId);
+          if (cap?.a2aUrl) {
+            agentUrl = cap.a2aUrl;
+          } else {
+            return jsonResult({
+              error: cap
+                ? `Peer ${peerId} has not advertised an A2A URL`
+                : `Peer ${peerId} unknown or its wallet advertisement is stale`,
+            });
+          }
+        }
+      }
+      if (!agentUrl) {
+        return jsonResult({ error: "agentUrl or peerId is required for discover/execute actions" });
       }
 
       if (action === "discover") {
-        const a2aClient = getClient();
+        const a2aClient = await getClient();
         const agent = await a2aClient.discoverAgent(agentUrl);
         if (!agent) {
           return jsonResult({ error: `Could not discover agent at ${agentUrl}` });
@@ -110,7 +149,7 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
           // No wallet — execute without payment capability
         }
 
-        const a2aClient = getClient();
+        const a2aClient = await getClient();
         const result = await a2aClient.executeTask({
           agentUrl,
           message,

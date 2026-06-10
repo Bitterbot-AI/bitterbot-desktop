@@ -234,6 +234,17 @@ export class MarketplaceEconomics {
             now,
           );
 
+        // Mirror listability onto the chunk so the browse layer
+        // (SkillMarketplace search/trending/recommendations and the
+        // discovery agent) sees the same skills this engine prices.
+        try {
+          this.db
+            .prepare(`UPDATE chunks SET marketplace_listed = ? WHERE id = ?`)
+            .run(pricing.listable ? 1 : 0, skill.id);
+        } catch {
+          /* marketplace_listed column may not exist on older schemas */
+        }
+
         if (pricing.listable) {
           listedCount++;
         }
@@ -546,15 +557,31 @@ export class MarketplaceEconomics {
     avgRewardScore: number;
   } {
     try {
+      // Aggregate across the stable_skill_id lineage, not just this crystal:
+      // dream mutations are new crystal IDs with zero executions of their own,
+      // and without inherited track record they could never pass the listing
+      // gate (3 executions, 60% success) that their parents already earned.
       const row = this.db
         .prepare(`
         SELECT COUNT(*) as total,
                COALESCE(AVG(CASE WHEN success = 1 THEN 1.0 ELSE 0.0 END), 0) as success_rate,
                COALESCE(AVG(reward_score), 0) as avg_reward
         FROM skill_executions
-        WHERE skill_crystal_id = ? AND completed_at IS NOT NULL
+        WHERE completed_at IS NOT NULL
+          AND (
+            skill_crystal_id = ?
+            OR skill_crystal_id IN (
+              SELECT c2.id FROM chunks c1
+              JOIN chunks c2 ON c2.stable_skill_id = c1.stable_skill_id
+              WHERE c1.id = ? AND c1.stable_skill_id IS NOT NULL
+            )
+          )
       `)
-        .get(skillCrystalId) as { total: number; success_rate: number; avg_reward: number };
+        .get(skillCrystalId, skillCrystalId) as {
+        total: number;
+        success_rate: number;
+        avg_reward: number;
+      };
 
       return {
         totalExecutions: row?.total ?? 0,
@@ -662,12 +689,17 @@ export class MarketplaceEconomics {
       .run(error, id);
   }
 
-  /** Resolve a peer's wallet address from the reputation table. */
+  /**
+   * Resolve a peer's wallet address from the reputation table. Queue rows
+   * identify recipients by whatever the provenance chain carried — pubkey
+   * for envelope-ingested skills, libp2p peer ID for gossip-learned peers —
+   * so match on either column.
+   */
   resolvePeerWalletAddress(peerPubkey: string): string | null {
     try {
       const row = this.db
-        .prepare(`SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = ?`)
-        .get(peerPubkey) as { wallet_address: string | null } | undefined;
+        .prepare(`SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = ? OR peer_id = ?`)
+        .get(peerPubkey, peerPubkey) as { wallet_address: string | null } | undefined;
       return row?.wallet_address ?? null;
     } catch {
       return null;

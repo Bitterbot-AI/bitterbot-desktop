@@ -9,6 +9,7 @@
 import type { IncomingMessage } from "node:http";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type { MarketplaceEconomics } from "../../memory/marketplace-economics.js";
+import { getLocalWalletCapability } from "../../infra/wallet-discovery.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { getHeader } from "../http-utils.js";
 
@@ -77,9 +78,11 @@ export async function verifyA2aPayment(
   // Verify x402 payment on Base
   try {
     const { verifyX402Payment } = await import("../../services/x402-verify.js");
-    const address = config.a2a?.payment?.x402?.address;
+    // Fall back to the live wallet's receiving address (same source the agent
+    // card advertises) so enabling payments needs only a2a.payment.enabled.
+    const address = config.a2a?.payment?.x402?.address ?? getLocalWalletCapability()?.address;
     if (!address) {
-      log.warn("Payment received but no x402 address configured");
+      log.warn("Payment received but no x402 address configured and no local wallet advertised");
       return { paid: false };
     }
 

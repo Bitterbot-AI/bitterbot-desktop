@@ -737,6 +737,16 @@ export class SkillNetworkBridge {
         });
       }
     }
+    // Plan 8: persist advertised wallet addresses so the revenue payment
+    // queue can resolve recipients. The in-memory wallet-discovery map is
+    // process-lifetime only; revenue shares can release days after the
+    // gossip arrived, so they need the durable peer_reputation row.
+    if (event.signal_type === "wallet_capability" && this.peerReputation) {
+      const data = event.data as { address?: string } | undefined;
+      if (typeof data?.address === "string" && /^0x[0-9a-fA-F]{40}$/.test(data.address)) {
+        this.peerReputation.updateWalletAddressByPeerId(event.author_peer_id, data.address);
+      }
+    }
     // Other signal types (e.g., "experience") can be routed here in the future
   }
 

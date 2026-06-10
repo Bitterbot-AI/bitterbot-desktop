@@ -33,12 +33,14 @@ const ManageSchema = Type.Object({
       Type.Literal("consolidate"),
       Type.Literal("promote"),
       Type.Literal("rollback"),
+      Type.Literal("crystallize"),
     ],
     {
       description:
         "What to do with the named skill. create/edit/patch/delete/consolidate stage a " +
         "mutation behind the behavioural gate. promote moves passed staged content to live. " +
-        "rollback restores an archived version.",
+        "rollback restores an archived version. crystallize converts a successful tool " +
+        "sequence you just executed into a reusable skill.",
     },
   ),
   name: Type.String({
@@ -128,6 +130,39 @@ const ManageSchema = Type.Object({
       minimum: 1,
     }),
   ),
+  /** crystallize only — one-line description of what the skill does. */
+  description: Type.Optional(
+    Type.String({
+      description:
+        "For crystallize only. One-line description of what the crystallized skill does.",
+      maxLength: 500,
+    }),
+  ),
+  /** crystallize only — ordered reasoning steps that solved the task. */
+  steps: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "For crystallize only. The ordered reasoning steps that solved the task, " +
+        "written so a future session can follow them.",
+    }),
+  ),
+  /** crystallize only — the tool/command sequence that worked. */
+  commands: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "For crystallize only. The concrete tool calls or shell commands that worked, in order.",
+    }),
+  ),
+  /** crystallize only — honest self-assessed success score. */
+  rewardScore: Type.Optional(
+    Type.Number({
+      description:
+        "For crystallize only. Honest self-assessment of how well the sequence worked (0-1). " +
+        "Crystallization requires >= 0.85; do not inflate.",
+      minimum: 0,
+      maximum: 1,
+    }),
+  ),
 });
 
 export function createSkillManageTool(options: {
@@ -153,13 +188,17 @@ export function createSkillManageTool(options: {
       "the behavioural gate; if the response includes ok:true and gateOutcome ∈ {pass, warn} " +
       "you can then call action=promote with the same name to lift staged → live. Use " +
       "action=rollback + version=N to restore an archived version. Never promote a 'fail' " +
-      "outcome without forceGate=true and a documented reason.",
+      "outcome without forceGate=true and a documented reason. Use action=crystallize after " +
+      "you solve a non-trivial multi-step task that is likely to recur: pass the steps and " +
+      "commands that worked plus an honest rewardScore, and the sequence becomes a reusable " +
+      "skill (threshold 0.85).",
     parameters: ManageSchema,
     execute: async (_toolCallId, params) => {
       const action = readStringParam(params, "action") as
         | SkillManageAction
         | "promote"
-        | "rollback";
+        | "rollback"
+        | "crystallize";
       const name = readStringParam(params, "name");
       const reason = readStringParam(params, "reason") ?? "(no reason provided)";
       if (!name) {
@@ -213,6 +252,47 @@ export function createSkillManageTool(options: {
           });
         }
 
+        if (action === "crystallize") {
+          const description = readStringParam(params, "description");
+          if (!description) {
+            return jsonResult({ ok: false, error: "description required for crystallize" });
+          }
+          const steps = readStringArray(params, "steps");
+          const commands = readStringArray(params, "commands");
+          if (steps.length === 0 && commands.length === 0) {
+            return jsonResult({
+              ok: false,
+              error: "crystallize needs at least one of steps[] or commands[]",
+            });
+          }
+          const rewardScore = readNumber(params, "rewardScore");
+          if (rewardScore === undefined) {
+            return jsonResult({ ok: false, error: "rewardScore required for crystallize" });
+          }
+          const { crystallizeSkill } = await import("../skills/crystallize.js");
+          const result = await crystallizeSkill({
+            candidate: {
+              taskName: name,
+              description,
+              reasoningPath: steps,
+              toolCalls: commands.map((c) => ({ tool: "command", args: c, result: null })),
+              rewardScore,
+              sessionKey: options.agentSessionKey ?? `agent:${agentId}`,
+              timestamp: Date.now(),
+            },
+            config: cfg,
+          });
+          return jsonResult({
+            ok: result.ok,
+            action: "crystallize",
+            name: result.skillName ?? name,
+            skillPath: result.skillPath,
+            published: result.published,
+            publishSkipped: result.publishSkipped,
+            error: result.error,
+          });
+        }
+
         const manageParams = buildManageParams({ params, action, name, reason, author });
         if (!manageParams.ok) {
           return jsonResult({ ok: false, error: manageParams.error });
@@ -254,6 +334,14 @@ function readNumber(params: Record<string, unknown>, key: string): number | unde
     return v;
   }
   return undefined;
+}
+
+function readStringArray(params: Record<string, unknown>, key: string): string[] {
+  const v = params[key];
+  if (!Array.isArray(v)) {
+    return [];
+  }
+  return v.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
 function buildManageParams(args: {

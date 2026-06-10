@@ -23,7 +23,7 @@ export type SkillsInstallConfig = {
 };
 
 export type SkillsP2pConfig = {
-  /** Ingestion policy for skills received via P2P. Default: "deny". */
+  /** Ingestion policy for skills received via P2P. Default: "review" (quarantine for operator review). */
   ingestPolicy?: "auto" | "review" | "deny";
   /** Trusted peer public keys (base64 Ed25519) that bypass quarantine in auto mode. */
   trustList?: string[];

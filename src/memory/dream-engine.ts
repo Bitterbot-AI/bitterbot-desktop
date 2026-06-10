@@ -629,6 +629,17 @@ export class DreamEngine {
         log.debug(`graph optimization hook failed: ${String(err)}`);
       }
 
+      // PLAN-15 Phase 1c — A-MAC curator pass over agent-authored skill
+      // lifecycles. Heuristic transitions always apply; the LLM judge runs
+      // on borderlines when a cloud LLM is wired. Throttled to once per
+      // interval (in-memory; a restart may run one pass early, which is
+      // harmless — the pass is idempotent over lifecycle state).
+      try {
+        await this.maybeRunCuratorPass();
+      } catch (err) {
+        log.debug(`skill curator pass failed: ${String(err)}`);
+      }
+
       log.debug("dream cycle complete", {
         cycleId,
         modes: selectedModes,
@@ -1989,6 +2000,49 @@ export class DreamEngine {
    * via `dream_telemetry` so the slow-update signal is auditable. Best-effort:
    * any failure here logs and is swallowed so it never breaks the main cycle.
    */
+  /** ms epoch of the last curator pass. In-memory: see call-site comment. */
+  private lastCuratorPassAt = 0;
+
+  /**
+   * PLAN-15 Phase 1c: run the A-MAC skill curator at most once per interval.
+   * The lifecycle store wraps this engine's own DB connection — the schema
+   * and migrations are already current on it, and a second WAL connection
+   * would buy nothing here.
+   */
+  private async maybeRunCuratorPass(): Promise<void> {
+    const curatorCfg = (
+      this.config as { skillCurator?: { enabled?: boolean; minIntervalMs?: number } }
+    ).skillCurator;
+    if (curatorCfg?.enabled === false) {
+      return;
+    }
+    const minIntervalMs = curatorCfg?.minIntervalMs ?? 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    if (now - this.lastCuratorPassAt < minIntervalMs) {
+      return;
+    }
+    this.lastCuratorPassAt = now;
+
+    const [{ runFullCuratorPass }, { SkillLifecycleStore }] = await Promise.all([
+      import("./skill-curator.js"),
+      import("./skill-lifecycle.js"),
+    ]);
+    const store = new SkillLifecycleStore(this.db);
+    // The judge is cheap-but-not-free (≤10 borderline calls); use the same
+    // LLM the research mode would get, and degrade to heuristic-only when
+    // no LLM is wired.
+    const llmCall = this.getLlmCallForMode("research");
+    const result = await runFullCuratorPass(store, llmCall ? { llmCall } : {});
+    const transitions = result.heuristicReport.transitions.length;
+    const judged = result.judgeOutcomes.length;
+    if (transitions > 0 || judged > 0) {
+      log.info(
+        `skill curator pass: ${transitions} transition(s), ${judged} borderline(s) judged` +
+          (result.reportPath ? ` (report: ${result.reportPath})` : ""),
+      );
+    }
+  }
+
   private async maybeRunPlan21SlowUpdate(cycleId: string): Promise<void> {
     const llmCall = this.getLlmCallForMode("research");
     if (!llmCall) {

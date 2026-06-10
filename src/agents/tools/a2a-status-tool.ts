@@ -347,11 +347,11 @@ function buildHints(
   const hints: string[] = [];
   if (a2a.payment?.enabled !== true) {
     hints.push(
-      "Payment gate is off — set a2a.payment.enabled and a2a.payment.x402.address to start charging.",
+      "Payment gate is off — set a2a.payment.enabled to start charging (receiving address defaults to the local wallet).",
     );
   } else if (!a2a.payment.x402?.address) {
     hints.push(
-      "a2a.payment.enabled is true but no x402.address is set — payment requests will fail.",
+      "No explicit x402.address set — payments will be received at the local wallet's advertised address.",
     );
   }
   const out = result.outbound as

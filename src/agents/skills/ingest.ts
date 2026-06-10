@@ -77,7 +77,7 @@ export async function ingestSkill(params: {
 }): Promise<IngestResult> {
   const { envelope, config, workspaceDir } = params;
   const p2pConfig = config.skills?.p2p;
-  const policy = p2pConfig?.ingestPolicy ?? "deny";
+  const policy = p2pConfig?.ingestPolicy ?? "review";
 
   // Policy: deny all
   if (policy === "deny") {

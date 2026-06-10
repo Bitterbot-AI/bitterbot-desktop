@@ -738,16 +738,7 @@ export const BitterbotSchema = z
               .optional(),
           })
           .strict()
-          .optional()
-          .superRefine((val, ctx) => {
-            if (val?.enabled && !val.x402?.address) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["x402", "address"],
-                message: "a2a.payment.x402.address is required when a2a.payment.enabled is true",
-              });
-            }
-          }),
+          .optional(),
         mesh: z
           .object({
             delegation: z.boolean().optional(),

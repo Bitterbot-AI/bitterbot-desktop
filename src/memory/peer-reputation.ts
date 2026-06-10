@@ -269,6 +269,22 @@ export class PeerReputationManager {
   }
 
   /**
+   * Plan 8: Store a peer's wallet address keyed by libp2p peer ID. The
+   * `wallet_capability` telemetry gossip identifies peers by peer ID, not
+   * pubkey, so this bridges the live gossip into the table the revenue
+   * payment queue resolves recipients from.
+   */
+  updateWalletAddressByPeerId(peerId: string, walletAddress: string): void {
+    try {
+      this.db
+        .prepare(`UPDATE peer_reputation SET wallet_address = ? WHERE peer_id = ?`)
+        .run(walletAddress, peerId);
+    } catch {
+      /* column may not exist on older schemas */
+    }
+  }
+
+  /**
    * Get network leaderboard sorted by reputation.
    */
   getLeaderboard(limit = 20): PeerReputation[] {

@@ -15,7 +15,6 @@ import {
 const WALLET_ACTIONS = [
   "get_balance",
   "send_usdc",
-  "trade",
   "get_address",
   "get_transaction_history",
   "fund_wallet",
@@ -29,19 +28,17 @@ const WALLET_ACTIONS = [
 const WalletToolSchema = Type.Object({
   action: stringEnum(WALLET_ACTIONS, {
     description:
-      "The wallet action to perform: get_balance, send_usdc, trade, get_address, get_transaction_history, fund_wallet, or pay_for_resource.",
+      "The wallet action to perform: get_balance, send_usdc, get_address, get_transaction_history, fund_wallet, or pay_for_resource.",
   }),
   address: Type.Optional(
     Type.String({ description: "Recipient address or ENS name (for send_usdc)." }),
   ),
   amount: Type.Optional(
-    Type.Number({ description: "Amount in token units (for send_usdc, trade)." }),
+    Type.Number({ description: "Amount in token units (for send_usdc, pay_for_resource)." }),
   ),
   token: Type.Optional(
     Type.String({ description: "Token symbol for balance queries (default: ETH)." }),
   ),
-  fromToken: Type.Optional(Type.String({ description: "Source token symbol (for trade)." })),
-  toToken: Type.Optional(Type.String({ description: "Target token symbol (for trade)." })),
   limit: Type.Optional(
     Type.Number({
       description:
@@ -118,7 +115,6 @@ export function createWalletTool(opts?: WalletToolOptions): AnyAgentTool | undef
 - get_balance: Check token balance (default: ETH). Pass token="USDC" for USDC.
 - send_usdc: Send USDC to an address. Requires: address, amount.
 - send_to_peer: Send USDC to a connected peer by libp2p peer ID, resolving their advertised wallet address automatically. Requires: peer_id, amount. Use network_status action="wallets" to see payable peers.
-- trade: Swap tokens. Requires: fromToken, toToken, amount.
 - get_transaction_history: View recent transactions. Optional: limit (default 10).
 - fund_wallet: Get a URL to fund the wallet via Coinbase Onramp or faucet.
 - pay_for_resource: Pay for a paywalled HTTP resource via x402 protocol (USDC on Base). Pass the exact price from the 402 response. This tool signs the payment AND fetches the resource — it RETURNS THE ACTUAL CONTENT. Do NOT call web_fetch again after using this action. Requires: resource_url, amount. Optional: reason.
@@ -203,31 +199,6 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
             amount,
             peerId,
             to: capability.address,
-            sessionSpent: sessionSpentUsd,
-            sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
-          });
-        }
-
-        case "trade": {
-          const fromToken = readStringParam(params, "fromToken", {
-            required: true,
-            label: "source token",
-          });
-          const toToken = readStringParam(params, "toToken", {
-            required: true,
-            label: "target token",
-          });
-          const amount = readNumberParam(params, "amount", { required: true });
-          checkSessionCap(amount);
-
-          const result = await svc.trade(fromToken, toToken, amount);
-          recordSpend(amount);
-
-          return jsonResult({
-            ...result,
-            fromToken,
-            toToken,
-            amount,
             sessionSpent: sessionSpentUsd,
             sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
           });
