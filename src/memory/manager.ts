@@ -73,6 +73,7 @@ import { MemoryScheduler } from "./scheduler.js";
 import { runSeedCrystalMigration, runSkillBootstrap } from "./seed-crystal-migration.js";
 import { SessionCoherenceTracker } from "./session-coherence.js";
 import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
+import { parseEvidenceRefs } from "./evidence-expand.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
 import { SkillCrystallizer } from "./skill-crystallizer.js";
@@ -558,10 +559,59 @@ export class MemoryIndexManager implements MemorySearchManager {
       sessionKey?: string;
     },
   ): Promise<MemorySearchResult[]> {
-    return withSpan("memory.search", () => this.searchInner(query, opts), {
+    const results = await withSpan("memory.search", () => this.searchInner(query, opts), {
       "memory.query_len": query.length,
       "memory.max_results": opts?.maxResults ?? this.settings.query.maxResults,
     });
+    this.attachEvidenceRefs(results);
+    return results;
+  }
+
+  /**
+   * PLAN-24 HORMA Phase 0: surface provenance pointers on extracted-fact results
+   * so the agent can drill back to verbatim source via memory_expand. Extracted
+   * facts are the only rows carrying evidence_refs; they are identified by
+   * source='sessions' with start_line=0/end_line=0 and a fact text short enough
+   * to round-trip as its own snippet. Best-effort; never throws.
+   */
+  private attachEvidenceRefs(results: MemorySearchResult[]): void {
+    if (this.cfg.memory?.provenance?.enabled === false) {
+      return;
+    }
+    let stmt: ReturnType<typeof this.db.prepare> | null = null;
+    for (const r of results) {
+      if (r.source !== "sessions" || r.startLine !== 0 || r.endLine !== 0 || r.evidenceRefs) {
+        continue;
+      }
+      try {
+        stmt ??= this.db.prepare(
+          `SELECT evidence_refs FROM chunks
+           WHERE path = ? AND source = 'sessions' AND text = ? AND evidence_refs IS NOT NULL
+           LIMIT 1`,
+        );
+        const row = stmt.get(r.path, r.snippet) as { evidence_refs: string | null } | undefined;
+        if (row?.evidence_refs) {
+          const refs = parseEvidenceRefs(row.evidence_refs);
+          if (refs.length > 0) {
+            r.evidenceRefs = refs;
+          }
+        }
+      } catch {
+        // provenance surfacing is non-critical
+      }
+    }
+  }
+
+  /**
+   * PLAN-24 HORMA Phase 0: resolve an EvidenceRef back to its raw source window.
+   * Delegates to the standalone resolver; surfaced to the agent via memory_expand.
+   */
+  async expandEvidence(
+    ref: import("./session-extractor.js").EvidenceRef,
+    window?: number,
+  ): Promise<import("./evidence-expand.js").ExpandedEvidence> {
+    const { expandEvidenceRef } = await import("./evidence-expand.js");
+    return expandEvidenceRef(ref, window);
   }
 
   private async searchInner(
@@ -2332,6 +2382,8 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     const minDelta = extractionCfg?.minSessionDelta ?? 2000;
     const maxFacts = extractionCfg?.maxFactsPerSession ?? 20;
+    // PLAN-24 HORMA Phase 0: persist provenance pointers unless explicitly off.
+    const provenanceEnabled = this.cfg.memory?.provenance?.enabled !== false;
 
     // Gather current hormonal state for extraction bias
     const hormones = this.hormonalManager?.getState();
@@ -2384,13 +2436,17 @@ export class MemoryIndexManager implements MemorySearchManager {
           try {
             const id = `fact_${crypto.randomUUID()}`;
             const hash = crypto.createHash("sha256").update(fact.text).digest("hex");
+            const evidenceJson =
+              provenanceEnabled && fact.evidence.length > 0
+                ? JSON.stringify(fact.evidence)
+                : null;
             this.db
               .prepare(
                 `INSERT OR IGNORE INTO chunks (id, path, source, start_line, end_line, text, hash,
                  model, embedding,
-                 importance_score, lifecycle, semantic_type, epistemic_layer,
+                 importance_score, lifecycle, semantic_type, epistemic_layer, evidence_refs,
                  access_count, last_accessed_at, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               )
               .run(
                 id,
@@ -2406,6 +2462,7 @@ export class MemoryIndexManager implements MemorySearchManager {
                 "generated",
                 fact.semanticType,
                 fact.epistemicLayer,
+                evidenceJson,
                 0,
                 null,
                 now,

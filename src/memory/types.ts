@@ -18,6 +18,11 @@ export type MemorySearchResult = {
   source: MemorySource;
   citation?: string;
   crystal?: import("./crystal-types.js").KnowledgeCrystal;
+  /**
+   * PLAN-24 HORMA Phase 0: provenance pointers to the raw source this memory was
+   * synthesized from. Present on extracted facts; resolve with memory_expand.
+   */
+  evidenceRefs?: import("./session-extractor.js").EvidenceRef[];
 };
 
 export type MemoryEmbeddingProbeResult = {
@@ -80,6 +85,11 @@ export interface MemorySearchManager {
     from?: number;
     lines?: number;
   }): Promise<{ text: string; path: string }>;
+  /** PLAN-24 HORMA Phase 0: resolve an evidence_ref back to verbatim raw source. */
+  expandEvidence?(
+    ref: import("./session-extractor.js").EvidenceRef,
+    window?: number,
+  ): Promise<import("./evidence-expand.js").ExpandedEvidence>;
   status(): MemoryProviderStatus;
   sync?(params?: {
     reason?: string;

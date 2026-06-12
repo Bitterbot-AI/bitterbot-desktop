@@ -75,6 +75,25 @@ describe("EventJournal", () => {
     }
   });
 
+  it("getByRunSeq resolves an exact (runId, runSeq) provenance pointer", () => {
+    const j = EventJournal.open(dbPath);
+    try {
+      j.append({ runId: "run-A", seq: 1, stream: "tool", ts: 1000, data: { name: "Read" } });
+      j.append({ runId: "run-A", seq: 2, stream: "tool", ts: 1100, data: { name: "Edit" } });
+      j.append({ runId: "run-B", seq: 1, stream: "lifecycle", ts: 1200, data: { phase: "x" } });
+
+      const hit = j.getByRunSeq("run-A", 2);
+      expect(hit?.data).toEqual({ name: "Edit" });
+      expect(hit?.runSeq).toBe(2);
+
+      // Wrong run / missing seq → null (memory_expand degrades gracefully).
+      expect(j.getByRunSeq("run-A", 99)).toBeNull();
+      expect(j.getByRunSeq("run-Z", 1)).toBeNull();
+    } finally {
+      j.close();
+    }
+  });
+
   it("supports sinceSeq cursor for incremental polling", () => {
     const j = EventJournal.open(dbPath);
     try {

@@ -227,6 +227,40 @@ export class ReconsolidationEngine {
     }
   }
 
+  /**
+   * PLAN-24 HORMA Phase 0: faithfulness guard for reconsolidation/dream rewrites.
+   * Before committing a rewritten text for a labile chunk, verify the proposed
+   * text is still grounded in the chunk's raw evidence (provenance refs). Returns
+   * a verdict; callers must refuse to persist a rewrite whose `supported` is
+   * false so a labile memory cannot drift away from ground truth (HORMA's
+   * anti-confabulation guarantee). Chunks with no evidence refs are unjudgeable
+   * and pass (evidenceFound:false).
+   */
+  async checkFaithfulness(
+    chunkId: string,
+    proposedText: string,
+    opts?: { threshold?: number },
+  ): Promise<import("./evidence-expand.js").FaithfulnessVerdict> {
+    let refsRaw: string | null = null;
+    try {
+      const row = this.db
+        .prepare(`SELECT evidence_refs FROM chunks WHERE id = ?`)
+        .get(chunkId) as { evidence_refs: string | null } | undefined;
+      refsRaw = row?.evidence_refs ?? null;
+    } catch {
+      return { supported: true, score: 1, evidenceFound: false };
+    }
+    const { parseEvidenceRefs, verifyAgainstEvidence } = await import("./evidence-expand.js");
+    const refs = parseEvidenceRefs(refsRaw);
+    const verdict = await verifyAgainstEvidence(refs, proposedText, opts);
+    if (!verdict.supported) {
+      this.auditLog(chunkId, "reconsolidation_faithfulness_reject", {
+        score: verdict.score,
+      });
+    }
+    return verdict;
+  }
+
   private auditLog(chunkId: string, event: string, metadata?: Record<string, unknown>): void {
     try {
       this.db

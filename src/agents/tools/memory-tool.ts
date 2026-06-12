@@ -21,6 +21,17 @@ const MemoryGetSchema = Type.Object({
   lines: Type.Optional(Type.Number()),
 });
 
+// PLAN-24 HORMA Phase 0: resolve an evidence_ref (surfaced on memory_search
+// results as `evidenceRefs`) back to verbatim raw source.
+const MemoryExpandSchema = Type.Object({
+  kind: Type.Union([Type.Literal("session"), Type.Literal("journal")]),
+  path: Type.Optional(Type.String()),
+  line: Type.Optional(Type.Number()),
+  runId: Type.Optional(Type.String()),
+  seq: Type.Optional(Type.Number()),
+  window: Type.Optional(Type.Number()),
+});
+
 function resolveMemoryToolContext(options: { config?: BitterbotConfig; agentSessionKey?: string }) {
   const cfg = options.config;
   if (!cfg) {
@@ -127,6 +138,58 @@ export function createMemoryGetTool(options: {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return jsonResult({ path: relPath, text: "", disabled: true, error: message });
+      }
+    },
+  };
+}
+
+export function createMemoryExpandTool(options: {
+  config?: BitterbotConfig;
+  agentSessionKey?: string;
+}): AnyAgentTool | null {
+  const ctx = resolveMemoryToolContext(options);
+  if (!ctx) {
+    return null;
+  }
+  const { cfg, agentId } = ctx;
+  if (cfg.memory?.provenance?.enabled === false) {
+    return null;
+  }
+  return {
+    label: "Memory Expand",
+    name: "memory_expand",
+    description:
+      "Drill from a recalled fact back to its verbatim raw source. Pass an evidenceRefs entry from a memory_search result (kind+path+line for session refs, or kind+runId+seq for journal refs) to recover the exact original text — use when a paraphrased memory is load-bearing or you need to verify it.",
+    parameters: MemoryExpandSchema,
+    execute: async (_toolCallId, params) => {
+      const kind = readStringParam(params, "kind", { required: true });
+      const window = readNumberParam(params, "window", { integer: true });
+      let ref: import("../../memory/session-extractor.js").EvidenceRef;
+      if (kind === "session") {
+        const refPath = readStringParam(params, "path", { required: true });
+        const line = readNumberParam(params, "line", { integer: true });
+        if (!refPath || line == null) {
+          return jsonResult({ found: false, error: "session ref requires path and line" });
+        }
+        ref = { kind: "session", path: refPath, line };
+      } else {
+        const runId = readStringParam(params, "runId", { required: true });
+        const seq = readNumberParam(params, "seq", { integer: true });
+        if (!runId || seq == null) {
+          return jsonResult({ found: false, error: "journal ref requires runId and seq" });
+        }
+        ref = { kind: "journal", runId, seq };
+      }
+      const { manager, error } = await getMemorySearchManager({ cfg, agentId });
+      if (!manager?.expandEvidence) {
+        return jsonResult({ found: false, disabled: true, error });
+      }
+      try {
+        const expanded = await manager.expandEvidence(ref, window ?? undefined);
+        return jsonResult(expanded);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return jsonResult({ found: false, error: message });
       }
     },
   };

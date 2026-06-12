@@ -23,7 +23,11 @@ import { createExpandMessageTool } from "./tools/expand-message-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
 import { createMemoryStatusTool } from "./tools/memory-status-tool.js";
-import { createMemoryGetTool, createMemorySearchTool } from "./tools/memory-tool.js";
+import {
+  createMemoryExpandTool,
+  createMemoryGetTool,
+  createMemorySearchTool,
+} from "./tools/memory-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
 import { createNetworkStatusTool } from "./tools/network-status-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
@@ -216,6 +220,7 @@ export function createBitterbotTools(options?: {
   for (const tool of [
     createMemorySearchTool(memoryOpts),
     createMemoryGetTool(memoryOpts),
+    createMemoryExpandTool(memoryOpts),
     createMemoryStatusTool(memoryOpts),
     createDreamSearchTool(memoryOpts),
     createDreamStatusTool(memoryOpts),

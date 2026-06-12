@@ -151,6 +151,29 @@ export class EventJournal {
     return rows.map(rowToEvent);
   }
 
+  /**
+   * PLAN-24 HORMA Phase 0: exact-lookup of one event by its (run_id, run_seq)
+   * provenance pointer, hitting the idx_event_log_run index. Returns null when
+   * the event is missing (e.g. purged by deleteTask, or the journal was
+   * disabled when the ref was minted) so memory_expand can degrade gracefully.
+   */
+  getByRunSeq(runId: string, runSeq: number): JournalEvent | null {
+    const row = this.db
+      .prepare(
+        `SELECT seq, run_id, task_id, ts, stream, run_seq, session_key, data_blob
+         FROM event_log WHERE run_id = ? AND run_seq = ? LIMIT 1`,
+      )
+      .get(runId, runSeq) as unknown as RawEventRow | undefined;
+    if (!row) {
+      return null;
+    }
+    try {
+      return rowToEvent(row);
+    } catch {
+      return null;
+    }
+  }
+
   /** Latest journal seq across the whole log. Cheap cursor primer. */
   latestSeq(): number {
     const row = this.db.prepare(`SELECT MAX(seq) AS s FROM event_log`).get() as

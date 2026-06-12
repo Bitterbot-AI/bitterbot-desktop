@@ -49,6 +49,14 @@ export type MemoryConfig = {
     /** Maximum facts to extract per session (default: 20). */
     maxFactsPerSession?: number;
   };
+  /** PLAN-24 HORMA Phase 0: provenance pointers from synthesized memories to raw sources. */
+  provenance?: {
+    /**
+     * Persist evidence_refs on extracted facts / dream insights and expose the
+     * memory_expand tool to resolve them back to verbatim source (default: true).
+     */
+    enabled?: boolean;
+  };
   /** PLAN-11 Gap 6: daily digest of autonomous skill-pipeline activity. */
   digest?: {
     /** Enable the daily digest (default: true). */

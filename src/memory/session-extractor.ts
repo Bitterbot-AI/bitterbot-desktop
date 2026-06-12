@@ -21,12 +21,27 @@ import type { SessionHandoverBrief } from "./session-handover.js";
 
 export type EpistemicLayer = "world_fact" | "experience" | "mental_model" | "directive";
 
+/**
+ * PLAN-24 HORMA Phase 0: a provenance pointer from a synthesized memory back to
+ * its raw source. Session refs point at a line in the flattened session
+ * transcript (resolved on demand by re-building the session entry); journal refs
+ * point at an exact PLAN-16 event-journal row. Session extraction runs on
+ * flattened transcript files with no run_id/seq, so the extractor only ever
+ * emits `session` refs — journal refs are attached by callers that have a live
+ * (runId, seq) cursor.
+ */
+export type EvidenceRef =
+  | { kind: "session"; path: string; line: number }
+  | { kind: "journal"; runId: string; seq: number };
+
 export type ExtractedFact = {
   text: string;
   epistemicLayer: EpistemicLayer;
   confidence: number;
   semanticType: string;
   sessionId: string;
+  /** Provenance pointers to the transcript lines this fact was derived from. */
+  evidence: EvidenceRef[];
 };
 
 export type ExtractionResult = {
@@ -71,12 +86,28 @@ function buildHormonalGuidance(hormones?: HormonalBias): string {
     : "";
 }
 
+/**
+ * Prefix each line of the transcript with an `L<n>:` marker so the extraction
+ * LLM can cite the exact source line(s) for every fact (HORMA's `(D1:3)` turn
+ * pointer trick). Line numbers are 1-based and index into this numbered view,
+ * which `memory_expand` reproduces by re-building the session entry.
+ */
+function numberTranscriptLines(sessionContent: string): string {
+  return sessionContent
+    .split("\n")
+    .map((line, i) => `L${i + 1}: ${line}`)
+    .join("\n");
+}
+
 function buildExtractionPrompt(
   sessionContent: string,
   maxFacts: number,
   hormones?: HormonalBias,
 ): string {
+  const numbered = numberTranscriptLines(sessionContent);
   return `You are a memory extraction system. Analyze the following conversation transcript and extract structured facts.
+
+The transcript is line-numbered (each line begins with \`L<n>:\`). For every fact you MUST cite the line number(s) it was derived from, so the fact can be traced back to its exact source.
 
 ## Task
 1. Extract up to ${maxFacts} atomic facts from the conversation, classified into epistemic layers.
@@ -92,7 +123,7 @@ ${buildHormonalGuidance(hormones)}
 Respond with ONLY a JSON object (no markdown fences):
 {
   "facts": [
-    { "text": "atomic fact statement", "layer": "world_fact|experience|mental_model|directive", "confidence": 0.0-1.0 }
+    { "text": "atomic fact statement", "layer": "world_fact|experience|mental_model|directive", "confidence": 0.0-1.0, "lines": [12, 13] }
   ],
   "handover": {
     "purpose": "one-line session purpose",
@@ -109,13 +140,40 @@ Respond with ONLY a JSON object (no markdown fences):
 ## Rules
 - Each fact must be a single, self-contained assertion. No compound statements.
 - Facts must be extractable truths, not conversational filler.
+- "lines" must list the 1-based \`L<n>\` line number(s) the fact came from (at least one). Cite the most specific lines, not the whole transcript.
 - Confidence reflects how certain the fact is: 1.0 = explicitly stated, 0.5 = inferred.
 - Prefer fewer high-quality facts over many low-quality ones.
 - The handover brief should let a new session pick up exactly where this one left off.
 - The entities list should capture specific files, functions, variables, config keys, and services the user was working with — concrete referents that allow resolving references like "that file" or "the second parameter" in the next session. Focus on the 5-10 most recently touched entities.
 
 ## Conversation Transcript
-${sessionContent}`;
+${numbered}`;
+}
+
+/**
+ * Coerce the LLM's `lines` citation field into session EvidenceRefs. Tolerant of
+ * missing/garbage citations (returns []), de-duplicates, and drops non-positive
+ * line numbers. Caps at 8 refs so a fact that cites the whole transcript does
+ * not bloat the row.
+ */
+function parseFactEvidence(rawLines: unknown, sessionId: string): EvidenceRef[] {
+  if (!Array.isArray(rawLines)) {
+    return [];
+  }
+  const seen = new Set<number>();
+  const refs: EvidenceRef[] = [];
+  for (const v of rawLines) {
+    const n = typeof v === "number" ? v : typeof v === "string" ? parseInt(v, 10) : NaN;
+    if (!Number.isFinite(n) || n < 1 || seen.has(n)) {
+      continue;
+    }
+    seen.add(n);
+    refs.push({ kind: "session", path: sessionId, line: n });
+    if (refs.length >= 8) {
+      break;
+    }
+  }
+  return refs;
 }
 
 function parseExtractionResponse(
@@ -129,7 +187,7 @@ function parseExtractionResponse(
       .replace(/\n?```\s*$/m, "")
       .trim();
     const parsed = JSON.parse(cleaned) as {
-      facts?: Array<{ text?: string; layer?: string; confidence?: number }>;
+      facts?: Array<{ text?: string; layer?: string; confidence?: number; lines?: unknown }>;
       handover?: {
         purpose?: string;
         milestones?: string[];
@@ -159,6 +217,7 @@ function parseExtractionResponse(
         confidence: typeof f.confidence === "number" ? Math.min(1, Math.max(0, f.confidence)) : 0.7,
         semanticType: EPISTEMIC_TO_SEMANTIC[f.layer as EpistemicLayer] ?? "general",
         sessionId,
+        evidence: parseFactEvidence(f.lines, sessionId),
       }));
 
     const h = parsed.handover;

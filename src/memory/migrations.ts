@@ -703,6 +703,18 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "relationships", "last_reinforced_at", "INTEGER");
     },
   },
+  {
+    version: 17,
+    description:
+      "PLAN-24 HORMA Phase 0: provenance pointers. evidence_refs is a JSON array " +
+      "of {kind:'session',path,line} | {kind:'journal',runId,seq} anchoring an " +
+      "extracted fact / dream insight back to its raw source so memory_expand can " +
+      "recover verbatim ground truth and reconsolidation can check faithfulness.",
+    up: (db: DatabaseSync) => {
+      // Null-tolerant: legacy chunks have no provenance and stay NULL.
+      addColumnIfMissing(db, "chunks", "evidence_refs", "TEXT");
+    },
+  },
 ];
 
 /**
