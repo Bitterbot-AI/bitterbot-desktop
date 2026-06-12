@@ -288,7 +288,7 @@ export function insertTrainingPair(
   db: DatabaseSync,
   query: string,
   chunkId: string,
-  source: "access_log" | "session_extractor" | "manual" = "access_log",
+  source: "access_log" | "session_extractor" | "manual" | "coverage_miss" = "access_log",
 ): void {
   const id = crypto.randomUUID();
   const now = Date.now();

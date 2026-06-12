@@ -564,7 +564,67 @@ export class MemoryIndexManager implements MemorySearchManager {
       "memory.max_results": opts?.maxResults ?? this.settings.query.maxResults,
     });
     this.attachEvidenceRefs(results);
+    if (results.length === 0) {
+      this.recordCoverageMiss(query);
+    }
     return results;
+  }
+
+  /**
+   * PLAN-24 HORMA Phase 1: on a recall miss, fire the coverage discriminator to
+   * attribute the failure to construction vs retrieval. Fire-and-forget and
+   * off the execution path; active by default (disable via
+   * memory.coverageDiagnostics.enabled = false).
+   */
+  private recordCoverageMiss(query: string): void {
+    if (this.cfg.memory?.coverageDiagnostics?.enabled === false) {
+      return;
+    }
+    void (async () => {
+      try {
+        const { runCoverageDiagnostic } = await import("./coverage-diagnostics.js");
+        await runCoverageDiagnostic({
+          db: this.db,
+          query,
+          now: Date.now(),
+          scanRaw: (terms) => this.scanRawTranscripts(terms),
+        });
+      } catch (err) {
+        log.debug(`coverage diagnostic failed: ${String(err)}`);
+      }
+    })();
+  }
+
+  /** Do the given terms appear in the recent raw session transcripts? */
+  private async scanRawTranscripts(terms: string[]): Promise<boolean> {
+    if (terms.length === 0) {
+      return false;
+    }
+    try {
+      const RECENT = 25;
+      const files = (await listSessionFilesForAgent(this.agentId)).slice(-RECENT);
+      const { buildSessionEntry } = await import("./session-files.js");
+      const need = Math.ceil(terms.length / 2);
+      for (const f of files) {
+        const entry = await buildSessionEntry(f);
+        if (!entry) {
+          continue;
+        }
+        const lower = entry.content.toLowerCase();
+        let hits = 0;
+        for (const t of terms) {
+          if (lower.includes(t)) {
+            hits++;
+          }
+        }
+        if (hits >= need) {
+          return true;
+        }
+      }
+    } catch {
+      // best-effort
+    }
+    return false;
   }
 
   /**

@@ -57,6 +57,15 @@ export type MemoryConfig = {
      */
     enabled?: boolean;
   };
+  /** PLAN-24 HORMA Phase 1: deterministic construction-vs-retrieval blame router on recall miss. */
+  coverageDiagnostics?: {
+    /**
+     * On a zero-result recall, diagnose whether the answer was never indexed
+     * (exogenous / construction loss → construction_feedback) or indexed but not
+     * retrieved (endogenous → graph training pair), or a genuine gap (default: true).
+     */
+    enabled?: boolean;
+  };
   /** PLAN-11 Gap 6: daily digest of autonomous skill-pipeline activity. */
   digest?: {
     /** Enable the daily digest (default: true). */

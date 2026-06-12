@@ -110,6 +110,20 @@ Provenance is on by default; set `memory.provenance.enabled: false` to turn it o
 
 ---
 
+## Knowing Why Recall Failed — The Blame Router
+
+When a search comes back empty, that is a signal, not just a dead end. The question is _why_ it failed, because the fix is different in each case. Either the answer was never stored in the first place, or it was stored but retrieval did not surface it. Improving the wrong half wastes effort.
+
+So on a recall miss the system runs a cheap, deterministic check (no model call) that compares two places:
+
+- **In the raw transcripts but not in the indexed store** → the answer was lost during memory _construction_. This is recorded as a `construction_feedback` event, the signal the self-improving extraction loop learns from.
+- **In the indexed store but not surfaced by search** → _retrieval_ failed. When it resolves to a single chunk, that becomes a `(query, answer)` training pair for the graph retrieval optimizer, so the next search of its kind ranks it higher.
+- **Nowhere at all** → a genuine knowledge gap.
+
+HORMA's insight is that construction and retrieval improve on different timescales, so their error signals have to be kept apart. This router is what separates them, online and for free. It is on by default; disable with `memory.coverageDiagnostics.enabled: false`.
+
+---
+
 ## The Knowledge Graph — Knowing Who's Who
 
 Embeddings are good at similarity ("this text is close to that text") but bad at structure ("who works on what?" or "what depends on what?"). The knowledge graph fills this gap.
