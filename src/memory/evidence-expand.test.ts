@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   expandEvidenceRef,
   parseEvidenceRefs,
+  scoreCitationSupport,
   tokenSupportScore,
   verifyAgainstEvidence,
 } from "./evidence-expand.js";
@@ -61,6 +62,35 @@ describe("tokenSupportScore", () => {
   });
   it("treats a claim with no content tokens as grounded", () => {
     expect(tokenSupportScore("the a of to", "anything")).toBe(1);
+  });
+});
+
+describe("scoreCitationSupport", () => {
+  const lines = [
+    "User: the database is Postgres 16 on port 5432",
+    "Assistant: noted",
+    "User: deploy target is Frankfurt",
+  ];
+  it("scores a well-cited fact high", () => {
+    const score = scoreCitationSupport(
+      "Database is Postgres 16, port 5432",
+      [{ kind: "session", path: "/s", line: 1 }],
+      lines,
+    );
+    expect(score).toBe(1);
+  });
+  it("scores a mis-cited (confabulated) fact low", () => {
+    const score = scoreCitationSupport(
+      "Database is Postgres 16, port 5432",
+      [{ kind: "session", path: "/s", line: 3 }], // cites the Frankfurt line
+      lines,
+    );
+    expect(score).not.toBeNull();
+    expect(score!).toBeLessThan(0.5);
+  });
+  it("returns null when there are no resolvable session citations", () => {
+    expect(scoreCitationSupport("x", [], lines)).toBeNull();
+    expect(scoreCitationSupport("x", [{ kind: "journal", runId: "r", seq: 1 }], lines)).toBeNull();
   });
 });
 

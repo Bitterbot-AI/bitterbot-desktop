@@ -84,6 +84,8 @@ type ResizeToJpeg = typeof import("../../media/image-ops.js").resizeToJpeg;
 type CreateMemoryGetTool = typeof import("../../agents/tools/memory-tool.js").createMemoryGetTool;
 type CreateMemorySearchTool =
   typeof import("../../agents/tools/memory-tool.js").createMemorySearchTool;
+type CreateMemoryExpandTool =
+  typeof import("../../agents/tools/memory-tool.js").createMemoryExpandTool;
 type CreateDreamSearchTool =
   typeof import("../../agents/tools/dream-tool.js").createDreamSearchTool;
 type CreateDreamStatusTool =
@@ -213,6 +215,7 @@ export type PluginRuntime = {
   tools: {
     createMemoryGetTool: CreateMemoryGetTool;
     createMemorySearchTool: CreateMemorySearchTool;
+    createMemoryExpandTool: CreateMemoryExpandTool;
     createDreamSearchTool: CreateDreamSearchTool;
     createDreamStatusTool: CreateDreamStatusTool;
     createCuriosityStateTool: CreateCuriosityStateTool;

@@ -166,6 +166,27 @@ export function tokenSupportScore(claim: string, evidence: string): number {
   return hits / claimToks.size;
 }
 
+/**
+ * PLAN-24 HORMA Phase 0: score how well a fact's session citations support it,
+ * given the line-numbered transcript the fact was extracted from. Used at write
+ * time to flag confabulated / mis-cited facts without a re-read. Returns null
+ * when there are no resolvable session citations (nothing to check).
+ */
+export function scoreCitationSupport(
+  factText: string,
+  refs: EvidenceRef[],
+  contentLines: string[],
+): number | null {
+  const cited = refs
+    .filter((r): r is Extract<EvidenceRef, { kind: "session" }> => r.kind === "session")
+    .map((r) => contentLines[r.line - 1] ?? "")
+    .join("\n");
+  if (cited.trim().length === 0) {
+    return null;
+  }
+  return tokenSupportScore(factText, cited);
+}
+
 export type FaithfulnessVerdict = {
   /** True when the claim is sufficiently grounded in the resolved evidence. */
   supported: boolean;

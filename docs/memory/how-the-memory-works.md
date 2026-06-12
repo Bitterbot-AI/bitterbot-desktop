@@ -95,6 +95,21 @@ Over time, this means frequently-recalled memories become increasingly robust, w
 
 ---
 
+## Provenance — Tracing Memory Back to Its Source
+
+A fact extracted from a conversation is a paraphrase, and a paraphrase can drift from what was actually said. To keep memory honest, every extracted fact carries **evidence pointers** back to the exact transcript lines it came from — the same idea as a citation in a paper.
+
+When the extraction model reads a conversation, it sees the transcript line-numbered and must cite the line(s) each fact is drawn from. Those citations are stored alongside the fact (the `evidence_refs` column) and surface on search results, so the agent can call the **`memory_expand`** tool to pull the verbatim source window for any recalled fact — useful whenever a paraphrased memory is load-bearing or needs verifying.
+
+Two safeguards ride on top of this:
+
+- **Citation validation at write time.** As each fact is stored, the system checks that the cited lines actually support it (a cheap token-overlap test). A fact whose citation does not back it up is flagged in the audit log as a possible confabulation, so the memory-construction loop can learn from it.
+- **Faithfulness on rewrite.** Before any later process rewrites a fact in its labile window, the rewrite is re-verified against the original evidence and rejected if it has drifted away from the source. A memory can be strengthened or reorganized, but it cannot quietly become something its source never said.
+
+Provenance is on by default; set `memory.provenance.enabled: false` to turn it off. This is the foundation of the HORMA-style memory scaffolding ([PLAN-24](../plans/PLAN-24-HORMA-MEMORY-SCAFFOLDING.md)): compact, navigable notes that never lose the thread back to ground truth.
+
+---
+
 ## The Knowledge Graph — Knowing Who's Who
 
 Embeddings are good at similarity ("this text is close to that text") but bad at structure ("who works on what?" or "what depends on what?"). The knowledge graph fills this gap.

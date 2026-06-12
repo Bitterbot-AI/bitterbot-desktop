@@ -7,7 +7,11 @@ import {
 } from "../../agents/tools/curiosity-tool.js";
 import { createDreamSearchTool, createDreamStatusTool } from "../../agents/tools/dream-tool.js";
 import { createMemoryStatusTool } from "../../agents/tools/memory-status-tool.js";
-import { createMemoryGetTool, createMemorySearchTool } from "../../agents/tools/memory-tool.js";
+import {
+  createMemoryExpandTool,
+  createMemoryGetTool,
+  createMemorySearchTool,
+} from "../../agents/tools/memory-tool.js";
 import { handleSlackAction } from "../../agents/tools/slack-actions.js";
 import { createWorkingMemoryNoteTool } from "../../agents/tools/working-memory-tool.js";
 import {
@@ -269,6 +273,7 @@ export function createPluginRuntime(): PluginRuntime {
     tools: {
       createMemoryGetTool,
       createMemorySearchTool,
+      createMemoryExpandTool,
       createDreamSearchTool,
       createDreamStatusTool,
       createCuriosityStateTool,

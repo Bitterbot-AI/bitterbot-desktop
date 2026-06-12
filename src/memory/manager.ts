@@ -41,7 +41,7 @@ import {
   type VoyageEmbeddingClient,
 } from "./embeddings.js";
 import { EpistemicDirectiveEngine } from "./epistemic-directives.js";
-import { parseEvidenceRefs } from "./evidence-expand.js";
+import { parseEvidenceRefs, scoreCitationSupport } from "./evidence-expand.js";
 import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
 import { ExperienceSignalCollector } from "./experience-signal-collector.js";
 import { MemoryGovernance } from "./governance.js";
@@ -2431,6 +2431,12 @@ export class MemoryIndexManager implements MemorySearchManager {
 
         const now = Date.now();
 
+        // PLAN-24 HORMA Phase 0: validate that each fact's citation actually
+        // supports it (anti-confabulation). We already hold the flattened
+        // transcript, so this is a cheap in-process token-overlap check — no
+        // re-read. Weak citations are flagged to memory_audit_log for review.
+        const provenanceLines = provenanceEnabled ? entry.content.split("\n") : null;
+
         // Store extracted facts as crystals with epistemic layers
         for (const fact of result.facts) {
           try {
@@ -2466,6 +2472,31 @@ export class MemoryIndexManager implements MemorySearchManager {
                 now,
                 now,
               );
+
+            // PLAN-24 HORMA Phase 0: anti-confabulation — verify the cited lines
+            // actually support the fact. A weak score means the LLM hallucinated
+            // the fact or mis-cited; flag it for review (we keep the fact but
+            // record the concern so the architect loop can learn from it).
+            if (provenanceLines && fact.evidence.length > 0) {
+              const support = scoreCitationSupport(fact.text, fact.evidence, provenanceLines);
+              if (support !== null && support < 0.5) {
+                try {
+                  this.db
+                    .prepare(
+                      `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
+                       VALUES (?, ?, 'provenance_citation_weak', ?, 'session_extraction', ?)`,
+                    )
+                    .run(
+                      crypto.randomUUID(),
+                      id,
+                      now,
+                      JSON.stringify({ support: Number(support.toFixed(3)) }),
+                    );
+                } catch {
+                  // audit logging is non-critical
+                }
+              }
+            }
 
             // Route directive facts to user preferences
             if (fact.epistemicLayer === "directive" && this.userModelManager) {
