@@ -44,9 +44,7 @@ describe("extractSessionFacts — HORMA provenance citations", () => {
   it("de-duplicates and drops non-positive line numbers", async () => {
     const llmCall = async () =>
       JSON.stringify({
-        facts: [
-          { text: "f", layer: "world_fact", confidence: 1, lines: [2, 2, 0, -1, 5] },
-        ],
+        facts: [{ text: "f", layer: "world_fact", confidence: 1, lines: [2, 2, 0, -1, 5] }],
         handover: { purpose: "p", milestones: [], decisions: [], blockers: [], nextSteps: [] },
       });
     const result = await extractSessionFacts("a\nb\nc\nd\ne", "/s.jsonl", llmCall);

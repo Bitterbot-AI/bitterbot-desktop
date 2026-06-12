@@ -243,9 +243,9 @@ export class ReconsolidationEngine {
   ): Promise<import("./evidence-expand.js").FaithfulnessVerdict> {
     let refsRaw: string | null = null;
     try {
-      const row = this.db
-        .prepare(`SELECT evidence_refs FROM chunks WHERE id = ?`)
-        .get(chunkId) as { evidence_refs: string | null } | undefined;
+      const row = this.db.prepare(`SELECT evidence_refs FROM chunks WHERE id = ?`).get(chunkId) as
+        | { evidence_refs: string | null }
+        | undefined;
       refsRaw = row?.evidence_refs ?? null;
     } catch {
       return { supported: true, score: 1, evidenceFound: false };

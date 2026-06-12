@@ -41,6 +41,7 @@ import {
   type VoyageEmbeddingClient,
 } from "./embeddings.js";
 import { EpistemicDirectiveEngine } from "./epistemic-directives.js";
+import { parseEvidenceRefs } from "./evidence-expand.js";
 import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
 import { ExperienceSignalCollector } from "./experience-signal-collector.js";
 import { MemoryGovernance } from "./governance.js";
@@ -73,7 +74,6 @@ import { MemoryScheduler } from "./scheduler.js";
 import { runSeedCrystalMigration, runSkillBootstrap } from "./seed-crystal-migration.js";
 import { SessionCoherenceTracker } from "./session-coherence.js";
 import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
-import { parseEvidenceRefs } from "./evidence-expand.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
 import { SkillCrystallizer } from "./skill-crystallizer.js";
@@ -2437,9 +2437,7 @@ export class MemoryIndexManager implements MemorySearchManager {
             const id = `fact_${crypto.randomUUID()}`;
             const hash = crypto.createHash("sha256").update(fact.text).digest("hex");
             const evidenceJson =
-              provenanceEnabled && fact.evidence.length > 0
-                ? JSON.stringify(fact.evidence)
-                : null;
+              provenanceEnabled && fact.evidence.length > 0 ? JSON.stringify(fact.evidence) : null;
             this.db
               .prepare(
                 `INSERT OR IGNORE INTO chunks (id, path, source, start_line, end_line, text, hash,

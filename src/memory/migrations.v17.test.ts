@@ -18,9 +18,9 @@ function openTestDb(): DatabaseSync {
 describe("migration v17 — HORMA provenance pointers", () => {
   it("adds the evidence_refs column to chunks", () => {
     const db = openTestDb();
-    const names = (
-      db.prepare(`PRAGMA table_info(chunks)`).all() as Array<{ name: string }>
-    ).map((c) => c.name);
+    const names = (db.prepare(`PRAGMA table_info(chunks)`).all() as Array<{ name: string }>).map(
+      (c) => c.name,
+    );
     expect(names).toContain("evidence_refs");
   });
 

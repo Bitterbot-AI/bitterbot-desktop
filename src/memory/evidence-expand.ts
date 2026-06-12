@@ -1,3 +1,4 @@
+import type { EvidenceRef } from "./session-extractor.js";
 /**
  * PLAN-24 HORMA Phase 0: resolve a provenance EvidenceRef back to verbatim raw
  * source. Synthesized memories (extracted facts, dream insights) are paraphrases;
@@ -10,7 +11,6 @@
  * so callers degrade gracefully instead of failing the recall.
  */
 import { getActiveEventJournal } from "../infra/event-journal.js";
-import type { EvidenceRef } from "./session-extractor.js";
 
 export type ExpandedEvidence = {
   ref: EvidenceRef;
@@ -28,9 +28,7 @@ function notFound(ref: EvidenceRef): ExpandedEvidence {
 }
 
 export function describeRef(ref: EvidenceRef): string {
-  return ref.kind === "session"
-    ? `${ref.path}#L${ref.line}`
-    : `journal:${ref.runId}#${ref.seq}`;
+  return ref.kind === "session" ? `${ref.path}#L${ref.line}` : `journal:${ref.runId}#${ref.seq}`;
 }
 
 /**
@@ -101,9 +99,40 @@ export async function expandEvidenceRefs(
 // ---------------------------------------------------------------------------
 
 const STOP_WORDS = new Set([
-  "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at", "for",
-  "with", "is", "are", "was", "were", "be", "been", "it", "this", "that", "as",
-  "by", "from", "we", "i", "you", "he", "she", "they", "his", "her", "their",
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "but",
+  "of",
+  "to",
+  "in",
+  "on",
+  "at",
+  "for",
+  "with",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "it",
+  "this",
+  "that",
+  "as",
+  "by",
+  "from",
+  "we",
+  "i",
+  "you",
+  "he",
+  "she",
+  "they",
+  "his",
+  "her",
+  "their",
 ]);
 
 function contentTokens(text: string): Set<string> {
@@ -193,11 +222,7 @@ export function parseEvidenceRefs(raw: string | null | undefined): EvidenceRef[]
       const o = r as Record<string, unknown>;
       if (o.kind === "session" && typeof o.path === "string" && typeof o.line === "number") {
         out.push({ kind: "session", path: o.path, line: o.line });
-      } else if (
-        o.kind === "journal" &&
-        typeof o.runId === "string" &&
-        typeof o.seq === "number"
-      ) {
+      } else if (o.kind === "journal" && typeof o.runId === "string" && typeof o.seq === "number") {
         out.push({ kind: "journal", runId: o.runId, seq: o.seq });
       }
     }

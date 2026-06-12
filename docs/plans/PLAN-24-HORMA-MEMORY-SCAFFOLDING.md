@@ -15,7 +15,7 @@ HORMA ("Organize then Retrieve") shows that for long-horizon agents, **memory co
 Bitterbot already has the substrate HORMA's own limitations call for — a bitemporal SAGE graph, the dream engine as an off-critical-path memory manager, the SICA staging/sandbox validation gate (which HORMA lacks), and hormonal/GCCRF modulation. But it is missing three things HORMA proves are load-bearing:
 
 1. **Provenance.** LLM-extracted facts insert with `start_line=0, end_line=0` (`manager.ts:2399-2400`); dream insights are pure paraphrases. The PLAN-16 event journal — the real raw-trajectory store — has **zero references from anywhere in `src/memory`**. A wrong paraphrase is permanently load-bearing with no path back to ground truth, including during reconsolidation's labile-window rewrites.
-2. **Blame attribution.** Bitterbot detects *that* recall failed (judge, outcome-backfill, graph-bridge) but never whether **construction** or **retrieval** is at fault — HORMA's central D_exo/D_end diagnostic.
+2. **Blame attribution.** Bitterbot detects _that_ recall failed (judge, outcome-backfill, graph-bridge) but never whether **construction** or **retrieval** is at fault — HORMA's central D_exo/D_end diagnostic.
 3. **An evolving construction prompt.** `buildExtractionPrompt` (`session-extractor.ts:74`) is static; nothing closes a failure→rule loop on memory construction (the existing textual-gradient machinery only targets skill mutations).
 
 **Outcome:** a memory system that organizes with provenance, diagnoses its own construction vs retrieval failures, and rewrites its construction rules under validation — plus a HORMA-comparable benchmark table for the arXiv preprint flagged as top leverage in the competitive analysis (`docs/reviews/competitive-analysis-2026-06-10.md`).
@@ -41,7 +41,7 @@ P5  Graph abstraction nodes + coarse-to-fine traversal         [sound, large]
 
 Each phase is independently shippable behind a flag. **P2 is a decision gate:** if structured construction shows no win on temporal/multi-session question types, stop before building P3/P4.
 
-Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18** = P5 summary entities. P0.5 and P1 are code-only (no migration). PLAN-23's own transaction-time axis is *not* folded in here — only its Phase 0 population step is pulled forward.
+Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18** = P5 summary entities. P0.5 and P1 are code-only (no migration). PLAN-23's own transaction-time axis is _not_ folded in here — only its Phase 0 population step is pulled forward.
 
 ---
 
@@ -50,6 +50,7 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 **Goal:** every extracted fact and dream insight is anchored to its raw source; the agent can expand a compact memory back to verbatim ground truth on demand.
 
 **Files:**
+
 - `src/memory/migrations.ts` — migration **v17**: `ensureColumn(db, "chunks", "evidence_refs", "TEXT")` (JSON array; null-tolerant).
 - `src/memory/session-extractor.ts` — feed a **line-numbered** transcript into `buildExtractionPrompt` (line 74); add a per-fact citation requirement to the output schema (HORMA's `(D1:3)` trick); extend `ExtractedFact` (line 24) with `evidence: EvidenceRef[]`. Define `EvidenceRef = {kind:'session', path, line} | {kind:'journal', runId, seq}`.
 - `src/memory/manager.ts` — at the fact insert (`runSessionExtraction`, ~line 2389) persist `evidence_refs` instead of the current `0,0` line columns; mirror at the handover-brief insert (~line 2468) and dream-insight inserts (origin='dream').
@@ -71,10 +72,11 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 **Goal:** the relationship table is actually written to. Today `manager.ts:2499` initializes `kgRelationships = []` and passes it empty to `ingestExtraction` (`manager.ts:2527`) — the entire graph relationship layer is never populated, which both blocks P5 (community detection needs edges) and starves P1's endogenous-failure signal.
 
 **Files:**
+
 - `src/memory/manager.ts` — fill `kgRelationships` before the `ingestExtraction` call (~2499/2527): pair co-occurring extracted entities with a heuristic `relationType` (default `related_to`; refined by entity-type pairs, e.g. person+project → `works_on`). Conservative — emit only high-confidence pairs, everything else low-weight `related_to`.
 - Reuse `knowledge-graph.ts` `upsertRelationship` (existing).
 
-**Scope note:** this is *only* PLAN-23 Phase 0. The typed conflict taxonomy, transaction-time axis, and belief-history API remain PLAN-23's own effort. Carry edges' `evidence_chunk_ids` from P0 so populated edges are provenance-resolvable from birth.
+**Scope note:** this is _only_ PLAN-23 Phase 0. The typed conflict taxonomy, transaction-time axis, and belief-history API remain PLAN-23's own effort. Carry edges' `evidence_chunk_ids` from P0 so populated edges are provenance-resolvable from birth.
 
 **Test:** `manager.kg-relationships.test.ts` — a fixture turn with two co-occurring entities yields a written relationship.
 
@@ -87,12 +89,13 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 **Goal:** at recall-failure time, deterministically (no LLM) decide whether a fact was never constructed (exogenous) or constructed-but-not-retrieved (endogenous), and route each to the right learner. This **defines the `construction_feedback` stream** that P2/P3 consume, and makes the (deferred) LLM probe cheap by only firing on cases this can't resolve.
 
 **Files:**
+
 - New `src/memory/coverage-diagnostics.ts`, wired at the post-search path (`manager.ts:788-805`, next to `recordSageSignals`) plus a recall-failure hook.
 - Failure trigger: extend `src/agents/skills/outcome-backfill.ts` (currently PLAN-20 intervention-record scoped) to catch memory corrections, or add a parallel hook at its `chat.send` site.
 - Deterministic scan: ephemeral in-memory FTS5 over recent session JSONL + journal payloads, or a plain term-presence scan. **Not** `manager-search.ts:244-305` (`searchKeyword` only hits the indexed chunks FTS, which is exactly what we're testing against).
 - Three-way routing: (a) terms in raw transcripts but absent from `chunks` → `construction_feedback` record (memory_audit_log event type — schema `memory-schema.ts:104-111` already has free-form event+metadata, no migration); (b) present in chunks but not surfaced → insert `(query, ground_truth_chunk_id)` into `graph_gate_training_pairs` (`graph-optimizer.ts` `insertTrainingPair`) **only on a high-confidence unique match, replicating the live search's per-model/source filters** to avoid label noise; (c) found nowhere → curiosity target via `EpistemicDirectiveEngine.harvestGraphBridgeTargets`.
 
-**Verifier corrections honored:** the success-only training-pair collector is `manager.ts recordSageSignals` (10% sample, top-*returned* chunk), **not** `experience-signal-collector.ts` (that's P2P telemetry). The exogenous class arises specifically from what `buildSessionEntry` drops before indexing (tool results, non-text blocks, redaction, sync lag) — name these loss channels. If `construction_feedback` consumers (P3) aren't built yet, records still accumulate harmlessly.
+**Verifier corrections honored:** the success-only training-pair collector is `manager.ts recordSageSignals` (10% sample, top-_returned_ chunk), **not** `experience-signal-collector.ts` (that's P2P telemetry). The exogenous class arises specifically from what `buildSessionEntry` drops before indexing (tool results, non-text blocks, redaction, sync lag) — name these loss channels. If `construction_feedback` consumers (P3) aren't built yet, records still accumulate harmlessly.
 
 **Tests:** a fact present in raw JSONL but dropped by `buildSessionEntry` is classified exogenous; a present-but-unranked chunk is classified endogenous and yields one clean training pair; an absent term yields a curiosity target.
 
@@ -100,18 +103,19 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 
 ---
 
-## Phase 2 — LongMemEval contrastive bootstrap + proof  ◄ GO/NO-GO GATE
+## Phase 2 — LongMemEval contrastive bootstrap + proof ◄ GO/NO-GO GATE
 
 **Goal:** prove the construction thesis where ground truth exists, produce the offline `construction_feedback` corpus that seeds P3 (avoiding cold-start), and generate the HORMA-comparable Table-2 row for the preprint.
 
 **Files:**
+
 - `benchmarks/longmemeval/runner-biological.ts` / `runner.ts` — add an **H condition** (full chronological transcript in context) alongside the existing H' (real ingest→extract→retrieve pipeline). Partition results into D_exo (H right, H' wrong) and D_end (H' right, H wrong).
 - Reuse `evaluate.ts` (gold-answer judge) and `bootstrapPairedCI` (`experiment-sandbox.ts:679-708`) for significance.
 - Reuse `loadDatasetSplit` 20/10/70 (`adapter.ts:268-282`): **train** = refinement corpus, **selection** = validation gate, **test** = never touched (keeps published numbers contamination-free).
 - Run the HORMA-style LLM feedback step (ported D.4/D.5 prompts) over D_exo/D_end → write `construction_feedback` records (same shape P1 emits) for P3.
 - Report per-question L-J score **and tokens/question** — directly comparable to HORMA Table 2 (their 55.9 @ ~308 tokens).
 
-**Verifier corrections honored:** local datasets hold **500** instances (not 367). The adapter's combined-document mode is an *ingestion* path; the H condition needs a small new runner branch reading `sessions.md` straight into the prompt. Score new-prompt extractions carefully — don't condition the label set only on facts the *old* prompt extracted (structural bias toward the incumbent).
+**Verifier corrections honored:** local datasets hold **500** instances (not 367). The adapter's combined-document mode is an _ingestion_ path; the H condition needs a small new runner branch reading `sessions.md` straight into the prompt. Score new-prompt extractions carefully — don't condition the label set only on facts the _old_ prompt extracted (structural bias toward the incumbent).
 
 **Gate criterion:** material win on temporal-reasoning / multi-session question types at lower tokens. If not met → stop; ship P0/P0.5/P1 and revisit.
 
@@ -124,12 +128,13 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 **Goal:** make `buildExtractionPrompt` evolve from accumulated construction failures, under the SICA validation gate HORMA lacks (HORMA Eq. 5: `P_m^(k+1) = LLM(SkillAug, P_m^(k), {Feedback})`).
 
 **Files:**
+
 - `src/memory/session-extractor.ts` — `buildExtractionPrompt` gains a `## Learned Construction Rules` section loaded at extraction time. Treat the current static template as `P_m^(0)`.
 - New `skills/memory-architect/SKILL.md` — the evolving rule library, versioned through the SICA filesystem pipeline (`skill-storage.ts` skills-staging/skills-archive, `skill-gate.ts:103-218`, `skill-promote.ts`).
 - `src/memory/dream-slow-update.ts` — every K dream cycles, aggregate `construction_feedback` (P1 online + P2 offline), run one TextGrad step → candidate rule set → `skills-staging/memory-architect/`.
 - Validate via `experiment-sandbox.ts`: re-extract held-out archived **session files** (`listSessionFilesForAgent` + `buildSessionEntry`) old vs new prompt; score recall of probe-confirmed/cited facts; promote only when `bootstrapPairedCI` `ci95Low > 0`.
 
-**Verifier corrections honored (critical):** bitterbot has **two** skill pipelines — the SICA **filesystem** archive and the dream-mutation **DB** (`skill_text_history`). `runLongitudinalRegression` (`dream-slow-update.ts:495-545`) reads the DB table, *not* `skills-archive/`; it does take injectable `archiveVersions` + `scorePair`, so feed it filesystem versions + a re-extraction scorer (**new wiring, not free**). There is **no auto-rollback** — `rollbackToVersion` (`skill-promote.ts:232`) is manual; a bad rule that passes the gate needs the manual path. Held-out sessions live as **files**, not in the event journal. The skill-gate regression gate is a no-op for memory-architect (never executed as a skill) — only schema + injection gates apply.
+**Verifier corrections honored (critical):** bitterbot has **two** skill pipelines — the SICA **filesystem** archive and the dream-mutation **DB** (`skill_text_history`). `runLongitudinalRegression` (`dream-slow-update.ts:495-545`) reads the DB table, _not_ `skills-archive/`; it does take injectable `archiveVersions` + `scorePair`, so feed it filesystem versions + a re-extraction scorer (**new wiring, not free**). There is **no auto-rollback** — `rollbackToVersion` (`skill-promote.ts:232`) is manual; a bad rule that passes the gate needs the manual path. Held-out sessions live as **files**, not in the event journal. The skill-gate regression gate is a no-op for memory-architect (never executed as a skill) — only schema + injection gates apply.
 
 **Tests:** a synthetic D_exo cluster ("entity identity paraphrased away") yields a rule that, re-applied, raises held-out recall and passes the CI gate; a rule that regresses held-out recall is rejected and archived.
 
@@ -142,7 +147,8 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 **Goal:** activate construction rules by organism state instead of always paying their full token cost — the differentiation HORMA structurally cannot express (their skill prompt grows monotonically and fires unconditionally).
 
 **Files:**
-- `src/memory/session-extractor.ts` — replace the 3 static `buildHormonalGuidance` lines (`session-extractor.ts:56-68`) with centroid-distance rule selection: inject the top-k rules whose birth-centroid is nearest the current hormonal/GCCRF snapshot, plus unconditional rules. The existing `delta_eff = base − 0.4·cortisol + 0.4·dopamine` law (`structural-gate.ts:212-220`) sets *how many* fire (stressed → fewer/focused; aroused → wider).
+
+- `src/memory/session-extractor.ts` — replace the 3 static `buildHormonalGuidance` lines (`session-extractor.ts:56-68`) with centroid-distance rule selection: inject the top-k rules whose birth-centroid is nearest the current hormonal/GCCRF snapshot, plus unconditional rules. The existing `delta_eff = base − 0.4·cortisol + 0.4·dopamine` law (`structural-gate.ts:212-220`) sets _how many_ fire (stressed → fewer/focused; aroused → wider).
 - Rule birth-context tagging: reuse `bindBiologicalContext` k-means (`dream-slow-update.ts:266-325`) — the centroid of the failure cluster that bred each rule is computed at P3 rule-creation time.
 - Snapshots from `hormonal.ts` (`snapshot`) and the GCCRF diagnostics aggregate used by interceptors (`state-snapshots.ts buildGCCRFSnapshot`).
 - Rule metadata (centroid fields) stored in `skills/memory-architect/SKILL.md` frontmatter — small parser extension to `frontmatter.ts` (the PLAN-20 interceptor stats-array pattern is the precedent, not generic support).
@@ -162,6 +168,7 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 **Goal:** give the SAGE graph the hierarchy HORMA's O(log N) navigation requires; replace the flat 200-entity frontier cap with coarse-to-fine descent. Unblocked by P0.5.
 
 **Files:**
+
 - `src/memory/migrations.ts` — migration **v18**: `entities` gains `entity_type='summary'` support + `parent_entity_id`; relation type `summarizes`.
 - New `src/memory/dream-modes/graph-abstraction.ts` — the **10th** dream mode. When FSHO order parameter R > 0.7 (`dream-oscillator.ts:114-167`, coherent/compression regime), run cheap label-propagation community detection over `relationships`; for each community ≥ k entities, LLM-synthesize one summary entity whose `summarizes` edges carry the **union of member `evidence_refs`** (provenance from P0). Register in `DreamMode` union (`dream-types.ts:12-21` — currently 9 modes), `DEFAULT_MODE_CONFIGS`, `DEFAULT_MODE_TIERS`, `selectModes` (`dream-engine.ts:683-717`), and the `runMode` dispatch (~986); fix the stale "7 modes" doc comment.
 - `src/memory/graph-reader.ts` (`graphRead`, 288-462) — coarse-to-fine: when `resolveSeedEntities` finds no exact match, seed at summary level, propagate one hop among summaries, descend into top-m communities. Needs a concrete summary-selection mechanism (embed summary abstracts, or fuzzy-match via `kg.searchEntities`) since entities carry no embeddings.
