@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/SECURITY.md
+    about: Please do not file security vulnerabilities as public issues. Follow the disclosure process in SECURITY.md instead.
