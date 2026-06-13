@@ -745,6 +745,18 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 19,
+    description:
+      "PLAN-24 HORMA Phase 5: parent_entity_id on entities so members can point " +
+      "at the summary entity that abstracts their community (coarse-to-fine graph " +
+      "navigation). entity_type 'summary' and relation_type 'summarizes' are TEXT " +
+      "values — no schema change needed for those.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "entities", "parent_entity_id", "TEXT");
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_entities_parent ON entities(parent_entity_id)`);
+    },
+  },
 ];
 
 /**

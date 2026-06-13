@@ -184,7 +184,9 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 
 **Tests:** a synthetic populated graph produces summary entities for communities ≥ k; a query with no exact entity match seeds at summary level and returns members via descent; re-abstraction supersedes prior summary edges without destroying history.
 
-**Flag:** `memory.graphAbstraction.enabled` (default false).
+**Flag:** `memory.graphAbstraction.enabled` (default true).
+
+**Status — landed 2026-06-13.** Migration v19 (`entities.parent_entity_id`); `EntityType += 'summary'`, `RelationType += 'summarizes'`. `src/memory/graph-abstraction.ts`: synchronous label-propagation community detection + LLM summary synthesis + `summarizes` edges + parent pointers (idempotent — already-parented communities skipped). Wired as a dream-cycle hook (`maybeRunGraphAbstraction`, 6h cooldown, ≥6-relationship gate) rather than a formal 10th DreamMode (simpler/safer; same effect). Reader coarse-to-fine: `resolveSummarySeeds` in `graph-reader.ts` fires only when the flat seed resolver is empty (additive — cannot regress the normal path), descending from summary name/abstract matches into members. 11 tests (community detection, summary parse, build + idempotency + min-size, reader fallback, v19). The 9th gate feature and edge-level re-abstraction supersedence are deferred (the current builder skips already-summarized communities rather than versioning them).
 
 ---
 

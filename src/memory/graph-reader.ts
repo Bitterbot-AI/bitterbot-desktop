@@ -153,6 +153,46 @@ function resolveSeedEntities(kg: KnowledgeGraphManager, plan: QueryPlan): Set<st
   return seeds;
 }
 
+/**
+ * PLAN-24 HORMA Phase 5: coarse-to-fine fallback. When no exact/fuzzy entity
+ * matches, seed at the SUMMARY level — find summary entities whose name or
+ * abstract mentions a query term, then descend into their member entities
+ * (parent_entity_id) and use those as seeds. Only used when the flat resolver
+ * comes back empty, so it can only add recall, never change the normal path.
+ */
+function resolveSummarySeeds(db: DatabaseSync, plan: QueryPlan): Set<string> {
+  const seeds = new Set<string>();
+  const terms = [...plan.explicitEntities, ...plan.aliases, ...plan.hardConstraints]
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length >= 3);
+  if (terms.length === 0) {
+    return seeds;
+  }
+  try {
+    const summaryIds = new Set<string>();
+    const findStmt = db.prepare(
+      `SELECT id FROM entities WHERE entity_type = 'summary'
+         AND (name LIKE ? OR properties LIKE ?) LIMIT 3`,
+    );
+    for (const term of terms.slice(0, 5)) {
+      const like = `%${term}%`;
+      for (const row of findStmt.all(like, like) as Array<{ id: string }>) {
+        summaryIds.add(row.id);
+      }
+    }
+    const memberStmt = db.prepare(`SELECT id FROM entities WHERE parent_entity_id = ? LIMIT 50`);
+    for (const sid of summaryIds) {
+      seeds.add(sid);
+      for (const row of memberStmt.all(sid) as Array<{ id: string }>) {
+        seeds.add(row.id);
+      }
+    }
+  } catch {
+    // best-effort
+  }
+  return seeds;
+}
+
 type Neighbor = {
   neighborId: string;
   weight: number;
@@ -310,6 +350,12 @@ export function graphRead(
   }
 
   const seedSet = resolveSeedEntities(kg, plan);
+  if (seedSet.size === 0) {
+    // Coarse-to-fine: descend from summary nodes when no flat seed matched.
+    for (const id of resolveSummarySeeds(db, plan)) {
+      seedSet.add(id);
+    }
+  }
   const seedEntityIds = [...seedSet];
 
   if (seedEntityIds.length === 0) {

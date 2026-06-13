@@ -2368,6 +2368,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       } catch (err) {
         log.debug(`memory-architect cycle failed: ${String(err)}`);
       }
+      try {
+        await this.maybeRunGraphAbstraction();
+      } catch (err) {
+        log.debug(`graph abstraction failed: ${String(err)}`);
+      }
     }
 
     // Session fact extraction: extract structured facts + handover briefs from sessions.
@@ -2437,6 +2442,52 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   /** PLAN-24 HORMA Phase 3: last memory-architect cycle timestamp (cooldown). */
   private lastArchitectRunAt = 0;
+
+  /** PLAN-24 HORMA Phase 5: last graph-abstraction pass timestamp (cooldown). */
+  private lastGraphAbstractionAt = 0;
+
+  /**
+   * PLAN-24 HORMA Phase 5: build summary nodes over the entity graph so the
+   * reader has a coarse-to-fine entry point. Gated (flag default on, 6h
+   * cooldown, LLM + populated graph). Off the critical path.
+   */
+  private async maybeRunGraphAbstraction(): Promise<void> {
+    if (this.cfg.memory?.graphAbstraction?.enabled === false || !this.knowledgeGraph) {
+      return;
+    }
+    const llmCall = this.dreamLlmCall;
+    if (!llmCall) {
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastGraphAbstractionAt < 6 * 60 * 60 * 1000) {
+      return;
+    }
+    // Need a populated relationship layer for communities to exist.
+    let relCount = 0;
+    try {
+      relCount = (
+        this.db
+          .prepare(`SELECT COUNT(*) AS c FROM relationships WHERE valid_until IS NULL`)
+          .get() as { c: number }
+      ).c;
+    } catch {
+      return;
+    }
+    if (relCount < 6) {
+      return;
+    }
+    this.lastGraphAbstractionAt = now;
+    const { buildGraphAbstractions } = await import("./graph-abstraction.js");
+    const result = await buildGraphAbstractions({
+      db: this.db,
+      kg: this.knowledgeGraph,
+      llmCall,
+    });
+    if (result.created > 0) {
+      log.info("graph abstraction built summary nodes", { created: result.created });
+    }
+  }
 
   /**
    * PLAN-24 HORMA Phase 3: evolve the construction-rule library from accumulated

@@ -160,6 +160,8 @@ That third channel got a major upgrade in PLAN-18 (the SAGE-style graph memory).
 
 During dream cycles, the graph is maintained: stale relationships get pruned, duplicate entities get merged, contradictions get flagged as questions for the user, and (when enough QA training pairs have accumulated) the SAGE gate parameters get tuned against held-out evidence with a gradient-free optimizer.
 
+**The graph also grows a roof over itself.** As the entity graph fills out, a dream pass detects tightly-connected communities of entities and synthesizes a **summary node** for each one — a short abstraction ("Frankfurt deployment", "the parser rewrite") that links down to its members. When a query names something the agent has no exact entity for, the reader can start at the summary level and descend into the relevant community instead of scanning a flat list of everything it knows. As the graph gets larger this coarse-to-fine entry point is what keeps retrieval from degrading into a linear scan. It is on by default (`memory.graphAbstraction.enabled`) and only activates once the relationship layer is populated enough to have real communities.
+
 ---
 
 ## Curiosity — Intrinsic Motivation

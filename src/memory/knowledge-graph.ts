@@ -60,7 +60,11 @@ export type EntityType =
   | "arc_state"
   | "arc_object"
   | "arc_action"
-  | "arc_rule";
+  | "arc_rule"
+  // PLAN-24 HORMA Phase 5: an abstraction node summarizing a community of
+  // entities, built offline by the graph-abstraction dream pass. Gives the
+  // reader an O(log N) coarse entry point above the flat entity layer.
+  | "summary";
 
 export interface Entity {
   id: string;
@@ -95,7 +99,9 @@ export type RelationType =
   | "transforms_into"
   | "produces"
   | "observed_in"
-  | "refutes";
+  | "refutes"
+  // PLAN-24 HORMA Phase 5: a summary entity summarizes a member entity.
+  | "summarizes";
 
 export interface Relationship {
   id: string;

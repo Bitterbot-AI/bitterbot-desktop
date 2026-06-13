@@ -66,6 +66,14 @@ export type MemoryConfig = {
      */
     enabled?: boolean;
   };
+  /** PLAN-24 HORMA Phase 5: build summary nodes over the SAGE graph for coarse-to-fine retrieval. */
+  graphAbstraction?: {
+    /**
+     * During dreams, community-detect the entity graph and synthesize summary
+     * entities so the reader has an O(log N) coarse entry point (default: true).
+     */
+    enabled?: boolean;
+  };
   /** PLAN-24 HORMA Phase 1: deterministic construction-vs-retrieval blame router on recall miss. */
   coverageDiagnostics?: {
     /**
