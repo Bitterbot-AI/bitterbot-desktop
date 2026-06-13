@@ -66,6 +66,7 @@
     "benchmark:biomemeval": "vitest run --config benchmarks/biomemeval/vitest.config.ts && node --import tsx benchmarks/biomemeval/generate-report.ts",
     "benchmark:longmemeval": "node --import tsx benchmarks/longmemeval/runner.ts",
     "benchmark:longmemeval:biological": "node --import tsx benchmarks/longmemeval/runner-biological.ts --oracle",
+    "benchmark:longmemeval:contrastive": "node --import tsx benchmarks/longmemeval/runner-contrastive.ts --oracle --split train",
     "benchmark:longmemeval:download": "bash benchmarks/longmemeval/download.sh",
     "benchmark:longmemeval:evaluate": "node --import tsx benchmarks/longmemeval/evaluate.ts",
     "benchmark:longmemeval:oracle": "node --import tsx benchmarks/longmemeval/runner.ts --oracle",

@@ -121,6 +121,8 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 
 **Flag / deliverable:** a `results/horma-comparison-*.json` + a short results note for the preprint.
 
+**Status — first probe landed 2026-06-13** (`benchmarks/longmemeval/runner-contrastive.ts`, `contrastive-partition.ts`; results note `docs/reviews/horma-phase2-contrastive-2026-06-13.md`). N=12 oracle/train (temporal-reasoning): **token efficiency 30.9% of baseline** (H' 2.6k vs H 8.4k tokens) replicates HORMA's headline; D_exo=2 / D_end=1 with 2 `construction_feedback` records emitted (the Phase 3 seed corpus — both are real construction losses: a dropped date and a failed cross-session aggregation). Accuracy on this small temporal-only slice is near-parity (H' 83.3% vs H 91.7%), so the accuracy-win half of the gate is **inconclusive pending a larger type-stratified run on the full `_s` dataset**. Infrastructure proven; Phase 3 unblocked.
+
 ---
 
 ## Phase 3 — Versioned memory-architect skill (textual gradient descent)
