@@ -11,6 +11,7 @@ import {
   parseProposedRules,
   retireRule,
   runArchitectCycle,
+  selectRulesForState,
   validateCandidates,
 } from "./memory-architect.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
@@ -202,6 +203,52 @@ describe("runArchitectCycle", () => {
     expect(res.promoted).toBe(0);
     expect(res.reason).toBe("validation-rejected");
     expect(countActiveRules(db)).toBe(0);
+  });
+});
+
+describe("selectRulesForState (Phase 4)", () => {
+  it("returns all rules (capped) when no hormonal state is given", () => {
+    const db = openTestDb();
+    insertRule(db, { ruleText: "r1", now: 1 });
+    insertRule(db, { ruleText: "r2", now: 2 });
+    expect(selectRulesForState(db, undefined)).toEqual(["r1", "r2"]);
+  });
+
+  it("injects fewer rules under high cortisol than high dopamine", () => {
+    const db = openTestDb();
+    for (let i = 0; i < 12; i++) {
+      insertRule(db, {
+        ruleText: `r${i}`,
+        hormones: { dopamine: 0.5, cortisol: 0.5, oxytocin: 0.5 },
+        now: i,
+      });
+    }
+    const stressed = selectRulesForState(db, { dopamine: 0, cortisol: 1, oxytocin: 0 });
+    const aroused = selectRulesForState(db, { dopamine: 1, cortisol: 0, oxytocin: 0 });
+    expect(stressed.length).toBeLessThan(aroused.length);
+  });
+
+  it("ranks state-nearest conditional rules first and always keeps unconditional ones", () => {
+    const db = openTestDb();
+    insertRule(db, { ruleText: "uncond", now: 1 }); // no birth hormones → unconditional
+    insertRule(db, {
+      ruleText: "far",
+      hormones: { dopamine: 1, cortisol: 1, oxytocin: 1 },
+      now: 2,
+    });
+    insertRule(db, {
+      ruleText: "near",
+      hormones: { dopamine: 0, cortisol: 0, oxytocin: 0 },
+      now: 3,
+    });
+    const sel = selectRulesForState(
+      db,
+      { dopamine: 0, cortisol: 0, oxytocin: 0 },
+      { minRules: 2, maxRules: 2 },
+    );
+    expect(sel).toContain("uncond");
+    expect(sel).toContain("near");
+    expect(sel).not.toContain("far");
   });
 });
 

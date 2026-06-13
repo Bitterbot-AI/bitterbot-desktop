@@ -137,6 +137,8 @@ The loop, run during dream cycles:
 
 The validation gate is the piece the source method (HORMA) leaves out: a rule that looks plausible but degrades extraction is caught and dropped before it can do harm. Rules are versioned, and a regressed rule can be retired by hand. The loop is on by default (`memory.architectEvolution.enabled`); rule injection is a no-op until the first rule is learned, so there is no cost until the agent has actually failed at something and learned from it.
 
+The rules are also **conditioned on mood**. Each rule remembers the hormonal state it was born in, and at extraction time the agent injects the rules nearest its current state, with the _number_ of rules modulated by the same law the rest of the system uses: under cortisol it narrows to a few focused rules, under dopamine it widens to many. So a stressed organism extracts with its hard-won "be careful here" rules, while an exploratory one casts a wider net — and neither pays the token cost of rules irrelevant to how it currently feels. A monotonically-growing, always-on rule list (what the source method does) cannot express that.
+
 ---
 
 ## The Knowledge Graph — Knowing Who's Who

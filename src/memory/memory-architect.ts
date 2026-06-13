@@ -83,6 +83,64 @@ export function activeRuleTexts(db: DatabaseSync, limit = 24): string[] {
   return loadActiveRules(db, limit).map((r) => r.ruleText);
 }
 
+const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
+
+/** Euclidean distance between a rule's birth-hormone centroid and a state. */
+function hormoneDistance(r: ConstructionRule, h: HormonalBias): number {
+  const dd = (r.birthDopamine ?? 0) - h.dopamine;
+  const dc = (r.birthCortisol ?? 0) - h.cortisol;
+  const doo = (r.birthOxytocin ?? 0) - h.oxytocin;
+  return Math.sqrt(dd * dd + dc * dc + doo * doo);
+}
+
+/**
+ * PLAN-24 HORMA Phase 4: state-conditional rule activation (the moat). Instead
+ * of paying the full token cost of every learned rule on every extraction,
+ * inject the rules whose birth hormonal context is nearest the organism's
+ * current state, with the COUNT modulated by the same cortisol-narrows /
+ * dopamine-widens law the structural gate uses (stressed → fewer focused rules;
+ * aroused → wider activation). Rules with no birth context are unconditional and
+ * always included. HORMA's skill prompt grows monotonically and fires
+ * unconditionally — this does not.
+ */
+export function selectRulesForState(
+  db: DatabaseSync,
+  hormones?: HormonalBias,
+  opts?: { maxRules?: number; minRules?: number; poolLimit?: number },
+): string[] {
+  const rules = loadActiveRules(db, opts?.poolLimit ?? 50);
+  if (rules.length === 0) {
+    return [];
+  }
+  const maxRules = opts?.maxRules ?? 12;
+  const minRules = opts?.minRules ?? 2;
+  if (!hormones) {
+    return rules.map((r) => r.ruleText).slice(0, maxRules);
+  }
+
+  // width in [0,1]: 0.5 baseline, cortisol narrows, dopamine widens.
+  const width = clamp01(0.5 - 0.4 * clamp01(hormones.cortisol) + 0.4 * clamp01(hormones.dopamine));
+  const k = Math.max(
+    minRules,
+    Math.min(maxRules, Math.round(minRules + width * (maxRules - minRules))),
+  );
+
+  const unconditional = rules.filter((r) => r.birthDopamine == null);
+  const conditional = rules
+    .filter((r) => r.birthDopamine != null)
+    .map((r) => ({ r, dist: hormoneDistance(r, hormones) }))
+    .toSorted((a, b) => a.dist - b.dist);
+
+  const picked = unconditional.map((r) => r.ruleText);
+  for (const { r } of conditional) {
+    if (picked.length >= k) {
+      break;
+    }
+    picked.push(r.ruleText);
+  }
+  return picked;
+}
+
 export function insertRule(
   db: DatabaseSync,
   rule: RuleCandidate & {

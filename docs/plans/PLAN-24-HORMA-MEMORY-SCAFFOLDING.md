@@ -165,6 +165,8 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 
 **Flag:** folds into `memory.architectEvolution.enabled`.
 
+**Status — landed 2026-06-13.** `selectRulesForState` (`memory-architect.ts`): rules carry the hormonal centroid they were promoted under (the `birth_*` columns), and the manager injects the state-nearest rules with the count modulated by the inline cortisol-narrows/dopamine-widens width (mirrors `effectiveDelta`). Unconditional rules (no birth context) always included. Wired into `runSessionExtraction` (replaces the unconditional `activeRuleTexts`). 3 tests (no-state cap, cortisol<dopamine count, distance ranking). GCCRF centroid deferred (hormone-only 3-D for now, as the verifier noted).
+
 ---
 
 ## Phase 5 — Graph abstraction nodes + coarse-to-fine traversal (parallel track)

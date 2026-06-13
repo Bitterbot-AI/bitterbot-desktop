@@ -64,7 +64,7 @@ import { memoryManagerSyncOps } from "./manager-sync-ops.js";
 import { MarketplaceEconomics } from "./marketplace-economics.js";
 import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
 import { MemStore } from "./mem-store.js";
-import { activeRuleTexts, runArchitectCycle } from "./memory-architect.js";
+import { runArchitectCycle, selectRulesForState } from "./memory-architect.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
@@ -2526,10 +2526,12 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
 
-    // PLAN-24 HORMA Phase 3: inject the evolving memory-architect rule library
-    // into every extraction unless explicitly disabled.
+    // PLAN-24 HORMA Phase 3/4: inject the evolving memory-architect rule library
+    // into every extraction unless explicitly disabled. Phase 4: rule selection
+    // is conditioned on the current hormonal state (state-nearest rules, count
+    // modulated by cortisol/dopamine) rather than dumping every rule.
     const architectEnabled = this.cfg.memory?.architectEvolution?.enabled !== false;
-    const learnedRules = architectEnabled ? activeRuleTexts(this.db) : [];
+    const learnedRules = architectEnabled ? selectRulesForState(this.db, hormonalBias) : [];
 
     let extractedCount = 0;
 
