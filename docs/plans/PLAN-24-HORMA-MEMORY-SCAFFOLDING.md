@@ -140,7 +140,9 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 
 **Tests:** a synthetic D_exo cluster ("entity identity paraphrased away") yields a rule that, re-applied, raises held-out recall and passes the CI gate; a rule that regresses held-out recall is rejected and archived.
 
-**Flag:** `memory.architectEvolution.enabled` (default false until P2 passes).
+**Flag:** `memory.architectEvolution.enabled` (default true; the validation gate is the safety mechanism).
+
+**Status — landed 2026-06-13.** Implemented as a DB rule store (`construction_rules`, migration v18) rather than a SICA `SKILL.md` (the verifier flagged the SICA regression gate is a no-op for a never-executed-as-skill rule; a table is cleaner and carries the Phase 4 birth-hormone columns). `src/memory/memory-architect.ts`: harvest `construction_feedback` → LLM propose (textual gradient) → `validateCandidates` (re-extract held-out sessions old-vs-new, paired-bootstrap on faithful-cited-fact delta, promote only if not significantly worse) → inject `activeRuleTexts` into `buildExtractionPrompt`. Wired into the dream cycle (`maybeRunArchitectCycle`, 6h cooldown, ≥5 feedback gate) before extraction; rule injection active by default. 16 new tests (memory-architect + v18). The win-proof on gold labels (Phase 2's `bootstrapPairedCI`) remains the offline path; the online gate is a no-regression guardrail.
 
 ---
 

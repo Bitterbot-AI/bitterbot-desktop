@@ -124,6 +124,21 @@ HORMA's insight is that construction and retrieval improve on different timescal
 
 ---
 
+## Memory That Learns How to Remember — The Self-Evolving Architect
+
+The prompt that decides which facts to extract from a conversation is not fixed. It carries a small, growing library of **learned construction rules** — natural-language instructions like _"always record exact dates and pre-compute relative ordering between events"_ — and those rules evolve from the agent's own failures.
+
+The loop, run during dream cycles:
+
+1. **Harvest.** Collect the `construction_feedback` the blame router flagged — the cases where the answer was in the raw conversation but the constructed memory lost it.
+2. **Propose.** An LLM reads those failures and the current rule set and proposes new rules that would have prevented them. This is "textual gradient descent": instead of nudging numeric weights, the gradient is a sentence.
+3. **Validate.** A candidate rule is not trusted on faith. The system re-extracts a sample of held-out sessions with and without it, and a paired bootstrap checks that the rule does not _lose_ faithful, cited facts. Only rules that clear the bar are promoted.
+4. **Apply.** Promoted rules are injected into the extraction prompt, so the next dream cycle constructs memory a little better than the last.
+
+The validation gate is the piece the source method (HORMA) leaves out: a rule that looks plausible but degrades extraction is caught and dropped before it can do harm. Rules are versioned, and a regressed rule can be retired by hand. The loop is on by default (`memory.architectEvolution.enabled`); rule injection is a no-op until the first rule is learned, so there is no cost until the agent has actually failed at something and learned from it.
+
+---
+
 ## The Knowledge Graph — Knowing Who's Who
 
 Embeddings are good at similarity ("this text is close to that text") but bad at structure ("who works on what?" or "what depends on what?"). The knowledge graph fills this gap.

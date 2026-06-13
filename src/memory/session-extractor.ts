@@ -99,10 +99,25 @@ function numberTranscriptLines(sessionContent: string): string {
     .join("\n");
 }
 
-function buildExtractionPrompt(
+/**
+ * PLAN-24 HORMA Phase 3: render the evolving "Learned Construction Rules" block.
+ * These are natural-language rules the memory-architect loop has promoted from
+ * contrastive construction failures (e.g. "preserve exact dates and relative
+ * ordering"). Empty when no rules have been learned yet.
+ */
+function buildLearnedRules(learnedRules?: string[]): string {
+  if (!learnedRules || learnedRules.length === 0) {
+    return "";
+  }
+  const body = learnedRules.map((r) => `- ${r}`).join("\n");
+  return `\n## Learned Construction Rules\nThese rules were learned from past extraction failures. Follow them carefully:\n${body}\n`;
+}
+
+export function buildExtractionPrompt(
   sessionContent: string,
   maxFacts: number,
   hormones?: HormonalBias,
+  learnedRules?: string[],
 ): string {
   const numbered = numberTranscriptLines(sessionContent);
   return `You are a memory extraction system. Analyze the following conversation transcript and extract structured facts.
@@ -145,7 +160,7 @@ Respond with ONLY a JSON object (no markdown fences):
 - Prefer fewer high-quality facts over many low-quality ones.
 - The handover brief should let a new session pick up exactly where this one left off.
 - The entities list should capture specific files, functions, variables, config keys, and services the user was working with — concrete referents that allow resolving references like "that file" or "the second parameter" in the next session. Focus on the 5-10 most recently touched entities.
-
+${buildLearnedRules(learnedRules)}
 ## Conversation Transcript
 ${numbered}`;
 }
@@ -278,10 +293,11 @@ export async function extractSessionFacts(
   llmCall: (prompt: string) => Promise<string>,
   maxFacts = 20,
   hormones?: HormonalBias,
+  learnedRules?: string[],
 ): Promise<ExtractionResult | null> {
   const start = Date.now();
 
-  const prompt = buildExtractionPrompt(sessionContent, maxFacts, hormones);
+  const prompt = buildExtractionPrompt(sessionContent, maxFacts, hormones, learnedRules);
 
   let response: string;
   try {

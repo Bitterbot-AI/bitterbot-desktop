@@ -64,6 +64,7 @@ import { memoryManagerSyncOps } from "./manager-sync-ops.js";
 import { MarketplaceEconomics } from "./marketplace-economics.js";
 import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
 import { MemStore } from "./mem-store.js";
+import { activeRuleTexts, runArchitectCycle } from "./memory-architect.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
@@ -2358,6 +2359,17 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
     }
 
+    // PLAN-24 HORMA Phase 3: evolve the memory-architect rule library from
+    // accumulated construction_feedback BEFORE extraction, so freshly-promoted
+    // rules apply to this cycle. Gated + validated; runs off the critical path.
+    if (stats) {
+      try {
+        await this.maybeRunArchitectCycle();
+      } catch (err) {
+        log.debug(`memory-architect cycle failed: ${String(err)}`);
+      }
+    }
+
     // Session fact extraction: extract structured facts + handover briefs from sessions.
     // Runs before working memory rewrite so fresh directive facts flow into user_preferences
     // and are available for The Bond synthesis.
@@ -2423,6 +2435,64 @@ export class MemoryIndexManager implements MemorySearchManager {
     return stats;
   }
 
+  /** PLAN-24 HORMA Phase 3: last memory-architect cycle timestamp (cooldown). */
+  private lastArchitectRunAt = 0;
+
+  /**
+   * PLAN-24 HORMA Phase 3: evolve the construction-rule library from accumulated
+   * construction_feedback. Gated (flag default on, 6h cooldown, LLM available)
+   * and validated (a candidate rule only lands if it does not regress faithful
+   * extraction on held-out sessions). Off the critical path.
+   */
+  private async maybeRunArchitectCycle(): Promise<void> {
+    if (this.cfg.memory?.architectEvolution?.enabled === false) {
+      return;
+    }
+    const llmCall = this.dreamLlmCall;
+    if (!llmCall) {
+      return;
+    }
+    const now = Date.now();
+    const cooldownMs = 6 * 60 * 60 * 1000;
+    if (now - this.lastArchitectRunAt < cooldownMs) {
+      return;
+    }
+
+    const files = (await listSessionFilesForAgent(this.agentId)).slice(-3);
+    const { buildSessionEntry } = await import("./session-files.js");
+    const heldOut: Array<{ id: string; content: string }> = [];
+    for (const f of files) {
+      const entry = await buildSessionEntry(f);
+      if (entry && entry.content.length >= 200) {
+        heldOut.push({ id: f, content: entry.content });
+      }
+    }
+    if (heldOut.length === 0) {
+      return;
+    }
+
+    const hormones = this.hormonalManager?.getState();
+    const hormonalBias = hormones
+      ? { dopamine: hormones.dopamine, cortisol: hormones.cortisol, oxytocin: hormones.oxytocin }
+      : undefined;
+
+    const sinceTs = this.lastArchitectRunAt;
+    this.lastArchitectRunAt = now;
+    const result = await runArchitectCycle({
+      db: this.db,
+      llmCall,
+      heldOut,
+      hormones: hormonalBias,
+      sinceTs,
+    });
+    if (result.promoted > 0) {
+      log.info("memory-architect promoted construction rules", {
+        promoted: result.promoted,
+        harvested: result.harvested,
+      });
+    }
+  }
+
   /**
    * Run LLM-powered session fact extraction during dream cycle.
    * Extracts structured facts (epistemic layers) and handover briefs from
@@ -2456,6 +2526,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
 
+    // PLAN-24 HORMA Phase 3: inject the evolving memory-architect rule library
+    // into every extraction unless explicitly disabled.
+    const architectEnabled = this.cfg.memory?.architectEvolution?.enabled !== false;
+    const learnedRules = architectEnabled ? activeRuleTexts(this.db) : [];
+
     let extractedCount = 0;
 
     for (const absPath of sessionFiles) {
@@ -2484,6 +2559,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           llmCall,
           maxFacts,
           hormonalBias,
+          learnedRules,
         );
         if (!result) {
           continue;

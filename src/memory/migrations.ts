@@ -715,6 +715,36 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "chunks", "evidence_refs", "TEXT");
     },
   },
+  {
+    version: 18,
+    description:
+      "PLAN-24 HORMA Phase 3: construction_rules — the evolving memory-architect " +
+      "rule library. Natural-language rules promoted from contrastive construction " +
+      "failures and injected into the extraction prompt. Birth-hormone columns " +
+      "support Phase 4 state-conditional activation.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS construction_rules (
+          id             TEXT PRIMARY KEY,
+          rule_text      TEXT NOT NULL,
+          category       TEXT,
+          status         TEXT NOT NULL DEFAULT 'active',
+          source         TEXT NOT NULL DEFAULT 'textgrad',
+          version        INTEGER NOT NULL DEFAULT 1,
+          ci95_low       REAL,
+          birth_dopamine REAL,
+          birth_cortisol REAL,
+          birth_oxytocin REAL,
+          created_at     INTEGER NOT NULL,
+          updated_at     INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_construction_rules_status ` +
+          `ON construction_rules(status)`,
+      );
+    },
+  },
 ];
 
 /**

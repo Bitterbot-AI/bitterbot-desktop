@@ -57,6 +57,15 @@ export type MemoryConfig = {
      */
     enabled?: boolean;
   };
+  /** PLAN-24 HORMA Phase 3: self-evolving memory-architect rule library. */
+  architectEvolution?: {
+    /**
+     * Inject learned construction rules into the extraction prompt and evolve
+     * them during dreams from construction_feedback (under a validation gate).
+     * Default true; rule injection is a no-op until rules are learned.
+     */
+    enabled?: boolean;
+  };
   /** PLAN-24 HORMA Phase 1: deterministic construction-vs-retrieval blame router on recall miss. */
   coverageDiagnostics?: {
     /**
