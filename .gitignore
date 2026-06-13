@@ -232,4 +232,4 @@ benchmarks/arc-agi-3/results/
 
 # PLAN-24 Phase 2 contrastive run scratch + timestamped artifacts
 benchmarks/longmemeval/.work-contrastive/
-benchmarks/longmemeval/results/contrastive_*T*Z.*
+benchmarks/longmemeval/results/contrastive_*
