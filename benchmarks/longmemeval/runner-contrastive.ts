@@ -45,6 +45,7 @@ const { values: args } = parseArgs({
   options: {
     oracle: { type: "boolean", default: false },
     limit: { type: "string", default: "10" },
+    stratify: { type: "string", default: "0" },
     split: { type: "string", default: "train" },
     model: { type: "string", default: "anthropic/claude-opus-4-7" },
     "max-results": { type: "string", default: "15" },
@@ -139,7 +140,22 @@ async function run(): Promise<void> {
 
   const split = loadDatasetSplit(dataFile);
   const pool = selectSplit(split, splitName);
-  const items = limit ? pool.slice(0, limit) : pool;
+  const stratify = parseInt(args.stratify!, 10) || 0;
+  let items: LongMemEvalItem[];
+  if (stratify > 0) {
+    // Take the first N of each question_type for a type-balanced sample.
+    const buckets = new Map<string, LongMemEvalItem[]>();
+    for (const it of pool) {
+      const b =
+        buckets.get(it.question_type) ?? buckets.set(it.question_type, []).get(it.question_type)!;
+      if (b.length < stratify) {
+        b.push(it);
+      }
+    }
+    items = [...buckets.values()].flat();
+  } else {
+    items = limit ? pool.slice(0, limit) : pool;
+  }
 
   console.log("🔬 LongMemEval CONTRASTIVE (H vs H') — PLAN-24 Phase 2");
   console.log(`   Data: ${dataFile} | split=${splitName} | items=${items.length}`);
