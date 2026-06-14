@@ -31,22 +31,17 @@ const log = createSubsystemLogger("x402-verify");
 /**
  * Atomically claim a tx_hash for single-use enforcement.
  *
- * Creates the ledger table on first use, then attempts an INSERT. Returns true
- * if this call won the claim (row inserted), false if the tx_hash was already
- * consumed (UNIQUE constraint violation). This is the race-free authority for
- * single-use: even under N concurrent verifications of the same token, the DB's
- * UNIQUE constraint guarantees exactly one INSERT succeeds.
+ * Attempts an INSERT into the `x402_consumed_tx` ledger. Returns true if this
+ * call won the claim (row inserted), false if the tx_hash was already consumed
+ * (UNIQUE constraint violation). This is the race-free authority for single-use:
+ * even under N concurrent verifications of the same token, the DB's UNIQUE
+ * constraint guarantees exactly one INSERT succeeds.
+ *
+ * The table is provisioned by `MarketplaceEconomics.ensureSchema()` (the
+ * marketplace DB's schema setup), not lazily here, so the single-use ledger is
+ * schema-managed like the rest of the store. Callers pass that same DB handle.
  */
-function claimTxHashAtomically(
-  db: import("node:sqlite").DatabaseSync,
-  txHash: string,
-): boolean {
-  db.exec(
-    `CREATE TABLE IF NOT EXISTS x402_consumed_tx (
-       tx_hash TEXT PRIMARY KEY,
-       consumed_at INTEGER NOT NULL
-     )`,
-  );
+function claimTxHashAtomically(db: import("node:sqlite").DatabaseSync, txHash: string): boolean {
   try {
     db.prepare(`INSERT INTO x402_consumed_tx (tx_hash, consumed_at) VALUES (?, ?)`).run(
       txHash,

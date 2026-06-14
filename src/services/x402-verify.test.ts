@@ -309,9 +309,10 @@ describe("verifyX402Payment", () => {
         consumed_at INTEGER NOT NULL
       )
     `);
-    db.prepare(
-      "INSERT INTO x402_consumed_tx (tx_hash, consumed_at) VALUES (?, ?)",
-    ).run("0xreplay", Date.now());
+    db.prepare("INSERT INTO x402_consumed_tx (tx_hash, consumed_at) VALUES (?, ?)").run(
+      "0xreplay",
+      Date.now(),
+    );
     const r = await verifyX402Payment({
       paymentToken: encodeToken({
         txHash: "0xreplay",
@@ -362,7 +363,11 @@ describe("verifyX402Payment", () => {
   it("atomically consumes tx_hash on success — second verify is rejected (F2: TOCTOU)", async () => {
     setReceipt("0xonce");
     const db = new DatabaseSync(":memory:");
-    // No table pre-created: verify creates x402_consumed_tx on first use.
+    // The ledger table is provisioned by MarketplaceEconomics.ensureSchema() in
+    // production; create it here to mirror that schema for the test.
+    db.exec(
+      `CREATE TABLE x402_consumed_tx (tx_hash TEXT PRIMARY KEY, consumed_at INTEGER NOT NULL)`,
+    );
     const token = encodeToken({
       txHash: "0xonce",
       amount: 0.05,
@@ -393,7 +398,9 @@ describe("verifyX402Payment", () => {
   it("only one of N concurrent verifies of the same token wins (F2: atomic claim)", async () => {
     setReceipt("0xrace");
     const db = new DatabaseSync(":memory:");
-    db.exec(`CREATE TABLE x402_consumed_tx (tx_hash TEXT PRIMARY KEY, consumed_at INTEGER NOT NULL)`);
+    db.exec(
+      `CREATE TABLE x402_consumed_tx (tx_hash TEXT PRIMARY KEY, consumed_at INTEGER NOT NULL)`,
+    );
     const token = encodeToken({
       txHash: "0xrace",
       amount: 0.05,

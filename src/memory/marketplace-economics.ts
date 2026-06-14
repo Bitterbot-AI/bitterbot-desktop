@@ -139,6 +139,18 @@ export class MarketplaceEconomics {
         processed_at INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_rpq_status ON revenue_payment_queue(status);
+
+      -- PR #58 / PLAN-8: single-use ledger for x402 payment verification. The
+      -- verify path (services/x402-verify.ts) atomically claims a tx_hash here on
+      -- success; the UNIQUE primary key is the race-free authority that prevents a
+      -- single on-chain payment from being redeemed more than once. Provisioned
+      -- here (not lazily in the verify hot path) so it is schema-managed like the
+      -- rest of the marketplace store.
+      CREATE TABLE IF NOT EXISTS x402_consumed_tx (
+        tx_hash TEXT PRIMARY KEY,
+        consumed_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_x402_consumed_at ON x402_consumed_tx(consumed_at);
     `);
   }
 
