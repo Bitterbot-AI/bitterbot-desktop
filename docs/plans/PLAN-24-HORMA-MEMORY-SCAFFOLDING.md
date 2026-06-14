@@ -121,7 +121,11 @@ Migration numbering (current schema = v16): **v17** = P0 `evidence_refs`; **v18*
 
 **Flag / deliverable:** a `results/horma-comparison-*.json` + a short results note for the preprint.
 
-**Status — first probe landed 2026-06-13** (`benchmarks/longmemeval/runner-contrastive.ts`, `contrastive-partition.ts`; results note `docs/reviews/horma-phase2-contrastive-2026-06-13.md`). N=12 oracle/train (temporal-reasoning): **token efficiency 30.9% of baseline** (H' 2.6k vs H 8.4k tokens) replicates HORMA's headline; D_exo=2 / D_end=1 with 2 `construction_feedback` records emitted (the Phase 3 seed corpus — both are real construction losses: a dropped date and a failed cross-session aggregation). Accuracy on this small temporal-only slice is near-parity (H' 83.3% vs H 91.7%), so the accuracy-win half of the gate is **inconclusive pending a larger type-stratified run on the full `_s` dataset**. Infrastructure proven; Phase 3 unblocked.
+**Status — GATE PASSED 2026-06-14** (`benchmarks/longmemeval/runner-contrastive.ts`, `contrastive-partition.ts`).
+
+- First probe (N=12 oracle/train, temporal-only; note `docs/reviews/horma-phase2-contrastive-2026-06-13.md`): token efficiency 30.9% of baseline replicated, but accuracy near-parity on the short oracle haystacks left the accuracy-win half **inconclusive**.
+- **Stratified `_s` run (N=18 train, 3 per type, all 6 types; H budget 50k tokens; note `docs/reviews/horma-phase2-s-stratified-2026-06-14.md`): H' 72.2% vs H 27.8% (a 44-point win) at 5.1% of the tokens (~20x).** Ledger D_end 9 / D_exo 1 — near-zero net construction losses. H' wins or ties every type except temporal-reasoning (0/3, the honest weak spot and the lone D_exo, now a Phase 3 feedback signal). On the long-haystack lost-in-the-middle regime the full HORMA thesis reproduces.
+- **Gate: PASS on this sample.** Not yet a publication number (train split, 50k-budget H, small per-type N) — next milestone is a held-out test-split run with baselines (Mem0, embedding retrieval) + work on the temporal weak spot.
 
 ---
 
