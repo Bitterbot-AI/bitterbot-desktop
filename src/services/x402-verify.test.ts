@@ -304,15 +304,14 @@ describe("verifyX402Payment", () => {
     setReceipt("0xreplay");
     const db = new DatabaseSync(":memory:");
     db.exec(`
-      CREATE TABLE marketplace_purchases (
+      CREATE TABLE x402_consumed_tx (
         tx_hash TEXT PRIMARY KEY,
-        amount_usdc REAL,
-        purchased_at INTEGER
+        consumed_at INTEGER NOT NULL
       )
     `);
     db.prepare(
-      "INSERT INTO marketplace_purchases (tx_hash, amount_usdc, purchased_at) VALUES (?, ?, ?)",
-    ).run("0xreplay", 0.05, Date.now());
+      "INSERT INTO x402_consumed_tx (tx_hash, consumed_at) VALUES (?, ?)",
+    ).run("0xreplay", Date.now());
     const r = await verifyX402Payment({
       paymentToken: encodeToken({
         txHash: "0xreplay",
@@ -327,5 +326,91 @@ describe("verifyX402Payment", () => {
     });
     expect(r.valid).toBe(false);
     expect(r.error).toMatch(/already consumed/);
+  });
+
+  it("requires a timestamp — token omitting it is rejected (F1: expiry bypass)", async () => {
+    setReceipt("0xnots");
+    const r = await verifyX402Payment({
+      // No `timestamp` field at all. Pre-fix this skipped the expiry check and
+      // an unsigned token was accepted, allowing replay of an old transfer.
+      paymentToken: encodeToken({ txHash: "0xnots", amount: 0.05, sender }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/missing required timestamp/i);
+  });
+
+  it("rejects a token timestamped in the future (F1: pre-dating)", async () => {
+    setReceipt("0xfuture");
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({
+        txHash: "0xfuture",
+        amount: 0.05,
+        sender,
+        timestamp: Date.now() + 10 * 60 * 1000,
+      }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/future/i);
+  });
+
+  it("atomically consumes tx_hash on success — second verify is rejected (F2: TOCTOU)", async () => {
+    setReceipt("0xonce");
+    const db = new DatabaseSync(":memory:");
+    // No table pre-created: verify creates x402_consumed_tx on first use.
+    const token = encodeToken({
+      txHash: "0xonce",
+      amount: 0.05,
+      sender,
+      timestamp: Date.now(),
+    });
+    const first = await verifyX402Payment({
+      paymentToken: token,
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+      db,
+    });
+    const second = await verifyX402Payment({
+      paymentToken: token,
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+      db,
+    });
+    expect(first.valid).toBe(true);
+    expect(second.valid).toBe(false);
+    expect(second.error).toMatch(/already consumed/);
+    const rows = db.prepare("SELECT COUNT(*) c FROM x402_consumed_tx").get() as { c: number };
+    expect(rows.c).toBe(1);
+  });
+
+  it("only one of N concurrent verifies of the same token wins (F2: atomic claim)", async () => {
+    setReceipt("0xrace");
+    const db = new DatabaseSync(":memory:");
+    db.exec(`CREATE TABLE x402_consumed_tx (tx_hash TEXT PRIMARY KEY, consumed_at INTEGER NOT NULL)`);
+    const token = encodeToken({
+      txHash: "0xrace",
+      amount: 0.05,
+      sender,
+      timestamp: Date.now(),
+    });
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        verifyX402Payment({
+          paymentToken: token,
+          expectedRecipient: recipient,
+          minimumAmount: 0.01,
+          network: "base",
+          db,
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.valid).length).toBe(1);
   });
 });
