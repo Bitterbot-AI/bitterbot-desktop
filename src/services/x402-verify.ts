@@ -28,6 +28,40 @@ import { canonicalizePaymentPayload } from "./a2a-client.js";
 
 const log = createSubsystemLogger("x402-verify");
 
+/**
+ * Atomically claim a tx_hash for single-use enforcement.
+ *
+ * Creates the ledger table on first use, then attempts an INSERT. Returns true
+ * if this call won the claim (row inserted), false if the tx_hash was already
+ * consumed (UNIQUE constraint violation). This is the race-free authority for
+ * single-use: even under N concurrent verifications of the same token, the DB's
+ * UNIQUE constraint guarantees exactly one INSERT succeeds.
+ */
+function claimTxHashAtomically(
+  db: import("node:sqlite").DatabaseSync,
+  txHash: string,
+): boolean {
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS x402_consumed_tx (
+       tx_hash TEXT PRIMARY KEY,
+       consumed_at INTEGER NOT NULL
+     )`,
+  );
+  try {
+    db.prepare(`INSERT INTO x402_consumed_tx (tx_hash, consumed_at) VALUES (?, ?)`).run(
+      txHash,
+      Date.now(),
+    );
+    return true;
+  } catch (err) {
+    // UNIQUE/PRIMARY KEY violation => another request already consumed this tx.
+    if (err instanceof Error && /UNIQUE|constraint/i.test(err.message)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
 // Canonical USDC contract addresses on Base. Pinning these here lets us reject
 // Transfer events emitted by attacker-deployed fake tokens — without this, a
 // recipient-matching Transfer from any contract would pass verification.
@@ -89,9 +123,20 @@ export async function verifyX402Payment(params: {
       return { valid: false, error: `Amount ${amount} below minimum ${params.minimumAmount}` };
     }
 
-    // Replay protection: transaction must be within 5 minutes
-    if (decoded.timestamp && Date.now() - decoded.timestamp > 5 * 60 * 1000) {
+    // Replay protection: every token MUST carry a timestamp and fall within the
+    // 5-minute window. Previously this was `if (decoded.timestamp && ...)`, so a
+    // token that simply OMITTED `timestamp` skipped the expiry check entirely —
+    // letting an attacker replay an old on-chain transfer indefinitely on the
+    // unsigned path. Require the field unconditionally and fail closed.
+    if (typeof decoded.timestamp !== "number" || !Number.isFinite(decoded.timestamp)) {
+      return { valid: false, error: "Payment token missing required timestamp" };
+    }
+    if (Date.now() - decoded.timestamp > 5 * 60 * 1000) {
       return { valid: false, error: "Payment token expired" };
+    }
+    // Reject tokens dated in the future (clock-skew / pre-dating abuse).
+    if (decoded.timestamp - Date.now() > 60 * 1000) {
+      return { valid: false, error: "Payment token timestamp is in the future" };
     }
 
     // Verify the signed binding when present. The signature proves the buyer's
@@ -135,13 +180,23 @@ export async function verifyX402Payment(params: {
     }
 
     // Single-use enforcement — reject already-consumed payment tokens.
-    // Without this, a valid payment can be replayed thousands of times within the
-    // 5-minute window. (Gemini peer review: replay attack fix)
-    // The UNIQUE index on tx_hash in marketplace_purchases enforces this at the DB level.
+    // This cheap pre-check rejects obvious replays early, but it is NOT the
+    // authority: a SELECT here followed by an INSERT later in the caller is a
+    // check-then-act (TOCTOU) gap that two concurrent requests can both pass.
+    // The authoritative, race-free claim happens after all checks succeed, via
+    // claimTxHashAtomically() below (atomic INSERT into a dedicated ledger).
     if (params.db) {
-      const existing = params.db
-        .prepare(`SELECT 1 FROM marketplace_purchases WHERE tx_hash = ?`)
-        .get(decoded.txHash);
+      // The ledger table may not exist yet on a fresh DB; it is created lazily
+      // by claimTxHashAtomically(). A missing table simply means "nothing
+      // consumed yet", so tolerate it here rather than throwing.
+      let existing: unknown;
+      try {
+        existing = params.db
+          .prepare(`SELECT 1 FROM x402_consumed_tx WHERE tx_hash = ?`)
+          .get(decoded.txHash.toLowerCase());
+      } catch {
+        existing = undefined;
+      }
       if (existing) {
         return { valid: false, error: "Payment token already consumed" };
       }
@@ -210,6 +265,21 @@ export async function verifyX402Payment(params: {
       }
     } catch (err) {
       return { valid: false, error: `On-chain verification failed: ${String(err)}` };
+    }
+
+    // Authoritative single-use claim. All verification has passed; now atomically
+    // record the tx_hash so that no other concurrent request can also succeed.
+    // This closes the TOCTOU window left by the SELECT-only pre-check above: the
+    // UNIQUE constraint on x402_consumed_tx means exactly one of N concurrent
+    // verifications of the same token wins the INSERT; the rest fail and are
+    // reported as already consumed. The dedicated ledger is used (rather than
+    // marketplace_purchases) because verify does not yet know the skill/buyer/
+    // amount columns that table requires NOT NULL at purchase-record time.
+    if (params.db) {
+      const claimed = claimTxHashAtomically(params.db, decoded.txHash.toLowerCase());
+      if (!claimed) {
+        return { valid: false, error: "Payment token already consumed" };
+      }
     }
 
     return {

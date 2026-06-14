@@ -86,7 +86,11 @@ export async function verifyA2aPayment(
       return { paid: false };
     }
 
-    const network = config.tools?.wallet?.network ?? "base-sepolia";
+    // Default the verification network to mainnet. Defaulting to a testnet here
+    // is fail-open: if payments are enabled but tools.wallet.network is unset,
+    // the paywall could be satisfied with valueless base-sepolia USDC. Fail
+    // closed onto mainnet so a missing config never downgrades to testnet money.
+    const network = config.tools?.wallet?.network ?? "base";
 
     const verification = await verifyX402Payment({
       paymentToken: paymentToken ?? paymentHeader!,
