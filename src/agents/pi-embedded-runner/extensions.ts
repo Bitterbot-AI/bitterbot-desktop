@@ -11,7 +11,7 @@ import { computeEffectiveSettings } from "../pi-extensions/context-pruning/setti
 import { makeToolPrunablePredicate } from "../pi-extensions/context-pruning/tools.js";
 import { ensurePiCompactionReserveTokens } from "../pi-settings.js";
 import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "./cache-ttl.js";
-import { resolveHarnessPolicy } from "./harness-policy.js";
+import { loadActiveHarnessPolicy } from "./harness-policy-store.js";
 
 function resolvePiExtensionPath(id: string): string {
   const self = fileURLToPath(import.meta.url);
@@ -76,9 +76,10 @@ export function buildEmbeddedExtensionPaths(params: {
   model: Model<Api> | undefined;
 }): string[] {
   const paths: string[] = [];
-  // PLAN-25 Phase 0: compaction is read through the HarnessPolicy, not the raw
-  // config tree, so an evolved policy can override it without touching this site.
-  const harnessPolicy = resolveHarnessPolicy(params.cfg);
+  // PLAN-25: compaction is read through the ACTIVE HarnessPolicy (config baseline
+  // overlaid with the latest promoted evolution), so an evolved policy takes
+  // effect here without touching this site. Behavior-neutral until one is promoted.
+  const harnessPolicy = loadActiveHarnessPolicy(params.cfg);
   if (harnessPolicy.compaction.mode === "safeguard") {
     const contextWindowInfo = resolveContextWindowInfo({
       cfg: params.cfg,

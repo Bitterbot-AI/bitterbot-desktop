@@ -77,6 +77,8 @@ import {
   sanitizeSessionHistory,
   sanitizeToolsForGoogle,
 } from "../google.js";
+import { loadActiveHarnessPolicy } from "../harness-policy-store.js";
+import { applyToolDescriptionOverrides, renderPromptFragments } from "../harness-policy.js";
 import { getDmHistoryLimitFromSessionKey, limitHistoryTurns } from "../history.js";
 import { log } from "../logger.js";
 import { buildModelAliasLines } from "../model.js";
@@ -332,7 +334,13 @@ export async function runEmbeddedAttempt(
           }),
           capabilityEnforcer,
         });
-    const tools = sanitizeToolsForGoogle({ tools: toolsRaw, provider: params.provider });
+    // PLAN-25: the active harness policy (config baseline + promoted evolution).
+    // Behavior-neutral until a policy is promoted (no overrides, no fragments).
+    const harnessPolicy = loadActiveHarnessPolicy(params.config);
+    const tools = applyToolDescriptionOverrides(
+      sanitizeToolsForGoogle({ tools: toolsRaw, provider: params.provider }),
+      harnessPolicy,
+    );
     logToolSchemasForGoogle({ tools, provider: params.provider });
 
     const machineName = await getMachineDisplayName();
@@ -474,6 +482,12 @@ export async function runEmbeddedAttempt(
       memoryCitationsMode: params.config?.memory?.citations,
       endocrineState,
     });
+    // PLAN-25: append any evolved prompt fragments to the system prompt. Empty
+    // string (and thus byte-identical prompt) until a policy is promoted.
+    const harnessFragments = renderPromptFragments(harnessPolicy);
+    const effectiveAppendPrompt = harnessFragments
+      ? `${appendPrompt}\n\n${harnessFragments}`
+      : appendPrompt;
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
       generatedAt: Date.now(),
@@ -490,13 +504,13 @@ export async function runEmbeddedAttempt(
         });
         return { mode: runtime.mode, sandboxed: runtime.sandboxed };
       })(),
-      systemPrompt: appendPrompt,
+      systemPrompt: effectiveAppendPrompt,
       bootstrapFiles: hookAdjustedBootstrapFiles,
       injectedFiles: contextFiles,
       skillsPrompt,
       tools,
     });
-    const systemPromptOverride = createSystemPromptOverride(appendPrompt);
+    const systemPromptOverride = createSystemPromptOverride(effectiveAppendPrompt);
     const systemPromptText = systemPromptOverride();
 
     const sessionLock = await acquireSessionWriteLock({

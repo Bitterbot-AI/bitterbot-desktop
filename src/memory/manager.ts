@@ -20,6 +20,7 @@ import type {
 } from "./types.js";
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
+import { resolveHarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan } from "../observability/otel.js";
@@ -1936,6 +1937,14 @@ export class MemoryIndexManager implements MemorySearchManager {
     const marketplaceIntelligence = new MarketplaceIntelligence(this.db);
     this.dreamEngine.setMarketplaceIntelligence(marketplaceIntelligence);
     this.marketplaceIntelligence = marketplaceIntelligence;
+
+    // PLAN-25: wire the harness-evolution context. On by default; the kill
+    // switch is agents.defaults.harnessEvolve.enabled. The baseline resolves the
+    // config-derived HarnessPolicy floor that evolved policies overlay.
+    this.dreamEngine.setHarnessEvolveContext({
+      enabled: this.cfg.agents?.defaults?.harnessEvolve?.enabled ?? true,
+      baseline: () => resolveHarnessPolicy(this.cfg),
+    });
 
     // PLAN-10: Skill Seekers adapter is wired via the async .then() callback
     // in ensureSkillNetworkBridge() — no need to wire here (adapter may not exist yet).

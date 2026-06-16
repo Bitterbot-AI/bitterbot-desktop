@@ -162,6 +162,8 @@ export type AgentDefaultsConfig = {
   contextPruning?: AgentContextPruningConfig;
   /** Compaction tuning and pre-compaction memory flush behavior. */
   compaction?: AgentCompactionConfig;
+  /** PLAN-25 self-optimizing harness loop. On by default; set enabled:false to disable. */
+  harnessEvolve?: AgentHarnessEvolveConfig;
   /** Tool result caching (in-memory LRU with TTL). */
   toolCache?: AgentToolCacheConfig;
   /** Progressive context compression (runs before LLM-based compaction). */
@@ -282,6 +284,11 @@ export type AgentDefaultsConfig = {
 };
 
 export type AgentCompactionMode = "default" | "safeguard";
+
+export type AgentHarnessEvolveConfig = {
+  /** Kill switch for the harness_evolve dream mode (PLAN-25). Default: true. */
+  enabled?: boolean;
+};
 
 export type AgentCompactionConfig = {
   /** Compaction summarization mode. */

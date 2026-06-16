@@ -14,6 +14,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { HarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
 import type { HormonalStateManager } from "./hormonal.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -234,6 +235,17 @@ export class DreamEngine {
     getter: () => { dopamine: number; cortisol: number; oxytocin: number } | null,
   ): void {
     this.hormonalStateGetter = getter;
+  }
+
+  // PLAN-25: context for the harness_evolve mode. `baseline` resolves the
+  // config-derived HarnessPolicy floor; `enabled` is the kill switch. Unset =>
+  // the mode is inert (used by tests that don't wire it).
+  private harnessEvolveCtx: { enabled: boolean; baseline: () => HarnessPolicy } | null = null;
+  private harnessEvolveRuns = 0;
+
+  /** Wire the harness-evolution context (PLAN-25). Called by MemoryManager. */
+  setHarnessEvolveContext(ctx: { enabled: boolean; baseline: () => HarnessPolicy }): void {
+    this.harnessEvolveCtx = ctx;
   }
 
   /**
@@ -995,6 +1007,8 @@ export class DreamEngine {
         return this.runInterceptorHarvestMode(cycleId);
       case "relationship_reconsolidation":
         return this.runRelationshipReconsolidationMode(cycleId);
+      case "harness_evolve":
+        return this.runHarnessEvolveMode(cycleId);
       default:
         return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
@@ -1100,6 +1114,45 @@ export class DreamEngine {
       };
     } catch (err) {
       log.warn(`interceptor_harvest mode failed: ${String(err)}`);
+      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    }
+  }
+
+  // ── Mode 10: Harness Evolve (PLAN-25) ──
+  //
+  // Closes the Self-Harness loop on the runner's own harness: mine harness-level
+  // failures → propose minimal HarnessPolicy edits → validate on a held-out trace
+  // set (paired bootstrap, ci95Low>0) → promote one (local only) → periodically
+  // slow-update + auto-rollback regressions. Heavy work lives in
+  // dream-modes/harness-evolve.ts; kept thin here like the other modes.
+  private async runHarnessEvolveMode(
+    cycleId: string,
+  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
+    const ctx = this.harnessEvolveCtx;
+    if (!ctx || !ctx.enabled) return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    const llmCall = this.getLlmCallForMode("harness_evolve");
+    if (!llmCall) return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    try {
+      const mod = await import("./dream-modes/harness-evolve.js");
+      this.harnessEvolveRuns += 1;
+      const result = await mod.runHarnessEvolve({
+        db: this.db,
+        cycleId,
+        baseline: ctx.baseline(),
+        llmCall,
+        nowMs: Date.now(),
+        cycleIndex: this.harnessEvolveRuns,
+        maxCandidates: this.config.modes.harness_evolve?.maxChunks
+          ? Math.min(4, this.config.modes.harness_evolve.maxChunks)
+          : 4,
+      });
+      return {
+        insights: result.insights,
+        llmCalls: result.llmCalls,
+        chunksAnalyzed: result.recordsAnalyzed,
+      };
+    } catch (err) {
+      log.warn(`harness_evolve mode failed: ${String(err)}`);
       return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
   }

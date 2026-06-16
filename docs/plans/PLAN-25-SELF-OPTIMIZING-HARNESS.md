@@ -2,10 +2,28 @@
 
 **Goal:** PLAN-21 made skill _content_ self-optimizing. PLAN-25 makes the _harness itself_ self-optimizing. We extract the runner's hardcoded control surfaces — system-prompt assembly, tool exposure and per-tool specs, the tool-loop control policy, compaction/state-management parameters, and model+reasoning routing — into a single typed, versioned `HarnessPolicy` object that the embedded runner reads at session start. The agent then mines its own execution traces for _harness-level_ failure mechanisms, proposes minimal policy edits to fix them, and validates each edit by replaying a held-out set of real traces through the **existing PLAN-21 validation spine** (`experiment-sandbox` + `skill-execution-selection` held-out set + paired-bootstrap acceptance + faithfulness gate + longitudinal slow update). Accepted edits are promoted atomically with versioned rollback; the autonomous proposer is structurally forbidden from touching safety surfaces. This is the Self-Harness ([arXiv:2606.09498](https://arxiv.org/abs/2606.09498)) contribution — "harness = instructions + tools + memory/state management, not weights" — generalized onto our own runner, with APEX ([arXiv:2606.15363](https://arxiv.org/abs/2606.15363)) L1 (prompt/tool patching) and a _data-parameterized_ slice of L3 (loop topology) in scope.
 
-**Date:** 2026-06-16 (drafted)
-**Status:** Drafted. **Phase 0 slice 1 (compaction surface) LANDED** behavior-neutral: `harness-policy.ts` (type + `defaultHarnessPolicy()` + `resolveHarnessPolicy()`), `extensions.ts` reads compaction through the policy, 5 unit tests green, tsc clean. Remaining Phase 0 slices (prompt fragments, tools, model, loop) land one wired surface per commit; Phases 1-6 land sequentially behind a kill switch; Phase 7 (source-level topology) is a gated stretch.
+**Date:** 2026-06-16 (drafted) / 2026-06-16 (Phases 0-6 LANDED)
+**Status:** **LANDED, on by default.** The full self-evolving loop runs as the `harness_evolve` dream mode and is wired end-to-end. Kill switch: `agents.defaults.harnessEvolve.enabled` (default `true`).
 
-> **Implementation discipline:** the `HarnessPolicy` type grows one surface per commit and each surface is fully consumed by the runner the moment it lands (standing wire+test+document rule). The full type in "The keystone" section below is the _target_; the live type contains only shipped surfaces.
+### What landed (2026-06-16)
+
+| Phase | Component                                                                                                                                           | Module                                                              |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 0     | `HarnessPolicy` (compaction + prompt.fragments + tools.descriptionOverrides) + parse/merge/diff/serialize                                           | `agents/pi-embedded-runner/harness-policy.ts`                       |
+| 0     | Versioned store (live/staging/archive vN, atomic promote, rollback, history) + mtime-cached active loader                                           | `agents/pi-embedded-runner/harness-policy-store.ts`                 |
+| 0     | Runner wiring: compaction + prompt fragments + tool overrides read the active policy at session start (behavior-neutral until a policy is promoted) | `extensions.ts`, `run/attempt.ts`                                   |
+| 1     | Weakness mining: exact-match failure-signature clusters from `intervention_records` + `skill_executions`                                            | `dream-modes/harness-evolve.weakness.ts`                            |
+| 2     | Validation gate: global held-out set + reused `bootstrapPairedCI` (ci95Low>0) + minimality + faithfulness                                           | `dream-modes/harness-evolve.gate.ts`, `harness-evolve.selection.ts` |
+| 3     | Proposer (K minimal candidates) + orchestrator (mine→propose→validate→promote, one per cycle)                                                       | `dream-modes/harness-evolve.propose.ts`, `harness-evolve.ts`        |
+| 4     | Promote/rollback/canary (local only) + kill switch config flag                                                                                      | store + `config/*agent-defaults*`                                   |
+| 5     | Faithfulness (protected fragments) + forbidden-surface exclusion (structural, via whitelist parse)                                                  | gate + `harness-policy.ts`                                          |
+| 6     | Longitudinal slow update + auto-quarantine (rollback regressions)                                                                                   | `dream-modes/harness-evolve.slow-update.ts`                         |
+
+Registered as dream mode `harness_evolve` (`dream-types.ts`, `dream-engine.ts`), wired in `manager.ts`. **40 new unit tests** (incl. end-to-end promote/inert/reject); full touched-area regression 452/452; tsc 0 errors; oxlint/oxfmt clean.
+
+**Safety posture:** the judge is the SAME `ExperimentSandbox` the skill gate uses. Nothing promotes without `ci95Low>0` on held-out traces. Forbidden surfaces (bash allowlist, sandbox mode, safety interceptors, `acceptHighRiskDiff`, P2P) are not fields of `HarnessPolicy`. Promotions are local-only (never gossiped), reversible, and auto-rolled-back if they regress. The loop is **inert until there is enough held-out trace data** (`MIN_PAIRED_FOR_BOOTSTRAP`), so on-by-default is safe on fresh installs.
+
+**Deferred (intentionally out of the autonomous loop):** model/reasoning routing and loop-topology toggles (Phase 0 slices 3+5 in the original sketch) — `params.model` is resolved upstream and loop control lives in pi-coding-agent; these remain config-driven. Compaction stays config-driven (numeric params are ill-suited to LLM-judge validation). Phase 7 (source-level topology rewrite) remains human-gated. The loop evolves the two text surfaces — prompt fragments and tool descriptions — which are the Self-Harness "instructions + tool specs" that the held-out judge can actually validate.
 
 ---
 
