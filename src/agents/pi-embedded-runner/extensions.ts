@@ -11,6 +11,7 @@ import { computeEffectiveSettings } from "../pi-extensions/context-pruning/setti
 import { makeToolPrunablePredicate } from "../pi-extensions/context-pruning/tools.js";
 import { ensurePiCompactionReserveTokens } from "../pi-settings.js";
 import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "./cache-ttl.js";
+import { resolveHarnessPolicy } from "./harness-policy.js";
 
 function resolvePiExtensionPath(id: string): string {
   const self = fileURLToPath(import.meta.url);
@@ -67,10 +68,6 @@ function buildContextPruningExtension(params: {
   };
 }
 
-function resolveCompactionMode(cfg?: BitterbotConfig): "default" | "safeguard" {
-  return cfg?.agents?.defaults?.compaction?.mode === "safeguard" ? "safeguard" : "default";
-}
-
 export function buildEmbeddedExtensionPaths(params: {
   cfg: BitterbotConfig | undefined;
   sessionManager: SessionManager;
@@ -79,8 +76,10 @@ export function buildEmbeddedExtensionPaths(params: {
   model: Model<Api> | undefined;
 }): string[] {
   const paths: string[] = [];
-  if (resolveCompactionMode(params.cfg) === "safeguard") {
-    const compactionCfg = params.cfg?.agents?.defaults?.compaction;
+  // PLAN-25 Phase 0: compaction is read through the HarnessPolicy, not the raw
+  // config tree, so an evolved policy can override it without touching this site.
+  const harnessPolicy = resolveHarnessPolicy(params.cfg);
+  if (harnessPolicy.compaction.mode === "safeguard") {
     const contextWindowInfo = resolveContextWindowInfo({
       cfg: params.cfg,
       provider: params.provider,
@@ -89,7 +88,7 @@ export function buildEmbeddedExtensionPaths(params: {
       defaultTokens: DEFAULT_CONTEXT_TOKENS,
     });
     setCompactionSafeguardRuntime(params.sessionManager, {
-      maxHistoryShare: compactionCfg?.maxHistoryShare,
+      maxHistoryShare: harnessPolicy.compaction.maxHistoryShare,
       contextWindowTokens: contextWindowInfo.tokens,
     });
     paths.push(resolvePiExtensionPath("compaction-safeguard"));
