@@ -5,7 +5,7 @@
 **Date:** 2026-06-16 (drafted) / 2026-06-16 (Phases 0-6 LANDED)
 **Status:** **LANDED, on by default.** The full self-evolving loop runs as the `harness_evolve` dream mode and is wired end-to-end. Kill switch: `agents.defaults.harnessEvolve.enabled` (default `true`).
 
-### What landed (2026-06-16)
+## What landed (2026-06-16)
 
 | Phase | Component                                                                                                                                           | Module                                                              |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
