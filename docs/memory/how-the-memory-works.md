@@ -321,6 +321,8 @@ After results are returned:
 - Retrieved chunks are marked as labile for reconsolidation
 - The limbic bridge adjusts hormones based on retrieved content
 
+> **Graceful degradation.** Vector search depends on the native `sqlite-vec` extension (`vec0`). If it cannot load, the system logs `sqlite-vec unavailable: ...` and falls back to FTS5 keyword search only; crystals and their stored embeddings are untouched, so recall keeps working at reduced semantic precision. Two operational notes: (1) the extension is loaded relative to its own package directory, so it is kept **external** in the gateway bundle (`scripts/build-gateway-entry.mjs`) rather than inlined into `dist/entry.js`; a build-time guard fails the build if it is ever bundled. (2) After restoring vector search, run `bitterbot memory index --agent <id> --force` to backfill any crystals that were added while the index was offline.
+
 ---
 
 ## Session Continuity Gate — Knowing When to Remember

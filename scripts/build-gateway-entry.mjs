@@ -99,6 +99,16 @@ const NATIVE_EXTERNALS = [
   // reflink binds a .node file per platform; leave external.
   "@reflink/reflink",
   "@reflink/reflink-*",
+  // sqlite-vec locates its platform extension (vec0.so/.dylib/.dll) RELATIVE
+  // to its own module file: getLoadablePath() resolves
+  // `<dir-of-sqlite-vec>/../sqlite-vec-<os>-<arch>/vec0.<ext>` off import.meta.url.
+  // Bundling it into dist/entry.js makes that base `dist/`, so it hunts for a
+  // nonexistent `<repo>/sqlite-vec-linux-x64/vec0.so` and throws "Loadble
+  // extension ... not found" — silently dropping vector search to the FTS
+  // fallback. Keep the package (and its per-platform binary subpackages)
+  // external so the import resolves to the real node_modules location at runtime.
+  "sqlite-vec",
+  "sqlite-vec-*",
 ];
 
 const LAZY_EXTERNALS = [
@@ -154,6 +164,24 @@ const result = await build({
 
 writeFileSync("dist/entry.meta.json", JSON.stringify(result.metafile, null, 2));
 console.log(`[build-gateway-entry] wrote ${outfile}`);
+
+// Regression guard: sqlite-vec MUST stay external (see NATIVE_EXTERNALS above).
+// If it is ever inlined again, getLoadablePath() resolves the platform binary
+// against dist/ and vector search silently degrades to the FTS fallback. Fail
+// the build loudly here rather than discovering it from a runtime warning.
+const inlinedSqliteVec = Object.keys(result.metafile.inputs).filter((p) =>
+  /(^|[\\/])node_modules[\\/]\.pnpm[\\/][^\\/]*[\\/]node_modules[\\/]sqlite-vec[\\/]|(^|[\\/])node_modules[\\/]sqlite-vec[\\/]/.test(
+    p,
+  ),
+);
+if (inlinedSqliteVec.length > 0) {
+  console.error(
+    `[build-gateway-entry] sqlite-vec was bundled into ${outfile} (${inlinedSqliteVec.join(
+      ", ",
+    )}). It must be external — add it to NATIVE_EXTERNALS.`,
+  );
+  process.exit(1);
+}
 
 // jiti's lazyTransform does `createRequire(import.meta.url)("../dist/babel.cjs")` at
 // runtime — an opaque string require that esbuild can't statically rewrite. esbuild
