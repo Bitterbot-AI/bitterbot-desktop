@@ -601,18 +601,20 @@ export class GCCRFRewardFunction {
     // Try sqlite-vec first
     try {
       const vecBlob = float32ArrayToBlob(new Float32Array(embedding));
+      // Use vec0's native KNN (MATCH ... k) rather than scanning every row with
+      // vec_distance_cosine + ORDER BY + LIMIT. On ~8.7k vectors the scan takes
+      // ~4.4s/query vs ~0.1s for MATCH (~40x), and this runs thousands of times
+      // per dream cycle — the scan form blocked the event loop for tens of
+      // minutes once the embedded set grew. chunks_vec uses vec0's default L2
+      // metric and the embeddings are unit-normalized, so the L2 ranking equals
+      // the cosine ranking and cosine = 1 - L2^2/2 exactly.
       const rows = this.db
-        .prepare(
-          `SELECT id, vec_distance_cosine(embedding, ?) as distance
-           FROM chunks_vec
-           ORDER BY distance ASC
-           LIMIT ?`,
-        )
+        .prepare(`SELECT id, distance FROM chunks_vec WHERE embedding MATCH ? AND k = ?`)
         .all(vecBlob, k) as Array<{ id: string; distance: number }>;
 
       return rows.map((r) => ({
         id: r.id,
-        similarity: 1 - r.distance,
+        similarity: 1 - (r.distance * r.distance) / 2,
       }));
     } catch {
       // Fallback: brute-force over recent active chunks
