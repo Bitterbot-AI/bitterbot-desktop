@@ -995,6 +995,14 @@ class MemoryManagerSyncOps {
         this.cleanupOrphanedSkillChunks();
         this.skillsDirty = false;
       }
+      // Re-embed any crystals inserted with placeholder embeddings (extracted
+      // facts, scratch notes, handover briefs, peer imports). Bounded per cycle
+      // and a no-op when the backlog is clear; never let it break a sync.
+      try {
+        await this.backfillPendingEmbeddings();
+      } catch (err) {
+        log.warn(`memory sync: pending-embedding backfill failed: ${String(err)}`);
+      }
       this.lastSyncedAt = Date.now();
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);

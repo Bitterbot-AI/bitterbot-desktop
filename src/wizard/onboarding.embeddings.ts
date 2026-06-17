@@ -19,8 +19,24 @@
 import type { BitterbotConfig } from "../config/config.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
+import { probeSqliteVec } from "../memory/sqlite-vec.js";
 
 type EmbeddingProvider = "openai" | "gemini" | "voyage";
+
+/**
+ * Probe whether vector search will actually work on this machine and return a
+ * human-readable status line. Configuring an embedding provider is necessary
+ * but not sufficient: vectors still need the native sqlite-vec extension to be
+ * indexed and queried. If it cannot load, recall silently degrades to keyword
+ * search — so we tell the user plainly here rather than letting it pass.
+ */
+async function vectorSearchStatusLine(): Promise<string> {
+  const probe = await probeSqliteVec();
+  return probe.ok
+    ? "Vector search active (sqlite-vec loaded): full semantic + keyword recall."
+    : "Note: sqlite-vec did not load on this platform, so memory search falls back to " +
+        `keyword-only (still works, just less semantic). Reason: ${probe.error ?? "unknown"}`;
+}
 
 const PROVIDERS: Record<
   EmbeddingProvider,
@@ -87,6 +103,7 @@ export async function setupEmbeddingsForOnboarding(params: {
           existing.source === "env" ? `${existing.envVar} env var` : "stored API key"
         }).`,
         "Long-term memory search, session dedup, and dream clustering are good to go.",
+        await vectorSearchStatusLine(),
       ].join("\n"),
       "Memory embeddings",
     );
@@ -189,7 +206,10 @@ export async function setupEmbeddingsForOnboarding(params: {
     );
   } else {
     await prompter.note(
-      `${meta.label} embeddings configured. Long-term memory is live.`,
+      [
+        `${meta.label} embeddings configured. Long-term memory is live.`,
+        await vectorSearchStatusLine(),
+      ].join("\n"),
       "Memory embeddings ready",
     );
   }

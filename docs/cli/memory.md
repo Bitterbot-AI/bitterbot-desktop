@@ -28,6 +28,7 @@ bitterbot memory index --verbose
 bitterbot memory search "release checklist"
 bitterbot memory status --agent main
 bitterbot memory index --agent main --verbose
+bitterbot memory backfill-embeddings --agent main
 ```
 
 ## Options
@@ -43,3 +44,4 @@ Notes:
 - `memory status --deep --index` runs a reindex if the store is dirty.
 - `memory index --verbose` prints per-phase details (provider, model, sources, batch activity).
 - `memory status` includes any extra paths configured via `memorySearch.extraPaths`.
+- `memory backfill-embeddings` embeds and indexes crystals stored with placeholder embeddings (extracted facts, scratch notes, handover briefs) so they become searchable through both vector and keyword channels. The gateway also runs this automatically (bounded) at the end of each sync cycle; the command exists to clear a large backlog on demand. Use `--limit <n>` to cap chunks embedded per batch.

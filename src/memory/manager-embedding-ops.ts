@@ -38,6 +38,9 @@ const EMBEDDING_QUERY_TIMEOUT_REMOTE_MS = 60_000;
 const EMBEDDING_QUERY_TIMEOUT_LOCAL_MS = 5 * 60_000;
 const EMBEDDING_BATCH_TIMEOUT_REMOTE_MS = 2 * 60_000;
 const EMBEDDING_BATCH_TIMEOUT_LOCAL_MS = 10 * 60_000;
+// Max placeholder crystals re-embedded per sync-cycle backfill pass. Bounded so
+// the pass never stalls a sync; the CLI loops it to clear a larger backlog.
+const PENDING_EMBED_DEFAULT_LIMIT = 256;
 
 const vectorToBlob = (embedding: number[]): Buffer =>
   Buffer.from(new Float32Array(embedding).buffer);
@@ -855,6 +858,143 @@ class MemoryManagerEmbeddingOps {
            size=excluded.size`,
       )
       .run(entry.path, options.source, entry.hash, entry.mtimeMs, entry.size);
+  }
+
+  /**
+   * Re-embed crystals that were inserted with placeholder embeddings.
+   *
+   * Directly-inserted crystals — extracted facts (`fact_*`), scratch/notes,
+   * handover briefs, peer imports — are written with `model='pending'` and
+   * `embedding='[]'` on the expectation of a later embedding pass. Nothing ever
+   * re-embedded them, so they were invisible to BOTH vector and FTS search
+   * (reachable only by direct SQL). This pass finds them, embeds in cache-aware
+   * batches, persists the embedding + real model, and indexes them into
+   * chunks_vec and chunks_fts so they become searchable through both channels.
+   *
+   * Bounded by `limit` so it never stalls a sync cycle; the CLI
+   * `memory backfill-embeddings` calls it in a loop to clear a backlog. Chunks
+   * whose embedding call returns empty are left pending for the next pass.
+   * Returns how many were embedded this call and how many remain pending.
+   */
+  async backfillPendingEmbeddings(options?: {
+    limit?: number;
+  }): Promise<{ embedded: number; remaining: number }> {
+    const limit = Math.max(1, options?.limit ?? PENDING_EMBED_DEFAULT_LIMIT);
+    const pendingWhere =
+      `(model = 'pending' OR json_array_length(embedding) = 0)\n` +
+      `        AND text IS NOT NULL AND length(trim(text)) > 0\n` +
+      `        AND (lifecycle_state IS NULL OR lifecycle_state <> 'forgotten')\n` +
+      `        AND (lifecycle IS NULL OR lifecycle <> 'expired')`;
+    const countRemaining = (): number =>
+      (
+        this.db.prepare(`SELECT count(*) c FROM chunks WHERE ${pendingWhere}`).get() as {
+          c: number;
+        }
+      ).c;
+
+    const rows = this.db
+      .prepare(
+        `SELECT id, text, hash, start_line AS startLine, end_line AS endLine, path, source
+           FROM chunks
+          WHERE ${pendingWhere}
+          ORDER BY importance_score DESC, updated_at DESC
+          LIMIT ?`,
+      )
+      .all(limit) as unknown as Array<{
+      id: string;
+      text: string;
+      hash: string;
+      startLine: number | null;
+      endLine: number | null;
+      path: string;
+      source: MemorySource;
+    }>;
+    if (rows.length === 0) {
+      return { embedded: 0, remaining: 0 };
+    }
+
+    const chunks: MemoryChunk[] = enforceEmbeddingMaxInputTokens(
+      this.provider,
+      rows.map((row) => ({
+        startLine: row.startLine ?? 0,
+        endLine: row.endLine ?? 0,
+        text: row.text,
+        hash: row.hash,
+      })),
+    );
+    const embeddings = await this.embedChunksInBatches(chunks);
+    const sample = embeddings.find((embedding) => embedding.length > 0);
+    const vectorReady = sample ? await this.ensureVectorReady(sample.length) : false;
+    const now = Date.now();
+
+    const updateChunk = this.db.prepare(
+      `UPDATE chunks SET embedding = ?, model = ?, updated_at = ? WHERE id = ?`,
+    );
+    // Only prepare statements for tables that actually exist: chunks_vec is
+    // absent when vectors are disabled or sqlite-vec failed to load, and
+    // chunks_fts is absent when FTS is disabled. Preparing against a missing
+    // table throws, so gate the prepares on availability rather than the loop.
+    const vec = vectorReady
+      ? {
+          del: this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`),
+          ins: this.db.prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`),
+        }
+      : null;
+    const ftsReady = this.fts.enabled && this.fts.available;
+    const fts = ftsReady
+      ? {
+          del: this.db.prepare(`DELETE FROM ${FTS_TABLE} WHERE id = ?`),
+          ins: this.db.prepare(
+            `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)\n` +
+              ` VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          ),
+        }
+      : null;
+
+    let embedded = 0;
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = rows[i];
+      const embedding = embeddings[i] ?? [];
+      // Embedding failed for this chunk (provider hiccup); leave it pending so
+      // the next pass retries rather than persisting an empty placeholder.
+      if (!row || embedding.length === 0) {
+        continue;
+      }
+      try {
+        updateChunk.run(JSON.stringify(embedding), this.provider.model, now, row.id);
+        if (vec) {
+          try {
+            vec.del.run(row.id);
+          } catch {}
+          vec.ins.run(row.id, vectorToBlob(embedding));
+        }
+        if (fts) {
+          try {
+            fts.del.run(row.id);
+          } catch {}
+          fts.ins.run(
+            row.text,
+            row.id,
+            row.path,
+            row.source,
+            this.provider.model,
+            row.startLine ?? 0,
+            row.endLine ?? 0,
+          );
+        }
+        embedded += 1;
+      } catch (err) {
+        log.warn(`backfill-embeddings: failed to index ${row.id}: ${String(err)}`);
+      }
+    }
+
+    const remaining = countRemaining();
+    if (embedded > 0) {
+      log.info(
+        `backfill-embeddings: embedded ${embedded} pending crystal(s), ${remaining} remaining`,
+      );
+    }
+    return { embedded, remaining };
   }
 }
 

@@ -4,6 +4,7 @@ import { resolveAgentDir, resolveDefaultAgentId } from "../agents/agent-scope.js
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveApiKeyForProvider } from "../agents/model-auth.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import { probeSqliteVec } from "../memory/sqlite-vec.js";
 import { note } from "../terminal/note.js";
 import { resolveUserPath } from "../utils.js";
 
@@ -21,6 +22,12 @@ export async function noteMemorySearchHealth(cfg: BitterbotConfig): Promise<void
     note("Memory search is explicitly disabled (enabled: false).", "Memory search");
     return;
   }
+
+  // Vector search needs the native sqlite-vec extension on top of a configured
+  // embedding provider. A configured provider with a broken extension still
+  // silently degrades to keyword-only, so surface that here independent of the
+  // provider checks below.
+  await noteVectorSearchHealth();
 
   // If a specific provider is configured (not "auto"), check only that one.
   if (resolved.provider !== "auto") {
@@ -84,6 +91,27 @@ export async function noteMemorySearchHealth(cfg: BitterbotConfig): Promise<void
       `- Add credentials: ${formatCliCommand("bitterbot auth add --provider openai")}`,
       `- For local embeddings: configure agents.defaults.memorySearch.provider and local model path`,
       `- To disable: ${formatCliCommand("bitterbot config set agents.defaults.memorySearch.enabled false")}`,
+      "",
+      `Verify: ${formatCliCommand("bitterbot memory status --deep")}`,
+    ].join("\n"),
+    "Memory search",
+  );
+}
+
+async function noteVectorSearchHealth(): Promise<void> {
+  const probe = await probeSqliteVec();
+  if (probe.ok) {
+    return; // vector search works; doctor only surfaces problems
+  }
+  note(
+    [
+      "Vector search is unavailable: the sqlite-vec extension did not load.",
+      "Memory search will fall back to keyword-only (FTS) — semantic recall is degraded.",
+      `Reason: ${probe.error ?? "unknown"}`,
+      "",
+      "This is a packaging/platform issue, not a config one. sqlite-vec ships as a",
+      "dependency; reinstalling usually resolves it. Unsupported platforms have no",
+      "prebuilt binary and will always fall back to keyword search.",
       "",
       `Verify: ${formatCliCommand("bitterbot memory status --deep")}`,
     ].join("\n"),

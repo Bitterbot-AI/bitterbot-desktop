@@ -657,6 +657,64 @@ export function registerMemoryCli(program: Command) {
     });
 
   memory
+    .command("backfill-embeddings")
+    .description(
+      "Embed + index crystals stored with placeholder embeddings (fact_*, notes, briefs)",
+    )
+    .option("--agent <id>", "Agent id (default: default agent)")
+    .option("--limit <n>", "Max chunks embedded per batch", (value: string) => Number(value))
+    .option("--verbose", "Verbose logging", false)
+    .action(async (opts: MemoryCommandOptions & { limit?: number }) => {
+      setVerbose(Boolean(opts.verbose));
+      const cfg = loadConfig();
+      const agentIds = resolveAgentIds(cfg, opts.agent);
+      for (const agentId of agentIds) {
+        await withManager<MemoryManager>({
+          getManager: () => getMemorySearchManager({ cfg, agentId }),
+          onMissing: (error) => defaultRuntime.log(error ?? "Memory search disabled."),
+          onCloseError: (err) =>
+            defaultRuntime.error(`Memory manager close failed: ${formatErrorMessage(err)}`),
+          close: async (manager) => {
+            await manager.close?.();
+          },
+          run: async (manager) => {
+            const backfill = (
+              manager as {
+                backfillPendingEmbeddings?: (opts?: {
+                  limit?: number;
+                }) => Promise<{ embedded: number; remaining: number }>;
+              }
+            ).backfillPendingEmbeddings;
+            if (typeof backfill !== "function") {
+              defaultRuntime.log("Memory backend does not support embedding backfill.");
+              return;
+            }
+            const limit = opts.limit && opts.limit > 0 ? opts.limit : undefined;
+            let total = 0;
+            try {
+              for (;;) {
+                const { embedded, remaining } = await backfill.call(manager, { limit });
+                total += embedded;
+                if (embedded === 0) {
+                  break;
+                }
+                defaultRuntime.log(`Embedded ${total} crystal(s) so far, ${remaining} remaining…`);
+              }
+              defaultRuntime.log(
+                `Embedding backfill complete (${agentId}): embedded ${total} crystal(s).`,
+              );
+            } catch (err) {
+              defaultRuntime.error(
+                `Embedding backfill failed (${agentId}): ${formatErrorMessage(err)}`,
+              );
+              process.exitCode = 1;
+            }
+          },
+        });
+      }
+    });
+
+  memory
     .command("search")
     .description("Search memory files")
     .argument("<query>", "Search query")

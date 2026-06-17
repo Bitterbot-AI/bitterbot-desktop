@@ -7,9 +7,14 @@ const resolveDefaultAgentId = vi.hoisted(() => vi.fn(() => "agent-default"));
 const resolveAgentDir = vi.hoisted(() => vi.fn(() => "/tmp/agent-default"));
 const resolveMemorySearchConfig = vi.hoisted(() => vi.fn());
 const resolveApiKeyForProvider = vi.hoisted(() => vi.fn());
+const probeSqliteVec = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 
 vi.mock("../terminal/note.js", () => ({
   note,
+}));
+
+vi.mock("../memory/sqlite-vec.js", () => ({
+  probeSqliteVec,
 }));
 
 vi.mock("../agents/agent-scope.js", () => ({
@@ -37,6 +42,8 @@ describe("noteMemorySearchHealth", () => {
     resolveAgentDir.mockClear();
     resolveMemorySearchConfig.mockReset();
     resolveApiKeyForProvider.mockReset();
+    probeSqliteVec.mockReset();
+    probeSqliteVec.mockResolvedValue({ ok: true });
   });
 
   it("does not warn when remote apiKey is configured for explicit provider", async () => {
@@ -85,6 +92,24 @@ describe("noteMemorySearchHealth", () => {
       agentDir: "/tmp/agent-default",
     });
     expect(note).not.toHaveBeenCalled();
+  });
+
+  it("warns when sqlite-vec fails to load, even with a healthy provider", async () => {
+    resolveMemorySearchConfig.mockReturnValue({
+      provider: "openai",
+      local: {},
+      remote: { apiKey: "from-config" },
+    });
+    probeSqliteVec.mockResolvedValue({ ok: false, error: "vec0 not found" });
+
+    await noteMemorySearchHealth(cfg);
+
+    expect(probeSqliteVec).toHaveBeenCalled();
+    expect(note).toHaveBeenCalledTimes(1);
+    const message = note.mock.calls[0][0] as string;
+    expect(message).toContain("sqlite-vec extension did not load");
+    expect(message).toContain("keyword-only");
+    expect(message).toContain("vec0 not found");
   });
 });
 
