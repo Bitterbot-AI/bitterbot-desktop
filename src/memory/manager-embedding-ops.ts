@@ -34,6 +34,10 @@ const EMBEDDING_RETRY_MAX_ATTEMPTS = 3;
 const EMBEDDING_RETRY_BASE_DELAY_MS = 500;
 const EMBEDDING_RETRY_MAX_DELAY_MS = 8000;
 const BATCH_FAILURE_LIMIT = 2;
+// After transient batch failures disable batch embedding, retry it once this
+// cooldown elapses rather than staying on the slower synchronous path for the
+// whole manager lifetime (sessions can run for hours).
+const BATCH_REENABLE_COOLDOWN_MS = 5 * 60_000;
 const EMBEDDING_QUERY_TIMEOUT_REMOTE_MS = 60_000;
 const EMBEDDING_QUERY_TIMEOUT_LOCAL_MS = 5 * 60_000;
 const EMBEDDING_BATCH_TIMEOUT_REMOTE_MS = 2 * 60_000;
@@ -594,7 +598,33 @@ class MemoryManagerEmbeddingOps {
       this.batchFailureCount = 0;
       this.batchFailureLastError = undefined;
       this.batchFailureLastProvider = undefined;
+      this.batchDisabledAt = null;
     });
+  }
+
+  /**
+   * If batch embedding was disabled by transient failures and the cooldown has
+   * elapsed, turn it back on for another attempt. A hard disable (provider lacks
+   * batch support) leaves batchDisabledAt null and is never retried. Idempotent
+   * and cheap, so it is safe to call on the embedding hot path.
+   */
+  private maybeReenableBatchAfterCooldown(): void {
+    if (this.batch.enabled || this.batchDisabledAt === null) {
+      return;
+    }
+    if (Date.now() - this.batchDisabledAt < BATCH_REENABLE_COOLDOWN_MS) {
+      return;
+    }
+    log.info(
+      `memory embeddings: re-enabling batch after ${Math.round(
+        BATCH_REENABLE_COOLDOWN_MS / 60_000,
+      )}m cooldown (was disabled by transient failures)`,
+    );
+    this.batch.enabled = true;
+    this.batchFailureCount = 0;
+    this.batchDisabledAt = null;
+    this.batchFailureLastError = undefined;
+    this.batchFailureLastProvider = undefined;
   }
 
   private async recordBatchFailure(params: {
@@ -616,6 +646,9 @@ class MemoryManagerEmbeddingOps {
       const disabled = params.forceDisable || this.batchFailureCount >= BATCH_FAILURE_LIMIT;
       if (disabled) {
         this.batch.enabled = false;
+        // forceDisable means the provider lacks batch support — never retry it.
+        // Transient failures get a cooldown so batch can recover.
+        this.batchDisabledAt = params.forceDisable ? null : Date.now();
       }
       return { disabled, count: this.batchFailureCount };
     });
@@ -651,6 +684,7 @@ class MemoryManagerEmbeddingOps {
     run: () => Promise<T>;
     fallback: () => Promise<number[][]>;
   }): Promise<T | number[][]> {
+    this.maybeReenableBatchAfterCooldown();
     if (!this.batch.enabled) {
       return await params.fallback();
     }
@@ -697,6 +731,9 @@ class MemoryManagerEmbeddingOps {
     if (options.source === "sessions" && "lineMap" in entry) {
       remapChunkLines(chunks, entry.lineMap);
     }
+    // Gate the batch-vs-fallback choice through the cooldown check so a batch
+    // path disabled by transient failures gets retried once the cooldown passes.
+    this.maybeReenableBatchAfterCooldown();
     const embeddings = this.batch.enabled
       ? await this.embedChunksWithBatch(chunks, entry, options.source)
       : await this.embedChunksInBatches(chunks);
@@ -710,14 +747,20 @@ class MemoryManagerEmbeddingOps {
             `DELETE FROM ${VECTOR_TABLE} WHERE id IN (SELECT id FROM chunks WHERE path = ? AND source = ?)`,
           )
           .run(entry.path, options.source);
-      } catch {}
+      } catch (err) {
+        // Stale vec rows can survive and cause duplicate similarity hits; not
+        // fatal, but log so a recurring failure is visible.
+        log.debug(`memory index: vec cleanup failed for ${entry.path}: ${String(err)}`);
+      }
     }
     if (this.fts.enabled && this.fts.available) {
       try {
         this.db
           .prepare(`DELETE FROM ${FTS_TABLE} WHERE path = ? AND source = ? AND model = ?`)
           .run(entry.path, options.source, this.provider.model);
-      } catch {}
+      } catch (err) {
+        log.debug(`memory index: FTS cleanup failed for ${entry.path}: ${String(err)}`);
+      }
     }
     this.db
       .prepare(`DELETE FROM chunks WHERE path = ? AND source = ?`)
@@ -814,12 +857,16 @@ class MemoryManagerEmbeddingOps {
       if (options.source === "sessions" && this.userModelManager) {
         try {
           this.userModelManager.extractPreferences(chunk.text, id);
-        } catch {}
+        } catch (err) {
+          log.debug(`memory index: preference extraction failed for ${id}: ${String(err)}`);
+        }
       }
       if (vectorReady && embedding.length > 0) {
         try {
           this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(id);
-        } catch {}
+        } catch (err) {
+          log.debug(`memory index: vec row replace failed for ${id}: ${String(err)}`);
+        }
         this.db
           .prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`)
           .run(id, vectorToBlob(embedding));
@@ -845,7 +892,9 @@ class MemoryManagerEmbeddingOps {
       if (embedding.length > 0) {
         try {
           this.assessChunkCuriosity(id, embedding, chunk.hash);
-        } catch {}
+        } catch (err) {
+          log.debug(`memory index: curiosity assessment failed for ${id}: ${String(err)}`);
+        }
       }
     }
     this.db

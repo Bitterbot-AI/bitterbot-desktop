@@ -133,6 +133,10 @@ export class MemoryIndexManager implements MemorySearchManager {
   private batchFailureLastError?: string;
   private batchFailureLastProvider?: string;
   private batchFailureLock: Promise<void> = Promise.resolve();
+  // When batch embedding is disabled by transient failures, the timestamp of
+  // the disable so it can be retried after a cooldown. null when batch is on,
+  // or when it was disabled for a hard reason (provider lacks batch support).
+  private batchDisabledAt: number | null = null;
   private db: DatabaseSync;
   private readonly sources: Set<MemorySource>;
   private providerKey: string;

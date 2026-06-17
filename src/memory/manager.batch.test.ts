@@ -192,6 +192,7 @@ describe("memory indexing with OpenAI batches", () => {
     (manager as unknown as { batchFailureLastProvider?: string }).batchFailureLastProvider =
       undefined;
     (manager as unknown as { batch: { enabled: boolean } }).batch.enabled = true;
+    (manager as unknown as { batchDisabledAt: number | null }).batchDisabledAt = null;
   });
 
   afterEach(async () => {
@@ -346,6 +347,64 @@ describe("memory indexing with OpenAI batches", () => {
       await manager.sync({ reason: "test" });
       expect(fetchMock.mock.calls.length).toBe(fetchCalls);
       expect(embedBatch).toHaveBeenCalled();
+    } finally {
+      restoreTimeouts();
+    }
+  });
+
+  it("re-enables batch after the cooldown elapses, but not before", async () => {
+    const restoreTimeouts = useFastShortTimeouts();
+    const memoryFile = path.join(memoryDir, "2026-01-10.md");
+    let mtimeMs = Date.now();
+    const touch = async () => {
+      mtimeMs += 1_000;
+      const date = new Date(mtimeMs);
+      await fs.utimes(memoryFile, date, date);
+    };
+
+    const { fetchMock } = createOpenAIBatchFetchMock({
+      onCreateBatch: () =>
+        new Response(JSON.stringify({ id: "batch_cd", status: "in_progress" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      if (!manager) {
+        throw new Error("manager missing");
+      }
+      const mgr = manager as unknown as {
+        batch: { enabled: boolean };
+        batchDisabledAt: number | null;
+        dirty: boolean;
+      };
+
+      // Disabled inside the cooldown window: batch stays off, fallback is used.
+      mgr.batch.enabled = false;
+      mgr.batchDisabledAt = Date.now() - 60_000; // 1 min ago (< 5 min cooldown)
+      embedBatch.mockClear();
+      let fetchCalls = fetchMock.mock.calls.length;
+      await fs.writeFile(memoryFile, ["cooldown", "within"].join("\n\n"));
+      await touch();
+      mgr.dirty = true;
+      await manager.sync({ reason: "test" });
+      expect(fetchMock.mock.calls.length).toBe(fetchCalls);
+      expect(embedBatch).toHaveBeenCalled();
+      expect(mgr.batch.enabled).toBe(false);
+
+      // Cooldown elapsed: batch is retried and turned back on.
+      mgr.batchDisabledAt = Date.now() - 6 * 60_000; // 6 min ago (> 5 min cooldown)
+      embedBatch.mockClear();
+      fetchCalls = fetchMock.mock.calls.length;
+      await fs.writeFile(memoryFile, ["cooldown", "elapsed"].join("\n\n"));
+      await touch();
+      mgr.dirty = true;
+      await manager.sync({ reason: "test" });
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(fetchCalls);
+      expect(manager.status().batch?.enabled).toBe(true);
+      expect(mgr.batchDisabledAt).toBe(null);
     } finally {
       restoreTimeouts();
     }
