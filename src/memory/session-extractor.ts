@@ -18,6 +18,9 @@
  */
 
 import type { SessionHandoverBrief } from "./session-handover.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+
+const log = createSubsystemLogger("memory/session-extractor");
 
 export type EpistemicLayer = "world_fact" | "experience" | "mental_model" | "directive";
 
@@ -302,12 +305,16 @@ export async function extractSessionFacts(
   let response: string;
   try {
     response = await llmCall(prompt);
-  } catch {
+  } catch (err) {
+    // The LLM call failing (network/auth/overload) means this session's facts
+    // are silently never extracted. Surface it instead of returning null mute.
+    log.warn(`session fact extraction LLM call failed for ${sessionId}: ${String(err)}`);
     return null;
   }
 
   const parsed = parseExtractionResponse(response, sessionId);
   if (!parsed) {
+    log.debug(`session fact extraction: unparseable LLM response for ${sessionId}`);
     return null;
   }
 
