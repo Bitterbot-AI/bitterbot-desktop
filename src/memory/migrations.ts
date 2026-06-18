@@ -14,7 +14,7 @@ const log = createSubsystemLogger("memory/migrations");
 
 const SCHEMA_VERSION_KEY = "schema_version";
 
-type Migration = {
+export type Migration = {
   version: number;
   description: string;
   up: (db: DatabaseSync) => void;
@@ -804,9 +804,12 @@ function setSchemaVersion(db: DatabaseSync, version: number): void {
  * Run all pending migrations. Safe to call repeatedly — each migration
  * only runs once per database.
  */
-export function runMigrations(db: DatabaseSync): { from: number; to: number; ran: number } {
+export function runMigrations(
+  db: DatabaseSync,
+  migrations: Migration[] = MIGRATIONS,
+): { from: number; to: number; ran: number } {
   const current = getSchemaVersion(db);
-  const pending = MIGRATIONS.filter((m) => m.version > current);
+  const pending = migrations.filter((m) => m.version > current);
 
   if (pending.length === 0) {
     return { from: current, to: current, ran: 0 };
@@ -818,11 +821,25 @@ export function runMigrations(db: DatabaseSync): { from: number; to: number; ran
   for (const migration of pending) {
     try {
       log.debug(`running migration v${migration.version}: ${migration.description}`);
-      migration.up(db);
+      // Run each migration and its version bump atomically. SQLite supports
+      // transactional DDL, so on any failure the rollback leaves the schema
+      // exactly as it was — no half-applied migration that a later run would
+      // either skip (silent corruption) or choke on. None of the migrations use
+      // statements that can't run in a transaction (VACUUM/journal_mode/ATTACH).
+      db.exec("BEGIN");
+      try {
+        migration.up(db);
+        setSchemaVersion(db, migration.version);
+        db.exec("COMMIT");
+      } catch (inner) {
+        db.exec("ROLLBACK");
+        throw inner;
+      }
       applied = migration.version;
-      setSchemaVersion(db, applied);
     } catch (err) {
-      log.warn(`migration v${migration.version} failed: ${String(err)}`);
+      // A failed migration is serious — surface it loudly and stop so later
+      // migrations don't run against an unexpected schema.
+      log.error(`migration v${migration.version} failed and was rolled back: ${String(err)}`);
       break;
     }
   }
