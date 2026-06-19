@@ -18,6 +18,14 @@ import { spacingImportanceMultiplier } from "./spacing-effect.js";
 
 const log = createSubsystemLogger("memory/consolidation");
 
+// Near-merge / merge-candidate discovery compare chunks pairwise (O(n^2)
+// cosine). Over the whole active set (thousands of embedded chunks once memory
+// fills up) that is tens of seconds of synchronous CPU per consolidation cycle,
+// which freezes the gateway event loop and drops the Control UI's connection.
+// Cap the input to the most important chunks — dedup of the top crystals is what
+// matters, and the cycle repeats — keeping each pass to O(cap^2) ~ sub-second.
+const PAIRWISE_MERGE_CHUNK_CAP = 500;
+
 export type ConsolidationConfig = {
   decayRate: number;
   promoteThreshold: number;
@@ -159,6 +167,8 @@ export class ConsolidationEngine {
     // Finds chunk pairs in the near-miss cosine zone that share enough nearest neighbors
     try {
       const snnChunks = surviving
+        .toSorted((a, b) => b.chunk.importance_score - a.chunk.importance_score)
+        .slice(0, PAIRWISE_MERGE_CHUNK_CAP)
         .map((p) => {
           const emb = this.parseEmbedding(p.chunk.embedding);
           return emb ? { id: p.chunk.id, embedding: emb, path: p.chunk.path } : null;
@@ -590,7 +600,10 @@ export class ConsolidationEngine {
   private findMergeCandidatesWithParent(
     entries: Array<{ chunk: ChunkRow; newScore: number }>,
   ): Array<{ loserId: string; winnerId: string }> {
-    const promoted = entries.filter((e) => e.newScore >= this.config.promoteThreshold);
+    const promoted = entries
+      .filter((e) => e.newScore >= this.config.promoteThreshold)
+      .toSorted((a, b) => b.newScore - a.newScore)
+      .slice(0, PAIRWISE_MERGE_CHUNK_CAP);
     if (promoted.length < 2) {
       return [];
     }
