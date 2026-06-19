@@ -39,6 +39,14 @@ import {
 
 const log = createSubsystemLogger("memory/curiosity");
 
+// GCCRF pending-chunk scoring runs a KNN per chunk, so a full batch is multiple
+// seconds of synchronous work. Cap the batch (the backlog drains across cycles)
+// and yield to the event loop every few chunks so it never freezes the gateway
+// (which would stall WS requests and bounce the Control UI's connection).
+const PENDING_SCORE_BATCH = 50;
+const PENDING_SCORE_YIELD_EVERY = 8;
+const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
 type ChunkRow = {
   id: string;
   hash: string;
@@ -299,8 +307,9 @@ export class CuriosityEngine {
       log.debug("emergence events detected", { count: emergence.length });
     }
 
-    // Score pending chunks that haven't been GCCRF-scored yet
-    const pendingScored = this.scorePendingChunks();
+    // GCCRF pending-chunk scoring is driven separately (and asynchronously) by
+    // the consolidation loop via scorePendingChunks() so it can yield to the
+    // event loop; run() stays synchronous and does not score here.
 
     // Persist GCCRF state
     this.gccrfReward.saveState();
@@ -310,7 +319,6 @@ export class CuriosityEngine {
       targets: targetsGenerated,
       expired,
       emergence: emergence.length,
-      pendingScored,
     });
 
     return { regions: regionsBuilt, targets: targetsGenerated, expired };
@@ -1874,7 +1882,7 @@ export class CuriosityEngine {
    * Batch-score all chunks with NULL curiosity_reward.
    * Called during consolidation cycle.
    */
-  scorePendingChunks(): number {
+  async scorePendingChunks(): Promise<number> {
     if (!this.config.enabled) {
       return 0;
     }
@@ -1886,9 +1894,9 @@ export class CuriosityEngine {
            WHERE curiosity_reward IS NULL
              AND COALESCE(lifecycle_state, 'active') = 'active'
              AND embedding IS NOT NULL AND embedding != '[]'
-           LIMIT 100`,
+           LIMIT ?`,
         )
-        .all() as Array<{ id: string; embedding: string }>;
+        .all(PENDING_SCORE_BATCH) as Array<{ id: string; embedding: string }>;
 
       if (pendingRows.length === 0) {
         return 0;
@@ -1928,7 +1936,8 @@ export class CuriosityEngine {
       let scored = 0;
       const updateStmt = this.db.prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`);
 
-      for (const row of pendingRows) {
+      for (let i = 0; i < pendingRows.length; i += 1) {
+        const row = pendingRows[i]!;
         try {
           const emb = JSON.parse(row.embedding) as number[];
           if (emb.length === 0) {
@@ -1939,6 +1948,11 @@ export class CuriosityEngine {
           scored++;
         } catch {
           /* skip individual failures */
+        }
+        // Hand the event loop back periodically so the per-chunk KNN work does
+        // not block the gateway for seconds at a time.
+        if ((i + 1) % PENDING_SCORE_YIELD_EVERY === 0) {
+          await yieldToEventLoop();
         }
       }
 

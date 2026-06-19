@@ -1688,7 +1688,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
     const ms = minutes * 60 * 1000;
-    this.consolidationTimer = setInterval(() => {
+    this.consolidationTimer = setInterval(async () => {
       try {
         // 0. First Breath: trigger immediate RLM synthesis for new agents with no Phenotype
         this.shouldTriggerFirstBreath()
@@ -1789,7 +1789,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           engine.decaySteeringRewards();
         }
         // 10. GCCRF: batch-score pending chunks and persist state (via unified CuriosityEngine)
-        this.curiosityEngine?.scorePendingChunks();
+        await this.curiosityEngine?.scorePendingChunks();
         // 11. Marketplace: refresh listings and prices
         if (this.marketplaceEconomics) {
           const repScore = this.getOwnReputationScore();
