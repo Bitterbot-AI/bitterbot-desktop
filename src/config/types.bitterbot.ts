@@ -5,6 +5,7 @@ import type { AuthConfig } from "./types.auth.js";
 import type { DiagnosticsConfig, LoggingConfig, SessionConfig, WebConfig } from "./types.base.js";
 import type { BrowserConfig } from "./types.browser.js";
 import type { ChannelsConfig } from "./types.channels.js";
+import type { CommerceConfig } from "./types.commerce.js";
 import type { CronConfig } from "./types.cron.js";
 import type {
   CanvasHostConfig,
@@ -100,6 +101,7 @@ export type BitterbotConfig = {
   memory?: MemoryConfig;
   p2p?: P2pConfig;
   a2a?: A2aConfig;
+  commerce?: CommerceConfig;
   cron?: CronConfig;
 };
 

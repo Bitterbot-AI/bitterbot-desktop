@@ -1018,6 +1018,39 @@ export class PeerReputationManager {
     this.logActivity(authorPubkey, success ? "skill_execution_success" : "skill_execution_failure");
   }
 
+  /**
+   * Record a commerce settlement outcome for an Aubaine group-buy counterparty
+   * (PLAN-26 §7.2). Mirrors recordSkillExecutionVerification but scopes the
+   * domain signal to a "commerce" trust category so settlement behaviour does
+   * not pollute the skill-sharing trust signal. Reliable settlers rise; peers
+   * who default or trigger disputes decay out of future syndicate matching.
+   */
+  recordSettlementOutcome(
+    counterpartyPubkey: string,
+    role: "buyer" | "supplier" | "coordinator",
+    outcome: "settled" | "disputed" | "defaulted",
+    amountUsdc: number,
+  ): void {
+    const settlementCapUsdc = 100;
+    const amountFactor = Math.min(Math.max(amountUsdc, 0) / settlementCapUsdc, 1);
+    const settled = outcome === "settled";
+    let weight: number;
+    let quality: number;
+    if (settled) {
+      weight = 0.5 + amountFactor * 0.5;
+      quality = amountFactor;
+    } else if (outcome === "disputed") {
+      weight = 0.35;
+      quality = 0.35;
+    } else {
+      weight = 0.2;
+      quality = 0;
+    }
+    this.recordTrustEdge("local", counterpartyPubkey, weight);
+    this.recordCategoryTrust(counterpartyPubkey, "commerce", settled, quality);
+    this.logActivity(counterpartyPubkey, `settlement_${role}_${outcome}`);
+  }
+
   // ── Phase 7A: Peer-to-Peer Anomaly Reports ─────────────────────────
 
   /**

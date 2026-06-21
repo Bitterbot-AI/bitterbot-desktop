@@ -1,0 +1,21 @@
+{
+  "protocol": "aubaine/v1",
+  "note": "A receipt is itself a signed Envelope (§4.5). Anyone verifies it against author_pubkey without trusting the issuer.",
+  "envelope": {
+    "protocol": "aubaine/v1",
+    "type": "settlement_receipt",
+    "id": "22222222-2222-4222-8222-222222222222",
+    "author_pubkey": "ed25519:11f3fa0a1755138862c4c23e92aefc6d3aa0790aed84431c99eabee88760c0b3",
+    "ts": 1718900500,
+    "body": {
+      "syndicate_id": "synd-0001",
+      "counterparty_pubkey": "ed25519:a1645c8bc9b132fc4fbd5393a42f0f4e85317f5d60f3cbf476de5b44a5ad2d35",
+      "role": "buyer",
+      "amount_usdc": 38,
+      "outcome": "settled",
+      "tx_hash": "0xabababababababababababababababababababababababababababababababab",
+      "ts": 1718900500
+    },
+    "signature": "288140d422fc9731f7eb1375cc96add160d8133abe9e693b05e3f0811642ba50fbae66e580d3401b4dc6bd943f14ac9939b131658c9bf4013229ae722dbbb40c"
+  }
+}

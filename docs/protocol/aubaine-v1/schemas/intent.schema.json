@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aubaine.ai/protocol/v1/intent.schema.json",
+  "title": "Aubaine Intent body v1",
+  "description": "Body of an Envelope with type=intent (§4.1). Buyer demand + signed mandate.",
+  "type": "object",
+  "required": [
+    "sku_canonical",
+    "sku_description",
+    "max_price_usdc",
+    "qty",
+    "lead_time_max_days",
+    "expires_at",
+    "mandate"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "sku_canonical": { "type": "string", "pattern": "^(sha256:[0-9a-f]{64}|brand:.+)$" },
+    "sku_description": { "type": "string", "minLength": 1, "maxLength": 8000 },
+    "max_price_usdc": { "type": "number", "exclusiveMinimum": 0 },
+    "qty": { "type": "integer", "minimum": 1 },
+    "lead_time_max_days": { "type": "integer", "minimum": 0 },
+    "expires_at": { "type": "integer", "minimum": 0 },
+    "mandate": {
+      "type": "object",
+      "required": ["max_total_usdc", "settlement", "buyer_wallet", "chain", "token"],
+      "additionalProperties": false,
+      "properties": {
+        "max_total_usdc": { "type": "number", "exclusiveMinimum": 0 },
+        "settlement": { "const": "eip3009" },
+        "buyer_wallet": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+        "chain": { "const": "base" },
+        "token": { "const": "usdc" }
+      }
+    }
+  }
+}

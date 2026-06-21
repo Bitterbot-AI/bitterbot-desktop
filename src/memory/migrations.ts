@@ -757,6 +757,120 @@ const MIGRATIONS: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_entities_parent ON entities(parent_entity_id)`);
     },
   },
+  {
+    version: 20,
+    description:
+      "PLAN-26 Aubaine group-buy coordination layer: offer/intent directory, " +
+      "demand-matched syndicates, members, and non-custodial threshold settlements. " +
+      "Local index over signed offers/intents gossiped on aubaine/{offers,intents}/v1; " +
+      "settlement is many-buyers-to-one-supplier via EIP-3009, never custodied here.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS group_buy_offers (
+          id              TEXT PRIMARY KEY,
+          sku_canonical   TEXT NOT NULL,
+          sku_description TEXT NOT NULL,
+          unit_price_usdc REAL NOT NULL,
+          moq             INTEGER NOT NULL,
+          lead_time_days  INTEGER NOT NULL,
+          supplier_peer_id  TEXT,
+          supplier_pubkey   TEXT NOT NULL,
+          supplier_a2a_url  TEXT NOT NULL,
+          supplier_wallet   TEXT,
+          deposit_bps     INTEGER NOT NULL DEFAULT 4000,
+          expires_at      INTEGER NOT NULL,
+          created_at      INTEGER NOT NULL,
+          updated_at      INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_gbo_sku ON group_buy_offers(sku_canonical, expires_at)`,
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS group_buy_intents (
+          id                 TEXT PRIMARY KEY,
+          sku_canonical      TEXT NOT NULL,
+          sku_description    TEXT NOT NULL,
+          max_price_usdc     REAL NOT NULL,
+          qty                INTEGER NOT NULL,
+          lead_time_max_days INTEGER NOT NULL,
+          buyer_peer_id      TEXT,
+          buyer_pubkey       TEXT NOT NULL,
+          is_local           INTEGER NOT NULL DEFAULT 0,
+          mandate_json       TEXT DEFAULT '{}',
+          expires_at         INTEGER NOT NULL,
+          created_at         INTEGER NOT NULL,
+          updated_at         INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_gbi_sku ON group_buy_intents(sku_canonical, expires_at)`,
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS group_buy_syndicates (
+          id               TEXT PRIMARY KEY,
+          offer_id         TEXT NOT NULL,
+          sku_canonical    TEXT NOT NULL,
+          unit_price_usdc  REAL NOT NULL,
+          moq              INTEGER NOT NULL,
+          committed_qty    INTEGER NOT NULL DEFAULT 0,
+          status           TEXT NOT NULL DEFAULT 'forming',
+          supplier_pubkey  TEXT NOT NULL,
+          supplier_a2a_url TEXT NOT NULL,
+          coordinator_peer_id TEXT,
+          strike_deadline  INTEGER NOT NULL,
+          created_at       INTEGER NOT NULL,
+          updated_at       INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_gbsy_sku ON group_buy_syndicates(sku_canonical, status)`,
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS group_buy_members (
+          id            TEXT PRIMARY KEY,
+          syndicate_id  TEXT NOT NULL,
+          intent_id     TEXT NOT NULL,
+          buyer_pubkey  TEXT NOT NULL,
+          buyer_peer_id TEXT,
+          qty           INTEGER NOT NULL,
+          amount_usdc   REAL NOT NULL,
+          commit_status TEXT NOT NULL DEFAULT 'invited',
+          auth_token    TEXT,
+          updated_at    INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_gbm_syndicate ` +
+          `ON group_buy_members(syndicate_id, commit_status)`,
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS group_buy_settlements (
+          id               TEXT PRIMARY KEY,
+          syndicate_id     TEXT NOT NULL,
+          member_id        TEXT NOT NULL,
+          buyer_pubkey     TEXT NOT NULL,
+          supplier_address TEXT NOT NULL,
+          amount_usdc      REAL NOT NULL,
+          leg              TEXT NOT NULL DEFAULT 'deposit',
+          auth_token       TEXT,
+          tx_hash          TEXT,
+          status           TEXT NOT NULL DEFAULT 'pending',
+          error            TEXT,
+          created_at       INTEGER NOT NULL,
+          settled_at       INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_gbs_syndicate ` +
+          `ON group_buy_settlements(syndicate_id, status)`,
+      );
+    },
+  },
 ];
 
 /**

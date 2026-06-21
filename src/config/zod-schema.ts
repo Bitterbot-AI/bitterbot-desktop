@@ -788,6 +788,18 @@ export const BitterbotSchema = z
       })
       .strict()
       .optional(),
+    commerce: z
+      .object({
+        groupbuy: z
+          .object({
+            enabled: z.boolean().optional(),
+            coordinatorFeeBps: z.number().int().min(0).max(10_000).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aubaine.ai/protocol/v1/settlement-receipt.schema.json",
+  "title": "Aubaine SettlementReceipt body v1",
+  "description": "Body of an Envelope with type=settlement_receipt (§4.5, §9). Portable, signed reputation primitive.",
+  "type": "object",
+  "required": ["syndicate_id", "counterparty_pubkey", "role", "amount_usdc", "outcome", "ts"],
+  "additionalProperties": false,
+  "properties": {
+    "syndicate_id": { "type": "string" },
+    "counterparty_pubkey": { "type": "string", "pattern": "^ed25519:[0-9a-f]{64}$" },
+    "role": { "enum": ["buyer", "supplier", "coordinator"] },
+    "amount_usdc": { "type": "number", "minimum": 0 },
+    "outcome": { "enum": ["settled", "disputed", "defaulted"] },
+    "tx_hash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+    "ts": { "type": "integer", "minimum": 0 }
+  }
+}

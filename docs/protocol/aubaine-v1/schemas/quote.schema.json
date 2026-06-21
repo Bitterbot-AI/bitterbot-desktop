@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aubaine.ai/protocol/v1/quote.schema.json",
+  "title": "Aubaine Quote bodies v1",
+  "description": "Bodies for quote_request and quote_response Envelopes (§4.3, §5).",
+  "$defs": {
+    "quote_request": {
+      "type": "object",
+      "required": ["sku_canonical", "qty"],
+      "additionalProperties": false,
+      "properties": {
+        "sku_canonical": { "type": "string", "pattern": "^(sha256:[0-9a-f]{64}|brand:.+)$" },
+        "qty": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "quote_response": {
+      "type": "object",
+      "required": [
+        "sku_canonical",
+        "unit_price_usdc",
+        "moq",
+        "lead_time_days",
+        "supplier_wallet",
+        "deposit_bps",
+        "valid_until"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sku_canonical": { "type": "string", "pattern": "^(sha256:[0-9a-f]{64}|brand:.+)$" },
+        "unit_price_usdc": { "type": "number", "exclusiveMinimum": 0 },
+        "moq": { "type": "integer", "minimum": 1 },
+        "lead_time_days": { "type": "integer", "minimum": 0 },
+        "supplier_wallet": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+        "deposit_bps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "valid_until": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/quote_request" }, { "$ref": "#/$defs/quote_response" }]
+}

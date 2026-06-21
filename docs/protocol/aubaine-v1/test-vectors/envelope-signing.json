@@ -1,0 +1,29 @@
+{
+  "protocol": "aubaine/v1",
+  "note": "preimage = utf8('aubaine/v1' + '\\n' + JCS(envelope-without-signature)); Ed25519 sign; signature = lowerhex(64-byte sig). SPEC.md §3.1.",
+  "test_private_key_seed": "sha256('aubaine/v1 test seed: buyer-A') as Ed25519 seed",
+  "preimage_utf8": "aubaine/v1\n{\"author_pubkey\":\"ed25519:a1645c8bc9b132fc4fbd5393a42f0f4e85317f5d60f3cbf476de5b44a5ad2d35\",\"body\":{\"expires_at\":1721492000,\"lead_time_max_days\":140,\"mandate\":{\"buyer_wallet\":\"0xabc0000000000000000000000000000000000abc\",\"chain\":\"base\",\"max_total_usdc\":65,\"settlement\":\"eip3009\",\"token\":\"usdc\"},\"max_price_usdc\":65,\"qty\":1,\"sku_canonical\":\"sha256:2e763a4d2bf3dff41ae70ad0f1b7751eaddc85bfef2a1acd05cc5ae20f261849\",\"sku_description\":\"Cherry-profile PBT keycap set, 'Nautilus' colorway v1, doubleshot legends\"},\"id\":\"11111111-1111-4111-8111-111111111111\",\"protocol\":\"aubaine/v1\",\"ts\":1718900000,\"type\":\"intent\"}",
+  "envelope": {
+    "protocol": "aubaine/v1",
+    "type": "intent",
+    "id": "11111111-1111-4111-8111-111111111111",
+    "author_pubkey": "ed25519:a1645c8bc9b132fc4fbd5393a42f0f4e85317f5d60f3cbf476de5b44a5ad2d35",
+    "ts": 1718900000,
+    "body": {
+      "sku_canonical": "sha256:2e763a4d2bf3dff41ae70ad0f1b7751eaddc85bfef2a1acd05cc5ae20f261849",
+      "sku_description": "Cherry-profile PBT keycap set, 'Nautilus' colorway v1, doubleshot legends",
+      "max_price_usdc": 65,
+      "qty": 1,
+      "lead_time_max_days": 140,
+      "expires_at": 1721492000,
+      "mandate": {
+        "max_total_usdc": 65,
+        "settlement": "eip3009",
+        "buyer_wallet": "0xabc0000000000000000000000000000000000abc",
+        "chain": "base",
+        "token": "usdc"
+      }
+    },
+    "signature": "074f9bdd3b36e36e82b97d12ef824c572d1cc6b3e237ae08017b7ef0fba7ff5cef3149756b0eb12793cefe5435577a40533fe61ece978883197a709296524f07"
+  }
+}

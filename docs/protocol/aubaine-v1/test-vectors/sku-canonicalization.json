@@ -1,0 +1,39 @@
+{
+  "protocol": "aubaine/v1",
+  "note": "normalize = recursively trim+lowercase strings, drop null/empty; then JCS; then SHA-256; prefix 'sha256:'. SPEC.md §8.",
+  "cases": [
+    {
+      "structured_spec": {
+        "category": "keycap-set",
+        "profile": "Cherry",
+        "material": "  PBT  ",
+        "colorway": "Nautilus",
+        "version": 1,
+        "legends": "Doubleshot",
+        "empty_field": ""
+      },
+      "normalized": {
+        "category": "keycap-set",
+        "profile": "cherry",
+        "material": "pbt",
+        "colorway": "nautilus",
+        "version": 1,
+        "legends": "doubleshot"
+      },
+      "jcs_of_normalized": "{\"category\":\"keycap-set\",\"colorway\":\"nautilus\",\"legends\":\"doubleshot\",\"material\":\"pbt\",\"profile\":\"cherry\",\"version\":1}",
+      "sku_canonical": "sha256:2e763a4d2bf3dff41ae70ad0f1b7751eaddc85bfef2a1acd05cc5ae20f261849"
+    },
+    {
+      "note": "Same spec, keys reordered + different casing/whitespace -> identical hash (proves canonicalization).",
+      "structured_spec": {
+        "version": 1,
+        "colorway": "NAUTILUS",
+        "category": "Keycap-Set",
+        "legends": "doubleshot",
+        "profile": "cherry",
+        "material": "pbt"
+      },
+      "sku_canonical": "sha256:2e763a4d2bf3dff41ae70ad0f1b7751eaddc85bfef2a1acd05cc5ae20f261849"
+    }
+  ]
+}

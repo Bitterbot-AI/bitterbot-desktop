@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aubaine.ai/protocol/v1/envelope.schema.json",
+  "title": "Aubaine Envelope v1",
+  "description": "Signed wrapper shared by every protocol message. See SPEC.md §3.",
+  "type": "object",
+  "required": ["protocol", "type", "id", "author_pubkey", "ts", "body", "signature"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol": { "const": "aubaine/v1" },
+    "type": {
+      "enum": [
+        "intent",
+        "offer",
+        "quote_request",
+        "quote_response",
+        "commit_request",
+        "commit_response",
+        "settlement_receipt"
+      ]
+    },
+    "id": { "type": "string", "pattern": "^[0-9a-fA-F-]{8,64}$" },
+    "author_pubkey": { "type": "string", "pattern": "^ed25519:[0-9a-f]{64}$" },
+    "ts": { "type": "integer", "minimum": 0 },
+    "identity_proof": {
+      "type": "object",
+      "description": "Optional identity bindings (§3.2). Verifier MAY check; not required.",
+      "properties": {
+        "erc8004": { "type": "object" },
+        "did": { "type": "object" }
+      }
+    },
+    "body": { "type": "object" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  }
+}

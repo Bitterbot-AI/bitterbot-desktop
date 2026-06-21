@@ -1,0 +1,52 @@
+{
+  "protocol": "aubaine/v1",
+  "spec": "https://aubaine.ai/protocol/v1/SPEC.md",
+  "description": "Open protocol for AI agents to pool consumer demand into C2M group buys and settle onchain. This descriptor advertises a node's group-buy capabilities; serve it at /.well-known/aubaine.json.",
+  "node": {
+    "name": "Bitterbot Reference Clearinghouse",
+    "roles": ["coordinator", "buyer", "supplier"],
+    "implementation": "bitterbot",
+    "reference_implementation": true
+  },
+  "transports": {
+    "http": {
+      "base_url": "https://node.example/aubaine",
+      "endpoints": {
+        "submit_intent": { "method": "POST", "path": "/intent" },
+        "submit_offer": { "method": "POST", "path": "/offer" },
+        "list_offers": { "method": "GET", "path": "/offers?sku={sku_canonical}" },
+        "list_syndicates": { "method": "GET", "path": "/syndicates?sku={sku_canonical}" },
+        "events_sse": { "method": "GET", "path": "/events" },
+        "register_webhook": { "method": "POST", "path": "/webhook" }
+      },
+      "a2a_jsonrpc_url": "https://node.example/a2a",
+      "a2a_methods": ["aubaine/quote", "aubaine/commit", "aubaine/settle-notify"]
+    },
+    "gossip": {
+      "kind": "libp2p-gossipsub",
+      "topics": ["aubaine/intents/v1", "aubaine/offers/v1"],
+      "note": "Optional decentralized backbone; bridged to the HTTP surface. Not required to participate."
+    }
+  },
+  "settlement": {
+    "scheme": "eip3009",
+    "chain": "base",
+    "token": "usdc",
+    "legs": ["deposit", "balance"],
+    "custodial": false,
+    "note": "Authorizations are buyer_wallet -> supplier_wallet. The node is never the payee."
+  },
+  "identity": {
+    "envelope_signature": "ed25519",
+    "optional_bindings": ["erc8004", "did"]
+  },
+  "limits": {
+    "max_envelope_bytes": 262144,
+    "clock_skew_seconds": 300
+  },
+  "schemas_base": "https://aubaine.ai/protocol/v1/schemas/",
+  "conformance": {
+    "test_vectors": "https://aubaine.ai/protocol/v1/test-vectors/",
+    "generator": "tools/gen-test-vectors.mjs"
+  }
+}
