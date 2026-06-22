@@ -25,6 +25,14 @@ const log = createSubsystemLogger("memory/skill-network-bridge");
 /** Network-wide census snapshot received over gossipsub. Mirrors the JSON
  * shape published by `BootnodeRegistry::census` on the Rust side, plus a
  * `received_at` timestamp added on receipt. */
+/** One peer as reported inside a bootnode census, used for cross-source dedup. */
+export type CensusPeer = {
+  pubkey: string;
+  tier: string;
+  address_type: string;
+  last_seen_at: number;
+};
+
 export type NetworkCensusSnapshot = {
   enabled: boolean;
   lifetime_unique_peers: number;
@@ -34,6 +42,13 @@ export type NetworkCensusSnapshot = {
   by_address_type: Record<string, number>;
   generated_at: number;
   received_at?: number;
+  /**
+   * Active peers this bootnode currently sees (new field). When present on the
+   * fresh source snapshots, the aggregator unions them by pubkey for an exact
+   * network-wide unique count. Absent on pre-upgrade nodes, which fall back to
+   * an element-wise-max estimate.
+   */
+  peers?: CensusPeer[];
 };
 
 export type OrchestratorBridgeLike = {
@@ -192,6 +207,90 @@ export class SkillNetworkBridge {
       return null;
     }
     return { source_peer_id: best.peer, snapshot: best.snap };
+  }
+
+  /**
+   * Accurate network-wide census. Unions the active-peer sets reported by all
+   * *fresh* bootnode sources, deduped by pubkey, so a peer connected to several
+   * bootnodes is counted once. Replaces the old "latest single source wins"
+   * behaviour, which flapped between bootnodes' divergent local counts.
+   *
+   * When fresh sources carry peer lists (post-upgrade bootnodes) the count is
+   * exact. When they only carry aggregate counts (pre-upgrade) it falls back to
+   * an element-wise max across sources: still stable, an honest lower bound.
+   */
+  getAggregatedNetworkCensus(
+    nowMs: number = Date.now(),
+  ): { source_peer_id: string; snapshot: NetworkCensusSnapshot; source_count: number } | null {
+    const SOURCE_TTL_MS = 180_000; // drop a bootnode's snapshot after ~3 missed 60s publishes
+    const PEER_ACTIVE_WINDOW_SECS = 1800; // a peer counts if seen within 30min of its snapshot
+
+    const fresh = [...this.censusSnapshots.values()].filter(
+      (s) => nowMs - (s.received_at ?? 0) <= SOURCE_TTL_MS,
+    );
+    if (fresh.length === 0) {
+      return null;
+    }
+    const generatedAt = Math.max(...fresh.map((s) => s.generated_at ?? 0));
+    const withPeers = fresh.filter((s) => Array.isArray(s.peers) && s.peers.length > 0);
+    let snapshot: NetworkCensusSnapshot;
+
+    if (withPeers.length > 0) {
+      // Exact path: union active peers across sources, keyed by pubkey.
+      const seen = new Map<string, CensusPeer>();
+      for (const s of withPeers) {
+        const cutoff = (s.generated_at ?? 0) - PEER_ACTIVE_WINDOW_SECS;
+        for (const p of s.peers ?? []) {
+          if (!p.pubkey || p.last_seen_at < cutoff) {
+            continue;
+          }
+          const prev = seen.get(p.pubkey);
+          if (!prev || p.last_seen_at > prev.last_seen_at) {
+            seen.set(p.pubkey, p); // keep the most recently-seen classification
+          }
+        }
+      }
+      const byTier: Record<string, number> = {};
+      const byAddr: Record<string, number> = {};
+      for (const p of seen.values()) {
+        const tier = p.tier || "unknown";
+        const addr = p.address_type || "unknown";
+        byTier[tier] = (byTier[tier] ?? 0) + 1;
+        byAddr[addr] = (byAddr[addr] ?? 0) + 1;
+      }
+      snapshot = {
+        enabled: true,
+        lifetime_unique_peers: seen.size,
+        active_last_24h: seen.size,
+        active_last_7d: seen.size,
+        by_tier: byTier,
+        by_address_type: byAddr,
+        generated_at: generatedAt,
+        received_at: nowMs,
+      };
+    } else {
+      // Fallback: element-wise max across sources (stable lower-bound estimate).
+      const maxMap = (key: "by_tier" | "by_address_type"): Record<string, number> => {
+        const out: Record<string, number> = {};
+        for (const s of fresh) {
+          for (const [k, v] of Object.entries(s[key] ?? {})) {
+            out[k] = Math.max(out[k] ?? 0, v);
+          }
+        }
+        return out;
+      };
+      snapshot = {
+        enabled: true,
+        lifetime_unique_peers: Math.max(...fresh.map((s) => s.lifetime_unique_peers ?? 0)),
+        active_last_24h: Math.max(...fresh.map((s) => s.active_last_24h ?? 0)),
+        active_last_7d: Math.max(...fresh.map((s) => s.active_last_7d ?? 0)),
+        by_tier: maxMap("by_tier"),
+        by_address_type: maxMap("by_address_type"),
+        generated_at: generatedAt,
+        received_at: nowMs,
+      };
+    }
+    return { source_peer_id: "aggregate", snapshot, source_count: fresh.length };
   }
 
   /**

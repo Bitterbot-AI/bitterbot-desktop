@@ -422,10 +422,16 @@ impl BootnodeRegistry {
     pub fn census(&self, now_secs: u64) -> serde_json::Value {
         let day = 24 * 3600u64;
         let week = 7 * day;
+        // "Active" window for the per-peer list that downstream aggregators union
+        // by pubkey to compute an exact network-wide unique count. Bounded so the
+        // census stays well under the 256 KiB gossip limit.
+        let active_window = 1800u64; // 30 min
+        let max_peers = 2000usize;
         let mut by_tier: HashMap<String, usize> = HashMap::new();
         let mut by_address_type: HashMap<String, usize> = HashMap::new();
         let mut active_24h = 0usize;
         let mut active_7d = 0usize;
+        let mut active_peers: Vec<serde_json::Value> = Vec::new();
         for record in self.peers.values() {
             let tier_label = if record.tier.is_empty() { "unknown" } else { record.tier.as_str() };
             *by_tier.entry(tier_label.to_string()).or_insert(0) += 1;
@@ -441,6 +447,16 @@ impl BootnodeRegistry {
             if now_secs.saturating_sub(record.last_seen_at) <= week {
                 active_7d += 1;
             }
+            if now_secs.saturating_sub(record.last_seen_at) <= active_window
+                && active_peers.len() < max_peers
+            {
+                active_peers.push(serde_json::json!({
+                    "pubkey": record.peer_pubkey.as_str(),
+                    "tier": tier_label,
+                    "address_type": addr_label,
+                    "last_seen_at": record.last_seen_at,
+                }));
+            }
         }
         serde_json::json!({
             "enabled": self.enabled,
@@ -449,6 +465,7 @@ impl BootnodeRegistry {
             "active_last_7d": active_7d,
             "by_tier": by_tier,
             "by_address_type": by_address_type,
+            "peers": active_peers,
             "generated_at": now_secs,
         })
     }
