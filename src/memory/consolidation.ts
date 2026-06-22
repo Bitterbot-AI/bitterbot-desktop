@@ -12,6 +12,7 @@ import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { recordDreamTelemetry } from "./dream-schema.js";
+import { yieldToEventLoop } from "./event-loop.js";
 import { calculateImportance, shouldForget } from "./importance.js";
 import { cosineSimilarity, computeCentroid, parseEmbedding } from "./internal.js";
 import { spacingImportanceMultiplier } from "./spacing-effect.js";
@@ -25,6 +26,9 @@ const log = createSubsystemLogger("memory/consolidation");
 // Cap the input to the most important chunks — dedup of the top crystals is what
 // matters, and the cycle repeats — keeping each pass to O(cap^2) ~ sub-second.
 const PAIRWISE_MERGE_CHUNK_CAP = 500;
+// Yield to the event loop every N outer iterations of the O(n^2) similarity
+// sweeps so a single consolidation pass cannot stall the gateway keepalive.
+const SIMILARITY_YIELD_EVERY = 32;
 
 export type ConsolidationConfig = {
   decayRate: number;
@@ -114,7 +118,7 @@ export class ConsolidationEngine {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  run(): ConsolidationStats {
+  async run(): Promise<ConsolidationStats> {
     const start = Date.now();
     const stats: ConsolidationStats = {
       totalChunks: 0,
@@ -160,7 +164,7 @@ export class ConsolidationEngine {
     }
 
     // Phase 3: Merge semantically overlapping promoted chunks
-    const mergePairs = this.findMergeCandidatesWithParent(surviving);
+    const mergePairs = await this.findMergeCandidatesWithParent(surviving);
     stats.mergedChunks = mergePairs.length;
 
     // Phase 3b: SNN near-merge discovery (Plan 6, Phase 3)
@@ -176,7 +180,7 @@ export class ConsolidationEngine {
         .filter((c): c is { id: string; embedding: number[]; path: string } => c !== null);
 
       if (snnChunks.length > 10) {
-        const nearMerges = this.discoverNearMerges(snnChunks);
+        const nearMerges = await this.discoverNearMerges(snnChunks);
         if (nearMerges.length > 0) {
           const hintStmt = this.db.prepare(
             `INSERT OR REPLACE INTO near_merge_hints
@@ -266,6 +270,7 @@ export class ConsolidationEngine {
     this.decaySteeringRewards();
 
     // Phase 6: Anti-catastrophic forgetting — queue orphan clusters for replay
+    // (orphan detection is capped at 100 rows, so it stays synchronous).
     const orphansQueued = this.rescueOrphanClusters();
     if (orphansQueued > 0) {
       log.info(`anti-forgetting: queued ${orphansQueued} chunks from orphan clusters for replay`);
@@ -455,11 +460,11 @@ export class ConsolidationEngine {
    * @param k - Neighborhood size (default: 10)
    * @param minShared - Minimum shared neighbors to qualify (default: 4)
    */
-  discoverNearMerges(
+  async discoverNearMerges(
     chunks: Array<{ id: string; embedding: number[]; path?: string }>,
     k: number = 10,
     minShared: number = 4,
-  ): NearMergeCandidate[] {
+  ): Promise<NearMergeCandidate[]> {
     if (chunks.length < k + 1) {
       return [];
     }
@@ -472,6 +477,9 @@ export class ConsolidationEngine {
     const knnSets = new Map<number, Set<number>>();
 
     for (let i = 0; i < chunks.length; i++) {
+      if (i % SIMILARITY_YIELD_EVERY === 0) {
+        await yieldToEventLoop();
+      }
       const distances: Array<{ idx: number; sim: number }> = [];
       for (let j = 0; j < chunks.length; j++) {
         if (i === j) {
@@ -493,6 +501,9 @@ export class ConsolidationEngine {
     const candidates: NearMergeCandidate[] = [];
 
     for (let i = 0; i < chunks.length; i++) {
+      if (i % SIMILARITY_YIELD_EVERY === 0) {
+        await yieldToEventLoop();
+      }
       for (let j = i + 1; j < chunks.length; j++) {
         // Same-path constraint (existing merge behavior)
         if (chunks[i]!.path && chunks[j]!.path && chunks[i]!.path !== chunks[j]!.path) {
@@ -597,9 +608,9 @@ export class ConsolidationEngine {
     });
   }
 
-  private findMergeCandidatesWithParent(
+  private async findMergeCandidatesWithParent(
     entries: Array<{ chunk: ChunkRow; newScore: number }>,
-  ): Array<{ loserId: string; winnerId: string }> {
+  ): Promise<Array<{ loserId: string; winnerId: string }>> {
     const promoted = entries
       .filter((e) => e.newScore >= this.config.promoteThreshold)
       .toSorted((a, b) => b.newScore - a.newScore)
@@ -612,6 +623,9 @@ export class ConsolidationEngine {
     const merged = new Set<string>();
 
     for (let i = 0; i < promoted.length; i++) {
+      if (i % SIMILARITY_YIELD_EVERY === 0) {
+        await yieldToEventLoop();
+      }
       if (merged.has(promoted[i].chunk.id)) {
         continue;
       }

@@ -402,7 +402,7 @@ describe("Consolidation Engine", () => {
     db = createTestDb();
   });
 
-  it("decays low-importance chunks to expired lifecycle", () => {
+  it("decays low-importance chunks to expired lifecycle", async () => {
     // ConsolidationEngine recalculates importance via calculateImportance():
     //   score = 1.0 * frequencyFactor * timeDecay
     //   frequencyFactor = 1 - exp(-0.2 * (accessCount + 1))
@@ -432,7 +432,7 @@ describe("Consolidation Engine", () => {
     });
 
     const engine = new ConsolidationEngine(db, { forgetThreshold: 0.05 });
-    const stats = engine.run();
+    const stats = await engine.run();
 
     expect(stats.forgottenChunks).toBeGreaterThanOrEqual(1);
 
@@ -448,7 +448,7 @@ describe("Consolidation Engine", () => {
     expect(high!.lifecycle).not.toBe("expired");
   });
 
-  it("protects frozen (skill) chunks from decay", () => {
+  it("protects frozen (skill) chunks from decay", async () => {
     insertChunk(db, {
       id: "skill-1",
       importance_score: 0.01,
@@ -458,7 +458,7 @@ describe("Consolidation Engine", () => {
     });
 
     const engine = new ConsolidationEngine(db, { forgetThreshold: 0.1 });
-    engine.run();
+    await engine.run();
 
     const skill = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get("skill-1") as
       | { lifecycle: string }
@@ -466,7 +466,7 @@ describe("Consolidation Engine", () => {
     expect(skill!.lifecycle).toBe("frozen");
   });
 
-  it("merges overlapping chunks from the same path", () => {
+  it("merges overlapping chunks from the same path", async () => {
     // Merge requires both chunks to recalculate above promoteThreshold (0.8).
     // Use high access_count and recent last_accessed_at to ensure high recalculated scores.
     const now = Date.now();
@@ -498,7 +498,7 @@ describe("Consolidation Engine", () => {
       promoteThreshold: 0.8,
       mergeOverlapThreshold: 0.9,
     });
-    const stats = engine.run();
+    const stats = await engine.run();
 
     expect(stats.mergedChunks).toBeGreaterThanOrEqual(1);
 
@@ -514,7 +514,7 @@ describe("Consolidation Engine", () => {
     expect(lifecycles).toContain("consolidated");
   });
 
-  it("creates audit log entries for consolidation events", () => {
+  it("creates audit log entries for consolidation events", async () => {
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
     insertChunk(db, {
       id: "audit-1",
@@ -525,7 +525,7 @@ describe("Consolidation Engine", () => {
     });
 
     const engine = new ConsolidationEngine(db, { forgetThreshold: 0.05 });
-    engine.run();
+    await engine.run();
 
     const logs = db.prepare("SELECT * FROM memory_audit_log").all();
     expect(logs.length).toBeGreaterThan(0);
@@ -1093,7 +1093,7 @@ describe("Curiosity Engine", () => {
     db = createTestDb();
   });
 
-  it("assesses chunk novelty and records surprise scores", () => {
+  it("assesses chunk novelty and records surprise scores", async () => {
     // Seed some chunks to build regions
     for (let i = 0; i < 10; i++) {
       insertChunk(db, {
@@ -1103,7 +1103,7 @@ describe("Curiosity Engine", () => {
     }
 
     const engine = new CuriosityEngine(db);
-    engine.run(); // build regions
+    await engine.run(); // build regions
 
     // Assess a new chunk
     const novelEmb = fakeEmbedding(999); // very different
@@ -1120,13 +1120,13 @@ describe("Curiosity Engine", () => {
     expect(surprise.composite_reward).toBeGreaterThanOrEqual(0);
   });
 
-  it("records search queries for gap detection", () => {
+  it("records search queries for gap detection", async () => {
     for (let i = 0; i < 10; i++) {
       insertChunk(db, { embedding: JSON.stringify(fakeEmbedding(i + 1)) });
     }
 
     const engine = new CuriosityEngine(db);
-    engine.run();
+    await engine.run();
 
     engine.recordSearchQuery("how to deploy", fakeEmbedding(50), 0, 0, 0);
 
@@ -1138,13 +1138,13 @@ describe("Curiosity Engine", () => {
     expect(query!.result_count).toBe(0);
   });
 
-  it("detects knowledge gaps from low-scoring repeated queries", () => {
+  it("detects knowledge gaps from low-scoring repeated queries", async () => {
     for (let i = 0; i < 15; i++) {
       insertChunk(db, { embedding: JSON.stringify(fakeEmbedding(i + 1)) });
     }
 
     const engine = new CuriosityEngine(db, { gapScoreThreshold: 0.4, maxTargets: 10 });
-    engine.run(); // build regions
+    await engine.run(); // build regions
 
     // Simulate repeated low-scoring queries in the same region
     const queryEmb = fakeEmbedding(1); // near region 0
@@ -1152,7 +1152,7 @@ describe("Curiosity Engine", () => {
       engine.recordSearchQuery(`gap query ${i}`, queryEmb, 1, 0.1, 0.1);
     }
 
-    engine.run(); // should detect gaps
+    await engine.run(); // should detect gaps
 
     const targets = db
       .prepare("SELECT * FROM curiosity_targets WHERE type = 'knowledge_gap'")
@@ -1162,13 +1162,13 @@ describe("Curiosity Engine", () => {
   });
 
   describe("dream insight assessment (feedback loop)", () => {
-    it("resolves knowledge gap targets when dream insight fills the gap", () => {
+    it("resolves knowledge gap targets when dream insight fills the gap", async () => {
       for (let i = 0; i < 10; i++) {
         insertChunk(db, { embedding: JSON.stringify(fakeEmbedding(i + 1)) });
       }
 
       const engine = new CuriosityEngine(db);
-      engine.run();
+      await engine.run();
 
       // Manually create a knowledge_gap target
       const regionRow = db.prepare("SELECT * FROM curiosity_regions LIMIT 1").get() as
@@ -1212,13 +1212,13 @@ describe("Curiosity Engine", () => {
   });
 
   describe("dream mode weight adjustments", () => {
-    it("boosts exploration weight when knowledge gaps exist", () => {
+    it("boosts exploration weight when knowledge gaps exist", async () => {
       for (let i = 0; i < 10; i++) {
         insertChunk(db, { embedding: JSON.stringify(fakeEmbedding(i + 1)) });
       }
 
       const engine = new CuriosityEngine(db);
-      engine.run();
+      await engine.run();
 
       // Insert knowledge gap targets
       db.prepare(
@@ -2347,7 +2347,7 @@ describe("Integration: Cross-system feedback loops", () => {
   });
 
   describe("Dream → Curiosity feedback loop", () => {
-    it("dream insights can resolve curiosity knowledge gaps", () => {
+    it("dream insights can resolve curiosity knowledge gaps", async () => {
       // Set up chunks and curiosity engine
       for (let i = 0; i < 10; i++) {
         insertChunk(db, {
@@ -2357,7 +2357,7 @@ describe("Integration: Cross-system feedback loops", () => {
       }
 
       const curiosity = new CuriosityEngine(db);
-      curiosity.run(); // build regions
+      await curiosity.run(); // build regions
 
       // Create a knowledge gap
       const region = db.prepare("SELECT * FROM curiosity_regions LIMIT 1").get() as
@@ -2402,13 +2402,13 @@ describe("Integration: Cross-system feedback loops", () => {
   });
 
   describe("Curiosity → Dream mode weight adjustment", () => {
-    it("knowledge gaps boost exploration dream weight", () => {
+    it("knowledge gaps boost exploration dream weight", async () => {
       for (let i = 0; i < 10; i++) {
         insertChunk(db, { embedding: JSON.stringify(fakeEmbedding(i + 1)) });
       }
 
       const curiosity = new CuriosityEngine(db);
-      curiosity.run();
+      await curiosity.run();
 
       // Insert gaps
       for (let i = 0; i < 3; i++) {
@@ -2422,13 +2422,13 @@ describe("Integration: Cross-system feedback loops", () => {
       expect(adjustments.exploration).toBeGreaterThan(0);
     });
 
-    it("contradictions boost simulation dream weight", () => {
+    it("contradictions boost simulation dream weight", async () => {
       for (let i = 0; i < 10; i++) {
         insertChunk(db, { embedding: JSON.stringify(fakeEmbedding(i + 1)) });
       }
 
       const curiosity = new CuriosityEngine(db);
-      curiosity.run();
+      await curiosity.run();
 
       db.prepare(
         `INSERT INTO curiosity_targets (id, type, description, priority, metadata, created_at, expires_at)
@@ -2593,7 +2593,7 @@ describe("Integration: Cross-system feedback loops", () => {
       );
 
       let crystallizedId: string | null = null;
-      const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
+      const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, async (id) => {
         crystallizedId = id;
       });
       refiner.evaluateMutations(
@@ -2604,7 +2604,7 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // 2. Run consolidation — the new skill should survive because lifecycle='frozen'
       const engine = new ConsolidationEngine(db, { forgetThreshold: 0.1 });
-      engine.run();
+      await engine.run();
 
       const skill = db
         .prepare("SELECT lifecycle, lifecycle_state FROM chunks WHERE id = ?")
@@ -2760,7 +2760,7 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // Crystallize cycle 2 mutation (dream engine already stored insights)
       let gen2CrystalId: string | null = null;
-      const refiner2 = new SkillRefiner(db, { promotionThreshold: 0.4 }, (id) => {
+      const refiner2 = new SkillRefiner(db, { promotionThreshold: 0.4 }, async (id) => {
         gen2CrystalId = id;
       });
       const source2 = db
@@ -2796,7 +2796,7 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // Verify all 3 survive consolidation (frozen lifecycle)
       const consolidation = new ConsolidationEngine(db, { forgetThreshold: 0.1 });
-      consolidation.run();
+      await consolidation.run();
 
       for (const skillId of [origId, gen1CrystalId!, gen2CrystalId!]) {
         const after = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(skillId) as
@@ -3051,7 +3051,7 @@ describe("Integration: Cross-system feedback loops", () => {
   });
 
   describe("Full consolidated cycle simulation", () => {
-    it("runs the complete memory maintenance cycle without errors", () => {
+    it("runs the complete memory maintenance cycle without errors", async () => {
       // Seed a realistic memory state
       for (let i = 0; i < 30; i++) {
         insertChunk(db, {
@@ -3070,12 +3070,12 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // 2. Consolidation
       const consolidation = new ConsolidationEngine(db);
-      const consStats = consolidation.run();
+      const consStats = await consolidation.run();
       expect(consStats).toBeDefined();
 
       // 3. Curiosity engine
       const curiosity = new CuriosityEngine(db);
-      curiosity.run();
+      await curiosity.run();
 
       // 4. Governance enforcement
       const governance = new MemoryGovernance(db);
@@ -3161,7 +3161,7 @@ describe("Full E2E Pipeline: ingest → consolidate → dream → curiosity", ()
 
     // Phase 2: Consolidation
     const consolidation = new ConsolidationEngine(db, {});
-    const consolidationStats = consolidation.run();
+    const consolidationStats = await consolidation.run();
     expect(consolidationStats.totalChunks).toBeGreaterThanOrEqual(30);
 
     // Phase 3: Dream — run replay (heuristic) then mutation (LLM)

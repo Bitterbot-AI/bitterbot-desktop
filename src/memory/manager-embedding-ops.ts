@@ -16,6 +16,7 @@ import { type VoyageBatchRequest, runVoyageEmbeddingBatches } from "./batch-voya
 import { inferSemanticType, defaultGovernance } from "./crystal.js";
 import { enforceEmbeddingMaxInputTokens } from "./embedding-chunk-limits.js";
 import { estimateUtf8Bytes } from "./embedding-input-limits.js";
+import { yieldToEventLoop } from "./event-loop.js";
 import {
   chunkMarkdown,
   hashText,
@@ -27,6 +28,8 @@ import {
 
 const VECTOR_TABLE = "chunks_vec";
 const FTS_TABLE = "chunks_fts";
+// Yield to the event loop every N chunk inserts during file indexing.
+const INDEX_INSERT_YIELD_EVERY = 64;
 const EMBEDDING_CACHE_TABLE = "embedding_cache";
 const EMBEDDING_BATCH_MAX_TOKENS = 8000;
 const EMBEDDING_INDEX_CONCURRENCY = 4;
@@ -790,6 +793,13 @@ class MemoryManagerEmbeddingOps {
     const memoryType = options.source === "skills" ? "skill" : "plaintext";
     const lifecycle = options.source === "skills" ? "frozen" : "generated";
     for (let i = 0; i < chunks.length; i++) {
+      // A large session/memory file can carry thousands of chunks, each doing
+      // several synchronous INSERTs plus a KNN curiosity assessment. Yield every
+      // INDEX_INSERT_YIELD_EVERY chunks so a single big file can't freeze the
+      // gateway keepalive and bounce the Control UI.
+      if (i > 0 && i % INDEX_INSERT_YIELD_EVERY === 0) {
+        await yieldToEventLoop();
+      }
       const chunk = chunks[i];
       const embedding = embeddings[i] ?? [];
       const id = hashText(

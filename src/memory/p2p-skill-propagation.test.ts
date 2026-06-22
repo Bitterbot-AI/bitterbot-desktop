@@ -1800,7 +1800,7 @@ describe("End-to-End P2P Skill Propagation", () => {
     expect(mockBridge.publishCalls.length).toBe(0);
   });
 
-  it("consolidation preserves frozen skill crystals", () => {
+  it("consolidation preserves frozen skill crystals", async () => {
     const skillId = createSkillChunk(db, "Frozen skill", {
       lifecycle: "frozen",
       importance_score: 0.01,
@@ -1818,7 +1818,7 @@ describe("End-to-End P2P Skill Propagation", () => {
     }
 
     const consolidation = new ConsolidationEngine(db, { forgetThreshold: 0.05 });
-    consolidation.run();
+    await consolidation.run();
 
     const skill = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(skillId) as {
       lifecycle: string;

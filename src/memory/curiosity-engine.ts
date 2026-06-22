@@ -17,6 +17,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { yieldToEventLoop } from "./event-loop.js";
 import { GCCRFRewardFunction, type GCCRFConfig, type GCCRFRewardResult } from "./gccrf-reward.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
 
@@ -45,7 +46,11 @@ const log = createSubsystemLogger("memory/curiosity");
 // (which would stall WS requests and bounce the Control UI's connection).
 const PENDING_SCORE_BATCH = 50;
 const PENDING_SCORE_YIELD_EVERY = 8;
-const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+// Greedy region clustering is O(n^2) over every active chunk and is unbounded,
+// so on a mature agent it is the single longest synchronous burst in the
+// maintenance cycle. Yield to the event loop every REGION_CLUSTER_YIELD_EVERY
+// outer iterations so it cannot stall the gateway keepalive.
+const REGION_CLUSTER_YIELD_EVERY = 32;
 
 type ChunkRow = {
   id: string;
@@ -283,12 +288,12 @@ export class CuriosityEngine {
   /**
    * Hook 3: Periodic consolidation -- rebuild regions, detect gaps, generate targets.
    */
-  run(): { regions: number; targets: number; expired: number } {
+  async run(): Promise<{ regions: number; targets: number; expired: number }> {
     if (!this.config.enabled) {
       return { regions: 0, targets: 0, expired: 0 };
     }
 
-    const regionsBuilt = this.rebuildRegions();
+    const regionsBuilt = await this.rebuildRegions();
     const expired = this.expireTargets();
     const targetsGenerated = this.detectGapsAndGenerateTargets();
     this.computeRegionLearningProgress();
@@ -1021,7 +1026,7 @@ export class CuriosityEngine {
     return withSim.map(({ embedding: emb, hash }) => ({ embedding: emb, hash }));
   }
 
-  private rebuildRegions(): number {
+  private async rebuildRegions(): Promise<number> {
     // Load all active chunks with embeddings
     const chunks = this.db
       .prepare(
@@ -1052,7 +1057,13 @@ export class CuriosityEngine {
       meanImportance: number;
     }> = [];
 
+    let clusterScanned = 0;
     for (const chunk of chunks) {
+      // Cooperative yield: this greedy O(n^2) sweep is the longest synchronous
+      // step in the maintenance cycle, so let the gateway keepalive flush.
+      if (++clusterScanned % REGION_CLUSTER_YIELD_EVERY === 0) {
+        await yieldToEventLoop();
+      }
       if (assigned.has(chunk.id)) {
         continue;
       }

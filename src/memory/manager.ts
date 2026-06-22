@@ -42,6 +42,7 @@ import {
   type VoyageEmbeddingClient,
 } from "./embeddings.js";
 import { EpistemicDirectiveEngine } from "./epistemic-directives.js";
+import { yieldToEventLoop } from "./event-loop.js";
 import { parseEvidenceRefs, scoreCitationSupport } from "./evidence-expand.js";
 import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
 import { ExperienceSignalCollector } from "./experience-signal-collector.js";
@@ -1649,7 +1650,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
   }
 
-  consolidate(): ConsolidationStats | null {
+  async consolidate(): Promise<ConsolidationStats | null> {
     const consolidationCfg = this.cfg.memory?.consolidation;
     if (consolidationCfg?.enabled === false) {
       return null;
@@ -1721,10 +1722,16 @@ export class MemoryIndexManager implements MemorySearchManager {
           });
         // 1. Hormonal decay
         this.hormonalManager?.decay();
-        // 2. Consolidation (Ebbinghaus decay + merge)
-        this.consolidate();
-        // 3. Curiosity engine (rebuild regions, detect gaps)
-        const curiosityResult = this.curiosityEngine?.run();
+        // 2. Consolidation (Ebbinghaus decay + merge). The engine yields to the
+        //    event loop across its O(n^2) similarity sweeps; awaiting it lets the
+        //    gateway keepalive flush instead of freezing for the whole pass.
+        await this.consolidate();
+        // Yield between heavy steps so the maintenance cycle never monopolizes
+        // the loop long enough to trip the Control UI's tick-timeout watchdog.
+        await yieldToEventLoop();
+        // 3. Curiosity engine (rebuild regions, detect gaps) — also yields internally.
+        const curiosityResult = await this.curiosityEngine?.run();
+        await yieldToEventLoop();
         // 3b. Emit top exploration targets as network queries
         if (curiosityResult && curiosityResult.targets > 0 && this.skillNetworkBridge) {
           this.emitTopTargetsAsQueries();
@@ -1738,6 +1745,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         // 6. Auto-scratch from hormonal spikes (belt AND suspenders)
         this.autoScratchFromHormonalSpike();
         // 7. EigenTrust + anomaly detection (Task 6)
+        await yieldToEventLoop();
         if (this.peerReputationManager) {
           this.peerReputationManager
             .refreshEigenTrustScores(this.skillNetworkBridge ? undefined : null)
@@ -1776,6 +1784,7 @@ export class MemoryIndexManager implements MemorySearchManager {
             });
         }
         // 8. Crystallize successful execution patterns into skills
+        await yieldToEventLoop();
         if (this.executionTracker) {
           const crystallizer = new SkillCrystallizer(this.db, this.executionTracker);
           const newSkills = crystallizer.crystallizePatterns();

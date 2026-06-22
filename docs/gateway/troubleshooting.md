@@ -86,6 +86,30 @@ Common signatures:
 - `unauthorized` / reconnect loop → token/password mismatch.
 - `gateway connect failed:` → wrong host/port/url target.
 
+### Periodic disconnects (the UI drops every few minutes, code 1006)
+
+A connection that authenticates fine but then drops at a roughly periodic
+interval (logged as `code=1006` abnormal closes, each followed by a fresh
+`conn=` id) is almost never an auth or network problem. The client closes the
+socket itself with `tick timeout` when the gateway stops sending its keepalive
+`tick` for longer than twice the tick interval (default `2 x 30s = 60s`).
+
+The keepalive stalls when the gateway's single Node event loop is blocked by a
+long synchronous burst. The memory subsystem runs in-process and the heaviest
+work is the ~30-minute maintenance cycle (consolidation similarity sweeps,
+curiosity region rebuild) and large file-index passes. These loops now yield to
+the event loop cooperatively (see `src/memory/event-loop.ts`), so a healthy
+build should not exhibit this. If it reappears:
+
+- Watch for RPC durations ballooning in the logs (e.g. `skills.network` taking
+  tens of seconds when it normally takes <200ms) — that is queueing delay behind
+  a blocked loop, not a slow handler.
+- Confirm the gateway process is not pinned in `D` (uninterruptible I/O) state
+  from SQLite WAL pressure; a `pnpm build` restart checkpoints oversized WAL
+  files (`~/.bitterbot/*.sqlite-wal`).
+- A new heavy synchronous loop added to a memory engine is the usual regression;
+  it must `await yieldToEventLoop()` (or `makeYieldEvery`) periodically.
+
 Related:
 
 - [/web/control-ui](/web/control-ui)

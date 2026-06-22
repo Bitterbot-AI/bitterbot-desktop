@@ -42,7 +42,7 @@ function insertChunk(db: DatabaseSync, id: string, importance: number): void {
 }
 
 describe("consolidation pairwise-merge cap", () => {
-  it("caps near-merge discovery to the top-N most important chunks", () => {
+  it("caps near-merge discovery to the top-N most important chunks", async () => {
     const db = createDb();
     const N = 600; // > CAP
     for (let i = 0; i < N; i += 1) {
@@ -60,7 +60,7 @@ describe("consolidation pairwise-merge cap", () => {
       "discoverNearMerges",
     );
 
-    engine.run();
+    await engine.run();
 
     expect(spy).toHaveBeenCalled();
     const passed = spy.mock.calls[0]![0] as Array<{ id: string }>;

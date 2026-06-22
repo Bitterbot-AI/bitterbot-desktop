@@ -535,7 +535,7 @@ Key improvements over base workflow:
   ).c;
 
   const consolidation = new ConsolidationEngine(db, {});
-  const consolStats = consolidation.run();
+  const consolStats = await consolidation.run();
   console.log(
     `  Consolidation: ${consolStats.totalChunks} chunks, ${consolStats.forgottenChunks} forgotten, ${consolStats.mergedChunks} merged`,
   );

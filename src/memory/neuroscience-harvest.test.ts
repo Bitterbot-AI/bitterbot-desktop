@@ -173,7 +173,7 @@ describe("Phase 2: Ripple-timing replay", () => {
 // ── Phase 3: SNN Merge Discovery Tests ──
 
 describe("Phase 3: SNN merge discovery", () => {
-  it("discovers near-merge candidates with shared neighbors", () => {
+  it("discovers near-merge candidates with shared neighbors", async () => {
     const db = createTestDb();
     const engine = new ConsolidationEngine(db);
 
@@ -190,7 +190,7 @@ describe("Phase 3: SNN merge discovery", () => {
       });
     }
 
-    const candidates = engine.discoverNearMerges(chunks, 10, 4);
+    const candidates = await engine.discoverNearMerges(chunks, 10, 4);
     // The 8 similar chunks should share neighbors
     // Not all pairs will qualify (depends on exact noise), but some should
     // At minimum, the method should not crash and return valid candidates
@@ -202,7 +202,7 @@ describe("Phase 3: SNN merge discovery", () => {
     }
   });
 
-  it("respects same-path constraint", () => {
+  it("respects same-path constraint", async () => {
     const db = createTestDb();
     const engine = new ConsolidationEngine(db);
 
@@ -216,7 +216,7 @@ describe("Phase 3: SNN merge discovery", () => {
       });
     }
 
-    const candidates = engine.discoverNearMerges(chunks, 10, 4);
+    const candidates = await engine.discoverNearMerges(chunks, 10, 4);
     // No cross-path candidates
     for (const c of candidates) {
       const idxA = parseInt(c.chunkIdA.split("-")[1]!);
@@ -227,7 +227,7 @@ describe("Phase 3: SNN merge discovery", () => {
     }
   });
 
-  it("does not discover chunks above merge threshold", () => {
+  it("does not discover chunks above merge threshold", async () => {
     const db = createTestDb();
     const engine = new ConsolidationEngine(db);
 
@@ -239,14 +239,14 @@ describe("Phase 3: SNN merge discovery", () => {
       path: "test.md",
     }));
 
-    const candidates = engine.discoverNearMerges(chunks, 10, 4);
+    const candidates = await engine.discoverNearMerges(chunks, 10, 4);
     // All pairs above ceiling should be filtered out
     for (const c of candidates) {
       expect(c.baseSimilarity).toBeLessThan(0.92);
     }
   });
 
-  it("returns empty for too few chunks", () => {
+  it("returns empty for too few chunks", async () => {
     const db = createTestDb();
     const engine = new ConsolidationEngine(db);
 
@@ -257,7 +257,7 @@ describe("Phase 3: SNN merge discovery", () => {
     }));
 
     // k=10 but only 5 chunks → returns empty
-    const candidates = engine.discoverNearMerges(chunks, 10, 4);
+    const candidates = await engine.discoverNearMerges(chunks, 10, 4);
     expect(candidates).toHaveLength(0);
   });
 
