@@ -35,7 +35,7 @@ import {
 } from "./intervention-record.js";
 import { recordTool } from "./session-context-tracker.js";
 
-const MESSAGE_TOOL_HINT_RX = /(send_message|_send|_reply|send$|reply$)/i;
+const MESSAGE_TOOL_HINT_RX = /(send_message|_send|_reply|send$|reply$|^message$)/i;
 const TEXT_PARAM_KEYS = ["text", "content", "message", "body", "reply"] as const;
 
 function autoExtractDraft(

@@ -22,6 +22,15 @@ export interface ProactiveRecallConfig {
   maxFacts: number;
   minConfidence: number;
   minScore: number;
+  /**
+   * Minimum importance_score a crystal needs to be *eligible* for semantic
+   * surfacing. This is only a cheap prefilter to bound the candidate set —
+   * relevance is gated by `minScore` (cosine similarity), so this is kept low
+   * on purpose. Curated factual layers (directive/world_fact) are valuable even
+   * at modest importance: e.g. a stored "processed 636M tokens" world_fact sits
+   * around 0.18 importance but must still surface when the user asks about it.
+   */
+  minImportance: number;
   priorityLayers: string[];
   identityAlwaysInclude: boolean;
   cooldownTurns: number;
@@ -32,6 +41,7 @@ export const DEFAULT_PROACTIVE_RECALL_CONFIG: ProactiveRecallConfig = {
   maxFacts: 5,
   minConfidence: 0.6,
   minScore: 0.55,
+  minImportance: 0.15,
   priorityLayers: ["directive", "world_fact"],
   identityAlwaysInclude: true,
   cooldownTurns: 5,
@@ -122,11 +132,11 @@ export function proactiveRecall(params: {
              JOIN chunks c ON c.id = v.id
              WHERE c.epistemic_layer IN ('directive', 'world_fact', 'mental_model')
                AND COALESCE(c.lifecycle, 'generated') IN ('generated', 'activated', 'consolidated', 'frozen')
-               AND c.importance_score >= 0.4
+               AND c.importance_score >= ?
              ORDER BY distance ASC
              LIMIT ?`,
           )
-          .all(JSON.stringify(params.queryEmbedding), remaining * 3) as Array<{
+          .all(JSON.stringify(params.queryEmbedding), cfg.minImportance, remaining * 3) as Array<{
           id: string;
           text: string;
           importance_score: number;

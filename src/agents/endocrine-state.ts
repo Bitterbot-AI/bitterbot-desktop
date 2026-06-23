@@ -28,6 +28,14 @@ export async function resolveEndocrineState(params: {
   config?: BitterbotConfig;
   agentId: string;
   workspaceDir: string;
+  /**
+   * The live user message for this turn. When provided, proactive recall
+   * embeds it and surfaces semantically-matched directive/world_fact/
+   * mental_model crystals (not just identity facts), and prospective-memory
+   * triggers are checked against it. Omit for non-turn contexts (status
+   * probes, compaction) where only identity-level recall is wanted.
+   */
+  userMessage?: string;
 }): Promise<EndocrineStateForPrompt | undefined> {
   try {
     const { MemoryIndexManager } = await import("../memory/manager.js");
@@ -130,32 +138,48 @@ export async function resolveEndocrineState(params: {
       // No handover briefs yet — that's fine
     }
 
-    // Plan 7, Phase 1: Proactive memory surfacing — involuntary recall of identity/directive facts
+    // Plan 7, Phase 1: Proactive memory surfacing — involuntary recall of
+    // identity facts plus, when we have the live user message, semantically
+    // matched directive/world_fact/mental_model crystals. This is what lets the
+    // agent answer already knowing what it has stored about a topic.
     let proactiveMemories: string | undefined;
+    let userMessageEmbedding: number[] | null = null;
     try {
-      const { proactiveRecall, formatProactiveFacts } =
-        await import("../memory/proactive-recall.js");
-      const result = proactiveRecall({
-        userMessage: "", // Will be populated when called with context
-        queryEmbedding: null, // Identity prefs don't need embedding
-        db: (manager as Record<string, unknown>).db as import("node:sqlite").DatabaseSync,
-        userModelManager: (manager as Record<string, unknown>).userModelManager as
-          | import("../memory/user-model.js").UserModelManager
-          | null,
-        recentlySurfaced:
-          ((manager as Record<string, unknown>).proactiveRecallCooldown as Map<string, number>) ??
-          new Map(),
-        currentTurn: 0,
-        hormonalModulation: hormonalMgr
-          ? (
-              hormonalMgr as unknown as {
-                getRetrievalModulation(): { importanceBoost: number; recencyBias: number };
-              }
-            ).getRetrievalModulation()
-          : null,
-      });
-      if (result.facts.length > 0) {
-        proactiveMemories = formatProactiveFacts(result.facts);
+      const recallManager = manager as unknown as {
+        recallForUserTurn(
+          text: string,
+        ): Promise<{ facts: string | undefined; embedding: number[] | null }>;
+      };
+      if (params.userMessage && typeof recallManager.recallForUserTurn === "function") {
+        const recall = await recallManager.recallForUserTurn(params.userMessage);
+        proactiveMemories = recall.facts;
+        userMessageEmbedding = recall.embedding;
+      } else {
+        // No live message (status/compaction) — identity-only recall.
+        const { proactiveRecall, formatProactiveFacts } =
+          await import("../memory/proactive-recall.js");
+        const result = proactiveRecall({
+          userMessage: "",
+          queryEmbedding: null,
+          db: (manager as Record<string, unknown>).db as import("node:sqlite").DatabaseSync,
+          userModelManager: (manager as Record<string, unknown>).userModelManager as
+            | import("../memory/user-model.js").UserModelManager
+            | null,
+          recentlySurfaced:
+            ((manager as Record<string, unknown>).proactiveRecallCooldown as Map<string, number>) ??
+            new Map(),
+          currentTurn: 0,
+          hormonalModulation: hormonalMgr
+            ? (
+                hormonalMgr as unknown as {
+                  getRetrievalModulation(): { importanceBoost: number; recencyBias: number };
+                }
+              ).getRetrievalModulation()
+            : null,
+        });
+        if (result.facts.length > 0) {
+          proactiveMemories = formatProactiveFacts(result.facts);
+        }
       }
     } catch {
       // Proactive recall not available — non-critical
@@ -170,7 +194,10 @@ export async function resolveEndocrineState(params: {
         }): Array<{ action: string }>;
       } | null;
       if (prospectiveEngine) {
-        const triggered = prospectiveEngine.checkTriggers({ messageText: "" });
+        const triggered = prospectiveEngine.checkTriggers({
+          messageText: params.userMessage ?? "",
+          messageEmbedding: userMessageEmbedding ?? undefined,
+        });
         if (triggered.length > 0) {
           const prospectiveLines = triggered.map((t) => `- [reminder] ${t.action}`);
           proactiveMemories = (proactiveMemories ?? "") + "\n" + prospectiveLines.join("\n");

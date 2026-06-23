@@ -64,6 +64,35 @@ describe("recall-before-claim", () => {
       tool: "memory_search",
     });
   });
+
+  it("covers the webchat 'message' tool (Gap 2)", () => {
+    // The default webchat reply tool is named "message"; it must be in the
+    // interceptor's tool filter or recall-before-claim never fires for it.
+    expect(recallBeforeClaim.tools).toContain("message");
+  });
+
+  it("fires on a denial/negation claim even without a positive assertion (Gap 3)", () => {
+    // "636M tokens" has no capitalized subject for ASSERTION_RX, but denying a
+    // fact the agent actually has stored is exactly the failure we guard.
+    const ctx = mkCtx({ draftReply: "That 636M tokens figure is hallucinated." });
+    const should = recallBeforeClaim.shouldActivate(ctx, {
+      toolName: "message",
+      params: { text: ctx.draftReply },
+    });
+    expect(should).toBe(true);
+  });
+
+  it("still skips a negation when memory was just consulted", () => {
+    const ctx = mkCtx({
+      draftReply: "OpenClaw doesn't exist.",
+      toolHistory: [{ tool: "memory_search", success: true, tsDelta: 4000 }],
+    });
+    const should = recallBeforeClaim.shouldActivate(ctx, {
+      toolName: "message",
+      params: { text: ctx.draftReply },
+    });
+    expect(should).toBe(false);
+  });
 });
 
 describe("route-by-query-shape", () => {

@@ -484,6 +484,17 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!this.hormonalManager || !text) {
       return;
     }
+    // Dedupe: prompt assembly can run more than once for the same user turn
+    // (generation retries, compaction passes). React + advance the turn counter
+    // only once per distinct message within a short window so hormonal state and
+    // proactive-recall cooldowns stay calibrated to real turns.
+    const now = Date.now();
+    if (text === this.lastLiveMessage && now - this.lastLiveMessageAt < 5_000) {
+      return;
+    }
+    this.lastLiveMessage = text;
+    this.lastLiveMessageAt = now;
+
     const events = this.hormonalManager.stimulateFromText(text);
     if (events.length > 0) {
       log.debug(`live hormonal stimulation: ${events.join(", ")}`);
@@ -500,6 +511,59 @@ export class MemoryIndexManager implements MemorySearchManager {
     );
   }
 
+  /**
+   * Involuntary proactive recall for a live user turn (Plan 7, Phase 1).
+   *
+   * Embeds the user's message and surfaces what the agent already knows —
+   * identity facts plus semantically-matched directive/world_fact/mental_model
+   * crystals and open loops — so the model answers already grounded in stored
+   * memory instead of hallucinating about things it has discussed before. Also
+   * drives the live hormonal/coherence reaction (idempotent per turn via the
+   * dedupe in stimulateFromLiveMessage).
+   *
+   * Best-effort: returns no facts if embedding or the vector table is
+   * unavailable. Returns the query embedding so callers (e.g. prospective
+   * memory triggers) can reuse it without re-embedding.
+   */
+  async recallForUserTurn(
+    text: string,
+  ): Promise<{ facts: string | undefined; embedding: number[] | null }> {
+    if (!text || !text.trim()) {
+      return { facts: undefined, embedding: null };
+    }
+
+    // Live emotional reaction + turn advance (deduped within the turn).
+    this.stimulateFromLiveMessage(text);
+
+    let embedding: number[] | null = null;
+    try {
+      const vec = (await this.embedQueryWithTimeout(text)) as number[];
+      embedding = Array.isArray(vec) && vec.length > 0 ? vec : null;
+    } catch (err) {
+      log.debug(`proactive recall: query embed failed: ${String(err)}`);
+    }
+
+    try {
+      const { proactiveRecall, formatProactiveFacts } = await import("./proactive-recall.js");
+      const result = proactiveRecall({
+        userMessage: text,
+        queryEmbedding: embedding,
+        db: this.db,
+        userModelManager: this.userModelManager,
+        recentlySurfaced: this.proactiveRecallCooldown,
+        currentTurn: this.turnCount,
+        hormonalModulation: this.hormonalManager?.getRetrievalModulation() ?? null,
+      });
+      return {
+        facts: result.facts.length > 0 ? formatProactiveFacts(result.facts) : undefined,
+        embedding,
+      };
+    } catch (err) {
+      log.debug(`proactive recall failed: ${String(err)}`);
+      return { facts: undefined, embedding };
+    }
+  }
+
   // ── Emotional Dream Triggering (Plan 6, Phase 4) ──
 
   private lastMiniDreamTrigger = 0;
@@ -509,6 +573,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   readonly coherenceTracker = new SessionCoherenceTracker();
   readonly proactiveRecallCooldown = new Map<string, number>();
   private turnCount = 0;
+  /** Last live user message + when, to dedupe per-turn stimulation/recall. */
+  private lastLiveMessage = "";
+  private lastLiveMessageAt = 0;
 
   /**
    * Check hormonal state after stimulation and trigger mini-dream if spike detected.

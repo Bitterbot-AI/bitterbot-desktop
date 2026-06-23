@@ -56,6 +56,10 @@ export function buildEmbeddedSystemPrompt(params: {
     briefing: string;
     phenotypeSummary?: string;
     maturity?: number;
+    /** Involuntary proactive-recall facts; rendered into the prompt body. */
+    proactiveMemories?: string;
+    lastSessionBrief?: string;
+    sessionCoherence?: string;
   };
 }): string {
   return buildAgentSystemPrompt({

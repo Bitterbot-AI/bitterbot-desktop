@@ -113,6 +113,8 @@ export async function runCliAgent(params: {
     config: params.config,
     agentId: sessionAgentId,
     workspaceDir,
+    // Surface what we already know about this message's topic before answering.
+    userMessage: params.prompt,
   }).catch(() => undefined);
 
   const systemPrompt = buildSystemPrompt({

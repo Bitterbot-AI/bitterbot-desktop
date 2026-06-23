@@ -452,6 +452,9 @@ export async function runEmbeddedAttempt(
       config: params.config,
       agentId: sessionAgentId,
       workspaceDir: effectiveWorkspace,
+      // Drives involuntary proactive recall: surface what we already know about
+      // this message's topic into the system prompt before the model answers.
+      userMessage: params.prompt,
     }).catch(() => undefined);
 
     const appendPrompt = buildEmbeddedSystemPrompt({

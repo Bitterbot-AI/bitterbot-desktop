@@ -27,7 +27,15 @@ const ASSERTION_RX = /\b([A-Z][a-zA-Z]{2,})\b[^.?!]*\b(is|are|was|were|has|have|
 const NON_ASSERTION_RX =
   /\b(I think|I feel|maybe|perhaps|could be|might be|sounds like|in my opinion|\?)/i;
 
+// Denial/negation shapes — calling something fabricated is a factual claim too,
+// and a higher-stakes one: "X doesn't exist" when X does is worse than a fuzzy
+// positive claim. These fire recall-before-claim even when ASSERTION_RX (which
+// keys off a capitalized subject) would miss the phrasing.
+const NEGATION_RX =
+  /\b(hallucinated|made up|making it up|doesn'?t exist|does not exist|never (existed|happened)|fabricated|invented|not real|isn'?t real|that'?s fake|no such|didn'?t happen)\b/i;
+
 const MESSAGE_TOOLS = [
+  "message",
   "send_message",
   "discord_send",
   "telegram_send",
@@ -46,8 +54,14 @@ export const recallBeforeClaim: PreActionInterceptor = {
   shouldActivate(ctx: StepContext, _action: CandidateAction): boolean {
     const draft = ctx.draftReply ?? "";
     if (!draft) return false;
-    if (NON_ASSERTION_RX.test(draft)) return false;
-    if (!ASSERTION_RX.test(draft)) return false;
+    const isNegation = NEGATION_RX.test(draft);
+    // Negations are factual claims too — don't let an opinion/question shape
+    // ("maybe that's made up?") suppress them, but do require either a positive
+    // assertion or a denial to be present.
+    if (!isNegation) {
+      if (NON_ASSERTION_RX.test(draft)) return false;
+      if (!ASSERTION_RX.test(draft)) return false;
+    }
     // Skip if any memory tool has fired this turn (tsDelta within ~30s).
     const recent = ctx.toolHistory.filter((t) => t.tsDelta < 30_000);
     if (recent.some((t) => MEMORY_LIKE_TOOLS.has(t.tool))) return false;
@@ -57,6 +71,8 @@ export const recallBeforeClaim: PreActionInterceptor = {
   intervene(ctx: StepContext, _action: CandidateAction) {
     const draft = ctx.draftReply ?? "";
     const match = draft.match(ASSERTION_RX);
+    // For a denial, the disputed subject may not be the ASSERTION_RX capture —
+    // fall back to the leading text so the grounding search targets the claim.
     const subject = match?.[1] ?? draft.slice(0, 80);
     return {
       type: "require_prereq" as const,

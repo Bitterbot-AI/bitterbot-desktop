@@ -342,13 +342,15 @@ When the gate passes and context is loaded, it comes with two enhancements. Firs
 Every turn, before the LLM generates a response, the system runs a zero-cost proactive recall pass:
 
 1. **Identity facts** — name, role, location. Always surfaced, no embedding needed.
-2. **Vector-matched crystals** — directive and world_fact crystals relevant to the current message.
+2. **Vector-matched crystals** — directive, world_fact, and mental_model crystals relevant to the current message. The live user message is embedded and matched against the crystal vectors, so what surfaces is gated by **semantic relevance** (cosine similarity), not by importance. A modestly-rated fact ("processed 636M tokens") still surfaces when the user asks about that topic.
 3. **Open loops** — unfinished tasks detected by the Zeigarnik system.
-4. **Prospective memories** — trigger conditions that match the current message.
+4. **Prospective memories** — trigger conditions that match the current message (checked against the same message embedding).
 5. **Epistemic directives** — top-priority knowledge gap questions.
 6. **Entity snapshot** — when the user's message contains references like "that file" or "the same thing," the last-touched entities from the handover brief are surfaced so the LLM can resolve the reference.
 
 These are injected into the system prompt as terse one-line facts. The agent embodies them naturally without announcing them. The user never sees "according to my memory" — they just experience an agent that remembers.
+
+This pass is the agent's _involuntary_ recall — it runs before generation so the model answers already knowing what it has stored, rather than relying on an after-the-fact tool call. The recall-before-claim interceptor is a separate backstop: if the model still drafts an ungrounded factual claim (or a denial of one) it can force a `memory_search` before the message goes out.
 
 ---
 
