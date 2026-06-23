@@ -21,6 +21,14 @@ export interface ProactiveRecallConfig {
   enabled: boolean;
   maxFacts: number;
   minConfidence: number;
+  /**
+   * Minimum cosine similarity (1 - distance) between the user message and a
+   * crystal for it to surface. Tuned for text-embedding-3-small, whose
+   * genuinely-relevant pairs cluster around 0.42-0.67 while unrelated pairs sit
+   * ~0.1-0.3. At the old 0.55 a natural query like "who is my wife" (~0.50 vs
+   * "User's wife is named Donna") fell through and surfaced nothing; 0.45 keeps
+   * relational/short queries while staying clear of the noise floor.
+   */
   minScore: number;
   /**
    * Minimum importance_score a crystal needs to be *eligible* for semantic
@@ -40,7 +48,7 @@ export const DEFAULT_PROACTIVE_RECALL_CONFIG: ProactiveRecallConfig = {
   enabled: true,
   maxFacts: 5,
   minConfidence: 0.6,
-  minScore: 0.55,
+  minScore: 0.45,
   minImportance: 0.15,
   priorityLayers: ["directive", "world_fact"],
   identityAlwaysInclude: true,

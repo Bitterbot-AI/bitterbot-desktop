@@ -63,6 +63,11 @@ describe("proactiveRecall semantic surfacing", () => {
     // Off-topic world_fact — high importance but orthogonal, must be filtered by minScore.
     insC.run("offtopic", "The capital of France is Paris.", 0.95, "world_fact");
     insV.run("offtopic", blob([0, 0, 1, 0]));
+    // Borderline relevance: cos([1,0,1,0], [1,1,0,0]) = 0.50 — between the old
+    // 0.55 gate (would have been dropped) and the tuned 0.45 gate (surfaces).
+    // Mirrors the real "who is my wife" ~0.50 case that used to fall through.
+    insC.run("borderline", "Bitterbot's mesh has 36,000 active nodes.", 0.6, "world_fact");
+    insV.run("borderline", blob([1, 0, 1, 0]));
   });
 
   afterAll(() => db.close());
@@ -80,6 +85,20 @@ describe("proactiveRecall semantic surfacing", () => {
     expect(texts).toContain("ranked #4");
     expect(texts).toContain("636 million"); // lowered floor lets the 0.18 fact through
     expect(texts).not.toContain("Paris"); // off-topic filtered by cosine minScore
+  });
+
+  it("surfaces borderline-relevant facts (~0.50 cosine) that the old 0.55 gate dropped", () => {
+    const result = proactiveRecall({
+      userMessage: "how many nodes does the bitterbot mesh have?",
+      queryEmbedding: QUERY,
+      db,
+      userModelManager: null,
+      recentlySurfaced: new Map(),
+      currentTurn: 1,
+    });
+    const texts = result.facts.map((f) => f.text).join(" | ");
+    // cos 0.50 >= 0.45 (tuned) but < 0.55 (old) — this is the relational/short-query fix.
+    expect(texts).toContain("36,000 active nodes");
   });
 
   it("surfaces nothing semantic when no query embedding is provided (the old bug)", () => {
