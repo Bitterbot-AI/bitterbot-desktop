@@ -14,7 +14,9 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import type { KnowledgeGraphManager } from "./knowledge-graph.js";
 import type { UserModelManager, UserPreference } from "./user-model.js";
+import { graphAnchoredFacts } from "./proactive-recall-graph.js";
 import { getActiveOpenLoops } from "./zeigarnik-effect.js";
 
 export interface ProactiveRecallConfig {
@@ -73,6 +75,10 @@ export interface ProactiveFact {
  * Surface relevant memories from the user's latest message.
  *
  * Strategy:
+ * 0. PLAN-27: for entity/identity turns, resolve the entity in the knowledge
+ *    graph and surface its current (SABM-valid) family edges structurally —
+ *    confident, and immune to the embedding-similarity cliff that loses "who is
+ *    my wife". Skipped entirely for non-entity turns and when no graph is given.
  * 1. Always include top identity preferences (name, role, location)
  *    — these are cheap (DB query, no embedding) and prevent the most
  *    jarring continuity breaks ("what's your name?" when it's stored).
@@ -91,10 +97,34 @@ export function proactiveRecall(params: {
   currentTurn: number;
   config?: Partial<ProactiveRecallConfig>;
   hormonalModulation?: { importanceBoost: number; recencyBias: number } | null;
+  /** PLAN-27: knowledge graph for entity-anchored family-edge recall. */
+  kg?: KnowledgeGraphManager | null;
+  /** Resolved user name, so graph facts can phrase "your <relation>". */
+  userName?: string | null;
 }): ProactiveRecallResult {
   const cfg = { ...DEFAULT_PROACTIVE_RECALL_CONFIG, ...params.config };
   const start = performance.now();
   const facts: ProactiveFact[] = [];
+
+  // ── 0. PLAN-27: graph-anchored family edges (entity/identity turns) ──
+  // Runs first so a structural answer ("Donna — your spouse") leads, ahead of any
+  // fuzzy vector match. No-ops on non-entity turns and when no graph is supplied.
+  if (params.kg) {
+    try {
+      const graphFacts = graphAnchoredFacts({
+        userMessage: params.userMessage,
+        kg: params.kg,
+        userName: params.userName,
+        maxFacts: cfg.maxFacts,
+        recentlySurfaced: params.recentlySurfaced,
+        currentTurn: params.currentTurn,
+        cooldownTurns: cfg.cooldownTurns,
+      });
+      facts.push(...graphFacts);
+    } catch {
+      // Graph unavailable or malformed — fall through to the vector path.
+    }
+  }
 
   // ── 1. Identity facts (always, no embedding needed) ──
   if (cfg.identityAlwaysInclude && params.userModelManager) {
@@ -107,6 +137,9 @@ export function proactiveRecall(params: {
         .slice(0, 3);
 
       for (const pref of identityPrefs) {
+        if (facts.length >= cfg.maxFacts) {
+          break;
+        }
         const key = `pref:${pref.category}:${pref.key}`;
         const lastTurn = params.recentlySurfaced.get(key) ?? -Infinity;
         if (params.currentTurn - lastTurn < cfg.cooldownTurns) {

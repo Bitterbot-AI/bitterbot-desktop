@@ -341,12 +341,13 @@ When the gate passes and context is loaded, it comes with two enhancements. Firs
 
 Every turn, before the LLM generates a response, the system runs a zero-cost proactive recall pass:
 
-1. **Identity facts** — name, role, location. Always surfaced, no embedding needed.
-2. **Vector-matched crystals** — directive, world_fact, and mental_model crystals relevant to the current message. The live user message is embedded and matched against the crystal vectors, so what surfaces is gated by **semantic relevance** (cosine similarity), not by importance. A modestly-rated fact ("processed 636M tokens") still surfaces when the user asks about that topic.
-3. **Open loops** — unfinished tasks detected by the Zeigarnik system.
-4. **Prospective memories** — trigger conditions that match the current message (checked against the same message embedding).
-5. **Epistemic directives** — top-priority knowledge gap questions.
-6. **Entity snapshot** — when the user's message contains references like "that file" or "the same thing," the last-touched entities from the handover brief are surfaced so the LLM can resolve the reference.
+1. **Graph-anchored family facts** — for entity/identity turns ("who is Donna", "who is my wife"), the entity is resolved in the knowledge graph and its current relationships are read directly. This is a _structural_ answer, not a text match, so it doesn't depend on the question being phrased like the stored fact — and it only ever surfaces the currently-believed relationship (the SABM bitemporal filter excludes superseded edges). Because the edge is explicit, the fact is high-confidence and never hedged. This is what makes "who is my wife" land as reliably as a verbose query.
+2. **Identity facts** — name, role, location. Always surfaced, no embedding needed.
+3. **Vector-matched crystals** — directive, world_fact, and mental_model crystals relevant to the current message. The live user message is embedded and matched against the crystal vectors, so what surfaces is gated by **semantic relevance** (cosine similarity), not by importance. A modestly-rated fact ("processed 636M tokens") still surfaces when the user asks about that topic.
+4. **Open loops** — unfinished tasks detected by the Zeigarnik system.
+5. **Prospective memories** — trigger conditions that match the current message (checked against the same message embedding).
+6. **Epistemic directives** — top-priority knowledge gap questions.
+7. **Entity snapshot** — when the user's message contains references like "that file" or "the same thing," the last-touched entities from the handover brief are surfaced so the LLM can resolve the reference.
 
 These are injected into the system prompt as terse one-line facts. The agent embodies them naturally without announcing them. The user never sees "according to my memory" — they just experience an agent that remembers.
 

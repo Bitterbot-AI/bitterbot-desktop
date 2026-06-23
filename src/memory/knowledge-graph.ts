@@ -101,7 +101,16 @@ export type RelationType =
   | "observed_in"
   | "refutes"
   // PLAN-24 HORMA Phase 5: a summary entity summarizes a member entity.
-  | "summarizes";
+  | "summarizes"
+  // PLAN-27 graph-anchored recall: family/identity relations so "who is my
+  // wife"-style entity queries resolve structurally. Gender-neutral on purpose
+  // (spouse_of, not wife_of) to keep the union small; the human label is derived
+  // at format time. Direction: (named person, relation, owner) — e.g. Donna
+  // spouse_of Victor, Sarah parent_of Victor.
+  | "spouse_of"
+  | "parent_of"
+  | "child_of"
+  | "sibling_of";
 
 export interface Relationship {
   id: string;

@@ -535,6 +535,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     // Live emotional reaction + turn advance (deduped within the turn).
     this.stimulateFromLiveMessage(text);
 
+    // PLAN-27: lazily backfill historical family edges so the very first
+    // entity query benefits. Guarded to run once; no-op thereafter.
+    this.backfillIdentityRelationships();
+
     let embedding: number[] | null = null;
     try {
       const vec = (await this.embedQueryWithTimeout(text)) as number[];
@@ -553,6 +557,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         recentlySurfaced: this.proactiveRecallCooldown,
         currentTurn: this.turnCount,
         hormonalModulation: this.hormonalManager?.getRetrievalModulation() ?? null,
+        // PLAN-27: graph-anchored recall for entity/identity turns.
+        kg: this.knowledgeGraph,
+        userName: this.resolveUserName(),
       });
       return {
         facts: result.facts.length > 0 ? formatProactiveFacts(result.facts) : undefined,
@@ -561,6 +568,83 @@ export class MemoryIndexManager implements MemorySearchManager {
     } catch (err) {
       log.debug(`proactive recall failed: ${String(err)}`);
       return { facts: undefined, embedding };
+    }
+  }
+
+  /**
+   * Resolve the user's name from the user model's identity preferences, used to
+   * phrase graph-anchored family facts as "your <relation>" and to link
+   * possessive identity edges ("my wife") to the real person entity. Returns
+   * undefined when no name is stored.
+   */
+  /**
+   * PLAN-27 one-time backfill: the family edges that graph-anchored recall reads
+   * live in historical world_fact crystals ("User's wife is named Donna") that
+   * predate the go-forward identity extractor, so the graph would otherwise have
+   * the entities but no edges. Scans kinship-bearing crystals once per process,
+   * extracts typed family edges, and ingests them (idempotent via upsert).
+   * Guarded so it runs at most once; cheap, bounded, and best-effort.
+   */
+  backfillIdentityRelationships(): number {
+    if (this.identityBackfillDone) {
+      return 0;
+    }
+    this.identityBackfillDone = true;
+    if (!this.knowledgeGraph || process.env.BITTERBOT_KG_RELATIONSHIPS === "0") {
+      return 0;
+    }
+    const userName = this.resolveUserName();
+    if (!userName) {
+      return 0;
+    }
+    let created = 0;
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT id, text FROM chunks
+           WHERE (text LIKE '%wife%' OR text LIKE '%husband%' OR text LIKE '%spouse%'
+                  OR text LIKE '%partner%' OR text LIKE '%mother%' OR text LIKE '% mom%'
+                  OR text LIKE '%father%' OR text LIKE '% dad%' OR text LIKE '%parent%'
+                  OR text LIKE '%daughter%' OR text LIKE '%brother%' OR text LIKE '%sister%'
+                  OR text LIKE '%sibling%')
+             AND COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'consolidated', 'frozen')
+           LIMIT 1000`,
+        )
+        .all() as Array<{ id: string; text: string }>;
+      for (const row of rows) {
+        const edge = kgExtract.extractIdentityRelationship(row.text, { userName });
+        if (!edge) {
+          continue;
+        }
+        this.knowledgeGraph.ingestExtraction(
+          [
+            { name: edge.sourceName, type: "person" },
+            { name: edge.targetName, type: "person" },
+          ],
+          [edge],
+          [row.id],
+        );
+        created += 1;
+      }
+      if (created > 0) {
+        log.info(`identity backfill: created ${created} family edge(s) in the knowledge graph`);
+      }
+    } catch (err) {
+      log.debug(`identity backfill failed: ${String(err)}`);
+    }
+    return created;
+  }
+
+  private resolveUserName(): string | undefined {
+    try {
+      const profile = this.userModelManager?.getUserProfile();
+      const namePref = profile?.preferences.find(
+        (p) => p.category === "identity" && /\bname\b/i.test(p.key) && typeof p.value === "string",
+      );
+      const value = namePref?.value?.toString().trim();
+      return value && value.length > 0 ? value : undefined;
+    } catch {
+      return undefined;
     }
   }
 
@@ -576,6 +660,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   /** Last live user message + when, to dedupe per-turn stimulation/recall. */
   private lastLiveMessage = "";
   private lastLiveMessageAt = 0;
+  /** PLAN-27: ensures the one-time identity-edge backfill runs at most once. */
+  private identityBackfillDone = false;
 
   /**
    * Check hormonal state after stimulation and trigger mini-dream if spike detected.
@@ -2874,6 +2960,7 @@ export class MemoryIndexManager implements MemorySearchManager {
             // BITTERBOT_DREAM_TASK_BIAS opt-out convention). Pure helpers in
             // kg-relationship-extract.ts (no LLM, no embeddings).
             const populateRelationships = process.env.BITTERBOT_KG_RELATIONSHIPS !== "0";
+            const userName = this.resolveUserName();
 
             for (const fact of result.facts) {
               // Extract entities from fact text via simple NER heuristics
@@ -2889,6 +2976,17 @@ export class MemoryIndexManager implements MemorySearchManager {
                   if (edge) {
                     kgRelationships.push(edge);
                   }
+                }
+              }
+              // PLAN-27: family/identity edges live in world_fact/relationship facts
+              // ("User's wife is named Donna"), which the pair-extractor above never
+              // sees. Resolve them to typed family edges linked to the user entity.
+              if (populateRelationships && userName) {
+                const idEdge = kgExtract.extractIdentityRelationship(fact.text, { userName });
+                if (idEdge) {
+                  kgEntities.push({ name: idEdge.sourceName, type: "person" });
+                  kgEntities.push({ name: idEdge.targetName, type: "person" });
+                  kgRelationships.push(idEdge);
                 }
               }
               // Tool/project names from world_fact and task_pattern facts

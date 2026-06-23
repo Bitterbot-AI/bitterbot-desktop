@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractIdentityRelationship,
   extractPersonNames,
   extractRelationshipFromFact,
+  FAMILY_RELATION_LABEL,
   relationTypeForText,
 } from "./kg-relationship-extract.js";
 
@@ -62,5 +64,63 @@ describe("extractRelationshipFromFact", () => {
     // Only the first two distinct persons become an edge.
     expect(edge?.sourceName).toBe("Alice");
     expect(edge?.targetName).toBe("Bob");
+  });
+});
+
+describe("extractIdentityRelationship (PLAN-27 family edges)", () => {
+  const opts = { userName: "Victor" };
+
+  it("extracts a possessive spouse fact -> person spouse_of user", () => {
+    const edge = extractIdentityRelationship("User's wife is named Donna.", opts);
+    expect(edge).not.toBeNull();
+    expect(edge?.sourceName).toBe("Donna");
+    expect(edge?.targetName).toBe("Victor");
+    expect(edge?.relationType).toBe("spouse_of");
+    expect(edge?.weight).toBe(0.85);
+  });
+
+  it("handles the predicate phrasing 'Donna is my wife'", () => {
+    const edge = extractIdentityRelationship("Donna is my wife", opts);
+    expect(edge?.sourceName).toBe("Donna");
+    expect(edge?.targetName).toBe("Victor");
+    expect(edge?.relationType).toBe("spouse_of");
+  });
+
+  it("maps kinship words to gender-neutral relation types", () => {
+    expect(extractIdentityRelationship("My mom is Sarah", opts)?.relationType).toBe("parent_of");
+    expect(extractIdentityRelationship("The user's son is named Max", opts)?.relationType).toBe(
+      "child_of",
+    );
+    expect(extractIdentityRelationship("My sister is Jane", opts)?.relationType).toBe("sibling_of");
+  });
+
+  it("returns null for non-kinship or unknown-user text", () => {
+    expect(extractIdentityRelationship("The user works on Bitterbot", opts)).toBeNull();
+    expect(extractIdentityRelationship("User's wife is named Donna.", { userName: "" })).toBeNull();
+  });
+
+  it("guards against degenerate self-reference", () => {
+    expect(extractIdentityRelationship("Victor is my brother", { userName: "Victor" })).toBeNull();
+  });
+
+  it("does NOT attribute third-party (his/her/their) kinship to the user", () => {
+    // "her wife" / "his mom" are about someone else — never the user's edge.
+    expect(
+      extractIdentityRelationship("Her wife is named Donna", { userName: "Victor" }),
+    ).toBeNull();
+    expect(extractIdentityRelationship("His mother is Sarah", { userName: "Victor" })).toBeNull();
+  });
+
+  it("rejects a non-proper-noun captured name (no 'what' edges)", () => {
+    // Regression: the case-insensitive keyword match must not let a lowercase
+    // word slip through as a person name.
+    expect(
+      extractIdentityRelationship("Tell her the wife thing is what", { userName: "Victor" }),
+    ).toBeNull();
+  });
+
+  it("exposes human labels for rendering", () => {
+    expect(FAMILY_RELATION_LABEL.spouse_of).toBe("spouse");
+    expect(FAMILY_RELATION_LABEL.parent_of).toBe("parent");
   });
 });
