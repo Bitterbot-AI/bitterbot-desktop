@@ -63,6 +63,7 @@
     "android:install": "cd apps/android && ./gradlew :app:installDebug",
     "android:run": "cd apps/android && ./gradlew :app:installDebug && adb shell am start -n ai.bitterbot.android/.MainActivity",
     "android:test": "cd apps/android && ./gradlew :app:testDebugUnitTest",
+    "aubaine:demo": "node --import tsx scripts/aubaine-demo.ts",
     "benchmark:biomemeval": "vitest run --config benchmarks/biomemeval/vitest.config.ts && node --import tsx benchmarks/biomemeval/generate-report.ts",
     "benchmark:longmemeval": "node --import tsx benchmarks/longmemeval/runner.ts",
     "benchmark:longmemeval:biological": "node --import tsx benchmarks/longmemeval/runner-biological.ts --oracle",
