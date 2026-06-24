@@ -56,6 +56,7 @@ import {
   DEFAULT_MODE_CONFIGS,
   DEFAULT_MODE_TIERS,
 } from "./dream-types.js";
+import { yieldToEventLoop } from "./event-loop.js";
 import { ExperimentSandbox, type MutationVerdict } from "./experiment-sandbox.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
 import { ensureColumn } from "./memory-schema.js";
@@ -546,6 +547,10 @@ export class DreamEngine {
         allInsights.push(...insights);
         totalLlmCalls += llmCalls;
         totalChunksAnalyzed += chunksAnalyzed;
+        // Hand control back between modes so the gateway's WS keepalive can
+        // flush; each mode is a synchronous CPU/SQLite burst (similarity sweeps,
+        // seed updates) on the single event loop. OUTSIDE any transaction.
+        await yieldToEventLoop();
       }
 
       cycleMeta.chunksAnalyzed = totalChunksAnalyzed;
@@ -1241,6 +1246,14 @@ export class DreamEngine {
     // Geometric series: total boost from multiple ripples with habituation
     const totalBoost = (baseBoost * (1 - Math.pow(decayRate, rippleCount))) / (1 - decayRate);
 
+    // Yield once before the write phase so the WS keepalive `tick` can flush:
+    // on a large/contended memory DB each implicit-transaction commit can stall
+    // on the write lock, and doing one commit per seed turned this into a
+    // multi-second-per-row, ~90s loop block that starved the gateway (observed
+    // 2026-06-24). Batch all seed updates into a SINGLE explicit transaction so
+    // the write lock is acquired and fsync'd once, not once per row.
+    await yieldToEventLoop();
+
     const stmt = this.db.prepare(
       `UPDATE chunks SET
          importance_score = MIN(1.0, importance_score + ?),
@@ -1249,14 +1262,25 @@ export class DreamEngine {
          last_ripple_count = ?
        WHERE id = ?`,
     );
-    for (const seed of seeds) {
-      stmt.run(totalBoost, now, rippleCount, seed.id);
-    }
+    try {
+      this.db.exec("BEGIN");
+      for (const seed of seeds) {
+        stmt.run(totalBoost, now, rippleCount, seed.id);
+      }
 
-    // Telemetry
-    this.recordTelemetry(cycleId, "ripple", "ripple_count", rippleCount);
-    this.recordTelemetry(cycleId, "ripple", "total_boost_per_seed", totalBoost);
-    this.recordTelemetry(cycleId, "ripple", "orphan_seeds", orphanSeeds.length);
+      // Telemetry (same transaction — these are writes too).
+      this.recordTelemetry(cycleId, "ripple", "ripple_count", rippleCount);
+      this.recordTelemetry(cycleId, "ripple", "total_boost_per_seed", totalBoost);
+      this.recordTelemetry(cycleId, "ripple", "orphan_seeds", orphanSeeds.length);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        // already rolled back / no active transaction
+      }
+      throw err;
+    }
 
     log.debug("ripple-enhanced replay", {
       seeds: seeds.length,

@@ -101,7 +101,17 @@ long synchronous burst. Two sources have caused this:
    work is the ~30-minute maintenance cycle (consolidation similarity sweeps,
    curiosity region rebuild) and large file-index passes. These loops yield to
    the event loop cooperatively (see `src/memory/event-loop.ts`).
-2. **Interactive RPC handlers.** Some Control-UI-polled RPCs did heavy work on
+2. **The dream engine (recall-triggered).** A user recall stimulates the
+   hormonal state; a dopamine spike fires an emotional mini-dream
+   (`runMiniDream` -> `run({modes:["replay"]})`). Replay applied its per-seed
+   importance boosts as one implicit transaction PER ROW; on a large/contended
+   memory DB (observed at ~950MB with a ~60MB WAL) each commit stalled on the
+   write lock, turning ~20 single-row UPDATEs into a ~90s synchronous loop block
+   (2026-06-24). Fixed by batching all seed writes into ONE explicit transaction
+   and yielding between dream modes (`src/memory/dream-engine.ts`). If recall
+   stalls return, check DB/WAL bloat first (`~/.bitterbot/memory/main.sqlite*`) —
+   a `pnpm build` restart or a WAL checkpoint shrinks an oversized WAL.
+3. **Interactive RPC handlers.** Some Control-UI-polled RPCs did heavy work on
    the loop with no yielding or caching, and would block it for tens of seconds:
    - `workspace.tree` did a per-file `fs.stat` for sizes. On slow filesystems
      (notably WSL2 `/mnt` drvfs paths, where every syscall crosses the
