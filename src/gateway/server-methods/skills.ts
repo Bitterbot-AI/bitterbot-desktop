@@ -51,6 +51,18 @@ import {
   validateSkillsUploadAgentskillsParams,
   validateSkillsValidateParams,
 } from "../protocol/index.js";
+import { TtlCache } from "./ttl-cache.js";
+
+/**
+ * Short-TTL caches for the UI-polled network read RPCs. Both do heavy
+ * synchronous SQLite aggregation (and skills.network also fans out over IPC/
+ * HTTP); the Control UI polls them and re-issues them on every reconnect.
+ * Caching collapses bursts of identical polls into one computed result so they
+ * cannot block the event loop back-to-back and starve the WS keepalive.
+ */
+const SKILLS_NETWORK_CACHE_KEY = "skills.network";
+const skillsNetworkCache = new TtlCache<unknown>(5_000);
+const skillsNetworkHistoryCache = new TtlCache<unknown>(10_000);
 
 function collectSkillBins(entries: SkillEntry[]): string[] {
   const bins = new Set<string>();
@@ -208,6 +220,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
     );
   },
   "skills.network": async ({ respond, context }) => {
+    const cached = skillsNetworkCache.get(SKILLS_NETWORK_CACHE_KEY);
+    if (cached !== undefined) {
+      respond(true, cached, undefined);
+      return;
+    }
     const cfg = loadConfig();
     const p2p = cfg.p2p;
     let stats = null;
@@ -229,19 +246,17 @@ export const skillsHandlers: GatewayRequestHandlers = {
     // unlike the old "latest single source wins" read that flapped between
     // bootnodes' divergent local counts.
     const networkCensus = context.skillNetworkBridge?.getAggregatedNetworkCensus?.() ?? null;
-    respond(
-      true,
-      {
-        enabled: p2p?.enabled ?? false,
-        topics: p2p?.topics ?? {},
-        security: p2p?.security ?? {},
-        stats,
-        localMetrics,
-        bootstrapCensus,
-        networkCensus,
-      },
-      undefined,
-    );
+    const payload = {
+      enabled: p2p?.enabled ?? false,
+      topics: p2p?.topics ?? {},
+      security: p2p?.security ?? {},
+      stats,
+      localMetrics,
+      bootstrapCensus,
+      networkCensus,
+    };
+    skillsNetworkCache.set(SKILLS_NETWORK_CACHE_KEY, payload);
+    respond(true, payload, undefined);
   },
   "skills.networkHistory": async ({ params, respond, context }) => {
     // Persisted census history: every gossipsub-received bootnode snapshot
@@ -256,9 +271,17 @@ export const skillsHandlers: GatewayRequestHandlers = {
       typeof params?.limit === "number" && Number.isFinite(params.limit)
         ? Math.max(1, Math.min(Math.floor(params.limit), 5000))
         : undefined;
+    const cacheKey = JSON.stringify({ sourcePeerId, sinceMs, limit });
+    const cached = skillsNetworkHistoryCache.get(cacheKey);
+    if (cached !== undefined) {
+      respond(true, cached, undefined);
+      return;
+    }
     const rows =
       context.skillNetworkBridge?.getNetworkCensusHistory?.({ sourcePeerId, sinceMs, limit }) ?? [];
-    respond(true, { rows: rows ?? [], count: rows?.length ?? 0 }, undefined);
+    const payload = { rows: rows ?? [], count: rows?.length ?? 0 };
+    skillsNetworkHistoryCache.set(cacheKey, payload);
+    respond(true, payload, undefined);
   },
   "skills.update": async ({ params, respond }) => {
     if (!validateSkillsUpdateParams(params)) {

@@ -3,6 +3,7 @@ import path from "node:path";
 import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
+import { makeYieldEvery } from "../../memory/event-loop.js";
 import { DEFAULT_AGENT_ID } from "../../routing/session-key.js";
 
 /** Resolve workspace root and validate that a requested path stays inside it. */
@@ -19,6 +20,14 @@ function resolveAndGuard(workspaceRoot: string, relativePath: string): string | 
 const MAX_TREE_DEPTH = 12;
 /** Max total entries to prevent huge payloads. */
 const MAX_TREE_ENTRIES = 5000;
+/**
+ * Yield to the event loop every N entries while walking the tree. The walk runs
+ * on the gateway's single event loop; on slow filesystems (notably WSL2 /mnt
+ * drvfs paths, where each syscall crosses the Linux↔Windows boundary) an
+ * unyielded walk of thousands of entries blocked the loop long enough to starve
+ * the 30s WebSocket keepalive `tick`, bouncing the Control UI (1006 reconnects).
+ */
+const TREE_YIELD_EVERY = 64;
 
 export type FileTreeNode = {
   name: string;
@@ -49,6 +58,8 @@ async function buildTree(
   relativePath: string,
   depth: number,
   counter: TreeCounter,
+  includeSizes: boolean,
+  tick: () => Promise<void>,
 ): Promise<FileTreeNode[]> {
   if (depth > MAX_TREE_DEPTH || counter.value > MAX_TREE_ENTRIES) {
     return [];
@@ -78,6 +89,7 @@ async function buildTree(
       break;
     }
     counter.value++;
+    await tick();
 
     const entryRelPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
     const entryAbsPath = path.join(absPath, entry.name);
@@ -88,15 +100,27 @@ async function buildTree(
         nodes.push({ name: entry.name, path: entryRelPath, type: "directory", children: [] });
         continue;
       }
-      const children = await buildTree(entryAbsPath, entryRelPath, depth + 1, counter);
+      const children = await buildTree(
+        entryAbsPath,
+        entryRelPath,
+        depth + 1,
+        counter,
+        includeSizes,
+        tick,
+      );
       nodes.push({ name: entry.name, path: entryRelPath, type: "directory", children });
     } else if (entry.isFile()) {
+      // File sizes require a per-entry fs.stat (one syscall each), which is the
+      // dominant cost on slow filesystems. Off by default; callers that need
+      // sizes opt in via params.includeSizes and accept the extra latency.
       let size: number | undefined;
-      try {
-        const stat = await fs.stat(entryAbsPath);
-        size = stat.size;
-      } catch {
-        // skip size
+      if (includeSizes) {
+        try {
+          const stat = await fs.stat(entryAbsPath);
+          size = stat.size;
+        } catch {
+          // skip size
+        }
       }
       nodes.push({ name: entry.name, path: entryRelPath, type: "file", size });
     }
@@ -122,8 +146,10 @@ const workspaceTree: GatewayRequestHandler = async ({ params, respond }) => {
     return;
   }
 
+  const includeSizes = params.includeSizes === true;
   const counter: TreeCounter = { value: 0 };
-  const tree = await buildTree(root, "", 0, counter);
+  const tick = makeYieldEvery(TREE_YIELD_EVERY);
+  const tree = await buildTree(root, "", 0, counter, includeSizes, tick);
   respond(true, { root, tree });
 };
 

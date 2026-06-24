@@ -95,20 +95,37 @@ socket itself with `tick timeout` when the gateway stops sending its keepalive
 `tick` for longer than twice the tick interval (default `2 x 30s = 60s`).
 
 The keepalive stalls when the gateway's single Node event loop is blocked by a
-long synchronous burst. The memory subsystem runs in-process and the heaviest
-work is the ~30-minute maintenance cycle (consolidation similarity sweeps,
-curiosity region rebuild) and large file-index passes. These loops now yield to
-the event loop cooperatively (see `src/memory/event-loop.ts`), so a healthy
-build should not exhibit this. If it reappears:
+long synchronous burst. Two sources have caused this:
+
+1. **Memory maintenance.** The memory subsystem runs in-process; the heaviest
+   work is the ~30-minute maintenance cycle (consolidation similarity sweeps,
+   curiosity region rebuild) and large file-index passes. These loops yield to
+   the event loop cooperatively (see `src/memory/event-loop.ts`).
+2. **Interactive RPC handlers.** Some Control-UI-polled RPCs did heavy work on
+   the loop with no yielding or caching, and would block it for tens of seconds:
+   - `workspace.tree` did a per-file `fs.stat` for sizes. On slow filesystems
+     (notably WSL2 `/mnt` drvfs paths, where every syscall crosses the
+     Linux↔Windows boundary) a few thousand entries blocked the loop for >60s.
+     Sizes are now **off by default** (opt in with `includeSizes: true`) and the
+     walk yields every 64 entries.
+   - `skills.network` / `skills.networkHistory` run synchronous `node:sqlite`
+     aggregation (and `skills.network` also fans out over IPC/HTTP). They are now
+     served from short-TTL caches (5s / 10s), so the UI's polling and
+     reconnect-driven refetches can no longer re-pay the cost back-to-back.
+   - `skills.network`'s `getStats()` IPC now uses a 2.5s timeout (not the 10s
+     default) so a stuck orchestrator cannot stall the handler.
+
+A healthy build should not exhibit this. If it reappears:
 
 - Watch for RPC durations ballooning in the logs (e.g. `skills.network` taking
-  tens of seconds when it normally takes <200ms) — that is queueing delay behind
-  a blocked loop, not a slow handler.
+  tens of seconds when it normally takes <200ms) — that is either a regressed
+  handler or queueing delay behind a blocked loop.
 - Confirm the gateway process is not pinned in `D` (uninterruptible I/O) state
   from SQLite WAL pressure; a `pnpm build` restart checkpoints oversized WAL
   files (`~/.bitterbot/*.sqlite-wal`).
-- A new heavy synchronous loop added to a memory engine is the usual regression;
-  it must `await yieldToEventLoop()` (or `makeYieldEvery`) periodically.
+- A new heavy synchronous loop (memory engine **or** RPC handler) is the usual
+  regression; it must `await yieldToEventLoop()` (or `makeYieldEvery`)
+  periodically, cache its result, or move the work off the main thread.
 
 Related:
 

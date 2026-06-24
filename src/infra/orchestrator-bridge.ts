@@ -20,6 +20,10 @@ const DEFAULT_IPC_PATH =
     : "/tmp/bitterbot-orchestrator.sock";
 const RECONNECT_DELAY_MS = 3000;
 const MAX_RECONNECT_ATTEMPTS = 10;
+/** Default IPC command timeout for background/non-interactive commands. */
+const DEFAULT_IPC_TIMEOUT_MS = 10_000;
+/** Tighter timeout for get_stats: it backs the UI-polled skills.network RPC. */
+const STATS_IPC_TIMEOUT_MS = 2_500;
 
 /** Bootnode census snapshot, mirrored from /api/bootstrap/census on the
  * publisher. Sent over gossipsub on `bitterbot/census/v1` and forwarded
@@ -299,7 +303,10 @@ export class OrchestratorBridge {
   }
 
   async getStats(): Promise<unknown> {
-    return this.sendCommand("get_stats", {});
+    // Short timeout: this feeds the interactive skills.network RPC that the
+    // Control UI polls. A slow/stuck orchestrator must not stall the handler
+    // (and starve the WS keepalive) for the full default IPC timeout.
+    return this.sendCommand("get_stats", {}, STATS_IPC_TIMEOUT_MS);
   }
 
   /**
@@ -869,7 +876,11 @@ export class OrchestratorBridge {
     }
   }
 
-  private sendCommand(type: string, payload: unknown): Promise<unknown> {
+  private sendCommand(
+    type: string,
+    payload: unknown,
+    timeoutMs: number = DEFAULT_IPC_TIMEOUT_MS,
+  ): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!this.socket || this.socket.destroyed) {
         reject(new Error("IPC not connected"));
@@ -882,7 +893,7 @@ export class OrchestratorBridge {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`IPC command ${type} timed out`));
-      }, 10_000);
+      }, timeoutMs);
 
       this.pending.set(id, { resolve, reject, timer });
       this.socket.write(msg);
