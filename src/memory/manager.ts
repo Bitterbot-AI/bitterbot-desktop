@@ -107,6 +107,15 @@ const BATCH_FAILURE_LIMIT = 2;
 const log = createSubsystemLogger("memory");
 
 const INDEX_CACHE = new Map<string, MemoryIndexManager>();
+/**
+ * In-flight construction promises, keyed identically to INDEX_CACHE. The manager
+ * is only inserted into INDEX_CACHE after its (synchronous, multi-second)
+ * constructor returns, so concurrent boot callers (gateway memory backend,
+ * interceptor autoboot, capability runtime, endocrine state) all miss the cache
+ * and each build a full manager — doubling the ~20-minute cold warm-up. Caching
+ * the promise here collapses concurrent gets for the same key into one build.
+ */
+const INDEX_INFLIGHT = new Map<string, Promise<MemoryIndexManager>>();
 
 export class MemoryIndexManager implements MemorySearchManager {
   // oxlint-disable-next-line typescript/no-explicit-any
@@ -350,26 +359,48 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (existing) {
       return existing;
     }
-    const providerResult = await createEmbeddingProvider({
-      config: cfg,
-      agentDir: resolveAgentDir(cfg, agentId),
-      provider: settings.provider,
-      remote: settings.remote,
-      model: settings.model,
-      fallback: settings.fallback,
-      local: settings.local,
-    });
-    const manager = new MemoryIndexManager({
-      cacheKey: key,
-      cfg,
-      agentId,
-      workspaceDir,
-      settings,
-      providerResult,
-      purpose: params.purpose,
-    });
-    INDEX_CACHE.set(key, manager);
-    return manager;
+    // De-dupe concurrent first-time builds for the same key (see INDEX_INFLIGHT).
+    const inflight = INDEX_INFLIGHT.get(key);
+    if (inflight) {
+      return inflight;
+    }
+    const build = (async (): Promise<MemoryIndexManager> => {
+      const providerStart = Date.now();
+      const providerResult = await createEmbeddingProvider({
+        config: cfg,
+        agentDir: resolveAgentDir(cfg, agentId),
+        provider: settings.provider,
+        remote: settings.remote,
+        model: settings.model,
+        fallback: settings.fallback,
+        local: settings.local,
+      });
+      const providerMs = Date.now() - providerStart;
+      const ctorStart = Date.now();
+      const manager = new MemoryIndexManager({
+        cacheKey: key,
+        cfg,
+        agentId,
+        workspaceDir,
+        settings,
+        providerResult,
+        purpose: params.purpose,
+      });
+      log.info("memory manager build timing", {
+        agentId,
+        purpose: params.purpose ?? "default",
+        embeddingProviderMs: providerMs,
+        constructorMs: Date.now() - ctorStart,
+      });
+      INDEX_CACHE.set(key, manager);
+      return manager;
+    })();
+    INDEX_INFLIGHT.set(key, build);
+    try {
+      return await build;
+    } finally {
+      INDEX_INFLIGHT.delete(key);
+    }
   }
 
   private constructor(params: {
@@ -394,7 +425,28 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.gemini = params.providerResult.gemini;
     this.voyage = params.providerResult.voyage;
     this.sources = new Set(params.settings.sources);
+
+    // Boot profiling: the constructor runs synchronously and is the gateway's
+    // dominant cold-boot cost (it blocks the event loop until it returns). Time
+    // each step so the (otherwise unlogged) heavy phases are attributable. Steps
+    // over the threshold log individually; a summary always logs. Threshold
+    // keeps steady-state noise down while surfacing the multi-second offenders.
+    const ctorStart = Date.now();
+    let stepLast = ctorStart;
+    const STEP_LOG_THRESHOLD_MS = 100;
+    const stepTimings: Record<string, number> = {};
+    const step = (label: string): void => {
+      const now = Date.now();
+      const ms = now - stepLast;
+      stepLast = now;
+      stepTimings[label] = ms;
+      if (ms >= STEP_LOG_THRESHOLD_MS) {
+        log.info("memory init step", { label, ms });
+      }
+    };
+
     this.db = this.openDatabase();
+    step("openDatabase");
     this.providerKey = this.computeProviderKey();
     this.cache = {
       enabled: params.settings.cache.enabled,
@@ -402,6 +454,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     };
     this.fts = { enabled: params.settings.query.hybrid.enabled, available: false };
     this.ensureSchema();
+    step("ensureSchema");
     this.vector = {
       enabled: params.settings.store.vector.enabled,
       available: null,
@@ -411,6 +464,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (meta?.vectorDims) {
       this.vector.dims = meta.vectorDims;
     }
+    step("readMeta");
     // Seed Crystal Migration: convert existing MEMORY.md content into crystals (runs once)
     void runSeedCrystalMigration({ db: this.db, workspaceDir: this.workspaceDir }).catch((err) => {
       log.warn(`seed crystal migration failed: ${String(err)}`);
@@ -420,26 +474,40 @@ export class MemoryIndexManager implements MemorySearchManager {
       log.warn(`skill bootstrap failed: ${String(err)}`);
     });
     this.ensureWatcher();
+    step("ensureWatcher");
     this.ensureSessionListener();
     this.ensureSkillsListener();
     this.ensureIntervalSync();
     this.ensureConsolidationInterval();
     this.ensureDreamEngine();
+    step("ensureDreamEngine");
     this.ensureDigestInterval();
     this.ensureTrendingSweepInterval();
     this.ensureCuriosityEngine();
+    step("ensureCuriosityEngine");
     this.ensureHormonalManager();
+    step("ensureHormonalManager");
     this.ensureUserModelManager();
+    step("ensureUserModelManager");
     this.ensureSkillRefiner();
     this.ensureGovernance();
     this.ensureTaskMemory();
     this.ensureScheduler();
     this.ensureMemStore();
+    step("ensureMemStore");
     // Peer reputation must exist before the bridge: ensureSkillNetworkBridge
     // gates SkillMarketplace creation on it (creating it after left the
     // browse/search marketplace permanently uninstantiated).
     this.ensurePeerReputationManager();
+    step("ensurePeerReputationManager");
     this.ensureSkillNetworkBridge();
+    step("ensureSkillNetworkBridge");
+    log.info("memory init complete", {
+      agentId: this.agentId,
+      purpose: params.purpose ?? "default",
+      totalMs: Date.now() - ctorStart,
+      steps: stepTimings,
+    });
     const statusOnly = params.purpose === "status";
     this.dirty = this.sources.has("memory") && (statusOnly ? !meta : true);
     this.skillsDirty = this.sources.has("skills") && (statusOnly ? !meta : true);
