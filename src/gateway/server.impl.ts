@@ -163,6 +163,19 @@ export async function startGatewayServer(
   const minimalTestGateway =
     process.env.VITEST === "1" && process.env.BITTERBOT_TEST_MINIMAL_GATEWAY === "1";
 
+  // Boot profiling (Option A): the gateway cold-boot has multi-minute SILENT
+  // stretches before `listen()` that the per-subsystem logs don't attribute.
+  // Time each major awaited boot step so the next restart names the culprit.
+  // Each step logs its own delta + cumulative; cheap and removable once the
+  // slow step is localized and fixed.
+  const __bootStart = Date.now();
+  let __bootLast = __bootStart;
+  const bootStep = (label: string): void => {
+    const now = Date.now();
+    log.info("gateway boot step", { label, ms: now - __bootLast, totalMs: now - __bootStart });
+    __bootLast = now;
+  };
+
   // Ensure all default port derivations (browser/canvas) see the actual runtime port.
   process.env.BITTERBOT_GATEWAY_PORT = String(port);
   logAcceptedEnvOption({
@@ -196,8 +209,10 @@ export async function startGatewayServer(
   // terminal status. Channel monitor relays the next system-event reply.
   // Disable with BITTERBOT_TASKS_COMPLETION_NOTIFY=0.
   startCompletionNotifier();
+  bootStep("early-subsystems");
 
   let configSnapshot = await readConfigFileSnapshot();
+  bootStep("read-config-snapshot");
   if (configSnapshot.legacyIssues.length > 0) {
     if (isNixMode) {
       throw new Error(
@@ -248,6 +263,7 @@ export async function startGatewayServer(
   }
 
   const cfgAtStart = loadConfig();
+  bootStep("config-load");
 
   // PLAN-17 Phase 1: wire the long-horizon Task Judge to a real LLM provider.
   // No-op when no Anthropic credential is configured; `task_judge` then
@@ -291,6 +307,7 @@ export async function startGatewayServer(
   ) as Record<ChannelId, RuntimeEnv>;
   const channelMethods = listChannelPlugins().flatMap((plugin) => plugin.gatewayMethods ?? []);
   const gatewayMethods = Array.from(new Set([...baseGatewayMethods, ...channelMethods]));
+  bootStep("load-plugins");
   let pluginServices: PluginServicesHandle | null = null;
   let orchestratorBridge: import("../infra/orchestrator-bridge.js").OrchestratorBridge | null =
     null;
@@ -314,6 +331,7 @@ export async function startGatewayServer(
     tailscaleConfig,
     tailscaleMode,
   } = runtimeConfig;
+  bootStep("resolve-runtime-config");
   let hooksConfig = runtimeConfig.hooksConfig;
   const canvasHostEnabled = runtimeConfig.canvasHostEnabled;
 
@@ -332,6 +350,7 @@ export async function startGatewayServer(
   if (cfgAtStart.gateway?.tls?.enabled && !gatewayTls.enabled) {
     throw new Error(gatewayTls.error ?? "gateway tls: failed to enable");
   }
+  bootStep("tls-runtime");
   const {
     canvasHost,
     httpServer,
@@ -373,6 +392,7 @@ export async function startGatewayServer(
     logHooks,
     logPlugins,
   });
+  bootStep("create-runtime-state+listen");
   const nodeRegistry = new NodeRegistry();
   const nodePresenceTimers = new Map<string, ReturnType<typeof setInterval>>();
   const nodeSubscriptions = createNodeSubscriptionManager();
@@ -414,6 +434,7 @@ export async function startGatewayServer(
       tailscaleMode,
       logDiscovery,
     });
+    bootStep("gateway-discovery");
   }
 
   if (!minimalTestGateway) {
@@ -590,6 +611,7 @@ export async function startGatewayServer(
     broadcast,
     context: requestContext,
   });
+  bootStep("pre-listen-log");
   logGatewayStartup({
     cfg: cfgAtStart,
     bindHost,
@@ -634,6 +656,7 @@ export async function startGatewayServer(
     // bridge — without this, the object literal would forever hold the
     // pre-sidecar `undefined`.
     requestContext.orchestratorBridge = orchestratorBridge ?? undefined;
+    bootStep("start-sidecars");
   }
 
   // Run gateway_start plugin hook (fire-and-forget)
