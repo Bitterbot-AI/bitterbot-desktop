@@ -23,7 +23,7 @@ import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveHarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { withSpan } from "../observability/otel.js";
+import { withSpan, withSpanAttrs } from "../observability/otel.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
 import {
@@ -58,6 +58,7 @@ import {
   type HybridGraphResult,
 } from "./hybrid.js";
 import { isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
+import { backfillTypedRelationships } from "./kg-backfill.js";
 import * as kgExtract from "./kg-relationship-extract.js";
 import { KnowledgeGraphManager } from "./knowledge-graph.js";
 import { memoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
@@ -72,6 +73,15 @@ import { PeerReputationManager } from "./peer-reputation.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
 import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
 import { ReconsolidationEngine } from "./reconsolidation.js";
+import {
+  RetrievalObservability,
+  emptyRecallCounts,
+  emptySearchCounts,
+  recordRetrievalTrace,
+  resolveTraceSampleRate,
+  type RecallLayerCounts,
+  type SearchLayerCounts,
+} from "./retrieval-trace.js";
 import { sageRetrieve, DEFAULT_SAGE_CONFIG, type SageConfig } from "./sage-memory.js";
 import { MemoryScheduler } from "./scheduler.js";
 import { runSeedCrystalMigration, runSkillBootstrap } from "./seed-crystal-migration.js";
@@ -606,6 +616,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     // PLAN-27: lazily backfill historical family edges so the very first
     // entity query benefits. Guarded to run once; no-op thereafter.
     this.backfillIdentityRelationships();
+    // PLAN-28 A3: likewise backfill general typed edges (X works on Y, etc.)
+    // from fact/insight history so the graph channel has substrate to traverse.
+    this.backfillGeneralRelationships();
 
     let embedding: number[] | null = null;
     try {
@@ -617,17 +630,43 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     try {
       const { proactiveRecall, formatProactiveFacts } = await import("./proactive-recall.js");
-      const result = proactiveRecall({
-        userMessage: text,
-        queryEmbedding: embedding,
-        db: this.db,
-        userModelManager: this.userModelManager,
-        recentlySurfaced: this.proactiveRecallCooldown,
-        currentTurn: this.turnCount,
-        hormonalModulation: this.hormonalManager?.getRetrievalModulation() ?? null,
-        // PLAN-27: graph-anchored recall for entity/identity turns.
-        kg: this.knowledgeGraph,
-        userName: this.resolveUserName(),
+      const recallCounts: RecallLayerCounts = emptyRecallCounts();
+      const result = await withSpanAttrs(
+        "memory.recall",
+        async (setAttr) => {
+          const r = proactiveRecall({
+            userMessage: text,
+            queryEmbedding: embedding,
+            db: this.db,
+            userModelManager: this.userModelManager,
+            recentlySurfaced: this.proactiveRecallCooldown,
+            currentTurn: this.turnCount,
+            hormonalModulation: this.hormonalManager?.getRetrievalModulation() ?? null,
+            // PLAN-27: graph-anchored recall for entity/identity turns.
+            kg: this.knowledgeGraph,
+            userName: this.resolveUserName(),
+          });
+          Object.assign(recallCounts, r.layerCounts);
+          setAttr("memory.graph_facts", recallCounts.graphFacts);
+          setAttr("memory.identity_facts", recallCounts.identityFacts);
+          setAttr("memory.vector_facts", recallCounts.vectorFacts);
+          setAttr("memory.open_loops", recallCounts.openLoops);
+          return r;
+        },
+        { "memory.query_len": text.length },
+      );
+      // PLAN-28 B3: feed the dead-wire detector. Graph here is the same channel
+      // as search's graph layer (KG), so the two retrieval paths reinforce the
+      // same per-layer rolling counter rather than fragmenting it.
+      this.retrievalObs.record({
+        graph: recallCounts.graphFacts,
+        identity: recallCounts.identityFacts,
+        vector: recallCounts.vectorFacts,
+        open_loops: recallCounts.openLoops,
+      });
+      recordRetrievalTrace(this.db, "recall", recallCounts, {
+        queryLen: text.length,
+        sampleRate: this.retrievalTraceRate,
       });
       return {
         facts: result.facts.length > 0 ? formatProactiveFacts(result.facts) : undefined,
@@ -703,6 +742,36 @@ export class MemoryIndexManager implements MemorySearchManager {
     return created;
   }
 
+  /**
+   * PLAN-28 A3 one-time backfill: the graph/SABM layers are complete but
+   * dormant because `relationships` is empty — thousands of "X works on Y" /
+   * "service hosted on AWS" facts live in fact/insight/world_fact crystals that
+   * the relationship-typed hot path never mined. Runs the conservative A1 typed
+   * extractor over that history once per process so the graph populates
+   * immediately instead of waiting for the go-forward path (and the offline A2
+   * miner) to drain it. Bounded, idempotent (upsert), best-effort. Guarded so it
+   * runs at most once; behind the same BITTERBOT_KG_RELATIONSHIPS flag.
+   */
+  backfillGeneralRelationships(): number {
+    if (this.generalBackfillDone) {
+      return 0;
+    }
+    this.generalBackfillDone = true;
+    if (!this.knowledgeGraph || process.env.BITTERBOT_KG_RELATIONSHIPS === "0") {
+      return 0;
+    }
+    try {
+      const created = backfillTypedRelationships(this.db, this.knowledgeGraph, { limit: 2000 });
+      if (created > 0) {
+        log.info(`general backfill: created ${created} typed edge(s) in the knowledge graph`);
+      }
+      return created;
+    } catch (err) {
+      log.debug(`general relationship backfill failed: ${String(err)}`);
+      return 0;
+    }
+  }
+
   private resolveUserName(): string | undefined {
     try {
       const profile = this.userModelManager?.getUserProfile();
@@ -730,6 +799,12 @@ export class MemoryIndexManager implements MemorySearchManager {
   private lastLiveMessageAt = 0;
   /** PLAN-27: ensures the one-time identity-edge backfill runs at most once. */
   private identityBackfillDone = false;
+  /** PLAN-28 A3: ensures the one-time general relationship backfill runs once. */
+  private generalBackfillDone = false;
+  /** PLAN-28 Part B: rolling per-layer dead-wire detector + trace counters. */
+  readonly retrievalObs = new RetrievalObservability();
+  /** PLAN-28 B2: persisted-trace sampling rate (env-tunable, 0 disables). */
+  private readonly retrievalTraceRate = resolveTraceSampleRate();
 
   /**
    * Check hormonal state after stimulation and trigger mini-dream if spike detected.
@@ -787,9 +862,34 @@ export class MemoryIndexManager implements MemorySearchManager {
       sessionKey?: string;
     },
   ): Promise<MemorySearchResult[]> {
-    const results = await withSpan("memory.search", () => this.searchInner(query, opts), {
-      "memory.query_len": query.length,
-      "memory.max_results": opts?.maxResults ?? this.settings.query.maxResults,
+    // PLAN-28 B1: per-layer retrieval counts, filled by searchInner and attached
+    // as span attributes + fed to the dead-wire detector / sampled trace below.
+    const layers: SearchLayerCounts = emptySearchCounts();
+    const results = await withSpanAttrs(
+      "memory.search",
+      async (setAttr) => {
+        const r = await this.searchInner(query, opts, layers);
+        setAttr("memory.vector_hits", layers.vectorHits);
+        setAttr("memory.keyword_hits", layers.keywordHits);
+        setAttr("memory.graph_hits", layers.graphHits);
+        setAttr("memory.fused", layers.fused);
+        setAttr("memory.mood_boost_applied", layers.moodBoostApplied);
+        setAttr("memory.temporal_intent", layers.temporalIntent);
+        return r;
+      },
+      {
+        "memory.query_len": query.length,
+        "memory.max_results": opts?.maxResults ?? this.settings.query.maxResults,
+      },
+    );
+    this.retrievalObs.record({
+      vector: layers.vectorHits,
+      keyword: layers.keywordHits,
+      graph: layers.graphHits,
+    });
+    recordRetrievalTrace(this.db, "search", layers, {
+      queryLen: query.length,
+      sampleRate: this.retrievalTraceRate,
     });
     this.attachEvidenceRefs(results);
     if (results.length === 0) {
@@ -909,6 +1009,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       minScore?: number;
       sessionKey?: string;
     },
+    layers?: SearchLayerCounts,
   ): Promise<MemorySearchResult[]> {
     void this.warmSession(opts?.sessionKey);
     if (this.settings.sync.onSearch && (this.dirty || this.sessionsDirty || this.skillsDirty)) {
@@ -966,6 +1067,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     let sageVectorTopIds: string[] = [];
     let sageKeywordTopIds: string[] = [];
 
+    if (layers) {
+      layers.vectorHits = vectorResults.length;
+      layers.keywordHits = keywordResults.length;
+    }
+
     let results: MemorySearchResult[];
     if (!hybrid.enabled) {
       const boosted = applyImportanceBoost(vectorResults);
@@ -998,6 +1104,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       // sage config disables the reader.
       const graphChannel = await this.computeGraphChannel(cleaned).catch(() => []);
       sageGraphChannel = graphChannel;
+      if (layers) {
+        layers.graphHits = graphChannel.length;
+      }
       sageVectorTopIds = typedVector.slice(0, 5).map((r) => r.id);
       sageKeywordTopIds = typedKeyword.slice(0, 5).map((r) => r.id);
 
@@ -1072,6 +1181,9 @@ export class MemoryIndexManager implements MemorySearchManager {
           });
           if (bonus > 0) {
             entry.score *= 1 + bonus;
+            if (layers) {
+              layers.moodBoostApplied += 1;
+            }
           }
         }
       }
@@ -1082,6 +1194,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         const { detectTemporalIntent, temporalRelevanceMultiplier } =
           await import("./temporal-scoring.js");
         const temporalIntent = detectTemporalIntent(query);
+        if (layers) {
+          layers.temporalIntent = temporalIntent;
+        }
         if (temporalIntent !== "timeless") {
           for (const entry of merged) {
             entry.score *= temporalRelevanceMultiplier({
@@ -1123,6 +1238,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       results = boosted.filter((entry) => entry.score >= minScore).slice(0, maxResults);
     }
 
+    if (layers) {
+      layers.fused = results.length;
+    }
     this.trackSearchHits(results);
     this.recordSageSignals(cleaned, results, sageGraphChannel, sageVectorTopIds, sageKeywordTopIds);
 
@@ -2091,6 +2209,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (this.prospectiveMemoryEngine) {
           this.prospectiveMemoryEngine.cleanExpired();
         }
+        // 16. PLAN-28 B3: dead-wire detector — warn on any retrieval layer that
+        //     has contributed 0 across a full rolling window while others fired.
+        //     Cheap in-memory counters; the warn is the whole point.
+        this.retrievalObs.warnDeadWires();
       } catch (err) {
         log.warn(`memory consolidation failed: ${String(err)}`);
       }
@@ -3064,6 +3186,20 @@ export class MemoryIndexManager implements MemorySearchManager {
                 );
                 for (const tool of tools ?? []) {
                   kgEntities.push({ name: tool, type: "tool" });
+                }
+              }
+              // PLAN-28 A1: general typed edges from ANY fact-like layer, not just
+              // relationship-typed facts — this is where the thousands of
+              // "X works on Y" / "service hosted on AWS" facts finally become
+              // edges. Conservative: the extractor requires a typed relation verb
+              // and two distinct dictionary-typed entities, and refuses the
+              // related_to fan-out, so a wrong edge stays rarer than no edge.
+              if (populateRelationships) {
+                const typedEdge = kgExtract.extractTypedRelationshipFromFact(fact.text);
+                if (typedEdge) {
+                  kgEntities.push({ name: typedEdge.sourceName, type: typedEdge.sourceType });
+                  kgEntities.push({ name: typedEdge.targetName, type: typedEdge.targetType });
+                  kgRelationships.push(typedEdge);
                 }
               }
             }
@@ -4346,6 +4482,31 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   governanceStats(): ReturnType<MemoryGovernance["getStats"]> | null {
     return this.governance?.getStats() ?? null;
+  }
+
+  /**
+   * PLAN-28 B4: retrieval-layer health for the management/telemetry surface.
+   * Folds the rolling per-layer dead-wire counters together with the knowledge
+   * graph + SABM belief stats so layer health is visible without a live DB
+   * probe (the way PLAN-28's analysis had to query it by hand). Cheap reads;
+   * safe to poll. `graph` is null when the knowledge graph isn't wired.
+   */
+  retrievalHealth(): {
+    layers: { total: number; sinceContribution: Record<string, number> };
+    deadWires: ReturnType<RetrievalObservability["checkDeadWires"]>;
+    graph: ReturnType<KnowledgeGraphManager["getStats"]> | null;
+  } {
+    let graph: ReturnType<KnowledgeGraphManager["getStats"]> | null = null;
+    try {
+      graph = this.knowledgeGraph?.getStats() ?? null;
+    } catch {
+      graph = null;
+    }
+    return {
+      layers: this.retrievalObs.snapshot(),
+      deadWires: this.retrievalObs.checkDeadWires(),
+      graph,
+    };
   }
 
   enforceLifespan(): number {

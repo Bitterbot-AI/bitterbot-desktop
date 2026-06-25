@@ -3,8 +3,11 @@ import {
   extractIdentityRelationship,
   extractPersonNames,
   extractRelationshipFromFact,
+  extractTypedEntities,
+  extractTypedRelationshipFromFact,
   FAMILY_RELATION_LABEL,
   relationTypeForText,
+  typeEntityName,
 } from "./kg-relationship-extract.js";
 
 describe("relationTypeForText", () => {
@@ -122,5 +125,76 @@ describe("extractIdentityRelationship (PLAN-27 family edges)", () => {
   it("exposes human labels for rendering", () => {
     expect(FAMILY_RELATION_LABEL.spouse_of).toBe("spouse");
     expect(FAMILY_RELATION_LABEL.parent_of).toBe("parent");
+  });
+});
+
+// ── PLAN-28 A1: broadened, dictionary-typed extraction ──
+
+describe("relationTypeForText (PLAN-28 additions)", () => {
+  it("maps usage language to uses", () => {
+    expect(relationTypeForText("Victor uses Docker")).toBe("uses");
+    expect(relationTypeForText("the service is powered by Redis")).toBe("uses");
+  });
+  it("maps location language to located_at", () => {
+    expect(relationTypeForText("the server is hosted on AWS")).toBe("located_at");
+    expect(relationTypeForText("the API runs on Kubernetes")).toBe("located_at");
+  });
+});
+
+describe("typeEntityName", () => {
+  it("types known services, tools, and organizations from the dictionary", () => {
+    expect(typeEntityName("AWS")).toBe("service");
+    expect(typeEntityName("GitHub")).toBe("service");
+    expect(typeEntityName("Docker")).toBe("tool");
+    expect(typeEntityName("Postgres")).toBe("tool");
+    expect(typeEntityName("Google")).toBe("organization");
+  });
+  it("types corporate-suffix names as organization", () => {
+    expect(typeEntityName("Acme Corp")).toBe("organization");
+    expect(typeEntityName("Globex Inc")).toBe("organization");
+  });
+  it("falls back to person for the long tail", () => {
+    expect(typeEntityName("Victor")).toBe("person");
+    expect(typeEntityName("Alice Smith")).toBe("person");
+  });
+});
+
+describe("extractTypedEntities", () => {
+  it("returns typed entities in mention order, deduped", () => {
+    const ents = extractTypedEntities("Victor uses Docker and Docker again");
+    expect(ents).toEqual([
+      { name: "Victor", type: "person" },
+      { name: "Docker", type: "tool" },
+    ]);
+  });
+});
+
+describe("extractTypedRelationshipFromFact", () => {
+  it("emits a typed cross-type edge (person uses tool)", () => {
+    const edge = extractTypedRelationshipFromFact("Victor uses Docker for builds");
+    expect(edge).toEqual({
+      sourceName: "Victor",
+      sourceType: "person",
+      targetName: "Docker",
+      targetType: "tool",
+      relationType: "uses",
+      weight: 0.5,
+    });
+  });
+
+  it("emits person-person manages edges", () => {
+    const edge = extractTypedRelationshipFromFact("Alice manages Bob");
+    expect(edge?.relationType).toBe("manages");
+    expect(edge?.sourceName).toBe("Alice");
+    expect(edge?.targetName).toBe("Bob");
+  });
+
+  it("is conservative: refuses the related_to fan-out on the hot path", () => {
+    // Two entities, but no typed relation verb -> related_to -> no edge.
+    expect(extractTypedRelationshipFromFact("Alice and Bob exist together")).toBeNull();
+  });
+
+  it("is conservative: requires two distinct entities", () => {
+    expect(extractTypedRelationshipFromFact("Victor uses it daily")).toBeNull();
   });
 });

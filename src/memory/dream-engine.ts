@@ -1014,8 +1014,54 @@ export class DreamEngine {
         return this.runRelationshipReconsolidationMode(cycleId);
       case "harness_evolve":
         return this.runHarnessEvolveMode(cycleId);
+      case "relationship_mining":
+        return this.runRelationshipMiningMode(cycleId);
       default:
         return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    }
+  }
+
+  // ── Mode 11: Relationship Mining (PLAN-28 A2) ──
+  //
+  // The offline, high-recall counterpart to the deterministic A1 hot-path
+  // extractor: batches unprocessed fact crystals through a cheap LLM to mine
+  // typed triples and ingest them into the knowledge graph, populating the
+  // substrate the SAGE reader + SABM adjudication need. Cortisol-gated and
+  // cursor-driven inside the module; kept thin here like the other modes. Behind
+  // the BITTERBOT_KG_RELATIONSHIPS population flag (default on).
+  private async runRelationshipMiningMode(
+    cycleId: string,
+  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
+    if (process.env.BITTERBOT_KG_RELATIONSHIPS === "0") {
+      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    }
+    try {
+      const [mod, kgMod] = await Promise.all([
+        import("./dream-modes/relationship-mining.js"),
+        import("./knowledge-graph.js"),
+      ]);
+      const kg = new kgMod.KnowledgeGraphManager(this.db);
+      const llmCall = this.getLlmCallForMode("relationship_mining");
+      const hormones = this.hormonalStateGetter?.() ?? null;
+      const result = await mod.runRelationshipMining({
+        db: this.db,
+        kg,
+        llmCall,
+        hormones,
+        maxChunks: this.config.modes.relationship_mining.maxChunks,
+      });
+      log.debug(
+        `relationship_mining cycle ${cycleId}: ingested=${result.triplesIngested} ` +
+          `chunks=${result.chunksProcessed} cortisolSkip=${result.skippedCortisol}`,
+      );
+      return {
+        insights: [],
+        llmCalls: result.llmCalls,
+        chunksAnalyzed: result.chunksProcessed,
+      };
+    } catch (err) {
+      log.warn(`relationship_mining mode failed: ${String(err)}`);
+      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
   }
 

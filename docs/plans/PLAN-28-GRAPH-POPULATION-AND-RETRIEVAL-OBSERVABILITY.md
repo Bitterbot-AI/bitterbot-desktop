@@ -5,10 +5,23 @@ Two complementary moves to take the memory system from "architecturally SOTA" to
 bitemporal layers actually contribute to retrieval, and **instrument retrieval**
 so a silently dead layer can never hide again.
 
-**Status:** DRAFT (2026-06-23)
+**Status:** LANDED (2026-06-25) — Parts A (A1/A2/A3) + B (B1–B4) implemented, wired on by default, tested.
 **Builds on:** PLAN-18 (SAGE graph reader), PLAN-23 (SABM beliefs), PLAN-27 (graph-anchored recall)
-**Migration:** additive (one telemetry table; reuses `entities`/`relationships`)
-**Default:** flag-gated; population behind `BITTERBOT_KG_RELATIONSHIPS`, observability behind a sampling rate
+**Migration:** additive — v21 `retrieval_trace` table; reuses `entities`/`relationships`
+**Default:** population on by default behind `BITTERBOT_KG_RELATIONSHIPS` (=0 disables); span attrs + dead-wire detector always on; persisted trace behind `BITTERBOT_RETRIEVAL_TRACE_RATE` (default 0.05, =0 disables)
+
+## Implementation map (as landed)
+
+| Piece                                                                                             | File(s)                                                                                                                        |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| A1 typed extractor (`extractTypedRelationshipFromFact`, `typeEntityName`, `extractTypedEntities`) | `src/memory/kg-relationship-extract.ts`                                                                                        |
+| A1 hot-path wiring (all fact-like layers)                                                         | `src/memory/manager.ts` KG-population loop                                                                                     |
+| A2 offline mining dream mode (`relationship_mining`)                                              | `src/memory/dream-modes/relationship-mining.ts`, `dream-engine.ts`, `dream-types.ts`                                           |
+| A3 one-time backfill (`backfillTypedRelationships`)                                               | `src/memory/kg-backfill.ts`, `manager.ts` (`backfillGeneralRelationships`)                                                     |
+| B1 span attributes (`withSpanAttrs`)                                                              | `src/observability/otel.ts`, `manager.ts` (`search`/`searchInner`/`recallForUserTurn`), `proactive-recall.ts`                  |
+| B2 sampled trace + B3 dead-wire detector                                                          | `src/memory/retrieval-trace.ts`, migration v21                                                                                 |
+| B3 maintenance hook + B4 `retrievalHealth()` surface                                              | `src/memory/manager.ts`                                                                                                        |
+| Tests                                                                                             | `kg-relationship-extract.test.ts`, `kg-backfill.test.ts`, `retrieval-trace.test.ts`, `dream-modes/relationship-mining.test.ts` |
 
 ---
 

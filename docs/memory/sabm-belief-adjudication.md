@@ -112,3 +112,9 @@ opt out with the standard per-mode dream config
 
 See `docs/plans/PLAN-23-SABM-SELF-ADJUDICATING-BITEMPORAL-MEMORY.md` for the
 full design and the review-hardening addendum.
+
+SABM was complete but dormant while `relationships` stayed empty.
+`docs/plans/PLAN-28-GRAPH-POPULATION-AND-RETRIEVAL-OBSERVABILITY.md` populates
+that substrate — broadening the deterministic extractor to all fact-like layers,
+backfilling history, and adding an offline LLM `relationship_mining` dream mode —
+so contradictions actually accrue for this adjudication loop to act on.

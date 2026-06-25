@@ -60,6 +60,13 @@ export const DEFAULT_PROACTIVE_RECALL_CONFIG: ProactiveRecallConfig = {
 export interface ProactiveRecallResult {
   facts: ProactiveFact[];
   searchTimeMs: number;
+  /** PLAN-28 B1: per-layer contribution counts for retrieval observability. */
+  layerCounts: {
+    graphFacts: number;
+    identityFacts: number;
+    vectorFacts: number;
+    openLoops: number;
+  };
 }
 
 export interface ProactiveFact {
@@ -105,6 +112,7 @@ export function proactiveRecall(params: {
   const cfg = { ...DEFAULT_PROACTIVE_RECALL_CONFIG, ...params.config };
   const start = performance.now();
   const facts: ProactiveFact[] = [];
+  const layerCounts = { graphFacts: 0, identityFacts: 0, vectorFacts: 0, openLoops: 0 };
 
   // ── 0. PLAN-27: graph-anchored family edges (entity/identity turns) ──
   // Runs first so a structural answer ("Donna — your spouse") leads, ahead of any
@@ -121,6 +129,7 @@ export function proactiveRecall(params: {
         cooldownTurns: cfg.cooldownTurns,
       });
       facts.push(...graphFacts);
+      layerCounts.graphFacts += graphFacts.length;
     } catch {
       // Graph unavailable or malformed — fall through to the vector path.
     }
@@ -153,6 +162,7 @@ export function proactiveRecall(params: {
           category: pref.category,
         });
         params.recentlySurfaced.set(key, params.currentTurn);
+        layerCounts.identityFacts += 1;
       }
     } catch {
       // UserModelManager may not be ready
@@ -214,6 +224,7 @@ export function proactiveRecall(params: {
             chunkId: row.id,
           });
           params.recentlySurfaced.set(row.id, params.currentTurn);
+          layerCounts.vectorFacts += 1;
         }
       } catch {
         // Vector table may not exist or query may fail — non-critical
@@ -243,6 +254,7 @@ export function proactiveRecall(params: {
           chunkId: loop.id,
         });
         params.recentlySurfaced.set(key, params.currentTurn);
+        layerCounts.openLoops += 1;
       }
     } catch {
       // Non-critical
@@ -288,6 +300,7 @@ export function proactiveRecall(params: {
   return {
     facts,
     searchTimeMs: performance.now() - start,
+    layerCounts,
   };
 }
 

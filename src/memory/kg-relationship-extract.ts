@@ -11,7 +11,7 @@
  * `BITTERBOT_KG_RELATIONSHIPS` flag (default on).
  */
 
-import type { ExtractedRelationship, RelationType } from "./knowledge-graph.js";
+import type { EntityType, ExtractedRelationship, RelationType } from "./knowledge-graph.js";
 
 /** Map fact text to a relation type. Falls back to `related_to`. */
 export function relationTypeForText(text: string): RelationType {
@@ -19,7 +19,9 @@ export function relationTypeForText(text: string): RelationType {
   if (/\b(?:works? on|working on|contributes? to)\b/i.test(text)) return "works_on";
   if (/\b(?:prefers?|likes?|favou?rite|enjoys?)\b/i.test(text)) return "prefers";
   if (/\b(?:knows|met|colleague|friend)\b/i.test(text)) return "knows";
-  if (/\b(?:uses?|using|depends? on)\b/i.test(text)) return "uses";
+  if (/\b(?:located (?:at|in)|based in|hosted (?:at|on)|runs on|lives in)\b/i.test(text))
+    return "located_at";
+  if (/\b(?:uses?|using|depends? on|built with|powered by)\b/i.test(text)) return "uses";
   return "related_to";
 }
 
@@ -153,5 +155,88 @@ export function extractRelationshipFromFact(text: string): ExtractedRelationship
     relationType,
     // related_to is the low-confidence fallback; typed relations are stronger.
     weight: relationType === "related_to" ? 0.3 : 0.5,
+  };
+}
+
+// ── PLAN-28 A1: broadened, dictionary-typed entity recognition ──
+//
+// The hot-path extractor above types every capitalized run as a `person`. That
+// loses "X uses Docker" / "service hosted on AWS" — relational content sitting
+// in fact/insight/world_fact crystals that never becomes a typed edge. A small,
+// curated dictionary types the common non-person entities; the long tail still
+// falls back to `person` (matching the existing precision profile). No LLM.
+
+const TOOL_RX =
+  /^(?:Docker|Postgres|PostgreSQL|MySQL|Redis|React|Node|NodeJS|Python|Git|Kubernetes|MongoDB|GraphQL|REST|Rust|TypeScript|JavaScript|Webpack|Vite|SQLite|Nginx|Kafka|RabbitMQ|Terraform|Ansible|Pytorch|TensorFlow|Numpy|Pandas)$/i;
+
+const SERVICE_RX =
+  /^(?:AWS|GCP|Azure|GitHub|GitLab|Bitbucket|Stripe|Slack|Notion|Cloudflare|Vercel|Netlify|Twilio|SendGrid|Datadog|Sentry|Heroku|Supabase|Firebase|OpenAI|Anthropic)$/i;
+
+const ORG_RX = /^(?:Google|Microsoft|Amazon|Apple|Meta|Nvidia|IBM|Oracle|Intel|Salesforce)$/i;
+// Corporate suffixes that mark the *trailing* token of an organization name.
+const ORG_SUFFIX_RX = /\b(?:Inc|Incorporated|LLC|Corp|Corporation|Ltd|Limited|GmbH|PLC|Co)\b\.?$/;
+
+/** Type a single capitalized entity name via the curated dictionaries. */
+export function typeEntityName(name: string): EntityType {
+  if (SERVICE_RX.test(name)) return "service";
+  if (TOOL_RX.test(name)) return "tool";
+  if (ORG_RX.test(name) || ORG_SUFFIX_RX.test(name)) return "organization";
+  // Long tail: same fallback as the existing person-pair extractor.
+  return "person";
+}
+
+export interface TypedEntity {
+  name: string;
+  type: EntityType;
+}
+
+/**
+ * Capitalized-run NER with dictionary typing. Returns entities in mention
+ * order, de-duplicated by lowercased name (first type wins).
+ */
+export function extractTypedEntities(text: string): TypedEntity[] {
+  const out: TypedEntity[] = [];
+  const seen = new Set<string>();
+  for (const name of extractPersonNames(text)) {
+    const key = name.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push({ name, type: typeEntityName(name) });
+  }
+  return out;
+}
+
+/**
+ * PLAN-28 A1 hot-path extractor: a single typed edge from any fact-like text,
+ * conservative by construction (PLAN-27's lesson — a wrong edge is worse than no
+ * edge):
+ *
+ *   1. The text must carry a *typed* relation verb. `related_to` (the untyped
+ *      fan-out fallback) is refused outright on the hot path.
+ *   2. At least two distinct entities must be present; the leading pair becomes
+ *      the edge, typed via the dictionary (so Docker → tool, not person).
+ *
+ * Direction follows mention order. Returns null otherwise.
+ */
+export function extractTypedRelationshipFromFact(text: string): ExtractedRelationship | null {
+  const relationType = relationTypeForText(text);
+  if (relationType === "related_to") {
+    return null;
+  }
+  const entities = extractTypedEntities(text);
+  if (entities.length < 2) {
+    return null;
+  }
+  const [source, target] = entities;
+  return {
+    sourceName: source!.name,
+    sourceType: source!.type,
+    targetName: target!.name,
+    targetType: target!.type,
+    relationType,
+    // Deterministic typed edge: confident, but below explicit identity edges.
+    weight: 0.5,
   };
 }

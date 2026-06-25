@@ -226,3 +226,48 @@ export async function withSpan<T>(
     return fn();
   }
 }
+
+/**
+ * Like {@link withSpan}, but hands the wrapped function a `setAttr` callback so
+ * attributes computed *during* execution (e.g. per-layer retrieval counts only
+ * known after the search runs) can be attached before the span ends. No-op when
+ * OTel is disabled — `setAttr` becomes a no-op and the function runs unchanged.
+ */
+export async function withSpanAttrs<T>(
+  name: string,
+  fn: (setAttr: (k: string, v: string | number | boolean) => void) => Promise<T>,
+  attrs?: Record<string, string | number | boolean>,
+): Promise<T> {
+  const state = resolveState();
+  if (!state.enabled) {
+    return fn(() => {});
+  }
+  try {
+    const api = await import("@opentelemetry/api" as string);
+    const tracer = api.trace.getTracer("bitterbot");
+    return await tracer.startActiveSpan(name, async (span: unknown) => {
+      const s = span as {
+        setAttribute: (k: string, v: string | number | boolean) => void;
+        recordException: (e: unknown) => void;
+        setStatus: (s: { code: number; message?: string }) => void;
+        end: () => void;
+      };
+      try {
+        if (attrs) {
+          for (const [k, v] of Object.entries(attrs)) {
+            s.setAttribute(k, v);
+          }
+        }
+        return await fn((k, v) => s.setAttribute(k, v));
+      } catch (err) {
+        s.recordException(err);
+        s.setStatus({ code: 2, message: err instanceof Error ? err.message : String(err) });
+        throw err;
+      } finally {
+        s.end();
+      }
+    });
+  } catch {
+    return fn(() => {});
+  }
+}

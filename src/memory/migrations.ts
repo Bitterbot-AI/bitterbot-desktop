@@ -871,6 +871,35 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 21,
+    description: "PLAN-28 Part B: retrieval_trace observability table",
+    up: (db: DatabaseSync) => {
+      // Sampled per-retrieval layer-contribution trace. One row per sampled
+      // search/recall; `extra` carries the full typed counts as JSON so the
+      // schema stays stable as layers are added. Lets the LongMemEval harness
+      // (and ad-hoc analysis) answer "is each retrieval layer pulling its
+      // weight" without a live DB probe. Written best-effort behind a sampling
+      // rate; never on the hot path's critical section.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS retrieval_trace (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind         TEXT NOT NULL,
+          query_len    INTEGER NOT NULL DEFAULT 0,
+          vector_hits  INTEGER NOT NULL DEFAULT 0,
+          keyword_hits INTEGER NOT NULL DEFAULT 0,
+          graph_hits   INTEGER NOT NULL DEFAULT 0,
+          fused        INTEGER NOT NULL DEFAULT 0,
+          extra        TEXT,
+          created_at   INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_retrieval_trace_kind_created ` +
+          `ON retrieval_trace(kind, created_at)`,
+      );
+    },
+  },
 ];
 
 /**

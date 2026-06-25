@@ -455,3 +455,7 @@ This creates a virtuous cycle: the agent's daily work generates episodes → dre
 ## Relationship reconsolidation (PLAN-23 SABM)
 
 A 9th dream mode, `relationship_reconsolidation`, runs each cycle and is the only place the memory system performs a destructive belief revision. The write path merely _flags_ conflicting relationship edges (both stay active); this mode drains those flags and closes the losing edge only after (1) the supporting evidence has exited its labile window and (2) a hormonally-gated confidence floor is cleared (high cortisol makes it more conservative). Closed beliefs are retained and remain queryable. See `docs/memory/sabm-belief-adjudication.md`.
+
+## Relationship mining (PLAN-28 A2)
+
+The `relationship_mining` mode is the offline, high-recall counterpart to the deterministic hot-path extractor (`extractTypedRelationshipFromFact`). During calm cycles it batches unprocessed fact-like crystals through a cheap LLM (Haiku, strict JSON), extracts typed triples, validates them against the graph's relation/entity vocabulary, and ingests them via `KnowledgeGraphManager.ingestExtraction` — populating the substrate the SAGE reader traverses and SABM adjudicates. It is hormonally gated (`cortisol > 0.7` skips — don't restructure memory under stress) and drains the backlog incrementally via an idempotent `meta` rowid cursor, so re-runs never double-scan. Behind the `BITTERBOT_KG_RELATIONSHIPS` population flag (default on); see `docs/plans/PLAN-28-GRAPH-POPULATION-AND-RETRIEVAL-OBSERVABILITY.md`.

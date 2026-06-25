@@ -297,3 +297,4 @@ All 59 SAGE tests pass; no adjacent regressions in `knowledge-crystal-system.tes
 - `docs/memory/curiosity-and-search.md` — the writer-feedback channel for Phase 4.
 - `docs/memory/emotional-system.md` — the hormonal state surface for Phase 5.
 - `docs/memory/sabm-belief-adjudication.md` — PLAN-23 builds on this graph to populate relationships, version them bitemporally, and self-adjudicate contradictions.
+- `docs/plans/PLAN-28-GRAPH-POPULATION-AND-RETRIEVAL-OBSERVABILITY.md` — PLAN-28 fills the relationship substrate this reader traverses (deterministic hot-path + backfill + offline LLM mining) and instruments per-layer retrieval contribution so a dead graph channel can't hide.
