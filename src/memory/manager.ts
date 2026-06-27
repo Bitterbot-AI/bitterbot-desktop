@@ -2065,6 +2065,25 @@ export class MemoryIndexManager implements MemorySearchManager {
         //    event loop across its O(n^2) similarity sweeps; awaiting it lets the
         //    gateway keepalive flush instead of freezing for the whole pass.
         await this.consolidate();
+        // 2b. GC: physically delete forgotten/expired tombstones past the
+        //     retention window. `purgeExpired` was implemented but never called,
+        //     so forgotten chunks (and their dead vec/fts rows) accumulated
+        //     indefinitely — bloating the DB and leaving thousands of blank-
+        //     embedding rows. Draining them here keeps the store clean and small.
+        try {
+          const retentionDays = this.cfg.memory?.consolidation?.forgottenRetentionDays ?? 14;
+          if (retentionDays >= 0) {
+            const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
+            const purged = new ConsolidationEngine(this.db).purgeExpired(retentionMs);
+            if (purged > 0) {
+              log.info(
+                `memory GC: purged ${purged} forgotten/expired chunk(s) (retention ${retentionDays}d)`,
+              );
+            }
+          }
+        } catch (err) {
+          log.warn(`memory GC purge failed: ${String(err)}`);
+        }
         // Yield between heavy steps so the maintenance cycle never monopolizes
         // the loop long enough to trip the Control UI's tick-timeout watchdog.
         await yieldToEventLoop();

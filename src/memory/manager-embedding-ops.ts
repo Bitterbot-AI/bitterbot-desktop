@@ -48,6 +48,16 @@ const EMBEDDING_BATCH_TIMEOUT_LOCAL_MS = 10 * 60_000;
 // Max placeholder crystals re-embedded per sync-cycle backfill pass. Bounded so
 // the pass never stalls a sync; the CLI loops it to clear a larger backlog.
 const PENDING_EMBED_DEFAULT_LIMIT = 256;
+// Sentinel model tag for a chunk persisted without an embedding (empty vector),
+// awaiting a later backfill pass. The backfill query matches this OR an empty
+// embedding, so the chunk stays discoverable as "pending" rather than masquerading
+// as a successfully-embedded row.
+const PENDING_EMBED_MODEL = "pending";
+// Floor for graceful batch bisection. When an embedding batch fails with a
+// degradable (timeout/transient) error, it is split in half and retried; once a
+// sub-batch reaches this size and still fails, its items are left pending instead
+// of aborting the whole sync.
+const EMBEDDING_BISECT_MIN_BATCH = 16;
 
 const vectorToBlob = (embedding: number[]): Buffer =>
   Buffer.from(new Float32Array(embedding).buffer);
@@ -194,24 +204,98 @@ class MemoryManagerEmbeddingOps {
       return embeddings;
     }
 
+    const fromCache = chunks.length - missing.length;
+    const startedAt = Date.now();
     const missingChunks = missing.map((m) => m.chunk);
     const batches = this.buildEmbeddingBatches(missingChunks);
     const toCache: Array<{ hash: string; embedding: number[] }> = [];
     let cursor = 0;
+    let failed = 0;
+    let splits = 0;
     for (const batch of batches) {
-      const batchEmbeddings = await this.embedBatchWithRetry(batch.map((chunk) => chunk.text));
+      const result = await this.embedBatchResilient(batch.map((chunk) => chunk.text));
+      failed += result.failed;
+      splits += result.splits;
       for (let i = 0; i < batch.length; i += 1) {
         const item = missing[cursor + i];
-        const embedding = batchEmbeddings[i] ?? [];
+        const embedding = result.embeddings[i] ?? [];
         if (item) {
           embeddings[item.index] = embedding;
-          toCache.push({ hash: item.chunk.hash, embedding });
+          // Only cache real embeddings; caching an empty placeholder would let a
+          // failed item read back as a (useless) cache hit and never get retried.
+          if (embedding.length > 0) {
+            toCache.push({ hash: item.chunk.hash, embedding });
+          }
         }
       }
       cursor += batch.length;
     }
     this.upsertEmbeddingCache(toCache);
+    const embedded = missing.length - failed;
+    const summary = `${embedded}/${missing.length} embedded, ${fromCache} cache hit(s), ${splits} split(s) in ${Date.now() - startedAt}ms`;
+    if (failed > 0) {
+      log.warn(`memory embeddings: ${summary}; ${failed} chunk(s) left pending for backfill`);
+    } else {
+      log.debug(`memory embeddings: ${summary}`);
+    }
     return embeddings;
+  }
+
+  /**
+   * Embed one batch with graceful degradation. `embedBatchWithRetry` throws on a
+   * timeout or exhausted-retry failure; left unhandled that aborts the entire
+   * sync (and skips the pending-embedding backfill drainer), which is how
+   * placeholder embeddings used to accumulate. Instead, on a *degradable*
+   * (timeout / transient transport / rate-limit) error we bisect the batch and
+   * retry each half down to {@link EMBEDDING_BISECT_MIN_BATCH}; items that still
+   * fail come back as `[]` (left pending) rather than throwing. A genuinely
+   * non-degradable error (auth, malformed request) is rethrown so the existing
+   * provider-fallback path can still activate.
+   */
+  private async embedBatchResilient(
+    texts: string[],
+  ): Promise<{ embeddings: number[][]; failed: number; splits: number }> {
+    if (texts.length === 0) {
+      return { embeddings: [], failed: 0, splits: 0 };
+    }
+    try {
+      const embeddings = await this.embedBatchWithRetry(texts);
+      return { embeddings, failed: 0, splits: 0 };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!this.isDegradableEmbeddingError(message)) {
+        throw err;
+      }
+      if (texts.length <= EMBEDDING_BISECT_MIN_BATCH) {
+        log.warn(
+          `memory embeddings: sub-batch of ${texts.length} failed after retries (${message}); leaving pending`,
+        );
+        return { embeddings: texts.map(() => []), failed: texts.length, splits: 0 };
+      }
+      const mid = Math.floor(texts.length / 2);
+      log.warn(
+        `memory embeddings: batch of ${texts.length} failed (${message}); bisecting into ${mid}+${texts.length - mid}`,
+      );
+      const left = await this.embedBatchResilient(texts.slice(0, mid));
+      const right = await this.embedBatchResilient(texts.slice(mid));
+      return {
+        embeddings: [...left.embeddings, ...right.embeddings],
+        failed: left.failed + right.failed,
+        splits: 1 + left.splits + right.splits,
+      };
+    }
+  }
+
+  /**
+   * A degradable error is transient/capacity-related (timeout, dropped socket,
+   * rate limit, 5xx) — worth bisecting and retrying smaller. A non-degradable
+   * error (auth, 4xx other than 429, malformed input) will fail identically at
+   * any batch size, so it is rethrown to trigger provider fallback instead.
+   */
+  private isDegradableEmbeddingError(message: string): boolean {
+    return /(timed out|timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EPIPE|socket hang up|network|fetch failed|rate[_ ]limit|too many requests|429|resource has been exhausted|5\d\d)/i.test(
+      message,
+    );
   }
 
   private computeProviderKey(): string {
@@ -792,6 +876,7 @@ class MemoryManagerEmbeddingOps {
       options.source === "sessions" ? "session" : options.source === "skills" ? "skill" : "indexed";
     const memoryType = options.source === "skills" ? "skill" : "plaintext";
     const lifecycle = options.source === "skills" ? "frozen" : "generated";
+    let pendingCount = 0;
     for (let i = 0; i < chunks.length; i++) {
       // A large session/memory file can carry thousands of chunks, each doing
       // several synchronous INSERTs plus a KNN curiosity assessment. Yield every
@@ -802,6 +887,13 @@ class MemoryManagerEmbeddingOps {
       }
       const chunk = chunks[i];
       const embedding = embeddings[i] ?? [];
+      // When embedding failed (graceful degradation left it empty), tag the row
+      // 'pending' rather than the real model so the backfill drainer reclaims it
+      // and it is never mistaken for a successfully-vectorized chunk.
+      const modelForRow = embedding.length > 0 ? this.provider.model : PENDING_EMBED_MODEL;
+      if (embedding.length === 0) {
+        pendingCount += 1;
+      }
       const id = hashText(
         `${options.source}:${entry.path}:${chunk.startLine}:${chunk.endLine}:${chunk.hash}:${this.provider.model}`,
       );
@@ -843,7 +935,7 @@ class MemoryManagerEmbeddingOps {
           chunk.startLine,
           chunk.endLine,
           chunk.hash,
-          this.provider.model,
+          modelForRow,
           chunk.text,
           JSON.stringify(embedding),
           now,
@@ -892,7 +984,7 @@ class MemoryManagerEmbeddingOps {
             id,
             entry.path,
             options.source,
-            this.provider.model,
+            modelForRow,
             chunk.startLine,
             chunk.endLine,
           );
@@ -906,6 +998,13 @@ class MemoryManagerEmbeddingOps {
           log.debug(`memory index: curiosity assessment failed for ${id}: ${String(err)}`);
         }
       }
+    }
+    if (pendingCount > 0) {
+      // Not fatal: the chunks are stored + FTS-searchable and tagged 'pending';
+      // the per-cycle backfill drainer will vectorize them on a later pass.
+      log.warn(
+        `memory index: ${entry.path} stored ${pendingCount}/${chunks.length} chunk(s) without embeddings (pending backfill)`,
+      );
     }
     this.db
       .prepare(

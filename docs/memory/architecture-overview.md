@@ -451,7 +451,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 All memory configuration flows from `BitterbotConfig.memory`:
 
 ```typescript
-cfg.memory?.consolidation  → ConsolidationEngine config (decayRate, thresholds)
+cfg.memory?.consolidation  → ConsolidationEngine config (decayRate, thresholds, forgottenRetentionDays)
 cfg.memory?.dream          → DreamEngineConfig (modes, tiers, intervals, LLM calls)
 cfg.memory?.curiosity      → CuriosityConfig (weights, thresholds, max regions)
 cfg.memory?.emotional      → EmotionalConfig
@@ -461,6 +461,49 @@ cfg.memory?.scheduler      → BudgetConfig (per-hour API limits)
 ```
 
 Each subsystem has sensible defaults and is enabled by default. Disable any subsystem by setting `enabled: false` in its config block.
+
+---
+
+## Embedding Resilience & Tombstone GC
+
+Embeddings are generated **best-effort and out of band** from chunk storage: a
+chunk is always persisted (and stays FTS-searchable) even if its vector can't be
+produced. Two mechanisms keep the store clean and stop blank embeddings from
+accumulating:
+
+- **Graceful degradation (`manager-embedding-ops.ts`).** When an embedding batch
+  fails with a degradable error (timeout, dropped socket, rate limit, 5xx), the
+  batch is **bisected and retried** down to `EMBEDDING_BISECT_MIN_BATCH`. Items
+  that still fail are persisted with `model='pending'` and an empty vector rather
+  than aborting the whole sync. A non-degradable error (auth/4xx) is rethrown so
+  the provider-fallback path can activate. Each pass logs a structured summary:
+  `memory embeddings: N/M embedded, K cache hit(s), S split(s) in Xms`, escalating
+  to `WARN` with a pending count when any item is deferred.
+- **Pending backfill drainer.** `backfillPendingEmbeddings()` runs every
+  consolidation cycle (bounded per pass) and is also exposed as
+  `bitterbot memory backfill-embeddings` to clear a backlog manually. It vectorizes
+  `model='pending'` chunks and indexes them into `chunks_vec` + `chunks_fts`.
+- **Cooperative yielding on recall (`multi-perspective-search.ts`).** The
+  per-recall RRF sweep parses + cosine-scores up to 1000 chunks across 4
+  perspectives in pure JS. It yields to the event loop every `SEARCH_YIELD_EVERY`
+  chunks so a large recall can't freeze the gateway keepalive (and bounce the
+  Control UI). Yielding is behavior-preserving — identical scores and ranking.
+- **Tombstone GC (`ConsolidationEngine.purgeExpired`).** Forgotten/expired chunks
+  are physically deleted (row + vector + FTS) once older than
+  `consolidation.forgottenRetentionDays` (default **14**; `0` purges immediately,
+  negative disables). This runs right after the forget pass each consolidation
+  cycle and logs `memory GC: purged N forgotten/expired chunk(s)`. Note that row
+  deletion frees pages but does not shrink the file — run `VACUUM` for that.
+
+Health check from the DB directly:
+
+```bash
+# Should be ~0 in steady state — a growing count means embeddings are failing
+SELECT COUNT(*) FROM chunks WHERE model='pending' OR json_array_length(embedding)=0;
+
+# Tombstones awaiting GC (drained on the consolidation cycle)
+SELECT COUNT(*) FROM chunks WHERE lifecycle_state='forgotten' OR lifecycle='expired';
+```
 
 ---
 

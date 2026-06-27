@@ -7,7 +7,16 @@ import type { DatabaseSync } from "node:sqlite";
 import type { EmbeddingPerspective, MultiPerspectiveEmbedding } from "./crystal-types.js";
 import type { EmbeddingProvider } from "./embedding-perspectives.js";
 import { embedWithPerspectives } from "./embedding-perspectives.js";
+import { makeYieldEvery } from "./event-loop.js";
 import { cosineSimilarity, parseEmbedding } from "./internal.js";
+
+// Yield to the event loop every N chunks during the per-perspective cosine
+// sweep. The sweep parses + scores up to 1000 chunks across 4 perspectives in
+// pure JS on every recall, which is a multi-hundred-ms synchronous burst that
+// starves the gateway keepalive and bounces the Control UI. Yielding keeps the
+// computation identical (same scores, same ranking) while letting queued I/O
+// flush between slices.
+const SEARCH_YIELD_EVERY = 128;
 
 export type PerspectiveWeights = {
   semantic: number;
@@ -55,18 +64,22 @@ export async function multiPerspectiveSearch(
   // Embed query with all perspectives
   const queryEmbeddings = await embedWithPerspectives(query, provider);
 
-  return multiPerspectiveSearchWithEmbeddings(queryEmbeddings, weights, db, limit);
+  return await multiPerspectiveSearchWithEmbeddings(queryEmbeddings, weights, db, limit);
 }
 
 /**
  * Search with pre-computed query embeddings (avoids re-embedding).
+ *
+ * Async only so the synchronous cosine/parse sweep can yield to the event loop
+ * between slices (see SEARCH_YIELD_EVERY); the results are identical to a fully
+ * synchronous pass.
  */
-export function multiPerspectiveSearchWithEmbeddings(
+export async function multiPerspectiveSearchWithEmbeddings(
   queryEmbeddings: MultiPerspectiveEmbedding,
   weights: PerspectiveWeights,
   db: DatabaseSync,
   limit = 20,
-): ScoredCrystal[] {
+): Promise<ScoredCrystal[]> {
   // Load all active chunks with embeddings
   const chunks = db
     .prepare(
@@ -92,6 +105,7 @@ export function multiPerspectiveSearchWithEmbeddings(
     Map<string, { rank: number; sim: number }>
   >();
 
+  const tick = makeYieldEvery(SEARCH_YIELD_EVERY);
   for (const perspective of perspectives) {
     if (weights[perspective] === 0) {
       continue;
@@ -104,6 +118,7 @@ export function multiPerspectiveSearchWithEmbeddings(
 
     const scored: Array<{ id: string; sim: number }> = [];
     for (const chunk of chunks) {
+      await tick();
       const embCol =
         perspective === "semantic"
           ? chunk.embedding
@@ -156,6 +171,7 @@ export function multiPerspectiveSearchWithEmbeddings(
 
   const allIds = new Set(chunks.map((c) => c.id));
   for (const id of allIds) {
+    await tick();
     let score = 0;
     const ranks = { semantic: 0, procedural: 0, causal: 0, entity: 0 };
     const sims = { semantic: 0, procedural: 0, causal: 0, entity: 0 };

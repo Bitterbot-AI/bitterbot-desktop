@@ -2,10 +2,11 @@
  * Cooperative-yielding helpers for the memory subsystem.
  *
  * The memory engines (consolidation, curiosity region rebuild, file indexing,
- * GCCRF scoring) run IN-PROCESS on the gateway's single Node event loop and use
- * the synchronous `node:sqlite` driver. A long uninterrupted synchronous burst
- * (e.g. an O(n^2) cosine sweep over hundreds of chunks, or thousands of INSERTs)
- * starves the loop. While it runs, the gateway cannot emit its 30s WebSocket
+ * GCCRF scoring, multi-perspective recall search) run IN-PROCESS on the
+ * gateway's single Node event loop and use the synchronous `node:sqlite`
+ * driver. A long uninterrupted synchronous burst (e.g. an O(n^2) cosine sweep
+ * over hundreds of chunks, the per-recall parse+cosine sweep across 4
+ * perspectives, or thousands of INSERTs) starves the loop. While it runs, the gateway cannot emit its 30s WebSocket
  * keepalive `tick`, so the Control UI's watchdog trips its tick-timeout and
  * bounces the connection (observed as repeated 1006 reconnects).
  *

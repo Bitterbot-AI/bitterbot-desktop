@@ -20,6 +20,14 @@ export type MemoryConsolidationConfig = {
   mergeOverlapThreshold?: number;
   /** Consolidation cycle interval in minutes. Default: 30. */
   intervalMinutes?: number;
+  /**
+   * Days to retain forgotten/expired chunks before they are physically deleted
+   * by the consolidation GC (`purgeExpired`). Tombstones are kept this long so a
+   * recently-forgotten memory can still be restabilized/rescued before its row,
+   * vector, and FTS entry are reclaimed. Default: 14. Set to 0 to purge as soon
+   * as a chunk is forgotten; negative disables purging.
+   */
+  forgottenRetentionDays?: number;
 };
 
 export type MemoryConfig = {
