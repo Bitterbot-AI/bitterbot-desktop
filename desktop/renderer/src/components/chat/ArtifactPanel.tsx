@@ -21,12 +21,13 @@ export function ArtifactPanel({ onClose }: ArtifactPanelProps) {
 
   // Derive canvas host URL from gateway connection
   const canvasBaseUrl = useMemo(() => {
-    // When the UI is served from localhost, reuse the current origin so the iframe
-    // loads same-origin (avoids cross-origin iframe issues).
-    if (window.location.protocol === "http:" && window.location.hostname === "localhost") {
-      return window.location.origin;
-    }
-    // The canvas host runs on the same host/port as the gateway
+    // Always derive from the gateway WS URL — the gateway proxies canvas
+    // host requests.  The previous localhost shortcut used
+    // window.location.origin, which in dev mode points at the Vite dev
+    // server (e.g. http://localhost:5173), not the gateway.  The Vite dev
+    // server doesn't serve /__bitterbot__/canvas/* so the request falls
+    // through to the SPA index.html, rendering the Bitterbot UI inside the
+    // artifact iframe instead of the artifact itself.
     const gwUrl = useGatewayStore.getState().client?.url;
     if (gwUrl) {
       try {
