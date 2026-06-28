@@ -27,13 +27,17 @@ export function P2pDashboard() {
     fetchContributions();
     fetchBootstrapCensus();
     fetchNetworkCensus();
-    fetchCensusHistory({ limit: 500 });
+    // Server downsamples to one point per (source, hour); 2000 buckets spans
+    // the full ~30-day retained history across multiple bootnodes.
+    fetchCensusHistory({ limit: 2000 });
     const interval = setInterval(() => {
       fetchStats();
       fetchContributions();
       fetchBootstrapCensus();
       fetchNetworkCensus();
-      fetchCensusHistory({ limit: 500 });
+      // Server downsamples to one point per (source, hour); 2000 buckets spans
+      // the full ~30-day retained history across multiple bootnodes.
+      fetchCensusHistory({ limit: 2000 });
     }, 30_000);
     return () => clearInterval(interval);
   }, [

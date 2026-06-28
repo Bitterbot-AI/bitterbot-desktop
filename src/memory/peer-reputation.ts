@@ -435,8 +435,16 @@ export class PeerReputationManager {
   }
 
   /**
-   * Read network census history rows ordered by generated_at ascending.
-   * Suitable for rendering a growth-over-time chart on a dashboard.
+   * Read network census history for a growth-over-time chart, ordered by
+   * generated_at ascending.
+   *
+   * The table accumulates a snapshot per source roughly every minute, so it can
+   * hold 100k+ rows. We therefore (a) downsample to one point per hour bucket
+   * (max lifetime_unique_peers in the bucket — the count is monotonic, so max is
+   * the right aggregate) and (b) return the **most recent** `limit` buckets, not
+   * the oldest. Selecting the oldest was a bug: `ORDER BY generated_at ASC LIMIT`
+   * over the full table returned the first few hours of history (forever showing
+   * the network's earliest days) instead of the recent growth curve.
    */
   getNetworkCensusHistory(
     opts: {
@@ -466,16 +474,33 @@ export class PeerReputationManager {
       by_tier_json: string;
       by_address_type_json: string;
     }>;
+    // generated_at is Unix SECONDS, so /3600 buckets by hour. We downsample to
+    // one point per (source, hour) — lifetime_unique_peers is monotonic so max
+    // is the right aggregate — and keep the most-recent `limit` buckets (inner
+    // ORDER BY DESC), then re-sort ascending so the sparkline renders
+    // oldest→newest. `generated_at` below is the alias for max(generated_at).
+    const SELECT_BUCKETED = `SELECT source_peer_id,
+              max(generated_at) AS generated_at,
+              max(snapshot_at) AS snapshot_at,
+              max(lifetime_unique_peers) AS lifetime_unique_peers,
+              max(active_last_24h) AS active_last_24h,
+              max(active_last_7d) AS active_last_7d,
+              by_tier_json, by_address_type_json
+         FROM network_census_history`;
     if (opts.sourcePeerId) {
       rows = this.db
         .prepare(
           `SELECT source_peer_id, generated_at, snapshot_at,
                   lifetime_unique_peers, active_last_24h, active_last_7d,
                   by_tier_json, by_address_type_json
-             FROM network_census_history
-             WHERE source_peer_id = ? AND snapshot_at >= ?
-             ORDER BY generated_at ASC
-             LIMIT ?`,
+             FROM (
+               ${SELECT_BUCKETED}
+                WHERE source_peer_id = ? AND snapshot_at >= ?
+                GROUP BY source_peer_id, generated_at / 3600
+                ORDER BY generated_at DESC
+                LIMIT ?
+             )
+            ORDER BY generated_at ASC`,
         )
         .all(opts.sourcePeerId, since, limit) as typeof rows;
     } else {
@@ -484,10 +509,14 @@ export class PeerReputationManager {
           `SELECT source_peer_id, generated_at, snapshot_at,
                   lifetime_unique_peers, active_last_24h, active_last_7d,
                   by_tier_json, by_address_type_json
-             FROM network_census_history
-             WHERE snapshot_at >= ?
-             ORDER BY generated_at ASC
-             LIMIT ?`,
+             FROM (
+               ${SELECT_BUCKETED}
+                WHERE snapshot_at >= ?
+                GROUP BY source_peer_id, generated_at / 3600
+                ORDER BY generated_at DESC
+                LIMIT ?
+             )
+            ORDER BY generated_at ASC`,
         )
         .all(since, limit) as typeof rows;
     }

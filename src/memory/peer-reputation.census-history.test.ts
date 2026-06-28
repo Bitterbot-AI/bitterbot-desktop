@@ -92,35 +92,71 @@ describe("PeerReputationManager network census history", () => {
   });
 
   it("returns rows ordered by generated_at ascending", () => {
-    mgr.persistCensusSnapshot({
-      sourcePeerId: "boot-1",
-      generatedAt: 3000,
-      lifetimeUniquePeers: 30,
-      activeLast24h: 0,
-      activeLast7d: 0,
-      byTier: {},
-      byAddressType: {},
-    });
-    mgr.persistCensusSnapshot({
-      sourcePeerId: "boot-1",
-      generatedAt: 1000,
-      lifetimeUniquePeers: 10,
-      activeLast24h: 0,
-      activeLast7d: 0,
-      byTier: {},
-      byAddressType: {},
-    });
-    mgr.persistCensusSnapshot({
-      sourcePeerId: "boot-1",
-      generatedAt: 2000,
-      lifetimeUniquePeers: 20,
-      activeLast24h: 0,
-      activeLast7d: 0,
-      byTier: {},
-      byAddressType: {},
-    });
+    // Distinct hour buckets (generated_at is seconds; /3600 buckets) so the
+    // hourly downsample keeps them as separate points.
+    for (const [gen, peers] of [
+      [3 * 3600, 30],
+      [1 * 3600, 10],
+      [2 * 3600, 20],
+    ]) {
+      mgr.persistCensusSnapshot({
+        sourcePeerId: "boot-1",
+        generatedAt: gen,
+        lifetimeUniquePeers: peers,
+        activeLast24h: 0,
+        activeLast7d: 0,
+        byTier: {},
+        byAddressType: {},
+      });
+    }
     const rows = mgr.getNetworkCensusHistory();
-    expect(rows.map((r) => r.generatedAt)).toEqual([1000, 2000, 3000]);
+    expect(rows.map((r) => r.generatedAt)).toEqual([1 * 3600, 2 * 3600, 3 * 3600]);
+  });
+
+  it("returns the MOST RECENT buckets when more than `limit` exist (regression: was returning the oldest)", () => {
+    // 10 distinct hour buckets, lifetime climbing with time.
+    for (let h = 0; h < 10; h += 1) {
+      mgr.persistCensusSnapshot({
+        sourcePeerId: "boot-1",
+        generatedAt: h * 3600 + 100,
+        lifetimeUniquePeers: (h + 1) * 10,
+        activeLast24h: 0,
+        activeLast7d: 0,
+        byTier: {},
+        byAddressType: {},
+      });
+    }
+    const rows = mgr.getNetworkCensusHistory({ limit: 3 });
+    expect(rows).toHaveLength(3);
+    // The three newest hours (7,8,9), ascending — NOT the oldest (0,1,2).
+    expect(rows.map((r) => r.generatedAt)).toEqual([
+      7 * 3600 + 100,
+      8 * 3600 + 100,
+      9 * 3600 + 100,
+    ]);
+    expect(rows.at(-1)?.lifetimeUniquePeers).toBe(100); // newest = highest count
+  });
+
+  it("downsamples multiple snapshots within one hour to a single max point", () => {
+    const baseHour = 100 * 3600;
+    for (const [offset, peers] of [
+      [0, 40],
+      [120, 45],
+      [3500, 48], // still within the same hour bucket
+    ]) {
+      mgr.persistCensusSnapshot({
+        sourcePeerId: "boot-1",
+        generatedAt: baseHour + offset,
+        lifetimeUniquePeers: peers,
+        activeLast24h: 0,
+        activeLast7d: 0,
+        byTier: {},
+        byAddressType: {},
+      });
+    }
+    const rows = mgr.getNetworkCensusHistory();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].lifetimeUniquePeers).toBe(48); // max in the bucket
   });
 
   it("filters by sourcePeerId when provided", () => {
