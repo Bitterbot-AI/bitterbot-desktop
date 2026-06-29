@@ -101,6 +101,7 @@ canvas { display: block; margin: 0 auto; }
     <button class="tab" data-tab="analytics">Analytics</button>
     <button class="tab" data-tab="emotional">Emotional</button>
     <button class="tab" data-tab="curiosity">Curiosity</button>
+    <button class="tab" data-tab="retrieval">Retrieval</button>
     <button class="tab" data-tab="earnings">Earnings</button>
     <button class="tab" data-tab="live">Live</button>
   </div>
@@ -145,6 +146,14 @@ canvas { display: block; margin: 0 auto; }
     <div class="card"><h3 style="margin-bottom:12px">Region Learning Progress</h3><div id="region-progress"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Reward History</h3><div class="bar-chart" id="reward-chart" style="height:100px"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Top Exploration Targets</h3><div id="exploration-targets"></div></div>
+  </div>
+
+  <!-- RETRIEVAL TAB (PLAN-28 B4) -->
+  <div class="panel" id="panel-retrieval">
+    <div class="stats-grid" id="retrieval-stats"></div>
+    <div class="card" id="deadwire-card"></div>
+    <div class="card"><h3 style="margin-bottom:12px">Per-layer contribution (retrievals since each layer last fired)</h3><div id="layer-counters"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Knowledge Graph &amp; Beliefs (SABM)</h3><div id="graph-stats"></div></div>
   </div>
 
   <!-- EARNINGS TAB -->
@@ -245,8 +254,53 @@ function loadActiveTab() {
   else if (tab === 'analytics') loadAnalytics();
   else if (tab === 'emotional') loadEmotional();
   else if (tab === 'curiosity') loadCuriosity();
+  else if (tab === 'retrieval') loadRetrieval();
   else if (tab === 'earnings') loadEarnings();
   else if (tab === 'live') loadLive();
+}
+
+// RETRIEVAL HEALTH (PLAN-28 B4)
+async function loadRetrieval() {
+  try {
+    const h = await rpc('memory.retrievalHealth');
+    if (!h || h.available === false) {
+      document.getElementById('retrieval-stats').innerHTML =
+        '<div class="stat-card"><div class="label">Retrieval health</div><div class="value" style="font-size:1.1rem">unavailable</div></div>';
+      document.getElementById('deadwire-card').innerHTML = '';
+      document.getElementById('layer-counters').innerHTML = '<div class="empty">No retrievals observed yet</div>';
+      document.getElementById('graph-stats').innerHTML = '';
+      return;
+    }
+    const g = h.graph || {};
+    const dead = h.deadWires || [];
+    const total = h.layers?.total ?? 0;
+    document.getElementById('retrieval-stats').innerHTML =
+      '<div class="stat-card"><div class="label">Retrievals observed</div><div class="value">'+total+'</div></div>' +
+      '<div class="stat-card"><div class="label">Relationships</div><div class="value">'+(g.activeRelationships ?? g.relationshipCount ?? 0)+'</div><div class="sub">'+(g.entityCount ?? 0)+' entities</div></div>' +
+      '<div class="stat-card"><div class="label">Belief revisions</div><div class="value">'+(g.beliefRevisions ?? 0)+'</div><div class="sub">'+(g.flaggedContradictions ?? 0)+' flagged</div></div>' +
+      '<div class="stat-card"><div class="label">Dead layers</div><div class="value" style="color:'+(dead.length?'var(--orange)':'var(--green)')+'">'+dead.length+'</div></div>';
+
+    document.getElementById('deadwire-card').innerHTML = dead.length
+      ? '<h3 style="margin-bottom:8px;color:var(--orange)">&#9888; Dead-wire alerts</h3>' +
+        dead.map(d => '<div style="margin:4px 0">Layer <strong>'+esc(d.layer)+'</strong> contributed 0 over the last '+d.searchesSinceContribution+' retrievals (window '+d.window+')</div>').join('')
+      : '<h3 style="margin-bottom:8px;color:var(--green)">&#10003; All observed layers contributing</h3><div style="font-size:.8rem;color:var(--muted)">A layer that goes silent for a full rolling window while others fire will raise an alert here.</div>';
+
+    const sc = h.layers?.sinceContribution || {};
+    const keys = Object.keys(sc);
+    document.getElementById('layer-counters').innerHTML = keys.length
+      ? keys.map(k => '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>'+esc(k)+'</span><strong style="color:'+(sc[k]>0?'var(--orange)':'var(--green)')+'">'+sc[k]+'</strong></div>').join('')
+      : '<div class="empty">No retrievals observed yet</div>';
+
+    document.getElementById('graph-stats').innerHTML =
+      '<div style="display:flex;flex-wrap:wrap;gap:18px;font-size:.85rem">' +
+      '<span>Entities: <strong>'+(g.entityCount ?? 0)+'</strong></span>' +
+      '<span>Active edges: <strong>'+(g.activeRelationships ?? 0)+'</strong></span>' +
+      '<span>Closed edges: <strong>'+(g.closedRelationships ?? 0)+'</strong></span>' +
+      '<span>Reinforcements: <strong>'+(g.reinforcements ?? 0)+'</strong></span>' +
+      '<span>Belief revisions: <strong>'+(g.beliefRevisions ?? 0)+'</strong></span>' +
+      '<span>Flagged contradictions: <strong>'+(g.flaggedContradictions ?? 0)+'</strong></span>' +
+      '</div>';
+  } catch(e) { console.warn('retrieval health error', e); }
 }
 
 function ago(ts) {

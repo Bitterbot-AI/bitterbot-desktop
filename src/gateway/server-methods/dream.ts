@@ -71,6 +71,12 @@ interface DreamManagerView {
   curiosityState?(): { targets?: CuriosityTarget[] } | null;
   getSkillMarketplace?(): SkillMarketplaceView | null;
   getMarketplaceEconomics?(): MarketplaceEconomicsView | null;
+  /** PLAN-28 B4: retrieval-layer health (dead-wire counters + KG/SABM stats). */
+  retrievalHealth?(): {
+    layers: { total: number; sinceContribution: Record<string, number> };
+    deadWires: Array<{ layer: string; searchesSinceContribution: number; window: number }>;
+    graph: Record<string, number> | null;
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -520,6 +526,23 @@ export const dreamHandlers: GatewayRequestHandlers = {
       const manager = await getManager();
       const suggestions = await (manager as unknown as DreamManagerView).suggestSkills?.();
       respond(true, { suggestions: suggestions ?? [] });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // PLAN-28 B4: surface per-layer retrieval health (rolling dead-wire counters +
+  // KG/SABM stats) so a silently dead retrieval layer is visible without a DB
+  // probe. Works on any node — not gated behind the management service.
+  "memory.retrievalHealth": async ({ respond }) => {
+    try {
+      const manager = await getManager();
+      const health = (manager as unknown as DreamManagerView).retrievalHealth?.();
+      if (!health) {
+        respond(true, { available: false });
+        return;
+      }
+      respond(true, { available: true, ...health });
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }

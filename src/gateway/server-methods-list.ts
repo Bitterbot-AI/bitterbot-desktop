@@ -119,6 +119,8 @@ const BASE_METHODS = [
   "dream.suggestSkills",
   "dream.marketplaceStatus",
   "dream.curiosityReward",
+  // PLAN-28 B4: retrieval-layer health
+  "memory.retrievalHealth",
   // Marketplace
   "marketplace.search",
   "marketplace.trending",

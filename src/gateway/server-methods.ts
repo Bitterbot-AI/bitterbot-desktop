@@ -113,6 +113,7 @@ const READ_METHODS = new Set([
   "dream.curiosityReward",
   "dream.suggestSkills",
   "dream.trigger",
+  "memory.retrievalHealth",
   "management.census",
   "management.anomalies",
   "management.health",

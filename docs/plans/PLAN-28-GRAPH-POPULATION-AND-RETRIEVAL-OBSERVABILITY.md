@@ -12,16 +12,17 @@ so a silently dead layer can never hide again.
 
 ## Implementation map (as landed)
 
-| Piece                                                                                             | File(s)                                                                                                                        |
-| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| A1 typed extractor (`extractTypedRelationshipFromFact`, `typeEntityName`, `extractTypedEntities`) | `src/memory/kg-relationship-extract.ts`                                                                                        |
-| A1 hot-path wiring (all fact-like layers)                                                         | `src/memory/manager.ts` KG-population loop                                                                                     |
-| A2 offline mining dream mode (`relationship_mining`)                                              | `src/memory/dream-modes/relationship-mining.ts`, `dream-engine.ts`, `dream-types.ts`                                           |
-| A3 one-time backfill (`backfillTypedRelationships`)                                               | `src/memory/kg-backfill.ts`, `manager.ts` (`backfillGeneralRelationships`)                                                     |
-| B1 span attributes (`withSpanAttrs`)                                                              | `src/observability/otel.ts`, `manager.ts` (`search`/`searchInner`/`recallForUserTurn`), `proactive-recall.ts`                  |
-| B2 sampled trace + B3 dead-wire detector                                                          | `src/memory/retrieval-trace.ts`, migration v21                                                                                 |
-| B3 maintenance hook + B4 `retrievalHealth()` surface                                              | `src/memory/manager.ts`                                                                                                        |
-| Tests                                                                                             | `kg-relationship-extract.test.ts`, `kg-backfill.test.ts`, `retrieval-trace.test.ts`, `dream-modes/relationship-mining.test.ts` |
+| Piece                                                                                             | File(s)                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A1 typed extractor (`extractTypedRelationshipFromFact`, `typeEntityName`, `extractTypedEntities`) | `src/memory/kg-relationship-extract.ts`                                                                                                                                        |
+| A1 hot-path wiring (all fact-like layers)                                                         | `src/memory/manager.ts` KG-population loop                                                                                                                                     |
+| A2 offline mining dream mode (`relationship_mining`)                                              | `src/memory/dream-modes/relationship-mining.ts`, `dream-engine.ts`, `dream-types.ts`                                                                                           |
+| A3 one-time backfill (`backfillTypedRelationships`)                                               | `src/memory/kg-backfill.ts`, `manager.ts` (`backfillGeneralRelationships`)                                                                                                     |
+| B1 span attributes (`withSpanAttrs`)                                                              | `src/observability/otel.ts`, `manager.ts` (`search`/`searchInner`/`recallForUserTurn`), `proactive-recall.ts`                                                                  |
+| B2 sampled trace + B3 dead-wire detector                                                          | `src/memory/retrieval-trace.ts`, migration v21                                                                                                                                 |
+| B3 maintenance hook + B4 `retrievalHealth()` method                                               | `src/memory/manager.ts`                                                                                                                                                        |
+| B4 surface: `memory.retrievalHealth` RPC + Retrieval tab on `/dreams`                             | `src/gateway/server-methods/dream.ts`, `server-methods.ts`, `server-methods-list.ts`, `dream-dashboard-page.ts`                                                                |
+| Tests                                                                                             | `kg-relationship-extract.test.ts`, `kg-backfill.test.ts`, `retrieval-trace.test.ts`, `dream-modes/relationship-mining.test.ts`, `server-methods/dream.retrievalHealth.test.ts` |
 
 ---
 
