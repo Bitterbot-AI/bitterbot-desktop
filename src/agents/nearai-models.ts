@@ -40,7 +40,7 @@ export const NEARAI_MODEL_CATALOG = [
     cost: { input: 5, output: 25, cacheRead: 0, cacheWrite: 5 },
   },
   {
-    id: "anthropic/claude-opus-4-7",
+    id: "anthropic/claude-opus-4-8",
     name: "Claude Opus 4.7",
     reasoning: true,
     input: ["text", "image"],

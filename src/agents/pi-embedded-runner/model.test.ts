@@ -185,6 +185,70 @@ describe("resolveModel", () => {
     });
   });
 
+  it("builds an anthropic forward-compat fallback for claude-opus-4-8 (clones 4-6)", () => {
+    // Opus 4.8 postdates the pi-ai catalog (which tops out at 4-6); it must
+    // resolve to a real Anthropic model, not error as "Unknown model".
+    const templateModel = {
+      id: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      contextWindow: 1000000,
+      maxTokens: 128000,
+    };
+
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn((provider: string, modelId: string) => {
+        if (provider === "anthropic" && modelId === "claude-opus-4-6") {
+          return templateModel;
+        }
+        return null;
+      }),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const result = resolveModel("anthropic", "claude-opus-4-8", "/tmp/agent");
+
+    expect(result.error).toBeUndefined();
+    expect(result.model).toMatchObject({
+      provider: "anthropic",
+      id: "claude-opus-4-8",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      contextWindow: 1000000,
+    });
+  });
+
+  it("builds an anthropic forward-compat fallback for claude-opus-4-7 (clones 4-6)", () => {
+    const templateModel = {
+      id: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      contextWindow: 1000000,
+      maxTokens: 128000,
+    };
+
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn((provider: string, modelId: string) =>
+        provider === "anthropic" && modelId === "claude-opus-4-6" ? templateModel : null,
+      ),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const result = resolveModel("anthropic", "claude-opus-4-7", "/tmp/agent");
+
+    expect(result.error).toBeUndefined();
+    expect(result.model).toMatchObject({ provider: "anthropic", id: "claude-opus-4-7" });
+  });
+
   it("builds an antigravity forward-compat fallback for claude-opus-4-6-thinking", () => {
     const templateModel = {
       id: "claude-opus-4-5-thinking",

@@ -479,8 +479,8 @@ describe("applyOpencodeZenProviderConfig", () => {
   it("adds allowlist entry for the default model", () => {
     const cfg = applyOpencodeZenProviderConfig({});
     const models = cfg.agents?.defaults?.models ?? {};
-    // PLAN-17 Phase 5: opus tier rolled forward to claude-opus-4-7.
-    expect(Object.keys(models)).toContain("opencode/claude-opus-4-7");
+    // PLAN-17 Phase 5: opus tier rolled forward to claude-opus-4-8.
+    expect(Object.keys(models)).toContain("opencode/claude-opus-4-8");
   });
 
   it("preserves existing alias for the default model", () => {
@@ -500,8 +500,8 @@ describe("applyOpencodeZenProviderConfig", () => {
 describe("applyOpencodeZenConfig", () => {
   it("sets correct primary model", () => {
     const cfg = applyOpencodeZenConfig({});
-    // PLAN-17 Phase 5: opus tier rolled forward to claude-opus-4-7.
-    expect(cfg.agents?.defaults?.model?.primary).toBe("opencode/claude-opus-4-7");
+    // PLAN-17 Phase 5: opus tier rolled forward to claude-opus-4-8.
+    expect(cfg.agents?.defaults?.model?.primary).toBe("opencode/claude-opus-4-8");
   });
 
   it("preserves existing model fallbacks", () => {
@@ -568,7 +568,7 @@ describe("applyLitellmProviderConfig", () => {
     expect(cfg.models?.providers?.litellm?.models.map((m) => m.id)).toEqual([
       "custom-model",
       // PLAN-17 Phase 5: litellm default rolled forward from 4-6 to 4-7.
-      "claude-opus-4-7",
+      "claude-opus-4-8",
     ]);
   });
 });

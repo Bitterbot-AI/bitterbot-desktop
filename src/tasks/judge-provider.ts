@@ -10,7 +10,7 @@
  * Model selection precedence:
  *   1. BITTERBOT_TASKS_JUDGE_MODEL env override (provider/model)
  *   2. config.agents.defaults.model.primary
- *   3. anthropic/claude-opus-4-7 (matches `src/config/defaults.ts:16`)
+ *   3. anthropic/claude-opus-4-8 (matches `src/config/defaults.ts:16`)
  *
  * Determinism: temperature is pinned to 0 (SOTA-aligned — judges should
  * be greedy, not creative). Max tokens 600 — a verdict is <= 60 words
@@ -28,7 +28,7 @@ import { registerJudgeLlmCall } from "./judge.js";
 
 const log = createSubsystemLogger("tasks/judge-provider");
 
-const DEFAULT_JUDGE_MODEL = "anthropic/claude-opus-4-7";
+const DEFAULT_JUDGE_MODEL = "anthropic/claude-opus-4-8";
 const DEFAULT_MAX_TOKENS = 600;
 const DEFAULT_TEMPERATURE = 0;
 const DEFAULT_ATTEMPTS = 3;

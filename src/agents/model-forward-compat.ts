@@ -11,6 +11,19 @@ const ANTHROPIC_OPUS_46_MODEL_ID = "claude-opus-4-6";
 const ANTHROPIC_OPUS_46_DOT_MODEL_ID = "claude-opus-4.6";
 const ANTHROPIC_OPUS_TEMPLATE_MODEL_IDS = ["claude-opus-4-5", "claude-opus-4.5"] as const;
 
+// Opus 4.7 / 4.8 ship after pi-ai's built-in catalog (which tops out at
+// claude-opus-4-6). When a user configures one of them without a models.json
+// entry, clone the latest known opus (4-6) so it resolves with the correct
+// Anthropic transport, context window, cost, and capabilities instead of falling
+// through to the generic openai-responses fallback (which would break the API).
+const ANTHROPIC_OPUS_NEXT_MODEL_IDS = [
+  "claude-opus-4-7",
+  "claude-opus-4.7",
+  "claude-opus-4-8",
+  "claude-opus-4.8",
+] as const;
+const ANTHROPIC_OPUS_NEXT_TEMPLATE_MODEL_IDS = ["claude-opus-4-6", "claude-opus-4.6"] as const;
+
 const ZAI_GLM5_MODEL_ID = "glm-5";
 const ZAI_GLM5_TEMPLATE_MODEL_IDS = ["glm-4.7"] as const;
 
@@ -139,6 +152,37 @@ function resolveAnthropicOpus46ForwardCompatModel(
   });
 }
 
+/**
+ * Forward-compat for Anthropic Opus 4.7 / 4.8 (and dotted variants), which post-
+ * date pi-ai's built-in catalog. Clones the latest catalogued opus (4-6) so a
+ * config pinned to `anthropic/claude-opus-4-8` resolves to a real Anthropic model
+ * rather than erroring as "Unknown model". Mirrors the 4.6-from-4.5 rule above.
+ */
+function resolveAnthropicOpusNextForwardCompatModel(
+  provider: string,
+  modelId: string,
+  modelRegistry: ModelRegistry,
+): Model<Api> | undefined {
+  const normalizedProvider = normalizeProviderId(provider);
+  if (normalizedProvider !== "anthropic") {
+    return undefined;
+  }
+  const trimmedModelId = modelId.trim();
+  const lower = trimmedModelId.toLowerCase();
+  const isOpusNext = ANTHROPIC_OPUS_NEXT_MODEL_IDS.some(
+    (id) => lower === id || lower.startsWith(`${id}-`),
+  );
+  if (!isOpusNext) {
+    return undefined;
+  }
+  return cloneFirstTemplateModel({
+    normalizedProvider,
+    trimmedModelId,
+    templateIds: [...ANTHROPIC_OPUS_NEXT_TEMPLATE_MODEL_IDS],
+    modelRegistry,
+  });
+}
+
 // Z.ai's GLM-5 may not be present in pi-ai's built-in model catalog yet.
 // When a user configures zai/glm-5 without a models.json entry, clone glm-4.7 as a forward-compat fallback.
 function resolveZaiGlm5ForwardCompatModel(
@@ -243,6 +287,7 @@ export function resolveForwardCompatModel(
   return (
     resolveOpenAICodexGpt53FallbackModel(provider, modelId, modelRegistry) ??
     resolveAnthropicOpus46ForwardCompatModel(provider, modelId, modelRegistry) ??
+    resolveAnthropicOpusNextForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveZaiGlm5ForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveAntigravityOpus46ForwardCompatModel(provider, modelId, modelRegistry)
   );

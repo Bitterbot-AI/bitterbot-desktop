@@ -13,9 +13,13 @@ export type ResolvedCliBackend = {
 
 const CLAUDE_MODEL_ALIASES: Record<string, string> = {
   opus: "opus",
+  "opus-4.8": "opus",
+  "opus-4.7": "opus",
   "opus-4.6": "opus",
   "opus-4.5": "opus",
   "opus-4": "opus",
+  "claude-opus-4-8": "opus",
+  "claude-opus-4-7": "opus",
   "claude-opus-4-6": "opus",
   "claude-opus-4-5": "opus",
   "claude-opus-4": "opus",

@@ -75,7 +75,7 @@ describe("createJudgeLlmCall", () => {
     );
   });
 
-  it("falls back to anthropic/claude-opus-4-7 when neither override nor config primary is set", async () => {
+  it("falls back to anthropic/claude-opus-4-8 when neither override nor config primary is set", async () => {
     completeSimpleMock.mockResolvedValueOnce({
       content: [{ type: "text", text: "ok" }],
     });
@@ -83,7 +83,7 @@ describe("createJudgeLlmCall", () => {
     await llm("p");
     expect(resolveModelMock).toHaveBeenCalledWith(
       "anthropic",
-      "claude-opus-4-7",
+      "claude-opus-4-8",
       undefined,
       undefined,
     );

@@ -28,9 +28,11 @@ function sanitizeTokenValue(value: string | undefined): string | undefined {
   return trimmed;
 }
 
-// PLAN-17 Phase 5: slide the Anthropic OAuth model chain forward by one so the
-// primary matches `src/config/defaults.ts:16` (anthropic/claude-opus-4-7).
+// Slide the Anthropic OAuth model chain forward so the primary matches
+// `src/config/defaults.ts:16` (anthropic/claude-opus-4-8 — the current durable
+// Opus tier; 4.6/4.7 fast mode are deprecated, 4.8 is the fast-capable tier).
 const ANTHROPIC_OAUTH_MODEL_KEYS = [
+  "anthropic/claude-opus-4-8",
   "anthropic/claude-opus-4-7",
   "anthropic/claude-opus-4-6",
   "anthropic/claude-sonnet-4-5",
@@ -122,7 +124,7 @@ export async function promptAuthConfig(
       config: next,
       prompter,
       allowedKeys: anthropicOAuth ? ANTHROPIC_OAUTH_MODEL_KEYS : undefined,
-      initialSelections: anthropicOAuth ? ["anthropic/claude-opus-4-7"] : undefined,
+      initialSelections: anthropicOAuth ? ["anthropic/claude-opus-4-8"] : undefined,
       message: anthropicOAuth ? "Anthropic OAuth models" : undefined,
     });
     if (allowlistSelection.models) {

@@ -399,7 +399,7 @@ describe("onboard (non-interactive): provider auth", () => {
       expect(cfg.auth?.profiles?.["litellm:default"]?.provider).toBe("litellm");
       expect(cfg.auth?.profiles?.["litellm:default"]?.mode).toBe("api_key");
       // PLAN-17 Phase 5: LITELLM_DEFAULT_MODEL_REF rolled forward to 4-7.
-      expect(cfg.agents?.defaults?.model?.primary).toBe("litellm/claude-opus-4-7");
+      expect(cfg.agents?.defaults?.model?.primary).toBe("litellm/claude-opus-4-8");
       await expectApiKeyProfile({
         profileId: "litellm:default",
         provider: "litellm",

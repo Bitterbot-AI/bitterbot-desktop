@@ -681,7 +681,7 @@ describe("applyAuthChoice", () => {
     );
     expect(result.config.agents?.defaults?.model?.primary).toBe("anthropic/claude-opus-4-5");
     expect(result.config.models?.providers?.["opencode-zen"]).toBeUndefined();
-    expect(result.agentModelOverride).toBe("opencode/claude-opus-4-7");
+    expect(result.agentModelOverride).toBe("opencode/claude-opus-4-8");
   });
 
   it("does not persist literal 'undefined' when Anthropic API key prompt returns undefined", async () => {
