@@ -60,20 +60,34 @@ auto-config and adds nothing on top.
 
 ## Spans Bitterbot emits
 
-| Span name                 | Where                                | Attributes                                                   |
-| ------------------------- | ------------------------------------ | ------------------------------------------------------------ |
-| `gateway.rpc.<method>`    | Every gateway RPC frame              | `rpc.method`, `rpc.system`                                   |
-| `agent.tool.<toolName>`   | Each tool execution (start → result) | `tool.name`, `tool.call_id`, `agent.run_id`, `tool.is_error` |
-| `memory.search`           | `MemoryManager.search`               | `memory.query_len`, `memory.max_results`                     |
-| `memory.dream`            | `MemoryManager.dream`                | `dream.engine`                                               |
-| `long_horizon.run`        | A `LongHorizonRuntime.run()` call    | `long_horizon.thread_id`                                     |
-| `long_horizon.work_step`  | One unit of agent work               | `phase=work`, `cycle`                                        |
-| `long_horizon.dream_step` | One dream pass at the end of a cycle | `phase=dream`, `cycle`                                       |
+| Span name                  | Where                                                             | Attributes                                                                             |
+| -------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `gateway.rpc.<method>`     | Every gateway RPC frame                                           | `rpc.method`, `rpc.system`                                                             |
+| `gateway.event_loop_delay` | A sampling window whose max loop stall crossed the warn threshold | `event_loop.max_ms`, `event_loop.p99_ms`, `event_loop.mean_ms`, `event_loop.window_ms` |
+| `agent.tool.<toolName>`    | Each tool execution (start → result)                              | `tool.name`, `tool.call_id`, `agent.run_id`, `tool.is_error`                           |
+| `memory.search`            | `MemoryManager.search`                                            | `memory.query_len`, `memory.max_results`                                               |
+| `memory.dream`             | `MemoryManager.dream`                                             | `dream.engine`                                                                         |
+| `long_horizon.run`         | A `LongHorizonRuntime.run()` call                                 | `long_horizon.thread_id`                                                               |
+| `long_horizon.work_step`   | One unit of agent work                                            | `phase=work`, `cycle`                                                                  |
+| `long_horizon.dream_step`  | One dream pass at the end of a cycle                              | `phase=dream`, `cycle`                                                                 |
 
 Gateway RPC and tool spans are the ones most operators want first —
 they directly answer "where is the latency coming from" and "which
 tool errored". Memory and long-horizon spans are most useful for
 multi-hour runs where you want to see the cycle pattern.
+
+`gateway.event_loop_delay` is different: it is emitted by an always-on
+sampler (`src/gateway/event-loop-monitor.ts`), not by request traffic,
+and only when a sampling window's worst event-loop stall crosses the
+warn threshold. It is the direct signal for "the loop was blocked long
+enough to risk starving the WebSocket keepalive" — the class of stall
+that bounces the Control UI with a `code=1006` tick-timeout. The sampler
+runs even with OTel disabled (the default), where it still logs a
+structured WARN under the `[gateway/event-loop]` subsystem; the span is
+just the exported form of the same event. Tune it with
+`BITTERBOT_EVENT_LOOP_MONITOR` / `BITTERBOT_EVENT_LOOP_SAMPLE_MS` /
+`BITTERBOT_EVENT_LOOP_WARN_MS`. See
+[/gateway/troubleshooting](/gateway/troubleshooting).
 
 ## What it looks like
 

@@ -121,9 +121,31 @@ long synchronous burst. Two sources have caused this:
    - `skills.network` / `skills.networkHistory` run synchronous `node:sqlite`
      aggregation (and `skills.network` also fans out over IPC/HTTP). They are now
      served from short-TTL caches (5s / 10s), so the UI's polling and
-     reconnect-driven refetches can no longer re-pay the cost back-to-back.
+     reconnect-driven refetches can no longer re-pay the cost back-to-back. The
+     cache also **coalesces concurrent misses** (`TtlCache.getOrCompute`): a
+     reconnect fires a burst of identical polls in the same tick, and before this
+     each one missed the not-yet-populated cache and independently re-paid the
+     IPC fan-out, piling onto the loop at once (the "N requests all resolve at
+     the same wall-clock instant with near-identical durations" signature). Now
+     the first miss runs the work and the rest await that one in-flight result.
    - `skills.network`'s `getStats()` IPC now uses a 2.5s timeout (not the 10s
      default) so a stuck orchestrator cannot stall the handler.
+
+**Diagnosing it directly.** The gateway samples its own event-loop delay
+(`src/gateway/event-loop-monitor.ts`, on by default) and logs a structured WARN
+under the `[gateway/event-loop]` subsystem whenever a sampling window's worst
+stall crosses the threshold:
+
+```
+[gateway/event-loop] event loop stalled: max=812ms p99=300ms mean=4.3ms window=30s
+```
+
+Line that up against the `res ✓ <method> <ms>` line for the handler running at
+that time to pin the culprit, instead of reverse-engineering the block from
+timestamps. When OTel is enabled it also emits a `gateway.event_loop_delay`
+span. Tune or disable via env: `BITTERBOT_EVENT_LOOP_MONITOR=0` (off),
+`BITTERBOT_EVENT_LOOP_SAMPLE_MS` (window, default 30000),
+`BITTERBOT_EVENT_LOOP_WARN_MS` (threshold, default 250).
 
 A healthy build should not exhibit this. If it reappears:
 

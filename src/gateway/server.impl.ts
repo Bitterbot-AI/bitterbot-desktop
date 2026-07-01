@@ -1,6 +1,7 @@
 import type { CanvasHostServer } from "../canvas-host/server.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import type { RuntimeEnv } from "../runtime.js";
+import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
 import type { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
@@ -476,23 +477,25 @@ export async function startGatewayServer(
   let tickInterval = noopInterval();
   let healthInterval = noopInterval();
   let dedupeCleanup = noopInterval();
+  let eventLoopMonitor: EventLoopMonitorHandle = { stop: () => {} };
   if (!minimalTestGateway) {
-    ({ tickInterval, healthInterval, dedupeCleanup } = startGatewayMaintenanceTimers({
-      broadcast,
-      nodeSendToAllSubscribed,
-      getPresenceVersion,
-      getHealthVersion,
-      refreshGatewayHealthSnapshot,
-      logHealth,
-      dedupe,
-      chatAbortControllers,
-      chatRunState,
-      chatRunBuffers,
-      chatDeltaSentAt,
-      removeChatRun,
-      agentRunSeq,
-      nodeSendToSession,
-    }));
+    ({ tickInterval, healthInterval, dedupeCleanup, eventLoopMonitor } =
+      startGatewayMaintenanceTimers({
+        broadcast,
+        nodeSendToAllSubscribed,
+        getPresenceVersion,
+        getHealthVersion,
+        refreshGatewayHealthSnapshot,
+        logHealth,
+        dedupe,
+        chatAbortControllers,
+        chatRunState,
+        chatRunBuffers,
+        chatDeltaSentAt,
+        removeChatRun,
+        agentRunSeq,
+        nodeSendToSession,
+      }));
   }
 
   const agentUnsub = minimalTestGateway
@@ -719,6 +722,7 @@ export async function startGatewayServer(
     tickInterval,
     healthInterval,
     dedupeCleanup,
+    eventLoopMonitor,
     agentUnsub,
     heartbeatUnsub,
     chatRunState,

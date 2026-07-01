@@ -2,6 +2,7 @@ import type { HealthSummary } from "../commands/health.js";
 import type { ChatRunEntry } from "./server-chat.js";
 import type { DedupeEntry } from "./server-shared.js";
 import { abortChatRunById, type ChatAbortControllerEntry } from "./chat-abort.js";
+import { type EventLoopMonitorHandle, startEventLoopMonitor } from "./event-loop-monitor.js";
 import {
   DEDUPE_MAX,
   DEDUPE_TTL_MS,
@@ -41,6 +42,7 @@ export function startGatewayMaintenanceTimers(params: {
   tickInterval: ReturnType<typeof setInterval>;
   healthInterval: ReturnType<typeof setInterval>;
   dedupeCleanup: ReturnType<typeof setInterval>;
+  eventLoopMonitor: EventLoopMonitorHandle;
 } {
   setBroadcastHealthUpdate((snap: HealthSummary) => {
     params.broadcast("health", snap, {
@@ -58,6 +60,11 @@ export function startGatewayMaintenanceTimers(params: {
     params.broadcast("tick", payload, { dropIfSlow: true });
     params.nodeSendToAllSubscribed("tick", payload);
   }, TICK_INTERVAL_MS);
+
+  // Direct visibility into what starves the keepalive above: sample the
+  // event-loop delay and warn when a window's worst stall crosses the
+  // threshold. On by default; tunable/disengageable via env.
+  const eventLoopMonitor = startEventLoopMonitor();
 
   // periodic health refresh to keep cached snapshot warm
   const healthInterval = setInterval(() => {
@@ -129,5 +136,5 @@ export function startGatewayMaintenanceTimers(params: {
     }
   }, 60_000);
 
-  return { tickInterval, healthInterval, dedupeCleanup };
+  return { tickInterval, healthInterval, dedupeCleanup, eventLoopMonitor };
 }

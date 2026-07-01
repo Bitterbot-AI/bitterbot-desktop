@@ -43,4 +43,61 @@ describe("TtlCache", () => {
     cache.clear();
     expect(cache.get("a")).toBeUndefined();
   });
+
+  describe("getOrCompute (single-flight)", () => {
+    it("coalesces concurrent misses into a single computation", async () => {
+      const cache = new TtlCache<number>(1000);
+      let calls = 0;
+      const compute = () => {
+        calls += 1;
+        return Promise.resolve(42);
+      };
+      const results = await Promise.all([
+        cache.getOrCompute("k", compute),
+        cache.getOrCompute("k", compute),
+        cache.getOrCompute("k", compute),
+      ]);
+      expect(results).toEqual([42, 42, 42]);
+      // The whole point: a burst of concurrent misses runs compute once.
+      expect(calls).toBe(1);
+    });
+
+    it("caches the resolved value for the TTL and serves it without recomputing", async () => {
+      const cache = new TtlCache<number>(1000);
+      let calls = 0;
+      const compute = () => {
+        calls += 1;
+        return Promise.resolve(7);
+      };
+      expect(await cache.getOrCompute("k", compute)).toBe(7);
+      expect(await cache.getOrCompute("k", compute)).toBe(7);
+      expect(calls).toBe(1);
+      expect(cache.get("k")).toBe(7);
+    });
+
+    it("recomputes after the TTL expires", async () => {
+      const cache = new TtlCache<number>(1000);
+      let n = 0;
+      const compute = () => {
+        n += 1;
+        return Promise.resolve(n);
+      };
+      expect(await cache.getOrCompute("k", compute)).toBe(1);
+      vi.advanceTimersByTime(1000);
+      expect(await cache.getOrCompute("k", compute)).toBe(2);
+    });
+
+    it("does not cache a rejected computation and retries on the next call", async () => {
+      const cache = new TtlCache<number>(1000);
+      let calls = 0;
+      const compute = () => {
+        calls += 1;
+        return calls === 1 ? Promise.reject(new Error("boom")) : Promise.resolve(99);
+      };
+      await expect(cache.getOrCompute("k", compute)).rejects.toThrow("boom");
+      // In-flight entry cleared on rejection, so the retry recomputes.
+      expect(await cache.getOrCompute("k", compute)).toBe(99);
+      expect(calls).toBe(2);
+    });
+  });
 });

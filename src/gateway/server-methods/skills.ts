@@ -220,42 +220,43 @@ export const skillsHandlers: GatewayRequestHandlers = {
     );
   },
   "skills.network": async ({ respond, context }) => {
-    const cached = skillsNetworkCache.get(SKILLS_NETWORK_CACHE_KEY);
-    if (cached !== undefined) {
-      respond(true, cached, undefined);
-      return;
-    }
-    const cfg = loadConfig();
-    const p2p = cfg.p2p;
-    let stats = null;
-    let bootstrapCensus = null;
-    if (context.orchestratorBridge) {
-      try {
-        stats = await context.orchestratorBridge.getStats();
-      } catch {}
-      try {
-        bootstrapCensus = await context.orchestratorBridge.getBootstrapCensus();
-      } catch {}
-    }
-    // Local lifetime metrics from the SQLite peer_reputation table — these
-    // are independent of the live swarm: they survive restarts and capture
-    // every peer the node has ever met.
-    const localMetrics = context.skillNetworkBridge?.getNetworkMetrics?.() ?? null;
-    // Network-wide census aggregated across all fresh bootnode sources, deduped
-    // by pubkey (a peer connected to several bootnodes counts once). Stable,
-    // unlike the old "latest single source wins" read that flapped between
-    // bootnodes' divergent local counts.
-    const networkCensus = context.skillNetworkBridge?.getAggregatedNetworkCensus?.() ?? null;
-    const payload = {
-      enabled: p2p?.enabled ?? false,
-      topics: p2p?.topics ?? {},
-      security: p2p?.security ?? {},
-      stats,
-      localMetrics,
-      bootstrapCensus,
-      networkCensus,
-    };
-    skillsNetworkCache.set(SKILLS_NETWORK_CACHE_KEY, payload);
+    // Single-flight coalescing (see TtlCache.getOrCompute): a Control-UI
+    // reconnect fires a burst of identical polls in the same tick; without
+    // coalescing each one misses the cache and independently re-pays the IPC
+    // fan-out + SQLite aggregation, piling onto the loop at once and starving
+    // the keepalive tick. Coalescing collapses the burst into one pass.
+    const payload = await skillsNetworkCache.getOrCompute(SKILLS_NETWORK_CACHE_KEY, async () => {
+      const cfg = loadConfig();
+      const p2p = cfg.p2p;
+      let stats = null;
+      let bootstrapCensus = null;
+      if (context.orchestratorBridge) {
+        try {
+          stats = await context.orchestratorBridge.getStats();
+        } catch {}
+        try {
+          bootstrapCensus = await context.orchestratorBridge.getBootstrapCensus();
+        } catch {}
+      }
+      // Local lifetime metrics from the SQLite peer_reputation table — these
+      // are independent of the live swarm: they survive restarts and capture
+      // every peer the node has ever met.
+      const localMetrics = context.skillNetworkBridge?.getNetworkMetrics?.() ?? null;
+      // Network-wide census aggregated across all fresh bootnode sources, deduped
+      // by pubkey (a peer connected to several bootnodes counts once). Stable,
+      // unlike the old "latest single source wins" read that flapped between
+      // bootnodes' divergent local counts.
+      const networkCensus = context.skillNetworkBridge?.getAggregatedNetworkCensus?.() ?? null;
+      return {
+        enabled: p2p?.enabled ?? false,
+        topics: p2p?.topics ?? {},
+        security: p2p?.security ?? {},
+        stats,
+        localMetrics,
+        bootstrapCensus,
+        networkCensus,
+      };
+    });
     respond(true, payload, undefined);
   },
   "skills.networkHistory": async ({ params, respond, context }) => {
@@ -272,15 +273,12 @@ export const skillsHandlers: GatewayRequestHandlers = {
         ? Math.max(1, Math.min(Math.floor(params.limit), 5000))
         : undefined;
     const cacheKey = JSON.stringify({ sourcePeerId, sinceMs, limit });
-    const cached = skillsNetworkHistoryCache.get(cacheKey);
-    if (cached !== undefined) {
-      respond(true, cached, undefined);
-      return;
-    }
-    const rows =
-      context.skillNetworkBridge?.getNetworkCensusHistory?.({ sourcePeerId, sinceMs, limit }) ?? [];
-    const payload = { rows: rows ?? [], count: rows?.length ?? 0 };
-    skillsNetworkHistoryCache.set(cacheKey, payload);
+    const payload = await skillsNetworkHistoryCache.getOrCompute(cacheKey, async () => {
+      const rows =
+        context.skillNetworkBridge?.getNetworkCensusHistory?.({ sourcePeerId, sinceMs, limit }) ??
+        [];
+      return { rows: rows ?? [], count: rows?.length ?? 0 };
+    });
     respond(true, payload, undefined);
   },
   "skills.update": async ({ params, respond }) => {
