@@ -22,6 +22,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { claimCapUsd } from "../../memory/bounty-reputation.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { A2aErrorCodes } from "./types.js";
 
@@ -72,7 +73,7 @@ export function handleForageClaim(
   }
   const bounty = db
     .prepare(
-      `SELECT bounty_id, status, expires_at, deadline, claim_stake_usdc, max_claims
+      `SELECT bounty_id, status, expires_at, deadline, claim_stake_usdc, max_claims, reward_usdc
          FROM bounty_posts WHERE bounty_id = ?`,
     )
     .get(params.bountyId) as
@@ -83,6 +84,7 @@ export function handleForageClaim(
         deadline: number | null;
         claim_stake_usdc: number;
         max_claims: number;
+        reward_usdc: number;
       }
     | undefined;
   if (!bounty) {
@@ -90,6 +92,16 @@ export function handleForageClaim(
   }
   if (bounty.status !== "open" || bounty.expires_at <= now) {
     return err(A2aErrorCodes.INVALID_REQUEST, `Bounty is not open (status: ${bounty.status})`);
+  }
+  // PLAN-29 Phase 1.4: progressive trust tiers gate exposure. Unproven
+  // hunters take small bounties; the ladder is climbed with settled,
+  // counterparty-diverse history, never bought.
+  const cap = claimCapUsd(db, params.hunterPubkey);
+  if (bounty.reward_usdc > cap) {
+    return err(
+      A2aErrorCodes.INVALID_REQUEST,
+      `Reward $${bounty.reward_usdc} exceeds your current trust-tier cap of $${cap}`,
+    );
   }
   const active = db
     .prepare(

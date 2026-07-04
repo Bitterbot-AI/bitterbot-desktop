@@ -41,7 +41,7 @@ function insertBounty(
         oracle_commitment, oracle_type, reward_usdc, funding_proof, claim_stake_usdc,
         max_claims, is_local, status, deadline, expires_at, created_at, updated_at)
      VALUES (?, 'poster-pk', '0x1111111111111111111111111111111111111111', 'oneshot',
-             'extraction', 'extract the table', 'sha256:x', 'mechanical', 5, 'attest:s',
+             'extraction', 'extract the table', 'sha256:x', 'mechanical', 1, 'attest:s',
              0.5, ?, 1, ?, ?, ?, ?, ?)`,
   ).run(
     over.bounty_id ?? "b-1",
@@ -96,6 +96,13 @@ describe("forage/claim", () => {
 
   it("validates the hunter wallet shape", () => {
     expect(claim(db, { hunterWallet: "not-an-address" }).ok).toBe(false);
+  });
+
+  it("blocks history-less hunters from rewards above the T0 cap", () => {
+    db.prepare(`UPDATE bounty_posts SET reward_usdc = 5 WHERE bounty_id = 'b-1'`).run();
+    const out = claim(db);
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.error.message).toMatch(/trust-tier cap/);
   });
 });
 
