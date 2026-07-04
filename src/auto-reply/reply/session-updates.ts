@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
+import type { CapabilityGateContext } from "../../agents/skills/capability-gate.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import { resolveUserTimezone } from "../../agents/date-time.js";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
+import { createCapabilityRuntimeFromMemory } from "../../agents/skills/capability-runtime.js";
 import { ensureSkillsWatcher, getSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
 import { type SessionEntry, updateSessionStore } from "../../config/sessions.js";
 import { buildChannelSummary } from "../../infra/channel-summary.js";
@@ -122,6 +124,8 @@ export async function ensureSkillSnapshot(params: {
   cfg: BitterbotConfig;
   /** If provided, only load skills with these names (for per-channel skill filtering) */
   skillFilter?: string[];
+  /** Agent id, used to key the memory-backed load-time capability gate. */
+  agentId?: string;
 }): Promise<{
   sessionEntry?: SessionEntry;
   skillsSnapshot?: SessionEntry["skillsSnapshot"];
@@ -157,6 +161,22 @@ export async function ensureSkillSnapshot(params: {
   const shouldRefreshSnapshot =
     snapshotVersion > 0 && (nextEntry?.skillsSnapshot?.version ?? 0) < snapshotVersion;
 
+  // PLAN-29 Phase 0.3: load-time capability gate for P2P-ingested skills,
+  // on by default. Resolved once per call, and only when a snapshot build
+  // can actually happen (gate resolution touches the memory manager). A
+  // null runtime (cold start, no memory) degrades to ungated — same
+  // behavior as before the gate existed.
+  const willBuildSnapshot =
+    isFirstTurnInSession || shouldRefreshSnapshot || !sessionEntry?.skillsSnapshot;
+  let capabilityGate: CapabilityGateContext | undefined;
+  if (willBuildSnapshot && cfg.skills?.p2p?.loadTimeCapabilityGate !== false) {
+    const runtime = await createCapabilityRuntimeFromMemory({
+      config: cfg,
+      agentId: params.agentId ?? "default",
+    });
+    capabilityGate = runtime?.gateContext;
+  }
+
   if (isFirstTurnInSession && sessionStore && sessionKey) {
     const current = nextEntry ??
       sessionStore[sessionKey] ?? {
@@ -170,6 +190,7 @@ export async function ensureSkillSnapshot(params: {
             skillFilter,
             eligibility: { remote: remoteEligibility },
             snapshotVersion,
+            capabilityGate,
           })
         : current.skillsSnapshot;
     nextEntry = {
@@ -194,6 +215,7 @@ export async function ensureSkillSnapshot(params: {
         skillFilter,
         eligibility: { remote: remoteEligibility },
         snapshotVersion,
+        capabilityGate,
       })
     : (nextEntry?.skillsSnapshot ??
       (isFirstTurnInSession
@@ -203,6 +225,7 @@ export async function ensureSkillSnapshot(params: {
             skillFilter,
             eligibility: { remote: remoteEligibility },
             snapshotVersion,
+            capabilityGate,
           })));
   if (
     skillsSnapshot &&

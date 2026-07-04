@@ -498,10 +498,30 @@ export function applyP2pDefaults(cfg: BitterbotConfig): BitterbotConfig {
 }
 
 /**
+ * True when this node has everything it needs to receive and verify x402
+ * payments: wallet not explicitly disabled, and full CDP credentials present.
+ * Mirrors the credential check in wallet-service initProvider(); the receive
+ * address itself is auto-derived at verification time (payment.ts falls back
+ * to the live wallet capability), so credentials are the only precondition.
+ */
+export function isEarningCapable(cfg: BitterbotConfig): boolean {
+  const wallet = cfg.tools?.wallet;
+  if (wallet?.enabled === false) return false;
+  const apiKeyId = wallet?.cdpApiKeyId ?? process.env.CDP_API_KEY_ID;
+  const apiKeySecret = wallet?.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET;
+  const walletSecret = process.env.CDP_WALLET_SECRET;
+  return Boolean(apiKeyId && apiKeySecret && walletSecret);
+}
+
+/**
  * A2A protocol defaults. The protocol is on by default so external A2A clients
  * (other Bitterbot nodes, partner agents, etc.) can discover and call this
- * agent. Authentication is bearer + loopback bypass; payment is off by default
- * (operators must configure a USDC payout address before enabling x402).
+ * agent. Authentication is bearer + loopback bypass; payment (charging peers
+ * x402 USDC for skill execution) defaults ON when the node is earning-capable
+ * (PLAN-29 Phase 0: a node that cannot earn cannot participate in the bounty
+ * economy) and OFF otherwise, since an enabled gate 402s every inbound
+ * message/send and a wallet-less node could never be paid. Explicit
+ * a2a.payment.enabled always wins over the derived default.
  *
  * Defaults are deep-merged with user config so operators can override any
  * single field without re-specifying the rest of the block.
@@ -524,7 +544,7 @@ export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
         ...a2a.skills,
       },
       payment: {
-        enabled: false,
+        enabled: isEarningCapable(cfg),
         ...a2a.payment,
         x402: {
           minPayment: 0.01,

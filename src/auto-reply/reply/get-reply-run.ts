@@ -312,6 +312,7 @@ export async function runPreparedReply(
     workspaceDir,
     cfg,
     skillFilter: opts?.skillFilter,
+    agentId,
   });
   sessionEntry = skillResult.sessionEntry ?? sessionEntry;
   currentSystemSent = skillResult.systemSent;

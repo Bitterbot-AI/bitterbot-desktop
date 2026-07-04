@@ -57,7 +57,7 @@ export function buildAgentCard(params: {
   const paymentAddress = a2a.payment?.x402?.address ?? getLocalWalletCapability()?.address;
   if (a2a.payment?.enabled && paymentAddress) {
     extensions["x402-payment"] = {
-      chain: "base",
+      chain: config.tools?.wallet?.network ?? "base",
       token: "USDC",
       address: paymentAddress,
       minPayment: String(a2a.payment.x402?.minPayment ?? 0.01),

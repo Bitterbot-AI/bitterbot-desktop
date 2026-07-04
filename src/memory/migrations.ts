@@ -900,6 +900,127 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 22,
+    description:
+      "PLAN-29 Forage bounty economy: bounty directory (posts/claims/settlements) " +
+      "and heartbeat streams. Local index over funded BountyEnvelope v2 objects " +
+      "gossiped on bitterbot/bounties/v1; payouts ride the existing " +
+      "revenue_payment_queue, settlement is poster-wallet -> hunter-wallet " +
+      "(never custodied here).",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS bounty_posts (
+          bounty_id         TEXT PRIMARY KEY,
+          poster_pubkey     TEXT NOT NULL,
+          poster_peer_id    TEXT,
+          poster_wallet     TEXT NOT NULL,
+          kind              TEXT NOT NULL DEFAULT 'oneshot',
+          category          TEXT NOT NULL,
+          spec_public       TEXT NOT NULL,
+          oracle_commitment TEXT NOT NULL,
+          oracle_type       TEXT NOT NULL DEFAULT 'mechanical',
+          reward_usdc       REAL NOT NULL,
+          funding_proof     TEXT,
+          claim_stake_usdc  REAL NOT NULL DEFAULT 0,
+          max_claims        INTEGER NOT NULL DEFAULT 1,
+          is_local          INTEGER NOT NULL DEFAULT 0,
+          status            TEXT NOT NULL DEFAULT 'open',
+          deadline          INTEGER,
+          expires_at        INTEGER NOT NULL,
+          created_at        INTEGER NOT NULL,
+          updated_at        INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bounty_posts_scan ` +
+          `ON bounty_posts(category, status, deadline)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bounty_posts_expiry ON bounty_posts(status, expires_at)`,
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS bounty_claims (
+          id             TEXT PRIMARY KEY,
+          bounty_id      TEXT NOT NULL,
+          hunter_pubkey  TEXT NOT NULL,
+          hunter_peer_id TEXT,
+          hunter_wallet  TEXT NOT NULL,
+          stake_usdc     REAL NOT NULL DEFAULT 0,
+          stake_tx_hash  TEXT,
+          commit_hash    TEXT,
+          status         TEXT NOT NULL DEFAULT 'claimed',
+          deliverable_ref TEXT,
+          claimed_at     INTEGER NOT NULL,
+          delivered_at   INTEGER,
+          updated_at     INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bounty_claims_bounty ` +
+          `ON bounty_claims(bounty_id, status)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bounty_claims_hunter ` +
+          `ON bounty_claims(hunter_pubkey, status)`,
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS bounty_settlements (
+          id              TEXT PRIMARY KEY,
+          bounty_id       TEXT NOT NULL,
+          claim_id        TEXT NOT NULL,
+          poster_pubkey   TEXT NOT NULL,
+          hunter_pubkey   TEXT NOT NULL,
+          hunter_wallet   TEXT NOT NULL,
+          amount_usdc     REAL NOT NULL,
+          oracle_verdict  TEXT NOT NULL,
+          oracle_evidence TEXT,
+          judge_capped    INTEGER NOT NULL DEFAULT 0,
+          payment_queue_id INTEGER,
+          tx_hash         TEXT,
+          status          TEXT NOT NULL DEFAULT 'pending',
+          error           TEXT,
+          created_at      INTEGER NOT NULL,
+          settled_at      INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bounty_settlements_bounty ` +
+          `ON bounty_settlements(bounty_id, status)`,
+      );
+      db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_bounty_settlements_claim ` +
+          `ON bounty_settlements(claim_id)`,
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS bounty_streams (
+          id                TEXT PRIMARY KEY,
+          bounty_id         TEXT NOT NULL,
+          poster_pubkey     TEXT NOT NULL,
+          hunter_pubkey     TEXT NOT NULL,
+          cadence_seconds   INTEGER NOT NULL,
+          per_check_usdc    REAL NOT NULL,
+          alert_bonus_usdc  REAL NOT NULL DEFAULT 0,
+          observation_head  TEXT,
+          checks_total      INTEGER NOT NULL DEFAULT 0,
+          checks_paid       INTEGER NOT NULL DEFAULT 0,
+          audits_total      INTEGER NOT NULL DEFAULT 0,
+          audits_failed     INTEGER NOT NULL DEFAULT 0,
+          status            TEXT NOT NULL DEFAULT 'active',
+          last_check_at     INTEGER,
+          created_at        INTEGER NOT NULL,
+          updated_at        INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bounty_streams_active ` +
+          `ON bounty_streams(status, last_check_at)`,
+      );
+    },
+  },
 ];
 
 /**

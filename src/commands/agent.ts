@@ -1,3 +1,4 @@
+import type { CapabilityGateContext } from "../agents/skills/capability-gate.js";
 import type { AgentCommandOpts } from "./agent/types.js";
 import {
   listAgentIds,
@@ -25,6 +26,7 @@ import {
 } from "../agents/model-selection.js";
 import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
 import { buildWorkspaceSkillSnapshot } from "../agents/skills.js";
+import { createCapabilityRuntimeFromMemory } from "../agents/skills/capability-runtime.js";
 import { getSkillsSnapshotVersion } from "../agents/skills/refresh.js";
 import { resolveAgentTimeoutMs } from "../agents/timeout.js";
 import { ensureAgentWorkspace } from "../agents/workspace.js";
@@ -339,12 +341,24 @@ export async function agentCommand(
     const needsSkillsSnapshot = isNewSession || !sessionEntry?.skillsSnapshot || snapshotIsStale;
     const skillFilter = resolveAgentSkillsFilter(cfg, sessionAgentId);
     const previousSnapshot = sessionEntry?.skillsSnapshot;
+    // PLAN-29 Phase 0.3: same load-time capability gate as the reply runner
+    // (session-updates.ts) so the CLI agent path can't load P2P skills the
+    // chat path would have blocked. Null runtime degrades to ungated.
+    let cliCapabilityGate: CapabilityGateContext | undefined;
+    if (needsSkillsSnapshot && cfg.skills?.p2p?.loadTimeCapabilityGate !== false) {
+      const capRuntime = await createCapabilityRuntimeFromMemory({
+        config: cfg,
+        agentId: sessionAgentId ?? "default",
+      });
+      cliCapabilityGate = capRuntime?.gateContext;
+    }
     const skillsSnapshot = needsSkillsSnapshot
       ? buildWorkspaceSkillSnapshot(workspaceDir, {
           config: cfg,
           eligibility: { remote: getRemoteSkillEligibility() },
           snapshotVersion: skillsSnapshotVersion,
           skillFilter,
+          capabilityGate: cliCapabilityGate,
         })
       : sessionEntry?.skillsSnapshot;
 

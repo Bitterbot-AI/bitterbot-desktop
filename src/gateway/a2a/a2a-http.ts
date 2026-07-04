@@ -241,16 +241,30 @@ export function createA2aHttpHandler(opts: {
         // Plan 8, Phase 6: x402 native payment gate — spec-verified headers
         // x402 v2 uses three headers: PAYMENT-REQUIRED, PAYMENT-SIGNATURE, PAYMENT-RESPONSE
         // All headers contain Base64-encoded JSON strings per x402.org spec.
+        //
+        // payTo must use the SAME fallback chain as verification
+        // (payment.ts:83), otherwise auto-derived-address nodes advertise an
+        // empty payTo and buyers have nowhere to send funds. Network + asset
+        // must match the network verification will check against — a mainnet
+        // asset advertised by a sepolia node makes every payment unverifiable.
+        const { getLocalWalletCapability } = await import("../../infra/wallet-discovery.js");
+        const payTo =
+          config.a2a?.payment?.x402?.address ?? getLocalWalletCapability()?.address ?? "";
+        const payNetwork = (config.tools?.wallet?.network ?? "base") as "base" | "base-sepolia";
+        const usdcAsset =
+          payNetwork === "base-sepolia"
+            ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e" // USDC on Base Sepolia
+            : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
         const paymentRequirements = {
           scheme: "exact",
-          network: "base",
+          network: payNetwork,
           maxAmountRequired: String(paymentResult.pricing?.priceUsdc ?? "0.01"),
           resource: req.url ?? "/a2a",
           description: "Payment required for skill execution",
           mimeType: "application/json",
-          payTo: config.a2a?.payment?.x402?.address ?? "",
+          payTo,
           maxTimeoutSeconds: 300,
-          asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+          asset: usdcAsset,
         };
         const paymentRequiredB64 = Buffer.from(JSON.stringify([paymentRequirements])).toString(
           "base64",
@@ -264,8 +278,8 @@ export function createA2aHttpHandler(opts: {
             message: "Payment required for this task",
             data: {
               pricing: paymentResult.pricing,
-              payTo: config.a2a?.payment?.x402?.address,
-              chain: "base",
+              payTo: payTo || undefined,
+              chain: payNetwork,
               token: "USDC",
             },
           },

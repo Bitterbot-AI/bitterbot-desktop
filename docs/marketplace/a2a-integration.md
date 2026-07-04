@@ -2,7 +2,7 @@
 
 Technical documentation for integrating with the Bitterbot Skill Marketplace via the Agent-to-Agent (A2A) protocol and x402 payment flow.
 
-> **Status:** A2A is **on by default** as of 2026-04-30. Fresh installs serve `/.well-known/agent.json` and `/a2a` immediately; payment is **off by default** and requires an operator-supplied USDC address before the x402 gate becomes active. ERC-8004 onchain identity advertisement is opt-in (set `a2a.erc8004.enabled` and `a2a.erc8004.tokenId`).
+> **Status:** A2A is **on by default** as of 2026-04-30. As of 2026-07-03 (PLAN-29 Phase 0), payment defaults **on for earning-capable nodes**: if the node holds full CDP credentials (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`) and the wallet is not disabled, the x402 gate activates automatically and the receiving address is auto-derived from the live wallet -- no operator-supplied address needed. Nodes without credentials keep payment off (an enabled gate would 402 every inbound `message/send` with nowhere to pay). Explicit `a2a.payment.enabled` always overrides the derived default in both directions. The advertised `PaymentRequirements` (`payTo`, `network`, `asset`) follow the same wallet fallback and the node's configured network, including the Base Sepolia USDC contract on testnet. ERC-8004 onchain identity advertisement is opt-in (set `a2a.erc8004.enabled` and `a2a.erc8004.tokenId`).
 
 ---
 

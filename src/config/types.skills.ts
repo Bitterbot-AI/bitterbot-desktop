@@ -44,6 +44,14 @@ export type SkillsP2pConfig = {
    * Set to 0 to disable auto-rejection (skills accumulate forever).
    */
   quarantineTtlDays?: number;
+  /**
+   * PLAN-29 Phase 0.3: load-time capability gate for P2P-ingested skills.
+   * When true (default), workspace skill snapshots exclude P2P skills whose
+   * declared capabilities exceed their publisher's trust tier plus operator
+   * grants (PLAN-13 Phase B machinery). Runtime dispatch enforcement is a
+   * separate concern and remains off. Set false to restore ungated loading.
+   */
+  loadTimeCapabilityGate?: boolean;
 };
 
 export type SkillsAgentskillsConfig = {

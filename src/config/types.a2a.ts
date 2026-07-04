@@ -23,7 +23,11 @@ export type A2aConfig = {
   };
   /** x402 payment gate configuration. */
   payment?: {
-    /** Enable payment requirement for A2A tasks. Default: false. */
+    /**
+     * Enable payment requirement for A2A tasks. Default: true when the node
+     * is earning-capable (full CDP credentials present and wallet not
+     * disabled — see isEarningCapable in defaults.ts), false otherwise.
+     */
     enabled?: boolean;
     x402?: {
       /** USDC receiving address on Base. */
