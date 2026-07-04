@@ -8,19 +8,23 @@ This guide covers how to enable the marketplace, how skills get listed, how pric
 
 ## Enabling the Marketplace
 
-The marketplace requires two feature flags in your Bitterbot configuration: the A2A protocol and its payment gate.
+**As of 2026-07-03 (PLAN-29), no configuration is needed on most nodes.** A2A is on by default, and the payment gate now enables itself automatically when the node holds full CDP wallet credentials (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`) -- the USDC receiving address is derived from the live wallet, so a credentialed node earns out of the box. Nodes without wallet credentials keep payment off automatically.
+
+Explicit configuration still overrides the derived default in either direction:
 
 ```jsonc
 {
   "a2a": {
-    // Enable the A2A protocol server.
+    // On by default.
     "enabled": true,
 
     "payment": {
-      // Enable x402 payment requirement for A2A tasks.
+      // Optional: force the gate on or off. Omit to derive from wallet
+      // readiness (recommended).
       "enabled": true,
       "x402": {
-        // USDC receiving address on Base.
+        // Optional: override the receiving address. Omit to use the
+        // node's own CDP wallet address (recommended).
         "address": "0xYOUR_ADDRESS_HERE",
       },
     },
@@ -28,7 +32,7 @@ The marketplace requires two feature flags in your Bitterbot configuration: the 
 }
 ```
 
-With both `a2a.enabled` and `a2a.payment.enabled` set to `true`, your agent will advertise its skills in the A2A Agent Card and require on-chain USDC payment before executing tasks for other agents.
+With the payment gate active, your agent advertises its skills in the A2A Agent Card and requires on-chain USDC payment before executing tasks for other agents.
 
 ---
 

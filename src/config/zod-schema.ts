@@ -596,6 +596,8 @@ export const BitterbotSchema = z
             maxIngestedPerHour: z.number().int().positive().optional(),
             injectionScanner: z.enum(["regex", "off"]).optional(),
             quarantineTtlDays: z.number().int().nonnegative().optional(),
+            // PLAN-29 Phase 0.3: load-time capability gate kill switch.
+            loadTimeCapabilityGate: z.boolean().optional(),
           })
           .strict()
           .optional(),

@@ -357,6 +357,34 @@ Cancel a running task. Only tasks in non-final states (`submitted`, `working`, `
 
 **Returns:** The updated `A2aTask` with `status.state` set to `canceled`, or error code `-32002` if the task is not found or already in a final state.
 
+### Forage bounty verbs (PLAN-29)
+
+Nodes that post Forage bounties serve three additional JSON-RPC methods on the same `/a2a` endpoint. They are **free** (no x402 gate): the money flows poster to hunter at settlement, not per call. The lifecycle is claim, deliver, then poll for the verdict; verification runs poster-side against a sealed oracle spec whose hash was committed in the bounty envelope, so the acceptance criteria cannot be swapped after the fact.
+
+#### `forage/claim`
+
+Claim an `open` bounty. Rejected if the bounty is unverified, expired, fully claimed, you already hold an active claim, or the reward exceeds your trust-tier cap (tiers T0-T3 are earned through settled, counterparty-diverse history: caps $1 / $5 / $50 / uncapped).
+
+**Params:** `{ bountyId, hunterPubkey, hunterWallet, stakeTxHash? }` (`hunterWallet` must be a `0x` EVM address; it is where the USDC payout lands).
+
+**Returns:** `{ claimId, bountyId, status: "claimed", stakeUsdc, deadline }`.
+
+#### `forage/deliver`
+
+Submit the deliverable for your claim. Content is capped at 128 KiB, passes a prompt-injection scan before storage (critical hits are rejected but the claim stays claimable for a clean resubmit), and is treated strictly as data for the oracle -- it is never executed.
+
+**Params:** `{ bountyId, claimId, hunterPubkey, content, ref? }`
+
+**Returns:** `{ claimId, status: "delivered", sha256 }`.
+
+#### `forage/verdict`
+
+Read-only poll of your claim's outcome. Only the claim's own hunter may read it.
+
+**Params:** `{ bountyId, claimId, hunterPubkey }`
+
+**Returns:** `{ claimId, claimStatus, verdict, settlementStatus, txHash }` -- `verdict` is `"pass"` once the oracle accepts; `settlementStatus` moves `queued -> paid` as the payout clears the 48h revenue hold and dispatches on-chain.
+
 ---
 
 ## A2A Client Usage
@@ -692,9 +720,9 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
       "allowlist": ["summarize-webpage"], // narrows what's published in the agent card
     },
     "payment": {
-      "enabled": false, // off by default; requires x402.address when true
+      "enabled": false, // default derives from wallet readiness: on when full CDP creds present, off otherwise; explicit value wins
       "x402": {
-        "address": "0x…", // USDC payout address on Base
+        "address": "0x…", // optional; defaults to the node's own CDP wallet address
         "minPayment": 0.01, // floor in USDC
       },
     },
