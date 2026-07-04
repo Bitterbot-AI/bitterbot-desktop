@@ -13,6 +13,7 @@ import { cronHandlers } from "./server-methods/cron.js";
 import { deviceHandlers } from "./server-methods/devices.js";
 import { dreamHandlers } from "./server-methods/dream.js";
 import { execApprovalsHandlers } from "./server-methods/exec-approvals.js";
+import { forageHandlers } from "./server-methods/forage.js";
 import { guardsHandlers } from "./server-methods/guards.js";
 import { healthHandlers } from "./server-methods/health.js";
 import { logsHandlers } from "./server-methods/logs.js";
@@ -114,6 +115,8 @@ const READ_METHODS = new Set([
   "dream.suggestSkills",
   "dream.trigger",
   "memory.retrievalHealth",
+  "forage.tape",
+  "forage.stats",
   "management.census",
   "management.anomalies",
   "management.health",
@@ -256,6 +259,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...walletHandlers,
   ...workspaceHandlers,
   ...dreamHandlers,
+  ...forageHandlers,
   ...managementHandlers,
   ...cronHandlers,
 };

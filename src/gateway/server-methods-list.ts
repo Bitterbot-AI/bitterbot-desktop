@@ -121,6 +121,9 @@ const BASE_METHODS = [
   "dream.curiosityReward",
   // PLAN-28 B4: retrieval-layer health
   "memory.retrievalHealth",
+  // PLAN-29 Phase 3: Forage spectator layer
+  "forage.tape",
+  "forage.stats",
   // Marketplace
   "marketplace.search",
   "marketplace.trending",

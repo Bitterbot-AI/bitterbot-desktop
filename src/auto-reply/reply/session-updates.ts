@@ -104,6 +104,32 @@ export async function prependSystemEvents(params: {
     if (summary.length > 0) {
       systemLines.unshift(...summary);
     }
+    // PLAN-29 Phase 3: the Forage morning-report line — what the bounty
+    // economy did while the user was away. Best-effort; quiet nodes emit
+    // nothing.
+    try {
+      const { MemoryIndexManager } = await import("../../memory/manager.js");
+      const memManager = await MemoryIndexManager.get({
+        cfg: params.cfg,
+        agentId: "default",
+        purpose: "status",
+      });
+      const db = (
+        memManager?.getMarketplaceEconomics?.() as
+          | { getDb?: () => import("node:sqlite").DatabaseSync | undefined }
+          | null
+          | undefined
+      )?.getDb?.();
+      if (db) {
+        const { getMorningReportLine } = await import("../../memory/bounty-tape.js");
+        const line = getMorningReportLine(db);
+        if (line) {
+          systemLines.push(line);
+        }
+      }
+    } catch {
+      /* forage summary is never worth failing a session over */
+    }
   }
   if (systemLines.length === 0) {
     return params.prefixedBodyBase;
