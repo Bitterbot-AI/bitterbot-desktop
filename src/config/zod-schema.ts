@@ -489,6 +489,20 @@ export const BitterbotSchema = z
       .strict()
       .optional(),
     memory: MemorySchema,
+    // PLAN-29: Forage bounty economy.
+    forage: z
+      .object({
+        nightShift: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxConcurrentHunts: z.number().int().positive().optional(),
+            maxRewardUsdc: z.number().positive().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
     skills: z
       .object({
         allowBundled: z.array(z.string()).optional(),

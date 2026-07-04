@@ -79,6 +79,18 @@ export type BitterbotConfig = {
     };
   };
   skills?: SkillsConfig;
+  /** PLAN-29: Forage bounty economy settings. */
+  forage?: {
+    /** Night Shift: autonomous hunting of mesh bounties while idle. */
+    nightShift?: {
+      /** Default: true (monitoring-only, receive-only money flow). */
+      enabled?: boolean;
+      /** Max simultaneous hunts. Default: 2. */
+      maxConcurrentHunts?: number;
+      /** Max per-bounty reward the node will take on. Default: $2. */
+      maxRewardUsdc?: number;
+    };
+  };
   plugins?: PluginsConfig;
   models?: ModelsConfig;
   nodeHost?: NodeHostConfig;

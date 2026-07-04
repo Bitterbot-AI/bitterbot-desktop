@@ -267,10 +267,28 @@ export function handleForageDeliver(
 export function parseHeartbeatTerms(
   specPublic: string,
 ): { cadenceSeconds: number; perCheckUsdc: number; alertBonusUsdc: number } | null {
-  const match = /\{[^{}]*"heartbeat"\s*:\s*\{[\s\S]*?\}\s*\}/.exec(specPublic);
-  if (!match) return null;
+  // Locate the JSON object that contains the "heartbeat" key by brace
+  // matching (a regex cannot handle sibling keys like posterA2aUrl).
+  const keyIdx = specPublic.indexOf('"heartbeat"');
+  if (keyIdx < 0) return null;
+  const start = specPublic.lastIndexOf("{", keyIdx);
+  if (start < 0) return null;
+  let depth = 0;
+  let end = -1;
+  for (let i = start; i < specPublic.length; i++) {
+    const ch = specPublic[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end < 0) return null;
   try {
-    const parsed = JSON.parse(match[0]) as {
+    const parsed = JSON.parse(specPublic.slice(start, end + 1)) as {
       heartbeat?: { cadenceSeconds?: number; perCheckUsdc?: number; alertBonusUsdc?: number };
     };
     const hb = parsed.heartbeat;

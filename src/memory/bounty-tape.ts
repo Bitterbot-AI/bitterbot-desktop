@@ -172,8 +172,28 @@ export function getMorningReportLine(db: DatabaseSync, now: number = Date.now())
   const open = db.prepare(`SELECT COUNT(*) AS n FROM bounty_posts WHERE status = 'open'`).get() as {
     n: number;
   };
-  if (settled.n === 0 && checks.n === 0 && open.n === 0) return null;
+  // Hunter-side earnings (Night Shift claim mirror). Table exists from
+  // migration v24; guard anyway so a partially-migrated db stays quiet.
+  let earned = { earnedUsdc: 0, hunts: 0, checks: 0 };
+  try {
+    const row = db
+      .prepare(
+        `SELECT COALESCE(SUM(earned_usdc), 0) AS usd, COUNT(*) AS hunts,
+                COALESCE(SUM(checks_sent), 0) AS checks
+           FROM forage_hunts WHERE updated_at >= ? AND earned_usdc > 0`,
+      )
+      .get(since) as { usd: number; hunts: number; checks: number };
+    earned = { earnedUsdc: row.usd, hunts: row.hunts, checks: row.checks };
+  } catch {
+    /* pre-v24 db */
+  }
+  if (settled.n === 0 && checks.n === 0 && open.n === 0 && earned.earnedUsdc === 0) return null;
   const parts: string[] = [];
+  if (earned.earnedUsdc > 0) {
+    parts.push(
+      `earned $${earned.earnedUsdc.toFixed(2)} hunting ${earned.hunts} bount${earned.hunts === 1 ? "y" : "ies"} while you were away`,
+    );
+  }
   if (settled.n > 0) {
     parts.push(
       `${settled.n} bounty settlement${settled.n === 1 ? "" : "s"} ($${settled.usd.toFixed(2)}) in the last 24h`,

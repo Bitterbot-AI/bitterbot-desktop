@@ -1031,6 +1031,38 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "bounty_posts", "oracle_spec_private", "TEXT");
     },
   },
+  {
+    version: 24,
+    description:
+      "PLAN-29 Phase 5 (Night Shift): hunter-side claim mirror. Claims live " +
+      "poster-side; forage_hunts is this node's own record of work it has " +
+      "taken on across the mesh — what it claimed, delivered, and earned.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS forage_hunts (
+          claim_id       TEXT PRIMARY KEY,
+          bounty_id      TEXT NOT NULL,
+          poster_pubkey  TEXT NOT NULL,
+          poster_a2a_url TEXT NOT NULL,
+          category       TEXT NOT NULL,
+          kind           TEXT NOT NULL,
+          reward_usdc    REAL NOT NULL,
+          per_check_usdc REAL,
+          monitor_url    TEXT,
+          cadence_seconds INTEGER,
+          status         TEXT NOT NULL DEFAULT 'claimed',
+          checks_sent    INTEGER NOT NULL DEFAULT 0,
+          earned_usdc    REAL NOT NULL DEFAULT 0,
+          last_action_at INTEGER,
+          claimed_at     INTEGER NOT NULL,
+          updated_at     INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_forage_hunts_active ON forage_hunts(status, last_action_at)`,
+      );
+    },
+  },
 ];
 
 /**

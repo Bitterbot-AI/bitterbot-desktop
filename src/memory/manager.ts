@@ -2248,6 +2248,28 @@ export class MemoryIndexManager implements MemorySearchManager {
               void import("./bounty-streams.js")
                 .then((m) => m.sweepStreamPayouts({ db: bountyDb, economics }))
                 .catch((err) => log.debug(`stream payout sweep failed: ${String(err)}`));
+
+              // 11g. PLAN-29 Phase 5: Night Shift — hunt mesh bounties this
+              // node can complete mechanically (heartbeat monitoring only,
+              // receive-only money flow, capped). Identity: the wallet
+              // address doubles as the hunter pubkey until forage adopts
+              // the node's Ed25519 identity end-to-end.
+              void Promise.all([
+                import("./forage-client.js"),
+                import("../infra/wallet-discovery.js"),
+              ])
+                .then(([forage, discovery]) => {
+                  const wallet = discovery.getLocalWalletCapability();
+                  if (!wallet?.address) return; // no wallet, nothing to earn into
+                  return forage.nightShiftSweep({
+                    db: bountyDb,
+                    hunterPubkey: wallet.address,
+                    hunterWallet: wallet.address,
+                    fetchImpl: fetch,
+                    config: this.cfg.forage?.nightShift,
+                  });
+                })
+                .catch((err) => log.debug(`night shift sweep failed: ${String(err)}`));
             }
           } catch {
             // Bounty sweeps non-critical
