@@ -73,7 +73,8 @@ export function handleForageClaim(
   }
   const bounty = db
     .prepare(
-      `SELECT bounty_id, status, expires_at, deadline, claim_stake_usdc, max_claims, reward_usdc
+      `SELECT bounty_id, status, expires_at, deadline, claim_stake_usdc, max_claims,
+              reward_usdc, kind, spec_public, poster_pubkey
          FROM bounty_posts WHERE bounty_id = ?`,
     )
     .get(params.bountyId) as
@@ -85,6 +86,9 @@ export function handleForageClaim(
         claim_stake_usdc: number;
         max_claims: number;
         reward_usdc: number;
+        kind: string;
+        spec_public: string;
+        poster_pubkey: string;
       }
     | undefined;
   if (!bounty) {
@@ -116,6 +120,22 @@ export function handleForageClaim(
     return err(A2aErrorCodes.INVALID_REQUEST, "Bounty is fully claimed");
   }
 
+  // PLAN-29 Phase 2.1: heartbeat bounties carry their stream terms in a
+  // machine block inside spec_public. Terms must be parseable BEFORE the
+  // claim exists, so a malformed heartbeat bounty is unclaimable rather
+  // than a dead stream.
+  let heartbeat: { cadenceSeconds: number; perCheckUsdc: number; alertBonusUsdc: number } | null =
+    null;
+  if (bounty.kind === "heartbeat") {
+    heartbeat = parseHeartbeatTerms(bounty.spec_public);
+    if (!heartbeat) {
+      return err(
+        A2aErrorCodes.INVALID_REQUEST,
+        "Heartbeat bounty has no valid heartbeat terms block",
+      );
+    }
+  }
+
   const claimId = crypto.randomUUID();
   db.prepare(
     `INSERT INTO bounty_claims
@@ -132,6 +152,25 @@ export function handleForageClaim(
     now,
     now,
   );
+  if (heartbeat) {
+    db.prepare(
+      `INSERT INTO bounty_streams
+         (id, bounty_id, poster_pubkey, hunter_pubkey, cadence_seconds, per_check_usdc,
+          alert_bonus_usdc, checks_total, checks_paid, audits_total, audits_failed,
+          status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 'active', ?, ?)`,
+    ).run(
+      claimId, // stream id == claim id: one stream per claim
+      params.bountyId,
+      bounty.poster_pubkey,
+      params.hunterPubkey,
+      heartbeat.cadenceSeconds,
+      heartbeat.perCheckUsdc,
+      heartbeat.alertBonusUsdc,
+      now,
+      now,
+    );
+  }
   log.info(`Claim ${claimId} recorded on bounty ${params.bountyId}`);
   return {
     ok: true,
@@ -217,6 +256,134 @@ export function handleForageDeliver(
 }
 
 // ---------------------------------------------------------------------------
+// forage/checkin (heartbeat streams, PLAN-29 Phase 2.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Heartbeat terms ride in a fenced JSON block inside spec_public:
+ *   {"heartbeat": {"cadenceSeconds": 86400, "perCheckUsdc": 0.05, "alertBonusUsdc": 1}}
+ * Returns null unless all three fields validate (bonus defaults to 0).
+ */
+export function parseHeartbeatTerms(
+  specPublic: string,
+): { cadenceSeconds: number; perCheckUsdc: number; alertBonusUsdc: number } | null {
+  const match = /\{[^{}]*"heartbeat"\s*:\s*\{[\s\S]*?\}\s*\}/.exec(specPublic);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]) as {
+      heartbeat?: { cadenceSeconds?: number; perCheckUsdc?: number; alertBonusUsdc?: number };
+    };
+    const hb = parsed.heartbeat;
+    if (
+      !hb ||
+      typeof hb.cadenceSeconds !== "number" ||
+      hb.cadenceSeconds < 60 ||
+      typeof hb.perCheckUsdc !== "number" ||
+      hb.perCheckUsdc <= 0
+    ) {
+      return null;
+    }
+    return {
+      cadenceSeconds: Math.floor(hb.cadenceSeconds),
+      perCheckUsdc: hb.perCheckUsdc,
+      alertBonusUsdc: typeof hb.alertBonusUsdc === "number" ? hb.alertBonusUsdc : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type ForageCheckinParams = {
+  bountyId?: string;
+  claimId?: string;
+  hunterPubkey?: string;
+  /** What was observed: source url/id + content hash + when. */
+  observation?: { url?: string; contentHash?: string; observedAt?: number; alert?: boolean };
+};
+
+export type ForageCheckinResult = {
+  claimId: string;
+  checksTotal: number;
+  observationHead: string;
+  streamStatus: string;
+};
+
+export function handleForageCheckin(
+  params: ForageCheckinParams,
+  db: DatabaseSync,
+  now: number = Date.now(),
+): ForageOutcome<ForageCheckinResult> {
+  const obs = params.observation;
+  if (!params.bountyId || !params.claimId || !params.hunterPubkey || !obs?.contentHash) {
+    return err(
+      A2aErrorCodes.INVALID_PARAMS,
+      "bountyId, claimId, hunterPubkey, observation.contentHash required",
+    );
+  }
+  const stream = db
+    .prepare(
+      `SELECT id, bounty_id, hunter_pubkey, cadence_seconds, observation_head,
+              checks_total, status, last_check_at
+         FROM bounty_streams WHERE id = ?`,
+    )
+    .get(params.claimId) as
+    | {
+        id: string;
+        bounty_id: string;
+        hunter_pubkey: string;
+        cadence_seconds: number;
+        observation_head: string | null;
+        checks_total: number;
+        status: string;
+        last_check_at: number | null;
+      }
+    | undefined;
+  if (!stream || stream.bounty_id !== params.bountyId) {
+    return err(A2aErrorCodes.TASK_NOT_FOUND, "Unknown stream for this bounty");
+  }
+  if (stream.hunter_pubkey !== params.hunterPubkey) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "Stream belongs to a different hunter");
+  }
+  if (stream.status !== "active") {
+    return err(A2aErrorCodes.INVALID_REQUEST, `Stream is not active (status: ${stream.status})`);
+  }
+  // Cadence guard: a check may arrive early, but not at spam rate. Half the
+  // cadence is the floor — checks faster than that are unpaid noise, so
+  // reject them outright and the hunter's runner learns the rhythm.
+  if (
+    stream.last_check_at !== null &&
+    now - stream.last_check_at < (stream.cadence_seconds * 1000) / 2
+  ) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "Check-in faster than half the agreed cadence");
+  }
+
+  // Chain the observation: head_n = sha256(head_{n-1} || contentHash). The
+  // chain is the mechanical oracle for streams — an auditor re-observing the
+  // same source at the same time must produce the same hash, and a fabricated
+  // history cannot be rewritten without breaking every subsequent head.
+  const head = crypto
+    .createHash("sha256")
+    .update((stream.observation_head ?? "genesis") + obs.contentHash, "utf-8")
+    .digest("hex");
+  db.prepare(
+    `UPDATE bounty_streams
+        SET observation_head = ?, checks_total = checks_total + 1,
+            last_check_at = ?, updated_at = ?
+      WHERE id = ? AND status = 'active'`,
+  ).run(head, now, now, params.claimId);
+
+  return {
+    ok: true,
+    result: {
+      claimId: params.claimId,
+      checksTotal: stream.checks_total + 1,
+      observationHead: head,
+      streamStatus: "active",
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // forage/verdict (read-only poll)
 // ---------------------------------------------------------------------------
 
@@ -290,6 +457,8 @@ export function handleForageMethod(
       return handleForageClaim(p as ForageClaimParams, db, now);
     case "forage/deliver":
       return handleForageDeliver(p as ForageDeliverParams, db, now);
+    case "forage/checkin":
+      return handleForageCheckin(p as ForageCheckinParams, db, now);
     case "forage/verdict":
       return handleForageVerdict(p as ForageVerdictParams, db);
     default:

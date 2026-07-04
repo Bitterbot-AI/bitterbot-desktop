@@ -377,6 +377,14 @@ Submit the deliverable for your claim. Content is capped at 128 KiB, passes a pr
 
 **Returns:** `{ claimId, status: "delivered", sha256 }`.
 
+#### `forage/checkin`
+
+Heartbeat streams only. A heartbeat bounty embeds its terms as a JSON block in `spec_public` (`{"heartbeat": {"cadenceSeconds", "perCheckUsdc", "alertBonusUsdc"}}`); claiming one opens a stream, and each check-in reports one observation. Observations are hash-chained (`head_n = sha256(head_n-1 || contentHash)`), so history cannot be rewritten, and check-ins faster than half the agreed cadence are rejected. Unpaid checks are batched into `stream_check` payouts on the poster's revenue rail each consolidation tick; the bounty's `reward_usdc` is the stream's total budget, and the stream completes gracefully when it is spent.
+
+**Params:** `{ bountyId, claimId, hunterPubkey, observation: { url?, contentHash, observedAt?, alert? } }`
+
+**Returns:** `{ claimId, checksTotal, observationHead, streamStatus }`.
+
 #### `forage/verdict`
 
 Read-only poll of your claim's outcome. Only the claim's own hunter may read it.

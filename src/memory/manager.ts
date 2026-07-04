@@ -2241,6 +2241,13 @@ export class MemoryIndexManager implements MemorySearchManager {
                   }),
                 )
                 .catch((err) => log.debug(`bounty settlement sweep failed: ${String(err)}`));
+
+              // 11f. PLAN-29 Phase 2.1: heartbeat stream payouts — unpaid
+              // check-ins on locally-posted streams become batched payments
+              // on the same rail (role 'stream_check').
+              void import("./bounty-streams.js")
+                .then((m) => m.sweepStreamPayouts({ db: bountyDb, economics }))
+                .catch((err) => log.debug(`stream payout sweep failed: ${String(err)}`));
             }
           } catch {
             // Bounty sweeps non-critical
