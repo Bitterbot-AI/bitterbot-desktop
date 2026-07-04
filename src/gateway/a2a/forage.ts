@@ -1,0 +1,286 @@
+/**
+ * PLAN-29 Phase 1.2: Forage bounty A2A verbs.
+ *
+ * Three JSON-RPC methods spoken poster-side (the node that published the
+ * bounty serves these; hunters call them):
+ *
+ *  - forage/claim   — hunter claims an 'open' bounty. Records a stake-bonded
+ *                     row in bounty_claims. First-come within max_claims.
+ *  - forage/deliver — hunter submits the deliverable for its claim. Content
+ *                     passes the injection scanner BEFORE it is stored;
+ *                     critical hits reject the delivery. Deliverables are
+ *                     data for the oracle harness, never executed.
+ *  - forage/verdict — hunter polls the oracle outcome for its claim. Read
+ *                     only; verdicts are produced locally by the oracle
+ *                     harness (Phase 1.3), never by the remote caller.
+ *
+ * Handlers are pure (db + params + now in, result | error out) so they unit
+ * test without HTTP. The HTTP layer (a2a-http.ts) does transport concerns:
+ * auth, rate limiting, db resolution.
+ */
+
+import type { DatabaseSync } from "node:sqlite";
+import crypto from "node:crypto";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
+import { A2aErrorCodes } from "./types.js";
+
+const log = createSubsystemLogger("a2a/forage");
+
+/** Deliverable payload cap — mirrors the 256KiB gossip envelope cap, halved. */
+export const MAX_DELIVERABLE_BYTES = 128 * 1024;
+
+export type ForageError = { code: number; message: string };
+export type ForageOutcome<T> = { ok: true; result: T } | { ok: false; error: ForageError };
+
+function err<T>(code: number, message: string): ForageOutcome<T> {
+  return { ok: false, error: { code, message } };
+}
+
+const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+// ---------------------------------------------------------------------------
+// forage/claim
+// ---------------------------------------------------------------------------
+
+export type ForageClaimParams = {
+  bountyId?: string;
+  hunterPubkey?: string;
+  hunterWallet?: string;
+  /** Optional on-chain stake payment (validated economically in Phase 1.4). */
+  stakeTxHash?: string;
+};
+
+export type ForageClaimResult = {
+  claimId: string;
+  bountyId: string;
+  status: "claimed";
+  stakeUsdc: number;
+  deadline: number | null;
+};
+
+export function handleForageClaim(
+  params: ForageClaimParams,
+  db: DatabaseSync,
+  now: number = Date.now(),
+): ForageOutcome<ForageClaimResult> {
+  if (!params.bountyId || !params.hunterPubkey || !params.hunterWallet) {
+    return err(A2aErrorCodes.INVALID_PARAMS, "bountyId, hunterPubkey, hunterWallet required");
+  }
+  if (!EVM_ADDRESS_RE.test(params.hunterWallet)) {
+    return err(A2aErrorCodes.INVALID_PARAMS, "hunterWallet must be a 0x EVM address");
+  }
+  const bounty = db
+    .prepare(
+      `SELECT bounty_id, status, expires_at, deadline, claim_stake_usdc, max_claims
+         FROM bounty_posts WHERE bounty_id = ?`,
+    )
+    .get(params.bountyId) as
+    | {
+        bounty_id: string;
+        status: string;
+        expires_at: number;
+        deadline: number | null;
+        claim_stake_usdc: number;
+        max_claims: number;
+      }
+    | undefined;
+  if (!bounty) {
+    return err(A2aErrorCodes.TASK_NOT_FOUND, "Unknown bounty");
+  }
+  if (bounty.status !== "open" || bounty.expires_at <= now) {
+    return err(A2aErrorCodes.INVALID_REQUEST, `Bounty is not open (status: ${bounty.status})`);
+  }
+  const active = db
+    .prepare(
+      `SELECT COUNT(*) AS n, SUM(hunter_pubkey = ?) AS mine
+         FROM bounty_claims WHERE bounty_id = ? AND status IN ('claimed','delivered')`,
+    )
+    .get(params.hunterPubkey, params.bountyId) as { n: number; mine: number | null };
+  if ((active.mine ?? 0) > 0) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "You already hold an active claim on this bounty");
+  }
+  if (active.n >= bounty.max_claims) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "Bounty is fully claimed");
+  }
+
+  const claimId = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO bounty_claims
+       (id, bounty_id, hunter_pubkey, hunter_peer_id, hunter_wallet, stake_usdc,
+        stake_tx_hash, status, claimed_at, updated_at)
+     VALUES (?, ?, ?, NULL, ?, ?, ?, 'claimed', ?, ?)`,
+  ).run(
+    claimId,
+    params.bountyId,
+    params.hunterPubkey,
+    params.hunterWallet,
+    bounty.claim_stake_usdc,
+    params.stakeTxHash ?? null,
+    now,
+    now,
+  );
+  log.info(`Claim ${claimId} recorded on bounty ${params.bountyId}`);
+  return {
+    ok: true,
+    result: {
+      claimId,
+      bountyId: params.bountyId,
+      status: "claimed",
+      stakeUsdc: bounty.claim_stake_usdc,
+      deadline: bounty.deadline,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// forage/deliver
+// ---------------------------------------------------------------------------
+
+export type ForageDeliverParams = {
+  bountyId?: string;
+  claimId?: string;
+  hunterPubkey?: string;
+  /** Deliverable content (utf-8). Data for the oracle; never executed. */
+  content?: string;
+  /** Optional external reference (URL, content hash, artifact id). */
+  ref?: string;
+};
+
+export type ForageDeliverResult = {
+  claimId: string;
+  status: "delivered";
+  sha256: string;
+};
+
+export function handleForageDeliver(
+  params: ForageDeliverParams,
+  db: DatabaseSync,
+  now: number = Date.now(),
+): ForageOutcome<ForageDeliverResult> {
+  if (!params.bountyId || !params.claimId || !params.hunterPubkey || !params.content) {
+    return err(A2aErrorCodes.INVALID_PARAMS, "bountyId, claimId, hunterPubkey, content required");
+  }
+  if (Buffer.byteLength(params.content, "utf-8") > MAX_DELIVERABLE_BYTES) {
+    return err(A2aErrorCodes.INVALID_PARAMS, `Deliverable exceeds ${MAX_DELIVERABLE_BYTES} bytes`);
+  }
+  const claim = db
+    .prepare(`SELECT id, bounty_id, hunter_pubkey, status FROM bounty_claims WHERE id = ?`)
+    .get(params.claimId) as
+    | { id: string; bounty_id: string; hunter_pubkey: string; status: string }
+    | undefined;
+  if (!claim || claim.bounty_id !== params.bountyId) {
+    return err(A2aErrorCodes.TASK_NOT_FOUND, "Unknown claim for this bounty");
+  }
+  if (claim.hunter_pubkey !== params.hunterPubkey) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "Claim belongs to a different hunter");
+  }
+  if (claim.status !== "claimed") {
+    return err(A2aErrorCodes.INVALID_REQUEST, `Claim is not deliverable (status: ${claim.status})`);
+  }
+
+  // Deliverables are untrusted peer content. Scan before storing; critical
+  // hits reject the delivery outright (claim stays 'claimed' so the hunter
+  // can resubmit clean content before the deadline).
+  const scan = scanSkillForInjection(params.content);
+  if (scan.severity === "critical") {
+    log.warn(`Rejecting delivery on claim ${params.claimId}: ${scan.reason}`);
+    return err(A2aErrorCodes.INVALID_REQUEST, "Deliverable rejected by content safety scan");
+  }
+
+  const sha256 = crypto.createHash("sha256").update(params.content, "utf-8").digest("hex");
+  const deliverableRef = JSON.stringify({
+    sha256,
+    ref: params.ref ?? null,
+    scanSeverity: scan.severity,
+    contentB64: Buffer.from(params.content, "utf-8").toString("base64"),
+  });
+  db.prepare(
+    `UPDATE bounty_claims
+        SET status = 'delivered', deliverable_ref = ?, delivered_at = ?, updated_at = ?
+      WHERE id = ? AND status = 'claimed'`,
+  ).run(deliverableRef, now, now, params.claimId);
+  log.info(`Delivery stored for claim ${params.claimId} (sha256 ${sha256.slice(0, 12)}…)`);
+  return { ok: true, result: { claimId: params.claimId, status: "delivered", sha256 } };
+}
+
+// ---------------------------------------------------------------------------
+// forage/verdict (read-only poll)
+// ---------------------------------------------------------------------------
+
+export type ForageVerdictParams = {
+  bountyId?: string;
+  claimId?: string;
+  hunterPubkey?: string;
+};
+
+export type ForageVerdictResult = {
+  claimId: string;
+  claimStatus: string;
+  verdict: string | null;
+  settlementStatus: string | null;
+  txHash: string | null;
+};
+
+export function handleForageVerdict(
+  params: ForageVerdictParams,
+  db: DatabaseSync,
+): ForageOutcome<ForageVerdictResult> {
+  if (!params.bountyId || !params.claimId || !params.hunterPubkey) {
+    return err(A2aErrorCodes.INVALID_PARAMS, "bountyId, claimId, hunterPubkey required");
+  }
+  const claim = db
+    .prepare(`SELECT id, bounty_id, hunter_pubkey, status FROM bounty_claims WHERE id = ?`)
+    .get(params.claimId) as
+    | { id: string; bounty_id: string; hunter_pubkey: string; status: string }
+    | undefined;
+  if (!claim || claim.bounty_id !== params.bountyId) {
+    return err(A2aErrorCodes.TASK_NOT_FOUND, "Unknown claim for this bounty");
+  }
+  if (claim.hunter_pubkey !== params.hunterPubkey) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "Claim belongs to a different hunter");
+  }
+  const settlement = db
+    .prepare(`SELECT oracle_verdict, status, tx_hash FROM bounty_settlements WHERE claim_id = ?`)
+    .get(params.claimId) as
+    | { oracle_verdict: string; status: string; tx_hash: string | null }
+    | undefined;
+  return {
+    ok: true,
+    result: {
+      claimId: claim.id,
+      claimStatus: claim.status,
+      verdict: settlement?.oracle_verdict ?? null,
+      settlementStatus: settlement?.status ?? null,
+      txHash: settlement?.tx_hash ?? null,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch
+// ---------------------------------------------------------------------------
+
+export function isForageMethod(method: unknown): method is string {
+  return typeof method === "string" && method.startsWith("forage/");
+}
+
+/** Route a forage/* method. Unknown forage methods return METHOD_NOT_FOUND. */
+export function handleForageMethod(
+  method: string,
+  params: unknown,
+  db: DatabaseSync,
+  now: number = Date.now(),
+): ForageOutcome<unknown> {
+  const p = (params ?? {}) as Record<string, unknown>;
+  switch (method) {
+    case "forage/claim":
+      return handleForageClaim(p as ForageClaimParams, db, now);
+    case "forage/deliver":
+      return handleForageDeliver(p as ForageDeliverParams, db, now);
+    case "forage/verdict":
+      return handleForageVerdict(p as ForageVerdictParams, db);
+    default:
+      return err(A2aErrorCodes.METHOD_NOT_FOUND, `Unknown forage method: ${method}`);
+  }
+}

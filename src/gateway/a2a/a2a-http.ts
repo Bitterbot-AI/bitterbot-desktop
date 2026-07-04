@@ -196,6 +196,52 @@ export function createA2aHttpHandler(opts: {
 
     const manager = getTaskManager(config);
 
+    // PLAN-29 Phase 1.2: Forage bounty verbs (claim/deliver/verdict). Served
+    // poster-side against the local bounty tables; free (no x402 gate — the
+    // money flows the other way, poster -> hunter, at settlement). Handled
+    // here rather than in the sync dispatcher because they need the
+    // marketplace db, resolved async like the payment gate below.
+    if (rpcRequest.method?.toString().startsWith("forage/")) {
+      const { handleForageMethod } = await import("./forage.js");
+      let forageDb: import("node:sqlite").DatabaseSync | undefined;
+      try {
+        const { MemoryIndexManager } = await import("../../memory/manager.js");
+        const memManager = await MemoryIndexManager.get({
+          cfg: config,
+          agentId: "default",
+          purpose: "status",
+        });
+        forageDb = (
+          memManager?.getMarketplaceEconomics?.() as
+            | { getDb?: () => import("node:sqlite").DatabaseSync | undefined }
+            | null
+            | undefined
+        )?.getDb?.();
+      } catch {
+        /* memory manager unavailable */
+      }
+      if (!forageDb) {
+        sendJson(res, 503, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.INTERNAL_ERROR,
+            message: "Bounty directory unavailable on this node",
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+      const outcome = handleForageMethod(rpcRequest.method as string, rpcRequest.params, forageDb);
+      sendJson(
+        res,
+        200,
+        outcome.ok
+          ? { jsonrpc: "2.0", result: outcome.result, id: rpcRequest.id }
+          : { jsonrpc: "2.0", error: outcome.error, id: rpcRequest.id },
+      );
+      return true;
+    }
+
     // Payment gate: if marketplace payments are enabled, verify x402 payment
     if (config.a2a?.payment?.enabled && rpcRequest.method === "message/send") {
       // Rate-limit payment verification attempts to prevent DoS via fake tokens
