@@ -2209,6 +2209,27 @@ export class MemoryIndexManager implements MemorySearchManager {
           } catch {
             // Revenue queue processing non-critical
           }
+
+          // 11d. PLAN-29 Phase 1.1: validate funding on ingested Forage
+          // bounties (unverified -> open/rejected). Fire-and-forget for the
+          // same reason as payment dispatch: balance reads are network calls.
+          try {
+            const bountyDb = this.marketplaceEconomics.getDb?.();
+            if (bountyDb) {
+              const network =
+                (this.cfg.tools?.wallet?.network as "base" | "base-sepolia" | undefined) ?? "base";
+              void import("./bounty-funding.js")
+                .then((m) =>
+                  m.validatePendingBounties({
+                    db: bountyDb,
+                    readBalance: m.createUsdcBalanceReader(network),
+                  }),
+                )
+                .catch((err) => log.debug(`bounty funding sweep failed: ${String(err)}`));
+            }
+          } catch {
+            // Bounty funding sweep non-critical
+          }
         }
         // ── PLAN-9 Memory Supremacy: consolidation-phase integrations ──
         // 12. Reconsolidation: restabilize expired labile chunks
