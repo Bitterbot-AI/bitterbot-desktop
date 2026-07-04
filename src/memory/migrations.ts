@@ -1021,6 +1021,16 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 23,
+    description:
+      "PLAN-29 Phase 1.3: poster-side sealed oracle spec. The commitment " +
+      "hash travels in the envelope; the spec itself (with salt) stays " +
+      "local to the posting node until verification time.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "bounty_posts", "oracle_spec_private", "TEXT");
+    },
+  },
 ];
 
 /**

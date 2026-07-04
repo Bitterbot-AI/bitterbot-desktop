@@ -2226,9 +2226,24 @@ export class MemoryIndexManager implements MemorySearchManager {
                   }),
                 )
                 .catch((err) => log.debug(`bounty funding sweep failed: ${String(err)}`));
+
+              // 11e. PLAN-29 Phase 1.3: oracle settlement sweep — delivered
+              // claims on locally-posted bounties get verified and, on pass,
+              // paid through the same revenue queue dispatched above. Judge
+              // oracles use the registered task-judge LLM when available.
+              const economics = this.marketplaceEconomics;
+              void Promise.all([import("./bounty-oracle.js"), import("../tasks/judge.js")])
+                .then(([oracle, judge]) =>
+                  oracle.settleDeliveredClaims({
+                    db: bountyDb,
+                    economics,
+                    judgeLlm: judge.getJudgeLlmCall(),
+                  }),
+                )
+                .catch((err) => log.debug(`bounty settlement sweep failed: ${String(err)}`));
             }
           } catch {
-            // Bounty funding sweep non-critical
+            // Bounty sweeps non-critical
           }
         }
         // ── PLAN-9 Memory Supremacy: consolidation-phase integrations ──
