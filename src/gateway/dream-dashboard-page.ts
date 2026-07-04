@@ -103,6 +103,7 @@ canvas { display: block; margin: 0 auto; }
     <button class="tab" data-tab="curiosity">Curiosity</button>
     <button class="tab" data-tab="retrieval">Retrieval</button>
     <button class="tab" data-tab="earnings">Earnings</button>
+    <button class="tab" data-tab="forage">Forage</button>
     <button class="tab" data-tab="live">Live</button>
   </div>
 
@@ -162,6 +163,13 @@ canvas { display: block; margin: 0 auto; }
     <div class="card"><h3 style="margin-bottom:12px">Earnings Trend (7 days)</h3><div class="bar-chart" id="earnings-chart" style="height:100px"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Top Earning Skills</h3><div id="top-earners"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Marketplace Listings</h3><div id="listings-table"></div></div>
+  </div>
+
+  <!-- FORAGE TAB (PLAN-29 Phase 3b) -->
+  <div class="panel" id="panel-forage">
+    <div class="stats-grid" id="forage-stats"></div>
+    <div class="card"><h3 style="margin-bottom:12px">The Tape</h3><div id="forage-tape"><div class="empty">No bounty activity yet</div></div></div>
+    <div class="card" id="forage-honesty" style="font-size:.75rem;color:var(--muted)"></div>
   </div>
 
   <!-- LIVE TAB -->
@@ -256,7 +264,47 @@ function loadActiveTab() {
   else if (tab === 'curiosity') loadCuriosity();
   else if (tab === 'retrieval') loadRetrieval();
   else if (tab === 'earnings') loadEarnings();
+  else if (tab === 'forage') loadForage();
   else if (tab === 'live') loadLive();
+}
+
+// FORAGE (PLAN-29 Phase 3b): DPSV-first scoreboard + The Tape.
+const TAPE_ICONS = { posted:'&#128203;', opened:'&#128275;', claimed:'&#9995;', delivered:'&#128230;', settled:'&#128176;', stream_checked:'&#128147;', fulfilled:'&#9989;' };
+async function loadForage() {
+  try {
+    const s = await rpc('forage.stats');
+    const statsEl = document.getElementById('forage-stats');
+    if (!s || s.available === false) {
+      statsEl.innerHTML = '<div class="stat-card"><div class="label">Forage</div><div class="value" style="font-size:1.1rem">unavailable</div></div>';
+      return;
+    }
+    const dpsv7 = s.dpsv7d || {}, dpsvAll = s.dpsvAllTime || {};
+    const fill = s.fillRate == null ? '--' : Math.round(s.fillRate * 100) + '%';
+    const ttf = s.medianTimeToFillMs == null ? '--' : (s.medianTimeToFillMs < 3600000 ? Math.round(s.medianTimeToFillMs/60000) + 'm' : (s.medianTimeToFillMs/3600000).toFixed(1) + 'h');
+    statsEl.innerHTML =
+      '<div class="stat-card"><div class="label">DPSV (7d)</div><div class="value">$'+(dpsv7.totalUsd ?? 0).toFixed(2)+'</div><div class="sub">'+(dpsv7.distinctPairs ?? 0)+' pairs &middot; $'+(dpsv7.selfLoopExcludedUsd ?? 0).toFixed(2)+' wash excluded</div></div>' +
+      '<div class="stat-card"><div class="label">DPSV (all time)</div><div class="value">$'+(dpsvAll.totalUsd ?? 0).toFixed(2)+'</div><div class="sub">'+(s.settlements ?? 0)+' settlements &middot; '+(s.distinctEarners ?? 0)+' earners</div></div>' +
+      '<div class="stat-card"><div class="label">Open bounties</div><div class="value">'+(s.openBounties ?? 0)+'</div><div class="sub">$'+(s.openRewardUsdc ?? 0).toFixed(2)+' at stake</div></div>' +
+      '<div class="stat-card"><div class="label">Fill rate</div><div class="value">'+fill+'</div><div class="sub">median time-to-fill '+ttf+'</div></div>' +
+      '<div class="stat-card"><div class="label">Streams</div><div class="value">'+(s.activeStreams ?? 0)+'</div><div class="sub">'+(s.totalChecks ?? 0)+' checks reported</div></div>';
+
+    const t = await rpc('forage.tape', { limit: 40 });
+    const events = (t && t.events) || [];
+    document.getElementById('forage-tape').innerHTML = events.length
+      ? events.map(e =>
+          '<div style="display:flex;gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--border)">' +
+          '<span>'+(TAPE_ICONS[e.type]||'&#8226;')+'</span>' +
+          '<span style="min-width:110px;color:var(--muted);font-size:.75rem">'+ago(e.ts)+'</span>' +
+          '<span style="min-width:96px"><strong>'+esc(e.type)+'</strong></span>' +
+          '<span style="min-width:90px;color:var(--muted)">'+esc(e.category||'')+'</span>' +
+          (e.amountUsdc != null ? '<span style="color:var(--green)">$'+Number(e.amountUsdc).toFixed(2)+'</span>' : '') +
+          (e.actor ? '<span style="margin-left:auto;color:var(--muted);font-size:.75rem">'+esc(e.actor)+'</span>' : '') +
+          '</div>').join('')
+      : '<div class="empty">No bounty activity yet</div>';
+
+    document.getElementById('forage-honesty').innerHTML =
+      'DPSV = Distinct-Party Settled Value: settlements between distinct counterparties only. Self-dealt volume is excluded and shown, and no single pair may exceed a 25% share once the market has 4+ pairs. There is deliberately no raw GMV number on this page.';
+  } catch(e) { console.warn('forage error', e); }
 }
 
 // RETRIEVAL HEALTH (PLAN-28 B4)

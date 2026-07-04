@@ -1,0 +1,28 @@
+import { describe, expect, it } from "vitest";
+import { renderDreamDashboardPage } from "./dream-dashboard-page.js";
+
+// PLAN-29 Phase 3b: the Forage tab renders in the dream dashboard with its
+// scoreboard, tape container, and the DPSV honesty note, and the loader is
+// wired into tab dispatch.
+
+describe("dream dashboard Forage tab", () => {
+  const page = renderDreamDashboardPage("ws://127.0.0.1:19001", "t");
+
+  it("renders the tab button and panel", () => {
+    expect(page).toContain('data-tab="forage"');
+    expect(page).toContain('id="panel-forage"');
+    expect(page).toContain('id="forage-stats"');
+    expect(page).toContain('id="forage-tape"');
+  });
+
+  it("wires the loader into tab dispatch and calls both RPCs", () => {
+    expect(page).toContain("loadForage()");
+    expect(page).toContain("rpc('forage.stats')");
+    expect(page).toContain("rpc('forage.tape'");
+  });
+
+  it("carries the DPSV honesty note instead of a GMV number", () => {
+    expect(page).toContain("Distinct-Party Settled Value");
+    expect(page).toContain("no raw GMV");
+  });
+});
