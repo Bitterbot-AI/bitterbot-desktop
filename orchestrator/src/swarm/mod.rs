@@ -89,9 +89,55 @@ pub struct BountyEnvelope {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region_hint: Option<String>,
     pub expires_at: u64,
+    /// v1: management node key. v2 (Forage): the poster's own pubkey — any
+    /// node may post, gated on funding fields instead of identity.
     pub management_pubkey: String,
     pub management_signature: String,
     pub timestamp: u64,
+    // ---- PLAN-29 Forage v2 fields. All optional with serde defaults so v1
+    // curriculum envelopes (and older nodes) parse unchanged in both
+    // directions. A v2 envelope is `version == Some(2)`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub poster_wallet_address: Option<String>,
+    /// oneshot | heartbeat | pool | standing
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub category: Option<String>,
+    /// hash(sealed acceptance spec + salt); revealed at verification time.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub oracle_commitment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reward_usdc: Option<f64>,
+    /// Signed funding evidence (EIP-3009 auth or balance attestation). The
+    /// orchestrator checks presence + signature coverage only; economic
+    /// validation happens TS-side where chain access lives.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub funding_proof: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub claim_stake_usdc: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub deadline: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub max_claims: Option<u32>,
+}
+
+impl BountyEnvelope {
+    pub fn is_v2(&self) -> bool {
+        self.version == Some(2)
+    }
+
+    /// Structural funding gate for v2 envelopes: a Forage bounty is only
+    /// admissible if it names a payable wallet, a positive reward, and
+    /// carries a funding proof. Unfunded text is spam and never propagates.
+    pub fn has_funding(&self) -> bool {
+        self.poster_wallet_address.as_deref().is_some_and(|w| !w.is_empty())
+            && self.reward_usdc.is_some_and(|r| r > 0.0)
+            && self.funding_proof.as_deref().is_some_and(|p| !p.is_empty())
+            && self.oracle_commitment.as_deref().is_some_and(|o| !o.is_empty())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1765,18 +1811,48 @@ impl SwarmHandle {
                 }
             }
             IpcCommand::PublishBounty { id, payload, respond } => {
-                if self.node_tier != "management" {
+                let is_v2 = payload.version == Some(2);
+                if !is_v2 && self.node_tier != "management" {
                     let _ = respond.send(serde_json::json!({
                         "type": "response", "id": id,
                         "payload": { "ok": false, "error": "not a management node" }
                     }));
                     return;
                 }
-                let (sig, pubkey) = crypto::sign_bounty(
-                    &self.signing_key,
-                    &payload.bounty_id, &payload.target_type, &payload.description,
-                    payload.priority, payload.reward_multiplier, payload.expires_at,
-                );
+                let (sig, pubkey) = if is_v2 {
+                    // PLAN-29 Forage: any node may publish, but only a
+                    // structurally funded bounty. Enforce locally too so a
+                    // node never gossips something peers will drop.
+                    let wallet = payload.poster_wallet_address.clone().unwrap_or_default();
+                    let oracle = payload.oracle_commitment.clone().unwrap_or_default();
+                    let proof = payload.funding_proof.clone().unwrap_or_default();
+                    let reward = payload.reward_usdc.unwrap_or(0.0);
+                    if wallet.is_empty() || oracle.is_empty() || proof.is_empty() || reward <= 0.0 {
+                        let _ = respond.send(serde_json::json!({
+                            "type": "response", "id": id,
+                            "payload": { "ok": false, "error": "v2 bounty requires poster_wallet_address, oracle_commitment, funding_proof, and reward_usdc > 0" }
+                        }));
+                        return;
+                    }
+                    crypto::sign_bounty_v2(
+                        &self.signing_key,
+                        &payload.bounty_id, &payload.target_type, &payload.description,
+                        payload.priority, payload.reward_multiplier, payload.expires_at,
+                        &wallet,
+                        payload.kind.as_deref().unwrap_or("oneshot"),
+                        payload.category.as_deref().unwrap_or("general"),
+                        &oracle, reward, &proof,
+                        payload.claim_stake_usdc.unwrap_or(0.0),
+                        payload.deadline.unwrap_or(0),
+                        payload.max_claims.unwrap_or(1),
+                    )
+                } else {
+                    crypto::sign_bounty(
+                        &self.signing_key,
+                        &payload.bounty_id, &payload.target_type, &payload.description,
+                        payload.priority, payload.reward_multiplier, payload.expires_at,
+                    )
+                };
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
                 let envelope = BountyEnvelope {
@@ -1790,6 +1866,16 @@ impl SwarmHandle {
                     management_pubkey: pubkey,
                     management_signature: sig,
                     timestamp: now_ms,
+                    version: payload.version,
+                    poster_wallet_address: payload.poster_wallet_address.clone(),
+                    kind: if is_v2 { Some(payload.kind.clone().unwrap_or_else(|| "oneshot".into())) } else { payload.kind.clone() },
+                    category: if is_v2 { Some(payload.category.clone().unwrap_or_else(|| "general".into())) } else { payload.category.clone() },
+                    oracle_commitment: payload.oracle_commitment.clone(),
+                    reward_usdc: payload.reward_usdc,
+                    funding_proof: payload.funding_proof.clone(),
+                    claim_stake_usdc: if is_v2 { Some(payload.claim_stake_usdc.unwrap_or(0.0)) } else { payload.claim_stake_usdc },
+                    deadline: if is_v2 { Some(payload.deadline.unwrap_or(0)) } else { payload.deadline },
+                    max_claims: if is_v2 { Some(payload.max_claims.unwrap_or(1)) } else { payload.max_claims },
                 };
                 match serde_json::to_vec(&envelope) {
                     Ok(serialized) => {
@@ -2160,13 +2246,29 @@ impl SwarmHandle {
                     debug!("Dropping stale/future bounty envelope (ts={})", envelope.timestamp);
                     return;
                 }
-                if !self.security.is_management_pubkey(&envelope.management_pubkey) {
-                    warn!("Bounty envelope from non-management pubkey, discarding");
-                    return;
-                }
-                if !crypto::verify_bounty(&envelope) {
-                    warn!("Bounty envelope has invalid signature, discarding");
-                    return;
+                if envelope.is_v2() {
+                    // PLAN-29 Forage: any-pubkey bounties are admitted on
+                    // FUNDING, not identity. Structurally unfunded bounties
+                    // are spam and stop here; economic validation of the
+                    // funding proof happens TS-side (chain access lives
+                    // there), before the bounty reaches bounty_posts.
+                    if !envelope.has_funding() {
+                        debug!("Dropping unfunded v2 bounty {}", envelope.bounty_id);
+                        return;
+                    }
+                    if !crypto::verify_bounty_v2(&envelope) {
+                        warn!("v2 bounty envelope has invalid poster signature, discarding");
+                        return;
+                    }
+                } else {
+                    if !self.security.is_management_pubkey(&envelope.management_pubkey) {
+                        warn!("Bounty envelope from non-management pubkey, discarding");
+                        return;
+                    }
+                    if !crypto::verify_bounty(&envelope) {
+                        warn!("Bounty envelope has invalid signature, discarding");
+                        return;
+                    }
                 }
                 self.emit_ipc_event(serde_json::json!({
                     "type": "bounty_received",
@@ -2180,6 +2282,16 @@ impl SwarmHandle {
                         "expires_at": envelope.expires_at,
                         "management_pubkey": envelope.management_pubkey,
                         "timestamp": envelope.timestamp,
+                        "version": envelope.version,
+                        "poster_wallet_address": envelope.poster_wallet_address,
+                        "kind": envelope.kind,
+                        "category": envelope.category,
+                        "oracle_commitment": envelope.oracle_commitment,
+                        "reward_usdc": envelope.reward_usdc,
+                        "funding_proof": envelope.funding_proof,
+                        "claim_stake_usdc": envelope.claim_stake_usdc,
+                        "deadline": envelope.deadline,
+                        "max_claims": envelope.max_claims,
                     }
                 }));
                 info!("Bounty received: {} (type: {})", envelope.bounty_id, envelope.target_type);

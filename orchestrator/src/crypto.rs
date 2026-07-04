@@ -239,6 +239,75 @@ pub fn verify_bounty(envelope: &crate::swarm::BountyEnvelope) -> bool {
     verify_raw_signature(&envelope.management_signature, &envelope.management_pubkey, canonical.as_bytes())
 }
 
+/// Canonical signing preimage for a PLAN-29 Forage (v2) bounty. Covers the
+/// v1 fields plus every economic field, so a relay cannot rewrite the
+/// reward, wallet, oracle commitment, or funding proof without breaking the
+/// poster's signature. serde_json preserves the literal's key order below,
+/// so this layout IS the canonical order — do not reorder.
+#[allow(clippy::too_many_arguments)]
+fn bounty_v2_canonical(
+    bounty_id: &str, target_type: &str, description: &str, priority: f64,
+    reward_multiplier: f64, expires_at: u64, poster_wallet_address: &str,
+    kind: &str, category: &str, oracle_commitment: &str, reward_usdc: f64,
+    funding_proof: &str, claim_stake_usdc: f64, deadline: u64, max_claims: u32,
+) -> String {
+    serde_json::json!({
+        "v": 2u32,
+        "bounty_id": bounty_id, "target_type": target_type, "description": description,
+        "priority": priority, "reward_multiplier": reward_multiplier, "expires_at": expires_at,
+        "poster_wallet_address": poster_wallet_address, "kind": kind, "category": category,
+        "oracle_commitment": oracle_commitment, "reward_usdc": reward_usdc,
+        "funding_proof": funding_proof, "claim_stake_usdc": claim_stake_usdc,
+        "deadline": deadline, "max_claims": max_claims,
+    }).to_string()
+}
+
+/// Sign a Forage (v2) bounty with the posting node's own key. Any node may
+/// post a v2 bounty; admission is gated on funding, not identity.
+#[allow(clippy::too_many_arguments)]
+pub fn sign_bounty_v2(
+    signing_key: &SigningKey, bounty_id: &str, target_type: &str,
+    description: &str, priority: f64, reward_multiplier: f64, expires_at: u64,
+    poster_wallet_address: &str, kind: &str, category: &str,
+    oracle_commitment: &str, reward_usdc: f64, funding_proof: &str,
+    claim_stake_usdc: f64, deadline: u64, max_claims: u32,
+) -> (String, String) {
+    let canonical = bounty_v2_canonical(
+        bounty_id, target_type, description, priority, reward_multiplier, expires_at,
+        poster_wallet_address, kind, category, oracle_commitment, reward_usdc,
+        funding_proof, claim_stake_usdc, deadline, max_claims,
+    );
+    let signature: Signature = signing_key.sign(canonical.as_bytes());
+    (
+        base64::engine::general_purpose::STANDARD.encode(signature.to_bytes()),
+        base64::engine::general_purpose::STANDARD.encode(signing_key.verifying_key().to_bytes()),
+    )
+}
+
+/// Verify a Forage (v2) bounty envelope's poster signature over the full
+/// economic preimage. Missing v2 fields fail closed.
+pub fn verify_bounty_v2(envelope: &crate::swarm::BountyEnvelope) -> bool {
+    let (Some(wallet), Some(kind), Some(category), Some(oracle), Some(reward), Some(proof)) = (
+        envelope.poster_wallet_address.as_deref(),
+        envelope.kind.as_deref(),
+        envelope.category.as_deref(),
+        envelope.oracle_commitment.as_deref(),
+        envelope.reward_usdc,
+        envelope.funding_proof.as_deref(),
+    ) else {
+        return false;
+    };
+    let canonical = bounty_v2_canonical(
+        &envelope.bounty_id, &envelope.target_type, &envelope.description,
+        envelope.priority, envelope.reward_multiplier, envelope.expires_at,
+        wallet, kind, category, oracle, reward, proof,
+        envelope.claim_stake_usdc.unwrap_or(0.0),
+        envelope.deadline.unwrap_or(0),
+        envelope.max_claims.unwrap_or(1),
+    );
+    verify_raw_signature(&envelope.management_signature, &envelope.management_pubkey, canonical.as_bytes())
+}
+
 /// Sign a telemetry signal. Signs canonical JSON: {"d":<data>,"t":"<type>"}
 pub fn sign_telemetry(
     signing_key: &SigningKey,
@@ -326,5 +395,91 @@ mod tests {
         envelope.skill_md = base64::engine::general_purpose::STANDARD.encode(b"# Tampered");
 
         assert!(!verify_skill(&envelope));
+    }
+
+    fn v2_envelope(key: &SigningKey) -> crate::swarm::BountyEnvelope {
+        let (sig, pubkey) = sign_bounty_v2(
+            key, "b-1", "task", "Extract table to JSON", 0.5, 1.0, 9999,
+            "0x1111111111111111111111111111111111111111", "oneshot", "extraction",
+            "sha256:deadbeef", 5.0, "proof:attest:xyz", 0.5, 8888, 1,
+        );
+        crate::swarm::BountyEnvelope {
+            bounty_id: "b-1".into(),
+            target_type: "task".into(),
+            description: "Extract table to JSON".into(),
+            priority: 0.5,
+            reward_multiplier: 1.0,
+            region_hint: None,
+            expires_at: 9999,
+            management_pubkey: pubkey,
+            management_signature: sig,
+            timestamp: 0,
+            version: Some(2),
+            poster_wallet_address: Some("0x1111111111111111111111111111111111111111".into()),
+            kind: Some("oneshot".into()),
+            category: Some("extraction".into()),
+            oracle_commitment: Some("sha256:deadbeef".into()),
+            reward_usdc: Some(5.0),
+            funding_proof: Some("proof:attest:xyz".into()),
+            claim_stake_usdc: Some(0.5),
+            deadline: Some(8888),
+            max_claims: Some(1),
+        }
+    }
+
+    #[test]
+    fn test_bounty_v2_sign_and_verify_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let key = load_or_generate_keypair(dir.path()).unwrap();
+        let envelope = v2_envelope(&key);
+        assert!(envelope.is_v2());
+        assert!(envelope.has_funding());
+        assert!(verify_bounty_v2(&envelope));
+        // v1 verifier must NOT accept a v2 envelope's signature (different preimage).
+        assert!(!verify_bounty(&envelope));
+    }
+
+    #[test]
+    fn test_bounty_v2_rejects_economic_tampering() {
+        let dir = TempDir::new().unwrap();
+        let key = load_or_generate_keypair(dir.path()).unwrap();
+
+        let mut reward_bumped = v2_envelope(&key);
+        reward_bumped.reward_usdc = Some(500.0);
+        assert!(!verify_bounty_v2(&reward_bumped));
+
+        let mut wallet_swapped = v2_envelope(&key);
+        wallet_swapped.poster_wallet_address =
+            Some("0x2222222222222222222222222222222222222222".into());
+        assert!(!verify_bounty_v2(&wallet_swapped));
+
+        let mut oracle_swapped = v2_envelope(&key);
+        oracle_swapped.oracle_commitment = Some("sha256:feedface".into());
+        assert!(!verify_bounty_v2(&oracle_swapped));
+    }
+
+    #[test]
+    fn test_bounty_v2_missing_fields_fail_closed() {
+        let dir = TempDir::new().unwrap();
+        let key = load_or_generate_keypair(dir.path()).unwrap();
+        let mut envelope = v2_envelope(&key);
+        envelope.funding_proof = None;
+        assert!(!envelope.has_funding());
+        assert!(!verify_bounty_v2(&envelope));
+    }
+
+    #[test]
+    fn test_v1_bounty_envelope_json_still_parses() {
+        // Wire-compat: a v1 envelope (no v2 fields) must deserialize and
+        // remain a non-v2, non-funded bounty.
+        let json = r#"{
+            "bounty_id":"c-1","target_type":"skill","description":"d",
+            "priority":1.0,"reward_multiplier":2.0,"expires_at":123,
+            "management_pubkey":"pk","management_signature":"sig","timestamp":1
+        }"#;
+        let envelope: crate::swarm::BountyEnvelope = serde_json::from_str(json).unwrap();
+        assert!(!envelope.is_v2());
+        assert!(!envelope.has_funding());
+        assert_eq!(envelope.version, None);
     }
 }

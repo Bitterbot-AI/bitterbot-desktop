@@ -499,8 +499,22 @@ export class OrchestratorBridge {
       reward_multiplier: number;
       region_hint?: string;
       expires_at: number;
+      /** v1: management pubkey. v2 (PLAN-29 Forage): the poster's pubkey. */
       management_pubkey: string;
       timestamp: number;
+      // PLAN-29 Forage v2 fields; present when version === 2. The Rust side
+      // has already checked structural funding + poster signature; economic
+      // validation of funding_proof is this side's job before ingest.
+      version?: number | null;
+      poster_wallet_address?: string | null;
+      kind?: string | null;
+      category?: string | null;
+      oracle_commitment?: string | null;
+      reward_usdc?: number | null;
+      funding_proof?: string | null;
+      claim_stake_usdc?: number | null;
+      deadline?: number | null;
+      max_claims?: number | null;
     }) => void,
   ): () => void {
     this.bountyReceivedCallbacks.push(callback);
@@ -533,6 +547,20 @@ export class OrchestratorBridge {
     reward_multiplier: number;
     expires_at: number;
     region_hint?: string;
+    // PLAN-29 Forage v2: set version: 2 to publish an any-node funded
+    // bounty. The orchestrator refuses v2 payloads missing wallet, oracle
+    // commitment, funding proof, or a positive reward; v1 payloads still
+    // require a management-tier node.
+    version?: number;
+    poster_wallet_address?: string;
+    kind?: "oneshot" | "heartbeat" | "pool" | "standing";
+    category?: string;
+    oracle_commitment?: string;
+    reward_usdc?: number;
+    funding_proof?: string;
+    claim_stake_usdc?: number;
+    deadline?: number;
+    max_claims?: number;
   }): Promise<unknown> {
     return this.sendCommand("publish_bounty", bounty);
   }

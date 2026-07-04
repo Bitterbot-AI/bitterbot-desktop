@@ -39,6 +39,29 @@ pub struct BountyPayload {
     pub expires_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region_hint: Option<String>,
+    // PLAN-29 Forage v2 fields (any-node funded bounties). All optional so
+    // existing curriculum-bounty callers are untouched; version == Some(2)
+    // selects the v2 signing + funding-gated publish path.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub poster_wallet_address: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub oracle_commitment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reward_usdc: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub funding_proof: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub claim_stake_usdc: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub deadline: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub max_claims: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

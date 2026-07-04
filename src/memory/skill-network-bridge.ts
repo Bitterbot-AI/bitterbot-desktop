@@ -789,10 +789,30 @@ export class SkillNetworkBridge {
     reward_multiplier: number;
     region_hint?: string;
     expires_at: number;
-    reward_usdc?: number;
+    reward_usdc?: number | null;
     poster_peer_id?: string;
-    poster_wallet_address?: string;
+    poster_wallet_address?: string | null;
+    // PLAN-29 Forage v2 fields (any-node funded bounties)
+    version?: number | null;
+    management_pubkey?: string;
+    kind?: string | null;
+    category?: string | null;
+    oracle_commitment?: string | null;
+    funding_proof?: string | null;
+    claim_stake_usdc?: number | null;
+    deadline?: number | null;
+    max_claims?: number | null;
   }): void {
+    // PLAN-29 Phase 0.4: v2 (Forage) bounties go to the bounty directory,
+    // not the curiosity engine. The orchestrator already verified poster
+    // signature + structural funding; here the spec text passes the
+    // injection scanner before any agent ever reasons over it, and the row
+    // lands as 'unverified' until Phase 1's funding validator (viem balance
+    // / auth check) promotes it to 'open'. Critical scan hits are dropped.
+    if (bounty.version === 2) {
+      this.ingestForageBounty(bounty as Parameters<SkillNetworkBridge["ingestForageBounty"]>[0]);
+      return;
+    }
     if (!this.curiosityEngine) {
       return;
     }
@@ -809,10 +829,78 @@ export class SkillNetworkBridge {
       regionHint: bounty.region_hint,
       expiresAt: bounty.expires_at,
       // Plan 8, Phase 4: USDC reward info for economic bounty payouts
-      rewardUsdc: bounty.reward_usdc,
+      rewardUsdc: bounty.reward_usdc ?? undefined,
       posterPeerId: bounty.poster_peer_id,
-      posterWalletAddress: bounty.poster_wallet_address,
+      posterWalletAddress: bounty.poster_wallet_address ?? undefined,
     });
+  }
+
+  /** PLAN-29 Phase 0.4: store a funded v2 bounty in the local directory. */
+  private ingestForageBounty(bounty: {
+    bounty_id: string;
+    description: string;
+    expires_at: number;
+    reward_usdc?: number | null;
+    poster_peer_id?: string;
+    poster_wallet_address?: string | null;
+    management_pubkey?: string;
+    kind?: string | null;
+    category?: string | null;
+    oracle_commitment?: string | null;
+    funding_proof?: string | null;
+    claim_stake_usdc?: number | null;
+    deadline?: number | null;
+    max_claims?: number | null;
+  }): void {
+    if (!bounty.poster_wallet_address || !bounty.oracle_commitment) {
+      return; // structurally unfunded — the orchestrator should have dropped it
+    }
+    const scan = scanSkillForInjection(bounty.description);
+    if (scan.severity === "critical") {
+      log.warn(
+        `Dropping Forage bounty ${bounty.bounty_id}: critical injection scan ` +
+          `(${scan.reason}; flags: ${scan.flags.join(", ")})`,
+      );
+      return;
+    }
+    try {
+      const now = Date.now();
+      this.db
+        .prepare(
+          `INSERT INTO bounty_posts
+             (bounty_id, poster_pubkey, poster_peer_id, poster_wallet, kind, category,
+              spec_public, oracle_commitment, oracle_type, reward_usdc, funding_proof,
+              claim_stake_usdc, max_claims, is_local, status, deadline, expires_at,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'unverified', ?, ?, ?, ?)
+           ON CONFLICT(bounty_id) DO NOTHING`,
+        )
+        .run(
+          bounty.bounty_id,
+          bounty.management_pubkey ?? "",
+          bounty.poster_peer_id ?? null,
+          bounty.poster_wallet_address,
+          bounty.kind ?? "oneshot",
+          bounty.category ?? "general",
+          bounty.description,
+          bounty.oracle_commitment,
+          "mechanical",
+          bounty.reward_usdc ?? 0,
+          bounty.funding_proof ?? null,
+          bounty.claim_stake_usdc ?? 0,
+          bounty.max_claims ?? 1,
+          bounty.deadline ?? null,
+          bounty.expires_at,
+          now,
+          now,
+        );
+      log.info(
+        `Forage bounty ${bounty.bounty_id} stored (category=${bounty.category ?? "general"}, ` +
+          `reward=$${bounty.reward_usdc ?? 0}, scan=${scan.severity})`,
+      );
+    } catch (err) {
+      log.warn(`Failed to store Forage bounty ${bounty.bounty_id}: ${String(err)}`);
+    }
   }
 
   /**
