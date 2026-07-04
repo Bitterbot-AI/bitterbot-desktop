@@ -500,6 +500,12 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        pools: z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

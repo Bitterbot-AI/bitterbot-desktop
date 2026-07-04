@@ -90,6 +90,14 @@ export type BitterbotConfig = {
       /** Max per-bounty reward the node will take on. Default: $2. */
       maxRewardUsdc?: number;
     };
+    /**
+     * Bounty pools (Phase 4). Default: FALSE and stays false until
+     * payments counsel review (PLAN-26 precedent) — this is the one
+     * Forage surface that moves other people's money.
+     */
+    pools?: {
+      enabled?: boolean;
+    };
   };
   plugins?: PluginsConfig;
   models?: ModelsConfig;

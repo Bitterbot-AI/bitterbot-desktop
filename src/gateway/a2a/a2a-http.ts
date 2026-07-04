@@ -231,7 +231,15 @@ export function createA2aHttpHandler(opts: {
         });
         return true;
       }
-      const outcome = handleForageMethod(rpcRequest.method as string, rpcRequest.params, forageDb);
+      const outcome = handleForageMethod(
+        rpcRequest.method as string,
+        rpcRequest.params,
+        forageDb,
+        Date.now(),
+        {
+          poolsEnabled: config.forage?.pools?.enabled === true,
+        },
+      );
       sendJson(
         res,
         200,

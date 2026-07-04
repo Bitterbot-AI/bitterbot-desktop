@@ -2249,6 +2249,40 @@ export class MemoryIndexManager implements MemorySearchManager {
                 .then((m) => m.sweepStreamPayouts({ db: bountyDb, economics }))
                 .catch((err) => log.debug(`stream payout sweep failed: ${String(err)}`));
 
+              // 11h. PLAN-29 Phase 4 (LEGAL-GATED, default off): strike pool
+              // bounties whose oracle passed and whose pledges reached
+              // quorum. Captures move funder->hunter directly; this node
+              // only pays gas. Stays dark until forage.pools.enabled.
+              if (this.cfg.forage?.pools?.enabled === true) {
+                const poolNetwork =
+                  (this.cfg.tools?.wallet?.network as "base" | "base-sepolia" | undefined) ??
+                  "base";
+                void Promise.all([
+                  import("../commerce/bounty-pools.js"),
+                  import("../commerce/cdp-adapters.js"),
+                ])
+                  .then(async ([pools, adapters]) => {
+                    const account = await adapters.resolveCdpAccount(poolNetwork);
+                    const executor = adapters.createCaptureExecutor(
+                      {
+                        sendTransaction: async (tx) => {
+                          const { CdpEvmWalletProvider } = await import("@coinbase/agentkit");
+                          const provider = await CdpEvmWalletProvider.configureWithWallet({
+                            apiKeyId: process.env.CDP_API_KEY_ID,
+                            apiKeySecret: process.env.CDP_API_KEY_SECRET,
+                            networkId: poolNetwork === "base" ? "base-mainnet" : poolNetwork,
+                            address: account.address as `0x${string}`,
+                          });
+                          return provider.sendTransaction(tx);
+                        },
+                      },
+                      poolNetwork,
+                    );
+                    return pools.strikeReadyPools({ db: bountyDb, executor });
+                  })
+                  .catch((err) => log.debug(`pool strike sweep failed: ${String(err)}`));
+              }
+
               // 11g. PLAN-29 Phase 5: Night Shift — hunt mesh bounties this
               // node can complete mechanically (heartbeat monitoring only,
               // receive-only money flow, capped). Identity: the wallet

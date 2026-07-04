@@ -21,6 +21,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import { recordPoolPledge } from "../../commerce/bounty-pools.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { claimCapUsd } from "../../memory/bounty-reputation.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
@@ -468,6 +469,7 @@ export function handleForageMethod(
   params: unknown,
   db: DatabaseSync,
   now: number = Date.now(),
+  opts: { poolsEnabled?: boolean } = {},
 ): ForageOutcome<unknown> {
   const p = (params ?? {}) as Record<string, unknown>;
   switch (method) {
@@ -479,6 +481,33 @@ export function handleForageMethod(
       return handleForageCheckin(p as ForageCheckinParams, db, now);
     case "forage/verdict":
       return handleForageVerdict(p as ForageVerdictParams, db);
+    case "forage/fund": {
+      // PLAN-29 Phase 4: LEGAL-GATED. Pool pledges move other people's
+      // money at strike time; the verb stays off until counsel review.
+      if (!opts.poolsEnabled) {
+        return err(A2aErrorCodes.INVALID_REQUEST, "Bounty pools are not enabled on this node");
+      }
+      if (
+        typeof p.bountyId !== "string" ||
+        typeof p.funderPubkey !== "string" ||
+        typeof p.auth !== "object" ||
+        p.auth === null
+      ) {
+        return err(A2aErrorCodes.INVALID_PARAMS, "bountyId, funderPubkey, auth required");
+      }
+      const outcome = recordPoolPledge(
+        db,
+        {
+          bountyId: p.bountyId,
+          funderPubkey: p.funderPubkey,
+          auth: p.auth as import("../../commerce/settlement.js").Eip3009Authorization,
+        },
+        now,
+      );
+      return outcome.ok
+        ? { ok: true, result: outcome }
+        : err(A2aErrorCodes.INVALID_REQUEST, outcome.error);
+    }
     default:
       return err(A2aErrorCodes.METHOD_NOT_FOUND, `Unknown forage method: ${method}`);
   }

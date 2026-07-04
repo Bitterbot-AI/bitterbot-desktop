@@ -1063,6 +1063,38 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 25,
+    description:
+      "PLAN-29 Phase 4 (legal-gated): bounty pool funder authorizations. " +
+      "Each row is one funder's signed EIP-3009 auth toward a pool bounty; " +
+      "capture is confirm-then-capture (quorum + oracle pass) and " +
+      "structurally non-custodial (funds move funder -> hunter, never here).",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS bounty_pool_auths (
+          id            TEXT PRIMARY KEY,
+          bounty_id     TEXT NOT NULL,
+          funder_pubkey TEXT NOT NULL,
+          funder_wallet TEXT NOT NULL,
+          amount_usdc   REAL NOT NULL,
+          auth_json     TEXT NOT NULL,
+          status        TEXT NOT NULL DEFAULT 'pledged',
+          tx_hash       TEXT,
+          error         TEXT,
+          created_at    INTEGER NOT NULL,
+          updated_at    INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bounty_pool_auths ON bounty_pool_auths(bounty_id, status)`,
+      );
+      db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_bounty_pool_auths_funder ` +
+          `ON bounty_pool_auths(bounty_id, funder_wallet)`,
+      );
+    },
+  },
 ];
 
 /**
