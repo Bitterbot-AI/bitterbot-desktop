@@ -475,11 +475,21 @@ export class PeerReputationManager {
       by_address_type_json: string;
     }>;
     // generated_at is Unix SECONDS, so /3600 buckets by hour. We downsample to
-    // one point per (source, hour) — lifetime_unique_peers is monotonic so max
-    // is the right aggregate — and keep the most-recent `limit` buckets (inner
+    // one point per hour — lifetime_unique_peers is monotonic so max is the
+    // right aggregate — and keep the most-recent `limit` buckets (inner
     // ORDER BY DESC), then re-sort ascending so the sparkline renders
     // oldest→newest. `generated_at` below is the alias for max(generated_at).
-    const SELECT_BUCKETED = `SELECT source_peer_id,
+    //
+    // Without a sourcePeerId filter, the bucket spans ALL sources: each
+    // bootnode publishes its own divergent lifetime count out of phase, so
+    // grouping by (source, hour) interleaved per-relay points and the
+    // sparkline's "current" value flapped between relays (51↔56). Max across
+    // sources per hour is the stable lower bound on distinct peers — the same
+    // fallback getAggregatedNetworkCensus uses when peer lists are absent
+    // (exact pubkey-union dedup is impossible here: history rows never
+    // persisted the per-peer lists). Cross-source rows report the synthetic
+    // source 'aggregate'.
+    const SELECT_BUCKETED = (sourceCol: string) => `SELECT ${sourceCol} AS source_peer_id,
               max(generated_at) AS generated_at,
               max(snapshot_at) AS snapshot_at,
               max(lifetime_unique_peers) AS lifetime_unique_peers,
@@ -494,9 +504,9 @@ export class PeerReputationManager {
                   lifetime_unique_peers, active_last_24h, active_last_7d,
                   by_tier_json, by_address_type_json
              FROM (
-               ${SELECT_BUCKETED}
+               ${SELECT_BUCKETED("source_peer_id")}
                 WHERE source_peer_id = ? AND snapshot_at >= ?
-                GROUP BY source_peer_id, generated_at / 3600
+                GROUP BY generated_at / 3600
                 ORDER BY generated_at DESC
                 LIMIT ?
              )
@@ -510,9 +520,9 @@ export class PeerReputationManager {
                   lifetime_unique_peers, active_last_24h, active_last_7d,
                   by_tier_json, by_address_type_json
              FROM (
-               ${SELECT_BUCKETED}
+               ${SELECT_BUCKETED("'aggregate'")}
                 WHERE snapshot_at >= ?
-                GROUP BY source_peer_id, generated_at / 3600
+                GROUP BY generated_at / 3600
                 ORDER BY generated_at DESC
                 LIMIT ?
              )

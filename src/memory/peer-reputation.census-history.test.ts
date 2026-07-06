@@ -64,7 +64,9 @@ describe("PeerReputationManager network census history", () => {
     const rows = mgr.getNetworkCensusHistory();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      sourcePeerId: "boot-1",
+      // Unfiltered reads aggregate across sources, so the synthetic source id
+      // is reported rather than any single bootnode's.
+      sourcePeerId: "aggregate",
       generatedAt: 1_777_000_000,
       lifetimeUniquePeers: 42,
       activeLast24h: 10,
@@ -157,6 +159,33 @@ describe("PeerReputationManager network census history", () => {
     const rows = mgr.getNetworkCensusHistory();
     expect(rows).toHaveLength(1);
     expect(rows[0].lifetimeUniquePeers).toBe(48); // max in the bucket
+  });
+
+  it("merges out-of-phase snapshots from different bootnodes into one max point per hour (regression: current value flapped 51↔56 between relays)", () => {
+    const hour = 500 * 3600;
+    // Three relays publish within the same hour, each with its own divergent
+    // lifetime count; boot-2 (the lower count) publishes LAST.
+    for (const [source, offset, peers] of [
+      ["boot-1", 10, 56],
+      ["boot-3", 40, 53],
+      ["boot-2", 70, 51],
+    ] as const) {
+      mgr.persistCensusSnapshot({
+        sourcePeerId: source,
+        generatedAt: hour + offset,
+        lifetimeUniquePeers: peers,
+        activeLast24h: 0,
+        activeLast7d: 0,
+        byTier: {},
+        byAddressType: {},
+      });
+    }
+    const rows = mgr.getNetworkCensusHistory();
+    // One point for the hour, at the max across relays — never the
+    // most-recent single relay's lower count.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].lifetimeUniquePeers).toBe(56);
+    expect(rows[0].sourcePeerId).toBe("aggregate");
   });
 
   it("filters by sourcePeerId when provided", () => {
