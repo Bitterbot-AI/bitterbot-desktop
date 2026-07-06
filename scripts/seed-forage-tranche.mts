@@ -41,7 +41,7 @@ const TRANCHE = [
 for (const b of TRANCHE) {
   const specPublic = `${b.text} ${machineBlock(b.url)}`;
   try {
-    const res = await callGateway<Record<string, unknown>>({
+    const res = await callGateway<{ bountyId: string; status: string }>({
       method: "forage.post",
       params: {
         kind: "heartbeat",
