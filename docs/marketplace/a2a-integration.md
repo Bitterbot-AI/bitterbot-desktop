@@ -397,6 +397,10 @@ Posting is a **gateway RPC** (`forage.post`), not an A2A verb -- it commits the 
 
 The poster identity convention is the node's **wallet address** (same as Night Shift's hunter identity), so DPSV self-loop exclusion holds even if your own node hunts your own bounty.
 
+### Agent-facing discovery (the `forage` tool)
+
+Every agent ships with a read-only `forage` tool so "are there any bounties on the network?" gets a live answer instead of a web search: `action=list` (open bounties in this node's directory), `stats` (the DPSV scoreboard), `mine` (bounties this node posted, with claim/settlement state), `hunts` (what Night Shift claimed and earned). The system prompt's Economic Identity section tells agents to reach for it whenever bounties, agent earnings, or the agent economy come up. The tool cannot post or claim -- posting stays behind the operator-authed `forage.post` RPC, and claiming stays with Night Shift's capped autonomous sweep.
+
 #### `forage/claim`
 
 Claim an `open` bounty. Rejected if the bounty is unverified, expired, fully claimed, you already hold an active claim, or the reward exceeds your trust-tier cap (tiers T0-T3 are earned through settled, counterparty-diverse history: caps $1 / $5 / $50 / uncapped).

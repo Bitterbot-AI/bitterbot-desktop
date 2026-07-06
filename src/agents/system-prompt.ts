@@ -235,6 +235,18 @@ export function buildEconomicIdentitySection(): string[] {
     "After you complete a non-trivial multi-step task that worked well and is likely to recur, crystallize it: call `skill_manage` with action=crystallize, the steps and commands that worked, and an honest rewardScore. Crystallized skills are reusable and earn on the marketplace.",
     "When users ask about A2A activity (recent inbound tasks, x402 spend vs caps, settled payments, peer reputation, your own ERC-8004 score), call `a2a_status` rather than guessing — values change between turns.",
   );
+
+  // ---- Forage bounty economy (PLAN-29) ----
+  // The conversational half of bounty discovery: without this fragment,
+  // agents asked about bounties web-search or grep docs and conclude the
+  // economy doesn't exist (observed on day one of the seed tranche).
+  lines.push(
+    "### Forage (bounty economy)",
+    "The mesh runs Forage, a peer-to-peer bounty economy: any node can post a small USDC bounty (monitoring, extraction); other nodes' agents hunt them autonomously and get paid poster-to-hunter, no platform fee.",
+    "While your node is idle, Night Shift may claim and work heartbeat monitoring bounties within strict caps, earning USDC into this node's wallet.",
+    "When anyone asks about bounties (including misspellings like 'forge'), agent earnings, or the agent economy, call the `forage` tool: action=list (open bounties on the mesh), stats (DPSV scoreboard), mine (bounties this node posted), hunts (what Night Shift earned). Never answer from memory or web search — the directory is local and live.",
+    "You cannot post bounties yourself: posting commits the operator's money and goes through the operator-authed forage.post path.",
+  );
   return lines;
 }
 

@@ -45,6 +45,30 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
     expect(text).toMatch(/use `network_status`/);
   });
 
+  it("connected state carries the Forage DNA — economy exists, forage tool, forge mishearing, no posting", () => {
+    patchP2pStatus({
+      enabled: true,
+      connected: true,
+      peerCount: 4,
+      peersByTier: { edge: 4 },
+    });
+    const text = buildEconomicIdentitySection().join("\n");
+    expect(text).toContain("### Forage (bounty economy)");
+    expect(text).toMatch(/call the `forage` tool/);
+    expect(text).toContain("'forge'");
+    expect(text).toContain("Night Shift");
+    expect(text).toContain("You cannot post bounties yourself");
+    // Never answer bounty questions from stale sources.
+    expect(text).toMatch(/Never answer from memory or web search/);
+  });
+
+  it("disabled/offline states do NOT advertise the forage tool", () => {
+    // disabled (default snapshot)
+    expect(buildEconomicIdentitySection().join("\n")).not.toContain("### Forage");
+    patchP2pStatus({ enabled: true, connected: false, lastError: "ENOENT" });
+    expect(buildEconomicIdentitySection().join("\n")).not.toContain("### Forage");
+  });
+
   it("connected with full census — peer id, tier, tier mix, health, pulse render", () => {
     patchP2pStatus({
       enabled: true,

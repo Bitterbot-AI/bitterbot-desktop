@@ -20,6 +20,7 @@ import {
   createRecallEmotionalAnchorTool,
 } from "./tools/emotional-anchor-tool.js";
 import { createExpandMessageTool } from "./tools/expand-message-tool.js";
+import { createForageTool } from "./tools/forage-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
 import { createMemoryStatusTool } from "./tools/memory-status-tool.js";
@@ -232,6 +233,7 @@ export function createBitterbotTools(options?: {
     createSkillSeekersIngestTool(memoryOpts),
     createSkillPipelineDigestTool(memoryOpts),
     createSkillManageTool(memoryOpts),
+    createForageTool(memoryOpts),
   ]) {
     if (tool) {
       tools.push(tool);
