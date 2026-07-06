@@ -241,4 +241,69 @@ describe("createA2aHttpHandler — auth", () => {
     expect(res.statusCode).toBe(200);
     h.close();
   });
+
+  // PLAN-29: forage/* verbs are exempt from bearer auth BY DESIGN — hunters
+  // are anonymous peers gated on funding/caps/scanning, not identity. An
+  // unauthenticated remote call must get past auth and reach the forage
+  // dispatcher (503 bounty-directory-unavailable in this harness, since no
+  // memory manager exists — the point is it is NOT a 401).
+  it("serves forage/* verbs to unauthenticated non-loopback callers", async () => {
+    const h = createA2aHttpHandler({
+      getConfig: () =>
+        ({
+          a2a: {
+            enabled: true,
+            authentication: { type: "bearer", bearerToken: "secret" },
+          },
+        }) as never,
+      getSkills: () => [],
+      getGatewayUrl: () => "http://example.com:19001",
+      getSkillsVersion: () => 0,
+      taskDb: new DatabaseSync(":memory:"),
+    });
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: {
+        jsonrpc: "2.0",
+        method: "forage/claim",
+        params: { bountyId: "nope", hunterPubkey: "pk", hunterWallet: "0x1" },
+        id: "1",
+      },
+      remoteAddr: "8.8.8.8",
+      headers: { "x-forwarded-for": "" },
+    });
+    const res = mockRes();
+    const handled = await h.handle(req, res, baseAuthOpts());
+    expect(handled).toBe(true);
+    expect(res.statusCode).not.toBe(401);
+    h.close();
+  });
+
+  it("still rejects non-forage verbs without a token after the forage exemption", async () => {
+    const h = createA2aHttpHandler({
+      getConfig: () =>
+        ({
+          a2a: {
+            enabled: true,
+            authentication: { type: "bearer", bearerToken: "secret" },
+          },
+        }) as never,
+      getSkills: () => [],
+      getGatewayUrl: () => "http://example.com:19001",
+      getSkillsVersion: () => 0,
+      taskDb: new DatabaseSync(":memory:"),
+    });
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: { jsonrpc: "2.0", method: "tasks/get", params: { id: "t1" }, id: "1" },
+      remoteAddr: "8.8.8.8",
+      headers: { "x-forwarded-for": "" },
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    expect(res.statusCode).toBe(401);
+    h.close();
+  });
 });

@@ -117,6 +117,7 @@ const READ_METHODS = new Set([
   "memory.retrievalHealth",
   "forage.tape",
   "forage.stats",
+  "forage.post",
   "management.census",
   "management.anomalies",
   "management.health",

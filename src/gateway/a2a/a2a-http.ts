@@ -159,14 +159,10 @@ export function createA2aHttpHandler(opts: {
       return true;
     }
 
-    // Authenticate — bearer token or local loopback.
-    const authOk = await authorizeA2aRequest(req, config, authOpts);
-    if (!authOk.ok) {
-      sendGatewayAuthFailure(res, authOk.result);
-      return true;
-    }
-
-    // Parse JSON-RPC body.
+    // Parse JSON-RPC body BEFORE auth: forage/* verbs are served to
+    // anonymous hunters (see below), and we cannot route on the method
+    // without the body. The read is size-capped, so unauthenticated
+    // callers cannot make us buffer more than MAX_A2A_BODY_BYTES.
     const body = await readJsonBodyOrError(req, res, MAX_A2A_BODY_BYTES);
     if (body === undefined) {
       return true; // readJsonBodyOrError already sent the error response.
@@ -182,6 +178,21 @@ export function createA2aHttpHandler(opts: {
       return true;
     }
 
+    const isForageVerb = rpcRequest.method.startsWith("forage/");
+
+    // Authenticate — bearer token or local loopback. Forage verbs are
+    // exempt BY DESIGN (PLAN-29): hunters are anonymous peers with no way
+    // to hold our token; admission is gated on funding, claim caps, stake,
+    // deliverable size caps, and injection scanning — not identity. The
+    // money-bearing surfaces (message/send x402 gate, tasks) stay authed.
+    if (!isForageVerb) {
+      const authOk = await authorizeA2aRequest(req, config, authOpts);
+      if (!authOk.ok) {
+        sendGatewayAuthFailure(res, authOk.result);
+        return true;
+      }
+    }
+
     // JSON-RPC 2.0: a request without `id` is a notification. Per spec the
     // server MUST NOT respond to notifications. A2A's defined methods all
     // expect responses, so we accept-and-discard rather than error so a
@@ -194,14 +205,12 @@ export function createA2aHttpHandler(opts: {
       return true;
     }
 
-    const manager = getTaskManager(config);
-
     // PLAN-29 Phase 1.2: Forage bounty verbs (claim/deliver/verdict). Served
     // poster-side against the local bounty tables; free (no x402 gate — the
     // money flows the other way, poster -> hunter, at settlement). Handled
     // here rather than in the sync dispatcher because they need the
     // marketplace db, resolved async like the payment gate below.
-    if (rpcRequest.method?.toString().startsWith("forage/")) {
+    if (isForageVerb) {
       const { handleForageMethod } = await import("./forage.js");
       let forageDb: import("node:sqlite").DatabaseSync | undefined;
       try {
@@ -249,6 +258,8 @@ export function createA2aHttpHandler(opts: {
       );
       return true;
     }
+
+    const manager = getTaskManager(config);
 
     // Payment gate: if marketplace payments are enabled, verify x402 payment
     if (config.a2a?.payment?.enabled && rpcRequest.method === "message/send") {

@@ -124,6 +124,8 @@ const BASE_METHODS = [
   // PLAN-29 Phase 3: Forage spectator layer
   "forage.tape",
   "forage.stats",
+  // PLAN-29 §4.1: operator posting path
+  "forage.post",
   // Marketplace
   "marketplace.search",
   "marketplace.trending",
