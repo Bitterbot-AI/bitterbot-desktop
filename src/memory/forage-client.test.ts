@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getMorningReportLine } from "./bounty-tape.js";
@@ -46,14 +47,16 @@ function insertRemoteBounty(db: DatabaseSync, over: Partial<{ id: string; reward
 }
 
 /** Fetch stub: serves the monitored page and a scripted poster A2A. */
-function makeFetch(opts: { claimOk?: boolean; checkinError?: string } = {}): {
+function makeFetch(opts: { claimOk?: boolean; checkinError?: string; claimNonce?: string } = {}): {
   fetch: FetchLike;
   rpcCalls: Array<{ method: string; params: Record<string, unknown> }>;
+  setPage: (body: string) => void;
 } {
   const rpcCalls: Array<{ method: string; params: Record<string, unknown> }> = [];
+  let pageBody = "page content v1";
   const fetch: FetchLike = async (url, init) => {
     if (url.startsWith("https://target.example")) {
-      return { ok: true, status: 200, text: async () => "page content v1" };
+      return { ok: true, status: 200, text: async () => pageBody };
     }
     const req = JSON.parse(init?.body ?? "{}") as {
       method: string;
@@ -66,7 +69,13 @@ function makeFetch(opts: { claimOk?: boolean; checkinError?: string } = {}): {
       body =
         opts.claimOk === false
           ? { error: { message: "Bounty is fully claimed" } }
-          : { result: { claimId: "claim-" + req.params.bountyId, status: "claimed" } };
+          : {
+              result: {
+                claimId: "claim-" + req.params.bountyId,
+                status: "claimed",
+                ...(opts.claimNonce ? { claimNonce: opts.claimNonce } : {}),
+              },
+            };
     } else if (req.method === "forage/checkin") {
       body = opts.checkinError
         ? { error: { message: opts.checkinError } }
@@ -76,7 +85,13 @@ function makeFetch(opts: { claimOk?: boolean; checkinError?: string } = {}): {
     }
     return { ok: true, status: 200, text: async () => JSON.stringify(body) };
   };
-  return { fetch, rpcCalls };
+  return {
+    fetch,
+    rpcCalls,
+    setPage: (body: string) => {
+      pageBody = body;
+    },
+  };
 }
 
 function sweep(db: DatabaseSync, fetch: FetchLike, now = NOW, config = {}) {
@@ -182,5 +197,63 @@ describe("nightShiftSweep", () => {
     await sweep(db, fetch, NOW + DAY_MS + 1000);
     const line = getMorningReportLine(db, NOW + DAY_MS + 2000);
     expect(line).toMatch(/earned \$0\.05 hunting 1 bounty while you were away/);
+  });
+});
+
+// PLAN-30 G0.3: v2 observations — normalized digest scheme, simhash, the
+// nonce-sealed digest, and change-detection alerts.
+describe("nightShiftSweep v2 observations (G0.3)", () => {
+  let db: DatabaseSync;
+  beforeEach(() => {
+    db = openDb();
+    insertRemoteBounty(db);
+  });
+
+  it("stores the claim nonce and seals check-ins with it", async () => {
+    const { fetch, rpcCalls } = makeFetch({ claimNonce: "nonce-abc" });
+    await sweep(db, fetch, NOW);
+    const hunt = db.prepare(`SELECT claim_nonce FROM forage_hunts`).get() as {
+      claim_nonce: string | null;
+    };
+    expect(hunt.claim_nonce).toBe("nonce-abc");
+
+    await sweep(db, fetch, NOW + DAY_MS + 1000);
+    const obs = rpcCalls.find((c) => c.method === "forage/checkin")?.params.observation as {
+      contentHash: string;
+      digestScheme: string;
+      simhash: string;
+      sealedDigest: string;
+      alert?: boolean;
+    };
+    expect(obs.digestScheme).toBe("norm-v1");
+    expect(obs.simhash).toMatch(/^[0-9a-f]{16}$/);
+    const expectedSeal = crypto
+      .createHash("sha256")
+      .update("nonce-abc" + obs.contentHash, "utf-8")
+      .digest("hex");
+    expect(obs.sealedDigest).toBe(expectedSeal);
+    expect(obs.alert).toBeUndefined(); // first observation: nothing to compare
+  });
+
+  it("omits the seal when the poster issued no nonce (legacy posters)", async () => {
+    const { fetch, rpcCalls } = makeFetch();
+    await sweep(db, fetch, NOW);
+    await sweep(db, fetch, NOW + DAY_MS + 1000);
+    const obs = rpcCalls.find((c) => c.method === "forage/checkin")?.params.observation as {
+      sealedDigest?: string;
+    };
+    expect(obs.sealedDigest).toBeUndefined();
+  });
+
+  it("raises the alert flag when the monitored content changes", async () => {
+    const { fetch, rpcCalls, setPage } = makeFetch({ claimNonce: "n" });
+    await sweep(db, fetch, NOW);
+    await sweep(db, fetch, NOW + DAY_MS + 1000); // baseline observation
+    setPage("page content v2 CHANGED");
+    await sweep(db, fetch, NOW + 2 * DAY_MS + 2000);
+    const checkins = rpcCalls.filter((c) => c.method === "forage/checkin");
+    expect(checkins).toHaveLength(2);
+    expect((checkins[0].params.observation as { alert?: boolean }).alert).toBeUndefined();
+    expect((checkins[1].params.observation as { alert?: boolean }).alert).toBe(true);
   });
 });

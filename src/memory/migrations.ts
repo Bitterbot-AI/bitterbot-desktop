@@ -1149,6 +1149,16 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "forage_hunts", "last_content_digest", "TEXT");
     },
   },
+  {
+    version: 27,
+    description:
+      "PLAN-30 G0.3: hunter-side storage of the poster-issued claim nonce. " +
+      "The nonce authenticates check-ins (only its holder can check in on " +
+      "the stream) via sealedDigest = sha256(nonce || contentHash).",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "forage_hunts", "claim_nonce", "TEXT");
+    },
+  },
 ];
 
 /**

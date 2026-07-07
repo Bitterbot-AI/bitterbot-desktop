@@ -22,7 +22,15 @@
 >   with a follow-up commit; until then T1+ short-hold deterrence leans on
 >   the CV release gate + apprenticeship (documented residual risk at the
 >   5% floor for long-tenured hunters).
-> - G0.3, G0.4, G0.5 in flight.
+> - **G0.3 LANDED.** Claims issue a secret 256-bit nonce (migration v27
+>   stores it hunter-side); v2 check-ins carry digestScheme 'norm-v1',
+>   simhash, and sealedDigest = sha256(nonce || contentHash). Absent seal =
+>   legacy-accepted (dual-accept window); inconsistent seal = rejected, not
+>   punished — with unauthenticated verbs a wrong seal could be third-party
+>   griefing, so forfeiture-grade fraud waits for Ed25519 signing (G4).
+>   Night Shift sends v2 observations and raises `alert` on content change.
+>   Tests in `bounty-streams.test.ts` + `forage-client.test.ts`.
+> - G0.4, G0.5 in flight.
 >   **Depends on:** PLAN-29 (Forage bounty economy, live), PLAN-8 (revenue rail), PLAN-16/17 (task spine)
 >   **Related open problem:** census/network-count redesign (pinned 2026-07-07); Phase G1 partially feeds it.
 >   **Revision note:** v1 was red-teamed by a second agent fan-out (5 verification lanes). Five blockers and a broken escrow design were found and fixed; see Appendix A for the changelog. Verify before trusting any v1 copy.

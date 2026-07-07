@@ -21,6 +21,7 @@ import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { parseHeartbeatTerms } from "../gateway/a2a/forage.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { contentDigest, simhash64 } from "./bounty-audit.js";
 
 const log = createSubsystemLogger("memory/forage-client");
 
@@ -115,7 +116,7 @@ export async function nightShiftSweep(opts: {
   const active = opts.db
     .prepare(
       `SELECT claim_id, bounty_id, poster_a2a_url, monitor_url, cadence_seconds,
-              per_check_usdc, checks_sent, last_action_at
+              per_check_usdc, checks_sent, last_action_at, claim_nonce, last_content_digest
          FROM forage_hunts WHERE status = 'claimed' AND kind = 'heartbeat'`,
     )
     .all() as unknown as Array<{
@@ -127,6 +128,8 @@ export async function nightShiftSweep(opts: {
     per_check_usdc: number | null;
     checks_sent: number;
     last_action_at: number | null;
+    claim_nonce: string | null;
+    last_content_digest: string | null;
   }>;
   for (const hunt of active) {
     if (!hunt.monitor_url || !hunt.cadence_seconds) continue;
@@ -135,25 +138,42 @@ export async function nightShiftSweep(opts: {
     }
     try {
       const res = await opts.fetchImpl(hunt.monitor_url, { method: "GET" });
-      const contentHash = crypto
-        .createHash("sha256")
-        .update(await res.text(), "utf-8")
-        .digest("hex");
+      const body = await res.text();
+      // PLAN-30 G0.3: normalized digest + simhash so the poster's auditor
+      // tolerates page nondeterminism, sealed with the claim nonce so only
+      // this hunter can check in on its stream. Alert fires on content
+      // change vs the previous observation (alert bonus, G0.5).
+      const contentHash = contentDigest(body, "norm-v1");
+      const alert = hunt.last_content_digest !== null && hunt.last_content_digest !== contentHash;
+      const sealedDigest = hunt.claim_nonce
+        ? crypto
+            .createHash("sha256")
+            .update(hunt.claim_nonce + contentHash, "utf-8")
+            .digest("hex")
+        : undefined;
       const checkin = await forageRpc(opts.fetchImpl, hunt.poster_a2a_url, "forage/checkin", {
         bountyId: hunt.bounty_id,
         claimId: hunt.claim_id,
         hunterPubkey: opts.hunterPubkey,
-        observation: { url: hunt.monitor_url, contentHash, observedAt: now },
+        observation: {
+          url: hunt.monitor_url,
+          contentHash,
+          observedAt: now,
+          digestScheme: "norm-v1",
+          simhash: simhash64(body),
+          ...(sealedDigest ? { sealedDigest } : {}),
+          ...(alert ? { alert: true } : {}),
+        },
       });
       if (checkin.ok) {
         opts.db
           .prepare(
             `UPDATE forage_hunts
                 SET checks_sent = checks_sent + 1, earned_usdc = earned_usdc + ?,
-                    last_action_at = ?, updated_at = ?
+                    last_action_at = ?, updated_at = ?, last_content_digest = ?
               WHERE claim_id = ?`,
           )
-          .run(hunt.per_check_usdc ?? 0, now, now, hunt.claim_id);
+          .run(hunt.per_check_usdc ?? 0, now, now, contentHash, hunt.claim_id);
         result.checksSent++;
         result.earnedUsdc += hunt.per_check_usdc ?? 0;
       } else if (/not active/i.test(checkin.error ?? "")) {
@@ -251,9 +271,9 @@ export async function nightShiftSweep(opts: {
       .prepare(
         `INSERT INTO forage_hunts
            (claim_id, bounty_id, poster_pubkey, poster_a2a_url, category, kind,
-            reward_usdc, per_check_usdc, monitor_url, cadence_seconds, status,
-            checks_sent, earned_usdc, last_action_at, claimed_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'claimed', 0, 0, NULL, ?, ?)`,
+            reward_usdc, per_check_usdc, monitor_url, cadence_seconds, claim_nonce,
+            status, checks_sent, earned_usdc, last_action_at, claimed_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'claimed', 0, 0, NULL, ?, ?)`,
       )
       .run(
         claim.result.claimId,
@@ -266,6 +286,7 @@ export async function nightShiftSweep(opts: {
         terms.perCheckUsdc,
         monitorUrl,
         terms.cadenceSeconds,
+        typeof claim.result.claimNonce === "string" ? claim.result.claimNonce : null,
         now,
         now,
       );

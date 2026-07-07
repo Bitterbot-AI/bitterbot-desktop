@@ -1,3 +1,4 @@
+import nodeCrypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
@@ -213,5 +214,75 @@ describe("sweepStreamPayouts", () => {
     db.prepare(`UPDATE bounty_posts SET is_local = 0 WHERE bounty_id='hb-1'`).run();
     const res = sweepStreamPayouts({ db, economics: economics(), now: NOW + 2 * DAY_MS });
     expect(res.paymentsQueued).toBe(0);
+  });
+});
+
+// PLAN-30 G0.3: sealed check-ins. The claim hands the hunter a secret
+// nonce; a check-in presenting sealedDigest must satisfy
+// sha256(nonce || contentHash). Absence is legacy-accepted; inconsistency
+// is rejected (not punished — the verbs are unauthenticated, so a wrong
+// seal could be third-party griefing).
+describe("sealed check-ins (G0.3)", () => {
+  let db: DatabaseSync;
+  let claimId: string;
+  let nonce: string;
+
+  beforeEach(() => {
+    db = openDb();
+    insertHeartbeatBounty(db);
+    const out = handleForageClaim(
+      { bountyId: "hb-1", hunterPubkey: HUNTER, hunterWallet: WALLET },
+      db,
+      NOW,
+    );
+    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error("claim failed");
+    claimId = out.result.claimId;
+    nonce = out.result.claimNonce;
+    expect(nonce).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  function sealedCheckin(sealedDigest: string | undefined, hash: string, at: number) {
+    return handleForageCheckin(
+      {
+        bountyId: "hb-1",
+        claimId,
+        hunterPubkey: HUNTER,
+        observation: {
+          url: "https://example.com/pricing",
+          contentHash: hash,
+          observedAt: at,
+          ...(sealedDigest ? { sealedDigest } : {}),
+        },
+      },
+      db,
+      at,
+    );
+  }
+
+  it("accepts a correctly sealed check-in", () => {
+    const hash = "a".repeat(64);
+    const seal = nodeCrypto
+      .createHash("sha256")
+      .update(nonce + hash, "utf-8")
+      .digest("hex");
+    expect(sealedCheckin(seal, hash, NOW + DAY_MS).ok).toBe(true);
+  });
+
+  it("rejects an inconsistent seal", () => {
+    const out = sealedCheckin("f".repeat(64), "a".repeat(64), NOW + DAY_MS);
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.error.message).toMatch(/sealedDigest/);
+    // Nothing was recorded: the stream is untouched.
+    const stream = db
+      .prepare(`SELECT checks_total FROM bounty_streams WHERE id = ?`)
+      .get(claimId) as {
+      checks_total: number;
+    };
+    expect(stream.checks_total).toBe(0);
+  });
+
+  it("accepts a legacy check-in with no seal (dual-accept window)", () => {
+    expect(sealedCheckin(undefined, "a".repeat(64), NOW + DAY_MS).ok).toBe(true);
   });
 });

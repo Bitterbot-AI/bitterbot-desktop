@@ -59,6 +59,13 @@ export type ForageClaimResult = {
   status: "claimed";
   stakeUsdc: number;
   deadline: number | null;
+  /**
+   * PLAN-30 G0.3: per-claim secret. Check-ins carry
+   * sealedDigest = sha256(claimNonce || contentHash) so only the nonce
+   * holder can check in on this stream (claim ids alone are guessable
+   * enough that anonymous verbs need this). Returned once, here.
+   */
+  claimNonce: string;
 };
 
 export function handleForageClaim(
@@ -138,11 +145,12 @@ export function handleForageClaim(
   }
 
   const claimId = crypto.randomUUID();
+  const claimNonce = crypto.randomBytes(32).toString("hex");
   db.prepare(
     `INSERT INTO bounty_claims
        (id, bounty_id, hunter_pubkey, hunter_peer_id, hunter_wallet, stake_usdc,
-        stake_tx_hash, status, claimed_at, updated_at)
-     VALUES (?, ?, ?, NULL, ?, ?, ?, 'claimed', ?, ?)`,
+        stake_tx_hash, claim_nonce, status, claimed_at, updated_at)
+     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'claimed', ?, ?)`,
   ).run(
     claimId,
     params.bountyId,
@@ -150,6 +158,7 @@ export function handleForageClaim(
     params.hunterWallet,
     bounty.claim_stake_usdc,
     params.stakeTxHash ?? null,
+    claimNonce,
     now,
     now,
   );
@@ -181,6 +190,7 @@ export function handleForageClaim(
       status: "claimed",
       stakeUsdc: bounty.claim_stake_usdc,
       deadline: bounty.deadline,
+      claimNonce,
     },
   };
 }
@@ -376,6 +386,28 @@ export function handleForageCheckin(
   }
   if (stream.status !== "active") {
     return err(A2aErrorCodes.INVALID_REQUEST, `Stream is not active (status: ${stream.status})`);
+  }
+  // PLAN-30 G0.3: sealed-digest verification. A claim issued post-G0.3
+  // carries a secret nonce; a check-in that presents a sealedDigest must
+  // satisfy sealedDigest = sha256(nonce || contentHash), which proves the
+  // caller holds the nonce (anonymous verbs otherwise let anyone who
+  // learns a claim id pollute the stream). Dual-accept window: a missing
+  // sealedDigest is accepted as legacy (deployed Night Shift clients
+  // predate the scheme) — absence is never punished, only inconsistency
+  // is rejected. NOTE: a wrong seal is rejected, not treated as hunter
+  // fraud — the verbs are unauthenticated, so a third-party griefer is
+  // indistinguishable from a lying hunter until Ed25519 signing (G4).
+  const claimRow = db
+    .prepare(`SELECT claim_nonce FROM bounty_claims WHERE id = ?`)
+    .get(params.claimId) as { claim_nonce: string | null } | undefined;
+  if (obs.sealedDigest && claimRow?.claim_nonce) {
+    const expected = crypto
+      .createHash("sha256")
+      .update(claimRow.claim_nonce + obs.contentHash, "utf-8")
+      .digest("hex");
+    if (obs.sealedDigest !== expected) {
+      return err(A2aErrorCodes.INVALID_REQUEST, "sealedDigest does not verify against this claim");
+    }
   }
   // Cadence guard: a check may arrive early, but not at spam rate. Half the
   // cadence is the floor — checks faster than that are unpaid noise, so
