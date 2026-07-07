@@ -155,3 +155,34 @@ describe("validatePendingBounties", () => {
     expect(status(db, "already-rejected")).toBe("rejected");
   });
 });
+
+// PLAN-30 G0.4: AGGREGATE solvency — the wallet must cover the new reward
+// plus its outstanding open obligations, not each bounty independently.
+describe("aggregate solvency (G0.4)", () => {
+  it("rejects a bounty the wallet cannot cover on top of open commitments", async () => {
+    const db = openDb();
+    insertBounty(db, { bounty_id: "b-open", reward_usdc: 5, status: "open" });
+    insertBounty(db, { bounty_id: "b-new", reward_usdc: 5 }); // unverified
+    // Balance $8: covers either $5 bounty alone, not both.
+    const res = await validatePendingBounties({ db, readBalance: async () => 8, now: NOW });
+    expect(res.rejected).toBe(1);
+    expect(status(db, "b-new")).toBe("rejected");
+  });
+
+  it("counts stream spend against commitments (spent money already left the balance)", async () => {
+    const db = openDb();
+    insertBounty(db, { bounty_id: "b-open", reward_usdc: 5, status: "open" });
+    // The open bounty's stream already paid out $4 of its $5.
+    db.prepare(
+      `INSERT INTO bounty_streams (id, bounty_id, poster_pubkey, hunter_pubkey,
+          cadence_seconds, per_check_usdc, alert_bonus_usdc, checks_total, checks_paid,
+          audits_total, audits_failed, status, spent_usdc, created_at, updated_at)
+       VALUES ('st-1', 'b-open', 'pk', 'h', 86400, 0.05, 0, 80, 80, 0, 0, 'active', 4, ?, ?)`,
+    ).run(NOW - 1000, NOW - 1000);
+    insertBounty(db, { bounty_id: "b-new", reward_usdc: 5 });
+    // Balance $8 >= $1 remaining commitment + $5 new reward.
+    const res = await validatePendingBounties({ db, readBalance: async () => 8, now: NOW });
+    expect(res.promoted).toBe(1);
+    expect(status(db, "b-new")).toBe("open");
+  });
+});

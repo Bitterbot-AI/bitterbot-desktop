@@ -107,6 +107,18 @@ export type BitterbotConfig = {
     audit?: {
       enabled?: boolean;
     };
+    /**
+     * PLAN-30 G0.4: Genesis seeded-demand accounting. treasuryWallets is
+     * the PUBLISHED list of operator wallets that post seeded bounties;
+     * the seeded/organic metric split keys on it (never on self-declared
+     * flags), and per-hunter daily earnings from treasury-posted streams
+     * are capped so the seed pool cannot be farmed.
+     */
+    genesis?: {
+      treasuryWallets?: string[];
+      /** Default: $1/day per hunter from treasury-posted streams. */
+      maxDailyTreasuryUsdcPerHunter?: number;
+    };
   };
   plugins?: PluginsConfig;
   models?: ModelsConfig;

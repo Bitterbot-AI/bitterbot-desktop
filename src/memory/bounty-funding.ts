@@ -112,6 +112,29 @@ function validateEip3009Proof(
 }
 
 /**
+ * Outstanding open obligations for a poster wallet: rewards of its 'open'
+ * bounties minus what their streams have already paid (spent money is
+ * already reflected in the balance). Guarded for pre-v28 schemas.
+ */
+function getOpenCommitmentsUsd(db: DatabaseSync, posterWallet: string): number {
+  try {
+    const row = db
+      .prepare(
+        `SELECT COALESCE(SUM(b.reward_usdc), 0)
+              - COALESCE((SELECT SUM(s.spent_usdc) FROM bounty_streams s
+                           WHERE s.bounty_id IN
+                             (SELECT bounty_id FROM bounty_posts
+                               WHERE poster_wallet = ?1 AND status = 'open')), 0) AS committed
+           FROM bounty_posts b WHERE b.poster_wallet = ?1 AND b.status = 'open'`,
+      )
+      .get(posterWallet) as { committed: number };
+    return Math.max(0, row.committed);
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * One validation sweep over 'unverified' bounty rows. Called from the
  * consolidation tick; bounded by `limit` per pass and yields between rows
  * via the awaited balance reads (event-loop starvation rule).
@@ -159,12 +182,20 @@ export async function validatePendingBounties(opts: {
     if (proof.startsWith("attest:")) {
       try {
         const balance = await opts.readBalance(row.poster_wallet);
-        if (balance >= row.reward_usdc) {
+        // PLAN-30 G0.4: AGGREGATE solvency. Attesting each bounty against
+        // the full balance let one $2 wallet "fund" dozens of $1 bounties;
+        // the wallet must cover this reward PLUS its outstanding open
+        // obligations (open bounties' rewards minus what their streams
+        // already paid out — paid money has left the balance).
+        const committed = getOpenCommitmentsUsd(opts.db, row.poster_wallet);
+        if (balance >= committed + row.reward_usdc) {
           setStatus.run("open", now, row.bounty_id);
           result.promoted++;
         } else {
           log.info(
-            `Rejecting bounty ${row.bounty_id}: poster balance $${balance} < reward $${row.reward_usdc}`,
+            `Rejecting bounty ${row.bounty_id}: poster balance $${balance} < ` +
+              `$${(committed + row.reward_usdc).toFixed(2)} (reward $${row.reward_usdc} + ` +
+              `$${committed.toFixed(2)} already committed to open bounties)`,
           );
           setStatus.run("rejected", now, row.bounty_id);
           result.rejected++;

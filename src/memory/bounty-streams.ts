@@ -41,6 +41,7 @@ type ActiveStream = {
   spent_usdc: number;
   reward_usdc: number;
   hunter_wallet: string;
+  poster_wallet: string;
   is_local: number;
 };
 
@@ -61,8 +62,20 @@ export function sweepStreamPayouts(opts: {
   };
   now?: number;
   limit?: number;
+  /**
+   * PLAN-30 G0.4: seed-pool farming guard. When set, a hunter's daily
+   * take from streams posted by the published treasury wallets is capped;
+   * enforced here (poster-side) because the cadence floor still allows
+   * 2x-rate check-ins, so client-side pacing is not a guard.
+   */
+  genesis?: {
+    treasuryWallets: string[];
+    maxDailyTreasuryUsdcPerHunter?: number;
+  };
 }): StreamSweepResult {
   const now = opts.now ?? Date.now();
+  const treasuryWallets = (opts.genesis?.treasuryWallets ?? []).map((w) => w.toLowerCase());
+  const maxDailyTreasury = opts.genesis?.maxDailyTreasuryUsdcPerHunter ?? 1;
   const result: StreamSweepResult = {
     paymentsQueued: 0,
     checksPaid: 0,
@@ -74,7 +87,7 @@ export function sweepStreamPayouts(opts: {
     .prepare(
       `SELECT s.id, s.bounty_id, s.poster_pubkey, s.hunter_pubkey, s.per_check_usdc,
               s.alert_bonus_usdc, s.checks_total, s.checks_paid, s.spent_usdc,
-              b.reward_usdc, c.hunter_wallet, b.is_local
+              b.reward_usdc, c.hunter_wallet, b.poster_wallet, b.is_local
          FROM bounty_streams s
          JOIN bounty_posts b ON b.bounty_id = s.bounty_id
          JOIN bounty_claims c ON c.id = s.id
@@ -98,11 +111,36 @@ export function sweepStreamPayouts(opts: {
         .get(s.bounty_id) as { usd: number }
     ).usd;
     const budgetLeftUsd = s.reward_usdc - spentAcrossBounty;
-    const affordable = Math.min(unpaid, Math.floor(budgetLeftUsd / s.per_check_usdc));
+    let affordable = Math.min(unpaid, Math.floor(budgetLeftUsd / s.per_check_usdc));
     if (affordable <= 0) {
       completeStream(opts.db, s, now);
       result.streamsCompleted++;
       continue;
+    }
+    // PLAN-30 G0.4: per-hunter daily cap on treasury-posted streams. The
+    // stream stays active (checks keep accruing); payment resumes when the
+    // 24h window rolls.
+    let treasuryRemaining = Number.POSITIVE_INFINITY;
+    if (treasuryWallets.includes(s.poster_wallet.toLowerCase())) {
+      const placeholders = treasuryWallets.map(() => "?").join(",");
+      const paidToday = (
+        opts.db
+          .prepare(
+            `SELECT COALESCE(SUM(q.amount_usdc), 0) AS usd
+               FROM revenue_payment_queue q
+              WHERE q.recipient_peer_id = ? AND q.role = 'stream_check' AND q.queued_at >= ?
+                AND q.purchase_id IN
+                  (SELECT s2.id FROM bounty_streams s2
+                     JOIN bounty_posts b2 ON b2.bounty_id = s2.bounty_id
+                    WHERE lower(b2.poster_wallet) IN (${placeholders}))`,
+          )
+          .get(s.hunter_pubkey, now - 86_400_000, ...treasuryWallets) as { usd: number }
+      ).usd;
+      treasuryRemaining = Math.max(0, maxDailyTreasury - paidToday);
+      affordable = Math.min(affordable, Math.floor(treasuryRemaining / s.per_check_usdc));
+      if (affordable <= 0) {
+        continue; // capped for today, not completed
+      }
     }
     // Alert bonus: paid per alert check in this batch that an audit
     // CONFIRMED (alert checks are always audited — bounty-audit.ts). An
@@ -121,7 +159,10 @@ export function sweepStreamPayouts(opts: {
           .get(s.id, s.checks_paid, s.checks_paid + affordable) as { n: number }
       ).n;
       const candidate = confirmedAlerts * s.alert_bonus_usdc;
-      if (affordable * s.per_check_usdc + candidate <= budgetLeftUsd) {
+      if (
+        affordable * s.per_check_usdc + candidate <= budgetLeftUsd &&
+        affordable * s.per_check_usdc + candidate <= treasuryRemaining
+      ) {
         bonusUsd = candidate;
       }
     }

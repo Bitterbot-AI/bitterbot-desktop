@@ -512,6 +512,13 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        genesis: z
+          .object({
+            treasuryWallets: z.array(z.string()).optional(),
+            maxDailyTreasuryUsdcPerHunter: z.number().positive().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

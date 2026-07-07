@@ -42,10 +42,24 @@
 >   (6) hunter-side settlement reconciliation (settlement_status/tx on
 >   forage_hunts) and the morning report distinguishes "earned" (paid)
 >   from "accrued (pending verification)".
-> - G0.4 in flight.
->   **Depends on:** PLAN-29 (Forage bounty economy, live), PLAN-8 (revenue rail), PLAN-16/17 (task spine)
->   **Related open problem:** census/network-count redesign (pinned 2026-07-07); Phase G1 partially feeds it.
->   **Revision note:** v1 was red-teamed by a second agent fan-out (5 verification lanes). Five blockers and a broken escrow design were found and fixed; see Appendix A for the changelog. Verify before trusting any v1 copy.
+> - **G0.4 LANDED.** Aggregate attest solvency (wallet must cover new
+>   reward + outstanding open obligations minus stream spend); config
+>   `forage.genesis.{treasuryWallets, maxDailyTreasuryUsdcPerHunter}`;
+>   seeded vs organic settled-value split in `forage.stats` keyed on the
+>   published treasury wallet list (blended totals never rendered);
+>   per-hunter daily cap on treasury-stream earnings enforced poster-side
+>   in the payout sweep. Docs: `docs/marketplace/a2a-integration.md`
+>   updated for the v2 checkin observation, claim nonces, audits, review
+>   RPCs, and genesis accounting.
+>
+> **G0 is code-complete** (2026-07-07, commits b916567/623c1f7/b943c9d +
+> this one) except the deferred refundable hunter bond (needs the EIP-3009
+> capture spike; the CV release gate + apprenticeship carries deterrence
+> until it lands). Next: G1 genesis tranche posting (needs `GET /health`
+> endpoint + scale governor) per section 2.
+> **Depends on:** PLAN-29 (Forage bounty economy, live), PLAN-8 (revenue rail), PLAN-16/17 (task spine)
+> **Related open problem:** census/network-count redesign (pinned 2026-07-07); Phase G1 partially feeds it.
+> **Revision note:** v1 was red-teamed by a second agent fan-out (5 verification lanes). Five blockers and a broken escrow design were found and fixed; see Appendix A for the changelog. Verify before trusting any v1 copy.
 
 ## 0. What this plan is and is not
 

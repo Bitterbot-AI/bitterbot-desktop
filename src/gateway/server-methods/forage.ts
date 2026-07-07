@@ -194,7 +194,12 @@ export const forageHandlers: GatewayRequestHandlers = {
         respond(true, { available: false });
         return;
       }
-      respond(true, { available: true, ...getForageStats(db) });
+      const treasuryWallets = loadConfig().forage?.genesis?.treasuryWallets ?? [];
+      respond(true, {
+        available: true,
+        ...getForageStats(db, Date.now(), { treasuryWallets }),
+        treasuryWallets,
+      });
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }

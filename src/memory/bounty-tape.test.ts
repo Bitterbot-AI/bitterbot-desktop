@@ -119,3 +119,39 @@ describe("getMorningReportLine", () => {
     expect(line).toBeNull();
   });
 });
+
+// PLAN-30 G0.4: the split ledger — settled value split by published
+// treasury wallet list, never blended.
+describe("seeded/organic split (G0.4)", () => {
+  it("splits settled value by poster wallet against the treasury list", () => {
+    const db = openDb();
+    seedLifecycle(db); // poster wallet '0x1', $5 settled
+    // Second, organic bounty from a different wallet.
+    db.prepare(
+      `INSERT INTO bounty_posts
+         (bounty_id, poster_pubkey, poster_wallet, kind, category, spec_public,
+          oracle_commitment, oracle_type, reward_usdc, claim_stake_usdc, max_claims,
+          is_local, status, expires_at, created_at, updated_at)
+       VALUES ('b-org', 'org-poster', '0xFEED', 'oneshot', 'extraction', 's',
+               'sha256:x', 'mechanical', 2, 0, 1, 0, 'fulfilled', ?, ?, ?)`,
+    ).run(NOW + 86_400_000, NOW - 5000, NOW - 500);
+    db.prepare(
+      `INSERT INTO bounty_settlements
+         (id, bounty_id, claim_id, poster_pubkey, hunter_pubkey, hunter_wallet,
+          amount_usdc, oracle_verdict, status, created_at)
+       VALUES ('s-org', 'b-org', 'c-org', 'org-poster', 'hunter-pubkey-bbbb', '0x2',
+               2, 'pass', 'paid', ?)`,
+    ).run(NOW - 1000);
+
+    const stats = getForageStats(db, NOW, { treasuryWallets: ["0x1"] });
+    expect(stats.seededSettledUsd7d).toBe(5);
+    expect(stats.organicSettledUsd7d).toBe(2);
+    expect(stats.seededSettledUsdAllTime).toBe(5);
+    expect(stats.organicSettledUsdAllTime).toBe(2);
+
+    // No treasury list: everything reports organic, seeded is zero.
+    const bare = getForageStats(db, NOW);
+    expect(bare.seededSettledUsd7d).toBe(0);
+    expect(bare.organicSettledUsd7d).toBe(7);
+  });
+});

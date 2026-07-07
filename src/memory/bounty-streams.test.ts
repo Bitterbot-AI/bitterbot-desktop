@@ -429,3 +429,49 @@ describe("shared budget + alert bonus + receipt backfill (G0.5)", () => {
     }
   });
 });
+
+// PLAN-30 G0.4: per-hunter daily cap on treasury-posted streams (the seed
+// pool is not farmable even before Sybil hardening).
+describe("treasury daily cap (G0.4)", () => {
+  it("clamps a hunter's daily take from treasury streams and resumes next day", () => {
+    const db = openDb();
+    insertHeartbeatBounty(db); // poster wallet 0x1111... = the treasury
+    const claimId = claimStream(db);
+    const genesis = {
+      treasuryWallets: ["0x1111111111111111111111111111111111111111"],
+      maxDailyTreasuryUsdcPerHunter: 0.1, // 2 checks/day at $0.05
+    };
+    for (let i = 1; i <= 4; i++) checkin(db, claimId, NOW + i * DAY_MS);
+    // Mirror production: payments must exist in the queue for the cap
+    // window query, so use amounts recorded via a real-shaped insert.
+    const realEconomics = new MarketplaceEconomics(db);
+    sweepStreamPayouts({ db, economics: realEconomics, now: NOW + 4 * DAY_MS + 1, genesis });
+    // queueRevenuePayment stamps queued_at with wall-clock time; pin it to
+    // the test clock so the cap's 24h window sees the payment.
+    db.prepare(`UPDATE revenue_payment_queue SET queued_at = ?`).run(NOW + 4 * DAY_MS + 1);
+    const paidFirstSweep = (
+      db
+        .prepare(`SELECT COALESCE(SUM(amount_usdc), 0) AS usd FROM revenue_payment_queue`)
+        .get() as { usd: number }
+    ).usd;
+    expect(paidFirstSweep).toBeCloseTo(0.1); // capped at 2 of 4 checks
+
+    // Same day: nothing more.
+    sweepStreamPayouts({ db, economics: realEconomics, now: NOW + 4 * DAY_MS + 2, genesis });
+    const paidSameDay = (
+      db
+        .prepare(`SELECT COALESCE(SUM(amount_usdc), 0) AS usd FROM revenue_payment_queue`)
+        .get() as { usd: number }
+    ).usd;
+    expect(paidSameDay).toBeCloseTo(0.1);
+
+    // Next day the window rolls and the remaining checks pay.
+    sweepStreamPayouts({ db, economics: realEconomics, now: NOW + 5 * DAY_MS + 3, genesis });
+    const paidNextDay = (
+      db
+        .prepare(`SELECT COALESCE(SUM(amount_usdc), 0) AS usd FROM revenue_payment_queue`)
+        .get() as { usd: number }
+    ).usd;
+    expect(paidNextDay).toBeCloseTo(0.2);
+  });
+});

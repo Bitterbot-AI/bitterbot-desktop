@@ -147,6 +147,17 @@ export type ForageStats = {
   /** Distinct hunters with at least one passing settlement. */
   distinctEarners: number;
   settlements: number;
+  /**
+   * PLAN-30 G0.4: the split ledger. Settled value split by whether the
+   * poster wallet is on the PUBLISHED treasury list — seeded (operator
+   * money) vs organic (everyone else). Keyed on the wallet list, never on
+   * self-declared flags; blended totals are deliberately not rendered
+   * anywhere seeded/organic can be shown instead.
+   */
+  seededSettledUsd7d: number;
+  organicSettledUsd7d: number;
+  seededSettledUsdAllTime: number;
+  organicSettledUsdAllTime: number;
 };
 
 /**
@@ -225,8 +236,43 @@ export function getMorningReportLine(db: DatabaseSync, now: number = Date.now())
   return `Forage: ${parts.join("; ")}.`;
 }
 
-export function getForageStats(db: DatabaseSync, now: number = Date.now()): ForageStats {
+export function getForageStats(
+  db: DatabaseSync,
+  now: number = Date.now(),
+  opts: { treasuryWallets?: string[] } = {},
+): ForageStats {
   const weekAgo = now - 7 * 86_400_000;
+  const treasury = (opts.treasuryWallets ?? []).map((w) => w.toLowerCase());
+
+  const settledSplit = (sinceMs: number): { seeded: number; organic: number } => {
+    if (treasury.length === 0) {
+      const row = db
+        .prepare(
+          `SELECT COALESCE(SUM(amount_usdc), 0) AS usd FROM bounty_settlements
+            WHERE oracle_verdict = 'pass' AND status IN ('queued','paid','held_review')
+              AND created_at >= ?`,
+        )
+        .get(sinceMs) as { usd: number };
+      return { seeded: 0, organic: row.usd };
+    }
+    const placeholders = treasury.map(() => "?").join(",");
+    const row = db
+      .prepare(
+        `SELECT
+           COALESCE(SUM(CASE WHEN lower(b.poster_wallet) IN (${placeholders})
+                             THEN s.amount_usdc ELSE 0 END), 0) AS seeded,
+           COALESCE(SUM(CASE WHEN lower(b.poster_wallet) NOT IN (${placeholders})
+                             THEN s.amount_usdc ELSE 0 END), 0) AS organic
+           FROM bounty_settlements s
+           JOIN bounty_posts b ON b.bounty_id = s.bounty_id
+          WHERE s.oracle_verdict = 'pass' AND s.status IN ('queued','paid','held_review')
+            AND s.created_at >= ?`,
+      )
+      .get(...treasury, ...treasury, sinceMs) as { seeded: number; organic: number };
+    return { seeded: row.seeded, organic: row.organic };
+  };
+  const split7d = settledSplit(weekAgo);
+  const splitAll = settledSplit(0);
 
   const open = db
     .prepare(
@@ -281,5 +327,9 @@ export function getForageStats(db: DatabaseSync, now: number = Date.now()): Fora
     medianTimeToFillMs: ttf.length > 0 ? ttf[Math.floor(ttf.length / 2)].ms : null,
     distinctEarners: earners.n,
     settlements: earners.settlements,
+    seededSettledUsd7d: split7d.seeded,
+    organicSettledUsd7d: split7d.organic,
+    seededSettledUsdAllTime: splitAll.seeded,
+    organicSettledUsdAllTime: splitAll.organic,
   };
 }

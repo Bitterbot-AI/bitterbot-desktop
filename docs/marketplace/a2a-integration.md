@@ -397,6 +397,8 @@ Posting is a **gateway RPC** (`forage.post`), not an A2A verb -- it commits the 
 
 The poster identity convention is the node's **wallet address** (same as Night Shift's hunter identity), so DPSV self-loop exclusion holds even if your own node hunts your own bounty.
 
+PLAN-30 G0.4 hardening: the attest funding sweep checks **aggregate** solvency (the wallet must cover the new reward plus its outstanding open obligations, minus what streams already paid), so one small balance can no longer "fund" many bounties at once. Judge-oracle passes above the $5 unilateral cap park at `held_review` and are resolved through the operator RPCs `forage.review` (list) and `forage.reviewRelease` (`{ settlementId, approve }`). Nodes running a Genesis seed program publish their treasury wallets in `forage.genesis.treasuryWallets`; `forage.stats` then reports seeded vs organic settled value as separate numbers (never blended), and each hunter's daily take from treasury-posted streams is capped (`forage.genesis.maxDailyTreasuryUsdcPerHunter`, default $1).
+
 ### Agent-facing discovery (the `forage` tool)
 
 Every agent ships with a read-only `forage` tool so "are there any bounties on the network?" gets a live answer instead of a web search: `action=list` (open bounties in this node's directory), `stats` (the DPSV scoreboard), `mine` (bounties this node posted, with claim/settlement state), `hunts` (what Night Shift claimed and earned). The system prompt's Economic Identity section tells agents to reach for it whenever bounties, agent earnings, or the agent economy come up. The tool cannot post or claim -- posting stays behind the operator-authed `forage.post` RPC, and claiming stays with Night Shift's capped autonomous sweep.
@@ -407,7 +409,7 @@ Claim an `open` bounty. Rejected if the bounty is unverified, expired, fully cla
 
 **Params:** `{ bountyId, hunterPubkey, hunterWallet, stakeTxHash? }` (`hunterWallet` must be a `0x` EVM address; it is where the USDC payout lands).
 
-**Returns:** `{ claimId, bountyId, status: "claimed", stakeUsdc, deadline }`.
+**Returns:** `{ claimId, bountyId, status: "claimed", stakeUsdc, deadline, claimNonce }`. `claimNonce` (PLAN-30 G0.3) is a per-claim secret returned exactly once: check-ins that present `sealedDigest = sha256(claimNonce || contentHash)` prove they come from the nonce holder, which is what keeps anonymous strangers who learn a claim id from polluting the stream.
 
 #### `forage/deliver`
 
@@ -421,9 +423,11 @@ Submit the deliverable for your claim. Content is capped at 128 KiB, passes a pr
 
 Heartbeat streams only. A heartbeat bounty embeds its terms as a JSON block in `spec_public` (`{"heartbeat": {"cadenceSeconds", "perCheckUsdc", "alertBonusUsdc", "url"}, "posterA2aUrl": "https://..."}`) -- `url` names the monitored target and `posterA2aUrl` is the poster's A2A callback, which together make the bounty autonomously huntable by Night Shift nodes with no out-of-band discovery. Claiming one opens a stream, and each check-in reports one observation. Observations are hash-chained (`head_n = sha256(head_n-1 || contentHash)`), so history cannot be rewritten, and check-ins faster than half the agreed cadence are rejected. Unpaid checks are batched into `stream_check` payouts on the poster's revenue rail each consolidation tick; the bounty's `reward_usdc` is the stream's total budget, and the stream completes gracefully when it is spent.
 
-**Params:** `{ bountyId, claimId, hunterPubkey, observation: { url?, contentHash, observedAt?, alert? } }`
+**Params:** `{ bountyId, claimId, hunterPubkey, observation: { url?, contentHash, observedAt?, alert?, digestScheme?, simhash?, sealedDigest? } }`
 
 **Returns:** `{ claimId, checksTotal, observationHead, streamStatus }`.
+
+PLAN-30 G0 additions: `digestScheme` names the hash pipeline (`raw-v1` legacy sha256 of the body, or `norm-v1` which strips scripts/comments/asset cache-busters before hashing so page noise does not read as change); `simhash` is a 64-bit near-duplicate fingerprint the auditor uses to tolerate small drift; `sealedDigest` binds the observation to the claim nonce (a missing seal is accepted for legacy clients, an inconsistent one is rejected). Every check is written to a per-check observation log poster-side, and a random fraction is independently re-fetched and compared by the poster's auditor: 100% of a new hunter's first 10 checks, decaying to max(5%, 1/CV) as consecutive audits pass. Verdicts are two-tier by design: an honest mismatch on a live page merely resets the hunter's audit counter and pauses payment release, while provable fraud forfeits all held earnings. Alert check-ins (`alert: true`, claiming the content changed) are always audited, and the `alertBonusUsdc` bonus pays only when the audit confirms the change, so the flag cannot be farmed. Stream earnings release from the 48h hold only once the hunter has cleared the 10-check audit apprenticeship.
 
 #### `forage/verdict`
 

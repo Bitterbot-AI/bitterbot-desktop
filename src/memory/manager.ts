@@ -2244,9 +2244,23 @@ export class MemoryIndexManager implements MemorySearchManager {
 
               // 11f. PLAN-29 Phase 2.1: heartbeat stream payouts — unpaid
               // check-ins on locally-posted streams become batched payments
-              // on the same rail (role 'stream_check').
+              // on the same rail (role 'stream_check'). PLAN-30 G0.4: the
+              // genesis config caps per-hunter daily take from
+              // treasury-posted streams.
+              const genesisCfg = this.cfg.forage?.genesis;
               void import("./bounty-streams.js")
-                .then((m) => m.sweepStreamPayouts({ db: bountyDb, economics }))
+                .then((m) =>
+                  m.sweepStreamPayouts({
+                    db: bountyDb,
+                    economics,
+                    genesis: genesisCfg?.treasuryWallets?.length
+                      ? {
+                          treasuryWallets: genesisCfg.treasuryWallets,
+                          maxDailyTreasuryUsdcPerHunter: genesisCfg.maxDailyTreasuryUsdcPerHunter,
+                        }
+                      : undefined,
+                  }),
+                )
                 .catch((err) => log.debug(`stream payout sweep failed: ${String(err)}`));
 
               // 11g. PLAN-30 G0.5: deadline/expiry enforcement — overdue
