@@ -127,13 +127,21 @@ it("post -> fund -> claim -> deliver -> verify -> queue payout, end to end", asy
     expect(verdict.result.settlementStatus).toBe("queued");
   }
 
-  // 7. LEDGER TRUTH: wallet recorded for dispatch, tier climbed, DPSV counts it.
+  // 7. LEDGER TRUTH: wallet recorded for dispatch, DPSV counts the queued
+  // settlement — but the tier does NOT climb yet. PLAN-30 G0.2 closed the
+  // apprenticeship leak: a pre-payment 'queued' row no longer promotes T0
+  // hunters; promotion waits for dispatched money ('paid') or a cleared
+  // audit apprenticeship (CV >= 10).
   const rep = db
     .prepare(`SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = ?`)
     .get(HUNTER) as { wallet_address: string };
   expect(rep.wallet_address).toBe(HUNTER_WALLET);
-  expect(computeTrustTier(db, HUNTER)).toBe(1);
+  expect(computeTrustTier(db, HUNTER)).toBe(0);
   const dpsv = computeDpsv(db);
   expect(dpsv.totalUsd).toBe(1);
   expect(dpsv.selfLoopExcludedUsd).toBe(0);
+
+  // 8. PAYMENT DISPATCH: once the settlement is paid, the tier climbs.
+  db.prepare(`UPDATE bounty_settlements SET status = 'paid' WHERE claim_id = ?`).run(claimId);
+  expect(computeTrustTier(db, HUNTER)).toBe(1);
 });

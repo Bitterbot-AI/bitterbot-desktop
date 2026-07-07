@@ -38,15 +38,33 @@ export const TIER_CLAIM_CAPS_USD: Record<TrustTier, number> = {
 
 const SETTLED_STATUSES = "('queued','paid','held_review')";
 
-/** Compute a hunter's trust tier from its settled bounty history. */
+/**
+ * Compute a hunter's trust tier from its settled bounty history.
+ *
+ * PLAN-30 G0.2: 'queued' settlements count toward tier only once the hunter
+ * has cleared the audit apprenticeship (CV >= 10 in forage_hunter_audit) —
+ * previously a single pre-audit, pre-payment queued row promoted T0 -> T1
+ * and quintupled the claim cap. 'paid'/'held_review' always count (money
+ * moved or an operator is reviewing); 'forfeited' never counts anywhere.
+ */
 export function computeTrustTier(db: DatabaseSync, hunterPubkey: string): TrustTier {
+  let cv = 0;
+  try {
+    const audit = db
+      .prepare(`SELECT cv FROM forage_hunter_audit WHERE hunter_pubkey = ?`)
+      .get(hunterPubkey) as { cv: number } | undefined;
+    cv = audit?.cv ?? 0;
+  } catch {
+    // Pre-v26 schema: no audit table yet — fall back to paid-only counting.
+  }
+  const statuses = cv >= 10 ? SETTLED_STATUSES : "('paid','held_review')";
   const row = db
     .prepare(
       `SELECT COUNT(*) AS n, COALESCE(SUM(amount_usdc), 0) AS vol,
               COUNT(DISTINCT poster_pubkey) AS posters
          FROM bounty_settlements
         WHERE hunter_pubkey = ? AND oracle_verdict = 'pass'
-          AND status IN ${SETTLED_STATUSES}
+          AND status IN ${statuses}
           AND poster_pubkey != hunter_pubkey`,
     )
     .get(hunterPubkey) as { n: number; vol: number; posters: number };

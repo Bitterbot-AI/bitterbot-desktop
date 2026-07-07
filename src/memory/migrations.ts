@@ -1095,6 +1095,60 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 26,
+    description:
+      "PLAN-30 G0.1: per-check observation log + per-hunter audit state. " +
+      "forage/checkin previously folded every check into one rolling head, " +
+      "leaving nothing to audit against; bounty_stream_checks preserves each " +
+      "check's digest so an auditor can re-observe and compare, and " +
+      "forage_hunter_audit carries the BOINC-style consecutive-valid counter " +
+      "that drives the adaptive audit rate and gates payment release.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS bounty_stream_checks (
+          stream_id      TEXT NOT NULL,
+          seq            INTEGER NOT NULL,
+          content_digest TEXT NOT NULL,
+          digest_scheme  TEXT NOT NULL DEFAULT 'raw-v1',
+          sealed_digest  TEXT,
+          simhash        TEXT,
+          alert          INTEGER NOT NULL DEFAULT 0,
+          observed_at    INTEGER NOT NULL,
+          prev_head      TEXT,
+          head           TEXT NOT NULL,
+          audit_status   TEXT NOT NULL DEFAULT 'unaudited',
+          audited_at     INTEGER,
+          auditor_note   TEXT,
+          PRIMARY KEY (stream_id, seq)
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bounty_stream_checks_audit ` +
+          `ON bounty_stream_checks(audit_status, observed_at)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS forage_hunter_audit (
+          hunter_pubkey        TEXT PRIMARY KEY,
+          cv                   INTEGER NOT NULL DEFAULT 0,
+          audits_total         INTEGER NOT NULL DEFAULT 0,
+          audits_passed        INTEGER NOT NULL DEFAULT 0,
+          audits_failed        INTEGER NOT NULL DEFAULT 0,
+          audits_unverifiable  INTEGER NOT NULL DEFAULT 0,
+          frauds               INTEGER NOT NULL DEFAULT 0,
+          last_audit_at        INTEGER,
+          updated_at           INTEGER NOT NULL
+        )
+      `);
+      // G0.3 lands the poster-issued per-claim nonce on this column; added
+      // here so the claim handler can start issuing nonces without a second
+      // migration.
+      addColumnIfMissing(db, "bounty_claims", "claim_nonce", "TEXT");
+      // Hunter-side change detection (alert path): remember the previous
+      // digest so Night Shift can set observation.alert on content change.
+      addColumnIfMissing(db, "forage_hunts", "last_content_digest", "TEXT");
+    },
+  },
 ];
 
 /**

@@ -98,6 +98,15 @@ export type BitterbotConfig = {
     pools?: {
       enabled?: boolean;
     };
+    /**
+     * PLAN-30 G0.1: probabilistic re-observation of heartbeat check-ins
+     * (BOINC-style adaptive rate, two-tier verdicts). Default: true.
+     * Disabling also freezes trust-tier promotion past the audit gate —
+     * fail-safe by design.
+     */
+    audit?: {
+      enabled?: boolean;
+    };
   };
   plugins?: PluginsConfig;
   models?: ModelsConfig;

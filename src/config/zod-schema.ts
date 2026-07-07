@@ -506,6 +506,12 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        audit: z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

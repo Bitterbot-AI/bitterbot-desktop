@@ -641,16 +641,48 @@ export class MarketplaceEconomics {
       );
   }
 
-  /** Transition held payments past the 48h window to released (if no dispute). */
+  /**
+   * Transition held payments past the 48h window to released (if no dispute).
+   *
+   * PLAN-30 G0.2: stream-check payments carry an additional gate — the
+   * recipient hunter's audit CV must be at or above RELEASE_CV_FLOOR. A
+   * hunter whose CV was reset by a failed audit re-earns trust through
+   * fully-audited checks before any further money moves; this frozen
+   * pipeline is the self-assembling bond of the audit economics. One-shot
+   * bounty_reward payouts are NOT gated here: their verification is the
+   * sealed oracle verdict itself (golden-task auditing extends the gate to
+   * them in G2). Non-bounty roles (skill revenue etc.) release on age
+   * alone, unchanged.
+   */
   releaseHeldPayments(): number {
     const now = Date.now();
+    const cvGate = this.hasHunterAuditTable()
+      ? `AND (role != 'stream_check'
+             OR recipient_peer_id IN
+               (SELECT hunter_pubkey FROM forage_hunter_audit WHERE cv >= 10))`
+      : "";
     const result = this.db
       .prepare(
-        `UPDATE revenue_payment_queue SET status = 'released' WHERE status = 'held' AND release_at <= ?`,
+        `UPDATE revenue_payment_queue SET status = 'released'
+          WHERE status = 'held' AND release_at <= ? ${cvGate}`,
       )
       .run(now);
     return Number(result.changes);
   }
+
+  /** True once migration v26 has created the hunter audit table. */
+  private hasHunterAuditTable(): boolean {
+    if (this.hunterAuditTableSeen) return true;
+    const row = this.db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'forage_hunter_audit'`,
+      )
+      .get();
+    this.hunterAuditTableSeen = row !== undefined;
+    return this.hunterAuditTableSeen;
+  }
+
+  private hunterAuditTableSeen = false;
 
   /** Get payments that are released and ready for dispatch. */
   getReleasedPayments(): Array<{

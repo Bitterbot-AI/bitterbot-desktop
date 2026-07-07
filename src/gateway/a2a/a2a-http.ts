@@ -256,6 +256,28 @@ export function createA2aHttpHandler(opts: {
           ? { jsonrpc: "2.0", result: outcome.result, id: rpcRequest.id }
           : { jsonrpc: "2.0", error: outcome.error, id: rpcRequest.id },
       );
+      // PLAN-30 G0.1: probabilistic re-observation of accepted check-ins.
+      // Runs AFTER the response is sent — the sync handler cannot fetch, and
+      // blocking the checkin reply on our audit fetch would both slow honest
+      // hunters and leak audit timing. On by default; kill switch
+      // forage.audit.enabled=false.
+      if (
+        rpcRequest.method === "forage/checkin" &&
+        outcome.ok &&
+        config.forage?.audit?.enabled !== false
+      ) {
+        const claimId = (rpcRequest.params as { claimId?: string } | undefined)?.claimId;
+        const auditDb = forageDb;
+        if (claimId && auditDb) {
+          void import("../../memory/bounty-audit.js")
+            .then(({ auditCheckinIfDue }) =>
+              auditCheckinIfDue({ db: auditDb, streamId: claimId, fetchImpl: fetch }),
+            )
+            .catch(() => {
+              /* audit is best-effort; the module logs its own outcomes */
+            });
+        }
+      }
       return true;
     }
 

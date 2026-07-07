@@ -317,7 +317,18 @@ export type ForageCheckinParams = {
   claimId?: string;
   hunterPubkey?: string;
   /** What was observed: source url/id + content hash + when. */
-  observation?: { url?: string; contentHash?: string; observedAt?: number; alert?: boolean };
+  observation?: {
+    url?: string;
+    contentHash?: string;
+    observedAt?: number;
+    alert?: boolean;
+    /** Digest pipeline the hunter ran: 'raw-v1' (legacy sha256 of body) or 'norm-v1'. */
+    digestScheme?: string;
+    /** 64-bit simhash (16 hex chars) of the normalized body, for audit tolerance. */
+    simhash?: string;
+    /** G0.3: sha256(claimNonce || seq || contentHash), binds the observation to this claim. */
+    sealedDigest?: string;
+  };
 };
 
 export type ForageCheckinResult = {
@@ -377,13 +388,32 @@ export function handleForageCheckin(
   }
 
   // Chain the observation: head_n = sha256(head_{n-1} || contentHash). The
-  // chain is the mechanical oracle for streams — an auditor re-observing the
-  // same source at the same time must produce the same hash, and a fabricated
-  // history cannot be rewritten without breaking every subsequent head.
+  // chain is tamper-evident history; the per-check row below is what the
+  // auditor actually compares against (PLAN-30 G0.1 — the rolling head alone
+  // preserved no per-check digest, so there was nothing to audit).
+  const prevHead = stream.observation_head ?? "genesis";
   const head = crypto
     .createHash("sha256")
-    .update((stream.observation_head ?? "genesis") + obs.contentHash, "utf-8")
+    .update(prevHead + obs.contentHash, "utf-8")
     .digest("hex");
+  const seq = stream.checks_total + 1;
+  db.prepare(
+    `INSERT INTO bounty_stream_checks
+       (stream_id, seq, content_digest, digest_scheme, sealed_digest, simhash,
+        alert, observed_at, prev_head, head, audit_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unaudited')`,
+  ).run(
+    params.claimId,
+    seq,
+    obs.contentHash,
+    obs.digestScheme ?? "raw-v1",
+    obs.sealedDigest ?? null,
+    obs.simhash ?? null,
+    obs.alert ? 1 : 0,
+    typeof obs.observedAt === "number" ? obs.observedAt : now,
+    prevHead,
+    head,
+  );
   db.prepare(
     `UPDATE bounty_streams
         SET observation_head = ?, checks_total = checks_total + 1,
