@@ -35,8 +35,10 @@ type ActiveStream = {
   poster_pubkey: string;
   hunter_pubkey: string;
   per_check_usdc: number;
+  alert_bonus_usdc: number;
   checks_total: number;
   checks_paid: number;
+  spent_usdc: number;
   reward_usdc: number;
   hunter_wallet: string;
   is_local: number;
@@ -71,7 +73,8 @@ export function sweepStreamPayouts(opts: {
   const streams = opts.db
     .prepare(
       `SELECT s.id, s.bounty_id, s.poster_pubkey, s.hunter_pubkey, s.per_check_usdc,
-              s.checks_total, s.checks_paid, b.reward_usdc, c.hunter_wallet, b.is_local
+              s.alert_bonus_usdc, s.checks_total, s.checks_paid, s.spent_usdc,
+              b.reward_usdc, c.hunter_wallet, b.is_local
          FROM bounty_streams s
          JOIN bounty_posts b ON b.bounty_id = s.bounty_id
          JOIN bounty_claims c ON c.id = s.id
@@ -82,14 +85,47 @@ export function sweepStreamPayouts(opts: {
 
   for (const s of streams) {
     const unpaid = s.checks_total - s.checks_paid;
-    const budgetLeftUsd = s.reward_usdc - s.checks_paid * s.per_check_usdc;
+    // PLAN-30 G0.5: the bounty's reward is ONE budget shared by ALL its
+    // streams (with max_claims > 1, per-stream accounting paid each claim
+    // the full budget — a K-times overpayment). spent_usdc is the precise
+    // ledger; summing it across the bounty is the only correct remaining-
+    // budget calculation once alert bonuses ride the same budget.
+    const spentAcrossBounty = (
+      opts.db
+        .prepare(
+          `SELECT COALESCE(SUM(spent_usdc), 0) AS usd FROM bounty_streams WHERE bounty_id = ?`,
+        )
+        .get(s.bounty_id) as { usd: number }
+    ).usd;
+    const budgetLeftUsd = s.reward_usdc - spentAcrossBounty;
     const affordable = Math.min(unpaid, Math.floor(budgetLeftUsd / s.per_check_usdc));
     if (affordable <= 0) {
       completeStream(opts.db, s, now);
       result.streamsCompleted++;
       continue;
     }
-    const amount = affordable * s.per_check_usdc;
+    // Alert bonus: paid per alert check in this batch that an audit
+    // CONFIRMED (alert checks are always audited — bounty-audit.ts). An
+    // unaudited or failed alert pays the plain per-check rate only, so the
+    // alert flag cannot be farmed. Bonuses are skipped entirely when the
+    // remaining budget cannot cover them.
+    let bonusUsd = 0;
+    if (s.alert_bonus_usdc > 0) {
+      const confirmedAlerts = (
+        opts.db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM bounty_stream_checks
+              WHERE stream_id = ? AND seq > ? AND seq <= ?
+                AND alert = 1 AND audit_status = 'pass'`,
+          )
+          .get(s.id, s.checks_paid, s.checks_paid + affordable) as { n: number }
+      ).n;
+      const candidate = confirmedAlerts * s.alert_bonus_usdc;
+      if (affordable * s.per_check_usdc + candidate <= budgetLeftUsd) {
+        bonusUsd = candidate;
+      }
+    }
+    const amount = affordable * s.per_check_usdc + bonusUsd;
     const batchId = crypto.randomUUID();
 
     // Make the hunter payable (same best-effort upsert as one-shot settle).
@@ -125,29 +161,33 @@ export function sweepStreamPayouts(opts: {
         s.hunter_pubkey,
         s.hunter_wallet,
         amount,
-        JSON.stringify({ kind: "stream_batch", checks: affordable }),
+        JSON.stringify({ kind: "stream_batch", checks: affordable, bonusUsd }),
         now,
       );
+    // purchaseId = the stream/claim id (stable across batches) so payment
+    // dispatch can backfill tx_hash onto the settlement row by claim_id
+    // (PLAN-30 G0.5: forage/verdict finally returns receipts).
     opts.economics.queueRevenuePayment({
       skillCrystalId: `bounty:${s.bounty_id}`,
-      purchaseId: batchId,
+      purchaseId: s.id,
       recipientPeerId: s.hunter_pubkey,
       amountUsdc: amount,
       role: "stream_check",
     });
     opts.db
       .prepare(
-        `UPDATE bounty_streams SET checks_paid = checks_paid + ?, updated_at = ? WHERE id = ?`,
+        `UPDATE bounty_streams
+            SET checks_paid = checks_paid + ?, spent_usdc = spent_usdc + ?, updated_at = ?
+          WHERE id = ?`,
       )
-      .run(affordable, now, s.id);
+      .run(affordable, amount, now, s.id);
 
     result.paymentsQueued++;
     result.checksPaid += affordable;
     result.usdQueued += amount;
 
     // Budget exhausted after this batch → graceful completion.
-    const spent = (s.checks_paid + affordable) * s.per_check_usdc;
-    if (spent + s.per_check_usdc > s.reward_usdc) {
+    if (spentAcrossBounty + amount + s.per_check_usdc > s.reward_usdc) {
       completeStream(opts.db, { ...s, checks_paid: s.checks_paid + affordable }, now);
       result.streamsCompleted++;
     }

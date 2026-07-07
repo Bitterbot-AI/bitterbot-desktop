@@ -47,7 +47,14 @@ function insertRemoteBounty(db: DatabaseSync, over: Partial<{ id: string; reward
 }
 
 /** Fetch stub: serves the monitored page and a scripted poster A2A. */
-function makeFetch(opts: { claimOk?: boolean; checkinError?: string; claimNonce?: string } = {}): {
+function makeFetch(
+  opts: {
+    claimOk?: boolean;
+    checkinError?: string;
+    claimNonce?: string;
+    verdictResult?: Record<string, unknown>;
+  } = {},
+): {
   fetch: FetchLike;
   rpcCalls: Array<{ method: string; params: Record<string, unknown> }>;
   setPage: (body: string) => void;
@@ -81,7 +88,7 @@ function makeFetch(opts: { claimOk?: boolean; checkinError?: string; claimNonce?
         ? { error: { message: opts.checkinError } }
         : { result: { checksTotal: 1, streamStatus: "active" } };
     } else {
-      body = { result: { verdict: null } };
+      body = { result: opts.verdictResult ?? { verdict: null } };
     }
     return { ok: true, status: 200, text: async () => JSON.stringify(body) };
   };
@@ -195,6 +202,25 @@ describe("nightShiftSweep", () => {
     const { fetch } = makeFetch();
     await sweep(db, fetch, NOW);
     await sweep(db, fetch, NOW + DAY_MS + 1000);
+    const line = getMorningReportLine(db, NOW + DAY_MS + 2000);
+    // PLAN-30 G0.5: unreconciled earnings report as accrued, never "earned".
+    expect(line).toMatch(/accrued \$0\.05 \(pending verification\) hunting 1 bounty/);
+  });
+
+  it("reports confirmed earnings once the poster's settlement is paid", async () => {
+    insertRemoteBounty(db);
+    const { fetch } = makeFetch({
+      verdictResult: { claimStatus: "verified", settlementStatus: "paid", txHash: "0xabc" },
+    });
+    await sweep(db, fetch, NOW);
+    await sweep(db, fetch, NOW + DAY_MS + 1000);
+    // Reconciliation ran inside the sweep (earned > 0, not yet paid).
+    const hunt = db.prepare(`SELECT settlement_status, settlement_tx FROM forage_hunts`).get() as {
+      settlement_status: string | null;
+      settlement_tx: string | null;
+    };
+    expect(hunt.settlement_status).toBe("paid");
+    expect(hunt.settlement_tx).toBe("0xabc");
     const line = getMorningReportLine(db, NOW + DAY_MS + 2000);
     expect(line).toMatch(/earned \$0\.05 hunting 1 bounty while you were away/);
   });

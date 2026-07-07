@@ -1159,6 +1159,21 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "forage_hunts", "claim_nonce", "TEXT");
     },
   },
+  {
+    version: 28,
+    description:
+      "PLAN-30 G0.5: precise stream budget accounting (spent_usdc, needed " +
+      "once alert bonuses ride the same budget as per-check pay and once " +
+      "multiple claims share one bounty budget) + hunter-side settlement " +
+      "reconciliation columns for the verified-earnings morning report.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "bounty_streams", "spent_usdc", "REAL NOT NULL DEFAULT 0");
+      // Backfill: everything paid so far was per-check pay only.
+      db.exec(`UPDATE bounty_streams SET spent_usdc = checks_paid * per_check_usdc`);
+      addColumnIfMissing(db, "forage_hunts", "settlement_status", "TEXT");
+      addColumnIfMissing(db, "forage_hunts", "settlement_tx", "TEXT");
+    },
+  },
 ];
 
 /**

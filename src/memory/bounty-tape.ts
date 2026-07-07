@@ -174,24 +174,41 @@ export function getMorningReportLine(db: DatabaseSync, now: number = Date.now())
   };
   // Hunter-side earnings (Night Shift claim mirror). Table exists from
   // migration v24; guard anyway so a partially-migrated db stays quiet.
-  let earned = { earnedUsdc: 0, hunts: 0, checks: 0 };
+  // PLAN-30 G0.5: 'confirmed' = hunts whose settlement the poster reports
+  // PAID (tx dispatched); the rest of the accrual is reported as pending
+  // so the morning report never overstates money that could still be
+  // withheld by an audit.
+  let earned = { earnedUsdc: 0, confirmedUsdc: 0, hunts: 0, checks: 0 };
   try {
     const row = db
       .prepare(
-        `SELECT COALESCE(SUM(earned_usdc), 0) AS usd, COUNT(*) AS hunts,
+        `SELECT COALESCE(SUM(earned_usdc), 0) AS usd,
+                COALESCE(SUM(CASE WHEN settlement_status = 'paid' THEN earned_usdc ELSE 0 END), 0) AS confirmed,
+                COUNT(*) AS hunts,
                 COALESCE(SUM(checks_sent), 0) AS checks
            FROM forage_hunts WHERE updated_at >= ? AND earned_usdc > 0`,
       )
-      .get(since) as { usd: number; hunts: number; checks: number };
-    earned = { earnedUsdc: row.usd, hunts: row.hunts, checks: row.checks };
+      .get(since) as { usd: number; confirmed: number; hunts: number; checks: number };
+    earned = {
+      earnedUsdc: row.usd,
+      confirmedUsdc: row.confirmed,
+      hunts: row.hunts,
+      checks: row.checks,
+    };
   } catch {
     /* pre-v24 db */
   }
   if (settled.n === 0 && checks.n === 0 && open.n === 0 && earned.earnedUsdc === 0) return null;
   const parts: string[] = [];
-  if (earned.earnedUsdc > 0) {
+  if (earned.confirmedUsdc > 0) {
+    const pending = earned.earnedUsdc - earned.confirmedUsdc;
     parts.push(
-      `earned $${earned.earnedUsdc.toFixed(2)} hunting ${earned.hunts} bount${earned.hunts === 1 ? "y" : "ies"} while you were away`,
+      `earned $${earned.confirmedUsdc.toFixed(2)} hunting ${earned.hunts} bount${earned.hunts === 1 ? "y" : "ies"} while you were away` +
+        (pending > 0.005 ? ` (plus $${pending.toFixed(2)} pending verification)` : ""),
+    );
+  } else if (earned.earnedUsdc > 0) {
+    parts.push(
+      `accrued $${earned.earnedUsdc.toFixed(2)} (pending verification) hunting ${earned.hunts} bount${earned.hunts === 1 ? "y" : "ies"} while you were away`,
     );
   }
   if (settled.n > 0) {
@@ -229,7 +246,7 @@ export function getForageStats(db: DatabaseSync, now: number = Date.now()): Fora
     .prepare(
       `SELECT COUNT(*) AS opened,
               SUM(EXISTS (SELECT 1 FROM bounty_claims c WHERE c.bounty_id = b.bounty_id)) AS filled
-         FROM bounty_posts b WHERE b.status IN ('open','fulfilled')`,
+         FROM bounty_posts b WHERE b.status IN ('open','fulfilled','expired')`,
     )
     .get() as { opened: number; filled: number | null };
 

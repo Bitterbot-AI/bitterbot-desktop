@@ -126,6 +126,9 @@ const BASE_METHODS = [
   "forage.stats",
   // PLAN-29 §4.1: operator posting path
   "forage.post",
+  // PLAN-30 G0.5: judge-capped settlement review
+  "forage.review",
+  "forage.reviewRelease",
   // Marketplace
   "marketplace.search",
   "marketplace.trending",

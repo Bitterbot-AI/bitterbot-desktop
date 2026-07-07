@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   commitOracleSpec,
   parseBountyJudgeReply,
+  resolveHeldReview,
   runMechanicalOracle,
   settleDeliveredClaims,
+  sweepOverdueClaims,
   type OracleSpec,
 } from "./bounty-oracle.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
@@ -255,5 +257,130 @@ describe("settleDeliveredClaims", () => {
     const res = await settleDeliveredClaims({ db, economics: economics(), now: NOW });
     expect(res.settled + res.failed).toBe(0);
     expect(claimStatus(db)).toBe("delivered");
+  });
+});
+
+// PLAN-30 G0.5: deadline/expiry enforcement + held_review resolution.
+describe("sweepOverdueClaims (G0.5)", () => {
+  it("fails overdue one-shot claims, exempts active streams, retires expired bounties", () => {
+    const db = openDb();
+    // Overdue one-shot: deadline passed, claim still 'claimed'.
+    db.prepare(
+      `INSERT INTO bounty_posts
+         (bounty_id, poster_pubkey, poster_wallet, kind, category, spec_public,
+          oracle_commitment, oracle_type, reward_usdc, claim_stake_usdc, max_claims,
+          is_local, status, deadline, expires_at, created_at, updated_at)
+       VALUES ('b-late', 'p', '0x1111111111111111111111111111111111111111', 'oneshot', 'x',
+               's', 'sha256:x', 'mechanical', 1, 0, 1, 1, 'fulfilled', ?, ?, ?, ?)`,
+    ).run(NOW - 1000, NOW + 86_400_000, NOW - 5000, NOW - 5000);
+    db.prepare(
+      `INSERT INTO bounty_claims (id, bounty_id, hunter_pubkey, hunter_wallet, stake_usdc,
+          status, claimed_at, updated_at)
+       VALUES ('c-late', 'b-late', 'h', ?, 0, 'claimed', ?, ?)`,
+    ).run(WALLET, NOW - 4000, NOW - 4000);
+    // Heartbeat claim with an ACTIVE stream on an expired listing: exempt.
+    db.prepare(
+      `INSERT INTO bounty_posts
+         (bounty_id, poster_pubkey, poster_wallet, kind, category, spec_public,
+          oracle_commitment, oracle_type, reward_usdc, claim_stake_usdc, max_claims,
+          is_local, status, expires_at, created_at, updated_at)
+       VALUES ('b-hb', 'p', '0x1111111111111111111111111111111111111111', 'heartbeat', 'x',
+               's', 'sha256:x', 'mechanical', 1, 0, 1, 1, 'fulfilled', ?, ?, ?)`,
+    ).run(NOW - 1000, NOW - 5000, NOW - 5000);
+    db.prepare(
+      `INSERT INTO bounty_claims (id, bounty_id, hunter_pubkey, hunter_wallet, stake_usdc,
+          status, claimed_at, updated_at)
+       VALUES ('c-hb', 'b-hb', 'h', ?, 0, 'claimed', ?, ?)`,
+    ).run(WALLET, NOW - 4000, NOW - 4000);
+    db.prepare(
+      `INSERT INTO bounty_streams (id, bounty_id, poster_pubkey, hunter_pubkey,
+          cadence_seconds, per_check_usdc, alert_bonus_usdc, checks_total, checks_paid,
+          audits_total, audits_failed, status, created_at, updated_at)
+       VALUES ('c-hb', 'b-hb', 'p', 'h', 86400, 0.05, 0, 0, 0, 0, 0, 'active', ?, ?)`,
+    ).run(NOW - 4000, NOW - 4000);
+    // Expired open bounty with no claims.
+    db.prepare(
+      `INSERT INTO bounty_posts
+         (bounty_id, poster_pubkey, poster_wallet, kind, category, spec_public,
+          oracle_commitment, oracle_type, reward_usdc, claim_stake_usdc, max_claims,
+          is_local, status, expires_at, created_at, updated_at)
+       VALUES ('b-exp', 'p', '0x1111111111111111111111111111111111111111', 'oneshot', 'x',
+               's', 'sha256:x', 'mechanical', 1, 0, 1, 0, 'open', ?, ?, ?)`,
+    ).run(NOW - 1000, NOW - 5000, NOW - 5000);
+
+    const res = sweepOverdueClaims(db, NOW);
+    expect(res.claimsFailed).toBe(1);
+    expect(res.bountiesExpired).toBe(1);
+    expect(
+      (db.prepare(`SELECT status FROM bounty_claims WHERE id='c-late'`).get() as { status: string })
+        .status,
+    ).toBe("failed");
+    expect(
+      (db.prepare(`SELECT status FROM bounty_claims WHERE id='c-hb'`).get() as { status: string })
+        .status,
+    ).toBe("claimed");
+    expect(
+      (
+        db.prepare(`SELECT status FROM bounty_posts WHERE bounty_id='b-exp'`).get() as {
+          status: string;
+        }
+      ).status,
+    ).toBe("expired");
+  });
+});
+
+describe("resolveHeldReview (G0.5)", () => {
+  function seedHeld(db: DatabaseSync): void {
+    db.prepare(
+      `INSERT INTO bounty_settlements
+         (id, bounty_id, claim_id, poster_pubkey, hunter_pubkey, hunter_wallet,
+          amount_usdc, oracle_verdict, judge_capped, status, created_at)
+       VALUES ('s-held', 'b-1', 'c-1', 'p', ?, ?, 25, 'pass', 1, 'held_review', ?)`,
+    ).run(HUNTER, WALLET, NOW);
+  }
+
+  it("approve queues the payout and flips status", () => {
+    const db = openDb();
+    seedHeld(db);
+    const queued: Array<{ amountUsdc: number; role: string }> = [];
+    const out = resolveHeldReview(
+      db,
+      { queueRevenuePayment: (p) => queued.push(p) },
+      "s-held",
+      true,
+      NOW,
+    );
+    expect(out).toMatchObject({ ok: true, status: "queued", amountUsdc: 25 });
+    expect(queued[0]).toMatchObject({ amountUsdc: 25, role: "bounty_reward" });
+    expect(
+      (
+        db.prepare(`SELECT status FROM bounty_settlements WHERE id='s-held'`).get() as {
+          status: string;
+        }
+      ).status,
+    ).toBe("queued");
+  });
+
+  it("reject retires the settlement without queueing money", () => {
+    const db = openDb();
+    seedHeld(db);
+    const queued: unknown[] = [];
+    const out = resolveHeldReview(
+      db,
+      { queueRevenuePayment: (p) => queued.push(p) },
+      "s-held",
+      false,
+      NOW,
+    );
+    expect(out).toMatchObject({ ok: true, status: "rejected" });
+    expect(queued).toHaveLength(0);
+    const again = resolveHeldReview(
+      db,
+      { queueRevenuePayment: (p) => queued.push(p) },
+      "s-held",
+      true,
+      NOW,
+    );
+    expect(again.ok).toBe(false); // no longer held_review
   });
 });

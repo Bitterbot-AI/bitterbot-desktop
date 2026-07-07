@@ -228,6 +228,39 @@ export async function nightShiftSweep(opts: {
     }
   }
 
+  // 2b. PLAN-30 G0.5: settlement reconciliation for earning hunts. The
+  //     poster's forage/verdict now returns settlementStatus + txHash
+  //     (tx_hash backfill landed with this phase); mirroring them locally
+  //     is what lets the morning report distinguish accrued from PAID.
+  const reconcilable = opts.db
+    .prepare(
+      `SELECT claim_id, bounty_id, poster_a2a_url
+         FROM forage_hunts
+        WHERE earned_usdc > 0
+          AND (settlement_status IS NULL OR settlement_status != 'paid')`,
+    )
+    .all() as unknown as Array<{ claim_id: string; bounty_id: string; poster_a2a_url: string }>;
+  for (const hunt of reconcilable) {
+    const verdict = await forageRpc(opts.fetchImpl, hunt.poster_a2a_url, "forage/verdict", {
+      bountyId: hunt.bounty_id,
+      claimId: hunt.claim_id,
+      hunterPubkey: opts.hunterPubkey,
+    });
+    if (!verdict.ok) continue;
+    const v = verdict.result as
+      | { settlementStatus?: string | null; txHash?: string | null }
+      | undefined;
+    if (v?.settlementStatus) {
+      opts.db
+        .prepare(
+          `UPDATE forage_hunts
+              SET settlement_status = ?, settlement_tx = ?, updated_at = ?
+            WHERE claim_id = ?`,
+        )
+        .run(v.settlementStatus, v.txHash ?? null, now, hunt.claim_id);
+    }
+  }
+
   // 3. Claim new heartbeat monitoring bounties under the caps.
   const activeCount = (
     opts.db

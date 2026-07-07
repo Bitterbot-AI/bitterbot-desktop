@@ -301,7 +301,7 @@ export async function auditCheckinIfDue(opts: {
   const now = opts.now ?? Date.now();
   const check = opts.db
     .prepare(
-      `SELECT c.stream_id, c.seq, c.content_digest, c.digest_scheme, c.simhash,
+      `SELECT c.stream_id, c.seq, c.content_digest, c.digest_scheme, c.simhash, c.alert,
               s.hunter_pubkey, b.spec_public
          FROM bounty_stream_checks c
          JOIN bounty_streams s ON s.id = c.stream_id
@@ -316,6 +316,7 @@ export async function auditCheckinIfDue(opts: {
         content_digest: string;
         digest_scheme: string;
         simhash: string | null;
+        alert: number;
         hunter_pubkey: string;
         spec_public: string;
       }
@@ -323,7 +324,11 @@ export async function auditCheckinIfDue(opts: {
   if (!check) return { audited: false };
 
   const state = getHunterAuditState(opts.db, check.hunter_pubkey);
-  const p = auditProbability(state.cv);
+  // Alert checks are ALWAYS audited: the alert bonus only pays on an
+  // audit-confirmed alert (bounty-streams sweep), so the flag cannot be
+  // farmed — an alert is a claim that content changed, and claims that
+  // pay extra get verified every time.
+  const p = check.alert === 1 ? 1 : auditProbability(state.cv);
   const roll = opts.roll ?? Math.random();
   if (roll >= p) return { audited: false };
 

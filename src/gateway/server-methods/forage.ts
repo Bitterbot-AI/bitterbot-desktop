@@ -26,17 +26,34 @@ import { getForageStats, getTape } from "../../memory/bounty-tape.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
-async function getBountyDb(): Promise<DatabaseSync | null> {
+type EconomicsLike = {
+  getDb?: () => DatabaseSync | undefined;
+  queueRevenuePayment?: (p: {
+    skillCrystalId: string;
+    purchaseId: string;
+    recipientPeerId: string;
+    amountUsdc: number;
+    role: string;
+  }) => void;
+};
+
+async function getBountyEconomics(): Promise<{
+  db: DatabaseSync;
+  economics: EconomicsLike;
+} | null> {
   const cfg = loadConfig();
   const agentId = resolveDefaultAgentId(cfg);
   const { manager } = await getMemorySearchManager({ cfg, agentId });
   if (!manager) return null;
   const economics = (
-    manager as unknown as {
-      getMarketplaceEconomics?: () => { getDb?: () => DatabaseSync | undefined } | null;
-    }
+    manager as unknown as { getMarketplaceEconomics?: () => EconomicsLike | null }
   ).getMarketplaceEconomics?.();
-  return economics?.getDb?.() ?? null;
+  const db = economics?.getDb?.();
+  return db && economics ? { db, economics } : null;
+}
+
+async function getBountyDb(): Promise<DatabaseSync | null> {
+  return (await getBountyEconomics())?.db ?? null;
 }
 
 const ORACLE_TYPES = new Set(["json", "contains", "regex", "judge"]);
@@ -178,6 +195,69 @@ export const forageHandlers: GatewayRequestHandlers = {
         return;
       }
       respond(true, { available: true, ...getForageStats(db) });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // PLAN-30 G0.5: operator surface for judge-capped settlements. A judge
+  // pass above the unilateral cap parks money at 'held_review'; these two
+  // verbs are how it finally moves (or doesn't). Behind gateway auth like
+  // forage.post — releasing commits this node's money.
+  "forage.review": async ({ respond }) => {
+    try {
+      const db = await getBountyDb();
+      if (!db) {
+        respond(true, { available: false, held: [] });
+        return;
+      }
+      const held = db
+        .prepare(
+          `SELECT id, bounty_id, claim_id, hunter_pubkey, hunter_wallet, amount_usdc, created_at
+             FROM bounty_settlements WHERE status = 'held_review' ORDER BY created_at`,
+        )
+        .all();
+      respond(true, { available: true, held });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "forage.reviewRelease": async ({ params, respond }) => {
+    try {
+      const handle = await getBountyEconomics();
+      if (!handle) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "bounty ledger unavailable"));
+        return;
+      }
+      const settlementId = typeof params.settlementId === "string" ? params.settlementId : "";
+      const approve = params.approve === true;
+      if (!settlementId) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "settlementId required; approve: true|false"),
+        );
+        return;
+      }
+      const { resolveHeldReview } = await import("../../memory/bounty-oracle.js");
+      const outcome = resolveHeldReview(
+        handle.db,
+        {
+          queueRevenuePayment: (p) => handle.economics.queueRevenuePayment?.(p),
+        },
+        settlementId,
+        approve,
+      );
+      if (!outcome.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, outcome.error));
+        return;
+      }
+      respond(true, {
+        settlementId,
+        status: outcome.status,
+        amountUsdc: outcome.amountUsdc,
+      });
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }

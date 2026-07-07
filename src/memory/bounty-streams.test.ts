@@ -4,9 +4,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   handleForageCheckin,
   handleForageClaim,
+  handleForageVerdict,
   parseHeartbeatTerms,
 } from "../gateway/a2a/forage.js";
+import { recordAuditOutcome } from "./bounty-audit.js";
 import { sweepStreamPayouts } from "./bounty-streams.js";
+import { MarketplaceEconomics } from "./marketplace-economics.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
 
@@ -35,16 +38,19 @@ function openDb(): DatabaseSync {
   return db;
 }
 
-function insertHeartbeatBounty(db: DatabaseSync, over: Partial<{ reward: number }> = {}) {
+function insertHeartbeatBounty(
+  db: DatabaseSync,
+  over: Partial<{ reward: number; maxClaims: number }> = {},
+) {
   db.prepare(
     `INSERT INTO bounty_posts
        (bounty_id, poster_pubkey, poster_wallet, kind, category, spec_public,
         oracle_commitment, oracle_type, reward_usdc, funding_proof, claim_stake_usdc,
         max_claims, is_local, status, expires_at, created_at, updated_at)
      VALUES ('hb-1', 'poster-pk', '0x1111111111111111111111111111111111111111', 'heartbeat',
-             'monitoring', ?, 'sha256:x', 'mechanical', ?, 'attest:s', 0, 1, 1, 'open',
+             'monitoring', ?, 'sha256:x', 'mechanical', ?, 'attest:s', 0, ?, 1, 'open',
              ?, ?, ?)`,
-  ).run(SPEC, over.reward ?? 1, NOW + 365 * DAY_MS, NOW, NOW);
+  ).run(SPEC, over.reward ?? 1, over.maxClaims ?? 1, NOW + 365 * DAY_MS, NOW, NOW);
 }
 
 function claimStream(db: DatabaseSync): string {
@@ -284,5 +290,142 @@ describe("sealed check-ins (G0.3)", () => {
 
   it("accepts a legacy check-in with no seal (dual-accept window)", () => {
     expect(sealedCheckin(undefined, "a".repeat(64), NOW + DAY_MS).ok).toBe(true);
+  });
+});
+
+// PLAN-30 G0.5: the bounty budget is shared across all claims (the
+// per-stream accounting previously paid each of K claims the full budget),
+// alert bonuses pay only on audit-confirmed alerts, and dispatch backfills
+// the settlement receipt so forage/verdict can return a tx hash.
+describe("shared budget + alert bonus + receipt backfill (G0.5)", () => {
+  let db: DatabaseSync;
+  let queued: Array<{ purchaseId: string; recipientPeerId: string; amountUsdc: number }>;
+  const economics = () => ({
+    queueRevenuePayment: (p: {
+      purchaseId: string;
+      recipientPeerId: string;
+      amountUsdc: number;
+      role: string;
+    }) => {
+      queued.push(p);
+    },
+  });
+
+  beforeEach(() => {
+    db = openDb();
+    queued = [];
+  });
+
+  it("two claims on one bounty never spend more than the single posted budget", () => {
+    insertHeartbeatBounty(db, { reward: 1, maxClaims: 2 }); // $1 total at $0.05/check
+    const c1 = claimStream(db);
+    const out2 = handleForageClaim(
+      { bountyId: "hb-1", hunterPubkey: "hunter-2", hunterWallet: WALLET },
+      db,
+      NOW,
+    );
+    expect(out2.ok).toBe(true);
+    const c2 = out2.ok ? out2.result.claimId : "";
+    // 15 checks each = 30 total, but only 20 are affordable on $1.
+    for (let i = 1; i <= 15; i++) {
+      checkin(db, c1, NOW + i * DAY_MS);
+      handleForageCheckin(
+        {
+          bountyId: "hb-1",
+          claimId: c2,
+          hunterPubkey: "hunter-2",
+          observation: { url: "https://example.com/pricing", contentHash: `h2-${i}` },
+        },
+        db,
+        NOW + i * DAY_MS + 1,
+      );
+    }
+    sweepStreamPayouts({ db, economics: economics(), now: NOW + 16 * DAY_MS });
+    sweepStreamPayouts({ db, economics: economics(), now: NOW + 16 * DAY_MS + 1 });
+    const paid = queued.reduce((s, q) => s + q.amountUsdc, 0);
+    expect(paid).toBeLessThanOrEqual(1.0000001);
+  });
+
+  it("pays the alert bonus only for audit-confirmed alerts", () => {
+    insertHeartbeatBounty(db, { reward: 5 }); // roomy budget; bonus $1 per SPEC
+    // $5 exceeds the T0 claim cap: give the hunter one PAID settlement
+    // from another poster so it sits at T1 ($5 cap).
+    db.prepare(
+      `INSERT INTO bounty_settlements
+         (id, bounty_id, claim_id, poster_pubkey, hunter_pubkey, hunter_wallet,
+          amount_usdc, oracle_verdict, judge_capped, status, created_at)
+       VALUES ('s-tier', 'b-other', 'c-other', 'other-poster', ?, ?, 0.5, 'pass', 0, 'paid', ?)`,
+    ).run(HUNTER, WALLET, NOW - 1000);
+    const claimId = claimStream(db);
+    checkin(db, claimId, NOW + DAY_MS); // plain check
+    handleForageCheckin(
+      {
+        bountyId: "hb-1",
+        claimId,
+        hunterPubkey: HUNTER,
+        observation: {
+          url: "https://example.com/pricing",
+          contentHash: "changed-hash",
+          alert: true,
+        },
+      },
+      db,
+      NOW + 2 * DAY_MS,
+    );
+    // Unconfirmed alert: no bonus yet.
+    sweepStreamPayouts({ db, economics: economics(), now: NOW + 2 * DAY_MS + 1 });
+    expect(queued.reduce((s, q) => s + q.amountUsdc, 0)).toBeCloseTo(0.1); // 2 checks only
+
+    // A third check whose alert the auditor CONFIRMED pays check + bonus.
+    handleForageCheckin(
+      {
+        bountyId: "hb-1",
+        claimId,
+        hunterPubkey: HUNTER,
+        observation: {
+          url: "https://example.com/pricing",
+          contentHash: "changed-again",
+          alert: true,
+        },
+      },
+      db,
+      NOW + 3 * DAY_MS,
+    );
+    db.prepare(
+      `UPDATE bounty_stream_checks SET audit_status = 'pass' WHERE stream_id = ? AND seq = 3`,
+    ).run(claimId);
+    queued = [];
+    sweepStreamPayouts({ db, economics: economics(), now: NOW + 3 * DAY_MS + 1 });
+    expect(queued.reduce((s, q) => s + q.amountUsdc, 0)).toBeCloseTo(0.05 + 1); // check + bonus
+  });
+
+  it("payment dispatch backfills tx_hash + paid status onto the settlement", () => {
+    insertHeartbeatBounty(db);
+    const claimId = claimStream(db);
+    checkin(db, claimId, NOW + DAY_MS);
+    const realEconomics = new MarketplaceEconomics(db);
+    sweepStreamPayouts({ db, economics: realEconomics, now: NOW + DAY_MS + 1 });
+
+    // Release requires the audit apprenticeship (G0.2), then age past hold.
+    for (let i = 0; i < 10; i++) recordAuditOutcome(db, HUNTER, "pass", NOW);
+    db.prepare(`UPDATE revenue_payment_queue SET release_at = ?`).run(Date.now() - 1000);
+    expect(realEconomics.releaseHeldPayments()).toBe(1);
+    const payment = realEconomics.getReleasedPayments()[0];
+    expect(payment).toBeTruthy();
+    realEconomics.markPaymentProcessed(payment.id, "0xdeadbeef");
+
+    const settlement = db
+      .prepare(`SELECT status, tx_hash FROM bounty_settlements WHERE claim_id = ?`)
+      .get(claimId) as { status: string; tx_hash: string | null };
+    expect(settlement.status).toBe("paid");
+    expect(settlement.tx_hash).toBe("0xdeadbeef");
+
+    // The hunter-facing verdict now returns the receipt.
+    const verdict = handleForageVerdict({ bountyId: "hb-1", claimId, hunterPubkey: HUNTER }, db);
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) {
+      expect(verdict.result.settlementStatus).toBe("paid");
+      expect(verdict.result.txHash).toBe("0xdeadbeef");
+    }
   });
 });

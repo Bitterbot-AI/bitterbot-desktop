@@ -334,3 +334,93 @@ export async function settleDeliveredClaims(opts: {
 
   return result;
 }
+
+/**
+ * PLAN-30 G0.5: deadline/expiry enforcement. Fails 'claimed' claims whose
+ * bounty deadline or listing expiry has passed (previously nothing ever
+ * failed an overdue claim) and retires expired 'open' bounties to
+ * 'expired'. Claims with an ACTIVE stream are exempt: heartbeat lifecycles
+ * are governed by budget exhaustion, not the listing window.
+ */
+export function sweepOverdueClaims(
+  db: DatabaseSync,
+  now: number = Date.now(),
+): { claimsFailed: number; bountiesExpired: number } {
+  const claims = db
+    .prepare(
+      `UPDATE bounty_claims SET status = 'failed', updated_at = ?
+        WHERE status = 'claimed'
+          AND id NOT IN (SELECT id FROM bounty_streams WHERE status = 'active')
+          AND bounty_id IN (
+            SELECT bounty_id FROM bounty_posts
+             WHERE (deadline IS NOT NULL AND deadline < ?) OR expires_at < ?
+          )`,
+    )
+    .run(now, now, now);
+  const bounties = db
+    .prepare(
+      `UPDATE bounty_posts SET status = 'expired', updated_at = ?
+        WHERE status = 'open' AND expires_at < ?`,
+    )
+    .run(now, now);
+  const claimsFailed = Number(claims.changes);
+  const bountiesExpired = Number(bounties.changes);
+  if (claimsFailed > 0 || bountiesExpired > 0) {
+    log.info(`Overdue sweep: ${claimsFailed} claims failed, ${bountiesExpired} bounties expired`);
+  }
+  return { claimsFailed, bountiesExpired };
+}
+
+/**
+ * PLAN-30 G0.5: resolve a judge-capped settlement parked at 'held_review'.
+ * Approve queues the payout on the revenue rail; reject retires the row.
+ * Pure db+economics so the gateway handler stays glue.
+ */
+export function resolveHeldReview(
+  db: DatabaseSync,
+  economics: {
+    queueRevenuePayment: (p: {
+      skillCrystalId: string;
+      purchaseId: string;
+      recipientPeerId: string;
+      amountUsdc: number;
+      role: string;
+    }) => void;
+  },
+  settlementId: string,
+  approve: boolean,
+  now: number = Date.now(),
+): { ok: true; status: "queued" | "rejected"; amountUsdc: number } | { ok: false; error: string } {
+  const row = db
+    .prepare(
+      `SELECT id, bounty_id, hunter_pubkey, amount_usdc
+         FROM bounty_settlements WHERE id = ? AND status = 'held_review'`,
+    )
+    .get(settlementId) as
+    | { id: string; bounty_id: string; hunter_pubkey: string; amount_usdc: number }
+    | undefined;
+  if (!row) {
+    return { ok: false, error: "no held_review settlement with that id" };
+  }
+  if (approve) {
+    db.prepare(`UPDATE bounty_settlements SET status = 'queued', settled_at = ? WHERE id = ?`).run(
+      now,
+      row.id,
+    );
+    economics.queueRevenuePayment({
+      skillCrystalId: `bounty:${row.bounty_id}`,
+      purchaseId: row.id,
+      recipientPeerId: row.hunter_pubkey,
+      amountUsdc: row.amount_usdc,
+      role: "bounty_reward",
+    });
+    log.info(`held_review settlement ${row.id} APPROVED: $${row.amount_usdc} queued`);
+    return { ok: true, status: "queued", amountUsdc: row.amount_usdc };
+  }
+  db.prepare(`UPDATE bounty_settlements SET status = 'rejected', settled_at = ? WHERE id = ?`).run(
+    now,
+    row.id,
+  );
+  log.info(`held_review settlement ${row.id} rejected by operator`);
+  return { ok: true, status: "rejected", amountUsdc: row.amount_usdc };
+}

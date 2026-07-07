@@ -719,11 +719,33 @@ export class MarketplaceEconomics {
 
   /** Mark a payment as dispatched onchain. */
   markPaymentProcessed(id: string, txHash: string): void {
+    const now = Date.now();
     this.db
       .prepare(
         `UPDATE revenue_payment_queue SET status = 'paid', tx_hash = ?, processed_at = ? WHERE id = ?`,
       )
-      .run(txHash, Date.now(), id);
+      .run(txHash, now, id);
+    // PLAN-30 G0.5: backfill the receipt onto the bounty settlement so
+    // forage/verdict can return a tx hash to hunters. purchase_id is the
+    // settlement id for one-shot rewards and the claim/stream id for
+    // stream batches; match either. Guarded: non-bounty deployments may
+    // not have the settlements table.
+    try {
+      const row = this.db
+        .prepare(`SELECT purchase_id, role FROM revenue_payment_queue WHERE id = ?`)
+        .get(id) as { purchase_id: string; role: string } | undefined;
+      if (row && (row.role === "bounty_reward" || row.role === "stream_check")) {
+        this.db
+          .prepare(
+            `UPDATE bounty_settlements
+                SET tx_hash = ?, status = 'paid', settled_at = ?
+              WHERE status IN ('queued', 'paid') AND (id = ? OR claim_id = ?)`,
+          )
+          .run(txHash, now, row.purchase_id, row.purchase_id);
+      }
+    } catch {
+      /* settlements table absent: nothing to backfill */
+    }
   }
 
   /** Mark a payment as failed (will retry on next consolidation). */

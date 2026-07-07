@@ -30,7 +30,19 @@
 >   griefing, so forfeiture-grade fraud waits for Ed25519 signing (G4).
 >   Night Shift sends v2 observations and raises `alert` on content change.
 >   Tests in `bounty-streams.test.ts` + `forage-client.test.ts`.
-> - G0.4, G0.5 in flight.
+> - **G0.5 LANDED.** All six gap closures: (1) shared bounty budget across
+>   claims (the latent K x overpay bug) with precise spent_usdc accounting
+>   (migration v28, backfilled); (2) alert bonuses pay only on
+>   audit-CONFIRMED alerts (alert checks are always audited, so the flag
+>   cannot be farmed); (3) deadline/expiry sweep (`sweepOverdueClaims`,
+>   tick 11g; active streams exempt; fill-rate denominator includes
+>   'expired'); (4) `forage.review` + `forage.reviewRelease` operator RPCs
+>   over `resolveHeldReview`; (5) tx_hash backfill: payment dispatch marks
+>   the settlement 'paid' with the receipt, `forage/verdict` returns it;
+>   (6) hunter-side settlement reconciliation (settlement_status/tx on
+>   forage_hunts) and the morning report distinguishes "earned" (paid)
+>   from "accrued (pending verification)".
+> - G0.4 in flight.
 >   **Depends on:** PLAN-29 (Forage bounty economy, live), PLAN-8 (revenue rail), PLAN-16/17 (task spine)
 >   **Related open problem:** census/network-count redesign (pinned 2026-07-07); Phase G1 partially feeds it.
 >   **Revision note:** v1 was red-teamed by a second agent fan-out (5 verification lanes). Five blockers and a broken escrow design were found and fixed; see Appendix A for the changelog. Verify before trusting any v1 copy.

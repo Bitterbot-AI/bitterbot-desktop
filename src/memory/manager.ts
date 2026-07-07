@@ -2249,6 +2249,13 @@ export class MemoryIndexManager implements MemorySearchManager {
                 .then((m) => m.sweepStreamPayouts({ db: bountyDb, economics }))
                 .catch((err) => log.debug(`stream payout sweep failed: ${String(err)}`));
 
+              // 11g. PLAN-30 G0.5: deadline/expiry enforcement — overdue
+              // one-shot claims fail, expired open bounties retire. Pure
+              // db work; runs inline on the tick.
+              void import("./bounty-oracle.js")
+                .then((m) => m.sweepOverdueClaims(bountyDb))
+                .catch((err) => log.debug(`overdue claim sweep failed: ${String(err)}`));
+
               // 11h. PLAN-29 Phase 4 (LEGAL-GATED, default off): strike pool
               // bounties whose oracle passed and whose pledges reached
               // quorum. Captures move funder->hunter directly; this node
