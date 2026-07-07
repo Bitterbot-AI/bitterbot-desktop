@@ -1,6 +1,9 @@
 # PLAN-30: Forage Genesis, Jumpstarting the Bounty Economy
 
-**Status:** IN PROGRESS (2026-07-07) — G0 landing; see G0 status below
+**Status:** IN PROGRESS (2026-07-07) — G0 code-complete; see G0 status below
+**Depends on:** PLAN-29 (Forage bounty economy, live), PLAN-8 (revenue rail), PLAN-16/17 (task spine)
+**Related open problem:** census/network-count redesign (pinned 2026-07-07); Phase G1 partially feeds it.
+**Revision note:** v1 was red-teamed by a second agent fan-out (5 verification lanes). Five blockers and a broken escrow design were found and fixed; see Appendix A for the changelog.
 
 > **G0 status (2026-07-07):**
 >
@@ -57,9 +60,6 @@
 > capture spike; the CV release gate + apprenticeship carries deterrence
 > until it lands). Next: G1 genesis tranche posting (needs `GET /health`
 > endpoint + scale governor) per section 2.
-> **Depends on:** PLAN-29 (Forage bounty economy, live), PLAN-8 (revenue rail), PLAN-16/17 (task spine)
-> **Related open problem:** census/network-count redesign (pinned 2026-07-07); Phase G1 partially feeds it.
-> **Revision note:** v1 was red-teamed by a second agent fan-out (5 verification lanes). Five blockers and a broken escrow design were found and fixed; see Appendix A for the changelog. Verify before trusting any v1 copy.
 
 ## 0. What this plan is and is not
 
