@@ -71,6 +71,7 @@ export type ExternalContentSource =
   | "channel_metadata"
   | "web_search"
   | "web_fetch"
+  | "a2a_agent"
   | "unknown";
 
 const EXTERNAL_SOURCE_LABELS: Record<ExternalContentSource, string> = {
@@ -81,6 +82,10 @@ const EXTERNAL_SOURCE_LABELS: Record<ExternalContentSource, string> = {
   channel_metadata: "Channel metadata",
   web_search: "Web Search",
   web_fetch: "Web Fetch",
+  // PLAN-31 Phase 0: another agent's message is a hostile principal class,
+  // NEVER trusted instructions (94.4%/100% direct/inter-agent injection
+  // rates in the literature). A2A task text is wrapped with this label.
+  a2a_agent: "Another AI agent (peer)",
   unknown: "External",
 };
 
