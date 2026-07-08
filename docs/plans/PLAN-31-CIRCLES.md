@@ -76,16 +76,30 @@ functions FAR EASIER to add (the trust edges, reachability, and daily habit
 already exist) -> economic gravity gives people more reasons to connect. Money
 is the second act on a network that already loves being there.
 
-**Honest caveat (research lane, necessary != sufficient):** a warm graph is a
-well-evidenced NECESSARY condition for easy monetization and demonstrably
-raises willingness-to-pay (a16z network-effects work; trust lowers perceived
-risk -> higher conversion), but it is NOT automatic revenue — Twitter took
-~12 years to profit, Snap accumulated ~$12.7B in losses, Reddit ~19 years, all
-on huge engaged graphs. The graph buys the OPTION to monetize; converting it
-is its own hard step that needs a model fitting the graph (here: agent-
-mediated settlement + the Forage/collective-utility yield). Plan graph->revenue
-as a distinct phase (Phase 2+), not a foregone conclusion. This is exactly why
-the money design is kept fully specced (section 3.3-3.4) rather than hand-waved.
+**The non-extractive principle (this is a goal, not a tactic).** Bitterbot does
+NOT profit from users' transactions. When money moves between friends it moves
+friend-to-friend, in full — no take rate, no interchange, no instant-transfer
+fee, no spread. The transaction value is squarely the users'. We are building
+a thriving ecosystem, not a payments rake. This flips the standard flywheel
+caveat: the research warning that "a warm graph does not automatically become
+revenue" (Twitter ~12yr to profit, Snap ~$12.7B losses) is about companies
+trying to EXTRACT from the graph — which is not our aim, so the anxiety mostly
+dissolves. What the warm graph must produce is a thriving ECONOMY that flows to
+users and node operators (the PLAN-30 Forage economy: nodes earn, circles
+generate real demand), not a line item on our P&L.
+
+Two honest consequences to hold: (1) this is a genuine differentiation and
+trust weapon — every incumbent (Venmo instant-transfer fees, Cash App, card
+interchange, Apple) monetizes the transaction; "we never touch your money and
+never skim it" is a positioning no rake-taking competitor can match, and it is
+exactly what makes intimate friend-and-family money feel safe. (2) Bitterbot's
+own sustainability is therefore a SEPARATE, deliberately non-transactional
+question (the agent product itself, infrastructure, node-economy participation,
+or mission/strategic value) — the plan must not pretend the ecosystem funds the
+company through a transaction cut it has renounced. Keep that question explicit
+and answered elsewhere; here, transactions are for users, period. The money
+design (section 3.3-3.4) stays fully specced not to monetize it but because
+moving other people's money safely is hard and must be right.
 
 Sections 11-12 map the later domain apps (expense-splitting, care circles, team
 logistics, co-ops) and the platform path (third-party "circle skills"). Those
@@ -105,8 +119,11 @@ off-platform, private by construction, with agents on BOTH sides. Every
 incumbent that came near this stopped at a wall we do not have: card tokens
 are merchant-scoped by construction, shared-assistant products firewall
 personal memory by design, and true dual-agent products (Blockit, $5K/yr) need
-both sides to subscribe. Our distribution IS the pairing: friends install
-because their friends did.
+both sides to subscribe. And every one of them RAKES the transaction (interchange,
+instant-transfer fees, take rates); we take nothing (see the non-extraction
+principle below) — which is both a trust weapon for intimate money and a moat
+a rake-dependent competitor cannot copy without breaking its own model. Our
+distribution IS the pairing: friends install because their friends did.
 
 **The ecosystem flywheel:** circles are the organic-demand engine the agent
 economy is missing (PLAN-30 research: every agent economy is subsidy without
@@ -500,10 +517,14 @@ says can trigger a tool or silently enter memory.
    UI-only, expiry-mandatory objects enforced in wallet-service code;
    durable signed records; UETA section 10 error-prevention surface
    (pre-send confirmation, cancel window, error-report path).
-4. **Monetization rule:** no fiat ramp, no swap, no per-transfer fee
-   in-product; subscription monetization keeps us outside the GENIUS DASP
-   definition and the 2028 cliff, and outside KYC-forcing gravity. Link out
-   for on-ramps.
+4. **Non-extraction rule (principle + regulatory shield):** no per-transfer
+   fee, no take rate, no spread, no swap, no fiat ramp in-product — not merely
+   as a tactic but because transactions are the users' and Bitterbot does not
+   profit from them. This is the strongest possible position on the GENIUS DASP
+   definition + the 2028 cliff + KYC-forcing gravity (a platform that takes no
+   cut and never touches funds is the furthest thing from a money transmitter),
+   AND it is the differentiation/trust weapon (section 0). Bitterbot
+   sustainability lives entirely outside the transaction. Link out for on-ramps.
 5. **Marketing hygiene:** never privacy/anonymity/untraceable framing;
    strictly expense-settling between known friends (Samourai/Storm were
    marketing-plus-knowledge convictions).
@@ -582,7 +603,10 @@ counsel.
    members, disclosure-grant anomalies. Zero tolerance for silent failures.
 6. Phase-2 onward: settlement reliability, then organic DPSV from circle
    activity (labeled, never blended with seeded volume, PLAN-30 discipline) —
-   the flywheel's yield, measured only once money is live.
+   the flywheel's yield measured as value flowing TO USERS and node operators,
+   never as Bitterbot transaction revenue (there is none by design). The
+   health question is "is a real economy thriving on the graph," not "what did
+   we skim."
 
 ## 10. Risk register (each with its receipt)
 
