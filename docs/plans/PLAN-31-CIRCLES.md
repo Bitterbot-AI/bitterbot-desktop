@@ -2,8 +2,8 @@
 
 **Status:** DRAFT v2 (2026-07-08) — CONNECTION-FIRST reframe. Built from a
 13-lane research program (5 market/mechanics + 4 adversarial/red-team + 1 rails
-map + 2 substrate/domain + 1 connection-first lane in flight), every
-load-bearing claim verified against primary sources. **The pivot from v1 of
+map + 2 substrate/domain + 1 connection-first), every load-bearing claim
+verified against primary sources; folklore-flagged figures excluded. **The pivot from v1 of
 this doc: the product is the trusted connection graph and agent-to-agent
 conversation, NOT bill-splitting. Money is the yield, demoted to Phase 2 on a
 warm graph. Reason: it solves cold-start (the graph forms with zero money/
@@ -72,9 +72,20 @@ it is light) -> connected agents deliver real utility with no money involved
 (reachability, ask-the-graph, ambient coordination) -> daily engagement + the
 built-in reason to recruit (your people aren't here yet) densifies the graph ->
 a warm, dense, trusted network now makes settlement, pooling, and collective
-functions trivial to add (the trust edges, reachability, and daily habit
+functions FAR EASIER to add (the trust edges, reachability, and daily habit
 already exist) -> economic gravity gives people more reasons to connect. Money
 is the second act on a network that already loves being there.
+
+**Honest caveat (research lane, necessary != sufficient):** a warm graph is a
+well-evidenced NECESSARY condition for easy monetization and demonstrably
+raises willingness-to-pay (a16z network-effects work; trust lowers perceived
+risk -> higher conversion), but it is NOT automatic revenue — Twitter took
+~12 years to profit, Snap accumulated ~$12.7B in losses, Reddit ~19 years, all
+on huge engaged graphs. The graph buys the OPTION to monetize; converting it
+is its own hard step that needs a model fitting the graph (here: agent-
+mediated settlement + the Forage/collective-utility yield). Plan graph->revenue
+as a distinct phase (Phase 2+), not a foregone conclusion. This is exactly why
+the money design is kept fully specced (section 3.3-3.4) rather than hand-waved.
 
 Sections 11-12 map the later domain apps (expense-splitting, care circles, team
 logistics, co-ops) and the platform path (third-party "circle skills"). Those
@@ -157,9 +168,21 @@ already-extensible scope set.
 - Market: Zelle $1.2T sent 2025 (+20%), US P2P $1.8T+/yr; 6.8M US roommate
   households (record); 62% of coupled adults keep money separate, 88% of
   Gen Z (Bankrate).
-- Whitespace: no shipped product settles money between two consumers' agents
-  (adversarially re-verified July 2026; encircled by Apple/Cash App/Alipay/
-  Kakao but unoccupied). Splitwise category ships ZERO shareable artifacts.
+- Whitespace (money): no shipped product settles money between two consumers'
+  agents (adversarially re-verified July 2026; encircled by Apple/Cash App/
+  Alipay/Kakao but unoccupied). Splitwise category ships ZERO shareable
+  artifacts.
+- Whitespace (CONNECTION, the v1 bet): CONFIRMED unoccupied — no shipped
+  product connects a user's own personal agent to another real user's personal
+  agent by mutual consent for ongoing conversation. The market built three
+  adjacent things instead: task-first interop (Google A2A, enterprise),
+  agents-only social sims (Moltbook, public broadcast, no consenting human on
+  both sides), and single-user companion bots (Character.AI, Friend/Tab, Dot,
+  Martin — you talk to your OWN bot). Closest is Personal.ai (human-to-human
+  messaging with AI assistance; agent-to-agent is an emergent side effect, not
+  a designed friend graph) and Telegram's May-2026 bot-to-bot primitive (no
+  social-graph product framing). The connection-first agent graph exists only
+  as think-pieces and academic work — never shipped.
 - Growth: fantasy platform Sleeper grew >90% virally at ~11 invites per
   league created; WeChat red envelopes took WeChat Pay 30M to 100M users in
   about a month; referred Venmo users were ~10x likelier to become monthly
@@ -307,26 +330,37 @@ empty screen.
 
 ### 4.4 The connection UI + social-engagement surface (the user's ask)
 
-The North-Star surface is the connected graph made visible. In the renderer
+The primary UI surface is the connected graph made visible (the North-Star
+METRIC is reciprocity, section 9; this is what the user sees). In the renderer
 (new "People"/"Circle" pane; ui-store/AppShell/Sidebar slots):
 
-- **Connected friend-node count** — the headline number, front and center:
-  how many people's agents yours is connected to. This is the metric the user
-  called for and the one social networks live on (the activation-threshold
-  canon — Facebook's early "N friends" magic number, etc. — lands from the
-  research lane; number filled when it returns).
+- **Connected friend-node count** — the headline presence number, front and
+  center: how many people's agents yours is connected to. This is the surface
+  the user called for and the one that makes the graph feel real. IMPORTANT
+  nuance from the research lane: a raw count is the _ambient_ signal, not the
+  metric we optimize — the "magic number" canon is mostly folklore (Chamath's
+  "7 friends in 10 days" is genuinely his phrase but Alex Schultz says "10 in
+  14," and the serious literature — Chen, Mixpanel — calls the exact digits
+  arbitrary correlations). So we SHOW the count (it drives the felt sense of a
+  populated network, the real causal mechanism behind Facebook's 7-friends
+  result) but we do not make it the success North Star; that is reciprocity
+  (below).
 - **Presence/liveness** — which connections' nodes are reachable now (ambient
   "your people are here"), last-seen, without exposing a public graph.
-- **Reciprocity + conversation health, not vanity follower counts** — because
-  a trusted graph is small and mutual, the metrics that matter are relational:
-  active conversations between your agent and friends', response rate to
-  "ask your people," mutual-connection density (friends-of-friends already
-  connected), and how many questions the graph answered for you this week.
-  These are engagement signals that reward a _working_ graph, never a
-  broadcast-follower race (LinkedIn's 500+ cap and Snap-score-anxiety
-  cautions apply — no public leaderboard, no global count).
+- **Reciprocity + conversation health — the REAL health signal** (peer-
+  reviewed: Notre Dame's 7M-person study found imbalanced ties dissolve and
+  reciprocal ties persist; Granovetter's tie-strength includes reciprocity;
+  design for Dunbar's inner 5/15/50, not broadcast scale). Surface: active
+  RECIPROCATED threads per relationship ("you and Ana's agents went back and
+  forth 4x this week"), a mesh-density tile ("5 of your 8 connections are
+  actively conversing"), ask-the-graph answer rate, open-loop nudges (never a
+  shaming counter). These reward a _working_ graph, not a broadcast-follower
+  race — no public leaderboard, no global count (LinkedIn-500+ and
+  Snap-score-anxiety cautions; Strava kudos causally increase activity but
+  upward-comparison meta-analysis g=-0.24 on wellbeing, so we stay reciprocal-
+  and-private, never comparative-and-public).
 - **The weekly briefing** (section 1 verb 5) is the recurring pull that turns
-  the count into a habit.
+  presence into a habit.
 
 Artifact/privacy laws for anything shareable: user-initiated with preview,
 no free-text templates, k>=5 cohorts on any comparison, and NO public
@@ -520,17 +554,30 @@ counsel.
 
 ## 9. Success metrics (in order — connection-first)
 
-1. **Connected friend-node count and its activation threshold** — the
-   North Star. The Facebook-N-friends / Slack-2000-messages analog for us:
-   the connection count (and ask-the-graph interactions) in week one that
-   predicts retention. Instrument it, find it, point onboarding at it.
-2. Connection-conversion funnel and K-factor (invite-created -> connection-
+1. **North Star: Weekly Reciprocated Agent Conversations across distinct
+   contacts** — agent-mediated conversations that got at least one reply back,
+   counted across distinct relationships. The research lane's strongest
+   cross-cutting result: reciprocity + distinctness beat raw counts as a
+   quality signal, backed independently by network science (Notre Dame,
+   Granovetter, Dunbar) and product-analytics doctrine (Amplitude/Chen class
+   DAU and registration counts as BAD North Stars). This is our Slack-messages
+   / Airbnb-nights analog, hardened with reciprocity. The friend-node count is
+   SHOWN in-UI (section 4b) but is not this metric.
+2. **Activation "magic number" — to VALIDATE, not assume:** candidate is
+   ~"3 reciprocated agent exchanges with >=2 distinct contacts in the first
+   10-14 days" (the friends/family-mesh reformulation of "7 friends in 10
+   days," rebuilt around reciprocity + graph breadth). Re-derive the real
+   threshold from our own retained-vs-churned cohort curves — do NOT copy an
+   integer; the canonical ones are folklore. Aha moment = the first
+   reciprocated exchange (a useful reply comes back, not a message into the
+   void). Run Sean Ellis's 40%-very-disappointed PMF check on habit-moment
+   users.
+3. Connection-conversion funnel and K-factor (invite-created -> connection-
    confirmed by path; target invited-vs-organic activation well above 1x;
-   consumer-good K is 0.3-0.7).
-3. Week-4 retention of connected vs solo users; graph health (median
-   connections per active user, reciprocity, ask-the-graph answer rate).
-4. Agent-conversation volume and usefulness (questions the graph answered;
-   coordination completed) — the "is the connection doing real work" signal.
+   consumer-good K is 0.3-0.7). Use the Power User Curve, not DAU/MAU.
+4. Week-4 retention of connected vs solo users; graph health (reciprocity
+   ratio, mesh density, ask-the-graph answer rate) — the "is the connection
+   doing real work" signal.
 5. Security health: injection-scan hits on connection channels, suspended
    members, disclosure-grant anomalies. Zero tolerance for silent failures.
 6. Phase-2 onward: settlement reliability, then organic DPSV from circle
@@ -802,14 +849,19 @@ action-class-keyed scopes — already reflected in the C1 circles store
 (migration v29, CirclesStore). All numbers flagged as directional/unverified
 by the lanes are excluded from sections 11-12.
 
-**Fourth pass (2026-07-08), connection-first reframe:** the product's center
-moved from bill-splitting to the trusted connection graph + agent-to-agent
-conversation, with money demoted to Phase 2 (this doc v2). One research lane
-is in flight — social-activation "magic number" canon (Facebook N-friends,
-etc.), connection-count / social-presence UI patterns, the connection-first-
-agent whitespace re-check, and the social-graph-first-then-monetize cold-start
-evidence. The activation-threshold numbers land in sections 4b/4.6/9 when it
-returns; the reframe itself (and the cold-start rationale) is decided. Nothing
-from the prior passes is wasted — the money design (section 3.3-3.4), the
+**Fourth pass (2026-07-08), connection-first reframe — COMPLETE:** the
+product's center moved from bill-splitting to the trusted connection graph +
+agent-to-agent conversation, money demoted to Phase 2 (this doc v2). The
+connection-first research lane landed and drove three corrections folded in
+above: (1) the "magic number" canon is mostly folklore (Chamath's 7-in-10 is
+real but soft; the durable signal is reciprocity + retention-curve shape), so
+the North Star is Weekly Reciprocated Agent Conversations across distinct
+contacts, and the friend-node count is a SHOWN presence surface, not the
+optimized metric (sections 4b, 9); (2) connection-first agent graph is
+CONFIRMED unoccupied whitespace, Personal.ai the closest partial (section 2);
+(3) graph-first-then-monetize is SUPPORTED but necessary-not-sufficient —
+graph->revenue is a distinct hard phase (Twitter ~12yr to profit), so the
+money design stays fully specced rather than assumed easy (section 0 caveat).
+Nothing from the prior passes is wasted — the money design (3.3-3.4), the
 viral/gamification/security/regulatory work, and the C1 store all serve the
 connection-first build; they reorder, they do not rewrite.
