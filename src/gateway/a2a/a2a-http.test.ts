@@ -307,3 +307,72 @@ describe("createA2aHttpHandler — auth", () => {
     h.close();
   });
 });
+
+describe("createA2aHttpHandler — circle/mailbox kill switch (PLAN-31 §8)", () => {
+  function handlerWith(circles?: Record<string, unknown>) {
+    return createA2aHttpHandler({
+      getConfig: () =>
+        ({
+          a2a: { enabled: true, authentication: { type: "none" as const } },
+          ...(circles ? { circles } : {}),
+        }) as never,
+      getSkills: () => [],
+      getGatewayUrl: () => "http://127.0.0.1:19001",
+      getSkillsVersion: () => 0,
+      taskDb: new DatabaseSync(":memory:"),
+    });
+  }
+
+  async function call(h: ReturnType<typeof createA2aHttpHandler>, method: string) {
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: { jsonrpc: "2.0", method, params: {}, id: "1" },
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    return { status: res.statusCode, body: JSON.parse(res._body ?? "{}") };
+  }
+
+  it("answers METHOD_NOT_FOUND for every circle/* verb when circles are disabled", async () => {
+    // Default config has no circles block: the surface must be INVISIBLE,
+    // indistinguishable from a node without the feature.
+    const h = handlerWith();
+    for (const method of [
+      "circle/join",
+      "circle/roster",
+      "circle/message",
+      "circle/event.append",
+    ]) {
+      const { status, body } = await call(h, method);
+      expect(status, method).toBe(404);
+      expect(body.error?.message).toBe("Method not found");
+    }
+    h.close();
+  });
+
+  it("answers METHOD_NOT_FOUND for mailbox/* unless BOTH circles.enabled and mailbox.serve are true", async () => {
+    // circles on, serve off: still invisible.
+    const h = handlerWith({ enabled: true, mailbox: { serve: false } });
+    const { status } = await call(h, "mailbox/post");
+    expect(status).toBe(404);
+    h.close();
+
+    // circles off entirely: invisible.
+    const h2 = handlerWith({ enabled: false, mailbox: { serve: true } });
+    const { status: s2 } = await call(h2, "mailbox/poll");
+    expect(s2).toBe(404);
+    h2.close();
+  });
+
+  it("explicit circles.enabled=false matches the missing-config shape exactly", async () => {
+    const off = handlerWith({ enabled: false });
+    const missing = handlerWith();
+    const a = await call(off, "circle/roster");
+    const b = await call(missing, "circle/roster");
+    expect(a.status).toBe(b.status);
+    expect(a.body.error).toEqual(b.body.error);
+    off.close();
+    missing.close();
+  });
+});
