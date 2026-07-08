@@ -184,6 +184,87 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
   },
 
+  "circles.tab.add": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    try {
+      let input: import("../../circles/tab.js").TabEventInput;
+      if (params.type === "expense.reversal" && typeof params.reverses === "string") {
+        input = { type: "expense.reversal", reverses: params.reverses };
+      } else if (params.type === "note.add" && typeof params.memo === "string") {
+        input = { type: "note.add", memo: params.memo };
+      } else if (
+        typeof params.memo === "string" &&
+        typeof params.amountCents === "number" &&
+        Array.isArray(params.participants)
+      ) {
+        input = {
+          type: "expense.add",
+          memo: params.memo,
+          amountCents: params.amountCents,
+          participants: (params.participants as unknown[]).filter(
+            (p): p is string => typeof p === "string",
+          ),
+        };
+      } else {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "expense.add {memo, amountCents, participants}, expense.reversal {reverses}, or note.add {memo}",
+          ),
+        );
+        return;
+      }
+      const result = await svc.service.appendTabEvent({ circleId, input });
+      respond(true, result, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.tab.balances": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    respond(true, svc.service.tabBalances(circleId), undefined);
+  },
+
+  "circles.sync": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    try {
+      const events = await svc.service.syncEvents(circleId);
+      respond(true, events, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
   "circles.messages": async ({ params, respond }) => {
     const svc = await getService();
     if (!svc.ok) {

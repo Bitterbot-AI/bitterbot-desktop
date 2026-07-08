@@ -137,6 +137,9 @@ const BASE_METHODS = [
   "circles.join",
   "circles.send",
   "circles.messages",
+  "circles.tab.add",
+  "circles.tab.balances",
+  "circles.sync",
   // Marketplace
   "marketplace.search",
   "marketplace.trending",

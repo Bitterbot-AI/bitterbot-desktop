@@ -61,7 +61,9 @@ const RATE_LIMITS: Record<string, { windowMs: number; max: number }> = {
   read: { windowMs: 60_000, max: 60 },
   presence: { windowMs: 60_000, max: 12 },
   message: { windowMs: 60_000, max: 30 },
-  event: { windowMs: 60_000, max: 30 },
+  // Higher than message: event replays also arrive in sync batches
+  // (service.syncEvents) and converge across sweeps via idempotent appends.
+  event: { windowMs: 60_000, max: 120 },
 };
 
 const rateBuckets = new Map<string, number[]>();
@@ -531,6 +533,8 @@ export type CircleEventRecord = {
   prevHash: string | null;
   eventType: string;
   body: Record<string, JsonValue>;
+  /** The original signed envelope (replayable through the append path). */
+  envelope: Record<string, JsonValue>;
   eventHash: string;
   claimedAt: number;
   receivedAt: number;
@@ -540,7 +544,7 @@ export function handleCircleEventAppend(
   params: { envelope?: unknown },
   db: DatabaseSync,
   now: number = Date.now(),
-): CircleOutcome<{ eventId: string; seq: number }> {
+): CircleOutcome<{ eventId: string; seq: number; duplicate?: boolean }> {
   const auth = authorizeCircleEnvelope(db, params.envelope, KNOWN_SCOPES.ledgerAppend, {
     now,
     rateClass: "event",
@@ -610,7 +614,7 @@ export function handleCircleEventAppend(
         | { event_id: string; event_hash: string }
         | undefined;
       if (existing && existing.event_hash === expectedHash) {
-        return { ok: true, result: { eventId: existing.event_id, seq } };
+        return { ok: true, result: { eventId: existing.event_id, seq, duplicate: true } };
       }
       auth.store.freezeCircle(env.circle_id, now);
       log.error(
@@ -669,7 +673,7 @@ export function handleCircleEventsSince(
   const rows = db
     .prepare(
       `SELECT event_id, circle_id, author_pubkey, seq, prev_hash, event_type, body_json,
-              event_hash, claimed_at, received_at
+              envelope_json, event_hash, claimed_at, received_at
          FROM circle_events
         WHERE circle_id = ? AND received_at > ?
         ORDER BY received_at ASC LIMIT ?`,
@@ -682,6 +686,7 @@ export function handleCircleEventsSince(
     prev_hash: string | null;
     event_type: string;
     body_json: string;
+    envelope_json: string;
     event_hash: string;
     claimed_at: number;
     received_at: number;
@@ -697,6 +702,9 @@ export function handleCircleEventsSince(
         prevHash: r.prev_hash,
         eventType: r.event_type,
         body: safeJsonRecord(r.body_json),
+        // The original signed envelope so a syncing peer can replay it
+        // through its own validated append path (chain + fork checks).
+        envelope: safeJsonRecord(r.envelope_json),
         eventHash: r.event_hash,
         claimedAt: r.claimed_at,
         receivedAt: r.received_at,

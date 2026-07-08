@@ -265,4 +265,33 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(await bob.pollMailbox()).toEqual({ received: 0, dispatched: 0 });
     expect(bob.messages(circleId).filter((m) => m.direction === "in")).toHaveLength(1);
   });
+
+  it("keeps the shared tab identical on both nodes (append -> fan-out -> fold)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const A = pubkeyId(anaKey);
+    const B = pubkeyId(bobKey);
+
+    const pizza = await ana.appendTabEvent({
+      circleId,
+      input: { type: "expense.add", memo: "pizza", amountCents: 4200, participants: [A, B] },
+    });
+    expect(pizza.delivered).toEqual([B]);
+    const coffee = await bob.appendTabEvent({
+      circleId,
+      input: { type: "expense.add", memo: "coffee", amountCents: 1000, participants: [A, B] },
+    });
+    expect(coffee.delivered).toEqual([A]);
+
+    // Both nodes fold the identical balances: Bob owes Ana 1600 net.
+    const anaView = ana.tabBalances(circleId);
+    const bobView = bob.tabBalances(circleId);
+    expect(anaView).toEqual(bobView);
+    expect(anaView.pairwise[B]?.[A]).toBe(1600);
+    expect(anaView.expenses).toBe(2);
+
+    // syncEvents is idempotent: replaying everything applies nothing new.
+    expect((await bob.syncEvents(circleId)).applied).toBe(0);
+  });
 });

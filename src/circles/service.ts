@@ -39,6 +39,12 @@ import {
 } from "./box-crypto.js";
 import { makeCircleEnvelope, type CircleEnvelope } from "./envelope.js";
 import { createInvite, parseInviteCode, type CreatedInvite } from "./invites.js";
+import {
+  buildChainedEventBody,
+  computeTabBalances,
+  type TabBalances,
+  type TabEventInput,
+} from "./tab.js";
 
 const log = createSubsystemLogger("circles/service");
 
@@ -474,6 +480,89 @@ export class CirclesService {
       await circleRpc(this.fetchImpl, url, "mailbox/ack", { proof: ackProof, blobIds: ackIds });
     }
     return { received: blobs.length, dispatched };
+  }
+
+  // -------------------------------------------------------------------------
+  // The shared tab (C2, v3): typed chained events, NO settlement
+  // -------------------------------------------------------------------------
+
+  /**
+   * Append a tab event (expense/reversal/note) to OUR chain and fan it out.
+   * The local write goes through the SAME validated append path a peer's
+   * would (membership + scope + chain + fork checks) — one ledger law for
+   * everyone, ourselves included.
+   */
+  async appendTabEvent(args: {
+    circleId: string;
+    input: TabEventInput;
+  }): Promise<SendReport & { eventId: string; seq: number }> {
+    const circle = this.store.getCircle(args.circleId);
+    if (!circle || circle.status !== "active") {
+      throw new Error(`circle ${args.circleId} is not active`);
+    }
+    const body = buildChainedEventBody(this.db, {
+      circleId: args.circleId,
+      authorPubkey: this.pubkey,
+      input: args.input,
+    });
+    const envelope = makeCircleEnvelope(
+      "event",
+      args.circleId,
+      body as unknown as Record<string, JsonValue>,
+      this.key,
+    );
+    const { handleCircleMethod } = await import("../gateway/a2a/circles.js");
+    const local = handleCircleMethod("circle/event.append", { envelope }, this.db);
+    if (!local.ok) {
+      throw new Error(`tab append refused: ${local.error.message}`);
+    }
+    const report = await this.fanOut(args.circleId, "circle/event.append", envelope);
+    return { ...(local.result as { eventId: string; seq: number }), ...report };
+  }
+
+  /** The tab's current fold: net + pairwise balances, display only. */
+  tabBalances(circleId: string): TabBalances {
+    return computeTabBalances(this.db, circleId);
+  }
+
+  /**
+   * Pull missing events from peers and replay each signed envelope through
+   * our own validated append path. Best-effort per peer; a peer serving a
+   * forked chain freezes the circle here exactly as a live append would.
+   * (v1 window: envelopes older than the 30d mailbox ceiling do not sync —
+   * fresh circles are whole; deep-history import for late joiners is a
+   * Phase-2 concern.)
+   */
+  async syncEvents(circleId: string): Promise<{ applied: number }> {
+    const { handleCircleMethod } = await import("../gateway/a2a/circles.js");
+    let applied = 0;
+    for (const member of this.peerMembers(circleId)) {
+      if (!member.a2aUrl) {
+        continue;
+      }
+      const ask = makeCircleEnvelope("presence", circleId, { since: 0 }, this.key);
+      const rpc = await circleRpc(this.fetchImpl, member.a2aUrl, "circle/events.since", {
+        envelope: ask,
+      });
+      if (!rpc.ok || !rpc.result) {
+        continue;
+      }
+      const events = (rpc.result as { events?: Array<{ envelope?: unknown }> }).events ?? [];
+      for (const ev of events) {
+        if (!ev.envelope) {
+          continue;
+        }
+        const outcome = handleCircleMethod(
+          "circle/event.append",
+          { envelope: ev.envelope },
+          this.db,
+        );
+        if (outcome.ok && !(outcome.result as { duplicate?: boolean }).duplicate) {
+          applied += 1;
+        }
+      }
+    }
+    return { applied };
   }
 
   // -------------------------------------------------------------------------

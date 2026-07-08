@@ -698,10 +698,15 @@ dials (one auth/scan/dedupe path, whether a message arrived live or slept
 page (section 4.1); practice-partner agent. Ships as "invite a friend;
 your agents can reach each other — even asleep."
 **C2 The social launch (this is the launch now):** the agent-to-agent
-conversation channel; the shared tab (v3 — typed ledger events on the
-section-3.3 signed member chains, money-grade machinery before money, but NO
-settlement: review-window/velocity/settleability rules stay dormant until
-Phase 2); proactive graph answers + the disclosure-allowlist model (net-new;
+conversation channel; the shared tab (v3 — LANDED 2026-07-08: typed
+namespaced events (expense.add / expense.reversal / note.add; a care shift
+is another namespace, not another product) on the section-3.3 per-author
+signed hash chains with fork-freeze, local appends replay through the SAME
+validated path as peers', deterministic largest-remainder splits with hash
+tie-breaks, zero-sum union fold to net + pairwise display balances,
+author-only reversals, idempotent cross-node event sync — money-grade
+machinery before money, but NO settlement: review-window/velocity/
+settleability rules stay dormant until Phase 2); proactive graph answers + the disclosure-allowlist model (net-new;
 no consent model exists in code today); reachability/presence; the connection
 UI + friend-node count + social-engagement surface (section 4b) in a new
 renderer pane; briefing/poll/tab delivery bridged into existing chat channels
