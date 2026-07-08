@@ -43,6 +43,12 @@ export const KNOWN_SCOPES = {
   schedulePropose: "schedule.propose",
   briefingRead: "briefing.read",
   decideVote: "decide.vote",
+  // PLAN-31 C1/C2 connection-first verbs (v3): the social surface.
+  rosterRead: "roster.read",
+  messageSend: "message.send",
+  presenceShare: "presence.share",
+  askSend: "ask.send",
+  answerSend: "answer.send",
 } as const;
 
 /** A circle's coordination domain. Free string; expense is the v1 beachhead. */
@@ -67,7 +73,8 @@ export type Circle = {
   kind: CircleKind;
   creatorPubkey: string;
   keyEpoch: number;
-  status: "active" | "archived";
+  /** `frozen` = event-ledger fork detected; writes refused until a human clears it. */
+  status: "active" | "archived" | "frozen";
   createdAt: number;
 };
 
@@ -285,6 +292,99 @@ export class CirclesStore {
   /** The pinned payout wallet for a member; settlements must match this. */
   pinnedWalletFor(circleId: string, memberPubkey: string): string | null {
     return this.getMember(circleId, memberPubkey)?.pinnedWallet ?? null;
+  }
+
+  /**
+   * Mirror a circle we were invited into (PLAN-31 C1: after a successful
+   * circle/join redemption, the invitee stores the inviter's roster so both
+   * nodes hold the same membership view). Upserts the circle row with the
+   * REMOTE circle_id (identity across the mesh) and every roster member.
+   * Idempotent: re-mirroring refreshes names/urls without duplicating rows.
+   */
+  importCircle(
+    circle: {
+      circleId: string;
+      name: string;
+      kind: CircleKind;
+      creatorPubkey: string;
+      keyEpoch: number;
+      createdAt: number;
+    },
+    members: Array<{
+      memberPubkey: string;
+      displayName?: string | null;
+      pinnedWallet?: string | null;
+      a2aUrl?: string | null;
+      role?: "creator" | "member";
+      scopes?: CircleScope[];
+      joinedAt?: number;
+    }>,
+    now: number = Date.now(),
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO circles
+           (circle_id, name, kind, creator_pubkey, key_epoch, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+         ON CONFLICT(circle_id) DO UPDATE SET
+           name = excluded.name,
+           kind = excluded.kind,
+           key_epoch = MAX(circles.key_epoch, excluded.key_epoch),
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        circle.circleId,
+        circle.name,
+        circle.kind,
+        circle.creatorPubkey,
+        circle.keyEpoch,
+        circle.createdAt,
+        now,
+      );
+    for (const m of members) {
+      this.db
+        .prepare(
+          `INSERT INTO circle_members
+             (circle_id, member_pubkey, display_name, pinned_wallet, a2a_url, role,
+              scopes_json, status, joined_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+           ON CONFLICT(circle_id, member_pubkey) DO UPDATE SET
+             display_name = excluded.display_name,
+             pinned_wallet = excluded.pinned_wallet,
+             a2a_url = excluded.a2a_url,
+             role = excluded.role,
+             scopes_json = excluded.scopes_json,
+             status = 'active',
+             updated_at = excluded.updated_at`,
+        )
+        .run(
+          circle.circleId,
+          m.memberPubkey,
+          m.displayName ?? null,
+          m.pinnedWallet ?? null,
+          m.a2aUrl ?? null,
+          m.role ?? "member",
+          JSON.stringify(m.scopes ?? DEFAULT_MEMBER_SCOPES),
+          m.joinedAt ?? now,
+          now,
+        );
+    }
+  }
+
+  /**
+   * Freeze a circle (fork detected in the event ledger, PLAN-31 §3.3: a
+   * same-seq divergence is cryptographic proof of tampering — writes stop
+   * and humans are surfaced). Unfreezing is a deliberate human act.
+   */
+  freezeCircle(circleId: string, now: number = Date.now()): void {
+    this.db
+      .prepare(`UPDATE circles SET status = 'frozen', updated_at = ? WHERE circle_id = ?`)
+      .run(now, circleId);
+  }
+
+  /** True when the circle exists and accepts writes (active, not frozen). */
+  isWritable(circleId: string): boolean {
+    return this.getCircle(circleId)?.status === "active";
   }
 
   private bumpKeyEpoch(circleId: string, now: number): void {

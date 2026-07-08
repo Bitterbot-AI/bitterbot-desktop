@@ -179,13 +179,18 @@ export function createA2aHttpHandler(opts: {
     }
 
     const isForageVerb = rpcRequest.method.startsWith("forage/");
+    const isCircleVerb = rpcRequest.method.startsWith("circle/");
 
     // Authenticate — bearer token or local loopback. Forage verbs are
     // exempt BY DESIGN (PLAN-29): hunters are anonymous peers with no way
     // to hold our token; admission is gated on funding, claim caps, stake,
     // deliverable size caps, and injection scanning — not identity. The
     // money-bearing surfaces (message/send x402 gate, tasks) stay authed.
-    if (!isForageVerb) {
+    // Circle verbs (PLAN-31 C1) are likewise exempt from the bearer token:
+    // they carry their OWN auth — an Ed25519-signed circle/v1 envelope whose
+    // author must be an active circle member holding the verb's scope
+    // (default-deny, the friend branch), or an invite secret for circle/join.
+    if (!isForageVerb && !isCircleVerb) {
       const authOk = await authorizeA2aRequest(req, config, authOpts);
       if (!authOk.ok) {
         sendGatewayAuthFailure(res, authOk.result);
@@ -278,6 +283,66 @@ export function createA2aHttpHandler(opts: {
             });
         }
       }
+      return true;
+    }
+
+    // PLAN-31 C1: circle verbs — the friend branch. Kill-switched
+    // (circles.enabled, default OFF until the C2 security review, §8);
+    // disabled nodes answer METHOD_NOT_FOUND so the surface is invisible.
+    // Auth is per-verb inside handleCircleMethod: signed circle/v1 envelope
+    // + active membership + scope (default-deny) + per-member rate limits;
+    // circle/join proves possession of the invite secret instead.
+    if (isCircleVerb) {
+      if (config.circles?.enabled !== true) {
+        sendJson(res, 404, {
+          jsonrpc: "2.0",
+          error: { code: A2aErrorCodes.METHOD_NOT_FOUND, message: "Method not found" },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+      const { handleCircleMethod } = await import("./circles.js");
+      let circleDb: import("node:sqlite").DatabaseSync | undefined;
+      try {
+        const { MemoryIndexManager } = await import("../../memory/manager.js");
+        const memManager = await MemoryIndexManager.get({
+          cfg: config,
+          agentId: "default",
+          purpose: "status",
+        });
+        circleDb = (
+          memManager?.getMarketplaceEconomics?.() as
+            | { getDb?: () => import("node:sqlite").DatabaseSync | undefined }
+            | null
+            | undefined
+        )?.getDb?.();
+      } catch {
+        /* memory manager unavailable */
+      }
+      if (!circleDb) {
+        sendJson(res, 503, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.INTERNAL_ERROR,
+            message: "Circles unavailable on this node",
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+      const outcome = handleCircleMethod(
+        rpcRequest.method,
+        rpcRequest.params,
+        circleDb,
+        Date.now(),
+      );
+      sendJson(
+        res,
+        200,
+        outcome.ok
+          ? { jsonrpc: "2.0", result: outcome.result, id: rpcRequest.id }
+          : { jsonrpc: "2.0", error: outcome.error, id: rpcRequest.id },
+      );
       return true;
     }
 

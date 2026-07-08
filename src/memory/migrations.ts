@@ -1218,6 +1218,105 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 30,
+    description:
+      "PLAN-31 C1/C2: circle connection + social tables. Invites store only " +
+      "sha256(secret) — the secret lives in the invite code, never at rest. " +
+      "circle_events is the typed, domain-agnostic shared-state ledger (the " +
+      "tab is event_type 'expense.*'; a care shift or co-op order is another " +
+      "namespace, section 11): per-author signed hash chains, append-only, " +
+      "with heads_json for fork detection. NO settlement columns — money " +
+      "movement is Phase 2, dark. circle_messages buffers hostile-principal " +
+      "agent conversation for digest-batching (humans see summaries). " +
+      "circle_disclosure_grants is the default-deny per-category consent " +
+      "model (presence + free/busy are the only built-in allowances, in " +
+      "code). circle_peer_presence is last-seen liveness for the People UI.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_invites (
+          invite_id        TEXT PRIMARY KEY,
+          circle_id        TEXT NOT NULL,
+          inviter_pubkey   TEXT NOT NULL,
+          token_hash       TEXT NOT NULL,
+          scopes_json      TEXT NOT NULL DEFAULT '[]',
+          max_uses         INTEGER NOT NULL DEFAULT 1,
+          uses             INTEGER NOT NULL DEFAULT 0,
+          expires_at       INTEGER NOT NULL,
+          status           TEXT NOT NULL DEFAULT 'open',
+          created_at       INTEGER NOT NULL,
+          last_redeemed_at INTEGER,
+          last_redeemed_by TEXT
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_circle_invites_circle ` +
+          `ON circle_invites(circle_id, status)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_events (
+          event_id      TEXT PRIMARY KEY,
+          circle_id     TEXT NOT NULL,
+          author_pubkey TEXT NOT NULL,
+          seq           INTEGER NOT NULL,
+          prev_hash     TEXT,
+          event_type    TEXT NOT NULL,
+          body_json     TEXT NOT NULL,
+          heads_json    TEXT NOT NULL DEFAULT '{}',
+          envelope_json TEXT NOT NULL,
+          event_hash    TEXT NOT NULL,
+          claimed_at    INTEGER NOT NULL,
+          received_at   INTEGER NOT NULL,
+          UNIQUE (circle_id, author_pubkey, seq)
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_circle_events_circle ` +
+          `ON circle_events(circle_id, received_at)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_messages (
+          message_id    TEXT PRIMARY KEY,
+          circle_id     TEXT NOT NULL,
+          author_pubkey TEXT NOT NULL,
+          direction     TEXT NOT NULL,
+          kind          TEXT NOT NULL DEFAULT 'message',
+          thread_id     TEXT,
+          content       TEXT NOT NULL,
+          scan_severity TEXT,
+          envelope_id   TEXT,
+          created_at    INTEGER NOT NULL,
+          digested_at   INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_circle_messages_circle ` +
+          `ON circle_messages(circle_id, created_at)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_circle_messages_undigested ` +
+          `ON circle_messages(circle_id, digested_at)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_disclosure_grants (
+          category   TEXT NOT NULL,
+          circle_id  TEXT NOT NULL DEFAULT '*',
+          allowed    INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (category, circle_id)
+        )
+      `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_peer_presence (
+          peer_pubkey  TEXT PRIMARY KEY,
+          a2a_url      TEXT,
+          last_seen_at INTEGER NOT NULL,
+          last_status  TEXT
+        )
+      `);
+    },
+  },
 ];
 
 /**

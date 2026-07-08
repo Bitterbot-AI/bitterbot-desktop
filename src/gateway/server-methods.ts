@@ -7,6 +7,7 @@ import { agentsHandlers } from "./server-methods/agents.js";
 import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
+import { circlesHandlers } from "./server-methods/circles.js";
 import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
 import { cronHandlers } from "./server-methods/cron.js";
@@ -118,6 +119,9 @@ const READ_METHODS = new Set([
   "forage.tape",
   "forage.stats",
   "forage.post",
+  "circles.status",
+  "circles.list",
+  "circles.messages",
   "management.census",
   "management.anomalies",
   "management.health",
@@ -151,6 +155,10 @@ const WRITE_METHODS = new Set([
   "workspace.write",
   "dream.trigger",
   "management.propagateBan",
+  "circles.create",
+  "circles.invite",
+  "circles.join",
+  "circles.send",
   "cron.add",
   "cron.update",
   "cron.remove",
@@ -260,6 +268,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...walletHandlers,
   ...workspaceHandlers,
   ...dreamHandlers,
+  ...circlesHandlers,
   ...forageHandlers,
   ...managementHandlers,
   ...cronHandlers,

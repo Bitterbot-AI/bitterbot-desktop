@@ -72,6 +72,7 @@ export type ExternalContentSource =
   | "web_search"
   | "web_fetch"
   | "a2a_agent"
+  | "circle_agent"
   | "unknown";
 
 const EXTERNAL_SOURCE_LABELS: Record<ExternalContentSource, string> = {
@@ -86,6 +87,10 @@ const EXTERNAL_SOURCE_LABELS: Record<ExternalContentSource, string> = {
   // NEVER trusted instructions (94.4%/100% direct/inter-agent injection
   // rates in the literature). A2A task text is wrapped with this label.
   a2a_agent: "Another AI agent (peer)",
+  // PLAN-31 §3.5: a FRIEND's agent is still a distinct, less-trusted
+  // principal class, forever — friendship changes the rate limits, never
+  // the trust level. Circle conversation is wrapped with this label.
+  circle_agent: "A friend's AI agent (circle)",
   unknown: "External",
 };
 

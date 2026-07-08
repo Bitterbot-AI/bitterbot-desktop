@@ -522,6 +522,35 @@ export const BitterbotSchema = z
       })
       .strict()
       .optional(),
+    // PLAN-31: Circles — the agent social fabric. Dark by default (§8).
+    circles: z
+      .object({
+        enabled: z.boolean().optional(),
+        a2aPublicUrl: z.string().optional(),
+        displayName: z.string().optional(),
+        mailbox: z
+          .object({
+            enabled: z.boolean().optional(),
+            url: z.string().optional(),
+            serve: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+        briefing: z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+        practicePartner: z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
     skills: z
       .object({
         allowBundled: z.array(z.string()).optional(),

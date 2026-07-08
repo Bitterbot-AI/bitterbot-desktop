@@ -1,6 +1,8 @@
 # PLAN-31: Circles, the Agent Social Fabric
 
-**Status:** DRAFT v2 (2026-07-08) — CONNECTION-FIRST reframe. Built from a
+**Status:** DRAFT v3 (2026-07-08) — CONNECTION-FIRST reframe, hardened by a
+fifth pass (adversarial market re-verification + codebase audit + viability
+assessment). Built from a
 13-lane research program (5 market/mechanics + 4 adversarial/red-team + 1 rails
 map + 2 substrate/domain + 1 connection-first), every load-bearing claim
 verified against primary sources; folklore-flagged figures excluded. **The pivot from v1 of
@@ -9,6 +11,20 @@ conversation, NOT bill-splitting. Money is the yield, demoted to Phase 2 on a
 warm graph. Reason: it solves cold-start (the graph forms with zero money/
 regulatory friction) and dodges the money-first death every stablecoin-P2P app
 suffered.**
+**The v3 amendments (fifth pass, same day) harden without moving the center:
+(1) the TRACKED LEDGER (no money movement) returns to v1 as shared signed
+state — "the ledger is social, settlement is money" — because logging a shared
+expense is the structural invite + retention loop the evidence demands
+(Splitwise's entire 35M-user product is a ledger that cannot move money) and a
+tab that never settles has zero regulatory surface; (2) "ask your people" is
+demoted from marquee hook to background/proactive capability (the social-Q&A
+graveyard is unanimous that ASK-side demand, not answer quality, is the
+corpse); (3) the join path adds a nodeless guest-JOIN tier + chat-as-remote +
+a hosted-node on-ramp (desktop-required presence is fine; desktop-required
+interaction is fatal); (4) the whitespace claim is narrowed — Moltbook DMs
+falsify the literal wording, Meta bought Moltbook (2026-03-10) and is building
+Hatch, so the clock is months; the moat is the consent/disclosure model +
+memory depth + non-extraction, not the connectivity primitive.**
 **Depends on:** PLAN-30 G0 (audit substrate, live), PLAN-29 (Forage), PLAN-26
 (Aubaine settlement), PLAN-16/17 (task spine), wallet #54 (CDP rails).
 **Window:** v1 is the connection graph and agent-to-agent social layer — it has
@@ -55,9 +71,13 @@ Your address book comes alive: contacts you can query, that answer back, that
 coordinate while you sleep, bounded by what each human allowed.
 
 v1 ships the connection and what two connected agents do together SOCIALLY —
-reachability, agent-to-agent conversation, and "ask your people" (query the
-trusted graph and your friends' agents answer on their behalf). **Money is
-explicitly NOT in v1.** It is the yield the graph produces later, not the hook
+reachability, agent-to-agent conversation, the shared tab (a tracked ledger;
+no money moves), and proactive graph answers (v3 demoted "ask your people"
+from hook to background capability; section 1). **Money MOVEMENT is explicitly
+NOT in v1** — no wallet, no send, no settlement. The tracked tab is not money;
+it is shared signed state (primitive #1), coordination labor like a chore
+rotation. v2 threw the ledger out with the settlement; v3 separates them.
+Settlement is the yield the graph produces later, not the hook
 that forms it. This is the deliberate inversion of the money-first death: every
 consumer stablecoin-P2P product we studied (Daimo built the perfect wallet and
 shelved it) died because money was the adoption pitch and there was no felt
@@ -69,7 +89,8 @@ bootstrap a cold one.
 
 **The cold-start flywheel.** Connections form (the invite is the only ask, and
 it is light) -> connected agents deliver real utility with no money involved
-(reachability, ask-the-graph, ambient coordination) -> daily engagement + the
+(reachability, the shared tab, proactive graph answers, ambient coordination)
+-> daily engagement + the
 built-in reason to recruit (your people aren't here yet) densifies the graph ->
 a warm, dense, trusted network now makes settlement, pooling, and collective
 functions FAR EASIER to add (the trust edges, reachability, and daily habit
@@ -134,7 +155,8 @@ enable more circles.
 
 ## 1. What v1 is (and is not)
 
-v1 is the connection and the social magic on top of it. No money.
+v1 is the connection and the social magic on top of it. No money movement
+(the tracked tab is v1; settlement is Phase 2).
 
 **v1 verbs (connection-first):**
 
@@ -151,23 +173,42 @@ v1 is the connection and the social magic on top of it. No money.
    behalf. Inbound peer-agent messages are a hostile principal class
    (section 6); agent chatter is digest-batched so humans see summaries, not
    noise.
-4. **Ask your people** — the recurring hook: your agent puts a question to the
-   trusted graph ("does anyone know a good dentist in Austin?") and connected
-   friends' agents answer per their humans' disclosure allowlist. A superpower
-   that exists ONLY because of the agent-mediated trusted graph, gets better
-   with every friend added, and is inherently viral (to ask your people you
-   need your people here).
-5. **Briefing** — one synchronized weekly digest of your connections' shared
+4. **The shared tab (v3)** — the circle's tracked ledger, v1's structural
+   loop: "I got the pizza, $42, split 4 ways" becomes a signed typed event;
+   balances accrue and surface in the briefing. NO money moves — no wallet,
+   no send, no settlement (Phase 2). Splitwise's entire 35M-user product is a
+   ledger that cannot move money; a tab that never settles is a shared note
+   with math (zero regulatory surface). Why it must be v1: the core action
+   inherently recruits — you cannot log a shared expense without naming who
+   shares it, so "Ana put you on the Tahoe tab" IS the invite — and an
+   unresolved balance is the retention trigger a weekly digest alone cannot
+   supply (Splitwise's engine; the BeReal lesson is that cadence without
+   consequence decays: ~20M DAU Oct 2022 to ~6M by spring 2023).
+5. **Graph answers (background, not hook; v3 demotion)** — "ask your people"
+   survives DEMOTED. The social-Q&A graveyard is unanimous across 15 years
+   (Aardvark: 87.7% answer rate, median 6m37s, still died — actives asked
+   ~3.1 questions/MONTH; Facebook Questions died holding the largest social
+   graph ever; Jelly, ChaCha, Mahalo, Yahoo Answers): ASK-side demand, never
+   answer quality, is the corpse (Biz Stone's own post-mortem), and agent
+   mediation fixes only the answer side. So the agent VOLUNTEERS ("Ana's
+   agent knows an Austin dentist — want me to ask?") and answers flow per
+   disclosure allowlists; polls carry the deliberate group asks (the one
+   format the Facebook Questions graveyard says survives). No destination
+   "ask" box is ever a growth surface.
+6. **Briefing** — one synchronized weekly digest of your connections' shared
    life, per consent: what your people are up to, what needs a decision, a
-   surfaced memory. Replaces the feed.
-6. **Decide** — polls over the circle channel (existing polls machinery) for
+   surfaced memory. Replaces the feed. Delivered INTO the chat surfaces the
+   circle already lives in (the existing Telegram/Discord/web channel rails),
+   inheriting messaging's trigger frequency instead of competing with it.
+7. **Decide** — polls over the circle channel (existing polls machinery) for
    the small constant group choices.
 
 **Explicitly NOT in v1** — deferred to later phases on a warm graph:
 
-- **All money** (settlement, the expense ledger, pooling, mandates). This is
-  Phase 2, and it is the whole point of the sequencing: money lands on a
-  thriving network, not a cold one. When it lands it uses the red-teamed
+- **All money MOVEMENT** (settlement, pooling, mandates, wallets). The
+  tracked ledger itself is v1 (verb 4) precisely because it moves nothing;
+  SETTLING it is Phase 2, and that is the point of the sequencing: money
+  lands on a thriving network, not a cold one. When it lands it uses the red-teamed
   design already specced in section 3 (pairwise, agent-prepared, human one-tap,
   asynchronous via mailbox, on-chain-confirm-before-credit).
 - Shared circle memory beyond a plain notes doc (memory-laundered injection
@@ -189,22 +230,52 @@ already-extensible scope set.
   agents (adversarially re-verified July 2026; encircled by Apple/Cash App/
   Alipay/Kakao but unoccupied). Splitwise category ships ZERO shareable
   artifacts.
-- Whitespace (CONNECTION, the v1 bet): CONFIRMED unoccupied — no shipped
-  product connects a user's own personal agent to another real user's personal
-  agent by mutual consent for ongoing conversation. The market built three
-  adjacent things instead: task-first interop (Google A2A, enterprise),
-  agents-only social sims (Moltbook, public broadcast, no consenting human on
-  both sides), and single-user companion bots (Character.AI, Friend/Tab, Dot,
-  Martin — you talk to your OWN bot). Closest is Personal.ai (human-to-human
-  messaging with AI assistance; agent-to-agent is an emergent side effect, not
-  a designed friend graph) and Telegram's May-2026 bot-to-bot primitive (no
-  social-graph product framing). The connection-first agent graph exists only
-  as think-pieces and academic work — never shipped.
+- Whitespace (CONNECTION, the v1 bet): HOLDS ONLY NARROWED (v3 adversarial
+  re-verification). The literal "no shipped product" wording is FALSIFIED:
+  Moltbook ships owner-approved private agent-to-agent DMs between real
+  users' personal agents (~206k human-verified of ~2.9M registered), and
+  Meta ACQUIRED Moltbook 2026-03-10 and is building the "Hatch" personal
+  agent (internal testing ~June 2026). Telegram Bot API 10.0 (2026-05-07)
+  ships bot-to-bot chats with mutual opt-in — a developer primitive on a
+  billion-user platform, one product decision from a consumer surface.
+  Blockit ships episodic dual-agent scheduling between real users; Volar
+  (dead 2024) shipped clone-to-clone dating chat, the cautionary precedent.
+  The claim that SURVIVES: no packaged consumer product ships a
+  HUMAN-CURATED FRIEND GRAPH where I deliberately connect my personal agent
+  to a specific friend's for ongoing conversation, with consent scopes and
+  disclosure allowlists, private by construction. Still unoccupied — but the
+  moat is months, not years, and it is the consent/disclosure model + memory
+  depth + non-extraction, NOT the connectivity primitive (already
+  reproducible). Clean checks (not counterexamples): Personal.ai
+  (human-to-agent), Character.AI (fictional personas), OpenAI group chats
+  (many humans one AI, memory never shared), Gemini Spark (solo), Apple WWDC
+  2026 (no social AI), Copilot/Alexa+ (org/business scoped), Dot (dead
+  10/2025), Friend (solo).
 - Growth: fantasy platform Sleeper grew >90% virally at ~11 invites per
-  league created; WeChat red envelopes took WeChat Pay 30M to 100M users in
-  about a month; referred Venmo users were ~10x likelier to become monthly
+  league created; WeChat red envelopes roughly 3x-ed linked-payment users
+  within weeks (v3 correction: the tidy "30M to 100M in a month" figure is
+  folklore-grade — some tellings conflate the Feb-2015 CCTV Gala milestone;
+  and the honest reading is that hundreds of millions of engaged messaging
+  users PRECEDED the money mechanic, which is exactly the v1-before-money
+  argument); referred Venmo users were ~10x likelier to become monthly
   actives (insider anecdote, cite as directional); deep-linked installs
-  convert ~2x (Branch/AppsFlyer).
+  convert ~2x (Branch/AppsFlyer), BUT referral links are the
+  worst-converting link class in Branch's 12M-click data, and
+  install-required joins are the heavy end (crypto-wallet onboarding loses
+  60-80% at the install step). Realistic K as previously specced: 0.1-0.3
+  (an amplifier); with guest-join-first + double-sided value: 0.3-0.6. Plan
+  for K<1; K>1 is not a plan.
+- Desktop-node reality (v3): every "run a node to socialize" product capped
+  at 10^3-10^4 actives (Urbit ~3.5k ships at peak, users fled self-hosting
+  the moment Tlon offered hosting; Nostr ~3.7k DAU; Scuttlebutt dead; >99%
+  of Mastodon users delegate hosting; Skype centralized its supernodes in
+  2012; Farcaster abandoned permissionless hubs 2025). The 2026 OpenClaw
+  cohort is the first 10^4-10^5 population already running always-on desktop
+  agent nodes — exactly Bitterbot's beachhead — but mainstream reach
+  REQUIRES the nodeless guest tier, chat-as-remote, and a hosted-node
+  on-ramp (section 4). Desktop presence is an asset (Discord: ~81% of
+  traffic is desktop, ~94 min/day among actives); desktop-required
+  INTERACTION is the fatal variant.
 - Security: 94.4% of tested models succumb to direct prompt injection and
   100% to inter-agent trust exploitation (arXiv 2507.06850 v6); fraud success
   against one target model scaled 10.8% to 60.2% over 40 dialogue rounds
@@ -255,6 +326,10 @@ asynchronous too: the payer signs while alone online, the authorization
 rides the mailbox, the payee's node submits on-chain when it wakes. Honest
 UX copy: "your agent prepares the payment next time your computer is on; it
 lands when your friend's picks it up, usually within a day."
+Marketing honesty (Nostr's lesson, v3): a mailbox IS a server. Never claim
+"no cloud intermediary"; the true claim is "no server that can read your
+messages or own your graph" — encrypted-to-member blobs on swappable,
+self-hostable relays.
 
 ### 3.3 Ledger: per-member signed hash chains
 
@@ -307,8 +382,15 @@ memory in v1 (the memory-laundering rule, section 6).
 A short signed https URL that (1) works in a browser before install: the
 invitee sees the inviter's agent, named and present, with a concrete pending
 thing — in v1 a social one ("Ana wants to connect her agent with yours" or
-"Ana's agent has a question for you"); they can complete one interaction as a
-guest before any install; (2) degrades gracefully: protocol deep link,
+"Ana put you on the Tahoe tab"); (1b, v3 — the guest tier is a JOIN, not a
+demo: a nodeless invitee gets a standing, labeled guest identity
+(mailbox-backed, reachable via browser or an existing chat channel) that
+actually participates — receives the briefing, votes in polls, sits on the
+tab — BEFORE any install; the desktop node becomes "graduate to
+sovereignty," not the ticket to entry. Every install-heavy invite loop that
+worked (Discord/Zoom/Dropbox/Slack) removed install+identity friction from
+the invite moment and repaid it after first value); (2) degrades gracefully:
+protocol deep link,
 download page that preserves the token, first-run "have an invite? paste it,"
 co-present QR/short-code with emoji-fingerprint confirmation, and post-hoc
 pairing from prior interactions. Never contact harvesting, never shadow
@@ -327,9 +409,10 @@ Beat one, at the moment of connecting: the two agents do one visible, useful,
 zero-stakes thing together so the connection proves itself immediately —
 compare free/busy and surface a shared open evening, or exchange a context
 card ("here's what my human is up to this month, per what they allowed").
-Beat two, within a day: the first "ask your people" answer lands — the invitee
-either poses a question the graph answers, or watches their agent answer one
-for a friend. The payoff is relational and informational, never money. (Phase 2
+Beat two, within a day: either the first proactive graph answer lands (their
+agent volunteers something a friend's agent knew), or the tab does its first
+visible work ("the pizza's logged; nobody owes anybody a conversation"). The
+payoff is relational and informational; nothing settles. (Phase 2
 adds the incoming-claim beat — "you're owed $14.20" — as an additional
 conversion accelerant once money is live; incoming money converts where
 outgoing sends hit the 48% fraud-fear wall, but it is not the v1 opener.)
@@ -344,6 +427,17 @@ exited by the Reddit forgot-the-script test). Between install and first
 connection, the UI shows legible progress toward a warm graph (invites out,
 people discovered, what one connection would unlock) with agency, never a dead
 empty screen.
+
+Two v3 additions: (a) onboarding targets the GROUP, not the pair — "create
+your circle, invite all four roommates" (Partiful onboards the whole party) —
+because the retention cliff sits between 1 connection and 3+; force the third
+connection in week one. (b) a hosted-node on-ramp by ~month 6 (the Urbit
+lesson: when Tlon offered hosting, users abandoned self-hosting en masse;
+friends of enthusiasts will not run nodes) — hosted guests can graduate to
+sovereign desktop nodes, never the reverse as a requirement. Chat-as-remote is
+the standing rule: the existing Telegram/Discord/web channels ARE the mobile
+front-end (the OpenClaw pattern: desktop node, chat-app interface);
+desktop-required presence is fine, desktop-required interaction is fatal.
 
 ### 4.4 The connection UI + social-engagement surface (the user's ask)
 
@@ -385,10 +479,14 @@ connection graph (the friends list, not transactions, found Biden's Venmo).
 
 ### 4.5 Viral artifacts (connection-first; money artifacts are Phase 2)
 
-1. **"Ask your people" moments** (high frequency): a screenshot-able answer
-   your graph produced — "my circle found me a dentist in 4 minutes" — the
-   wholesome agent-behavior share unit (character.ai/Replika sharing culture;
-   the endearing, not the glitchy).
+1. **"My circle's agents did this" moments** (strongest NOW; novelty decays,
+   so front-load it): a screenshot-able thing the graph produced — "my circle
+   found me a dentist in 4 minutes" — the wholesome agent-behavior share unit
+   (the ChatGPT-screenshot lesson: what travels is the capability-awe demo;
+   character.ai/Replika sharing culture; the endearing, not the glitchy).
+   v3: every share links to a guest page where the viewer can ask the
+   sharer's agent ONE question as a guest — the artifact converts from brag
+   to demo to on-ramp.
 2. **Agent-conversation clip** (user-initiated): one-tap 20-30s recording of
    two named agents politely coordinating on the mesh, the GibberLink
    recognition beat in a wholesome register. Transcripts are verifiably real
@@ -397,14 +495,20 @@ connection graph (the friends list, not transactions, found Biden's Venmo).
 3. **Connection milestones**: "your agent is now connected with 12 people" /
    "your graph answered 30 questions this month" — status about a working
    graph, never a follower count.
-4. **Circle Wrapped** (annual, early December, drafting off Wrapped season):
-   your graph's year — connections made, questions answered, plans
-   coordinated, time saved — plus one flattering personal card per member.
+4. **Circle Wrapped** (v3: YEAR 2+, not launch-year — a Wrapped at low N with
+   thin data reads as a clone, and even Spotify's 2024 AI-summary edition
+   showed the format breaks without a real identity payload): your graph's
+   year — connections made, questions answered, plans coordinated, time
+   saved — plus one flattering personal card per member.
    The Monzo law: celebrate relationship stats, never audit anyone.
    Phase-2 artifacts (land with money): the Settlement Receipt ("6 debts
    collapsed to 2 transfers, 0 humans asked for money"), the claim-attached
    invite, and the harmony streak ("214 days since anyone had to ask for money
    back"). All preserved, all deferred until the money layer.
+   Anti-pattern (v3): never build growth on poll/quiz mechanics themselves —
+   the genre is structurally boom-bust (tbh: 5M downloads in 9 weeks, dead in
+   ~14 months; Gas: #1 on the App Store, dead in 15) because the artifact
+   accrues nothing. Polls are a utility verb here, not a growth loop.
 
 ### 4.6 Metrics from day one
 
@@ -532,6 +636,28 @@ says can trigger a tool or silently enter memory.
    issuer-freezable; no Reg E protections; taxes are the user's (sends are
    technically disposals, ~zero gain; monitor the PARITY Act stablecoin
    safe harbor); 18+.
+7. **v1 (no-money) duties that bind on day one (v3):** CA SB 243 (eff.
+   2026-01-01; $1,000/violation private right of action) and NY GBS Art. 47
+   (in force 2025-11-05; disclosure at session start + every 3 hours;
+   $15k/day AG enforcement) plausibly reach agent messages a human could
+   mistake for human, and Bitterbot's affective memory arguably makes it a
+   NY "companion" (self-harm-detection + crisis-referral duties); ~14 states
+   have chatbot-disclosure laws (Oregon: private right of action). EU AI Act
+   Article 50 transparency applies 2026-08-02: geo-gate or ship disclosures.
+   Compliance is cheap and mostly already designed — non-strippable agent
+   labels (section 3.5) and the 18+ gate (every serious case in this space
+   is minor-centric: Garcia v. Character Technologies; C.AI's under-18 ban)
+   — ADD a documented crisis-referral interceptor before v1 ships.
+8. **Custody reconciliation before Phase 2 (v3 flag):** item 1's
+   constitutional rule ("Wallet Secret only on the user's machine; the
+   vendor architecturally cannot sign") must be VERIFIED against the shipped
+   wallet — production today is a CDP Server Wallet MPC EOA (wallet #54),
+   and the FinCEN/GENIUS self-custody carve-outs this section leans on may
+   not attach to that architecture. Before any money ships: either document
+   the custodian boundary with counsel (Coinbase/CDP as the regulated
+   custodian; Bitterbot never controls funds) or ship a genuinely
+   self-custodial per-user wallet path. The constitutional rule is currently
+   an aspiration, not a verified fact.
 
 ## 8. Build plan
 
@@ -539,21 +665,46 @@ Connection-first order: the money layer (formerly C2, "the tab that settles
 itself") moves to Phase 2 and lands on the warm graph. v1 is C1-C3.
 
 **Phase 0 (DONE, independent):** A2A inbound scanning + data-part handling
-(shipped, commit 101d2b5); taint-flag design note into PLAN-27/28.
-**C1 Connect + transport:** circles/membership store (DONE, migration v29,
-commit 6d17ae1); friend branch in A2A auth (scoped signed envelopes verified
-against memberHasScope); invite URL + browser guest-preview page; relay
-mailbox on the fleet; practice-partner agent. Ships as "invite a friend; your
-agents can reach each other."
+(shipped, commit 101d2b5; audit-verified wired into the live spawn path);
+taint-flag design note into PLAN-27/28.
+**C1 Connect + transport (CORE LANDED 2026-07-08):** circle/v1 signed
+envelope module (src/circles/envelope.ts, domain-separated from aubaine/v1,
+cross-protocol confusion pinned by test); circles/membership store WIRED
+(migration v29 + v30; CirclesStore now serves the live friend branch;
+importCircle mirrors rosters; freezeCircle = the fork circuit breaker);
+friend branch LIVE in the A2A surface (circle/_ verbs in
+src/gateway/a2a/circles.ts: join/roster/presence/message/ask/answer/
+event.append/events.since — every verb authenticated by signed envelope +
+active membership + scope, default-deny, per-member rate limits, no
+circle-id oracle); invite create/redeem flow (src/circles/invites.ts:
+hash-at-rest secrets, signature-verified-before-dial codes, single-use +
+rejoin, revocation); node-local CirclesService (invite mint, code
+redemption + roster mirror, message/presence fan-out, reciprocity metric);
+gateway RPCs circles._ for the human surface; hostile-principal rule
+enforced at the boundary (scan on receipt, wrap as circle_agent external
+content, critical-neutralize, envelope-id dedupe). Kill-switched:
+circles.enabled, default OFF (§8 discipline). STILL TO BUILD in C1: invite
+URL browser guest-JOIN page (section 4.1); relay mailbox on the fleet
+(audit-confirmed genuinely new — the libp2p fleet is transport only; the
+critical-path build); practice-partner agent. Ships as "invite a friend;
+your agents can reach each other."
 **C2 The social launch (this is the launch now):** the agent-to-agent
-conversation channel; "ask your people" (graph query + consented answers);
-reachability/presence; the connection UI + friend-node count + social-
-engagement surface (section 4b) in a new renderer pane. Ships as "your people,
-reachable through your agent." No money.
-**C3 The social floor + first artifacts:** weekly briefing; polls;
-named circle agent; connection milestones + "ask your people" share moments;
-the connection-Wrapped generator (pre-December); agent-conversation clip
-recorder. Anti-hook commitments enforced (section 5).
+conversation channel; the shared tab (v3 — typed ledger events on the
+section-3.3 signed member chains, money-grade machinery before money, but NO
+settlement: review-window/velocity/settleability rules stay dormant until
+Phase 2); proactive graph answers + the disclosure-allowlist model (net-new;
+no consent model exists in code today); reachability/presence; the connection
+UI + friend-node count + social-engagement surface (section 4b) in a new
+renderer pane; briefing/poll/tab delivery bridged into existing chat channels
+(the Telegram/Discord/web rails already carry polls). Ships as "your people,
+reachable through your agent — and the tab keeps itself." No money movement.
+**C3 The social floor + first artifacts:** weekly briefing (audit note: no
+digest machinery exists — the codebase's "emotionalBriefing" is an unrelated
+hormonal-tone string; this is a from-scratch compiler); polls; named circle
+agent; connection milestones + graph-answer share moments with guest-ask
+links; agent-conversation clip recorder; hosted-node on-ramp (~month 6,
+section 4.3). Circle Wrapped moves to year 2 (section 4.5). Anti-hook
+commitments enforced (section 5).
 **Phase 2 — the money layer (on the warm graph):** signed member chains +
 union fold + fork freeze; expense capture; review window + velocity limits;
 pairwise two-phase settlement over exec-approvals with ApprovalBanner wired;
@@ -607,23 +758,67 @@ counsel.
    never as Bitterbot transaction revenue (there is none by design). The
    health question is "is a real economy thriving on the graph," not "what did
    we skim."
+7. **Kill/pivot tripwires, set BEFORE launch (v3):** (a) median active
+   connected pair generates <2 substantive (non-scheduled, non-digest)
+   agent-to-agent exchanges/week by week 8 of a cohort = the core loop is
+   dead; fix utility, freeze growth spend. (b) invite-click -> reciprocated
+   join (guest or node) <5% after the guest-join page ships = the join path
+   is fatal as designed. (c) W4 retention of 1-connection users <10% while
+   3+-connection users >30% = reorganize onboarding around forcing the third
+   connection in week one (whole-group invites, not pairwise). (d)
+   human-initiated asks vs scheduled/digest traffic ratio near zero = no
+   organic demand; the graph is a cron job, not a network.
 
 ## 10. Risk register (each with its receipt)
 
-- **No-felt-problem death** (Daimo built the perfect wallet and shelved it):
-  THE risk the reframe is built to dodge. Money is never the adoption pitch;
-  the connection and what agents do together socially are the felt delight;
-  the graph forms warm before a dollar moves. If v1 telemetry shows people
-  connect but the agents do nothing useful together, that is the real failure
-  signal — fix the ask-the-graph utility before anything else.
+- **No-felt-problem death** (Daimo built the perfect wallet and shelved it —
+  v3 update: now fully dead as a consumer product, pivoted to Daimo Pay B2B
+  infra, ~5 employees): THE risk the reframe is built to dodge. Money is
+  never the adoption pitch; the connection, the shared tab, and what agents
+  do together socially are the felt delight; the graph forms warm before a
+  dollar moves. If v1 telemetry shows people connect but the agents do
+  nothing useful together, that is the real failure signal — the section-9
+  tripwires exist to catch it by week 8.
+- **Ask-demand collapse (Aardvark redux; v3):** social Q&A is 0-for-8 across
+  15 years (Aardvark, Facebook Questions, Jelly, ChaCha, Mahalo, Yahoo
+  Answers, Helpouts, Lunchclub-as-zombie), and the documented killer is
+  ask-side demand (~3.1 questions/user/month at Aardvark's healthy peak) —
+  which agent mediation does not fix; it fixes answering, the side that
+  already worked. Mitigation is structural: ask-your-people is
+  background/proactive (section 1 verb 5), polls carry deliberate asks, and
+  the tab + briefing carry the habit.
+- **Join-path fatality (v3):** if invite-click -> reciprocated join stays
+  <5% after the guest-join page ships, the desktop ask is fatal as designed —
+  the node-social graveyard says nothing short of nodeless join has ever
+  cleared it. Guest tier, chat-as-remote, hosted nodes are REQUIRED, not
+  polish.
+- **Whitespace closes from above (v3):** Meta owns Moltbook's registry +
+  team and is building Hatch; Telegram's bot-to-bot primitive is live.
+  Months, not years. Ship v1 fast; the moat is the consent/disclosure model
+  - biological memory depth + non-extraction; never bet on the primitive
+    staying unique.
+- **Companion-law exposure in v1 (v3; binds day one):** CA SB 243 (private
+  right of action) + NY GBS Art. 47 (session-start + 3-hourly disclosure,
+  $15k/day) + ~14 state chatbot laws + EU AI Act Art. 50 (2026-08-02), and
+  Bitterbot's affective memory arguably makes it a NY "companion."
+  Mitigations mostly already designed (non-strippable agent labels, 18+);
+  ADD the crisis-referral interceptor and EU geo-gate-or-disclose before v1
+  ships (section 7.7).
 - **Empty-graph / cold-start** (the problem we claim to solve): the graph is
   worthless at n=1 connection. Mitigation = the labeled practice-partner, the
   legible progress UI, disclosed founder-seeded connections, and an invite so
   light (a relationship, not a claim) it clears the lowest bar.
-- **Apple/incumbent compression** (iOS 27 receipt-split, fall 2026): does NOT
-  touch v1 (they are money-first, single-moment; v1 is a persistent graph with
-  agents on both sides). It touches Phase 2; land the money layer on the warm
-  graph as the category heats up, use their marketing as category education.
+- **Apple/incumbent compression** (v3-VERIFIED at WWDC 2026-06-08: iOS 27
+  "Split bills with Apple Cash" — camera-on-receipt itemized splits settled
+  as Apple Cash requests over iMessage; ships fall 2026, US-only,
+  Apple-Intelligence hardware only, per-person requests not pooled funds,
+  closed rails, no third-party API, no agent on the other side): does NOT
+  touch v1 (money-first, single-moment; v1 is a persistent graph with agents
+  on both sides). It partially commoditizes "split the receipt," which
+  STRENGTHENS the v3 framing rule: Phase 2 is pitched as AGENT-INITIATED
+  settlement — no incumbent rail is agent-drivable even in principle
+  (Venmo's API has been closed for years; Zelle has no consumer API) — never
+  as bill-splitting. Use their marketing as category education.
 - **Inter-agent compromise** (94.4/100% injection rates; Moltbook): the
   central v1 risk, because agent-to-agent conversation IS the product. Hostile
   principal class + no-tool-trigger + taint rule + digest-batching + disclosure
@@ -794,7 +989,7 @@ identity, both of which map onto the pipeline we already have.
 **Gating architecture, mapped to existing components:**
 | Industry layer | Our component | Add / tighten |
 |---|---|---|
-| No-remote-code (WeChat/MV3) | capability gating (PLAN-29) | Hard invariant for 3rd-party skills, enforced at load. Un-retrofittable — do first. |
+| No-remote-code (WeChat/MV3) | capability gating (built PLAN-13, activated PLAN-29) | Hard invariant for 3rd-party skills, enforced at load. Un-retrofittable — do first. |
 | Least-privilege scopes (Discord intents) | capability gating (runtime enforcer, currently OFF) | Turn the runtime enforcer ON; money + private-ledger are SEPARATE, individually-granted high-risk capabilities. |
 | Review at the gate (Apple) | curator (A-MAC, PLAN-15) + staging gate | Route all 3rd-party skills through curator + staging; first-party bypasses, 3rd-party cannot. |
 | Injection defense (OWASP LLM01) | injection scanning | Extend to the lethal-trifecta rule: a manifest requesting {ledger read}+{untrusted ingest}+{external send} is auto-quarantined and cannot get money capability. |
@@ -889,3 +1084,31 @@ money design stays fully specced rather than assumed easy (section 0 caveat).
 Nothing from the prior passes is wasted — the money design (3.3-3.4), the
 viral/gamification/security/regulatory work, and the C1 store all serve the
 connection-first build; they reorder, they do not rewrite.
+
+**Fifth pass (2026-07-08), adversarial verification + codebase audit —
+COMPLETE (this doc v3):** three lanes (codebase-rails audit, adversarial
+market re-verification, viability/virality assessment). Amendments folded in:
+(1) the tracked-ledger-without-settlement returns to v1 ("the ledger is
+social, settlement is money" — Splitwise's 35M users prove the ledger alone
+is the product; unresolved balances are the retention trigger and the
+structural invite the weekly cadence alone lacks); (2) ask-your-people
+demoted to background/proactive (the Aardvark law: ask-demand is the corpse,
+agents fix the answering side); (3) guest-JOIN tier + chat-as-remote +
+hosted-node on-ramp made REQUIRED (the node-social graveyard caps
+node-required socializing at 10^3-10^4; the OpenClaw cohort is the beachhead
+exception); (4) whitespace claim narrowed (Moltbook's owner-approved agent
+DMs falsify the literal wording; Meta acquired Moltbook 2026-03-10, Hatch in
+internal testing; Telegram bot-to-bot live since 2026-05-07) with the moat
+restated as consent/disclosure + memory depth + non-extraction; (5) WeChat
+hongbao figure softened to folklore-grade; (6) Apple iOS 27 receipt-splitting
+verified precisely (fall 2026, US-only, Apple Cash requests over iMessage, no
+API, no agent) and Phase-2 framing pinned to agent-initiated settlement,
+never bill-splitting; (7) v1 companion-law duties added (CA SB 243, NY GBS
+Art. 47, EU AI Act Art. 50 on 2026-08-02, crisis-referral interceptor);
+(8) custody reconciliation flagged (CDP MPC server wallet vs the self-custody
+carve-outs the regulatory posture leans on); (9) kill/pivot tripwires added
+(section 9.7); (10) codebase claims corrected (circles store dormant/unwired,
+no friend branch in authorizeA2aRequest, envelope layer hardcodes aubaine/v1,
+no briefing machinery exists, capability gating built PLAN-13/activated
+PLAN-29). Realistic K restated: 0.1-0.3 as previously specced, 0.3-0.6 with
+guest-join-first; plan for K<1.

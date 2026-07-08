@@ -129,6 +129,14 @@ const BASE_METHODS = [
   // PLAN-30 G0.5: judge-capped settlement review
   "forage.review",
   "forage.reviewRelease",
+  // PLAN-31 C1/C2: circles — the connection graph (dark until circles.enabled)
+  "circles.status",
+  "circles.list",
+  "circles.create",
+  "circles.invite",
+  "circles.join",
+  "circles.send",
+  "circles.messages",
   // Marketplace
   "marketplace.search",
   "marketplace.trending",
