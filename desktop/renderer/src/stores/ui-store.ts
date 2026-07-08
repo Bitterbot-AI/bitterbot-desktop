@@ -12,6 +12,7 @@ export type TabId =
   | "skills"
   | "guards"
   | "nodes"
+  | "people"
   | "projects"
   | "workspace"
   | "wallet"

@@ -21,6 +21,7 @@ import {
   Check,
   Sun,
   Moon,
+  Users,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRelativeTime } from "../../lib/format";
@@ -49,6 +50,9 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   // Control
   { id: "channels", label: "Channels", icon: Radio, group: "control" },
+  // PLAN-31 C2: the connection graph made visible (§4.4). The pane itself
+  // explains + stays inert while circles.enabled is off.
+  { id: "people", label: "People", icon: Users, group: "control" },
   { id: "p2p", label: "P2P Network", icon: Globe, group: "control" },
   {
     id: "management",

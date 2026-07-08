@@ -15,6 +15,7 @@ import { ManagementView } from "../management/ManagementView";
 import { NodesView } from "../nodes/NodesView";
 import { OverviewView } from "../overview/OverviewView";
 import { P2pDashboard } from "../p2p/P2pDashboard";
+import { PeopleView } from "../people/PeopleView";
 import { ProjectsView } from "../projects/ProjectsView";
 import { SessionsView } from "../sessions/SessionsView";
 import { SkillsView } from "../skills/SkillsView";
@@ -40,6 +41,7 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   workspace: () => <WorkspaceView />,
   wallet: () => <WalletView />,
   p2p: () => <P2pDashboard />,
+  people: () => <PeopleView />,
   dreams: () => <DreamsView />,
   management: () => <ManagementView />,
   config: () => <ConfigView />,
