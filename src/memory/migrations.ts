@@ -1174,6 +1174,50 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "forage_hunts", "settlement_tx", "TEXT");
     },
   },
+  {
+    version: 29,
+    description:
+      "PLAN-31 C1: circles (collective-agency substrate). A circle is a " +
+      "closed, mutually-paired member set with a shared encrypted channel. " +
+      "Deliberately domain-agnostic: `kind` distinguishes expense/care/team/... " +
+      "so the same tables carry every coordination domain (sections 11-12). " +
+      "Members pin a payout wallet at pair time (settlements refuse any other " +
+      "payTo) and hold an extensible scope set (default-deny). `key_epoch` " +
+      "bumps on every membership change so the channel key rotates.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circles (
+          circle_id     TEXT PRIMARY KEY,
+          name          TEXT NOT NULL,
+          kind          TEXT NOT NULL DEFAULT 'expense',
+          creator_pubkey TEXT NOT NULL,
+          key_epoch     INTEGER NOT NULL DEFAULT 0,
+          status        TEXT NOT NULL DEFAULT 'active',
+          created_at    INTEGER NOT NULL,
+          updated_at    INTEGER NOT NULL
+        )
+      `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_members (
+          circle_id     TEXT NOT NULL,
+          member_pubkey TEXT NOT NULL,
+          display_name  TEXT,
+          pinned_wallet TEXT,
+          a2a_url       TEXT,
+          role          TEXT NOT NULL DEFAULT 'member',
+          scopes_json   TEXT NOT NULL DEFAULT '[]',
+          status        TEXT NOT NULL DEFAULT 'active',
+          joined_at     INTEGER NOT NULL,
+          updated_at    INTEGER NOT NULL,
+          PRIMARY KEY (circle_id, member_pubkey)
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_circle_members_member ` +
+          `ON circle_members(member_pubkey, status)`,
+      );
+    },
+  },
 ];
 
 /**
