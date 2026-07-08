@@ -12,14 +12,43 @@ extension is expected late 2026. The whitespace is real but encircled:
 
 ## 0. Thesis
 
-A circle is a friend group (roommates, couples, trip crews, families; 4 to 8
-people) whose members each run a Bitterbot node, mutually paired. Their agents
-collectively do the group's coordination labor: keep the shared expense ledger
-and settle it in invisible USDC so nobody ever asks anybody for money, plan
-trips, run group decisions, compile a weekly briefing instead of a feed, and
-accumulate the circle's history. Facebook made humans perform for a feed a
-corporation mines; circles make agents labor for a group that owns its own
-data on its own machines.
+A circle is a small human group (roommates, couples, trip crews, families,
+siblings, teammates; 4 to 15 people) whose members each run a Bitterbot node,
+mutually paired. Their personal agents do the group's coordination labor with
+humans approving anything consequential. Facebook made humans perform for a
+feed a corporation mines; circles make agents labor for a group that owns its
+own data on its own machines.
+
+**The substrate, not the app (the generalization).** Expense-splitting is the
+FIRST app on this substrate, not the product. The product is the general
+capability: **human-in-the-loop collective agency** — a small trusted group
+whose agents maintain shared state, negotiate, settle value, brief, and decide,
+with every consequential act gated by a human. Once that substrate exists, the
+same six primitives serve every domain where a handful of people share a life:
+
+- **Shared signed state** (generalizes the ledger from expenses to ANY
+  collective event log: care logs, chore rotations, trip itineraries, meal
+  trains, team snack schedules, a group's decisions and their outcomes).
+- **Scheduling / negotiation** (agents reconcile constraints without exposing
+  private reasons: "Ana's out the 14th" without saying why).
+- **Value settlement + pooling** (USDC rails: split, reimburse, pool for a
+  shared purchase; the existing Aubaine threshold-settlement is the pool).
+- **The briefing** (a synchronized digest replaces the feed for any domain).
+- **Group decisions** (polls / agent-tallied consent).
+- **Artifacts + rituals** (the shareable, viral, retention layer).
+
+The expense ledger is chosen as the beachhead because it has the deepest
+QUANTIFIED pain and the most viral formation moment (a trip), not because it is
+the ceiling. Sections 11-12 map the domain expansion (care circles, team
+logistics, household ops, mutual aid) and the platform path (third-party
+"circle skills" on the existing marketplace). v1 still ships the expense app
+ONLY; the substrate framing governs how v1 is built so those domains are a
+skill away, not a rewrite.
+
+**The concrete v1 (the beachhead app).** The circle keeps the shared expense
+ledger and settles it in invisible USDC so nobody ever asks anybody for money,
+plans trips, runs group decisions, compiles a weekly briefing, and accumulates
+its history.
 
 **The beachhead is the living ledger.** The market's deepest structural flaw:
 ledger apps (Splitwise, 35M users) cannot move money, and money apps (Zelle
@@ -418,6 +447,114 @@ behind config until the invite page is live.
 - **Metric theater** (Moltbook's 88:1): never report registered/agent
   counts; report paired humans and settled dollars, seeded-labeled.
 
+## 11. Domain expansion (the substrate's roadmap beyond expenses)
+
+**Status: framing complete; market numbers pending the third-pass research
+lanes (2026-07-08, collective-coordination + platform-substrate).** The
+sequencing principle is fixed even before the numbers land: expand along the
+axis of (deepest quantified pain) x (most viral formation moment) x (least new
+regulatory/safety surface), and each new domain must be expressible as the six
+primitives plus at most one new event type, never a rewrite.
+
+The candidate domains, with the primitive-fit that makes them same-substrate
+(pain/market figures to be filled from the research lane):
+
+- **Care circles (adult siblings coordinating an aging parent).** Likely the
+  strongest post-expense wedge: it needs ALL six primitives (a shared care log
+  = signed state; appointment/visit scheduling; sibling expense-sharing =
+  the ledger we already built; a weekly "how's mom" briefing that replaces the
+  exhausting group text; decisions like which facility; artifacts = a care
+  history). The formation moment is emotionally forced and recruits like a
+  trip does (a health event pulls the whole family in at once). SENSITIVITY
+  FLAG: health data is HIPAA-adjacent — v1 care must be family-to-family
+  self-report with NO provider integration and clear "not a medical record"
+  framing; this is a reason to sequence it after the expense app hardens, not
+  a reason to avoid it.
+- **Team / club logistics (youth sports, hobby clubs).** Fee collection is
+  literally the same awkwardness tax as bill-splitting (chasing parents for
+  dues), plus snack/carpool rotations = signed state, tournament logistics =
+  scheduling. Viral: a coach forms a team circle and pulls in 12 families at
+  once (the Sleeper mechanic). SENSITIVITY FLAG: minors present — the money
+  and coordination stay adult-to-adult (parents), never child accounts.
+- **Household operations beyond money (chores, groceries, shared subs).** The
+  "mental load" the ledger doesn't capture: a chore rotation and a shared
+  grocery/subscription state on the same signed log. Lower viral energy (no
+  discrete formation event) but very high retention (daily), so it is a
+  RETENTION expansion, not an acquisition one.
+- **Event crews (weddings, reunions, group gifts).** Pooling + collection-
+  chasing; episodic, high-emotion, naturally viral, but bursty (no ongoing
+  retention). Good for acquisition spikes, weak as a standalone.
+- **Mutual aid / neighborhood (meal trains, tool libraries, Buy Nothing).**
+  Signed state + scheduling + optional pooling; strong pro-social narrative;
+  larger groups strain the 4-15 trust model, so likely a later, structurally
+  looser variant.
+- **Accountability groups, carpools, buying co-ops.** Each maps cleanly (the
+  co-op is literally Aubaine group-buying with a friend graph); lower priority
+  until the substrate is proven.
+
+Preliminary sequence (to be confirmed by the research lane): **expenses ->
+care -> team logistics -> household ops**, with event crews as an
+opportunistic acquisition layer throughout. Domains to likely AVOID in any
+near term: anything with regulated health/provider data, anything involving
+minors' own accounts, and anything that pushes group size past the trust
+model (open communities — that is a different, un-circle-shaped product).
+
+The build discipline this imposes on v1: the ledger's event schema is
+**typed and extensible** (an expense is one event type among a namespace),
+the briefing compiler is **domain-agnostic** (it renders whatever event types
+the circle has), and the disclosure allowlist and approval broker are **keyed
+by action class**, not hardcoded to money. Build v1's expense app on those
+generic spines and care circles become a new event type + a new skill, not a
+second product.
+
+## 12. The platform path (third-party circle skills)
+
+**Status: framing complete; sequencing evidence pending the platform-substrate
+research lane.** The end state is that the domains in section 11 are not all
+first-party: third parties build "circle skills" (installable collective
+behaviors — a meal-train skill, a care-rotation skill, a fantasy-season skill,
+a chore-wheel skill) distributed through the EXISTING skills marketplace with
+revenue share, and circles can post Forage bounties for skills they want
+(demand-funded development — the flywheel closing on itself).
+
+The load-bearing discipline is timing and safety, both of which we have strong
+priors on:
+
+- **Single-player-utility-first, platform-second.** The canonical failures are
+  platforms opened onto an empty marketplace (no users, no builders) and
+  ecosystems locked so tight they never grew. The rule: do not open circle
+  skills to third parties until first-party skills have proven the substrate
+  and there is a real installed base of circles to build for. The 3-5
+  first-party skills that prove it are exactly the section-11 domains built
+  in-house (care rotation, team logistics, chore wheel, meal train, the
+  fantasy season) — they are simultaneously the domain expansion AND the
+  reference implementations that define the skill API.
+- **The gating architecture already exists.** Circle skills run inside intimate
+  groups with money rails, so a malicious skill's blast radius is a family —
+  the highest-trust context we have. But we already built the pipeline for
+  exactly this: injection scanning, load-time capability gating (PLAN-29),
+  the quarantine tier, the SICA staging gate for skill mutations (PLAN-15),
+  the A-MAC curator, and EigenTrust reputation. A circle skill is a skill with
+  a tighter capability manifest (what circle state may it read, may it propose
+  money movements at all, what may it disclose) and MUST route every
+  consequential act through the same human-approval broker as everything else.
+  Revenue-share is itself an accountability lever (a builder with a payout
+  stream and a reputation edge behaves).
+- **Demand-funded development is our unfair advantage.** Most plugin ecosystems
+  rely on builders speculating on demand. We have Forage: a circle that wants a
+  "split-utility-bills-from-the-PDF" skill posts a bounty, a builder fulfills
+  it, the skill enters the marketplace, and the circle's real need funded real
+  supply. This is the section-0 flywheel made literal — circles generate the
+  organic demand that PLAN-30 showed every agent economy lacks.
+
+Sequencing (to be confirmed): first-party skills for the section-11 domains
+(proves the API + seeds the base) -> a documented circle-skill manifest with
+tight capability scopes -> curated third-party skills through the staging gate
+-> bounty-funded skill requests from circles -> open marketplace tier. Never
+open the third-party surface before the installed base and the capability
+manifest exist; never let a circle skill touch money or disclosure without the
+human-approval broker.
+
 ## Appendix A: research provenance
 
 Ten lanes, 2026-07-08: market (P2P incumbents, assistant-payment graveyard,
@@ -432,3 +569,14 @@ artifacts + share-loop math + anti-patterns), mechanics red team (8 areas,
 minimal tight v1), plus the PLAN-30 economy research inherited as
 discipline. Full reports in session transcripts. Numbers flagged as
 folklore by verifiers are excluded from this document.
+
+**Third pass (2026-07-08), generalization framing:** two further lanes in
+flight — collective-coordination domains (care circles, team logistics,
+household ops, mutual aid: quantified pain + ranked expansion sequence) and
+platform-substrate playbooks (WeChat mini-programs, Discord bots, the
+single-player-first timing discipline, third-party skill gating). Sections
+11-12 carry the framing now; their market numbers and sequencing evidence
+land when the lanes complete. The substrate reframe (expenses = first app,
+not the product) is fixed regardless; it changes how v1 is built (typed/
+extensible event schema, domain-agnostic briefing, action-class-keyed
+approvals) so the domain expansion is a skill away, not a rewrite.
