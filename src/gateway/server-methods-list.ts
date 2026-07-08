@@ -140,6 +140,9 @@ const BASE_METHODS = [
   "circles.tab.add",
   "circles.tab.balances",
   "circles.sync",
+  "circles.ask",
+  "circles.disclosure.set",
+  "circles.disclosure.list",
   // Marketplace
   "marketplace.search",
   "marketplace.trending",

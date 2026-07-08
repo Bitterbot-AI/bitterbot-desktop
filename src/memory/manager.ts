@@ -2338,6 +2338,9 @@ export class MemoryIndexManager implements MemorySearchManager {
                     const service = new CirclesService({ db: circlesDb, config: this.cfg });
                     await service.heartbeat();
                     await service.pollMailbox();
+                    // §3.5 default posture for ungranted asks; granted asks
+                    // wait for the human (autonomy ends at the grant line).
+                    await service.answerPendingAsks();
                     if (this.cfg.circles?.mailbox?.serve === true) {
                       const { sweepExpiredMailboxBlobs } =
                         await import("../gateway/a2a/mailbox.js");

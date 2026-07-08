@@ -37,6 +37,7 @@ import {
   type BoxKeyPair,
   type SealedBlob,
 } from "./box-crypto.js";
+import { DEFAULT_ANSWER_POSTURE, isDisclosureAllowed, pendingAsks } from "./disclosure.js";
 import { makeCircleEnvelope, type CircleEnvelope } from "./envelope.js";
 import { createInvite, parseInviteCode, type CreatedInvite } from "./invites.js";
 import {
@@ -115,6 +116,11 @@ export class CirclesService {
 
   get boxPubkeyB64(): string {
     return this.boxKeys.publicKeyB64;
+  }
+
+  /** The underlying store handle (disclosure grants live beside the circles). */
+  get dbHandle(): DatabaseSync {
+    return this.db;
   }
 
   private get displayName(): string {
@@ -480,6 +486,67 @@ export class CirclesService {
       await circleRpc(this.fetchImpl, url, "mailbox/ack", { proof: ackProof, blobIds: ackIds });
     }
     return { received: blobs.length, dispatched };
+  }
+
+  // -------------------------------------------------------------------------
+  // Graph answers (C2, §3.5): background capability, never a marquee hook
+  // -------------------------------------------------------------------------
+
+  /**
+   * Put a question to the trusted graph. The category rides in the thread id
+   * ("<category>:<uuid>") so answering nodes can match it against their
+   * humans' disclosure grants.
+   */
+  async askPeople(args: {
+    circleId: string;
+    question: string;
+    category: string;
+  }): Promise<SendReport & { threadId: string }> {
+    const category = args.category.trim().toLowerCase().replaceAll(":", ".").slice(0, 24);
+    if (!category) {
+      throw new Error("category required");
+    }
+    const threadId = `${category}:${crypto.randomUUID()}`;
+    const report = await this.sendMessage({
+      circleId: args.circleId,
+      text: args.question,
+      kind: "ask",
+      threadId,
+    });
+    return { ...report, threadId };
+  }
+
+  /**
+   * The §3.5 default posture, automated: every pending inbound ask whose
+   * category the human has NOT granted gets one polite refusal ("my human
+   * can see this question; I'll reply if they've allowed this topic").
+   * Granted asks are LEFT PENDING for the human/agent surface — autonomy
+   * ends where the grant begins; nothing from private memory is ever
+   * auto-disclosed by this sweep.
+   */
+  async answerPendingAsks(): Promise<{ declined: number; awaitingHuman: number }> {
+    let declined = 0;
+    let awaitingHuman = 0;
+    for (const ask of pendingAsks(this.db)) {
+      const allowed =
+        ask.category !== null && isDisclosureAllowed(this.db, ask.category, ask.circleId);
+      if (allowed) {
+        awaitingHuman += 1;
+        continue;
+      }
+      try {
+        await this.sendMessage({
+          circleId: ask.circleId,
+          text: DEFAULT_ANSWER_POSTURE,
+          kind: "answer",
+          threadId: ask.threadId ?? undefined,
+        });
+        declined += 1;
+      } catch (err) {
+        log.debug(`default-posture answer failed: ${String(err)}`);
+      }
+    }
+    return { declined, awaitingHuman };
   }
 
   // -------------------------------------------------------------------------

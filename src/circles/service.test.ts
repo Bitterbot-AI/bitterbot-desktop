@@ -7,6 +7,7 @@ import { handleMailboxMethod, resetMailboxRateLimits } from "../gateway/a2a/mail
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
 import { generateBoxKeyPair } from "./box-crypto.js";
+import { setDisclosureGrant } from "./disclosure.js";
 import { CirclesService, type FetchLike } from "./service.js";
 
 // PLAN-31 C1 end-to-end: two nodes (two DBs, two keys), a fake fetch that
@@ -293,5 +294,42 @@ describe("CirclesService end-to-end (two nodes)", () => {
 
     // syncEvents is idempotent: replaying everything applies nothing new.
     expect((await bob.syncEvents(circleId)).applied).toBe(0);
+  });
+
+  it("answers ungranted asks with the default posture; granted asks wait for the human", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    // Ana asks the graph for a dentist. Bob's human granted nothing.
+    const ask = await ana.askPeople({
+      circleId,
+      question: "does anyone know a good dentist in Austin?",
+      category: "recommendations.dentist",
+    });
+    expect(ask.delivered).toEqual([pubkeyId(bobKey)]);
+
+    const first = await bob.answerPendingAsks();
+    expect(first).toEqual({ declined: 1, awaitingHuman: 0 });
+    // Ana received the polite refusal, threaded to her ask.
+    const anaInbox = ana.messages(circleId).filter((m) => m.direction === "in");
+    expect(anaInbox).toHaveLength(1);
+    expect(anaInbox[0]?.kind).toBe("answer");
+    expect(anaInbox[0]?.threadId).toBe(ask.threadId);
+    expect(anaInbox[0]?.content).toContain("I'll reply if they've allowed this topic");
+
+    // The sweep is idempotent: the refusal answered the thread.
+    expect(await bob.answerPendingAsks()).toEqual({ declined: 0, awaitingHuman: 0 });
+
+    // Bob's human grants the category; Ana asks again -> waits for the human,
+    // and NOTHING is auto-disclosed.
+    setDisclosureGrant(bob.dbHandle, { category: "recommendations.dentist", allowed: true });
+    await ana.askPeople({
+      circleId,
+      question: "asking again — dentist recs?",
+      category: "recommendations.dentist",
+    });
+    expect(await bob.answerPendingAsks()).toEqual({ declined: 0, awaitingHuman: 1 });
+    expect(ana.messages(circleId).filter((m) => m.direction === "in")).toHaveLength(1);
   });
 });

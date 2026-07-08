@@ -19,6 +19,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { listDisclosureGrants, setDisclosureGrant } from "../../circles/disclosure.js";
 import { CirclesService } from "../../circles/service.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
@@ -182,6 +183,67 @@ export const circlesHandlers: GatewayRequestHandlers = {
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }
+  },
+
+  "circles.ask": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const question = typeof params.question === "string" ? params.question.trim() : "";
+    const category = typeof params.category === "string" ? params.category : "";
+    if (!circleId || !question || !category) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, question, category required"),
+      );
+      return;
+    }
+    try {
+      const report = await svc.service.askPeople({ circleId, question, category });
+      respond(true, report, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.disclosure.set": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const category = typeof params.category === "string" ? params.category : "";
+    if (!category || typeof params.allowed !== "boolean") {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "category, allowed required"),
+      );
+      return;
+    }
+    try {
+      setDisclosureGrant(svc.service.dbHandle, {
+        category,
+        circleId: typeof params.circleId === "string" ? params.circleId : undefined,
+        allowed: params.allowed,
+      });
+      respond(true, { grants: listDisclosureGrants(svc.service.dbHandle) }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.disclosure.list": async ({ respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    respond(true, { grants: listDisclosureGrants(svc.service.dbHandle) }, undefined);
   },
 
   "circles.tab.add": async ({ params, respond }) => {
