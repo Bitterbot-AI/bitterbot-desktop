@@ -449,111 +449,204 @@ behind config until the invite page is live.
 
 ## 11. Domain expansion (the substrate's roadmap beyond expenses)
 
-**Status: framing complete; market numbers pending the third-pass research
-lanes (2026-07-08, collective-coordination + platform-substrate).** The
-sequencing principle is fixed even before the numbers land: expand along the
-axis of (deepest quantified pain) x (most viral formation moment) x (least new
-regulatory/safety surface), and each new domain must be expressible as the six
-primitives plus at most one new event type, never a rewrite.
+**Status: research complete (2026-07-08 collective-coordination lane).** Each
+domain was scored on quantified pain x primitive fit x incumbent weakness x
+formation-virality (K) x willingness-to-pay x sensitivity. The verified
+ranking REORDERED the naive guess: the strongest post-expense move is not care
+(shallow family WTP, episodic retention, incumbent graveyard) but the domains
+that reuse the money muscle we already have with the highest-K formation
+moments. Expenses stay the beachhead; the confirmed sequence:
 
-The candidate domains, with the primitive-fit that makes them same-substrate
-(pain/market figures to be filled from the research lane):
+**Phase 1 — Event crews (weddings / bachelorette / group gifts).** Nearest
+neighbor: same even-split + pool-to-cover-the-celebrant money muscle, the
+highest-K formation moment of any domain (a dated, high-emotion crew forms on
+"will you be my bridesmaid"), and a capital-light incumbent proving the job is
+real and undefended — Cheddar Up collected >$1B across 100k+ groups on ~$2.2M
+raised, collection-only, no ledger/schedule/decisions loop. US weddings ~$66B
+across ~2M/yr; standalone group-gift already collapsed into a feature (Illume
+-> Kudoboard). Weakness is one-shot retention, which is FINE for a viral
+top-of-funnel that seeds the network. Sensitivity moderate (52% of
+bachelorette guests took on debt -> gentle nudge framing, non-custodial
+pooling, the Aubaine pattern).
 
-- **Care circles (adult siblings coordinating an aging parent).** Likely the
-  strongest post-expense wedge: it needs ALL six primitives (a shared care log
-  = signed state; appointment/visit scheduling; sibling expense-sharing =
-  the ledger we already built; a weekly "how's mom" briefing that replaces the
-  exhausting group text; decisions like which facility; artifacts = a care
-  history). The formation moment is emotionally forced and recruits like a
-  trip does (a health event pulls the whole family in at once). SENSITIVITY
-  FLAG: health data is HIPAA-adjacent — v1 care must be family-to-family
-  self-report with NO provider integration and clear "not a medical record"
-  framing; this is a reason to sequence it after the expense app hardens, not
-  a reason to avoid it.
-- **Team / club logistics (youth sports, hobby clubs).** Fee collection is
-  literally the same awkwardness tax as bill-splitting (chasing parents for
-  dues), plus snack/carpool rotations = signed state, tournament logistics =
-  scheduling. Viral: a coach forms a team circle and pulls in 12 families at
-  once (the Sleeper mechanic). SENSITIVITY FLAG: minors present — the money
-  and coordination stay adult-to-adult (parents), never child accounts.
-- **Household operations beyond money (chores, groceries, shared subs).** The
-  "mental load" the ledger doesn't capture: a chore rotation and a shared
-  grocery/subscription state on the same signed log. Lower viral energy (no
-  discrete formation event) but very high retention (daily), so it is a
-  RETENTION expansion, not an acquisition one.
-- **Event crews (weddings, reunions, group gifts).** Pooling + collection-
-  chasing; episodic, high-emotion, naturally viral, but bursty (no ongoing
-  retention). Good for acquisition spikes, weak as a standalone.
-- **Mutual aid / neighborhood (meal trains, tool libraries, Buy Nothing).**
-  Signed state + scheduling + optional pooling; strong pro-social narrative;
-  larger groups strain the 4-15 trust model, so likely a later, structurally
-  looser variant.
-- **Accountability groups, carpools, buying co-ops.** Each maps cleanly (the
-  co-op is literally Aubaine group-buying with a friend graph); lower priority
-  until the substrate is proven.
+**Phase 2 — Group purchasing / co-ops.** Reuse what we already built: this
+maps almost 1:1 onto Aubaine "escrow at MOQ" (PLAN-26), the tightest primitive
+fit and structurally the strongest virality of ALL domains — hitting a
+case-pack minimum FORCES recruiting neighbors, so every purchase is a
+dollar-incentivized invite (K > 1 by construction). Incumbent void is
+spreadsheets + manual Venmo; Venmo Groups does payment but nothing about order
+aggregation/case-splitting/pickup. Pursue as a protocol extension, not a big
+market bet (US food co-ops ~$2.8B is modest and values-driven — lead with
+"escrow at minimum order," never crypto). Sensitivity: collecting funds before
+goods = money-transmission risk -> non-custodial escrow-at-fulfillment, never
+a platform-held pooled wallet.
 
-Preliminary sequence (to be confirmed by the research lane): **expenses ->
-care -> team logistics -> household ops**, with event crews as an
-opportunistic acquisition layer throughout. Domains to likely AVOID in any
-near term: anything with regulated health/provider data, anything involving
-minors' own accounts, and anything that pushes group size past the trust
-model (open communities — that is a different, un-circle-shaped product).
+**Phase 3 — Youth sports / club teams.** The biggest recurring pre-formed
+groups (12-18 family closed rosters) with a seasonal viral formation event and
+PROVEN money routing: Spond runs >€160M/yr in payments at ~40% YoY, parents
+already pay. Fee-chasing for dues is literally the same awkwardness tax as
+bill-splitting; snack/volunteer rotations = signed state. Quantified
+coordinator burnout (62% of parents volunteer >4h/week; avg parent 3h23m per
+activity day). SENSITIVITY FLAG: minors are the subjects (rosters, schedules,
+locations) -> COPPA + child-safety hardening scheduled BEFORE launch; money
+and coordination stay adult-to-adult (parents), never child accounts; the P2P
+signed log of kids' whereabouts is higher-risk than a centralized incumbent,
+so data-minimization is designed in.
 
-The build discipline this imposes on v1: the ledger's event schema is
-**typed and extensible** (an expense is one event type among a namespace),
-the briefing compiler is **domain-agnostic** (it renders whatever event types
-the circle has), and the disclosure allowlist and approval broker are **keyed
-by action class**, not hardcoded to money. Build v1's expense app on those
-generic spines and care circles become a new event type + a new skill, not a
-second product.
+**Phase 4 — Family care coordination (the high-value validate).** Best
+forcing-event virality of any domain (a health crisis is acute, involuntary,
+multi-party — recruits harder than a trip) and total incumbent absence in
+signed-state + money-settlement (CareZone killed post-Walmart-acquisition;
+ianacare, the best-funded player, FLED direct-to-consumer for B2B2C because
+families won't pay directly). 63M US family caregivers (1 in 4 adults);
+coordination difficulty rose to 26% (2020) from 19% (2015); $7,242/yr
+out-of-pocket. BUT: shallow family WTP ($0-10/mo ceiling) and episodic
+retention (the crisis passes, or the parent dies) mean we VALIDATE the
+money-settlement wedge ("Splitwise for Mom's care") before scaling a full
+platform. SENSITIVITY: almost certainly NOT a HIPAA covered entity, but FTC
+Health Breach Notification Rule + Washington My Health My Data Act + CCPA bite
+on diagnoses/meds — the P2P user-held-key architecture is a genuine regulatory
+ADVANTAGE; keep money/schedule/decisions core, make clinical detail optional,
+encrypted, user-controlled. Sequence after money+ledger+briefing are hardened
+on lower-sensitivity domains.
+
+**Phase 5 — Accountability groups (the sleeper).** Strongest RCT evidence base
+of any domain (Cochrane 2020: 12-step ~42% abstinence at 12mo across 10,565
+participants; Lancet WW group vs self-help 10.1 vs 1.3 lb; commitment devices
+causal and strongest when public), cleanest primitive fit (streak-ledger +
+public commitment + auto-scheduling + pooled stakes), in an unoccupied
+$10-30/mo band between $5 tools and $200+ human coaches. Enter via
+fitness/study/writing crews; treat SOBRIETY as a separate, anonymity-hardened,
+opt-in vertical (protected recovery data in direct tension with a persistent
+signed ledger -> pseudonymity + selective disclosure), NEVER the entry point.
+
+**Household operations** is reclassified: not a standalone product (low-K
+formation, gender-charged "mental-load scoring" framing can inflame the very
+conflict it targets, custody/divorce-adjacency is a coercion vector) but a
+DEEPENING of the roommate/family expense circle — recurring subscriptions,
+shared kitty, chore rotation on the same log. It is a retention expansion, not
+an acquisition one.
+
+**Three domains to explicitly AVOID as standalone products:** (1) carpools
+(structural incumbent graveyard; the only scaled player, Zum, replaced peer
+coordination with contracted drivers; highest liability surface — real-time
+location of minors — so build only as an attach feature on the youth-sports
+graph); (2) mutual aid / neighborhoods (explicitly anti-transactional,
+anti-surveillance communities; maximally vulnerable users; near-zero WTP;
+relief pooling drags in charitable-solicitation regulation); (3) household
+ops as a gendered-labor scoring product (per above — serve it as circle
+deepening instead).
+
+The build discipline this imposes on v1 (already reflected in the C1 circles
+store): the ledger's event schema is **typed and extensible** (an expense is
+one event type in a namespace; a care-shift or a co-op order is another), the
+briefing compiler is **domain-agnostic** (renders whatever event types the
+circle holds), the circle `kind` is a free string, and member scopes and the
+approval broker are **keyed by action class**, not hardcoded to money. Build
+v1's expense app on those generic spines and every phase above is a new event
+type + a skill, not a second product.
 
 ## 12. The platform path (third-party circle skills)
 
-**Status: framing complete; sequencing evidence pending the platform-substrate
-research lane.** The end state is that the domains in section 11 are not all
-first-party: third parties build "circle skills" (installable collective
-behaviors — a meal-train skill, a care-rotation skill, a fantasy-season skill,
-a chore-wheel skill) distributed through the EXISTING skills marketplace with
-revenue share, and circles can post Forage bounties for skills they want
-(demand-funded development — the flywheel closing on itself).
+**Status: research complete (2026-07-08 platform-substrate lane).** The end
+state: domains in section 11 are not all first-party — third parties build
+"circle skills" (installable collective behaviors) on the EXISTING skills
+marketplace with revenue share, and circles post Forage bounties for skills
+they want. The lane's one-sentence law: every durable platform won as a
+single-player/single-group product first, saturated a dense network, THEN
+opened a third-party surface onto guaranteed demand, and gated it hardest
+where blast radius was largest. Opening early yields shovelware and builder
+flight (BlackBerry: one dev made a third of the catalog; Windows Phone: 75% of
+devs earned <$500/mo). Opening onto a low-quality surface fails even at massive
+scale (Zoom Apps at 300M participants -> nothing). The whole risk is in the
+sequencing and the gate.
 
-The load-bearing discipline is timing and safety, both of which we have strong
-priors on:
+**The five gates that must ALL be green before opening the third-party
+surface (do not open before then — we are pre-atomic-density today):**
 
-- **Single-player-utility-first, platform-second.** The canonical failures are
-  platforms opened onto an empty marketplace (no users, no builders) and
-  ecosystems locked so tight they never grew. The rule: do not open circle
-  skills to third parties until first-party skills have proven the substrate
-  and there is a real installed base of circles to build for. The 3-5
-  first-party skills that prove it are exactly the section-11 domains built
-  in-house (care rotation, team logistics, chore wheel, meal train, the
-  fantasy season) — they are simultaneously the domain expansion AND the
-  reference implementations that define the skill API.
-- **The gating architecture already exists.** Circle skills run inside intimate
-  groups with money rails, so a malicious skill's blast radius is a family —
-  the highest-trust context we have. But we already built the pipeline for
-  exactly this: injection scanning, load-time capability gating (PLAN-29),
-  the quarantine tier, the SICA staging gate for skill mutations (PLAN-15),
-  the A-MAC curator, and EigenTrust reputation. A circle skill is a skill with
-  a tighter capability manifest (what circle state may it read, may it propose
-  money movements at all, what may it disclose) and MUST route every
-  consequential act through the same human-approval broker as everything else.
-  Revenue-share is itself an accountability lever (a builder with a payout
-  stream and a reputation edge behaves).
-- **Demand-funded development is our unfair advantage.** Most plugin ecosystems
-  rely on builders speculating on demand. We have Forage: a circle that wants a
-  "split-utility-bills-from-the-PDF" skill posts a bounty, a builder fulfills
-  it, the skill enters the marketplace, and the circle's real need funded real
-  supply. This is the section-0 flywheel made literal — circles generate the
-  organic demand that PLAN-30 showed every agent economy lacks.
+1. **Atomic-network density, not headcount** — a cohort of circles where
+   skills are used weekly. Health metric = skill ATTACH RATE (Slack/Salesforce
+   hit ~90% of active accounts using >=1 app), never catalog size (vanity).
+2. **First-party proof** — ship 3-5 first-party skills exercising every
+   capability class a third party would need (Salesforce/WeChat/Figma all
+   seeded with first-party supply; Figma opened Plugins ~7 years in with 40
+   vetted, which 10x'd because the base existed).
+3. **The runtime cage is closed** — no-remote-code / no-`eval` for skills
+   (WeChat bans eval + whitelists domains; Chrome MV3's core rule is "all
+   logic in the package, no remotely-hosted code"). This is un-retrofittable;
+   it must predate any third-party code.
+4. **Accountability chokepoint live** — verified payout identity (KYC) for any
+   money-touching skill; revenue-share plumbing wired to ban + clawback (Apple
+   terminated 146k+ dev accounts for fraud in 2024; the fee + identity check
+   is Sybil resistance).
+5. **The distribution primitive works first-party** — prove
+   "share-a-skill-into-a-circle" (our WeChat share-into-chat analog, the
+   primitive that made friction-free forwarding safe _because_ the runtime was
+   caged) drives adoption for our own skills first.
 
-Sequencing (to be confirmed): first-party skills for the section-11 domains
-(proves the API + seeds the base) -> a documented circle-skill manifest with
-tight capability scopes -> curated third-party skills through the staging gate
--> bounty-funded skill requests from circles -> open marketplace tier. Never
-open the third-party surface before the installed base and the capability
-manifest exist; never let a circle skill touch money or disclosure without the
-human-approval broker.
+**The load-bearing safety finding: the lethal trifecta with a family in the
+blast radius.** Prompt injection is structurally unsolved (OWASP LLM01 #1 risk
+since 2023; MCPTox 36.5% attack-success; a dedicated paper targets third-party
+Agent Skills as a trivial injection surface). The only reliable control is
+Simon Willison's rule: an agent is exploitable when it simultaneously has
+(1) private-data access, (2) untrusted-content exposure, (3) external
+communication — remove any one leg. A circle skill that reads the private
+ledger + ingests untrusted content (a shared itinerary) + moves money IS the
+lethal trifecta. Therefore: **money-moving skill actions must never sit on an
+agent path that also ingests untrusted content.** The gate cannot rely on
+review or prompt-hardening; it relies on capability isolation + verified
+identity, both of which map onto the pipeline we already have.
+
+**Gating architecture, mapped to existing components:**
+| Industry layer | Our component | Add / tighten |
+|---|---|---|
+| No-remote-code (WeChat/MV3) | capability gating (PLAN-29) | Hard invariant for 3rd-party skills, enforced at load. Un-retrofittable — do first. |
+| Least-privilege scopes (Discord intents) | capability gating (runtime enforcer, currently OFF) | Turn the runtime enforcer ON; money + private-ledger are SEPARATE, individually-granted high-risk capabilities. |
+| Review at the gate (Apple) | curator (A-MAC, PLAN-15) + staging gate | Route all 3rd-party skills through curator + staging; first-party bypasses, 3rd-party cannot. |
+| Injection defense (OWASP LLM01) | injection scanning | Extend to the lethal-trifecta rule: a manifest requesting {ledger read}+{untrusted ingest}+{external send} is auto-quarantined and cannot get money capability. |
+| Revenue-share accountability (Apple KYC/clawback) | bounty + marketplace revenue share (PLAN-8) | KYC for money-touching skills; ban + clawback on the revenue rail. |
+| Progressive trust (WeChat gradual) | quarantine + soft-disabled tiers | 3rd-party skills START quarantined, earn capability by clean record; never money capability on day one. |
+
+**Demand-funded development — our unfair advantage, structured correctly.**
+Circles post Forage bounties for skills they want. But the lane's sharpest
+warning: open-source FEATURE bounties failed everywhere (BountySource went
+bankrupt losing escrowed funds; Gitcoin sunset bounties; median bounty $20,
+57% of hunters earned <=$100 total). What works is the BUG-bounty structure
+(HackerOne $300M+ cumulative) and the Minecraft-commission model (one buyer,
+bespoke, verifiable, escrowed, $80-$3,000/skill; BuiltByBit $7.1M+ sold).
+So circle skill bounties MUST be structured like bug bounties, NOT open-source
+feature bounties: objectively verifiable acceptance criteria + pre-set price +
+a first-party curator merge gate + escrow that never concentrates under one
+unaccountable operator (the BountySource failure). This is exactly the
+sealed-oracle + funded-escrow shape Forage already has.
+
+**The 3-5 first-party skills that prove the substrate** (each exercises a
+distinct capability class; also the section-11 domain expansion): shared
+ledger/bill-split (money rail, highest blast radius, first-party first); trip/
+event coordinator (multi-member state + scheduling + external ingest — the
+prompt-injection test case); group decision/poll (zero-code template tier, near
+-zero blast radius — the safest to open to third parties FIRST); care rotation/
+meal train (recurring scheduled tasks on the PLAN-16 spine); briefing/digest
+(read-only aggregation, no trifecta exposure).
+
+**Sequencing:** first-party skills prove the API + seed the base -> documented
+circle-skill manifest with tight capability scopes -> open the SAFE tiers to
+third parties first (read-only + zero-code templates) -> bounty-funded skill
+requests (bug-bounty-structured) -> money-touching skills open LAST or never to
+third parties (keep the money rail first-party, the way Roblox kept its economy
+engine — its $923M creator payouts were matched by $941M losses + doubling
+child-safety reports + AG lawsuits; payout scale and liability scale grow in
+lockstep).
+
+**The three platform-opening mistakes to avoid:** (1) opening before atomic
+density (BlackBerry/Windows Phone shovelware death — gate on attach rate, not
+registered circles); (2) opening the money-touching/untrusted-content surface
+to third parties (the Roblox/lethal-trifecta trap — keep money first-party or
+last-and-strictest-gated, never on an untrusted-ingesting path); (3) mistaking
+the platform for the moat and taxing builders into friction (Slack's ecosystem
+was a retention amplifier, not why it won; the core coordination product wins
+circles; monetize the end-user like Discord's 90/10, keep the builder split
+generous, don't fund vanity).
 
 ## Appendix A: research provenance
 
@@ -570,13 +663,18 @@ minimal tight v1), plus the PLAN-30 economy research inherited as
 discipline. Full reports in session transcripts. Numbers flagged as
 folklore by verifiers are excluded from this document.
 
-**Third pass (2026-07-08), generalization framing:** two further lanes in
-flight — collective-coordination domains (care circles, team logistics,
-household ops, mutual aid: quantified pain + ranked expansion sequence) and
-platform-substrate playbooks (WeChat mini-programs, Discord bots, the
-single-player-first timing discipline, third-party skill gating). Sections
-11-12 carry the framing now; their market numbers and sequencing evidence
-land when the lanes complete. The substrate reframe (expenses = first app,
-not the product) is fixed regardless; it changes how v1 is built (typed/
-extensible event schema, domain-agnostic briefing, action-class-keyed
-approvals) so the domain expansion is a skill away, not a rewrite.
+**Third pass (2026-07-08), generalization framing — COMPLETE:** two further
+lanes landed. Collective-coordination domains scored and reordered the
+expansion sequence (event crews -> co-ops -> youth sports -> care -> account-
+ability; household ops as circle-deepening; carpools/mutual-aid/gendered-
+scoring avoided as standalones) with verified pain/WTP/virality/sensitivity
+per domain (section 11). Platform-substrate playbooks (WeChat mini-programs,
+Discord/Slack ecosystems, Figma/Zoom timing, Roblox safety-cost, the failed
+open-source-feature-bounty vs working bug-bounty distinction) produced the
+five open-the-gate preconditions, the lethal-trifecta safety law, and the
+gating architecture mapped to our existing pipeline (section 12). The
+substrate reframe (expenses = first app, not the product) drives how v1 is
+built: typed/extensible event schema, domain-agnostic briefing,
+action-class-keyed scopes — already reflected in the C1 circles store
+(migration v29, CirclesStore). All numbers flagged as directional/unverified
+by the lanes are excluded from sections 11-12.
