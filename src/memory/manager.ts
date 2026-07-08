@@ -2325,6 +2325,27 @@ export class MemoryIndexManager implements MemorySearchManager {
                   });
                 })
                 .catch((err) => log.debug(`night shift sweep failed: ${String(err)}`));
+
+              // 11h. PLAN-31 C1: circles sweep — presence heartbeat to every
+              // connected circle, drain our relay mailbox (store-and-forward
+              // for asymmetric online windows, §3.2), and TTL-sweep any
+              // mailbox this node hosts. Kill switch circles.enabled (dark
+              // by default, §8). Best-effort, never blocks the tick.
+              if (this.cfg.circles?.enabled === true) {
+                const circlesDb = bountyDb;
+                void import("../circles/service.js")
+                  .then(async ({ CirclesService }) => {
+                    const service = new CirclesService({ db: circlesDb, config: this.cfg });
+                    await service.heartbeat();
+                    await service.pollMailbox();
+                    if (this.cfg.circles?.mailbox?.serve === true) {
+                      const { sweepExpiredMailboxBlobs } =
+                        await import("../gateway/a2a/mailbox.js");
+                      sweepExpiredMailboxBlobs(circlesDb);
+                    }
+                  })
+                  .catch((err) => log.debug(`circles sweep failed: ${String(err)}`));
+              }
             }
           } catch {
             // Bounty sweeps non-critical

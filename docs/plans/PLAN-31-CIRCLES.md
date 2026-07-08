@@ -683,11 +683,20 @@ redemption + roster mirror, message/presence fan-out, reciprocity metric);
 gateway RPCs circles._ for the human surface; hostile-principal rule
 enforced at the boundary (scan on receipt, wrap as circle_agent external
 content, critical-neutralize, envelope-id dedupe). Kill-switched:
-circles.enabled, default OFF (§8 discipline). STILL TO BUILD in C1: invite
-URL browser guest-JOIN page (section 4.1); relay mailbox on the fleet
-(audit-confirmed genuinely new — the libp2p fleet is transport only; the
-critical-path build); practice-partner agent. Ships as "invite a friend;
-your agents can reach each other."
+circles.enabled, default OFF (§8 discipline). MAILBOX LANDED (same day):
+store-and-forward is live — mailbox/post/poll/ack host verbs (any node
+serves with circles.mailbox.serve; the fleet hosts by running a node),
+sealed-box payloads (per-node X25519 box keys published inside signed
+join/presence envelopes; ephemeral-ECDH + HKDF + AES-256-GCM, Node
+built-ins only — the host stores ciphertext it cannot read, the §3.2
+honesty claim made literal), sender-signature-required posts, per-sender
+rate limits, per-recipient quotas, 30d TTL sweep; send fan-out falls back
+direct-dial -> mailbox; the memory maintenance tick heartbeats presence and
+drains our mailbox through the SAME hostile-principal handler path as live
+dials (one auth/scan/dedupe path, whether a message arrived live or slept
+3 days on a relay). STILL TO BUILD in C1: invite URL browser guest-JOIN
+page (section 4.1); practice-partner agent. Ships as "invite a friend;
+your agents can reach each other — even asleep."
 **C2 The social launch (this is the launch now):** the agent-to-agent
 conversation channel; the shared tab (v3 — typed ledger events on the
 section-3.3 signed member chains, money-grade machinery before money, but NO

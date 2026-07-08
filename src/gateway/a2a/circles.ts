@@ -171,6 +171,8 @@ export type RosterMember = {
   memberPubkey: string;
   displayName: string | null;
   a2aUrl: string | null;
+  boxPubkey: string | null;
+  mailboxUrl: string | null;
   role: string;
   scopes: string[];
   joinedAt: number;
@@ -233,11 +235,21 @@ export function handleCircleJoin(
     typeof body.a2a_url === "string" && /^https?:\/\//.test(body.a2a_url)
       ? body.a2a_url
       : undefined;
+  const boxPubkey =
+    typeof body.box_pubkey === "string" && body.box_pubkey.length <= 64
+      ? body.box_pubkey
+      : undefined;
+  const mailboxUrl =
+    typeof body.mailbox_url === "string" && /^https?:\/\//.test(body.mailbox_url)
+      ? body.mailbox_url
+      : undefined;
   store.addMember({
     circleId: env.circle_id,
     memberPubkey: env.author_pubkey,
     displayName,
     a2aUrl,
+    boxPubkey,
+    mailboxUrl,
     scopes: outcome.record.scopes,
     now,
   });
@@ -265,6 +277,8 @@ function toRosterMember(m: {
   memberPubkey: string;
   displayName: string | null;
   a2aUrl: string | null;
+  boxPubkey: string | null;
+  mailboxUrl: string | null;
   role: string;
   scopes: string[];
   joinedAt: number;
@@ -273,6 +287,8 @@ function toRosterMember(m: {
     memberPubkey: m.memberPubkey,
     displayName: m.displayName,
     a2aUrl: m.a2aUrl,
+    boxPubkey: m.boxPubkey,
+    mailboxUrl: m.mailboxUrl,
     role: m.role,
     scopes: m.scopes,
     joinedAt: m.joinedAt,
@@ -332,15 +348,33 @@ export function handleCirclePresence(
   const body = auth.envelope.body as Record<string, unknown>;
   const a2aUrl =
     typeof body.a2a_url === "string" && /^https?:\/\//.test(body.a2a_url) ? body.a2a_url : null;
+  const boxPubkey =
+    typeof body.box_pubkey === "string" && body.box_pubkey.length <= 64 ? body.box_pubkey : null;
+  const mailboxUrl =
+    typeof body.mailbox_url === "string" && /^https?:\/\//.test(body.mailbox_url)
+      ? body.mailbox_url
+      : null;
   const status = typeof body.status === "string" ? body.status.slice(0, 40) : null;
   db.prepare(
-    `INSERT INTO circle_peer_presence (peer_pubkey, a2a_url, last_seen_at, last_status)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO circle_peer_presence
+       (peer_pubkey, a2a_url, box_pubkey, mailbox_url, last_seen_at, last_status)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(peer_pubkey) DO UPDATE SET
        a2a_url = COALESCE(excluded.a2a_url, circle_peer_presence.a2a_url),
+       box_pubkey = COALESCE(excluded.box_pubkey, circle_peer_presence.box_pubkey),
+       mailbox_url = COALESCE(excluded.mailbox_url, circle_peer_presence.mailbox_url),
        last_seen_at = excluded.last_seen_at,
        last_status = excluded.last_status`,
-  ).run(auth.envelope.author_pubkey, a2aUrl, now, status);
+  ).run(auth.envelope.author_pubkey, a2aUrl, boxPubkey, mailboxUrl, now, status);
+  // Presence rides a SIGNED member envelope, so it also refreshes the
+  // sender's transport endpoints in this circle (mailbox fallback needs
+  // box_pubkey + mailbox_url on the member row).
+  auth.store.updateMemberEndpoints(
+    auth.envelope.circle_id,
+    auth.envelope.author_pubkey,
+    { a2aUrl, boxPubkey, mailboxUrl },
+    now,
+  );
   return { ok: true, result: { seenAt: now } };
 }
 

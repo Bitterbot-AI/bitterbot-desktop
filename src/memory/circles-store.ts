@@ -61,6 +61,10 @@ export type CircleMember = {
   /** Payout wallet pinned at pair time; settlements refuse any other payTo. */
   pinnedWallet: string | null;
   a2aUrl: string | null;
+  /** X25519 box pubkey (base64) for mailbox sealing; published in signed envelopes. */
+  boxPubkey: string | null;
+  /** The member's mailbox host URL (where WE deposit mail for THEM). */
+  mailboxUrl: string | null;
   role: "creator" | "member";
   scopes: CircleScope[];
   status: "active" | "left" | "suspended";
@@ -97,6 +101,8 @@ type MemberRow = {
   display_name: string | null;
   pinned_wallet: string | null;
   a2a_url: string | null;
+  box_pubkey: string | null;
+  mailbox_url: string | null;
   role: string;
   scopes_json: string;
   status: string;
@@ -129,6 +135,8 @@ function rowToMember(r: MemberRow): CircleMember {
     displayName: r.display_name,
     pinnedWallet: r.pinned_wallet,
     a2aUrl: r.a2a_url,
+    boxPubkey: r.box_pubkey ?? null,
+    mailboxUrl: r.mailbox_url ?? null,
     role: r.role as CircleMember["role"],
     scopes,
     status: r.status as CircleMember["status"],
@@ -188,6 +196,8 @@ export class CirclesStore {
     displayName?: string;
     pinnedWallet?: string;
     a2aUrl?: string;
+    boxPubkey?: string;
+    mailboxUrl?: string;
     scopes?: CircleScope[];
     now?: number;
   }): void {
@@ -195,13 +205,15 @@ export class CirclesStore {
     this.db
       .prepare(
         `INSERT INTO circle_members
-           (circle_id, member_pubkey, display_name, pinned_wallet, a2a_url, role,
-            scopes_json, status, joined_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'member', ?, 'active', ?, ?)
+           (circle_id, member_pubkey, display_name, pinned_wallet, a2a_url, box_pubkey,
+            mailbox_url, role, scopes_json, status, joined_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'member', ?, 'active', ?, ?)
          ON CONFLICT(circle_id, member_pubkey) DO UPDATE SET
            display_name = excluded.display_name,
            pinned_wallet = excluded.pinned_wallet,
            a2a_url = excluded.a2a_url,
+           box_pubkey = COALESCE(excluded.box_pubkey, circle_members.box_pubkey),
+           mailbox_url = COALESCE(excluded.mailbox_url, circle_members.mailbox_url),
            scopes_json = excluded.scopes_json,
            status = 'active',
            updated_at = excluded.updated_at`,
@@ -212,6 +224,8 @@ export class CirclesStore {
         args.displayName ?? null,
         args.pinnedWallet ?? null,
         args.a2aUrl ?? null,
+        args.boxPubkey ?? null,
+        args.mailboxUrl ?? null,
         JSON.stringify(args.scopes ?? DEFAULT_MEMBER_SCOPES),
         now,
         now,
@@ -295,6 +309,36 @@ export class CirclesStore {
   }
 
   /**
+   * Update a member's transport endpoints (a2a URL, box pubkey, mailbox URL)
+   * from a SIGNED envelope body (join/presence). Never touches the pinned
+   * wallet — that requires the explicit re-pair ceremony.
+   */
+  updateMemberEndpoints(
+    circleId: string,
+    memberPubkey: string,
+    endpoints: { a2aUrl?: string | null; boxPubkey?: string | null; mailboxUrl?: string | null },
+    now: number = Date.now(),
+  ): void {
+    this.db
+      .prepare(
+        `UPDATE circle_members SET
+           a2a_url = COALESCE(?, a2a_url),
+           box_pubkey = COALESCE(?, box_pubkey),
+           mailbox_url = COALESCE(?, mailbox_url),
+           updated_at = ?
+         WHERE circle_id = ? AND member_pubkey = ?`,
+      )
+      .run(
+        endpoints.a2aUrl ?? null,
+        endpoints.boxPubkey ?? null,
+        endpoints.mailboxUrl ?? null,
+        now,
+        circleId,
+        memberPubkey,
+      );
+  }
+
+  /**
    * Mirror a circle we were invited into (PLAN-31 C1: after a successful
    * circle/join redemption, the invitee stores the inviter's roster so both
    * nodes hold the same membership view). Upserts the circle row with the
@@ -315,6 +359,8 @@ export class CirclesStore {
       displayName?: string | null;
       pinnedWallet?: string | null;
       a2aUrl?: string | null;
+      boxPubkey?: string | null;
+      mailboxUrl?: string | null;
       role?: "creator" | "member";
       scopes?: CircleScope[];
       joinedAt?: number;
@@ -345,13 +391,15 @@ export class CirclesStore {
       this.db
         .prepare(
           `INSERT INTO circle_members
-             (circle_id, member_pubkey, display_name, pinned_wallet, a2a_url, role,
-              scopes_json, status, joined_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+             (circle_id, member_pubkey, display_name, pinned_wallet, a2a_url, box_pubkey,
+              mailbox_url, role, scopes_json, status, joined_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
            ON CONFLICT(circle_id, member_pubkey) DO UPDATE SET
              display_name = excluded.display_name,
              pinned_wallet = excluded.pinned_wallet,
              a2a_url = excluded.a2a_url,
+             box_pubkey = COALESCE(excluded.box_pubkey, circle_members.box_pubkey),
+             mailbox_url = COALESCE(excluded.mailbox_url, circle_members.mailbox_url),
              role = excluded.role,
              scopes_json = excluded.scopes_json,
              status = 'active',
@@ -363,6 +411,8 @@ export class CirclesStore {
           m.displayName ?? null,
           m.pinnedWallet ?? null,
           m.a2aUrl ?? null,
+          m.boxPubkey ?? null,
+          m.mailboxUrl ?? null,
           m.role ?? "member",
           JSON.stringify(m.scopes ?? DEFAULT_MEMBER_SCOPES),
           m.joinedAt ?? now,

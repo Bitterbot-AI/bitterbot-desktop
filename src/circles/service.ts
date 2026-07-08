@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import type { JsonValue } from "../commerce/sku.js";
 import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import { keyPairFromPrivateKeyPem, pubkeyId, type KeyPair } from "../commerce/envelope.js";
+import { blobDigest, buildMailboxProof } from "../gateway/a2a/mailbox.js";
 import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
@@ -29,6 +30,13 @@ import {
   type Circle,
   type CircleMember,
 } from "../memory/circles-store.js";
+import {
+  loadOrCreateBoxKeys,
+  openBox,
+  sealToBox,
+  type BoxKeyPair,
+  type SealedBlob,
+} from "./box-crypto.js";
 import { makeCircleEnvelope, type CircleEnvelope } from "./envelope.js";
 import { createInvite, parseInviteCode, type CreatedInvite } from "./invites.js";
 
@@ -45,6 +53,8 @@ export type CirclesServiceDeps = {
   fetchImpl?: FetchLike;
   /** Injectable for tests; defaults to the device identity KeyPair. */
   keyPair?: KeyPair;
+  /** Injectable for tests; defaults to the persisted X25519 box keypair. */
+  boxKeys?: BoxKeyPair;
 };
 
 export type SendReport = {
@@ -81,6 +91,7 @@ export class CirclesService {
   private readonly config: BitterbotConfig;
   private readonly fetchImpl: FetchLike;
   private readonly key: KeyPair;
+  private readonly boxKeys: BoxKeyPair;
   readonly store: CirclesStore;
 
   constructor(deps: CirclesServiceDeps) {
@@ -88,11 +99,16 @@ export class CirclesService {
     this.config = deps.config;
     this.fetchImpl = deps.fetchImpl ?? (fetch as unknown as FetchLike);
     this.key = deps.keyPair ?? keyPairFromPrivateKeyPem(loadOrCreateDeviceIdentity().privateKeyPem);
+    this.boxKeys = deps.boxKeys ?? loadOrCreateBoxKeys();
     this.store = new CirclesStore(this.db);
   }
 
   get pubkey(): string {
     return pubkeyId(this.key);
+  }
+
+  get boxPubkeyB64(): string {
+    return this.boxKeys.publicKeyB64;
   }
 
   private get displayName(): string {
@@ -101,6 +117,12 @@ export class CirclesService {
 
   private get a2aPublicUrl(): string | undefined {
     return this.config.circles?.a2aPublicUrl;
+  }
+
+  /** The mailbox host URL where OTHERS deposit mail for US. */
+  private get myMailboxUrl(): string | undefined {
+    const mailbox = this.config.circles?.mailbox;
+    return mailbox?.enabled === false ? undefined : mailbox?.url;
   }
 
   // -------------------------------------------------------------------------
@@ -182,6 +204,8 @@ export class CirclesService {
       {
         display_name: this.displayName,
         a2a_url: this.a2aPublicUrl ?? null,
+        box_pubkey: this.boxKeys.publicKeyB64,
+        mailbox_url: this.myMailboxUrl ?? null,
       },
       this.key,
     );
@@ -206,6 +230,8 @@ export class CirclesService {
         memberPubkey?: string;
         displayName?: string | null;
         a2aUrl?: string | null;
+        boxPubkey?: string | null;
+        mailboxUrl?: string | null;
         role?: string;
         scopes?: string[];
         joinedAt?: number;
@@ -235,6 +261,8 @@ export class CirclesService {
         memberPubkey: m.memberPubkey,
         displayName: m.displayName ?? null,
         a2aUrl: m.a2aUrl ?? null,
+        boxPubkey: m.boxPubkey ?? null,
+        mailboxUrl: m.mailboxUrl ?? null,
         role: m.role === "creator" ? "creator" : "member",
         scopes: m.scopes,
         joinedAt: m.joinedAt,
@@ -250,14 +278,47 @@ export class CirclesService {
   }
 
   // -------------------------------------------------------------------------
-  // Conversation + presence fan-out (direct dial v1; mailbox layers under)
+  // Conversation + presence fan-out: direct dial first, mailbox fallback
+  // (§3.2 — every circle interaction must survive asymmetric online windows)
   // -------------------------------------------------------------------------
 
-  /** Members of a circle other than ourselves that have a dialable URL. */
-  private dialableMembers(circleId: string): CircleMember[] {
-    return this.store
-      .getMembers(circleId)
-      .filter((m) => m.memberPubkey !== this.pubkey && !!m.a2aUrl);
+  /** Members of a circle other than ourselves. */
+  private peerMembers(circleId: string): CircleMember[] {
+    return this.store.getMembers(circleId).filter((m) => m.memberPubkey !== this.pubkey);
+  }
+
+  /**
+   * Deposit a sealed copy of the verb call in the member's mailbox. The
+   * plaintext is {method, envelope}; it is sealed to the member's box key,
+   * so the mailbox host stores ciphertext it cannot read.
+   */
+  private async postToMailbox(
+    member: CircleMember,
+    method: string,
+    envelope: CircleEnvelope,
+  ): Promise<boolean> {
+    if (!member.mailboxUrl || !member.boxPubkey) {
+      return false;
+    }
+    let blob: string;
+    try {
+      blob = JSON.stringify(sealToBox(member.boxPubkey, JSON.stringify({ method, envelope })));
+    } catch (err) {
+      log.debug(`mailbox seal for ${member.memberPubkey.slice(0, 24)}… failed: ${String(err)}`);
+      return false;
+    }
+    const proof = buildMailboxProof({
+      verb: "post",
+      pubkey: this.pubkey,
+      privateKey: this.key.privateKey,
+      extra: blobDigest(member.memberPubkey, blob),
+    });
+    const rpc = await circleRpc(this.fetchImpl, member.mailboxUrl, "mailbox/post", {
+      to: member.memberPubkey,
+      blob,
+      proof,
+    });
+    return rpc.ok;
   }
 
   private async fanOut(
@@ -266,16 +327,22 @@ export class CirclesService {
     envelope: CircleEnvelope,
   ): Promise<SendReport> {
     const report: SendReport = { delivered: [], failed: [] };
-    for (const member of this.dialableMembers(circleId)) {
-      const rpc = await circleRpc(this.fetchImpl, member.a2aUrl as string, method, {
-        envelope,
-      });
-      if (rpc.ok) {
-        report.delivered.push(member.memberPubkey);
-      } else {
-        report.failed.push(member.memberPubkey);
-        log.debug(`fan-out ${method} to ${member.memberPubkey.slice(0, 24)}… failed: ${rpc.error}`);
+    for (const member of this.peerMembers(circleId)) {
+      if (member.a2aUrl) {
+        const rpc = await circleRpc(this.fetchImpl, member.a2aUrl, method, { envelope });
+        if (rpc.ok) {
+          report.delivered.push(member.memberPubkey);
+          continue;
+        }
+        log.debug(`direct ${method} to ${member.memberPubkey.slice(0, 24)}… failed: ${rpc.error}`);
       }
+      // Offline or unreachable: store-and-forward. Presence beats are
+      // point-in-time and skip the mailbox (stale presence is noise).
+      if (method !== "circle/presence" && (await this.postToMailbox(member, method, envelope))) {
+        report.delivered.push(member.memberPubkey);
+        continue;
+      }
+      report.failed.push(member.memberPubkey);
     }
     return report;
   }
@@ -335,11 +402,78 @@ export class CirclesService {
       const envelope = makeCircleEnvelope(
         "presence",
         circle.circleId,
-        { a2a_url: this.a2aPublicUrl ?? null, status: "online" },
+        {
+          a2a_url: this.a2aPublicUrl ?? null,
+          box_pubkey: this.boxKeys.publicKeyB64,
+          mailbox_url: this.myMailboxUrl ?? null,
+          status: "online",
+        },
         this.key,
       );
       await this.fanOut(circle.circleId, "circle/presence", envelope);
     }
+  }
+
+  /**
+   * Drain our mailbox: poll the configured host, open each sealed blob with
+   * our box key, and dispatch the inner {method, envelope} through the SAME
+   * local A2A handlers a direct dial would hit — one auth/scan/dedupe path,
+   * whether a message arrived live or slept 3 days on a relay. Ack only what
+   * dispatched (or was garbage); a handler error leaves the blob for retry.
+   */
+  async pollMailbox(): Promise<{ received: number; dispatched: number }> {
+    const url = this.myMailboxUrl;
+    if (!url) {
+      return { received: 0, dispatched: 0 };
+    }
+    const proof = buildMailboxProof({
+      verb: "poll",
+      pubkey: this.pubkey,
+      privateKey: this.key.privateKey,
+      extra: "0",
+    });
+    const rpc = await circleRpc(this.fetchImpl, url, "mailbox/poll", { proof, since: 0 });
+    if (!rpc.ok || !rpc.result) {
+      return { received: 0, dispatched: 0 };
+    }
+    const blobs = (rpc.result as { blobs?: Array<{ blobId: string; blob: string }> }).blobs ?? [];
+    const { handleCircleMethod } = await import("../gateway/a2a/circles.js");
+    const ackIds: string[] = [];
+    let dispatched = 0;
+    for (const item of blobs) {
+      let inner: { method?: string; envelope?: unknown } | null = null;
+      try {
+        const sealed = JSON.parse(item.blob) as SealedBlob;
+        const opened = openBox(this.boxKeys, sealed);
+        inner = opened ? (JSON.parse(opened) as { method?: string; envelope?: unknown }) : null;
+      } catch {
+        inner = null;
+      }
+      if (!inner?.method || !inner.method.startsWith("circle/") || !inner.envelope) {
+        // Garbage or not-for-us: ack so it never clogs the box.
+        ackIds.push(item.blobId);
+        continue;
+      }
+      const outcome = handleCircleMethod(inner.method, { envelope: inner.envelope }, this.db);
+      // Duplicate-envelope errors are SUCCESS for ack purposes (already
+      // delivered via a live dial); real handler errors leave it for retry.
+      if (outcome.ok || /duplicate/i.test(outcome.ok ? "" : outcome.error.message)) {
+        if (outcome.ok) {
+          dispatched += 1;
+        }
+        ackIds.push(item.blobId);
+      }
+    }
+    if (ackIds.length > 0) {
+      const ackProof = buildMailboxProof({
+        verb: "ack",
+        pubkey: this.pubkey,
+        privateKey: this.key.privateKey,
+        extra: ackIds.join(","),
+      });
+      await circleRpc(this.fetchImpl, url, "mailbox/ack", { proof: ackProof, blobIds: ackIds });
+    }
+    return { received: blobs.length, dispatched };
   }
 
   // -------------------------------------------------------------------------

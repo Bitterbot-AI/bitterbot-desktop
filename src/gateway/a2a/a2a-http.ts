@@ -180,6 +180,7 @@ export function createA2aHttpHandler(opts: {
 
     const isForageVerb = rpcRequest.method.startsWith("forage/");
     const isCircleVerb = rpcRequest.method.startsWith("circle/");
+    const isMailboxVerb = rpcRequest.method.startsWith("mailbox/");
 
     // Authenticate — bearer token or local loopback. Forage verbs are
     // exempt BY DESIGN (PLAN-29): hunters are anonymous peers with no way
@@ -190,7 +191,9 @@ export function createA2aHttpHandler(opts: {
     // they carry their OWN auth — an Ed25519-signed circle/v1 envelope whose
     // author must be an active circle member holding the verb's scope
     // (default-deny, the friend branch), or an invite secret for circle/join.
-    if (!isForageVerb && !isCircleVerb) {
+    // Mailbox verbs carry per-verb Ed25519 proofs (sender for post,
+    // recipient for poll/ack) — a mailbox host serves strangers by design.
+    if (!isForageVerb && !isCircleVerb && !isMailboxVerb) {
       const authOk = await authorizeA2aRequest(req, config, authOpts);
       if (!authOk.ok) {
         sendGatewayAuthFailure(res, authOk.result);
@@ -334,6 +337,64 @@ export function createA2aHttpHandler(opts: {
         rpcRequest.method,
         rpcRequest.params,
         circleDb,
+        Date.now(),
+      );
+      sendJson(
+        res,
+        200,
+        outcome.ok
+          ? { jsonrpc: "2.0", result: outcome.result, id: rpcRequest.id }
+          : { jsonrpc: "2.0", error: outcome.error, id: rpcRequest.id },
+      );
+      return true;
+    }
+
+    // PLAN-31 C1 §3.2: mailbox host verbs — store-and-forward for peers with
+    // asymmetric online windows. Only nodes that opted into serving
+    // (circles.mailbox.serve) expose these; blobs are sealed to recipients'
+    // box keys, so this host stores what it cannot read.
+    if (isMailboxVerb) {
+      if (config.circles?.enabled !== true || config.circles?.mailbox?.serve !== true) {
+        sendJson(res, 404, {
+          jsonrpc: "2.0",
+          error: { code: A2aErrorCodes.METHOD_NOT_FOUND, message: "Method not found" },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+      const { handleMailboxMethod } = await import("./mailbox.js");
+      let mailboxDb: import("node:sqlite").DatabaseSync | undefined;
+      try {
+        const { MemoryIndexManager } = await import("../../memory/manager.js");
+        const memManager = await MemoryIndexManager.get({
+          cfg: config,
+          agentId: "default",
+          purpose: "status",
+        });
+        mailboxDb = (
+          memManager?.getMarketplaceEconomics?.() as
+            | { getDb?: () => import("node:sqlite").DatabaseSync | undefined }
+            | null
+            | undefined
+        )?.getDb?.();
+      } catch {
+        /* memory manager unavailable */
+      }
+      if (!mailboxDb) {
+        sendJson(res, 503, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.INTERNAL_ERROR,
+            message: "Mailbox unavailable on this node",
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+      const outcome = handleMailboxMethod(
+        rpcRequest.method,
+        rpcRequest.params,
+        mailboxDb,
         Date.now(),
       );
       sendJson(

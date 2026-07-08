@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import { generateKeyPair, pubkeyId, type KeyPair } from "../commerce/envelope.js";
 import { handleCircleMethod, resetCircleRateLimits } from "../gateway/a2a/circles.js";
+import { handleMailboxMethod, resetMailboxRateLimits } from "../gateway/a2a/mailbox.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
+import { generateBoxKeyPair } from "./box-crypto.js";
 import { CirclesService, type FetchLike } from "./service.js";
 
 // PLAN-31 C1 end-to-end: two nodes (two DBs, two keys), a fake fetch that
@@ -24,8 +26,16 @@ function openDb(): DatabaseSync {
   return db;
 }
 
-/** Routes https://<host>.test/a2a to that host's DB via the real handlers. */
-function meshFetch(nodes: Record<string, DatabaseSync>): FetchLike {
+/**
+ * Routes https://<host>.test/a2a to that host's DB via the real handlers.
+ * mailbox/* verbs are served even when a host is marked offline — the
+ * asymmetric-window case: the relay stays up while the friend's laptop is
+ * closed, so circle/* dials fail but deposited mail persists.
+ */
+function meshFetch(
+  nodes: Record<string, DatabaseSync>,
+  opts: { offline?: Set<string> } = {},
+): FetchLike {
   return async (url, init) => {
     const host = /https:\/\/([a-z]+)\.test\//.exec(url)?.[1];
     const db = host ? nodes[host] : undefined;
@@ -37,7 +47,13 @@ function meshFetch(nodes: Record<string, DatabaseSync>): FetchLike {
       method: string;
       params: unknown;
     };
-    const outcome = handleCircleMethod(rpc.method, rpc.params, db, Date.now());
+    const isMailbox = rpc.method.startsWith("mailbox/");
+    if (!isMailbox && opts.offline?.has(host as string)) {
+      return { ok: false, status: 502, text: async () => "node offline" };
+    }
+    const outcome = isMailbox
+      ? handleMailboxMethod(rpc.method, rpc.params, db, Date.now())
+      : handleCircleMethod(rpc.method, rpc.params, db, Date.now());
     const body = outcome.ok
       ? { jsonrpc: "2.0", result: outcome.result, id: rpc.id }
       : { jsonrpc: "2.0", error: outcome.error, id: rpc.id };
@@ -45,12 +61,13 @@ function meshFetch(nodes: Record<string, DatabaseSync>): FetchLike {
   };
 }
 
-function makeConfig(name: string, host: string): BitterbotConfig {
+function makeConfig(name: string, host: string, mailboxHost?: string): BitterbotConfig {
   return {
     circles: {
       enabled: true,
       a2aPublicUrl: `https://${host}.test`,
       displayName: name,
+      ...(mailboxHost ? { mailbox: { url: `https://${mailboxHost}.test`, serve: false } } : {}),
     },
   };
 }
@@ -65,6 +82,7 @@ describe("CirclesService end-to-end (two nodes)", () => {
 
   beforeEach(() => {
     resetCircleRateLimits();
+    resetMailboxRateLimits();
     anaDb = openDb();
     bobDb = openDb();
     anaKey = generateKeyPair();
@@ -186,5 +204,65 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(report.delivered.toSorted()).toEqual([pubkeyId(bobKey), pubkeyId(carolKey)].toSorted());
     expect(bob.messages(circleId).some((m) => m.content.includes("kickoff"))).toBe(true);
     expect(carol.messages(circleId).some((m) => m.content.includes("kickoff"))).toBe(true);
+  });
+
+  it("delivers through the mailbox when the peer is offline (store-and-forward §3.2)", async () => {
+    // relay = a third node hosting mailboxes; bob's laptop will be closed.
+    const relayDb = openDb();
+    const offline = new Set<string>();
+    const nodes = { ana: anaDb, bob: bobDb, relay: relayDb };
+    const fetchImpl = meshFetch(nodes, { offline });
+    const anaBox = generateBoxKeyPair();
+    const bobBox = generateBoxKeyPair();
+    ana = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana", "relay"),
+      fetchImpl,
+      keyPair: anaKey,
+      boxKeys: anaBox,
+    });
+    bob = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob", "relay"),
+      fetchImpl,
+      keyPair: bobKey,
+      boxKeys: bobBox,
+    });
+
+    // Connect while both are online (join advertises box key + mailbox URL).
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    // Bob's laptop closes. Ana's send falls back to the relay mailbox.
+    offline.add("bob");
+    const report = await ana.sendMessage({ circleId, text: "logged the pizza, $42 split 2" });
+    expect(report.delivered).toEqual([pubkeyId(bobKey)]);
+    expect(report.failed).toEqual([]);
+
+    // Nothing reached Bob's node yet.
+    expect(bob.messages(circleId).filter((m) => m.direction === "in")).toHaveLength(0);
+    // The relay stored ciphertext only — the plaintext appears nowhere.
+    const stored = relayDb.prepare(`SELECT blob_json FROM mailbox_blobs`).all() as Array<{
+      blob_json: string;
+    }>;
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.blob_json).not.toContain("pizza");
+
+    // Bob wakes and drains his mailbox: the message lands through the SAME
+    // hostile-principal path (wrapped), and the relay is emptied by the ack.
+    offline.delete("bob");
+    const drained = await bob.pollMailbox();
+    expect(drained).toEqual({ received: 1, dispatched: 1 });
+    const inbox = bob.messages(circleId).filter((m) => m.direction === "in");
+    expect(inbox).toHaveLength(1);
+    expect(inbox[0]?.content).toContain("pizza");
+    expect(inbox[0]?.content.toLowerCase()).toContain("untrusted");
+    expect(relayDb.prepare(`SELECT COUNT(*) AS n FROM mailbox_blobs`).get()).toEqual({ n: 0 });
+
+    // A second poll is a no-op (acked), and a replayed live dial of the same
+    // envelope would be deduped — delivered exactly once.
+    expect(await bob.pollMailbox()).toEqual({ received: 0, dispatched: 0 });
+    expect(bob.messages(circleId).filter((m) => m.direction === "in")).toHaveLength(1);
   });
 });

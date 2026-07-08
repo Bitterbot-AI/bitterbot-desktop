@@ -1317,6 +1317,39 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 31,
+    description:
+      "PLAN-31 C1 transport: the store-and-forward mailbox (§3.2) + sealed-" +
+      "box endpoints. Members publish an X25519 box pubkey + mailbox URL in " +
+      "signed join/presence envelopes; mailbox blobs are sealed per-recipient " +
+      "(ephemeral ECDH + HKDF + AES-256-GCM) so a mailbox host stores what it " +
+      "cannot read ('no server that can read your messages'). mailbox_blobs " +
+      "is the HOST side (nodes with circles.mailbox.serve=true): sender-" +
+      "signature required, per-sender rate limits, per-recipient quotas, " +
+      "~30d TTL.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_members", "box_pubkey", "TEXT");
+      addColumnIfMissing(db, "circle_members", "mailbox_url", "TEXT");
+      addColumnIfMissing(db, "circle_peer_presence", "box_pubkey", "TEXT");
+      addColumnIfMissing(db, "circle_peer_presence", "mailbox_url", "TEXT");
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS mailbox_blobs (
+          blob_id          TEXT PRIMARY KEY,
+          recipient_pubkey TEXT NOT NULL,
+          sender_pubkey    TEXT NOT NULL,
+          blob_json        TEXT NOT NULL,
+          created_at       INTEGER NOT NULL,
+          expires_at       INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_mailbox_blobs_recipient ` +
+          `ON mailbox_blobs(recipient_pubkey, created_at)`,
+      );
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_mailbox_blobs_expiry ON mailbox_blobs(expires_at)`);
+    },
+  },
 ];
 
 /**
