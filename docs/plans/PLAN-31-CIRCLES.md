@@ -706,15 +706,32 @@ validated path as peers', deterministic largest-remainder splits with hash
 tie-breaks, zero-sum union fold to net + pairwise display balances,
 author-only reversals, idempotent cross-node event sync — money-grade
 machinery before money, but NO settlement: review-window/velocity/
-settleability rules stay dormant until Phase 2); proactive graph answers + the disclosure-allowlist model (net-new;
-no consent model exists in code today); reachability/presence; the connection
-UI + friend-node count + social-engagement surface (section 4b) in a new
-renderer pane; briefing/poll/tab delivery bridged into existing chat channels
-(the Telegram/Discord/web rails already carry polls). Ships as "your people,
-reachable through your agent — and the tab keeps itself." No money movement.
-**C3 The social floor + first artifacts:** weekly briefing (audit note: no
-digest machinery exists — the codebase's "emotionalBriefing" is an unrelated
-hormonal-tone string; this is a from-scratch compiler); polls; named circle
+settleability rules stay dormant until Phase 2); the disclosure-allowlist
+model + graph answers LANDED 2026-07-08 (default-deny per-category grants,
+circle-scoped or global, precedence circle > wildcard > built-in > deny;
+ONLY presence + availability are built-in and even those are revocable;
+ungranted asks receive one automated default-posture refusal, granted asks
+WAIT for the human — nothing from private memory is ever auto-disclosed);
+reachability/presence LANDED (heartbeats + peer-presence table); the
+connection UI LANDED (the "People" renderer pane: friend-node count front
+and center, reciprocity tiles as the optimized metric, liveness dots,
+circle cards with the tab's fold in plain sentences, invite mint +
+paste-to-join, wrapped conversation view, kill-switch-aware explainer).
+Ships as "your people, reachable through your agent — and the tab keeps
+itself." No money movement. STILL TO BUILD in C2/C3: briefing/poll/tab
+delivery bridged into existing chat channels (Telegram/Discord/web rails
+already carry generic polls; the circle bridge is unbuilt).
+**C3 The social floor + first artifacts:** weekly briefing LANDED
+2026-07-08 (from-scratch domain-agnostic compiler, migration v32: the
+reciprocity pulse headline, per-circle presence/conversation COUNTS —
+digest-batching, the memory-laundering rule pinned by test: no foreign
+prose is ever re-rendered — the tab fold with the all-square clean-slate
+line, weekly cadence gate, capped length, never bonus briefings); the
+labeled practice partner LANDED (real signed-envelope path, teaches
+connect -> converse -> ask -> invite, never counts as a connection,
+retires permanently on the first real connection). STILL TO BUILD: the
+invite-URL browser guest-JOIN page (v3-REQUIRED before any launch: the
+nodeless guest identity, section 4.1); circle-scoped polls; named circle
 agent; connection milestones + graph-answer share moments with guest-ask
 links; agent-conversation clip recorder; hosted-node on-ramp (~month 6,
 section 4.3). Circle Wrapped moves to year 2 (section 4.5). Anti-hook
