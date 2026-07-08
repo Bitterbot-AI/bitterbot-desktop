@@ -1,14 +1,22 @@
 # PLAN-31: Circles, the Agent Social Fabric
 
-**Status:** DRAFT v1 (2026-07-08), built from a 10-lane research program (5 research
-lanes, 4 adversarial/red-team lanes, 1 codebase rails map), every load-bearing
-claim verified against primary sources.
+**Status:** DRAFT v2 (2026-07-08) — CONNECTION-FIRST reframe. Built from a
+13-lane research program (5 market/mechanics + 4 adversarial/red-team + 1 rails
+map + 2 substrate/domain + 1 connection-first lane in flight), every
+load-bearing claim verified against primary sources. **The pivot from v1 of
+this doc: the product is the trusted connection graph and agent-to-agent
+conversation, NOT bill-splitting. Money is the yield, demoted to Phase 2 on a
+warm graph. Reason: it solves cold-start (the graph forms with zero money/
+regulatory friction) and dodges the money-first death every stablecoin-P2P app
+suffered.**
 **Depends on:** PLAN-30 G0 (audit substrate, live), PLAN-29 (Forage), PLAN-26
 (Aubaine settlement), PLAN-16/17 (task spine), wallet #54 (CDP rails).
-**Window:** Apple ships AI receipt-splitting in iOS 27 this fall (confirmed WWDC
-2026-06-08). Cash App Moneybot already sends P2P conversationally. AP2's P2P
-extension is expected late 2026. The whitespace is real but encircled:
-**target v1 in market by October 2026, Circle Wrapped by early December.**
+**Window:** v1 is the connection graph and agent-to-agent social layer — it has
+NO incumbent racing it (Apple/Cash App/AP2 are all money-first; see section 12
+competitive), so v1 should ship as fast as it is safe to start the flywheel.
+The clock applies to the Phase-2 MONEY layer: Apple ships AI receipt-splitting
+in iOS 27 this fall (WWDC 2026-06-08), so land the connection graph now and the
+money layer on top of a warm graph around the time the category heats up.
 
 ## 0. Thesis
 
@@ -37,27 +45,48 @@ same six primitives serve every domain where a handful of people share a life:
 - **Group decisions** (polls / agent-tallied consent).
 - **Artifacts + rituals** (the shareable, viral, retention layer).
 
-The expense ledger is chosen as the beachhead because it has the deepest
-QUANTIFIED pain and the most viral formation moment (a trip), not because it is
-the ceiling. Sections 11-12 map the domain expansion (care circles, team
-logistics, household ops, mutual aid) and the platform path (third-party
-"circle skills" on the existing marketplace). v1 still ships the expense app
-ONLY; the substrate framing governs how v1 is built so those domains are a
-skill away, not a rewrite.
+**The beachhead is the CONNECTION, not any single app.** The magic that makes
+this worth building — and the thing that solves cold-start — is the trusted
+graph itself: you invite someone, they accept (or the reverse), and now your
+two nodes are consented edges on each other's mesh. That handshake is the
+"friend request accepted" of a social network, except the entities that then
+interact are the _agents_, standing in for two people who chose each other.
+Your address book comes alive: contacts you can query, that answer back, that
+coordinate while you sleep, bounded by what each human allowed.
 
-**The concrete v1 (the beachhead app).** The circle keeps the shared expense
-ledger and settles it in invisible USDC so nobody ever asks anybody for money,
-plans trips, runs group decisions, compiles a weekly briefing, and accumulates
-its history.
+v1 ships the connection and what two connected agents do together SOCIALLY —
+reachability, agent-to-agent conversation, and "ask your people" (query the
+trusted graph and your friends' agents answer on their behalf). **Money is
+explicitly NOT in v1.** It is the yield the graph produces later, not the hook
+that forms it. This is the deliberate inversion of the money-first death: every
+consumer stablecoin-P2P product we studied (Daimo built the perfect wallet and
+shelved it) died because money was the adoption pitch and there was no felt
+problem — Venmo already works. Facebook shipped the graph before ads; WeChat
+shipped messaging + the graph before red envelopes. The social layer forms
+warm and daily with zero money and zero regulatory surface; monetization lands
+on top of a thriving network, where it is easy, instead of being asked to
+bootstrap a cold one.
 
-**The beachhead is the living ledger.** The market's deepest structural flaw:
-ledger apps (Splitwise, 35M users) cannot move money, and money apps (Zelle
-$1.2T/yr, Venmo ~$325B) cannot keep a real group ledger. In between sits a
-quantified human cost: 31% of Americans are owed money by a loved one
-(LendingTree), 54.5% of personal lenders had to ask more than once
-(JG Wentworth), and financial disagreement is the strongest predictor of
-relationship dissolution (Dew 2012). Two paired agents that maintain the tab
-continuously and settle it automatically remove the ask entirely.
+**The cold-start flywheel.** Connections form (the invite is the only ask, and
+it is light) -> connected agents deliver real utility with no money involved
+(reachability, ask-the-graph, ambient coordination) -> daily engagement + the
+built-in reason to recruit (your people aren't here yet) densifies the graph ->
+a warm, dense, trusted network now makes settlement, pooling, and collective
+functions trivial to add (the trust edges, reachability, and daily habit
+already exist) -> economic gravity gives people more reasons to connect. Money
+is the second act on a network that already loves being there.
+
+Sections 11-12 map the later domain apps (expense-splitting, care circles, team
+logistics, co-ops) and the platform path (third-party "circle skills"). Those
+are all things a _thriving connection graph_ unlocks; they are the yield, and
+the substrate framing governs how v1 is built so each is a skill away, not a
+rewrite. Expense-splitting in particular still has the deepest quantified pain
+of the later apps (ledger apps like Splitwise, 35M users, cannot move money;
+money apps like Zelle, $1.2T/yr, cannot keep a real group ledger; 31% of
+Americans are owed money by a loved one, and financial disagreement is the top
+predictor of relationship dissolution, Dew 2012) — which is exactly why it is
+the strongest _monetization_ beat to land once the graph is warm, not the
+thing we lead with.
 
 **Why us and not Apple/Cash App:** their features are moments (one receipt, one
 send). A circle is a relationship: persistent shared context across a group,
@@ -77,25 +106,51 @@ enable more circles.
 
 ## 1. What v1 is (and is not)
 
-**v1 verbs (the red-teamed minimal set):**
+v1 is the connection and the social magic on top of it. No money.
 
-1. **Pair** via signed invite URL with browser guest preview (section 4).
-2. **Circle ledger**: expenses with custom splits, receipts attached as
-   hashed images, immutable signed entries, reversal-style corrections.
-3. **Settle**: pairwise only, agent-prepared, human one-tap approved, USDC on
-   Base, asynchronous via relay mailbox.
-4. **Briefing**: one synchronized weekly circle digest compiled by agents.
-5. **Decide**: polls over the circle channel (existing polls machinery).
-6. **Artifacts**: the Settlement Receipt card and the claim-attached invite.
+**v1 verbs (connection-first):**
 
-**Explicitly NOT in v1** (each cut is red-team- or research-justified):
-shared circle memory beyond the ledger and a plain notes doc (memory-laundered
-injection risk, section 6), multi-party debt netting (largest manipulation
-surface, trivial fee savings on Base), standing payment mandates (v1.5, after
-the approval UX proves out), kick votes (leave-and-fork instead), social key
-recovery (re-invite plus countersigned balance carryover; k-of-n attestation
-in v1.5), non-USD currencies, any public feed, any global leaderboard, minors
-(18+ in ToS, non-negotiable).
+1. **Connect** — mutual accepted invite creates a consented, cryptographic
+   trusted edge between two nodes. Signed invite URL with a browser guest
+   preview (section 4). Either side invites; the other accepts. This is the
+   product's atom.
+2. **Reach + presence** — once connected, your agent can reach your friends'
+   agents on the mesh. The UI shows your connections and their liveness (the
+   friend-node count and social-engagement surface, section 4b). Knowing your
+   people are there and reachable is beat one.
+3. **Agents converse** — your agent and a connected friend's agent hold an
+   ongoing channel on the mesh: coordinate, remember, answer on their humans'
+   behalf. Inbound peer-agent messages are a hostile principal class
+   (section 6); agent chatter is digest-batched so humans see summaries, not
+   noise.
+4. **Ask your people** — the recurring hook: your agent puts a question to the
+   trusted graph ("does anyone know a good dentist in Austin?") and connected
+   friends' agents answer per their humans' disclosure allowlist. A superpower
+   that exists ONLY because of the agent-mediated trusted graph, gets better
+   with every friend added, and is inherently viral (to ask your people you
+   need your people here).
+5. **Briefing** — one synchronized weekly digest of your connections' shared
+   life, per consent: what your people are up to, what needs a decision, a
+   surfaced memory. Replaces the feed.
+6. **Decide** — polls over the circle channel (existing polls machinery) for
+   the small constant group choices.
+
+**Explicitly NOT in v1** — deferred to later phases on a warm graph:
+
+- **All money** (settlement, the expense ledger, pooling, mandates). This is
+  Phase 2, and it is the whole point of the sequencing: money lands on a
+  thriving network, not a cold one. When it lands it uses the red-teamed
+  design already specced in section 3 (pairwise, agent-prepared, human one-tap,
+  asynchronous via mailbox, on-chain-confirm-before-credit).
+- Shared circle memory beyond a plain notes doc (memory-laundered injection
+  risk, section 6), any public feed, any global leaderboard, minors (18+ in
+  ToS, non-negotiable).
+
+The C1 circles store already built (migration v29) is connection-first by
+construction: it models consented membership with per-member scopes and
+pinned-wallet slots that simply stay empty until Phase 2. Nothing about the
+money-later decision wastes it — a settlement scope is one more entry in an
+already-extensible scope set.
 
 ## 2. Verified evidence base (the numbers the plan stands on)
 
@@ -125,10 +180,16 @@ in v1.5), non-USD currencies, any public feed, any global leaderboard, minors
   figure does not exist in the cited paper; Moltbook's 88:1 agent-to-human
   ratio is the warning label on any registered-agent vanity metric.
 
-## 3. v1 mechanics (the tight version)
+## 3. Mechanics
 
 All of this composes existing rails; the relay mailbox is the ONE genuinely
 new piece of infrastructure.
+
+**Phase map (post-reframe):** 3.1 (identity/pairing), 3.2 (transport), and 3.5
+(hostile-principal security) are v1 — they are the connection and the
+conversation. **3.3 (ledger) and 3.4 (settlement) are the Phase-2 MONEY design,
+preserved here fully specced so the money layer is a known quantity, but they
+do NOT ship in v1.** They land on the warm graph once connection is proven.
 
 ### 3.1 Identity and pairing
 
@@ -189,82 +250,124 @@ Friend-agent content is a distinct, less-trusted principal class, forever:
 injection-scanned on receipt (scanSkillForInjection), wrapped as external
 content, NEVER able to trigger tools directly, negotiation round caps,
 per-member agent-message rate limits, digest-batching by default (agents
-talk; humans see summaries). Disclosure allowlist default: an agent may
-autonomously share only (a) expense entries it created and (b) free/busy
-availability. Everything else requires explicit per-category, per-circle
-grants. Agent-authored messages are visibly and non-strippably labeled in
-every client. No circle content ever enters recall-eligible memory in v1
-(the memory-laundering rule, section 6).
+talk; humans see summaries). Disclosure allowlist default (v1, connection-
+first): an agent may autonomously share only (a) presence/liveness and
+(b) free/busy availability. Answering an "ask your people" query, or sharing
+anything from the user's private memory, requires an explicit per-category
+grant — and the default answer posture is "my human can see this question; I'll
+reply if they've allowed this topic." (Phase 2 adds expense entries it created
+to the default set.) Agent-authored messages are visibly and non-strippably
+labeled in every client. No connection content ever enters recall-eligible
+memory in v1 (the memory-laundering rule, section 6).
 
 ## 4. Growth engine
 
 ### 4.1 The invite (evidence: Discord, Zoom, PayPal escrow, WeChat)
 
 A short signed https URL that (1) works in a browser before install: the
-invitee sees the inviter's agent, named and present, with the specific
-pending thing ("Ana's agent wants to settle your Tahoe trip: you have
-$14.20 waiting"); they can complete one interaction as a guest before any
-install; (2) carries a claim, not an introduction: money already owed by a
-real friend is the strongest-converting invite payload measured anywhere;
-(3) degrades gracefully: protocol deep link, download page that preserves
-the token, first-run "have an invite? paste it," co-present QR/short-code
-with emoji-fingerprint confirmation, and post-hoc pairing from prior
-interactions. Never contact harvesting, never shadow profiles (Path: $800K
-FTC; LinkedIn: $13M).
+invitee sees the inviter's agent, named and present, with a concrete pending
+thing — in v1 a social one ("Ana wants to connect her agent with yours" or
+"Ana's agent has a question for you"); they can complete one interaction as a
+guest before any install; (2) degrades gracefully: protocol deep link,
+download page that preserves the token, first-run "have an invite? paste it,"
+co-present QR/short-code with emoji-fingerprint confirmation, and post-hoc
+pairing from prior interactions. Never contact harvesting, never shadow
+profiles (Path: $800K FTC; LinkedIn: $13M).
 
-### 4.2 The first 48 hours (the WeChat sequence)
+**Phase-2 variant — the claim-attached invite.** Once money is live, the
+highest-converting invite payload ever measured is money already owed by a
+real friend ("you have $14.20 waiting from the Tahoe trip; claim it by
+joining" — WeChat hongbao took WeChat Pay 30M -> 100M in a month). That is the
+Phase-2 acquisition accelerant; v1's invite converts on the relationship
+itself, not a claim.
 
-Beat one at pairing: light, reversible, jointly visible (agents compare
-free/busy and find the dinner slot; a context card exchanged). Beat two
-within a day: money as an INCOMING CLAIM (the computed "you're owed
-$14.20"), never an outgoing send (48% of instant-payment holdouts cite
-fraud fear; incoming money converts). Wallet is created silently (CDP,
-no seed phrase); one recovery-setup interrupt only when balance first
-exceeds ~$25.
+### 4.2 The first 48 hours (connection-first)
+
+Beat one, at the moment of connecting: the two agents do one visible, useful,
+zero-stakes thing together so the connection proves itself immediately —
+compare free/busy and surface a shared open evening, or exchange a context
+card ("here's what my human is up to this month, per what they allowed").
+Beat two, within a day: the first "ask your people" answer lands — the invitee
+either poses a question the graph answers, or watches their agent answer one
+for a friend. The payoff is relational and informational, never money. (Phase 2
+adds the incoming-claim beat — "you're owed $14.20" — as an additional
+conversion accelerant once money is live; incoming money converts where
+outgoing sends hit the 48% fraud-fear wall, but it is not the v1 opener.)
 
 ### 4.3 The empty room
 
 Solo Bitterbot is already the tool (come for the tool, stay for the
-network). Add a LABELED practice-partner agent that exercises the entire
-pairing/ledger/settle protocol so the first real pairing is the user's
-second run of the flow; it retires as real pairings arrive (the
-Fortnite/chess.com pattern, exited by the Reddit forgot-the-script test).
+network). Add a LABELED practice-partner agent that exercises the connect ->
+converse -> ask flow so the first real connection is the user's second run of
+it; it retires as real connections arrive (the Fortnite/chess.com pattern,
+exited by the Reddit forgot-the-script test). Between install and first
+connection, the UI shows legible progress toward a warm graph (invites out,
+people discovered, what one connection would unlock) with agency, never a dead
+empty screen.
 
-### 4.4 Viral artifacts (each maps to verified precedent)
+### 4.4 The connection UI + social-engagement surface (the user's ask)
 
-1. **Settlement Receipt** (per event, high frequency): thermal-receipt stat
-   card, fixed template, no free text, amounts hidden by default, product
-   name in the header where a crop cannot remove it. "TAHOE TRIP: 4 people,
-   23 expenses, 6 debts collapsed to 2 transfers, 0 humans asked for money."
-2. **Claim-attached circle invite** (continuous): fires whenever a
-   settlement includes a non-user; deep link lands inside the circle with
-   the claim pending; 14-30 day expiry.
-3. **Agent settlement clip** (user-initiated): one-tap 20-30s recording of
-   two named agents politely negotiating, debts visibly collapsing, receipt
-   end-card. The GibberLink recognition beat, wholesome register. Transcripts
-   are verifiably real (timestamps + on-ledger references): the Moltbook
-   staged-content scandal is the cautionary tale.
+The North-Star surface is the connected graph made visible. In the renderer
+(new "People"/"Circle" pane; ui-store/AppShell/Sidebar slots):
+
+- **Connected friend-node count** — the headline number, front and center:
+  how many people's agents yours is connected to. This is the metric the user
+  called for and the one social networks live on (the activation-threshold
+  canon — Facebook's early "N friends" magic number, etc. — lands from the
+  research lane; number filled when it returns).
+- **Presence/liveness** — which connections' nodes are reachable now (ambient
+  "your people are here"), last-seen, without exposing a public graph.
+- **Reciprocity + conversation health, not vanity follower counts** — because
+  a trusted graph is small and mutual, the metrics that matter are relational:
+  active conversations between your agent and friends', response rate to
+  "ask your people," mutual-connection density (friends-of-friends already
+  connected), and how many questions the graph answered for you this week.
+  These are engagement signals that reward a _working_ graph, never a
+  broadcast-follower race (LinkedIn's 500+ cap and Snap-score-anxiety
+  cautions apply — no public leaderboard, no global count).
+- **The weekly briefing** (section 1 verb 5) is the recurring pull that turns
+  the count into a habit.
+
+Artifact/privacy laws for anything shareable: user-initiated with preview,
+no free-text templates, k>=5 cohorts on any comparison, and NO public
+connection graph (the friends list, not transactions, found Biden's Venmo).
+
+### 4.5 Viral artifacts (connection-first; money artifacts are Phase 2)
+
+1. **"Ask your people" moments** (high frequency): a screenshot-able answer
+   your graph produced — "my circle found me a dentist in 4 minutes" — the
+   wholesome agent-behavior share unit (character.ai/Replika sharing culture;
+   the endearing, not the glitchy).
+2. **Agent-conversation clip** (user-initiated): one-tap 20-30s recording of
+   two named agents politely coordinating on the mesh, the GibberLink
+   recognition beat in a wholesome register. Transcripts are verifiably real
+   (timestamps + signed references): the Moltbook staged-content scandal is
+   the cautionary tale.
+3. **Connection milestones**: "your agent is now connected with 12 people" /
+   "your graph answered 30 questions this month" — status about a working
+   graph, never a follower count.
 4. **Circle Wrapped** (annual, early December, drafting off Wrapped season):
-   group story plus one flattering personal superlative card per member.
-   The Monzo law: celebrate relationship stats, never audit spending.
-5. **Harmony streak milestones**: "214 days since anyone in this circle had
-   to ask for money back." Sobriety-app pattern; no incumbent celebrates the
-   absence.
-   Artifact laws: user-initiated with preview, k>=5 cohorts on any comparison,
-   location precision stripped from trip artifacts, no public circle-membership
-   graph (the friends list, not the transactions, found Biden's Venmo).
+   your graph's year — connections made, questions answered, plans
+   coordinated, time saved — plus one flattering personal card per member.
+   The Monzo law: celebrate relationship stats, never audit anyone.
+   Phase-2 artifacts (land with money): the Settlement Receipt ("6 debts
+   collapsed to 2 transfers, 0 humans asked for money"), the claim-attached
+   invite, and the harmony streak ("214 days since anyone had to ask for money
+   back"). All preserved, all deferred until the money layer.
 
-### 4.5 Metrics from day one
+### 4.6 Metrics from day one
 
 (1) invite-created -> link-opened -> guest-interaction -> installed ->
-first-run-with-token -> pairing-confirmed, by path; alarm on
-installed-without-token. (2) time-to-first-paired-value and an empirically
-found activation threshold (the Slack 2000-messages analog: N agent
-exchanges in week one -> retention X). (3) K-factor = invites per activated
-circle x conversion, plus invited-vs-organic activation ratio (Venmo's
-insider figure was 10x; if ours is near 1x the invite context is broken).
-Growth accounting follows PLAN-30 discipline: seeded/founder circles are
-labeled in every metric, never blended.
+first-run-with-token -> CONNECTION-confirmed, by path; alarm on
+installed-without-token. (2) the connection activation threshold — the
+Facebook-N-friends / Slack-2000-messages analog for us: the connection count
+(and/or ask-the-graph interactions) in week one that predicts retention; find
+it empirically and point onboarding at it. (3) K-factor = invites per
+activated user x conversion, plus invited-vs-organic activation ratio (Venmo's
+insider figure was 10x; near 1x means the invite context is broken). (4) graph
+health: median connections per active user, reciprocity, ask-the-graph
+answer rate. Growth accounting follows PLAN-30 discipline: seeded/founder
+connections are labeled in every metric, never blended.
 
 ## 5. Hook layer (gamification that notarizes, never substitutes)
 
@@ -377,75 +480,95 @@ says can trigger a tool or silently enter memory.
 
 ## 8. Build plan
 
-**Phase 0 (immediately, independent):** A2A inbound scanning + data-part
-handling; taint-flag design note into PLAN-27/28.
-**C1 Pairing + transport:** friend branch in A2A auth (scoped signed
-envelopes); pairing store with pinned wallets; invite URL + browser guest
-preview page (hosted claim page pattern); relay mailbox on the fleet;
-practice-partner agent. Ships as "pair with a friend, agents exchange
-briefing cards."
-**C2 Ledger + settlement:** signed member chains + union fold + fork
-freeze; expense capture (receipt image hash in entry); review window,
-velocity limits; pairwise two-phase settlement over exec-approvals with
-ApprovalBanner wired; Settlement Receipt artifact; claim-attached invite.
-This is the launch: "the tab that settles itself."
-**C3 The social floor:** weekly briefing; polls integration; harmony
-streak; clean-slate ceremony; named circle agent; friends tab in the
-renderer (ui-store/AppShell/Sidebar slots); morning-report line.
-**C4 Wrapped + season (pre-December):** Circle Wrapped generator +
-personal superlative cards; settlement clip recorder; season template
-opt-in.
-**C5 (v1.5):** standing mandates in wallet-service; k-of-n circle identity
-recovery via trust-list machinery; group pot via Aubaine (counsel-gated,
-pools precedent); Forage bounty posting from circles (the flywheel);
-multi-device.
-Deferred indefinitely: shared circle memory (until taint-preserving
-recall), multi-party netting, any feed, any global metric.
+Connection-first order: the money layer (formerly C2, "the tab that settles
+itself") moves to Phase 2 and lands on the warm graph. v1 is C1-C3.
+
+**Phase 0 (DONE, independent):** A2A inbound scanning + data-part handling
+(shipped, commit 101d2b5); taint-flag design note into PLAN-27/28.
+**C1 Connect + transport:** circles/membership store (DONE, migration v29,
+commit 6d17ae1); friend branch in A2A auth (scoped signed envelopes verified
+against memberHasScope); invite URL + browser guest-preview page; relay
+mailbox on the fleet; practice-partner agent. Ships as "invite a friend; your
+agents can reach each other."
+**C2 The social launch (this is the launch now):** the agent-to-agent
+conversation channel; "ask your people" (graph query + consented answers);
+reachability/presence; the connection UI + friend-node count + social-
+engagement surface (section 4b) in a new renderer pane. Ships as "your people,
+reachable through your agent." No money.
+**C3 The social floor + first artifacts:** weekly briefing; polls;
+named circle agent; connection milestones + "ask your people" share moments;
+the connection-Wrapped generator (pre-December); agent-conversation clip
+recorder. Anti-hook commitments enforced (section 5).
+**Phase 2 — the money layer (on the warm graph):** signed member chains +
+union fold + fork freeze; expense capture; review window + velocity limits;
+pairwise two-phase settlement over exec-approvals with ApprovalBanner wired;
+on-chain-confirm-before-credit; Settlement Receipt + claim-attached invite +
+harmony streak artifacts. This is where the section-7 regulatory posture and
+the iOS-27 timing window apply. Gated behind counsel sign-off + the
+constitutional wallet rule.
+**Phase 3+ — domain apps + platform (sections 11-12):** event crews, co-ops
+(Aubaine), youth sports, care; then circle-skills for third parties behind the
+five gates. Forage-bounty-funded skill requests close the flywheel.
+Deferred indefinitely: shared memory (until taint-preserving recall),
+multi-party netting, any public feed, any global metric.
 
 Each phase lands wired, on by default where safe, kill-switched, tested,
-and documented in the same commit (standing rule). Circle surfaces default
-OFF until C2 completes its security review; pairing itself ships dark
-behind config until the invite page is live.
+and documented in the same commit (standing rule). Connection surfaces default
+OFF until C2 completes its security review; pairing ships dark behind config
+until the invite page is live. Money stays entirely dark until Phase 2 clears
+counsel.
 
-## 9. Success metrics (in order)
+## 9. Success metrics (in order — connection-first)
 
-1. Paired-conversion funnel and K-factor (target: invited-vs-organic
-   activation well above 1x; consumer-good K is 0.3-0.7).
-2. Week-4 retention of paired users vs solo users; the activation threshold
-   (find our 2000-messages number).
-3. Time-to-first-settlement and settlement reliability (proposed -> paid,
-   p95 latency including offline windows).
-4. Circle formation rate and median circle size; artifact share -> install
-   attribution.
-5. Security health: injection-scan hits on circle channels, ledger freezes,
-   disputed expenses, forfeitures. Zero tolerance for silent failures.
-6. Flywheel: organic DPSV from circle settlements (labeled, never blended
-   with seeded volume, PLAN-30 discipline).
+1. **Connected friend-node count and its activation threshold** — the
+   North Star. The Facebook-N-friends / Slack-2000-messages analog for us:
+   the connection count (and ask-the-graph interactions) in week one that
+   predicts retention. Instrument it, find it, point onboarding at it.
+2. Connection-conversion funnel and K-factor (invite-created -> connection-
+   confirmed by path; target invited-vs-organic activation well above 1x;
+   consumer-good K is 0.3-0.7).
+3. Week-4 retention of connected vs solo users; graph health (median
+   connections per active user, reciprocity, ask-the-graph answer rate).
+4. Agent-conversation volume and usefulness (questions the graph answered;
+   coordination completed) — the "is the connection doing real work" signal.
+5. Security health: injection-scan hits on connection channels, suspended
+   members, disclosure-grant anomalies. Zero tolerance for silent failures.
+6. Phase-2 onward: settlement reliability, then organic DPSV from circle
+   activity (labeled, never blended with seeded volume, PLAN-30 discipline) —
+   the flywheel's yield, measured only once money is live.
 
 ## 10. Risk register (each with its receipt)
 
-- **Apple/incumbent compression** (iOS 27 receipt-split, fall 2026): our
-  moat is the persistent paired graph + both-sides agents; ship C2 before
-  their launch, use their marketing as category education.
-- **Authentication cliff** (every assistant-payment death): per-settlement
-  human tap + on-chain confirm in v1; mandates only after the approval UX
-  earns trust.
-- **No-felt-problem death** (Daimo): money is never the adoption pitch;
-  circles ride the existing agent product; claims, not sends, do the
-  converting.
-- **Quiet-cull usage death** (2%-tried-voice-payments): the wedge is the
-  continuous job (the living tab), not the transaction; if telemetry reads
-  "occasional one-off sends," rethink before scaling.
-- **Inter-agent compromise** (94.4/100% injection rates; Moltbook): hostile
-  principal class + no-tool-trigger + taint rule + bounded money exposure.
-- **Privacy scandal** (Venmo's FTC arc): no feed, no public graph, artifact
-  laws, amounts hidden by default.
+- **No-felt-problem death** (Daimo built the perfect wallet and shelved it):
+  THE risk the reframe is built to dodge. Money is never the adoption pitch;
+  the connection and what agents do together socially are the felt delight;
+  the graph forms warm before a dollar moves. If v1 telemetry shows people
+  connect but the agents do nothing useful together, that is the real failure
+  signal — fix the ask-the-graph utility before anything else.
+- **Empty-graph / cold-start** (the problem we claim to solve): the graph is
+  worthless at n=1 connection. Mitigation = the labeled practice-partner, the
+  legible progress UI, disclosed founder-seeded connections, and an invite so
+  light (a relationship, not a claim) it clears the lowest bar.
+- **Apple/incumbent compression** (iOS 27 receipt-split, fall 2026): does NOT
+  touch v1 (they are money-first, single-moment; v1 is a persistent graph with
+  agents on both sides). It touches Phase 2; land the money layer on the warm
+  graph as the category heats up, use their marketing as category education.
+- **Inter-agent compromise** (94.4/100% injection rates; Moltbook): the
+  central v1 risk, because agent-to-agent conversation IS the product. Hostile
+  principal class + no-tool-trigger + taint rule + digest-batching + disclosure
+  default-deny. This is section 6, and Phase 0 already shipped the first fix.
+- **Privacy scandal** (Venmo's FTC arc): no feed, no public connection graph
+  (the friends list found Biden, not the transactions), artifact laws,
+  user-initiated shares with preview.
+- **Metric theater** (Moltbook's 88:1 agent-to-human ratio): never report
+  registered-agent counts; report connected HUMANS and real agent-to-agent
+  interactions, seeded-labeled. The friend-node count is a count of people who
+  accepted each other, not bots.
 - **Gamification curdle** (the 11 failure laws): anti-hook commitments are
-  product law; any counter inducing token behavior is removed.
-- **Regulatory drift**: monitoring calendar (GENIUS regs, PARITY, CLARITY
-  s.604, Storm retrial, CA DFAL); the constitutional wallet rule.
-- **Metric theater** (Moltbook's 88:1): never report registered/agent
-  counts; report paired humans and settled dollars, seeded-labeled.
+  product law; any counter inducing token behavior is removed, not policed.
+- **Authentication cliff / regulatory drift (Phase 2):** per-settlement human
+  tap + on-chain confirm; the constitutional wallet rule; monitoring calendar
+  (GENIUS regs, PARITY, CLARITY s.604, CA DFAL). All deferred with money.
 
 ## 11. Domain expansion (the substrate's roadmap beyond expenses)
 
@@ -678,3 +801,15 @@ built: typed/extensible event schema, domain-agnostic briefing,
 action-class-keyed scopes — already reflected in the C1 circles store
 (migration v29, CirclesStore). All numbers flagged as directional/unverified
 by the lanes are excluded from sections 11-12.
+
+**Fourth pass (2026-07-08), connection-first reframe:** the product's center
+moved from bill-splitting to the trusted connection graph + agent-to-agent
+conversation, with money demoted to Phase 2 (this doc v2). One research lane
+is in flight — social-activation "magic number" canon (Facebook N-friends,
+etc.), connection-count / social-presence UI patterns, the connection-first-
+agent whitespace re-check, and the social-graph-first-then-monetize cold-start
+evidence. The activation-threshold numbers land in sections 4b/4.6/9 when it
+returns; the reframe itself (and the cold-start rationale) is decided. Nothing
+from the prior passes is wasted — the money design (section 3.3-3.4), the
+viral/gamification/security/regulatory work, and the C1 store all serve the
+connection-first build; they reorder, they do not rewrite.
