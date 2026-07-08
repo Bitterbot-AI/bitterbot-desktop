@@ -124,6 +124,7 @@ const READ_METHODS = new Set([
   "circles.messages",
   "circles.tab.balances",
   "circles.disclosure.list",
+  "circles.briefing",
   "management.census",
   "management.anomalies",
   "management.health",

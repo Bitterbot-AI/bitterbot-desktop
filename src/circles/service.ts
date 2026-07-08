@@ -37,9 +37,16 @@ import {
   type BoxKeyPair,
   type SealedBlob,
 } from "./box-crypto.js";
+import { compileBriefingIfDue, latestBriefing, type CompiledBriefing } from "./briefing.js";
 import { DEFAULT_ANSWER_POSTURE, isDisclosureAllowed, pendingAsks } from "./disclosure.js";
 import { makeCircleEnvelope, type CircleEnvelope } from "./envelope.js";
 import { createInvite, parseInviteCode, type CreatedInvite } from "./invites.js";
+import {
+  PRACTICE_KIND,
+  loadOrCreatePracticeKeys,
+  practiceReply,
+  realConnectionCount,
+} from "./practice.js";
 import {
   buildChainedEventBody,
   computeTabBalances,
@@ -62,6 +69,8 @@ export type CirclesServiceDeps = {
   keyPair?: KeyPair;
   /** Injectable for tests; defaults to the persisted X25519 box keypair. */
   boxKeys?: BoxKeyPair;
+  /** Injectable for tests; defaults to the persisted practice-partner key. */
+  practiceKeys?: KeyPair;
 };
 
 export type SendReport = {
@@ -99,6 +108,7 @@ export class CirclesService {
   private readonly fetchImpl: FetchLike;
   private readonly key: KeyPair;
   private readonly boxKeys: BoxKeyPair;
+  private practiceKeysLazy: KeyPair | undefined;
   readonly store: CirclesStore;
 
   constructor(deps: CirclesServiceDeps) {
@@ -107,6 +117,7 @@ export class CirclesService {
     this.fetchImpl = deps.fetchImpl ?? (fetch as unknown as FetchLike);
     this.key = deps.keyPair ?? keyPairFromPrivateKeyPem(loadOrCreateDeviceIdentity().privateKeyPem);
     this.boxKeys = deps.boxKeys ?? loadOrCreateBoxKeys();
+    this.practiceKeysLazy = deps.practiceKeys;
     this.store = new CirclesStore(this.db);
   }
 
@@ -403,8 +414,41 @@ export class CirclesService {
       );
     const method =
       kind === "message" ? "circle/message" : kind === "ask" ? "circle/ask" : "circle/answer";
+    // The practice circle is local-only: no network fan-out; the labeled bot
+    // replies immediately through the same inbound path a friend would use.
+    if (circle.kind === PRACTICE_KIND) {
+      await this.practiceSweep();
+      return { delivered: [], failed: [], envelopeId: envelope.id };
+    }
     const report = await this.fanOut(args.circleId, method, envelope);
     return { ...report, envelopeId: envelope.id };
+  }
+
+  /**
+   * Practice-partner upkeep (§4.3): keep the labeled bot circle alive while
+   * the user has no real connections, reply to their practice messages, and
+   * retire the circle the moment a real connection exists.
+   */
+  async practiceSweep(): Promise<boolean> {
+    if (this.config.circles?.practicePartner?.enabled === false) {
+      return false;
+    }
+    const partnerKey =
+      this.practiceKeysLazy ?? (this.practiceKeysLazy = loadOrCreatePracticeKeys());
+    return await practiceReply(this.db, { selfPubkey: this.pubkey, partnerKey });
+  }
+
+  /** Weekly briefing upkeep: compile when due (maintenance tick). */
+  briefingSweep(): CompiledBriefing | null {
+    if (this.config.circles?.briefing?.enabled === false) {
+      return null;
+    }
+    return compileBriefingIfDue(this.db, { selfPubkey: this.pubkey });
+  }
+
+  /** The latest compiled briefing for the UI. */
+  briefing(): CompiledBriefing | null {
+    return latestBriefing(this.db);
   }
 
   /** Presence heartbeat to every connected circle (cheap, batched by caller). */
@@ -640,18 +684,12 @@ export class CirclesService {
     return this.store.getCirclesForMember(this.pubkey);
   }
 
-  /** Distinct connected humans across all circles (the friend-node count). */
+  /**
+   * Distinct connected HUMANS across all circles (the friend-node count).
+   * The practice partner never counts — it is a bot and says so (§4.3).
+   */
   connectionCount(): number {
-    const rows = this.db
-      .prepare(
-        `SELECT COUNT(DISTINCT m.member_pubkey) AS n
-           FROM circle_members m
-           JOIN circle_members me
-             ON me.circle_id = m.circle_id AND me.member_pubkey = ? AND me.status = 'active'
-          WHERE m.status = 'active' AND m.member_pubkey != ?`,
-      )
-      .get(this.pubkey, this.pubkey) as { n: number } | undefined;
-    return rows?.n ?? 0;
+    return realConnectionCount(this.db, this.pubkey);
   }
 
   peerPresence(): Array<{

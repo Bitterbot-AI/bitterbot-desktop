@@ -2341,6 +2341,10 @@ export class MemoryIndexManager implements MemorySearchManager {
                     // §3.5 default posture for ungranted asks; granted asks
                     // wait for the human (autonomy ends at the grant line).
                     await service.answerPendingAsks();
+                    // §4.3 practice partner (replies + retirement) and the
+                    // weekly briefing (compiles only when due).
+                    await service.practiceSweep();
+                    service.briefingSweep();
                     if (this.cfg.circles?.mailbox?.serve === true) {
                       const { sweepExpiredMailboxBlobs } =
                         await import("../gateway/a2a/mailbox.js");

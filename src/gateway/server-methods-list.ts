@@ -143,6 +143,7 @@ const BASE_METHODS = [
   "circles.ask",
   "circles.disclosure.set",
   "circles.disclosure.list",
+  "circles.briefing",
   // Marketplace
   "marketplace.search",
   "marketplace.trending",

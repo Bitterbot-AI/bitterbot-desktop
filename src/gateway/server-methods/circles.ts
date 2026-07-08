@@ -185,6 +185,15 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
   },
 
+  "circles.briefing": async ({ respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    respond(true, { briefing: svc.service.briefing() }, undefined);
+  },
+
   "circles.ask": async ({ params, respond }) => {
     const svc = await getService();
     if (!svc.ok) {

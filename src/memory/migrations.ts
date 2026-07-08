@@ -1350,6 +1350,27 @@ const MIGRATIONS: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_mailbox_blobs_expiry ON mailbox_blobs(expires_at)`);
     },
   },
+  {
+    version: 32,
+    description:
+      "PLAN-31 C3: the weekly briefing (§1 verb 6) — one synchronized digest " +
+      "of the connections' shared life, compiled LOCALLY per node from " +
+      "consented data (presence, reciprocity, tab fold, pending asks). " +
+      "Replaces the feed; never fanned out (each node compiles its own view).",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_briefings (
+          briefing_id TEXT PRIMARY KEY,
+          compiled_at INTEGER NOT NULL,
+          window_ms   INTEGER NOT NULL,
+          content     TEXT NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_circle_briefings_time ON circle_briefings(compiled_at)`,
+      );
+    },
+  },
 ];
 
 /**
