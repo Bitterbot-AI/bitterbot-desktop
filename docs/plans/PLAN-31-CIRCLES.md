@@ -672,7 +672,7 @@ envelope module (src/circles/envelope.ts, domain-separated from aubaine/v1,
 cross-protocol confusion pinned by test); circles/membership store WIRED
 (migration v29 + v30; CirclesStore now serves the live friend branch;
 importCircle mirrors rosters; freezeCircle = the fork circuit breaker);
-friend branch LIVE in the A2A surface (circle/_ verbs in
+friend branch LIVE in the A2A surface (`circle/*` verbs in
 src/gateway/a2a/circles.ts: join/roster/presence/message/ask/answer/
 event.append/events.since — every verb authenticated by signed envelope +
 active membership + scope, default-deny, per-member rate limits, no
@@ -680,7 +680,7 @@ circle-id oracle); invite create/redeem flow (src/circles/invites.ts:
 hash-at-rest secrets, signature-verified-before-dial codes, single-use +
 rejoin, revocation); node-local CirclesService (invite mint, code
 redemption + roster mirror, message/presence fan-out, reciprocity metric);
-gateway RPCs circles._ for the human surface; hostile-principal rule
+gateway RPCs `circles.*` for the human surface; hostile-principal rule
 enforced at the boundary (scan on receipt, wrap as circle_agent external
 content, critical-neutralize, envelope-id dedupe). Kill-switched:
 circles.enabled, default OFF (§8 discipline). MAILBOX LANDED (same day):
@@ -1018,14 +1018,15 @@ review or prompt-hardening; it relies on capability isolation + verified
 identity, both of which map onto the pipeline we already have.
 
 **Gating architecture, mapped to existing components:**
-| Industry layer | Our component | Add / tighten |
-|---|---|---|
-| No-remote-code (WeChat/MV3) | capability gating (built PLAN-13, activated PLAN-29) | Hard invariant for 3rd-party skills, enforced at load. Un-retrofittable — do first. |
-| Least-privilege scopes (Discord intents) | capability gating (runtime enforcer, currently OFF) | Turn the runtime enforcer ON; money + private-ledger are SEPARATE, individually-granted high-risk capabilities. |
-| Review at the gate (Apple) | curator (A-MAC, PLAN-15) + staging gate | Route all 3rd-party skills through curator + staging; first-party bypasses, 3rd-party cannot. |
-| Injection defense (OWASP LLM01) | injection scanning | Extend to the lethal-trifecta rule: a manifest requesting {ledger read}+{untrusted ingest}+{external send} is auto-quarantined and cannot get money capability. |
-| Revenue-share accountability (Apple KYC/clawback) | bounty + marketplace revenue share (PLAN-8) | KYC for money-touching skills; ban + clawback on the revenue rail. |
-| Progressive trust (WeChat gradual) | quarantine + soft-disabled tiers | 3rd-party skills START quarantined, earn capability by clean record; never money capability on day one. |
+
+| Industry layer                                    | Our component                                        | Add / tighten                                                                                                                                                   |
+| ------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No-remote-code (WeChat/MV3)                       | capability gating (built PLAN-13, activated PLAN-29) | Hard invariant for 3rd-party skills, enforced at load. Un-retrofittable — do first.                                                                             |
+| Least-privilege scopes (Discord intents)          | capability gating (runtime enforcer, currently OFF)  | Turn the runtime enforcer ON; money + private-ledger are SEPARATE, individually-granted high-risk capabilities.                                                 |
+| Review at the gate (Apple)                        | curator (A-MAC, PLAN-15) + staging gate              | Route all 3rd-party skills through curator + staging; first-party bypasses, 3rd-party cannot.                                                                   |
+| Injection defense (OWASP LLM01)                   | injection scanning                                   | Extend to the lethal-trifecta rule: a manifest requesting {ledger read}+{untrusted ingest}+{external send} is auto-quarantined and cannot get money capability. |
+| Revenue-share accountability (Apple KYC/clawback) | bounty + marketplace revenue share (PLAN-8)          | KYC for money-touching skills; ban + clawback on the revenue rail.                                                                                              |
+| Progressive trust (WeChat gradual)                | quarantine + soft-disabled tiers                     | 3rd-party skills START quarantined, earn capability by clean record; never money capability on day one.                                                         |
 
 **Demand-funded development — our unfair advantage, structured correctly.**
 Circles post Forage bounties for skills they want. But the lane's sharpest
