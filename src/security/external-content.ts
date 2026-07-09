@@ -48,6 +48,19 @@ const EXTERNAL_CONTENT_START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
 const EXTERNAL_CONTENT_END = "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
 
 /**
+ * True when `text` was produced by `wrapExternalContent` — i.e. it carries
+ * the untrusted-content envelope. Callers that make TRUST decisions about a
+ * message (e.g. "should this autonomously spawn a task?") use this to refuse:
+ * wrapped content is a hostile principal and must never drive an action on
+ * its own. Keys on the boundary marker, which the wrapper always emits and
+ * which `replaceMarkers` strips from any nested content, so it cannot be
+ * forged from within the payload.
+ */
+export function containsExternalUntrustedContent(text: unknown): boolean {
+  return typeof text === "string" && text.includes(EXTERNAL_CONTENT_START);
+}
+
+/**
  * Security warning prepended to external content.
  */
 const EXTERNAL_CONTENT_WARNING = `

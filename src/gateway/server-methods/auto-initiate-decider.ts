@@ -18,6 +18,7 @@
  */
 
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { containsExternalUntrustedContent } from "../../security/external-content.js";
 import { maybeInitiateGoal } from "../../tasks/auto-initiate.js";
 import { appraiseComplexity, type ComplexityModulators } from "../../tasks/complexity.js";
 import { peekHormonalAccessorState } from "../../tasks/hormonal-accessor.js";
@@ -67,6 +68,19 @@ export function buildAutoInitiationDecider(deps: AutoInitiationDeciderDeps = {})
     const auto = autoEnabled();
     const gate = gateEnabled();
     if (!auto && !gate) {
+      return payload;
+    }
+
+    // Untrusted external content (peer-agent messages, emails, webhooks —
+    // anything wrapped by wrapExternalContent) must NEVER autonomously spawn
+    // a task. A bare peer "hi" arrives wrapped in the ~770-char security
+    // envelope whose bullet list the complexity appraiser mistook for a
+    // multi-step brief. Refuse before appraisal: a hostile principal cannot
+    // be allowed to shape the wrapper (length, enumeration) to farm task
+    // creation and drain the node's attention. The turn still runs normally;
+    // only auto-initiation is suppressed.
+    if (containsExternalUntrustedContent(payload.message)) {
+      log.debug("auto-initiation skipped: message is wrapped untrusted external content");
       return payload;
     }
 

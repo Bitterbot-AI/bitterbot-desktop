@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PreTurnContext, PreTurnPayload } from "./pre-turn-decision.js";
+import { wrapExternalContent } from "../../security/external-content.js";
 import {
   buildAutoInitiationDecider,
   isAutoInitiateEnabled,
@@ -133,5 +134,59 @@ describe("buildAutoInitiationDecider", () => {
       { prompt: BASE.message, agentSessionKey: "s1", source: "user" },
       { modulators: { cortisol: 0.9 } },
     );
+  });
+});
+
+describe("untrusted external content never auto-initiates a task", () => {
+  // Regression: a peer agent's bare "hi" arrives WRAPPED in the ~770-char
+  // security envelope. The complexity appraiser scored the wrapper's bullet
+  // list (enumeration=9, prose≈770) as a multi-step brief and spawned a
+  // phantom task whose goal was the security notice itself. Wrapped content
+  // is a hostile principal and must never drive task creation.
+  const wrappedHi = wrapExternalContent("hi", { source: "a2a_agent", sender: "peer" });
+
+  it("skips auto-initiation for a wrapped peer message BEFORE appraisal", async () => {
+    const initiate = vi.fn(async () => taskDecision);
+    const decider = buildAutoInitiationDecider({
+      autoEnabled: () => true,
+      gateEnabled: () => true,
+      modulators: () => ({}),
+      initiate: initiate as never,
+    });
+    const out = await decider({ message: wrappedHi }, CTX);
+    expect(out).toEqual({ message: wrappedHi });
+    // The initiator is never even consulted — the refusal precedes appraisal.
+    expect(initiate).not.toHaveBeenCalled();
+  });
+
+  it("suppresses auto-initiation even for a long, list-heavy wrapped payload", async () => {
+    // A hostile peer shaping length + enumeration to farm task creation.
+    const hostile = wrapExternalContent(
+      "1. do this\n2. then that\n3. also this\n4. and that\n5. more\n" + "x".repeat(2000),
+      { source: "a2a_agent", sender: "attacker" },
+    );
+    const initiate = vi.fn(async () => taskDecision);
+    const decider = buildAutoInitiationDecider({
+      autoEnabled: () => true,
+      gateEnabled: () => true,
+      modulators: () => ({}),
+      initiate: initiate as never,
+    });
+    const out = await decider({ message: hostile }, CTX);
+    expect(out.extraSystemPrompt).toBeUndefined();
+    expect(initiate).not.toHaveBeenCalled();
+  });
+
+  it("still auto-initiates a genuine (unwrapped) multi-step user brief", async () => {
+    const initiate = vi.fn(async () => taskDecision);
+    const decider = buildAutoInitiationDecider({
+      autoEnabled: () => true,
+      gateEnabled: () => true,
+      modulators: () => ({}),
+      initiate: initiate as never,
+    });
+    const out = await decider(BASE, CTX);
+    expect(initiate).toHaveBeenCalledTimes(1);
+    expect(out.extraSystemPrompt).toContain(taskDecision.firstSlice);
   });
 });
