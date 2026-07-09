@@ -584,6 +584,30 @@ export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
   };
 }
 
+/**
+ * PLAN-31: Circles defaults. As of the red-team phase (2026-07-09) circles
+ * are ON BY DEFAULT fleet-wide so the connection surface can be tested and
+ * attacked at scale. The plan's §8 "dark until the C2 security review" posture
+ * is satisfied by turning it on FOR that review. An explicit
+ * `circles.enabled: false` still opts any node out. Nodes without a
+ * `circles.a2aPublicUrl` can still receive/serve circle verbs and run the
+ * practice partner; they just cannot originate invites or dial peers.
+ */
+export function applyCirclesDefaults(cfg: BitterbotConfig): BitterbotConfig {
+  const circles = cfg.circles ?? {};
+  return {
+    ...cfg,
+    circles: {
+      enabled: circles.enabled ?? true,
+      ...(circles.a2aPublicUrl !== undefined ? { a2aPublicUrl: circles.a2aPublicUrl } : {}),
+      ...(circles.displayName !== undefined ? { displayName: circles.displayName } : {}),
+      ...(circles.mailbox !== undefined ? { mailbox: circles.mailbox } : {}),
+      briefing: { enabled: true, ...circles.briefing },
+      practicePartner: { enabled: true, ...circles.practicePartner },
+    },
+  };
+}
+
 export function resetSessionDefaultsWarningForTests() {
   defaultWarnState = { warned: false };
 }

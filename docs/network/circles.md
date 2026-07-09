@@ -18,10 +18,14 @@ Design doc: `docs/plans/PLAN-31-CIRCLES.md`. Wire format:
 
 ---
 
-## Ships dark: the kill switch
+## Enabled by default (red-team phase), kill-switchable
 
-Everything here is OFF by default (PLAN-31 §8: connection surfaces stay dark
-until the C2 security review). To enable:
+As of 2026-07-09 circles are **ON BY DEFAULT** fleet-wide so the connection
+surface can be tested and red-teamed at scale — the plan's §8 "dark until the
+C2 security review" posture is satisfied by turning it on FOR that review. An
+explicit `circles.enabled: false` opts any node out. A node still needs
+`circles.a2aPublicUrl` to originate invites or dial peers; without it a node
+can still receive/serve circle verbs and run the practice partner. Full config:
 
 ```jsonc
 {

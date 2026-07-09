@@ -23,6 +23,7 @@ import {
   applyLoggingDefaults,
   applyMessageDefaults,
   applyA2aDefaults,
+  applyCirclesDefaults,
   applyModelDefaults,
   applyP2pDefaults,
   applySessionDefaults,
@@ -589,7 +590,9 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
               applyContextPruningDefaults(
                 applyAgentDefaults(
                   applySessionDefaults(
-                    applyLoggingDefaults(applyMessageDefaults(validated.config)),
+                    applyLoggingDefaults(
+                      applyMessageDefaults(applyCirclesDefaults(validated.config)),
+                    ),
                   ),
                 ),
               ),
@@ -646,7 +649,9 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
             applyModelDefaults(
               applyCompactionDefaults(
                 applyContextPruningDefaults(
-                  applyAgentDefaults(applySessionDefaults(applyMessageDefaults({}))),
+                  applyAgentDefaults(
+                    applySessionDefaults(applyMessageDefaults(applyCirclesDefaults({}))),
+                  ),
                 ),
               ),
             ),
@@ -784,7 +789,9 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
                   applyModelDefaults(
                     applyAgentDefaults(
                       applySessionDefaults(
-                        applyLoggingDefaults(applyMessageDefaults(validated.config)),
+                        applyLoggingDefaults(
+                          applyMessageDefaults(applyCirclesDefaults(validated.config)),
+                        ),
                       ),
                     ),
                   ),

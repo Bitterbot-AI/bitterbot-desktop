@@ -750,10 +750,13 @@ Deferred indefinitely: shared memory (until taint-preserving recall),
 multi-party netting, any public feed, any global metric.
 
 Each phase lands wired, on by default where safe, kill-switched, tested,
-and documented in the same commit (standing rule). Connection surfaces default
-OFF until C2 completes its security review; pairing ships dark behind config
-until the invite page is live. Money stays entirely dark until Phase 2 clears
-counsel.
+and documented in the same commit (standing rule). **Posture update
+(2026-07-09): connection surfaces are now ON BY DEFAULT fleet-wide (config
+default `circles.enabled ?? true`, explicit `false` opts out) — the §8
+"dark until the C2 security review" gate is satisfied by turning it on FOR
+that review, i.e. live red-teaming at scale is the review.** Money stays
+entirely dark until Phase 2 clears counsel (no config flag flips it; there
+is no money code to enable).
 
 ## 9. Success metrics (in order — connection-first)
 
