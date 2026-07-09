@@ -19,6 +19,7 @@ import { handleA2aJsonRpc, isStreamingMethod } from "./server.js";
 import { streamTaskEvents } from "./streaming.js";
 import { executeA2aTask, extractTaskText } from "./task-executor.js";
 import { A2aTaskManager } from "./task-manager.js";
+import { isTaskCreationRateLimited } from "./task-rate-limit.js";
 import { A2aErrorCodes } from "./types.js";
 
 const MAX_A2A_BODY_BYTES = 1_048_576; // 1 MB
@@ -408,6 +409,32 @@ export function createA2aHttpHandler(opts: {
     }
 
     const manager = getTaskManager(config);
+
+    // Task-spawn rate limit: message/send and message/stream each start a
+    // sub-agent run. On a publicly-reachable node a burst of peer messages
+    // (e.g. repeated "hi") would spin up a session apiece; the payment
+    // limiter below only covers the payment path and only when payments are
+    // on. Apply a uniform per-client ceiling BEFORE any task is created.
+    // tasks/get and other read verbs are not gated.
+    if (rpcRequest.method === "message/send" || isStreamingMethod(rpcRequest)) {
+      const clientIp = resolveGatewayClientIp({
+        remoteAddr: req.socket?.remoteAddress ?? "",
+        forwardedFor: getHeader(req, "x-forwarded-for"),
+        realIp: getHeader(req, "x-real-ip"),
+        trustedProxies: authOpts.trustedProxies,
+      });
+      if (isTaskCreationRateLimited(clientIp ?? "unknown", config.a2a?.maxTasksPerMinute)) {
+        sendJson(res, 429, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.INTERNAL_ERROR,
+            message: "Too many task requests; slow down",
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+    }
 
     // Payment gate: if marketplace payments are enabled, verify x402 payment
     if (config.a2a?.payment?.enabled && rpcRequest.method === "message/send") {

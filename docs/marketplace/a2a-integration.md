@@ -27,6 +27,8 @@ Per JSON-RPC 2.0 spec, requests without an `id` field are notifications -- the s
 
 Authentication is handled via bearer tokens in the `Authorization` header. Tokens are issued through the agent's auth configuration and validated on every request before the payment gate is evaluated. Local loopback connections are allowed without a token.
 
+**Task-spawn rate limit.** `message/send` and `message/stream` each start a sub-agent run, which is a resource-drain surface on a publicly-reachable node (a burst of bare messages would spin up a session apiece). Independently of the payment gate, both verbs are capped per client IP before any task is created: the default ceiling is **12 task spawns per minute** (`a2a.maxTasksPerMinute`; set to `0` to disable), and callers over the limit get HTTP 429. Read verbs (`tasks/get`, `tasks/cancel`) are never throttled, and `forage/*` / `circle/*` verbs have their own separate admission controls. Behind a trusted reverse proxy that forwards the peer address the limit is per-peer; when everything arrives as one ingress address it caps that ingress's aggregate spawn rate.
+
 ---
 
 ## x402 Payment Flow

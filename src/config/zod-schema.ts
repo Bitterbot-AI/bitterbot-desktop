@@ -780,6 +780,7 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        maxTasksPerMinute: z.number().int().nonnegative().optional(),
         skills: z
           .object({
             expose: z.enum(["all", "none"]).optional(),

@@ -14,6 +14,12 @@ export type A2aConfig = {
     /** Bearer token for authenticating A2A requests. Falls back to gateway token if unset. */
     bearerToken?: string;
   };
+  /**
+   * Max `message/send` + `message/stream` task spawns accepted per client
+   * per minute (a resource-drain ceiling for publicly-reachable nodes).
+   * Default: 12. Set to 0 to disable the check.
+   */
+  maxTasksPerMinute?: number;
   /** Control which skills are advertised in the Agent Card. */
   skills?: {
     /** Which skills to expose. Default: "all". */

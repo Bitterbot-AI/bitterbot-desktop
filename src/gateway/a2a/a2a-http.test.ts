@@ -1,8 +1,13 @@
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createA2aHttpHandler } from "./a2a-http.js";
+import { DEFAULT_MAX_TASKS_PER_MINUTE, resetTaskRateLimit } from "./task-rate-limit.js";
+
+// The task-spawn limiter is module-global; clear it so message/send tests in
+// other blocks don't accumulate into one client's window.
+beforeEach(() => resetTaskRateLimit());
 
 function mockReq(opts: {
   method?: string;
@@ -374,5 +379,90 @@ describe("createA2aHttpHandler — circle/mailbox kill switch (PLAN-31 §8)", ()
     expect(a.body.error).toEqual(b.body.error);
     off.close();
     missing.close();
+  });
+});
+
+describe("createA2aHttpHandler — task-spawn rate limit", () => {
+  function handlerWith(maxTasksPerMinute?: number) {
+    return createA2aHttpHandler({
+      getConfig: () =>
+        ({
+          a2a: {
+            enabled: true,
+            authentication: { type: "none" as const },
+            ...(maxTasksPerMinute !== undefined ? { maxTasksPerMinute } : {}),
+          },
+        }) as never,
+      getSkills: () => [],
+      getGatewayUrl: () => "http://127.0.0.1:19001",
+      getSkillsVersion: () => 0,
+      taskDb: new DatabaseSync(":memory:"),
+    });
+  }
+
+  function sendHi(h: ReturnType<typeof createA2aHttpHandler>, remoteAddr: string) {
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: {
+        jsonrpc: "2.0",
+        method: "message/send",
+        params: { message: { role: "user", parts: [{ type: "text", text: "hi" }] } },
+        id: "x",
+      },
+      remoteAddr,
+    });
+    const res = mockRes();
+    return h.handle(req, res, baseAuthOpts()).then(() => res);
+  }
+
+  it("429s a burst of message/send past the default ceiling", async () => {
+    const h = handlerWith();
+    // The default number of spawns are accepted.
+    for (let i = 0; i < DEFAULT_MAX_TASKS_PER_MINUTE; i++) {
+      const res = await sendHi(h, "8.8.8.8");
+      expect(res.statusCode).toBe(200);
+    }
+    // The next one is throttled, and no task is created for it.
+    const blocked = await sendHi(h, "8.8.8.8");
+    expect(blocked.statusCode).toBe(429);
+    expect(JSON.parse(blocked._body ?? "{}").error.message).toMatch(/too many/i);
+    h.close();
+  });
+
+  it("keys per client — a flooder does not throttle a different peer", async () => {
+    const h = handlerWith(2);
+    await sendHi(h, "1.1.1.1");
+    await sendHi(h, "1.1.1.1");
+    expect((await sendHi(h, "1.1.1.1")).statusCode).toBe(429);
+    // A different peer is unaffected.
+    expect((await sendHi(h, "2.2.2.2")).statusCode).toBe(200);
+    h.close();
+  });
+
+  it("does not rate-limit read verbs (tasks/get)", async () => {
+    const h = handlerWith(1);
+    // Exhaust the task-spawn budget for this client.
+    await sendHi(h, "9.9.9.9");
+    expect((await sendHi(h, "9.9.9.9")).statusCode).toBe(429);
+    // tasks/get from the same client still works (not a spawn verb).
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: { jsonrpc: "2.0", method: "tasks/get", params: { id: "nope" }, id: "g" },
+      remoteAddr: "9.9.9.9",
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    expect(res.statusCode).not.toBe(429);
+    h.close();
+  });
+
+  it("maxTasksPerMinute=0 disables the ceiling", async () => {
+    const h = handlerWith(0);
+    for (let i = 0; i < DEFAULT_MAX_TASKS_PER_MINUTE + 5; i++) {
+      expect((await sendHi(h, "3.3.3.3")).statusCode).toBe(200);
+    }
+    h.close();
   });
 });
