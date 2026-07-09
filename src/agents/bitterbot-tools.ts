@@ -10,6 +10,7 @@ import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createArtifactTool } from "./tools/artifact-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
+import { createCirclesTool } from "./tools/circles-tool.js";
 import { createCodeInterpreterTool } from "./tools/code-interpreter-tool.js";
 import { createComputerUseTool } from "./tools/computer-use-tool.js";
 import { createCuriosityResolveTool, createCuriosityStateTool } from "./tools/curiosity-tool.js";
@@ -234,6 +235,7 @@ export function createBitterbotTools(options?: {
     createSkillPipelineDigestTool(memoryOpts),
     createSkillManageTool(memoryOpts),
     createForageTool(memoryOpts),
+    createCirclesTool(memoryOpts),
   ]) {
     if (tool) {
       tools.push(tool);
