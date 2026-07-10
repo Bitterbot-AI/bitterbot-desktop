@@ -27,6 +27,7 @@ import { resolveSessionAgentIds } from "../../agent-scope.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../../bootstrap-files.js";
 import { createCacheTrace } from "../../cache-trace.js";
+import { resolveCanonicalFactsBlock } from "../../canonical-facts-block.js";
 import {
   listChannelSupportedActions,
   resolveChannelMessageToolHints,
@@ -460,6 +461,14 @@ export async function runEmbeddedAttempt(
       sessionKey: params.sessionKey ?? params.sessionId,
     }).catch(() => undefined);
 
+    // PLAN-33: canonical facts resolve independently of endocrine state so a
+    // hormonal/recall failure can never drop the ground-truth block.
+    const canonicalFacts = await resolveCanonicalFactsBlock({
+      config: params.config,
+      agentId: sessionAgentId,
+      promptMode,
+    }).catch(() => undefined);
+
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,
@@ -487,6 +496,7 @@ export async function runEmbeddedAttempt(
       contextFiles,
       memoryCitationsMode: params.config?.memory?.citations,
       endocrineState,
+      canonicalFacts,
     });
     // PLAN-25: append any evolved prompt fragments to the system prompt. Empty
     // string (and thus byte-identical prompt) until a policy is promoted.

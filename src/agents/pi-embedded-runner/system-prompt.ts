@@ -61,6 +61,8 @@ export function buildEmbeddedSystemPrompt(params: {
     lastSessionBrief?: string;
     sessionCoherence?: string;
   };
+  /** PLAN-33: pre-rendered Canonical Facts block (independent of endocrine). */
+  canonicalFacts?: string;
 }): string {
   return buildAgentSystemPrompt({
     workspaceDir: params.workspaceDir,
@@ -88,6 +90,7 @@ export function buildEmbeddedSystemPrompt(params: {
     contextFiles: params.contextFiles,
     memoryCitationsMode: params.memoryCitationsMode,
     endocrineState: params.endocrineState,
+    canonicalFacts: params.canonicalFacts,
   });
 }
 

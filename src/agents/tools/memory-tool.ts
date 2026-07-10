@@ -21,6 +21,20 @@ const MemoryGetSchema = Type.Object({
   lines: Type.Optional(Type.Number()),
 });
 
+// PLAN-33 Phase 1: canonical facts ledger operations.
+const MemoryPinSchema = Type.Object({
+  action: Type.Union([
+    Type.Literal("pin"),
+    Type.Literal("list"),
+    Type.Literal("get"),
+    Type.Literal("retire"),
+  ]),
+  key: Type.Optional(Type.String()),
+  value: Type.Optional(Type.String()),
+  statement: Type.Optional(Type.String()),
+  category: Type.Optional(Type.String()),
+});
+
 // PLAN-24 HORMA Phase 0: resolve an evidence_ref (surfaced on memory_search
 // results as `evidenceRefs`) back to verbatim raw source.
 const MemoryExpandSchema = Type.Object({
@@ -190,6 +204,94 @@ export function createMemoryExpandTool(options: {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return jsonResult({ found: false, error: message });
+      }
+    },
+  };
+}
+
+/**
+ * PLAN-33 Phase 1: the canonical facts ledger tool. Pin exact key-value
+ * ground truth ("the repo is X") so it is injected into EVERY future system
+ * prompt unconditionally — no similarity retrieval, no cooldown, no decay
+ * out of the prompt. Re-pinning the same value strengthens; a new value
+ * supersedes (bitemporal — the old belief keeps its validity window).
+ */
+export function createMemoryPinTool(options: {
+  config?: BitterbotConfig;
+  agentSessionKey?: string;
+}): AnyAgentTool | null {
+  const ctx = resolveMemoryToolContext(options);
+  if (!ctx) {
+    return null;
+  }
+  const { cfg, agentId } = ctx;
+  if (cfg.memory?.canonicalLedger?.enabled === false) {
+    return null;
+  }
+  return {
+    label: "Memory Pin",
+    name: "memory_pin",
+    description:
+      "Pin a canonical fact (exact key-value ground truth: repo names, endpoints, identities, standing decisions) into the always-injected ledger. Use when the user states a durable fact, corrects you on one, or says 'remember this'. Actions: pin {key, value, statement?, category?} (add/strengthen/supersede automatically), list (active facts), get {key} (current belief + history), retire {key} (stop injecting; kept for audit). Keys are dot-slugs like 'project.repo'; categories: identity|project|infra|preference|relationship.",
+    parameters: MemoryPinSchema,
+    execute: async (_toolCallId, params) => {
+      const action = readStringParam(params, "action", { required: true });
+      const { manager, error } = await getMemorySearchManager({ cfg, agentId });
+      const store = manager?.canonicalFacts?.();
+      if (!store) {
+        return jsonResult({ ok: false, disabled: true, error: error ?? "ledger unavailable" });
+      }
+      try {
+        if (action === "pin") {
+          const key = readStringParam(params, "key", { required: true });
+          const value = readStringParam(params, "value", { required: true });
+          const statement = readStringParam(params, "statement");
+          const category = readStringParam(params, "category");
+          const result = store.pin({
+            key: key ?? "",
+            value: value ?? "",
+            statement: statement ?? undefined,
+            category: category ?? undefined,
+            confidence: 0.95, // explicit pins carry user/agent intent
+            source: "agent_pin",
+          });
+          return jsonResult(
+            result.op === "rejected" ? { ok: false, ...result } : { ok: true, ...result },
+          );
+        }
+        if (action === "list") {
+          const facts = store.listActive();
+          return jsonResult({
+            ok: true,
+            count: facts.length,
+            facts: facts.map((f) => ({
+              key: f.key,
+              value: f.value,
+              statement: f.statement,
+              category: f.category,
+              confidence: f.confidence,
+              mentionCount: f.mentionCount,
+              lastConfirmedAt: f.lastConfirmedAt,
+              source: f.source,
+            })),
+          });
+        }
+        if (action === "get") {
+          const key = readStringParam(params, "key", { required: true });
+          return jsonResult({
+            ok: true,
+            current: store.get(key ?? ""),
+            history: store.history(key ?? ""),
+          });
+        }
+        if (action === "retire") {
+          const key = readStringParam(params, "key", { required: true });
+          return jsonResult({ ok: store.retire(key ?? ""), key });
+        }
+        return jsonResult({ ok: false, error: `unknown action "${action}"` });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return jsonResult({ ok: false, error: message });
       }
     },
   };

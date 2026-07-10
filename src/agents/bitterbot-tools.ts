@@ -28,6 +28,7 @@ import { createMemoryStatusTool } from "./tools/memory-status-tool.js";
 import {
   createMemoryExpandTool,
   createMemoryGetTool,
+  createMemoryPinTool,
   createMemorySearchTool,
 } from "./tools/memory-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
@@ -223,6 +224,7 @@ export function createBitterbotTools(options?: {
     createMemorySearchTool(memoryOpts),
     createMemoryGetTool(memoryOpts),
     createMemoryExpandTool(memoryOpts),
+    createMemoryPinTool(memoryOpts),
     createMemoryStatusTool(memoryOpts),
     createDreamSearchTool(memoryOpts),
     createDreamStatusTool(memoryOpts),

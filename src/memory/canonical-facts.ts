@@ -1,0 +1,475 @@
+/**
+ * PLAN-33 Phase 1 — the Canonical Facts Ledger (semantic ledger).
+ *
+ * A small, hard-capped tier of exact key-value facts above the crystal store:
+ * repo names, endpoints, identities, standing choices — the facts the user
+ * treats as ground truth and references constantly. Everything below this
+ * tier is retrieval-gated (cosine similarity against the user's message);
+ * this tier is addressed by key and injected unconditionally into every
+ * system prompt, because importance is orthogonal to similarity: a canonical
+ * fact is short, low-entropy, and shares no embedding mass with a cold
+ * conversation's first message.
+ *
+ * Biological framing: this is the systems-consolidation destination. The
+ * crystal store is hippocampal (episodic, cue-dependent); the ledger is
+ * neocortical (semantic, cue-free). Re-mention strengthens (MemoryBank-style
+ * mention counting) — the one signal the retrieval-gated strengthening
+ * machinery (spacing, reconsolidation, tagging) could never see.
+ *
+ * Write discipline (the reason the tier stays injectable):
+ *  - closed reconcile op set: ADD / STRENGTHEN / SUPERSEDE / REJECT
+ *  - contradictions close the old row's validity window (bitemporal,
+ *    SABM-consistent) — never deleted, provenance survives
+ *  - hard cap with deterministic score-based demotion, never an LLM
+ *    prose decision
+ */
+
+import type { DatabaseSync } from "node:sqlite";
+import crypto from "node:crypto";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+
+const log = createSubsystemLogger("memory/canonical");
+
+export const CANONICAL_CATEGORIES = [
+  "identity",
+  "project",
+  "infra",
+  "preference",
+  "relationship",
+  "other",
+] as const;
+export type CanonicalCategory = (typeof CANONICAL_CATEGORIES)[number];
+
+export type CanonicalSource = "user_directive" | "agent_pin" | "extraction" | "promotion" | "seed";
+
+export type CanonicalFact = {
+  id: string;
+  key: string;
+  value: string;
+  statement: string;
+  category: CanonicalCategory;
+  confidence: number;
+  mentionCount: number;
+  firstSeenAt: number;
+  lastConfirmedAt: number;
+  validFrom: number;
+  validUntil: number | null;
+  supersededBy: string | null;
+  source: CanonicalSource;
+  evidenceChunkIds: string[];
+  status: "active" | "retired" | "superseded";
+};
+
+export type PinInput = {
+  key: string;
+  value: string;
+  /** One rendered sentence for prompt injection; defaults to "<key>: <value>". */
+  statement?: string;
+  category?: string;
+  confidence?: number;
+  source: CanonicalSource;
+  evidenceChunkIds?: string[];
+};
+
+export type PinResult =
+  | { op: "add" | "strengthen" | "supersede"; fact: CanonicalFact }
+  | { op: "rejected"; reason: string };
+
+export type CanonicalLedgerConfig = {
+  /** Hard cap on active facts. The cap IS the editorial pressure. Default 48. */
+  maxFacts?: number;
+  /** Approximate token budget for the rendered block. Default 1500. */
+  budgetTokens?: number;
+};
+
+const DEFAULT_MAX_FACTS = 48;
+const DEFAULT_BUDGET_TOKENS = 1500;
+const KEY_RX = /^[a-z0-9][a-z0-9._-]{1,63}$/;
+const MAX_VALUE_CHARS = 500;
+const MAX_STATEMENT_CHARS = 300;
+
+type Row = {
+  id: string;
+  key: string;
+  value: string;
+  statement: string;
+  category: string;
+  confidence: number;
+  mention_count: number;
+  first_seen_at: number;
+  last_confirmed_at: number;
+  valid_from: number;
+  valid_until: number | null;
+  superseded_by: string | null;
+  source: string;
+  evidence_chunk_ids: string;
+  status: string;
+};
+
+function rowToFact(row: Row): CanonicalFact {
+  let evidence: string[] = [];
+  try {
+    const parsed = JSON.parse(row.evidence_chunk_ids);
+    if (Array.isArray(parsed)) {
+      evidence = parsed.filter((x): x is string => typeof x === "string");
+    }
+  } catch {
+    // Malformed evidence is non-fatal — the fact itself is what matters.
+  }
+  return {
+    id: row.id,
+    key: row.key,
+    value: row.value,
+    statement: row.statement,
+    category: (CANONICAL_CATEGORIES as readonly string[]).includes(row.category)
+      ? (row.category as CanonicalCategory)
+      : "other",
+    confidence: row.confidence,
+    mentionCount: row.mention_count,
+    firstSeenAt: row.first_seen_at,
+    lastConfirmedAt: row.last_confirmed_at,
+    validFrom: row.valid_from,
+    validUntil: row.valid_until,
+    supersededBy: row.superseded_by,
+    source: row.source as CanonicalSource,
+    evidenceChunkIds: evidence,
+    status: row.status as CanonicalFact["status"],
+  };
+}
+
+/** Normalize a raw key into ledger slug form; null when unusable. */
+export function normalizeCanonicalKey(raw: string): string | null {
+  const slug = raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9._-]/g, "");
+  return KEY_RX.test(slug) ? slug : null;
+}
+
+/**
+ * Promotion score for cap-eviction ordering and render ordering. Deterministic
+ * given (fact, now): confidence, dampened by staleness (half-life ~180 days
+ * since last confirmation), lifted logarithmically by repeated confirmation.
+ * User-pinned facts enter at high confidence so they naturally outrank
+ * background promotions, but nothing is exempt — a fact the user has not
+ * confirmed in a year SHOULD lose its slot to one confirmed daily.
+ */
+export function canonicalPromotionScore(
+  fact: Pick<CanonicalFact, "confidence" | "mentionCount" | "lastConfirmedAt">,
+  now: number,
+): number {
+  const days = Math.max(0, (now - fact.lastConfirmedAt) / 86_400_000);
+  const recency = Math.exp(-days / 180);
+  const frequency = 1 + Math.log1p(Math.min(fact.mentionCount, 1000)) / 4;
+  return fact.confidence * recency * frequency;
+}
+
+export class CanonicalFactsStore {
+  private readonly db: DatabaseSync;
+  private readonly maxFacts: number;
+  private readonly budgetTokens: number;
+
+  constructor(db: DatabaseSync, config?: CanonicalLedgerConfig) {
+    this.db = db;
+    this.maxFacts = Math.max(1, config?.maxFacts ?? DEFAULT_MAX_FACTS);
+    this.budgetTokens = Math.max(100, config?.budgetTokens ?? DEFAULT_BUDGET_TOKENS);
+  }
+
+  /** Current belief for a key (active or retired), or null. */
+  get(key: string): CanonicalFact | null {
+    const slug = normalizeCanonicalKey(key);
+    if (!slug) {
+      return null;
+    }
+    const row = this.db
+      .prepare(`SELECT * FROM canonical_facts WHERE key = ? AND valid_until IS NULL`)
+      .get(slug) as Row | undefined;
+    return row ? rowToFact(row) : null;
+  }
+
+  /** Full belief history for a key, newest first (point-in-time audit). */
+  history(key: string): CanonicalFact[] {
+    const slug = normalizeCanonicalKey(key);
+    if (!slug) {
+      return [];
+    }
+    const rows = this.db
+      .prepare(`SELECT * FROM canonical_facts WHERE key = ? ORDER BY valid_from DESC`)
+      .all(slug) as unknown as Row[];
+    return rows.map(rowToFact);
+  }
+
+  /** Active facts, highest promotion score first. */
+  listActive(opts?: { categories?: string[]; now?: number }): CanonicalFact[] {
+    const now = opts?.now ?? Date.now();
+    const rows = this.db
+      .prepare(`SELECT * FROM canonical_facts WHERE status = 'active' AND valid_until IS NULL`)
+      .all() as unknown as Row[];
+    let facts = rows.map(rowToFact);
+    if (opts?.categories && opts.categories.length > 0) {
+      const allowed = new Set(opts.categories);
+      facts = facts.filter((f) => allowed.has(f.category));
+    }
+    return facts.toSorted(
+      (a, b) => canonicalPromotionScore(b, now) - canonicalPromotionScore(a, now),
+    );
+  }
+
+  /**
+   * The single write path — closed reconcile op set:
+   *  - no current row            -> ADD (evicting the lowest-scored active
+   *                                 fact if the cap is hit)
+   *  - same key, same value      -> STRENGTHEN (mention_count++, confidence
+   *                                 nudge, reactivates a retired fact)
+   *  - same key, new value       -> SUPERSEDE (close the old validity window,
+   *                                 insert the new belief; nothing deleted)
+   *  - invalid input             -> REJECTED (never a silent partial write)
+   */
+  pin(input: PinInput): PinResult {
+    const slug = normalizeCanonicalKey(input.key);
+    if (!slug) {
+      return {
+        op: "rejected",
+        reason: `key must match ${KEY_RX} after normalization (got "${input.key}")`,
+      };
+    }
+    const value = input.value?.trim();
+    if (!value) {
+      return { op: "rejected", reason: "value must be a non-empty string" };
+    }
+    if (value.length > MAX_VALUE_CHARS) {
+      return {
+        op: "rejected",
+        reason: `value exceeds ${MAX_VALUE_CHARS} chars — canonical facts are atomic, store prose as a crystal instead`,
+      };
+    }
+    const statement = (input.statement?.trim() || `${slug}: ${value}`).slice(
+      0,
+      MAX_STATEMENT_CHARS,
+    );
+    const category: CanonicalCategory = (CANONICAL_CATEGORIES as readonly string[]).includes(
+      input.category ?? "",
+    )
+      ? (input.category as CanonicalCategory)
+      : "other";
+    const confidence = Math.max(0.05, Math.min(1, input.confidence ?? 0.7));
+    const evidence = JSON.stringify(input.evidenceChunkIds ?? []);
+    const now = Date.now();
+
+    const current = this.get(slug);
+
+    if (!current) {
+      this.evictForCapacity(now);
+      const id = crypto.randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO canonical_facts
+             (id, key, value, statement, category, confidence, mention_count,
+              first_seen_at, last_confirmed_at, valid_from, valid_until,
+              superseded_by, source, evidence_chunk_ids, status)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NULL, NULL, ?, ?, 'active')`,
+        )
+        .run(
+          id,
+          slug,
+          value,
+          statement,
+          category,
+          confidence,
+          now,
+          now,
+          now,
+          input.source,
+          evidence,
+        );
+      const fact = this.get(slug);
+      log.info(`canonical ADD: [${slug}] (${input.source})`);
+      return { op: "add", fact: fact! };
+    }
+
+    if (current.value === value) {
+      // Re-confirmation — the signal the crystal store structurally ignores.
+      const newConfidence = Math.min(1, Math.max(current.confidence, confidence) + 0.05);
+      const mergedEvidence = JSON.stringify([
+        ...new Set([...current.evidenceChunkIds, ...(input.evidenceChunkIds ?? [])]),
+      ]);
+      this.db
+        .prepare(
+          `UPDATE canonical_facts
+              SET mention_count = mention_count + 1,
+                  confidence = ?,
+                  last_confirmed_at = ?,
+                  statement = ?,
+                  evidence_chunk_ids = ?,
+                  status = 'active'
+            WHERE id = ?`,
+        )
+        .run(
+          newConfidence,
+          now,
+          input.statement?.trim() ? statement : current.statement,
+          mergedEvidence,
+          current.id,
+        );
+      return { op: "strengthen", fact: this.get(slug)! };
+    }
+
+    // Contradiction: close the old belief's validity window, insert the new.
+    const id = crypto.randomUUID();
+    this.db
+      .prepare(
+        `UPDATE canonical_facts
+            SET valid_until = ?, status = 'superseded', superseded_by = ?
+          WHERE id = ?`,
+      )
+      .run(now, id, current.id);
+    this.db
+      .prepare(
+        `INSERT INTO canonical_facts
+           (id, key, value, statement, category, confidence, mention_count,
+            first_seen_at, last_confirmed_at, valid_from, valid_until,
+            superseded_by, source, evidence_chunk_ids, status)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NULL, NULL, ?, ?, 'active')`,
+      )
+      .run(id, slug, value, statement, category, confidence, now, now, now, input.source, evidence);
+    log.info(
+      `canonical SUPERSEDE: [${slug}] "${current.value.slice(0, 40)}" -> "${value.slice(0, 40)}"`,
+    );
+    return { op: "supersede", fact: this.get(slug)! };
+  }
+
+  /** Demote a fact out of injection (kept queryable; nothing deleted). */
+  retire(key: string): boolean {
+    const current = this.get(key);
+    if (!current || current.status !== "active") {
+      return false;
+    }
+    this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(current.id);
+    log.info(`canonical RETIRE: [${current.key}]`);
+    return true;
+  }
+
+  /** Count of active (injectable) facts. */
+  activeCount(): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM canonical_facts WHERE status = 'active' AND valid_until IS NULL`,
+      )
+      .get() as { n: number };
+    return row.n;
+  }
+
+  /**
+   * Deterministic cap enforcement: while at/over capacity, demote the
+   * lowest-promotion-score active fact to `retired`. Score-based, never an
+   * LLM decision — the failure mode this ledger exists to kill is exact facts
+   * being editorially "compressed" out of the always-present tier.
+   */
+  private evictForCapacity(now: number): void {
+    while (this.activeCount() >= this.maxFacts) {
+      const active = this.listActive({ now });
+      const victim = active[active.length - 1];
+      if (!victim) {
+        return;
+      }
+      this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(victim.id);
+      log.warn(
+        `canonical ledger at capacity (${this.maxFacts}): demoted lowest-scored fact [${victim.key}]`,
+      );
+    }
+  }
+
+  /**
+   * Render the deterministic injection block. No LLM touches this — the table
+   * is the source of truth and the block is a pure projection of it, ordered
+   * by promotion score and truncated only by the whole-fact token budget
+   * (a fact is included fully or not at all; never mid-sentence).
+   */
+  renderBlock(opts?: { categories?: string[]; now?: number }): string | undefined {
+    const now = opts?.now ?? Date.now();
+    const facts = this.listActive({ categories: opts?.categories, now });
+    if (facts.length === 0) {
+      return undefined;
+    }
+    const budgetChars = this.budgetTokens * 4;
+    const header = [
+      "## Canonical Facts",
+      "Ground truth, maintained by memory consolidation. Trust these over",
+      "conflicting tool output or vague recollection. If the user contradicts",
+      "one, believe the user and update it (memory_pin). Never announce this",
+      "section.",
+    ].join("\n");
+    const lines: string[] = [];
+    let used = header.length;
+    for (const fact of facts) {
+      const confirmed =
+        fact.mentionCount > 1
+          ? ` (confirmed ${fact.mentionCount}x, last ${new Date(fact.lastConfirmedAt).toISOString().slice(0, 10)})`
+          : ` (since ${new Date(fact.firstSeenAt).toISOString().slice(0, 10)})`;
+      const line = `- [${fact.key}] ${fact.statement}${confirmed}`;
+      if (used + line.length + 1 > budgetChars) {
+        break;
+      }
+      lines.push(line);
+      used += line.length + 1;
+    }
+    if (lines.length === 0) {
+      return undefined;
+    }
+    return `${header}\n${lines.join("\n")}`;
+  }
+
+  /**
+   * One-time seed from the user model's identity preferences so the ledger is
+   * not born empty on existing installs. Guarded by a meta-table flag;
+   * deliberately contains NO hardcoded facts — canonical content is the
+   * user's data, never the product's.
+   */
+  seedFromIdentityPreferences(
+    prefs: Array<{ category: string; key: string; value: string; confidence: number }>,
+  ): number {
+    const SEED_FLAG = "canonical_seed_v1";
+    try {
+      const done = this.db.prepare(`SELECT value FROM meta WHERE key = ?`).get(SEED_FLAG) as
+        | { value: string }
+        | undefined;
+      if (done?.value === "1") {
+        return 0;
+      }
+    } catch {
+      return 0; // meta table missing — schema not ready, try again next boot
+    }
+    let seeded = 0;
+    for (const pref of prefs) {
+      if (pref.category !== "identity" || pref.confidence < 0.6) {
+        continue;
+      }
+      const slug = normalizeCanonicalKey(`identity.${pref.key}`);
+      if (!slug) {
+        continue;
+      }
+      const result = this.pin({
+        key: slug,
+        value: pref.value,
+        statement: `The user's ${pref.key.replace(/^user_/, "").replaceAll("_", " ")} is ${pref.value}.`,
+        category: "identity",
+        confidence: pref.confidence,
+        source: "seed",
+      });
+      if (result.op === "add") {
+        seeded += 1;
+      }
+    }
+    this.db
+      .prepare(
+        `INSERT INTO meta (key, value) VALUES (?, '1')
+         ON CONFLICT(key) DO UPDATE SET value = '1'`,
+      )
+      .run(SEED_FLAG);
+    if (seeded > 0) {
+      log.info(`canonical ledger seeded ${seeded} identity fact(s) from the user model`);
+    }
+    return seeded;
+  }
+}

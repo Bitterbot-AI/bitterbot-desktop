@@ -283,6 +283,19 @@ When the gate passes and context is loaded, it comes with two enhancements. Firs
 
 ---
 
+## The Canonical Facts Ledger — Ground Truth That Never Needs a Cue
+
+Above the crystal store sits a small, hard-capped semantic ledger (PLAN-33): exact key-value facts — the project repo, endpoints, identities, standing decisions — injected verbatim into every system prompt, unconditionally. No similarity retrieval, no cooldown, no importance floor, no dependence on hormonal state. This is the systems-consolidation destination: episodic crystals are hippocampal (cue-dependent, retrieval-gated); ledger facts are neocortical (available without any cue). It exists because importance is orthogonal to similarity — a canonical fact is short and low-entropy, and a cold conversation's first message shares no embedding mass with it.
+
+Write discipline keeps the tier injectable:
+
+- **Closed reconcile op set.** `pin` resolves to ADD (new key), STRENGTHEN (same value — mention count and confidence rise; the daily-confirmation signal the crystal store structurally ignores), or SUPERSEDE (new value — the old belief's validity window closes bitemporally; nothing is ever deleted).
+- **Hard cap, deterministic demotion.** ~48 active facts. Over capacity, the lowest promotion score (confidence x staleness decay x log-confirmations) is demoted to retired — a score, never an LLM prose decision. The rendered block is a pure projection of the table; no rewrite pass can paraphrase a canonical fact.
+- **The `memory_pin` tool.** "Remember this" becomes deterministic: the agent pins the fact and it is present in every future session, including subagent (minimal) prompts for the identity and project categories.
+- **Seeding and observability.** The ledger seeds once from stored identity preferences (never from hardcoded product data), and injections feed the dead-wire detector plus a `canonical` section in `retrievalHealth` so a wired-but-dead ledger cannot hide.
+
+Kill switch: `memory.canonicalLedger.enabled` (default true).
+
 ## Proactive Recall — What the Agent Volunteers
 
 Every turn, before the LLM generates a response, the system runs a zero-cost proactive recall pass:

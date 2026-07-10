@@ -24,6 +24,7 @@ import { resolveHarnessPolicy } from "../agents/pi-embedded-runner/harness-polic
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan, withSpanAttrs } from "../observability/otel.js";
+import { CanonicalFactsStore } from "./canonical-facts.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
 import {
@@ -499,6 +500,8 @@ export class MemoryIndexManager implements MemorySearchManager {
     step("ensureHormonalManager");
     this.ensureUserModelManager();
     step("ensureUserModelManager");
+    this.ensureCanonicalFacts();
+    step("ensureCanonicalFacts");
     this.ensureSkillRefiner();
     this.ensureGovernance();
     this.ensureTaskMemory();
@@ -829,6 +832,10 @@ export class MemoryIndexManager implements MemorySearchManager {
   private generalBackfillDone = false;
   /** PLAN-28 Part B: rolling per-layer dead-wire detector + trace counters. */
   readonly retrievalObs = new RetrievalObservability();
+  /** PLAN-33: the canonical facts ledger (null when disabled/failed). */
+  private canonicalFactsStore: CanonicalFactsStore | null = null;
+  /** PLAN-33: last canonical-block injection, for retrievalHealth. */
+  private lastCanonicalInjection: { at: number; count: number } | null = null;
   /** PLAN-28 B2: persisted-trace sampling rate (env-tunable, 0 disables). */
   private readonly retrievalTraceRate = resolveTraceSampleRate();
 
@@ -4598,6 +4605,49 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.userModelManager.getUserProfile();
   }
 
+  // --- Canonical Facts Ledger (PLAN-33) ---
+
+  /**
+   * PLAN-33 Phase 1: the semantic ledger — exact key-value facts injected
+   * unconditionally into every system prompt. Seeded once from the user
+   * model's identity preferences so existing installs are not born empty.
+   * Disabled via memory.canonicalLedger.enabled = false.
+   */
+  private ensureCanonicalFacts(): void {
+    const ledgerCfg = this.cfg.memory?.canonicalLedger;
+    if (ledgerCfg?.enabled === false) {
+      return;
+    }
+    try {
+      this.canonicalFactsStore = new CanonicalFactsStore(this.db, {
+        maxFacts: ledgerCfg?.maxFacts,
+        budgetTokens: ledgerCfg?.budgetTokens,
+      });
+      const prefs = this.userModelManager?.getUserProfile().preferences ?? [];
+      this.canonicalFactsStore.seedFromIdentityPreferences(prefs);
+    } catch (err) {
+      log.warn(`canonical facts ledger init failed: ${String(err)}`);
+      this.canonicalFactsStore = null;
+    }
+  }
+
+  canonicalFacts(): CanonicalFactsStore | null {
+    return this.canonicalFactsStore;
+  }
+
+  /**
+   * Record a canonical-block injection for observability. Fed to the
+   * dead-wire detector only when the ledger has active facts — an empty
+   * ledger injecting nothing is healthy, not a dead wire; facts existing but
+   * never reaching a prompt is exactly the wired-but-dead defect class.
+   */
+  noteCanonicalInjection(count: number): void {
+    this.lastCanonicalInjection = { at: Date.now(), count };
+    if ((this.canonicalFactsStore?.activeCount() ?? 0) > 0) {
+      this.retrievalObs.record({ canonical: count });
+    }
+  }
+
   /**
    * Get a comprehensive user profile for the "what do you know about me?" query.
    * Combines preferences, patterns, latest handover brief, and aggregate stats.
@@ -4688,6 +4738,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     layers: { total: number; sinceContribution: Record<string, number> };
     deadWires: ReturnType<RetrievalObservability["checkDeadWires"]>;
     graph: ReturnType<KnowledgeGraphManager["getStats"]> | null;
+    canonical: {
+      activeFacts: number;
+      lastInjection: { at: number; count: number } | null;
+    } | null;
   } {
     let graph: ReturnType<KnowledgeGraphManager["getStats"]> | null = null;
     try {
@@ -4695,7 +4749,22 @@ export class MemoryIndexManager implements MemorySearchManager {
     } catch {
       graph = null;
     }
+    let canonical: {
+      activeFacts: number;
+      lastInjection: { at: number; count: number } | null;
+    } | null = null;
+    try {
+      canonical = this.canonicalFactsStore
+        ? {
+            activeFacts: this.canonicalFactsStore.activeCount(),
+            lastInjection: this.lastCanonicalInjection,
+          }
+        : null;
+    } catch {
+      canonical = null;
+    }
     return {
+      canonical,
       layers: this.retrievalObs.snapshot(),
       deadWires: this.retrievalObs.checkDeadWires(),
       graph,

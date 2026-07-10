@@ -9,6 +9,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getProcessSupervisor } from "../process/supervisor/index.js";
 import { resolveSessionAgentIds } from "./agent-scope.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "./bootstrap-files.js";
+import { resolveCanonicalFactsBlock } from "./canonical-facts-block.js";
 import { resolveCliBackendConfig } from "./cli-backends.js";
 import {
   appendImagePathsToPrompt,
@@ -119,6 +120,13 @@ export async function runCliAgent(params: {
     sessionKey: params.sessionKey,
   }).catch(() => undefined);
 
+  // PLAN-33: canonical facts resolve independently of endocrine state.
+  const canonicalFacts = await resolveCanonicalFactsBlock({
+    config: params.config,
+    agentId: sessionAgentId,
+    promptMode: "full",
+  }).catch(() => undefined);
+
   const systemPrompt = buildSystemPrompt({
     workspaceDir,
     config: params.config,
@@ -132,6 +140,7 @@ export async function runCliAgent(params: {
     modelDisplay,
     agentId: sessionAgentId,
     endocrineState,
+    canonicalFacts,
   });
 
   const { sessionId: cliSessionIdToSend, isNew } = resolveSessionIdToSend({

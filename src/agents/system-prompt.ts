@@ -719,6 +719,12 @@ export function buildAgentSystemPrompt(params: {
     phenotypeSummary?: string;
     maturity?: number;
   };
+  /**
+   * PLAN-33: pre-rendered Canonical Facts block (resolveCanonicalFactsBlock).
+   * Deterministic ground-truth injection — deliberately independent of
+   * endocrineState so a hormonal/recall failure can never drop it.
+   */
+  canonicalFacts?: string;
 }) {
   const coreToolSummaries: Record<string, string> = {
     read: "Read file contents",
@@ -915,6 +921,9 @@ export function buildAgentSystemPrompt(params: {
 
   const lines = [
     "You are a personal assistant running inside Bitterbot.",
+    // PLAN-33: canonical facts render before everything else — including in
+    // minimal (subagent) mode — and are never gated on endocrine resolution.
+    ...(params.canonicalFacts ? ["", params.canonicalFacts] : []),
     ...buildEndocrineStateSection({
       endocrineState: params.endocrineState,
       isMinimal,

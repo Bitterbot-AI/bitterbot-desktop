@@ -27,6 +27,7 @@ import { isReasoningTagProvider } from "../../utils/provider-utils.js";
 import { resolveBitterbotAgentDir } from "../agent-paths.js";
 import { resolveSessionAgentIds } from "../agent-scope.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../bootstrap-files.js";
+import { resolveCanonicalFactsBlock } from "../canonical-facts-block.js";
 import { listChannelSupportedActions, resolveChannelMessageToolHints } from "../channel-tools.js";
 import { formatUserTime, resolveUserTimeFormat, resolveUserTimezone } from "../date-time.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
@@ -507,6 +508,13 @@ export async function compactEmbeddedPiSessionDirect(
       workspaceDir: effectiveWorkspace,
     }).catch(() => undefined);
 
+    // PLAN-33: ground-truth facts survive compaction rebuilds too.
+    const canonicalFacts = await resolveCanonicalFactsBlock({
+      config: params.config,
+      agentId: sessionAgentId,
+      promptMode,
+    }).catch(() => undefined);
+
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,
@@ -533,6 +541,7 @@ export async function compactEmbeddedPiSessionDirect(
       contextFiles,
       memoryCitationsMode: params.config?.memory?.citations,
       endocrineState,
+      canonicalFacts,
     });
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
 

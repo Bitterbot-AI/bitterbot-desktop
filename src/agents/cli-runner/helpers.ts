@@ -67,6 +67,8 @@ export function buildSystemPrompt(params: {
     phenotypeSummary?: string;
     maturity?: number;
   };
+  /** PLAN-33: pre-rendered Canonical Facts block (independent of endocrine). */
+  canonicalFacts?: string;
 }) {
   const defaultModelRef = resolveDefaultModelForAgent({
     cfg: params.config ?? {},
@@ -107,6 +109,7 @@ export function buildSystemPrompt(params: {
     ttsHint,
     memoryCitationsMode: params.config?.memory?.citations,
     endocrineState: params.endocrineState,
+    canonicalFacts: params.canonicalFacts,
   });
 }
 

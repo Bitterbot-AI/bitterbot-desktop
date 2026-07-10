@@ -1371,6 +1371,46 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 33,
+    description:
+      "PLAN-33 Phase 1: canonical_facts — the semantic ledger. A small, " +
+      "hard-capped tier of exact key-value facts (repo names, endpoints, " +
+      "identities, standing choices) injected unconditionally into every " +
+      "system prompt, addressed by key instead of embedding similarity. " +
+      "Bitemporal: contradictions close the old row's validity window " +
+      "(valid_until + superseded_by) instead of deleting, so point-in-time " +
+      "queries and provenance survive. The partial unique index enforces " +
+      "one current belief per key.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS canonical_facts (
+          id                 TEXT PRIMARY KEY,
+          key                TEXT NOT NULL,
+          value              TEXT NOT NULL,
+          statement          TEXT NOT NULL,
+          category           TEXT NOT NULL,
+          confidence         REAL NOT NULL,
+          mention_count      INTEGER NOT NULL DEFAULT 1,
+          first_seen_at      INTEGER NOT NULL,
+          last_confirmed_at  INTEGER NOT NULL,
+          valid_from         INTEGER NOT NULL,
+          valid_until        INTEGER,
+          superseded_by      TEXT,
+          source             TEXT NOT NULL,
+          evidence_chunk_ids TEXT NOT NULL DEFAULT '[]',
+          status             TEXT NOT NULL DEFAULT 'active'
+        )
+      `);
+      db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_canonical_current ` +
+          `ON canonical_facts(key) WHERE valid_until IS NULL`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_status ON canonical_facts(status, category)`,
+      );
+    },
+  },
 ];
 
 /**

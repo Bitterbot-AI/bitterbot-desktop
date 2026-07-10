@@ -90,6 +90,8 @@ export interface MemorySearchManager {
     ref: import("./session-extractor.js").EvidenceRef,
     window?: number,
   ): Promise<import("./evidence-expand.js").ExpandedEvidence>;
+  /** PLAN-33: the canonical facts ledger (null when disabled). */
+  canonicalFacts?(): import("./canonical-facts.js").CanonicalFactsStore | null;
   status(): MemoryProviderStatus;
   sync?(params?: {
     reason?: string;

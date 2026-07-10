@@ -46,6 +46,19 @@ export type MemoryConfig = {
   gccrf?: Partial<GCCRFConfig>;
   /** RLM: Recursive Language Model for deep recall over full conversation history. */
   rlm?: RLMConfig;
+  /** PLAN-33: the canonical facts ledger (semantic tier above the crystal store). */
+  canonicalLedger?: {
+    /**
+     * Enable the ledger: unconditional system-prompt injection of pinned
+     * key-value facts, the memory_pin tool, and identity-preference seeding
+     * (default: true). This is the kill switch.
+     */
+    enabled?: boolean;
+    /** Hard cap on active facts; lowest promotion score is demoted first (default: 48). */
+    maxFacts?: number;
+    /** Approximate token budget for the rendered prompt block (default: 1500). */
+    budgetTokens?: number;
+  };
   /** Session fact extraction pipeline (Mem0/Hindsight-inspired). */
   extraction?: {
     /** Enable LLM-powered fact extraction from session transcripts (default: true). */
