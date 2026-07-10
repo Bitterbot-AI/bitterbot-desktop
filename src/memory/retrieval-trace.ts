@@ -38,6 +38,14 @@ export type RecallLayerCounts = {
   graphFacts: number;
   identityFacts: number;
   vectorFacts: number;
+  /**
+   * Crystals surfaced by the FTS keyword fallback that runs when the query
+   * embedding is unavailable (cold-process timeout, provider down). Folded
+   * into the `vector` dead-wire lane by the caller — it is the same semantic
+   * crystal channel, just a degraded transport — but counted separately here
+   * so traces show how often recall is running degraded.
+   */
+  keywordFacts: number;
   openLoops: number;
 };
 
@@ -53,7 +61,7 @@ export function emptySearchCounts(): SearchLayerCounts {
 }
 
 export function emptyRecallCounts(): RecallLayerCounts {
-  return { graphFacts: 0, identityFacts: 0, vectorFacts: 0, openLoops: 0 };
+  return { graphFacts: 0, identityFacts: 0, vectorFacts: 0, keywordFacts: 0, openLoops: 0 };
 }
 
 /** Resolve the persisted-trace sampling rate (0 disables). Default 0.05. */
@@ -87,11 +95,15 @@ export function recordRetrievalTrace(
   try {
     const isSearch = "vectorHits" in counts;
     const vectorHits = isSearch ? counts.vectorHits : counts.vectorFacts;
-    const keywordHits = isSearch ? counts.keywordHits : 0;
+    const keywordHits = isSearch ? counts.keywordHits : counts.keywordFacts;
     const graphHits = isSearch ? counts.graphHits : counts.graphFacts;
     const fused = isSearch
       ? counts.fused
-      : counts.graphFacts + counts.identityFacts + counts.vectorFacts + counts.openLoops;
+      : counts.graphFacts +
+        counts.identityFacts +
+        counts.vectorFacts +
+        counts.keywordFacts +
+        counts.openLoops;
     db.prepare(
       `INSERT INTO retrieval_trace
          (kind, query_len, vector_hits, keyword_hits, graph_hits, fused, extra, created_at)

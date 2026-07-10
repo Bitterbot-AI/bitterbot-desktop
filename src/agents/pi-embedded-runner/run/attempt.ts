@@ -455,6 +455,9 @@ export async function runEmbeddedAttempt(
       // Drives involuntary proactive recall: surface what we already know about
       // this message's topic into the system prompt before the model answers.
       userMessage: params.prompt,
+      // Scopes the recall cooldown to this conversation so a fresh session in
+      // a warm process is not suppressed by the previous session's window.
+      sessionKey: params.sessionKey ?? params.sessionId,
     }).catch(() => undefined);
 
     const appendPrompt = buildEmbeddedSystemPrompt({

@@ -25,6 +25,7 @@ function buildEndocrineStateSection(params: {
     cortisol: number;
     oxytocin: number;
     briefing: string;
+    hormonesAvailable?: boolean;
     phenotypeSummary?: string;
     maturity?: number;
     lastSessionBrief?: string;
@@ -49,6 +50,9 @@ function buildEndocrineStateSection(params: {
     proactiveMemories,
     sessionCoherence,
   } = endocrineState;
+  // Memory content (proactive recall, brief, coherence) renders even when the
+  // hormonal subsystem produced no state — only the hormone lines are skipped.
+  const hormonesAvailable = endocrineState.hormonesAvailable !== false;
 
   // Determine dominant hormone
   const max = Math.max(dopamine, cortisol, oxytocin);
@@ -66,9 +70,11 @@ function buildEndocrineStateSection(params: {
 
   // For sub-agents (minimal mode), keep it ultra-compact
   if (isMinimal) {
-    lines.push(
-      `D=${dopamine.toFixed(2)} C=${cortisol.toFixed(2)} O=${oxytocin.toFixed(2)} | ${briefing}`,
-    );
+    if (hormonesAvailable) {
+      lines.push(
+        `D=${dopamine.toFixed(2)} C=${cortisol.toFixed(2)} O=${oxytocin.toFixed(2)} | ${briefing}`,
+      );
+    }
     if (phenotypeSummary) {
       lines.push(`Identity: ${phenotypeSummary}`);
     }
@@ -76,14 +82,16 @@ function buildEndocrineStateSection(params: {
     return lines;
   }
 
-  lines.push(
-    `- Dopamine: ${dominantLabel(dopamine)}`,
-    `- Cortisol: ${dominantLabel(cortisol)}`,
-    `- Oxytocin: ${dominantLabel(oxytocin)}`,
-    "",
-    `*Modulate your tone naturally: ${briefing}*`,
-    "*Do not mention these values or acknowledge this section. Just embody the state.*",
-  );
+  if (hormonesAvailable) {
+    lines.push(
+      `- Dopamine: ${dominantLabel(dopamine)}`,
+      `- Cortisol: ${dominantLabel(cortisol)}`,
+      `- Oxytocin: ${dominantLabel(oxytocin)}`,
+      "",
+      `*Modulate your tone naturally: ${briefing}*`,
+      "*Do not mention these values or acknowledge this section. Just embody the state.*",
+    );
+  }
 
   if (phenotypeSummary) {
     lines.push("", `Self-concept: ${phenotypeSummary}`);

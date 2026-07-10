@@ -44,6 +44,15 @@ export interface ProactiveRecallConfig {
   priorityLayers: string[];
   identityAlwaysInclude: boolean;
   cooldownTurns: number;
+  /**
+   * Slots reserved for the semantic crystal stage (vector, or its keyword
+   * fallback) out of `maxFacts`. Without this, the graph + identity stages —
+   * which run first — can consume every slot on an identity-heavy turn and
+   * crowd out a genuinely on-topic world_fact match. Only reserved when a
+   * semantic stage can actually run (embedding or keyword fallback present);
+   * unused reserve is released to the open-loop/deictic stages as before.
+   */
+  vectorReserve: number;
 }
 
 export const DEFAULT_PROACTIVE_RECALL_CONFIG: ProactiveRecallConfig = {
@@ -55,7 +64,139 @@ export const DEFAULT_PROACTIVE_RECALL_CONFIG: ProactiveRecallConfig = {
   priorityLayers: ["directive", "world_fact"],
   identityAlwaysInclude: true,
   cooldownTurns: 5,
+  vectorReserve: 2,
 };
+
+/**
+ * Minimal English stopword set for the recall FTS fallback. Only needs to
+ * strip the glue words of a conversational sentence; bm25 handles the rest.
+ */
+const RECALL_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "are",
+  "was",
+  "were",
+  "did",
+  "does",
+  "has",
+  "had",
+  "have",
+  "you",
+  "your",
+  "yours",
+  "our",
+  "ours",
+  "his",
+  "her",
+  "hers",
+  "its",
+  "their",
+  "theirs",
+  "this",
+  "that",
+  "these",
+  "those",
+  "with",
+  "from",
+  "what",
+  "which",
+  "when",
+  "where",
+  "who",
+  "whom",
+  "why",
+  "how",
+  "can",
+  "could",
+  "would",
+  "should",
+  "will",
+  "shall",
+  "may",
+  "might",
+  "must",
+  "about",
+  "into",
+  "onto",
+  "over",
+  "under",
+  "again",
+  "then",
+  "than",
+  "there",
+  "here",
+  "just",
+  "very",
+  "not",
+  "but",
+  "any",
+  "all",
+  "some",
+  "one",
+  "two",
+  "get",
+  "got",
+  "let",
+  "lets",
+  "please",
+  "tell",
+  "know",
+  "think",
+  "want",
+  "need",
+  "yesterday",
+  "today",
+  "tomorrow",
+  "now",
+  "still",
+  "yet",
+  "also",
+  "too",
+]);
+
+/**
+ * Build an FTS5 query for the recall keyword fallback from a conversational
+ * user message. Unlike `buildFtsQuery` (hybrid search), which ANDs every
+ * token — correct for terse search-tool queries, useless for a natural
+ * sentence where no fact contains every word — this ORs the content words and
+ * lets bm25 rank by how many (and how rare) the matches are. Returns null
+ * when the message has no usable content words.
+ */
+export function buildRecallFtsQuery(raw: string): string | null {
+  const tokens =
+    raw
+      .toLowerCase()
+      .match(/[\p{L}\p{N}_]+/gu)
+      ?.filter((t) => t.length >= 3 && !RECALL_STOPWORDS.has(t)) ?? [];
+  if (tokens.length === 0) {
+    return null;
+  }
+  const unique = [...new Set(tokens)].slice(0, 12);
+  return unique.map((t) => `"${t.replaceAll('"', "")}"`).join(" OR ");
+}
+
+/**
+ * Scope the proactive-recall cooldown map to one conversation. The map lives
+ * on the process-singleton memory manager, so without scoping a brand-new
+ * conversation in a warm process inherits the previous session's suppression
+ * window — a fact surfaced near the end of the last chat is then silently
+ * withheld from the first turns of the next one (the "works warm, fails on a
+ * fresh conversation" failure). Clears the map when the scope key changes and
+ * returns the new key; callers without a key keep today's behavior.
+ */
+export function applyRecallScope(
+  cooldown: Map<string, number>,
+  previousScopeKey: string | undefined,
+  scopeKey: string | undefined,
+): string | undefined {
+  if (!scopeKey || scopeKey === previousScopeKey) {
+    return previousScopeKey;
+  }
+  cooldown.clear();
+  return scopeKey;
+}
 
 export interface ProactiveRecallResult {
   facts: ProactiveFact[];
@@ -65,6 +206,7 @@ export interface ProactiveRecallResult {
     graphFacts: number;
     identityFacts: number;
     vectorFacts: number;
+    keywordFacts: number;
     openLoops: number;
   };
 }
@@ -108,11 +250,38 @@ export function proactiveRecall(params: {
   kg?: KnowledgeGraphManager | null;
   /** Resolved user name, so graph facts can phrase "your <relation>". */
   userName?: string | null;
+  /**
+   * FTS fallback for the semantic stage when no query embedding is available
+   * (cold-process embed timeout, provider outage). Without it, a null
+   * embedding silently skips the entire crystal stage — the exact
+   * "wired but dead" cold-start failure class. Opt-in: callers that do not
+   * pass it keep the embedding-only behavior. The FTS query is always built
+   * with `buildRecallFtsQuery` (OR semantics) — the AND-based hybrid-search
+   * builder never matches a conversational sentence.
+   */
+  keywordFallback?: {
+    ftsTable: string;
+  } | null;
 }): ProactiveRecallResult {
   const cfg = { ...DEFAULT_PROACTIVE_RECALL_CONFIG, ...params.config };
   const start = performance.now();
   const facts: ProactiveFact[] = [];
-  const layerCounts = { graphFacts: 0, identityFacts: 0, vectorFacts: 0, openLoops: 0 };
+  const layerCounts = {
+    graphFacts: 0,
+    identityFacts: 0,
+    vectorFacts: 0,
+    keywordFacts: 0,
+    openLoops: 0,
+  };
+
+  // Reserve slots for the semantic crystal stage only when it can actually
+  // run, so the graph/identity stages (which fill first) cannot crowd it out.
+  const hasEmbedding = !!params.queryEmbedding && params.queryEmbedding.length > 0;
+  const canRunSemanticStage =
+    hasEmbedding || (!!params.keywordFallback && !!params.userMessage?.trim());
+  const preSemanticCap = canRunSemanticStage
+    ? Math.max(0, cfg.maxFacts - Math.min(cfg.vectorReserve, cfg.maxFacts))
+    : cfg.maxFacts;
 
   // ── 0. PLAN-27: graph-anchored family edges (entity/identity turns) ──
   // Runs first so a structural answer ("Donna — your spouse") leads, ahead of any
@@ -123,7 +292,7 @@ export function proactiveRecall(params: {
         userMessage: params.userMessage,
         kg: params.kg,
         userName: params.userName,
-        maxFacts: cfg.maxFacts,
+        maxFacts: preSemanticCap,
         recentlySurfaced: params.recentlySurfaced,
         currentTurn: params.currentTurn,
         cooldownTurns: cfg.cooldownTurns,
@@ -146,7 +315,7 @@ export function proactiveRecall(params: {
         .slice(0, 3);
 
       for (const pref of identityPrefs) {
-        if (facts.length >= cfg.maxFacts) {
+        if (facts.length >= preSemanticCap) {
           break;
         }
         const key = `pref:${pref.category}:${pref.key}`;
@@ -170,7 +339,7 @@ export function proactiveRecall(params: {
   }
 
   // ── 2. Vector-matched crystals (directive + world_fact priority) ──
-  if (params.queryEmbedding && params.queryEmbedding.length > 0) {
+  if (hasEmbedding && params.queryEmbedding) {
     const remaining = cfg.maxFacts - facts.length;
     if (remaining > 0) {
       try {
@@ -228,6 +397,71 @@ export function proactiveRecall(params: {
         }
       } catch {
         // Vector table may not exist or query may fail — non-critical
+      }
+    }
+  } else if (params.keywordFallback && params.userMessage?.trim()) {
+    // ── 2b. Keyword fallback: no query embedding (cold-process embed timeout,
+    // provider outage). Degraded transport for the same crystal channel: FTS
+    // over the same layer/lifecycle/importance filters, ranked by bm25. This
+    // keeps the semantic stage alive on exactly the turns where the vector
+    // branch used to die silently.
+    const remaining = cfg.maxFacts - facts.length;
+    if (remaining > 0) {
+      try {
+        const ftsQuery = buildRecallFtsQuery(params.userMessage);
+        if (ftsQuery) {
+          const fts = params.keywordFallback.ftsTable;
+          // bm25() cannot be used inside an aggregate, so the per-embedding-
+          // model duplicate rows the FTS table carries are deduped in the loop
+          // below (same shape as manager-search's searchKeyword). Over-fetch
+          // to survive both the dedup and the cooldown filter.
+          const candidateRows = params.db
+            .prepare(
+              `SELECT c.id, c.text, c.importance_score, c.epistemic_layer, bm25(${fts}) AS rank
+               FROM ${fts} f
+               JOIN chunks c ON c.id = f.id
+               WHERE ${fts} MATCH ?
+                 AND c.epistemic_layer IN ('directive', 'world_fact', 'mental_model')
+                 AND COALESCE(c.lifecycle, 'generated') IN ('generated', 'activated', 'consolidated', 'frozen')
+                 AND c.importance_score >= ?
+               ORDER BY rank ASC
+               LIMIT ?`,
+            )
+            .all(ftsQuery, cfg.minImportance, Math.max(30, remaining * 6)) as Array<{
+            id: string;
+            text: string;
+            importance_score: number;
+            epistemic_layer: string;
+            rank: number;
+          }>;
+
+          const seenIds = new Set<string>();
+          for (const row of candidateRows) {
+            if (facts.length >= cfg.maxFacts) {
+              break;
+            }
+            if (seenIds.has(row.id)) {
+              continue;
+            }
+            seenIds.add(row.id);
+            const lastTurn = params.recentlySurfaced.get(row.id) ?? -Infinity;
+            if (params.currentTurn - lastTurn < cfg.cooldownTurns) {
+              continue;
+            }
+            const truncated = row.text.length > 120 ? row.text.slice(0, 117) + "..." : row.text;
+            facts.push({
+              text: truncated,
+              source: "crystal",
+              confidence: row.importance_score,
+              epistemicLayer: row.epistemic_layer,
+              chunkId: row.id,
+            });
+            params.recentlySurfaced.set(row.id, params.currentTurn);
+            layerCounts.keywordFacts += 1;
+          }
+        }
+      } catch {
+        // FTS table may not exist or MATCH may fail — non-critical
       }
     }
   }

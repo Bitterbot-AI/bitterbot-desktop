@@ -288,13 +288,19 @@ When the gate passes and context is loaded, it comes with two enhancements. Firs
 Every turn, before the LLM generates a response, the system runs a zero-cost proactive recall pass:
 
 1. **Identity facts** — name, role, location. Always surfaced, no embedding needed.
-2. **Vector-matched crystals** — directive and world_fact crystals relevant to the current message.
+2. **Vector-matched crystals** — directive and world_fact crystals relevant to the current message. When the query embedding is unavailable (cold-process timeout, provider outage), an FTS keyword fallback runs the same layer/lifecycle/importance filters over bm25-ranked matches so this stage never silently dies (PLAN-33 Phase 0).
 3. **Open loops** — unfinished tasks detected by the Zeigarnik system.
 4. **Prospective memories** — trigger conditions that match the current message.
 5. **Epistemic directives** — top-priority knowledge gap questions.
 6. **Entity snapshot** — when the user's message contains references like "that file" or "the same thing," the last-touched entities from the handover brief are surfaced so the LLM can resolve the reference.
 
 These are injected into the system prompt as terse one-line facts. The agent embodies them naturally without announcing them. The user never sees "according to my memory" — they just experience an agent that remembers.
+
+Three hardening guarantees keep this pass honest (PLAN-33 Phase 0):
+
+- **Cooldown is scoped per conversation.** The anti-repetition cooldown map lives on the process-singleton memory manager, so it is cleared whenever the session key changes — a fresh conversation in a warm process no longer inherits the previous session's suppression window.
+- **A slot reserve protects the semantic stage.** The graph and identity stages fill first; two of the five fact slots are held back for vector/keyword crystal matches whenever that stage can run, so identity-heavy turns cannot crowd out an on-topic world_fact.
+- **Recall does not depend on the hormonal subsystem.** A null hormonal state skips the hormone display lines but no longer drops the entire memory block from the prompt.
 
 ---
 

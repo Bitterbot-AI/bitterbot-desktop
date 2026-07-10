@@ -14,6 +14,13 @@ export type EndocrineStateForPrompt = {
   cortisol: number;
   oxytocin: number;
   briefing: string;
+  /**
+   * False when the hormonal subsystem returned no state. Memory recall no
+   * longer depends on it — hormone display lines are skipped, but proactive
+   * memories, the handover brief, and coherence still render. (Previously a
+   * null hormonal state dropped the ENTIRE memory block from the prompt.)
+   */
+  hormonesAvailable?: boolean;
   phenotypeSummary?: string;
   maturity?: number;
   /** Compact 1-line summary from the latest session handover brief */
@@ -36,6 +43,12 @@ export async function resolveEndocrineState(params: {
    * probes, compaction) where only identity-level recall is wanted.
    */
   userMessage?: string;
+  /**
+   * Conversation identity for proactive-recall cooldown scoping: when it
+   * changes, the manager clears its (process-singleton) cooldown map so a
+   * fresh conversation is not suppressed by the previous session's window.
+   */
+  sessionKey?: string;
 }): Promise<EndocrineStateForPrompt | undefined> {
   try {
     const { MemoryIndexManager } = await import("../memory/manager.js");
@@ -48,11 +61,11 @@ export async function resolveEndocrineState(params: {
       return undefined;
     }
 
-    // Get hormonal state via the public hormonalState() method
+    // Get hormonal state via the public hormonalState() method. A null state
+    // (hormonal subsystem off or not yet initialized) must NOT abort memory
+    // resolution — proactive recall, the handover brief, and coherence do not
+    // depend on hormones. Hormone display is skipped via hormonesAvailable.
     const hormones = manager.hormonalState();
-    if (!hormones) {
-      return undefined;
-    }
 
     // Get response modulation briefing via the hormonal manager
     const hormonalMgr = (manager as Record<string, unknown>).hormonalManager as {
@@ -148,10 +161,13 @@ export async function resolveEndocrineState(params: {
       const recallManager = manager as unknown as {
         recallForUserTurn(
           text: string,
+          opts?: { scopeKey?: string },
         ): Promise<{ facts: string | undefined; embedding: number[] | null }>;
       };
       if (params.userMessage && typeof recallManager.recallForUserTurn === "function") {
-        const recall = await recallManager.recallForUserTurn(params.userMessage);
+        const recall = await recallManager.recallForUserTurn(params.userMessage, {
+          scopeKey: params.sessionKey,
+        });
         proactiveMemories = recall.facts;
         userMessageEmbedding = recall.embedding;
       } else {
@@ -236,11 +252,24 @@ export async function resolveEndocrineState(params: {
       // Coherence tracker not available — non-critical
     }
 
+    // Without hormones AND without any memory-derived content there is
+    // nothing to render — preserve the old "no section" behavior.
+    if (
+      !hormones &&
+      !proactiveMemories &&
+      !lastSessionBrief &&
+      !sessionCoherence &&
+      !phenotypeSummary
+    ) {
+      return undefined;
+    }
+
     return {
-      dopamine: hormones.dopamine,
-      cortisol: hormones.cortisol,
-      oxytocin: hormones.oxytocin,
+      dopamine: hormones?.dopamine ?? 0,
+      cortisol: hormones?.cortisol ?? 0,
+      oxytocin: hormones?.oxytocin ?? 0,
       briefing,
+      hormonesAvailable: !!hormones,
       phenotypeSummary,
       maturity,
       lastSessionBrief,

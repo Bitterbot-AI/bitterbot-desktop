@@ -115,6 +115,8 @@ export async function runCliAgent(params: {
     workspaceDir,
     // Surface what we already know about this message's topic before answering.
     userMessage: params.prompt,
+    // Scopes the recall cooldown to this conversation (see recallForUserTurn).
+    sessionKey: params.sessionKey,
   }).catch(() => undefined);
 
   const systemPrompt = buildSystemPrompt({

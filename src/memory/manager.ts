@@ -605,6 +605,16 @@ export class MemoryIndexManager implements MemorySearchManager {
    */
   async recallForUserTurn(
     text: string,
+    opts?: {
+      /**
+       * Conversation identity (session key) for cooldown scoping. The cooldown
+       * map lives on this process-singleton manager, so without a scope key a
+       * new conversation in a warm process inherits the previous session's
+       * suppression window and silently withholds recently-surfaced facts on
+       * its first turns. When the key changes, the map is cleared.
+       */
+      scopeKey?: string;
+    },
   ): Promise<{ facts: string | undefined; embedding: number[] | null }> {
     if (!text || !text.trim()) {
       return { facts: undefined, embedding: null };
@@ -629,7 +639,14 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
 
     try {
-      const { proactiveRecall, formatProactiveFacts } = await import("./proactive-recall.js");
+      const { proactiveRecall, formatProactiveFacts, applyRecallScope } =
+        await import("./proactive-recall.js");
+      // Scope the cooldown map to this conversation before recalling.
+      this.recallScopeKey = applyRecallScope(
+        this.proactiveRecallCooldown,
+        this.recallScopeKey,
+        opts?.scopeKey,
+      );
       const recallCounts: RecallLayerCounts = emptyRecallCounts();
       const result = await withSpanAttrs(
         "memory.recall",
@@ -645,11 +662,15 @@ export class MemoryIndexManager implements MemorySearchManager {
             // PLAN-27: graph-anchored recall for entity/identity turns.
             kg: this.knowledgeGraph,
             userName: this.resolveUserName(),
+            // Keyword fallback keeps the crystal stage alive when the query
+            // embedding is unavailable (cold-process timeout, provider down).
+            keywordFallback: { ftsTable: FTS_TABLE },
           });
           Object.assign(recallCounts, r.layerCounts);
           setAttr("memory.graph_facts", recallCounts.graphFacts);
           setAttr("memory.identity_facts", recallCounts.identityFacts);
           setAttr("memory.vector_facts", recallCounts.vectorFacts);
+          setAttr("memory.keyword_facts", recallCounts.keywordFacts);
           setAttr("memory.open_loops", recallCounts.openLoops);
           return r;
         },
@@ -657,11 +678,14 @@ export class MemoryIndexManager implements MemorySearchManager {
       );
       // PLAN-28 B3: feed the dead-wire detector. Graph here is the same channel
       // as search's graph layer (KG), so the two retrieval paths reinforce the
-      // same per-layer rolling counter rather than fragmenting it.
+      // same per-layer rolling counter rather than fragmenting it. Keyword-
+      // fallback hits fold into the vector lane — same semantic crystal
+      // channel, degraded transport — so a rare-but-healthy fallback doesn't
+      // register as its own perpetually-dead layer.
       this.retrievalObs.record({
         graph: recallCounts.graphFacts,
         identity: recallCounts.identityFacts,
-        vector: recallCounts.vectorFacts,
+        vector: recallCounts.vectorFacts + recallCounts.keywordFacts,
         open_loops: recallCounts.openLoops,
       });
       recordRetrievalTrace(this.db, "recall", recallCounts, {
@@ -793,6 +817,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   // Plan 7: Cognitive coherence state
   readonly coherenceTracker = new SessionCoherenceTracker();
   readonly proactiveRecallCooldown = new Map<string, number>();
+  /** Conversation the cooldown map is currently scoped to (see recallForUserTurn). */
+  private recallScopeKey: string | undefined;
   private turnCount = 0;
   /** Last live user message + when, to dedupe per-turn stimulation/recall. */
   private lastLiveMessage = "";
