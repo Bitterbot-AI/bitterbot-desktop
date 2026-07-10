@@ -3164,6 +3164,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     const architectEnabled = this.cfg.memory?.architectEvolution?.enabled !== false;
     const learnedRules = architectEnabled ? selectRulesForState(this.db, hormonalBias) : [];
 
+    // PLAN-34 M2 hotfix: structured ground-truth writes (canonical pins,
+    // directive preferences) only from first-party sessions. Third-party
+    // authored transcripts (A2A, groups, circles, subagents) still yield
+    // ordinary crystals, never always-injected truth.
+    const { buildSessionTrustResolver } = await import("./session-trust.js");
+    const sessionTrust = await buildSessionTrustResolver(this.agentId);
+
     let extractedCount = 0;
 
     for (const absPath of sessionFiles) {
@@ -3267,8 +3274,14 @@ export class MemoryIndexManager implements MemorySearchManager {
               }
             }
 
-            // Route directive facts to user preferences
-            if (fact.epistemicLayer === "directive" && this.userModelManager) {
+            // Route directive facts to user preferences — first-party
+            // sessions only (a third party's "always do X" must never become
+            // a standing preference).
+            if (
+              fact.epistemicLayer === "directive" &&
+              this.userModelManager &&
+              sessionTrust(absPath) === "first_party"
+            ) {
               this.userModelManager.upsertFromDirective({
                 text: fact.text,
                 confidence: fact.confidence,
@@ -3283,7 +3296,14 @@ export class MemoryIndexManager implements MemorySearchManager {
             // supersedes (user corrections propagate without being asked).
             // Extraction pins cap below explicit user pins (0.95) so an
             // extraction mistake never outranks a deliberate correction.
-            if (this.canonicalFactsStore && fact.canonical && fact.confidence >= 0.65) {
+            // First-party sessions only: canonical ground truth must never
+            // derive from third-party authored transcripts (A2A/group/circle).
+            if (
+              this.canonicalFactsStore &&
+              fact.canonical &&
+              fact.confidence >= 0.65 &&
+              sessionTrust(absPath) === "first_party"
+            ) {
               const pinResult = this.canonicalFactsStore.pin({
                 key: fact.canonical.key,
                 value: fact.canonical.value,
