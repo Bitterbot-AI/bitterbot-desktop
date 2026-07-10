@@ -197,7 +197,7 @@ Every two hours, the agent's subconscious activates. The dream engine has seven 
 - **Exploration** — fill knowledge gaps identified by the curiosity engine.
 - **Research** — empirical prompt optimization using actual skill execution data. **Disabled by default since PLAN-34 Phase 0**: the mode has no organic fuel (skill execution telemetry bootstraps only from existing skill crystals) and its promotion path wrote directly to live chunks without a staging gate. It returns behind the PLAN-34 §9 exit criterion.
 
-Curiosity frontiers also used to spawn long-horizon tasks for the agent to investigate. That spawn is off by default as of PLAN-34 Phase 0 (`BITTERBOT_CURIOSITY_SPAWN_TASKS=1` re-enables): no executor ever claimed the tasks, so they only accumulated. The task store now stops any pending curiosity task older than 7 days at open, and dream-cycle research (PLAN-34 Phase 2) services curiosity targets instead.
+Curiosity frontiers also used to spawn long-horizon tasks for the agent to investigate. That spawn is off by default as of PLAN-34 Phase 0 (`BITTERBOT_CURIOSITY_SPAWN_TASKS=1` re-enables): no executor ever claimed the tasks, so they only accumulated. At open, the task store stops abandoned auto-spawned curiosity tasks (unowned, `[curiosity]`-prefixed, pending longer than the 7-day spawn-dedupe horizon); tool-created curiosity tasks are never touched. Dream-cycle research (PLAN-34 Phase 2) services curiosity targets instead.
 
 Each dream cycle also performs an RLM (Recursive Language Model) state update on the agent's working memory — MEMORY.md is rewritten as a state vector, incorporating new crystals, dream insights, scratch buffer notes, and the current hormonal state.
 

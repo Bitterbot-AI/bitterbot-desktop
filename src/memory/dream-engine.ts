@@ -501,7 +501,13 @@ export class DreamEngine {
       this.state = "INCUBATING";
       cycleMeta.state = "INCUBATING";
 
-      const selectedModes = opts?.modes ?? this.selectModes();
+      // PLAN-34 Phase 0: `enabled: false` is authoritative, not advisory.
+      // Explicit mode lists (runSingleMode, forced cycles, future RPCs) must
+      // not bypass a containment default — a disabled mode can only run when
+      // deliberately re-enabled via config.modes.<mode>.enabled.
+      const selectedModes = (opts?.modes ?? this.selectModes()).filter(
+        (m) => this.config.modes[m]?.enabled,
+      );
       cycleMeta.modesUsed = selectedModes;
 
       // Check minimum chunks

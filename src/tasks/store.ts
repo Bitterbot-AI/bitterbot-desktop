@@ -88,13 +88,13 @@ export type TaskStoreEvent = {
 type Listener = (evt: TaskStoreEvent) => void;
 
 /**
- * PLAN-34 Phase 0: pending curiosity tasks older than this are stopped at
- * store open. Curiosity task-spawn has no executor (the 154-task pile-up
- * swept manually on 2026-07-10) and spawn is now default-off, so anything
- * still pending past the 7-day dedupe horizon is abandoned by definition.
- * Idempotent: stopped rows never match again.
+ * PLAN-34 Phase 0: auto-spawned curiosity tasks still pending past this
+ * horizon are stopped at store open. The horizon mirrors the spawn
+ * adapter's own 168h dedupe window: a task the adapter would already
+ * re-spawn is abandoned by definition (no executor ever claimed it — the
+ * 154-task pile-up swept manually on 2026-07-10).
  */
-const LEGACY_CURIOSITY_SWEEP_MAX_AGE_MS = 168 * 3_600_000;
+const AUTOSPAWN_CURIOSITY_SWEEP_MAX_AGE_MS = 168 * 3_600_000;
 
 export class TaskStore {
   private readonly db: DatabaseSync;
@@ -107,23 +107,43 @@ export class TaskStore {
   }
 
   /**
-   * Stop legacy pending curiosity tasks older than 168h (PLAN-34 Phase 0
-   * containment — the codified, idempotent re-run of the manual 2026-07-10
-   * sweep). Direct UPDATE, no events: this runs in the constructor before
-   * any listener can attach, and the rows are dead weight, not activity.
-   * Returns the number of tasks stopped.
+   * Stop abandoned auto-spawned curiosity tasks older than 168h (PLAN-34
+   * Phase 0 containment — the codified, idempotent re-run of the manual
+   * 2026-07-10 sweep). Scoped to the maybeSpawnTaskFromCuriosity signature
+   * (goal prefix "[curiosity] ", no owning session key) so tool-created
+   * curiosity tasks are never touched. Preserves updated_at/last_seen_at —
+   * bumping them would push dead rows to the top of task_list ordering and
+   * refresh the spawn adapter's dedupe window — and sets completed_at like
+   * every other terminal transition. Direct UPDATE, no events: this runs in
+   * the constructor before any listener can attach, and the rows are dead
+   * weight, not activity. Returns the number of tasks stopped.
    */
   sweepLegacyCuriosityTasks(now = Date.now()): number {
-    const cutoff = now - LEGACY_CURIOSITY_SWEEP_MAX_AGE_MS;
+    const cutoff = now - AUTOSPAWN_CURIOSITY_SWEEP_MAX_AGE_MS;
+    // Cheap read-only probe first so a routine open never takes a WAL
+    // write lock when there is nothing to sweep.
+    const pending = this.db
+      .prepare(
+        `SELECT 1 FROM tasks
+         WHERE source = 'curiosity' AND status = 'pending'
+           AND agent_session_key IS NULL AND goal LIKE '[curiosity] %'
+           AND created_at < ? LIMIT 1`,
+      )
+      .get(cutoff);
+    if (!pending) {
+      return 0;
+    }
     const result = this.db
       .prepare(
-        `UPDATE tasks SET status = 'stopped', updated_at = ?, last_seen_at = ?
-         WHERE source = 'curiosity' AND status = 'pending' AND created_at < ?`,
+        `UPDATE tasks SET status = 'stopped', completed_at = ?
+         WHERE source = 'curiosity' AND status = 'pending'
+           AND agent_session_key IS NULL AND goal LIKE '[curiosity] %'
+           AND created_at < ?`,
       )
-      .run(now, now, cutoff);
+      .run(now, cutoff);
     const stopped = Number((result as { changes: number | bigint }).changes);
     if (stopped > 0) {
-      log.info(`legacy curiosity sweep stopped ${stopped} pending task(s) older than 168h`);
+      log.info(`curiosity sweep stopped ${stopped} abandoned auto-spawned task(s) older than 168h`);
     }
     return stopped;
   }

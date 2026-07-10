@@ -935,7 +935,9 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5 },
+        // PLAN-34 Phase 0 disabled research by default; these tests exercise
+        // the mode's internals, so they opt back in via config.
+        { llmCall: llm, minChunksForDream: 5, modes: { research: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -949,6 +951,33 @@ describe("Dream Engine", () => {
       expect(stats!.newInsights[0]!.sourceChunkIds).toContain(skillId);
     });
 
+    it("does not run research via explicit modes while disabled by default (PLAN-34 Phase 0)", async () => {
+      seedChunksForDream();
+      const { tracker } = seedSkillWithExecutions({
+        executions: 5,
+        successRate: 0.4,
+        errorType: "timeout",
+      });
+
+      const llm = mockLlmCall([
+        JSON.stringify([{ content: "should never be produced", confidence: 0.9, keywords: [] }]),
+      ]);
+      // Default config: research is enabled:false — an explicit modes array
+      // must NOT bypass the containment default.
+      const engine = new DreamEngine(
+        db,
+        { llmCall: llm, minChunksForDream: 5 },
+        noopSynthesize,
+        noopEmbedBatch,
+      );
+      engine.setExecutionTracker(tracker);
+
+      const stats = await engine.run({ modes: ["research"] });
+      expect(stats).not.toBeNull();
+      expect(stats!.newInsights).toHaveLength(0);
+      expect(stats!.cycle.modesUsed).toEqual([]);
+    });
+
     it("skips research when no skills have sufficient execution data", async () => {
       seedChunksForDream();
       // Insert a skill but only 1 execution (below MIN_EXECUTIONS threshold)
@@ -956,7 +985,7 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: mockLlmCall(), minChunksForDream: 5 },
+        { llmCall: mockLlmCall(), minChunksForDream: 5, modes: { research: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -978,7 +1007,7 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: mockLlmCall(), minChunksForDream: 5 },
+        { llmCall: mockLlmCall(), minChunksForDream: 5, modes: { research: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );

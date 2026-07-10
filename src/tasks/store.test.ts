@@ -251,19 +251,14 @@ describe("TaskStore", () => {
     }
   });
 
-  describe("legacy curiosity sweep (PLAN-34 Phase 0)", () => {
+  describe("abandoned auto-spawned curiosity sweep (PLAN-34 Phase 0)", () => {
     const WEEK_MS = 168 * 3_600_000;
 
-    it("stops pending curiosity tasks older than 168h; leaves everything else alone", () => {
+    it("stops abandoned auto-spawned tasks; leaves fresh, claimed, owned, and tool-shaped tasks alone", () => {
       const store = TaskStore.open(dbPath);
       try {
         const stale = store.create({
           goal: "[curiosity] stale",
-          doneCriteria: "x",
-          source: "curiosity",
-        });
-        const fresh = store.create({
-          goal: "[curiosity] fresh",
           doneCriteria: "x",
           source: "curiosity",
         });
@@ -273,21 +268,53 @@ describe("TaskStore", () => {
           source: "curiosity",
         });
         store.update(running.id, { status: "running" });
+        // Tool-created curiosity task owned by a session — never swept.
+        const owned = store.create({
+          goal: "[curiosity] owned by a session",
+          doneCriteria: "x",
+          source: "curiosity",
+          agentSessionKey: "agent:main:cli",
+        });
+        // Curiosity-sourced but not the auto-spawn goal shape — never swept.
+        const toolShaped = store.create({
+          goal: "investigate frontier gap manually",
+          doneCriteria: "x",
+          source: "curiosity",
+        });
         const user = store.create({ goal: "user task", doneCriteria: "x" });
 
-        // Sweep "in the future": stale/fresh/running/user were all created
-        // now, so a sweep at now + 8 days sees them past the 168h horizon —
-        // except we re-create `fresh` semantics by sweeping at now + 1h for
-        // the negative case first.
+        // Within the horizon: nothing matches.
         expect(store.sweepLegacyCuriosityTasks(Date.now() + 3_600_000)).toBe(0);
-        expect(store.get(fresh.id)?.status).toBe("pending");
+        expect(store.get(stale.id)?.status).toBe("pending");
 
         const stopped = store.sweepLegacyCuriosityTasks(Date.now() + WEEK_MS + 3_600_000);
-        expect(stopped).toBe(2); // stale + fresh (both pending curiosity)
+        expect(stopped).toBe(1); // only the unowned "[curiosity] " pending row
         expect(store.get(stale.id)?.status).toBe("stopped");
-        expect(store.get(fresh.id)?.status).toBe("stopped");
         expect(store.get(running.id)?.status).toBe("running");
+        expect(store.get(owned.id)?.status).toBe("pending");
+        expect(store.get(toolShaped.id)?.status).toBe("pending");
         expect(store.get(user.id)?.status).toBe("pending");
+      } finally {
+        store.close();
+      }
+    });
+
+    it("preserves updated_at (task_list ordering, dedupe window) and sets completed_at", () => {
+      const store = TaskStore.open(dbPath);
+      try {
+        const t = store.create({
+          goal: "[curiosity] abandoned",
+          doneCriteria: "x",
+          source: "curiosity",
+        });
+        const before = store.get(t.id)!;
+        const sweepAt = Date.now() + WEEK_MS + 3_600_000;
+        expect(store.sweepLegacyCuriosityTasks(sweepAt)).toBe(1);
+        const after = store.get(t.id)!;
+        expect(after.status).toBe("stopped");
+        expect(after.updatedAt).toBe(before.updatedAt);
+        expect(after.lastSeenAt).toBe(before.lastSeenAt);
+        expect(after.completedAt).toBe(sweepAt);
       } finally {
         store.close();
       }

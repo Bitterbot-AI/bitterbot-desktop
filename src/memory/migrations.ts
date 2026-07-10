@@ -1423,11 +1423,11 @@ const MIGRATIONS: Migration[] = [
       "into contradiction directives ('Which is current for <key>?'). " +
       "(3) epistemic_directives.status — 'open' | 'answered' | 'expired'; " +
       "Phase 1's two-tier resolution and the softened expireOld flip this " +
-      "instead of DELETEing. (4) One-time sweep: reset attempts to 0 on " +
-      "unresolved directives — the old read path incremented per run " +
-      "attempt and per compaction (the live attempts=491 artifact), so " +
-      "historical counts are meaningless under the new " +
-      "increment-only-on-injection semantics.",
+      "instead of DELETEing. The attempts reset for unresolved directives " +
+      "ships with Phase 1's read-side fix (the increment-only-on-injection " +
+      "semantics), never before it — resetting while the per-read " +
+      "incrementer is live would be consumed before the semantics land " +
+      "(Phase 0 adversarial pass).",
     up: (db: DatabaseSync) => {
       addColumnIfMissing(db, "chunks", "session_trust", "TEXT");
 
@@ -1451,8 +1451,6 @@ const MIGRATIONS: Migration[] = [
       );
 
       addColumnIfMissing(db, "epistemic_directives", "status", "TEXT NOT NULL DEFAULT 'open'");
-
-      db.exec(`UPDATE epistemic_directives SET attempts = 0 WHERE resolved_at IS NULL`);
     },
   },
 ];

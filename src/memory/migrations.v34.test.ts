@@ -28,12 +28,17 @@ function columns(db: DatabaseSync, table: string): string[] {
 }
 
 /**
- * Roll schema_version back to 33 so runMigrations re-applies v34. All v34
- * DDL is idempotent (CREATE IF NOT EXISTS / addColumnIfMissing), so the
- * only observable effect of a re-run is the containment sweep — exactly
- * what these tests need to exercise against hand-seeded pre-sweep rows.
+ * Rebuild a genuine pre-v34 schema: drop the v34 columns and table, then
+ * roll schema_version back to 33. Rows inserted after this run against the
+ * real v33 shape, so a subsequent runMigrations exercises the actual
+ * ALTER-time upgrade path (column backfill on populated tables), not just
+ * INSERT-time defaults — the Phase 0 adversarial pass caught that a
+ * version-rewind alone only re-runs idempotent no-op DDL.
  */
-function rewindToV33(db: DatabaseSync): void {
+function downgradeToV33(db: DatabaseSync): void {
+  db.exec(`ALTER TABLE chunks DROP COLUMN session_trust`);
+  db.exec(`ALTER TABLE epistemic_directives DROP COLUMN status`);
+  db.exec(`DROP TABLE canonical_conflicts`);
   db.prepare(`UPDATE meta SET value = '33' WHERE key = 'schema_version'`).run();
 }
 
@@ -50,7 +55,7 @@ function insertDirective(
   ).run(id, Date.now(), resolvedAt, attempts);
 }
 
-describe("migration v34 — PLAN-34 Phase 0 schema slots + containment sweeps", () => {
+describe("migration v34 — PLAN-34 Phase 0 schema slots", () => {
   it("adds chunks.session_trust", () => {
     expect(columns(openTestDb(), "chunks")).toContain("session_trust");
   });
@@ -74,44 +79,39 @@ describe("migration v34 — PLAN-34 Phase 0 schema slots + containment sweeps", 
     }
   });
 
-  it("adds epistemic_directives.status defaulting to 'open'", () => {
+  it("upgrades a populated v33 DB: existing directive rows are backfilled to status='open'", () => {
     const db = openTestDb();
-    expect(columns(db, "epistemic_directives")).toContain("status");
-    insertDirective(db, "d-status", 0, null);
+    downgradeToV33(db);
+    // Rows inserted against the REAL v33 shape (no status column).
+    insertDirective(db, "d-pre-upgrade", 491, null);
+    insertDirective(db, "d-pre-resolved", 5, Date.now());
+
+    runMigrations(db);
+
+    const rows = db
+      .prepare(`SELECT id, status, attempts FROM epistemic_directives ORDER BY id`)
+      .all() as Array<{ id: string; status: string; attempts: number }>;
+    expect(rows.map((r) => r.status)).toEqual(["open", "open"]);
+    // v34 deliberately does NOT reset attempts: the reset ships with the
+    // Phase 1 read-side fix so it cannot be consumed by the old per-read
+    // incrementer before the new semantics exist.
+    expect(rows.find((r) => r.id === "d-pre-upgrade")?.attempts).toBe(491);
+    expect(columns(db, "chunks")).toContain("session_trust");
+    expect(tables(db).has("canonical_conflicts")).toBe(true);
+  });
+
+  it("re-runs without throwing and preserves directive data", () => {
+    const db = openTestDb();
+    insertDirective(db, "d1", 7, null);
+    // Version-only rewind: v34's DDL re-runs against an already-upgraded
+    // schema and must be a data-preserving no-op.
+    db.prepare(`UPDATE meta SET value = '33' WHERE key = 'schema_version'`).run();
+    runMigrations(db);
     const row = db
-      .prepare(`SELECT status FROM epistemic_directives WHERE id = 'd-status'`)
-      .get() as { status: string };
+      .prepare(`SELECT attempts, status FROM epistemic_directives WHERE id = 'd1'`)
+      .get() as { attempts: number; status: string };
+    expect(row.attempts).toBe(7);
     expect(row.status).toBe("open");
-  });
-
-  it("resets attempts to 0 on unresolved directives only (the attempts=491 artifact)", () => {
-    const db = openTestDb();
-    insertDirective(db, "d-unresolved", 491, null);
-    insertDirective(db, "d-resolved", 5, Date.now());
-    rewindToV33(db);
-    runMigrations(db);
-    const get = (id: string) =>
-      (
-        db.prepare(`SELECT attempts FROM epistemic_directives WHERE id = ?`).get(id) as {
-          attempts: number;
-        }
-      ).attempts;
-    expect(get("d-unresolved")).toBe(0);
-    expect(get("d-resolved")).toBe(5);
-  });
-
-  it("re-runs idempotently against the 2026-07-10 manual-sweep state", () => {
-    const db = openTestDb();
-    insertDirective(db, "d1", 12, null);
-    rewindToV33(db);
-    runMigrations(db);
-    rewindToV33(db);
-    // Second re-run: no throw, no drift.
-    runMigrations(db);
-    const row = db.prepare(`SELECT attempts FROM epistemic_directives WHERE id = 'd1'`).get() as {
-      attempts: number;
-    };
-    expect(row.attempts).toBe(0);
   });
 
   it("is idempotent and lands schema version >= 34", () => {
