@@ -37,7 +37,12 @@ export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   simulation: { enabled: true, weight: 0.14, maxChunks: 10, requiresLlm: true },
   extrapolation: { enabled: true, weight: 0.09, maxChunks: 15, requiresLlm: true },
   exploration: { enabled: true, weight: 0.09, maxChunks: 10, requiresLlm: true },
-  research: { enabled: true, weight: 0.09, maxChunks: 5, requiresLlm: true },
+  // PLAN-34 Phase 0: research mode disabled by default — it is unfueled
+  // (skill_executions bootstrap deadlock) and its promotion path writes
+  // directly to live chunk text with no staging gate (dream-engine value
+  // audit 2026-07-10). Re-enable per the PLAN-34 §9 Phase-5 exit criterion
+  // (organic skill_executions accumulating + a gated promotion path).
+  research: { enabled: false, weight: 0.09, maxChunks: 5, requiresLlm: true },
   interceptor_harvest: { enabled: true, weight: 0.09, maxChunks: 25, requiresLlm: true },
   relationship_reconsolidation: { enabled: true, weight: 0.09, maxChunks: 25, requiresLlm: true },
   harness_evolve: { enabled: true, weight: 0.05, maxChunks: 24, requiresLlm: true },

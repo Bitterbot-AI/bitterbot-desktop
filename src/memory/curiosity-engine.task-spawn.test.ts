@@ -57,7 +57,9 @@ describe("CuriosityEngine → task spawn integration (PLAN-17 Phase 2 E.1)", () 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-curio-spawn-"));
     startTaskStore({ dbPath: path.join(dir, "tasks.sqlite") });
-    delete process.env.BITTERBOT_CURIOSITY_SPAWN_TASKS;
+    // PLAN-34 Phase 0 flipped the default to OFF (no executor exists).
+    // These integration tests exercise the spawn path, so opt in.
+    process.env.BITTERBOT_CURIOSITY_SPAWN_TASKS = "1";
   });
 
   afterEach(() => {
@@ -84,6 +86,21 @@ describe("CuriosityEngine → task spawn integration (PLAN-17 Phase 2 E.1)", () 
       expect(task.metadata?.topic).toBe(insight.id);
       expect(task.metadata?.novelty).toBeGreaterThan(0.7);
       expect(task.metadata?.seedCrystalId).toBe(insight.id);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("does not spawn a task by default (PLAN-34 Phase 0: flag unset)", () => {
+    delete process.env.BITTERBOT_CURIOSITY_SPAWN_TASKS;
+    const db = openDb(path.join(dir, "curiosity.sqlite"));
+    try {
+      const engine = new CuriosityEngine(db);
+      // The frontier target itself still opens — only the task spawn is off.
+      const result = engine.assessDreamInsight(makeInsight());
+      expect(result.frontiersOpened).toBeGreaterThan(0);
+      const store = getActiveTaskStore()!;
+      expect(store.list({ source: "curiosity" })).toHaveLength(0);
     } finally {
       db.close();
     }

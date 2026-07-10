@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TaskPlan } from "./types.js";
 import { TaskStore, getActiveTaskStore, startTaskStore, stopTaskStore } from "./store.js";
@@ -248,5 +249,85 @@ describe("TaskStore", () => {
     } finally {
       store.close();
     }
+  });
+
+  describe("legacy curiosity sweep (PLAN-34 Phase 0)", () => {
+    const WEEK_MS = 168 * 3_600_000;
+
+    it("stops pending curiosity tasks older than 168h; leaves everything else alone", () => {
+      const store = TaskStore.open(dbPath);
+      try {
+        const stale = store.create({
+          goal: "[curiosity] stale",
+          doneCriteria: "x",
+          source: "curiosity",
+        });
+        const fresh = store.create({
+          goal: "[curiosity] fresh",
+          doneCriteria: "x",
+          source: "curiosity",
+        });
+        const running = store.create({
+          goal: "[curiosity] running",
+          doneCriteria: "x",
+          source: "curiosity",
+        });
+        store.update(running.id, { status: "running" });
+        const user = store.create({ goal: "user task", doneCriteria: "x" });
+
+        // Sweep "in the future": stale/fresh/running/user were all created
+        // now, so a sweep at now + 8 days sees them past the 168h horizon —
+        // except we re-create `fresh` semantics by sweeping at now + 1h for
+        // the negative case first.
+        expect(store.sweepLegacyCuriosityTasks(Date.now() + 3_600_000)).toBe(0);
+        expect(store.get(fresh.id)?.status).toBe("pending");
+
+        const stopped = store.sweepLegacyCuriosityTasks(Date.now() + WEEK_MS + 3_600_000);
+        expect(stopped).toBe(2); // stale + fresh (both pending curiosity)
+        expect(store.get(stale.id)?.status).toBe("stopped");
+        expect(store.get(fresh.id)?.status).toBe("stopped");
+        expect(store.get(running.id)?.status).toBe("running");
+        expect(store.get(user.id)?.status).toBe("pending");
+      } finally {
+        store.close();
+      }
+    });
+
+    it("is idempotent — a second sweep matches nothing", () => {
+      const store = TaskStore.open(dbPath);
+      try {
+        store.create({ goal: "[curiosity] old", doneCriteria: "x", source: "curiosity" });
+        const later = Date.now() + WEEK_MS + 3_600_000;
+        expect(store.sweepLegacyCuriosityTasks(later)).toBe(1);
+        expect(store.sweepLegacyCuriosityTasks(later)).toBe(0);
+      } finally {
+        store.close();
+      }
+    });
+
+    it("runs automatically at store open", () => {
+      const first = TaskStore.open(dbPath);
+      const t = first.create({
+        goal: "[curiosity] abandoned",
+        doneCriteria: "x",
+        source: "curiosity",
+      });
+      first.close();
+
+      // Backdate past the 168h horizon, then reopen: the constructor sweep
+      // must stop it without any explicit call.
+      const raw = new DatabaseSync(dbPath);
+      raw
+        .prepare(`UPDATE tasks SET created_at = ? WHERE id = ?`)
+        .run(Date.now() - WEEK_MS - 3_600_000, t.id);
+      raw.close();
+
+      const reopened = TaskStore.open(dbPath);
+      try {
+        expect(reopened.get(t.id)?.status).toBe("stopped");
+      } finally {
+        reopened.close();
+      }
+    });
   });
 });

@@ -74,6 +74,8 @@ Each mode serves a different purpose and has a default weight controlling how of
 | `exploration`   | 0.10   | `local`      | Gap-filling from curiosity targets                                  |
 | `research`      | 0.10   | `cloud`      | Empirical prompt optimization using skill execution data            |
 
+**`research` is disabled by default** (PLAN-34 Phase 0): the mode has no organic fuel — skill-execution telemetry only records against existing skill crystals, which only mint from existing execution rows — and its promotion path wrote directly to live chunk text with no staging gate. It returns behind the PLAN-34 §9 exit criterion (organic `skill_executions` accumulating plus a gated promotion path).
+
 ### Mode Selection — Three-Signal Architecture
 
 `selectModes()` picks 1-3 modes using three complementary signals from the unified `CuriosityEngine`, combined via weighted normalization. The marketplace signal activates only when there is recent marketplace activity; otherwise the original two-signal weights are preserved:

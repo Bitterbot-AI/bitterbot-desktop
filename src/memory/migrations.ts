@@ -1411,6 +1411,50 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 34,
+    description:
+      "PLAN-34 Phase 0: closed-loop cognition schema slots + containment " +
+      "sweeps. (1) chunks.session_trust — session trust persisted at write " +
+      "time so first-party determinability never depends on re-resolving " +
+      "prunable sessions.json history (Phase 4 promotion gate reads it). " +
+      "(2) canonical_conflicts — pin() records tier-rejections and rapid " +
+      "same-key supersedes here; the Phase 1 extraction path sweeps them " +
+      "into contradiction directives ('Which is current for <key>?'). " +
+      "(3) epistemic_directives.status — 'open' | 'answered' | 'expired'; " +
+      "Phase 1's two-tier resolution and the softened expireOld flip this " +
+      "instead of DELETEing. (4) One-time sweep: reset attempts to 0 on " +
+      "unresolved directives — the old read path incremented per run " +
+      "attempt and per compaction (the live attempts=491 artifact), so " +
+      "historical counts are meaningless under the new " +
+      "increment-only-on-injection semantics.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "chunks", "session_trust", "TEXT");
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS canonical_conflicts (
+          id              TEXT PRIMARY KEY,
+          key             TEXT NOT NULL,
+          kind            TEXT NOT NULL,
+          current_value   TEXT NOT NULL,
+          proposed_value  TEXT NOT NULL,
+          current_source  TEXT NOT NULL,
+          proposed_source TEXT NOT NULL,
+          created_at      INTEGER NOT NULL,
+          consumed_at     INTEGER,
+          directive_id    TEXT
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_conflicts_open ` +
+          `ON canonical_conflicts(consumed_at, created_at)`,
+      );
+
+      addColumnIfMissing(db, "epistemic_directives", "status", "TEXT NOT NULL DEFAULT 'open'");
+
+      db.exec(`UPDATE epistemic_directives SET attempts = 0 WHERE resolved_at IS NULL`);
+    },
+  },
 ];
 
 /**

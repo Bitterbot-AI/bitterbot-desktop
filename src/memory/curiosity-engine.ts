@@ -710,8 +710,14 @@ export class CuriosityEngine {
           // the agent investigates instead of just rehearsing it in dreams.
           // The adapter has its own novelty/alignment thresholds (and a 7-day
           // dedupe window keyed on `topic`) so it can independently veto.
-          // Disable with BITTERBOT_CURIOSITY_SPAWN_TASKS=0.
-          if (process.env.BITTERBOT_CURIOSITY_SPAWN_TASKS !== "0") {
+          //
+          // PLAN-34 Phase 0: default OFF. Spawned tasks have no executor
+          // (154 pending piled up before the 2026-07-10 sweep) and the
+          // per-insight-UUID dedupe key means the window never fires.
+          // Opt back in with BITTERBOT_CURIOSITY_SPAWN_TASKS=1 only per the
+          // PLAN-34 §9 exit criterion (an executor exists and Phase 6
+          // counters show research capacity is the bottleneck).
+          if (process.env.BITTERBOT_CURIOSITY_SPAWN_TASKS === "1") {
             try {
               maybeSpawnTaskFromCuriosity({
                 topic: insight.id,

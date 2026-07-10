@@ -87,6 +87,15 @@ export type TaskStoreEvent = {
 
 type Listener = (evt: TaskStoreEvent) => void;
 
+/**
+ * PLAN-34 Phase 0: pending curiosity tasks older than this are stopped at
+ * store open. Curiosity task-spawn has no executor (the 154-task pile-up
+ * swept manually on 2026-07-10) and spawn is now default-off, so anything
+ * still pending past the 7-day dedupe horizon is abandoned by definition.
+ * Idempotent: stopped rows never match again.
+ */
+const LEGACY_CURIOSITY_SWEEP_MAX_AGE_MS = 168 * 3_600_000;
+
 export class TaskStore {
   private readonly db: DatabaseSync;
   private readonly listeners = new Set<Listener>();
@@ -94,6 +103,29 @@ export class TaskStore {
   constructor(db: DatabaseSync) {
     this.db = db;
     this.db.exec(SCHEMA_SQL);
+    this.sweepLegacyCuriosityTasks();
+  }
+
+  /**
+   * Stop legacy pending curiosity tasks older than 168h (PLAN-34 Phase 0
+   * containment — the codified, idempotent re-run of the manual 2026-07-10
+   * sweep). Direct UPDATE, no events: this runs in the constructor before
+   * any listener can attach, and the rows are dead weight, not activity.
+   * Returns the number of tasks stopped.
+   */
+  sweepLegacyCuriosityTasks(now = Date.now()): number {
+    const cutoff = now - LEGACY_CURIOSITY_SWEEP_MAX_AGE_MS;
+    const result = this.db
+      .prepare(
+        `UPDATE tasks SET status = 'stopped', updated_at = ?, last_seen_at = ?
+         WHERE source = 'curiosity' AND status = 'pending' AND created_at < ?`,
+      )
+      .run(now, now, cutoff);
+    const stopped = Number((result as { changes: number | bigint }).changes);
+    if (stopped > 0) {
+      log.info(`legacy curiosity sweep stopped ${stopped} pending task(s) older than 168h`);
+    }
+    return stopped;
   }
 
   static open(dbPath: string): TaskStore {
