@@ -3214,8 +3214,14 @@ export class MemoryIndexManager implements MemorySearchManager {
 
         // PLAN-34 Phase 1: open questions are offered (and answers applied)
         // for first-party sessions only — a third party must never resolve
-        // a question we asked the owner.
+        // a question we asked the owner. Re-filtered per file: a question
+        // answered by an earlier session in THIS run must not be offered to
+        // (and re-answered by) a later one.
         const firstParty = sessionTrust(absPath) === "first_party";
+        const openQuestionsForFile =
+          firstParty && openQuestions.length > 0 && directiveEngine
+            ? openQuestions.filter((q) => directiveEngine.getDirective(q.id)?.status === "open")
+            : [];
 
         // Run LLM extraction
         const result = await extractSessionFacts(
@@ -3225,7 +3231,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           maxFacts,
           hormonalBias,
           learnedRules,
-          firstParty && openQuestions.length > 0 ? openQuestions : undefined,
+          openQuestionsForFile.length > 0 ? openQuestionsForFile : undefined,
         );
         if (!result) {
           continue;

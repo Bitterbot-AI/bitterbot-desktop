@@ -164,11 +164,98 @@ describe("PLAN-34 Phase 1 — closed directive loop (acceptance)", () => {
     expect(engine.getDirective(question.id)!.status).toBe("answered"); // stops asking
     expect(store.get("project.repo")!.value).toBe("github.com/org/alpha"); // tier held
 
-    // Ledger value != stored answer -> contradicted -> never resolves.
+    // Ledger value != stored answer -> contradicted -> never resolves, and
+    // the row leaves limbo (terminal 'expired') so the key can re-ask.
     expect(
       finalizeAnsweredDirectives({ engine, canonicalStore: store, cutoffTs: Date.now() + 60_000 }),
     ).toBe(0);
-    expect(engine.getDirective(question.id)!.resolvedAt).toBeNull();
+    const done = engine.getDirective(question.id)!;
+    expect(done.resolvedAt).toBeNull();
+    expect(done.status).toBe("expired");
+  });
+
+  it("candidate constraint: a deictic or off-candidate quote answers the question but never moves the ledger", () => {
+    store.pin({ key: "infra.host", value: "h1.example", source: "extraction" });
+    store.pin({ key: "infra.host", value: "h1.example", source: "extraction" });
+    store.pin({ key: "infra.host", value: "h2.example", source: "extraction" });
+    engine.sweepCanonicalConflicts();
+    const question = engine.listOpenDirectives(5)[0];
+
+    const applied = applyDirectiveResolutions({
+      db,
+      engine,
+      canonicalStore: store,
+      resolutions: [
+        {
+          directiveId: question.id,
+          answer: "the first one is right", // honest deictic quote
+          confidence: 0.9,
+          evidence: [{ kind: "session", path: "/s.jsonl", line: 1 }],
+        },
+      ],
+      sessionPath: "/s.jsonl",
+      now: Date.now(),
+    });
+    expect(applied).toEqual({ answered: 1, pinned: 0 }); // no garbage pin
+    expect(store.get("infra.host")!.value).toBe("h2.example"); // ledger unmoved
+    expect(engine.getDirective(question.id)!.status).toBe("answered");
+  });
+
+  it("candidate constraint: selectedValue maps a deictic reply onto a candidate and pins it", () => {
+    store.pin({ key: "infra.region", value: "us-east-1", source: "extraction" });
+    store.pin({ key: "infra.region", value: "us-east-1", source: "extraction" });
+    store.pin({ key: "infra.region", value: "eu-west-1", source: "extraction" });
+    engine.sweepCanonicalConflicts();
+    const question = engine.listOpenDirectives(5)[0];
+
+    const applied = applyDirectiveResolutions({
+      db,
+      engine,
+      canonicalStore: store,
+      resolutions: [
+        {
+          directiveId: question.id,
+          answer: "the first one, us-east", // the quote itself is not a candidate
+          selectedValue: "us-east-1", // but the mapping is candidate-exact
+          confidence: 0.9,
+          evidence: [{ kind: "session", path: "/s.jsonl", line: 1 }],
+        },
+      ],
+      sessionPath: "/s.jsonl",
+      now: Date.now(),
+    });
+    expect(applied).toEqual({ answered: 1, pinned: 1 });
+    expect(store.get("infra.region")!.value).toBe("us-east-1"); // adjudicated back
+    // Resolution stores the adjudicated candidate, keeping the survival
+    // check coherent with the pin.
+    expect(engine.getDirective(question.id)!.resolution).toBe("us-east-1");
+  });
+
+  it("candidate constraint: a hallucinated selectedValue outside the candidate set never pins", () => {
+    store.pin({ key: "infra.cdn", value: "cdn-a.example", source: "extraction" });
+    store.pin({ key: "infra.cdn", value: "cdn-a.example", source: "extraction" });
+    store.pin({ key: "infra.cdn", value: "cdn-b.example", source: "extraction" });
+    engine.sweepCanonicalConflicts();
+    const question = engine.listOpenDirectives(5)[0];
+
+    const applied = applyDirectiveResolutions({
+      db,
+      engine,
+      canonicalStore: store,
+      resolutions: [
+        {
+          directiveId: question.id,
+          answer: "we should really use cdn-evil",
+          selectedValue: "cdn-evil.example",
+          confidence: 0.95,
+          evidence: [{ kind: "session", path: "/s.jsonl", line: 1 }],
+        },
+      ],
+      sessionPath: "/s.jsonl",
+      now: Date.now(),
+    });
+    expect(applied).toEqual({ answered: 1, pinned: 0 });
+    expect(store.get("infra.cdn")!.value).toBe("cdn-b.example");
   });
 
   it("low-confidence answers never mark a question answered", () => {

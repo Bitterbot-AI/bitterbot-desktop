@@ -449,8 +449,11 @@ export class CanonicalFactsStore {
 
   /**
    * PLAN-34 Phase 1: persist a conflict event for the extraction path to
-   * sweep into a user-facing question. Best-effort — pin() must never fail
-   * because conflict bookkeeping did (e.g. a pre-v34 DB without the table).
+   * sweep into a user-facing question. One UNCONSUMED row per key at a time
+   * — a dream-cycle promotion retrying the same rejected pin every cycle
+   * must not grow the table without bound. Best-effort — pin() must never
+   * fail because conflict bookkeeping did (e.g. a pre-v34 DB without the
+   * table).
    */
   private recordConflict(
     kind: "tier_rejection" | "rapid_supersede",
@@ -461,6 +464,12 @@ export class CanonicalFactsStore {
     now: number,
   ): void {
     try {
+      const pending = this.db
+        .prepare(`SELECT 1 FROM canonical_conflicts WHERE key = ? AND consumed_at IS NULL LIMIT 1`)
+        .get(key);
+      if (pending) {
+        return;
+      }
       this.db
         .prepare(
           `INSERT INTO canonical_conflicts

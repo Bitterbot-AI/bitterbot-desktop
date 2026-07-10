@@ -36,11 +36,47 @@ export const ANSWER_CONFIDENCE_FLOOR = 0.75;
 export const CANONICAL_ANSWER_FLOOR = 0.8;
 
 const CANONICAL_TAG_PREFIX = "canonical:";
+const CANDIDATE_TAG_PREFIX = "candidate:";
 
 /** The canonical-ledger key a conflict directive adjudicates, if any. */
 export function canonicalKeyForDirective(d: { sourceEntityIds: string[] }): string | null {
   const tag = d.sourceEntityIds.find((s) => s.startsWith(CANONICAL_TAG_PREFIX));
   return tag ? tag.slice(CANONICAL_TAG_PREFIX.length) : null;
+}
+
+/** The candidate values a conflict directive adjudicates between. */
+export function candidateValuesForDirective(d: { sourceEntityIds: string[] }): string[] {
+  return d.sourceEntityIds
+    .filter((s) => s.startsWith(CANDIDATE_TAG_PREFIX))
+    .map((s) => s.slice(CANDIDATE_TAG_PREFIX.length));
+}
+
+/**
+ * The value a canonical conflict answer may pin: it must EXACTLY equal one
+ * of the candidate values the question adjudicated (the extractor's
+ * selectedValue mapping first, then the verbatim quote itself). Anything
+ * else — deictic replies ("the first one"), negated mentions, stitched or
+ * hallucinated strings — never reaches the ledger; the question still gets
+ * answered, the ledger just doesn't move.
+ */
+export function pinnableCandidateValue(
+  d: { sourceEntityIds: string[] },
+  res: { answer: string; selectedValue?: string },
+): string | null {
+  const candidates = candidateValuesForDirective(d);
+  if (candidates.length === 0) {
+    return null;
+  }
+  for (const proposed of [res.selectedValue, res.answer]) {
+    if (typeof proposed !== "string") {
+      continue;
+    }
+    const match = candidates.find((c) => c.trim() === proposed.trim());
+    if (match !== undefined) {
+      return match;
+    }
+  }
+  return null;
 }
 
 export function applyDirectiveResolutions(params: {
@@ -68,7 +104,14 @@ export function applyDirectiveResolutions(params: {
     ) {
       continue;
     }
-    if (!params.engine.markAnswered(directive.id, res.answer)) {
+    // For which-is-current questions the effective answer is the candidate
+    // value the user picked (when it validates); storing it as the
+    // resolution keeps finalize's ledger-vs-resolution survival check
+    // coherent with what was actually pinned.
+    const key = canonicalKeyForDirective(directive);
+    const pinValue = pinnableCandidateValue(directive, res);
+    const effectiveAnswer = pinValue ?? res.answer;
+    if (!params.engine.markAnswered(directive.id, effectiveAnswer)) {
       continue;
     }
     answered++;
@@ -77,7 +120,7 @@ export function applyDirectiveResolutions(params: {
     // mirroring the extraction ingest insert shape — this is what makes the
     // answer retrievable forever.
     const crystalId = `fact_${crypto.randomUUID()}`;
-    const answerText = `${directive.question} — ${res.answer}`;
+    const answerText = `${directive.question} — ${effectiveAnswer}`;
     try {
       params.db
         .prepare(
@@ -113,14 +156,21 @@ export function applyDirectiveResolutions(params: {
 
     // Canonical-shaped answers route through the reconciler at extraction
     // tier with the raised floor — as normal proposals subject to trust
-    // tiers, never a special path. A tier rejection here is correct
-    // behavior (deliberate pins outrank conversational answers) and simply
-    // records a fresh conflict.
-    const key = canonicalKeyForDirective(directive);
-    if (key && params.canonicalStore && res.confidence >= CANONICAL_ANSWER_FLOOR) {
+    // tiers, never a special path. Additionally CANDIDATE-CONSTRAINED
+    // (Phase 1 adversarial pass): the pinned value must exactly equal one
+    // of the two values the question adjudicated, so a mention, negation,
+    // deictic reply, or hallucinated string can never move the ledger. A
+    // tier rejection here remains correct behavior (deliberate pins outrank
+    // conversational answers).
+    if (
+      key &&
+      pinValue !== null &&
+      params.canonicalStore &&
+      res.confidence >= CANONICAL_ANSWER_FLOOR
+    ) {
       const pinResult = params.canonicalStore.pin({
         key,
-        value: res.answer,
+        value: pinValue,
         category: key.split(".")[0],
         confidence: Math.min(res.confidence, 0.85),
         source: "extraction",

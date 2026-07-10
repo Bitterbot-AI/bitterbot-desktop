@@ -46,6 +46,18 @@ export const USER_ANSWERABLE_TYPES: ReadonlySet<DirectiveType> = new Set([
 /** A user-answerable question stops injecting after this many sessions. */
 export const MAX_ASKS = 3;
 
+/** Consumed conflict rows older than this are pruned at sweep time. */
+const CONFLICT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Canonical values render into prompt-injected question lines. */
+function sanitizeValueForPrompt(value: string): string {
+  // oxlint-disable-next-line no-control-regex -- stripping control chars is the point
+  return value
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export type DirectiveStatus = "open" | "answered" | "expired";
 
 export interface EpistemicDirective {
@@ -83,13 +95,15 @@ export class EpistemicDirectiveEngine {
   private readonly db: DatabaseSync;
   private readonly config: DirectiveConfig;
   /**
-   * Session keys whose injection has already been counted this process.
-   * Attempts increment at most once per session key (PLAN-34 Phase 1) —
-   * per-turn/compaction re-renders of the same conversation never re-count.
-   * In-memory on purpose: a restart mid-conversation can at worst cost one
-   * extra count, which the maxAsks ceiling tolerates.
+   * Per session key: the directive ids whose injection has been counted
+   * this process. Attempts increment at most once per (session key,
+   * directive) — per-turn re-renders of the same conversation never
+   * re-count, while a question that first appears mid-conversation still
+   * gets its one count. In-memory on purpose: a restart (or the 1000-key
+   * FIFO eviction) can at worst cost one extra count per conversation,
+   * which the maxAsks ceiling tolerates.
    */
-  private readonly injectionCountedKeys = new Set<string>();
+  private readonly injectionCountedKeys = new Map<string, Set<string>>();
 
   constructor(db: DatabaseSync, config?: Partial<DirectiveConfig>) {
     this.db = db;
@@ -278,18 +292,21 @@ export class EpistemicDirectiveEngine {
 
   /**
    * Count an actual prompt injection: attempts + 1 per directive, at most
-   * once per session key. Public so the injection call site stays honest
-   * about when a question was really voiced.
+   * once per (session key, directive). Tracked per directive id (not just
+   * per key) so a question that first becomes eligible mid-conversation is
+   * still counted for that conversation. Public so the injection call site
+   * stays honest about when a question was really voiced.
    */
   markInjected(directiveIds: string[], sessionKey: string): void {
-    if (this.injectionCountedKeys.has(sessionKey)) {
-      return;
-    }
-    this.injectionCountedKeys.add(sessionKey);
-    if (this.injectionCountedKeys.size > 1000) {
-      const oldest = this.injectionCountedKeys.values().next().value;
-      if (oldest !== undefined) {
-        this.injectionCountedKeys.delete(oldest);
+    let counted = this.injectionCountedKeys.get(sessionKey);
+    if (!counted) {
+      counted = new Set<string>();
+      this.injectionCountedKeys.set(sessionKey, counted);
+      if (this.injectionCountedKeys.size > 1000) {
+        const oldest = this.injectionCountedKeys.keys().next().value;
+        if (oldest !== undefined) {
+          this.injectionCountedKeys.delete(oldest);
+        }
       }
     }
     try {
@@ -297,6 +314,10 @@ export class EpistemicDirectiveEngine {
         `UPDATE epistemic_directives SET attempts = attempts + 1 WHERE id = ?`,
       );
       for (const id of directiveIds) {
+        if (counted.has(id)) {
+          continue;
+        }
+        counted.add(id);
         stmt.run(id);
         this.auditLog(id, "directive_injected", { sessionKey });
       }
@@ -307,17 +328,19 @@ export class EpistemicDirectiveEngine {
 
   /**
    * PLAN-34 Phase 1 two-tier resolution, tier 1: a qualifying extraction
-   * found the user's answer. The question stops injecting immediately
-   * (status leaves 'open'); resolved_at is set only by finalizeAnswered
-   * once the answer survives the next extraction cycle uncontradicted.
-   * Late answers to demoted/expired questions still land here.
+   * found the user's answer. The question stops injecting immediately;
+   * resolved_at is set only by finalizeAnswered once the answer survives
+   * the next extraction cycle uncontradicted. Late answers to demoted
+   * (still open) and expired questions still land here; an already-answered
+   * question is never re-answered (a second session in the same run must
+   * not overwrite the first resolution or duplicate its crystal/pin).
    */
   markAnswered(directiveId: string, answer: string): boolean {
     try {
       const result = this.db
         .prepare(
           `UPDATE epistemic_directives SET status = 'answered', resolution = ?
-           WHERE id = ? AND resolved_at IS NULL`,
+           WHERE id = ? AND resolved_at IS NULL AND status != 'answered'`,
         )
         .run(answer, directiveId);
       const changed = Number((result as { changes: number | bigint }).changes) > 0;
@@ -360,11 +383,25 @@ export class EpistemicDirectiveEngine {
       const now = Date.now();
       for (const row of rows) {
         const answeredAt = (answeredAtStmt.get(row.id) as { t: number | null } | undefined)?.t;
-        if (answeredAt == null || answeredAt >= cutoffTs) {
-          continue; // answered in THIS cycle (or unknown) — survival window not yet passed
+        if (answeredAt == null) {
+          // The answered audit row was lost (best-effort insert). Backfill
+          // it now so the survival clock starts — without this the row
+          // would sit in 'answered' limbo forever.
+          this.auditLog(row.id, "directive_answered", { backfilled: true });
+          continue;
+        }
+        if (answeredAt >= cutoffTs) {
+          continue; // answered in THIS cycle — survival window not yet passed
         }
         const directive = rowToDirective(row);
         if (isContradicted?.(directive)) {
+          // Terminal, never resolved — and never left in 'answered' limbo:
+          // flipping to 'expired' frees the active-directive cap and lets
+          // the conflict machinery re-ask via a NEW directive for the key
+          // (the sweep dedupe only matches open/answered rows).
+          this.db
+            .prepare(`UPDATE epistemic_directives SET status = 'expired' WHERE id = ?`)
+            .run(row.id);
           this.auditLog(row.id, "directive_answer_contradicted");
           continue;
         }
@@ -400,12 +437,18 @@ export class EpistemicDirectiveEngine {
 
   /**
    * Expire old unresolved directives. PLAN-34 Phase 1: asked-but-unresolved
-   * questions get a status flip (not DELETE) so a late answer can still
-   * resolve them; never-asked ones are deleted as before (no answer can
-   * ever arrive for a question that was never voiced).
+   * questions get a status flip (not DELETE) so a late answer arriving
+   * within the retention window can still resolve them; never-asked ones
+   * are deleted as before (no answer can ever arrive for a question that
+   * was never voiced). Expired rows are terminal — they no longer count
+   * against the active cap, block dedupe, or appear in the extractor's
+   * open-questions list — and are purged for good after a second expiry
+   * window so the table cannot grow without bound.
    */
   expireOld(): number {
-    const cutoff = Date.now() - this.config.expiryDays * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const expiryMs = this.config.expiryDays * 24 * 60 * 60 * 1000;
+    const cutoff = now - expiryMs;
     try {
       const deleted = this.db
         .prepare(
@@ -419,9 +462,16 @@ export class EpistemicDirectiveEngine {
            WHERE resolved_at IS NULL AND status = 'open' AND attempts > 0 AND created_at < ?`,
         )
         .run(cutoff);
+      const purged = this.db
+        .prepare(
+          `DELETE FROM epistemic_directives
+           WHERE resolved_at IS NULL AND status = 'expired' AND created_at < ?`,
+        )
+        .run(now - 2 * expiryMs);
       return (
         Number((deleted as { changes: number | bigint }).changes) +
-        Number((expired as { changes: number | bigint }).changes)
+        Number((expired as { changes: number | bigint }).changes) +
+        Number((purged as { changes: number | bigint }).changes)
       );
     } catch {
       return 0;
@@ -434,11 +484,18 @@ export class EpistemicDirectiveEngine {
    * same-key supersedes) into contradiction directives the USER is uniquely
    * able to answer: "Which is current for <key>?". One open directive per
    * key at a time; every swept conflict row is marked consumed with the
-   * directive that covers it.
+   * directive that covers it. The directive carries the two candidate
+   * values (`candidate:` entries in sourceEntityIds) so the resolution
+   * layer can constrain any canonical pin to one of the values actually in
+   * dispute — never an arbitrary quoted string. Consumed rows older than
+   * the retention window are pruned so the table cannot grow forever.
    */
   sweepCanonicalConflicts(limit = 10): number {
     let created = 0;
     try {
+      this.db
+        .prepare(`DELETE FROM canonical_conflicts WHERE consumed_at IS NOT NULL AND created_at < ?`)
+        .run(Date.now() - CONFLICT_RETENTION_MS);
       const rows = this.db
         .prepare(
           `SELECT * FROM canonical_conflicts WHERE consumed_at IS NULL
@@ -451,30 +508,40 @@ export class EpistemicDirectiveEngine {
       const consumeStmt = this.db.prepare(
         `UPDATE canonical_conflicts SET consumed_at = ?, directive_id = ? WHERE id = ?`,
       );
+      // Contradicted-answer and expired directives leave the dedupe set, so
+      // a fresh conflict for the key re-asks via a NEW directive. '_' and
+      // '%' in keys are escaped — LIKE must match literally, never wildcard
+      // across similar keys.
       const existingStmt = this.db.prepare(
         `SELECT id FROM epistemic_directives
          WHERE resolved_at IS NULL AND status IN ('open', 'answered')
-           AND source_entity_ids LIKE ? LIMIT 1`,
+           AND source_entity_ids LIKE ? ESCAPE '\\' LIMIT 1`,
       );
       const now = Date.now();
       for (const row of rows) {
         const tag = `canonical:${row.key}`;
-        const existing = existingStmt.get(`%"${tag}"%`) as { id: string } | undefined;
+        const escapedTag = tag.replace(/[\\%_]/g, (c) => `\\${c}`);
+        const existing = existingStmt.get(`%"${escapedTag}"%`) as { id: string } | undefined;
         if (existing) {
           consumeStmt.run(now, existing.id, row.id);
           continue;
         }
+        // Values render into a prompt-injected question line — neutralize
+        // control characters and newlines before embedding them.
+        const a = sanitizeValueForPrompt(row.current_value);
+        const b = sanitizeValueForPrompt(row.proposed_value);
         const directive = this.createDirective({
           type: "contradiction",
-          question:
-            `Which is current for ${row.key}: ` +
-            `"${row.current_value.slice(0, 120)}" or "${row.proposed_value.slice(0, 120)}"?`,
+          question: `Which is current for ${row.key}: "${a.slice(0, 120)}" or "${b.slice(0, 120)}"?`,
           context:
             `Canonical ledger conflict (${row.kind}): ${row.proposed_source} proposed ` +
-            `"${row.proposed_value.slice(0, 80)}" against ${row.current_source} ` +
-            `"${row.current_value.slice(0, 80)}"`,
+            `"${b.slice(0, 80)}" against ${row.current_source} "${a.slice(0, 80)}"`,
           priority: 0.7,
-          sourceEntityIds: [tag],
+          sourceEntityIds: [
+            tag,
+            `candidate:${row.current_value}`,
+            `candidate:${row.proposed_value}`,
+          ],
         });
         if (directive) {
           consumeStmt.run(now, directive.id, row.id);
@@ -579,12 +646,14 @@ export class EpistemicDirectiveEngine {
             priority: row.priority,
             sourceEntityIds: meta.truthEntityIds ?? [],
           });
-          // Always mark the curiosity target resolved — even if dedup
-          // returned an existing directive, the signal has been consumed.
-          this.db
-            .prepare(`UPDATE curiosity_targets SET resolved_at = ? WHERE id = ?`)
-            .run(now, row.id);
+          // Mark the curiosity target resolved only when the signal really
+          // was consumed (a directive exists — fresh or dedup-matched).
+          // When the active cap blocked creation, keep the target so a
+          // later harvest retries instead of silently destroying it.
           if (directive) {
+            this.db
+              .prepare(`UPDATE curiosity_targets SET resolved_at = ? WHERE id = ?`)
+              .run(now, row.id);
             log.debug("graph_bridge → directive", {
               targetId: row.id.slice(0, 8),
               directiveId: directive.id.slice(0, 8),
@@ -601,9 +670,16 @@ export class EpistemicDirectiveEngine {
 
   private getActiveCount(): number {
     try {
+      // Only OPEN questions occupy capacity. Answered rows are transient
+      // (they resolve or expire on the next extraction cycle) and expired
+      // rows are terminal — counting either would let dead rows saturate
+      // maxActiveDirectives and permanently brick directive creation.
       return (
         this.db
-          .prepare(`SELECT COUNT(*) as c FROM epistemic_directives WHERE resolved_at IS NULL`)
+          .prepare(
+            `SELECT COUNT(*) as c FROM epistemic_directives
+             WHERE resolved_at IS NULL AND status = 'open'`,
+          )
           .get() as { c: number }
       ).c;
     } catch {
@@ -613,11 +689,13 @@ export class EpistemicDirectiveEngine {
 
   private findSimilarDirective(question: string): EpistemicDirective | null {
     try {
-      // Simple substring match — a semantic comparison could be added later
+      // Simple substring match — a semantic comparison could be added later.
+      // Scoped to OPEN rows: an expired or answered twin must not starve
+      // re-creation of a recurring question.
       const row = this.db
         .prepare(
           `SELECT * FROM epistemic_directives
-           WHERE resolved_at IS NULL AND question = ?
+           WHERE resolved_at IS NULL AND status = 'open' AND question = ?
            LIMIT 1`,
         )
         .get(question) as DirectiveRow | undefined;

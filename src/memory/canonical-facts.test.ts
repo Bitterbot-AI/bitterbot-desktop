@@ -452,6 +452,28 @@ describe("conflict-event recording (PLAN-34 Phase 1 fuel)", () => {
     expect(conflicts(db)).toHaveLength(0);
   });
 
+  it("keeps at most one UNCONSUMED conflict per key (dream-cycle retries must not grow the table)", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "project.repo", value: "github.com/org/alpha", source: "user_directive" });
+    // The same background proposal rejected over and over (e.g. canonical
+    // promotion retrying every dream cycle).
+    for (let i = 0; i < 5; i++) {
+      store.pin({ key: "project.repo", value: "github.com/org/beta", source: "promotion" });
+    }
+    const count = db
+      .prepare(`SELECT COUNT(*) AS c FROM canonical_conflicts WHERE consumed_at IS NULL`)
+      .get() as { c: number };
+    expect(count.c).toBe(1);
+    // Once consumed, a fresh conflict may be recorded again.
+    db.prepare(`UPDATE canonical_conflicts SET consumed_at = ?`).run(Date.now());
+    store.pin({ key: "project.repo", value: "github.com/org/beta", source: "promotion" });
+    const after = db
+      .prepare(`SELECT COUNT(*) AS c FROM canonical_conflicts WHERE consumed_at IS NULL`)
+      .get() as { c: number };
+    expect(after.c).toBe(1);
+  });
+
   it("conflict recording never breaks pin() when the table is missing (pre-v34 DB)", () => {
     const db = makeDb();
     db.exec(`DROP TABLE canonical_conflicts`);

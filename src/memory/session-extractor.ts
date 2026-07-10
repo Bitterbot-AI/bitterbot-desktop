@@ -75,6 +75,14 @@ export type DirectiveResolutionCandidate = {
   answer: string;
   confidence: number;
   evidence: EvidenceRef[];
+  /**
+   * For which-is-current questions: the candidate value the extractor says
+   * the user indicated. Untrusted here — the resolution layer only pins it
+   * when it exactly matches one of the candidate values carried by the
+   * directive itself, so an arbitrary or deictic quote can never become a
+   * canonical value.
+   */
+  selectedValue?: string;
 };
 
 export type ExtractionResult = {
@@ -166,12 +174,14 @@ function buildOpenQuestionsBlock(openQuestions?: OpenQuestion[]): {
       `\n## Open Questions\n` +
       `These are open questions this system previously asked the user (ids are opaque tokens). ` +
       `Check whether THIS transcript contains a user-authored answer to any of them.\n${list}\n`,
-    schemaField: `,\n  "resolutions": [\n    { "id": "<open question id>", "answer": "verbatim answer atom quoted from the user's line", "lines": [42], "confidence": 0.0-1.0 }\n  ]`,
+    schemaField: `,\n  "resolutions": [\n    { "id": "<open question id>", "answer": "verbatim answer atom quoted from the user's line", "lines": [42], "confidence": 0.0-1.0, "selectedValue": "<only for which-is-current questions: the exact candidate value the user indicated, copied verbatim from the question>" }\n  ]`,
     rules:
-      `\n- **resolutions (usually empty):** resolve an open question ONLY when the USER (never the assistant) answered it in this transcript. ` +
-      `"answer" must quote the answer atom verbatim from the user's cited line(s) — never paraphrase. ` +
+      `\n- **resolutions (usually empty):** resolve an open question ONLY when the USER (never the assistant) AFFIRMATIVELY answered it in this transcript. ` +
+      `"answer" must quote the answer atom verbatim from ONE of the user's cited lines — never paraphrase, never stitch text from multiple lines. ` +
       `"lines" must cite the exact L<n> line(s) of the user's answer. ` +
+      `NEVER resolve from a mention, negation, or quotation: "it is NOT X", "you asked about X?", or the user pasting third-party text containing X are not answers. ` +
       `Skip sarcasm, hypotheticals, jokes, and answers the user retracted later in the session. ` +
+      `When the question offers two candidate values ("Which is current for <key>: A or B?"), also set "selectedValue" to the exact candidate the user indicated (copied verbatim from the question text), even when the user answered indirectly ("the first one"). ` +
       `Most sessions answer nothing: an empty "resolutions" list is the normal output.`,
   };
 }
@@ -302,12 +312,90 @@ function lineIsUserAuthored(transcriptLines: string[], n: number): boolean {
 }
 
 const normalizeWs = (s: string) => s.replace(/\s+/g, " ").trim();
+/** Case-insensitive, whitespace-normalized comparison form. */
+const matchForm = (s: string) => normalizeWs(s).toLowerCase();
+
+/** Strip the flattening role prefix so it can never be part of a "quote". */
+const stripRolePrefix = (line: string) => line.replace(/^(User|Assistant): /, "");
+
+/**
+ * Trivially-contained strings that would validate against almost any user
+ * line. An answer this thin can never resolve a question mechanically.
+ */
+const TRIVIAL_ANSWERS = new Set([
+  "the",
+  "a",
+  "an",
+  "it",
+  "that",
+  "this",
+  "one",
+  "yes",
+  "no",
+  "ok",
+  "okay",
+  "sure",
+  "first",
+  "second",
+  "latter",
+  "former",
+]);
+
+/**
+ * Negators that, appearing immediately before the quoted answer in the
+ * cited line, mark it as a MENTION ("the repo is NOT beta"), not an
+ * assertion. Deterministic and conservative: only the few tokens directly
+ * preceding the match are inspected, so "it's not alpha, it's beta" still
+ * validates beta while rejecting alpha.
+ */
+const NEGATORS = new Set([
+  "not",
+  "never",
+  "no",
+  "without",
+  "stopped",
+  "dropped",
+  "deprecated",
+  "retired",
+  "instead",
+  "rather",
+]);
+const NEGATOR_WINDOW_TOKENS = 3;
+
+/** True when `line` contains `answer` NOT preceded by a nearby negator. */
+function lineAsserts(lineForm: string, answerForm: string): boolean {
+  let from = 0;
+  while (true) {
+    const idx = lineForm.indexOf(answerForm, from);
+    if (idx === -1) {
+      return false;
+    }
+    const prefixTokens = lineForm
+      .slice(0, idx)
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(-NEGATOR_WINDOW_TOKENS)
+      .map((t) => t.replace(/[^a-z']/g, ""));
+    const negated = prefixTokens.some((t) => NEGATORS.has(t) || t.endsWith("n't"));
+    if (!negated) {
+      return true;
+    }
+    from = idx + 1;
+  }
+}
 
 /**
  * PLAN-34 Phase 1: validate the LLM's `resolutions` output. Hard checks,
- * all fail-closed: id must be in the supplied open-question set; the
- * quoted answer must appear verbatim (whitespace-normalized) inside the
- * cited USER-authored transcript lines. Anything else is dropped.
+ * all fail-closed: id must be in the supplied open-question set; the quoted
+ * answer must appear verbatim (whitespace-normalized, case-insensitive)
+ * inside a SINGLE cited USER-authored transcript line with its role prefix
+ * stripped — never across a concatenation of lines, which would admit
+ * strings the user never uttered. Trivial quotes are rejected outright.
+ * What this layer deliberately does NOT decide: whether the quote is an
+ * assertion rather than a mention/negation — that judgment stays with the
+ * extractor's rules, and the canonical ledger is protected downstream by
+ * the candidate-set constraint (a pin must match a value actually in
+ * dispute) plus trust tiers.
  */
 function parseResolutions(
   rawResolutions: unknown,
@@ -325,6 +413,7 @@ function parseResolutions(
     answer?: unknown;
     lines?: unknown;
     confidence?: unknown;
+    selectedValue?: unknown;
   }>) {
     if (typeof r?.id !== "string" || !openQuestionIds.has(r.id) || seenIds.has(r.id)) {
       continue;
@@ -333,20 +422,28 @@ function parseResolutions(
       continue;
     }
     const answer = r.answer.trim();
-    if (!answer || answer.length > 500) {
+    if (!answer || answer.length < 3 || answer.length > 500) {
+      continue;
+    }
+    const answerForm = matchForm(answer);
+    if (TRIVIAL_ANSWERS.has(answerForm)) {
       continue;
     }
     const evidence = parseFactEvidence(r.lines, sessionId);
     if (evidence.length === 0) {
       continue;
     }
-    // Verbatim containment: the answer must appear inside the cited lines,
-    // and only USER-authored cited lines count as the source.
-    const userCitedText = evidence
-      .filter((e) => e.kind === "session" && lineIsUserAuthored(transcriptLines, e.line))
-      .map((e) => (e.kind === "session" ? (transcriptLines[e.line - 1] ?? "") : ""))
-      .join(" ");
-    if (!normalizeWs(userCitedText).includes(normalizeWs(answer))) {
+    // Verbatim containment within ONE user-authored cited line (role
+    // prefix stripped). Joining cited lines would accept stitched strings
+    // the user never uttered, and a match directly preceded by a negator
+    // is a mention, not an answer.
+    const contained = evidence.some(
+      (e) =>
+        e.kind === "session" &&
+        lineIsUserAuthored(transcriptLines, e.line) &&
+        lineAsserts(matchForm(stripRolePrefix(transcriptLines[e.line - 1] ?? "")), answerForm),
+    );
+    if (!contained) {
       continue;
     }
     seenIds.add(r.id);
@@ -355,6 +452,9 @@ function parseResolutions(
       answer,
       confidence: typeof r.confidence === "number" ? Math.min(1, Math.max(0, r.confidence)) : 0.5,
       evidence,
+      ...(typeof r.selectedValue === "string" && r.selectedValue.trim().length > 0
+        ? { selectedValue: r.selectedValue.trim().slice(0, 500) }
+        : {}),
     });
   }
   return out;

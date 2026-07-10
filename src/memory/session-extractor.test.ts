@@ -289,6 +289,130 @@ describe("extractSessionFacts — PLAN-34 Phase 1 open questions", () => {
     expect(result!.resolutions).toHaveLength(0);
   });
 
+  it("rejects a quote that only appears preceded by a negator (mention, not answer)", async () => {
+    const negTranscript =
+      "User: hey\n" +
+      "Assistant: which repo is current?\n" +
+      "User: to be clear, the repo is NOT github.com/org/beta anymore";
+    const result = await extractSessionFacts(
+      negTranscript,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        resolutions: [{ id: "d-1", answer: "github.com/org/beta", lines: [3], confidence: 0.9 }],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions).toHaveLength(0);
+  });
+
+  it("still accepts the affirmed value in a 'not A, it's B' line", async () => {
+    const t =
+      "User: hey\n" +
+      "Assistant: alpha or beta?\n" +
+      "User: it's not github.com/org/alpha, we use github.com/org/beta";
+    const result = await extractSessionFacts(
+      t,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        resolutions: [{ id: "d-1", answer: "github.com/org/beta", lines: [3], confidence: 0.9 }],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions).toHaveLength(1);
+  });
+
+  it("rejects answers stitched across multiple cited lines (containment is per single line)", async () => {
+    const t = "User: not alpha\nAssistant: ok\nUser: use beta please";
+    const result = await extractSessionFacts(
+      t,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        // 'beta please not alpha' only exists in the join of lines 3+1.
+        resolutions: [
+          { id: "d-1", answer: "beta please not alpha", lines: [3, 1], confidence: 0.9 },
+        ],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions).toHaveLength(0);
+  });
+
+  it("accepts case-insensitively (honest answers don't leak out of the loop)", async () => {
+    const t = "User: hey\nAssistant: which repo?\nUser: GitHub.com/Org/Beta is the one";
+    const result = await extractSessionFacts(
+      t,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        resolutions: [{ id: "d-1", answer: "github.com/org/beta", lines: [3], confidence: 0.9 }],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions).toHaveLength(1);
+  });
+
+  it("rejects trivially-contained answers", async () => {
+    const t = "User: hey what's the plan";
+    const result = await extractSessionFacts(
+      t,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        resolutions: [{ id: "d-1", answer: "the", lines: [1], confidence: 0.9 }],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions).toHaveLength(0);
+  });
+
+  it("passes selectedValue through untouched (validated downstream against the candidate set)", async () => {
+    const result = await extractSessionFacts(
+      transcript,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        resolutions: [
+          {
+            id: "d-1",
+            answer: "github.com/org/beta",
+            selectedValue: "github.com/org/beta",
+            lines: [3],
+            confidence: 0.9,
+          },
+        ],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions[0].selectedValue).toBe("github.com/org/beta");
+  });
+
   it("ignores the resolutions field entirely when no open questions were supplied", async () => {
     const result = await extractSessionFacts(
       transcript,

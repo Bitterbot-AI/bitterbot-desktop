@@ -224,14 +224,23 @@ export async function resolveEndocrineState(params: {
     }
 
     // PLAN-9: Epistemic Directives — inject knowledge gap questions.
-    // PLAN-34 Phase 1: the session key is passed ONLY on live turns
-    // (userMessage present) so attempts count real injections once per
-    // conversation — never compaction rebuilds or status probes.
+    // PLAN-34 Phase 1: questions target the OWNER. Sessions whose key
+    // classifies as non-first-party (subagents, A2A, groups, circles, cron
+    // "cron:<job>" keys resolve to unknown) neither render nor count them —
+    // otherwise background runs burn the maxAsks budget without the owner
+    // ever seeing the question. The session key is passed for counting ONLY
+    // on live first-party turns (userMessage present) — never compaction
+    // rebuilds or status probes, which carry no key.
     try {
       const epistemicEngine = (manager as Record<string, unknown>).epistemicDirectiveEngine as {
         getDirectivesForSession(opts?: { sessionKey?: string }): Array<{ question: string }>;
       } | null;
-      if (epistemicEngine) {
+      let firstParty = true;
+      if (params.sessionKey) {
+        const { classifySessionKeyTrust } = await import("../memory/session-trust.js");
+        firstParty = classifySessionKeyTrust(params.sessionKey) === "first_party";
+      }
+      if (epistemicEngine && firstParty) {
         const directives = epistemicEngine.getDirectivesForSession(
           params.userMessage && params.sessionKey ? { sessionKey: params.sessionKey } : undefined,
         );
