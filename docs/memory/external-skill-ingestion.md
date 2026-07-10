@@ -66,7 +66,7 @@ For the native-covered sources, **no install is required** — the scraper is bu
 
 Three entry points feed the adapter; all share the same ingestion pipeline:
 
-1. **Background**: The dream engine's exploration mode processes curiosity targets (both `knowledge_gap` and `market_demand`) during idle cycles, respecting `maxSkillsPerCycle` and `maxConcurrentScrapes`.
+1. **Background**: The dream engine's exploration mode processes curiosity targets (`knowledge_gap`, `market_demand`, and — since PLAN-34 Phase 2 — `frontier`) during idle cycles, respecting `maxSkillsPerCycle` and `maxConcurrentScrapes`. Every attempt records an honest outcome code on the target (`no_url` | `domain_blocked` | `irrelevant` | `resolved`); a target only resolves when the research product's embedding similarity to the target description clears the 0.4 relevance floor — scrape success alone never resolves anything.
 2. **On-demand**: Agents call the `skill_seekers_ingest` tool mid-session when they encounter an unfamiliar library or API.
 3. **Marketplace-driven**: `ingestFromMarketOpportunities()` converts top demand signals into skill-generation targets with revenue attribution.
 

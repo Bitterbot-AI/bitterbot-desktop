@@ -90,6 +90,14 @@ type ChunkRow = {
 
 const CREATIVITY_MODES: DreamCreativityMode[] = ["associative", "convergent", "cross_domain"];
 
+/**
+ * PLAN-34 Phase 2a: a curiosity target only resolves when the research
+ * product's embedding similarity to the target description clears this
+ * floor (matches the simulation relevance gate's 0.4) — scrape success
+ * alone never resolves anything.
+ */
+const RESEARCH_RESOLVED_RELEVANCE_FLOOR = 0.4;
+
 export type CuriosityWeightProvider = {
   getDreamModeWeightAdjustments(): Partial<Record<DreamMode, number>>;
 };
@@ -145,7 +153,11 @@ export class DreamEngine {
         };
         targetId?: string;
       },
-    ): Promise<{ ok: boolean; envelopes: unknown[] }>;
+    ): Promise<{
+      ok: boolean;
+      envelopes: Array<{ name: string; skill_md: string }>;
+      error?: string;
+    }>;
     resetCycleCounter(): void;
     budgetRemaining(): number;
   } | null = null;
@@ -303,7 +315,11 @@ export class DreamEngine {
           };
           targetId?: string;
         },
-      ): Promise<{ ok: boolean; envelopes: unknown[] }>;
+      ): Promise<{
+        ok: boolean;
+        envelopes: Array<{ name: string; skill_md: string }>;
+        error?: string;
+      }>;
       resetCycleCounter(): void;
       budgetRemaining(): number;
     } | null,
@@ -1870,28 +1886,23 @@ export class DreamEngine {
         updatedAt: now,
       }));
 
-      // Mark targets as explored (but not resolved — needs real new knowledge)
-      for (const target of targets) {
-        try {
-          this.db
-            .prepare(
-              `UPDATE curiosity_targets SET metadata = json_set(COALESCE(metadata, '{}'), '$.explored', 1) WHERE id = ?`,
-            )
-            .run(target.id);
-        } catch {
-          // json_set may not be available; skip gracefully
-        }
-      }
-
-      // PLAN-10: External research via Skill Seekers for knowledge gaps
-      // Budget is enforced by the adapter (maxSkillsPerCycle); we just provide
-      // the raw pipeline and let it decide when to stop.
+      // PLAN-10: External research via Skill Seekers.
+      // PLAN-34 Phase 2a: frontier targets qualify alongside knowledge_gap
+      // and market_demand (targets arrive priority-ordered); explored-
+      // marking happens AFTER each research attempt with an honest outcome
+      // code (no_url | domain_blocked | irrelevant | resolved), and a
+      // target only resolves when the research product is actually
+      // RELEVANT — embedding similarity to the target description above
+      // the floor — never on mere scrape success. Budget is enforced by
+      // the adapter (maxSkillsPerCycle).
+      const researchAttempted = new Set<string>();
       if (this.skillSeekersAdapter) {
         try {
           if (await this.skillSeekersAdapter.isAvailable()) {
             this.skillSeekersAdapter.resetCycleCounter();
             const gaps = targets.filter(
-              (t) => t.type === "knowledge_gap" || t.type === "market_demand",
+              (t) =>
+                t.type === "knowledge_gap" || t.type === "market_demand" || t.type === "frontier",
             );
             for (const gap of gaps) {
               if (this.skillSeekersAdapter.budgetRemaining() <= 0) {
@@ -1918,21 +1929,29 @@ export class DreamEngine {
                         typeof meta.opportunityId === "string" ? meta.opportunityId : undefined,
                     }
                   : undefined;
+              researchAttempted.add(gap.id);
               const result = await this.skillSeekersAdapter.fillKnowledgeGap(gap.description, {
                 category,
                 marketplace,
                 targetId: gap.id,
               });
-              if (result.ok && result.envelopes.length > 0) {
-                try {
-                  this.db
-                    .prepare(
-                      `UPDATE curiosity_targets SET metadata = json_set(COALESCE(metadata, '{}'), '$.externalResearched', 1) WHERE id = ?`,
-                    )
-                    .run(gap.id);
-                } catch {
-                  /* skip */
-                }
+              if (!result.ok || result.envelopes.length === 0) {
+                const outcome =
+                  result.error === "domain_blocked" || result.error === "domain_blocked_via_search"
+                    ? "domain_blocked"
+                    : "no_url";
+                this.recordResearchOutcome(gap.id, outcome);
+                continue;
+              }
+              const relevance = await this.scoreResearchRelevance(
+                result.envelopes[0],
+                gap.description,
+              );
+              if (relevance !== null && relevance >= RESEARCH_RESOLVED_RELEVANCE_FLOOR) {
+                this.recordResearchOutcome(gap.id, "resolved", relevance, now);
+              } else {
+                // Fail closed: missing embeddings never resolve a target.
+                this.recordResearchOutcome(gap.id, "irrelevant", relevance ?? undefined);
               }
             }
           }
@@ -1941,10 +1960,90 @@ export class DreamEngine {
         }
       }
 
+      // Strategy-level explored marking for targets that did NOT get a real
+      // research attempt (non-eligible types, exhausted budget, adapter off)
+      // — the research-attempted ones were marked with their outcome above.
+      for (const target of targets) {
+        if (researchAttempted.has(target.id)) {
+          continue;
+        }
+        try {
+          this.db
+            .prepare(
+              `UPDATE curiosity_targets SET metadata = json_set(COALESCE(metadata, '{}'), '$.explored', 1) WHERE id = ?`,
+            )
+            .run(target.id);
+        } catch {
+          // json_set may not be available; skip gracefully
+        }
+      }
+
       return { insights, llmCalls: 1, chunksAnalyzed: nearbyChunks.length };
     } catch (err) {
       log.debug(`exploration LLM call failed: ${String(err)}`);
       return { insights: [], llmCalls: 1, chunksAnalyzed: nearbyChunks.length };
+    }
+  }
+
+  /**
+   * PLAN-34 Phase 2a: embedding similarity between a research product (the
+   * scraped skill's content) and the curiosity target it was meant to fill.
+   * null when embeddings are unavailable — callers treat that as
+   * below-floor (fail closed).
+   */
+  private async scoreResearchRelevance(
+    envelope: { name: string; skill_md: string },
+    targetDescription: string,
+  ): Promise<number | null> {
+    try {
+      const content = Buffer.from(envelope.skill_md, "base64").toString("utf-8");
+      const product = `${envelope.name}\n${content}`.slice(0, 1500);
+      const [productEmb, targetEmb] = await this.embedBatch([product, targetDescription]);
+      if (!productEmb?.length || !targetEmb?.length) {
+        return null;
+      }
+      return cosineSimilarity(productEmb, targetEmb);
+    } catch (err) {
+      log.debug(`research relevance scoring failed: ${String(err)}`);
+      return null;
+    }
+  }
+
+  /**
+   * PLAN-34 Phase 2a: honest research outcomes. Every attempt stamps
+   * explored/externalResearched with its outcome code (the Phase 6 funnel
+   * reads these); only `resolved` closes the target.
+   */
+  private recordResearchOutcome(
+    targetId: string,
+    outcome: "no_url" | "domain_blocked" | "irrelevant" | "resolved",
+    relevance?: number,
+    resolvedAt?: number,
+  ): void {
+    try {
+      this.db
+        .prepare(
+          `UPDATE curiosity_targets
+           SET metadata = json_set(COALESCE(metadata, '{}'),
+                 '$.explored', 1,
+                 '$.externalResearched', 1,
+                 '$.researchOutcome', ?,
+                 '$.researchRelevance', ?)
+           WHERE id = ?`,
+        )
+        .run(outcome, relevance ?? null, targetId);
+      if (outcome === "resolved" && resolvedAt !== undefined) {
+        this.db
+          .prepare(
+            `UPDATE curiosity_targets SET resolved_at = ? WHERE id = ? AND resolved_at IS NULL`,
+          )
+          .run(resolvedAt, targetId);
+      }
+      log.debug(`research outcome for target ${targetId.slice(0, 8)}: ${outcome}`, {
+        relevance: relevance?.toFixed?.(3),
+      });
+    } catch (err) {
+      log.debug(`recordResearchOutcome failed: ${String(err)}`);
     }
   }
 
