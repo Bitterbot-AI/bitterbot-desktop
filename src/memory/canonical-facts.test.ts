@@ -389,3 +389,75 @@ describe("background transient-shape guards (first-live-hour hotfix)", () => {
     expect(r.op).toBe("add");
   });
 });
+
+describe("conflict-event recording (PLAN-34 Phase 1 fuel)", () => {
+  function conflicts(
+    db: DatabaseSync,
+  ): Array<{ key: string; kind: string; proposed_value: string }> {
+    return db
+      .prepare(`SELECT key, kind, proposed_value FROM canonical_conflicts ORDER BY created_at`)
+      .all() as Array<{ key: string; kind: string; proposed_value: string }>;
+  }
+
+  it("a tier rejection records a tier_rejection conflict event", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "project.repo", value: "github.com/org/alpha", source: "user_directive" });
+    const r = store.pin({
+      key: "project.repo",
+      value: "github.com/org/beta",
+      source: "extraction",
+    });
+    expect(r.op).toBe("rejected");
+    const rows = conflicts(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      key: "project.repo",
+      kind: "tier_rejection",
+      proposed_value: "github.com/org/beta",
+    });
+  });
+
+  it("a rapid same-key supersede of a corroborated belief records rapid_supersede", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "infra.gateway", value: "a2a.example.com", source: "extraction" });
+    // Corroborate (mention_count -> 2, last_confirmed_at -> now)...
+    store.pin({ key: "infra.gateway", value: "a2a.example.com", source: "extraction" });
+    // ...then flip inside the window: supersedes AND records the ambiguity.
+    const r = store.pin({ key: "infra.gateway", value: "gw.example.com", source: "extraction" });
+    expect(r.op).toBe("supersede");
+    const rows = conflicts(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "rapid_supersede", proposed_value: "gw.example.com" });
+  });
+
+  it("uncorroborated or stale beliefs supersede silently", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    // Single mention: a plain correction, no conflict.
+    store.pin({ key: "preference.editor", value: "vscode", source: "extraction" });
+    expect(store.pin({ key: "preference.editor", value: "neovim", source: "extraction" }).op).toBe(
+      "supersede",
+    );
+    // Corroborated but last confirmed outside the 72h window: silent too.
+    store.pin({ key: "infra.region", value: "us-east-1", source: "extraction" });
+    store.pin({ key: "infra.region", value: "us-east-1", source: "extraction" });
+    db.prepare(`UPDATE canonical_facts SET last_confirmed_at = ? WHERE key = 'infra.region'`).run(
+      Date.now() - 96 * 3_600_000,
+    );
+    expect(store.pin({ key: "infra.region", value: "eu-west-1", source: "extraction" }).op).toBe(
+      "supersede",
+    );
+    expect(conflicts(db)).toHaveLength(0);
+  });
+
+  it("conflict recording never breaks pin() when the table is missing (pre-v34 DB)", () => {
+    const db = makeDb();
+    db.exec(`DROP TABLE canonical_conflicts`);
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "project.repo", value: "a", source: "user_directive" });
+    const r = store.pin({ key: "project.repo", value: "b", source: "extraction" });
+    expect(r.op).toBe("rejected"); // the reject verdict itself is unaffected
+  });
+});

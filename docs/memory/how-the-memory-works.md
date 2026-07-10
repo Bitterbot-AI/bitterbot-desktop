@@ -177,11 +177,11 @@ These feed into the CuriosityEngine's unified GCCRF (Geodesic Crystal-Field Curi
 
 The curiosity engine generates exploration targets — specific knowledge gaps the dream engine should try to fill. But it doesn't stop at passive observation.
 
-**Active inference** closes the loop. When the knowledge graph contains contradictions, or when the curiosity engine detects high prediction error in a region, the agent generates epistemic directives — structured questions injected into the next conversation:
+**Active inference** closes the loop. When the knowledge graph contains contradictions, when the curiosity engine detects high prediction error in a region, or when the canonical ledger records a conflict (a background source proposed a value that lost to a deliberate pin, or a corroborated belief flipped within 72 hours), the agent generates epistemic directives — structured questions injected into the next conversation:
 
 > "I have conflicting information about whether the production DB is Postgres or MySQL. Can you clarify?"
 
-The agent doesn't just learn passively — it actively interrogates its own blind spots. Unresolved directives are tracked until answered, and they benefit from the Zeigarnik effect (they're open loops, so they resist forgetting and keep surfacing).
+Since PLAN-34 Phase 1 the questions actually get answered: each session-extraction cycle offers the top open questions to the extractor, which watches the transcript for a user-authored answer, quotes it verbatim with line citations (paraphrases and assistant-authored text are rejected mechanically), and marks the question answered — it stops being asked immediately. The answer is stored as a `world_fact` crystal with evidence, canonical-shaped answers route through the ledger reconciler at extraction tier (they can corroborate or supersede background beliefs but never overwrite a deliberate pin), and the question becomes fully resolved once its answer survives the next extraction cycle uncontradicted. A user-answerable question is asked in at most 3 sessions before it demotes to extraction-only; answers arriving after demotion or expiry still resolve it. The felt result: the agent asks once, learns, and never asks again. Only first-party owner sessions can answer — a third party can never resolve a question the agent asked you.
 
 ---
 

@@ -57,10 +57,32 @@ export type ExtractedFact = {
   canonical?: { key: string; value: string };
 };
 
+/**
+ * PLAN-34 Phase 1: an open user-answerable question (epistemic directive)
+ * offered to the extractor. Deliberately called "open question" everywhere
+ * in the prompt — "directive" already names an epistemic LAYER (user hard
+ * rules) in the same prompt, and the two must not blur.
+ */
+export type OpenQuestion = { id: string; question: string };
+
+/**
+ * A validated candidate answer the extractor found in the transcript:
+ * the id passed the supplied-set check, the quoted answer appears verbatim
+ * in the cited USER-authored transcript lines, and the citations parse.
+ */
+export type DirectiveResolutionCandidate = {
+  directiveId: string;
+  answer: string;
+  confidence: number;
+  evidence: EvidenceRef[];
+};
+
 export type ExtractionResult = {
   facts: ExtractedFact[];
   handoverBrief: SessionHandoverBrief;
   processingTimeMs: number;
+  /** PLAN-34 Phase 1: validated answers to open questions (usually empty). */
+  resolutions: DirectiveResolutionCandidate[];
 };
 
 export type HormonalBias = {
@@ -126,13 +148,43 @@ function buildLearnedRules(learnedRules?: string[]): string {
   return `\n## Learned Construction Rules\nThese rules were learned from past extraction failures. Follow them carefully:\n${body}\n`;
 }
 
+/**
+ * PLAN-34 Phase 1: render the Open Questions block plus its output-schema
+ * and rules additions. Empty when no open questions exist — most cycles.
+ */
+function buildOpenQuestionsBlock(openQuestions?: OpenQuestion[]): {
+  block: string;
+  schemaField: string;
+  rules: string;
+} {
+  if (!openQuestions || openQuestions.length === 0) {
+    return { block: "", schemaField: "", rules: "" };
+  }
+  const list = openQuestions.map((q) => `- ${q.id}: ${q.question}`).join("\n");
+  return {
+    block:
+      `\n## Open Questions\n` +
+      `These are open questions this system previously asked the user (ids are opaque tokens). ` +
+      `Check whether THIS transcript contains a user-authored answer to any of them.\n${list}\n`,
+    schemaField: `,\n  "resolutions": [\n    { "id": "<open question id>", "answer": "verbatim answer atom quoted from the user's line", "lines": [42], "confidence": 0.0-1.0 }\n  ]`,
+    rules:
+      `\n- **resolutions (usually empty):** resolve an open question ONLY when the USER (never the assistant) answered it in this transcript. ` +
+      `"answer" must quote the answer atom verbatim from the user's cited line(s) — never paraphrase. ` +
+      `"lines" must cite the exact L<n> line(s) of the user's answer. ` +
+      `Skip sarcasm, hypotheticals, jokes, and answers the user retracted later in the session. ` +
+      `Most sessions answer nothing: an empty "resolutions" list is the normal output.`,
+  };
+}
+
 export function buildExtractionPrompt(
   sessionContent: string,
   maxFacts: number,
   hormones?: HormonalBias,
   learnedRules?: string[],
+  openQuestions?: OpenQuestion[],
 ): string {
   const numbered = numberTranscriptLines(sessionContent);
+  const oq = buildOpenQuestionsBlock(openQuestions);
   return `You are a memory extraction system. Analyze the following conversation transcript and extract structured facts.
 
 The transcript is line-numbered (each line begins with \`L<n>:\`). For every fact you MUST cite the line number(s) it was derived from, so the fact can be traced back to its exact source.
@@ -146,13 +198,13 @@ The transcript is line-numbered (each line begins with \`L<n>:\`). For every fac
 - **experience**: Episodic events — what was attempted, what succeeded/failed, debugging steps taken, causal sequences.
 - **mental_model**: Synthesized beliefs — user's reasoning patterns, architectural preferences, design principles expressed.
 - **directive**: Hard rules — explicit instructions like "always do X", "never do Y", formatting requirements, workflow preferences.
-${buildHormonalGuidance(hormones)}
+${buildHormonalGuidance(hormones)}${oq.block}
 ## Output Format
 Respond with ONLY a JSON object (no markdown fences):
 {
   "facts": [
     { "text": "atomic fact statement", "layer": "world_fact|experience|mental_model|directive", "confidence": 0.0-1.0, "lines": [12, 13], "canonicalKey": "project.repo", "canonicalValue": "github.com/org/repo" }
-  ],
+  ]${oq.schemaField},
   "handover": {
     "purpose": "one-line session purpose",
     "milestones": ["completed milestone 1", "..."],
@@ -173,7 +225,7 @@ Respond with ONLY a JSON object (no markdown fences):
 - Prefer fewer high-quality facts over many low-quality ones.
 - **canonicalKey/canonicalValue (optional, rare):** set these ONLY when the fact is stable key-value ground truth the user treats as durable and will reference across many future sessions — the project's repository, a service endpoint, a person's name/role, a standing tool or workflow choice. canonicalKey is a lowercase dot-slug that MUST start with one of exactly these category prefixes: identity. | project. | infra. | preference. | relationship. (any other prefix is discarded), e.g. "project.repo" or "identity.user_name". canonicalValue is the exact atom, copied verbatim (never paraphrase a URL, slug, version, or name). Most facts are NOT canonical — omit these fields for events, one-off details, and anything transient. NEVER emit canonical fields for: the current date/time; counts, metrics, or balances that drift on their own (clone counts, peer counts, open-item counts); observations about the assistant's own memory, performance, or incidents; status snapshots; or assertion-shaped claims whose value would be "true"/"false". Test: if the value could change within a month without anyone deciding to change it, it is NOT canonical. When the user corrects a previously-established fact, DO emit the canonical fields so the correction supersedes the old belief.
 - The handover brief should let a new session pick up exactly where this one left off.
-- The entities list should capture specific files, functions, variables, config keys, and services the user was working with — concrete referents that allow resolving references like "that file" or "the second parameter" in the next session. Focus on the 5-10 most recently touched entities.
+- The entities list should capture specific files, functions, variables, config keys, and services the user was working with — concrete referents that allow resolving references like "that file" or "the second parameter" in the next session. Focus on the 5-10 most recently touched entities.${oq.rules}
 ${buildLearnedRules(learnedRules)}
 ## Conversation Transcript
 ${numbered}`;
@@ -227,10 +279,97 @@ function parseCanonicalFields(
   return { key, value };
 }
 
+/**
+ * PLAN-34 Phase 1: resolve which speaker authored transcript line `n`
+ * (1-based). Flattened session entries prefix each message's FIRST line
+ * with `User: ` / `Assistant: `; continuation lines carry no prefix, so
+ * walk upward to the nearest labeled line.
+ */
+function lineIsUserAuthored(transcriptLines: string[], n: number): boolean {
+  for (let i = n - 1; i >= 0; i--) {
+    const line = transcriptLines[i];
+    if (line === undefined) {
+      return false;
+    }
+    if (line.startsWith("User: ")) {
+      return true;
+    }
+    if (line.startsWith("Assistant: ")) {
+      return false;
+    }
+  }
+  return false;
+}
+
+const normalizeWs = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/**
+ * PLAN-34 Phase 1: validate the LLM's `resolutions` output. Hard checks,
+ * all fail-closed: id must be in the supplied open-question set; the
+ * quoted answer must appear verbatim (whitespace-normalized) inside the
+ * cited USER-authored transcript lines. Anything else is dropped.
+ */
+function parseResolutions(
+  rawResolutions: unknown,
+  sessionId: string,
+  openQuestionIds: ReadonlySet<string>,
+  transcriptLines: string[],
+): DirectiveResolutionCandidate[] {
+  if (!Array.isArray(rawResolutions) || openQuestionIds.size === 0) {
+    return [];
+  }
+  const out: DirectiveResolutionCandidate[] = [];
+  const seenIds = new Set<string>();
+  for (const r of rawResolutions as Array<{
+    id?: unknown;
+    answer?: unknown;
+    lines?: unknown;
+    confidence?: unknown;
+  }>) {
+    if (typeof r?.id !== "string" || !openQuestionIds.has(r.id) || seenIds.has(r.id)) {
+      continue;
+    }
+    if (typeof r.answer !== "string") {
+      continue;
+    }
+    const answer = r.answer.trim();
+    if (!answer || answer.length > 500) {
+      continue;
+    }
+    const evidence = parseFactEvidence(r.lines, sessionId);
+    if (evidence.length === 0) {
+      continue;
+    }
+    // Verbatim containment: the answer must appear inside the cited lines,
+    // and only USER-authored cited lines count as the source.
+    const userCitedText = evidence
+      .filter((e) => e.kind === "session" && lineIsUserAuthored(transcriptLines, e.line))
+      .map((e) => (e.kind === "session" ? (transcriptLines[e.line - 1] ?? "") : ""))
+      .join(" ");
+    if (!normalizeWs(userCitedText).includes(normalizeWs(answer))) {
+      continue;
+    }
+    seenIds.add(r.id);
+    out.push({
+      directiveId: r.id,
+      answer,
+      confidence: typeof r.confidence === "number" ? Math.min(1, Math.max(0, r.confidence)) : 0.5,
+      evidence,
+    });
+  }
+  return out;
+}
+
 function parseExtractionResponse(
   raw: string,
   sessionId: string,
-): { facts: ExtractedFact[]; handover: SessionHandoverBrief } | null {
+  openQuestionIds?: ReadonlySet<string>,
+  transcriptLines?: string[],
+): {
+  facts: ExtractedFact[];
+  handover: SessionHandoverBrief;
+  resolutions: DirectiveResolutionCandidate[];
+} | null {
   try {
     // Strip markdown code fences if present
     const cleaned = raw
@@ -246,6 +385,7 @@ function parseExtractionResponse(
         canonicalKey?: unknown;
         canonicalValue?: unknown;
       }>;
+      resolutions?: unknown;
       handover?: {
         purpose?: string;
         milestones?: string[];
@@ -315,7 +455,12 @@ function parseExtractionResponse(
       timestamp: Date.now(),
     };
 
-    return { facts, handover };
+    const resolutions =
+      openQuestionIds && transcriptLines
+        ? parseResolutions(parsed.resolutions, sessionId, openQuestionIds, transcriptLines)
+        : [];
+
+    return { facts, handover, resolutions };
   } catch {
     return null;
   }
@@ -338,10 +483,17 @@ export async function extractSessionFacts(
   maxFacts = 20,
   hormones?: HormonalBias,
   learnedRules?: string[],
+  openQuestions?: OpenQuestion[],
 ): Promise<ExtractionResult | null> {
   const start = Date.now();
 
-  const prompt = buildExtractionPrompt(sessionContent, maxFacts, hormones, learnedRules);
+  const prompt = buildExtractionPrompt(
+    sessionContent,
+    maxFacts,
+    hormones,
+    learnedRules,
+    openQuestions,
+  );
 
   let response: string;
   try {
@@ -353,7 +505,13 @@ export async function extractSessionFacts(
     return null;
   }
 
-  const parsed = parseExtractionResponse(response, sessionId);
+  const openQuestionIds = new Set((openQuestions ?? []).map((q) => q.id));
+  const parsed = parseExtractionResponse(
+    response,
+    sessionId,
+    openQuestionIds,
+    sessionContent.split("\n"),
+  );
   if (!parsed) {
     log.debug(`session fact extraction: unparseable LLM response for ${sessionId}`);
     return null;
@@ -363,6 +521,7 @@ export async function extractSessionFacts(
     facts: parsed.facts.slice(0, maxFacts),
     handoverBrief: parsed.handover,
     processingTimeMs: Date.now() - start,
+    resolutions: parsed.resolutions,
   };
 }
 

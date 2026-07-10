@@ -115,6 +115,16 @@ const MAX_STATEMENT_CHARS = 300;
  * ground truth.
  */
 const BACKGROUND_SOURCES = new Set<CanonicalSource>(["extraction", "promotion"]);
+
+/**
+ * PLAN-34 Phase 1: a same-key SUPERSEDE of a belief the ledger confirmed
+ * this recently (and this often) is recorded as a conflict event — a
+ * corroborated value flipping inside the window is exactly the ambiguity
+ * the user should adjudicate ("which is current?"). Slow drift and
+ * single-mention corrections supersede silently, as before.
+ */
+const RAPID_SUPERSEDE_WINDOW_MS = 72 * 3_600_000;
+const RAPID_SUPERSEDE_MIN_MENTIONS = 2;
 /** ISO datetime values are observations of a moment, never durable truth. */
 const ISO_DATETIME_VALUE_RX = /^\d{4}-\d{2}-\d{2}T/;
 /** Bare integers (with comma groups) are counts/metrics; versions ("0.4.2") pass. */
@@ -396,12 +406,23 @@ export class CanonicalFactsStore {
         `canonical CONFLICT (kept current): [${slug}] ${input.source} proposed ` +
           `"${value.slice(0, 40)}" against ${current.source} "${current.value.slice(0, 40)}"`,
       );
+      // PLAN-34 Phase 1 fuel: recording here (inside pin itself, not at
+      // call sites) automatically covers every store instance, including
+      // the dream engine's private one. The extraction path sweeps these
+      // into "which is current?" questions for the user.
+      this.recordConflict("tier_rejection", slug, current, value, input.source, now);
       return {
         op: "rejected",
         reason:
           `conflict: current belief for "${slug}" was set by ${current.source} ` +
           `(higher trust than ${input.source}); use memory_pin to supersede deliberately`,
       };
+    }
+    if (
+      now - current.lastConfirmedAt < RAPID_SUPERSEDE_WINDOW_MS &&
+      current.mentionCount >= RAPID_SUPERSEDE_MIN_MENTIONS
+    ) {
+      this.recordConflict("rapid_supersede", slug, current, value, input.source, now);
     }
     const id = crypto.randomUUID();
     this.db
@@ -424,6 +445,42 @@ export class CanonicalFactsStore {
       `canonical SUPERSEDE: [${slug}] "${current.value.slice(0, 40)}" -> "${value.slice(0, 40)}"`,
     );
     return { op: "supersede", fact: this.get(slug)! };
+  }
+
+  /**
+   * PLAN-34 Phase 1: persist a conflict event for the extraction path to
+   * sweep into a user-facing question. Best-effort — pin() must never fail
+   * because conflict bookkeeping did (e.g. a pre-v34 DB without the table).
+   */
+  private recordConflict(
+    kind: "tier_rejection" | "rapid_supersede",
+    key: string,
+    current: CanonicalFact,
+    proposedValue: string,
+    proposedSource: CanonicalSource,
+    now: number,
+  ): void {
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO canonical_conflicts
+             (id, key, kind, current_value, proposed_value, current_source,
+              proposed_source, created_at, consumed_at, directive_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+        )
+        .run(
+          crypto.randomUUID(),
+          key,
+          kind,
+          current.value,
+          proposedValue,
+          current.source,
+          proposedSource,
+          now,
+        );
+    } catch (err) {
+      log.debug(`recordConflict skipped: ${String(err)}`);
+    }
   }
 
   /** Demote a fact out of injection (kept queryable; nothing deleted). */

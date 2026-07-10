@@ -141,6 +141,10 @@ flowchart TB
     N --> O[System Prompt injection]
 ```
 
+### Open-question answers (PLAN-34 Phase 1)
+
+The extractor also receives the top open epistemic-directive questions (first-party sessions only) and watches the transcript for user-authored answers. A validated answer (verbatim quote on a cited user line, confidence >= 0.75) marks the question answered — it stops being injected immediately — and is stored as a `world_fact` crystal with transcript evidence. Canonical-shaped answers (questions born from `canonical_conflicts`) additionally route through the ledger reconciler at extraction tier with a >= 0.8 floor; trust tiers still apply, so a conversational answer corroborates or supersedes background beliefs but never overwrites a deliberate `memory_pin`. Full resolution (`resolved_at`) lands only after the answer survives the next extraction cycle uncontradicted. See `src/memory/directive-resolution.ts` and [plan9-memory-supremacy.md](./plan9-memory-supremacy.md) §8.
+
 ---
 
 ## Working Memory Note Tool

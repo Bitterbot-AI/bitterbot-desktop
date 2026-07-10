@@ -136,3 +136,138 @@ describe("extractSessionFacts — PLAN-33 Phase 2 canonical fields", () => {
     expect(result!.facts[3].canonical).toEqual({ key: "ok_key", value: "x" });
   });
 });
+
+describe("extractSessionFacts — PLAN-34 Phase 1 open questions", () => {
+  const handover = { purpose: "p", milestones: [], decisions: [], blockers: [], nextSteps: [] };
+  const transcript =
+    "User: hey\n" +
+    "Assistant: I have conflicting repos on file: alpha or beta?\n" +
+    "User: the current repo is github.com/org/beta\n" +
+    "Assistant: got it, github.com/org/beta it is";
+  const openQuestions = [{ id: "d-1", question: "Which repo is current: alpha or beta?" }];
+
+  function llmReturning(payload: unknown): (prompt: string) => Promise<string> {
+    return async () => JSON.stringify(payload);
+  }
+
+  it("renders the Open Questions block and resolutions schema only when questions exist", async () => {
+    let sawPrompt = "";
+    const llmCall = async (prompt: string) => {
+      sawPrompt = prompt;
+      return JSON.stringify({ facts: [], handover });
+    };
+    await extractSessionFacts(
+      transcript,
+      "/s.jsonl",
+      llmCall,
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(sawPrompt).toContain("## Open Questions");
+    expect(sawPrompt).toContain("d-1: Which repo is current");
+    expect(sawPrompt).toContain('"resolutions"');
+    // Disambiguated naming: the block never calls these "directives".
+    expect(sawPrompt.split("## Open Questions")[1]!.split("## Output Format")[0]).not.toContain(
+      "directive",
+    );
+
+    await extractSessionFacts(transcript, "/s.jsonl", llmCall, 20);
+    expect(sawPrompt).not.toContain("## Open Questions");
+    expect(sawPrompt).not.toContain('"resolutions"');
+  });
+
+  it("accepts a resolution whose verbatim answer sits on a cited user-authored line", async () => {
+    const result = await extractSessionFacts(
+      transcript,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        resolutions: [{ id: "d-1", answer: "github.com/org/beta", lines: [3], confidence: 0.9 }],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions).toHaveLength(1);
+    expect(result!.resolutions[0]).toMatchObject({
+      directiveId: "d-1",
+      answer: "github.com/org/beta",
+      confidence: 0.9,
+    });
+    expect(result!.resolutions[0].evidence).toEqual([
+      { kind: "session", path: "/s.jsonl", line: 3 },
+    ]);
+  });
+
+  it("drops resolutions with unknown ids", async () => {
+    const result = await extractSessionFacts(
+      transcript,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        resolutions: [
+          { id: "d-unknown", answer: "github.com/org/beta", lines: [3], confidence: 0.9 },
+        ],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions).toHaveLength(0);
+  });
+
+  it("drops resolutions cited to assistant-authored lines (a third party cannot answer for the user)", async () => {
+    const result = await extractSessionFacts(
+      transcript,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        // Line 4 contains the answer atom verbatim — but the Assistant said it.
+        resolutions: [{ id: "d-1", answer: "github.com/org/beta", lines: [4], confidence: 0.9 }],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions).toHaveLength(0);
+  });
+
+  it("drops resolutions whose quoted answer does not appear in the cited lines", async () => {
+    const result = await extractSessionFacts(
+      transcript,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        resolutions: [{ id: "d-1", answer: "github.com/org/gamma", lines: [3], confidence: 0.95 }],
+      }),
+      20,
+      undefined,
+      undefined,
+      openQuestions,
+    );
+    expect(result!.resolutions).toHaveLength(0);
+  });
+
+  it("ignores the resolutions field entirely when no open questions were supplied", async () => {
+    const result = await extractSessionFacts(
+      transcript,
+      "/s.jsonl",
+      llmReturning({
+        facts: [],
+        handover,
+        resolutions: [{ id: "d-1", answer: "github.com/org/beta", lines: [3], confidence: 0.9 }],
+      }),
+      20,
+    );
+    expect(result!.resolutions).toHaveLength(0);
+  });
+});

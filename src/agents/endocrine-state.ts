@@ -223,13 +223,18 @@ export async function resolveEndocrineState(params: {
       // Prospective memory not available — non-critical
     }
 
-    // PLAN-9: Epistemic Directives — inject knowledge gap questions
+    // PLAN-9: Epistemic Directives — inject knowledge gap questions.
+    // PLAN-34 Phase 1: the session key is passed ONLY on live turns
+    // (userMessage present) so attempts count real injections once per
+    // conversation — never compaction rebuilds or status probes.
     try {
       const epistemicEngine = (manager as Record<string, unknown>).epistemicDirectiveEngine as {
-        getDirectivesForSession(): Array<{ question: string }>;
+        getDirectivesForSession(opts?: { sessionKey?: string }): Array<{ question: string }>;
       } | null;
       if (epistemicEngine) {
-        const directives = epistemicEngine.getDirectivesForSession();
+        const directives = epistemicEngine.getDirectivesForSession(
+          params.userMessage && params.sessionKey ? { sessionKey: params.sessionKey } : undefined,
+        );
         if (directives.length > 0) {
           const directiveLines = directives.map((d) => `- [question] ${d.question}`);
           proactiveMemories = (proactiveMemories ?? "") + "\n" + directiveLines.join("\n");

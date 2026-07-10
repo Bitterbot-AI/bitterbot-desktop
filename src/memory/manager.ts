@@ -27,6 +27,7 @@ import { withSpan, withSpanAttrs } from "../observability/otel.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
+import { applyDirectiveResolutions, finalizeAnsweredDirectives } from "./directive-resolution.js";
 import {
   DiscoveryAgent,
   type SkillSuggestion,
@@ -3171,6 +3172,25 @@ export class MemoryIndexManager implements MemorySearchManager {
     const { buildSessionTrustResolver } = await import("./session-trust.js");
     const sessionTrust = await buildSessionTrustResolver(this.agentId);
 
+    // PLAN-34 Phase 1: the open-question loop rides the extraction cycle.
+    // Sweep canonical-ledger conflicts into user-answerable questions, then
+    // offer the top open questions to the extractor (first-party sessions
+    // only). runStartTs is the survival cutoff for two-tier resolution:
+    // answers found in THIS run finalize on the NEXT run if uncontradicted.
+    const directiveEngine = this.epistemicDirectiveEngine;
+    const runStartTs = Date.now();
+    let openQuestions: Array<{ id: string; question: string }> = [];
+    if (directiveEngine) {
+      try {
+        directiveEngine.sweepCanonicalConflicts();
+        openQuestions = directiveEngine
+          .listOpenDirectives(5)
+          .map((d) => ({ id: d.id, question: d.question }));
+      } catch (err) {
+        log.debug(`open-question sweep failed: ${String(err)}`);
+      }
+    }
+
     let extractedCount = 0;
 
     for (const absPath of sessionFiles) {
@@ -3192,6 +3212,11 @@ export class MemoryIndexManager implements MemorySearchManager {
           continue;
         }
 
+        // PLAN-34 Phase 1: open questions are offered (and answers applied)
+        // for first-party sessions only — a third party must never resolve
+        // a question we asked the owner.
+        const firstParty = sessionTrust(absPath) === "first_party";
+
         // Run LLM extraction
         const result = await extractSessionFacts(
           entry.content,
@@ -3200,6 +3225,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           maxFacts,
           hormonalBias,
           learnedRules,
+          firstParty && openQuestions.length > 0 ? openQuestions : undefined,
         );
         if (!result) {
           continue;
@@ -3321,6 +3347,25 @@ export class MemoryIndexManager implements MemorySearchManager {
             }
           } catch {
             // Individual fact insertion failure is non-critical
+          }
+        }
+
+        // PLAN-34 Phase 1: apply validated open-question answers — mark
+        // answered (stops injecting immediately), store the answer as a
+        // world_fact crystal, route canonical-shaped answers through the
+        // reconciler at extraction tier.
+        if (firstParty && directiveEngine && result.resolutions.length > 0) {
+          try {
+            applyDirectiveResolutions({
+              db: this.db,
+              engine: directiveEngine,
+              canonicalStore: this.canonicalFactsStore,
+              resolutions: result.resolutions,
+              sessionPath: absPath,
+              now,
+            });
+          } catch (err) {
+            log.debug(`applyDirectiveResolutions failed: ${String(err)}`);
           }
         }
 
@@ -3541,6 +3586,23 @@ export class MemoryIndexManager implements MemorySearchManager {
         );
       } catch (err) {
         log.debug(`session extraction failed for ${path.basename(absPath)}: ${String(err)}`);
+      }
+    }
+
+    // PLAN-34 Phase 1 tier-2 resolution: answers recorded in EARLIER runs
+    // that survived this run uncontradicted become resolved for good.
+    if (directiveEngine) {
+      try {
+        const resolved = finalizeAnsweredDirectives({
+          engine: directiveEngine,
+          canonicalStore: this.canonicalFactsStore,
+          cutoffTs: runStartTs,
+        });
+        if (resolved > 0) {
+          log.info(`directive resolution: ${resolved} answered question(s) finalized`);
+        }
+      } catch (err) {
+        log.debug(`finalizeAnsweredDirectives failed: ${String(err)}`);
       }
     }
 

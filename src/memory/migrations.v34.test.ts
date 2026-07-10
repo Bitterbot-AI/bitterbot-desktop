@@ -92,19 +92,21 @@ describe("migration v34 — PLAN-34 Phase 0 schema slots", () => {
       .prepare(`SELECT id, status, attempts FROM epistemic_directives ORDER BY id`)
       .all() as Array<{ id: string; status: string; attempts: number }>;
     expect(rows.map((r) => r.status)).toEqual(["open", "open"]);
-    // v34 deliberately does NOT reset attempts: the reset ships with the
-    // Phase 1 read-side fix so it cannot be consumed by the old per-read
-    // incrementer before the new semantics exist.
-    expect(rows.find((r) => r.id === "d-pre-upgrade")?.attempts).toBe(491);
+    // The attempts=491 artifact (per-read increments) is reset for
+    // unresolved rows — this ships in the same commit as the read-side
+    // increment-only-on-injection fix. Resolved rows keep their history.
+    expect(rows.find((r) => r.id === "d-pre-upgrade")?.attempts).toBe(0);
+    expect(rows.find((r) => r.id === "d-pre-resolved")?.attempts).toBe(5);
     expect(columns(db, "chunks")).toContain("session_trust");
     expect(tables(db).has("canonical_conflicts")).toBe(true);
   });
 
-  it("re-runs without throwing and preserves directive data", () => {
+  it("re-runs without throwing and preserves resolved-directive data", () => {
     const db = openTestDb();
-    insertDirective(db, "d1", 7, null);
+    insertDirective(db, "d1", 7, Date.now());
     // Version-only rewind: v34's DDL re-runs against an already-upgraded
-    // schema and must be a data-preserving no-op.
+    // schema and must be a data-preserving no-op (the attempts reset only
+    // ever touches unresolved rows).
     db.prepare(`UPDATE meta SET value = '33' WHERE key = 'schema_version'`).run();
     runMigrations(db);
     const row = db

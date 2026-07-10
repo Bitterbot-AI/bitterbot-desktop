@@ -359,12 +359,23 @@ For each detection, an epistemic directive is created:
 
 Directives are injected into proactive recall (max 2 per session) and tracked until resolved.
 
+### Resolution (PLAN-34 Phase 1)
+
+The loop closes through the session-extraction cycle (`src/memory/directive-resolution.ts`):
+
+- **Fuel:** canonical-ledger conflicts (tier rejections, rapid same-key supersedes recorded by `pin()` into `canonical_conflicts`) sweep into `contradiction` questions — "Which is current for `<key>`?"
+- **Injection accounting:** `attempts` increments only on real prompt injection, at most once per session key. User-answerable types (contradiction, knowledge_gap, low_confidence, stale_fact) stop injecting after `MAX_ASKS` (3) sessions; `graph_bridge` nudges are exempt (PLAN-18 preserved).
+- **Answering:** the extractor receives the top 5 open questions (first-party sessions only), quotes the user's verbatim answer with line citations; the parser rejects unknown ids, paraphrases, and assistant-authored citations mechanically.
+- **Two-tier resolution:** a qualifying answer (confidence >= 0.75) marks the question `answered` — it stops injecting immediately — and stores the answer as a `world_fact` crystal with evidence. Canonical-shaped answers route through the reconciler at extraction tier (>= 0.8 floor) as normal proposals subject to trust tiers. `resolved_at` is set only when the answer survives the NEXT extraction cycle uncontradicted.
+- **Expiry:** never-asked questions past 30 days are deleted; asked-but-unresolved ones flip to `status='expired'` (late answers still resolve them).
+- **Funnel:** `memory_audit_log` rows (`directive_created` / `directive_injected` / `directive_answered` / `directive_resolved`) trace every step.
+
 ### Schema
 
 ```sql
 CREATE TABLE epistemic_directives (
   id TEXT PRIMARY KEY,
-  directive_type TEXT NOT NULL,  -- contradiction, knowledge_gap, low_confidence, stale_fact
+  directive_type TEXT NOT NULL,  -- contradiction, knowledge_gap, low_confidence, stale_fact, graph_bridge
   question TEXT NOT NULL,
   context TEXT DEFAULT '',
   priority REAL DEFAULT 0.5,
@@ -372,7 +383,8 @@ CREATE TABLE epistemic_directives (
   resolved_at INTEGER,
   resolution TEXT,
   source_entity_ids TEXT DEFAULT '[]',
-  attempts INTEGER DEFAULT 0
+  attempts INTEGER DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'open'  -- v34: open | answered | expired
 );
 ```
 
