@@ -104,6 +104,57 @@ const KEY_RX = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 const MAX_VALUE_CHARS = 500;
 const MAX_STATEMENT_CHARS = 300;
 
+/**
+ * Transient-shape guards for BACKGROUND sources (extraction/promotion).
+ * First live hour of PLAN-33 Phase 2 produced pins like
+ * `world.current_time` (superseded 16x), `project.repo.clones.yesterday =
+ * 5,315`, and `mental_model.memory_grounding_failure = true` — observations
+ * that drift on their own, meta-commentary, and assertion-shaped booleans.
+ * Deliberate pins (memory_pin) bypass these guards: a user may pin whatever
+ * they want; background inference must stick to durable identifier-shaped
+ * ground truth.
+ */
+const BACKGROUND_SOURCES = new Set<CanonicalSource>(["extraction", "promotion"]);
+/** ISO datetime values are observations of a moment, never durable truth. */
+const ISO_DATETIME_VALUE_RX = /^\d{4}-\d{2}-\d{2}T/;
+/** Bare integers (with comma groups) are counts/metrics; versions ("0.4.2") pass. */
+const BARE_COUNT_VALUE_RX = /^\d{1,3}(,\d{3})+$|^\d+$/;
+/** Keys naming a moving window are transient by construction. */
+const TRANSIENT_KEY_TOKEN_RX = /(^|[._-])(current|now|today|yesterday|latest)([._-]|$)/;
+
+function rejectBackgroundTransient(
+  source: CanonicalSource,
+  key: string,
+  value: string,
+  category: CanonicalCategory,
+): string | null {
+  if (!BACKGROUND_SOURCES.has(source)) {
+    return null;
+  }
+  // Category may be derived from the key prefix (how the ingest/promotion
+  // callers construct it) — a corroborating re-pin that omits the category
+  // param must not be rejected when the key itself is well-prefixed.
+  const prefix = key.split(".")[0];
+  const prefixIsKnown =
+    (CANONICAL_CATEGORIES as readonly string[]).includes(prefix) && prefix !== "other";
+  if (category === "other" && !prefixIsKnown) {
+    return "background pins must use a known category prefix (identity./project./infra./preference./relationship.)";
+  }
+  if (ISO_DATETIME_VALUE_RX.test(value)) {
+    return "value is a timestamp — a moment observed, not durable ground truth";
+  }
+  if (BARE_COUNT_VALUE_RX.test(value)) {
+    return "value is a bare count/metric — it drifts on its own and would supersede forever";
+  }
+  if (/^(true|false)$/i.test(value)) {
+    return "assertion-shaped boolean — state the fact as a value, not a claim";
+  }
+  if (TRANSIENT_KEY_TOKEN_RX.test(key)) {
+    return "key names a moving window (current/today/yesterday/latest)";
+  }
+  return null;
+}
+
 type Row = {
   id: string;
   key: string;
@@ -272,6 +323,11 @@ export class CanonicalFactsStore {
     const confidence = Math.max(0.05, Math.min(1, input.confidence ?? 0.7));
     const evidence = JSON.stringify(input.evidenceChunkIds ?? []);
     const now = Date.now();
+
+    const transientReason = rejectBackgroundTransient(input.source, slug, value, category);
+    if (transientReason) {
+      return { op: "rejected", reason: transientReason };
+    }
 
     const current = this.get(slug);
 

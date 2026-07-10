@@ -140,18 +140,18 @@ describe("cap enforcement", () => {
   it("demotes the lowest promotion score deterministically, never deletes", () => {
     const db = makeDb();
     const store = new CanonicalFactsStore(db, { maxFacts: 3 });
-    store.pin({ key: "k.one", value: "1", source: "agent_pin", confidence: 0.95 });
-    store.pin({ key: "k.two", value: "2", source: "agent_pin", confidence: 0.9 });
-    store.pin({ key: "k.low", value: "3", source: "promotion", confidence: 0.3 });
-    // Confirm k.one again so it clearly outranks.
-    store.pin({ key: "k.one", value: "1", source: "extraction" });
-    store.pin({ key: "k.new", value: "4", source: "agent_pin", confidence: 0.95 });
+    store.pin({ key: "project.one", value: "alpha", source: "agent_pin", confidence: 0.95 });
+    store.pin({ key: "project.two", value: "beta", source: "agent_pin", confidence: 0.9 });
+    store.pin({ key: "project.low", value: "gamma", source: "promotion", confidence: 0.3 });
+    // Confirm project.one again so it clearly outranks.
+    store.pin({ key: "project.one", value: "alpha", source: "extraction" });
+    store.pin({ key: "project.new", value: "delta", source: "agent_pin", confidence: 0.95 });
     const active = store.listActive().map((f) => f.key);
     expect(active.length).toBe(3);
-    expect(active).not.toContain("k.low"); // lowest score demoted
-    expect(active).toContain("k.new");
+    expect(active).not.toContain("project.low"); // lowest score demoted
+    expect(active).toContain("project.new");
     // Demoted, not deleted: still the current belief for its key.
-    expect(store.get("k.low")?.status).toBe("retired");
+    expect(store.get("project.low")?.status).toBe("retired");
   });
 });
 
@@ -306,18 +306,28 @@ describe("decayTick (PLAN-33 Phase 3)", () => {
     const now = Date.now();
 
     // Promotion-entry confidence (0.6), as the dream mode pins it.
-    store.pin({ key: "k.stale", value: "x", source: "promotion", confidence: 0.6 });
-    store.pin({ key: "k.confirmed", value: "y", source: "promotion", confidence: 0.6 });
+    store.pin({
+      key: "infra.stale",
+      value: "old.example.internal",
+      source: "promotion",
+      confidence: 0.6,
+    });
+    store.pin({
+      key: "infra.confirmed",
+      value: "live.example.internal",
+      source: "promotion",
+      confidence: 0.6,
+    });
     for (let i = 0; i < 10; i++) {
-      store.pin({ key: "k.confirmed", value: "y", source: "extraction" }); // heavily confirmed
+      store.pin({ key: "infra.confirmed", value: "live.example.internal", source: "extraction" }); // heavily confirmed
     }
     // Age both by 200 days without confirmation.
     db.prepare(`UPDATE canonical_facts SET last_confirmed_at = ?`).run(now - 200 * DAY);
 
     const retired = store.decayTick(now);
     expect(retired).toBe(1);
-    expect(store.get("k.stale")?.status).toBe("retired");
-    expect(store.get("k.confirmed")?.status).toBe("active"); // frequency held it
+    expect(store.get("infra.stale")?.status).toBe("retired");
+    expect(store.get("infra.confirmed")?.status).toBe("active"); // frequency held it
 
     // Idempotent and interval-independent: a second tick changes nothing.
     expect(store.decayTick(now)).toBe(0);
@@ -327,8 +337,55 @@ describe("decayTick (PLAN-33 Phase 3)", () => {
     const db = makeDb();
     const store = new CanonicalFactsStore(db);
     const now = Date.now();
-    store.pin({ key: "k.fresh", value: "x", source: "promotion" }); // low confidence but fresh
+    store.pin({ key: "infra.fresh", value: "fresh.example.internal", source: "promotion" }); // low confidence but fresh
     expect(store.decayTick(now)).toBe(0);
-    expect(store.get("k.fresh")?.status).toBe("active");
+    expect(store.get("infra.fresh")?.status).toBe("active");
+  });
+});
+
+describe("background transient-shape guards (first-live-hour hotfix)", () => {
+  it("rejects the observed junk shapes for background sources", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    const bad = [
+      { key: "world.current_time", value: "2026-07-10T11:39:00-04:00" }, // other-category + timestamp + transient key
+      { key: "project.repo.clones.yesterday", value: "5,315" }, // count + moving window
+      { key: "project.bounties.open", value: "3" }, // bare count
+      { key: "mental_model.memory_grounding_failure", value: "true" }, // other category
+      { key: "project.no_inference", value: "true" }, // boolean assertion
+      { key: "project.latest_release", value: "v2" }, // transient key token
+    ];
+    for (const b of bad) {
+      const r = store.pin({ ...b, source: "extraction" });
+      expect(r.op, b.key).toBe("rejected");
+    }
+    expect(store.listActive().length).toBe(0);
+  });
+
+  it("still accepts durable identifier-shaped background pins", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    const good = [
+      { key: "project.repo", value: "github.com/Bitterbot-AI/bitterbot-desktop" },
+      { key: "infra.gateway", value: "a2a.bitterbot.ai" },
+      { key: "preference.editor", value: "vscode" },
+      { key: "infra.node_version", value: "22.22.1" }, // dotted version, not a bare count
+      { key: "identity.user_name", value: "Victor" },
+    ];
+    for (const g of good) {
+      const r = store.pin({ ...g, source: "extraction" });
+      expect(r.op, g.key).toBe("add");
+    }
+  });
+
+  it("does not restrict deliberate pins — the user may pin anything valid", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    const r = store.pin({
+      key: "project.launch_count",
+      value: "3",
+      source: "agent_pin",
+    });
+    expect(r.op).toBe("add");
   });
 });
