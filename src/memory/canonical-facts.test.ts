@@ -256,3 +256,79 @@ describe("canonicalPromotionScore", () => {
     );
   });
 });
+
+describe("trust-tier supersession (PLAN-33 Phase 3)", () => {
+  it("background sources cannot overwrite deliberate pins", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "project.repo", value: "right/repo", source: "agent_pin", confidence: 0.95 });
+
+    const promo = store.pin({ key: "project.repo", value: "wrong/repo", source: "promotion" });
+    expect(promo.op).toBe("rejected");
+    const extract = store.pin({ key: "project.repo", value: "wrong/repo", source: "extraction" });
+    expect(extract.op).toBe("rejected");
+    expect(store.get("project.repo")?.value).toBe("right/repo");
+
+    // An explicit pin (same tier) still supersedes — user corrections propagate.
+    const userFix = store.pin({ key: "project.repo", value: "new/repo", source: "user_directive" });
+    expect(userFix.op).toBe("supersede");
+    expect(store.get("project.repo")?.value).toBe("new/repo");
+  });
+
+  it("corroboration is welcome from any tier (STRENGTHEN is never blocked)", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "project.repo", value: "right/repo", source: "agent_pin", confidence: 0.95 });
+    const result = store.pin({ key: "project.repo", value: "right/repo", source: "promotion" });
+    expect(result.op).toBe("strengthen");
+    expect(store.get("project.repo")?.mentionCount).toBe(2);
+  });
+
+  it("extraction supersedes promotion, and promotion supersedes promotion", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "infra.gateway", value: "old.example.com", source: "promotion" });
+    expect(
+      store.pin({ key: "infra.gateway", value: "new.example.com", source: "extraction" }).op,
+    ).toBe("supersede");
+    expect(
+      store.pin({ key: "infra.gateway", value: "newer.example.com", source: "promotion" }).op,
+    ).toBe("rejected"); // promotion (tier 0) < extraction (tier 1)
+  });
+});
+
+describe("decayTick (PLAN-33 Phase 3)", () => {
+  const DAY = 86_400_000;
+
+  it("retires stale unconfirmed facts; confirmed facts survive", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    const now = Date.now();
+
+    // Promotion-entry confidence (0.6), as the dream mode pins it.
+    store.pin({ key: "k.stale", value: "x", source: "promotion", confidence: 0.6 });
+    store.pin({ key: "k.confirmed", value: "y", source: "promotion", confidence: 0.6 });
+    for (let i = 0; i < 10; i++) {
+      store.pin({ key: "k.confirmed", value: "y", source: "extraction" }); // heavily confirmed
+    }
+    // Age both by 200 days without confirmation.
+    db.prepare(`UPDATE canonical_facts SET last_confirmed_at = ?`).run(now - 200 * DAY);
+
+    const retired = store.decayTick(now);
+    expect(retired).toBe(1);
+    expect(store.get("k.stale")?.status).toBe("retired");
+    expect(store.get("k.confirmed")?.status).toBe("active"); // frequency held it
+
+    // Idempotent and interval-independent: a second tick changes nothing.
+    expect(store.decayTick(now)).toBe(0);
+  });
+
+  it("never touches facts confirmed within the stale window", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    const now = Date.now();
+    store.pin({ key: "k.fresh", value: "x", source: "promotion" }); // low confidence but fresh
+    expect(store.decayTick(now)).toBe(0);
+    expect(store.get("k.fresh")?.status).toBe("active");
+  });
+});

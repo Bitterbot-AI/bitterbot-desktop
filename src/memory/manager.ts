@@ -2413,6 +2413,12 @@ export class MemoryIndexManager implements MemorySearchManager {
         //     has contributed 0 across a full rolling window while others fired.
         //     Cheap in-memory counters; the warn is the whole point.
         this.retrievalObs.warnDeadWires();
+        // 17. PLAN-33 Phase 3: canonical ledger decay — retire facts whose
+        //     promotion score has faded after 90+ unconfirmed days. Derived,
+        //     idempotent, and interval-independent (safe at any cadence).
+        if (this.canonicalFactsStore) {
+          this.canonicalFactsStore.decayTick();
+        }
       } catch (err) {
         log.warn(`memory consolidation failed: ${String(err)}`);
       }
@@ -2452,6 +2458,15 @@ export class MemoryIndexManager implements MemorySearchManager {
       ...(builtLlmCall ? { llmCall: builtLlmCall } : {}),
       ...(builtSynthesisLlmCall ? { synthesisLlmCall: builtSynthesisLlmCall } : {}),
     };
+
+    // PLAN-33: the canonical_promotion dream mode writes into the ledger, so
+    // the ledger kill switch must also silence the promoter.
+    if (this.cfg.memory?.canonicalLedger?.enabled === false) {
+      engineCfg.modes = {
+        ...engineCfg.modes,
+        canonical_promotion: { enabled: false, weight: 0, maxChunks: 0, requiresLlm: true },
+      };
+    }
 
     let synthesizeFn: SynthesizeFn;
     if (builtLlmCall) {
@@ -3259,6 +3274,30 @@ export class MemoryIndexManager implements MemorySearchManager {
                 confidence: fact.confidence,
                 sessionId: absPath,
               });
+            }
+
+            // PLAN-33 Phase 2: automatic canonical pinning. When the extractor
+            // judged a fact to be stable key-value ground truth (and is
+            // reasonably confident), reconcile it into the ledger: same value
+            // strengthens (the daily-confirmation signal), a new value
+            // supersedes (user corrections propagate without being asked).
+            // Extraction pins cap below explicit user pins (0.95) so an
+            // extraction mistake never outranks a deliberate correction.
+            if (this.canonicalFactsStore && fact.canonical && fact.confidence >= 0.65) {
+              const pinResult = this.canonicalFactsStore.pin({
+                key: fact.canonical.key,
+                value: fact.canonical.value,
+                statement: fact.text,
+                category: fact.canonical.key.split(".")[0],
+                confidence: Math.min(fact.confidence, 0.85),
+                source: "extraction",
+                evidenceChunkIds: [id],
+              });
+              if (pinResult.op !== "rejected") {
+                log.debug(
+                  `canonical auto-pin (${pinResult.op}): [${fact.canonical.key}] from session extraction`,
+                );
+              }
             }
           } catch {
             // Individual fact insertion failure is non-critical

@@ -42,6 +42,22 @@ export type CanonicalCategory = (typeof CANONICAL_CATEGORIES)[number];
 
 export type CanonicalSource = "user_directive" | "agent_pin" | "extraction" | "promotion" | "seed";
 
+/**
+ * Supersession trust tiers. A pin may only SUPERSEDE (replace the value of) a
+ * current belief written by an equal-or-lower tier — deliberate statements
+ * (a user directive, an explicit agent pin) can never be overwritten by
+ * background inference (session extraction, dream promotion), no matter how
+ * the confidences drift. STRENGTHEN (same value) is allowed from any tier:
+ * corroboration is welcome from anywhere; contradiction requires standing.
+ */
+const SOURCE_TRUST_TIER: Record<CanonicalSource, number> = {
+  user_directive: 2,
+  agent_pin: 2,
+  seed: 1,
+  extraction: 1,
+  promotion: 0,
+};
+
 export type CanonicalFact = {
   id: string;
   key: string;
@@ -315,7 +331,22 @@ export class CanonicalFactsStore {
       return { op: "strengthen", fact: this.get(slug)! };
     }
 
-    // Contradiction: close the old belief's validity window, insert the new.
+    // Contradiction: only an equal-or-higher trust tier may replace the
+    // current belief. A dream-cycle promotion must never overwrite what the
+    // user deliberately pinned; the conflict is surfaced instead of silently
+    // resolved either way.
+    if (SOURCE_TRUST_TIER[input.source] < SOURCE_TRUST_TIER[current.source]) {
+      log.info(
+        `canonical CONFLICT (kept current): [${slug}] ${input.source} proposed ` +
+          `"${value.slice(0, 40)}" against ${current.source} "${current.value.slice(0, 40)}"`,
+      );
+      return {
+        op: "rejected",
+        reason:
+          `conflict: current belief for "${slug}" was set by ${current.source} ` +
+          `(higher trust than ${input.source}); use memory_pin to supersede deliberately`,
+      };
+    }
     const id = crypto.randomUUID();
     this.db
       .prepare(
@@ -348,6 +379,38 @@ export class CanonicalFactsStore {
     this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(current.id);
     log.info(`canonical RETIRE: [${current.key}]`);
     return true;
+  }
+
+  /**
+   * PLAN-33 Phase 3 — the Ebbinghaus side of the ledger. Retires active facts
+   * whose promotion score has decayed below the floor after 90+ days without
+   * confirmation. Purely derived from (confidence, mentionCount,
+   * lastConfirmedAt), so it is idempotent and independent of how often the
+   * maintenance loop runs; every STRENGTHEN resets the staleness clock. An
+   * unconfirmed dream promotion (0.6) retires after ~6 months; a deliberate
+   * pin (0.95) holds ~9 months; anything confirmed even a few times holds far
+   * longer. Retired facts stay queryable — nothing is deleted.
+   */
+  decayTick(now: number = Date.now()): number {
+    const STALE_DAYS = 90;
+    const SCORE_FLOOR = 0.25;
+    let retired = 0;
+    for (const fact of this.listActive({ now })) {
+      const staleDays = (now - fact.lastConfirmedAt) / 86_400_000;
+      if (staleDays < STALE_DAYS) {
+        continue;
+      }
+      if (canonicalPromotionScore(fact, now) >= SCORE_FLOOR) {
+        continue;
+      }
+      this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(fact.id);
+      retired += 1;
+      log.info(
+        `canonical DECAY-RETIRE: [${fact.key}] unconfirmed ${Math.round(staleDays)}d ` +
+          `(${fact.mentionCount} mention(s), confidence ${fact.confidence.toFixed(2)})`,
+      );
+    }
+    return retired;
   }
 
   /** Count of active (injectable) facts. */

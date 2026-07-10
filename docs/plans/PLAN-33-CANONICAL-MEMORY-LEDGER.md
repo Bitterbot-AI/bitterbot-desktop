@@ -1,11 +1,23 @@
 # PLAN-33: Canonical Memory Ledger (seamless cold-start continuity)
 
-**Status:** PHASES 0+1 LANDED (2026-07-10): gate hardening (cooldown scoping,
-keyword fallback, vector reserve, hormonal decoupling) and the ledger
-(migration v33, CanonicalFactsStore, unconditional injection in all three
-runners, memory_pin tool, identity seeding, retrievalHealth canonical lane),
-on by default behind `memory.canonicalLedger.enabled`. Phases 2-4 (hot-path
-reconciliation, dream promotion, surfaces) remain. Design notes below are the
+**Status:** PHASES 0-3 LANDED (2026-07-10). Phase 0: gate hardening (cooldown
+scoping, keyword fallback, vector reserve, hormonal decoupling). Phase 1: the
+ledger (migration v33, CanonicalFactsStore, unconditional injection in all
+three runners, memory_pin tool, identity seeding, retrievalHealth canonical
+lane). Phase 2: automatic hot-path pinning — the session extractor emits
+validated canonicalKey/canonicalValue fields and the ingest loop reconciles
+them (source `extraction`, capped below explicit pins). Phase 3: the
+`canonical_promotion` dream mode (cursor-idempotent, cortisol-gated,
+reject-biased; pins at 0.6 with source `promotion`), source trust tiers
+(background inference can strengthen but never supersede a deliberate pin),
+and score-derived decay (`decayTick`, interval-independent) in the
+maintenance cycle. All on by default behind `memory.canonicalLedger.enabled`.
+Deviations from the draft: no regex keyword-shape routing (fuzzy auto-derived
+keys are the user_preferences failure mode all over again — the extractor's
+judged keys + dream promotion cover it with better ledger hygiene); the
+confidence ramp is implemented as trust tiers + low entry confidence rather
+than a source-conditional 0.8 cap. Phase 4 (dashboard pane, CANONICAL.md
+mirror view, memory_search ledger-first) remains. Design notes below are the
 original draft. Built from a verified code trace of the
 2026-07-10 repo-identity recall failure (three parallel code-mapping passes
 over `src/memory` + `src/agents`) plus a survey of how Letta, Mem0,

@@ -20,7 +20,8 @@ export type DreamMode =
   | "interceptor_harvest" // PLAN-20: mine intervention records → propose new interceptors
   | "relationship_reconsolidation" // PLAN-23 SABM: adjudicate flagged belief contradictions, close losers post-labile-window
   | "harness_evolve" // PLAN-25: mine harness-level failures → propose + validate + promote HarnessPolicy edits
-  | "relationship_mining"; // PLAN-28 A2: offline LLM mining of typed triples from fact chunks → populate the graph
+  | "relationship_mining" // PLAN-28 A2: offline LLM mining of typed triples from fact chunks → populate the graph
+  | "canonical_promotion"; // PLAN-33 Phase 3: offline promotion of stable key-value facts into the canonical ledger
 
 export type DreamModeConfig = {
   enabled: boolean;
@@ -41,6 +42,7 @@ export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   relationship_reconsolidation: { enabled: true, weight: 0.09, maxChunks: 25, requiresLlm: true },
   harness_evolve: { enabled: true, weight: 0.05, maxChunks: 24, requiresLlm: true },
   relationship_mining: { enabled: true, weight: 0.09, maxChunks: 30, requiresLlm: true },
+  canonical_promotion: { enabled: true, weight: 0.07, maxChunks: 30, requiresLlm: true },
 };
 
 export type DreamCluster = {
@@ -91,6 +93,7 @@ export const DEFAULT_MODE_TIERS: Record<DreamMode, ComputeTier> = {
   relationship_reconsolidation: "cloud",
   harness_evolve: "cloud",
   relationship_mining: "cloud",
+  canonical_promotion: "cloud",
 };
 
 export type DreamCycleMetadata = {

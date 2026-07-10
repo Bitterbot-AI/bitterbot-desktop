@@ -1016,8 +1016,53 @@ export class DreamEngine {
         return this.runHarnessEvolveMode(cycleId);
       case "relationship_mining":
         return this.runRelationshipMiningMode(cycleId);
+      case "canonical_promotion":
+        return this.runCanonicalPromotionMode(cycleId);
       default:
         return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    }
+  }
+
+  // ── Mode 12: Canonical Promotion (PLAN-33 Phase 3) ──
+  //
+  // Systems consolidation for the canonical ledger: the offline counterpart to
+  // the Phase 2 hot-path extractor. Batches unprocessed world_fact/directive
+  // crystals through a cheap LLM asking "is this stable key-value ground
+  // truth?"; hits are pinned at low confidence (source `promotion`) and earn
+  // authority only through later live confirmation. Trust tiers in the store
+  // guarantee a promotion can never overwrite a deliberate user pin.
+  // Cortisol-gated and cursor-driven inside the module; kept thin here like
+  // the other modes. Disabled by ensureDreamEngine when the ledger is off.
+  private async runCanonicalPromotionMode(
+    cycleId: string,
+  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
+    try {
+      const [mod, storeMod] = await Promise.all([
+        import("./dream-modes/canonical-promotion.js"),
+        import("./canonical-facts.js"),
+      ]);
+      const store = new storeMod.CanonicalFactsStore(this.db);
+      const llmCall = this.getLlmCallForMode("canonical_promotion");
+      const hormones = this.hormonalStateGetter?.() ?? null;
+      const result = await mod.runCanonicalPromotion({
+        db: this.db,
+        store,
+        llmCall,
+        hormones,
+        maxChunks: this.config.modes.canonical_promotion.maxChunks,
+      });
+      log.debug(
+        `canonical_promotion cycle ${cycleId}: promoted=${result.factsPromoted} ` +
+          `chunks=${result.chunksProcessed} cortisolSkip=${result.skippedCortisol}`,
+      );
+      return {
+        insights: [],
+        llmCalls: result.llmCalls,
+        chunksAnalyzed: result.chunksProcessed,
+      };
+    } catch (err) {
+      log.warn(`canonical_promotion mode failed: ${String(err)}`);
+      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
   }
 

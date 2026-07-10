@@ -54,3 +54,85 @@ describe("extractSessionFacts — HORMA provenance citations", () => {
     ]);
   });
 });
+
+describe("extractSessionFacts — PLAN-33 Phase 2 canonical fields", () => {
+  const handover = { purpose: "p", milestones: [], decisions: [], blockers: [], nextSteps: [] };
+
+  it("instructs the model about canonical key-value extraction", async () => {
+    const llmCall = async (prompt: string) => {
+      expect(prompt).toContain("canonicalKey");
+      expect(prompt).toContain("canonicalValue");
+      expect(prompt).toContain("Most facts are NOT canonical");
+      return JSON.stringify({ facts: [], handover });
+    };
+    await extractSessionFacts("User: hi", "/s.jsonl", llmCall);
+  });
+
+  it("parses valid canonical fields into fact.canonical", async () => {
+    const llmCall = async () =>
+      JSON.stringify({
+        facts: [
+          {
+            text: "The project repository is github.com/Bitterbot-AI/bitterbot-desktop.",
+            layer: "world_fact",
+            confidence: 0.95,
+            lines: [1],
+            canonicalKey: "project.repo",
+            canonicalValue: "github.com/Bitterbot-AI/bitterbot-desktop",
+          },
+          { text: "We debugged the sync job.", layer: "experience", confidence: 0.8, lines: [2] },
+        ],
+        handover,
+      });
+    const result = await extractSessionFacts("a\nb", "/s.jsonl", llmCall);
+    expect(result!.facts[0].canonical).toEqual({
+      key: "project.repo",
+      value: "github.com/Bitterbot-AI/bitterbot-desktop",
+    });
+    expect(result!.facts[1].canonical).toBeUndefined();
+  });
+
+  it("drops invalid canonical keys/values instead of rejecting the fact", async () => {
+    const llmCall = async () =>
+      JSON.stringify({
+        facts: [
+          {
+            text: "f1",
+            layer: "world_fact",
+            confidence: 0.9,
+            canonicalKey: "???",
+            canonicalValue: "x",
+          },
+          {
+            text: "f2",
+            layer: "world_fact",
+            confidence: 0.9,
+            canonicalKey: "ok.key",
+            canonicalValue: "  ",
+          },
+          {
+            text: "f3",
+            layer: "world_fact",
+            confidence: 0.9,
+            canonicalKey: 42,
+            canonicalValue: "x",
+          },
+          {
+            text: "f4",
+            layer: "world_fact",
+            confidence: 0.9,
+            canonicalKey: "Ok Key",
+            canonicalValue: "x",
+          },
+        ],
+        handover,
+      });
+    const result = await extractSessionFacts("a", "/s.jsonl", llmCall);
+    expect(result!.facts).toHaveLength(4); // facts themselves survive
+    expect(result!.facts[0].canonical).toBeUndefined();
+    expect(result!.facts[1].canonical).toBeUndefined();
+    expect(result!.facts[2].canonical).toBeUndefined();
+    // Normalizable key is accepted after slugification.
+    expect(result!.facts[3].canonical).toEqual({ key: "ok_key", value: "x" });
+  });
+});

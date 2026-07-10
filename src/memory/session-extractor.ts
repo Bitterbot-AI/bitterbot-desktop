@@ -19,6 +19,7 @@
 
 import type { SessionHandoverBrief } from "./session-handover.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { normalizeCanonicalKey } from "./canonical-facts.js";
 
 const log = createSubsystemLogger("memory/session-extractor");
 
@@ -45,6 +46,15 @@ export type ExtractedFact = {
   sessionId: string;
   /** Provenance pointers to the transcript lines this fact was derived from. */
   evidence: EvidenceRef[];
+  /**
+   * PLAN-33 Phase 2: set when the extractor judged this a canonical key-value
+   * fact (stable ground truth the user treats as durable: repo names,
+   * endpoints, identities, standing choices). The key is a validated dot-slug
+   * ("project.repo") and the value is the exact atom ("github.com/org/repo").
+   * Routed into the canonical ledger by the ingest loop — this is what makes
+   * pinning automatic instead of something the user must ask for.
+   */
+  canonical?: { key: string; value: string };
 };
 
 export type ExtractionResult = {
@@ -141,7 +151,7 @@ ${buildHormonalGuidance(hormones)}
 Respond with ONLY a JSON object (no markdown fences):
 {
   "facts": [
-    { "text": "atomic fact statement", "layer": "world_fact|experience|mental_model|directive", "confidence": 0.0-1.0, "lines": [12, 13] }
+    { "text": "atomic fact statement", "layer": "world_fact|experience|mental_model|directive", "confidence": 0.0-1.0, "lines": [12, 13], "canonicalKey": "project.repo", "canonicalValue": "github.com/org/repo" }
   ],
   "handover": {
     "purpose": "one-line session purpose",
@@ -161,6 +171,7 @@ Respond with ONLY a JSON object (no markdown fences):
 - "lines" must list the 1-based \`L<n>\` line number(s) the fact came from (at least one). Cite the most specific lines, not the whole transcript.
 - Confidence reflects how certain the fact is: 1.0 = explicitly stated, 0.5 = inferred.
 - Prefer fewer high-quality facts over many low-quality ones.
+- **canonicalKey/canonicalValue (optional, rare):** set these ONLY when the fact is stable key-value ground truth the user treats as durable and will reference across many future sessions — the project's repository, a service endpoint, a person's name/role, a standing tool or workflow choice. canonicalKey is a lowercase dot-slug namespaced by category prefix (identity. | project. | infra. | preference. | relationship.), e.g. "project.repo" or "identity.user_name". canonicalValue is the exact atom, copied verbatim (never paraphrase a URL, slug, version, or name). Most facts are NOT canonical — omit these fields for events, one-off details, and anything transient. When the user corrects a previously-established fact, DO emit the canonical fields so the correction supersedes the old belief.
 - The handover brief should let a new session pick up exactly where this one left off.
 - The entities list should capture specific files, functions, variables, config keys, and services the user was working with — concrete referents that allow resolving references like "that file" or "the second parameter" in the next session. Focus on the 5-10 most recently touched entities.
 ${buildLearnedRules(learnedRules)}
@@ -194,6 +205,28 @@ function parseFactEvidence(rawLines: unknown, sessionId: string): EvidenceRef[] 
   return refs;
 }
 
+/**
+ * PLAN-33 Phase 2: validate the LLM's optional canonical fields. The key must
+ * normalize to a ledger slug and the value must be a non-empty atom; anything
+ * else is silently dropped (the fact itself is still kept as a crystal) —
+ * ledger hygiene beats recall here, since the dream-cycle promotion pass
+ * (Phase 3) catches what the hot path misses.
+ */
+function parseCanonicalFields(
+  rawKey: unknown,
+  rawValue: unknown,
+): { key: string; value: string } | undefined {
+  if (typeof rawKey !== "string" || typeof rawValue !== "string") {
+    return undefined;
+  }
+  const key = normalizeCanonicalKey(rawKey);
+  const value = rawValue.trim();
+  if (!key || !value || value.length > 500) {
+    return undefined;
+  }
+  return { key, value };
+}
+
 function parseExtractionResponse(
   raw: string,
   sessionId: string,
@@ -205,7 +238,14 @@ function parseExtractionResponse(
       .replace(/\n?```\s*$/m, "")
       .trim();
     const parsed = JSON.parse(cleaned) as {
-      facts?: Array<{ text?: string; layer?: string; confidence?: number; lines?: unknown }>;
+      facts?: Array<{
+        text?: string;
+        layer?: string;
+        confidence?: number;
+        lines?: unknown;
+        canonicalKey?: unknown;
+        canonicalValue?: unknown;
+      }>;
       handover?: {
         purpose?: string;
         milestones?: string[];
@@ -236,6 +276,7 @@ function parseExtractionResponse(
         semanticType: EPISTEMIC_TO_SEMANTIC[f.layer as EpistemicLayer] ?? "general",
         sessionId,
         evidence: parseFactEvidence(f.lines, sessionId),
+        canonical: parseCanonicalFields(f.canonicalKey, f.canonicalValue),
       }));
 
     const h = parsed.handover;

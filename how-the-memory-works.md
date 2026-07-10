@@ -294,7 +294,15 @@ Write discipline keeps the tier injectable:
 - **The `memory_pin` tool.** "Remember this" becomes deterministic: the agent pins the fact and it is present in every future session, including subagent (minimal) prompts for the identity and project categories.
 - **Seeding and observability.** The ledger seeds once from stored identity preferences (never from hardcoded product data), and injections feed the dead-wire detector plus a `canonical` section in `retrievalHealth` so a wired-but-dead ledger cannot hide.
 
-Kill switch: `memory.canonicalLedger.enabled` (default true).
+Pinning is automatic, not something the user must ask for — the way people never remind each other to remember things. Three writers feed the ledger, in descending trust:
+
+- **Explicit pins** (`memory_pin`, trust tier 2) — the user said "remember this" or corrected a fact; enters at 0.95.
+- **Hot-path extraction** (tier 1) — the session extractor judges, during its normal fact pass, whether a statement is stable key-value ground truth and emits a validated `canonicalKey`/`canonicalValue`; sufficiently confident hits are reconciled into the ledger automatically. Enters at ≤0.85 so an extraction mistake never outranks a deliberate pin.
+- **Dream-cycle promotion** (`canonical_promotion` dream mode, tier 0) — the sleep-cycle counterpart that drains the backlog of factual crystals through a cheap LLM asking one narrow question; hits enter at 0.6 and earn authority only through later live confirmation. Cortisol-gated, cursor-idempotent, biased to reject ("most facts are not canonical").
+
+Trust tiers govern contradiction: a lower tier can always STRENGTHEN a matching value (corroboration is welcome from anywhere) but can never SUPERSEDE a higher tier's belief — a background inference cannot overwrite what the user deliberately stated. The Ebbinghaus side is `decayTick`: an active fact unconfirmed for 90+ days whose promotion score sinks below the floor is retired (still queryable, no longer injected); every confirmation resets the clock, so the ledger converges on what is actually load-bearing.
+
+Kill switch: `memory.canonicalLedger.enabled` (default true; also silences the extraction routing and the promotion dream mode).
 
 ## Proactive Recall — What the Agent Volunteers
 
