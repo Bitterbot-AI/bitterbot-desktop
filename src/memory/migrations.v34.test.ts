@@ -41,6 +41,7 @@ function downgradeToV33(db: DatabaseSync): void {
   db.exec(`ALTER TABLE canonical_facts DROP COLUMN corroboration_count`);
   db.exec(`DROP TABLE canonical_conflicts`);
   db.exec(`DROP TABLE research_findings`);
+  db.exec(`DROP TABLE research_egress_log`);
   db.prepare(`UPDATE meta SET value = '33' WHERE key = 'schema_version'`).run();
 }
 
@@ -66,6 +67,7 @@ describe("migration v34 — PLAN-34 Phase 0 schema slots", () => {
     const db = openTestDb();
     expect(columns(db, "canonical_facts")).toContain("corroboration_count");
     expect(tables(db).has("research_findings")).toBe(true);
+    expect(tables(db).has("research_egress_log")).toBe(true);
     for (const c of [
       "target_id",
       "finding",

@@ -38,10 +38,40 @@ import type { SkillSeekersConfig } from "../config/types.skill-seekers.js";
 import { ingestSkill } from "../agents/skills/ingest.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { CONFIG_DIR } from "../utils.js";
+import { logResearchEgress } from "./auto-research-egress.js";
 import { classifyNativeSource, runNativeScraper } from "./skill-seekers-native.js";
 import { reconcileEnvelope } from "./skill-seekers-reconciler.js";
 
 const log = createSubsystemLogger("skill-seekers");
+
+/**
+ * PLAN-34 Phase 2c: the built-in domain allowlist that bounds AUTONOMOUS
+ * research fetches when skills.skillSeekers.allowedDomains is not set.
+ * Documentation-grade hosts only; configure allowedDomains to override.
+ */
+const DEFAULT_AUTORESEARCH_ALLOWED_DOMAINS = [
+  "github.com",
+  "raw.githubusercontent.com",
+  "github.io",
+  "readthedocs.io",
+  "readthedocs.org",
+  "developer.mozilla.org",
+  "mdn.mozilla.org",
+  "python.org",
+  "nodejs.org",
+  "npmjs.com",
+  "kubernetes.io",
+  "docs.rs",
+  "pypi.org",
+  "go.dev",
+  "golang.org",
+  "rust-lang.org",
+  "typescriptlang.org",
+  "postgresql.org",
+  "sqlite.org",
+  "wikipedia.org",
+  "arxiv.org",
+];
 const execFileAsync = promisify(execFile);
 
 // ── Constants ──
@@ -133,6 +163,12 @@ export type SkillSeekersSource = {
   };
   /** Free-form provenance fields that flow through to .provenance.json. */
   provenance?: Record<string, unknown>;
+  /**
+   * PLAN-34 Phase 2c: set for autonomous dream-cycle research. Bounds the
+   * fetch to the domain allowlist (a non-empty built-in default applies
+   * when none is configured) — interactive/tool ingestion is unaffected.
+   */
+  autoResearch?: boolean;
 };
 
 export type SkillSeekersResult = {
@@ -345,7 +381,7 @@ export class SkillSeekersAdapter {
       };
     }
 
-    if (!this.isDomainAllowed(source.url)) {
+    if (!this.isDomainAllowed(source.url, source.autoResearch)) {
       return {
         ...base,
         ok: false,
@@ -371,6 +407,17 @@ export class SkillSeekersAdapter {
     try {
       // Run skill-seekers via chosen transport
       const outputDir = path.join(tmpDir, "output");
+      // PLAN-34 Phase 2c: one egress-log row per network seam, logged for
+      // EVERY ingestion (not just auto research) — the log must never
+      // understate the real network footprint. The payload is what the
+      // transport receives: url + name + description.
+      const transportPayload = `${source.url} ${source.name ?? ""} ${source.description ?? ""}`;
+      this.logEgress("fetch-host", safeHost(source.url), transportPayload);
+      if (transport === "mcp" && this.config.mcpEndpoint) {
+        this.logEgress("transport-post", safeHost(this.config.mcpEndpoint), transportPayload);
+      } else if (transport === "cli" || transport === "python") {
+        this.logEgress("transport-post", `local:${transport}:skill-seekers`, transportPayload);
+      }
       await runSkillSeekers(source, outputDir, transport, this.config.mcpEndpoint);
 
       // Find the generated skill directory
@@ -604,13 +651,15 @@ export class SkillSeekersAdapter {
       tags?: string[];
       marketplace?: SkillSeekersSource["marketplace"];
       targetId?: string;
+      /** PLAN-34 Phase 2c: autonomous dream-cycle research — see SkillSeekersSource. */
+      autoResearch?: boolean;
     },
   ): Promise<SkillSeekersResult> {
     // Step 1: direct URL extraction
     const urlMatch = gapDescription.match(/https?:\/\/\S+/);
     if (urlMatch) {
       const url = urlMatch[0];
-      if (!this.isDomainAllowed(url)) {
+      if (!this.isDomainAllowed(url, hints?.autoResearch)) {
         return {
           ok: false,
           envelopes: [],
@@ -627,17 +676,22 @@ export class SkillSeekersAdapter {
         type: "docs",
         marketplace: hints?.marketplace,
         provenance: { gap_description: gapDescription, target_id: hints?.targetId },
+        autoResearch: hints?.autoResearch,
       });
     }
 
     // Step 2: web search fallback
     if (this.config.useWebSearchFallback && this.webSearch) {
       try {
+        // PLAN-34 Phase 2c: the search query is a network seam — log it.
+        // For auto research the query is the depersonalized phrase by
+        // construction (the dream engine never passes raw descriptions).
+        this.logEgress("search-query", "web-search", gapDescription);
         const url = await this.webSearch.findAuthoritativeUrl(gapDescription, {
           category: hints?.category,
         });
         if (url) {
-          if (!this.isDomainAllowed(url)) {
+          if (!this.isDomainAllowed(url, hints?.autoResearch)) {
             return {
               ok: false,
               envelopes: [],
@@ -658,6 +712,7 @@ export class SkillSeekersAdapter {
               discovered_via: "web_search",
               target_id: hints?.targetId,
             },
+            autoResearch: hints?.autoResearch,
           });
         }
       } catch (err) {
@@ -738,7 +793,7 @@ export class SkillSeekersAdapter {
     }
   }
 
-  private isDomainAllowed(url: string): boolean {
+  private isDomainAllowed(url: string, autoResearch = false): boolean {
     let hostname: string;
     try {
       hostname = new URL(url).hostname;
@@ -754,7 +809,23 @@ export class SkillSeekersAdapter {
     if (this.config.allowedDomains.length > 0) {
       return this.config.allowedDomains.some((d) => hostname.endsWith(d));
     }
+    // PLAN-34 Phase 2c: autonomous research is never unbounded — with no
+    // configured allowlist, a non-empty built-in default (documentation
+    // hosts) bounds what auto research may fetch. Interactive ingestion
+    // (tools, marketplace) keeps the permissive default.
+    if (autoResearch) {
+      return DEFAULT_AUTORESEARCH_ALLOWED_DOMAINS.some((d) => hostname.endsWith(d));
+    }
     return true;
+  }
+
+  /** PLAN-34 Phase 2c: best-effort egress audit row (research_egress_log). */
+  private logEgress(
+    seam: "search-query" | "fetch-host" | "transport-post",
+    destination: string,
+    payload: string,
+  ): void {
+    logResearchEgress(this.db, seam, destination, payload);
   }
 
   private processConflicts(conflicts: SkillSeekersConflict[], sourceUrl: string): void {
@@ -825,6 +896,14 @@ async function probeMcpEndpoint(endpoint: string): Promise<boolean> {
 }
 
 // ── Execution via chosen transport ──
+
+function safeHost(url: string): string {
+  try {
+    return new URL(url).host || url.slice(0, 100);
+  } catch {
+    return url.slice(0, 100);
+  }
+}
 
 async function runSkillSeekers(
   source: SkillSeekersSource,

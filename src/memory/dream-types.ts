@@ -189,10 +189,22 @@ export type DreamEngineConfig = {
   modelTiers?: ModelTierConfig;
   /** Disable FSHO oscillator for mode selection (fall back to uniform weights). Used for ablation testing. */
   disableFsho?: boolean;
+  /**
+   * PLAN-34 Phase 2c: autonomous curiosity research egress controls
+   * (mapped from memory.curiosity.autoResearch). enabled default true;
+   * maxPerDay default 10 — a persisted UTC-day attempt counter with
+   * reserve-then-act semantics. External research additionally requires a
+   * local depersonalization model (localLlmCall): without one it fails
+   * closed to zero egress.
+   */
+  autoResearch?: { enabled?: boolean; maxPerDay?: number };
 };
 
 export const DEFAULT_DREAM_CONFIG: Required<
-  Omit<DreamEngineConfig, "llmCall" | "synthesisLlmCall" | "localLlmCall" | "modes" | "modelTiers">
+  Omit<
+    DreamEngineConfig,
+    "llmCall" | "synthesisLlmCall" | "localLlmCall" | "modes" | "modelTiers" | "autoResearch"
+  >
 > & { modes: Record<DreamMode, DreamModeConfig> } = {
   enabled: true,
   intervalMinutes: 120,

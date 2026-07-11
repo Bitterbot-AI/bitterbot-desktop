@@ -2444,6 +2444,15 @@ export class MemoryIndexManager implements MemorySearchManager {
     const builtSynthesisLlmCall =
       dreamCfg?.synthesisLlmCall ??
       (dreamCfg?.synthesisModel ? this.buildLlmCallFn(dreamCfg.synthesisModel) : null);
+    // PLAN-34 Phase 2c: the local-tier call was previously destructured out
+    // and DISCARDED (wired-but-dead). It now powers local-tier modes and —
+    // critically — the depersonalization rewrite that gates all autonomous
+    // research egress: no local model configured means zero egress.
+    const builtLocalLlmCall =
+      dreamCfg?.localLlmCall ??
+      (dreamCfg?.modelTiers?.localModel
+        ? this.buildLlmCallFn(dreamCfg.modelTiers.localModel)
+        : null);
 
     // Build a config WITHOUT function properties (safe for structuredClone)
     const {
@@ -2458,6 +2467,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       ...safeDreamCfg,
       ...(builtLlmCall ? { llmCall: builtLlmCall } : {}),
       ...(builtSynthesisLlmCall ? { synthesisLlmCall: builtSynthesisLlmCall } : {}),
+      ...(builtLocalLlmCall ? { localLlmCall: builtLocalLlmCall } : {}),
+      // PLAN-34 Phase 2c: the only new config knobs of the whole plan.
+      ...(this.cfg.memory?.curiosity?.autoResearch
+        ? { autoResearch: this.cfg.memory.curiosity.autoResearch }
+        : {}),
     };
 
     // PLAN-33: the canonical_promotion dream mode writes into the ledger, so

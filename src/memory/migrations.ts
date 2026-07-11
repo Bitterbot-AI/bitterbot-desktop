@@ -1485,6 +1485,24 @@ const MIGRATIONS: Migration[] = [
         `CREATE INDEX IF NOT EXISTS idx_research_findings_unsurfaced ` +
           `ON research_findings(surfaced_at, created_at)`,
       );
+
+      // PLAN-34 Phase 2c: (7) research_egress_log — one audit row per
+      // network seam (search-query, fetch-host, transport-post) with
+      // destination and payload hash/length. The dashboard renders it; the
+      // log must never understate the real network footprint.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS research_egress_log (
+          id           TEXT PRIMARY KEY,
+          seam         TEXT NOT NULL,
+          destination  TEXT NOT NULL,
+          payload_hash TEXT NOT NULL,
+          payload_len  INTEGER NOT NULL,
+          created_at   INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_research_egress_time ON research_egress_log(created_at)`,
+      );
     },
   },
 ];

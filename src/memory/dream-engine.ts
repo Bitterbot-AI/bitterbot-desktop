@@ -19,6 +19,12 @@ import type { HormonalStateManager } from "./hormonal.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { computeDreamTaskAdjustments, scanPendingTasksForDream } from "../tasks/biology.js";
+import {
+  AUTO_RESEARCH_DEFAULT_MAX_PER_DAY,
+  AutoResearchBudget,
+  containsSourceLeak,
+  isSensitiveTopic,
+} from "./auto-research-egress.js";
 import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
 import { selectStrategy, buildStrategyPrompt } from "./dream-mutation-strategies.js";
 import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
@@ -152,6 +158,7 @@ export class DreamEngine {
           opportunityId?: string;
         };
         targetId?: string;
+        autoResearch?: boolean;
       },
     ): Promise<{
       ok: boolean;
@@ -162,6 +169,9 @@ export class DreamEngine {
     resetCycleCounter(): void;
     budgetRemaining(): number;
   } | null = null;
+  /** PLAN-34 Phase 2c: autonomous research egress controls. */
+  private readonly autoResearchEnabled: boolean;
+  private readonly autoResearchMaxPerDay: number;
   private state: DreamState = "DORMANT";
   private lastModeUsed: DreamMode | null = null;
 
@@ -194,6 +204,9 @@ export class DreamEngine {
     this.embedBatch = embedBatch;
     this.llmCallCloud = config?.llmCall ?? null;
     this.llmCallLocal = config?.localLlmCall ?? null;
+    this.autoResearchEnabled = config?.autoResearch?.enabled !== false;
+    this.autoResearchMaxPerDay =
+      config?.autoResearch?.maxPerDay ?? AUTO_RESEARCH_DEFAULT_MAX_PER_DAY;
     // Tiered compute routing
     this.modeTiers = { ...DEFAULT_MODE_TIERS, ...config?.modelTiers?.modeTiers };
     this.fallbackToCloud = config?.modelTiers?.fallbackToCloud ?? true;
@@ -315,6 +328,7 @@ export class DreamEngine {
             opportunityId?: string;
           };
           targetId?: string;
+          autoResearch?: boolean;
         },
       ): Promise<{
         ok: boolean;
@@ -1891,13 +1905,25 @@ export class DreamEngine {
       // PLAN-34 Phase 2a: frontier targets qualify alongside knowledge_gap
       // and market_demand (targets arrive priority-ordered); explored-
       // marking happens AFTER each research attempt with an honest outcome
-      // code (no_url | domain_blocked | irrelevant | resolved), and a
-      // target only resolves when the research product is actually
-      // RELEVANT — embedding similarity to the target description above
-      // the floor — never on mere scrape success. Budget is enforced by
-      // the adapter (maxSkillsPerCycle).
+      // code, and a target only resolves when the research product is
+      // actually RELEVANT — never on mere scrape success.
+      // PLAN-34 Phase 2c, the egress-safety chain per attempt:
+      //   1. local depersonalization model REQUIRED — no local model, no
+      //      egress at all (fail closed; the honest contract is "external
+      //      research activates when a local model is configured");
+      //   2. persisted daily budget, reserve-then-act (the counter moves
+      //      before any classification/depersonalization work, and every
+      //      attempt counts);
+      //   3. deterministic sensitivity skip-list on the RAW description;
+      //   4. local-model rewrite into a neutral phrase, then the
+      //      deterministic containment post-filter on the OUTPUT (3-gram +
+      //      entity survival) — a hard reject, not a prompt instruction;
+      //   5. only the depersonalized phrase reaches the adapter (search,
+      //      scrape, and transport payloads); a URL from the raw
+      //      description is passed along only to be re-gated by the
+      //      adapter's domain allowlist.
       const researchAttempted = new Set<string>();
-      if (this.skillSeekersAdapter) {
+      if (this.skillSeekersAdapter && this.autoResearchEnabled) {
         try {
           if (await this.skillSeekersAdapter.isAvailable()) {
             this.skillSeekersAdapter.resetCycleCounter();
@@ -1913,6 +1939,31 @@ export class DreamEngine {
               if (meta.externalResearched) {
                 continue;
               }
+              if (!this.llmCallLocal) {
+                log.debug(
+                  "auto research inactive: no local depersonalization model configured " +
+                    "(memory.dream.modelTiers.localModel) — failing closed, zero egress",
+                );
+                break;
+              }
+              if (!this.researchBudget().reserve(now)) {
+                log.debug("auto research daily budget exhausted — deferring remaining targets");
+                break;
+              }
+              researchAttempted.add(gap.id);
+              if (isSensitiveTopic(gap.description)) {
+                this.recordResearchOutcome(gap.id, "sensitive_skipped");
+                continue;
+              }
+              const phrase = await this.depersonalizeForEgress(gap.description);
+              if (!phrase || containsSourceLeak(gap.description, phrase)) {
+                this.recordResearchOutcome(gap.id, "containment_rejected");
+                continue;
+              }
+              // A URL in the raw description may accompany the phrase ONLY
+              // so the adapter's domain allowlist can independently gate it.
+              const rawUrl = gap.description.match(/https?:\/\/\S+/)?.[0];
+              const egressQuery = rawUrl ? `${phrase} ${rawUrl}` : phrase;
               const category = typeof meta.category === "string" ? meta.category : undefined;
               // Build marketplace hint when this is a market_demand target so the
               // envelope is tagged for revenue attribution downstream.
@@ -1930,11 +1981,11 @@ export class DreamEngine {
                         typeof meta.opportunityId === "string" ? meta.opportunityId : undefined,
                     }
                   : undefined;
-              researchAttempted.add(gap.id);
-              const result = await this.skillSeekersAdapter.fillKnowledgeGap(gap.description, {
+              const result = await this.skillSeekersAdapter.fillKnowledgeGap(egressQuery, {
                 category,
                 marketplace,
                 targetId: gap.id,
+                autoResearch: true,
               });
               if (!result.ok || result.envelopes.length === 0) {
                 const outcome =
@@ -2103,13 +2154,53 @@ export class DreamEngine {
   }
 
   /**
+   * PLAN-34 Phase 2c: local-model-or-nothing depersonalization. The rewrite
+   * runs on this.llmCallLocal ONLY — never the cloud call, never the tier
+   * fallback — because the whole point is that verbatim private content
+   * must not leave the machine in order to be made safe to leave.
+   */
+  private async depersonalizeForEgress(description: string): Promise<string | null> {
+    if (!this.llmCallLocal) {
+      return null;
+    }
+    const prompt =
+      `Rewrite the following private note as a short, neutral web-search topic phrase ` +
+      `(3 to 8 generic words). Output ONLY the phrase. Never include names of people or ` +
+      `organizations, numbers, dates, email addresses, URLs, or any quoted fragment of ` +
+      `the note.\n\nNote: ${description}`;
+    try {
+      const raw = await this.llmCallLocal(prompt);
+      const phrase = raw.trim().split("\n")[0]?.trim().slice(0, 120) ?? "";
+      return phrase.length >= 3 ? phrase : null;
+    } catch (err) {
+      log.debug(`depersonalization failed (fail closed): ${String(err)}`);
+      return null;
+    }
+  }
+
+  /** PLAN-34 Phase 2c: lazily built persisted daily attempt budget. */
+  private researchBudgetInstance: AutoResearchBudget | null = null;
+  private researchBudget(): AutoResearchBudget {
+    if (!this.researchBudgetInstance) {
+      this.researchBudgetInstance = new AutoResearchBudget(this.db, this.autoResearchMaxPerDay);
+    }
+    return this.researchBudgetInstance;
+  }
+
+  /**
    * PLAN-34 Phase 2a: honest research outcomes. Every attempt stamps
    * explored/externalResearched with its outcome code (the Phase 6 funnel
    * reads these); only `resolved` closes the target.
    */
   private recordResearchOutcome(
     targetId: string,
-    outcome: "no_url" | "domain_blocked" | "irrelevant" | "resolved",
+    outcome:
+      | "no_url"
+      | "domain_blocked"
+      | "irrelevant"
+      | "resolved"
+      | "sensitive_skipped"
+      | "containment_rejected",
     relevance?: number,
     resolvedAt?: number,
   ): void {

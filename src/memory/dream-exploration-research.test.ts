@@ -76,8 +76,18 @@ function getTarget(db: DatabaseSync, id: string) {
 const fakeEmbedBatch = async (texts: string[]): Promise<number[][]> =>
   texts.map((t) => (t.includes("RELEVANT") ? [1, 0, 0, 0] : [0, 1, 0, 0]));
 
-const strategyLlm = async () =>
-  JSON.stringify([{ content: "explore the gap", confidence: 0.8, keywords: ["gap"] }]);
+/**
+ * Doubles as the exploration-strategy LLM and the LOCAL depersonalization
+ * model (PLAN-34 Phase 2c): the rewrite prompt gets a fixed neutral phrase
+ * that shares no 3-gram or entity with any test description.
+ */
+const strategyLlm = async (prompt: string) => {
+  if (prompt.includes("Rewrite the following private note")) {
+    return "neutral generic documentation subject";
+  }
+  return JSON.stringify([{ content: "explore the gap", confidence: 0.8, keywords: ["gap"] }]);
+};
+const DEPERSONALIZED = "neutral generic documentation subject";
 
 const noopSynthesize = async () => ({ content: "", confidence: 0 });
 
@@ -129,7 +139,9 @@ describe("exploration mode real research (PLAN-34 Phase 2a)", () => {
     insertTarget(db, { type: "frontier", description: "RELEVANT frontier gap" });
 
     await engine.run({ modes: ["exploration"] });
-    expect(adapter.calls).toEqual(["RELEVANT frontier gap"]);
+    // 2c: the adapter receives the DEPERSONALIZED phrase, never the raw
+    // target description.
+    expect(adapter.calls).toEqual([DEPERSONALIZED]);
   });
 
   it("resolves a target only when the research product is relevant", async () => {
@@ -262,5 +274,123 @@ describe("findings become memory (PLAN-34 Phase 2b)", () => {
     expect(
       db.prepare(`SELECT COUNT(*) AS c FROM chunks WHERE path LIKE 'dream/research/%'`).get(),
     ).toMatchObject({ c: 0 });
+  });
+});
+
+describe("egress safety (PLAN-34 Phase 2c)", () => {
+  it("fails closed with ZERO egress when no local depersonalization model is configured", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    // No localLlmCall: cloud-only engine.
+    const engine = new DreamEngine(
+      db,
+      { llmCall: strategyLlm, minChunksForDream: 3 },
+      noopSynthesize as never,
+      fakeEmbedBatch,
+    );
+    const adapter = makeAdapter({ ok: true, envelopes: [envelopeWith("RELEVANT")] });
+    engine.setSkillSeekersAdapter(adapter);
+    insertTarget(db, { type: "knowledge_gap", description: "RELEVANT gap topic" });
+
+    await engine.run({ modes: ["exploration"] });
+    expect(adapter.calls).toHaveLength(0); // no egress at all
+  });
+
+  it("sensitive topics never leave the machine (deterministic skip-list, outcome recorded)", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const engine = makeEngine(db);
+    const adapter = makeAdapter({ ok: true, envelopes: [envelopeWith("RELEVANT")] });
+    engine.setSkillSeekersAdapter(adapter);
+    const id = insertTarget(db, {
+      type: "knowledge_gap",
+      description: "research medication options for my diagnosis",
+    });
+
+    await engine.run({ modes: ["exploration"] });
+    expect(adapter.calls).toHaveLength(0);
+    const t = getTarget(db, id);
+    expect(t.meta.researchOutcome).toBe("sensitive_skipped");
+    expect(t.resolvedAt).toBeNull();
+  });
+
+  it("a leaking depersonalization output is containment-rejected before any egress", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    // Local model parrots the source verbatim — the deterministic
+    // post-filter must reject it, not the prompt instruction.
+    const leakyLlm = async (prompt: string) =>
+      prompt.includes("Rewrite the following private note")
+        ? "RELEVANT gap topic about the private project"
+        : JSON.stringify([{ content: "s", confidence: 0.8, keywords: [] }]);
+    const engine = new DreamEngine(
+      db,
+      { llmCall: leakyLlm, localLlmCall: leakyLlm, minChunksForDream: 3 },
+      noopSynthesize as never,
+      fakeEmbedBatch,
+    );
+    const adapter = makeAdapter({ ok: true, envelopes: [envelopeWith("RELEVANT")] });
+    engine.setSkillSeekersAdapter(adapter);
+    const id = insertTarget(db, {
+      type: "knowledge_gap",
+      description: "RELEVANT gap topic about the private project",
+    });
+
+    await engine.run({ modes: ["exploration"] });
+    expect(adapter.calls).toHaveLength(0);
+    expect(getTarget(db, id).meta.researchOutcome).toBe("containment_rejected");
+  });
+
+  it("enforces the persisted daily cap across engine restarts (reserve-then-act)", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const mkEngine = () =>
+      new DreamEngine(
+        db,
+        {
+          llmCall: strategyLlm,
+          localLlmCall: strategyLlm,
+          minChunksForDream: 3,
+          autoResearch: { maxPerDay: 1 },
+        },
+        noopSynthesize as never,
+        fakeEmbedBatch,
+      );
+    const engine1 = mkEngine();
+    const adapter1 = makeAdapter({ ok: true, envelopes: [envelopeWith("unrelated")] });
+    engine1.setSkillSeekersAdapter(adapter1);
+    insertTarget(db, { type: "knowledge_gap", description: "RELEVANT first gap" });
+    await engine1.run({ modes: ["exploration"] });
+    expect(adapter1.calls).toHaveLength(1); // budget of 1 consumed
+
+    // "Restart": a NEW engine over the same DB must see the spent budget.
+    const engine2 = mkEngine();
+    const adapter2 = makeAdapter({ ok: true, envelopes: [envelopeWith("unrelated")] });
+    engine2.setSkillSeekersAdapter(adapter2);
+    insertTarget(db, { type: "knowledge_gap", description: "RELEVANT second gap" });
+    await engine2.run({ modes: ["exploration"] });
+    expect(adapter2.calls).toHaveLength(0); // cap survives the restart
+  });
+
+  it("curiosity.autoResearch.enabled=false disables the research branch entirely", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const engine = new DreamEngine(
+      db,
+      {
+        llmCall: strategyLlm,
+        localLlmCall: strategyLlm,
+        minChunksForDream: 3,
+        autoResearch: { enabled: false },
+      },
+      noopSynthesize as never,
+      fakeEmbedBatch,
+    );
+    const adapter = makeAdapter({ ok: true, envelopes: [envelopeWith("RELEVANT")] });
+    engine.setSkillSeekersAdapter(adapter);
+    insertTarget(db, { type: "knowledge_gap", description: "RELEVANT gap topic" });
+
+    await engine.run({ modes: ["exploration"] });
+    expect(adapter.calls).toHaveLength(0);
   });
 });

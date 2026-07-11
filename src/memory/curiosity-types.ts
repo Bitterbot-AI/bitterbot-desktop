@@ -102,6 +102,15 @@ export type CuriosityWeights = {
 export type CuriosityConfig = {
   /** Enable curiosity engine. Default: true. */
   enabled?: boolean;
+  /**
+   * PLAN-34 Phase 2c: autonomous research egress controls — the ONLY new
+   * config the plan introduces on the curiosity side. enabled default
+   * true; maxPerDay default 10 (persisted UTC-day attempt counter,
+   * reserve-then-act). External research additionally requires a local
+   * depersonalization model (memory.dream.modelTiers.localModel); without
+   * one it fails closed to zero egress.
+   */
+  autoResearch?: { enabled?: boolean; maxPerDay?: number };
   /** Component weights for reward computation (legacy heuristic — ignored when GCCRF active). */
   weights?: Partial<CuriosityWeights>;
   /** Composite reward threshold to boost importance. Default: 0.4. */

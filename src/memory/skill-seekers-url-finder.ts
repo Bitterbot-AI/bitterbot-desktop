@@ -61,6 +61,11 @@ export interface SkillSeekersUrlFinder {
  * Build a URL finder from the Bitterbot config. Returns null if web search is
  * disabled or no API key is configured — the adapter will then skip the
  * fallback entirely rather than failing loudly.
+ *
+ * PLAN-34 Phase 2c: generalized beyond Brave. Brave keeps its lean native
+ * path; every other configured provider (perplexity/grok/tavily) rides the
+ * web_search tool's own provider dispatch (same keys, caching, timeouts)
+ * via runConfiguredWebSearch, with the same authoritative-result picker.
  */
 export function buildUrlFinder(cfg: BitterbotConfig | null): SkillSeekersUrlFinder | null {
   if (!cfg) {
@@ -70,20 +75,44 @@ export function buildUrlFinder(cfg: BitterbotConfig | null): SkillSeekersUrlFind
   if (!search || search.enabled === false) {
     return null;
   }
-  // Only Brave is wired for now — it's the default and has a simple API surface.
-  // Perplexity/Grok/Tavily provide richer answers but would over-index on LLM
-  // synthesis rather than pointing to a canonical docs URL.
   const provider = typeof search.provider === "string" ? search.provider : "brave";
-  if (provider !== "brave") {
-    return null;
+  if (provider === "brave") {
+    const apiKey =
+      normalizeSecretInput(typeof search.apiKey === "string" ? search.apiKey : "") ||
+      normalizeSecretInput(process.env.BRAVE_API_KEY);
+    if (!apiKey) {
+      return null;
+    }
+    return new BraveUrlFinder(apiKey);
   }
-  const apiKey =
-    normalizeSecretInput(typeof search.apiKey === "string" ? search.apiKey : "") ||
-    normalizeSecretInput(process.env.BRAVE_API_KEY);
-  if (!apiKey) {
-    return null;
+  return new ConfiguredProviderUrlFinder(cfg);
+}
+
+/**
+ * Provider-agnostic finder: delegates the search to the web_search tool's
+ * provider machinery and applies the same authoritative picker. Capability
+ * detection (keys, enablement) happens inside runConfiguredWebSearch at
+ * call time, so a missing key degrades to null exactly like before.
+ */
+class ConfiguredProviderUrlFinder implements SkillSeekersUrlFinder {
+  constructor(private readonly cfg: BitterbotConfig) {}
+
+  async findAuthoritativeUrl(query: string, hints?: { category?: string }): Promise<string | null> {
+    const refinedQuery = hints?.category
+      ? `${query} ${hints.category} documentation`
+      : `${query} documentation`;
+    try {
+      const { runConfiguredWebSearch } = await import("../agents/tools/web-search.js");
+      const results = await runConfiguredWebSearch(this.cfg, refinedQuery, FINDER_RESULT_COUNT);
+      if (!results) {
+        return null;
+      }
+      return pickAuthoritative(results);
+    } catch (err) {
+      log.debug(`URL finder (configured provider) error: ${String(err)}`);
+      return null;
+    }
   }
-  return new BraveUrlFinder(apiKey);
 }
 
 class BraveUrlFinder implements SkillSeekersUrlFinder {

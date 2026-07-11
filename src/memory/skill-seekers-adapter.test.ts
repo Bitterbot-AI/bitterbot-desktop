@@ -446,3 +446,56 @@ describe("SkillSeekersAdapter", () => {
     });
   });
 });
+
+describe("PLAN-34 Phase 2c — auto-research egress bounds", () => {
+  async function makeAdapterWithDb() {
+    const sqlite = await import("node:sqlite");
+    const db = new sqlite.DatabaseSync(":memory:");
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS research_egress_log (
+        id TEXT PRIMARY KEY, seam TEXT NOT NULL, destination TEXT NOT NULL,
+        payload_hash TEXT NOT NULL, payload_len INTEGER NOT NULL, created_at INTEGER NOT NULL
+      )
+    `);
+    const { SkillSeekersAdapter } = await import("./skill-seekers-adapter.js");
+    return { db, SkillSeekersAdapter };
+  }
+
+  it("auto research is bounded by the built-in domain allowlist when none is configured", async () => {
+    const { db, SkillSeekersAdapter } = await makeAdapterWithDb();
+    const adapter = new SkillSeekersAdapter(db, { enabled: true });
+    // Non-allowlisted host: blocked BEFORE any network activity.
+    const blocked = await adapter.fillKnowledgeGap(
+      "look into https://evil.example.com/docs/x.pdf",
+      {
+        autoResearch: true,
+      },
+    );
+    expect(blocked.ok).toBe(false);
+    expect(blocked.error).toBe("domain_blocked");
+    // The same URL WITHOUT the flag passes the domain gate (permissive
+    // interactive default) — it fails later on transport resolution for a
+    // .pdf, proving the gate itself was the difference.
+    const interactive = await adapter.fillKnowledgeGap(
+      "look into https://evil.example.com/docs/x.pdf",
+      { autoResearch: false },
+    );
+    expect(interactive.error).not.toBe("domain_blocked");
+  });
+
+  it("the web-search seam writes an egress-log row with the outgoing query", async () => {
+    const { db, SkillSeekersAdapter } = await makeAdapterWithDb();
+    const adapter = new SkillSeekersAdapter(db, { enabled: true, useWebSearchFallback: true });
+    adapter.setWebSearch({ findAuthoritativeUrl: async () => null });
+    await adapter.fillKnowledgeGap("neutral depersonalized phrase", { autoResearch: true });
+    const rows = db
+      .prepare(`SELECT seam, destination, payload_len FROM research_egress_log`)
+      .all() as Array<{ seam: string; destination: string; payload_len: number }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      seam: "search-query",
+      destination: "web-search",
+      payload_len: "neutral depersonalized phrase".length,
+    });
+  });
+});

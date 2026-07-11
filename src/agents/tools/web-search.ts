@@ -939,6 +939,67 @@ export function createWebSearchTool(options?: {
   };
 }
 
+/**
+ * PLAN-34 Phase 2c: provider-agnostic search for non-tool callers (the
+ * Skill-Seekers URL finder). Resolves the CONFIGURED provider — brave,
+ * perplexity, grok, or tavily — exactly like the web_search tool (same
+ * keys, caching, timeouts) and returns normalized {title, url} results.
+ * Null when web search is unavailable (disabled or no API key).
+ */
+export async function runConfiguredWebSearch(
+  cfg: BitterbotConfig | undefined,
+  query: string,
+  count = DEFAULT_SEARCH_COUNT,
+): Promise<Array<{ title: string; url: string }> | null> {
+  const search = resolveSearchConfig(cfg);
+  if (!resolveSearchEnabled({ search })) {
+    return null;
+  }
+  const provider = resolveSearchProvider(search);
+  const perplexityConfig = resolvePerplexityConfig(search);
+  const grokConfig = resolveGrokConfig(search);
+  const tavilyConfig = resolveTavilyConfig(search);
+  const perplexityAuth =
+    provider === "perplexity" ? resolvePerplexityApiKey(perplexityConfig) : undefined;
+  const apiKey =
+    provider === "perplexity"
+      ? perplexityAuth?.apiKey
+      : provider === "grok"
+        ? resolveGrokApiKey(grokConfig)
+        : provider === "tavily"
+          ? resolveTavilyApiKey(tavilyConfig)
+          : resolveSearchApiKey(search);
+  if (!apiKey) {
+    return null;
+  }
+  const payload = await runWebSearch({
+    query,
+    count: resolveSearchCount(count, DEFAULT_SEARCH_COUNT),
+    apiKey,
+    timeoutSeconds: resolveTimeoutSeconds(search?.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS),
+    cacheTtlMs: resolveCacheTtlMs(search?.cacheTtlMinutes, DEFAULT_CACHE_TTL_MINUTES),
+    provider,
+    perplexityBaseUrl: resolvePerplexityBaseUrl(
+      perplexityConfig,
+      perplexityAuth?.source,
+      perplexityAuth?.apiKey,
+    ),
+    perplexityModel: resolvePerplexityModel(perplexityConfig),
+    grokModel: resolveGrokModel(grokConfig),
+    grokInlineCitations: resolveGrokInlineCitations(grokConfig),
+    tavilySearchDepth: resolveTavilySearchDepth(tavilyConfig),
+  });
+  const results = Array.isArray((payload as { results?: unknown }).results)
+    ? ((payload as { results: unknown[] }).results as Array<Record<string, unknown>>)
+    : [];
+  return results
+    .map((r) => {
+      const url = typeof r.url === "string" ? r.url : "";
+      return { title: typeof r.title === "string" && r.title ? r.title : url, url };
+    })
+    .filter((r) => r.url.length > 0);
+}
+
 export const __testing = {
   inferPerplexityBaseUrlFromApiKey,
   resolvePerplexityBaseUrl,
