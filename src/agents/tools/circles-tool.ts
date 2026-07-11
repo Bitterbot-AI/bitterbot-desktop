@@ -130,8 +130,9 @@ export function createCirclesTool(options: {
   agentSessionKey?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  // Dark by default: no tool when circles are off (mirrors the invisible
-  // A2A surface + the gated system-prompt fragment).
+  // No tool when circles are off (mirrors the invisible A2A surface + the
+  // gated system-prompt fragment). enabled defaults ON; only an explicit
+  // circles.enabled=false hides this surface.
   if (!cfg || cfg.circles?.enabled !== true) {
     return null;
   }

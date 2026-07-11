@@ -144,7 +144,7 @@ export type BitterbotConfig = {
   p2p?: P2pConfig;
   a2a?: A2aConfig;
   commerce?: CommerceConfig;
-  /** PLAN-31: Circles, the agent social fabric. Dark by default (§8). */
+  /** PLAN-31: Circles, the agent social fabric. ON by default since the 2026-07-09 red-team phase (§8). */
   circles?: CirclesConfig;
   cron?: CronConfig;
 };

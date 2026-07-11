@@ -291,8 +291,8 @@ export function createA2aHttpHandler(opts: {
     }
 
     // PLAN-31 C1: circle verbs — the friend branch. Kill-switched
-    // (circles.enabled, default OFF until the C2 security review, §8);
-    // disabled nodes answer METHOD_NOT_FOUND so the surface is invisible.
+    // (circles.enabled, ON by default since the 2026-07-09 red-team phase, §8);
+    // explicitly-disabled nodes answer METHOD_NOT_FOUND so the surface is invisible.
     // Auth is per-verb inside handleCircleMethod: signed circle/v1 envelope
     // + active membership + scope (default-deny) + per-member rate limits;
     // circle/join proves possession of the invite secret instead.

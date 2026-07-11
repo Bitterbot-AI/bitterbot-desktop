@@ -522,7 +522,7 @@ export const BitterbotSchema = z
       })
       .strict()
       .optional(),
-    // PLAN-31: Circles — the agent social fabric. Dark by default (§8).
+    // PLAN-31: Circles — the agent social fabric. ON by default since the 2026-07-09 red-team phase (§8).
     circles: z
       .object({
         enabled: z.boolean().optional(),

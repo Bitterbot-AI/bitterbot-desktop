@@ -22,7 +22,7 @@ describe("circles config schema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts an empty circles block and a missing one (dark by default)", () => {
+  it("accepts an empty circles block and a missing one (defaults filled by applyCirclesDefaults)", () => {
     expect(BitterbotSchema.safeParse({ circles: {} }).success).toBe(true);
     expect(BitterbotSchema.safeParse({}).success).toBe(true);
   });

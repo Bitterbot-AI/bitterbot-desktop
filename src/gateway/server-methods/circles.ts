@@ -12,8 +12,9 @@
  *  circles.send    — send a message/ask/answer into a circle as our agent.
  *  circles.messages— the conversation buffer for a circle (wrapped inbound).
  *
- * Everything requires the circles.enabled kill switch (PLAN-31 §8: dark by
- * default until the C2 security review) and answers UNAVAILABLE when off.
+ * Everything is gated by the circles.enabled kill switch (PLAN-31 §8), which
+ * defaults ON since the 2026-07-09 red-team phase; handlers answer UNAVAILABLE
+ * only when a node explicitly sets circles.enabled=false.
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -45,7 +46,7 @@ async function getService(): Promise<
   if (config.circles?.enabled !== true) {
     return {
       ok: false,
-      error: "circles are disabled (set circles.enabled=true; ships dark per PLAN-31 §8)",
+      error: "circles are disabled on this node (circles.enabled=false; the default is ON)",
     };
   }
   const db = await getCirclesDb();
