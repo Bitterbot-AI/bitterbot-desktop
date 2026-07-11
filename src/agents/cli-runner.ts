@@ -128,11 +128,19 @@ export async function runCliAgent(params: {
   }).catch(() => undefined);
 
   // PLAN-34 Phase 2b: idle-research findings surface on the next live turn.
+  // Phase 2 adversarial fix: gate consumption to a genuine first-party live
+  // turn so a subagent/cron/hook session routed to a CLI provider cannot
+  // drain (and leak) the owner's brief into a child transcript.
+  const { classifySessionKeyTrust } = await import("../memory/session-trust.js");
+  const cliLiveUserTurn =
+    Boolean(params.prompt) &&
+    classifySessionKeyTrust(params.sessionKey ?? params.sessionId ?? "") === "first_party";
   const { resolveResearchFindingsBlock } = await import("./research-findings-block.js");
   const researchFindings = await resolveResearchFindingsBlock({
     config: params.config,
     agentId: sessionAgentId,
     promptMode: "full",
+    liveUserTurn: cliLiveUserTurn,
   }).catch(() => undefined);
 
   const systemPrompt = buildSystemPrompt({

@@ -22,6 +22,13 @@ export type RunEmbeddedPiAgentParams = {
   sessionId: string;
   sessionKey?: string;
   agentId?: string;
+  /**
+   * PLAN-34 Phase 2 adversarial fix: true when this run is a background
+   * heartbeat, whose reply is discarded (HEARTBEAT_OK). Gates one-shot
+   * surfacing (research findings) so a heartbeat cannot silently consume
+   * the owner's next-live-turn brief.
+   */
+  isHeartbeat?: boolean;
   messageChannel?: string;
   messageProvider?: string;
   agentAccountId?: string;

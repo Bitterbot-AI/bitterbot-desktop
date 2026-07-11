@@ -76,3 +76,31 @@ describe("resolveResearchFindingsBlock", () => {
     expect(await resolve({ promptMode: "full" })).toBeUndefined();
   });
 });
+
+describe("resolveResearchFindingsBlock — liveUserTurn gate (Phase 2 adv. fix)", () => {
+  it("does NOT consume when liveUserTurn is false (heartbeat/subagent/cron/hook)", async () => {
+    managerAvailable = true;
+    findingsQueue = [{ finding: "f", sourceUrl: null }];
+    const { resolveResearchFindingsBlock } = await import("./research-findings-block.js");
+    const block = await resolveResearchFindingsBlock({
+      agentId: "test",
+      promptMode: "full",
+      liveUserTurn: false,
+    });
+    expect(block).toBeUndefined();
+    expect(findingsQueue).toHaveLength(1); // not drained
+  });
+
+  it("consumes when liveUserTurn is true", async () => {
+    managerAvailable = true;
+    findingsQueue = [{ finding: "looked into X", sourceUrl: null }];
+    const { resolveResearchFindingsBlock } = await import("./research-findings-block.js");
+    const block = await resolveResearchFindingsBlock({
+      agentId: "test",
+      promptMode: "full",
+      liveUserTurn: true,
+    });
+    expect(block).toContain("looked into X");
+    expect(findingsQueue).toHaveLength(0);
+  });
+});

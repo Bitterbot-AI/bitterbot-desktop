@@ -50,6 +50,69 @@ describe("containsSourceLeak", () => {
   });
 });
 
+describe("containsSourceLeak — strengthened entity coverage (Phase 2 adv. fix)", () => {
+  it("catches bare hostnames and dotted slugs (no scheme, below the 3-gram floor)", () => {
+    expect(
+      containsSourceLeak(
+        "route through forage.post for bounty submission",
+        "bounty via forage.post",
+      ),
+    ).toBe(true);
+    expect(
+      containsSourceLeak(
+        "traffic stats for bitterbot.ai relay fleet",
+        "relay fleet stats bitterbot.ai",
+      ),
+    ).toBe(true);
+    expect(
+      containsSourceLeak(
+        "a2a.bitterbot.ai gateway health",
+        "gateway health a2a.bitterbot.ai check",
+      ),
+    ).toBe(true);
+  });
+
+  it("catches single proper nouns, codenames, and possessive-broken names", () => {
+    expect(
+      containsSourceLeak("Bitterbot census undercount over 10k", "Bitterbot census methods"),
+    ).toBe(true);
+    expect(
+      containsSourceLeak("the Aubaine protocol escrow at MOQ", "Aubaine escrow strategies"),
+    ).toBe(true);
+    expect(
+      containsSourceLeak("Notes from Victor Gil on wallet", "Victor plans for wallet setup"),
+    ).toBe(true);
+  });
+
+  it("catches accented-Latin evasion of an identifier (NFKD fold)", () => {
+    // Precomposed Latin \u00ed decomposes under NFKD, so "V\u00edctor G\u00edl" folds to
+    // the source's ascii form and is caught. Cross-script confusables
+    // (Cyrillic 'i') are a documented residual — they need a confusables
+    // table and require the LOCAL model to emit them.
+    expect(
+      containsSourceLeak(
+        "Notes on Victor Gil planning the wallet",
+        "V\u00edctor G\u00edl wallet plans",
+      ),
+    ).toBe(true);
+  });
+
+  it("still passes a genuinely neutral technical rewrite with no shared entity or 3-gram", () => {
+    expect(
+      containsSourceLeak(
+        "New frontier opened by dream insight: Victor ships the a2a.bitterbot.ai relay",
+        "peer to peer message relay design patterns",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not falsely flag common capitalized sentence-starters as entities", () => {
+    expect(
+      containsSourceLeak("The user wants agent memory research", "agent memory consolidation"),
+    ).toBe(false);
+  });
+});
+
 describe("AutoResearchBudget", () => {
   function makeDb(): DatabaseSync {
     const db = new DatabaseSync(":memory:");

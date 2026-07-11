@@ -9,6 +9,7 @@
 import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
+import { containsSourceLeak as containsSourceLeakInEgress } from "./auto-research-egress.js";
 import { DreamEngine } from "./dream-engine.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 
@@ -392,5 +393,114 @@ describe("egress safety (PLAN-34 Phase 2c)", () => {
 
     await engine.run({ modes: ["exploration"] });
     expect(adapter.calls).toHaveLength(0);
+  });
+});
+
+describe("egress hardening (PLAN-34 Phase 2 adversarial fixes)", () => {
+  it("a cloud model named as the local model does NOT depersonalize/egress (localModelIsLocal=false)", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const engine = new DreamEngine(
+      db,
+      // localLlmCall wired, but the manager flagged the spec as NOT local.
+      {
+        llmCall: strategyLlm,
+        localLlmCall: strategyLlm,
+        localModelIsLocal: false,
+        minChunksForDream: 3,
+      },
+      noopSynthesize as never,
+      fakeEmbedBatch,
+    );
+    const adapter = makeAdapter({ ok: true, envelopes: [envelopeWith("RELEVANT")] });
+    engine.setSkillSeekersAdapter(adapter);
+    insertTarget(db, { type: "knowledge_gap", description: "RELEVANT gap topic" });
+
+    await engine.run({ modes: ["exploration"] });
+    expect(adapter.calls).toHaveLength(0); // no verbatim note ever left the machine
+  });
+
+  it("a transient model outage records transient_error and keeps the target retryable", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    // Local model throws (outage) on the depersonalization prompt.
+    const throwingLocal = async (prompt: string) => {
+      if (prompt.includes("Rewrite the following private note")) {
+        throw new Error("local model unavailable");
+      }
+      return JSON.stringify([{ content: "s", confidence: 0.8, keywords: [] }]);
+    };
+    const engine = new DreamEngine(
+      db,
+      { llmCall: throwingLocal, localLlmCall: throwingLocal, minChunksForDream: 3 },
+      noopSynthesize as never,
+      fakeEmbedBatch,
+    );
+    engine.setSkillSeekersAdapter(makeAdapter({ ok: true, envelopes: [envelopeWith("RELEVANT")] }));
+    const id = insertTarget(db, { type: "knowledge_gap", description: "RELEVANT gap topic" });
+
+    await engine.run({ modes: ["exploration"] });
+    const t = getTarget(db, id);
+    expect(t.meta.researchOutcome).toBe("transient_error");
+    expect(t.meta.externalResearched).toBeFalsy(); // NOT retired — retries next cycle
+    expect(t.resolvedAt).toBeNull();
+  });
+
+  it("a search-provider error is transient, not a terminal no_url retire", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const engine = makeEngine(db);
+    engine.setSkillSeekersAdapter(
+      makeAdapter({ ok: false, envelopes: [], error: "search_provider_error" }),
+    );
+    const id = insertTarget(db, { type: "knowledge_gap", description: "RELEVANT gap topic" });
+
+    await engine.run({ modes: ["exploration"] });
+    const t = getTarget(db, id);
+    expect(t.meta.researchOutcome).toBe("transient_error");
+    expect(t.meta.externalResearched).toBeFalsy();
+  });
+
+  it("acceptance: a description-embedded URL never rides to the adapter; the egressed query leaks no source 3-gram or entity", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const engine = makeEngine(db);
+    const adapter = makeAdapter({ ok: false, envelopes: [], error: "no_url_in_gap_description" });
+    engine.setSkillSeekersAdapter(adapter);
+    const description =
+      "RELEVANT investigate https://github.com/Victor-Gil/private-notes?q=aubaine partners";
+    insertTarget(db, { type: "knowledge_gap", description });
+
+    await engine.run({ modes: ["exploration"] });
+    expect(adapter.calls).toHaveLength(1);
+    const egressed = adapter.calls[0];
+    // The raw URL never leaves.
+    expect(egressed).not.toContain("github.com");
+    expect(egressed).not.toContain("aubaine");
+    expect(egressed).not.toContain("Victor");
+    // Plan acceptance: no source 3-gram and no source entity in the query.
+    expect(containsSourceLeakInEgress(description, egressed)).toBe(false);
+  });
+
+  it("already-externalResearched targets are excluded at the query, freeing the research window", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const engine = makeEngine(db);
+    const adapter = makeAdapter({ ok: true, envelopes: [envelopeWith("RELEVANT")] });
+    engine.setSkillSeekersAdapter(adapter);
+    // Three high-priority targets already terminally researched...
+    for (let i = 0; i < 3; i++) {
+      insertTarget(db, {
+        type: "knowledge_gap",
+        description: `RELEVANT done ${i}`,
+        priority: 0.99,
+        metadata: JSON.stringify({ externalResearched: 1 }),
+      });
+    }
+    // ...and one fresh lower-priority target must still get its attempt.
+    insertTarget(db, { type: "knowledge_gap", description: "RELEVANT fresh one", priority: 0.5 });
+
+    await engine.run({ modes: ["exploration"] });
+    expect(adapter.calls).toHaveLength(1);
   });
 });

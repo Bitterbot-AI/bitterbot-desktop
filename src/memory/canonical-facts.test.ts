@@ -540,17 +540,26 @@ describe("web_research tier (PLAN-34 Phase 2b)", () => {
 
   it("N repeated web strengthens never outrank or evict a deliberate pin", () => {
     const db = makeDb();
-    const store = new CanonicalFactsStore(db, { maxFacts: 2 });
+    // Room for all three so the web fact really ADDs then STRENGTHENs.
+    const store = new CanonicalFactsStore(db, { maxFacts: 3 });
     store.pin({ key: "identity.user_name", value: "Victor", source: "user_directive" });
     store.pin({ key: "project.repo", value: "github.com/org/alpha", source: "agent_pin" });
-    // Hammer one key with web corroboration...
-    store.pin({ key: "infra.cdn", value: "cdn.example", source: "web_research" });
+    expect(store.pin({ key: "infra.cdn", value: "cdn.example", source: "web_research" }).op).toBe(
+      "add",
+    );
+    // Hammer the web fact with 25 real STRENGTHENs...
     for (let i = 0; i < 25; i++) {
-      store.pin({ key: "infra.cdn", value: "cdn.example", source: "web_research" });
+      expect(store.pin({ key: "infra.cdn", value: "cdn.example", source: "web_research" }).op).toBe(
+        "strengthen",
+      );
     }
-    // ...the web fact was never even ADDed (cap full of tier-2 facts), and
-    // both deliberate pins are untouched and still active.
-    expect(store.get("infra.cdn")).toBeNull();
+    const web = store.get("infra.cdn")!;
+    expect(web.corroborationCount).toBe(25); // counted...
+    expect(web.mentionCount).toBe(1); // ...but confidence/mentions never moved
+    // Now a deliberate pin needs the slot: the web fact is the tier-0 victim,
+    // never either deliberate pin.
+    store.pin({ key: "infra.gateway", value: "gw.example", source: "user_directive" });
+    expect(store.get("infra.cdn")!.status).toBe("retired");
     expect(store.get("identity.user_name")!.status).toBe("active");
     expect(store.get("project.repo")!.status).toBe("active");
   });
@@ -575,5 +584,34 @@ describe("web_research tier (PLAN-34 Phase 2b)", () => {
     const capped = canonicalPromotionScore({ ...base, corroborationCount: 1000 }, now);
     expect(capped).toBeGreaterThan(plain);
     expect(capped / plain).toBeLessThanOrEqual(1.05 + 1e-9); // hard cap: +5%
+  });
+});
+
+describe("tier-first eviction atomicity (PLAN-34 Phase 2 adversarial fix)", () => {
+  it("a rejected lower-tier ADD retires NOTHING (atomic — no partial evictions)", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db, { maxFacts: 2 });
+    store.pin({ key: "identity.user_name", value: "Victor", source: "user_directive" });
+    store.pin({ key: "project.repo", value: "github.com/org/a", source: "agent_pin" });
+    // Ledger full of tier-2 facts; a tier-0 ADD cannot displace them.
+    const r = store.pin({ key: "infra.cdn", value: "cdn.example", source: "web_research" });
+    expect(r.op).toBe("rejected");
+    // Both deliberate pins remain ACTIVE — nothing was retired.
+    expect(store.get("identity.user_name")!.status).toBe("active");
+    expect(store.get("project.repo")!.status).toBe("active");
+    expect(store.listActive()).toHaveLength(2);
+  });
+
+  it("a same-tier ADD does not displace a higher-scored same-tier fact", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db, { maxFacts: 1 });
+    // A well-confirmed extraction fact holds the single slot.
+    store.pin({ key: "infra.a", value: "v1", source: "extraction", confidence: 0.9 });
+    store.pin({ key: "infra.a", value: "v1", source: "extraction" }); // strengthen
+    // A fresh same-tier ADD (mention_count 1) scores lower → rejected.
+    const r = store.pin({ key: "infra.b", value: "v2", source: "extraction", confidence: 0.3 });
+    expect(r.op).toBe("rejected");
+    expect(store.get("infra.a")!.status).toBe("active");
+    expect(store.get("infra.b")).toBeNull();
   });
 });

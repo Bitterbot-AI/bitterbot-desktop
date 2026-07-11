@@ -716,7 +716,19 @@ export class SkillSeekersAdapter {
           });
         }
       } catch (err) {
+        // PLAN-34 Phase 2 adversarial fix: a provider exception is TRANSIENT
+        // — surface a distinct code so the caller does not permanently
+        // retire the target under a misleading "no URL" outcome.
         log.debug(`Web search fallback failed: ${String(err)}`);
+        return {
+          ok: false,
+          envelopes: [],
+          ingested: [],
+          conflicts: [],
+          sourceUrl: "",
+          error: "search_provider_error",
+          elapsedMs: 0,
+        };
       }
     }
 
@@ -796,25 +808,25 @@ export class SkillSeekersAdapter {
   private isDomainAllowed(url: string, autoResearch = false): boolean {
     let hostname: string;
     try {
-      hostname = new URL(url).hostname;
+      hostname = new URL(url).hostname.toLowerCase();
     } catch {
       return false;
     }
 
     if (this.config.blockedDomains.length > 0) {
-      if (this.config.blockedDomains.some((d) => hostname.endsWith(d))) {
+      if (this.config.blockedDomains.some((d) => hostMatchesDomain(hostname, d))) {
         return false;
       }
     }
     if (this.config.allowedDomains.length > 0) {
-      return this.config.allowedDomains.some((d) => hostname.endsWith(d));
+      return this.config.allowedDomains.some((d) => hostMatchesDomain(hostname, d));
     }
     // PLAN-34 Phase 2c: autonomous research is never unbounded — with no
     // configured allowlist, a non-empty built-in default (documentation
     // hosts) bounds what auto research may fetch. Interactive ingestion
     // (tools, marketplace) keeps the permissive default.
     if (autoResearch) {
-      return DEFAULT_AUTORESEARCH_ALLOWED_DOMAINS.some((d) => hostname.endsWith(d));
+      return DEFAULT_AUTORESEARCH_ALLOWED_DOMAINS.some((d) => hostMatchesDomain(hostname, d));
     }
     return true;
   }
@@ -903,6 +915,15 @@ function safeHost(url: string): string {
   } catch {
     return url.slice(0, 100);
   }
+}
+
+/**
+ * PLAN-34 Phase 2 adversarial fix: dot-anchored domain match. `github.io`
+ * matches `github.io` and `x.github.io`, never `evilgithub.io`.
+ */
+function hostMatchesDomain(hostname: string, domain: string): boolean {
+  const d = domain.toLowerCase().replace(/^\.+/, "");
+  return hostname === d || hostname.endsWith(`.${d}`);
 }
 
 async function runSkillSeekers(

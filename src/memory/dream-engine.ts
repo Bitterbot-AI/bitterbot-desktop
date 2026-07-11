@@ -172,6 +172,13 @@ export class DreamEngine {
   /** PLAN-34 Phase 2c: autonomous research egress controls. */
   private readonly autoResearchEnabled: boolean;
   private readonly autoResearchMaxPerDay: number;
+  /**
+   * PLAN-34 Phase 2 adversarial fix: true only when localLlmCall resolves
+   * to a genuinely LOCAL model. Depersonalization egress is gated on this,
+   * so a cloud model named as modelTiers.localModel cannot receive the
+   * verbatim private note.
+   */
+  private readonly localModelIsLocal: boolean;
   private state: DreamState = "DORMANT";
   private lastModeUsed: DreamMode | null = null;
 
@@ -207,6 +214,10 @@ export class DreamEngine {
     this.autoResearchEnabled = config?.autoResearch?.enabled !== false;
     this.autoResearchMaxPerDay =
       config?.autoResearch?.maxPerDay ?? AUTO_RESEARCH_DEFAULT_MAX_PER_DAY;
+    // localModelIsLocal defaults to whether a local call was provided AND
+    // the manager flagged the spec local. Tests that inject localLlmCall
+    // directly are treated as local (no cloud spec to inspect).
+    this.localModelIsLocal = config?.localModelIsLocal ?? Boolean(config?.localLlmCall);
     // Tiered compute routing
     this.modeTiers = { ...DEFAULT_MODE_TIERS, ...config?.modelTiers?.modeTiers };
     this.fallbackToCloud = config?.modelTiers?.fallbackToCloud ?? true;
@@ -1922,27 +1933,49 @@ export class DreamEngine {
       //      scrape, and transport payloads); a URL from the raw
       //      description is passed along only to be re-gated by the
       //      adapter's domain allowlist.
+      // PLAN-34 Phase 2 adversarial fix: the local-model requirement is
+      // MECHANICAL, not just "a local call is wired". A cloud model named as
+      // modelTiers.localModel would send the verbatim private note to a
+      // cloud API — so the manager passes localModelIsLocal and we fail
+      // closed unless it is genuinely local.
       const researchAttempted = new Set<string>();
       if (this.skillSeekersAdapter && this.autoResearchEnabled) {
         try {
           if (await this.skillSeekersAdapter.isAvailable()) {
             this.skillSeekersAdapter.resetCycleCounter();
-            const gaps = targets.filter(
-              (t) =>
-                t.type === "knowledge_gap" || t.type === "market_demand" || t.type === "frontier",
-            );
+            // Dedicated research-candidate query (Phase 2 adversarial fix):
+            // the outer strategy targets are LIMIT-3 by priority, so a few
+            // already-researched high-priority targets would permanently
+            // clog the window. Select research gaps directly, EXCLUDING any
+            // target already terminally externalResearched, so fresh and
+            // transiently-failed targets always get their turn.
+            const gaps = this.db
+              .prepare(
+                `SELECT id, type, description, priority, region_id, metadata
+                 FROM curiosity_targets
+                 WHERE resolved_at IS NULL AND expires_at > ?
+                   AND type IN ('knowledge_gap','market_demand','frontier')
+                   AND COALESCE(json_extract(metadata, '$.externalResearched'), 0) IN (0)
+                 ORDER BY priority DESC
+                 LIMIT 5`,
+              )
+              .all(Date.now()) as Array<{
+              id: string;
+              type: string;
+              description: string;
+              priority: number;
+              region_id: string | null;
+              metadata: string;
+            }>;
             for (const gap of gaps) {
               if (this.skillSeekersAdapter.budgetRemaining() <= 0) {
                 break;
               }
               const meta = JSON.parse(gap.metadata || "{}") as Record<string, unknown>;
-              if (meta.externalResearched) {
-                continue;
-              }
-              if (!this.llmCallLocal) {
+              if (!this.llmCallLocal || !this.localModelIsLocal) {
                 log.debug(
-                  "auto research inactive: no local depersonalization model configured " +
-                    "(memory.dream.modelTiers.localModel) — failing closed, zero egress",
+                  "auto research inactive: no genuinely-local depersonalization model " +
+                    "configured (memory.dream.modelTiers.localModel) — failing closed, zero egress",
                 );
                 break;
               }
@@ -1955,15 +1988,28 @@ export class DreamEngine {
                 this.recordResearchOutcome(gap.id, "sensitive_skipped");
                 continue;
               }
-              const phrase = await this.depersonalizeForEgress(gap.description);
+              // depersonalizeForEgress returns null on a genuine empty/junk
+              // rewrite (terminal) and throws on a model outage (transient) —
+              // a model outage must NOT be recorded as containment_rejected
+              // and must NOT retire the target.
+              let phrase: string | null;
+              try {
+                phrase = await this.depersonalizeForEgress(gap.description);
+              } catch {
+                this.recordResearchOutcome(gap.id, "transient_error", undefined, undefined, false);
+                continue;
+              }
               if (!phrase || containsSourceLeak(gap.description, phrase)) {
                 this.recordResearchOutcome(gap.id, "containment_rejected");
                 continue;
               }
-              // A URL in the raw description may accompany the phrase ONLY
-              // so the adapter's domain allowlist can independently gate it.
-              const rawUrl = gap.description.match(/https?:\/\/\S+/)?.[0];
-              const egressQuery = rawUrl ? `${phrase} ${rawUrl}` : phrase;
+              // PLAN-34 §5.3: the transport receives ONLY the depersonalized
+              // phrase — a URL from the raw description is NEVER passed
+              // through (its path/query can carry private content, and the
+              // plan bars fetching description-sourced URLs). Auto research
+              // reaches the web solely via the phrase -> authoritative-URL
+              // search path, itself domain-allowlist gated.
+              const egressQuery = phrase;
               const category = typeof meta.category === "string" ? meta.category : undefined;
               // Build marketplace hint when this is a market_demand target so the
               // envelope is tagged for revenue attribution downstream.
@@ -1988,11 +2034,24 @@ export class DreamEngine {
                 autoResearch: true,
               });
               if (!result.ok || result.envelopes.length === 0) {
-                const outcome =
-                  result.error === "domain_blocked" || result.error === "domain_blocked_via_search"
-                    ? "domain_blocked"
-                    : "no_url";
-                this.recordResearchOutcome(gap.id, outcome);
+                if (
+                  result.error === "domain_blocked" ||
+                  result.error === "domain_blocked_via_search"
+                ) {
+                  this.recordResearchOutcome(gap.id, "domain_blocked");
+                } else if (result.error === "search_provider_error") {
+                  // Transient: a provider 500/timeout must not retire the
+                  // target under a "no URL" code — leave it open for retry.
+                  this.recordResearchOutcome(
+                    gap.id,
+                    "transient_error",
+                    undefined,
+                    undefined,
+                    false,
+                  );
+                } else {
+                  this.recordResearchOutcome(gap.id, "no_url");
+                }
                 continue;
               }
               const relevance = await this.scoreResearchRelevance(
@@ -2168,14 +2227,12 @@ export class DreamEngine {
       `(3 to 8 generic words). Output ONLY the phrase. Never include names of people or ` +
       `organizations, numbers, dates, email addresses, URLs, or any quoted fragment of ` +
       `the note.\n\nNote: ${description}`;
-    try {
-      const raw = await this.llmCallLocal(prompt);
-      const phrase = raw.trim().split("\n")[0]?.trim().slice(0, 120) ?? "";
-      return phrase.length >= 3 ? phrase : null;
-    } catch (err) {
-      log.debug(`depersonalization failed (fail closed): ${String(err)}`);
-      return null;
-    }
+    // A THROW here is a transient model outage — the caller keeps the target
+    // open for retry. A null return is a genuine empty/junk rewrite
+    // (terminal). The two must stay distinguishable.
+    const raw = await this.llmCallLocal(prompt);
+    const phrase = raw.trim().split("\n")[0]?.trim().slice(0, 120) ?? "";
+    return phrase.length >= 3 ? phrase : null;
   }
 
   /** PLAN-34 Phase 2c: lazily built persisted daily attempt budget. */
@@ -2200,22 +2257,27 @@ export class DreamEngine {
       | "irrelevant"
       | "resolved"
       | "sensitive_skipped"
-      | "containment_rejected",
+      | "containment_rejected"
+      | "transient_error",
     relevance?: number,
     resolvedAt?: number,
+    terminal = true,
   ): void {
     try {
+      // Transient outcomes (model outage, provider 500) mark the target
+      // explored but NOT externalResearched, so a later cycle retries once
+      // the condition clears — they never permanently retire the target.
       this.db
         .prepare(
           `UPDATE curiosity_targets
            SET metadata = json_set(COALESCE(metadata, '{}'),
                  '$.explored', 1,
-                 '$.externalResearched', 1,
+                 '$.externalResearched', ?,
                  '$.researchOutcome', ?,
                  '$.researchRelevance', ?)
            WHERE id = ?`,
         )
-        .run(outcome, relevance ?? null, targetId);
+        .run(terminal ? 1 : null, outcome, relevance ?? null, targetId);
       if (outcome === "resolved" && resolvedAt !== undefined) {
         this.db
           .prepare(

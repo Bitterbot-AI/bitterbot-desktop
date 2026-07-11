@@ -53,37 +53,114 @@ export function isSensitiveTopic(text: string): boolean {
 
 // ── Deterministic containment post-filter ────────────────────────────────
 
-const tokenize = (s: string): string[] =>
+/**
+ * Fold a string to an ASCII, punctuation-stripped, lowercase comparison
+ * form so homoglyph/accent substitution (Cyrillic 'і', "Víctor") cannot
+ * slip an identifier past the substring check.
+ */
+const foldForMatch = (s: string): string =>
   s
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/**
+ * Capitalized tokens that commonly START a sentence or are generic — not
+ * identifiers. Kept small; safety prefers over-extraction of proper nouns.
+ */
+const COMMON_CAP_WORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "new",
+  "how",
+  "what",
+  "why",
+  "when",
+  "where",
+  "this",
+  "that",
+  "these",
+  "those",
+  "it",
+  "its",
+  "our",
+  "we",
+  "user",
+  "users",
+  "note",
+  "notes",
+  "research",
+  "topic",
+  "based",
+  "opened",
+  "frontier",
+  "dream",
+  "insight",
+]);
+
+/**
+ * Extract identifier-shaped entities from the SOURCE whose survival into
+ * the output would leak private specifics: full URLs, emails, dotted
+ * hostnames/slugs (a2a.bitterbot.ai, forage.post, soapbox.net),
+ * multi-digit numbers, all-caps acronyms, and proper nouns — both
+ * capitalized bigrams AND single capitalized tokens (project codenames,
+ * people), which an imperfect local rewrite is most likely to keep.
+ */
+function extractSourceEntities(sourceText: string): string[] {
+  const out: string[] = [];
+  const push = (arr: RegExpMatchArray | null) => {
+    for (const m of arr ?? []) {
+      const f = foldForMatch(m);
+      if (f.length >= 2) {
+        out.push(f);
+      }
+    }
+  };
+  push(sourceText.match(/https?:\/\/\S+/g));
+  push(sourceText.match(/[\w.+-]+@[\w-]+\.[\w.]+/g));
+  // Dotted hostnames / slugs: 2+ alnum labels joined by dots.
+  push(sourceText.match(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\b/gi));
+  push(sourceText.match(/\d[\d,./:-]*\d|\b\d\b/g));
+  push(sourceText.match(/\b[A-Z][a-z]+ [A-Z][a-z]+\b/g)); // capitalized bigrams
+  push(sourceText.match(/\b[A-Z]{3,}\b/g)); // acronyms
+  // Single capitalized proper nouns not in the common-word stoplist.
+  for (const m of sourceText.match(/\b[A-Z][a-z]{2,}\b/g) ?? []) {
+    if (!COMMON_CAP_WORDS.has(m.toLowerCase())) {
+      out.push(foldForMatch(m));
+    }
+  }
+  return out;
+}
 
 /**
  * Hard post-filter on the depersonalization OUTPUT (never a prompt
  * instruction): the attempt is rejected when any 3-plus-word k-gram of the
- * output appears verbatim in the source target text, or when any extracted
- * source entity (URL, email, multi-digit number, capitalized name bigram)
- * survives into the output. Returns true when the output LEAKS.
+ * output appears verbatim in the source target text, OR when any extracted
+ * source entity (URL, email, dotted host/slug, number, acronym, or proper
+ * noun — single or bigram) survives into the output. Matching is
+ * homoglyph/accent-folded so unicode substitution cannot evade it.
+ * Returns true when the output LEAKS.
+ *
+ * Deliberately safety-over-availability (PLAN-34 §5.3): a note whose topic
+ * IS a private identifier will keep failing until the local model produces
+ * a genuinely generic phrase. The `containment_rejected` outcome is
+ * recorded and dashboard-visible, so this is never silent.
  */
 export function containsSourceLeak(sourceText: string, output: string): boolean {
-  const sourceNorm = ` ${tokenize(sourceText).join(" ")} `;
-  const outTokens = tokenize(output);
+  const sourceNorm = ` ${foldForMatch(sourceText)} `;
+  const outFolded = foldForMatch(output);
+  const outTokens = outFolded.split(" ").filter(Boolean);
   for (let i = 0; i + 3 <= outTokens.length; i++) {
     const gram = outTokens.slice(i, i + 3).join(" ");
     if (sourceNorm.includes(` ${gram} `)) {
       return true;
     }
   }
-  const entities = [
-    ...(sourceText.match(/https?:\/\/\S+/g) ?? []),
-    ...(sourceText.match(/[\w.+-]+@[\w-]+\.[\w.]+/g) ?? []),
-    ...(sourceText.match(/\d[\d,./:-]+/g) ?? []).filter((n) => n.replace(/\D/g, "").length >= 2),
-    ...(sourceText.match(/\b[A-Z][a-z]+ [A-Z][a-z]+\b/g) ?? []),
-  ];
-  const outLower = output.toLowerCase();
-  return entities.some((e) => outLower.includes(e.toLowerCase()));
+  const paddedOut = ` ${outFolded} `;
+  return extractSourceEntities(sourceText).some((e) => paddedOut.includes(` ${e} `));
 }
 
 // ── Persisted daily budget (reserve-then-act) ────────────────────────────
@@ -112,8 +189,12 @@ export class AutoResearchBudget {
       const row = this.db.prepare(`SELECT value FROM memory_meta WHERE key = ?`).get(dayKey(now)) as
         | { value: string }
         | undefined;
-      const n = row ? parseInt(row.value, 10) : 0;
-      return Number.isFinite(n) ? n : 0;
+      if (!row) {
+        return 0;
+      }
+      const n = parseInt(row.value, 10);
+      // Fail CLOSED on a corrupt value: treat as budget exhausted, never as 0.
+      return Number.isFinite(n) ? n : this.maxPerDay;
     } catch {
       return this.maxPerDay; // fail closed: unreadable counter = no budget
     }

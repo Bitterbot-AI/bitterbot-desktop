@@ -461,6 +461,22 @@ describe("PLAN-34 Phase 2c — auto-research egress bounds", () => {
     return { db, SkillSeekersAdapter };
   }
 
+  it("domain allowlist is dot-anchored: a lookalike host cannot pass an auto-research bound", async () => {
+    const { db, SkillSeekersAdapter } = await makeAdapterWithDb();
+    const adapter = new SkillSeekersAdapter(db, { enabled: true });
+    // 'evilgithub.io' must NOT satisfy the built-in 'github.io' bound...
+    const spoof = await adapter.fillKnowledgeGap("see https://evilgithub.io/payload", {
+      autoResearch: true,
+    });
+    expect(spoof.error).toBe("domain_blocked");
+    // ...while a true subdomain of an allowlisted host is fine (fails later
+    // on transport, never on the domain gate).
+    const legit = await adapter.fillKnowledgeGap("see https://x.github.io/docs.pdf", {
+      autoResearch: true,
+    });
+    expect(legit.error).not.toBe("domain_blocked");
+  });
+
   it("auto research is bounded by the built-in domain allowlist when none is configured", async () => {
     const { db, SkillSeekersAdapter } = await makeAdapterWithDb();
     const adapter = new SkillSeekersAdapter(db, { enabled: true });
@@ -481,6 +497,20 @@ describe("PLAN-34 Phase 2c — auto-research egress bounds", () => {
       { autoResearch: false },
     );
     expect(interactive.error).not.toBe("domain_blocked");
+  });
+
+  it("logs fetch-host and transport-post egress rows for a direct-URL ingestion", async () => {
+    const { db, SkillSeekersAdapter } = await makeAdapterWithDb();
+    // A github source resolves to the native transport (in-process fetch);
+    // ingestFromSource logs the fetch-host seam before running it. The scrape
+    // then fails (no real network in test) but the egress row is already
+    // written — the point being the log never understates the footprint.
+    const adapter = new SkillSeekersAdapter(db, { enabled: true });
+    await adapter.ingestFromSource({ url: "https://github.com/org/repo", type: "github" });
+    const rows = db
+      .prepare(`SELECT seam, destination FROM research_egress_log ORDER BY seam`)
+      .all() as Array<{ seam: string; destination: string }>;
+    expect(rows.some((r) => r.seam === "fetch-host" && r.destination === "github.com")).toBe(true);
   });
 
   it("the web-search seam writes an egress-log row with the outgoing query", async () => {

@@ -371,8 +371,14 @@ export class CanonicalFactsStore {
     if (!current) {
       // PLAN-34 Phase 2b: tier-first eviction. A lower-tier ADD may only
       // displace equal-or-lower-tier facts; when the ledger is full of
-      // higher-trust facts the ADD is rejected instead of evicting one.
-      if (!this.evictForCapacity(now, SOURCE_TRUST_TIER[input.source])) {
+      // higher-trust facts the ADD is rejected — ATOMICALLY: the victim set
+      // is computed first and only applied when the ADD can actually land,
+      // so a rejected write never mutates the ledger (Phase 2 adv. fix).
+      const incomingScore = canonicalPromotionScore(
+        { confidence, mentionCount: 1, lastConfirmedAt: now, corroborationCount: 0 },
+        now,
+      );
+      if (!this.evictForCapacity(now, SOURCE_TRUST_TIER[input.source], incomingScore)) {
         return {
           op: "rejected",
           reason:
@@ -606,25 +612,43 @@ export class CanonicalFactsStore {
    * being editorially "compressed" out of the always-present tier.
    */
   /**
-   * Make room for one incoming fact. PLAN-34 Phase 2b: victims are chosen
-   * tier-first — only facts at a trust tier <= the incoming pin's tier are
-   * evictable, and within those the lowest promotion score goes first. A
-   * lower-tier ADD can never retire a higher-tier fact; returns false when
-   * no evictable victim exists (caller rejects the ADD).
+   * Make room for one incoming fact. PLAN-34 Phase 2b + Phase 2 adv. fix:
+   * ATOMIC and tier-first. Chooses victims lowest-tier-then-lowest-score
+   * among facts at a trust tier <= the incoming pin's tier, and — for a
+   * SAME-tier victim — only if the incoming fact would outscore it (a fresh
+   * background ADD never displaces a better-corroborated same-tier fact).
+   * Computes the full victim set BEFORE mutating: if it cannot free enough
+   * slots, it retires NOTHING and returns false (the caller rejects the
+   * ADD), so a rejected write can never leave partial evictions applied.
    */
-  private evictForCapacity(now: number, incomingTier: number): boolean {
-    while (this.activeCount() >= this.maxFacts) {
-      const active = this.listActive({ now });
-      const evictable = active.filter((f) => SOURCE_TRUST_TIER[f.source] <= incomingTier);
-      // Among evictable, prefer the lowest tier, then the lowest score
-      // (listActive is score-descending, so walk from the back).
-      const victim = evictable
-        .toReversed()
-        .toSorted((a, b) => SOURCE_TRUST_TIER[a.source] - SOURCE_TRUST_TIER[b.source])[0];
-      if (!victim) {
-        return false;
-      }
-      this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(victim.id);
+  private evictForCapacity(now: number, incomingTier: number, incomingScore: number): boolean {
+    const overBy = this.activeCount() - this.maxFacts + 1;
+    if (overBy <= 0) {
+      return true;
+    }
+    const active = this.listActive({ now });
+    const evictable = active
+      .filter((f) => {
+        const tier = SOURCE_TRUST_TIER[f.source];
+        if (tier > incomingTier) {
+          return false;
+        }
+        // Same tier: only displace a fact the incoming pin outranks.
+        return tier < incomingTier || canonicalPromotionScore(f, now) < incomingScore;
+      })
+      // Lowest tier first, then lowest score (worst victims first).
+      .toSorted(
+        (a, b) =>
+          SOURCE_TRUST_TIER[a.source] - SOURCE_TRUST_TIER[b.source] ||
+          canonicalPromotionScore(a, now) - canonicalPromotionScore(b, now),
+      );
+    if (evictable.length < overBy) {
+      return false; // cannot make room — retire nothing, reject the ADD
+    }
+    const victims = evictable.slice(0, overBy);
+    const stmt = this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`);
+    for (const victim of victims) {
+      stmt.run(victim.id);
       log.warn(
         `canonical ledger at capacity (${this.maxFacts}): demoted lowest-scored ` +
           `tier-${SOURCE_TRUST_TIER[victim.source]} fact [${victim.key}]`,

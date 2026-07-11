@@ -18,8 +18,19 @@ export async function resolveResearchFindingsBlock(params: {
   config?: BitterbotConfig;
   agentId: string;
   promptMode?: "full" | "minimal" | "none";
+  /**
+   * PLAN-34 Phase 2 adversarial fix: consume (surface exactly once) ONLY on
+   * a genuine first-party live user turn. False for heartbeats, hooks,
+   * subagents, cron, and any non-first-party session — those must never
+   * drain the owner's brief into an ephemeral or third-party transcript.
+   * The caller computes this from the session key + heartbeat flag.
+   */
+  liveUserTurn?: boolean;
 }): Promise<string | undefined> {
   if (params.promptMode && params.promptMode !== "full") {
+    return undefined;
+  }
+  if (params.liveUserTurn === false) {
     return undefined;
   }
   const autoResearch = (

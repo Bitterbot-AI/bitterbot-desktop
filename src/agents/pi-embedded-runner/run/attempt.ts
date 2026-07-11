@@ -471,11 +471,20 @@ export async function runEmbeddedAttempt(
 
     // PLAN-34 Phase 2b: idle-research findings surface deterministically on
     // the next live turn — same independence contract as canonical facts.
+    // Consume ONLY on a genuine first-party live user turn (not heartbeat,
+    // not subagent/cron/hook) so the one-shot brief is never drained into an
+    // ephemeral or third-party transcript (Phase 2 adversarial fix).
+    const { classifySessionKeyTrust } = await import("../../../memory/session-trust.js");
+    const liveUserTurn =
+      Boolean(params.prompt) &&
+      !params.isHeartbeat &&
+      classifySessionKeyTrust(params.sessionKey ?? params.sessionId ?? "") === "first_party";
     const { resolveResearchFindingsBlock } = await import("../../research-findings-block.js");
     const researchFindings = await resolveResearchFindingsBlock({
       config: params.config,
       agentId: sessionAgentId,
       promptMode,
+      liveUserTurn,
     }).catch(() => undefined);
 
     const appendPrompt = buildEmbeddedSystemPrompt({

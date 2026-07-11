@@ -118,6 +118,33 @@ const BATCH_FAILURE_LIMIT = 2;
 
 const log = createSubsystemLogger("memory");
 
+/**
+ * PLAN-34 Phase 2 adversarial fix: known LOCAL model-spec providers. A
+ * depersonalization model must resolve to one of these for autonomous
+ * research egress to activate — otherwise the verbatim private note would
+ * be sent to a cloud API. Conservative allowlist; unknown providers are
+ * treated as non-local (fail closed).
+ */
+const LOCAL_MODEL_PROVIDERS = new Set([
+  "ollama",
+  "lmstudio",
+  "llamacpp",
+  "llama-cpp",
+  "local",
+  "localai",
+  "localhost",
+  "jan",
+  "gpt4all",
+]);
+
+export function isLocalModelSpec(spec?: string): boolean {
+  if (!spec) {
+    return false;
+  }
+  const provider = spec.split("/")[0]?.trim().toLowerCase() ?? "";
+  return LOCAL_MODEL_PROVIDERS.has(provider);
+}
+
 const INDEX_CACHE = new Map<string, MemoryIndexManager>();
 /**
  * In-flight construction promises, keyed identically to INDEX_CACHE. The manager
@@ -2453,6 +2480,14 @@ export class MemoryIndexManager implements MemorySearchManager {
       (dreamCfg?.modelTiers?.localModel
         ? this.buildLlmCallFn(dreamCfg.modelTiers.localModel)
         : null);
+    // PLAN-34 Phase 2 adversarial fix: only a GENUINELY local model may
+    // receive the verbatim private note for depersonalization. A directly
+    // injected localLlmCall (embedded local runtime) is trusted; a model
+    // built from modelTiers.localModel must name a local provider, else
+    // depersonalization egress fails closed.
+    const localModelIsLocal = dreamCfg?.localLlmCall
+      ? true
+      : isLocalModelSpec(dreamCfg?.modelTiers?.localModel);
 
     // Build a config WITHOUT function properties (safe for structuredClone)
     const {
@@ -2468,6 +2503,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       ...(builtLlmCall ? { llmCall: builtLlmCall } : {}),
       ...(builtSynthesisLlmCall ? { synthesisLlmCall: builtSynthesisLlmCall } : {}),
       ...(builtLocalLlmCall ? { localLlmCall: builtLocalLlmCall } : {}),
+      localModelIsLocal,
       // PLAN-34 Phase 2c: the only new config knobs of the whole plan.
       ...(this.cfg.memory?.curiosity?.autoResearch
         ? { autoResearch: this.cfg.memory.curiosity.autoResearch }

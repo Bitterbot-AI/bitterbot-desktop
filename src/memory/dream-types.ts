@@ -198,12 +198,25 @@ export type DreamEngineConfig = {
    * closed to zero egress.
    */
   autoResearch?: { enabled?: boolean; maxPerDay?: number };
+  /**
+   * PLAN-34 Phase 2 adversarial fix: set by the manager to true only when
+   * localLlmCall was built from a genuinely LOCAL model spec. Gates
+   * depersonalization egress so a cloud model named as localModel cannot
+   * receive verbatim private notes. Omitted in direct-injection tests.
+   */
+  localModelIsLocal?: boolean;
 };
 
 export const DEFAULT_DREAM_CONFIG: Required<
   Omit<
     DreamEngineConfig,
-    "llmCall" | "synthesisLlmCall" | "localLlmCall" | "modes" | "modelTiers" | "autoResearch"
+    | "llmCall"
+    | "synthesisLlmCall"
+    | "localLlmCall"
+    | "modes"
+    | "modelTiers"
+    | "autoResearch"
+    | "localModelIsLocal"
   >
 > & { modes: Record<DreamMode, DreamModeConfig> } = {
   enabled: true,
