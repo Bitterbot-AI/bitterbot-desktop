@@ -127,6 +127,14 @@ export async function runCliAgent(params: {
     promptMode: "full",
   }).catch(() => undefined);
 
+  // PLAN-34 Phase 2b: idle-research findings surface on the next live turn.
+  const { resolveResearchFindingsBlock } = await import("./research-findings-block.js");
+  const researchFindings = await resolveResearchFindingsBlock({
+    config: params.config,
+    agentId: sessionAgentId,
+    promptMode: "full",
+  }).catch(() => undefined);
+
   const systemPrompt = buildSystemPrompt({
     workspaceDir,
     config: params.config,
@@ -141,6 +149,7 @@ export async function runCliAgent(params: {
     agentId: sessionAgentId,
     endocrineState,
     canonicalFacts,
+    researchFindings,
   });
 
   const { sessionId: cliSessionIdToSend, isNew } = resolveSessionIdToSend({

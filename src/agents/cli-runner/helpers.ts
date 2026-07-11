@@ -69,6 +69,8 @@ export function buildSystemPrompt(params: {
   };
   /** PLAN-33: pre-rendered Canonical Facts block (independent of endocrine). */
   canonicalFacts?: string;
+  /** PLAN-34 Phase 2b: pre-rendered Research Findings block. */
+  researchFindings?: string;
 }) {
   const defaultModelRef = resolveDefaultModelForAgent({
     cfg: params.config ?? {},
@@ -110,6 +112,7 @@ export function buildSystemPrompt(params: {
     memoryCitationsMode: params.config?.memory?.citations,
     endocrineState: params.endocrineState,
     canonicalFacts: params.canonicalFacts,
+    researchFindings: params.researchFindings,
   });
 }
 

@@ -4763,6 +4763,34 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   /**
+   * PLAN-34 Phase 2b: drain unsurfaced idle-research findings for prompt
+   * injection. Marks the returned rows surfaced so a finding is voiced in
+   * exactly one session ("while you were away, I looked into X" — then it
+   * lives on only as its world_fact crystal and dashboard history).
+   */
+  consumeResearchFindings(limit = 3): Array<{ finding: string; sourceUrl: string | null }> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT id, finding, source_url FROM research_findings
+           WHERE surfaced_at IS NULL ORDER BY created_at DESC LIMIT ?`,
+        )
+        .all(limit) as Array<{ id: string; finding: string; source_url: string | null }>;
+      if (rows.length === 0) {
+        return [];
+      }
+      const mark = this.db.prepare(`UPDATE research_findings SET surfaced_at = ? WHERE id = ?`);
+      const now = Date.now();
+      for (const row of rows) {
+        mark.run(now, row.id);
+      }
+      return rows.map((r) => ({ finding: r.finding, sourceUrl: r.source_url }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Record a canonical-block injection for observability. Fed to the
    * dead-wire detector only when the ledger has active facts — an empty
    * ledger injecting nothing is healthy, not a dead wire; facts existing but

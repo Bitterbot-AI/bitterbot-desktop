@@ -28,7 +28,13 @@ function notFound(ref: EvidenceRef): ExpandedEvidence {
 }
 
 export function describeRef(ref: EvidenceRef): string {
-  return ref.kind === "session" ? `${ref.path}#L${ref.line}` : `journal:${ref.runId}#${ref.seq}`;
+  if (ref.kind === "session") {
+    return `${ref.path}#L${ref.line}`;
+  }
+  if (ref.kind === "url") {
+    return ref.url;
+  }
+  return `journal:${ref.runId}#${ref.seq}`;
 }
 
 /**
@@ -63,6 +69,17 @@ export async function expandEvidenceRef(
     } catch {
       return notFound(ref);
     }
+  }
+
+  if (ref.kind === "url") {
+    // PLAN-34 Phase 2b: web provenance resolves to the pointer itself —
+    // deliberately no fetch (expansion must never cause network egress).
+    return {
+      ref,
+      found: true,
+      text: `Web source: ${ref.url}`,
+      location: ref.url,
+    };
   }
 
   // journal ref
@@ -245,6 +262,8 @@ export function parseEvidenceRefs(raw: string | null | undefined): EvidenceRef[]
         out.push({ kind: "session", path: o.path, line: o.line });
       } else if (o.kind === "journal" && typeof o.runId === "string" && typeof o.seq === "number") {
         out.push({ kind: "journal", runId: o.runId, seq: o.seq });
+      } else if (o.kind === "url" && typeof o.url === "string") {
+        out.push({ kind: "url", url: o.url });
       }
     }
     return out;

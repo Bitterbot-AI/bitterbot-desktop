@@ -39,3 +39,27 @@ describe("canonical facts in the system prompt", () => {
     expect(prompt).not.toContain("## Canonical Facts");
   });
 });
+
+describe("research findings in the system prompt (PLAN-34 Phase 2b)", () => {
+  const FINDINGS_BLOCK = [
+    "## Research Findings",
+    "While idle, background research looked into open curiosity gaps.",
+    '- Looked into "X" — ingested "x-skill" from docs.example.com (source: https://docs.example.com/x)',
+  ].join("\n");
+
+  it("renders without requiring endocrine state (the finding survives an endocrine failure)", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/bitterbot",
+      researchFindings: FINDINGS_BLOCK,
+      // No endocrineState on purpose — resolveEndocrineState returning
+      // undefined must never drop the finding.
+    });
+    expect(prompt).toContain("## Research Findings");
+    expect(prompt).toContain('Looked into "X"');
+  });
+
+  it("adds nothing when no block is supplied", () => {
+    const prompt = buildAgentSystemPrompt({ workspaceDir: "/tmp/bitterbot" });
+    expect(prompt).not.toContain("## Research Findings");
+  });
+});

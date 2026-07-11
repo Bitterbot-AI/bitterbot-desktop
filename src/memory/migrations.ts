@@ -1429,7 +1429,11 @@ const MIGRATIONS: Migration[] = [
       "are meaningless under increment-only-on-injection. The reset lands " +
       "in the SAME commit as the read-side fix (Phase 0 adversarial pass " +
       "caught the original sequencing, where the reset would have been " +
-      "consumed by the old incrementer before the semantics existed).",
+      "consumed by the old incrementer before the semantics existed). " +
+      "(5) canonical_facts.corroboration_count — tier-0 (promotion/web) " +
+      "same-value confirmations count here, never into confidence/recency. " +
+      "(6) research_findings — the persisted queue behind deterministic " +
+      "research surfacing (Phase 2b).",
     up: (db: DatabaseSync) => {
       addColumnIfMissing(db, "chunks", "session_trust", "TEXT");
 
@@ -1455,6 +1459,32 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "epistemic_directives", "status", "TEXT NOT NULL DEFAULT 'open'");
 
       db.exec(`UPDATE epistemic_directives SET attempts = 0 WHERE resolved_at IS NULL`);
+
+      // PLAN-34 Phase 2b: (5) tier-0 corroboration counter — web/promotion
+      // agreement is tracked separately and can never move confidence — and
+      // (6) research_findings, the small persisted queue behind the
+      // deterministic "while you were away, I looked into X" surfacing.
+      addColumnIfMissing(
+        db,
+        "canonical_facts",
+        "corroboration_count",
+        "INTEGER NOT NULL DEFAULT 0",
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS research_findings (
+          id          TEXT PRIMARY KEY,
+          target_id   TEXT,
+          finding     TEXT NOT NULL,
+          source_url  TEXT,
+          relevance   REAL,
+          created_at  INTEGER NOT NULL,
+          surfaced_at INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_research_findings_unsurfaced ` +
+          `ON research_findings(surfaced_at, created_at)`,
+      );
     },
   },
 ];

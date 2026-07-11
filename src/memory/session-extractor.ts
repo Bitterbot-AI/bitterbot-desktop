@@ -36,7 +36,9 @@ export type EpistemicLayer = "world_fact" | "experience" | "mental_model" | "dir
  */
 export type EvidenceRef =
   | { kind: "session"; path: string; line: number }
-  | { kind: "journal"; runId: string; seq: number };
+  | { kind: "journal"; runId: string; seq: number }
+  /** PLAN-34 Phase 2b: web provenance for idle-research findings. */
+  | { kind: "url"; url: string };
 
 export type ExtractedFact = {
   text: string;

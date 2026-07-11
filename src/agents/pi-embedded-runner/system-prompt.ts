@@ -63,6 +63,8 @@ export function buildEmbeddedSystemPrompt(params: {
   };
   /** PLAN-33: pre-rendered Canonical Facts block (independent of endocrine). */
   canonicalFacts?: string;
+  /** PLAN-34 Phase 2b: pre-rendered Research Findings block (independent of endocrine). */
+  researchFindings?: string;
 }): string {
   return buildAgentSystemPrompt({
     workspaceDir: params.workspaceDir,
@@ -91,6 +93,7 @@ export function buildEmbeddedSystemPrompt(params: {
     memoryCitationsMode: params.memoryCitationsMode,
     endocrineState: params.endocrineState,
     canonicalFacts: params.canonicalFacts,
+    researchFindings: params.researchFindings,
   });
 }
 

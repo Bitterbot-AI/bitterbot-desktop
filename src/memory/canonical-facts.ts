@@ -40,15 +40,27 @@ export const CANONICAL_CATEGORIES = [
 ] as const;
 export type CanonicalCategory = (typeof CANONICAL_CATEGORIES)[number];
 
-export type CanonicalSource = "user_directive" | "agent_pin" | "extraction" | "promotion" | "seed";
+export type CanonicalSource =
+  | "user_directive"
+  | "agent_pin"
+  | "extraction"
+  | "promotion"
+  | "seed"
+  | "web_research";
 
 /**
  * Supersession trust tiers. A pin may only SUPERSEDE (replace the value of) a
  * current belief written by an equal-or-lower tier — deliberate statements
  * (a user directive, an explicit agent pin) can never be overwritten by
- * background inference (session extraction, dream promotion), no matter how
- * the confidences drift. STRENGTHEN (same value) is allowed from any tier:
- * corroboration is welcome from anywhere; contradiction requires standing.
+ * background inference (session extraction, dream promotion, web research),
+ * no matter how the confidences drift.
+ *
+ * PLAN-34 Phase 2b, tier-aware STRENGTHEN: same-value confirmation from
+ * tier >= 1 is full corroboration (confidence nudge, last_confirmed_at,
+ * reactivation); from tier 0 it only increments a separate, hard-capped
+ * corroboration counter — a web page agreeing with the ledger is
+ * corroboration-only and can never move confidence, refresh recency, or
+ * reactivate a retired fact.
  */
 const SOURCE_TRUST_TIER: Record<CanonicalSource, number> = {
   user_directive: 2,
@@ -56,6 +68,7 @@ const SOURCE_TRUST_TIER: Record<CanonicalSource, number> = {
   seed: 1,
   extraction: 1,
   promotion: 0,
+  web_research: 0,
 };
 
 export type CanonicalFact = {
@@ -74,6 +87,12 @@ export type CanonicalFact = {
   source: CanonicalSource;
   evidenceChunkIds: string[];
   status: "active" | "retired" | "superseded";
+  /**
+   * PLAN-34 Phase 2b: tier-0 same-value confirmations (dream promotion,
+   * web research). Separate from mentionCount so background agreement can
+   * be displayed and scored (hard-capped) without moving confidence.
+   */
+  corroborationCount: number;
 };
 
 export type PinInput = {
@@ -114,7 +133,7 @@ const MAX_STATEMENT_CHARS = 300;
  * they want; background inference must stick to durable identifier-shaped
  * ground truth.
  */
-const BACKGROUND_SOURCES = new Set<CanonicalSource>(["extraction", "promotion"]);
+const BACKGROUND_SOURCES = new Set<CanonicalSource>(["extraction", "promotion", "web_research"]);
 
 /**
  * PLAN-34 Phase 1: a same-key SUPERSEDE of a belief the ledger confirmed
@@ -181,6 +200,7 @@ type Row = {
   source: string;
   evidence_chunk_ids: string;
   status: string;
+  corroboration_count?: number | null;
 };
 
 function rowToFact(row: Row): CanonicalFact {
@@ -211,6 +231,7 @@ function rowToFact(row: Row): CanonicalFact {
     source: row.source as CanonicalSource,
     evidenceChunkIds: evidence,
     status: row.status as CanonicalFact["status"],
+    corroborationCount: row.corroboration_count ?? 0,
   };
 }
 
@@ -233,13 +254,19 @@ export function normalizeCanonicalKey(raw: string): string | null {
  * confirmed in a year SHOULD lose its slot to one confirmed daily.
  */
 export function canonicalPromotionScore(
-  fact: Pick<CanonicalFact, "confidence" | "mentionCount" | "lastConfirmedAt">,
+  fact: Pick<CanonicalFact, "confidence" | "mentionCount" | "lastConfirmedAt"> & {
+    corroborationCount?: number;
+  },
   now: number,
 ): number {
   const days = Math.max(0, (now - fact.lastConfirmedAt) / 86_400_000);
   const recency = Math.exp(-days / 180);
   const frequency = 1 + Math.log1p(Math.min(fact.mentionCount, 1000)) / 4;
-  return fact.confidence * recency * frequency;
+  // PLAN-34 Phase 2b: tier-0 corroboration contributes a HARD-CAPPED bonus
+  // (max +5%) — background agreement can nudge render ordering but can
+  // never make a web-corroborated fact outrank a deliberately confirmed one.
+  const corroboration = 1 + Math.min(fact.corroborationCount ?? 0, 5) * 0.01;
+  return fact.confidence * recency * frequency * corroboration;
 }
 
 export class CanonicalFactsStore {
@@ -342,7 +369,17 @@ export class CanonicalFactsStore {
     const current = this.get(slug);
 
     if (!current) {
-      this.evictForCapacity(now);
+      // PLAN-34 Phase 2b: tier-first eviction. A lower-tier ADD may only
+      // displace equal-or-lower-tier facts; when the ledger is full of
+      // higher-trust facts the ADD is rejected instead of evicting one.
+      if (!this.evictForCapacity(now, SOURCE_TRUST_TIER[input.source])) {
+        return {
+          op: "rejected",
+          reason:
+            `ledger at capacity with only higher-trust facts — a ${input.source} ` +
+            `pin cannot displace them`,
+        };
+      }
       const id = crypto.randomUUID();
       this.db
         .prepare(
@@ -371,11 +408,28 @@ export class CanonicalFactsStore {
     }
 
     if (current.value === value) {
-      // Re-confirmation — the signal the crystal store structurally ignores.
-      const newConfidence = Math.min(1, Math.max(current.confidence, confidence) + 0.05);
       const mergedEvidence = JSON.stringify([
         ...new Set([...current.evidenceChunkIds, ...(input.evidenceChunkIds ?? [])]),
       ]);
+      // PLAN-34 Phase 2b: tier-0 confirmation (promotion, web_research) is
+      // corroboration-only — a separate counter, no confidence motion, no
+      // recency refresh, and NEVER reactivation of a retired fact. Web
+      // pages agreeing with the ledger must not keep facts artificially
+      // fresh or resurrect what capacity pressure retired.
+      if (SOURCE_TRUST_TIER[input.source] === 0) {
+        this.db
+          .prepare(
+            `UPDATE canonical_facts
+                SET corroboration_count = COALESCE(corroboration_count, 0) + 1,
+                    evidence_chunk_ids = ?
+              WHERE id = ?`,
+          )
+          .run(mergedEvidence, current.id);
+        return { op: "strengthen", fact: this.get(slug)! };
+      }
+      // Re-confirmation from tier >= 1 — the signal the crystal store
+      // structurally ignores.
+      const newConfidence = Math.min(1, Math.max(current.confidence, confidence) + 0.05);
       this.db
         .prepare(
           `UPDATE canonical_facts
@@ -551,18 +605,32 @@ export class CanonicalFactsStore {
    * LLM decision — the failure mode this ledger exists to kill is exact facts
    * being editorially "compressed" out of the always-present tier.
    */
-  private evictForCapacity(now: number): void {
+  /**
+   * Make room for one incoming fact. PLAN-34 Phase 2b: victims are chosen
+   * tier-first — only facts at a trust tier <= the incoming pin's tier are
+   * evictable, and within those the lowest promotion score goes first. A
+   * lower-tier ADD can never retire a higher-tier fact; returns false when
+   * no evictable victim exists (caller rejects the ADD).
+   */
+  private evictForCapacity(now: number, incomingTier: number): boolean {
     while (this.activeCount() >= this.maxFacts) {
       const active = this.listActive({ now });
-      const victim = active[active.length - 1];
+      const evictable = active.filter((f) => SOURCE_TRUST_TIER[f.source] <= incomingTier);
+      // Among evictable, prefer the lowest tier, then the lowest score
+      // (listActive is score-descending, so walk from the back).
+      const victim = evictable
+        .toReversed()
+        .toSorted((a, b) => SOURCE_TRUST_TIER[a.source] - SOURCE_TRUST_TIER[b.source])[0];
       if (!victim) {
-        return;
+        return false;
       }
       this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(victim.id);
       log.warn(
-        `canonical ledger at capacity (${this.maxFacts}): demoted lowest-scored fact [${victim.key}]`,
+        `canonical ledger at capacity (${this.maxFacts}): demoted lowest-scored ` +
+          `tier-${SOURCE_TRUST_TIER[victim.source]} fact [${victim.key}]`,
       );
     }
+    return true;
   }
 
   /**

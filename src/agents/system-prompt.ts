@@ -725,6 +725,12 @@ export function buildAgentSystemPrompt(params: {
    * endocrineState so a hormonal/recall failure can never drop it.
    */
   canonicalFacts?: string;
+  /**
+   * PLAN-34 Phase 2b: pre-rendered Research Findings block
+   * (resolveResearchFindingsBlock) — same determinism contract as
+   * canonicalFacts: never gated on endocrine resolution.
+   */
+  researchFindings?: string;
 }) {
   const coreToolSummaries: Record<string, string> = {
     read: "Read file contents",
@@ -924,6 +930,9 @@ export function buildAgentSystemPrompt(params: {
     // PLAN-33: canonical facts render before everything else — including in
     // minimal (subagent) mode — and are never gated on endocrine resolution.
     ...(params.canonicalFacts ? ["", params.canonicalFacts] : []),
+    // PLAN-34 Phase 2b: idle-research findings (full prompt mode only; the
+    // resolver returns undefined otherwise), same determinism contract.
+    ...(params.researchFindings ? ["", params.researchFindings] : []),
     ...buildEndocrineStateSection({
       endocrineState: params.endocrineState,
       isMinimal,

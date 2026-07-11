@@ -206,3 +206,61 @@ describe("exploration mode real research (PLAN-34 Phase 2a)", () => {
     expect(t.resolvedAt).toBeNull();
   });
 });
+
+describe("findings become memory (PLAN-34 Phase 2b)", () => {
+  it("a resolved target writes a world_fact crystal with url evidence and queues a finding", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const engine = makeEngine(db);
+    engine.setSkillSeekersAdapter({
+      isAvailable: async () => true,
+      resetCycleCounter: () => {},
+      budgetRemaining: () => 3,
+      fillKnowledgeGap: async () => ({
+        ok: true,
+        envelopes: [envelopeWith("RELEVANT deep-dive on the topic")],
+        sourceUrl: "https://docs.example.com/topic",
+      }),
+    });
+    const id = insertTarget(db, { type: "knowledge_gap", description: "RELEVANT gap topic" });
+
+    await engine.run({ modes: ["exploration"] });
+
+    const crystal = db
+      .prepare(
+        `SELECT text, epistemic_layer, evidence_refs, path FROM chunks
+         WHERE epistemic_layer = 'world_fact' AND path LIKE 'dream/research/%'`,
+      )
+      .get() as { text: string; evidence_refs: string; path: string };
+    expect(crystal).toBeDefined();
+    expect(crystal.text).toContain("RELEVANT gap topic");
+    expect(JSON.parse(crystal.evidence_refs)).toEqual([
+      { kind: "url", url: "https://docs.example.com/topic" },
+    ]);
+    expect(crystal.path).toBe(`dream/research/${id}`);
+
+    const finding = db
+      .prepare(`SELECT finding, source_url, surfaced_at FROM research_findings`)
+      .get() as { finding: string; source_url: string; surfaced_at: number | null };
+    expect(finding).toBeDefined();
+    expect(finding.finding).toContain("Looked into");
+    expect(finding.source_url).toBe("https://docs.example.com/topic");
+    expect(finding.surfaced_at).toBeNull(); // queued, not yet surfaced
+  });
+
+  it("irrelevant products write neither crystal nor finding", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const engine = makeEngine(db);
+    engine.setSkillSeekersAdapter(
+      makeAdapter({ ok: true, envelopes: [envelopeWith("unrelated docs")] }),
+    );
+    insertTarget(db, { type: "knowledge_gap", description: "RELEVANT gap topic" });
+
+    await engine.run({ modes: ["exploration"] });
+    expect(db.prepare(`SELECT COUNT(*) AS c FROM research_findings`).get()).toMatchObject({ c: 0 });
+    expect(
+      db.prepare(`SELECT COUNT(*) AS c FROM chunks WHERE path LIKE 'dream/research/%'`).get(),
+    ).toMatchObject({ c: 0 });
+  });
+});

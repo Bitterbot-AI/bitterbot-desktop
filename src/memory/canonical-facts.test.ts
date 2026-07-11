@@ -275,13 +275,20 @@ describe("trust-tier supersession (PLAN-33 Phase 3)", () => {
     expect(store.get("project.repo")?.value).toBe("new/repo");
   });
 
-  it("corroboration is welcome from any tier (STRENGTHEN is never blocked)", () => {
+  it("corroboration is welcome from any tier (STRENGTHEN is never blocked) — but tier-0 counts separately (PLAN-34 Phase 2b)", () => {
     const db = makeDb();
     const store = new CanonicalFactsStore(db);
     store.pin({ key: "project.repo", value: "right/repo", source: "agent_pin", confidence: 0.95 });
     const result = store.pin({ key: "project.repo", value: "right/repo", source: "promotion" });
     expect(result.op).toBe("strengthen");
-    expect(store.get("project.repo")?.mentionCount).toBe(2);
+    // Tier-0 agreement (promotion/web) goes to the corroboration counter,
+    // never into mention_count/confidence/recency.
+    const fact = store.get("project.repo")!;
+    expect(fact.mentionCount).toBe(1);
+    expect(fact.corroborationCount).toBe(1);
+    // Tier >= 1 confirmation is the full strengthen, as before.
+    store.pin({ key: "project.repo", value: "right/repo", source: "extraction" });
+    expect(store.get("project.repo")!.mentionCount).toBe(2);
   });
 
   it("extraction supersedes promotion, and promotion supersedes promotion", () => {
@@ -481,5 +488,92 @@ describe("conflict-event recording (PLAN-34 Phase 1 fuel)", () => {
     store.pin({ key: "project.repo", value: "a", source: "user_directive" });
     const r = store.pin({ key: "project.repo", value: "b", source: "extraction" });
     expect(r.op).toBe("rejected"); // the reject verdict itself is unaffected
+  });
+});
+
+describe("web_research tier (PLAN-34 Phase 2b)", () => {
+  it("web_research can never supersede any existing belief (tier 0 vs 1+)", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "project.repo", value: "github.com/org/alpha", source: "extraction" });
+    const r = store.pin({
+      key: "project.repo",
+      value: "github.com/org/evil",
+      source: "web_research",
+    });
+    expect(r.op).toBe("rejected");
+    expect(store.get("project.repo")!.value).toBe("github.com/org/alpha");
+  });
+
+  it("tier-0 strengthen is corroboration-only: no confidence motion, no recency refresh", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({
+      key: "infra.gateway",
+      value: "a2a.example.com",
+      source: "extraction",
+      confidence: 0.7,
+    });
+    const before = store.get("infra.gateway")!;
+
+    const r = store.pin({ key: "infra.gateway", value: "a2a.example.com", source: "web_research" });
+    expect(r.op).toBe("strengthen");
+    const after = store.get("infra.gateway")!;
+    expect(after.confidence).toBe(before.confidence); // no motion from tier 0
+    expect(after.lastConfirmedAt).toBe(before.lastConfirmedAt); // no recency refresh
+    expect(after.mentionCount).toBe(before.mentionCount); // separate counter
+    expect(after.corroborationCount).toBe(1);
+  });
+
+  it("tier-0 strengthen cannot reactivate a retired fact", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "infra.old_host", value: "h1.example", source: "extraction" });
+    store.retire("infra.old_host");
+    const r = store.pin({ key: "infra.old_host", value: "h1.example", source: "web_research" });
+    expect(r.op).toBe("strengthen");
+    expect(store.get("infra.old_host")!.status).toBe("retired"); // stays retired
+    // A tier-1 confirmation still reactivates, as before.
+    store.pin({ key: "infra.old_host", value: "h1.example", source: "extraction" });
+    expect(store.get("infra.old_host")!.status).toBe("active");
+  });
+
+  it("N repeated web strengthens never outrank or evict a deliberate pin", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db, { maxFacts: 2 });
+    store.pin({ key: "identity.user_name", value: "Victor", source: "user_directive" });
+    store.pin({ key: "project.repo", value: "github.com/org/alpha", source: "agent_pin" });
+    // Hammer one key with web corroboration...
+    store.pin({ key: "infra.cdn", value: "cdn.example", source: "web_research" });
+    for (let i = 0; i < 25; i++) {
+      store.pin({ key: "infra.cdn", value: "cdn.example", source: "web_research" });
+    }
+    // ...the web fact was never even ADDed (cap full of tier-2 facts), and
+    // both deliberate pins are untouched and still active.
+    expect(store.get("infra.cdn")).toBeNull();
+    expect(store.get("identity.user_name")!.status).toBe("active");
+    expect(store.get("project.repo")!.status).toBe("active");
+  });
+
+  it("tier-first eviction: a web_research ADD evicts only equal-or-lower-tier victims", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db, { maxFacts: 2 });
+    store.pin({ key: "identity.user_name", value: "Victor", source: "user_directive" });
+    store.pin({ key: "infra.old", value: "old.example", source: "web_research" });
+    // Cap full: user_directive (tier 2) + web_research (tier 0). A new
+    // web ADD may displace the tier-0 fact, never the deliberate pin.
+    const r = store.pin({ key: "infra.new", value: "new.example", source: "web_research" });
+    expect(r.op).toBe("add");
+    expect(store.get("identity.user_name")!.status).toBe("active");
+    expect(store.get("infra.old")!.status).toBe("retired");
+  });
+
+  it("corroboration contributes a hard-capped promotion-score bonus", () => {
+    const base = { confidence: 0.8, mentionCount: 3, lastConfirmedAt: Date.now() };
+    const now = Date.now();
+    const plain = canonicalPromotionScore(base, now);
+    const capped = canonicalPromotionScore({ ...base, corroborationCount: 1000 }, now);
+    expect(capped).toBeGreaterThan(plain);
+    expect(capped / plain).toBeLessThanOrEqual(1.05 + 1e-9); // hard cap: +5%
   });
 });

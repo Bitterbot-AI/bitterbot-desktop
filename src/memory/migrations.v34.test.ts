@@ -38,7 +38,9 @@ function columns(db: DatabaseSync, table: string): string[] {
 function downgradeToV33(db: DatabaseSync): void {
   db.exec(`ALTER TABLE chunks DROP COLUMN session_trust`);
   db.exec(`ALTER TABLE epistemic_directives DROP COLUMN status`);
+  db.exec(`ALTER TABLE canonical_facts DROP COLUMN corroboration_count`);
   db.exec(`DROP TABLE canonical_conflicts`);
+  db.exec(`DROP TABLE research_findings`);
   db.prepare(`UPDATE meta SET value = '33' WHERE key = 'schema_version'`).run();
 }
 
@@ -58,6 +60,22 @@ function insertDirective(
 describe("migration v34 — PLAN-34 Phase 0 schema slots", () => {
   it("adds chunks.session_trust", () => {
     expect(columns(openTestDb(), "chunks")).toContain("session_trust");
+  });
+
+  it("adds canonical_facts.corroboration_count and the research_findings queue (Phase 2b)", () => {
+    const db = openTestDb();
+    expect(columns(db, "canonical_facts")).toContain("corroboration_count");
+    expect(tables(db).has("research_findings")).toBe(true);
+    for (const c of [
+      "target_id",
+      "finding",
+      "source_url",
+      "relevance",
+      "created_at",
+      "surfaced_at",
+    ]) {
+      expect(columns(db, "research_findings")).toContain(c);
+    }
   });
 
   it("creates canonical_conflicts with the Phase 1 sweep columns", () => {

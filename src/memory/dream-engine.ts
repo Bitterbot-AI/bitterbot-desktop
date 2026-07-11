@@ -157,6 +157,7 @@ export class DreamEngine {
       ok: boolean;
       envelopes: Array<{ name: string; skill_md: string }>;
       error?: string;
+      sourceUrl?: string;
     }>;
     resetCycleCounter(): void;
     budgetRemaining(): number;
@@ -1949,6 +1950,18 @@ export class DreamEngine {
               );
               if (relevance !== null && relevance >= RESEARCH_RESOLVED_RELEVANCE_FLOOR) {
                 this.recordResearchOutcome(gap.id, "resolved", relevance, now);
+                // PLAN-34 Phase 2b: the missing return edge — the research
+                // product becomes a retrievable world_fact crystal with web
+                // provenance, and a one-line finding queues for
+                // deterministic surfacing in the next session.
+                this.storeResearchFinding({
+                  targetId: gap.id,
+                  targetDescription: gap.description,
+                  envelope: result.envelopes[0],
+                  sourceUrl: result.sourceUrl,
+                  relevance,
+                  now,
+                });
               } else {
                 // Fail closed: missing embeddings never resolve a target.
                 this.recordResearchOutcome(gap.id, "irrelevant", relevance ?? undefined);
@@ -2006,6 +2019,86 @@ export class DreamEngine {
     } catch (err) {
       log.debug(`research relevance scoring failed: ${String(err)}`);
       return null;
+    }
+  }
+
+  /**
+   * PLAN-34 Phase 2b: persist a RESOLVED research product as memory. Two
+   * writes, both best-effort: a world_fact crystal carrying `url` evidence
+   * (mirrors the extraction ingest insert shape) so the knowledge is
+   * retrievable forever, and a one-line row in the research_findings queue
+   * that the deterministic prompt resolver drains next session.
+   */
+  private storeResearchFinding(params: {
+    targetId: string;
+    targetDescription: string;
+    envelope: { name: string; skill_md: string };
+    sourceUrl?: string;
+    relevance: number;
+    now: number;
+  }): void {
+    const desc = params.targetDescription.replace(/\s+/g, " ").trim().slice(0, 160);
+    let excerpt = "";
+    try {
+      excerpt = Buffer.from(params.envelope.skill_md, "base64")
+        .toString("utf-8")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 400);
+    } catch {
+      // Malformed envelope content — the finding line still carries value.
+    }
+    const evidence = params.sourceUrl ? [{ kind: "url", url: params.sourceUrl }] : [];
+    const text = `Idle research on "${desc}": ${excerpt || params.envelope.name}`;
+    try {
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO chunks (id, path, source, start_line, end_line, text, hash,
+           model, embedding,
+           importance_score, lifecycle, semantic_type, epistemic_layer, evidence_refs,
+           access_count, last_accessed_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          `fact_${crypto.randomUUID()}`,
+          `dream/research/${params.targetId}`,
+          "memory",
+          0,
+          0,
+          text,
+          crypto.createHash("sha256").update(text).digest("hex"),
+          "pending",
+          "[]",
+          Math.min(1, params.relevance),
+          "generated",
+          "fact",
+          "world_fact",
+          JSON.stringify(evidence),
+          0,
+          null,
+          params.now,
+          params.now,
+        );
+    } catch (err) {
+      log.debug(`research crystal insert failed: ${String(err)}`);
+    }
+    try {
+      const host = params.sourceUrl ? new URL(params.sourceUrl).host : "web";
+      this.db
+        .prepare(
+          `INSERT INTO research_findings (id, target_id, finding, source_url, relevance, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          crypto.randomUUID(),
+          params.targetId,
+          `Looked into "${desc}" — ingested "${params.envelope.name}" from ${host}`,
+          params.sourceUrl ?? null,
+          params.relevance,
+          params.now,
+        );
+    } catch (err) {
+      log.debug(`research finding insert failed: ${String(err)}`);
     }
   }
 

@@ -469,6 +469,15 @@ export async function runEmbeddedAttempt(
       promptMode,
     }).catch(() => undefined);
 
+    // PLAN-34 Phase 2b: idle-research findings surface deterministically on
+    // the next live turn — same independence contract as canonical facts.
+    const { resolveResearchFindingsBlock } = await import("../../research-findings-block.js");
+    const researchFindings = await resolveResearchFindingsBlock({
+      config: params.config,
+      agentId: sessionAgentId,
+      promptMode,
+    }).catch(() => undefined);
+
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,
@@ -497,6 +506,7 @@ export async function runEmbeddedAttempt(
       memoryCitationsMode: params.config?.memory?.citations,
       endocrineState,
       canonicalFacts,
+      researchFindings,
     });
     // PLAN-25: append any evolved prompt fragments to the system prompt. Empty
     // string (and thus byte-identical prompt) until a policy is promoted.
