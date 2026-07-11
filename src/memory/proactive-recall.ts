@@ -602,7 +602,7 @@ const MAX_DREAM_FACTS_PER_TURN = 1;
 const MAX_DREAM_RECALL_PER_TURN = MAX_DREAM_FACTS_PER_TURN;
 
 /** Truncate to <= max chars at the last sentence/clause boundary within it. */
-function truncateAtSentence(text: string, max: number): string {
+export function truncateAtSentence(text: string, max: number): string {
   if (text.length <= max) {
     return text;
   }

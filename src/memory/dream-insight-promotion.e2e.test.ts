@@ -36,13 +36,17 @@ function seedSource(db: DatabaseSync, id: string, trust = "first_party"): void {
 }
 
 /** A promotable insight carrying the given cited source ids. */
-function promotableInsight(sourceIds: string[], content = "A grounded hypothesis.") {
+function promotableInsight(
+  sourceIds: string[],
+  content = "A grounded hypothesis.",
+  mode: "simulation" | "extrapolation" = "simulation",
+) {
   return {
     id: `ins_${crypto.randomUUID()}`,
     content,
     embedding: [1, 0, 0, 0],
     confidence: 0.8,
-    mode: "simulation" as const,
+    mode,
     sourceChunkIds: sourceIds,
     sourceClusterIds: [],
     dreamCycleId: "c1",
@@ -187,6 +191,118 @@ describe("dream insight promotion (e2e)", () => {
     const results = searchDreamInsights(db, [1, 0, 0, 0], { minScore: 0.5 });
     expect(results.some((r) => r.content === "Sparse coding folds context.")).toBe(true);
     expect(results.every((r) => r.mode === "insight")).toBe(true);
+  });
+});
+
+describe("dream prediction routing (PLAN-34 Phase 4 §6.3)", () => {
+  let db: DatabaseSync;
+  beforeEach(() => {
+    db = createTestDb();
+    seedSource(db, "s1");
+    seedSource(db, "s2");
+  });
+
+  async function promote(engine: DreamEngine, insights: unknown[]) {
+    const p = engine as unknown as {
+      promoteEligibleInsights(ins: unknown[], cycleId: string): Promise<void>;
+    };
+    await p.promoteEligibleInsights(insights, "c1");
+  }
+
+  function promotionTelemetry(database: DatabaseSync, metric: string): number {
+    const row = database
+      .prepare(
+        `SELECT SUM(metric_value) as total FROM dream_telemetry
+         WHERE phase = 'promotion' AND metric_name = ?`,
+      )
+      .get(metric) as { total: number | null } | undefined;
+    return row?.total ?? 0;
+  }
+  const predictionTelemetry = (database: DatabaseSync) =>
+    promotionTelemetry(database, "prediction_created");
+
+  const CUE_CONTENT =
+    "The gateway will likely need a restart next week because sqlite disk pressure keeps climbing.";
+
+  it("a promoted extrapolation with a cue routes through the prediction writer", async () => {
+    const engine = makeEngine(db);
+    const calls: Array<{ insightId: string; trigger: string; confidence: number }> = [];
+    engine.setDreamPredictionWriter(async (p) => {
+      calls.push({ insightId: p.insightId, trigger: p.trigger, confidence: p.confidence });
+      return "created";
+    });
+    const insight = promotableInsight(["s1", "s2"], CUE_CONTENT, "extrapolation");
+    await promote(engine, [insight]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].insightId).toBe(insight.id);
+    expect(calls[0].trigger).toBe(DreamEngine.distillPredictionTrigger(CUE_CONTENT));
+    expect(predictionTelemetry(db)).toBe(1);
+  });
+
+  it("an extrapolation WITHOUT a temporal cue creates no prediction (false-fire guard)", async () => {
+    const engine = makeEngine(db);
+    let called = 0;
+    engine.setDreamPredictionWriter(async () => {
+      called++;
+      return "created";
+    });
+    await promote(engine, [
+      promotableInsight(["s1", "s2"], "The user prefers terse commit messages.", "extrapolation"),
+    ]);
+    expect(called).toBe(0);
+    expect(predictionTelemetry(db)).toBe(0);
+    // The insight itself still promoted — only the prediction leg is skipped.
+    expect(promotedChunks(db)).toHaveLength(1);
+  });
+
+  it("a promoted SIMULATION insight never routes, even with a cue", async () => {
+    const engine = makeEngine(db);
+    let called = 0;
+    engine.setDreamPredictionWriter(async () => {
+      called++;
+      return "created";
+    });
+    await promote(engine, [promotableInsight(["s1", "s2"], CUE_CONTENT, "simulation")]);
+    expect(called).toBe(0);
+    expect(promotedChunks(db)).toHaveLength(1);
+  });
+
+  it("a verifier-rejected extrapolation never routes (qualifiers only)", async () => {
+    const engine = makeEngine(db, {
+      verifier: async () => ({ unsupported: 1, misattribution: false }),
+    });
+    let called = 0;
+    engine.setDreamPredictionWriter(async () => {
+      called++;
+      return "created";
+    });
+    await promote(engine, [promotableInsight(["s1", "s2"], CUE_CONTENT, "extrapolation")]);
+    expect(called).toBe(0);
+  });
+
+  it("a capped writer records prediction_capped telemetry (slot starvation is visible)", async () => {
+    const engine = makeEngine(db);
+    engine.setDreamPredictionWriter(async () => "capped");
+    await promote(engine, [promotableInsight(["s1", "s2"], CUE_CONTENT, "extrapolation")]);
+    expect(predictionTelemetry(db)).toBe(0);
+    expect(promotionTelemetry(db, "prediction_capped")).toBe(1);
+  });
+
+  it("a failed writer records neither created nor capped telemetry", async () => {
+    const engine = makeEngine(db);
+    engine.setDreamPredictionWriter(async () => "failed");
+    await promote(engine, [promotableInsight(["s1", "s2"], CUE_CONTENT, "extrapolation")]);
+    expect(predictionTelemetry(db)).toBe(0);
+    expect(promotionTelemetry(db, "prediction_capped")).toBe(0);
+  });
+
+  it("a throwing writer does not break promotion", async () => {
+    const engine = makeEngine(db);
+    engine.setDreamPredictionWriter(async () => {
+      throw new Error("prospective engine down");
+    });
+    await promote(engine, [promotableInsight(["s1", "s2"], CUE_CONTENT, "extrapolation")]);
+    expect(promotedChunks(db)).toHaveLength(1);
   });
 });
 

@@ -207,7 +207,7 @@ export async function resolveEndocrineState(params: {
         checkTriggers(params: {
           messageText: string;
           messageEmbedding?: number[];
-        }): Array<{ action: string }>;
+        }): Array<{ action: string; sourceSession?: string | null }>;
       } | null;
       if (prospectiveEngine) {
         const triggered = prospectiveEngine.checkTriggers({
@@ -215,7 +215,20 @@ export async function resolveEndocrineState(params: {
           messageEmbedding: userMessageEmbedding ?? undefined,
         });
         if (triggered.length > 0) {
-          const prospectiveLines = triggered.map((t) => `- [reminder] ${t.action}`);
+          // PLAN-34 Phase 4 (§6.3): dream-origin rows are voiced as
+          // hypotheses, not reminders — an agent-made prediction must never
+          // masquerade as a user-set intention. Actions are sanitized to a
+          // single line at render time (write-site sanitization exists for
+          // dream rows, but pre-existing reminder rows also flow through
+          // here and a newline in an action could forge extra prompt lines).
+          const { isDreamPredictionSource, sanitizePromptLine } =
+            await import("../memory/prospective-memory.js");
+          const prospectiveLines = triggered.map((t) => {
+            const action = sanitizePromptLine(t.action);
+            return isDreamPredictionSource(t.sourceSession)
+              ? `- [dream prediction] ${action}`
+              : `- [reminder] ${action}`;
+          });
           proactiveMemories = (proactiveMemories ?? "") + "\n" + prospectiveLines.join("\n");
         }
       }

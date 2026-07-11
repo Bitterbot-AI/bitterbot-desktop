@@ -72,6 +72,7 @@ import { MemStore } from "./mem-store.js";
 import { runArchitectCycle, selectRulesForState } from "./memory-architect.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
 import { PeerReputationManager } from "./peer-reputation.js";
+import { truncateAtSentence } from "./proactive-recall.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
 import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
 import { ReconsolidationEngine } from "./reconsolidation.js";
@@ -262,6 +263,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   private reconsolidationEngine: ReconsolidationEngine | null = null;
   private epistemicDirectiveEngine: EpistemicDirectiveEngine | null = null;
   private prospectiveMemoryEngine: ProspectiveMemoryEngine | null = null;
+  /** Warn once (not per cycle) when dream predictions have no engine to land in. */
+  private dreamPredictionEngineWarned = false;
   private skillSeekersAdapter: import("./skill-seekers-adapter.js").SkillSeekersAdapter | null =
     null;
 
@@ -2555,6 +2558,50 @@ export class MemoryIndexManager implements MemorySearchManager {
     // insights. The manager owns the live embedding model and vec/fts state,
     // so it performs the actual write; the engine owns the gate.
     this.dreamEngine.setInsightChunkWriter((row) => this.writePromotedInsightChunk(row));
+
+    // PLAN-34 Phase 4 (§6.3): promoted extrapolation predictions route into
+    // prospective memory as "[dream prediction]" rows. The manager wires
+    // the writer because it owns the prospective engine and the embedding
+    // model. Dream rows match ONLY semantically (checkTriggers skips the
+    // keyword strategy for them — the substring fallback was a false-fire
+    // vector), so a trigger that cannot be embedded creates no prediction:
+    // a row that could never fire semantically would be dead weight. The
+    // prospective engine is resolved at call time (constructed later in
+    // init, and only when the curiosity subsystem is enabled).
+    this.dreamEngine.setDreamPredictionWriter(async (p) => {
+      if (!this.prospectiveMemoryEngine) {
+        if (!this.dreamPredictionEngineWarned) {
+          this.dreamPredictionEngineWarned = true;
+          log.warn(
+            "dream prediction writer: prospective memory engine unavailable " +
+              "(memory.curiosity.enabled=false?) — promoted extrapolation " +
+              "predictions are dropped",
+          );
+        }
+        return "failed";
+      }
+      let triggerEmbedding: number[] | undefined;
+      try {
+        const vecs = await this.embedBatchWithRetry([p.trigger]);
+        if (vecs[0] && vecs[0].length > 0) {
+          triggerEmbedding = vecs[0];
+        }
+      } catch {
+        // handled below — no embedding, no prediction
+      }
+      if (!triggerEmbedding) {
+        log.debug("dream prediction skipped: trigger embedding unavailable");
+        return "failed";
+      }
+      const result = this.prospectiveMemoryEngine.createDreamPrediction({
+        triggerCondition: p.trigger,
+        triggerEmbedding,
+        action: truncateAtSentence(p.content, 300),
+        insightId: p.insightId,
+        confidence: p.confidence,
+      });
+      return result.status === "refused" ? "failed" : result.status;
+    });
 
     // Plan 7, Phase 10: Wire GCCRF reward function for FSHO alpha coupling
     // (CuriosityEngine now exposes updateFshoR/getFshoRAvg/getFshoCoupledAlpha)

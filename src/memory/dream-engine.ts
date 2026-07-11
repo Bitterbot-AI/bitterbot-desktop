@@ -400,6 +400,179 @@ export class DreamEngine {
     this.insightChunkWriter = writer;
   }
 
+  /**
+   * PLAN-34 Phase 4 (§6.3): optional writer that routes a PROMOTED
+   * extrapolation prediction into prospective memory as a
+   * "[dream prediction]" row. The manager injects it (it owns the
+   * prospective engine and the embedding model) — mirrors
+   * setInsightChunkWriter. The engine only decides which insights qualify
+   * (full promotion gate passed, extrapolation mode, distillable trigger).
+   */
+  private dreamPredictionWriter:
+    | ((p: {
+        insightId: string;
+        content: string;
+        trigger: string;
+        confidence: number;
+      }) => Promise<"created" | "capped" | "failed">)
+    | null = null;
+
+  setDreamPredictionWriter(
+    writer:
+      | ((p: {
+          insightId: string;
+          content: string;
+          trigger: string;
+          confidence: number;
+        }) => Promise<"created" | "capped" | "failed">)
+      | null,
+  ): void {
+    this.dreamPredictionWriter = writer;
+  }
+
+  /** Cue that marks an extrapolation as a testable FUTURE prediction. */
+  private static readonly PREDICTION_CUE_RX =
+    /\b(will|going to|likely|expect(s|ed)?|predict(s|ed)?|anticipate(s|d)?|upcoming|soon|next (week|month|quarter|year|release|version|session)|by (end of|q[1-4]|20\d\d)|within \d+)\b/i;
+
+  /** Filler + cue words excluded so the trigger is content words only. */
+  private static readonly TRIGGER_STOPWORDS = new Set([
+    "will",
+    "going",
+    "likely",
+    "expect",
+    "expects",
+    "expected",
+    "predict",
+    "predicts",
+    "predicted",
+    "prediction",
+    "anticipate",
+    "anticipates",
+    "anticipated",
+    "upcoming",
+    "soon",
+    "next",
+    "this",
+    "that",
+    "these",
+    "those",
+    "with",
+    "from",
+    "have",
+    "been",
+    "being",
+    "they",
+    "their",
+    "them",
+    "there",
+    "when",
+    "then",
+    "than",
+    "would",
+    "could",
+    "should",
+    "might",
+    "must",
+    "about",
+    "into",
+    "over",
+    "under",
+    "more",
+    "most",
+    "some",
+    "such",
+    "only",
+    "also",
+    "very",
+    "just",
+    "because",
+    "between",
+    "after",
+    "before",
+    "while",
+    "where",
+    "which",
+    "whose",
+    "does",
+    "doing",
+    "done",
+    "other",
+    "others",
+    "based",
+    "within",
+    "user",
+    "users",
+    "agent",
+    "agents",
+    "system",
+    "systems",
+    "seems",
+    "appears",
+    // Generic 4-char-plus words that defeat the distinctiveness bar
+    // (adversarial pass: "need info 2026" false-fired on unrelated turns).
+    "need",
+    "needs",
+    "info",
+    "time",
+    "data",
+    "keep",
+    "keeps",
+    "more",
+    "week",
+    "weeks",
+    "month",
+    "months",
+    "year",
+    "years",
+    "days",
+    "today",
+    "tomorrow",
+    "thing",
+    "things",
+    // Ubiquitous product-domain nouns — present in most insights ABOUT this
+    // system, so they carry no discriminating power as trigger words.
+    "memory",
+    "memories",
+    "session",
+    "sessions",
+    "chunk",
+    "chunks",
+    "insight",
+    "insights",
+    "dream",
+    "dreams",
+  ]);
+
+  /**
+   * Distill a conservative trigger phrase from an extrapolation insight.
+   * The trigger must encode the predicted CONDITION, not the topic, so
+   * words are taken from the clause AFTER the first temporal/predictive
+   * cue. Bare numeric tokens ("2026") never count as distinctive, at least
+   * 3 distinctive words must survive, and at least one must be >= 6 chars
+   * (a bag of generic 4-char words like "need info" is not a trigger).
+   * Returns null — create NO prediction — whenever any bar fails; a vague
+   * trigger false-firing on unrelated turns is worse than a missed
+   * prediction. Matching is semantic-only downstream (checkTriggers skips
+   * the keyword strategy for dream rows).
+   */
+  static distillPredictionTrigger(content: string): string | null {
+    const cue = DreamEngine.PREDICTION_CUE_RX.exec(content);
+    if (!cue) {
+      return null;
+    }
+    const clause = content.slice(cue.index + cue[0].length);
+    const words = clause
+      .toLowerCase()
+      .replace(/[^a-z0-9\s_-]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 3 && !/^\d+$/.test(w) && !DreamEngine.TRIGGER_STOPWORDS.has(w));
+    const uniq = [...new Set(words)];
+    if (uniq.length < 3 || !uniq.some((w) => w.length >= 6)) {
+      return null;
+    }
+    return uniq.slice(0, 8).join(" ");
+  }
+
   getState(): DreamState {
     return this.state;
   }
@@ -3219,6 +3392,8 @@ export class DreamEngine {
     grounded.sort((a, b) => b.topSimilarity - a.topSimilarity);
 
     let promoted = 0;
+    let predictionsCreated = 0;
+    let predictionsCapped = 0;
     let llmCallsUsed = 0;
     for (const g of grounded) {
       if (promoted >= MAX_PROMOTIONS_PER_CYCLE) {
@@ -3265,6 +3440,31 @@ export class DreamEngine {
         });
         if (ok) {
           promoted++;
+          // PLAN-34 Phase 4 (§6.3): a PROMOTED extrapolation with a
+          // temporal/predictive cue also becomes a prospective
+          // "[dream prediction]" via the manager-wired writer. Qualifiers
+          // only — the full gate (grounding + verifier + real chunk write)
+          // already passed; no-cue insights are skipped conservatively.
+          if (g.insight.mode === "extrapolation" && this.dreamPredictionWriter) {
+            const trigger = DreamEngine.distillPredictionTrigger(g.insight.content);
+            if (trigger) {
+              try {
+                const outcome = await this.dreamPredictionWriter({
+                  insightId: g.insight.id,
+                  content: g.insight.content,
+                  trigger,
+                  confidence: g.insight.confidence,
+                });
+                if (outcome === "created") {
+                  predictionsCreated++;
+                } else if (outcome === "capped") {
+                  predictionsCapped++;
+                }
+              } catch (err) {
+                log.debug(`dream prediction write failed: ${String(err)}`);
+              }
+            }
+          }
         }
       } catch (err) {
         log.debug(`promoted-insight chunk write failed: ${String(err)}`);
@@ -3291,6 +3491,13 @@ export class DreamEngine {
       }
     }
     this.recordTelemetry(cycleId, "promotion", "promoted", promoted);
+    if (predictionsCreated > 0) {
+      this.recordTelemetry(cycleId, "promotion", "prediction_created", predictionsCreated);
+    }
+    // Slot starvation must be visible in Phase 6 observability, not silent.
+    if (predictionsCapped > 0) {
+      this.recordTelemetry(cycleId, "promotion", "prediction_capped", predictionsCapped);
+    }
     if (promoted > 0) {
       log.info(`dream insight promotion: ${promoted} insight(s) promoted to searchable chunks`);
     }
