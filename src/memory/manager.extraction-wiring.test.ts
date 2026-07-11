@@ -214,4 +214,48 @@ describe("runSessionExtraction wiring (PLAN-34 Phase 1)", () => {
       .get() as { session_trust: string } | undefined;
     expect(fp?.session_trust).toBe("first_party");
   });
+
+  it("backfills session_trust for pre-migration NULL chunks during extraction (PLAN-34 §6.2)", async () => {
+    const llmCall = async () =>
+      JSON.stringify({
+        facts: [],
+        handover: { purpose: "p", milestones: [], decisions: [], blockers: [], nextSteps: [] },
+      });
+    const { fake } = makeFakeManager(llmCall);
+    // The fake is a plain object; give it the real step-A method + flag so
+    // runSessionExtraction's `this.backfillSessionTrust()` resolves.
+    (fake as Record<string, unknown>).sessionTrustBackfillDone = false;
+    (fake as Record<string, unknown>).backfillSessionTrust = (
+      MemoryIndexManager.prototype as unknown as { backfillSessionTrust: () => Promise<number> }
+    ).backfillSessionTrust;
+
+    // A real first-party session so the trust store loads a mapping…
+    writeSession("sess-owner", `agent:${AGENT_ID}`, "hello there");
+    const sessionsDir = path.join(stateDir, "agents", AGENT_ID, "sessions");
+    // …plus a PRE-MIGRATION session chunk written before the v34 column
+    // existed: session_trust is NULL and its path is the owner transcript.
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+         session_trust, created_at, updated_at)
+       VALUES ('legacy1', ?, 'sessions', 0, 0, 'legacy fact', 'h_legacy', 'test', '[]', NULL, ?, ?)`,
+    ).run(path.join(sessionsDir, "sess-owner.jsonl"), now, now);
+    // …and an orphaned session chunk whose path is not in the store.
+    db.prepare(
+      `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+         session_trust, created_at, updated_at)
+       VALUES ('legacy2', '/gone/orphan.jsonl', 'sessions', 0, 0, 'orphan', 'h_orphan', 'test', '[]', NULL, ?, ?)`,
+    ).run(now, now);
+
+    await runExtraction(fake);
+
+    const mapped = db.prepare(`SELECT session_trust FROM chunks WHERE id = 'legacy1'`).get() as {
+      session_trust: string | null;
+    };
+    const orphan = db.prepare(`SELECT session_trust FROM chunks WHERE id = 'legacy2'`).get() as {
+      session_trust: string | null;
+    };
+    expect(mapped.session_trust).toBe("first_party"); // resolved via the store
+    expect(orphan.session_trust).toBe("unknown"); // unmapped → stamped, not left NULL
+  });
 });

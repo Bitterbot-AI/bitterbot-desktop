@@ -862,6 +862,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   private identityBackfillDone = false;
   /** PLAN-28 A3: ensures the one-time general relationship backfill runs once. */
   private generalBackfillDone = false;
+  /** PLAN-34 §6.2: session_trust backfill ran this process (idempotent anyway). */
+  private sessionTrustBackfillDone = false;
   /** PLAN-28 Part B: rolling per-layer dead-wire detector + trace counters.
    * PLAN-34 Phase 6 (§8): open_loops is a LOW-FREQUENCY lane — it contributes
    * only while unfinished work exists, so the 200-call rolling window would
@@ -3314,6 +3316,16 @@ export class MemoryIndexManager implements MemorySearchManager {
     const { buildSessionTrustResolver } = await import("./session-trust.js");
     const sessionTrust = await buildSessionTrustResolver(this.agentId);
 
+    // PLAN-34 §6.2: stamp session_trust onto PRE-MIGRATION session chunks
+    // (NULL rows only) so the dream-promotion gate's first-party leg — and
+    // the insight backfill behind it — can ground against history instead
+    // of rejecting 100% of it. Naturally idempotent; cheap once complete.
+    try {
+      await this.backfillSessionTrust();
+    } catch (err) {
+      log.debug(`session_trust backfill failed (non-critical): ${String(err)}`);
+    }
+
     // PLAN-34 Phase 1: the open-question loop rides the extraction cycle.
     // Sweep canonical-ledger conflicts into user-answerable questions, then
     // offer the top open questions to the extractor (first-party sessions
@@ -4908,6 +4920,78 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   canonicalFacts(): CanonicalFactsStore | null {
     return this.canonicalFactsStore;
+  }
+
+  /**
+   * PLAN-34 §6.2: backfill `chunks.session_trust` for session chunks written
+   * before the v34 migration (NULL rows only — the live write path stamps
+   * trust at write time). Resolves each distinct transcript path through the
+   * sessions.json store. Two safety rules:
+   * - the whole run is SKIPPED when the store loads zero mappings, so a
+   *   transiently unreadable store can never permanently stamp everything
+   *   `unknown`;
+   * - genuinely unmapped paths ARE stamped `unknown` (pruned history only
+   *   ever shrinks — leaving them NULL would rescan forever for an answer
+   *   that cannot improve). The promotion gate treats unknown as
+   *   non-first-party either way.
+   * Idempotent by construction (touches only NULL rows) and cheap once
+   * complete (a single COUNT probe); the per-process flag just skips the
+   * probe on subsequent extraction runs.
+   */
+  private async backfillSessionTrust(): Promise<number> {
+    if (this.sessionTrustBackfillDone) {
+      return 0;
+    }
+    // Exclude promoted dream-insight chunks: they are generated artifacts
+    // (and can carry source='sessions' under a sources=['sessions'] config),
+    // never session history, so they are not ours to stamp. Keeping this in
+    // lockstep with the dream engine's backfill guard prevents a deadlock
+    // where one counts a row the other never clears.
+    const NOT_DREAM_INSIGHT = `NOT (COALESCE(origin, 'indexed') = 'dream'
+                                    AND COALESCE(semantic_type, 'general') = 'insight')`;
+    const pending = (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM chunks
+           WHERE session_trust IS NULL AND source = 'sessions' AND ${NOT_DREAM_INSIGHT}`,
+        )
+        .get() as { c: number }
+    ).c;
+    if (pending === 0) {
+      this.sessionTrustBackfillDone = true;
+      return 0;
+    }
+    const { buildSessionTrustResolverDetailed } = await import("./session-trust.js");
+    const { resolve, knownSessions } = await buildSessionTrustResolverDetailed(this.agentId);
+    if (knownSessions === 0) {
+      // Store unreadable or empty — do not stamp anything this run.
+      return 0;
+    }
+    const paths = this.db
+      .prepare(
+        `SELECT DISTINCT path FROM chunks
+         WHERE session_trust IS NULL AND source = 'sessions' AND ${NOT_DREAM_INSIGHT}`,
+      )
+      .all() as Array<{ path: string }>;
+    const update = this.db.prepare(
+      `UPDATE chunks SET session_trust = ?
+       WHERE path = ? AND session_trust IS NULL AND source = 'sessions' AND ${NOT_DREAM_INSIGHT}`,
+    );
+    let stamped = 0;
+    let i = 0;
+    for (const { path: transcriptPath } of paths) {
+      update.run(resolve(transcriptPath), transcriptPath);
+      stamped++;
+      // Heavy memory loops must yield (gateway event-loop starvation history).
+      if (++i % 50 === 0) {
+        await yieldToEventLoop();
+      }
+    }
+    this.sessionTrustBackfillDone = true;
+    log.info(
+      `session_trust backfill: stamped ${stamped} session path(s) across ${pending} chunk(s)`,
+    );
+    return stamped;
   }
 
   /**

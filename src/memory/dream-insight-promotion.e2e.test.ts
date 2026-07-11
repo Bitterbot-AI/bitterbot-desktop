@@ -306,6 +306,178 @@ describe("dream prediction routing (PLAN-34 Phase 4 §6.3)", () => {
   });
 });
 
+describe("dream insight backfill (PLAN-34 §6.2, redesigned)", () => {
+  let db: DatabaseSync;
+  beforeEach(() => {
+    db = createTestDb();
+    seedSource(db, "s1");
+    seedSource(db, "s2");
+  });
+
+  function seedHistoricalInsight(
+    id: string,
+    mode = "extrapolation",
+    sourceIds: string[] = ["s1", "s2"],
+    importance = 0.6,
+  ): void {
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO dream_insights (id, content, embedding, confidence, mode,
+         source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score,
+         access_count, last_accessed_at, created_at, updated_at)
+       VALUES (?, ?, ?, 0.8, ?, ?, '[]', 'old_cycle', ?, 0, NULL, ?, ?)`,
+    ).run(
+      id,
+      `Historical hypothesis ${id}.`,
+      ALIGNED,
+      mode,
+      JSON.stringify(sourceIds),
+      importance,
+      now,
+      now,
+    );
+  }
+
+  async function runBackfill(engine: DreamEngine, cycleId = "c1"): Promise<void> {
+    await (
+      engine as unknown as { backfillPromotedInsights(cycleId: string): Promise<void> }
+    ).backfillPromotedInsights(cycleId);
+  }
+
+  function metaValue(key: string): string | undefined {
+    return (
+      db.prepare(`SELECT value FROM meta WHERE key = ?`).get(key) as { value: string } | undefined
+    )?.value;
+  }
+
+  it("promotes an eligible historical insight, then completes on exhaustion — not on a 0-promotion run", async () => {
+    seedHistoricalInsight("hist_1");
+    const engine = makeEngine(db);
+    await runBackfill(engine);
+    expect(promotedChunks(db)).toHaveLength(1);
+    // Assessed and marked attempted; done only after the NEXT run finds nothing.
+    expect(metaValue("dream_insight_backfill_attempted")).toContain("hist_1");
+    expect(metaValue("dream_insight_backfill_done")).toBeUndefined();
+    await runBackfill(engine);
+    expect(metaValue("dream_insight_backfill_done")).toBe("1");
+    expect(metaValue("dream_insight_backfill_attempted")).toBeUndefined();
+    // Fast path afterwards: no further writes.
+    await runBackfill(engine);
+    expect(promotedChunks(db)).toHaveLength(1);
+  });
+
+  it("never double-writes an already-promoted insight (dedupe via evidence_refs)", async () => {
+    seedHistoricalInsight("hist_dup");
+    const engine = makeEngine(db);
+    await runBackfill(engine);
+    expect(promotedChunks(db)).toHaveLength(1);
+    // Clear the flags entirely — simulate an operator reset.
+    db.prepare(`DELETE FROM meta WHERE key IN
+      ('dream_insight_backfill_done', 'dream_insight_backfill_attempted')`).run();
+    await runBackfill(engine);
+    expect(promotedChunks(db)).toHaveLength(1); // still exactly one
+  });
+
+  it("DOA regression: refuses to assess while any session chunk still has NULL trust", async () => {
+    // The real DOA path (adversarial pass): a Phase-4→§6.2 upgrade DB has
+    // live first_party chunks AND pre-migration session chunks still NULL.
+    // A global "some first_party exists" guard would wrongly proceed and
+    // burn the top-importance candidates against ungrounded sources. Seed
+    // exactly that shape: two NULL-trust session source chunks the insight
+    // cites, plus an unrelated first_party chunk so a global count is > 0.
+    const bare = createTestDb();
+    db = bare;
+    seedSource(bare, "null_a", null as unknown as string); // step A hasn't run
+    seedSource(bare, "null_b", null as unknown as string);
+    seedSource(bare, "live_fp", "first_party"); // Phase-4 live chunk exists
+    seedHistoricalInsight("hist_doa", "extrapolation", ["null_a", "null_b"]);
+    const engine = makeEngine(bare);
+    await runBackfill(engine);
+    expect(promotedChunks(bare)).toHaveLength(0);
+    expect(metaValue("dream_insight_backfill_attempted")).toBeUndefined();
+    expect(metaValue("dream_insight_backfill_done")).toBeUndefined(); // NOT locked
+
+    // Once step A stamps the pending session chunks, the SAME insight grounds
+    // and promotes — nothing was lost to a premature attempted-mark.
+    bare
+      .prepare(`UPDATE chunks SET session_trust = 'first_party' WHERE id IN ('null_a', 'null_b')`)
+      .run();
+    await runBackfill(engine);
+    expect(promotedChunks(bare)).toHaveLength(1);
+    expect(metaValue("dream_insight_backfill_attempted")).toContain("hist_doa");
+  });
+
+  it("a promoted dream-insight chunk (source='sessions', NULL trust) does not deadlock the guard", async () => {
+    // Under a sources=['sessions'] config, writePromotedInsightChunk writes
+    // source='sessions' + NULL session_trust. Those generated artifacts must
+    // NOT count as pending session history, or the guard would block the
+    // backlog forever (step A's one-shot latch never re-stamps them).
+    seedHistoricalInsight("hist_ok");
+    // Simulate a previously-promoted insight chunk from a sessions-only config.
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+         origin, semantic_type, session_trust, importance_score, lifecycle, created_at, updated_at)
+       VALUES ('dream_prev', 'dream/insight/dream_prev', 'sessions', 0, 0, 'prev insight', 'h_prev',
+         'test', '[1,0,0,0]', 'dream', 'insight', NULL, 0.4, 'generated', ?, ?)`,
+    ).run(now, now);
+    const engine = makeEngine(db);
+    await runBackfill(engine);
+    // The guard ignored the dream chunk and proceeded to promote the backlog.
+    expect(promotedChunks(db).some((c) => c.text.includes("hist_ok"))).toBe(true);
+  });
+
+  it("a verifier-rejected candidate is marked attempted, and exhaustion still completes cleanly", async () => {
+    seedHistoricalInsight("hist_rej");
+    const engine = makeEngine(db, {
+      verifier: async () => ({ unsupported: 1, misattribution: false }),
+    });
+    await runBackfill(engine);
+    expect(promotedChunks(db)).toHaveLength(0);
+    expect(metaValue("dream_insight_backfill_attempted")).toContain("hist_rej");
+    // A 0-promotion (assessed-but-refused) run must NOT prematurely latch done.
+    expect(metaValue("dream_insight_backfill_done")).toBeUndefined();
+    await runBackfill(engine);
+    // Assessed-and-refused is a real verdict — exhaustion completes the backfill.
+    expect(metaValue("dream_insight_backfill_done")).toBe("1");
+  });
+
+  it("processes at most MAX_PROMOTIONS_PER_CYCLE candidates per cycle (incremental drip)", async () => {
+    for (let i = 0; i < 5; i++) {
+      seedHistoricalInsight(`hist_${i}`, "extrapolation", ["s1", "s2"], 0.9 - i * 0.1);
+    }
+    const engine = makeEngine(db);
+    await runBackfill(engine);
+    expect(promotedChunks(db)).toHaveLength(3); // cap per cycle
+    await runBackfill(engine, "c2");
+    expect(promotedChunks(db)).toHaveLength(5); // remaining two
+  });
+
+  it("only extrapolation/simulation modes are candidates", async () => {
+    seedHistoricalInsight("hist_replay", "replay");
+    const engine = makeEngine(db);
+    await runBackfill(engine);
+    expect(promotedChunks(db)).toHaveLength(0);
+    await runBackfill(engine);
+    expect(metaValue("dream_insight_backfill_done")).toBe("1"); // empty scope exhausts
+  });
+
+  it("the kill switch skips assessment without marking anything", async () => {
+    seedHistoricalInsight("hist_off");
+    const engine = makeEngine(db, { insightPromotion: { enabled: false } });
+    await runBackfill(engine);
+    expect(promotedChunks(db)).toHaveLength(0);
+    expect(metaValue("dream_insight_backfill_attempted")).toBeUndefined();
+    expect(metaValue("dream_insight_backfill_done")).toBeUndefined();
+  });
+});
+
+// NOTE: the run()-level tests for the livePromotionRan gate live in
+// dream-backfill-gate.test.ts (a non-e2e file). Driving DreamEngine.run()
+// pulls first-time dynamic imports (dream-evaluator, etc.) that make vite's
+// e2e-config dep optimizer re-scan and emit noise; the default config
+// handles them cleanly, so the wiring test runs there.
+
 describe("real verifyInsightClaims parse (PLAN-34 Phase 4 designated surface)", () => {
   // Drive the REAL verifier (no setInsightVerifier stub) via a fixture LLM
   // wired as the SYNTHESIS call (the independent verifier model).

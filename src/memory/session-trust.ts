@@ -78,6 +78,22 @@ export function classifySessionKeyTrust(sessionKey: string): SessionTrust {
 export async function buildSessionTrustResolver(
   agentId: string,
 ): Promise<(transcriptAbsPath: string) => SessionTrust> {
+  const { resolve } = await buildSessionTrustResolverDetailed(agentId);
+  return resolve;
+}
+
+/**
+ * PLAN-34 §6.2: like buildSessionTrustResolver, but also reports how many
+ * session mappings actually loaded. The one-time session_trust backfill
+ * must distinguish "store loaded, this session is genuinely unmapped"
+ * (stamp `unknown` — sessions.json only ever prunes, the answer will not
+ * improve later) from "store unreadable right now" (skip the whole run —
+ * a transient failure must never permanently stamp every chunk unknown).
+ */
+export async function buildSessionTrustResolverDetailed(agentId: string): Promise<{
+  resolve: (transcriptAbsPath: string) => SessionTrust;
+  knownSessions: number;
+}> {
   const byId = new Map<string, SessionTrust>();
   try {
     const dir = resolveSessionTranscriptsDirForAgent(agentId);
@@ -92,8 +108,11 @@ export async function buildSessionTrustResolver(
   } catch (err) {
     log.debug(`session trust store unavailable (fail closed): ${String(err)}`);
   }
-  return (transcriptAbsPath: string) => {
-    const base = path.basename(transcriptAbsPath).replace(/\.jsonl$/i, "");
-    return byId.get(base) ?? "unknown";
+  return {
+    resolve: (transcriptAbsPath: string) => {
+      const base = path.basename(transcriptAbsPath).replace(/\.jsonl$/i, "");
+      return byId.get(base) ?? "unknown";
+    },
+    knownSessions: byId.size,
   };
 }

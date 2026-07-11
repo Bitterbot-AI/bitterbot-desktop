@@ -833,6 +833,7 @@ export class DreamEngine {
       this.state = "AWAKENING";
       cycleMeta.state = "AWAKENING";
 
+      let livePromotionRan = false;
       if (allInsights.length > 0) {
         // Embed insights that don't have embeddings yet
         const needsEmbed = allInsights.filter((i) => i.embedding.length === 0);
@@ -865,11 +866,23 @@ export class DreamEngine {
         this.pruneInsights();
 
         if (promotable.length > 0) {
+          livePromotionRan = true;
           try {
             await this.promoteEligibleInsights(promotable, cycleId);
           } catch (err) {
             log.debug(`insight promotion failed: ${String(err)}`);
           }
+        }
+      }
+
+      // PLAN-34 §6.2: cycles that spent no live promotion budget drain the
+      // pre-Phase-4 dream_insights backlog instead — same gate, same
+      // per-cycle verifier allowance, so the LLM envelope never doubles up.
+      if (!livePromotionRan) {
+        try {
+          await this.backfillPromotedInsights(cycleId);
+        } catch (err) {
+          log.debug(`insight backfill failed: ${String(err)}`);
         }
       }
 
@@ -3500,6 +3513,190 @@ export class DreamEngine {
     }
     if (promoted > 0) {
       log.info(`dream insight promotion: ${promoted} insight(s) promoted to searchable chunks`);
+    }
+  }
+
+  /**
+   * PLAN-34 §6.2: incremental backfill of pre-Phase-4 `dream_insights`
+   * through the SAME promotion gate as live insights. Redesigned after the
+   * first attempt shipped dead-on-arrival (historical chunks had NULL
+   * `session_trust`, so the first-party grounding leg rejected 100% and a
+   * one-shot meta flag locked the zero-promotion result in forever):
+   *
+   * - refuses to assess while ANY session chunk still has NULL trust, so it
+   *   waits for step A (`backfillSessionTrust`, which runs on the
+   *   independent consolidation cadence) to finish stamping history — a
+   *   global "some first_party exists" test would let the top candidates be
+   *   assessed against still-NULL sources and permanently lost on a
+   *   Phase-4→§6.2 upgrade DB;
+   * - processes at most MAX_PROMOTIONS_PER_CYCLE candidates per dream cycle,
+   *   and only in cycles that spent no live promotion budget, so the
+   *   per-cycle LLM envelope (5 mode + 3 verify) never doubles;
+   * - dedupes against ALREADY-PROMOTED insight ids (parsed from promoted
+   *   chunks' evidence_refs), so re-running after a cleared flag can never
+   *   double-write a chunk;
+   * - marks ONLY actually-assessed candidates attempted (bounded meta JSON),
+   *   and sets the done flag ONLY when the candidate set is exhausted —
+   *   never because a run promoted zero;
+   * - an unavailable writer/verifier path returns without marking anything.
+   */
+  private async backfillPromotedInsights(cycleId: string): Promise<void> {
+    if (!this.insightPromotionEnabled || !this.insightChunkWriter) {
+      return; // cannot assess — never mark anything attempted
+    }
+    try {
+      const done = this.db
+        .prepare(`SELECT value FROM meta WHERE key = 'dream_insight_backfill_done'`)
+        .get() as { value: string } | undefined;
+      if (done?.value === "1") {
+        return;
+      }
+    } catch {
+      return; // no meta table — skip quietly
+    }
+    try {
+      // DOA regression guard (ordering-independent): the original backfill
+      // assessed candidates while historical chunks had NULL session_trust,
+      // so the first-party leg rejected 100% and the run locked that verdict
+      // in. Step A (manager.backfillSessionTrust) stamps session chunks on
+      // the consolidation cadence, which is INDEPENDENT of the dream cadence
+      // that runs this — a global "any first_party exists" test would pass on
+      // a Phase-4→§6.2 upgrade DB (Phase 4 stamps live chunks first_party)
+      // while pre-migration session history is still NULL, so the top
+      // candidates would be assessed against ungrounded sources and lost.
+      // Wait until NO session chunk remains unstamped: only then has step A
+      // given all history its chance to ground, whichever cadence ran first.
+      const pendingTrust = (
+        this.db
+          .prepare(
+            // Promoted dream-insight chunks can themselves be written with
+            // source='sessions' + NULL trust under a sources=['sessions']
+            // config; they are generated artifacts, not session history, so
+            // they must not count here (step A never re-stamps them once its
+            // one-shot latch fires — counting them would deadlock the
+            // backlog forever).
+            `SELECT COUNT(*) AS c FROM chunks
+             WHERE session_trust IS NULL AND source = 'sessions'
+               AND NOT (COALESCE(origin, 'indexed') = 'dream'
+                        AND COALESCE(semantic_type, 'general') = 'insight')`,
+          )
+          .get() as { c: number }
+      ).c;
+      if (pendingTrust > 0) {
+        return;
+      }
+      const promotedIds = new Set<string>();
+      const refRows = this.db
+        .prepare(
+          `SELECT evidence_refs FROM chunks
+           WHERE origin = 'dream' AND semantic_type = 'insight' AND evidence_refs IS NOT NULL`,
+        )
+        .all() as Array<{ evidence_refs: string }>;
+      for (const r of refRows) {
+        try {
+          const refs = JSON.parse(r.evidence_refs) as Array<{ insightId?: string }>;
+          if (Array.isArray(refs)) {
+            for (const ref of refs) {
+              if (typeof ref?.insightId === "string") {
+                promotedIds.add(ref.insightId);
+              }
+            }
+          }
+        } catch {
+          // unparseable refs — ignore
+        }
+      }
+
+      const attempted = new Set<string>();
+      try {
+        const row = this.db
+          .prepare(`SELECT value FROM meta WHERE key = 'dream_insight_backfill_attempted'`)
+          .get() as { value: string } | undefined;
+        const parsed: unknown = row ? JSON.parse(row.value) : [];
+        if (Array.isArray(parsed)) {
+          for (const id of parsed) {
+            if (typeof id === "string") {
+              attempted.add(id);
+            }
+          }
+        }
+      } catch {
+        // corrupt attempted list — treat as empty (dedupe via promotedIds holds)
+      }
+
+      // Fixed historical scope: the top 200 by importance, same as the
+      // original design. New extrapolation/simulation insights route through
+      // the live gate and never re-enter this table while promotion is on.
+      const rows = this.db
+        .prepare(
+          `SELECT id, content, embedding, confidence, mode, source_chunk_ids
+           FROM dream_insights
+           WHERE mode IN ('extrapolation', 'simulation')
+           ORDER BY importance_score DESC LIMIT 200`,
+        )
+        .all() as Array<{
+        id: string;
+        content: string;
+        embedding: string;
+        confidence: number;
+        mode: string;
+        source_chunk_ids: string;
+      }>;
+      const candidates = rows.filter((r) => !promotedIds.has(r.id) && !attempted.has(r.id));
+      if (candidates.length === 0) {
+        // Genuinely exhausted — the only way the done flag is ever set.
+        this.db
+          .prepare(
+            `INSERT INTO meta (key, value) VALUES ('dream_insight_backfill_done', '1')
+             ON CONFLICT(key) DO UPDATE SET value = '1'`,
+          )
+          .run();
+        this.db.prepare(`DELETE FROM meta WHERE key = 'dream_insight_backfill_attempted'`).run();
+        log.info("dream insight backfill complete: candidate backlog exhausted");
+        return;
+      }
+
+      const slice = candidates.slice(0, MAX_PROMOTIONS_PER_CYCLE);
+      const now = Date.now();
+      const insights: DreamInsight[] = slice.map((r) => ({
+        id: r.id,
+        content: r.content,
+        embedding: parseEmbedding(r.embedding),
+        confidence: r.confidence,
+        mode: r.mode as DreamMode,
+        sourceChunkIds: ((): string[] => {
+          try {
+            const ids: unknown = JSON.parse(r.source_chunk_ids || "[]");
+            return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
+          } catch {
+            return [];
+          }
+        })(),
+        sourceClusterIds: [],
+        dreamCycleId: cycleId,
+        importanceScore: r.confidence * 0.5,
+        accessCount: 0,
+        lastAccessedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      }));
+      await this.promoteEligibleInsights(insights, cycleId);
+
+      // Mark ONLY the assessed slice attempted; the rest stay pending.
+      for (const r of slice) {
+        attempted.add(r.id);
+      }
+      this.db
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('dream_insight_backfill_attempted', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run(JSON.stringify([...attempted]));
+      log.debug(
+        `dream insight backfill: assessed ${slice.length}, ${candidates.length - slice.length} pending`,
+      );
+    } catch (err) {
+      log.debug(`dream insight backfill failed: ${String(err)}`);
     }
   }
 
