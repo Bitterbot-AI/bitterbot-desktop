@@ -155,6 +155,7 @@ canvas { display: block; margin: 0 auto; }
     <div class="card" id="deadwire-card"></div>
     <div class="card"><h3 style="margin-bottom:12px">Per-layer contribution (retrievals since each layer last fired)</h3><div id="layer-counters"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Knowledge Graph &amp; Beliefs (SABM)</h3><div id="graph-stats"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Closed-loop cognition (PLAN-34)</h3><div id="cognition-stats"></div></div>
   </div>
 
   <!-- EARNINGS TAB -->
@@ -348,6 +349,34 @@ async function loadRetrieval() {
       '<span>Belief revisions: <strong>'+(g.beliefRevisions ?? 0)+'</strong></span>' +
       '<span>Flagged contradictions: <strong>'+(g.flaggedContradictions ?? 0)+'</strong></span>' +
       '</div>';
+
+    // PLAN-34 Phase 6: closed-loop cognition counters.
+    const cog = h.cognition;
+    const cogEl = document.getElementById('cognition-stats');
+    if (cogEl) {
+      if (!cog) {
+        cogEl.innerHTML = '<div class="empty">No cognition data yet</div>';
+      } else {
+        const df = cog.directiveFunnel || {};
+        const ip = cog.insightPromotion || { promoted: 0, rejectedByLeg: {} };
+        const rs = cog.research || { outcomes: {}, egressToday: 0, egressCapPerDay: 10 };
+        const legs = Object.entries(ip.rejectedByLeg || {})
+          .map(([k,v]) => esc(k)+': '+v).join(', ') || 'none';
+        const outs = Object.entries(rs.outcomes || {})
+          .map(([k,v]) => esc(k)+': '+v).join(', ') || 'none';
+        cogEl.innerHTML =
+          '<div style="display:flex;flex-wrap:wrap;gap:18px;font-size:.85rem">' +
+          '<span>Questions asked: <strong>'+(df.created ?? 0)+'</strong></span>' +
+          '<span>Injected: <strong>'+(df.injected ?? 0)+'</strong></span>' +
+          '<span>Answered: <strong>'+(df.answered ?? 0)+'</strong></span>' +
+          '<span>Resolved: <strong>'+(df.resolved ?? 0)+'</strong></span>' +
+          '<span>Insights promoted: <strong>'+(ip.promoted ?? 0)+'</strong></span>' +
+          '<span>Research egress today: <strong>'+(rs.egressToday ?? 0)+'/'+(rs.egressCapPerDay ?? 0)+'</strong></span>' +
+          '</div>' +
+          '<div style="font-size:.78rem;color:var(--muted);margin-top:8px">Promotion rejections by leg &mdash; '+legs+'</div>' +
+          '<div style="font-size:.78rem;color:var(--muted);margin-top:4px">Research outcomes &mdash; '+outs+'</div>';
+      }
+    }
   } catch(e) { console.warn('retrieval health error', e); }
 }
 

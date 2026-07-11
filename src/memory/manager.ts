@@ -5033,6 +5033,95 @@ export class MemoryIndexManager implements MemorySearchManager {
    * probe (the way PLAN-28's analysis had to query it by hand). Cheap reads;
    * safe to poll. `graph` is null when the knowledge graph isn't wired.
    */
+  /**
+   * PLAN-34 Phase 6: same-DB cognition counters — the directive funnel,
+   * insight-promotion outcomes, research outcome codes, and egress vs the
+   * daily cap. Read-only aggregation over the memory DB; each leg is
+   * independently guarded so a missing table (pre-migration) yields nulls
+   * rather than throwing. Task counts live in a separate DB and are
+   * surfaced by the gateway RPC that owns the task store, not here.
+   */
+  cognitionHealth(): {
+    directiveFunnel: Record<string, number>;
+    insightPromotion: { promoted: number; rejectedByLeg: Record<string, number> };
+    research: { outcomes: Record<string, number>; egressToday: number; egressCapPerDay: number };
+  } {
+    const directiveFunnel: Record<string, number> = {};
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT event, COUNT(*) AS c FROM memory_audit_log
+           WHERE actor = 'epistemic_directives'
+             AND event IN ('directive_created','directive_injected','directive_answered','directive_resolved')
+           GROUP BY event`,
+        )
+        .all() as Array<{ event: string; c: number }>;
+      for (const r of rows) {
+        directiveFunnel[r.event.replace("directive_", "")] = r.c;
+      }
+    } catch {
+      // pre-migration / no audit log
+    }
+
+    let promoted = 0;
+    const rejectedByLeg: Record<string, number> = {};
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT metric_name AS metric, SUM(metric_value) AS total FROM dream_telemetry
+           WHERE phase = 'promotion' GROUP BY metric_name`,
+        )
+        .all() as Array<{ metric: string; total: number }>;
+      for (const r of rows) {
+        if (r.metric === "promoted") {
+          promoted = r.total;
+        } else if (r.metric.startsWith("reject_")) {
+          rejectedByLeg[r.metric.replace("reject_", "")] = r.total;
+        }
+      }
+    } catch {
+      // no telemetry table
+    }
+
+    const outcomes: Record<string, number> = {};
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT json_extract(metadata, '$.researchOutcome') AS outcome, COUNT(*) AS c
+           FROM curiosity_targets
+           WHERE json_extract(metadata, '$.researchOutcome') IS NOT NULL
+           GROUP BY outcome`,
+        )
+        .all() as Array<{ outcome: string; c: number }>;
+      for (const r of rows) {
+        outcomes[r.outcome] = r.c;
+      }
+    } catch {
+      // no curiosity targets
+    }
+
+    let egressToday = 0;
+    try {
+      const dayKey = `autoresearch_count_${new Date().toISOString().slice(0, 10)}`;
+      const row = this.db.prepare(`SELECT value FROM memory_meta WHERE key = ?`).get(dayKey) as
+        | { value: string }
+        | undefined;
+      egressToday = row ? parseInt(row.value, 10) || 0 : 0;
+    } catch {
+      // no meta
+    }
+
+    return {
+      directiveFunnel,
+      insightPromotion: { promoted, rejectedByLeg },
+      research: {
+        outcomes,
+        egressToday,
+        egressCapPerDay: this.cfg.memory?.curiosity?.autoResearch?.maxPerDay ?? 10,
+      },
+    };
+  }
+
   retrievalHealth(): {
     layers: { total: number; sinceContribution: Record<string, number> };
     deadWires: ReturnType<RetrievalObservability["checkDeadWires"]>;
@@ -5041,6 +5130,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       activeFacts: number;
       lastInjection: { at: number; count: number } | null;
     } | null;
+    cognition: ReturnType<MemoryIndexManager["cognitionHealth"]> | null;
   } {
     let graph: ReturnType<KnowledgeGraphManager["getStats"]> | null = null;
     try {
@@ -5062,11 +5152,18 @@ export class MemoryIndexManager implements MemorySearchManager {
     } catch {
       canonical = null;
     }
+    let cognition: ReturnType<MemoryIndexManager["cognitionHealth"]> | null = null;
+    try {
+      cognition = this.cognitionHealth();
+    } catch {
+      cognition = null;
+    }
     return {
       canonical,
       layers: this.retrievalObs.snapshot(),
       deadWires: this.retrievalObs.checkDeadWires(),
       graph,
+      cognition,
     };
   }
 

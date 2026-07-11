@@ -76,6 +76,12 @@ interface DreamManagerView {
     layers: { total: number; sinceContribution: Record<string, number> };
     deadWires: Array<{ layer: string; searchesSinceContribution: number; window: number }>;
     graph: Record<string, number> | null;
+    // PLAN-34 Phase 6: same-DB cognition counters (spread through to the dashboard).
+    cognition?: {
+      directiveFunnel: Record<string, number>;
+      insightPromotion: { promoted: number; rejectedByLeg: Record<string, number> };
+      research: { outcomes: Record<string, number>; egressToday: number; egressCapPerDay: number };
+    } | null;
   };
 }
 

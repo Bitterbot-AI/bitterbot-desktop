@@ -118,6 +118,23 @@ The Dream Engine dashboard includes a "Curiosity" tab showing:
 - Reward history chart
 - Active exploration targets and their alignment scores
 
+## Closed-loop cognition observability (PLAN-34 Phase 6)
+
+`memory.retrievalHealth` gained a `cognition` section, derived only from
+same-DB sources (task counts live in a separate DB and are surfaced by the
+gateway RPC that owns the task store, not here):
+
+- **Directive funnel** — created / injected / answered / resolved counts by
+  stage, from `memory_audit_log` (actor `epistemic_directives`).
+- **Insight promotion** — total promoted plus per-leg rejection counts
+  (which grounding/verifier leg is starving), from `dream_telemetry`.
+- **Research** — outcome codes (`resolved` / `irrelevant` / `no_url` /
+  `domain_blocked` / `sensitive_skipped` / `containment_rejected` /
+  `transient_error`) from curiosity-target metadata, plus egress-today vs
+  the daily cap.
+
+The dream dashboard renders these under a "Closed-loop cognition" card.
+
 ## Related Documentation
 
 - [Dream Engine](./dream-engine.md) — GCCRF mode adjustments, FSHO coupling
