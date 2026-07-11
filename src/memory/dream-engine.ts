@@ -26,6 +26,16 @@ import {
   isSensitiveTopic,
 } from "./auto-research-egress.js";
 import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
+import {
+  assessGrounding,
+  emptyRejections,
+  loadSourceChunks,
+  MAX_PROMOTIONS_PER_CYCLE,
+  PROMOTABLE_MODES,
+  type GroundedInsight,
+  type PromotionCandidateInsight,
+  type VerifyInsightFn,
+} from "./dream-insight-promotion.js";
 import { selectStrategy, buildStrategyPrompt } from "./dream-mutation-strategies.js";
 import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
 import { ensureDreamSchema, recordDreamTelemetry } from "./dream-schema.js";
@@ -104,6 +114,19 @@ const CREATIVITY_MODES: DreamCreativityMode[] = ["associative", "convergent", "c
  */
 const RESEARCH_RESOLVED_RELEVANCE_FLOOR = 0.4;
 
+/** Parse a JSON string-array column, tolerating null/garbage (→ []). */
+function safeJsonArray(raw: string | null | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export type CuriosityWeightProvider = {
   getDreamModeWeightAdjustments(): Partial<Record<DreamMode, number>>;
 };
@@ -172,6 +195,21 @@ export class DreamEngine {
   /** PLAN-34 Phase 2c: autonomous research egress controls. */
   private readonly autoResearchEnabled: boolean;
   private readonly autoResearchMaxPerDay: number;
+  /** PLAN-34 Phase 4: dream-insight promotion (default on). */
+  private readonly insightPromotionEnabled: boolean;
+  /**
+   * PLAN-34 Phase 4: injected by the manager to write a promoted insight as
+   * a SEARCHABLE chunk (live embedding model + chunks_vec/fts in one
+   * transaction) — the manager owns the provider model and vec/fts state.
+   */
+  private insightChunkWriter:
+    | ((row: {
+        text: string;
+        embedding: number[];
+        importanceScore: number;
+        evidenceRefs: string;
+      }) => void)
+    | null = null;
   /**
    * PLAN-34 Phase 2 adversarial fix: true only when localLlmCall resolves
    * to a genuinely LOCAL model. Depersonalization egress is gated on this,
@@ -214,6 +252,7 @@ export class DreamEngine {
     this.autoResearchEnabled = config?.autoResearch?.enabled !== false;
     this.autoResearchMaxPerDay =
       config?.autoResearch?.maxPerDay ?? AUTO_RESEARCH_DEFAULT_MAX_PER_DAY;
+    this.insightPromotionEnabled = config?.insightPromotion?.enabled !== false;
     // localModelIsLocal defaults to whether a local call was provided AND
     // the manager flagged the spec local. Tests that inject localLlmCall
     // directly are treated as local (no cloud spec to inspect).
@@ -351,6 +390,24 @@ export class DreamEngine {
     } | null,
   ): void {
     this.skillSeekersAdapter = adapter;
+  }
+
+  /**
+   * PLAN-34 Phase 4: inject the searchable-chunk writer for promoted dream
+   * insights. The manager provides it (it owns the live embedding model and
+   * chunks_vec/fts state); the engine owns the gate.
+   */
+  setInsightChunkWriter(
+    writer:
+      | ((row: {
+          text: string;
+          embedding: number[];
+          importanceScore: number;
+          evidenceRefs: string;
+        }) => void)
+      | null,
+  ): void {
+    this.insightChunkWriter = writer;
   }
 
   getState(): DreamState {
@@ -623,12 +680,31 @@ export class DreamEngine {
           }
         }
 
-        // Relevance gate: filter simulation insights that are too distant from source chunks
-        const gatedInsights = this.applyRelevanceGate(allInsights, cycleId);
+        // PLAN-34 Phase 4: promotable modes (extrapolation, simulation) no
+        // longer write to the write-only dream_insights table — they route
+        // through the promotion gate, becoming searchable chunks when they
+        // qualify and ephemeral (this-cycle MEMORY.md input only) otherwise.
+        // Every other mode — including the mutation lane the skill-refiner
+        // consumes — keeps its dream_insights write unchanged.
+        const promotable = allInsights.filter((i) => PROMOTABLE_MODES.has(String(i.mode)));
+        const classic = allInsights.filter((i) => !PROMOTABLE_MODES.has(String(i.mode)));
 
+        // Relevance gate: filter simulation insights that are too distant from source chunks
+        const gatedInsights = this.applyRelevanceGate(classic, cycleId);
         this.storeInsights(gatedInsights);
         this.pruneInsights();
+
+        if (this.insightPromotionEnabled && promotable.length > 0) {
+          try {
+            await this.promoteEligibleInsights(promotable, cycleId);
+          } catch (err) {
+            log.debug(`insight promotion failed: ${String(err)}`);
+          }
+        }
       }
+
+      // PLAN-34 Phase 4: one-time backfill of pre-existing dream_insights.
+      await this.backfillPromotedInsights();
 
       cycleMeta.insightsGenerated = allInsights.length;
       this.completeCycle(cycleMeta, null);
@@ -1749,6 +1825,10 @@ export class DreamEngine {
          WHERE (COALESCE(lifecycle, 'generated') IN ('generated', 'activated')
                 OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))
            AND importance_score >= ?
+           -- PLAN-34 Phase 4: never re-seed from promoted dream insights
+           -- (dream-on-dream compounding is blocked).
+           AND NOT (COALESCE(origin, 'indexed') = 'dream'
+                    AND COALESCE(semantic_type, 'general') = 'insight')
          ORDER BY RANDOM()
          LIMIT 20`,
       )
@@ -3102,6 +3182,226 @@ export class DreamEngine {
       return row?.c ?? 0;
     } catch {
       return 0;
+    }
+  }
+
+  /**
+   * PLAN-34 Phase 4: run the promotion gate over the eligible insights and
+   * write qualifiers as searchable chunks. Mechanical legs first (no model
+   * can game them), then a claim-decomposition verifier on the top
+   * relevance-ranked candidates within the remaining LLM budget; hard cap of
+   * 3 promotions per cycle. Per-leg rejection counters land in telemetry.
+   */
+  private async promoteEligibleInsights(insights: DreamInsight[], cycleId: string): Promise<void> {
+    if (!this.insightChunkWriter) {
+      return; // no searchable-write path wired — nothing to promote into
+    }
+    const rej = emptyRejections();
+    const grounded: GroundedInsight[] = [];
+    for (const insight of insights) {
+      const candidate: PromotionCandidateInsight = {
+        id: insight.id,
+        content: insight.content,
+        confidence: insight.confidence,
+        mode: String(insight.mode),
+        embedding: insight.embedding,
+        sourceChunkIds: insight.sourceChunkIds,
+      };
+      const sources = loadSourceChunks(this.db, candidate.sourceChunkIds);
+      const g = assessGrounding(candidate, sources, rej);
+      if (g) {
+        grounded.push(g);
+      }
+    }
+    // Relevance-rank so the most-grounded are verified first within budget.
+    grounded.sort((a, b) => b.topSimilarity - a.topSimilarity);
+
+    let promoted = 0;
+    let llmCallsUsed = 0;
+    for (const g of grounded) {
+      if (promoted >= MAX_PROMOTIONS_PER_CYCLE) {
+        rej.capReached++;
+        continue;
+      }
+      // Budget: the cycle already spent mode calls; reserve room for at most
+      // MAX_PROMOTIONS_PER_CYCLE verification calls within maxLlmCallsPerCycle.
+      if (llmCallsUsed >= MAX_PROMOTIONS_PER_CYCLE) {
+        rej.capReached++;
+        break;
+      }
+      const sourceTexts = this.loadChunkTexts(g.groundedSources.map((s) => s.id));
+      llmCallsUsed++;
+      let verdict: { unsupported: number; misattribution: boolean };
+      try {
+        verdict = await this.verifyInsightClaims(g.insight, sourceTexts);
+      } catch (err) {
+        log.debug(`insight verifier failed (skipping promotion): ${String(err)}`);
+        rej.verifierRejected++;
+        continue;
+      }
+      this.recordTelemetry(cycleId, "promotion", "verifier_unsupported", verdict.unsupported);
+      if (verdict.unsupported !== 0 || verdict.misattribution) {
+        rej.verifierRejected++;
+        continue;
+      }
+      try {
+        this.insightChunkWriter({
+          text: g.insight.content,
+          embedding: g.insight.embedding,
+          // Phase 4: entry importance = confidence * 0.5; normal decay applies.
+          importanceScore: g.insight.confidence * 0.5,
+          evidenceRefs: JSON.stringify(
+            g.groundedSources.map((s) => ({
+              kind: "dream",
+              insightId: g.insight.id,
+              sourceId: s.id,
+            })),
+          ),
+        });
+        promoted++;
+      } catch (err) {
+        log.debug(`promoted-insight chunk write failed: ${String(err)}`);
+      }
+    }
+
+    // Per-leg rejection counters — a starving leg is visible, not silent.
+    for (const [leg, count] of Object.entries(rej)) {
+      if (count > 0) {
+        this.recordTelemetry(cycleId, "promotion", `reject_${leg}`, count);
+      }
+    }
+    this.recordTelemetry(cycleId, "promotion", "promoted", promoted);
+    if (promoted > 0) {
+      log.info(`dream insight promotion: ${promoted} insight(s) promoted to searchable chunks`);
+    }
+  }
+
+  /**
+   * PLAN-34 Phase 4: one-time backfill — run the redesigned gate over
+   * existing dream_insights rows once so pre-existing good insights promote
+   * into the searchable corpus; the rest remain as frozen history. Guarded
+   * by a meta flag so it runs at most once per DB.
+   */
+  private async backfillPromotedInsights(): Promise<void> {
+    if (!this.insightPromotionEnabled || !this.insightChunkWriter) {
+      return;
+    }
+    try {
+      const done = this.db
+        .prepare(`SELECT value FROM meta WHERE key = 'dream_insight_backfill_done'`)
+        .get() as { value: string } | undefined;
+      if (done?.value === "1") {
+        return;
+      }
+    } catch {
+      return; // no meta table — skip quietly
+    }
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT id, content, embedding, confidence, mode, source_chunk_ids
+           FROM dream_insights
+           WHERE mode IN ('extrapolation', 'simulation')
+           ORDER BY importance_score DESC LIMIT 200`,
+        )
+        .all() as Array<{
+        id: string;
+        content: string;
+        embedding: string;
+        confidence: number;
+        mode: string;
+        source_chunk_ids: string;
+      }>;
+      const insights: DreamInsight[] = rows.map((r) => ({
+        id: r.id,
+        content: r.content,
+        embedding: parseEmbedding(r.embedding),
+        confidence: r.confidence,
+        mode: r.mode as DreamMode,
+        sourceChunkIds: safeJsonArray(r.source_chunk_ids),
+        sourceClusterIds: [],
+        dreamCycleId: "backfill",
+        importanceScore: r.confidence * 0.5,
+        accessCount: 0,
+        lastAccessedAt: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }));
+      if (insights.length > 0) {
+        await this.promoteEligibleInsights(insights, "backfill");
+      }
+      this.db
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('dream_insight_backfill_done', '1')
+           ON CONFLICT(key) DO UPDATE SET value = '1'`,
+        )
+        .run();
+    } catch (err) {
+      log.debug(`dream insight backfill failed: ${String(err)}`);
+    }
+  }
+
+  private loadChunkTexts(ids: string[]): { text: string }[] {
+    if (ids.length === 0) {
+      return [];
+    }
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(`SELECT text FROM chunks WHERE id IN (${placeholders})`)
+      .all(...ids) as Array<{ text: string }>;
+    return rows.map((r) => ({ text: r.text }));
+  }
+
+  /**
+   * PLAN-34 Phase 4: claim-decomposition verifier. Uses a DEDICATED LLM
+   * call (never the generating call), counted in the cycle total. Labels
+   * each insight sentence against the cited sources and reports how many are
+   * unsupported plus whether anything is misattributed. Injectable for
+   * tests via setInsightVerifier.
+   */
+  private insightVerifier: VerifyInsightFn | null = null;
+  setInsightVerifier(fn: VerifyInsightFn | null): void {
+    this.insightVerifier = fn;
+  }
+
+  private async verifyInsightClaims(
+    insight: { content: string },
+    sources: { text: string }[],
+  ): Promise<{ unsupported: number; misattribution: boolean }> {
+    if (this.insightVerifier) {
+      return this.insightVerifier(insight, sources);
+    }
+    const llmCall = this.getLlmCallForMode("simulation") ?? this.llmCallCloud;
+    if (!llmCall) {
+      // No verifier available — fail closed (treat as unsupported).
+      return { unsupported: 1, misattribution: false };
+    }
+    const sourceBlock = sources.map((s, i) => `[S${i + 1}] ${s.text.slice(0, 400)}`).join("\n");
+    const prompt =
+      `You are verifying a hypothesis against its cited sources. For EACH sentence of ` +
+      `the hypothesis, decide whether it is {restated} (directly stated in a source), ` +
+      `{inferred} (a reasonable inference from the sources), or {unsupported} (not ` +
+      `derivable from any source). Also decide whether the hypothesis contradicts or ` +
+      `misattributes anything to the sources.\n\n` +
+      `Respond with ONLY JSON: {"labels":["restated"|"inferred"|"unsupported",...],` +
+      `"misattribution":true|false}\n\n` +
+      `Sources:\n${sourceBlock}\n\nHypothesis:\n${insight.content}`;
+    const raw = await llmCall(prompt);
+    try {
+      const cleaned = raw
+        .replace(/^```(?:json)?\s*\n?/m, "")
+        .replace(/\n?```\s*$/m, "")
+        .trim();
+      const parsed = JSON.parse(cleaned) as { labels?: unknown; misattribution?: unknown };
+      const labels = Array.isArray(parsed.labels) ? parsed.labels : [];
+      const unsupported = labels.filter((l) => l === "unsupported").length;
+      // Fail closed: an empty/garbage label list counts as unsupported.
+      return {
+        unsupported: labels.length === 0 ? 1 : unsupported,
+        misattribution: parsed.misattribution === true,
+      };
+    } catch {
+      return { unsupported: 1, misattribution: false };
     }
   }
 

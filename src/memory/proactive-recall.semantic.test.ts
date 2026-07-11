@@ -35,6 +35,7 @@ describe("proactiveRecall semantic surfacing", () => {
     db.exec(`CREATE TABLE chunks (
       id TEXT PRIMARY KEY, text TEXT, importance_score REAL, epistemic_layer TEXT,
       semantic_type TEXT, emotional_valence REAL, lifecycle TEXT, source TEXT,
+      origin TEXT DEFAULT 'indexed',
       created_at INTEGER, embedding TEXT)`);
     db.exec("CREATE VIRTUAL TABLE chunks_vec USING vec0(id TEXT PRIMARY KEY, embedding FLOAT[4])");
 

@@ -205,6 +205,13 @@ export type DreamEngineConfig = {
    * receive verbatim private notes. Omitted in direct-injection tests.
    */
   localModelIsLocal?: boolean;
+  /**
+   * PLAN-34 Phase 4: promote qualifying dream insights into searchable
+   * chunks (origin='dream', semantic_type='insight') so dreams become
+   * rememberable. Default enabled. Kill switch:
+   * memory.dream.insightPromotion.enabled.
+   */
+  insightPromotion?: { enabled?: boolean };
 };
 
 export const DEFAULT_DREAM_CONFIG: Required<
@@ -217,6 +224,7 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "modelTiers"
     | "autoResearch"
     | "localModelIsLocal"
+    | "insightPromotion"
   >
 > & { modes: Record<DreamMode, DreamModeConfig> } = {
   enabled: true,
@@ -232,7 +240,9 @@ export const DEFAULT_DREAM_CONFIG: Required<
     lowThreshold: 0.3,
   },
   maxChunksPerCycle: 50,
-  maxLlmCallsPerCycle: 5,
+  // PLAN-34 Phase 4: 5 mode calls + up to 3 claim-decomposition
+  // verification calls for insight promotion.
+  maxLlmCallsPerCycle: 8,
   clusterSimilarityThreshold: 0.65,
   minImportanceForDream: 0.1,
   synthesisMode: "both",

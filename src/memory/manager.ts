@@ -2508,6 +2508,8 @@ export class MemoryIndexManager implements MemorySearchManager {
       ...(this.cfg.memory?.curiosity?.autoResearch
         ? { autoResearch: this.cfg.memory.curiosity.autoResearch }
         : {}),
+      // PLAN-34 Phase 4: dream-insight promotion kill switch.
+      ...(dreamCfg?.insightPromotion ? { insightPromotion: dreamCfg.insightPromotion } : {}),
     };
 
     // PLAN-33: the canonical_promotion dream mode writes into the ledger, so
@@ -2548,6 +2550,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.executionTracker = new SkillExecutionTracker(this.db);
     }
     this.dreamEngine.setExecutionTracker(this.executionTracker);
+
+    // PLAN-34 Phase 4: the searchable-chunk writer for promoted dream
+    // insights. The manager owns the live embedding model and vec/fts state,
+    // so it performs the actual write; the engine owns the gate.
+    this.dreamEngine.setInsightChunkWriter((row) => this.writePromotedInsightChunk(row));
 
     // Plan 7, Phase 10: Wire GCCRF reward function for FSHO alpha coupling
     // (CuriosityEngine now exposes updateFshoR/getFshoRAvg/getFshoCoupledAlpha)
@@ -3302,13 +3309,18 @@ export class MemoryIndexManager implements MemorySearchManager {
             const hash = crypto.createHash("sha256").update(fact.text).digest("hex");
             const evidenceJson =
               provenanceEnabled && fact.evidence.length > 0 ? JSON.stringify(fact.evidence) : null;
+            // PLAN-34 Phase 4: stamp session trust at WRITE time (v34
+            // chunks.session_trust) so the dream-promotion gate's
+            // first-party-source leg never has to re-resolve prunable
+            // sessions.json history for a chunk.
             this.db
               .prepare(
                 `INSERT OR IGNORE INTO chunks (id, path, source, start_line, end_line, text, hash,
                  model, embedding,
                  importance_score, lifecycle, semantic_type, epistemic_layer, evidence_refs,
+                 session_trust,
                  access_count, last_accessed_at, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               )
               .run(
                 id,
@@ -3325,6 +3337,7 @@ export class MemoryIndexManager implements MemorySearchManager {
                 fact.semanticType,
                 fact.epistemicLayer,
                 evidenceJson,
+                sessionTrust(absPath),
                 0,
                 null,
                 now,
@@ -4810,6 +4823,87 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   canonicalFacts(): CanonicalFactsStore | null {
     return this.canonicalFactsStore;
+  }
+
+  /**
+   * PLAN-34 Phase 4: write a promoted dream insight as an IMMEDIATELY
+   * SEARCHABLE chunk — origin='dream', semantic_type='insight',
+   * epistemic_layer='mental_model', source in the configured MemorySource
+   * set, stamped with the LIVE embedding model and its in-cycle embedding,
+   * with chunks_vec + chunks_fts written in the same call. Best-effort: a
+   * vec/fts hiccup never breaks the dream cycle.
+   */
+  private writePromotedInsightChunk(row: {
+    text: string;
+    embedding: number[];
+    importanceScore: number;
+    evidenceRefs: string;
+  }): void {
+    const id = `dream_insight_${crypto.randomUUID()}`;
+    const now = Date.now();
+    const hash = crypto.createHash("sha256").update(row.text).digest("hex");
+    // A source in the configured set so memory_search can reach it; 'memory'
+    // is always meaningful. Stamp the live model so the model-equality
+    // filter in search matches (else the chunk is invisible until re-embed).
+    const source = this.sources.has("memory") ? "memory" : ([...this.sources][0] ?? "memory");
+    const model = row.embedding.length > 0 ? this.provider.model : "pending";
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+             importance_score, lifecycle, origin, memory_type, semantic_type, epistemic_layer,
+             evidence_refs, access_count, last_accessed_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          `dream/insight/${id}`,
+          source,
+          0,
+          0,
+          row.text,
+          hash,
+          model,
+          JSON.stringify(row.embedding),
+          row.importanceScore,
+          "generated",
+          "dream",
+          "plaintext",
+          "insight",
+          "mental_model",
+          row.evidenceRefs,
+          0,
+          null,
+          now,
+          now,
+        );
+    } catch (err) {
+      log.debug(`promoted-insight chunk insert failed: ${String(err)}`);
+      return;
+    }
+    // chunks_vec (immediate semantic searchability) — best-effort.
+    if (row.embedding.length > 0) {
+      try {
+        this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(id);
+        this.db
+          .prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`)
+          .run(id, Buffer.from(new Float32Array(row.embedding).buffer));
+      } catch (err) {
+        log.debug(`promoted-insight vec write skipped: ${String(err)}`);
+      }
+    }
+    if (this.fts.enabled && this.fts.available) {
+      try {
+        this.db
+          .prepare(
+            `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(row.text, id, `dream/insight/${id}`, source, model, 0, 0);
+      } catch (err) {
+        log.debug(`promoted-insight fts write skipped: ${String(err)}`);
+      }
+    }
   }
 
   /**

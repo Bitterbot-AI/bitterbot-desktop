@@ -390,7 +390,22 @@ Runs heuristic first, then LLM. Takes the higher-confidence result.
 
 ### Insight Storage
 
-Each insight is stored in `dream_insights` with its own embedding. Insights exceeding `maxInsights` (200) are pruned by lowest importance.
+Most modes store their insights in `dream_insights` with their own embedding; insights exceeding `maxInsights` (200) are pruned by lowest importance. The mutation lane keeps writing there (it is the skill-refiner's input channel).
+
+### Insight Promotion (PLAN-34 Phase 4)
+
+The two LLM-backed creative modes — `extrapolation` and `simulation` — no longer write to the write-only `dream_insights` table. Instead they route through a promotion gate so that dreams become **rememberable**: qualifiers become searchable `chunks` (`origin='dream'`, `semantic_type='insight'`, `epistemic_layer='mental_model'`), the rest are ephemeral (this-cycle MEMORY.md input only).
+
+The gate leads with legs no model can game, then a verifier:
+
+1. **Mode eligibility** — extrapolation and simulation only. Compression is heuristic template synthesis with no LLM to attest anything; exploration outputs questions; mutation is the refiner's channel (exempt).
+2. **Mechanical grounding** — each accepted source chunk must clear an embedding-similarity floor (0.4) to the insight AND rank among the most-similar of the offered inputs (citing everything cannot pass); `>= 2` distinct grounded sources, `>= 2` of them non-dream ancestors (dream-on-dream compounding is blocked — promoted insight chunks are excluded from both mode seed queries and grounding), and `>= 1` first-party source read from the persisted `chunks.session_trust` column.
+3. **Claim-decomposition verification** — a distinct verifier seam (never the generating call) labels each insight sentence {restated | inferred | unsupported} against the cited sources and checks for misattribution; promotion requires zero unsupported sentences and no misattribution.
+4. **Hard cap** of 3 promotions per cycle; `maxLlmCallsPerCycle` is 8 (5 mode + 3 verification); candidates are relevance-ranked so only the most-grounded are verified within budget.
+
+Promoted chunks copy the in-cycle embedding and write `chunks_vec`/`chunks_fts` in the same pass, so they are immediately retrievable; entry importance = `confidence * 0.5` and normal consolidation decay applies. `dream_search` reads the promoted corpus (with the legacy `dream_insights` rows as read-only history). Proactive recall renders a dream-origin fact with an explicit `- (dream hypothesis) …` marker (keyed on origin, not importance), capped at one per turn, sentence-boundary truncated, under a header noting hypotheses may be shared as hunches, not facts. A one-time backfill runs the gate over existing `dream_insights` once. Kill switch: `memory.dream.insightPromotion.enabled` (default true); rollback is the flag plus a one-query purge of `origin='dream' AND semantic_type='insight'` chunks (the refiner's mutation crystals are untouched by construction).
+
+Deferred within Phase 4: routing extrapolation predictions with explicit trigger conditions into prospective memory as `[dream prediction]` entries — the promotion + proactive-recall surfacing already delivers "dream insights resurface, clearly marked as hunches"; the prospective route is a follow-up.
 
 ---
 

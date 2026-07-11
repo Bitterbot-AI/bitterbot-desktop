@@ -38,7 +38,9 @@ export type EvidenceRef =
   | { kind: "session"; path: string; line: number }
   | { kind: "journal"; runId: string; seq: number }
   /** PLAN-34 Phase 2b: web provenance for idle-research findings. */
-  | { kind: "url"; url: string };
+  | { kind: "url"; url: string }
+  /** PLAN-34 Phase 4: a promoted dream insight's grounding source chunk. */
+  | { kind: "dream"; insightId: string; sourceId: string };
 
 export type ExtractedFact = {
   text: string;

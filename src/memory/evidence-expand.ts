@@ -34,6 +34,9 @@ export function describeRef(ref: EvidenceRef): string {
   if (ref.kind === "url") {
     return ref.url;
   }
+  if (ref.kind === "dream") {
+    return `dream:${ref.insightId}#${ref.sourceId}`;
+  }
   return `journal:${ref.runId}#${ref.seq}`;
 }
 
@@ -79,6 +82,18 @@ export async function expandEvidenceRef(
       found: true,
       text: `Web source: ${ref.url}`,
       location: ref.url,
+    };
+  }
+
+  if (ref.kind === "dream") {
+    // PLAN-34 Phase 4: a promoted insight's grounding pointer resolves to
+    // the reference itself (no DB dependency here — the source chunk is
+    // retrievable by its own id through normal memory search).
+    return {
+      ref,
+      found: true,
+      text: `Dream insight grounding source: ${ref.sourceId}`,
+      location: `dream:${ref.insightId}#${ref.sourceId}`,
     };
   }
 
@@ -264,6 +279,12 @@ export function parseEvidenceRefs(raw: string | null | undefined): EvidenceRef[]
         out.push({ kind: "journal", runId: o.runId, seq: o.seq });
       } else if (o.kind === "url" && typeof o.url === "string") {
         out.push({ kind: "url", url: o.url });
+      } else if (
+        o.kind === "dream" &&
+        typeof o.insightId === "string" &&
+        typeof o.sourceId === "string"
+      ) {
+        out.push({ kind: "dream", insightId: o.insightId, sourceId: o.sourceId });
       }
     }
     return out;

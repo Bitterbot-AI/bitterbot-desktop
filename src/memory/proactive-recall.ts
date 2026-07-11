@@ -218,6 +218,8 @@ export interface ProactiveFact {
   epistemicLayer?: string;
   category?: string;
   chunkId?: string;
+  /** PLAN-34 Phase 4: chunk origin ('dream' → rendered as a hypothesis). */
+  origin?: string;
 }
 
 /**
@@ -346,7 +348,7 @@ export function proactiveRecall(params: {
         const candidateRows = params.db
           .prepare(
             `SELECT c.id, c.text, c.importance_score, c.epistemic_layer,
-                    c.semantic_type, c.emotional_valence,
+                    c.semantic_type, c.emotional_valence, COALESCE(c.origin, 'indexed') AS origin,
                     vec_distance_cosine(v.embedding, ?) as distance
              FROM chunks_vec v
              JOIN chunks c ON c.id = v.id
@@ -363,6 +365,7 @@ export function proactiveRecall(params: {
           epistemic_layer: string;
           semantic_type: string;
           emotional_valence: number | null;
+          origin: string;
           distance: number;
         }>;
 
@@ -382,8 +385,15 @@ export function proactiveRecall(params: {
             continue;
           }
 
-          // Truncate crystal text for prompt injection
-          const truncated = row.text.length > 120 ? row.text.slice(0, 117) + "..." : row.text;
+          // Truncate crystal text for prompt injection. PLAN-34 Phase 4:
+          // dream-origin facts truncate at a SENTENCE boundary so a hedge is
+          // never sliced off mid-word.
+          const truncated =
+            row.origin === "dream"
+              ? truncateAtSentence(row.text, 120)
+              : row.text.length > 120
+                ? row.text.slice(0, 117) + "..."
+                : row.text;
 
           facts.push({
             text: truncated,
@@ -391,6 +401,7 @@ export function proactiveRecall(params: {
             confidence: row.importance_score,
             epistemicLayer: row.epistemic_layer,
             chunkId: row.id,
+            origin: row.origin,
           });
           params.recentlySurfaced.set(row.id, params.currentTurn);
           layerCounts.vectorFacts += 1;
@@ -556,6 +567,27 @@ export const MEMORY_FENCE_CLOSE_TAG = "</memory-context>";
  * Format proactive facts for system prompt injection.
  * Terse, one-line-per-fact format that the LLM embodies naturally.
  */
+/** PLAN-34 Phase 4: at most this many dream-origin hypotheses per turn. */
+const MAX_DREAM_FACTS_PER_TURN = 1;
+
+/** Truncate to <= max chars at the last sentence/clause boundary within it. */
+function truncateAtSentence(text: string, max: number): string {
+  if (text.length <= max) {
+    return text;
+  }
+  const window = text.slice(0, max);
+  const lastStop = Math.max(
+    window.lastIndexOf(". "),
+    window.lastIndexOf("! "),
+    window.lastIndexOf("? "),
+  );
+  if (lastStop > max * 0.5) {
+    return window.slice(0, lastStop + 1);
+  }
+  const lastSpace = window.lastIndexOf(" ");
+  return (lastSpace > 0 ? window.slice(0, lastSpace) : window.slice(0, max - 1)) + "…";
+}
+
 export function formatProactiveFacts(
   facts: ProactiveFact[],
   options: FormatProactiveFactsOptions = {},
@@ -563,14 +595,30 @@ export function formatProactiveFacts(
   if (facts.length === 0) {
     return "";
   }
-  const lines = facts.map((f) => {
+  // PLAN-34 Phase 4: cap dream-origin hypotheses per turn — a confident
+  // confabulation must not flood the block, and it renders with an explicit
+  // marker keyed on origin (not on importance) so it is never asserted as
+  // established fact.
+  let dreamShown = 0;
+  const lines: string[] = [];
+  let anyDream = false;
+  for (const f of facts) {
+    if (f.origin === "dream") {
+      if (dreamShown >= MAX_DREAM_FACTS_PER_TURN) {
+        continue;
+      }
+      dreamShown++;
+      anyDream = true;
+      lines.push(`- (dream hypothesis) ${f.text}`);
+      continue;
+    }
     const prefix = f.confidence < 0.4 ? "(uncertain) " : "";
-    return `- ${prefix}${f.text}`;
-  });
-  const inner = [
-    "What you already know (act on this naturally, never announce it):",
-    ...lines,
-  ].join("\n");
+    lines.push(`- ${prefix}${f.text}`);
+  }
+  const header = anyDream
+    ? "What you already know (act on this naturally, never announce it). Items marked as hypotheses may be shared as hunches, not facts:"
+    : "What you already know (act on this naturally, never announce it):";
+  const inner = [header, ...lines].join("\n");
   if (options.wrapInMemoryFence) {
     return `${MEMORY_FENCE_OPEN_TAG}\n${inner}\n${MEMORY_FENCE_CLOSE_TAG}`;
   }

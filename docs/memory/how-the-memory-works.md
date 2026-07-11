@@ -209,6 +209,8 @@ Dreams have a quality score (DQS) that evaluates crystal yield, merge efficiency
 
 If nothing has changed since the last dream, the cycle is skipped entirely. No information, no dream, no wasted tokens.
 
+Since PLAN-34 Phase 4, the two creative LLM modes (extrapolation and simulation) no longer write to a dead table — their insights pass through a promotion gate (mechanical embedding-grounding legs that no model can game, then a claim-decomposition verifier) and the survivors become ordinary searchable memories, marked `origin='dream'`. They resurface later through normal recall with an explicit "(dream hypothesis)" marker — the agent may share them as hunches, never assert them as fact — capped at one per turn. The organism finally has wake-recall of its dreams.
+
 ---
 
 ## Prospective Memory — Waiting for the Right Moment

@@ -39,3 +39,45 @@ describe("formatProactiveFacts", () => {
     expect(MEMORY_FENCE_CLOSE_TAG).toBe("</memory-context>");
   });
 });
+
+describe("formatProactiveFacts — dream-origin surfacing (PLAN-34 Phase 4)", () => {
+  it("renders a dream-origin fact with the hypothesis marker and adds the header note", () => {
+    const out = formatProactiveFacts([
+      {
+        text: "sparse coding may fold context",
+        source: "crystal",
+        confidence: 0.9,
+        origin: "dream",
+      },
+    ]);
+    expect(out).toContain("- (dream hypothesis) sparse coding may fold context");
+    expect(out).toContain("may be shared as hunches, not facts");
+  });
+
+  it("marks by ORIGIN, not importance — a high-importance dream fact is still a hypothesis", () => {
+    const out = formatProactiveFacts([
+      { text: "confident confabulation", source: "crystal", confidence: 0.99, origin: "dream" },
+    ]);
+    expect(out).toContain("(dream hypothesis) confident confabulation");
+    expect(out).not.toContain("- confident confabulation"); // never unmarked
+  });
+
+  it("caps dream hypotheses at 1 per turn; ordinary facts are unaffected", () => {
+    const out = formatProactiveFacts([
+      { text: "dream one", source: "crystal", confidence: 0.8, origin: "dream" },
+      { text: "dream two", source: "crystal", confidence: 0.8, origin: "dream" },
+      { text: "real fact", source: "crystal", confidence: 0.8, origin: "indexed" },
+    ]);
+    expect(out.match(/dream hypothesis/g)).toHaveLength(1);
+    expect(out).toContain("dream one");
+    expect(out).not.toContain("dream two");
+    expect(out).toContain("- real fact");
+  });
+
+  it("no header note when there are no dream facts", () => {
+    const out = formatProactiveFacts([
+      { text: "real fact", source: "crystal", confidence: 0.8, origin: "indexed" },
+    ]);
+    expect(out).not.toContain("hunches");
+  });
+});
