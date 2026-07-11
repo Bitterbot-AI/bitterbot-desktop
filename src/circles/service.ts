@@ -677,7 +677,7 @@ export class CirclesService {
   }
 
   // -------------------------------------------------------------------------
-  // Local reads (the People pane + conversation views)
+  // Local reads (the Circles pane + conversation views)
   // -------------------------------------------------------------------------
 
   listCircles(): Circle[] {

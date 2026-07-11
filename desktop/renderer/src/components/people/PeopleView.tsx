@@ -1,5 +1,5 @@
 /**
- * PLAN-31 C2 §4.4: the People pane — the connected graph made visible.
+ * PLAN-31 C2 §4.4: the Circles pane — the connected graph made visible.
  *
  * Surfaces (in the plan's order of importance):
  *  - The friend-node count, front and center: how many people's agents
@@ -154,7 +154,7 @@ export function PeopleView() {
     return (
       <div className="p-8 max-w-2xl space-y-4">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Users className="w-6 h-6" /> People
+          <Users className="w-6 h-6" /> Circles
         </h1>
         <p className="text-muted-foreground">
           Circles are not enabled on this node. Your agent can connect with your friends&apos;
@@ -162,9 +162,9 @@ export function PeopleView() {
           follower counts, no money.
         </p>
         <p className="text-sm text-muted-foreground">
-          To turn it on, set <code className="font-mono">circles.enabled = true</code> and{" "}
-          <code className="font-mono">circles.a2aPublicUrl</code> in your config (PLAN-31 ships dark
-          until the security review; enabling is a deliberate act).
+          Circles are on by default; this node has them switched off. To re-enable, set{" "}
+          <code className="font-mono">circles.enabled = true</code> and{" "}
+          <code className="font-mono">circles.a2aPublicUrl</code> in your config.
         </p>
       </div>
     );

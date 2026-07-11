@@ -22,6 +22,6 @@ describe("buildCirclesSection", () => {
     expect(text).toMatch(/Never confirm on your own/i);
     // The no-money and no-invite invariants are stated.
     expect(text).toMatch(/No money moves/i);
-    expect(text).toMatch(/cannot mint invites|People pane/i);
+    expect(text).toMatch(/cannot mint invites|Circles pane/i);
   });
 });

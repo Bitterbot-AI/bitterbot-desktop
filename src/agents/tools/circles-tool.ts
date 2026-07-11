@@ -112,7 +112,7 @@ function resolveCircle(
     return {
       ok: false,
       error: jsonResult({
-        error: "you have no circles yet; invite someone from the People pane first",
+        error: "you have no circles yet; invite someone from the Circles pane first",
       }),
     };
   }
