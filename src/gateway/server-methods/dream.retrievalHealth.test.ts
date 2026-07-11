@@ -30,6 +30,51 @@ describe("memory.retrievalHealth handler (PLAN-28 B4)", () => {
       layers: { total: 42, sinceContribution: { vector: 0, keyword: 0, graph: 7 } },
       deadWires: [],
       graph: { entityCount: 113, relationshipCount: 121 },
+      // PLAN-34 Phase 6 §8: detail surfaces ride the same pass-through.
+      canonical: {
+        activeFacts: 1,
+        lastInjection: { at: 1000, count: 1 },
+        facts: [
+          {
+            key: "project.repo",
+            value: "github.com/x/y",
+            statement: "project.repo: github.com/x/y",
+            category: "project",
+            source: "agent_pin",
+            confidence: 0.95,
+            corroborationCount: 2,
+            lastConfirmedAt: 999,
+          },
+        ],
+      },
+      cognition: {
+        directiveFunnel: { created: 2 },
+        insightPromotion: { promoted: 1, rejectedByLeg: {} },
+        research: { outcomes: {}, egressToday: 0, egressCapPerDay: 10 },
+        recentFindings: [
+          {
+            id: "f1",
+            targetId: null,
+            finding: "x",
+            sourceUrl: null,
+            relevance: null,
+            createdAt: 1,
+            surfacedAt: null,
+          },
+        ],
+        egress: {
+          totalsBySeam: { "search-query": 3 },
+          recent: [
+            {
+              seam: "search-query",
+              destination: "duckduckgo.com",
+              payloadHash: "h",
+              payloadLen: 12,
+              createdAt: 1,
+            },
+          ],
+        },
+      },
     };
     vi.mocked(getMemorySearchManager).mockResolvedValue({
       manager: { retrievalHealth: () => health },

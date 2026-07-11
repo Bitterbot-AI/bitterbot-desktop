@@ -156,6 +156,9 @@ canvas { display: block; margin: 0 auto; }
     <div class="card"><h3 style="margin-bottom:12px">Per-layer contribution (retrievals since each layer last fired)</h3><div id="layer-counters"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Knowledge Graph &amp; Beliefs (SABM)</h3><div id="graph-stats"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Closed-loop cognition (PLAN-34)</h3><div id="cognition-stats"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Research findings</h3><div id="research-findings"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Research egress log</h3><div id="egress-log"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Canonical memory ledger (PLAN-33)</h3><div id="canonical-pane"></div></div>
   </div>
 
   <!-- EARNINGS TAB -->
@@ -318,6 +321,9 @@ async function loadRetrieval() {
       document.getElementById('deadwire-card').innerHTML = '';
       document.getElementById('layer-counters').innerHTML = '<div class="empty">No retrievals observed yet</div>';
       document.getElementById('graph-stats').innerHTML = '';
+      document.getElementById('research-findings').innerHTML = '';
+      document.getElementById('egress-log').innerHTML = '';
+      document.getElementById('canonical-pane').innerHTML = '';
       return;
     }
     const g = h.graph || {};
@@ -376,6 +382,57 @@ async function loadRetrieval() {
           '<div style="font-size:.78rem;color:var(--muted);margin-top:8px">Promotion rejections by leg &mdash; '+legs+'</div>' +
           '<div style="font-size:.78rem;color:var(--muted);margin-top:4px">Research outcomes &mdash; '+outs+'</div>';
       }
+    }
+
+    // PLAN-34 Phase 6 (§8): research-findings history. Read-only view —
+    // rows still pending their one-time "while you were away" surfacing are
+    // flagged, already-voiced ones show when they surfaced.
+    const rf = (cog && cog.recentFindings) || [];
+    document.getElementById('research-findings').innerHTML = rf.length
+      ? rf.map(f =>
+          '<div class="insight-item"><div style="font-size:.88rem">'+esc((f.finding||'').slice(0,300))+'</div>' +
+          '<div class="meta">'+ago(f.createdAt) +
+          (f.relevance != null ? ' &middot; relevance '+Number(f.relevance).toFixed(2) : '') +
+          ' &middot; '+(f.surfacedAt ? 'surfaced '+ago(f.surfacedAt) : '<span style="color:var(--yellow)">awaiting surfacing</span>') +
+          (f.sourceUrl ? '<div style="word-break:break-all;margin-top:2px">'+esc(f.sourceUrl)+'</div>' : '') +
+          '</div></div>').join('')
+      : '<div class="empty">No autonomous research findings yet</div>';
+
+    // PLAN-34 Phase 6 (§8): egress audit. All-time per-seam totals lead so
+    // the truncated recent list can never understate the network footprint.
+    const eg = (cog && cog.egress) || { totalsBySeam: {}, recent: [] };
+    const seamTotals = Object.entries(eg.totalsBySeam || {})
+      .map(([k,v]) => esc(k)+': <strong>'+v+'</strong>').join(' &nbsp; ');
+    document.getElementById('egress-log').innerHTML =
+      '<div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">All-time requests per seam &mdash; '+(seamTotals || 'none')+'</div>' +
+      ((eg.recent || []).length
+        ? eg.recent.map(r =>
+            '<div style="display:flex;gap:10px;align-items:baseline;padding:3px 0;border-bottom:1px solid var(--border);font-size:.8rem">' +
+            '<span style="min-width:90px;color:var(--muted)">'+ago(r.createdAt)+'</span>' +
+            '<span style="min-width:110px"><strong>'+esc(r.seam)+'</strong></span>' +
+            '<span style="flex:1;word-break:break-all">'+esc(r.destination)+'</span>' +
+            '<span style="color:var(--muted);white-space:nowrap">'+(r.payloadLen ?? 0)+' B &middot; '+esc(String(r.payloadHash||'').slice(0,12))+'</span>' +
+            '</div>').join('')
+        : '<div class="empty">No research egress recorded</div>');
+
+    // PLAN-33 Phase 4 pane (landed via PLAN-34 §8): canonical ledger contents.
+    const can = h.canonical;
+    const canEl = document.getElementById('canonical-pane');
+    if (!can) {
+      canEl.innerHTML = '<div class="empty">Canonical ledger not initialized</div>';
+    } else {
+      const inj = can.lastInjection ? ago(can.lastInjection.at)+' ('+can.lastInjection.count+' facts)' : 'never';
+      canEl.innerHTML =
+        '<div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">'+(can.activeFacts ?? 0)+' active facts &middot; last prompt injection: '+inj+'</div>' +
+        ((can.facts || []).length
+          ? can.facts.map(f =>
+              '<div style="display:flex;gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--border);font-size:.82rem">' +
+              '<span style="min-width:180px;word-break:break-all"><strong>'+esc(f.key)+'</strong></span>' +
+              '<span style="flex:1;word-break:break-all">'+esc((f.value||'').slice(0,200))+'</span>' +
+              '<span style="min-width:90px;color:var(--muted)">'+esc(f.source||'')+'</span>' +
+              '<span style="min-width:60px;color:var(--muted);text-align:right" title="confidence'+(f.corroborationCount ? ' &middot; corroborated x'+f.corroborationCount : '')+'">'+Number(f.confidence ?? 0).toFixed(2)+'</span>' +
+              '</div>').join('')
+          : '<div class="empty">No canonical facts pinned yet</div>');
     }
   } catch(e) { console.warn('retrieval health error', e); }
 }

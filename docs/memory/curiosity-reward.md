@@ -135,6 +135,25 @@ gateway RPC that owns the task store, not here):
 
 The dream dashboard renders these under a "Closed-loop cognition" card.
 
+The Retrieval tab also carries the plan's three detail surfaces:
+
+- **Research findings card** — recent `research_findings` rows (finding,
+  source URL, relevance, created/surfaced timestamps). This is a read-only
+  history view via `listResearchFindings()`; it never marks rows surfaced —
+  the one-time "while you were away" drain stays owned by
+  `consumeResearchFindings()`, so a finding still shows "awaiting surfacing"
+  here until a live session voices it.
+- **Research egress log** — the `research_egress_log` audit trail via
+  `listResearchEgress()`: all-time request counts per seam (search-query /
+  fetch-host / transport-post) plus the most recent rows with destination,
+  payload length, and payload-hash prefix. The per-seam totals are computed
+  over the whole table so truncating the recent list can never understate
+  the real network footprint.
+- **Canonical memory ledger** (closes the PLAN-33 Phase 4 pane debt) —
+  `retrievalHealth().canonical` now includes `facts`, the active ledger
+  contents (key, value, source, confidence, corroboration count) alongside
+  the existing active-fact count and last-injection record.
+
 ## Related Documentation
 
 - [Dream Engine](./dream-engine.md) — GCCRF mode adjustments, FSHO coupling

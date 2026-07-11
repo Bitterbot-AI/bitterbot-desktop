@@ -127,16 +127,25 @@ describe("canonical ledger end-to-end (real manager, real tool, real resolver)",
     });
     expect(disabledBlock).toBeUndefined();
 
-    // 7. Observability: the injection registered in retrievalHealth.
+    // 7. Observability: the injection registered in retrievalHealth, and
+    //    (PLAN-34 §8 / PLAN-33 Phase 4 pane) the ledger CONTENTS ride along.
     const { manager } = await getMemorySearchManager({ cfg, agentId: "main" });
     const health = (
       manager as unknown as {
         retrievalHealth(): {
-          canonical: { activeFacts: number; lastInjection: { count: number } | null } | null;
+          canonical: {
+            activeFacts: number;
+            lastInjection: { count: number } | null;
+            facts: Array<{ key: string; value: string; source: string; confidence: number }>;
+          } | null;
         };
       }
     ).retrievalHealth();
     expect(health.canonical?.activeFacts).toBeGreaterThan(0);
     expect(health.canonical?.lastInjection?.count).toBeGreaterThan(0);
+    const repoFact = health.canonical?.facts.find((f) => f.key === "project.repo");
+    expect(repoFact?.value).toBe(REPO);
+    expect(repoFact?.source).toBe("agent_pin");
+    expect(repoFact?.confidence).toBeGreaterThan(0);
   }, 60_000);
 });

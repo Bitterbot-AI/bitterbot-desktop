@@ -76,11 +76,45 @@ interface DreamManagerView {
     layers: { total: number; sinceContribution: Record<string, number> };
     deadWires: Array<{ layer: string; searchesSinceContribution: number; window: number }>;
     graph: Record<string, number> | null;
+    // PLAN-33 Phase 4 pane (landed via PLAN-34 §8): ledger contents + lastInjection.
+    canonical?: {
+      activeFacts: number;
+      lastInjection: { at: number; count: number } | null;
+      facts: Array<{
+        key: string;
+        value: string;
+        statement: string;
+        category: string;
+        source: string;
+        confidence: number;
+        corroborationCount: number;
+        lastConfirmedAt: number;
+      }>;
+    } | null;
     // PLAN-34 Phase 6: same-DB cognition counters (spread through to the dashboard).
     cognition?: {
       directiveFunnel: Record<string, number>;
       insightPromotion: { promoted: number; rejectedByLeg: Record<string, number> };
       research: { outcomes: Record<string, number>; egressToday: number; egressCapPerDay: number };
+      recentFindings: Array<{
+        id: string;
+        targetId: string | null;
+        finding: string;
+        sourceUrl: string | null;
+        relevance: number | null;
+        createdAt: number;
+        surfacedAt: number | null;
+      }>;
+      egress: {
+        totalsBySeam: Record<string, number>;
+        recent: Array<{
+          seam: string;
+          destination: string;
+          payloadHash: string;
+          payloadLen: number;
+          createdAt: number;
+        }>;
+      };
     } | null;
   };
 }

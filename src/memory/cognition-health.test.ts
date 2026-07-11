@@ -19,15 +19,47 @@ function makeDb(): DatabaseSync {
   return db;
 }
 
-function cognition(db: DatabaseSync, cfg: Record<string, unknown> = {}) {
-  const proto = MemoryIndexManager.prototype as unknown as {
-    cognitionHealth(this: { db: DatabaseSync; cfg: Record<string, unknown> }): {
-      directiveFunnel: Record<string, number>;
-      insightPromotion: { promoted: number; rejectedByLeg: Record<string, number> };
-      research: { outcomes: Record<string, number>; egressToday: number; egressCapPerDay: number };
-    };
+type CognitionView = {
+  directiveFunnel: Record<string, number>;
+  insightPromotion: { promoted: number; rejectedByLeg: Record<string, number> };
+  research: { outcomes: Record<string, number>; egressToday: number; egressCapPerDay: number };
+  recentFindings: Array<{
+    id: string;
+    targetId: string | null;
+    finding: string;
+    sourceUrl: string | null;
+    relevance: number | null;
+    createdAt: number;
+    surfacedAt: number | null;
+  }>;
+  egress: {
+    totalsBySeam: Record<string, number>;
+    recent: Array<{
+      seam: string;
+      destination: string;
+      payloadHash: string;
+      payloadLen: number;
+      createdAt: number;
+    }>;
   };
-  return proto.cognitionHealth.call({ db, cfg });
+};
+
+// cognitionHealth() delegates to sibling accessors (listResearchFindings /
+// listResearchEgress), so the call target must carry the real prototype —
+// a bare {db, cfg} object would lose them.
+function bareManager(db: DatabaseSync, cfg: Record<string, unknown> = {}) {
+  return Object.assign(Object.create(MemoryIndexManager.prototype) as object, {
+    db,
+    cfg,
+  }) as unknown as {
+    cognitionHealth(): CognitionView;
+    listResearchFindings(limit?: number): CognitionView["recentFindings"];
+    listResearchEgress(limit?: number): CognitionView["egress"];
+  };
+}
+
+function cognition(db: DatabaseSync, cfg: Record<string, unknown> = {}) {
+  return bareManager(db, cfg).cognitionHealth();
 }
 
 describe("cognitionHealth", () => {
@@ -112,5 +144,101 @@ describe("cognitionHealth", () => {
     expect(c.insightPromotion.promoted).toBe(0);
     expect(c.research.outcomes).toEqual({});
     expect(c.research.egressCapPerDay).toBe(10);
+    // Phase 6 §8 detail surfaces degrade the same way pre-migration.
+    expect(c.recentFindings).toEqual([]);
+    expect(c.egress).toEqual({ totalsBySeam: {}, recent: [] });
+  });
+
+  // PLAN-34 Phase 6 (§8): dashboard detail surfaces.
+
+  function seedResearchTables() {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS research_findings (
+        id          TEXT PRIMARY KEY,
+        target_id   TEXT,
+        finding     TEXT NOT NULL,
+        source_url  TEXT,
+        relevance   REAL,
+        created_at  INTEGER NOT NULL,
+        surfaced_at INTEGER
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS research_egress_log (
+        id           TEXT PRIMARY KEY,
+        seam         TEXT NOT NULL,
+        destination  TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        payload_len  INTEGER NOT NULL,
+        created_at   INTEGER NOT NULL
+      )
+    `);
+  }
+
+  it("lists recent research findings read-only — never marks rows surfaced", () => {
+    seedResearchTables();
+    const ins = db.prepare(
+      `INSERT INTO research_findings (id, target_id, finding, source_url, relevance, created_at, surfaced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    );
+    ins.run("f1", "t1", "older, already voiced", "https://a.example", 0.9, 100, 150);
+    ins.run("f2", null, "newest, still pending", null, null, 200, null);
+
+    const c = cognition(db);
+    expect(c.recentFindings).toEqual([
+      {
+        id: "f2",
+        targetId: null,
+        finding: "newest, still pending",
+        sourceUrl: null,
+        relevance: null,
+        createdAt: 200,
+        surfacedAt: null,
+      },
+      {
+        id: "f1",
+        targetId: "t1",
+        finding: "older, already voiced",
+        sourceUrl: "https://a.example",
+        relevance: 0.9,
+        createdAt: 100,
+        surfacedAt: 150,
+      },
+    ]);
+
+    // The read must not have drained the queue: f2 is still unsurfaced.
+    const pending = db
+      .prepare(`SELECT id FROM research_findings WHERE surfaced_at IS NULL`)
+      .all() as Array<{ id: string }>;
+    expect(pending).toEqual([{ id: "f2" }]);
+  });
+
+  it("egress totals cover the whole table even when the recent list truncates", () => {
+    seedResearchTables();
+    const ins = db.prepare(
+      `INSERT INTO research_egress_log (id, seam, destination, payload_hash, payload_len, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    ins.run("e1", "search-query", "duckduckgo.com", "h1", 42, 1);
+    ins.run("e2", "fetch-host", "example.org", "h2", 1024, 2);
+    ins.run("e3", "fetch-host", "example.net", "h3", 2048, 3);
+
+    // limit=2 truncates recent to the newest two rows, but the per-seam
+    // totals must still account for all three (never understate footprint).
+    const eg = bareManager(db).listResearchEgress(2);
+    expect(eg.totalsBySeam).toEqual({ "search-query": 1, "fetch-host": 2 });
+    expect(eg.recent.map((r) => r.destination)).toEqual(["example.net", "example.org"]);
+    expect(eg.recent[0]).toEqual({
+      seam: "fetch-host",
+      destination: "example.net",
+      payloadHash: "h3",
+      payloadLen: 2048,
+      createdAt: 3,
+    });
+
+    // And the cognitionHealth default view carries the same data through.
+    const c = cognition(db);
+    expect(c.egress.totalsBySeam).toEqual({ "search-query": 1, "fetch-host": 2 });
+    expect(c.egress.recent).toHaveLength(3);
   });
 });

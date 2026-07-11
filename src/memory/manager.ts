@@ -4938,6 +4938,106 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   /**
+   * PLAN-34 Phase 6 (§8): read-only listing of recent idle-research findings
+   * for the dashboard card. Never touches `surfaced_at` —
+   * `consumeResearchFindings` owns the drain; this is history, including
+   * rows still waiting to be voiced.
+   */
+  listResearchFindings(limit = 20): Array<{
+    id: string;
+    targetId: string | null;
+    finding: string;
+    sourceUrl: string | null;
+    relevance: number | null;
+    createdAt: number;
+    surfacedAt: number | null;
+  }> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT id, target_id, finding, source_url, relevance, created_at, surfaced_at
+           FROM research_findings ORDER BY created_at DESC LIMIT ?`,
+        )
+        .all(Math.max(1, Math.min(limit, 100))) as Array<{
+        id: string;
+        target_id: string | null;
+        finding: string;
+        source_url: string | null;
+        relevance: number | null;
+        created_at: number;
+        surfaced_at: number | null;
+      }>;
+      return rows.map((r) => ({
+        id: r.id,
+        targetId: r.target_id,
+        finding: r.finding,
+        sourceUrl: r.source_url,
+        relevance: r.relevance,
+        createdAt: r.created_at,
+        surfacedAt: r.surfaced_at,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * PLAN-34 Phase 6 (§8): research egress audit view — all-time row counts
+   * per seam plus the most recent rows. The per-seam totals are computed
+   * over the whole table so truncating `recent` can never understate the
+   * real network footprint.
+   */
+  listResearchEgress(limit = 30): {
+    totalsBySeam: Record<string, number>;
+    recent: Array<{
+      seam: string;
+      destination: string;
+      payloadHash: string;
+      payloadLen: number;
+      createdAt: number;
+    }>;
+  } {
+    const totalsBySeam: Record<string, number> = {};
+    let recent: Array<{
+      seam: string;
+      destination: string;
+      payloadHash: string;
+      payloadLen: number;
+      createdAt: number;
+    }> = [];
+    try {
+      const totals = this.db
+        .prepare(`SELECT seam, COUNT(*) AS c FROM research_egress_log GROUP BY seam`)
+        .all() as Array<{ seam: string; c: number }>;
+      for (const t of totals) {
+        totalsBySeam[t.seam] = t.c;
+      }
+      const rows = this.db
+        .prepare(
+          `SELECT seam, destination, payload_hash, payload_len, created_at
+           FROM research_egress_log ORDER BY created_at DESC LIMIT ?`,
+        )
+        .all(Math.max(1, Math.min(limit, 200))) as Array<{
+        seam: string;
+        destination: string;
+        payload_hash: string;
+        payload_len: number;
+        created_at: number;
+      }>;
+      recent = rows.map((r) => ({
+        seam: r.seam,
+        destination: r.destination,
+        payloadHash: r.payload_hash,
+        payloadLen: r.payload_len,
+        createdAt: r.created_at,
+      }));
+    } catch {
+      // pre-migration DB — empty view
+    }
+    return { totalsBySeam, recent };
+  }
+
+  /**
    * Record a canonical-block injection for observability. Fed to the
    * dead-wire detector only when the ledger has active facts — an empty
    * ledger injecting nothing is healthy, not a dead wire; facts existing but
@@ -5048,6 +5148,8 @@ export class MemoryIndexManager implements MemorySearchManager {
     directiveFunnel: Record<string, number>;
     insightPromotion: { promoted: number; rejectedByLeg: Record<string, number> };
     research: { outcomes: Record<string, number>; egressToday: number; egressCapPerDay: number };
+    recentFindings: ReturnType<MemoryIndexManager["listResearchFindings"]>;
+    egress: ReturnType<MemoryIndexManager["listResearchEgress"]>;
   } {
     const directiveFunnel: Record<string, number> = {};
     try {
@@ -5129,6 +5231,8 @@ export class MemoryIndexManager implements MemorySearchManager {
       directiveFunnel,
       insightPromotion: { promoted, rejectedByLeg },
       research: { outcomes, egressToday, egressCapPerDay },
+      recentFindings: this.listResearchFindings(),
+      egress: this.listResearchEgress(),
     };
   }
 
@@ -5139,6 +5243,18 @@ export class MemoryIndexManager implements MemorySearchManager {
     canonical: {
       activeFacts: number;
       lastInjection: { at: number; count: number } | null;
+      // PLAN-34 Phase 6 (§8), closing PLAN-33 Phase 4 debt: the ledger
+      // CONTENTS, not just the count. Bounded by maxFacts (default 48).
+      facts: Array<{
+        key: string;
+        value: string;
+        statement: string;
+        category: string;
+        source: string;
+        confidence: number;
+        corroborationCount: number;
+        lastConfirmedAt: number;
+      }>;
     } | null;
     cognition: ReturnType<MemoryIndexManager["cognitionHealth"]> | null;
   } {
@@ -5148,15 +5264,22 @@ export class MemoryIndexManager implements MemorySearchManager {
     } catch {
       graph = null;
     }
-    let canonical: {
-      activeFacts: number;
-      lastInjection: { at: number; count: number } | null;
-    } | null = null;
+    let canonical: ReturnType<MemoryIndexManager["retrievalHealth"]>["canonical"] = null;
     try {
       canonical = this.canonicalFactsStore
         ? {
             activeFacts: this.canonicalFactsStore.activeCount(),
             lastInjection: this.lastCanonicalInjection,
+            facts: this.canonicalFactsStore.listActive().map((f) => ({
+              key: f.key,
+              value: f.value,
+              statement: f.statement,
+              category: f.category,
+              source: f.source,
+              confidence: f.confidence,
+              corroborationCount: f.corroborationCount,
+              lastConfirmedAt: f.lastConfirmedAt,
+            })),
           }
         : null;
     } catch {
