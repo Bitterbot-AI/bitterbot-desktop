@@ -615,11 +615,13 @@ export class CanonicalFactsStore {
    * Make room for one incoming fact. PLAN-34 Phase 2b + Phase 2 adv. fix:
    * ATOMIC and tier-first. Chooses victims lowest-tier-then-lowest-score
    * among facts at a trust tier <= the incoming pin's tier, and — for a
-   * SAME-tier victim — only if the incoming fact would outscore it (a fresh
-   * background ADD never displaces a better-corroborated same-tier fact).
-   * Computes the full victim set BEFORE mutating: if it cannot free enough
-   * slots, it retires NOTHING and returns false (the caller rejects the
-   * ADD), so a rejected write can never leave partial evictions applied.
+   * SAME-tier victim — only if the incoming fact is at least as high-scored
+   * (a fresh background ADD never displaces a STRICTLY better-corroborated
+   * same-tier fact; an equal-scored one is displaceable, so two facts
+   * pinned in the same millisecond do not deadlock). Computes the full
+   * victim set BEFORE mutating: if it cannot free enough slots, it retires
+   * NOTHING and returns false (the caller rejects the ADD), so a rejected
+   * write can never leave partial evictions applied.
    */
   private evictForCapacity(now: number, incomingTier: number, incomingScore: number): boolean {
     const overBy = this.activeCount() - this.maxFacts + 1;
@@ -633,8 +635,9 @@ export class CanonicalFactsStore {
         if (tier > incomingTier) {
           return false;
         }
-        // Same tier: only displace a fact the incoming pin outranks.
-        return tier < incomingTier || canonicalPromotionScore(f, now) < incomingScore;
+        // Same tier: displace unless the existing fact is STRICTLY better
+        // (equal scores are evictable — no tie deadlock across timestamps).
+        return tier < incomingTier || canonicalPromotionScore(f, now) <= incomingScore;
       })
       // Lowest tier first, then lowest score (worst victims first).
       .toSorted(
