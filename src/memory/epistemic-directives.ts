@@ -49,13 +49,18 @@ export const MAX_ASKS = 3;
 /** Consumed conflict rows older than this are pruned at sweep time. */
 const CONFLICT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Canonical values render into prompt-injected question lines. */
+/**
+ * Canonical values render into prompt-injected question lines. Strip C0/DEL
+ * control characters (via a codepoint scan, not a control-char regex
+ * literal, which `no-control-regex` rightly flags) and collapse whitespace.
+ */
 function sanitizeValueForPrompt(value: string): string {
-  // oxlint-disable-next-line no-control-regex -- stripping control chars is the point
-  return value
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let out = "";
+  for (const ch of value) {
+    const cc = ch.codePointAt(0) ?? 0;
+    out += cc < 0x20 || cc === 0x7f ? " " : ch;
+  }
+  return out.replace(/\s+/g, " ").trim();
 }
 
 export type DirectiveStatus = "open" | "answered" | "expired";
