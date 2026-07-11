@@ -74,7 +74,14 @@ interface DreamManagerView {
   /** PLAN-28 B4: retrieval-layer health (dead-wire counters + KG/SABM stats). */
   retrievalHealth?(): {
     layers: { total: number; sinceContribution: Record<string, number> };
-    deadWires: Array<{ layer: string; searchesSinceContribution: number; window: number }>;
+    deadWires: Array<{
+      layer: string;
+      searchesSinceContribution: number;
+      window: number;
+      // PLAN-34 Phase 6 §8: time-window lanes report days of silence instead.
+      daysSinceContribution?: number;
+      kind?: "rolling" | "time_window";
+    }>;
     graph: Record<string, number> | null;
     // PLAN-33 Phase 4 pane (landed via PLAN-34 §8): ledger contents + lastInjection.
     canonical?: {

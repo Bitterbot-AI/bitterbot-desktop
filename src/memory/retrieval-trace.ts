@@ -128,7 +128,40 @@ export type DeadWireWarning = {
   layer: string;
   searchesSinceContribution: number;
   window: number;
+  /**
+   * PLAN-34 Phase 6 (§8): set for time-window lanes — how many days the lane
+   * has gone without contributing (the rolling counter fields above are
+   * still populated but the TIME is what tripped the alarm).
+   */
+  daysSinceContribution?: number;
+  kind?: "rolling" | "time_window";
 };
+
+/** PLAN-34 Phase 6 (§8): default time window for low-frequency lanes. */
+export const TIME_WINDOW_LANE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * PLAN-34 Phase 6 (§8): minimum SYSTEM-ACTIVE retrievals (records where some
+ * lane contributed) that must occur after a time-window lane's last fire
+ * before it may warn. Wall-clock silence alone cannot distinguish "lane
+ * dead" from "process idle for a month" — this gate proves other lanes were
+ * genuinely firing during the silence. In-memory (resets per process), so
+ * it doubles as a small post-restart warm-up against noise.
+ */
+export const TIME_WINDOW_MIN_ACTIVITY = 25;
+
+/**
+ * PLAN-34 Phase 6 (§8): optional persistence for time-window lane state.
+ * A 30-day check kept only in memory is neutered by any restart cadence
+ * under 30 days, so lane baselines (last fire, first seen, last warn)
+ * round-trip through this store. Implementations must throw on an
+ * unavailable backing store — the detector treats that as "not hydrated
+ * yet" and retries, never silently re-baselining.
+ */
+export interface DeadLaneStateStore {
+  get(key: string): number | null;
+  set(key: string, value: number): void;
+}
 
 /**
  * PLAN-28 B3: rolling per-layer contribution counter and dead-wire detector.
@@ -151,44 +184,204 @@ export class RetrievalObservability {
   private total = 0;
   /** Last total at which we warned for a layer, to dedupe spammy warnings. */
   private readonly lastWarnedAt = new Map<string, number>();
+  /** PLAN-34 §8: wall-clock of each lane's last nonzero contribution. */
+  private readonly lastContributionAt = new Map<string, number>();
+  /** PLAN-34 §8: when each lane was first observed (baseline for never-fired lanes). */
+  private readonly firstSeenAt = new Map<string, number>();
+  /** PLAN-34 §8: wall-clock of the last warning per time-window lane. */
+  private readonly lastTimeWarnAt = new Map<string, number>();
+  /** PLAN-34 §8: count of records where SOME lane contributed (system truly active). */
+  private activityCount = 0;
+  /** PLAN-34 §8: wall-clock of the most recent record where some lane contributed. */
+  private lastActivityAt: number | null = null;
+  /** PLAN-34 §8: activityCount snapshot at each time lane's last fire (or 0). */
+  private readonly activityAtLaneFire = new Map<string, number>();
+  /** PLAN-34 §8: whether persisted lane state has been loaded yet. */
+  private hydrated = false;
 
-  constructor(private readonly window = 200) {}
+  /**
+   * `timeWindowLanes` (PLAN-34 Phase 6 §8) maps LOW-FREQUENCY lane names to a
+   * time window in ms: those lanes are judged by "no contribution for this
+   * long while the system was actively retrieving" instead of the rolling
+   * call-count window. A lane like open_loops legitimately contributes 0
+   * across hundreds of retrievals whenever no unfinished work exists —
+   * under the rolling check it would false-alarm weekly-cadence lanes into
+   * alarm blindness. `stateStore` persists those lanes' baselines across
+   * restarts (a 30-day clock reset by every restart would never fire).
+   */
+  constructor(
+    private readonly window = 200,
+    private readonly timeWindowLanes: Record<string, number> = {},
+    private readonly now: () => number = Date.now,
+    private readonly stateStore?: DeadLaneStateStore,
+  ) {}
+
+  /** Load persisted time-lane baselines once; retry later if the store isn't ready. */
+  private hydrate(): void {
+    if (this.hydrated) {
+      return;
+    }
+    if (!this.stateStore) {
+      this.hydrated = true;
+      return;
+    }
+    try {
+      for (const layer of Object.keys(this.timeWindowLanes)) {
+        const fired = this.stateStore.get(`deadlane_last_fire_${layer}`);
+        if (fired !== null && !this.lastContributionAt.has(layer)) {
+          this.lastContributionAt.set(layer, fired);
+        }
+        const seen = this.stateStore.get(`deadlane_first_seen_${layer}`);
+        if (seen !== null && !this.firstSeenAt.has(layer)) {
+          this.firstSeenAt.set(layer, seen);
+        }
+        const warned = this.stateStore.get(`deadlane_last_warn_${layer}`);
+        if (warned !== null && !this.lastTimeWarnAt.has(layer)) {
+          this.lastTimeWarnAt.set(layer, warned);
+        }
+      }
+      this.hydrated = true;
+    } catch {
+      // Store not ready (early init) — retry on the next call rather than
+      // silently re-baselining a 30-day clock.
+    }
+  }
+
+  private persistLane(key: string, value: number): void {
+    try {
+      this.stateStore?.set(key, value);
+    } catch {
+      // Best-effort; the in-memory state remains authoritative this process.
+    }
+  }
 
   /** Feed one retrieval's per-layer contribution counts. */
   record(counts: Record<string, number>): void {
+    this.hydrate();
     this.total += 1;
+    const at = this.now();
+    if (Object.values(counts).some((n) => n > 0)) {
+      this.activityCount += 1;
+      this.lastActivityAt = at;
+    }
     for (const [layer, n] of Object.entries(counts)) {
+      const isTimeLane = this.timeWindowLanes[layer] !== undefined;
+      if (!this.firstSeenAt.has(layer)) {
+        this.firstSeenAt.set(layer, at);
+        if (isTimeLane) {
+          this.persistLane(`deadlane_first_seen_${layer}`, at);
+        }
+      }
+      if (n > 0) {
+        this.lastContributionAt.set(layer, at);
+        this.activityAtLaneFire.set(layer, this.activityCount);
+        if (isTimeLane) {
+          this.persistLane(`deadlane_last_fire_${layer}`, at);
+        }
+      }
       this.sinceContribution.set(layer, n > 0 ? 0 : (this.sinceContribution.get(layer) ?? 0) + 1);
     }
   }
 
   /**
-   * Return any layer dead for a full window while the system is otherwise
-   * active. Stateful: a returned warning is suppressed for the next `window`
-   * retrievals so the maintenance cycle doesn't re-log it every tick.
+   * Pure evaluation of every dead lane — NO suppression state is touched.
+   * View surfaces (retrievalHealth → dashboard) call this via
+   * deadWiresSnapshot() so a persistent fault stays visible on every poll;
+   * only the consuming checkDeadWires() advances warn-dedupe state.
    */
-  checkDeadWires(): DeadWireWarning[] {
+  private evaluateDeadWires(at: number): DeadWireWarning[] {
+    this.hydrate();
+    const out: DeadWireWarning[] = [];
+
+    // Time-window lanes (PLAN-34 §8): three conditions, ALL required —
+    //   1. lane silent for the full wall-clock window;
+    //   2. the system contributed RECENTLY (an idle process — traffic then a
+    //      month of nothing — must never warn off pure wall-clock);
+    //   3. enough system-active records since the lane last fired (a single
+    //      post-idle retrieval is not evidence the lane is dead).
+    for (const [layer, timeWindowMs] of Object.entries(this.timeWindowLanes)) {
+      const baseline = this.lastContributionAt.get(layer) ?? this.firstSeenAt.get(layer);
+      if (baseline === undefined) {
+        continue; // never observed
+      }
+      const silentMs = at - baseline;
+      if (silentMs < timeWindowMs) {
+        continue;
+      }
+      if (this.lastActivityAt === null || at - this.lastActivityAt >= timeWindowMs) {
+        continue; // system itself has been idle — not a dead lane
+      }
+      const activeSinceFire = this.activityCount - (this.activityAtLaneFire.get(layer) ?? 0);
+      if (activeSinceFire < TIME_WINDOW_MIN_ACTIVITY) {
+        continue;
+      }
+      out.push({
+        layer,
+        searchesSinceContribution: this.sinceContribution.get(layer) ?? 0,
+        window: this.window,
+        daysSinceContribution: Math.floor(silentMs / 86_400_000),
+        kind: "time_window",
+      });
+    }
+
+    // Rolling lanes (PLAN-28 B3), unchanged semantics.
     if (this.total < this.window) {
-      return [];
+      return out;
     }
     const layers = [...this.sinceContribution.keys()];
     // "System otherwise active" — at least one layer fired within the window.
     const systemActive = layers.some((l) => (this.sinceContribution.get(l) ?? 0) < this.window);
     if (!systemActive) {
-      return [];
+      return out;
     }
-    const out: DeadWireWarning[] = [];
     for (const layer of layers) {
+      if (this.timeWindowLanes[layer] !== undefined) {
+        continue; // judged above
+      }
       const since = this.sinceContribution.get(layer) ?? 0;
       if (since < this.window) {
         continue;
       }
-      const lastWarn = this.lastWarnedAt.get(layer) ?? -Infinity;
-      if (this.total - lastWarn < this.window) {
-        continue;
+      out.push({ layer, searchesSinceContribution: since, window: this.window, kind: "rolling" });
+    }
+    return out;
+  }
+
+  /**
+   * Side-effect-free view of currently dead lanes, for retrievalHealth and
+   * the dashboard: a genuinely dead lane renders on EVERY poll instead of
+   * being consumed by the first reader.
+   */
+  deadWiresSnapshot(): DeadWireWarning[] {
+    return this.evaluateDeadWires(this.now());
+  }
+
+  /**
+   * Return any layer dead for a full window while the system is otherwise
+   * active. Stateful — for the maintenance LOG path only: a returned warning
+   * is suppressed for the next `window` retrievals (rolling) or a full time
+   * window (time lanes) so the cycle doesn't re-log it every tick.
+   */
+  checkDeadWires(): DeadWireWarning[] {
+    const at = this.now();
+    const out: DeadWireWarning[] = [];
+    for (const w of this.evaluateDeadWires(at)) {
+      if (w.kind === "time_window") {
+        const timeWindowMs = this.timeWindowLanes[w.layer] ?? 0;
+        const lastWarn = this.lastTimeWarnAt.get(w.layer) ?? -Infinity;
+        if (at - lastWarn < timeWindowMs) {
+          continue;
+        }
+        this.lastTimeWarnAt.set(w.layer, at);
+        this.persistLane(`deadlane_last_warn_${w.layer}`, at);
+      } else {
+        const lastWarn = this.lastWarnedAt.get(w.layer) ?? -Infinity;
+        if (this.total - lastWarn < this.window) {
+          continue;
+        }
+        this.lastWarnedAt.set(w.layer, this.total);
       }
-      this.lastWarnedAt.set(layer, this.total);
-      out.push({ layer, searchesSinceContribution: since, window: this.window });
+      out.push(w);
     }
     return out;
   }
@@ -205,10 +398,17 @@ export class RetrievalObservability {
   warnDeadWires(): DeadWireWarning[] {
     const warnings = this.checkDeadWires();
     for (const w of warnings) {
-      log.warn(
-        `retrieval layer "${w.layer}" contributed 0 over the last ${w.searchesSinceContribution} ` +
-          `retrievals (window ${w.window}) while other layers fired — populated/wired?`,
-      );
+      if (w.kind === "time_window") {
+        log.warn(
+          `retrieval lane "${w.layer}" has not contributed for ${w.daysSinceContribution} day(s) ` +
+            `while other layers fired — populated/wired?`,
+        );
+      } else {
+        log.warn(
+          `retrieval layer "${w.layer}" contributed 0 over the last ${w.searchesSinceContribution} ` +
+            `retrievals (window ${w.window}) while other layers fired — populated/wired?`,
+        );
+      }
     }
     return warnings;
   }

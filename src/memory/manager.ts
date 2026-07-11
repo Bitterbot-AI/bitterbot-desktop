@@ -78,6 +78,7 @@ import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
 import { ReconsolidationEngine } from "./reconsolidation.js";
 import {
   RetrievalObservability,
+  TIME_WINDOW_LANE_MS,
   emptyRecallCounts,
   emptySearchCounts,
   recordRetrievalTrace,
@@ -861,8 +862,45 @@ export class MemoryIndexManager implements MemorySearchManager {
   private identityBackfillDone = false;
   /** PLAN-28 A3: ensures the one-time general relationship backfill runs once. */
   private generalBackfillDone = false;
-  /** PLAN-28 Part B: rolling per-layer dead-wire detector + trace counters. */
-  readonly retrievalObs = new RetrievalObservability();
+  /** PLAN-28 Part B: rolling per-layer dead-wire detector + trace counters.
+   * PLAN-34 Phase 6 (§8): open_loops is a LOW-FREQUENCY lane — it contributes
+   * only while unfinished work exists, so the 200-call rolling window would
+   * false-alarm it into alarm blindness; it gets the 30-day time window.
+   * Lane baselines persist in memory_meta so restarts (batched gateway
+   * rebuilds happen well inside 30 days) never reset the clock. */
+  readonly retrievalObs = new RetrievalObservability(
+    undefined,
+    { open_loops: TIME_WINDOW_LANE_MS },
+    undefined,
+    {
+      get: (key) => {
+        // Throws while the DB is still initializing (detector retries);
+        // a fresh-but-ready DB just answers null.
+        this.db.exec(
+          `CREATE TABLE IF NOT EXISTS memory_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+        );
+        const row = this.db.prepare(`SELECT value FROM memory_meta WHERE key = ?`).get(key) as
+          | { value: string }
+          | undefined;
+        if (!row) {
+          return null;
+        }
+        const n = Number(row.value);
+        return Number.isFinite(n) ? n : null;
+      },
+      set: (key, value) => {
+        this.db.exec(
+          `CREATE TABLE IF NOT EXISTS memory_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+        );
+        this.db
+          .prepare(
+            `INSERT INTO memory_meta (key, value) VALUES (?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+          )
+          .run(key, String(value));
+      },
+    },
+  );
   /** PLAN-33: the canonical facts ledger (null when disabled/failed). */
   private canonicalFactsStore: CanonicalFactsStore | null = null;
   /** PLAN-33: last canonical-block injection, for retrievalHealth. */
@@ -5285,7 +5323,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   retrievalHealth(): {
     layers: { total: number; sinceContribution: Record<string, number> };
-    deadWires: ReturnType<RetrievalObservability["checkDeadWires"]>;
+    deadWires: ReturnType<RetrievalObservability["deadWiresSnapshot"]>;
     graph: ReturnType<KnowledgeGraphManager["getStats"]> | null;
     canonical: {
       activeFacts: number;
@@ -5341,7 +5379,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     return {
       canonical,
       layers: this.retrievalObs.snapshot(),
-      deadWires: this.retrievalObs.checkDeadWires(),
+      // Side-effect-free view: the dashboard must see a persistent fault on
+      // every poll — only the maintenance warn path consumes warn-dedupe.
+      deadWires: this.retrievalObs.deadWiresSnapshot(),
       graph,
       cognition,
     };

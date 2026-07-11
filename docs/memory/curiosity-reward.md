@@ -154,6 +154,22 @@ The Retrieval tab also carries the plan's three detail surfaces:
   contents (key, value, source, confidence, corroboration count) alongside
   the existing active-fact count and last-injection record.
 
+Dead-wire detection distinguishes lane cadence: most layers use the
+PLAN-28 rolling 200-call window, but LOW-FREQUENCY lanes (currently
+`open_loops`, which legitimately contributes 0 whenever no unfinished work
+exists) are judged by a **30-day time window** instead. A time-window lane
+warns only when ALL THREE hold: silent for the full window, the system
+contributed recently (a process that sat idle for a month must never warn
+off pure wall-clock), and at least 25 system-active retrievals occurred
+since the lane last fired (one post-idle retrieval is not evidence). Lane
+baselines (last fire / first seen / last warn) persist in `memory_meta`,
+so gateway restarts do not reset the 30-day clock. Warnings carry
+`kind: "time_window"` and `daysSinceContribution` and render with their
+own wording on the dashboard. The dashboard reads the side-effect-free
+`deadWiresSnapshot()` — a persistent fault stays visible on every poll —
+while only the maintenance log path consumes the once-per-window
+re-warn suppression.
+
 ## Related Documentation
 
 - [Dream Engine](./dream-engine.md) — GCCRF mode adjustments, FSHO coupling

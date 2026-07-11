@@ -337,8 +337,10 @@ async function loadRetrieval() {
 
     document.getElementById('deadwire-card').innerHTML = dead.length
       ? '<h3 style="margin-bottom:8px;color:var(--orange)">&#9888; Dead-wire alerts</h3>' +
-        dead.map(d => '<div style="margin:4px 0">Layer <strong>'+esc(d.layer)+'</strong> contributed 0 over the last '+d.searchesSinceContribution+' retrievals (window '+d.window+')</div>').join('')
-      : '<h3 style="margin-bottom:8px;color:var(--green)">&#10003; All observed layers contributing</h3><div style="font-size:.8rem;color:var(--muted)">A layer that goes silent for a full rolling window while others fire will raise an alert here.</div>';
+        dead.map(d => d.kind === 'time_window'
+          ? '<div style="margin:4px 0">Lane <strong>'+esc(d.layer)+'</strong> has not contributed for '+d.daysSinceContribution+' day(s) (30-day time window)</div>'
+          : '<div style="margin:4px 0">Layer <strong>'+esc(d.layer)+'</strong> contributed 0 over the last '+d.searchesSinceContribution+' retrievals (window '+d.window+')</div>').join('')
+      : '<h3 style="margin-bottom:8px;color:var(--green)">&#10003; All observed layers contributing</h3><div style="font-size:.8rem;color:var(--muted)">A layer that goes silent for a full rolling window (or a 30-day time window for low-frequency lanes) while others fire will raise an alert here.</div>';
 
     const sc = h.layers?.sinceContribution || {};
     const keys = Object.keys(sc);
