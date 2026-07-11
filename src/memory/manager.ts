@@ -4838,7 +4838,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     embedding: number[];
     importanceScore: number;
     evidenceRefs: string;
-  }): void {
+  }): boolean {
     const id = `dream_insight_${crypto.randomUUID()}`;
     const now = Date.now();
     const hash = crypto.createHash("sha256").update(row.text).digest("hex");
@@ -4878,8 +4878,10 @@ export class MemoryIndexManager implements MemorySearchManager {
           now,
         );
     } catch (err) {
+      // The chunk itself failed — report failure so the caller does not
+      // count a non-existent promotion.
       log.debug(`promoted-insight chunk insert failed: ${String(err)}`);
-      return;
+      return false;
     }
     // chunks_vec (immediate semantic searchability) — best-effort.
     if (row.embedding.length > 0) {
@@ -4904,6 +4906,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         log.debug(`promoted-insight fts write skipped: ${String(err)}`);
       }
     }
+    return true;
   }
 
   /**
@@ -5048,11 +5051,15 @@ export class MemoryIndexManager implements MemorySearchManager {
   } {
     const directiveFunnel: Record<string, number> = {};
     try {
+      // Count DISTINCT directives at each stage so the funnel is monotone and
+      // comparable (a directive injected in 3 sessions is one 'injected', not
+      // three). The contradicted lane is included so a re-ask is visible.
       const rows = this.db
         .prepare(
-          `SELECT event, COUNT(*) AS c FROM memory_audit_log
+          `SELECT event, COUNT(DISTINCT chunk_id) AS c FROM memory_audit_log
            WHERE actor = 'epistemic_directives'
-             AND event IN ('directive_created','directive_injected','directive_answered','directive_resolved')
+             AND event IN ('directive_created','directive_injected','directive_answered',
+                           'directive_resolved','directive_answer_contradicted')
            GROUP BY event`,
         )
         .all() as Array<{ event: string; c: number }>;
@@ -5100,13 +5107,20 @@ export class MemoryIndexManager implements MemorySearchManager {
       // no curiosity targets
     }
 
+    const egressCapPerDay = this.cfg.memory?.curiosity?.autoResearch?.maxPerDay ?? 10;
     let egressToday = 0;
     try {
       const dayKey = `autoresearch_count_${new Date().toISOString().slice(0, 10)}`;
       const row = this.db.prepare(`SELECT value FROM memory_meta WHERE key = ?`).get(dayKey) as
         | { value: string }
         | undefined;
-      egressToday = row ? parseInt(row.value, 10) || 0 : 0;
+      if (row) {
+        const n = parseInt(row.value, 10);
+        // Match AutoResearchBudget: a corrupt counter reads as CAP-reached,
+        // never 0 — the dashboard must not show research as available when
+        // the budget guard is actually blocking it.
+        egressToday = Number.isFinite(n) ? n : egressCapPerDay;
+      }
     } catch {
       // no meta
     }
@@ -5114,11 +5128,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     return {
       directiveFunnel,
       insightPromotion: { promoted, rejectedByLeg },
-      research: {
-        outcomes,
-        egressToday,
-        egressCapPerDay: this.cfg.memory?.curiosity?.autoResearch?.maxPerDay ?? 10,
-      },
+      research: { outcomes, egressToday, egressCapPerDay },
     };
   }
 

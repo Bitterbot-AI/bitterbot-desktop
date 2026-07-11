@@ -268,6 +268,10 @@ export function proactiveRecall(params: {
   const cfg = { ...DEFAULT_PROACTIVE_RECALL_CONFIG, ...params.config };
   const start = performance.now();
   const facts: ProactiveFact[] = [];
+  // PLAN-34 Phase 4: dream-origin facts are capped at SELECTION time (formatting
+  // shows at most 1/turn) so they never consume a fact slot or cooldown stamp
+  // for a hypothesis that will not be rendered.
+  let dreamSelected = 0;
   const layerCounts = {
     graphFacts: 0,
     identityFacts: 0,
@@ -379,6 +383,11 @@ export function proactiveRecall(params: {
             continue;
           }
 
+          // PLAN-34 Phase 4: selection-time dream cap (see keyword stage).
+          if (row.origin === "dream" && dreamSelected >= MAX_DREAM_RECALL_PER_TURN) {
+            continue;
+          }
+
           // Cooldown check
           const lastTurn = params.recentlySurfaced.get(row.id) ?? -Infinity;
           if (params.currentTurn - lastTurn < cfg.cooldownTurns) {
@@ -395,6 +404,9 @@ export function proactiveRecall(params: {
                 ? row.text.slice(0, 117) + "..."
                 : row.text;
 
+          if (row.origin === "dream") {
+            dreamSelected++;
+          }
           facts.push({
             text: truncated,
             source: "crystal",
@@ -428,7 +440,8 @@ export function proactiveRecall(params: {
           // to survive both the dedup and the cooldown filter.
           const candidateRows = params.db
             .prepare(
-              `SELECT c.id, c.text, c.importance_score, c.epistemic_layer, bm25(${fts}) AS rank
+              `SELECT c.id, c.text, c.importance_score, c.epistemic_layer,
+                      COALESCE(c.origin, 'indexed') AS origin, bm25(${fts}) AS rank
                FROM ${fts} f
                JOIN chunks c ON c.id = f.id
                WHERE ${fts} MATCH ?
@@ -443,6 +456,7 @@ export function proactiveRecall(params: {
             text: string;
             importance_score: number;
             epistemic_layer: string;
+            origin: string;
             rank: number;
           }>;
 
@@ -454,18 +468,33 @@ export function proactiveRecall(params: {
             if (seenIds.has(row.id)) {
               continue;
             }
+            // PLAN-34 Phase 4: cap dream-origin facts at SELECTION time so a
+            // dream hypothesis (which formatting shows at most 1/turn) never
+            // consumes a fact slot or a cooldown stamp it will not be shown in.
+            if (row.origin === "dream" && dreamSelected >= MAX_DREAM_RECALL_PER_TURN) {
+              continue;
+            }
             seenIds.add(row.id);
             const lastTurn = params.recentlySurfaced.get(row.id) ?? -Infinity;
             if (params.currentTurn - lastTurn < cfg.cooldownTurns) {
               continue;
             }
-            const truncated = row.text.length > 120 ? row.text.slice(0, 117) + "..." : row.text;
+            const truncated =
+              row.origin === "dream"
+                ? truncateAtSentence(row.text, 120)
+                : row.text.length > 120
+                  ? row.text.slice(0, 117) + "..."
+                  : row.text;
+            if (row.origin === "dream") {
+              dreamSelected++;
+            }
             facts.push({
               text: truncated,
               source: "crystal",
               confidence: row.importance_score,
               epistemicLayer: row.epistemic_layer,
               chunkId: row.id,
+              origin: row.origin,
             });
             params.recentlySurfaced.set(row.id, params.currentTurn);
             layerCounts.keywordFacts += 1;
@@ -569,6 +598,8 @@ export const MEMORY_FENCE_CLOSE_TAG = "</memory-context>";
  */
 /** PLAN-34 Phase 4: at most this many dream-origin hypotheses per turn. */
 const MAX_DREAM_FACTS_PER_TURN = 1;
+/** Selection-time cap on dream-origin recall (mirrors the format cap). */
+const MAX_DREAM_RECALL_PER_TURN = MAX_DREAM_FACTS_PER_TURN;
 
 /** Truncate to <= max chars at the last sentence/clause boundary within it. */
 function truncateAtSentence(text: string, max: number): string {

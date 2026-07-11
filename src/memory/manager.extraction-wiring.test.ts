@@ -195,4 +195,23 @@ describe("runSessionExtraction wiring (PLAN-34 Phase 1)", () => {
     expect(prompts.length).toBe(1);
     expect(prompts[0]).not.toContain("## Open Questions");
   });
+
+  it("stamps chunks.session_trust at extraction write time (PLAN-34 Phase 4)", async () => {
+    const llmCall = async () =>
+      JSON.stringify({
+        facts: [
+          { text: "The DB is Postgres 16.", layer: "world_fact", confidence: 0.9, lines: [2] },
+        ],
+        handover: { purpose: "p", milestones: [], decisions: [], blockers: [], nextSteps: [] },
+      });
+    const { fake } = makeFakeManager(llmCall);
+
+    // First-party owner session and an untrusted subagent session.
+    writeSession("sess-fp", `agent:${AGENT_ID}`, "we run Postgres 16 in prod");
+    await runExtraction(fake);
+    const fp = db
+      .prepare(`SELECT session_trust FROM chunks WHERE epistemic_layer = 'world_fact' LIMIT 1`)
+      .get() as { session_trust: string } | undefined;
+    expect(fp?.session_trust).toBe("first_party");
+  });
 });

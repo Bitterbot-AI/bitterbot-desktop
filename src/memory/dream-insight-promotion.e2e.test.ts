@@ -68,7 +68,7 @@ function makeEngine(
       embedding: number[];
       importanceScore: number;
       evidenceRefs: string;
-    }) => void;
+    }) => boolean;
   } = {},
 ) {
   const engine = new DreamEngine(
@@ -101,6 +101,7 @@ function makeEngine(
         now,
         now,
       );
+      return true;
     });
   engine.setInsightChunkWriter(writer);
   return engine;
@@ -186,5 +187,84 @@ describe("dream insight promotion (e2e)", () => {
     const results = searchDreamInsights(db, [1, 0, 0, 0], { minScore: 0.5 });
     expect(results.some((r) => r.content === "Sparse coding folds context.")).toBe(true);
     expect(results.every((r) => r.mode === "insight")).toBe(true);
+  });
+});
+
+describe("real verifyInsightClaims parse (PLAN-34 Phase 4 designated surface)", () => {
+  // Drive the REAL verifier (no setInsightVerifier stub) via a fixture LLM
+  // wired as the SYNTHESIS call (the independent verifier model).
+  function engineWithVerifierLlm(reply: string) {
+    const db = createTestDb();
+    const engine = new DreamEngine(
+      db,
+      {
+        llmCall: async () => "GENERATOR should never verify",
+        // synthesisLlmCall is the distinct verifier model.
+        synthesisLlmCall: async () => reply,
+      },
+      (async () => ({ content: "", confidence: 0 })) as never,
+      async (t: string[]) => t.map(() => [1, 0, 0, 0]),
+    );
+    return engine as unknown as {
+      verifyInsightClaims(
+        i: { content: string },
+        s: { text: string }[],
+      ): Promise<{ unsupported: number; misattribution: boolean }>;
+    };
+  }
+
+  const twoSentence = { content: "First claim holds. Second claim also holds." };
+  const sources = [{ text: "source one" }, { text: "source two" }];
+
+  it("promotes when every sentence is labeled restated/inferred and no misattribution", async () => {
+    const e = engineWithVerifierLlm('{"labels":["restated","inferred"],"misattribution":false}');
+    expect(await e.verifyInsightClaims(twoSentence, sources)).toEqual({
+      unsupported: 0,
+      misattribution: false,
+    });
+  });
+
+  it("FAILS CLOSED when the label list is shorter than the sentence count", async () => {
+    // One label for a two-sentence hypothesis — sentence 2 is unexamined.
+    const e = engineWithVerifierLlm('{"labels":["inferred"],"misattribution":false}');
+    const v = await e.verifyInsightClaims(twoSentence, sources);
+    expect(v.unsupported).toBeGreaterThan(0);
+    expect(v.misattribution).toBe(true);
+  });
+
+  it("counts any non-enum / uppercase label as unsupported", async () => {
+    const e = engineWithVerifierLlm('{"labels":["restated","UNSUPPORTED"],"misattribution":false}');
+    expect((await e.verifyInsightClaims(twoSentence, sources)).unsupported).toBe(1);
+  });
+
+  it("misattribution FAILS OPEN to true when the key is absent or non-boolean", async () => {
+    for (const reply of [
+      '{"labels":["restated","inferred"]}',
+      '{"labels":["restated","inferred"],"misattribution":"no"}',
+    ]) {
+      expect(
+        (await engineWithVerifierLlm(reply).verifyInsightClaims(twoSentence, sources))
+          .misattribution,
+      ).toBe(true);
+    }
+  });
+
+  it("empty/garbage/unparseable replies fail closed", async () => {
+    for (const reply of ['{"labels":[]}', "not json", '{"labels":"x"}']) {
+      const v = await engineWithVerifierLlm(reply).verifyInsightClaims(twoSentence, sources);
+      expect(v.unsupported).toBeGreaterThan(0);
+    }
+  });
+
+  it("a paraphrase-plus-false-conclusion (one unsupported label) is rejected", async () => {
+    const e = engineWithVerifierLlm('{"labels":["restated","unsupported"],"misattribution":false}');
+    expect((await e.verifyInsightClaims(twoSentence, sources)).unsupported).toBe(1);
+  });
+
+  it("the verifier is NOT the generating call (uses the distinct synthesis model)", async () => {
+    // The generator returns non-JSON; if the verifier used it, parse fails
+    // closed. It uses synthesisLlmCall instead, so a valid verdict returns.
+    const e = engineWithVerifierLlm('{"labels":["restated","inferred"],"misattribution":false}');
+    expect((await e.verifyInsightClaims(twoSentence, sources)).unsupported).toBe(0);
   });
 });

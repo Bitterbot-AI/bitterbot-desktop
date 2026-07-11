@@ -36,24 +36,36 @@ describe("cognitionHealth", () => {
     db = makeDb();
   });
 
-  it("counts the directive funnel by stage from the audit log", () => {
+  it("counts the directive funnel by DISTINCT directive per stage (monotone, not per-event)", () => {
     const ins = db.prepare(
       `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
-       VALUES (?, 'd1', ?, ?, 'epistemic_directives', '{}')`,
+       VALUES (?, ?, ?, ?, 'epistemic_directives', '{}')`,
     );
-    ins.run("a1", "directive_created", 1);
-    ins.run("a2", "directive_injected", 2);
-    ins.run("a3", "directive_injected", 3);
-    ins.run("a4", "directive_answered", 4);
-    ins.run("a5", "directive_resolved", 5);
+    // d1: created, injected in TWO sessions (must count as ONE injected),
+    // answered, resolved.
+    ins.run("a1", "d1", "directive_created", 1);
+    ins.run("a2", "d1", "directive_injected", 2);
+    ins.run("a3", "d1", "directive_injected", 3);
+    ins.run("a4", "d1", "directive_answered", 4);
+    ins.run("a5", "d1", "directive_resolved", 5);
+    // d2: created + injected + answer contradicted (the re-ask lane).
+    ins.run("b1", "d2", "directive_created", 6);
+    ins.run("b2", "d2", "directive_injected", 7);
+    ins.run("b3", "d2", "directive_answer_contradicted", 8);
     // An unrelated actor's rows are ignored.
     db.prepare(
       `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
-       VALUES ('x', 'c', 'directive_created', 6, 'other', '{}')`,
+       VALUES ('x', 'c', 'directive_created', 9, 'other', '{}')`,
     ).run();
 
     const c = cognition(db);
-    expect(c.directiveFunnel).toEqual({ created: 1, injected: 2, answered: 1, resolved: 1 });
+    expect(c.directiveFunnel).toEqual({
+      created: 2,
+      injected: 2, // two DISTINCT directives injected, not three events
+      answered: 1,
+      resolved: 1,
+      answer_contradicted: 1,
+    });
   });
 
   it("aggregates insight-promotion outcomes from dream telemetry", () => {

@@ -152,3 +152,27 @@ describe("loadSourceChunks", () => {
     expect(loaded.map((c) => c.id)).toEqual(["real"]);
   });
 });
+
+describe("assessGrounding — floor near-boundary", () => {
+  it("accepts just above the 0.4 floor and rejects just below", () => {
+    // Construct unit vectors at cosine ~0.42 and ~0.38 to the aligned insight.
+    const above = [Math.cos(1.14), Math.sin(1.14), 0, 0]; // cos(1.14)≈0.412
+    const below = [Math.cos(1.19), Math.sin(1.19), 0, 0]; // cos(1.19)≈0.372
+    const okRej = emptyRejections();
+    const ok = assessGrounding(
+      insight(),
+      [src({ id: "a", embedding: above }), src({ id: "b", embedding: above })],
+      okRej,
+    );
+    expect(ok).not.toBeNull();
+
+    const noRej = emptyRejections();
+    const no = assessGrounding(
+      insight(),
+      [src({ id: "a", embedding: below }), src({ id: "b", embedding: below })],
+      noRej,
+    );
+    expect(no).toBeNull();
+    expect(noRej.insufficientGrounding).toBe(1);
+  });
+});
