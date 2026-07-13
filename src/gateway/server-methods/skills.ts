@@ -54,15 +54,22 @@ import {
 import { TtlCache } from "./ttl-cache.js";
 
 /**
- * Short-TTL caches for the UI-polled network read RPCs. Both do heavy
- * synchronous SQLite aggregation (and skills.network also fans out over IPC/
- * HTTP); the Control UI polls them and re-issues them on every reconnect.
- * Caching collapses bursts of identical polls into one computed result so they
- * cannot block the event loop back-to-back and starve the WS keepalive.
+ * TTL caches for the UI-polled network read RPCs. Both do heavy synchronous
+ * SQLite aggregation (and skills.network also fans out over IPC/HTTP);
+ * skills.networkHistory in particular groups the whole ~30-day census history
+ * table (100k+ rows) into hourly buckets, costing multiple seconds. The Control
+ * UI (P2pDashboard) polls both every 30s and re-issues them on every reconnect.
+ *
+ * The TTL MUST exceed that 30s poll interval — otherwise every poll misses and
+ * re-pays the full scan, blocking the event loop and starving the 30s WS
+ * keepalive, which bounces the UI and re-triggers the poll (a self-reinforcing
+ * flakiness loop). These reads are append-only/slow-moving (a growth chart, a
+ * current-census snapshot), so serving a poll-cadence-stale value is fine.
+ * Keep these above P2pDashboard's poll interval if that interval changes.
  */
 const SKILLS_NETWORK_CACHE_KEY = "skills.network";
-const skillsNetworkCache = new TtlCache<unknown>(5_000);
-const skillsNetworkHistoryCache = new TtlCache<unknown>(10_000);
+const skillsNetworkCache = new TtlCache<unknown>(45_000);
+const skillsNetworkHistoryCache = new TtlCache<unknown>(120_000);
 
 function collectSkillBins(entries: SkillEntry[]): string[] {
   const bins = new Set<string>();
