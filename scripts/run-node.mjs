@@ -249,6 +249,33 @@ export async function runNodeMain(params = {}) {
   if (buildRes.exitCode !== 0 && buildRes.exitCode !== null) {
     return buildRes.exitCode;
   }
+
+  // tsdown above emits the chunked dist/ output but NOT dist/entry.js — that
+  // single self-contained bundle (src/entry.ts via scripts/build-gateway-entry.mjs)
+  // is what bitterbot.mjs actually imports. On a fresh checkout it does not exist,
+  // and neither `pnpm install` nor the tsdown build creates it, so boot crashes
+  // with "missing dist/entry.(m)js". Build it here when it is genuinely absent.
+  // An EXISTING bundle is deliberately left untouched: `pnpm start` does a fast
+  // chunk-only rebuild and does not re-bundle server code on every restart — a
+  // full `pnpm build` remains how new gateway code is rolled forward.
+  if (statMtime(deps.distEntry, deps.fs) == null) {
+    logRunner("Bundling gateway entry (dist/entry.js missing).", deps);
+    const entry = deps.spawn(deps.execPath, ["scripts/build-gateway-entry.mjs"], {
+      cwd: deps.cwd,
+      env: deps.env,
+      stdio: "inherit",
+    });
+    const entryRes = await new Promise((resolve) => {
+      entry.on("exit", (exitCode, exitSignal) => resolve({ exitCode, exitSignal }));
+    });
+    if (entryRes.exitSignal) {
+      return 1;
+    }
+    if (entryRes.exitCode !== 0 && entryRes.exitCode !== null) {
+      return entryRes.exitCode;
+    }
+  }
+
   writeBuildStamp(deps);
   return await runBitterbot(deps);
 }

@@ -23,6 +23,23 @@ if (initialBuild.status !== 0) {
   process.exit(initialBuild.status ?? 1);
 }
 
+// tsdown emits the chunked dist/ output but NOT dist/entry.js — src/entry.ts is
+// bundled separately (see tsdown.config + scripts/build-gateway-entry.mjs), and
+// that single bundle is what bitterbot.mjs actually imports. `pnpm build` runs
+// both steps; watch mode must too, or a fresh checkout (or any run after the
+// initial tsdown above cleans dist/) boots with no entry.js and crashes with
+// "missing dist/entry.(m)js". The watch process below uses --no-clean, so this
+// bundle survives incremental rebuilds for the rest of the session.
+const entryBuild = spawnSync("node", ["scripts/build-gateway-entry.mjs"], {
+  cwd,
+  env,
+  stdio: "inherit",
+});
+
+if (entryBuild.status !== 0) {
+  process.exit(entryBuild.status ?? 1);
+}
+
 // --no-clean is critical here: in watch mode, tsdown would otherwise wipe
 // dist/ on every rebuild, which races with node --watch reloading. The running
 // CLI throws ENOENT on hashed chunks (e.g. dist/genome-parser-XXXX.js) that
