@@ -157,5 +157,49 @@ describe("installUnhandledRejectionHandler - fatal detection", () => {
       expect(exitCalls).toEqual([]);
       expect(consoleWarnSpy).toHaveBeenCalled();
     });
+
+    // Regression: @coinbase/agentkit telemetry threw `Error: HTTP error! status: 400`
+    // as an un-awaited promise and crashed the whole gateway. A reached-but-erroring
+    // external service must never be fatal.
+    it("does NOT exit on the AgentKit telemetry HTTP 400 (the gateway-crash regression)", () => {
+      const analyticsErr = new Error("HTTP error! status: 400");
+
+      process.emit("unhandledRejection", analyticsErr, Promise.resolve());
+
+      expect(exitCalls).toEqual([]);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[bitterbot] Non-fatal unhandled rejection from an external HTTP call (continuing):",
+        expect.stringContaining("HTTP error! status: 400"),
+      );
+    });
+
+    it("does NOT exit on an axios-style 5xx status-code error", () => {
+      const axiosErr = new Error("Request failed with status code 503");
+
+      process.emit("unhandledRejection", axiosErr, Promise.resolve());
+
+      expect(exitCalls).toEqual([]);
+      expect(consoleWarnSpy).toHaveBeenCalled();
+    });
+
+    it("does NOT exit on an HTTP status error nested in the cause chain", () => {
+      const wrapped = Object.assign(new Error("telemetry failed"), {
+        cause: new Error("HTTP error! status: 429"),
+      });
+
+      process.emit("unhandledRejection", wrapped, Promise.resolve());
+
+      expect(exitCalls).toEqual([]);
+    });
+
+    // Guard the taxonomy edge: a bare number in a message must NOT be swallowed
+    // as an HTTP error — only genuine HTTP-status shapes are non-fatal.
+    it("STILL exits on a generic error that merely contains a number", () => {
+      const genericErr = new Error("processed 400 records then failed");
+
+      process.emit("unhandledRejection", genericErr, Promise.resolve());
+
+      expect(exitCalls).toEqual([1]);
+    });
   });
 });

@@ -117,6 +117,39 @@ export function isTransientNetworkError(err: unknown): boolean {
   return false;
 }
 
+// HTTP response-status error shapes: a server we reached returned a 4xx/5xx.
+// Common across fetch wrappers ("HTTP error! status: 400", incl. @coinbase/agentkit
+// telemetry) and axios ("Request failed with status code 429").
+const HTTP_STATUS_ERROR_PATTERNS = [
+  /\bHTTP\b[^\n]{0,40}?\bstatus\b[^\n]{0,12}?\b[45]\d\d\b/i,
+  /\bstatus code\s+[45]\d\d\b/i,
+];
+
+/**
+ * Checks if a rejection is an external HTTP *response-status* error (the remote
+ * server was reached and returned 4xx/5xx). That is an external-service
+ * condition, not a local invariant violation — so it must not crash the
+ * gateway. The motivating case is third-party SDK telemetry fired as an
+ * un-awaited promise (e.g. @coinbase/agentkit's sendAnalyticsEvent throwing on
+ * an analytics 400); killing the whole process over that is disproportionate.
+ * Distinct from isTransientNetworkError, which covers connection-level failures
+ * (no HTTP response was received at all).
+ */
+export function isExternalHttpError(err: unknown): boolean {
+  if (!err || typeof err !== "object") {
+    return false;
+  }
+  const message = "message" in err && typeof err.message === "string" ? err.message : "";
+  if (message && HTTP_STATUS_ERROR_PATTERNS.some((rx) => rx.test(message))) {
+    return true;
+  }
+  const cause = getErrorCause(err);
+  if (cause && cause !== err) {
+    return isExternalHttpError(cause);
+  }
+  return false;
+}
+
 export function registerUnhandledRejectionHandler(handler: UnhandledRejectionHandler): () => void {
   handlers.add(handler);
   return () => {
@@ -168,6 +201,17 @@ export function installUnhandledRejectionHandler(): void {
     if (isTransientNetworkError(reason)) {
       console.warn(
         "[bitterbot] Non-fatal unhandled rejection (continuing):",
+        formatUncaughtError(reason),
+      );
+      return;
+    }
+
+    // A reached-but-erroring external service (4xx/5xx), typically third-party
+    // SDK telemetry fired as an un-awaited promise. Log loudly, but never crash
+    // the gateway over someone else's analytics endpoint.
+    if (isExternalHttpError(reason)) {
+      console.warn(
+        "[bitterbot] Non-fatal unhandled rejection from an external HTTP call (continuing):",
         formatUncaughtError(reason),
       );
       return;
