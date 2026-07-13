@@ -74,7 +74,7 @@ export function createMemorySearchTool(options: {
     label: "Memory Search",
     name: "memory_search",
     description:
-      "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos; returns top snippets with path + lines.",
+      "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos; returns top snippets with path + lines. Exact ground-truth hits from the canonical ledger (repo names, endpoints, identities, standing decisions) are surfaced first under `canonical` — trust those over the fuzzy `results` snippets.",
     parameters: MemorySearchSchema,
     execute: async (_toolCallId, params) => {
       const query = readStringParam(params, "query", { required: true });
@@ -101,7 +101,11 @@ export function createMemorySearchTool(options: {
         const status = manager.status();
         const decorated = decorateCitations(rawResults, includeCitations);
         const results = decorated;
+        const canonical = resolveCanonicalLookup(cfg, manager, query ?? "");
         return jsonResult({
+          // PLAN-33 Phase 4: ledger-first — authoritative exact-key hits before
+          // the fuzzy semantic results. Omitted entirely when there is no match.
+          ...(canonical.length > 0 ? { canonical } : {}),
           results,
           provider: status.provider,
           model: status.model,
@@ -295,6 +299,49 @@ export function createMemoryPinTool(options: {
       }
     },
   };
+}
+
+/**
+ * PLAN-33 Phase 4: resolve ledger-first exact-key hits for a memory_search
+ * query. Best-effort and non-fuzzy (see CanonicalFactsStore.lookup) — any
+ * failure or a disabled ledger yields no hits and leaves semantic recall
+ * untouched.
+ */
+function resolveCanonicalLookup(
+  cfg: BitterbotConfig,
+  manager: {
+    canonicalFacts?: () => import("../../memory/canonical-facts.js").CanonicalFactsStore | null;
+  },
+  query: string,
+): Array<{
+  key: string;
+  value: string;
+  statement: string;
+  category: string;
+  confidence: number;
+  source: string;
+  match: "key" | "value";
+}> {
+  if (cfg.memory?.canonicalLedger?.enabled === false) {
+    return [];
+  }
+  try {
+    const store = manager.canonicalFacts?.();
+    if (!store) {
+      return [];
+    }
+    return store.lookup(query, { limit: 3 }).map((h) => ({
+      key: h.fact.key,
+      value: h.fact.value,
+      statement: h.fact.statement,
+      category: h.fact.category,
+      confidence: h.fact.confidence,
+      source: h.fact.source,
+      match: h.matchKind,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 function resolveMemoryCitationsMode(cfg: BitterbotConfig): MemoryCitationsMode {

@@ -615,3 +615,68 @@ describe("tier-first eviction atomicity (PLAN-34 Phase 2 adversarial fix)", () =
     expect(store.get("infra.b")).toBeNull();
   });
 });
+
+describe("CanonicalFactsStore.lookup — PLAN-33 Phase 4 ledger-first hits", () => {
+  let db: DatabaseSync;
+  let store: CanonicalFactsStore;
+
+  beforeEach(() => {
+    db = makeDb();
+    store = new CanonicalFactsStore(db);
+    store.pin({
+      key: "project.repo",
+      value: "github.com/Bitterbot-AI/bitterbot-desktop",
+      statement: "The project repository is github.com/Bitterbot-AI/bitterbot-desktop.",
+      category: "project",
+      source: "agent_pin",
+    });
+    store.pin({
+      key: "identity.user-name",
+      value: "Victor",
+      category: "identity",
+      source: "agent_pin",
+    });
+  });
+
+  it("matches when every human token of the key is present in the query", () => {
+    const hits = store.lookup("what is the project repo again?");
+    expect(hits[0]?.fact.key).toBe("project.repo");
+    expect(hits[0]?.matchKind).toBe("key");
+    expect(hits[0]?.score).toBeGreaterThanOrEqual(0.6);
+  });
+
+  it("matches when the query verbatim contains the fact value", () => {
+    const hits = store.lookup("is github.com/Bitterbot-AI/bitterbot-desktop still the right one?");
+    expect(hits[0]?.fact.key).toBe("project.repo");
+    expect(hits[0]?.matchKind).toBe("value");
+    expect(hits[0]?.score).toBeGreaterThanOrEqual(0.95);
+  });
+
+  it("matches when the query normalizes to the exact canonical key", () => {
+    const hits = store.lookup("identity.user-name");
+    expect(hits[0]?.fact.key).toBe("identity.user-name");
+    expect(hits[0]?.score).toBe(1);
+  });
+
+  it("does NOT fuzzy-fire on an unrelated query (precision-first)", () => {
+    expect(store.lookup("what did the weather look like yesterday")).toEqual([]);
+    // Partial key token alone ("project") must not match project.repo.
+    expect(store.lookup("tell me about the project timeline")).toEqual([]);
+  });
+
+  it("never returns retired or superseded facts", () => {
+    store.retire("identity.user-name");
+    expect(store.lookup("identity.user-name")).toEqual([]);
+    // Superseded value is not matchable; only the current belief is.
+    store.pin({ key: "project.repo", value: "VGIL77/fork", source: "agent_pin" });
+    expect(store.lookup("github.com/Bitterbot-AI/bitterbot-desktop")).toEqual([]);
+    expect(store.lookup("VGIL77/fork")[0]?.fact.value).toBe("VGIL77/fork");
+  });
+
+  it("respects the limit and empty-query guard", () => {
+    expect(store.lookup("")).toEqual([]);
+    expect(store.lookup("   ")).toEqual([]);
+    const many = store.lookup("project repo", { limit: 1 });
+    expect(many.length).toBeLessThanOrEqual(1);
+  });
+});

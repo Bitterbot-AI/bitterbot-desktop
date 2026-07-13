@@ -42,7 +42,7 @@ vi.mock("./embeddings.js", () => ({
 }));
 
 import { resolveCanonicalFactsBlock } from "../agents/canonical-facts-block.js";
-import { createMemoryPinTool } from "../agents/tools/memory-tool.js";
+import { createMemoryPinTool, createMemorySearchTool } from "../agents/tools/memory-tool.js";
 import { getMemorySearchManager } from "./index.js";
 
 const REPO = "github.com/Bitterbot-AI/bitterbot-desktop";
@@ -147,5 +147,26 @@ describe("canonical ledger end-to-end (real manager, real tool, real resolver)",
     expect(repoFact?.value).toBe(REPO);
     expect(repoFact?.source).toBe("agent_pin");
     expect(repoFact?.confidence).toBeGreaterThan(0);
+
+    // 8. PLAN-33 Phase 4: memory_search surfaces the ledger fact first, by
+    //    exact key/value match, through the real tool wiring — this is the
+    //    recall-before-claim backstop recovering ground truth without relying
+    //    on semantic recall clearing a threshold.
+    const searchTool = createMemorySearchTool({ config: cfg });
+    expect(searchTool).not.toBeNull();
+    const searched = await searchTool!.execute("search_repo", {
+      query: "what is the project repo",
+    });
+    const payload = searched.details as {
+      canonical?: Array<{ key: string; value: string; match: string }>;
+    };
+    expect(payload.canonical?.[0]?.key).toBe("project.repo");
+    expect(payload.canonical?.[0]?.value).toBe(REPO);
+    expect(payload.canonical?.[0]?.match).toBe("key");
+    // An unrelated query yields no canonical section (precision-first).
+    const unrelated = await searchTool!.execute("search_weather", {
+      query: "how was the weather last week",
+    });
+    expect((unrelated.details as { canonical?: unknown }).canonical).toBeUndefined();
   }, 60_000);
 });

@@ -361,6 +361,8 @@ These are injected into the system prompt as terse one-line facts. The agent emb
 
 This pass is the agent's _involuntary_ recall — it runs before generation so the model answers already knowing what it has stored, rather than relying on an after-the-fact tool call. The recall-before-claim interceptor is a separate backstop: if the model still drafts an ungrounded factual claim (or a denial of one) it can force a `memory_search` before the message goes out.
 
+When that search runs, the canonical ledger is consulted first: `memory_search` returns any exact-key or verbatim-value hits from the ledger under a `canonical` field, ahead of the fuzzy semantic snippets, so a forced grounding search recovers ground truth by exact match instead of hoping a cosine-gated paraphrase clears the threshold. The match is deliberately precision-first — it fires only on the finite set of active facts, and only when the query normalizes to a fact's key, contains its value verbatim, or contains every human token of its key — never on fuzzy keyword shape.
+
 ---
 
 ## What Makes This Different

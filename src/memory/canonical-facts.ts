@@ -110,6 +110,17 @@ export type PinResult =
   | { op: "add" | "strengthen" | "supersede"; fact: CanonicalFact }
   | { op: "rejected"; reason: string };
 
+/**
+ * PLAN-33 Phase 4 — one ledger-first hit from CanonicalFactsStore.lookup().
+ * `score` is a lexical match strength in [0,1] (exact key = 1, verbatim value
+ * = 0.95, full key-token match = 0.85), never an embedding similarity.
+ */
+export type CanonicalLookupHit = {
+  fact: CanonicalFact;
+  score: number;
+  matchKind: "key" | "value";
+};
+
 export type CanonicalLedgerConfig = {
   /** Hard cap on active facts. The cap IS the editorial pressure. Default 48. */
   maxFacts?: number;
@@ -318,6 +329,80 @@ export class CanonicalFactsStore {
     return facts.toSorted(
       (a, b) => canonicalPromotionScore(b, now) - canonicalPromotionScore(a, now),
     );
+  }
+
+  /**
+   * PLAN-33 Phase 4 — ledger-first exact-key lookup for memory_search. When
+   * the agent explicitly searches (or the recall-before-claim backstop forces
+   * a search), surface the authoritative ledger fact BEFORE the fuzzy semantic
+   * hits so an exact key or value match grounds the claim instead of a
+   * cosine-gated paraphrase.
+   *
+   * Deliberately precision-first and NON-fuzzy — the failure mode this ledger
+   * exists to kill is fuzzy keyword-shape routing (see PLAN-33's rejected
+   * regex auto-keys). It matches ONLY against the finite set of real active
+   * facts (<= maxFacts), on two high-confidence signals:
+   *   1. the query verbatim contains the fact's value, OR is/contains the
+   *      fact's exact dotted key;
+   *   2. every human token of the fact's key is present as a query token.
+   * No token-overlap heuristics, no stemming — a miss falls back to the
+   * always-injected canonical block plus normal semantic recall.
+   */
+  lookup(
+    query: string,
+    opts?: { limit?: number; minScore?: number; now?: number },
+  ): CanonicalLookupHit[] {
+    const raw = (query ?? "").trim();
+    if (!raw) {
+      return [];
+    }
+    const now = opts?.now ?? Date.now();
+    const limit = Math.max(1, opts?.limit ?? 3);
+    const minScore = opts?.minScore ?? 0.6;
+    const q = raw.toLowerCase();
+    const qTokens = new Set(q.split(/[^a-z0-9]+/).filter((t) => t.length >= 2));
+    const wholeKey = normalizeCanonicalKey(raw);
+    const hits: CanonicalLookupHit[] = [];
+    for (const fact of this.listActive({ now })) {
+      let score = 0;
+      let matchKind: CanonicalLookupHit["matchKind"] = "key";
+      // 1a. query IS (normalizes to) the exact canonical key.
+      if (wholeKey && wholeKey === fact.key) {
+        score = 1;
+        matchKind = "key";
+      }
+      // 1b. the fact's value appears verbatim in the query.
+      const valueLc = fact.value.toLowerCase();
+      if (valueLc.length >= 3 && q.includes(valueLc) && score < 0.95) {
+        score = 0.95;
+        matchKind = "value";
+      }
+      // 2. every human token of the key is present as a query token (and the
+      // key carries at least one non-trivial token, so a degenerate 2-char key
+      // cannot match broadly).
+      const keyTokens = fact.key
+        .split(/[._\-/]+/)
+        .map((t) => t.toLowerCase())
+        .filter((t) => t.length >= 2);
+      if (
+        keyTokens.some((t) => t.length >= 3) &&
+        keyTokens.every((t) => qTokens.has(t)) &&
+        score < 0.85
+      ) {
+        score = 0.85;
+        matchKind = "key";
+      }
+      if (score >= minScore) {
+        hits.push({ fact, score, matchKind });
+      }
+    }
+    return hits
+      .toSorted(
+        (a, b) =>
+          b.score - a.score ||
+          canonicalPromotionScore(b.fact, now) - canonicalPromotionScore(a.fact, now),
+      )
+      .slice(0, limit);
   }
 
   /**
