@@ -109,21 +109,28 @@ Bitterbot's memory isn't a vector database with a retrieval step. It's a cogniti
 - **Hormonal System** Three neuromodulators shape the agent's behavior in real-time. **Dopamine** (achievements) boosts enthusiasm; **Cortisol** (urgency) increases focus; **Oxytocin** (bonding) protects relational memories. Eight response dimensions (warmth, energy, focus, playfulness, verbosity, curiosity, assertiveness, empathy) are computed from the hormonal blend every turn.
 - **Curiosity Engine** The agent actively maps what it _doesn't_ know via a unified five-component GCCRF reward function. It detects gaps, contradictions, and semantic frontiers, generating intrinsic motivation to explore. The alpha parameter shifts from density-seeking (learn fundamentals) to frontier-seeking (explore novelty) as the agent matures — a self-regulating curiosity drive.
 - **Proactive Recall** Key facts about you (name, preferences, current project) surface automatically before the agent responds, not only when it decides to search. Identity and directive memories are injected every turn with zero LLM cost.
+- **Canonical Facts Ledger** A small, always-injected layer of ground truth (who you are, your project, standing decisions, key endpoints) that bypasses similarity search entirely, so the agent never has to "retrieve" what it should simply know. Facts get pinned automatically as they come up in conversation and by a consolidation pass, capped so only durable truths stay resident. Re-stating a fact strengthens it; contradicting it supersedes the old belief while keeping its history.
+- **Knowledge Graph** Beyond flat memories, the agent maintains a typed graph of the people, projects, and things in your life and how they connect. Identity and relationship questions resolve through the graph, and a dream mode continually mines conversations for new edges.
 - **Evolving Identity** You define the immutable safety axioms (`GENOME.md`). The agent's actual personality (the Phenotype) evolves organically based on lived experience, constrained by your genome.
 
 ### The Dream Engine
 
-Every 2 hours, the agent goes offline to dream. Seven specialized modes optimize its brain, selected by an FSHO coupled oscillator that reads the current state of the memory landscape:
+Every 2 hours, the agent goes offline to dream. Twelve specialized modes optimize its brain, selected by an FSHO coupled oscillator that reads the current state of the memory landscape:
 
-| Mode              | What It Does                                                           |
-| ----------------- | ---------------------------------------------------------------------- |
-| **Replay**        | Strengthens high-importance memory pathways (no LLM cost)              |
-| **Mutation**      | "What if?" thinking, mutates prompts to discover more efficient skills |
-| **Extrapolation** | Projects user patterns forward to anticipate future needs              |
-| **Compression**   | Merges redundant memories into denser, token-efficient representations |
-| **Simulation**    | Tests hypothetical scenarios against accumulated knowledge             |
-| **Exploration**   | Investigates knowledge frontiers identified by the Curiosity Engine    |
-| **Research**      | Autonomous web research loop to optimize underperforming skills        |
+| Mode                             | What It Does                                                                              |
+| -------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Replay**                       | Strengthens high-importance memory pathways (no LLM cost)                                 |
+| **Mutation**                     | "What if?" thinking, mutates prompts to discover more efficient skills                    |
+| **Extrapolation**                | Projects user patterns forward to anticipate future needs                                 |
+| **Compression**                  | Merges redundant memories into denser, token-efficient representations                    |
+| **Simulation**                   | Tests hypothetical scenarios against accumulated knowledge                                |
+| **Exploration**                  | Investigates knowledge frontiers identified by the Curiosity Engine                       |
+| **Research**                     | Autonomous web research loop to optimize underperforming skills                           |
+| **Relationship Mining**          | Extracts typed relationship edges (people, projects, roles) into the knowledge graph      |
+| **Relationship Reconsolidation** | Revisits stored relationships and repairs them as new context refines or contradicts them |
+| **Canonical Promotion**          | Promotes durable, repeatedly-confirmed facts into the always-injected canonical ledger    |
+| **Interceptor Harvest**          | Watches what fails and drafts new executable guard skills for one-click promotion         |
+| **Harness Evolution**            | Evolves the agent's own prompt fragments and tool descriptions, behind a validation gate  |
 
 Each cycle is scored by a **Dream Quality Score** that measures crystal yield, merge efficiency, orphan rescue, Bond stability, and token efficiency, closing the feedback loop so the dream engine learns which modes work best.
 
@@ -131,7 +138,7 @@ Dreams rewrite the agent's working memory, updating its self-concept, theory of 
 
 ### Continuous Memory
 
-Most AI memory systems focus on storage and retrieval. We're building toward something different: a system where memory, emotion, curiosity, and identity form a single self-regulating cognitive loop.
+Most AI memory systems focus on storage and retrieval. Bitterbot closes the loop: memory, emotion, curiosity, and identity form a single self-regulating system. Questions the agent forms get answered from what you actually say, then retire so they are never asked twice; blind spots become curiosity targets, and research the agent runs comes back as durable memory; and insights formed while dreaming resurface later as recallable hunches.
 
 - **Temporal awareness** "What are you working on?" favors recent facts. "When did we discuss X?" favors older ones. Epistemic layers have natural half-lives: user preferences never expire, task status decays in weeks.
 - **Confidence calibration** Facts mentioned once are treated differently from facts confirmed five times across separate sessions. Bayesian-style updates grow logarithmically on corroboration and decay sharply on contradiction.
