@@ -41,28 +41,30 @@ Most AI agents are stateless wrappers around an LLM API. Close the terminal, and
 ```bash
 git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop
 bash scripts/setup-deps.sh    # installs Chromium, ffmpeg, ripgrep, etc.
-pnpm install && pnpm build
+pnpm install
 ```
 
-Run the onboarding wizard — it walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, and offers to spawn the gateway + Control UI for you at the end:
+Run the onboarding wizard — it walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, then **starts the gateway + Control UI for you and opens the browser**. When it finishes, Bitterbot is already running; there's nothing else to type.
 
 ```bash
 pnpm bitterbot onboard
 ```
 
-When the wizard finishes, accept the "Ready to fire it up?" prompt and it runs `pnpm dev:all` in the background and opens the browser. If you skip it or come back later:
-
-```bash
-pnpm dev:all
-```
-
 Open [http://localhost:5173](http://localhost:5173) — that's the Bitterbot Control UI where you chat, view dreams, manage skills, and monitor the agent. The gateway (backend API on port 19001) and the P2P orchestrator start automatically.
 
-> **`pnpm dev:all`** spawns the gateway + the Vite Control UI in one terminal with color-tagged logs. Ctrl+C stops both.
->
-> **Two-terminal alternative** (useful when debugging one process in isolation):
+> **Start it yourself later** (or if you skipped the wizard's auto-start):
 >
 > ```bash
+> pnpm start:all              # gateway + Control UI, production; skips whatever is already up
+> ```
+>
+> `start:all` builds `dist/entry.js` on first run if it's missing, so no separate `pnpm build` step is required.
+>
+> **Developing on the source?** Use watch mode instead:
+>
+> ```bash
+> pnpm dev:all                # gateway (tsdown --watch) + Vite hot-reload, color-tagged logs
+> # or two terminals:
 > pnpm gateway:watch          # Terminal 1 — auto-rebuilds on TS changes
 > cd desktop && pnpm dev      # Terminal 2 — Vite hot-reload
 > ```
@@ -399,6 +401,7 @@ Common fast fixes:
 - **Control UI shows "Disconnected"** — verify `desktop/.env` exists and `VITE_GATEWAY_TOKEN` matches `~/.bitterbot/bitterbot.json → gateway.auth.token`. If you ran `pnpm bitterbot onboard`, this should have been auto-generated.
 - **"Orchestrator binary NOT FOUND"** — either re-run `pnpm install` to trigger the postinstall downloader or `cargo build --release --manifest-path orchestrator/Cargo.toml` to build it locally.
 - **Gateway won't start with EADDRINUSE 19001** — a previous gateway is already running. Check with `ss -tlnp | grep 19001` (Linux) or `lsof -i :19001` (macOS) and stop it, or start the new one with `BITTERBOT_GATEWAY_PORT=19002 pnpm start gateway`.
+- **`missing dist/entry.(m)js (build output)`** — the gateway bundle hasn't been built. `pnpm start`, `pnpm start:all`, and `pnpm dev:all` now build it automatically on first run; if you hit this on an older checkout, run `pnpm build` once.
 - **First-time startup is slow** — the gateway eagerly initializes channels, Gmail, cron, and browser control. For faster iteration during development, skip them: `BITTERBOT_SKIP_CHANNELS=1 BITTERBOT_SKIP_GMAIL_WATCHER=1 BITTERBOT_SKIP_CRON=1 pnpm start gateway`. Full list of skip flags in [Configuration Reference → Startup skip flags](docs/gateway/configuration-reference.md#startup-skip-flags-bitterbot_skip_).
 - **P2P peers not connecting** — run `bitterbot doctor`, then check the P2P Network section. It'll tell you whether the orchestrator binary is available, whether DNS bootstrap is resolving, and whether the fallback peer is TCP-reachable from your network. Firewall/egress issues surface here.
 

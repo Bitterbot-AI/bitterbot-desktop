@@ -231,14 +231,19 @@ export async function finalizeOnboardingWizard(
   const gatewayWsUrl = `ws://127.0.0.1:${settings.port}`;
 
   // Resolve the Bitterbot repo root once. Only when it's present (and has a
-  // dev:all script) do we offer to auto-spawn — a global npm install of
-  // bitterbot has no repo to run `pnpm dev:all` in.
+  // stack-launcher script) do we auto-spawn — a global npm install of
+  // bitterbot has no repo to run `pnpm start:all` in.
   const repoRoot = await resolveBitterbotPackageRoot({
     moduleUrl: import.meta.url,
     argv1: process.argv[1],
     cwd: process.cwd(),
   });
-  const devAllAvailable = await hasDevAllScript(repoRoot);
+  // Prefer the production launcher (`start:all`: plain gateway boot + Vite,
+  // skips whatever is already up). Fall back to `dev:all` (watch mode) only if
+  // start:all is absent, so older checkouts still work.
+  const startAllAvailable = await hasScript(repoRoot, "start:all");
+  const devAllAvailable = await hasScript(repoRoot, "dev:all");
+  const stackCommand = startAllAvailable ? "start:all" : devAllAvailable ? "dev:all" : null;
 
   // Write `<repoRoot>/desktop/.env` so the Control UI boots with the gateway
   // token + URL pre-wired. Without this, the UI loads but shows "Disconnected"
@@ -276,118 +281,96 @@ export async function finalizeOnboardingWizard(
     [
       `Control UI:   ${controlUiUrl}`,
       `Gateway API:  ${gatewayWsUrl}`,
-      gatewayProbe.ok
-        ? "Gateway: reachable"
-        : "Gateway: not running (start with `pnpm dev:all` or `pnpm start gateway`)",
+      gatewayProbe.ok ? "Gateway: reachable" : "Gateway: starting up",
       "",
       "The Control UI is the Bitterbot interface — chat, dreams, skills, marketplace.",
-      "The gateway is the backend API. Both must be running.",
-      "",
-      "Start both in one terminal:  pnpm dev:all",
-      "Or separately:               pnpm gateway:watch  +  cd desktop && pnpm dev",
+      "The gateway is the backend API. The wizard keeps both running for you.",
     ].join("\n"),
     "Control UI",
   );
 
   let controlUiOpened = false;
+  let spawnedStack = false;
 
-  let spawnedDevAll = false;
-  if (!opts.skipUi) {
-    // If the gateway isn't reachable and daemon install was skipped (WSL, or
-    // user declined), offer to spawn `pnpm dev:all` right here so the user
-    // doesn't have to open a second terminal and remember the command. Gate
-    // on actually finding a repo root + dev:all script — no point offering
-    // something that will silently fail for global installs.
-    const canSpawnDevAll = !gatewayProbe.ok && !installDaemon && devAllAvailable;
-    const hatchChoice = await prompter.select({
-      message: canSpawnDevAll ? "Ready to fire it up?" : "Open the Control UI now?",
-      options: canSpawnDevAll
-        ? [
-            {
-              value: "spawn",
-              label: "Start gateway + Control UI now",
-              hint: "Runs `pnpm dev:all` in the background and opens the browser",
-            },
-            {
-              value: "web",
-              label: "Just open the browser",
-              hint: "I'll start the gateway myself",
-            },
-            { value: "later", label: "Not now — I'll handle it" },
-          ]
-        : [
-            { value: "web", label: "Yes — open in my browser", hint: controlUiUrl },
-            { value: "later", label: "Not now — I'll start things myself" },
-          ],
-      initialValue: canSpawnDevAll ? "spawn" : "web",
+  if (opts.skipUi) {
+    await prompter.note("Skipping Control UI startup.", "Control UI");
+  } else if (repoRoot && stackCommand) {
+    // Bring the whole stack up automatically so the wizard finishes with the
+    // gateway + Control UI already running — nothing for the user to type.
+    // `start:all` is idempotent (skips whatever is already listening), so this
+    // is safe even right after installing a gateway service. If the primary
+    // launcher fails to spawn, silently retry with watch-mode `dev:all` as a
+    // hidden backup (only when we're responsible for the gateway ourselves).
+    const startGateway = !installDaemon;
+    let outcome = await spawnStackHardened({
+      command: stackCommand,
+      repoRoot,
+      gatewayWsUrl,
+      settings,
+      nextConfig,
+      prompter,
+      startGateway,
     });
-
-    if (hatchChoice === "spawn") {
-      const spawnOutcome = await spawnDevAllHardened({
-        repoRoot: repoRoot as string, // canSpawnDevAll guarantees this is set
+    if (!outcome.spawned && stackCommand !== "dev:all" && devAllAvailable && startGateway) {
+      outcome = await spawnStackHardened({
+        command: "dev:all",
+        repoRoot,
         gatewayWsUrl,
         settings,
         nextConfig,
         prompter,
+        startGateway,
       });
-      spawnedDevAll = spawnOutcome.spawned;
-      if (spawnedDevAll && spawnOutcome.gatewayUp) {
-        const browserSupport = await detectBrowserOpenSupport();
-        if (browserSupport.ok) {
-          controlUiOpened = await openUrl(controlUiUrl);
-        }
-        await prompter.note(
-          controlUiOpened
-            ? `Opened ${controlUiUrl} in your browser. The Control UI may take a moment to finish hydrating — refresh if it's blank.`
-            : `Gateway is up. Open this URL when ready: ${controlUiUrl}`,
-          "Control UI",
-        );
-      } else if (spawnedDevAll) {
-        await prompter.note(
-          [
-            "Started dev:all in the background. The gateway hadn't finished booting",
-            "when the 90-second wait window expired, but it's probably still coming",
-            "up — cold starts on fresh clones can run over a minute once the P2P",
-            "orchestrator and channel plugins warm up.",
-            "",
-            `Give it another minute, then open: ${controlUiUrl}`,
-            "",
-            `Tail the live logs: tail -f ${spawnOutcome.logPath}`,
-            `Or follow in a terminal: cd ${repoRoot} && pnpm dev:all`,
-          ].join("\n"),
-          "Still starting",
-        );
-      }
-    } else if (hatchChoice === "web") {
+    }
+    spawnedStack = outcome.spawned;
+    if (spawnedStack && outcome.gatewayUp) {
       const browserSupport = await detectBrowserOpenSupport();
       if (browserSupport.ok) {
         controlUiOpened = await openUrl(controlUiUrl);
       }
       await prompter.note(
-        [
-          controlUiOpened
-            ? `Opened ${controlUiUrl} in your browser.`
-            : `Open this URL in your browser: ${controlUiUrl}`,
-          "",
-          !gatewayProbe.ok
-            ? "The gateway isn't running yet. Start it:\n  pnpm dev:all"
-            : "The gateway is running. If the Control UI shows 'Disconnected', verify\n" +
-              "  desktop/.env has the correct VITE_GATEWAY_TOKEN.",
-        ].join("\n"),
-        "Dashboard",
+        controlUiOpened
+          ? `Opened ${controlUiUrl} in your browser. The Control UI may take a moment to finish hydrating — refresh if it's blank.`
+          : `Gateway is up. Open this URL when ready: ${controlUiUrl}`,
+        "Control UI",
       );
-    } else {
+    } else if (spawnedStack) {
       await prompter.note(
         [
-          "When you're ready:",
-          "  pnpm dev:all                          # starts gateway + Control UI",
-          `  Then open: ${controlUiUrl}`,
+          "The stack is starting in the background, but the gateway hadn't finished",
+          "booting when the 90-second wait window expired — cold starts on a fresh",
+          "checkout can run over a minute (first-run bundle plus the P2P orchestrator",
+          "and channel plugins warming up).",
+          "",
+          `Give it another minute, then open: ${controlUiUrl}`,
+          "",
+          `Tail the live logs: tail -f ${outcome.logPath}`,
+          `Or run it in a terminal: cd ${repoRoot} && pnpm ${stackCommand}`,
         ].join("\n"),
-        "Later",
+        "Still starting",
       );
     }
+    // outcome.spawned === false: spawnStackHardened already surfaced the failure
+    // note (log tail + the exact command to run by hand).
   } else {
-    await prompter.note("Skipping Control UI prompts.", "Control UI");
+    // Global install / no repo checkout — nothing to spawn. Open the browser
+    // and point at the production start command.
+    const browserSupport = await detectBrowserOpenSupport();
+    if (browserSupport.ok) {
+      controlUiOpened = await openUrl(controlUiUrl);
+    }
+    await prompter.note(
+      [
+        controlUiOpened
+          ? `Opened ${controlUiUrl} in your browser.`
+          : `Open this URL in your browser: ${controlUiUrl}`,
+        "",
+        gatewayProbe.ok
+          ? "The gateway is running. If the Control UI shows 'Disconnected', verify\n  desktop/.env has the correct VITE_GATEWAY_TOKEN."
+          : "Start the gateway when ready:\n  pnpm start gateway",
+      ].join("\n"),
+      "Dashboard",
+    );
   }
 
   await prompter.note(
@@ -490,9 +473,8 @@ export async function finalizeOnboardingWizard(
       "     `bitterbot skills marketplace`.",
       "  5. See what other operators are building: https://github.com/Bitterbot-AI/bitterbot-desktop/discussions",
       "",
-      "If you're developing locally and want hot-reload on the Control UI:",
-      "  - Single terminal: `pnpm dev:all` (gateway + Vite, color-tagged logs)",
-      "  - Two terminals: `pnpm gateway:watch` + `cd desktop && pnpm dev`",
+      "Bring the stack up yourself anytime: `pnpm start:all` (gateway + Control UI).",
+      "Developing and want hot-reload? `pnpm dev:all` runs both in watch mode.",
       "",
       "When something feels off: `bitterbot doctor` walks ~25 subsystem checks.",
     ].join("\n"),
@@ -500,22 +482,22 @@ export async function finalizeOnboardingWizard(
   );
 
   await prompter.outro(
-    spawnedDevAll
+    spawnedStack
       ? `Setup done. Gateway + Control UI starting in the background; ${controlUiUrl} should load in a few seconds.`
       : controlUiOpened
-        ? `Setup done. Control UI is at ${controlUiUrl} — start the gateway with \`pnpm dev:all\` if it's not running.`
-        : `Setup done. Run \`pnpm dev:all\` then open ${controlUiUrl} to drive Bitterbot.`,
+        ? `Setup done. Control UI is at ${controlUiUrl} — run \`pnpm start:all\` if the gateway isn't up.`
+        : `Setup done. Run \`pnpm start:all\` then open ${controlUiUrl} to drive Bitterbot.`,
   );
 
   return { launchedTui: false };
 }
 
 /**
- * Verify the repo root has a `dev:all` script. If this returns false, the
- * wizard won't offer to auto-spawn — no point pretending to launch
- * something that would silently fail.
+ * Verify the repo root defines the given pnpm script. If this returns false,
+ * the wizard won't try to auto-spawn it — no point pretending to launch
+ * something that would silently fail (e.g. a global npm install has no repo).
  */
-async function hasDevAllScript(repoRoot: string | null): Promise<boolean> {
+async function hasScript(repoRoot: string | null, name: string): Promise<boolean> {
   if (!repoRoot) {
     return false;
   }
@@ -524,7 +506,7 @@ async function hasDevAllScript(repoRoot: string | null): Promise<boolean> {
     const path = await import("node:path");
     const raw = await fs.readFile(path.join(repoRoot, "package.json"), "utf8");
     const pkg = JSON.parse(raw) as { scripts?: Record<string, string> };
-    return typeof pkg.scripts?.["dev:all"] === "string";
+    return typeof pkg.scripts?.[name] === "string";
   } catch {
     return false;
   }
@@ -537,9 +519,10 @@ type SpawnOutcome = {
 };
 
 /**
- * Spawn `pnpm dev:all` as a background process, poll the gateway until it
- * responds, and report the outcome. Hardened vs. the old fire-and-forget
- * version in three ways:
+ * Spawn a stack-launcher pnpm script (`start:all` in production, or `dev:all`
+ * as the watch-mode fallback) as a background process, poll the gateway until
+ * it responds, and report the outcome. Hardened vs. a fire-and-forget spawn in
+ * three ways:
  *
  *   1. Uses the resolved repo root as cwd (not process.cwd() which could be
  *      anywhere — the user may have installed Bitterbot globally).
@@ -547,20 +530,27 @@ type SpawnOutcome = {
  *      failure" becomes "failure with a path to read". The path is returned
  *      so the wizard can show it in the error note.
  *   3. Polls the gateway WS endpoint with waitForGatewayReachable instead of
- *      a blind 4-second sleep — opens the browser only when the gateway
- *      actually answers, giving tsdown + Vite + orchestrator time to warm up.
+ *      a blind sleep — opens the browser only when the gateway actually
+ *      answers, giving the build + Vite + orchestrator time to warm up.
  *
  * On Windows, shell=true is required so the `pnpm` PATH shim (pnpm.cmd) is
  * resolved. On macOS/Linux we spawn pnpm directly.
  */
-async function spawnDevAllHardened(params: {
+async function spawnStackHardened(params: {
+  command: string;
   repoRoot: string;
   gatewayWsUrl: string;
   settings: GatewayWizardSettings;
   nextConfig: BitterbotConfig;
   prompter: WizardPrompter;
+  /**
+   * When false, the launcher must NOT start a gateway — one is already managed
+   * elsewhere (a systemd/launchd service the wizard just installed). Prevents
+   * racing a second gateway into an EADDRINUSE crash while the service boots.
+   */
+  startGateway: boolean;
 }): Promise<SpawnOutcome> {
-  const { repoRoot, gatewayWsUrl, settings, nextConfig, prompter } = params;
+  const { command, repoRoot, gatewayWsUrl, settings, nextConfig, prompter, startGateway } = params;
   const { spawn } = await import("node:child_process");
   const fs = await import("node:fs");
   const fsp = await import("node:fs/promises");
@@ -569,25 +559,36 @@ async function spawnDevAllHardened(params: {
 
   const logDir = path.join(os.tmpdir(), "bitterbot-wizard");
   await fsp.mkdir(logDir, { recursive: true });
-  const logPath = path.join(logDir, `dev-all-${Date.now()}.log`);
+  const logPath = path.join(logDir, `${command.replace(/[^a-z0-9]+/gi, "-")}-${Date.now()}.log`);
   const logFd = fs.openSync(logPath, "w");
+
+  // Pin the gateway port the launcher probes/starts to the configured one, so
+  // start:all's "already up?" check matches this node's actual gateway port.
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    BITTERBOT_GATEWAY_PORT: String(settings.port),
+  };
+  if (!startGateway) {
+    // start:all honors this by starting only the Control UI.
+    childEnv.BITTERBOT_START_ALL_NO_GATEWAY = "1";
+  }
 
   let child: ReturnType<typeof spawn>;
   try {
-    child = spawn("pnpm", ["dev:all"], {
+    child = spawn("pnpm", [command], {
       cwd: repoRoot,
       detached: true,
       stdio: ["ignore", logFd, logFd],
       shell: process.platform === "win32",
-      env: process.env,
+      env: childEnv,
     });
   } catch (err) {
     fs.closeSync(logFd);
     await prompter.note(
       [
-        `Couldn't spawn \`pnpm dev:all\`: ${err instanceof Error ? err.message : String(err)}`,
+        `Couldn't spawn \`pnpm ${command}\`: ${err instanceof Error ? err.message : String(err)}`,
         "Run it yourself:",
-        `  cd ${repoRoot} && pnpm dev:all`,
+        `  cd ${repoRoot} && pnpm ${command}`,
       ].join("\n"),
       "Start failed",
     );
@@ -608,7 +609,7 @@ async function spawnDevAllHardened(params: {
 
   await prompter.note(
     [
-      "Started `pnpm dev:all` in the background.",
+      `Started \`pnpm ${command}\` in the background.`,
       "Waiting for the gateway to respond…",
       "",
       `Logs streaming to: ${logPath}`,
@@ -623,14 +624,14 @@ async function spawnDevAllHardened(params: {
     const tail = await readTail(logPath, 20);
     await prompter.note(
       [
-        `\`pnpm dev:all\` exited early (code=${exited.code ?? "null"}, signal=${
+        `\`pnpm ${command}\` exited early (code=${exited.code ?? "null"}, signal=${
           exited.signal ?? "null"
         }).`,
         "",
         tail ? `Last log lines:\n${tail}` : `Log: ${logPath}`,
         "",
-        "Common causes: pnpm not on PATH, port 19001 already in use, or tsdown build error.",
-        `Run it yourself to see the full output: cd ${repoRoot} && pnpm dev:all`,
+        `Common causes: pnpm not on PATH, port ${settings.port} already in use, or a build error.`,
+        `Run it yourself to see the full output: cd ${repoRoot} && pnpm ${command}`,
       ].join("\n"),
       "Start failed",
     );
