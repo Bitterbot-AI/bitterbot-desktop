@@ -4,6 +4,14 @@ import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import { TtlCache } from "./ttl-cache.js";
+
+// memory.retrievalHealth is polled by the dream dashboard (~10s) and computes
+// cognition/governance stats that GROUP BY / COUNT over the unbounded
+// memory_audit_log (+ research_egress_log, dream_telemetry). Cache above the
+// poll cadence so the heavy scan runs at most once per TTL instead of on every
+// poll — same fix as skills.networkHistory. Diagnostic data, staleness is fine.
+const retrievalHealthCache = new TtlCache<unknown>(30_000);
 
 /* ------------------------------------------------------------------ */
 /*  Narrow interface for the MemoryIndexManager properties we access  */
@@ -583,13 +591,12 @@ export const dreamHandlers: GatewayRequestHandlers = {
   // probe. Works on any node — not gated behind the management service.
   "memory.retrievalHealth": async ({ respond }) => {
     try {
-      const manager = await getManager();
-      const health = (manager as unknown as DreamManagerView).retrievalHealth?.();
-      if (!health) {
-        respond(true, { available: false });
-        return;
-      }
-      respond(true, { available: true, ...health });
+      const payload = await retrievalHealthCache.getOrCompute("default", async () => {
+        const manager = await getManager();
+        const health = (manager as unknown as DreamManagerView).retrievalHealth?.();
+        return health ? { available: true, ...health } : { available: false };
+      });
+      respond(true, payload);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }

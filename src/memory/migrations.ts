@@ -1505,6 +1505,30 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 35,
+    description:
+      "Event-loop stall audit: index the heavy read paths that were " +
+      "full-scanning/full-sorting large tables on the gateway loop. " +
+      "(1) chunks(curiosity_reward) + chunks(updated_at), both PARTIAL on " +
+      "curiosity_reward IS NOT NULL (a small subset, so negligible write " +
+      "overhead) — dream.curiosityReward's AVG/MIN/MAX aggregate and its " +
+      "ORDER BY updated_at DESC LIMIT 50 both scanned/sorted the whole chunks " +
+      "table. (2) intervention_records(ts) — guards.status' ORDER BY ts DESC " +
+      "LIMIT 25 had no usable index (existing ones are skill/interceptor " +
+      "composites), so it full-sorted the unpruned table for 25 rows.",
+    up: (db: DatabaseSync) => {
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunks_curiosity_reward ` +
+          `ON chunks(curiosity_reward) WHERE curiosity_reward IS NOT NULL`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunks_curiosity_updated ` +
+          `ON chunks(updated_at) WHERE curiosity_reward IS NOT NULL`,
+      );
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_intervention_records_ts ON intervention_records(ts)`);
+    },
+  },
 ];
 
 /**
