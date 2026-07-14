@@ -357,10 +357,21 @@ export class MemoryIndexManager implements MemorySearchManager {
         is_banned INTEGER DEFAULT 0, eigentrust_score REAL DEFAULT 0,
         wallet_address TEXT DEFAULT NULL
       )`);
-      // Memory audit log
+      // Memory audit log. Schema MUST match ensureMemoryIndexSchema
+      // (memory-schema.ts), which is the source of truth and creates this table
+      // first — every insert uses id TEXT + chunk_id/actor/metadata. This
+      // statement previously declared an incompatible id-INTEGER/detail shape;
+      // it was dead (the IF NOT EXISTS no-oped against the real table) but a
+      // footgun: if it ever ran first on a fresh DB it would create the wrong
+      // table and every actor/chunk_id insert would throw "no such column".
+      // Kept identical here so it is order-independent and harmless.
       this.db.exec(`CREATE TABLE IF NOT EXISTS memory_audit_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL,
-        detail TEXT, timestamp INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+        id TEXT PRIMARY KEY,
+        chunk_id TEXT,
+        event TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        actor TEXT NOT NULL DEFAULT 'system',
+        metadata TEXT DEFAULT '{}'
       )`);
       // Task goals table
       this.db.exec(`CREATE TABLE IF NOT EXISTS task_goals (
