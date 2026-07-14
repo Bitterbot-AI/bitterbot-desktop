@@ -10,6 +10,13 @@ import {
   resolveDefaultAgentId,
 } from "../../agents/agent-scope.js";
 import { installSkill } from "../../agents/skills-install.js";
+import { withTimeout } from "../../utils/with-timeout.js";
+
+// Cap the orchestrator IPC (getStats/getBootstrapCensus) in skills.network so a
+// slow/churning orchestrator can't make the polled RPC hang for 20s+ (observed
+// on this node during P2P handshake). On timeout we return the local-only view
+// (stats/bootstrapCensus stay null); both calls are already best-effort.
+const SKILLS_NETWORK_IPC_TIMEOUT_MS = 3_000;
 import { buildWorkspaceSkillStatus } from "../../agents/skills-status.js";
 import { loadWorkspaceSkillEntries, type SkillEntry } from "../../agents/skills.js";
 import { importAgentskillsSkill } from "../../agents/skills/agentskills-ingest.js";
@@ -239,10 +246,16 @@ export const skillsHandlers: GatewayRequestHandlers = {
       let bootstrapCensus = null;
       if (context.orchestratorBridge) {
         try {
-          stats = await context.orchestratorBridge.getStats();
+          stats = await withTimeout(
+            context.orchestratorBridge.getStats(),
+            SKILLS_NETWORK_IPC_TIMEOUT_MS,
+          );
         } catch {}
         try {
-          bootstrapCensus = await context.orchestratorBridge.getBootstrapCensus();
+          bootstrapCensus = await withTimeout(
+            context.orchestratorBridge.getBootstrapCensus(),
+            SKILLS_NETWORK_IPC_TIMEOUT_MS,
+          );
         } catch {}
       }
       // Local lifetime metrics from the SQLite peer_reputation table — these
