@@ -1529,6 +1529,49 @@ const MIGRATIONS: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_intervention_records_ts ON intervention_records(ts)`);
     },
   },
+  {
+    version: 36,
+    description:
+      "Census pre-aggregation: network_census_hourly. The skills.networkHistory " +
+      "RPC was GROUP-BYing the ~90k-row network_census_history table into hourly " +
+      "buckets on every read (~16s synchronous on the gateway loop -> UI " +
+      "timeouts). This maintains a per-hour rollup (max across sources per hour, " +
+      "the same 'stable lower bound' aggregate the read already used) so the " +
+      "dashboard's default (no sourcePeerId) read is a bounded <=720-row lookup " +
+      "instead of a full scan. Backfilled once from existing history; the raw " +
+      "table stays for the per-source drilldown + its 30-day prune.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS network_census_hourly (
+          hour_bucket           INTEGER PRIMARY KEY,
+          generated_at          INTEGER NOT NULL,
+          snapshot_at           INTEGER NOT NULL,
+          lifetime_unique_peers INTEGER NOT NULL,
+          active_last_24h       INTEGER NOT NULL,
+          active_last_7d        INTEGER NOT NULL,
+          by_tier_json          TEXT,
+          by_address_type_json  TEXT
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_network_census_hourly_snapshot ` +
+          `ON network_census_hourly(snapshot_at)`,
+      );
+      // One-time backfill from raw history (max across sources per hour bucket).
+      db.exec(`
+        INSERT INTO network_census_hourly
+          (hour_bucket, generated_at, snapshot_at, lifetime_unique_peers,
+           active_last_24h, active_last_7d, by_tier_json, by_address_type_json)
+        SELECT generated_at / 3600 AS hour_bucket,
+               max(generated_at), max(snapshot_at), max(lifetime_unique_peers),
+               max(active_last_24h), max(active_last_7d),
+               by_tier_json, by_address_type_json
+          FROM network_census_history
+         GROUP BY generated_at / 3600
+        ON CONFLICT(hour_bucket) DO NOTHING
+      `);
+    },
+  },
 ];
 
 /**

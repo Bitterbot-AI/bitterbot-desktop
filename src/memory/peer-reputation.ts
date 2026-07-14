@@ -426,11 +426,48 @@ export class PeerReputationManager {
         JSON.stringify(args.byAddressType ?? {}),
       );
 
+    // Maintain the per-hour rollup (migration v36) so skills.networkHistory's
+    // default read is a bounded lookup instead of a full GROUP BY over the
+    // raw table. Keep the max across sources per hour (monotonic counts, same
+    // "stable lower bound" the read uses); the by_*_json come from the newest
+    // generated_at row in the bucket. Cheap single-row upsert on each persist.
+    const generatedAt = Math.floor(args.generatedAt);
+    const hourBucket = Math.floor(generatedAt / 3600);
+    this.db
+      .prepare(
+        `INSERT INTO network_census_hourly
+           (hour_bucket, generated_at, snapshot_at, lifetime_unique_peers,
+            active_last_24h, active_last_7d, by_tier_json, by_address_type_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(hour_bucket) DO UPDATE SET
+           snapshot_at           = max(snapshot_at, excluded.snapshot_at),
+           lifetime_unique_peers = max(lifetime_unique_peers, excluded.lifetime_unique_peers),
+           active_last_24h       = max(active_last_24h, excluded.active_last_24h),
+           active_last_7d        = max(active_last_7d, excluded.active_last_7d),
+           by_tier_json          = CASE WHEN excluded.generated_at >= generated_at
+                                        THEN excluded.by_tier_json ELSE by_tier_json END,
+           by_address_type_json  = CASE WHEN excluded.generated_at >= generated_at
+                                        THEN excluded.by_address_type_json ELSE by_address_type_json END,
+           generated_at          = max(generated_at, excluded.generated_at)`,
+      )
+      .run(
+        hourBucket,
+        generatedAt,
+        now,
+        Math.floor(args.lifetimeUniquePeers),
+        Math.floor(args.activeLast24h),
+        Math.floor(args.activeLast7d),
+        JSON.stringify(args.byTier ?? {}),
+        JSON.stringify(args.byAddressType ?? {}),
+      );
+
     // Cheap prune: only drop rows on roughly 1-in-50 writes so we don't
-    // pay the DELETE cost on every persist.
+    // pay the DELETE cost on every persist. Both raw history and the hourly
+    // rollup share the 30-day retention window.
     if (Math.random() < 0.02) {
       const cutoff = now - 30 * 24 * 3600 * 1000;
       this.db.prepare(`DELETE FROM network_census_history WHERE snapshot_at < ?`).run(cutoff);
+      this.db.prepare(`DELETE FROM network_census_hourly WHERE snapshot_at < ?`).run(cutoff);
     }
   }
 
@@ -514,15 +551,19 @@ export class PeerReputationManager {
         )
         .all(opts.sourcePeerId, since, limit) as typeof rows;
     } else {
+      // Default (no sourcePeerId) path — the dashboard's growth chart. Reads the
+      // pre-aggregated per-hour rollup (migration v36, maintained on persist) so
+      // this is a bounded <=720-row lookup instead of a full GROUP BY over the
+      // ~90k-row raw table (which was a ~16s synchronous stall). 'aggregate' is
+      // the synthetic source label this read contract already used.
       rows = this.db
         .prepare(
-          `SELECT source_peer_id, generated_at, snapshot_at,
+          `SELECT 'aggregate' AS source_peer_id, generated_at, snapshot_at,
                   lifetime_unique_peers, active_last_24h, active_last_7d,
                   by_tier_json, by_address_type_json
              FROM (
-               ${SELECT_BUCKETED("'aggregate'")}
+               SELECT * FROM network_census_hourly
                 WHERE snapshot_at >= ?
-                GROUP BY generated_at / 3600
                 ORDER BY generated_at DESC
                 LIMIT ?
              )

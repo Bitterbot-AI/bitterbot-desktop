@@ -49,7 +49,7 @@ describe("skills.network caching", () => {
     await call("skills.network", ctx);
     expect(m).toHaveBeenCalledTimes(1); // second poll hit the cache
 
-    vi.advanceTimersByTime(5_000); // TTL elapses
+    vi.advanceTimersByTime(45_000); // skills.network TTL (skills.ts) elapses
     await call("skills.network", ctx);
     expect(m).toHaveBeenCalledTimes(2);
   });
@@ -70,7 +70,7 @@ describe("skills.networkHistory caching", () => {
     await call("skills.networkHistory", ctx, { limit: 20 });
     expect(h).toHaveBeenCalledTimes(2); // different params -> distinct entry
 
-    vi.advanceTimersByTime(10_000);
+    vi.advanceTimersByTime(120_000); // skills.networkHistory TTL (skills.ts) elapses
     await call("skills.networkHistory", ctx, { limit: 10 });
     expect(h).toHaveBeenCalledTimes(3);
   });
