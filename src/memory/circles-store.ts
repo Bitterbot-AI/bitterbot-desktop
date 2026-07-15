@@ -18,9 +18,11 @@
  *    other than a member's pinned wallet must be refused downstream; changing
  *    a pinned wallet requires an explicit re-pair (a new call here), never a
  *    silent update from agent logic.
- *  - Every membership change bumps `key_epoch`, the signal for the transport
- *    layer to rotate the circle channel key (post-compromise security: a
- *    departed member cannot read future traffic).
+ *  - Every membership change bumps `key_epoch`. NOTE: this counter is bumped
+ *    but not yet CONSUMED — transport is currently unsealed HTTP with no
+ *    channel key to rotate, so the "a departed member cannot read future
+ *    traffic" property does NOT hold today. Consuming key_epoch (channel-key
+ *    rotation) is PLAN-36 §5.6.
  */
 
 import type { DatabaseSync } from "node:sqlite";

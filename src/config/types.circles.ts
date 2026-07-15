@@ -1,15 +1,18 @@
 /**
  * PLAN-31: Circles — the agent social fabric (connection-first, v3).
+ * PLAN-36: the social-graph + Discord-like-chat pivot builds on this surface;
+ * see docs/plans/PLAN-36-CIRCLES-SOCIAL-GRAPH.md.
  *
- * Kill-switch discipline (PLAN-31 §8): connection surfaces default OFF until
- * C2 completes its security review; pairing ships dark behind this config
- * until the invite guest page is live. Money movement has NO config here at
- * all — Phase 2 is gated behind counsel sign-off, not a flag.
+ * Kill-switch discipline: connection surfaces are ON BY DEFAULT fleet-wide
+ * since 2026-07-09 (the PLAN-31 §8 "dark until C2 review" gate is satisfied by
+ * turning it on FOR live red-teaming at scale). Set `enabled: false` to opt
+ * out. Money movement has NO config here at all — it is gated behind counsel
+ * sign-off (PLAN-36 Phase 8), not a flag.
  */
 export type CirclesConfig = {
   /**
    * Master switch for the circles surface (A2A circle/* verbs, invites,
-   * presence, conversation). Default: FALSE (ships dark, PLAN-31 §8).
+   * presence, conversation). Default: TRUE since 2026-07-09; `false` opts out.
    */
   enabled?: boolean;
   /**
@@ -21,7 +24,11 @@ export type CirclesConfig = {
   displayName?: string;
   /** Store-and-forward mailbox (PLAN-31 §3.2). */
   mailbox?: {
-    /** Use a mailbox for asymmetric online windows. Default: true when circles enabled. */
+    /**
+     * Use a mailbox for asymmetric online windows. Only takes effect once a
+     * `url` is set; no default mailbox URL ships yet (PLAN-36 Phase 1 adds a
+     * default fleet mailbox). Read only as `=== false` to opt out.
+     */
     enabled?: boolean;
     /** Mailbox service base URL (relay fleet). */
     url?: string;

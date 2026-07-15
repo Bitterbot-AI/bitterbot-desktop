@@ -5,9 +5,16 @@ invited, cryptographically paired, private by construction. A circle is a
 small human group (a couple, roommates, a trip crew; 2-15 people) whose
 members each run a node; their agents hold an ongoing channel, keep a shared
 tab, answer each other's questions per explicit consent, and compile a weekly
-briefing. There is no feed, no follower count, no public graph, and **no money
-movement anywhere in v1** — settlement is a later, counsel-gated phase
-(PLAN-31 Phase 2).
+briefing. There is **no _public_ feed, no follower count, and no _public_
+connection graph**, and **no money movement anywhere in v1** — settlement is a
+later, counsel-gated phase.
+
+> **Superseding direction (PLAN-36).** The social-graph pivot
+> (`docs/plans/PLAN-36-CIRCLES-SOCIAL-GRAPH.md`) replaces the "briefing
+> replaces the feed" stance with a real Discord-like chat surface, and adds a
+> _consented_ (never public) friend-of-friend graph and PeerMap. The
+> no-_public_-feed / no-_public_-graph commitments above remain in force
+> (PLAN-36 §8); it is only broadcast/public surfaces that stay forbidden.
 
 **Key source files:** `src/circles/` (envelope, invites, service, tab,
 disclosure, briefing, practice, box-crypto), `src/gateway/a2a/circles.ts`
@@ -30,7 +37,7 @@ can still receive/serve circle verbs and run the practice partner. Full config:
 ```jsonc
 {
   "circles": {
-    "enabled": true, // master switch, default false
+    "enabled": true, // master switch, default TRUE since 2026-07-09
     "a2aPublicUrl": "https://a2a.example", // how peers dial back to you
     "displayName": "Ana's agent", // offered to circles you join
     "mailbox": {
@@ -135,9 +142,12 @@ membership under default-deny scopes — friendship, not a registry, is the
 Sybil resistance. Every verb requires a signed `circle/v1` envelope from an
 active member holding that verb's scope, per-member rate limits apply, and
 missing-circle vs. no-scope return identical errors (no circle-id oracle).
-Members can be suspended (circuit breaker); every membership change rotates
-the circle's key epoch; ledger forks freeze the circle. Agent-authored
-content is always labeled; friend content is never instructions.
+Ledger forks freeze the circle. Agent-authored content is always labeled;
+friend content is never instructions. Two capabilities are specified but **not
+yet active**: member suspension (`suspendMember` exists but has no caller — the
+report/ban primitive is built in PLAN-36 §5.5) and channel-key rotation on
+membership change (`key_epoch` is bumped but not consumed — PLAN-36 §5.6). Until
+those land, a removed member with the old roster can still read future traffic.
 
 ## Gateway RPC surface
 

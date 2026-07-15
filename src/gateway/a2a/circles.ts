@@ -382,8 +382,11 @@ export function handleCirclePresence(
 
 // ---------------------------------------------------------------------------
 // circle/message, circle/ask, circle/answer — the conversation surface.
-// Content is scanned + wrapped ON RECEIPT and buffered for digest-batching;
-// it never reaches an agent as bare text (PLAN-31 §3.5).
+// Content is scanned + wrapped ON RECEIPT and stored in circle_messages; it
+// never reaches an agent as bare text (PLAN-31 §3.5). NOTE: the "digest-
+// batching" consumer does not exist yet — inbound bodies sit unread until a
+// human opens the circle card. PLAN-36 Phase 0 emits a circles.message
+// broadcast here; Phase 3 renders it and adds digest-batched notifications.
 // ---------------------------------------------------------------------------
 
 const MAX_MESSAGE_CHARS = 8_000;

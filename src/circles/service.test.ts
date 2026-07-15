@@ -267,6 +267,37 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(bob.messages(circleId).filter((m) => m.direction === "in")).toHaveLength(1);
   });
 
+  it("reports a failed send (never a silent retry) when an offline peer has no mailbox", async () => {
+    // No mailbox host on either side, so Bob advertises no mailbox URL at join.
+    // When his laptop closes there is nowhere to store-and-forward — the send
+    // must surface as failed, not vanish. This locks in the corrected contract
+    // (an earlier docstring wrongly claimed the mailbox always queues it);
+    // PLAN-36 Phase 0 renders this failed state instead of discarding it.
+    const offline = new Set<string>();
+    const fetchImpl = meshFetch({ ana: anaDb, bob: bobDb }, { offline });
+    ana = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl,
+      keyPair: anaKey,
+    });
+    bob = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob"),
+      fetchImpl,
+      keyPair: bobKey,
+    });
+
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    offline.add("bob");
+    const report = await ana.sendMessage({ circleId, text: "still around?" });
+    expect(report.delivered).toEqual([]);
+    expect(report.failed).toEqual([pubkeyId(bobKey)]);
+  });
+
   it("keeps the shared tab identical on both nodes (append -> fan-out -> fold)", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

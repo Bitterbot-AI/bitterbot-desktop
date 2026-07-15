@@ -10,10 +10,14 @@
  * commerce KeyPair — the same key signs circle/v1 envelopes everywhere, so a
  * connection survives gateway restarts and IP changes.
  *
- * Transport v1 is direct dial to each member's a2a_url with best-effort
- * fan-out; the store-and-forward mailbox (§3.2) layers under this so offline
- * peers receive on wake. A failed dial is queued for retry by the mailbox
- * layer, never dropped silently.
+ * Transport v1 is direct dial to each member's a2a_url with best-effort,
+ * bounded-parallel fan-out (a per-dial timeout keeps one unreachable peer
+ * from stalling the fast maintenance sweep); the store-and-forward mailbox
+ * (§3.2) layers under this so offline peers receive on wake. If a member has
+ * neither a reachable a2a_url nor a mailbox, the send is reported in
+ * SendReport.failed — it is NOT silently retried (an earlier docstring
+ * wrongly claimed the mailbox always queues it). PLAN-36 Phase 0 surfaces
+ * that failed state to the UI instead of discarding it.
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -58,8 +62,42 @@ const log = createSubsystemLogger("circles/service");
 
 export type FetchLike = (
   url: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string },
+  init?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    signal?: AbortSignal;
+  },
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+
+/**
+ * Per-dial ceiling. Kept well under the PLAN-36 Phase-0 fast sweep cadence
+ * (~15s) so a blackholed a2a_url (SYN with no RST) cannot make the sweep
+ * overrun its own interval.
+ */
+const DIAL_TIMEOUT_MS = 5000;
+
+/**
+ * Parallel dials per circle. Circles cap at ~15 members; bounding this keeps a
+ * large circle from opening one socket per member at once while still removing
+ * the head-of-line blocking of the old serial fan-out.
+ */
+const FANOUT_CONCURRENCY = 8;
+
+/** Run `fn` over `items` with at most `limit` in flight at once. */
+async function runBounded<T>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+      await fn(next);
+    }
+  });
+  await Promise.all(workers);
+}
 
 export type CirclesServiceDeps = {
   db: DatabaseSync;
@@ -89,6 +127,7 @@ async function circleRpc(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params }),
+      signal: AbortSignal.timeout(DIAL_TIMEOUT_MS),
     });
     if (!res.ok) return { ok: false, error: `http ${res.status}` };
     const body = JSON.parse(await res.text()) as {
@@ -344,29 +383,39 @@ export class CirclesService {
     return rpc.ok;
   }
 
+  /** Deliver one envelope to one member: direct dial first, mailbox fallback. */
+  private async deliverToMember(
+    member: CircleMember,
+    method: string,
+    envelope: CircleEnvelope,
+  ): Promise<boolean> {
+    if (member.a2aUrl) {
+      const rpc = await circleRpc(this.fetchImpl, member.a2aUrl, method, { envelope });
+      if (rpc.ok) return true;
+      log.debug(`direct ${method} to ${member.memberPubkey.slice(0, 24)}… failed: ${rpc.error}`);
+    }
+    // Offline or unreachable: store-and-forward. Presence beats are
+    // point-in-time and skip the mailbox (stale presence is noise).
+    if (method !== "circle/presence" && (await this.postToMailbox(member, method, envelope))) {
+      return true;
+    }
+    return false;
+  }
+
   private async fanOut(
     circleId: string,
     method: string,
     envelope: CircleEnvelope,
   ): Promise<SendReport> {
+    // Bounded-parallel so one unreachable member (dial times out after
+    // DIAL_TIMEOUT_MS) cannot serialize the whole fan-out. push() between
+    // awaits is safe on the single JS thread; callers that assert on order
+    // sort the arrays (delivered/failed are sets, not sequences).
     const report: SendReport = { delivered: [], failed: [] };
-    for (const member of this.peerMembers(circleId)) {
-      if (member.a2aUrl) {
-        const rpc = await circleRpc(this.fetchImpl, member.a2aUrl, method, { envelope });
-        if (rpc.ok) {
-          report.delivered.push(member.memberPubkey);
-          continue;
-        }
-        log.debug(`direct ${method} to ${member.memberPubkey.slice(0, 24)}… failed: ${rpc.error}`);
-      }
-      // Offline or unreachable: store-and-forward. Presence beats are
-      // point-in-time and skip the mailbox (stale presence is noise).
-      if (method !== "circle/presence" && (await this.postToMailbox(member, method, envelope))) {
-        report.delivered.push(member.memberPubkey);
-        continue;
-      }
-      report.failed.push(member.memberPubkey);
-    }
+    await runBounded(this.peerMembers(circleId), FANOUT_CONCURRENCY, async (member) => {
+      const ok = await this.deliverToMember(member, method, envelope);
+      (ok ? report.delivered : report.failed).push(member.memberPubkey);
+    });
     return report;
   }
 

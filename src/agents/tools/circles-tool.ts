@@ -7,16 +7,20 @@
  * (`circles.*` RPCs), and the autonomous maintenance sweeps — never the
  * agent's own reasoning.
  *
- * READ actions are free (status / connections / tab / briefing / asks).
+ * READ actions are free (status / connections / tab / briefing / asks). NOTE:
+ * there is no action that returns inbound message BODIES — the agent can send
+ * asks but cannot yet read the answers here; PLAN-36 Phase 3 wires that.
  *
- * WRITE actions (send / ask / log_expense) are TWO-PHASE and human-gated by
- * construction: the first call returns a PREVIEW and does not act; the agent
- * must show the human the preview, get an explicit yes, then call again with
- * confirm=true. This is the plan's lethal-trifecta rule (§12) made concrete:
- * the agent reads untrusted circle content, so the outward-communication leg
- * must never fire autonomously. Trust-graph mutations (mint invite / create
- * circle) are deliberately NOT exposed here — they stay in the human UI, the
- * way forage.post stays operator-only. No money moves anywhere (v1).
+ * WRITE actions (send / ask / log_expense) are intended TWO-PHASE: the first
+ * call returns a PREVIEW, the agent shows the human, gets an explicit yes,
+ * then calls again with confirm=true. This is the lethal-trifecta rule made
+ * concrete. WARNING: the gate is prompt-CONVENTION, not server-enforced — a
+ * single call with confirm=true executes immediately (no preview token, no
+ * persisted pending state), so a prompt-injected agent can bypass the preview.
+ * PLAN-36 §5.3 replaces this with a persisted pending record + a one-time
+ * confirm token checked server-side in the RPC. Trust-graph mutations (mint
+ * invite / create circle) are deliberately NOT exposed here — they stay in the
+ * human UI. No money moves anywhere (v1).
  */
 
 import type { DatabaseSync } from "node:sqlite";
