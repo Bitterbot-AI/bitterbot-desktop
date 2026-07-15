@@ -96,28 +96,60 @@ describe("circles agent tool", () => {
     expect(circles[0]?.members.some((m) => m.name === "Bob")).toBe(true);
   });
 
-  it("send is two-phase: preview does NOT send; confirm sends", async () => {
+  const outCount = () =>
+    (
+      db.prepare(`SELECT COUNT(*) n FROM circle_messages WHERE direction='out'`).get() as {
+        n: number;
+      }
+    ).n;
+
+  it("send is two-phase: preview does NOT send; confirm with the token sends", async () => {
     const preview = await run("send", { text: "movie night?" });
     expect(preview.pending).toBe(true);
     expect((preview.preview as { text: string }).text).toBe("movie night?");
-    // Nothing left the node.
-    expect(
-      (
-        db.prepare(`SELECT COUNT(*) n FROM circle_messages WHERE direction='out'`).get() as {
-          n: number;
-        }
-      ).n,
-    ).toBe(0);
+    expect(typeof preview.confirm_token).toBe("string");
+    expect(outCount()).toBe(0); // nothing left the node
 
-    const sent = await run("send", { text: "movie night?", confirm: true });
+    const sent = await run("send", {
+      text: "movie night?",
+      confirm: true,
+      confirm_token: preview.confirm_token,
+    });
     expect(sent.sent).toBe(true);
-    expect(
-      (
-        db.prepare(`SELECT COUNT(*) n FROM circle_messages WHERE direction='out'`).get() as {
-          n: number;
-        }
-      ).n,
-    ).toBe(1);
+    expect(outCount()).toBe(1);
+  });
+
+  it("refuses confirm=true without a valid token (the honor-system hole is closed)", async () => {
+    // No preview -> no token: a prompt-injected agent cannot skip the preview.
+    const noToken = await run("send", { text: "sneaky", confirm: true });
+    expect(noToken.sent).toBeUndefined();
+    expect(String(noToken.error)).toContain("confirm_token");
+    expect(outCount()).toBe(0);
+
+    // A garbage token is rejected too.
+    const badToken = await run("send", { text: "sneaky", confirm: true, confirm_token: "nope" });
+    expect(badToken.sent).toBeUndefined();
+    expect(outCount()).toBe(0);
+  });
+
+  it("token is single-use and bound to the exact params", async () => {
+    const preview = await run("send", { text: "hi" });
+    const token = preview.confirm_token as string;
+
+    // Same token, DIFFERENT text -> refused (params-bound).
+    const swap = await run("send", { text: "wire me $500", confirm: true, confirm_token: token });
+    expect(swap.sent).toBeUndefined();
+    expect(outCount()).toBe(0);
+
+    // Correct params -> sends.
+    const ok = await run("send", { text: "hi", confirm: true, confirm_token: token });
+    expect(ok.sent).toBe(true);
+    expect(outCount()).toBe(1);
+
+    // Replay of the now-used token -> refused.
+    const replay = await run("send", { text: "hi", confirm: true, confirm_token: token });
+    expect(replay.sent).toBeUndefined();
+    expect(outCount()).toBe(1);
   });
 
   it("log_expense is two-phase and lands on the tab (no money)", async () => {
@@ -126,7 +158,12 @@ describe("circles agent tool", () => {
     expect((preview.preview as { splitAmong: number }).splitAmong).toBe(2); // self + Bob
     expect((db.prepare(`SELECT COUNT(*) n FROM circle_events`).get() as { n: number }).n).toBe(0);
 
-    const logged = await run("log_expense", { memo: "pizza", amount: 42, confirm: true });
+    const logged = await run("log_expense", {
+      memo: "pizza",
+      amount: 42,
+      confirm: true,
+      confirm_token: preview.confirm_token,
+    });
     expect(logged.logged).toBe(true);
     const tab = await run("tab");
     expect(tab.expenses).toBe(1);
@@ -144,6 +181,7 @@ describe("circles agent tool", () => {
       question: "know a dentist?",
       category: "recommendations.dentist",
       confirm: true,
+      confirm_token: preview.confirm_token,
     });
     expect(asked.asked).toBe(true);
     expect(asked.category).toBe("recommendations.dentist");

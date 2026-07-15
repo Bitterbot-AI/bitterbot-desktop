@@ -1572,6 +1572,34 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 37,
+    description:
+      "PLAN-36 §5.3 (Phase 0): circle_pending_outbound — server-enforced two-" +
+      "phase gate for agent circle writes. The `circles` agent tool's confirm " +
+      "was prompt-convention only (confirm=true executed on the first call), so " +
+      "a prompt-injected agent could send/ask/log_expense with no preview. Now " +
+      "the preview mints a single-use, params-bound token persisted here; the " +
+      "confirm leg must present a matching, unused, unexpired token or it is " +
+      "refused. Bound to the exact action+params so an innocuous preview cannot " +
+      "authorize a different send.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_pending_outbound (
+          token       TEXT PRIMARY KEY,
+          action      TEXT NOT NULL,
+          params_hash TEXT NOT NULL,
+          created_at  INTEGER NOT NULL,
+          expires_at  INTEGER NOT NULL,
+          used_at     INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_circle_pending_outbound_expires ` +
+          `ON circle_pending_outbound(expires_at)`,
+      );
+    },
+  },
 ];
 
 /**
