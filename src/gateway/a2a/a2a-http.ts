@@ -309,9 +309,15 @@ export function createA2aHttpHandler(opts: {
       let circleDb: import("node:sqlite").DatabaseSync | undefined;
       try {
         const { MemoryIndexManager } = await import("../../memory/manager.js");
+        const { resolveDefaultAgentId } = await import("../../agents/agent-scope.js");
         const memManager = await MemoryIndexManager.get({
           cfg: config,
-          agentId: "default",
+          // The RESOLVED default agent (DEFAULT_AGENT_ID = "main"), NOT the
+          // literal "default": circle membership/mailbox live in the primary
+          // agent's DB, so serving from the wrong DB would reject every peer as
+          // a non-member. (Pre-PLAN-36 this used "default" and effectively
+          // couldn't receive circle traffic on a multi-agent node.)
+          agentId: resolveDefaultAgentId(config),
           purpose: "status",
         });
         // Independent of the marketplace feature (PLAN-36 §7 Phase 0): the
@@ -366,9 +372,12 @@ export function createA2aHttpHandler(opts: {
       let mailboxDb: import("node:sqlite").DatabaseSync | undefined;
       try {
         const { MemoryIndexManager } = await import("../../memory/manager.js");
+        const { resolveDefaultAgentId } = await import("../../agents/agent-scope.js");
         const memManager = await MemoryIndexManager.get({
           cfg: config,
-          agentId: "default",
+          // Resolved default agent (see the circle-verb branch above): the
+          // hosted mailbox lives in the primary agent's DB.
+          agentId: resolveDefaultAgentId(config),
           purpose: "status",
         });
         // Independent of the marketplace feature (PLAN-36 §7 Phase 0), same as
