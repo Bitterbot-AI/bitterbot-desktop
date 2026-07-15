@@ -133,6 +133,10 @@ describe("CirclesService end-to-end (two nodes)", () => {
     });
     expect(bobSend.delivered).toEqual([pubkeyId(anaKey)]);
     expect(bobSend.failed).toEqual([]);
+    // B5: the outbound row records the delivery truth.
+    expect(bob.messages(circleId).find((m) => m.direction === "out")?.deliveryStatus).toBe(
+      "delivered",
+    );
 
     // Ana's inbound buffer holds Bob's message, wrapped.
     const anaInbox = ana.messages(circleId).filter((m) => m.direction === "in");
@@ -296,6 +300,10 @@ describe("CirclesService end-to-end (two nodes)", () => {
     const report = await ana.sendMessage({ circleId, text: "still around?" });
     expect(report.delivered).toEqual([]);
     expect(report.failed).toEqual([pubkeyId(bobKey)]);
+    // B5: the outbound row is marked failed, not left looking delivered.
+    expect(ana.messages(circleId).find((m) => m.direction === "out")?.deliveryStatus).toBe(
+      "failed",
+    );
   });
 
   it("keeps the shared tab identical on both nodes (append -> fan-out -> fold)", async () => {

@@ -31,12 +31,11 @@ async function getCirclesDb(): Promise<DatabaseSync | null> {
   const agentId = resolveDefaultAgentId(cfg);
   const { manager } = await getMemorySearchManager({ cfg, agentId });
   if (!manager) return null;
-  const economics = (
-    manager as unknown as {
-      getMarketplaceEconomics?: () => { getDb?: () => DatabaseSync | undefined } | null;
-    }
-  ).getMarketplaceEconomics?.();
-  return economics?.getDb?.() ?? null;
+  // Marketplace-independent (PLAN-36 §7 Phase 0): circle tables live in the
+  // memory DB, so this must not go through getMarketplaceEconomics().getDb()
+  // (null when a2a.marketplace is off) — that was the B2 coupling, still live
+  // on this RPC path.
+  return (manager as unknown as { getCirclesDb?: () => DatabaseSync }).getCirclesDb?.() ?? null;
 }
 
 async function getService(): Promise<

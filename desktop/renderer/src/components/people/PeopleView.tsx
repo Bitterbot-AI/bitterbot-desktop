@@ -55,6 +55,7 @@ interface MessageRow {
   kind: string;
   content: string;
   createdAt: number;
+  deliveryStatus?: "pending" | "delivered" | "partial" | "failed" | null;
 }
 
 interface TabBalancesPayload {
@@ -319,6 +320,7 @@ function CircleCard({ circle }: { circle: CircleRow }) {
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [balances, setBalances] = useState<TabBalancesPayload | null>(null);
   const [draft, setDraft] = useState("");
+  const [sendNotice, setSendNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -343,11 +345,27 @@ function CircleCard({ circle }: { circle: CircleRow }) {
   const send = useCallback(async () => {
     if (!draft.trim()) return;
     try {
-      await request("circles.send", { circleId: circle.circleId, text: draft.trim() });
+      // Don't discard the SendReport (PLAN-36 B5): if the fan-out reached no
+      // one, say so — a failed send used to look identical to a delivered one.
+      const rep = await request<{ delivered?: string[]; failed?: string[] }>("circles.send", {
+        circleId: circle.circleId,
+        text: draft.trim(),
+      });
       setDraft("");
+      const failed = rep?.failed?.length ?? 0;
+      const delivered = rep?.delivered?.length ?? 0;
+      if (failed > 0) {
+        setSendNotice(
+          delivered > 0
+            ? `Sent, but ${failed} member(s) unreachable — they'll get it on reconnect.`
+            : "Not delivered — everyone is offline and has no mailbox. Queued nowhere; try again later.",
+        );
+      } else {
+        setSendNotice(null);
+      }
       void load();
-    } catch {
-      // errors surface via the messages refresh
+    } catch (err) {
+      setSendNotice(String(err));
     }
   }, [request, circle.circleId, draft, load]);
 
@@ -426,6 +444,25 @@ function CircleCard({ circle }: { circle: CircleRow }) {
                 <span className="whitespace-pre-wrap break-words">
                   {m.content.length > 400 ? `${m.content.slice(0, 400)}…` : m.content}
                 </span>
+                {/* PLAN-36 B5: show outbound delivery truth (delivered is unmarked). */}
+                {m.direction === "out" && m.deliveryStatus && m.deliveryStatus !== "delivered" && (
+                  <span
+                    className={cn(
+                      "ml-1.5 rounded px-1 py-0.5 text-[10px]",
+                      m.deliveryStatus === "failed"
+                        ? "bg-red-500/20 text-red-500"
+                        : m.deliveryStatus === "partial"
+                          ? "bg-amber-500/20 text-amber-600"
+                          : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {m.deliveryStatus === "failed"
+                      ? "not delivered"
+                      : m.deliveryStatus === "partial"
+                        ? "partly delivered"
+                        : "sending…"}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -448,6 +485,7 @@ function CircleCard({ circle }: { circle: CircleRow }) {
               Send
             </button>
           </div>
+          {sendNotice && <p className="text-xs text-amber-600">{sendNotice}</p>}
         </div>
       )}
     </div>

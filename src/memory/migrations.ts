@@ -1600,6 +1600,18 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 38,
+    description:
+      "PLAN-36 Phase 0 (B5): circle_messages.delivery_status. The outbound row " +
+      "was inserted BEFORE fan-out with no delivery column, and the UI discarded " +
+      "the SendReport — so an all-failed send rendered identically to a delivered " +
+      "one. This per-message aggregate ('pending' | 'delivered' | 'partial' | " +
+      "'failed'; NULL on inbound and legacy rows) lets the UI show the truth.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_messages", "delivery_status", "TEXT");
+    },
+  },
 ];
 
 /**

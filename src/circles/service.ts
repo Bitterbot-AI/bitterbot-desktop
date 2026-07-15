@@ -116,6 +116,15 @@ export type SendReport = {
   failed: string[];
 };
 
+/** Per-message delivery aggregate for an outbound send (PLAN-36 B5). */
+export type DeliveryStatus = "pending" | "delivered" | "partial" | "failed";
+
+function deliveryStatusFromReport(report: SendReport): DeliveryStatus {
+  if (report.failed.length === 0) return "delivered"; // all peers ok (or none to reach)
+  if (report.delivered.length === 0) return "failed"; // nothing got through
+  return "partial";
+}
+
 async function circleRpc(
   fetchImpl: FetchLike,
   a2aUrl: string,
@@ -444,15 +453,16 @@ export class CirclesService {
       body,
       this.key,
     );
+    const messageId = crypto.randomUUID();
     this.db
       .prepare(
         `INSERT INTO circle_messages
            (message_id, circle_id, author_pubkey, direction, kind, thread_id, content,
-            scan_severity, envelope_id, created_at)
-         VALUES (?, ?, ?, 'out', ?, ?, ?, NULL, ?, ?)`,
+            scan_severity, envelope_id, created_at, delivery_status)
+         VALUES (?, ?, ?, 'out', ?, ?, ?, NULL, ?, ?, 'pending')`,
       )
       .run(
-        crypto.randomUUID(),
+        messageId,
         args.circleId,
         this.pubkey,
         kind,
@@ -466,11 +476,20 @@ export class CirclesService {
     // The practice circle is local-only: no network fan-out; the labeled bot
     // replies immediately through the same inbound path a friend would use.
     if (circle.kind === PRACTICE_KIND) {
+      this.setDeliveryStatus(messageId, "delivered");
       await this.practiceSweep();
       return { delivered: [], failed: [], envelopeId: envelope.id };
     }
     const report = await this.fanOut(args.circleId, method, envelope);
+    this.setDeliveryStatus(messageId, deliveryStatusFromReport(report));
     return { ...report, envelopeId: envelope.id };
+  }
+
+  /** Update the per-message delivery aggregate after fan-out (PLAN-36 B5). */
+  private setDeliveryStatus(messageId: string, status: DeliveryStatus): void {
+    this.db
+      .prepare(`UPDATE circle_messages SET delivery_status = ? WHERE message_id = ?`)
+      .run(status, messageId);
   }
 
   /**
@@ -787,10 +806,12 @@ export class CirclesService {
     threadId: string | null;
     content: string;
     createdAt: number;
+    deliveryStatus: DeliveryStatus | null;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT message_id, author_pubkey, direction, kind, thread_id, content, created_at
+        `SELECT message_id, author_pubkey, direction, kind, thread_id, content, created_at,
+                delivery_status
            FROM circle_messages WHERE circle_id = ?
           ORDER BY created_at DESC LIMIT ?`,
       )
@@ -802,6 +823,7 @@ export class CirclesService {
       thread_id: string | null;
       content: string;
       created_at: number;
+      delivery_status: DeliveryStatus | null;
     }>;
     return rows.map((r) => ({
       messageId: r.message_id,
@@ -811,6 +833,7 @@ export class CirclesService {
       threadId: r.thread_id,
       content: r.content,
       createdAt: r.created_at,
+      deliveryStatus: r.delivery_status,
     }));
   }
 
