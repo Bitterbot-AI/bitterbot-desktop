@@ -1,0 +1,54 @@
+#cloud-config
+# PLAN-36 Phase 1: circles mailbox host droplet (Terraform templatefile; ${fqdn}
+# is injected). Installs Node 22 (for node:sqlite) + Caddy (auto-TLS), fetches
+# the prebuilt self-contained mailbox bundle from the repo, and runs it behind
+# Caddy at ${fqdn}. The host stores X25519-sealed ciphertext it cannot read.
+package_update: true
+package_upgrade: true
+packages:
+  - curl
+  - gnupg
+  - ca-certificates
+  - debian-keyring
+  - debian-archive-keyring
+  - apt-transport-https
+
+write_files:
+  - path: /etc/systemd/system/bitterbot-mailbox.service
+    content: |
+      [Unit]
+      Description=Bitterbot circles mailbox host
+      After=network-online.target
+      Wants=network-online.target
+      [Service]
+      Environment=MAILBOX_PORT=8790
+      Environment=MAILBOX_HOST=127.0.0.1
+      Environment=MAILBOX_DB=/var/lib/bitterbot/mailbox.sqlite
+      ExecStart=/usr/bin/node /opt/bitterbot/mailbox-host.bundle.mjs
+      Restart=always
+      RestartSec=3
+      DynamicUser=yes
+      StateDirectory=bitterbot
+      [Install]
+      WantedBy=multi-user.target
+  - path: /etc/caddy/Caddyfile
+    content: |
+      ${fqdn} {
+        reverse_proxy 127.0.0.1:8790
+      }
+
+runcmd:
+  # Node 22 (node:sqlite / DatabaseSync needs >= 22.5)
+  - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  - apt-get install -y nodejs
+  # Caddy (auto Let's Encrypt TLS)
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+  - apt-get update
+  - apt-get install -y caddy
+  # Fetch the prebuilt mailbox bundle (self-contained; node builtins only)
+  - mkdir -p /opt/bitterbot
+  - curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/deploy/mailbox-host/mailbox-host.bundle.mjs -o /opt/bitterbot/mailbox-host.bundle.mjs
+  - systemctl daemon-reload
+  - systemctl enable --now bitterbot-mailbox
+  - systemctl restart caddy

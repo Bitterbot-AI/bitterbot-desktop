@@ -31,6 +31,7 @@
     "patches/",
     "pnpm-lock.yaml",
     "skills/",
+    "deploy/mailbox-host/mailbox-host.bundle.mjs",
     "src/canvas-host/a2ui/a2ui.bundle.js",
     "Swabble/",
     "vendor/"
