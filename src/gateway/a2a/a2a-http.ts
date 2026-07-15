@@ -314,12 +314,11 @@ export function createA2aHttpHandler(opts: {
           agentId: "default",
           purpose: "status",
         });
-        circleDb = (
-          memManager?.getMarketplaceEconomics?.() as
-            | { getDb?: () => import("node:sqlite").DatabaseSync | undefined }
-            | null
-            | undefined
-        )?.getDb?.();
+        // Independent of the marketplace feature (PLAN-36 §7 Phase 0): the
+        // circle tables live in the memory DB, so getCirclesDb() returns it
+        // even when a2a.marketplace is disabled. Called without optional
+        // chaining on the method so a rename fails the build, not silently 503s.
+        circleDb = memManager?.getCirclesDb();
       } catch {
         /* memory manager unavailable */
       }
@@ -372,12 +371,10 @@ export function createA2aHttpHandler(opts: {
           agentId: "default",
           purpose: "status",
         });
-        mailboxDb = (
-          memManager?.getMarketplaceEconomics?.() as
-            | { getDb?: () => import("node:sqlite").DatabaseSync | undefined }
-            | null
-            | undefined
-        )?.getDb?.();
+        // Independent of the marketplace feature (PLAN-36 §7 Phase 0), same as
+        // the circle-verb branch above (method called without optional chaining
+        // so a rename is a compile error, not a silent 503).
+        mailboxDb = memManager?.getCirclesDb();
       } catch {
         /* memory manager unavailable */
       }

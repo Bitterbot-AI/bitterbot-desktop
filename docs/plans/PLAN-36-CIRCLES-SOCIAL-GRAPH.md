@@ -65,14 +65,14 @@ while doing it (§5). But strategy review forced a blunter framing than v1 had:
 > at ≥5% invite-to-join conversion._
 
 The moat is the occupied network of trusting friend-pairs (§2 bear case); the
-network exists only if the loop converts; the loop converts only if node-install
-
-- agent-co-presence is worth it. **The evidence file contains zero positive
-  datapoints for that willingness and at least three negative ones** (OpenAI
-  retired human+agent group chats 2026-07-09; Bluesky's Attie agent blocked by
-  ~125K users; every node-gated social network — Mastodon, Urbit, Keet, Berty,
-  Status — stayed niche or died). So the plan's prime directive is: **test that
-  assumption before building the expensive surface that assumes it is true.**
+network exists only if the loop converts; the loop converts only if installing a
+node and having your friend's agent co-present is worth it. **The evidence file
+contains zero positive datapoints for that willingness and at least three
+negative ones** (OpenAI retired human+agent group chats 2026-07-09; Bluesky's
+Attie agent blocked by ~125K users; every node-gated social network — Mastodon,
+Urbit, Keet, Berty, Status — stayed niche or died). So the plan's prime
+directive is: **test that assumption before building the expensive surface that
+assumes it is true.**
 
 **Why it could still be the claim to fame.** The market read (§2) is real: the
 quadrant "humans **and** agents co-present + user-owned nodes + private consented

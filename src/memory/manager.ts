@@ -2440,39 +2440,41 @@ export class MemoryIndexManager implements MemorySearchManager {
                   });
                 })
                 .catch((err) => log.debug(`night shift sweep failed: ${String(err)}`));
-
-              // 11h. PLAN-31 C1: circles sweep — presence heartbeat to every
-              // connected circle, drain our relay mailbox (store-and-forward
-              // for asymmetric online windows, §3.2), and TTL-sweep any
-              // mailbox this node hosts. Kill switch circles.enabled (ON by
-              // default since the 2026-07-09 red-team phase, §8). Best-effort,
-              // never blocks the tick.
-              if (this.cfg.circles?.enabled === true) {
-                const circlesDb = bountyDb;
-                void import("../circles/service.js")
-                  .then(async ({ CirclesService }) => {
-                    const service = new CirclesService({ db: circlesDb, config: this.cfg });
-                    await service.heartbeat();
-                    await service.pollMailbox();
-                    // §3.5 default posture for ungranted asks; granted asks
-                    // wait for the human (autonomy ends at the grant line).
-                    await service.answerPendingAsks();
-                    // §4.3 practice partner (replies + retirement) and the
-                    // weekly briefing (compiles only when due).
-                    await service.practiceSweep();
-                    service.briefingSweep();
-                    if (this.cfg.circles?.mailbox?.serve === true) {
-                      const { sweepExpiredMailboxBlobs } =
-                        await import("../gateway/a2a/mailbox.js");
-                      sweepExpiredMailboxBlobs(circlesDb);
-                    }
-                  })
-                  .catch((err) => log.debug(`circles sweep failed: ${String(err)}`));
-              }
             }
           } catch {
             // Bounty sweeps non-critical
           }
+        }
+        // 11h. PLAN-31 C1: circles sweep — presence heartbeat to every
+        // connected circle, drain our relay mailbox (store-and-forward for
+        // asymmetric online windows, §3.2), and TTL-sweep any mailbox this
+        // node hosts. Kill switch circles.enabled (ON by default since the
+        // 2026-07-09 red-team phase). Runs on `this.db` INDEPENDENT of the
+        // marketplace block above — disabling a2a.marketplace must not kill
+        // circle delivery/presence/briefings (PLAN-36 §1/§7 Phase 0). Still on
+        // the slow consolidation tick for now; PLAN-36 Phase 0 relocates it to
+        // a fast self-rescheduling timer in server-maintenance.ts. Best-effort,
+        // never blocks the tick.
+        if (this.cfg.circles?.enabled === true) {
+          const circlesDb = this.db;
+          void import("../circles/service.js")
+            .then(async ({ CirclesService }) => {
+              const service = new CirclesService({ db: circlesDb, config: this.cfg });
+              await service.heartbeat();
+              await service.pollMailbox();
+              // §3.5 default posture for ungranted asks; granted asks wait for
+              // the human (autonomy ends at the grant line).
+              await service.answerPendingAsks();
+              // §4.3 practice partner (replies + retirement) and the weekly
+              // briefing (compiles only when due).
+              await service.practiceSweep();
+              service.briefingSweep();
+              if (this.cfg.circles?.mailbox?.serve === true) {
+                const { sweepExpiredMailboxBlobs } = await import("../gateway/a2a/mailbox.js");
+                sweepExpiredMailboxBlobs(circlesDb);
+              }
+            })
+            .catch((err) => log.debug(`circles sweep failed: ${String(err)}`));
         }
         // ── PLAN-9 Memory Supremacy: consolidation-phase integrations ──
         // 12. Reconsolidation: restabilize expired labile chunks
@@ -4312,6 +4314,18 @@ export class MemoryIndexManager implements MemorySearchManager {
   /** Public accessor for marketplace economics (used by A2A, dashboard, etc.) */
   getMarketplaceEconomics(): MarketplaceEconomics | null {
     return this.marketplaceEconomics;
+  }
+
+  /**
+   * Public accessor for the SQLite handle that holds the circle/mailbox tables
+   * (the memory DB). Deliberately INDEPENDENT of `marketplaceEconomics`:
+   * circle delivery, inbound serve, and mailbox-serve must not silently die
+   * when `a2a.marketplace` is disabled (PLAN-36 §1/§7 Phase 0 — the coupling
+   * used to route through `getMarketplaceEconomics().getDb()`, which is null
+   * with the marketplace off).
+   */
+  getCirclesDb(): DatabaseSync {
+    return this.db;
   }
 
   /** Guards against overlapping dispatch runs across consolidation ticks. */
