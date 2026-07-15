@@ -1,0 +1,7 @@
+# Terraform provider binaries + local state (never commit; state has no secrets
+# here but is environment-specific — kept local, matching the relay fleet).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log

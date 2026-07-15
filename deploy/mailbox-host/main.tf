@@ -37,7 +37,7 @@ variable "droplet_size" {
 
 variable "image" {
   type    = string
-  default = "debian-12-x64"
+  default = "debian-13-x64"
 }
 
 # Reuse the existing fleet admin key (registered by the relay-fleet config) so
