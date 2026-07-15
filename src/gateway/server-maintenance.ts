@@ -1,6 +1,8 @@
 import type { HealthSummary } from "../commands/health.js";
+import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import type { ChatRunEntry } from "./server-chat.js";
 import type { DedupeEntry } from "./server-shared.js";
+import { startCirclesScheduler, type CirclesSchedulerHandle } from "../circles/scheduler.js";
 import { abortChatRunById, type ChatAbortControllerEntry } from "./chat-abort.js";
 import { type EventLoopMonitorHandle, startEventLoopMonitor } from "./event-loop-monitor.js";
 import {
@@ -38,11 +40,14 @@ export function startGatewayMaintenanceTimers(params: {
   ) => ChatRunEntry | undefined;
   agentRunSeq: Map<string, number>;
   nodeSendToSession: (sessionKey: string, event: string, payload: unknown) => void;
+  /** Re-read each cycle so a circles.enabled hot-reload takes effect. */
+  getConfig: () => BitterbotConfig;
 }): {
   tickInterval: ReturnType<typeof setInterval>;
   healthInterval: ReturnType<typeof setInterval>;
   dedupeCleanup: ReturnType<typeof setInterval>;
   eventLoopMonitor: EventLoopMonitorHandle;
+  circlesScheduler: CirclesSchedulerHandle;
 } {
   setBroadcastHealthUpdate((snap: HealthSummary) => {
     params.broadcast("health", snap, {
@@ -136,5 +141,32 @@ export function startGatewayMaintenanceTimers(params: {
     }
   }, 60_000);
 
-  return { tickInterval, healthInterval, dedupeCleanup, eventLoopMonitor };
+  // PLAN-36 Phase 0: drain the circle mailbox on a fast (~15s) self-
+  // rescheduling loop and beat presence on a ~30s sub-cadence, instead of once
+  // per 30-min consolidation tick. Runs here because this host holds the live
+  // config accessor and (later, Phase 0 push) the broadcast fn; the memory
+  // manager tick no longer does circle delivery/presence. Idle-backs-off when
+  // circles are disabled or the node has no active connection.
+  const circlesScheduler = startCirclesScheduler({
+    getConfig: params.getConfig,
+    resolveService: async () => {
+      const cfg = params.getConfig();
+      if (cfg.circles?.enabled !== true) return undefined;
+      const { MemoryIndexManager } = await import("../memory/manager.js");
+      const { resolveDefaultAgentId } = await import("../agents/agent-scope.js");
+      // Use the RESOLVED default agent (DEFAULT_AGENT_ID = "main"), NOT the
+      // literal "default" — that is the manager the gateway already built and
+      // where the real connection circles live; the old consolidation-tick
+      // sweep ran there too. get()'s cache key excludes `purpose`, so this is a
+      // cache hit on the primary manager, never a second build.
+      const agentId = resolveDefaultAgentId(cfg);
+      const mgr = await MemoryIndexManager.get({ cfg, agentId, purpose: "status" });
+      const db = mgr?.getCirclesDb();
+      if (!db) return undefined;
+      const { CirclesService } = await import("../circles/service.js");
+      return new CirclesService({ db, config: cfg });
+    },
+  });
+
+  return { tickInterval, healthInterval, dedupeCleanup, eventLoopMonitor, circlesScheduler };
 }

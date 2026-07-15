@@ -59,7 +59,13 @@ function err<T>(code: number, message: string): CircleOutcome<T> {
 const RATE_LIMITS: Record<string, { windowMs: number; max: number }> = {
   join: { windowMs: 60_000, max: 6 },
   read: { windowMs: 60_000, max: 60 },
-  presence: { windowMs: 60_000, max: 12 },
+  // PLAN-36 Phase 0 raised this from 12: the fast scheduler beats presence on a
+  // ~30s sub-cadence (2/min per shared circle), so 30 gives headroom for a peer
+  // we share many circles with. Version-skew note: an OLDER peer still enforces
+  // 12, so the SENDER cadence (30s, not 15s) is deliberately chosen to keep
+  // typical circle-sharing under that legacy budget — do not beat presence
+  // faster than ~30s or old nodes will rate-limit us back to looking offline.
+  presence: { windowMs: 60_000, max: 30 },
   message: { windowMs: 60_000, max: 30 },
   // Higher than message: event replays also arrive in sync batches
   // (service.syncEvents) and converge across sweeps via idempotent appends.

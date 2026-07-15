@@ -1,4 +1,5 @@
 import type { CanvasHostServer } from "../canvas-host/server.js";
+import type { CirclesSchedulerHandle } from "../circles/scheduler.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
@@ -478,8 +479,9 @@ export async function startGatewayServer(
   let healthInterval = noopInterval();
   let dedupeCleanup = noopInterval();
   let eventLoopMonitor: EventLoopMonitorHandle = { stop: () => {} };
+  let circlesScheduler: CirclesSchedulerHandle = { stop: () => {} };
   if (!minimalTestGateway) {
-    ({ tickInterval, healthInterval, dedupeCleanup, eventLoopMonitor } =
+    ({ tickInterval, healthInterval, dedupeCleanup, eventLoopMonitor, circlesScheduler } =
       startGatewayMaintenanceTimers({
         broadcast,
         nodeSendToAllSubscribed,
@@ -495,6 +497,7 @@ export async function startGatewayServer(
         removeChatRun,
         agentRunSeq,
         nodeSendToSession,
+        getConfig: loadConfig,
       }));
   }
 
@@ -723,6 +726,7 @@ export async function startGatewayServer(
     healthInterval,
     dedupeCleanup,
     eventLoopMonitor,
+    circlesScheduler,
     agentUnsub,
     heartbeatUnsub,
     chatRunState,

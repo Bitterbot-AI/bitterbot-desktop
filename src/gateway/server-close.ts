@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from "node:http";
 import type { WebSocketServer } from "ws";
 import type { CanvasHostHandler, CanvasHostServer } from "../canvas-host/server.js";
+import type { CirclesSchedulerHandle } from "../circles/scheduler.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
@@ -20,6 +21,7 @@ export function createGatewayCloseHandler(params: {
   healthInterval: ReturnType<typeof setInterval>;
   dedupeCleanup: ReturnType<typeof setInterval>;
   eventLoopMonitor: EventLoopMonitorHandle;
+  circlesScheduler: CirclesSchedulerHandle;
   agentUnsub: (() => void) | null;
   heartbeatUnsub: (() => void) | null;
   chatRunState: { clear: () => void };
@@ -77,6 +79,7 @@ export function createGatewayCloseHandler(params: {
     clearInterval(params.healthInterval);
     clearInterval(params.dedupeCleanup);
     params.eventLoopMonitor.stop();
+    params.circlesScheduler.stop();
     if (params.agentUnsub) {
       try {
         params.agentUnsub();

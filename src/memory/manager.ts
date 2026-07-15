@@ -2445,23 +2445,20 @@ export class MemoryIndexManager implements MemorySearchManager {
             // Bounty sweeps non-critical
           }
         }
-        // 11h. PLAN-31 C1: circles sweep — presence heartbeat to every
-        // connected circle, drain our relay mailbox (store-and-forward for
-        // asymmetric online windows, §3.2), and TTL-sweep any mailbox this
-        // node hosts. Kill switch circles.enabled (ON by default since the
-        // 2026-07-09 red-team phase). Runs on `this.db` INDEPENDENT of the
-        // marketplace block above — disabling a2a.marketplace must not kill
-        // circle delivery/presence/briefings (PLAN-36 §1/§7 Phase 0). Still on
-        // the slow consolidation tick for now; PLAN-36 Phase 0 relocates it to
-        // a fast self-rescheduling timer in server-maintenance.ts. Best-effort,
-        // never blocks the tick.
+        // 11h. PLAN-31 C1 / PLAN-36 Phase 0: circles SLOW sweep — only the
+        // non-latency-sensitive work. Presence heartbeat and mailbox drain
+        // moved to the fast circles scheduler (server-maintenance.ts, ~15s);
+        // what stays here is the default-posture ask answering, the practice
+        // partner, the weekly briefing, and the hosted-mailbox TTL sweep — all
+        // fine at the 30-min cadence. Runs on `this.db` INDEPENDENT of the
+        // marketplace block above (disabling a2a.marketplace must not kill
+        // circles, PLAN-36 §1/§7 Phase 0). Kill switch circles.enabled (ON by
+        // default since 2026-07-09). Best-effort, never blocks the tick.
         if (this.cfg.circles?.enabled === true) {
           const circlesDb = this.db;
           void import("../circles/service.js")
             .then(async ({ CirclesService }) => {
               const service = new CirclesService({ db: circlesDb, config: this.cfg });
-              await service.heartbeat();
-              await service.pollMailbox();
               // §3.5 default posture for ungranted asks; granted asks wait for
               // the human (autonomy ends at the grant line).
               await service.answerPendingAsks();
@@ -2474,7 +2471,7 @@ export class MemoryIndexManager implements MemorySearchManager {
                 sweepExpiredMailboxBlobs(circlesDb);
               }
             })
-            .catch((err) => log.debug(`circles sweep failed: ${String(err)}`));
+            .catch((err) => log.debug(`circles slow sweep failed: ${String(err)}`));
         }
         // ── PLAN-9 Memory Supremacy: consolidation-phase integrations ──
         // 12. Reconsolidation: restabilize expired labile chunks

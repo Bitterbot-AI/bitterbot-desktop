@@ -734,6 +734,16 @@ export class CirclesService {
   }
 
   /**
+   * True if this node has at least one active, non-practice circle — i.e. real
+   * network work a fast sweep should service. The practice circle is local-only
+   * (no fan-out), so a node with only a practice partner idles the fast timer
+   * (PLAN-36 Phase 0 scheduler idle-backoff).
+   */
+  hasActiveCircles(): boolean {
+    return this.listCircles().some((c) => c.kind !== PRACTICE_KIND);
+  }
+
+  /**
    * Distinct connected HUMANS across all circles (the friend-node count).
    * The practice partner never counts — it is a bot and says so (§4.3).
    */
