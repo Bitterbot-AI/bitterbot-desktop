@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "./types.bitterbot.js";
-import { applyCirclesDefaults } from "./defaults.js";
+import { applyCirclesDefaults, DEFAULT_CIRCLES_MAILBOX_URL } from "./defaults.js";
 
 // PLAN-31 red-team phase (2026-07-09): circles are ON BY DEFAULT fleet-wide
 // so the connection surface can be tested/attacked at scale. A wrong default
@@ -13,6 +13,23 @@ describe("applyCirclesDefaults", () => {
     expect(out.circles?.enabled).toBe(true);
     expect(out.circles?.briefing?.enabled).toBe(true);
     expect(out.circles?.practicePartner?.enabled).toBe(true);
+  });
+
+  it("ships a default fleet mailbox URL (PLAN-36 Phase 1)", () => {
+    const out = applyCirclesDefaults({} as BitterbotConfig);
+    expect(out.circles?.mailbox?.url).toBe(DEFAULT_CIRCLES_MAILBOX_URL);
+  });
+
+  it("lets a node override the default mailbox url and opt out", () => {
+    const override = applyCirclesDefaults({
+      circles: { mailbox: { url: "https://my-relay", serve: true } },
+    } as BitterbotConfig);
+    expect(override.circles?.mailbox?.url).toBe("https://my-relay");
+    expect(override.circles?.mailbox?.serve).toBe(true);
+    const off = applyCirclesDefaults({
+      circles: { mailbox: { enabled: false } },
+    } as BitterbotConfig);
+    expect(off.circles?.mailbox?.enabled).toBe(false);
   });
 
   it("defaults enabled=true when circles is present but enabled is unset", () => {

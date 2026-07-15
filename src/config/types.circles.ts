@@ -25,9 +25,9 @@ export type CirclesConfig = {
   /** Store-and-forward mailbox (PLAN-31 §3.2). */
   mailbox?: {
     /**
-     * Use a mailbox for asymmetric online windows. Only takes effect once a
-     * `url` is set; no default mailbox URL ships yet (PLAN-36 Phase 1 adds a
-     * default fleet mailbox). Read only as `=== false` to opt out.
+     * Use a mailbox for asymmetric online windows. A default fleet mailbox URL
+     * ships (PLAN-36 Phase 1, DEFAULT_CIRCLES_MAILBOX_URL); read only as
+     * `=== false` to opt out. The host stores sealed ciphertext it cannot read.
      */
     enabled?: boolean;
     /** Mailbox service base URL (relay fleet). */

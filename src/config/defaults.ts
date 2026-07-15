@@ -593,6 +593,20 @@ export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
  * `circles.a2aPublicUrl` can still receive/serve circle verbs and run the
  * practice partner; they just cannot originate invites or dial peers.
  */
+/**
+ * Default fleet mailbox (PLAN-36 Phase 1). Store-and-forward for offline /
+ * asymmetric peers so a friend receives on wake without either side hosting
+ * anything. The host stores X25519-sealed ciphertext it cannot read (a
+ * metadata-only relay). Runs the slim `pnpm mailbox:host` service
+ * (src/gateway/a2a/mailbox-host.ts); deploy guide: docs/network/mailbox-host.md.
+ *
+ * DEPLOY DEPENDENCY: this URL must resolve to a running mailbox host. Until it
+ * does, offline delivery falls through gracefully (the send is reported failed;
+ * the fast poll's dial times out at debug level — no crash, no spam). Override
+ * with `circles.mailbox.url` (or `enabled: false`) per node.
+ */
+export const DEFAULT_CIRCLES_MAILBOX_URL = "https://mailbox.bitterbot.ai";
+
 export function applyCirclesDefaults(cfg: BitterbotConfig): BitterbotConfig {
   const circles = cfg.circles ?? {};
   return {
@@ -601,7 +615,8 @@ export function applyCirclesDefaults(cfg: BitterbotConfig): BitterbotConfig {
       enabled: circles.enabled ?? true,
       ...(circles.a2aPublicUrl !== undefined ? { a2aPublicUrl: circles.a2aPublicUrl } : {}),
       ...(circles.displayName !== undefined ? { displayName: circles.displayName } : {}),
-      ...(circles.mailbox !== undefined ? { mailbox: circles.mailbox } : {}),
+      // Default fleet mailbox; user url/serve/enabled override it.
+      mailbox: { url: DEFAULT_CIRCLES_MAILBOX_URL, ...circles.mailbox },
       briefing: { enabled: true, ...circles.briefing },
       practicePartner: { enabled: true, ...circles.practicePartner },
     },
