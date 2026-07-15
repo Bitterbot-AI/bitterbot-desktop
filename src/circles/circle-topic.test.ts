@@ -7,9 +7,12 @@ import { handleMailboxMethod } from "../gateway/a2a/mailbox.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
 import {
+  bridgeCircleTopicBus,
   circleTopicId,
+  onBridgeCircleFrame,
   publishCircleFrame,
   receiveCircleFrame,
+  type CircleTopicBridge,
   type CircleTopicBus,
 } from "./circle-topic.js";
 import { makeCircleEnvelope } from "./envelope.js";
@@ -134,6 +137,48 @@ describe("circle messaging over a gossip topic (prototype)", () => {
     expect(inbox).toHaveLength(1);
     expect(inbox[0]?.content).toContain("over gossip");
     expect(inbox[0]?.content.toLowerCase()).toContain("untrusted");
+  });
+
+  it("round-trips through the orchestrator-bridge adapter (base64 on the wire)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const epoch = ana.store.getCircle(circleId)!.keyEpoch;
+
+    // A mock bridge: publishCircleTopic fans the base64 frame to every
+    // onCircleTopicMessage subscriber, exactly like the Rust primitive would.
+    const listeners: Array<(e: { topic: string; from_peer_id: string; data_b64: string }) => void> =
+      [];
+    const mockBridge: CircleTopicBridge = {
+      async subscribeCircleTopic() {},
+      async unsubscribeCircleTopic() {},
+      async publishCircleTopic(topic, dataB64) {
+        for (const cb of listeners) cb({ topic, from_peer_id: "12D3KooWpeer", data_b64: dataB64 });
+      },
+      onCircleTopicMessage(cb) {
+        listeners.push(cb);
+        return () => {};
+      },
+    };
+
+    // Bob's node dispatches inbound bridge frames into his DB.
+    onBridgeCircleFrame(mockBridge, (frameJson) => {
+      receiveCircleFrame(frameJson, bobDb);
+    });
+
+    // Ana publishes through the bus adapter (base64-encodes under the hood).
+    const bus = bridgeCircleTopicBus(mockBridge);
+    const envelope = makeCircleEnvelope(
+      "message",
+      circleId,
+      { text: "bridged over gossip" },
+      anaKey,
+    );
+    await publishCircleFrame(bus, circleId, epoch, "circle/message", envelope);
+
+    const inbox = bob.messages(circleId).filter((m) => m.direction === "in");
+    expect(inbox).toHaveLength(1);
+    expect(inbox[0]?.content).toContain("bridged over gossip");
   });
 
   it("rejects a frame from a non-member (same auth as any carrier)", async () => {

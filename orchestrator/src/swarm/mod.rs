@@ -39,6 +39,15 @@ pub const CENSUS_TOPIC: &str = "bitterbot/census/v1";
 /// Gossipsub topic for peer-to-peer knowledge queries.
 pub const QUERIES_TOPIC: &str = "bitterbot/queries/v1";
 
+/// Per-circle gossip topics (PLAN-36 Phase 4) are the only topics the gateway
+/// may subscribe/publish at runtime. The name is a blinded hash
+/// (`bitterbot/circle/<sha256(id:epoch)>/v1`) minted TS-side; here we only gate
+/// the namespace so the dynamic primitive can't touch the builtin topics or
+/// become a subscribe-anything lever.
+fn is_circle_topic(topic: &str) -> bool {
+    topic.starts_with("bitterbot/circle/") && topic.ends_with("/v1")
+}
+
 /// Maximum payload size for gossipsub messages (256KB).
 const MAX_GOSSIPSUB_MSG_SIZE: usize = 256 * 1024;
 
@@ -1212,6 +1221,24 @@ impl SwarmHandle {
                         }
                         Err(e) => warn!("Failed to deserialize census snapshot: {}", e),
                     }
+                } else if is_circle_topic(&topic_str) {
+                    // PLAN-36 Phase 4: a frame on a per-circle topic we're
+                    // subscribed to. Forward opaque bytes to the gateway as a
+                    // topic_message event; the circle envelope inside carries its
+                    // own membership auth (verified by handleCircleMethod), so we
+                    // do not (and cannot, once encrypted) inspect it here.
+                    let from = match &message.source {
+                        Some(p) => p.to_string(),
+                        None => String::new(),
+                    };
+                    self.emit_ipc_event(serde_json::json!({
+                        "type": "topic_message",
+                        "payload": {
+                            "topic": topic_str,
+                            "from_peer_id": from,
+                            "data_b64": base64::engine::general_purpose::STANDARD.encode(&message.data),
+                        }
+                    }));
                 }
             }
             BitterbotBehaviourEvent::Gossipsub(gossipsub::Event::Subscribed {
@@ -1990,6 +2017,75 @@ impl SwarmHandle {
                             "type": "response", "id": id,
                             "payload": { "ok": false, "error": format!("serialize failed: {}", e) }
                         }));
+                    }
+                }
+            }
+            IpcCommand::SubscribeTopic { id, topic, respond } => {
+                // PLAN-36 Phase 4: only per-circle topics may be subscribed at
+                // runtime — the builtin topics stay compile-time, and this keeps
+                // the primitive from being a general subscribe-anything lever.
+                if is_circle_topic(&topic) {
+                    let t = gossipsub::IdentTopic::new(topic.clone());
+                    match self.swarm.behaviour_mut().gossipsub.subscribe(&t) {
+                        Ok(_) => {
+                            let _ = respond.send(serde_json::json!({
+                                "type": "response", "id": id,
+                                "payload": { "ok": true, "topic": topic }
+                            }));
+                        }
+                        Err(e) => {
+                            let _ = respond.send(serde_json::json!({
+                                "type": "response", "id": id,
+                                "payload": { "ok": false, "error": format!("subscribe failed: {}", e) }
+                            }));
+                        }
+                    }
+                } else {
+                    let _ = respond.send(serde_json::json!({
+                        "type": "response", "id": id,
+                        "payload": { "ok": false, "error": "only bitterbot/circle/*/v1 topics allowed" }
+                    }));
+                }
+            }
+            IpcCommand::UnsubscribeTopic { id, topic, respond } => {
+                let t = gossipsub::IdentTopic::new(topic.clone());
+                let ok = self.swarm.behaviour_mut().gossipsub.unsubscribe(&t).unwrap_or(false);
+                let _ = respond.send(serde_json::json!({
+                    "type": "response", "id": id,
+                    "payload": { "ok": ok, "topic": topic }
+                }));
+            }
+            IpcCommand::PublishTopic { id, topic, data_b64, respond } => {
+                if !is_circle_topic(&topic) {
+                    let _ = respond.send(serde_json::json!({
+                        "type": "response", "id": id,
+                        "payload": { "ok": false, "error": "only bitterbot/circle/*/v1 topics allowed" }
+                    }));
+                } else {
+                    match base64::engine::general_purpose::STANDARD.decode(&data_b64) {
+                        Ok(bytes) => {
+                            let t = gossipsub::IdentTopic::new(topic.clone());
+                            match self.swarm.behaviour_mut().gossipsub.publish(t, bytes) {
+                                Ok(msg_id) => {
+                                    let _ = respond.send(serde_json::json!({
+                                        "type": "response", "id": id,
+                                        "payload": { "ok": true, "message_id": msg_id.to_string() }
+                                    }));
+                                }
+                                Err(e) => {
+                                    let _ = respond.send(serde_json::json!({
+                                        "type": "response", "id": id,
+                                        "payload": { "ok": false, "error": format!("publish failed: {}", e) }
+                                    }));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let _ = respond.send(serde_json::json!({
+                                "type": "response", "id": id,
+                                "payload": { "ok": false, "error": format!("bad base64: {}", e) }
+                            }));
+                        }
                     }
                 }
             }

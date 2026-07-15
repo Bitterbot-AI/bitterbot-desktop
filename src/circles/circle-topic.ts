@@ -78,6 +78,52 @@ export async function publishCircleFrame(
   await bus.publish(circleTopicId(circleId, keyEpoch), JSON.stringify(frame));
 }
 
+/**
+ * The orchestrator-bridge surface this adapter needs (matches the methods
+ * added to OrchestratorBridge for the Rust dynamic pub/sub primitive).
+ */
+export interface CircleTopicBridge {
+  subscribeCircleTopic(topic: string): Promise<unknown>;
+  unsubscribeCircleTopic(topic: string): Promise<unknown>;
+  publishCircleTopic(topic: string, dataB64: string): Promise<unknown>;
+  onCircleTopicMessage(
+    cb: (e: { topic: string; from_peer_id: string; data_b64: string }) => void,
+  ): () => void;
+}
+
+/**
+ * Adapt the bridge to the CircleTopicBus the app layer codes against. Frames
+ * cross the IPC/gossip boundary as base64 (future-proof for encrypted binary
+ * frames once the shared circle key lands).
+ */
+export function bridgeCircleTopicBus(bridge: CircleTopicBridge): CircleTopicBus {
+  return {
+    async publish(topic, frameJson) {
+      await bridge.publishCircleTopic(topic, Buffer.from(frameJson, "utf-8").toString("base64"));
+    },
+    async subscribe(topic) {
+      await bridge.subscribeCircleTopic(topic);
+    },
+    async unsubscribe(topic) {
+      await bridge.unsubscribeCircleTopic(topic);
+    },
+  };
+}
+
+/**
+ * Wire inbound bridge `topic_message` events into a circle-frame dispatcher
+ * (which decodes base64 and hands the frame JSON to `receiveCircleFrame` with
+ * the right circle DB). Returns an unsubscribe.
+ */
+export function onBridgeCircleFrame(
+  bridge: CircleTopicBridge,
+  dispatch: (frameJson: string, topic: string, fromPeerId: string) => void,
+): () => void {
+  return bridge.onCircleTopicMessage((e) => {
+    dispatch(Buffer.from(e.data_b64, "base64").toString("utf-8"), e.topic, e.from_peer_id);
+  });
+}
+
 export type ReceiveResult = { ok: true; result: unknown } | { ok: false; error: string };
 
 /**

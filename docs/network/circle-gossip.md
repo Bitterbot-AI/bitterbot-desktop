@@ -1,8 +1,9 @@
 # Circle messaging over a per-circle gossip topic (prototype + spec)
 
 PLAN-36 Phase 4, the cheaper path to NAT-to-NAT circle delivery. Status:
-**application layer prototyped + tested; Rust dynamic-pubsub slice + shared-key
-confidentiality still to build.**
+**application layer prototyped + tested; Rust dynamic-pubsub primitive + bridge
+BUILT (compiles); circles-service integration + shared-key confidentiality still
+to build.**
 
 ## Why this over a full request-response protocol
 
@@ -34,23 +35,27 @@ point-to-point), so it wants a shared-key confidentiality layer (below).
 
 ## What is still needed
 
-### 1. The Rust dynamic pub/sub primitive (`cargo` slice)
+### 1. The Rust dynamic pub/sub primitive (BUILT — compiles)
 
-Gossipsub topics are compile-time constants today (`skills`, `telemetry`, …).
-Add, mirroring the existing `PublishSkill`/`query_received` wiring:
+Gossipsub topics were compile-time constants; this adds a runtime primitive,
+scoped to `bitterbot/circle/*/v1` only (guarded by `is_circle_topic`):
 
-- `IpcCommand::SubscribeTopic { topic }` → `gossipsub.subscribe(&IdentTopic::new(topic))`
-- `IpcCommand::UnsubscribeTopic { topic }` → `gossipsub.unsubscribe`
+- `IpcCommand::{Subscribe,Unsubscribe}Topic { topic }` →
+  `gossipsub.subscribe/unsubscribe` (`orchestrator/src/swarm/mod.rs`)
 - `IpcCommand::PublishTopic { topic, data_b64 }` → `gossipsub.publish`
-- inbound message on a non-builtin `bitterbot/circle/*` topic → emit a
-  `topic_message` IPC event `{ topic, data_b64 }`
+- inbound message on a subscribed `bitterbot/circle/*` topic → emit a
+  `topic_message` IPC event `{ topic, from_peer_id, data_b64 }`
 
-Then bridge methods (`OrchestratorBridge`): `subscribeCircleTopic`,
-`unsubscribeCircleTopic`, `publishCircleTopic`, `onCircleTopicMessage` —
-implementing the `CircleTopicBus` interface the prototype already codes against.
-Wire the circles service to (a) subscribe to each active circle's topic on
-boot/join, (b) publish outbound over the topic when a member has no reachable
-`a2aUrl`, (c) feed `topic_message` into `receiveCircleFrame`.
+Bridge methods (`OrchestratorBridge`): `subscribeCircleTopic`,
+`unsubscribeCircleTopic`, `publishCircleTopic`, `onCircleTopicMessage` — plus
+`bridgeCircleTopicBus()` / `onBridgeCircleFrame()` in `circle-topic.ts` adapting
+them to the `CircleTopicBus` the app layer codes against (base64 on the wire).
+`cargo build` is green; a mock-bridge round-trip test covers the base64 path.
+
+**Still to build — the circles-service integration:** (a) subscribe to each
+active circle's topic on boot/join, (b) publish outbound over the topic when a
+member has no reachable `a2aUrl`, (c) feed `topic_message` into
+`receiveCircleFrame` with the right circle DB.
 
 Guard rails the security review must cover: rate-limit inbound topic frames
 per-peer (reuse the circle rate buckets); cap subscribed topics per node;

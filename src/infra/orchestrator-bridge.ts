@@ -168,6 +168,10 @@ export class OrchestratorBridge {
       timestamp: number;
     }) => void
   > = [];
+  /** PLAN-36 Phase 4: inbound frames on subscribed per-circle gossip topics. */
+  private topicMessageCallbacks: Array<
+    (event: { topic: string; from_peer_id: string; data_b64: string }) => void
+  > = [];
   /** Bootstrap peers after merging config + DNS discovery. */
   private resolvedBootstrapPeers: string[] | null = null;
 
@@ -296,6 +300,22 @@ export class OrchestratorBridge {
 
   async publishSkill(skillMdBase64: string, name: string): Promise<unknown> {
     return this.sendCommand("publish_skill", { skill_md: skillMdBase64, name });
+  }
+
+  // PLAN-36 Phase 4: dynamic per-circle gossip topics. The orchestrator only
+  // permits bitterbot/circle/*/v1 here; a circle rides its blinded topic so
+  // messages reach members over the mesh without a public a2a URL.
+  async subscribeCircleTopic(topic: string): Promise<unknown> {
+    return this.sendCommand("subscribe_topic", { topic });
+  }
+
+  async unsubscribeCircleTopic(topic: string): Promise<unknown> {
+    return this.sendCommand("unsubscribe_topic", { topic });
+  }
+
+  /** Publish opaque frame bytes (base64) to a circle topic. */
+  async publishCircleTopic(topic: string, dataB64: string): Promise<unknown> {
+    return this.sendCommand("publish_topic", { topic, data_b64: dataB64 });
   }
 
   async getPeers(): Promise<unknown> {
@@ -650,6 +670,16 @@ export class OrchestratorBridge {
     };
   }
 
+  /** PLAN-36 Phase 4: subscribe to inbound frames on per-circle gossip topics. */
+  onCircleTopicMessage(
+    callback: (event: { topic: string; from_peer_id: string; data_b64: string }) => void,
+  ): () => void {
+    this.topicMessageCallbacks.push(callback);
+    return () => {
+      this.topicMessageCallbacks = this.topicMessageCallbacks.filter((cb) => cb !== callback);
+    };
+  }
+
   private async connectIpc(): Promise<void> {
     // Clean up any existing socket before creating a new one
     if (this.socket) {
@@ -854,6 +884,18 @@ export class OrchestratorBridge {
             cb(payload);
           } catch (err) {
             log.warn(`query_received callback error: ${String(err)}`);
+          }
+        }
+        return;
+      }
+
+      if (msg.type === "topic_message") {
+        const payload = msg.payload as { topic: string; from_peer_id: string; data_b64: string };
+        for (const cb of this.topicMessageCallbacks) {
+          try {
+            cb(payload);
+          } catch (err) {
+            log.warn(`topic_message callback error: ${String(err)}`);
           }
         }
         return;

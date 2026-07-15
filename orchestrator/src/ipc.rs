@@ -127,6 +127,27 @@ pub enum IpcCommand {
         payload: QueryPayload,
         respond: tokio::sync::oneshot::Sender<serde_json::Value>,
     },
+    // PLAN-36 Phase 4: dynamic per-circle gossip topics (bitterbot/circle/*/v1).
+    // Gossipsub topics are otherwise compile-time constants; these let the
+    // gateway subscribe/publish a circle's blinded topic at runtime so circle
+    // messages ride the mesh (NAT-to-NAT) instead of requiring a public a2a URL.
+    SubscribeTopic {
+        id: String,
+        topic: String,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
+    UnsubscribeTopic {
+        id: String,
+        topic: String,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
+    PublishTopic {
+        id: String,
+        topic: String,
+        /// Opaque frame bytes, base64 (future-proof for encrypted frames).
+        data_b64: String,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
     // Management node commands
     GetNetworkCensus {
         id: String,
@@ -506,6 +527,42 @@ async fn handle_client_line(
                 }
             };
             IpcCommand::ComputerKey { id: msg.id, payload, respond: resp_tx }
+        }
+        "subscribe_topic" | "unsubscribe_topic" => {
+            let topic = msg
+                .payload
+                .get("topic")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if topic.is_empty() {
+                warn!("{} missing topic", msg.msg_type);
+                return true;
+            }
+            if msg.msg_type == "subscribe_topic" {
+                IpcCommand::SubscribeTopic { id: msg.id, topic, respond: resp_tx }
+            } else {
+                IpcCommand::UnsubscribeTopic { id: msg.id, topic, respond: resp_tx }
+            }
+        }
+        "publish_topic" => {
+            let topic = msg
+                .payload
+                .get("topic")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let data_b64 = msg
+                .payload
+                .get("data_b64")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if topic.is_empty() || data_b64.is_empty() {
+                warn!("publish_topic missing topic/data_b64");
+                return true;
+            }
+            IpcCommand::PublishTopic { id: msg.id, topic, data_b64, respond: resp_tx }
         }
         other => {
             warn!("Unknown IPC message type: {}", other);
