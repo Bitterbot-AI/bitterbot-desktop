@@ -1,8 +1,8 @@
 # PLAN-36: Circles, the Social Graph on the Mesh
 
-**Status:** DRAFT v2 (2026-07-14). Amends PLAN-31 (§4, §5, §8) and depends on
+**Status:** DRAFT v3 (2026-07-15). Amends PLAN-31 (§4, §5, §8) and depends on
 PLAN-35 (Circles Realtime Transport, itself DRAFT and not yet adversarially
-reviewed). Built and hardened by a three-pass process:
+reviewed). Built and hardened by a four-pass process:
 
 1. **System + design pass (8 agents):** mapped the circles/mesh/UI/onboarding
    code and drafted the onboarding, Discord-UI, and social-graph designs.
@@ -16,6 +16,14 @@ reviewed). Built and hardened by a three-pass process:
    amplifies its absence, splits the regulatory exposure correctly, and re-costs
    the estimates. Tags: `[CORRECTED]`/`[REFUTED]`/`[NEW]` mark where a pass
    changed an earlier conclusion; `[v2]` marks where the plan-review changed v1.
+4. **Market/beachhead pass (2026-07-15):** a verified Gen Z market study
+   (deep-research run wf_578e7ee7-cc2, 102 agents, 21/25 top claims surviving
+   3-vote adversarial verification; full report at
+   `docs/reviews/genz-ai-market-research-2026-07-15.md`) plus a landscape scan
+   of shared/group AI study tools. **v3 folds these in** — it names the
+   beachhead use case (§2.5, the study circle), rewrites the P2 loop test
+   around it, and threads it through §4, §7, §10, §11. `[v3]` marks the changes.
+   Architecture, security gates, and build order are untouched.
 
 **One-line goal:** make Circles work out of the box like a private, encrypted
 Discord where the members are friend **nodes** — each friend's human **and**
@@ -73,6 +81,16 @@ Attie agent blocked by ~125K users; every node-gated social network — Mastodon
 Urbit, Keet, Berty, Status — stayed niche or died). So the plan's prime
 directive is: **test that assumption before building the expensive surface that
 assumes it is true.**
+
+**`[v3]` The bet is unchanged, but the wedge is now named.** The market pass
+(§2.5) does not add a positive datapoint for chat-motivated node installs —
+none exists. What it adds is a reframing that makes the assumption _weaker and
+cheaper to test_: the invite stops asking "install a node to chat with a friend
+you can already reach" and starts asking "install the node to get your study
+group's shared study system" — a concrete recurring job (the top verified AI
+job for the target cohort), with a built-in weekly cadence (exams) and an
+artifact that travels with the invite. If even the job-shaped invite cannot
+clear the 5% line (§11), the generic chat-shaped one never would have.
 
 **Why it could still be the claim to fame.** The market read (§2) is real: the
 quadrant "humans **and** agents co-present + user-owned nodes + private consented
@@ -144,6 +162,15 @@ the HTTP transport and mailbox run purely on the device key. §9.2.]`
   retired human+agent group chats **2026-07-09** (five days before this draft);
   Bluesky's Attie was blocked by ~125K; Moltbook human traffic was rubbernecking.
   The only mass agent-social behavior observed in 2026 is _watching_ agents.
+  `[v3]` Read the anatomy of the OpenAI failure precisely, because it scopes the
+  datapoint: group chats were **one shared AI** in the group, with personal
+  memory **explicitly firewalled** ("your personal ChatGPT memory is never
+  shared") and no persistent artifacts — every member got the same generic
+  assistant and the group had to relocate into OpenAI's app for it. That is
+  evidence against _generic shared-AI chat_, the exact configuration §2.5
+  inverts (per-member agents, personal memory as the point, standing artifacts).
+  It is not evidence for our configuration either — hold it as untested, not
+  refuted.
 - **K<1 is the empirical norm for node-social.** Mastodon churned >60% of its
   migration wave; Urbit died of hosting friction; Keet/Berty/Status stayed at
   rounding-error scale — each required both ends to install before any value.
@@ -182,6 +209,96 @@ individually replicable; the only compounding asset is the occupied network,
 which K<1 prevents accumulating. **Therefore the viral loop is the first-class
 engineering problem, and the build order below reflects that — v1 said this and
 then built the opposite `[v2 fix]`.**
+
+### 2.5 The beachhead: the study circle `[v3, 2026-07-15 market pass]`
+
+The Gen Z market study (verified claims only; the refuted press stats are
+listed in the report — do not cite them) plus a landscape scan of shared/group
+AI tools picks the beachhead. The load-bearing verified facts:
+
+- **Study is the top verified AI job for the cohort:** 57% of US teens use
+  chatbots to search for information, 54% for schoolwork (Pew, Feb 2026,
+  n=1,458). Companionship is minority behavior (16% casual conversation, 12%
+  emotional support) and the majority frame for companion AI is "tool, not
+  friend" (Common Sense/NORC).
+- **Social life is private-first:** 57% of teen Snap users message daily vs
+  ≤30% posting publicly on any platform (Pew, Apr 2026). The circle shape is
+  validated from the demand side; a feed would not be. This independently
+  confirms PLAN-31's no-public-feed anti-commitment.
+- **AI sentiment is deteriorating while usage plateaus:** Gallup (Feb-Mar 2026)
+  has Gen Z weekly GenAI use flat at 51% with excitement down 14pts and anger
+  up 9pts; Prophet has belief in AI-for-daily-decisions down 30%. "AI-powered"
+  is neutral-to-negative branding for this cohort. Outcomes, receipts, and undo
+  are the trust currency — which the §5.3 server-enforced approval card
+  conveniently already is.
+- **Monetization that works on this cohort is Roblox-shaped:** microtransactions
+  - creator revenue share ($1.5B+ Fortnite/Roblox creator payouts in 2025); the
+    18-34 segment monetizes ~50% higher than minors (Roblox-reported). Flat SaaS
+    subscriptions are the wrong shape; the x402 rails are the right one.
+- **NOT verified, stated honestly:** no claim about Gen Z demand for agents
+  acting on their behalf survived verification (the widely-cited Prophet
+  agents-are-helpful stat was refuted 0-3). The §0 bet stays unevidenced in
+  both directions; the beachhead exists to buy that evidence cheaply.
+
+**The beachhead: college study circles.** A circle whose members share one
+recurring, deadline-driven job — pass the exam — where agent outputs are
+**shared artifacts** (study guide, quiz deck, gap map) posted to the circle,
+and **each member's own agent acts on the shared artifact personally**: quizzes
+them on _their_ weak spots, schedules spaced repetition (the PLAN-9
+spacing/mastery machinery), tracks what they haven't covered. Circle = commons;
+agent = personal lens.
+
+**Why this wedge specifically:**
+
+1. **The intersection is empty (landscape scan, 2026-07-15).** NotebookLM has
+   shared study artifacts but one shared AI and no personal agent. Google's
+   Gemini Study Notebooks + Gemini-in-Classroom (ISTE 2026) have personal
+   adaptation but no peer group, channeled through teachers and institutions.
+   OpenAI's group chats had the group but one shared AI with personal memory
+   deliberately firewalled — retired 2026-07-09. Nobody ships "shared artifact
+   - per-member agent acting on it," and per-member persistent memory is the
+     one ingredient competitors explicitly excluded and the one this product
+     uniquely has (bitemporal memory, PLAN-9 spacing/mastery, PLAN-27/28 recall).
+2. **It weakens §0's assumption into something testable.** The invite carries a
+   job and an artifact, not a chat offer. Conversion is measured against a
+   concrete value proposition with a weekly cadence, not against iMessage.
+3. **It sidesteps the co-presence/authenticity risk.** The Attie/OpenAI
+   negative datapoints are about agents _speaking socially_. In a study circle
+   the agent's circle-facing output is a tool — a deck, a quiz, a gap map — not
+   simulated social speech; nobody mutes a flashcard deck. This is effectively
+   §11's "agents-as-background-coordination" pivot destination built in from
+   day one, which de-risks the retention jaw of K<1.
+4. **College (18+) fits the substrate and the revenue data.** Desktop-heavy
+   population (the always-on-node friction is lowest here), dorm/campus friend
+   density answers the N₀ seeding problem, 18+ keeps the beachhead cohort out
+   of the §6b minor-gate blast radius (the age gate still ships — the surface
+   is reachable by anyone), and 18+ is the segment the Roblox data says
+   actually pays. **High school / minors are explicitly not the beachhead.**
+5. **Distribution matches the verified channels.** Group-chat-native spread
+   (every real use pulls 3-8 classmates into contact with the product) +
+   creator-led demos on video surfaces (YouTube ~75% daily / TikTok 61% daily
+   among teens). Do not fight Google for the classroom; the peer side — Discord
+   study servers, group chats — is unowned.
+
+**Security note, not waivable `[v3]`.** A shared study artifact is **peer
+content** and stays a hostile principal: quiz/flashcard generation from a
+peer's artifact is generation from untrusted input and must run on the §5.1-C
+quarantined tool-less path (output rendered to the member's own human only, no
+tool or payment capabilities in that context, no autonomous outbound). The §5.2
+memory-taint rule holds unchanged — circle artifacts do not enter
+recall-eligible memory; the agent _processes_ them per-session, it does not
+_remember_ them as its own. Mastery/progress state derived from quizzing is the
+member's own data, not circle content.
+
+**What the beachhead does NOT change.** Transport reality (§3), every security
+gate (§5), the regulatory split (§6), the build order's prime directive (§7),
+and the tripwires (§11) all stand. The study circle changes what the P2 invite
+says, who the seed cohorts are, what the guest page shows, and what "the chat
+gets used" means (§10) — a narrower, better-evidenced loop through the same
+spine. The generalization path (trip circles, gift circles, league/campaign
+circles, group buys via Aubaine/PLAN-26) is the same primitive — shared
+artifact + per-member agent action — and unlocks only after the beachhead loop
+converts.
 
 ---
 
@@ -270,6 +387,19 @@ generation onto the least-authenticated surface first.
 link arriving with the friend's agent, avatar, and shared context pre-attached
 converts far better than a blank friend request. Seed the first cohorts by hand
 into real friend groups (§2 N₀ problem).
+
+**`[v3]` The beachhead invite carries the artifact.** For study circles (§2.5)
+the starter pack's "shared context" is concrete: the invite travels with the
+circle's current shared artifact (the study guide / quiz deck), and the canned
+guest page renders it read-only next to the profile card — "this is the group's
+study system; install to get your own agent working it against your gaps." This
+gives the guest page a value demonstration instead of a business card, and it
+is the loop instrument P2 measures. Two honesty rules: (1) an artifact attached
+to an invite is exposed to **anyone holding the link** — the inviter must
+explicitly mark the artifact shareable at mint time (per-invite, not
+circle-wide), and member names/attribution are stripped from the guest-facing
+render; (2) the artifact is static content on the canned page — no live
+generation on the guest surface (that stays gated behind Phase 8, §5.1-C).
 
 **Guest-chat honesty on the broker `[v2]`.** A guest has no box key, so guest↔
 inviter text **cannot be sealed** — the broker would see it. That is the one path
@@ -450,13 +580,14 @@ its two most-cited phases).
 
 **Per-phase "what a user can actually do" `[v2 — v1 never stated this]`:**
 
-| After | A new user can…                                                                         | Caveat                                          |
-| ----- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| P0    | nothing new; existing pairs get ≤15s delivery + honest presence _if already configured_ | no new connection possible                      |
-| P1    | (P1a) faster/cleaner; (P1b) a NAT'd **invitee** joins + receives                        | inviter still needs reachability (broker or P4) |
-| P2    | **connect via link/QR + canned guest page → measure the loop**                          | canned guest experience, not live agent chat    |
-| P3-P4 | Discord-shaped chat between reachable pairs                                             | still on HTTP/fast-poll until P5                |
-| P5    | the actual zero-config mesh product                                                     | gated on the hardest phase                      |
+| After | A new user can…                                                                           | Caveat                                          |
+| ----- | ----------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| P0    | nothing new; existing pairs get ≤15s delivery + honest presence _if already configured_   | no new connection possible                      |
+| P1    | (P1a) faster/cleaner; (P1b) a NAT'd **invitee** joins + receives                          | inviter still needs reachability (broker or P4) |
+| P2    | **connect via link/QR + canned guest page → measure the loop**                            | canned guest experience, not live agent chat    |
+| P3-P4 | Discord-shaped chat between reachable pairs                                               | still on HTTP/fast-poll until P5                |
+| P4b   | **the §2.5 beachhead: personal study agent working the circle's shared artifacts** `[v3]` | quarantined-path subset must land first         |
+| P5    | the actual zero-config mesh product                                                       | gated on the hardest phase                      |
 
 **Phase 0 — Foundation: pulse, decouple, and the security gates (M, 6-9 days,
 pure code) `[v2 re-cost from 3-4d].`** The highest value-per-line work, but it
@@ -491,13 +622,17 @@ owners.
 **Phase 2 — The loop, and MEASURE IT (M, ~1 wk + instrumentation) `[v2 — the
 decisive phase, moved up from "nowhere"].`** Ship: invite **link + QR + deep
 link**; the **guest-JOIN page with the canned experience** (profile card +
-presence/availability + message-escrow, §4 — _not_ live generated chat);
-starter-pack pre-bundled invites; seed real friend cohorts by hand. **Instrument
-and gate:** invite-click → reciprocated join (the fatal <5% line), guest → install
-conversion, and a **week-2 co-presence appetite test** — drop the existing practice
-partner into a room with two real humans and watch whether it gets muted (cheap,
-uses instruments we already have). **This is the go/no-go gate.** Do not start
-Phase 3 until the loop clears its tripwires (§11).
+presence/availability + message-escrow, §4 — _not_ live generated chat) **plus
+the read-only shared-artifact render for artifact-attached invites (§4 `[v3]`)**;
+starter-pack pre-bundled invites; **seed real college study groups by hand
+`[v3 — the §2.5 beachhead cohorts; dorm/campus density answers N₀]`.**
+**Instrument and gate:** invite-click → reciprocated join (the fatal <5% line),
+guest → install conversion, **artifact-attached vs blank invite conversion split
+`[v3 — measures whether the job framing is doing any work]`**, and a **week-2
+co-presence appetite test** — drop the existing practice partner into a room
+with two real humans and watch whether it gets muted (cheap, uses instruments
+we already have). **This is the go/no-go gate.** Do not start Phase 3 until the
+loop clears its tripwires (§11).
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
@@ -519,7 +654,24 @@ join returns roster-only; 30-day replay ceiling — `[CORRECTED]`). **Specify th
 snapshot authority/merge rule** (recommend creator-authoritative; note a tab fork
 currently freezes channel management via the shared `isWritable` gate — decide if
 that's intended). `#tab` channel (add-expense UI + the missing unfreeze), `✦
-briefing` channel.
+briefing` channel, **`#study` channel `[v3]`** — shared artifacts land here as
+pinned messages (a pin convention on the existing message model, not a new
+protocol object; versioned by re-pin).
+
+**Phase 4b — The study loop (M, ~1-1.5 wk) `[v3 — the beachhead value prop;
+lands with the chat surface, before the mesh].`** The per-member half of §2.5:
+a member's agent takes a pinned circle artifact and acts on it **for its own
+human only** — generates quizzes against the member's gap history, schedules
+spaced repetition via the PLAN-9 spacing/mastery machinery, renders a personal
+gap map. Hard requirements: generation from peer artifacts runs on the §5.1-C
+**quarantined tool-less path** (this pulls a minimal version of that path
+forward from Phase 8 — scope it to render-to-own-human only, which is the
+cheapest safe subset); §5.2 memory-taint holds (artifacts are processed, never
+recalled; mastery state derived from quizzing is the member's own data); **no
+autonomous circle-facing output** — posting a summary/artifact back to the
+circle is human-approved through the §5.3 pending-outbound card like any other
+send. What a user can do after 4b: the actual §2.5 pitch — join a study circle,
+get a personal study agent working the group's material against your own gaps.
 
 **Phase 5 — Ride the mesh (XL, 6-8 wk Rust+TS incl. spike + security review;
 PLAN-35 Track B) `[v2 re-cost from 3-4wk; this is the critical-path keystone].`**
@@ -573,8 +725,9 @@ Phases 5/6/7/8; fix stale docs found en route (`types.circles.ts:14` "ships dark
 
 ### 7.9 Critical path, parallelism, and where it slips
 
-Serial spine: **P0 → P1 → P2 (measure/gate) → [P3‖P4 UI] and [PLAN-35 spike → P5
-Rust] → P6 → P7/P8.** P3/P4 (TS/UI) parallelize with P5 (Rust) **only with a second
+Serial spine: **P0 → P1 → P2 (measure/gate) → [P3‖P4‖P4b UI+loop] and [PLAN-35
+spike → P5 Rust] → P6 → P7/P8.** `[v3: P4b sits with the UI workstream; its
+quarantined-path subset is the one Phase-8 item pulled forward.]` P3/P4 (TS/UI) parallelize with P5 (Rust) **only with a second
 workstream** — this repo's history is one developer, so as scoped it is serial and
 the window is **~3 quarters for P0-P6**. Honest total incl. the omitted subsystems
 (guest page, crisis interceptor, transparency log, identity binding, the §5
@@ -631,6 +784,13 @@ receiver-side rate-limit/version-skew surprise.
    appetite: practice partner muted/removed in < 30% of 2-human test rooms**.
 3. **The chat gets used** (P3): **≥ 3 substantive human+agent exchanges per active
    circle per week**; **W4 return-to-circle ≥ 25%**.
+   3b. **The beachhead loop works** (P4b) `[v3]`: a shared artifact triggers **≥ 1
+   personal agent action (quiz/schedule/gap-map) within 48h for ≥ 50% of circle
+   members**; **artifact-attached invites convert ≥ 2x blank invites** (else the
+   job framing is doing nothing and §2.5's premise is wrong); W4 retention holds
+   through at least one **non-exam week** (else it's a cram tool, not a habit —
+   acceptable for a beachhead, but plan re-engagement around the academic
+   calendar instead of assuming weekly organic return).
 4. **The graph densifies without abuse** (P6-P7): FoF intros per new edge; **0**
    unblinded circle-id/membership leaks to the mesh; sybil-edge rejection rate;
    introducer-stake accuracy.
@@ -646,6 +806,11 @@ receiver-side rate-limit/version-skew surprise.
   reuses P0/P1/P5 and drops the member-pane/agent-chip/agent-small-talk
   investment — so this tripwire must be read **at P2/P3, before** those are
   built).
+- **Beachhead `[v3]`:** shared artifacts get posted but < 25% of members' agents
+  ever act on one, or the artifact-attached invite converts no better than a
+  blank one → the "agent as personal lens" value prop is wrong and the product
+  is NotebookLM-with-extra-steps; stop before P5 and rethink the wedge (the
+  shared-artifact commons may still be right with the personal-agent layer cut).
 - **Transport:** measured DCUtR success materially below ~70% on our fleet after
   the spike → treat the mailbox as steady-state and re-scope Phase 5.
 - **Worm:** any prompt-injection propagation across a friend edge in red-teaming →
@@ -657,8 +822,8 @@ receiver-side rate-limit/version-skew surprise.
 
 ## Appendix A: research provenance
 
-Three passes (§ header). `[CORRECTED]`/`[REFUTED]`/`[NEW]`/`[v2]` tags mark exactly
-where each pass changed the prior conclusion. Full per-claim `file:line` and URL
+Four passes (§ header). `[CORRECTED]`/`[REFUTED]`/`[NEW]`/`[v2]`/`[v3]` tags mark
+exactly where each pass changed the prior conclusion. Full per-claim `file:line` and URL
 receipts are in the session reports. Key external sources: DCUtR success
 [arXiv 2510.27500]; Prompt Infection [arXiv 2410.07283]; CaMeL
 [css.csail.mit.edu/6.5660]; INFA-Guard [arXiv 2601.14667]; Bluesky starter packs
@@ -666,3 +831,13 @@ receipts are in the session reports. Key external sources: DCUtR success
 NY GBS Art. 47 [governor.ny.gov]; Moltbook breach [SiliconANGLE 2026-02-02]; x402
 adoption [Chainalysis 2026-06]; competitor scan (Discord/Meta AI/Base App/XMTP/
 Telegram/Nostr-Clawstr/Matrix) in the session competitor report.
+
+`[v3]` pass sources: Gen Z market study at
+`docs/reviews/genz-ai-market-research-2026-07-15.md` (deep-research run
+wf_578e7ee7-cc2; primaries: Pew Dec-2025/Feb-2026/Apr-2026 teen surveys, Gallup
+Feb-Mar 2026, Common Sense/NORC 2025, Prophet 2026, BCG Video Gaming Report
+2026, Roblox newsroom Apr-2026 — the report also lists four **refuted** press
+stats not to cite). Study-tool landscape scan 2026-07-15: OpenAI group-chats
+launch + retirement notices [openai.com, help.openai.com]; NotebookLM student
+features [notebooklm.google]; Google ISTE 2026 student AI [blog.google];
+consumer agent-ecosystem skepticism [TechCrunch 2026-05-21].
