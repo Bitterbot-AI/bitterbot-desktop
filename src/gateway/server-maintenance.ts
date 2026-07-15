@@ -149,6 +149,10 @@ export function startGatewayMaintenanceTimers(params: {
   // circles are disabled or the node has no active connection.
   const circlesScheduler = startCirclesScheduler({
     getConfig: params.getConfig,
+    // PLAN-36 Phase 0: push a "circles" event when the mailbox drain delivers
+    // inbound (the direct-dial path emits the same event from a2a-http).
+    onInbound: (info) =>
+      params.broadcast("circles", { source: "mailbox", ...info }, { dropIfSlow: true }),
     resolveService: async () => {
       const cfg = params.getConfig();
       if (cfg.circles?.enabled !== true) return undefined;

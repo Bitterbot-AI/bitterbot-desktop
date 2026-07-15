@@ -109,6 +109,27 @@ describe("startCirclesScheduler", () => {
     h.stop();
   });
 
+  it("fires onInbound when a drain delivers messages, and not when it delivers none", async () => {
+    let dispatched = 2;
+    const { svc } = stubService({
+      pollMailbox: async () => ({ received: dispatched, dispatched }),
+    });
+    const seen: Array<{ count: number }> = [];
+    const h = startCirclesScheduler({
+      getConfig: () => ({ circles: { enabled: true } }),
+      resolveService: async () => svc,
+      pollIntervalMs: 1_000,
+      onInbound: (info) => seen.push(info),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toEqual([{ count: 2 }]);
+    // Next drain delivers nothing -> no further onInbound.
+    dispatched = 0;
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(seen).toEqual([{ count: 2 }]);
+    h.stop();
+  });
+
   it("stop() cancels the pending timer (no further cycles)", async () => {
     const { svc, calls } = stubService();
     const h = startCirclesScheduler({

@@ -126,6 +126,11 @@ export async function createGatewayRuntimeState(params: {
         getGatewayUrl: () =>
           `http://${params.bindHost === "0.0.0.0" ? "127.0.0.1" : params.bindHost}:${params.port}`,
         getSkillsVersion: params.getSkillsVersion ?? (() => 0),
+        // PLAN-36 Phase 0: push inbound circle messages to the UI (direct-dial
+        // path). The mailbox-drain path emits the same event from the fast
+        // scheduler in server-maintenance.
+        onCircleInbound: (info) =>
+          broadcast("circles", { source: "direct", ...info }, { dropIfSlow: true }),
       })
     : undefined;
   const handleA2aRequest = a2aHandler?.handle;

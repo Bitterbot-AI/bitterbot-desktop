@@ -192,4 +192,7 @@ export const GATEWAY_EVENTS = [
   "voicewake.changed",
   "exec.approval.requested",
   "exec.approval.resolved",
+  // PLAN-36 Phase 0: inbound circle message/ask/answer arrived (direct dial or
+  // mailbox drain) — the People pane refreshes on this instead of polling.
+  "circles",
 ];

@@ -427,6 +427,14 @@ function storeInboundMessage(
     env.id,
     now,
   );
+  // Receiving a signed message proves the sender is alive right now, so refresh
+  // their presence — an actively-chatting peer must not read as offline just
+  // because their last presence beat aged out (PLAN-36 Phase 0). Bumps
+  // last_seen_at only; endpoints/status from the last presence beat are kept.
+  db.prepare(
+    `INSERT INTO circle_peer_presence (peer_pubkey, last_seen_at) VALUES (?, ?)
+     ON CONFLICT(peer_pubkey) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+  ).run(env.author_pubkey, now);
   if (severity === "critical") {
     log.warn(
       `circle/${kind}: neutralized critical injection from ${env.author_pubkey.slice(0, 24)}… in ${env.circle_id}`,

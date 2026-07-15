@@ -51,6 +51,12 @@ export type CirclesSchedulerDeps = {
   presenceIntervalMs?: number;
   /** Cadence while disabled or with no active circle. Default 5 min. */
   idleIntervalMs?: number;
+  /**
+   * Fired when a mailbox drain delivered ≥1 inbound message, so the host can
+   * push a "circles" event to the UI (mirrors the direct-dial path). Best-
+   * effort; the scheduler swallows throws.
+   */
+  onInbound?: (info: { count: number }) => void;
   /** Injectable clock for tests. */
   now?: () => number;
 };
@@ -104,7 +110,14 @@ export function startCirclesScheduler(deps: CirclesSchedulerDeps): CirclesSchedu
         // wired-but-dead) and at what cadence.
         log.info(`fast scheduler active (poll ${pollMs}ms, presence ${presenceMs}ms)`);
       }
-      await service.pollMailbox();
+      const drained = await service.pollMailbox();
+      if (drained.dispatched > 0 && deps.onInbound) {
+        try {
+          deps.onInbound({ count: drained.dispatched });
+        } catch {
+          /* never let a UI notification break the loop */
+        }
+      }
       const t = now();
       if (t - lastPresenceAt >= presenceMs) {
         await service.heartbeat();

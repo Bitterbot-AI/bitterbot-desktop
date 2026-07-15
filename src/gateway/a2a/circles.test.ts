@@ -207,6 +207,22 @@ describe("circle A2A verbs", () => {
     expect(replay.ok).toBe(false);
   });
 
+  it("refreshes the sender's presence on message receipt (PLAN-36 Phase 0)", () => {
+    joinBob();
+    // No presence beat yet -> Bob has no presence row.
+    const before = db
+      .prepare(`SELECT last_seen_at FROM circle_peer_presence WHERE peer_pubkey = ?`)
+      .get(pubkeyId(bob));
+    expect(before).toBeUndefined();
+    // A message arrives; receipt proves Bob is alive now.
+    const env = makeCircleEnvelope("message", circleId, { text: "on my way" }, bob, NOW_S);
+    expect(handleCircleMethod("circle/message", { envelope: env }, db, NOW).ok).toBe(true);
+    const after = db
+      .prepare(`SELECT last_seen_at FROM circle_peer_presence WHERE peer_pubkey = ?`)
+      .get(pubkeyId(bob)) as { last_seen_at: number };
+    expect(after.last_seen_at).toBe(NOW);
+  });
+
   it("neutralizes critical injection payloads on receipt", () => {
     joinBob();
     const hostile = makeCircleEnvelope(

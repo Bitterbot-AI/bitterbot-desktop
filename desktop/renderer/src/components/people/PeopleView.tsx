@@ -19,6 +19,7 @@
 
 import { RefreshCw, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useGatewayEvent } from "../../hooks/useGatewayEvent";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 
@@ -118,6 +119,12 @@ export function PeopleView() {
     const timer = setInterval(() => void refresh(), 30_000);
     return () => clearInterval(timer);
   }, [refresh]);
+
+  // PLAN-36 Phase 0: refresh immediately when an inbound circle message arrives
+  // (direct dial or mailbox drain) instead of waiting for the 30s poll. The
+  // gateway pushes a "circles" event from both inbound paths.
+  const onCirclesEvent = useCallback(() => void refresh(), [refresh]);
+  useGatewayEvent("circles", onCirclesEvent);
 
   const mintInvite = useCallback(async () => {
     try {

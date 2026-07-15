@@ -76,6 +76,12 @@ export function createA2aHttpHandler(opts: {
   getSkills: () => SkillEntry[];
   getGatewayUrl: () => string;
   getSkillsVersion: () => number;
+  /**
+   * Fired when an inbound circle message/ask/answer is stored, so the gateway
+   * can push a "circles" event to the UI instead of it polling (PLAN-36 Phase
+   * 0). Best-effort; must never throw into the request path.
+   */
+  onCircleInbound?: (info: { circleId?: string; kind: "message" | "ask" | "answer" }) => void;
   /** Optional pre-opened DB (for tests). */
   taskDb?: DatabaseSync;
 }): A2aHttpHandler {
@@ -345,6 +351,28 @@ export function createA2aHttpHandler(opts: {
         circleDb,
         Date.now(),
       );
+      // Push a "circles" event to the UI on a freshly-stored inbound message so
+      // it appears without waiting for the 30s poll (PLAN-36 Phase 0). Only for
+      // content verbs, only on success; best-effort.
+      if (outcome.ok && opts.onCircleInbound) {
+        const inboundKind =
+          rpcRequest.method === "circle/message"
+            ? "message"
+            : rpcRequest.method === "circle/ask"
+              ? "ask"
+              : rpcRequest.method === "circle/answer"
+                ? "answer"
+                : undefined;
+        if (inboundKind) {
+          const circleId = (rpcRequest.params as { envelope?: { circle_id?: string } })?.envelope
+            ?.circle_id;
+          try {
+            opts.onCircleInbound({ circleId, kind: inboundKind });
+          } catch {
+            /* never let a UI notification break the request path */
+          }
+        }
+      }
       sendJson(
         res,
         200,
