@@ -46,9 +46,13 @@ runcmd:
   - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
   - apt-get update
   - apt-get install -y caddy
+  # The caddy systemd unit runs as User=caddy; under cloud-init the package's
+  # user creation can race the first start (217/USER). Ensure it exists.
+  - id caddy >/dev/null 2>&1 || groupadd --system caddy
+  - id caddy >/dev/null 2>&1 || useradd --system --gid caddy --create-home --home-dir /var/lib/caddy --shell /usr/sbin/nologin --comment Caddy caddy
   # Fetch the prebuilt mailbox bundle (self-contained; node builtins only)
   - mkdir -p /opt/bitterbot
   - curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/deploy/mailbox-host/mailbox-host.bundle.mjs -o /opt/bitterbot/mailbox-host.bundle.mjs
   - systemctl daemon-reload
   - systemctl enable --now bitterbot-mailbox
-  - systemctl restart caddy
+  - systemctl enable --now caddy
