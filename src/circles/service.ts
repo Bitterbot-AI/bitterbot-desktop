@@ -42,6 +42,8 @@ import {
   type SealedBlob,
 } from "./box-crypto.js";
 import { compileBriefingIfDue, latestBriefing, type CompiledBriefing } from "./briefing.js";
+import { getCircleTopicBus } from "./circle-topic-transport.js";
+import { circleTopicId, publishCircleFrame, type CircleTopicBus } from "./circle-topic.js";
 import { DEFAULT_ANSWER_POSTURE, isDisclosureAllowed, pendingAsks } from "./disclosure.js";
 import { makeCircleEnvelope, type CircleEnvelope } from "./envelope.js";
 import { createInvite, parseInviteCode, type CreatedInvite } from "./invites.js";
@@ -109,6 +111,13 @@ export type CirclesServiceDeps = {
   boxKeys?: BoxKeyPair;
   /** Injectable for tests; defaults to the persisted practice-partner key. */
   practiceKeys?: KeyPair;
+  /**
+   * Mesh topic bus (PLAN-36 Phase 4). Defaults to the process singleton set by
+   * startCircleTopicTransport; injectable for tests. When present, sends also
+   * publish to the circle's blinded topic so subscribed+online members receive
+   * over the mesh with no a2aUrl. Null/absent → direct-dial + mailbox only.
+   */
+  topicBus?: CircleTopicBus | null;
 };
 
 export type SendReport = {
@@ -157,6 +166,7 @@ export class CirclesService {
   private readonly key: KeyPair;
   private readonly boxKeys: BoxKeyPair;
   private practiceKeysLazy: KeyPair | undefined;
+  private readonly topicBusDep: CircleTopicBus | null | undefined;
   readonly store: CirclesStore;
 
   constructor(deps: CirclesServiceDeps) {
@@ -166,7 +176,14 @@ export class CirclesService {
     this.key = deps.keyPair ?? keyPairFromPrivateKeyPem(loadOrCreateDeviceIdentity().privateKeyPem);
     this.boxKeys = deps.boxKeys ?? loadOrCreateBoxKeys();
     this.practiceKeysLazy = deps.practiceKeys;
+    this.topicBusDep = deps.topicBus;
     this.store = new CirclesStore(this.db);
+  }
+
+  /** The mesh topic bus: injected value wins (incl. explicit null), else the
+   *  process singleton set by startCircleTopicTransport. */
+  private topicBus(): CircleTopicBus | null {
+    return this.topicBusDep !== undefined ? this.topicBusDep : getCircleTopicBus();
   }
 
   get pubkey(): string {
@@ -416,6 +433,20 @@ export class CirclesService {
     method: string,
     envelope: CircleEnvelope,
   ): Promise<SendReport> {
+    // PLAN-36 Phase 4: one publish to the circle's blinded topic reaches any
+    // subscribed+online member over the mesh, no a2aUrl required. Best-effort
+    // and additive — the direct-dial + mailbox paths below still run, and the
+    // receiver's envelope-id dedupe collapses any overlap. (Delivery status
+    // still reflects direct/mailbox; the topic reach is a bonus.)
+    const bus = this.topicBus();
+    if (bus) {
+      try {
+        const epoch = this.store.getCircle(circleId)?.keyEpoch ?? 0;
+        await publishCircleFrame(bus, circleId, epoch, method, envelope);
+      } catch (err) {
+        log.debug(`topic publish for ${circleId} failed: ${String(err)}`);
+      }
+    }
     // Bounded-parallel so one unreachable member (dial times out after
     // DIAL_TIMEOUT_MS) cannot serialize the whole fan-out. push() between
     // awaits is safe on the single JS thread; callers that assert on order
@@ -426,6 +457,25 @@ export class CirclesService {
       (ok ? report.delivered : report.failed).push(member.memberPubkey);
     });
     return report;
+  }
+
+  /**
+   * Subscribe to every active non-practice circle's blinded topic so this node
+   * RECEIVES mesh messages for them. Idempotent; the fast scheduler calls it
+   * each cycle so newly-joined circles get subscribed and epoch bumps re-home
+   * the subscription. No-op when no topic bus is active.
+   */
+  async ensureCircleSubscriptions(): Promise<void> {
+    const bus = this.topicBus();
+    if (!bus) return;
+    for (const c of this.listCircles()) {
+      if (c.kind === PRACTICE_KIND) continue;
+      try {
+        await bus.subscribe(circleTopicId(c.circleId, c.keyEpoch));
+      } catch (err) {
+        log.debug(`topic subscribe for ${c.circleId} failed: ${String(err)}`);
+      }
+    }
   }
 
   /**

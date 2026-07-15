@@ -1,9 +1,9 @@
 # Circle messaging over a per-circle gossip topic (prototype + spec)
 
 PLAN-36 Phase 4, the cheaper path to NAT-to-NAT circle delivery. Status:
-**application layer prototyped + tested; Rust dynamic-pubsub primitive + bridge
-BUILT (compiles); circles-service integration + shared-key confidentiality still
-to build.**
+**application layer + Rust primitive + bridge + circles-service integration all
+BUILT and unit-tested (degrades gracefully without the new orchestrator);
+remaining: deploy the new orchestrator binary, then shared-key confidentiality.**
 
 ## Why this over a full request-response protocol
 
@@ -52,10 +52,21 @@ Bridge methods (`OrchestratorBridge`): `subscribeCircleTopic`,
 them to the `CircleTopicBus` the app layer codes against (base64 on the wire).
 `cargo build` is green; a mock-bridge round-trip test covers the base64 path.
 
-**Still to build — the circles-service integration:** (a) subscribe to each
-active circle's topic on boot/join, (b) publish outbound over the topic when a
-member has no reachable `a2aUrl`, (c) feed `topic_message` into
-`receiveCircleFrame` with the right circle DB.
+**Circles-service integration (BUILT):** `circle-topic-transport.ts` holds the
+bus as a process singleton (so any per-call `CirclesService` can publish without
+threading the bridge) and wires inbound `topic_message` → `receiveCircleFrame`
+against the circles DB; `startCircleTopicTransport` is called at gateway startup
+when the orchestrator bridge is present (guarded on `circles.enabled`).
+`CirclesService.fanOut` publishes each send to the circle topic (additive to
+direct/mailbox; receiver dedupe collapses overlap), and
+`ensureCircleSubscriptions()` — called by the fast scheduler each cycle —
+subscribes every active non-practice circle so new circles + epoch bumps stay
+current. All optional: with no bus (until the new orchestrator runs) it is a
+clean no-op falling back to direct-dial + mailbox.
+
+**Still to deploy/build:** the new orchestrator binary must actually run on a
+node for the primitive to exist (like the mailbox host, an infra step); then
+shared-key confidentiality (§2).
 
 Guard rails the security review must cover: rate-limit inbound topic frames
 per-peer (reuse the circle rate buckets); cap subscribed topics per node;

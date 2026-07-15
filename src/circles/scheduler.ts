@@ -34,6 +34,8 @@ export type SchedulableCirclesService = {
   hasActiveCircles(): boolean;
   pollMailbox(): Promise<{ received: number; dispatched: number }>;
   heartbeat(): Promise<unknown>;
+  /** PLAN-36 Phase 4: keep mesh-topic subscriptions current (optional). */
+  ensureCircleSubscriptions?(): Promise<void>;
 };
 
 export type CirclesSchedulerDeps = {
@@ -110,6 +112,8 @@ export function startCirclesScheduler(deps: CirclesSchedulerDeps): CirclesSchedu
         // wired-but-dead) and at what cadence.
         log.info(`fast scheduler active (poll ${pollMs}ms, presence ${presenceMs}ms)`);
       }
+      // Keep mesh-topic subscriptions current (new circles, epoch bumps).
+      await service.ensureCircleSubscriptions?.();
       const drained = await service.pollMailbox();
       if (drained.dispatched > 0 && deps.onInbound) {
         try {

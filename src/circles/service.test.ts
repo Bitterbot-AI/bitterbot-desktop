@@ -306,6 +306,44 @@ describe("CirclesService end-to-end (two nodes)", () => {
     );
   });
 
+  it("also publishes sends to the circle topic and subscribes active circles (mesh transport)", async () => {
+    // PLAN-36 Phase 4: with a topic bus injected, a send fans to the mesh topic
+    // (additive to direct/mailbox) and the node subscribes its active circles.
+    const published: Array<{ topic: string; frame: string }> = [];
+    const subscribed: string[] = [];
+    const topicBus = {
+      async publish(topic: string, frame: string) {
+        published.push({ topic, frame });
+      },
+      async subscribe(topic: string) {
+        subscribed.push(topic);
+      },
+      async unsubscribe() {},
+    };
+    const fetchImpl = meshFetch({ ana: anaDb, bob: bobDb });
+    const anaBus = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl,
+      keyPair: anaKey,
+      topicBus,
+    });
+    const invite = anaBus.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    await anaBus.sendMessage({ circleId, text: "hi over the mesh" });
+    // The message rode the topic (frame carries the signed envelope).
+    expect(published.some((p) => p.frame.includes("hi over the mesh"))).toBe(true);
+    expect(published.every((p) => /^bitterbot\/circle\/[0-9a-f]{64}\/v1$/.test(p.topic))).toBe(
+      true,
+    );
+
+    // And the node subscribes the (non-practice) circle's topic to receive.
+    await anaBus.ensureCircleSubscriptions();
+    expect(subscribed).toContain(published[0]?.topic);
+  });
+
   it("keeps the shared tab identical on both nodes (append -> fan-out -> fold)", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

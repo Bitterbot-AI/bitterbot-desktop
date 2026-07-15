@@ -349,6 +349,39 @@ export async function startGatewaySidecars(params: {
           params.log.warn(`Query event handling failed: ${String(err)}`);
         });
       });
+      // PLAN-36 Phase 4: circle messages over the mesh. Wire inbound per-circle
+      // topic frames into the circles DB; the send side + subscriptions are
+      // driven by the circles service (fast scheduler ensures subscriptions).
+      // No-op unless circles are enabled; degrades cleanly if the orchestrator
+      // build lacks the topic primitive (subscribe/publish just error at debug).
+      if (params.cfg.circles?.enabled === true) {
+        void (async () => {
+          try {
+            const [
+              { startCircleTopicTransport },
+              { MemoryIndexManager },
+              { resolveDefaultAgentId },
+            ] = await Promise.all([
+              import("../circles/circle-topic-transport.js"),
+              import("../memory/manager.js"),
+              import("../agents/agent-scope.js"),
+            ]);
+            startCircleTopicTransport({
+              bridge: orchestratorBridge,
+              resolveCirclesDb: async () => {
+                const mgr = await MemoryIndexManager.get({
+                  cfg: params.cfg,
+                  agentId: resolveDefaultAgentId(params.cfg),
+                  purpose: "status",
+                });
+                return mgr?.getCirclesDb();
+              },
+            });
+          } catch (err) {
+            params.log.warn(`circle topic transport failed to start: ${String(err)}`);
+          }
+        })();
+      }
       // Phase 2 wallet discoverability: advertise our receiving address to the
       // mesh so peers can pay us by peerId without an out-of-band exchange.
       // Best-effort and gated on CDP credentials being present — nodes without
