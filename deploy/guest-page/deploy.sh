@@ -11,17 +11,21 @@
 #   MAILBOX_FQDN  (optional)  default mailbox.bitterbot.ai
 #   JOIN_FQDN     (optional)  default join.bitterbot.ai
 #   SSH_USER      (optional)  default root
+#   SSH_KEY       (optional)  path to the private key (e.g. the relay-fleet key);
+#                             omit to use the agent/default key
 set -euo pipefail
 : "${DROPLET_IP:?DROPLET_IP is required}"
 MAILBOX_FQDN="${MAILBOX_FQDN:-mailbox.bitterbot.ai}"
 JOIN_FQDN="${JOIN_FQDN:-join.bitterbot.ai}"
 SSH_USER="${SSH_USER:-root}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SSH="ssh -o StrictHostKeyChecking=accept-new ${SSH_USER}@${DROPLET_IP}"
+KEY_OPT=""
+[ -n "${SSH_KEY:-}" ] && KEY_OPT="-i ${SSH_KEY}"
+SSH="ssh ${KEY_OPT} -o StrictHostKeyChecking=accept-new ${SSH_USER}@${DROPLET_IP}"
 
 echo "==> uploading guest page to ${DROPLET_IP}"
 $SSH "mkdir -p /var/www/join/i"
-scp -o StrictHostKeyChecking=accept-new "${HERE}/index.html" "${SSH_USER}@${DROPLET_IP}:/var/www/join/i/index.html"
+scp ${KEY_OPT} -o StrictHostKeyChecking=accept-new "${HERE}/index.html" "${SSH_USER}@${DROPLET_IP}:/var/www/join/i/index.html"
 
 echo "==> writing two-site Caddyfile"
 $SSH "cat > /etc/caddy/Caddyfile" <<EOF
