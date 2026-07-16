@@ -121,7 +121,7 @@ The path is ~11 steps, two of them infrastructure projects:
 | Blocker                                                                                                                                                                                                   | Receipt                                                                                                                             |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | Transport is raw HTTP `fetch(<a2aUrl>/a2a)`; uses **none** of the libp2p mesh                                                                                                                             | `service.ts:81-103`; grep libp2p/peerId in `src/circles/*` = 0 `[CONFIRMED]`                                                        |
-| `createInviteCode()` **throws** without `circles.a2aPublicUrl`; gateway binds loopback                                                                                                                    | `service.ts:175-179`; `net.ts:270-280` `[CONFIRMED]`                                                                                |
+| ~~`createInviteCode()` **throws** without `circles.a2aPublicUrl`~~ **RESOLVED 2026-07-15 (§4 mailbox-mediated join):** now accepts a mailbox rendezvous instead of a URL                                  | `service.ts` `createInviteCode`/`redeemInviteCode`; `pending-join.ts`; migration v39 `[CONFIRMED]`                                  |
 | No default mailbox; relay droplets run **only** the orchestrator (no gateway serves mailboxes)                                                                                                            | `defaults.ts:604`; `cloud-init.yaml:40-48`; `bootnode/Dockerfile:3` `[CONFIRMED]`                                                   |
 | Delivery/presence/asks ride the 30-min tick; first drain is ~30 min **after boot**; no on-demand drain                                                                                                    | `manager.ts:2141,2146,2450-2471` `[CONFIRMED]`                                                                                      |
 | The circle sweep is nested in `if (this.marketplaceEconomics)` **and the inbound serve path 503s the same way** — disabling the marketplace silently kills all delivery _and_ inbound _and_ mailbox-serve | `manager.ts:2276,2333`; **`a2a-http.ts:309-336,367-380`** `[NEW, v2: worse than v1 stated — the coupling is on the serve path too]` |
@@ -361,9 +361,34 @@ The two taps that remain are the two consent acts (mint, accept).
 **Inviter:** People pane → **[Invite a friend]** → sheet with
 `https://join.bitterbot.ai/i#<code>` (secret in the URL **fragment**, so the
 hosted page never sees it) + QR (existing `renderQrPngBase64()`, `qr-image.ts`).
-**Honest caveat `[v2]`:** for a NAT'd inviter this button only works after the
-fleet broker (Phase 1b) or B-4 (Phase 4). The plan no longer narrates this as a
-Phase-1 default-install experience.
+
+**Reachability: mailbox-mediated join `[BUILT 2026-07-15]`.** The invite no longer
+requires a reachable inviter. `createInviteCode()` now advertises EITHER a direct
+a2a URL OR a **mailbox rendezvous** (the inviter's mailbox URL + box pubkey, in
+the invite envelope). On redeem, the invitee tries a direct dial first; if the
+inviter is unreachable/offline, it seals its signed `join` into the inviter's
+mailbox and returns `pending`. The inviter's next drain processes the join and
+mails back a signed `welcome` roster, which the invitee's drain imports (matched
+to a recorded pending-join + inviter signature, so a forged/unsolicited welcome
+can never import a bogus circle; `circle_pending_join`, migration v39). The
+scheduler re-posts a pending join each cycle until the welcome lands or the invite
+expires. Net: with the default mailbox configured, two NAT'd laptops connect with
+neither running a public URL. (The direct-dial fast path is unchanged when a URL
+is reachable.)
+
+_Adversarial pass (2026-07-15) fixed in this change: circle-id collision (a hostile
+inviter reusing a known circle's id to overwrite its roster — now refused when the
+id is known under a different owner, redeem-time + at import); repost flooding (now
+exponential 30s→1h backoff, bounded well under the mailbox quota); poison-blob
+accumulation (a permanently-unauthorized drained blob is now acked/dropped, only
+rate-limit errors retry). **Known follow-ups (pre-existing/systemic, not this
+change):** (a) the mailbox accepts anonymous posts, so anyone knowing a pubkey+URL
+can pre-fill a `RECIPIENT_QUOTA` and wedge delivery to an offline node — wants a
+per-sender sub-quota; (b) SSRF — the node dials peer-supplied a2a/mailbox URLs with
+only an `https?` check, wants a private-range block at `circleRpc`; (c) the mailbox
+host sees sender→recipient edges (content stays sealed); (d) `circle_pending_join`
+holds the invitee's own single-use secret in plaintext (no worse than the invite
+code)._
 
 **Invitee with Bitterbot:** link → `bitterbot://join#<code>` → consent card
 (inviter petname + key fingerprint + "their agent will see: presence,

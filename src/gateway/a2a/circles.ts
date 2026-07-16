@@ -210,6 +210,11 @@ export function handleCircleJoin(
   const validation = validateCircleEnvelope(env, {
     now: Math.floor(now / 1000),
     expectedType: "join",
+    // A mailbox-mediated join (§4) may sleep in the inviter's mailbox until it
+    // next polls, so the join envelope's ts can legitimately be old. The real
+    // freshness boundary is the invite's own expiry (checked in redeemInvite),
+    // not this ts — so allow up to the mailbox ceiling, like message/presence.
+    maxSkewSeconds: MAILBOX_MAX_AGE_SECONDS,
   });
   if (!validation.ok) {
     return err(A2aErrorCodes.UNAUTHORIZED, `invalid join envelope: ${validation.error}`);

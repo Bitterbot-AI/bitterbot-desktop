@@ -147,12 +147,16 @@ export function PeopleView() {
   const join = useCallback(async () => {
     if (!joinCode.trim()) return;
     try {
-      const res = await request<{ circleName: string; inviterName: string | null }>(
-        "circles.join",
-        { code: joinCode.trim() },
-      );
+      const res = await request<{
+        circleName: string;
+        inviterName: string | null;
+        status?: "connected" | "pending";
+      }>("circles.join", { code: joinCode.trim() });
+      const by = res.inviterName ? ` (invited by ${res.inviterName})` : "";
       setNotice(
-        `Connected: ${res.circleName}${res.inviterName ? ` (invited by ${res.inviterName})` : ""}`,
+        res.status === "pending"
+          ? `Request sent to ${res.circleName}${by}. You'll connect as soon as they're online.`
+          : `Connected: ${res.circleName}${by}`,
       );
       setJoinCode("");
       void refresh();

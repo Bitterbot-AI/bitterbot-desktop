@@ -24,6 +24,7 @@ import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { JsonValue } from "../commerce/sku.js";
 import type { BitterbotConfig } from "../config/types.bitterbot.js";
+import type { CircleJoinResult } from "../gateway/a2a/circles.js";
 import { keyPairFromPrivateKeyPem, pubkeyId, type KeyPair } from "../commerce/envelope.js";
 import { blobDigest, buildMailboxProof } from "../gateway/a2a/mailbox.js";
 import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
@@ -45,8 +46,21 @@ import { compileBriefingIfDue, latestBriefing, type CompiledBriefing } from "./b
 import { getCircleTopicBus } from "./circle-topic-transport.js";
 import { circleTopicId, publishCircleFrame, type CircleTopicBus } from "./circle-topic.js";
 import { DEFAULT_ANSWER_POSTURE, isDisclosureAllowed, pendingAsks } from "./disclosure.js";
-import { makeCircleEnvelope, type CircleEnvelope } from "./envelope.js";
+import {
+  MAILBOX_MAX_AGE_SECONDS,
+  makeCircleEnvelope,
+  validateCircleEnvelope,
+  type CircleEnvelope,
+} from "./envelope.js";
 import { createInvite, parseInviteCode, type CreatedInvite } from "./invites.js";
+import {
+  bumpPendingJoinAttempt,
+  deletePendingJoin,
+  listDuePendingJoins,
+  matchPendingJoin,
+  upsertPendingJoin,
+  type PendingJoin,
+} from "./pending-join.js";
 import {
   PRACTICE_KIND,
   loadOrCreatePracticeKeys,
@@ -159,6 +173,15 @@ async function circleRpc(
   }
 }
 
+/** The decrypted inner payload of a mailbox blob (generic verb, or a §4 join). */
+type MailboxInner = {
+  method?: string;
+  envelope?: unknown;
+  inviteId?: string;
+  secret?: string;
+  join?: unknown;
+};
+
 export class CirclesService {
   private readonly db: DatabaseSync;
   private readonly config: BitterbotConfig;
@@ -237,9 +260,13 @@ export class CirclesService {
   createInviteCode(args: { circleId?: string; name?: string; ttlMs?: number }): CreatedInvite & {
     circleId: string;
   } {
-    if (!this.a2aPublicUrl) {
+    // §4: a reachable a2a URL is no longer mandatory — a mailbox rendezvous is an
+    // equally valid dial-back address. Require at least one, or peers truly have
+    // no way to reach us.
+    const hasMailboxRendezvous = Boolean(this.myMailboxUrl && this.boxKeys.publicKeyB64);
+    if (!this.a2aPublicUrl && !hasMailboxRendezvous) {
       throw new Error(
-        "circles.a2aPublicUrl is not configured — peers would have no way to dial back",
+        "circles: neither a2aPublicUrl nor a mailbox is configured — peers would have no way to reach back",
       );
     }
     const circleId =
@@ -259,6 +286,8 @@ export class CirclesService {
       inviterKey: this.key,
       inviterName: this.displayName,
       inviterA2aUrl: this.a2aPublicUrl,
+      inviterMailboxUrl: hasMailboxRendezvous ? this.myMailboxUrl : undefined,
+      inviterBoxPubkey: hasMailboxRendezvous ? this.boxKeys.publicKeyB64 : undefined,
       scopes: DEFAULT_MEMBER_SCOPES,
       ttlMs: args.ttlMs,
     });
@@ -270,25 +299,99 @@ export class CirclesService {
   // -------------------------------------------------------------------------
 
   /**
-   * Redeem a pasted invite code: verify the inviter's signature FIRST, dial
-   * their node's circle/join, then mirror the returned roster locally. The
-   * human saw the parsed invite (who is asking) before this is called —
-   * calling it IS the invitee-side consent.
+   * Redeem a pasted invite code: verify the inviter's signature FIRST, then
+   * complete the pairing. Direct dial to the inviter's circle/join is the fast
+   * path; when the inviter has no reachable a2a URL or is offline, fall back to
+   * the §4 MAILBOX RENDEZVOUS — seal the join request into the inviter's mailbox
+   * and return `pending`, so the roster arrives via our own mailbox drain once
+   * they next poll. Either way the human saw the parsed invite (who is asking)
+   * before this is called — calling it IS the invitee-side consent.
    */
   async redeemInviteCode(code: string): Promise<{
     circleId: string;
     circleName: string;
     inviterName: string | null;
     members: number;
+    status: "connected" | "pending";
   }> {
     const parsed = parseInviteCode(code);
     if (!parsed.ok) {
       throw new Error(parsed.error);
     }
     const invite = parsed.invite;
-    const joinEnvelope = makeCircleEnvelope(
+    // Circle-id collision guard (review #1): a hostile inviter can name ANY
+    // circle_id in its invite, including one we already belong to. Refuse if we
+    // already know this circle under a DIFFERENT creator, so a redeem/welcome
+    // can never overwrite an existing circle's roster/endpoints.
+    const known = this.store.getCircle(invite.circleId);
+    if (known && known.creatorPubkey !== invite.inviterPubkey) {
+      throw new Error(
+        "join refused: this invite names a circle you already know under another owner",
+      );
+    }
+    const joinEnvelope = this.buildJoinEnvelope(invite.circleId);
+
+    // Fast path: a direct dial when the inviter published a reachable URL.
+    if (invite.inviterA2aUrl) {
+      const rpc = await circleRpc(this.fetchImpl, invite.inviterA2aUrl, "circle/join", {
+        inviteId: invite.inviteId,
+        secret: invite.secret,
+        join: joinEnvelope,
+      });
+      if (rpc.ok && rpc.result) {
+        const members = this.importJoinResult(invite, rpc.result);
+        log.info(`joined circle ${invite.circleId} (${members} members, direct)`);
+        return {
+          circleId: invite.circleId,
+          circleName: invite.circleName,
+          inviterName: invite.inviterName,
+          members,
+          status: "connected",
+        };
+      }
+      log.debug(`direct join for ${invite.circleId} failed (${rpc.error}); trying mailbox`);
+    }
+
+    // Fallback: mailbox rendezvous. Needs the inviter's mailbox coords AND our
+    // own mailbox (that is where their signed `welcome` roster comes back).
+    if (!invite.inviterMailboxUrl || !invite.inviterBoxPubkey) {
+      throw new Error("join failed: inviter is unreachable and left no mailbox rendezvous");
+    }
+    if (!this.myMailboxUrl) {
+      throw new Error(
+        "join failed: inviter is offline/unreachable and this node has no mailbox to receive the reply — set circles.mailbox.url",
+      );
+    }
+    const pending: PendingJoin = {
+      inviteId: invite.inviteId,
+      circleId: invite.circleId,
+      inviterPubkey: invite.inviterPubkey,
+      inviterMailboxUrl: invite.inviterMailboxUrl,
+      inviterBoxPubkey: invite.inviterBoxPubkey,
+      secret: invite.secret,
+      joinEnvelope,
+      attempts: 1,
+      nextAttemptAt: 0,
+      expiresAt: invite.expiresAt,
+      createdAt: Date.now(),
+    };
+    upsertPendingJoin(this.db, pending);
+    await this.postJoinToInviterMailbox(pending);
+    log.info(`join for circle ${invite.circleId} posted to inviter mailbox (pending welcome)`);
+    return {
+      circleId: invite.circleId,
+      circleName: invite.circleName,
+      inviterName: invite.inviterName,
+      members: 0,
+      status: "pending",
+    };
+  }
+
+  /** The invitee's signed `join` envelope (its dial-back coordinates). */
+  private buildJoinEnvelope(circleId: string): CircleEnvelope {
+    return makeCircleEnvelope(
       "join",
-      invite.circleId,
+      circleId,
       {
         display_name: this.displayName,
         a2a_url: this.a2aPublicUrl ?? null,
@@ -297,15 +400,18 @@ export class CirclesService {
       },
       this.key,
     );
-    const rpc = await circleRpc(this.fetchImpl, invite.inviterA2aUrl, "circle/join", {
-      inviteId: invite.inviteId,
-      secret: invite.secret,
-      join: joinEnvelope,
-    });
-    if (!rpc.ok || !rpc.result) {
-      throw new Error(`join failed: ${rpc.error ?? "no result"}`);
-    }
-    const result = rpc.result as {
+  }
+
+  /**
+   * Mirror a join/welcome roster into our local store. Shared by the direct
+   * (sync) path and the mailbox `welcome` path. Returns the member count, or
+   * throws if the returned circle does not match the invite/pending circle.
+   */
+  private importJoinResult(
+    invite: { circleId: string; circleName: string; circleKind: string },
+    raw: Record<string, unknown>,
+  ): number {
+    const result = raw as {
       circle?: {
         circleId?: string;
         name?: string;
@@ -333,6 +439,12 @@ export class CirclesService {
     ) {
       throw new Error("join failed: inviter returned a mismatched circle");
     }
+    // Central collision guard (review #1, defence in depth): never let an
+    // imported roster overwrite a circle we already know under a different owner.
+    const known = this.store.getCircle(circle.circleId);
+    if (known && known.creatorPubkey !== circle.creatorPubkey) {
+      throw new Error("join failed: circle id collides with a known circle under another owner");
+    }
     const members = (result.members ?? []).filter(
       (m): m is { memberPubkey: string } & typeof m => typeof m.memberPubkey === "string",
     );
@@ -356,13 +468,65 @@ export class CirclesService {
         joinedAt: m.joinedAt,
       })),
     );
-    log.info(`joined circle ${circle.circleId} (${members.length} members)`);
-    return {
-      circleId: circle.circleId,
-      circleName: typeof circle.name === "string" ? circle.name : invite.circleName,
-      inviterName: invite.inviterName,
-      members: members.length,
-    };
+    return members.length;
+  }
+
+  /**
+   * Seal the join request into the inviter's mailbox, addressed to the inviter's
+   * signing pubkey. Only the inviter's box key can open it, so the mailbox host
+   * stores ciphertext it cannot read.
+   */
+  private async postJoinToInviterMailbox(pending: PendingJoin): Promise<boolean> {
+    let blob: string;
+    try {
+      blob = JSON.stringify(
+        sealToBox(
+          pending.inviterBoxPubkey,
+          JSON.stringify({
+            method: "circle/join",
+            inviteId: pending.inviteId,
+            secret: pending.secret,
+            join: pending.joinEnvelope,
+          }),
+        ),
+      );
+    } catch (err) {
+      log.debug(`join seal for ${pending.circleId} failed: ${String(err)}`);
+      return false;
+    }
+    const proof = buildMailboxProof({
+      verb: "post",
+      pubkey: this.pubkey,
+      privateKey: this.key.privateKey,
+      extra: blobDigest(pending.inviterPubkey, blob),
+    });
+    const rpc = await circleRpc(this.fetchImpl, pending.inviterMailboxUrl, "mailbox/post", {
+      to: pending.inviterPubkey,
+      blob,
+      proof,
+    });
+    return rpc.ok;
+  }
+
+  /**
+   * Re-post every un-expired pending mailbox join. The fast scheduler calls this
+   * each drain cycle so a join placed while the inviter was offline is retried
+   * until their signed welcome lands (or the invite expires). Idempotent: a
+   * re-post is a rejoin on the inviter side, which just re-sends the welcome.
+   */
+  async repostPendingJoins(): Promise<number> {
+    const now = Date.now();
+    const due = listDuePendingJoins(this.db, now);
+    let reposted = 0;
+    for (const p of due) {
+      // Advance the backoff on every attempt (success or not) so an offline
+      // inviter cannot make us hammer their mailbox — review #2.
+      bumpPendingJoinAttempt(this.db, p.inviteId, now);
+      if (await this.postJoinToInviterMailbox(p)) {
+        reposted += 1;
+      }
+    }
+    return reposted;
   }
 
   // -------------------------------------------------------------------------
@@ -615,26 +779,62 @@ export class CirclesService {
     const ackIds: string[] = [];
     let dispatched = 0;
     for (const item of blobs) {
-      let inner: { method?: string; envelope?: unknown } | null = null;
+      let inner: MailboxInner | null = null;
       try {
         const sealed = JSON.parse(item.blob) as SealedBlob;
         const opened = openBox(this.boxKeys, sealed);
-        inner = opened ? (JSON.parse(opened) as { method?: string; envelope?: unknown }) : null;
+        inner = opened ? (JSON.parse(opened) as MailboxInner) : null;
       } catch {
         inner = null;
       }
-      if (!inner?.method || !inner.method.startsWith("circle/") || !inner.envelope) {
+      const method = inner?.method;
+
+      // §4 INVITER side: a sealed mailbox join request. Run it through the SAME
+      // circle/join handler a direct dial hits, then mail the signed `welcome`
+      // roster back to the invitee. Always ack — a re-post arrives as a fresh
+      // blob (rejoin), and a permanently-bad secret never becomes valid.
+      if (method === "circle/join" && inner?.inviteId && inner.secret && inner.join) {
+        const outcome = handleCircleMethod(
+          "circle/join",
+          { inviteId: inner.inviteId, secret: inner.secret, join: inner.join },
+          this.db,
+        );
+        if (outcome.ok) {
+          dispatched += 1;
+          await this.sendWelcome(inner.join as CircleEnvelope, outcome.result as CircleJoinResult);
+        } else {
+          log.debug(`mailbox join rejected: ${outcome.error.message}`);
+        }
+        ackIds.push(item.blobId);
+        continue;
+      }
+
+      // §4 INVITEE side: a signed `welcome` roster answering our pending join.
+      // importWelcome authenticates it (pending-join match + signer). Always ack
+      // — an unsolicited/forged welcome is dropped, and a genuine retry re-arrives.
+      if (method === "circle/welcome" && inner?.envelope) {
+        if (this.importWelcome(inner.envelope as CircleEnvelope)) {
+          dispatched += 1;
+        }
+        ackIds.push(item.blobId);
+        continue;
+      }
+
+      if (!method || !method.startsWith("circle/") || !inner?.envelope) {
         // Garbage or not-for-us: ack so it never clogs the box.
         ackIds.push(item.blobId);
         continue;
       }
-      const outcome = handleCircleMethod(inner.method, { envelope: inner.envelope }, this.db);
-      // Duplicate-envelope errors are SUCCESS for ack purposes (already
-      // delivered via a live dial); real handler errors leave it for retry.
-      if (outcome.ok || /duplicate/i.test(outcome.ok ? "" : outcome.error.message)) {
-        if (outcome.ok) {
-          dispatched += 1;
-        }
+      const outcome = handleCircleMethod(method, { envelope: inner.envelope }, this.db);
+      if (outcome.ok) {
+        dispatched += 1;
+        ackIds.push(item.blobId);
+      } else if (!/rate limit/i.test(outcome.error.message)) {
+        // A handler error on an IMMUTABLE envelope is deterministic — an
+        // unauthorized/duplicate/malformed blob will fail identically forever,
+        // so ack it (drop) rather than reprocess it every cycle until its 30-day
+        // TTL, which a hostile co-member could exploit to clog the box (review
+        // #4). ONLY a rate-limit is transient, so that alone is left for retry.
         ackIds.push(item.blobId);
       }
     }
@@ -648,6 +848,87 @@ export class CirclesService {
       await circleRpc(this.fetchImpl, url, "mailbox/ack", { proof: ackProof, blobIds: ackIds });
     }
     return { received: blobs.length, dispatched };
+  }
+
+  /**
+   * INVITER side of the §4 rendezvous: mail a signed `welcome` roster back to a
+   * member who joined via our mailbox. Sealed to their box key and addressed to
+   * their signing pubkey, both taken from the join envelope they signed — so
+   * only they can open it, and the signature lets them authenticate us.
+   */
+  private async sendWelcome(joinEnv: CircleEnvelope, result: CircleJoinResult): Promise<void> {
+    const body = joinEnv.body as Record<string, unknown>;
+    const toPubkey = joinEnv.author_pubkey;
+    const boxPubkey = typeof body.box_pubkey === "string" ? body.box_pubkey : "";
+    const mailboxUrl =
+      typeof body.mailbox_url === "string" && /^https?:\/\//.test(body.mailbox_url)
+        ? body.mailbox_url
+        : "";
+    if (!boxPubkey || !mailboxUrl) {
+      log.debug(`welcome skipped for ${joinEnv.circle_id}: invitee left no mailbox rendezvous`);
+      return;
+    }
+    const welcomeEnv = makeCircleEnvelope(
+      "welcome",
+      joinEnv.circle_id,
+      {
+        circle: result.circle as unknown as JsonValue,
+        members: result.members as unknown as JsonValue,
+      },
+      this.key,
+    );
+    let blob: string;
+    try {
+      blob = JSON.stringify(
+        sealToBox(boxPubkey, JSON.stringify({ method: "circle/welcome", envelope: welcomeEnv })),
+      );
+    } catch (err) {
+      log.debug(`welcome seal for ${joinEnv.circle_id} failed: ${String(err)}`);
+      return;
+    }
+    const proof = buildMailboxProof({
+      verb: "post",
+      pubkey: this.pubkey,
+      privateKey: this.key.privateKey,
+      extra: blobDigest(toPubkey, blob),
+    });
+    await circleRpc(this.fetchImpl, mailboxUrl, "mailbox/post", { to: toPubkey, blob, proof });
+  }
+
+  /**
+   * INVITEE side of the §4 rendezvous: import a signed `welcome` roster. Accepted
+   * ONLY when it is a valid `welcome` envelope AND matches a pending join for the
+   * same circle signed by the SAME pubkey that signed the invite — so a random
+   * party cannot seal us a bogus circle (they would need the inviter's key).
+   */
+  private importWelcome(env: CircleEnvelope): boolean {
+    const validation = validateCircleEnvelope(env, {
+      now: Math.floor(Date.now() / 1000),
+      expectedType: "welcome",
+      maxSkewSeconds: MAILBOX_MAX_AGE_SECONDS,
+    });
+    if (!validation.ok) {
+      log.debug(`welcome rejected: ${validation.error}`);
+      return false;
+    }
+    const pending = matchPendingJoin(this.db, env.circle_id, env.author_pubkey, Date.now());
+    if (!pending) {
+      log.debug(`welcome for ${env.circle_id} has no matching pending join; dropped`);
+      return false;
+    }
+    const body = env.body as Record<string, unknown>;
+    try {
+      this.importJoinResult(
+        { circleId: pending.circleId, circleName: "circle", circleKind: "connection" },
+        { circle: body.circle, members: body.members },
+      );
+    } catch (err) {
+      log.debug(`welcome import for ${env.circle_id} failed: ${String(err)}`);
+      return false;
+    }
+    deletePendingJoin(this.db, pending.inviteId);
+    log.info(`joined circle ${env.circle_id} via mailbox welcome`);
+    return true;
   }
 
   // -------------------------------------------------------------------------

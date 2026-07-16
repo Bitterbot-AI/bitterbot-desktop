@@ -74,7 +74,17 @@ export type CreateInviteArgs = {
   circleKind: string;
   inviterKey: KeyPair;
   inviterName?: string;
-  inviterA2aUrl: string;
+  /**
+   * The inviter's direct a2a URL (fast path). Optional as of §4: a node with no
+   * reachable URL can still invite by advertising its mailbox rendezvous below.
+   * At least one of {inviterA2aUrl, (inviterMailboxUrl + inviterBoxPubkey)} must
+   * be present or the invitee would have no way to reach back.
+   */
+  inviterA2aUrl?: string;
+  /** Where the invitee drops a sealed join request when direct dial is out (§4). */
+  inviterMailboxUrl?: string;
+  /** The inviter's X25519 box pubkey, so the invitee can seal that request. */
+  inviterBoxPubkey?: string;
   scopes: CircleScope[];
   maxUses?: number;
   ttlMs?: number;
@@ -122,7 +132,11 @@ export function createInvite(db: DatabaseSync, args: CreateInviteArgs): CreatedI
       circle_name: args.circleName,
       circle_kind: args.circleKind,
       inviter_name: args.inviterName ?? null,
-      inviter_a2a_url: args.inviterA2aUrl,
+      inviter_a2a_url: args.inviterA2aUrl ?? null,
+      // §4 mailbox rendezvous: lets the invitee reach back when the inviter has
+      // no reachable a2a URL (or is offline at join time).
+      inviter_mailbox_url: args.inviterMailboxUrl ?? null,
+      inviter_box_pubkey: args.inviterBoxPubkey ?? null,
       scopes: args.scopes as unknown as JsonValue,
       expires_at: expiresAt,
     },
@@ -145,7 +159,12 @@ export type ParsedInvite = {
   circleKind: string;
   inviterPubkey: string;
   inviterName: string | null;
+  /** Direct a2a URL, or "" when the inviter is mailbox-only (§4). */
   inviterA2aUrl: string;
+  /** Mailbox rendezvous for reaching an unreachable/offline inviter (§4). */
+  inviterMailboxUrl: string;
+  /** The inviter's box pubkey, to seal the mailbox join request (§4). */
+  inviterBoxPubkey: string;
   scopes: CircleScope[];
   expiresAt: number;
 };
@@ -193,8 +212,18 @@ export function parseInviteCode(
     return { ok: false, error: "invite expired" };
   }
   const inviteId = typeof body.invite_id === "string" ? body.invite_id : "";
-  const inviterA2aUrl = typeof body.inviter_a2a_url === "string" ? body.inviter_a2a_url : "";
-  if (!inviteId || !/^https?:\/\//.test(inviterA2aUrl)) {
+  const httpUrl = (v: unknown): string =>
+    typeof v === "string" && /^https?:\/\//.test(v) ? v : "";
+  const inviterA2aUrl = httpUrl(body.inviter_a2a_url);
+  const inviterMailboxUrl = httpUrl(body.inviter_mailbox_url);
+  const inviterBoxPubkey =
+    typeof body.inviter_box_pubkey === "string" && body.inviter_box_pubkey.length <= 64
+      ? body.inviter_box_pubkey
+      : "";
+  // The invitee must have SOME way to reach back: a direct URL, or a mailbox
+  // rendezvous (URL + the inviter's box key to seal the request to).
+  const hasMailboxRendezvous = inviterMailboxUrl !== "" && inviterBoxPubkey !== "";
+  if (!inviteId || (inviterA2aUrl === "" && !hasMailboxRendezvous)) {
     return { ok: false, error: "malformed invite body" };
   }
   const scopes = Array.isArray(body.scopes)
@@ -212,6 +241,8 @@ export function parseInviteCode(
       inviterPubkey: env.author_pubkey,
       inviterName: typeof body.inviter_name === "string" ? body.inviter_name : null,
       inviterA2aUrl,
+      inviterMailboxUrl,
+      inviterBoxPubkey,
       scopes,
       expiresAt,
     },

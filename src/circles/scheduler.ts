@@ -36,6 +36,8 @@ export type SchedulableCirclesService = {
   heartbeat(): Promise<unknown>;
   /** PLAN-36 Phase 4: keep mesh-topic subscriptions current (optional). */
   ensureCircleSubscriptions?(): Promise<void>;
+  /** PLAN-36 §4: re-post pending mailbox joins until their welcome lands (optional). */
+  repostPendingJoins?(): Promise<number>;
 };
 
 export type CirclesSchedulerDeps = {
@@ -114,6 +116,9 @@ export function startCirclesScheduler(deps: CirclesSchedulerDeps): CirclesSchedu
       }
       // Keep mesh-topic subscriptions current (new circles, epoch bumps).
       await service.ensureCircleSubscriptions?.();
+      // Re-post any join awaiting an offline inviter, THEN drain (so a welcome
+      // that crossed with our re-post is imported in the same cycle).
+      await service.repostPendingJoins?.();
       const drained = await service.pollMailbox();
       if (drained.dispatched > 0 && deps.onInbound) {
         try {

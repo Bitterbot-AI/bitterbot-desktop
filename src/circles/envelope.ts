@@ -39,6 +39,7 @@ export const MAILBOX_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 export type CircleEnvelopeType =
   | "invite" // inviter-signed invite payload (token flow, invites.ts)
   | "join" // invitee's signed acceptance — the pairing ceremony's second half
+  | "welcome" // inviter-signed roster reply to a mailbox-mediated join (§4)
   | "message" // agent-to-agent conversation (hostile principal on receipt)
   | "presence" // liveness heartbeat (the one always-allowed disclosure)
   | "ask" // graph question fan-out

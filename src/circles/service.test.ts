@@ -3,11 +3,20 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import { generateKeyPair, pubkeyId, type KeyPair } from "../commerce/envelope.js";
 import { handleCircleMethod, resetCircleRateLimits } from "../gateway/a2a/circles.js";
-import { handleMailboxMethod, resetMailboxRateLimits } from "../gateway/a2a/mailbox.js";
+import {
+  blobDigest,
+  buildMailboxProof,
+  handleMailboxMethod,
+  resetMailboxRateLimits,
+} from "../gateway/a2a/mailbox.js";
+import { DEFAULT_MEMBER_SCOPES } from "../memory/circles-store.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
-import { generateBoxKeyPair } from "./box-crypto.js";
+import { generateBoxKeyPair, sealToBox } from "./box-crypto.js";
 import { setDisclosureGrant } from "./disclosure.js";
+import { makeCircleEnvelope } from "./envelope.js";
+import { createInvite, parseInviteCode } from "./invites.js";
+import { pendingJoinBackoffMs } from "./pending-join.js";
 import { CirclesService, type FetchLike } from "./service.js";
 
 // PLAN-31 C1 end-to-end: two nodes (two DBs, two keys), a fake fetch that
@@ -408,5 +417,273 @@ describe("CirclesService end-to-end (two nodes)", () => {
     });
     expect(await bob.answerPendingAsks()).toEqual({ declined: 0, awaitingHuman: 1 });
     expect(ana.messages(circleId).filter((m) => m.direction === "in")).toHaveLength(1);
+  });
+});
+
+// PLAN-36 §4: mailbox-mediated join — the invitee completes a join WITHOUT the
+// inviter being reachable, by depositing a sealed join request in the inviter's
+// mailbox and receiving the signed `welcome` roster back through its own.
+describe("CirclesService mailbox-mediated join (§4)", () => {
+  let anaDb: DatabaseSync;
+  let bobDb: DatabaseSync;
+  let anaKey: KeyPair;
+  let bobKey: KeyPair;
+
+  beforeEach(() => {
+    resetCircleRateLimits();
+    resetMailboxRateLimits();
+    anaDb = openDb();
+    bobDb = openDb();
+    anaKey = generateKeyPair();
+    bobKey = generateKeyPair();
+  });
+
+  it("mints with a mailbox rendezvous when there is no a2a URL", () => {
+    const ana = new CirclesService({
+      db: anaDb,
+      config: {
+        circles: {
+          enabled: true,
+          displayName: "Ana",
+          mailbox: { url: "https://relay.test", serve: false },
+        },
+      },
+      fetchImpl: meshFetch({}),
+      keyPair: anaKey,
+      boxKeys: generateBoxKeyPair(),
+    });
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    const parsed = parseInviteCode(invite.code);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.invite.inviterA2aUrl).toBe(""); // no direct URL advertised
+      expect(parsed.invite.inviterMailboxUrl).toBe("https://relay.test");
+      expect(parsed.invite.inviterBoxPubkey).not.toBe("");
+    }
+  });
+
+  it("completes the join after the offline inviter drains and welcomes back", async () => {
+    const relayDb = openDb();
+    const offline = new Set<string>(["ana"]); // Ana is unreachable throughout the join
+    const fetchImpl = meshFetch({ ana: anaDb, bob: bobDb, relay: relayDb }, { offline });
+    const anaBox = generateBoxKeyPair();
+    const bobBox = generateBoxKeyPair();
+    const ana = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana", "relay"),
+      fetchImpl,
+      keyPair: anaKey,
+      boxKeys: anaBox,
+    });
+    const bob = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob", "relay"),
+      fetchImpl,
+      keyPair: bobKey,
+      boxKeys: bobBox,
+    });
+
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    const circleId = invite.circleId;
+
+    // Bob redeems while Ana is offline: direct dial fails -> mailbox rendezvous.
+    const pending = await bob.redeemInviteCode(invite.code);
+    expect(pending.status).toBe("pending");
+    expect(pending.members).toBe(0);
+    expect(bob.listCircles().some((c) => c.circleId === circleId)).toBe(false);
+
+    // The relay holds ONE sealed join request addressed to Ana (ciphertext only).
+    const joinBlobs = relayDb
+      .prepare(`SELECT recipient_pubkey, blob_json FROM mailbox_blobs`)
+      .all() as Array<{ recipient_pubkey: string; blob_json: string }>;
+    expect(joinBlobs).toHaveLength(1);
+    expect(joinBlobs[0]?.recipient_pubkey).toBe(pubkeyId(anaKey));
+    expect(joinBlobs[0]?.blob_json).not.toContain("circle/join"); // sealed, not plaintext
+
+    // Ana comes online and drains: processes the join and mails the welcome back.
+    offline.delete("ana");
+    expect(await ana.pollMailbox()).toEqual({ received: 1, dispatched: 1 });
+    expect(ana.store.getMembers(circleId).map((m) => m.memberPubkey)).toContain(pubkeyId(bobKey));
+    // The join blob is acked; the relay now holds only the welcome, for Bob.
+    const afterAna = relayDb.prepare(`SELECT recipient_pubkey FROM mailbox_blobs`).all() as Array<{
+      recipient_pubkey: string;
+    }>;
+    expect(afterAna.map((b) => b.recipient_pubkey)).toEqual([pubkeyId(bobKey)]);
+
+    // Bob drains: imports the signed welcome -> connected, roster mirrored, pending cleared.
+    expect(await bob.pollMailbox()).toEqual({ received: 1, dispatched: 1 });
+    expect(bob.listCircles().some((c) => c.circleId === circleId)).toBe(true);
+    expect(
+      bob.store
+        .getMembers(circleId)
+        .map((m) => m.memberPubkey)
+        .toSorted(),
+    ).toEqual([pubkeyId(anaKey), pubkeyId(bobKey)].toSorted());
+    expect(relayDb.prepare(`SELECT COUNT(*) AS n FROM mailbox_blobs`).get()).toEqual({ n: 0 });
+    // Idempotent: a second Bob poll is a no-op.
+    expect(await bob.pollMailbox()).toEqual({ received: 0, dispatched: 0 });
+  });
+
+  it("drops a welcome with no matching pending join (anti-injection)", async () => {
+    const relayDb = openDb();
+    const fetchImpl = meshFetch({ bob: bobDb, relay: relayDb });
+    const bobBox = generateBoxKeyPair();
+    const bob = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob", "relay"),
+      fetchImpl,
+      keyPair: bobKey,
+      boxKeys: bobBox,
+    });
+
+    // A stranger forges a validly-signed welcome for a circle Bob never asked to
+    // join, seals it to Bob's box key, and drops it in Bob's mailbox.
+    const strangerKey = generateKeyPair();
+    const forged = makeCircleEnvelope(
+      "welcome",
+      "circle-bob-never-requested",
+      {
+        circle: {
+          circleId: "circle-bob-never-requested",
+          name: "Totally Legit",
+          kind: "connection",
+          creatorPubkey: pubkeyId(strangerKey),
+          keyEpoch: 0,
+          createdAt: Date.now(),
+        },
+        members: [],
+      },
+      strangerKey,
+    );
+    const blob = JSON.stringify(
+      sealToBox(
+        bobBox.publicKeyB64,
+        JSON.stringify({ method: "circle/welcome", envelope: forged }),
+      ),
+    );
+    const proof = buildMailboxProof({
+      verb: "post",
+      pubkey: pubkeyId(strangerKey),
+      privateKey: strangerKey.privateKey,
+      extra: blobDigest(pubkeyId(bobKey), blob),
+    });
+    const posted = handleMailboxMethod(
+      "mailbox/post",
+      { to: pubkeyId(bobKey), blob, proof },
+      relayDb,
+      Date.now(),
+    );
+    expect(posted.ok).toBe(true);
+
+    // Bob drains: the welcome is acked (cleared) but NOT imported — no circle.
+    expect(await bob.pollMailbox()).toEqual({ received: 1, dispatched: 0 });
+    expect(bob.listCircles().some((c) => c.circleId === "circle-bob-never-requested")).toBe(false);
+    expect(relayDb.prepare(`SELECT COUNT(*) AS n FROM mailbox_blobs`).get()).toEqual({ n: 0 });
+  });
+
+  it("refuses an invite that reuses a known circle id under a different owner (review #1)", async () => {
+    const fetchImpl = meshFetch({ ana: anaDb, bob: bobDb });
+    const ana = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl,
+      keyPair: anaKey,
+    });
+    const bob = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob"),
+      fetchImpl,
+      keyPair: bobKey,
+    });
+    // Ana and Bob connect normally: Bob now knows circle X, created by Ana.
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    // Mallory forges an invite REUSING circle X's id, signed by Mallory's key —
+    // an attempt to later overwrite Bob's view of Ana's circle (roster/endpoints).
+    const malloryKey = generateKeyPair();
+    const forged = createInvite(openDb(), {
+      circleId,
+      circleName: "Free Money",
+      circleKind: "connection",
+      inviterKey: malloryKey,
+      inviterName: "Mallory",
+      inviterA2aUrl: "https://mallory.test",
+      scopes: DEFAULT_MEMBER_SCOPES,
+    });
+    await expect(bob.redeemInviteCode(forged.code)).rejects.toThrow(/another owner/);
+    // Ana is still the sole owner; no Mallory membership leaked in.
+    expect(bob.store.getCircle(circleId)?.creatorPubkey).toBe(pubkeyId(anaKey));
+    expect(bob.store.getMembers(circleId).map((m) => m.memberPubkey)).not.toContain(
+      pubkeyId(malloryKey),
+    );
+  });
+
+  it("backs off re-posting a pending join instead of flooding the inviter (review #2)", async () => {
+    const relayDb = openDb();
+    const offline = new Set<string>(["ana"]);
+    const fetchImpl = meshFetch({ ana: anaDb, bob: bobDb, relay: relayDb }, { offline });
+    const ana = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana", "relay"),
+      fetchImpl,
+      keyPair: anaKey,
+      boxKeys: generateBoxKeyPair(),
+    });
+    const bob = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob", "relay"),
+      fetchImpl,
+      keyPair: bobKey,
+      boxKeys: generateBoxKeyPair(),
+    });
+    const pending = await bob.redeemInviteCode(ana.createInviteCode({ name: "Ana & Bob" }).code);
+    expect(pending.status).toBe("pending");
+    // The initial post is out; an immediate re-post is NOT due (30s backoff).
+    expect(relayDb.prepare(`SELECT COUNT(*) AS n FROM mailbox_blobs`).get()).toEqual({ n: 1 });
+    expect(await bob.repostPendingJoins()).toBe(0);
+    expect(relayDb.prepare(`SELECT COUNT(*) AS n FROM mailbox_blobs`).get()).toEqual({ n: 1 });
+    // Backoff schedule: 30s doubling to a 1h cap.
+    expect(pendingJoinBackoffMs(1)).toBe(30_000);
+    expect(pendingJoinBackoffMs(2)).toBe(60_000);
+    expect(pendingJoinBackoffMs(99)).toBe(60 * 60_000);
+  });
+
+  it("drops (acks) an unauthorized generic blob rather than reprocessing forever (review #4)", async () => {
+    const relayDb = openDb();
+    const fetchImpl = meshFetch({ bob: bobDb, relay: relayDb });
+    const bobBox = generateBoxKeyPair();
+    const bob = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob", "relay"),
+      fetchImpl,
+      keyPair: bobKey,
+      boxKeys: bobBox,
+    });
+    // A stranger seals a circle/message for a circle Bob is NOT a member of.
+    const strangerKey = generateKeyPair();
+    const env = makeCircleEnvelope(
+      "message",
+      "ghost-circle",
+      { content: "unauthorized", thread_id: "t1", kind: "message" },
+      strangerKey,
+    );
+    const blob = JSON.stringify(
+      sealToBox(bobBox.publicKeyB64, JSON.stringify({ method: "circle/message", envelope: env })),
+    );
+    const proof = buildMailboxProof({
+      verb: "post",
+      pubkey: pubkeyId(strangerKey),
+      privateKey: strangerKey.privateKey,
+      extra: blobDigest(pubkeyId(bobKey), blob),
+    });
+    handleMailboxMethod("mailbox/post", { to: pubkeyId(bobKey), blob, proof }, relayDb, Date.now());
+
+    // Drain: unauthorized (not rate-limited) -> acked/dropped, not left to clog.
+    expect(await bob.pollMailbox()).toEqual({ received: 1, dispatched: 0 });
+    expect(relayDb.prepare(`SELECT COUNT(*) AS n FROM mailbox_blobs`).get()).toEqual({ n: 0 });
+    // A second drain sees nothing (the poison blob did not linger).
+    expect(await bob.pollMailbox()).toEqual({ received: 0, dispatched: 0 });
   });
 });

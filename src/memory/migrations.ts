@@ -1612,6 +1612,38 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circle_messages", "delivery_status", "TEXT");
     },
   },
+  {
+    version: 39,
+    description:
+      "PLAN-36 §4 (mailbox-mediated join): circle_pending_join — the INVITEE " +
+      "side of an async join. When the inviter has no reachable a2a URL (or is " +
+      "offline), the invitee seals its join request into the inviter's mailbox " +
+      "and records the pending join here. It is re-posted each drain cycle until " +
+      "a signed `welcome` roster arrives (matched by circle_id + inviter_pubkey), " +
+      "or the invite expires. Holds only the invitee's OWN single-use secret + " +
+      "join envelope, so it can rebuild the request without re-parsing the code.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_pending_join (
+          invite_id           TEXT PRIMARY KEY,
+          circle_id           TEXT NOT NULL,
+          inviter_pubkey      TEXT NOT NULL,
+          inviter_mailbox_url TEXT NOT NULL,
+          inviter_box_pubkey  TEXT NOT NULL,
+          secret              TEXT NOT NULL,
+          join_envelope_json  TEXT NOT NULL,
+          attempts            INTEGER NOT NULL DEFAULT 1,
+          next_attempt_at     INTEGER NOT NULL DEFAULT 0,
+          expires_at          INTEGER NOT NULL,
+          created_at          INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_circle_pending_join_circle ` +
+          `ON circle_pending_join(circle_id, inviter_pubkey)`,
+      );
+    },
+  },
 ];
 
 /**
