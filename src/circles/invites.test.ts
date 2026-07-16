@@ -3,7 +3,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { generateKeyPair, pubkeyId } from "../commerce/envelope.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
-import { createInvite, parseInviteCode, redeemInvite, revokeInvite } from "./invites.js";
+import {
+  GUEST_JOIN_URL,
+  createInvite,
+  inviteLink,
+  parseInviteCode,
+  redeemInvite,
+  revokeInvite,
+} from "./invites.js";
 
 // PLAN-31 C1: invite create/parse/redeem. Invariants: secret never at rest
 // (hash only), signature verified before any dial, expiry + single-use +
@@ -159,5 +166,19 @@ describe("circle invites", () => {
       now: NOW + 5000,
     });
     expect(late.ok).toBe(false);
+  });
+});
+
+// PLAN-36 §4: the frictionless share link. The code rides the URL fragment so
+// the hosting server never sees the secret; the fragment must round-trip back
+// to the exact code the app can parse.
+describe("inviteLink", () => {
+  it("wraps a code as a guest-JOIN link with the code in the fragment", () => {
+    const code = "bbc1.eyJlbnYiOnt9fQ";
+    const link = inviteLink(code);
+    expect(link).toBe(`${GUEST_JOIN_URL}#${code}`);
+    expect(link.startsWith("https://")).toBe(true);
+    // The fragment (everything after the first #) is exactly the code.
+    expect(link.slice(link.indexOf("#") + 1)).toBe(code);
   });
 });

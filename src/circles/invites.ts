@@ -31,6 +31,19 @@ import { makeCircleEnvelope, validateCircleEnvelope, type CircleEnvelope } from 
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const INVITE_CODE_PREFIX = "bbc1";
 
+/**
+ * Guest-JOIN page base (PLAN-36 §4). An invite becomes a shareable link
+ * `${GUEST_JOIN_URL}#<code>` — the code rides the URL FRAGMENT, which browsers
+ * never send to the server, so the hosting page's server never sees the secret;
+ * only the page's client-side JS (running for the invitee) reads it.
+ */
+export const GUEST_JOIN_URL = "https://join.bitterbot.ai/i";
+
+/** Wrap an invite code as its shareable guest-JOIN link. */
+export function inviteLink(code: string): string {
+  return `${GUEST_JOIN_URL}#${code}`;
+}
+
 export type InviteRecord = {
   inviteId: string;
   circleId: string;

@@ -23,6 +23,12 @@ variable "hostname" {
   default     = "mailbox.bitterbot.ai"
 }
 
+variable "join_hostname" {
+  description = "Public FQDN for the static guest-JOIN page (PLAN-36 §4)."
+  type        = string
+  default     = "join.bitterbot.ai"
+}
+
 variable "region" {
   description = "DO region. Central-ish keeps latency reasonable worldwide."
   type        = string
@@ -55,7 +61,10 @@ resource "digitalocean_droplet" "mailbox" {
   ipv6       = true
   monitoring = true
   tags       = ["bitterbot", "circles-mailbox"]
-  user_data  = templatefile("${path.module}/cloud-init.yaml", { fqdn = var.hostname })
+  user_data = templatefile("${path.module}/cloud-init.yaml", {
+    fqdn      = var.hostname
+    join_fqdn = var.join_hostname
+  })
 }
 
 resource "digitalocean_firewall" "mailbox" {
@@ -95,4 +104,8 @@ output "ipv4" {
 
 output "hostname" {
   value = var.hostname
+}
+
+output "join_hostname" {
+  value = var.join_hostname
 }

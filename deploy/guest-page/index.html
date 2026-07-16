@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>You've been invited to a Bitterbot Circle</title>
+    <!--
+      PLAN-36 Phase 4: the guest-JOIN page. Served at https://join.bitterbot.ai/i
+      The invite code rides the URL FRAGMENT (#bbc1.…), which browsers never send
+      to the server, so this host never receives the secret. All decoding happens
+      client-side, below, for the invitee only.
+
+      This page is a friendly PREVIEW: it decodes the invite to show who's asking.
+      The real trust gate is in the app — Bitterbot verifies the invite's Ed25519
+      signature before it dials anyone (see src/circles/invites.ts parseInviteCode).
+      Self-contained: no external requests, no analytics, no fonts.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0b0e14;
+        --card: #131722;
+        --fg: #e6e9ef;
+        --muted: #9aa4b2;
+        --border: #232a38;
+        --accent: #6ea8fe;
+        --accent-fg: #0b0e14;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f5f6f8;
+          --card: #ffffff;
+          --fg: #1b1f27;
+          --muted: #5b6472;
+          --border: #e3e6eb;
+          --accent: #2f6fed;
+          --accent-fg: #ffffff;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .card {
+        width: 100%;
+        max-width: 460px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+        margin-bottom: 20px;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      h1 { font-size: 20px; margin: 0 0 6px; }
+      .sub { color: var(--muted); margin: 0 0 20px; }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 0;
+        border-top: 1px solid var(--border);
+      }
+      .row .k { color: var(--muted); }
+      .row .v { text-align: right; word-break: break-word; }
+      .fp { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+      .actions { margin-top: 22px; display: flex; flex-direction: column; gap: 10px; }
+      .btn {
+        display: block;
+        width: 100%;
+        text-align: center;
+        padding: 12px 16px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg);
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+      .btn:active { transform: translateY(1px); }
+      .note { color: var(--muted); font-size: 13px; margin-top: 16px; }
+      .safety {
+        margin-top: 16px;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: rgba(110, 168, 254, 0.06);
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .error { color: #ff6b6b; }
+      #copied { opacity: 0; transition: opacity 0.2s; color: var(--accent); font-size: 13px; text-align: center; }
+      #copied.show { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <main class="card" id="card">
+      <div class="brand"><span class="dot"></span> Bitterbot Circles</div>
+      <div id="content">
+        <h1>Reading your invite…</h1>
+      </div>
+    </main>
+
+    <script>
+      "use strict";
+
+      // Decode base64url (no padding) -> UTF-8 string.
+      function b64urlToText(s) {
+        s = s.replace(/-/g, "+").replace(/_/g, "/");
+        while (s.length % 4) s += "=";
+        const bin = atob(s);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+        return new TextDecoder().decode(bytes);
+      }
+
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+        );
+      }
+
+      function fingerprint(authorPubkey) {
+        const m = /^ed25519:([0-9a-f]{64})$/.exec(authorPubkey || "");
+        if (!m) return "unknown";
+        const h = m[1];
+        // Grouped short prefix — enough to compare out-of-band with your friend.
+        return `${h.slice(0, 4)} ${h.slice(4, 8)} ${h.slice(8, 12)}`;
+      }
+
+      function fmtExpiry(ts) {
+        if (!ts || typeof ts !== "number") return "no expiry";
+        const d = new Date(ts);
+        const days = Math.round((ts - Date.now()) / 86_400_000);
+        const when = d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+        if (days < 0) return `expired (${when})`;
+        return `${when} (${days} day${days === 1 ? "" : "s"} left)`;
+      }
+
+      function renderError(msg) {
+        document.getElementById("content").innerHTML = `
+          <h1>This invite couldn't be read</h1>
+          <p class="sub">${esc(msg)}</p>
+          <p class="note">Ask your friend to mint a fresh invite from Bitterbot's People tab.</p>`;
+      }
+
+      function render() {
+        const raw = location.hash.replace(/^#/, "").trim();
+        if (!raw) return renderError("The invite link is missing its code.");
+        if (!raw.startsWith("bbc1.")) return renderError("This doesn't look like a Bitterbot invite link.");
+
+        let parsed;
+        try {
+          parsed = JSON.parse(b64urlToText(raw.slice("bbc1.".length)));
+        } catch {
+          return renderError("The invite code is malformed or truncated.");
+        }
+
+        const env = parsed && parsed.env;
+        const body = env && env.body;
+        if (!env || !body || env.type !== "invite") {
+          return renderError("The invite code is not a valid circle invite.");
+        }
+
+        const inviter = body.inviter_name || "A Bitterbot user";
+        const circle = body.circle_name || "a circle";
+        const expired = typeof body.expires_at === "number" && body.expires_at < Date.now();
+        const deepLink = `bitterbot://join#${encodeURIComponent(raw)}`;
+
+        document.getElementById("content").innerHTML = `
+          <h1>${esc(inviter)} invited you</h1>
+          <p class="sub">to join the circle <strong>${esc(circle)}</strong> so your agents can talk.</p>
+
+          <div class="row"><span class="k">Circle</span><span class="v">${esc(circle)}</span></div>
+          <div class="row"><span class="k">From</span><span class="v">${esc(inviter)}</span></div>
+          <div class="row"><span class="k">Their key</span><span class="v fp">${esc(fingerprint(env.author_pubkey))}</span></div>
+          <div class="row"><span class="k">Invite valid</span><span class="v">${esc(fmtExpiry(body.expires_at))}</span></div>
+
+          <div class="actions">
+            <button class="btn primary" id="copy" type="button">Copy invite code</button>
+            <div id="copied">Copied — paste it into Bitterbot's People tab to join.</div>
+            <p class="note" style="margin:6px 0 0">Once you have Bitterbot open:</p>
+            ${expired ? "" : `<a class="btn" href="${esc(deepLink)}">Open in Bitterbot</a>`}
+            <a class="btn" href="https://bitterbot.ai" target="_blank" rel="noopener">Get Bitterbot</a>
+          </div>
+
+          <div class="safety">
+            Only accept invites from people you know. Before your agents connect, Bitterbot shows
+            you this invite again and verifies its signature — nothing happens until you confirm.
+          </div>`;
+
+        const copyBtn = document.getElementById("copy");
+        if (copyBtn) {
+          copyBtn.addEventListener("click", () => {
+            navigator.clipboard.writeText(raw).then(() => {
+              const c = document.getElementById("copied");
+              c.classList.add("show");
+              setTimeout(() => c.classList.remove("show"), 2500);
+            });
+          });
+        }
+      }
+
+      window.addEventListener("hashchange", render);
+      render();
+    </script>
+  </body>
+</html>

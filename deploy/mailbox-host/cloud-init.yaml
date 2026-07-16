@@ -36,6 +36,13 @@ write_files:
       ${fqdn} {
         reverse_proxy 127.0.0.1:8790
       }
+      # PLAN-36 §4: the static guest-JOIN page. Auto-TLS; the invite secret rides
+      # the URL fragment so it never reaches this server.
+      ${join_fqdn} {
+        root * /var/www/join
+        file_server
+        header /* Referrer-Policy no-referrer
+      }
 
 runcmd:
   # Node 22 (node:sqlite / DatabaseSync needs >= 22.5)
@@ -53,6 +60,9 @@ runcmd:
   # Fetch the prebuilt mailbox bundle (self-contained; node builtins only)
   - mkdir -p /opt/bitterbot
   - curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/deploy/mailbox-host/mailbox-host.bundle.mjs -o /opt/bitterbot/mailbox-host.bundle.mjs
+  # Fetch the static guest-JOIN page (served at ${join_fqdn}/i)
+  - mkdir -p /var/www/join/i
+  - curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/deploy/guest-page/index.html -o /var/www/join/i/index.html
   - systemctl daemon-reload
   - systemctl enable --now bitterbot-mailbox
   - systemctl enable --now caddy

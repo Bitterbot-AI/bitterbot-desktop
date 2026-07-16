@@ -93,7 +93,11 @@ export function PeopleView() {
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [circles, setCircles] = useState<CircleRow[]>([]);
   const [briefing, setBriefing] = useState<string | null>(null);
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [invite, setInvite] = useState<{
+    code: string;
+    link: string;
+    qrPngBase64: string;
+  } | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,8 +133,11 @@ export function PeopleView() {
 
   const mintInvite = useCallback(async () => {
     try {
-      const res = await request<{ code: string }>("circles.invite", {});
-      setInviteCode(res.code);
+      const res = await request<{ code: string; link: string; qrPngBase64: string }>(
+        "circles.invite",
+        {},
+      );
+      setInvite({ code: res.code, link: res.link, qrPngBase64: res.qrPngBase64 });
       void refresh();
     } catch (err) {
       setNotice(String(err));
@@ -237,31 +244,49 @@ export function PeopleView() {
         <div className="rounded-lg border p-4 space-y-2">
           <h2 className="font-medium">Invite a friend</h2>
           <p className="text-xs text-muted-foreground">
-            Mints a one-time code (shown once, never stored). Your friend pastes it in their
-            Bitterbot and your agents are connected.
+            Mints a one-time invite (shown once, never stored). Share the link or let your friend
+            scan the code; they open it, see who&apos;s asking, and your agents connect.
           </p>
           <button
             type="button"
             onClick={() => void mintInvite()}
             className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm"
           >
-            Create invite code
+            {invite ? "Create another invite" : "Create invite"}
           </button>
-          {inviteCode && (
-            <div className="mt-2 space-y-1">
-              <textarea
-                readOnly
-                value={inviteCode}
-                className="w-full h-20 text-xs font-mono rounded border bg-muted p-2"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <button
-                type="button"
-                className="text-xs underline"
-                onClick={() => void navigator.clipboard.writeText(inviteCode)}
-              >
-                copy to clipboard
-              </button>
+          {invite && (
+            <div className="mt-2 space-y-3">
+              <div className="flex items-center gap-3">
+                <img
+                  src={`data:image/png;base64,${invite.qrPngBase64}`}
+                  alt="Invite QR code"
+                  className="w-28 h-28 rounded border bg-white p-1 shrink-0"
+                />
+                <div className="min-w-0 space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    Text or email the link, or have your friend scan the code with their phone.
+                  </p>
+                  <div className="text-xs font-mono break-all rounded border bg-muted p-2">
+                    {invite.link}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      className="text-xs underline"
+                      onClick={() => void navigator.clipboard.writeText(invite.link)}
+                    >
+                      copy link
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs underline text-muted-foreground"
+                      onClick={() => void navigator.clipboard.writeText(invite.code)}
+                    >
+                      copy raw code
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -21,9 +21,11 @@ import type { DatabaseSync } from "node:sqlite";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { listDisclosureGrants, setDisclosureGrant } from "../../circles/disclosure.js";
+import { inviteLink } from "../../circles/invites.js";
 import { CirclesService } from "../../circles/service.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
+import { renderQrPngBase64 } from "../../web/qr-image.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
 async function getCirclesDb(): Promise<DatabaseSync | null> {
@@ -133,7 +135,13 @@ export const circlesHandlers: GatewayRequestHandlers = {
         circleId: typeof params.circleId === "string" ? params.circleId : undefined,
         name: typeof params.name === "string" ? params.name : undefined,
       });
-      respond(true, invite, undefined);
+      // Frictionless share (PLAN-36 §4): return the code AS a guest-JOIN link
+      // plus a scannable QR, so the UI can offer a link/QR instead of a raw
+      // blob. The QR is rendered server-side (dependency-free) so the renderer
+      // needs no QR library. The raw `code` is still returned for paste-fallback.
+      const link = inviteLink(invite.code);
+      const qrPngBase64 = await renderQrPngBase64(link);
+      respond(true, { ...invite, link, qrPngBase64 }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }
