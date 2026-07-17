@@ -29,6 +29,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import { detectAgentSummon, queueAgentDraft } from "../../circles/agent-drafts.js";
 import {
   MAILBOX_MAX_AGE_SECONDS,
   validateCircleEnvelope,
@@ -418,6 +419,19 @@ function storeInboundMessage(
   // content — so nothing to injection-scan; the parent (if held) renders locally.
   const replyTo = typeof body.reply_to === "string" ? body.reply_to.slice(0, 64) : null;
   const { content, severity } = sanitizeInboundCircleText(rawText, env.author_pubkey);
+  // Phase B: a peer summoning @agent queues a LOCAL draft for OUR human. The
+  // raw text is examined only for the summon token; generation is deferred to
+  // the scheduler sweep (quarantined path), rate-bucketed at queue time, and
+  // refused for messages that failed the security scan. The summoner gets no
+  // signal either way.
+  if (kind === "message" && severity !== "critical" && detectAgentSummon(rawText)) {
+    queueAgentDraft(db, {
+      circleId: env.circle_id,
+      summonEnvelopeId: env.id,
+      summonAuthorPubkey: env.author_pubkey,
+      now,
+    });
+  }
   const messageId = crypto.randomUUID();
   db.prepare(
     `INSERT INTO circle_messages

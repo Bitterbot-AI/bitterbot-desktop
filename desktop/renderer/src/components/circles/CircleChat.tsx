@@ -1,11 +1,13 @@
 import { Reply, Send, X } from "lucide-react";
 import { useState } from "react";
 import { useCirclesStore, type Circle, type CircleMessage } from "../../stores/circles-store";
+import { AgentDraftCard } from "./AgentDraftCard";
 import { CircleMessageList } from "./CircleMessageList";
 
 // PLAN-36 Phase A: the center chat pane — header, conversation stream, composer.
 // A3 adds reply-to (a compact quote banner + the parent's envelope id on send).
-// Reactions + pins fold into the Phase C event log; @-summon agents are Phase B.
+// Phase B: @agent in a message summons the reader's OWN agent, whose draft
+// appears above the composer as a private consent card (AgentDraftCard).
 
 interface Props {
   circle: Circle;
@@ -19,6 +21,7 @@ function replyLabel(m: CircleMessage, selfPubkey: string | undefined, members: C
 
 export function CircleChat({ circle, selfPubkey }: Props) {
   const messages = useCirclesStore((s) => s.messagesByCircle[circle.circleId]);
+  const agentDrafts = useCirclesStore((s) => s.draftsByCircle[circle.circleId]);
   const send = useCirclesStore((s) => s.send);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -58,6 +61,10 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         selfPubkey={selfPubkey}
         onReply={setReplyTo}
       />
+
+      {(agentDrafts ?? []).map((d) => (
+        <AgentDraftCard key={d.draftId} draft={d} circle={circle} selfPubkey={selfPubkey} />
+      ))}
 
       {replyTo && (
         <div className="mx-3 -mb-1 flex items-center gap-2 text-xs text-muted-foreground border rounded-t-lg bg-muted/50 px-3 py-1.5">

@@ -114,6 +114,23 @@ function stubRpcs(enabled = true) {
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [], cardId: "new" });
       case "circles.canvas.slice":
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
+      case "circles.drafts.list":
+        return Promise.resolve({
+          drafts: [
+            {
+              draftId: "dr1",
+              circleId: "c1",
+              summonEnvelopeId: "env-summon",
+              summonAuthorPubkey: "ed25519:maya",
+              content: "Thursday at 6 works for us.",
+              createdAt: Date.now(),
+            },
+          ],
+        });
+      case "circles.drafts.publish":
+        return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
+      case "circles.drafts.discard":
+        return Promise.resolve({ ok: true });
       case "circles.send":
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
       case "circles.markRead":
@@ -131,6 +148,8 @@ beforeEach(() => {
     circles: [],
     activeCircleId: null,
     messagesByCircle: {},
+    cardsByCircle: {},
+    draftsByCircle: {},
     loading: true,
     notice: null,
   });
@@ -253,6 +272,37 @@ describe("CirclesView", () => {
         }),
       ),
     );
+  });
+
+  it("Phase B: shows the agent draft privately and publishes the EDITED text on consent", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    // The consent card renders above the composer, marked private.
+    expect(await screen.findByText(/Your agent drafted a reply/i)).toBeTruthy();
+    expect(screen.getByText(/only you can see this/i)).toBeTruthy();
+    const box = screen.getByDisplayValue("Thursday at 6 works for us.");
+    // The human edits before approving — what they approved is what ships.
+    await userEvent.clear(box);
+    await userEvent.type(box, "Thursday at 7 works better.");
+    await userEvent.click(screen.getByRole("button", { name: /Publish to circle/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.drafts.publish", {
+        draftId: "dr1",
+        text: "Thursday at 7 works better.",
+      }),
+    );
+  });
+
+  it("Phase B: discarding the draft never sends anything", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await screen.findByText(/Your agent drafted a reply/i);
+    await userEvent.click(screen.getByRole("button", { name: /^Discard$/ }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.drafts.discard", { draftId: "dr1" }),
+    );
+    expect(requestMock).not.toHaveBeenCalledWith("circles.drafts.publish", expect.anything());
+    expect(requestMock).not.toHaveBeenCalledWith("circles.send", expect.anything());
   });
 
   it("starts a study guide from the composer via circles.canvas.put", async () => {

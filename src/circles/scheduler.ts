@@ -38,6 +38,8 @@ export type SchedulableCirclesService = {
   ensureCircleSubscriptions?(): Promise<void>;
   /** PLAN-36 §4: re-post pending mailbox joins until their welcome lands (optional). */
   repostPendingJoins?(): Promise<number>;
+  /** PLAN-36 Phase B: generate queued @agent drafts on the quarantined path (optional). */
+  generateAgentDrafts?(): Promise<{ generated: number }>;
 };
 
 export type CirclesSchedulerDeps = {
@@ -61,6 +63,11 @@ export type CirclesSchedulerDeps = {
    * effort; the scheduler swallows throws.
    */
   onInbound?: (info: { count: number }) => void;
+  /**
+   * Fired when the Phase-B draft sweep produced ≥1 ready draft, so the host
+   * can nudge the UI (content-free, like onInbound). Best-effort.
+   */
+  onDraftsReady?: (info: { count: number }) => void;
   /** Injectable clock for tests. */
   now?: () => number;
 };
@@ -125,6 +132,18 @@ export function startCirclesScheduler(deps: CirclesSchedulerDeps): CirclesSchedu
           deps.onInbound({ count: drained.dispatched });
         } catch {
           /* never let a UI notification break the loop */
+        }
+      }
+      // Phase B: generate any queued @agent drafts AFTER the drain, so a
+      // summon that just arrived by mailbox drafts in the same cycle.
+      if (service.generateAgentDrafts) {
+        const drafts = await service.generateAgentDrafts();
+        if (drafts.generated > 0 && deps.onDraftsReady) {
+          try {
+            deps.onDraftsReady({ count: drafts.generated });
+          } catch {
+            /* never let a UI notification break the loop */
+          }
         }
       }
       const t = now();

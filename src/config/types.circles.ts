@@ -43,4 +43,14 @@ export type CirclesConfig = {
   practicePartner?: {
     enabled?: boolean;
   };
+  /**
+   * PLAN-36 Phase B: the summon-only agent in the room. An @agent mention in a
+   * circle message queues a node-LOCAL draft generated on a quarantined
+   * tool-less path; the draft is visible only to this node's human and reaches
+   * the circle only via their explicit publish. Default: enabled when circles
+   * are enabled; `false` opts out (summons are then ignored).
+   */
+  agentDrafts?: {
+    enabled?: boolean;
+  };
 };

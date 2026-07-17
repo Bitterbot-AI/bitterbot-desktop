@@ -15,6 +15,11 @@
  *  circles.canvas.list/put/remove/slice — the group canvas (typed cards on the
  *                    event log; PLAN-36 Phase C). A slice is one member's
  *                    contribution to a card slot (e.g. a vote). Fan out + sync.
+ *  circles.drafts.list/publish/discard — Phase B agent drafts. A draft is a
+ *                    node-LOCAL suggestion the member's own agent wrote after
+ *                    an @agent summon (quarantined tool-less generation);
+ *                    publish is the human consent tap (ships via circles.send
+ *                    semantics), discard throws it away. Never fans out alone.
  *
  * Everything is gated by the circles.enabled kill switch (PLAN-31 §8), which
  * defaults ON since the 2026-07-09 red-team phase; handlers answer UNAVAILABLE
@@ -455,6 +460,64 @@ export const circlesHandlers: GatewayRequestHandlers = {
       const note = typeof params.note === "string" ? params.note : "";
       const result = await svc.service.putCanvasSlice({ circleId, cardId, slot, value, note });
       respond(true, result, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.drafts.list": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    if (!svc.service.agentDraftsEnabled()) {
+      respond(true, { drafts: [] }, undefined);
+      return;
+    }
+    respond(true, { drafts: svc.service.agentDrafts(circleId) }, undefined);
+  },
+
+  "circles.drafts.publish": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const draftId = typeof params.draftId === "string" ? params.draftId : "";
+    if (!draftId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "draftId required"));
+      return;
+    }
+    try {
+      // The human may have edited the draft; what they approved is what ships.
+      const text = typeof params.text === "string" ? params.text : undefined;
+      const result = await svc.service.publishAgentDraft({ draftId, text });
+      respond(true, result, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.drafts.discard": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const draftId = typeof params.draftId === "string" ? params.draftId : "";
+    if (!draftId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "draftId required"));
+      return;
+    }
+    try {
+      svc.service.discardAgentDraft(draftId);
+      respond(true, { ok: true }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }

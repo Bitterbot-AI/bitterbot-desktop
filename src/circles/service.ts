@@ -36,6 +36,16 @@ import {
   type CircleMember,
 } from "../memory/circles-store.js";
 import {
+  detectAgentSummon,
+  generateQueuedAgentDrafts,
+  getAgentDraft,
+  listReadyAgentDrafts,
+  queueAgentDraft,
+  setAgentDraftStatus,
+  type AgentDraft,
+  type DraftLlmCall,
+} from "./agent-drafts.js";
+import {
   loadOrCreateBoxKeys,
   openBox,
   sealToBox,
@@ -134,6 +144,13 @@ export type CirclesServiceDeps = {
    * over the mesh with no a2aUrl. Null/absent → direct-dial + mailbox only.
    */
   topicBus?: CircleTopicBus | null;
+  /**
+   * Phase B: the quarantined tool-less completion used to generate agent
+   * drafts (one prompt in, plain text out — the judge-provider pattern).
+   * Only the scheduler-owned service instance carries it; RPC-owned instances
+   * (list/publish/discard) never generate and leave it unset.
+   */
+  draftLlm?: DraftLlmCall;
 };
 
 export type SendReport = {
@@ -192,6 +209,7 @@ export class CirclesService {
   private readonly boxKeys: BoxKeyPair;
   private practiceKeysLazy: KeyPair | undefined;
   private readonly topicBusDep: CircleTopicBus | null | undefined;
+  private readonly draftLlm: DraftLlmCall | undefined;
   readonly store: CirclesStore;
 
   constructor(deps: CirclesServiceDeps) {
@@ -202,6 +220,7 @@ export class CirclesService {
     this.boxKeys = deps.boxKeys ?? loadOrCreateBoxKeys();
     this.practiceKeysLazy = deps.practiceKeys;
     this.topicBusDep = deps.topicBus;
+    this.draftLlm = deps.draftLlm;
     this.store = new CirclesStore(this.db);
   }
 
@@ -654,6 +673,12 @@ export class CirclesService {
     kind?: "message" | "ask" | "answer";
     threadId?: string;
     replyTo?: string;
+    /**
+     * Phase B internal: set when the message IS a published agent draft, so
+     * agent output can never re-summon the agent (a draft containing "@agent"
+     * must not loop back into generation).
+     */
+    suppressAgentSummon?: boolean;
   }): Promise<SendReport & { envelopeId: string }> {
     const kind = args.kind ?? "message";
     const circle = this.store.getCircle(args.circleId);
@@ -694,6 +719,21 @@ export class CirclesService {
         Date.now(),
         replyTo,
       );
+    // Phase B self-summon: our human typing @agent in their OWN message queues
+    // a draft on this node too (a peer's @agent queues on receipt instead).
+    // Quiet-by-default: no token, nothing happens.
+    if (
+      kind === "message" &&
+      !args.suppressAgentSummon &&
+      this.agentDraftsEnabled() &&
+      detectAgentSummon(args.text)
+    ) {
+      queueAgentDraft(this.db, {
+        circleId: args.circleId,
+        summonEnvelopeId: envelope.id,
+        summonAuthorPubkey: this.pubkey,
+      });
+    }
     const method =
       kind === "message" ? "circle/message" : kind === "ask" ? "circle/ask" : "circle/answer";
     // The practice circle is local-only: no network fan-out; the labeled bot
@@ -1109,6 +1149,68 @@ export class CirclesService {
         updatedAt: Date.now(),
       },
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Agent drafts (PLAN-36 Phase B): summon-only, quarantined, consent-gated.
+  // -------------------------------------------------------------------------
+
+  /** Kill switch: `circles.agentDrafts.enabled: false` opts out (default ON). */
+  agentDraftsEnabled(): boolean {
+    return this.config.circles?.agentDrafts?.enabled !== false;
+  }
+
+  /**
+   * Scheduler sweep: generate queued drafts on the quarantined tool-less
+   * path. No-op without the injected draftLlm (RPC-owned instances) or with
+   * drafts disabled — queued rows then simply expire.
+   */
+  async generateAgentDrafts(): Promise<{ generated: number }> {
+    if (!this.draftLlm || !this.agentDraftsEnabled()) {
+      return { generated: 0 };
+    }
+    return generateQueuedAgentDrafts(this.db, this.draftLlm, { selfPubkey: this.pubkey });
+  }
+
+  /** Ready drafts for the UI. Node-local; never leaves this node unpublished. */
+  agentDrafts(circleId: string): AgentDraft[] {
+    return listReadyAgentDrafts(this.db, circleId);
+  }
+
+  /**
+   * The consent tap: publish a draft to the circle AS our human's message.
+   * The human may have edited the text; what they approved is what ships.
+   * Goes through the normal sendMessage path (signing, fan-out, delivery
+   * accounting, reply threading to the summoning message) — there is no
+   * separate agent send path to audit.
+   */
+  async publishAgentDraft(args: {
+    draftId: string;
+    text?: string;
+  }): Promise<SendReport & { envelopeId: string }> {
+    const draft = getAgentDraft(this.db, args.draftId);
+    if (!draft || draft.status !== "ready") {
+      throw new Error(`draft ${args.draftId} is not awaiting review`);
+    }
+    const text = (args.text ?? draft.content).trim();
+    if (!text) throw new Error("draft text is empty");
+    const report = await this.sendMessage({
+      circleId: draft.circleId,
+      text,
+      replyTo: draft.summonEnvelopeId ?? undefined,
+      suppressAgentSummon: true,
+    });
+    setAgentDraftStatus(this.db, draft.draftId, "published");
+    return report;
+  }
+
+  /** The other half of consent: throw the draft away. Nothing ever left. */
+  discardAgentDraft(draftId: string): void {
+    const draft = getAgentDraft(this.db, draftId);
+    if (!draft || draft.status !== "ready") {
+      throw new Error(`draft ${draftId} is not awaiting review`);
+    }
+    setAgentDraftStatus(this.db, draftId, "discarded");
   }
 
   /**

@@ -48,6 +48,12 @@ this session (each: wired + tested + documented + pushed, CI-green):
   slot `sec-<fnv1a(normalized section)>` (deterministic, no coordination); uncovered sections
   render as amber GAPS. Server change: slice value cap 200→2000. `StudyGuideCard.tsx`,
   store `putStudyGuide` + generic `putSlice` (vote delegates to it). No new RPC/migration.
+- **Phase B** — the **summon-only agent in the room**. `@agent` in a message queues a node-LOCAL
+  draft (`circle_agent_drafts`, migration **v42**); the scheduler sweep generates it on the
+  **quarantined tool-less path** (`agent-drafts.ts`, judge-provider completion, all circle text in
+  ONE untrusted envelope); `AgentDraftCard` shows it privately; publish (editable) ships via the
+  normal send path; discard kills it. Rate bucket + sweep cap + TTL + replay dedupe + no
+  re-summon loop. Kill switch `circles.agentDrafts.enabled`. RPCs `circles.drafts.*`.
 
 **Earlier this session (context):** frictionless invite (link+QR, `8449026`), mailbox-mediated join
 so two NAT'd laptops connect with neither reachable (`7098269`, migration v39), and the guest page
@@ -115,11 +121,10 @@ connection was tested and works end to end.
 
 ## 5. What's next (in priority order)
 
-- **Phase B — the agent in the room (summon-only):** wire inbound `@your-agent` messages into a
-  **quarantined, tool-less** agent path that drafts a reply / a card-slice on the member's PERSONAL
-  canvas (reuse the existing `create_artifact` / `ArtifactPanel`), quiet-by-default, published only
-  via the human's consent tap. This is the security-sensitive one — touches the agent loop + the
-  hostile-principal boundary. Do an adversarial pass.
+- **Phase B SHIPPED (see §2):** the summon-only agent landed as chat-reply drafts on the
+  quarantined path. Still open from the original Phase-B sketch: agent-drafted **card slices**
+  (e.g. pre-filling a study-guide section or a vote from private context) — same draft table +
+  consent card, a `kind: 'slice'` away; and per-member agent addressing (needs petnames).
 - **Deferred, fold into the event log:** reactions + pins (same shared-state shape as canvas.\*),
   presence cursors on the canvas, the **unfreeze UI**, richer editable card bodies (nested Yjs only
   where live co-edit is needed), real-time gossip (needs the Rust primitive + shared-key confidentiality).

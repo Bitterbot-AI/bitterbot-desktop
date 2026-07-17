@@ -63,12 +63,27 @@ export interface CanvasCard {
   slices: CanvasSlice[];
 }
 
+/**
+ * PLAN-36 Phase B: a node-local draft the member's own agent wrote after an
+ * @agent summon. Visible only to this node's human; publishing it (optionally
+ * edited) is the consent tap that actually sends it to the circle.
+ */
+export interface AgentDraft {
+  draftId: string;
+  circleId: string;
+  summonEnvelopeId: string | null;
+  summonAuthorPubkey: string | null;
+  content: string;
+  createdAt: number;
+}
+
 interface CirclesState {
   status: CirclesStatus | null;
   circles: Circle[];
   activeCircleId: string | null;
   messagesByCircle: Record<string, CircleMessage[]>;
   cardsByCircle: Record<string, CanvasCard[]>;
+  draftsByCircle: Record<string, AgentDraft[]>;
   loading: boolean;
   notice: string | null;
 
@@ -76,6 +91,9 @@ interface CirclesState {
   selectCircle: (circleId: string) => void;
   loadMessages: (circleId: string) => Promise<void>;
   loadCards: (circleId: string) => Promise<void>;
+  loadDrafts: (circleId: string) => Promise<void>;
+  publishDraft: (circleId: string, draftId: string, text: string) => Promise<boolean>;
+  discardDraft: (circleId: string, draftId: string) => Promise<boolean>;
   send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
   putCard: (circleId: string, title: string, text: string, cardId?: string) => Promise<boolean>;
   putDecision: (circleId: string, question: string, options: string[]) => Promise<boolean>;
@@ -102,6 +120,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   activeCircleId: null,
   messagesByCircle: {},
   cardsByCircle: {},
+  draftsByCircle: {},
   loading: true,
   notice: null,
 
@@ -124,6 +143,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       if (activeCircleId) {
         void get().loadMessages(activeCircleId);
         void get().loadCards(activeCircleId);
+        void get().loadDrafts(activeCircleId);
         get().markRead(activeCircleId); // the circle on screen is, by definition, read
       }
     } catch (err) {
@@ -135,7 +155,40 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     set({ activeCircleId: circleId });
     void get().loadMessages(circleId);
     void get().loadCards(circleId);
+    void get().loadDrafts(circleId);
     get().markRead(circleId);
+  },
+
+  loadDrafts: async (circleId) => {
+    try {
+      const res = await request<{ drafts: AgentDraft[] }>("circles.drafts.list", { circleId });
+      set((s) => ({ draftsByCircle: { ...s.draftsByCircle, [circleId]: res.drafts ?? [] } }));
+    } catch (err) {
+      set({ notice: String(err) });
+    }
+  },
+
+  publishDraft: async (circleId, draftId, text) => {
+    if (!text.trim()) return false;
+    try {
+      await request("circles.drafts.publish", { draftId, text: text.trim() });
+      await Promise.all([get().loadDrafts(circleId), get().loadMessages(circleId)]);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  discardDraft: async (circleId, draftId) => {
+    try {
+      await request("circles.drafts.discard", { draftId });
+      await get().loadDrafts(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
   },
 
   loadCards: async (circleId) => {

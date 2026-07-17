@@ -153,6 +153,10 @@ export function startGatewayMaintenanceTimers(params: {
     // inbound (the direct-dial path emits the same event from a2a-http).
     onInbound: (info) =>
       params.broadcast("circles", { source: "mailbox", ...info }, { dropIfSlow: true }),
+    // Phase B: nudge the UI when the draft sweep produced ready drafts (the
+    // event is content-free; the renderer re-polls circles.drafts.list).
+    onDraftsReady: (info) =>
+      params.broadcast("circles", { source: "drafts", ...info }, { dropIfSlow: true }),
     resolveService: async () => {
       const cfg = params.getConfig();
       if (cfg.circles?.enabled !== true) return undefined;
@@ -168,7 +172,12 @@ export function startGatewayMaintenanceTimers(params: {
       const db = mgr?.getCirclesDb();
       if (!db) return undefined;
       const { CirclesService } = await import("../circles/service.js");
-      return new CirclesService({ db, config: cfg });
+      // Phase B: the scheduler-owned instance carries the quarantined draft
+      // LLM — a single plain completion with no tools, no session history, no
+      // memory (the judge-provider seam, reused with a drafting temperature).
+      const { createJudgeLlmCall } = await import("../tasks/judge-provider.js");
+      const draftLlm = createJudgeLlmCall(cfg, { temperature: 0.4, maxTokens: 700 });
+      return new CirclesService({ db, config: cfg, draftLlm });
     },
   });
 

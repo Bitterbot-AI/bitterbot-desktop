@@ -334,6 +334,122 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(after.find((s) => s.authorPubkey === pubkeyId(bobKey))?.value).toBe("Mnemonic v2");
   });
 
+  it("Phase B: @agent summon drafts locally on a quarantined path; only consent publishes", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    // Ana's node with the quarantined draft LLM injected (the scheduler-owned
+    // configuration). The stub records the exact prompt the model would see.
+    const prompts: string[] = [];
+    const anaDrafting = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: anaKey,
+      draftLlm: async (p) => {
+        prompts.push(p);
+        return "Thursday at 6 works for my human.";
+      },
+    });
+
+    // Bob summons Ana's agent. Delivery succeeds; NOTHING comes back yet.
+    const summon = await bob.sendMessage({ circleId, text: "@agent could you do Thursday?" });
+    const bobMessagesBefore = bob.messages(circleId).length;
+
+    // Ana's node queued a draft at receipt; the sweep generates it.
+    const swept = await anaDrafting.generateAgentDrafts();
+    expect(swept.generated).toBe(1);
+
+    // The quarantined prompt: instruction frame ours, ALL circle text wrapped
+    // as untrusted, and no reply has left Ana's node autonomously.
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("UNTRUSTED DATA");
+    expect(prompts[0]).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
+    expect(prompts[0]).toContain("Thursday");
+    expect(bob.messages(circleId)).toHaveLength(bobMessagesBefore); // quiet: no autonomous outbound
+
+    // The draft is node-local, attributed to the summoner, ready for review.
+    const drafts = anaDrafting.agentDrafts(circleId);
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.content).toBe("Thursday at 6 works for my human.");
+    expect(drafts[0]?.summonAuthorPubkey).toBe(pubkeyId(bobKey));
+
+    // The consent tap: Ana's human edits, then publishes. Bob receives the
+    // EDITED text, threaded to his summoning message.
+    const draftId = drafts[0]?.draftId ?? "";
+    await anaDrafting.publishAgentDraft({ draftId, text: "Thursday at 7 works better." });
+    const bobInbound = bob.messages(circleId).filter((m) => m.direction === "in");
+    expect(bobInbound.at(-1)?.content).toContain("Thursday at 7 works better.");
+    expect(bobInbound.at(-1)?.replyTo).toBe(summon.envelopeId);
+    expect(anaDrafting.agentDrafts(circleId)).toHaveLength(0); // consumed
+
+    // Discard is the other consent path: nothing leaves, the draft is gone.
+    await bob.sendMessage({ circleId, text: "@agent one more thing?" });
+    await anaDrafting.generateAgentDrafts();
+    const second = anaDrafting.agentDrafts(circleId)[0];
+    const bobCount = bob.messages(circleId).length;
+    anaDrafting.discardAgentDraft(second?.draftId ?? "");
+    expect(anaDrafting.agentDrafts(circleId)).toHaveLength(0);
+    expect(bob.messages(circleId)).toHaveLength(bobCount);
+  });
+
+  it("Phase B: self-summon queues; published agent output can never re-summon", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const anaDrafting = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: anaKey,
+      draftLlm: async () => "ok — here's a summary. ping @agent again if needed",
+    });
+
+    // Our own human summoning in their own message queues locally too.
+    await anaDrafting.sendMessage({ circleId, text: "@agent summarize where we are" });
+    expect((await anaDrafting.generateAgentDrafts()).generated).toBe(1);
+
+    // The generated draft itself contains "@agent". Publishing it must NOT
+    // queue another draft — agent output never re-enters generation.
+    const draft = anaDrafting.agentDrafts(circleId)[0];
+    await anaDrafting.publishAgentDraft({ draftId: draft?.draftId ?? "" });
+    expect((await anaDrafting.generateAgentDrafts()).generated).toBe(0);
+    expect(anaDrafting.agentDrafts(circleId)).toHaveLength(0);
+  });
+
+  it("Phase B: the kill switch silences summons end to end", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const offConfig = {
+      ...makeConfig("Ana's agent", "ana"),
+      circles: {
+        ...makeConfig("Ana's agent", "ana").circles,
+        agentDrafts: { enabled: false },
+      },
+    };
+    const anaOff = new CirclesService({
+      db: anaDb,
+      config: offConfig,
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: anaKey,
+      draftLlm: async () => "should never run",
+    });
+    // Self-summon doesn't queue…
+    await anaOff.sendMessage({ circleId, text: "@agent are you there?" });
+    // …and generation is a no-op even for rows queued at receipt (Bob's
+    // summon still queues — the inbound guard is config-blind — but the
+    // sweep refuses to spend tokens and the rows expire).
+    await bob.sendMessage({ circleId, text: "@agent hello?" });
+    expect((await anaOff.generateAgentDrafts()).generated).toBe(0);
+    expect(anaOff.agentDrafts(circleId)).toHaveLength(0);
+    const queued = anaDb
+      .prepare(`SELECT COUNT(*) AS n FROM circle_agent_drafts WHERE status = 'queued'`)
+      .get() as { n: number };
+    expect(queued.n).toBe(1); // Bob's, awaiting expiry — never generated
+  });
+
   it("propagates presence heartbeats into the peer-presence table", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

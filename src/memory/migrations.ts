@@ -1679,6 +1679,34 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circle_messages", "reply_to", "TEXT");
     },
   },
+  {
+    version: 42,
+    description:
+      "PLAN-36 Phase B (agent in the room, summon-only): circle_agent_drafts — " +
+      "node-LOCAL drafts the member's own agent writes on a quarantined tool-less " +
+      "path when a circle message summons it with @agent. A draft is visible only " +
+      "to this node's human and NEVER fans out on its own; publishing it goes " +
+      "through the normal human-initiated send RPC (the consent tap). Rows are " +
+      "private state, not circle content: they ride no envelope and no sync.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_agent_drafts (
+          draft_id             TEXT PRIMARY KEY,
+          circle_id            TEXT NOT NULL,
+          summon_envelope_id   TEXT,
+          summon_author_pubkey TEXT,
+          kind                 TEXT NOT NULL DEFAULT 'reply',
+          status               TEXT NOT NULL DEFAULT 'queued',
+          content              TEXT NOT NULL DEFAULT '',
+          error                TEXT,
+          created_at           INTEGER NOT NULL,
+          updated_at           INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_circle_agent_drafts_circle
+          ON circle_agent_drafts (circle_id, status);
+      `);
+    },
+  },
 ];
 
 /**

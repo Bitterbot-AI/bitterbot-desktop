@@ -745,6 +745,35 @@ hostile 4000-char card with thousands of slices previously cost millions of
 comparisons per keystroke); drafts are keyed per section so switching sections
 mid-edit no longer discards unsaved text.
 
+**Phase B LANDED (the agent in the room — summon-only, quarantined,
+consent-gated).** An `@agent` token in a circle message (a peer's, at receipt in
+`storeInboundMessage`; or our own, at send) queues a node-LOCAL draft
+(`circle_agent_drafts`, migration v42 — private state, no envelope, no sync).
+The ~15s scheduler sweep generates queued drafts on the §5.1-C quarantined path:
+a single plain completion (the judge-provider seam — no tools, no session, no
+memory recall) whose prompt is our constant instruction frame plus ONE
+`wrapExternalContent` envelope holding every circle-derived string (names and
+bodies; nested markers stripped so a peer cannot fake a boundary). The draft
+renders ONLY to this node's human (`AgentDraftCard` above the composer, "only
+you can see this"), editable; the publish tap ships the human-approved text
+through the normal `sendMessage` path (signed, threaded to the summon, delivery-
+accounted) and is the ONLY way a draft leaves the node. Containment: quiet by
+default (no token → no LLM call); per-circle rate bucket (3/5min) + per-sweep
+generation cap (2) + 1h queue TTL bound hostile-summon token burn; one draft per
+summoning envelope (mailbox replays dedupe); critical-scan messages never queue;
+published agent output is barred from re-summoning (`suppressAgentSummon`), so
+a draft containing "@agent" cannot loop the generator. §5.2 memory taint holds:
+nothing in this path reads or writes recall-eligible memory. Kill switch
+`circles.agentDrafts.enabled` (default ON with circles). RPCs
+`circles.drafts.list/publish/discard`; scheduler `onDraftsReady` nudges the UI
+via the content-free "circles" event. Every receiving member's OWN node reacts
+to `@agent` — per-member agent addressing waits for petnames (Phase 5/6).
+Tests: unit (summon grammar, rate bucket, replay dedupe, per-sweep cap,
+failed/empty generation, TTL expiry, envelope placement) + two-node E2E (summon
+→ quiet → generate → consent-publish edited text threaded to the summon;
+discard sends nothing; self-summon; no re-summon loop; kill switch) + renderer
+(private consent card, publish-edited, discard).
+
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
 member pane); connections render as DMs. **Build a new `CircleMessageList`** — do
