@@ -731,11 +731,19 @@ source note, add/edit-yours inline composer), a Guide composer in `CircleCanvas`
 store `putStudyGuide` + generic `putSlice` (vote now delegates to it). Documented
 caveats inherited from C2: renaming a section orphans its contributions (same
 class as editing decision options); a crafted slot collision only merges two
-sections' lists (cosmetic). Tests: cross-node assemble/merge/LWW-edit with a
-
-> 200-char contribution pinning the cap; renderer guide render + gap + publish
-> contribution + composer create. Phase B pre-fills a member's section slice from
-> their private gap history (PLAN-9 mastery), quarantined per §2.5's security note.
+sections' lists (cosmetic). Tests: cross-node assemble/merge/LWW-edit with an
+over-200-char contribution pinning the cap; renderer guide render + gap +
+publish contribution + composer create. Phase B pre-fills a member's section
+slice from their private gap history (PLAN-9 mastery), quarantined per §2.5's
+security note. The adversarial pass found no criticals but 1 major + 3 minors,
+all fixed: the server test had hardcoded slots that never exercised
+`sectionSlot` (now uses the real mapping, pinned by golden values in
+`StudyGuideCard.test.ts` so contract drift breaks a test); `sectionSlot` now
+NFC-normalizes (NFC-vs-NFD IMEs typing the same title previously derived
+different slots — a silent gap); the render fold is one pass over slices (a
+hostile 4000-char card with thousands of slices previously cost millions of
+comparisons per keystroke); drafts are keyed per section so switching sections
+mid-edit no longer discards unsaved text.
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +

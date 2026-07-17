@@ -275,7 +275,10 @@ describe("CirclesService end-to-end (two nodes)", () => {
 
     // Both members contribute to the SAME section — slices merge per author,
     // they don't overwrite. A contribution is paragraph-sized (>200 chars),
-    // which pins the raised slice value cap.
+    // which pins the raised slice value cap. The slots are the REAL renderer
+    // mapping — sectionSlot("Glycolysis") etc. — pinned as golden values in
+    // desktop/renderer/src/components/circles/StudyGuideCard.test.ts, so this
+    // test breaks if the cross-node section→slot contract drifts.
     const anaContribution =
       "Glycolysis: glucose → 2 pyruvate in the cytosol; net 2 ATP (substrate-level) + 2 NADH. " +
       "Investment phase burns 2 ATP (hexokinase, PFK-1 = committed step); payoff phase yields 4. " +
@@ -284,21 +287,21 @@ describe("CirclesService end-to-end (two nodes)", () => {
     await ana.putCanvasSlice({
       circleId,
       cardId: "sg1",
-      slot: "sec-glycolysis",
+      slot: "sec-b9b14b81",
       value: anaContribution,
       note: "lecture 12",
     });
     await bob.putCanvasSlice({
       circleId,
       cardId: "sg1",
-      slot: "sec-glycolysis",
+      slot: "sec-b9b14b81",
       value: "Mnemonic: Goodness Gracious, Father Franklin...",
       note: "",
     });
     await bob.putCanvasSlice({
       circleId,
       cardId: "sg1",
-      slot: "sec-krebs",
+      slot: "sec-a34f5662",
       value: "8 steps, 2 turns per glucose: 6 NADH, 2 FADH2, 2 GTP.",
       note: "",
     });
@@ -308,11 +311,11 @@ describe("CirclesService end-to-end (two nodes)", () => {
     for (const node of [ana, bob]) {
       const card = node.canvasCards(circleId).find((c) => c.cardId === "sg1");
       expect(card?.cardType).toBe("study");
-      const glyco = (card?.slices ?? []).filter((s) => s.slot === "sec-glycolysis");
+      const glyco = (card?.slices ?? []).filter((s) => s.slot === "sec-b9b14b81");
       expect(glyco).toHaveLength(2);
       expect(glyco.find((s) => s.authorPubkey === pubkeyId(anaKey))?.value).toBe(anaContribution);
-      expect((card?.slices ?? []).filter((s) => s.slot === "sec-krebs")).toHaveLength(1);
-      expect((card?.slices ?? []).filter((s) => s.slot === "sec-etc")).toHaveLength(0);
+      expect((card?.slices ?? []).filter((s) => s.slot === "sec-a34f5662")).toHaveLength(1);
+      expect((card?.slices ?? []).filter((s) => s.slot === "sec-0806ea9e")).toHaveLength(0);
     }
 
     // Editing your contribution is LWW per (card, slot, author) — it replaces.
@@ -320,12 +323,12 @@ describe("CirclesService end-to-end (two nodes)", () => {
     await bob.putCanvasSlice({
       circleId,
       cardId: "sg1",
-      slot: "sec-glycolysis",
+      slot: "sec-b9b14b81",
       value: "Mnemonic v2",
       note: "",
     });
     const after = (ana.canvasCards(circleId).find((c) => c.cardId === "sg1")?.slices ?? []).filter(
-      (s) => s.slot === "sec-glycolysis",
+      (s) => s.slot === "sec-b9b14b81",
     );
     expect(after).toHaveLength(2); // still two contributors
     expect(after.find((s) => s.authorPubkey === pubkeyId(bobKey))?.value).toBe("Mnemonic v2");

@@ -14,13 +14,16 @@ import { useCirclesStore, type Circle, type CanvasCard } from "../../stores/circ
 
 /**
  * A section's slice slot: "sec-" + FNV-1a of the normalized section title.
- * Deterministic on every node with no coordination; trim/case changes to a
- * section keep its contributions, a real rename orphans them (the same
- * documented caveat as editing a Decision Card's options). A crafted hash
- * collision only merges two sections' contribution lists — cosmetic.
+ * Deterministic on every node with no coordination; NFC/trim/case variants of
+ * a section keep its contributions (two members' IMEs may emit different
+ * Unicode normalization forms of the same title), a real rename orphans them
+ * (the same documented caveat as editing a Decision Card's options). A crafted
+ * hash collision only merges two sections' contribution lists — cosmetic.
+ * Golden values are pinned in StudyGuideCard.test.ts; the server-side C3 test
+ * uses them as literals, so changing this function is a breaking change.
  */
 export function sectionSlot(section: string): string {
-  const s = section.trim().toLowerCase();
+  const s = section.normalize("NFC").trim().toLowerCase();
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -61,27 +64,48 @@ export function StudyGuideCard({
   const putSlice = useCirclesStore((s) => s.putSlice);
   const sections = parseSections(card.text);
   const [editingSlot, setEditingSlot] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [draftNote, setDraftNote] = useState("");
+  // Drafts are keyed by slot so switching sections mid-edit never discards
+  // unsaved text (review finding #4).
+  const [drafts, setDrafts] = useState<Record<string, { value: string; note: string }>>({});
   const [publishing, setPublishing] = useState(false);
 
-  const slicesFor = (slot: string) => card.slices.filter((s) => s.slot === slot);
+  // One pass over the slices (a hostile card can carry thousands; review #3).
+  const slicesBySlot = new Map<string, typeof card.slices>();
+  for (const s of card.slices) {
+    const list = slicesBySlot.get(s.slot);
+    if (list) list.push(s);
+    else slicesBySlot.set(s.slot, [s]);
+  }
+  const slicesFor = (slot: string) => slicesBySlot.get(slot) ?? [];
   const covered = sections.filter((sec) => slicesFor(sectionSlot(sec)).length > 0).length;
   const contributors = new Set(card.slices.map((s) => s.authorPubkey)).size;
 
   const openEditor = (slot: string) => {
     const mine = slicesFor(slot).find((s) => s.authorPubkey === selfPubkey);
-    setDraft(mine?.value ?? "");
-    setDraftNote(mine?.note ?? "");
+    setDrafts((prev) =>
+      prev[slot] ? prev : { ...prev, [slot]: { value: mine?.value ?? "", note: mine?.note ?? "" } },
+    );
     setEditingSlot(slot);
   };
 
+  const closeEditor = (slot: string) => {
+    setDrafts(({ [slot]: _dropped, ...rest }) => rest);
+    setEditingSlot((cur) => (cur === slot ? null : cur));
+  };
+
   const publish = async (slot: string) => {
-    if (!draft.trim() || publishing) return;
+    const draft = drafts[slot];
+    if (!draft?.value.trim() || publishing) return;
     setPublishing(true);
-    const ok = await putSlice(circle.circleId, card.cardId, slot, draft.trim(), draftNote.trim());
+    const ok = await putSlice(
+      circle.circleId,
+      card.cardId,
+      slot,
+      draft.value.trim(),
+      draft.note.trim(),
+    );
     setPublishing(false);
-    if (ok) setEditingSlot(null);
+    if (ok) closeEditor(slot);
   };
 
   return (
@@ -157,8 +181,13 @@ export function StudyGuideCard({
               {editing && (
                 <div className="mt-2 space-y-1.5">
                   <textarea
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
+                    value={drafts[slot]?.value ?? ""}
+                    onChange={(e) =>
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [slot]: { value: e.target.value, note: prev[slot]?.note ?? "" },
+                      }))
+                    }
                     placeholder={`Your piece of “${section}” — key points, mnemonics, worked examples…`}
                     rows={3}
                     maxLength={2000}
@@ -166,8 +195,13 @@ export function StudyGuideCard({
                     className="w-full resize-none rounded border bg-transparent text-sm outline-none px-2 py-1.5"
                   />
                   <input
-                    value={draftNote}
-                    onChange={(e) => setDraftNote(e.target.value)}
+                    value={drafts[slot]?.note ?? ""}
+                    onChange={(e) =>
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [slot]: { value: prev[slot]?.value ?? "", note: e.target.value },
+                      }))
+                    }
                     placeholder="Source? (optional — e.g. lecture 12)"
                     maxLength={1000}
                     className="w-full bg-transparent text-xs outline-none"
@@ -175,7 +209,7 @@ export function StudyGuideCard({
                   <div className="flex items-center gap-2 justify-end">
                     <button
                       type="button"
-                      onClick={() => setEditingSlot(null)}
+                      onClick={() => closeEditor(slot)}
                       className="text-xs text-muted-foreground px-2 py-1"
                     >
                       Cancel
@@ -183,7 +217,7 @@ export function StudyGuideCard({
                     <button
                       type="button"
                       onClick={() => void publish(slot)}
-                      disabled={!draft.trim() || publishing}
+                      disabled={!drafts[slot]?.value.trim() || publishing}
                       className="text-xs font-medium px-3 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
                     >
                       {mine ? "Update my contribution" : "Publish my contribution"}
