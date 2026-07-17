@@ -4,7 +4,8 @@
  * verbs instead).
  *
  *  circles.status  — enabled?, our pubkey, connection count, reciprocity.
- *  circles.list    — circles we belong to, with members + peer liveness.
+ *  circles.list    — circles we belong to, with members + peer liveness + unread.
+ *  circles.markRead— mark a circle read up to now (node-local; clears its badge).
  *  circles.create  — create a circle (kind free string; "connection" = edge).
  *  circles.invite  — mint an invite code (the code returns ONCE).
  *  circles.join    — redeem a pasted invite code (the invitee-side consent:
@@ -89,6 +90,7 @@ export const circlesHandlers: GatewayRequestHandlers = {
       return;
     }
     const presence = new Map(svc.service.peerPresence().map((p) => [p.peerPubkey, p] as const));
+    const unread = svc.service.unreadByCircle();
     const circles = svc.service.listCircles().map((c) => ({
       circleId: c.circleId,
       name: c.name,
@@ -96,6 +98,7 @@ export const circlesHandlers: GatewayRequestHandlers = {
       status: c.status,
       keyEpoch: c.keyEpoch,
       createdAt: c.createdAt,
+      unread: unread[c.circleId] ?? 0,
       members: svc.service.store.getMembers(c.circleId).map((m) => ({
         memberPubkey: m.memberPubkey,
         displayName: m.displayName,
@@ -106,6 +109,21 @@ export const circlesHandlers: GatewayRequestHandlers = {
       })),
     }));
     respond(true, { circles }, undefined);
+  },
+
+  "circles.markRead": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    svc.service.markRead(circleId);
+    respond(true, { ok: true }, undefined);
   },
 
   "circles.create": async ({ params, respond }) => {

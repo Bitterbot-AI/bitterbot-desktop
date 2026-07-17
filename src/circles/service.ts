@@ -67,6 +67,7 @@ import {
   practiceReply,
   realConnectionCount,
 } from "./practice.js";
+import { markCircleRead, unreadCounts } from "./read-state.js";
 import {
   buildChainedEventBody,
   computeTabBalances,
@@ -1081,6 +1082,16 @@ export class CirclesService {
 
   listCircles(): Circle[] {
     return this.store.getCirclesForMember(this.pubkey);
+  }
+
+  /** Unread inbound count per circle (PLAN-36 A2), for the rail badges. */
+  unreadByCircle(): Record<string, number> {
+    return unreadCounts(this.db);
+  }
+
+  /** Mark a circle read up to now — called when the human opens it (A2). */
+  markRead(circleId: string): void {
+    markCircleRead(this.db, circleId, Date.now());
   }
 
   /**

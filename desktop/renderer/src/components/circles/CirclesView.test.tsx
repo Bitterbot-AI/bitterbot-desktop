@@ -110,4 +110,40 @@ describe("CirclesView", () => {
     render(<CirclesView />);
     expect(await screen.findByText(/Circles are off on this node/i)).toBeTruthy();
   });
+
+  it("badges unread on other circles and marks the open one read", async () => {
+    requestMock.mockImplementation((method: string) => {
+      switch (method) {
+        case "circles.status":
+          return Promise.resolve({ enabled: true, pubkey: "ed25519:self" });
+        case "circles.list":
+          return Promise.resolve({
+            circles: [
+              { ...CIRCLE }, // c1: auto-selected, no unread
+              {
+                circleId: "c2",
+                name: "Trip",
+                kind: "connection",
+                status: "active",
+                unread: 3,
+                members: CIRCLE.members,
+              },
+            ],
+          });
+        case "circles.messages":
+          return Promise.resolve({ messages: [] });
+        case "circles.markRead":
+          return Promise.resolve({ ok: true });
+        default:
+          return Promise.resolve({});
+      }
+    });
+    render(<CirclesView />);
+    // The open circle is marked read…
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.markRead", { circleId: "c1" }),
+    );
+    // …while the other circle badges its unread count.
+    expect(await screen.findByText("3")).toBeTruthy();
+  });
 });

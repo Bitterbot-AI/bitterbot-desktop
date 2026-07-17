@@ -21,6 +21,7 @@ export interface Circle {
   name: string;
   kind: string;
   status: string;
+  unread?: number;
   members: CircleMember[];
 }
 
@@ -54,6 +55,7 @@ interface CirclesState {
   selectCircle: (circleId: string) => void;
   loadMessages: (circleId: string) => Promise<void>;
   send: (circleId: string, text: string) => Promise<boolean>;
+  markRead: (circleId: string) => void;
   setNotice: (notice: string | null) => void;
 }
 
@@ -85,7 +87,10 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       const activeCircleId =
         prev && circles.some((c) => c.circleId === prev) ? prev : (circles[0]?.circleId ?? null);
       set({ status, circles, activeCircleId, loading: false });
-      if (activeCircleId) void get().loadMessages(activeCircleId);
+      if (activeCircleId) {
+        void get().loadMessages(activeCircleId);
+        get().markRead(activeCircleId); // the circle on screen is, by definition, read
+      }
     } catch (err) {
       set({ notice: String(err), loading: false });
     }
@@ -94,6 +99,15 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   selectCircle: (circleId) => {
     set({ activeCircleId: circleId });
     void get().loadMessages(circleId);
+    get().markRead(circleId);
+  },
+
+  markRead: (circleId) => {
+    // Optimistically clear the badge, then persist server-side (fire-and-forget).
+    set((s) => ({
+      circles: s.circles.map((c) => (c.circleId === circleId ? { ...c, unread: 0 } : c)),
+    }));
+    void request("circles.markRead", { circleId }).catch(() => {});
   },
 
   loadMessages: async (circleId) => {

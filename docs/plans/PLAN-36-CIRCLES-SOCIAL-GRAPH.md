@@ -673,6 +673,11 @@ types). Design mockup + synthesis captured this session.
 dead code). Rides the existing `circles.status/list/messages/send/invite/join`
 RPCs; `"circles"` event nudges an active-circle refresh. Next: A2 read-state/unread
 (`circle_read_state` + `markRead`), A3 reactions, A4 reply-to + pins.
+**A2 LANDED:** node-local unread — `circle_read_state` (migration v40, seeds
+existing circles as read so no upgrade backlog) + `read-state.ts` (unread = inbound
+newer than the marker; our own sends never count). `circles.list` now returns
+`unread` per circle; new `circles.markRead` RPC. Rail badges the count; opening a
+circle (or inbound arriving while it's on screen) clears it. Next: A3 reactions.
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +

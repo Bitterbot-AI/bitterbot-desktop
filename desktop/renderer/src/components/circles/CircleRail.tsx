@@ -27,24 +27,31 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
     >
       {circles.map((c) => {
         const active = c.circleId === activeCircleId;
+        const unread = c.unread ?? 0;
         return (
-          <button
-            key={c.circleId}
-            type="button"
-            onClick={() => onSelect(c.circleId)}
-            title={c.name}
-            aria-label={c.name}
-            aria-current={active ? "true" : undefined}
-            className={cn(
-              "w-10 h-10 grid place-items-center text-[13px] font-bold text-white transition-all",
-              active
-                ? "rounded-[15px] ring-2 ring-primary ring-offset-2 ring-offset-muted/40"
-                : "rounded-[13px]",
+          <div key={c.circleId} className="relative">
+            <button
+              type="button"
+              onClick={() => onSelect(c.circleId)}
+              title={c.name}
+              aria-label={unread > 0 ? `${c.name}, ${unread} unread` : c.name}
+              aria-current={active ? "true" : undefined}
+              className={cn(
+                "w-10 h-10 grid place-items-center text-[13px] font-bold text-white transition-all",
+                active
+                  ? "rounded-[15px] ring-2 ring-primary ring-offset-2 ring-offset-muted/40"
+                  : "rounded-[13px]",
+              )}
+              style={{ background: "linear-gradient(135deg,#6a3ecf,#3a5bd9)" }}
+            >
+              {initials(c.name)}
+            </button>
+            {unread > 0 && !active && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold grid place-items-center border-2 border-muted/40">
+                {unread > 99 ? "99+" : unread}
+              </span>
             )}
-            style={{ background: "linear-gradient(135deg,#6a3ecf,#3a5bd9)" }}
-          >
-            {initials(c.name)}
-          </button>
+          </div>
         );
       })}
       <div className="w-6 h-px bg-border" />

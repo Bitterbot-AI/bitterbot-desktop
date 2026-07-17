@@ -25,6 +25,7 @@ export function CirclesView() {
     refresh,
     selectCircle,
     loadMessages,
+    markRead,
     setNotice,
   } = useCirclesStore();
   const [showInvite, setShowInvite] = useState(false);
@@ -38,9 +39,12 @@ export function CirclesView() {
   // Inbound (direct dial or mailbox drain) pushes a "circles" event — refresh
   // the active circle immediately instead of waiting for the poll.
   const onCirclesEvent = useCallback(() => {
-    if (activeCircleId) void loadMessages(activeCircleId);
+    if (activeCircleId) {
+      void loadMessages(activeCircleId);
+      markRead(activeCircleId); // inbound arrived while you're looking at it
+    }
     void refresh();
-  }, [activeCircleId, loadMessages, refresh]);
+  }, [activeCircleId, loadMessages, markRead, refresh]);
   useGatewayEvent("circles", onCirclesEvent);
 
   if (loading) {

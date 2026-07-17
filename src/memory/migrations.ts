@@ -1644,6 +1644,29 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 40,
+    description:
+      "PLAN-36 Phase A2 (chat shell): circle_read_state — this node's per-circle " +
+      "read marker (last_read_at). Unread = inbound circle_messages newer than the " +
+      "marker; the rail badges it and opening a circle marks it read. Node-local " +
+      "(my view), so one row per circle, no signing. Seeds every EXISTING circle " +
+      "as fully read at migration time so the upgrade shows no false backlog; " +
+      "circles joined afterwards start unread until first opened.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_read_state (
+          circle_id    TEXT PRIMARY KEY,
+          last_read_at INTEGER NOT NULL
+        )
+      `);
+      // Seed existing circles as read up to their newest message → no backlog.
+      db.exec(`
+        INSERT OR IGNORE INTO circle_read_state (circle_id, last_read_at)
+          SELECT circle_id, MAX(created_at) FROM circle_messages GROUP BY circle_id
+      `);
+    },
+  },
 ];
 
 /**
