@@ -257,6 +257,80 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(after.find((v) => v.authorPubkey === pubkeyId(anaKey))?.value).toBe("Fri");
   });
 
+  it("assembles a study guide from per-member section slices (C3)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const tick = () => new Promise((r) => setTimeout(r, 3));
+
+    // Ana posts the guide skeleton: sections ride the card text, one per line
+    // (same shape as decision options). Contributions are per-section slices.
+    await ana.putCanvasCard({
+      circleId,
+      cardId: "sg1",
+      cardType: "study",
+      title: "BIO-204 Midterm 2",
+      text: "Glycolysis\nKrebs cycle\nElectron transport",
+    });
+
+    // Both members contribute to the SAME section — slices merge per author,
+    // they don't overwrite. A contribution is paragraph-sized (>200 chars),
+    // which pins the raised slice value cap.
+    const anaContribution =
+      "Glycolysis: glucose → 2 pyruvate in the cytosol; net 2 ATP (substrate-level) + 2 NADH. " +
+      "Investment phase burns 2 ATP (hexokinase, PFK-1 = committed step); payoff phase yields 4. " +
+      "PFK-1 is the key regulatory valve: ATP/citrate inhibit, AMP/F2,6BP activate.";
+    expect(anaContribution.length).toBeGreaterThan(200);
+    await ana.putCanvasSlice({
+      circleId,
+      cardId: "sg1",
+      slot: "sec-glycolysis",
+      value: anaContribution,
+      note: "lecture 12",
+    });
+    await bob.putCanvasSlice({
+      circleId,
+      cardId: "sg1",
+      slot: "sec-glycolysis",
+      value: "Mnemonic: Goodness Gracious, Father Franklin...",
+      note: "",
+    });
+    await bob.putCanvasSlice({
+      circleId,
+      cardId: "sg1",
+      slot: "sec-krebs",
+      value: "8 steps, 2 turns per glucose: 6 NADH, 2 FADH2, 2 GTP.",
+      note: "",
+    });
+
+    // Every node folds the same assembled guide: 2 authors on glycolysis
+    // (Ana's long contribution intact), 1 on Krebs, a gap on ETC.
+    for (const node of [ana, bob]) {
+      const card = node.canvasCards(circleId).find((c) => c.cardId === "sg1");
+      expect(card?.cardType).toBe("study");
+      const glyco = (card?.slices ?? []).filter((s) => s.slot === "sec-glycolysis");
+      expect(glyco).toHaveLength(2);
+      expect(glyco.find((s) => s.authorPubkey === pubkeyId(anaKey))?.value).toBe(anaContribution);
+      expect((card?.slices ?? []).filter((s) => s.slot === "sec-krebs")).toHaveLength(1);
+      expect((card?.slices ?? []).filter((s) => s.slot === "sec-etc")).toHaveLength(0);
+    }
+
+    // Editing your contribution is LWW per (card, slot, author) — it replaces.
+    await tick();
+    await bob.putCanvasSlice({
+      circleId,
+      cardId: "sg1",
+      slot: "sec-glycolysis",
+      value: "Mnemonic v2",
+      note: "",
+    });
+    const after = (ana.canvasCards(circleId).find((c) => c.cardId === "sg1")?.slices ?? []).filter(
+      (s) => s.slot === "sec-glycolysis",
+    );
+    expect(after).toHaveLength(2); // still two contributors
+    expect(after.find((s) => s.authorPubkey === pubkeyId(bobKey))?.value).toBe("Mnemonic v2");
+  });
+
   it("propagates presence heartbeats into the peer-presence table", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

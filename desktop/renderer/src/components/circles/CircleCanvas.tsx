@@ -1,15 +1,17 @@
-import { ListChecks, Plus, StickyNote, X } from "lucide-react";
+import { BookOpen, ListChecks, Plus, StickyNote, X } from "lucide-react";
 import { useState } from "react";
 import { useCirclesStore, type Circle } from "../../stores/circles-store";
 import { DecisionCard } from "./DecisionCard";
+import { StudyGuideCard } from "./StudyGuideCard";
 
 // PLAN-36 Phase C: the group canvas — a board of typed cards folded from the
 // circle event log (canvas.* events). C1 shipped the shared note; C2 adds the
-// Decision Card (a constraint-aware poll whose votes are per-member slices).
-// Card content is peer content: injection-scanned on receipt, rendered as
-// escaped text (never HTML).
+// Decision Card (a constraint-aware poll whose votes are per-member slices);
+// C3 the study-guide Co-Canvas (sections that assemble from per-member
+// contribution slices — the §2.5 beachhead). Card content is peer content:
+// injection-scanned on receipt, rendered as escaped text (never HTML).
 
-type Mode = "note" | "decision" | null;
+type Mode = "note" | "decision" | "study" | null;
 
 function nameFor(circle: Circle, pubkey: string, selfPubkey: string | undefined): string {
   if (pubkey === selfPubkey) return "You";
@@ -35,6 +37,7 @@ export function CircleCanvas({
   const cards = useCirclesStore((s) => s.cardsByCircle[circle.circleId]);
   const putCard = useCirclesStore((s) => s.putCard);
   const putDecision = useCirclesStore((s) => s.putDecision);
+  const putStudyGuide = useCirclesStore((s) => s.putStudyGuide);
   const [mode, setMode] = useState<Mode>(null);
   const [saving, setSaving] = useState(false);
   // Note composer
@@ -43,6 +46,9 @@ export function CircleCanvas({
   // Decision composer
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState<string[]>(["", ""]);
+  // Study-guide composer
+  const [guideTitle, setGuideTitle] = useState("");
+  const [guideSections, setGuideSections] = useState("");
 
   const reset = () => {
     setMode(null);
@@ -50,6 +56,8 @@ export function CircleCanvas({
     setText("");
     setQuestion("");
     setOptions(["", ""]);
+    setGuideTitle("");
+    setGuideSections("");
   };
 
   const submitNote = async () => {
@@ -65,6 +73,18 @@ export function CircleCanvas({
     if (!question.trim() || opts.length < 2 || saving) return;
     setSaving(true);
     const ok = await putDecision(circle.circleId, question, opts);
+    setSaving(false);
+    if (ok) reset();
+  };
+
+  const submitStudyGuide = async () => {
+    const secs = guideSections
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!guideTitle.trim() || secs.length === 0 || saving) return;
+    setSaving(true);
+    const ok = await putStudyGuide(circle.circleId, guideTitle, secs);
     setSaving(false);
     if (ok) reset();
   };
@@ -92,6 +112,13 @@ export function CircleCanvas({
               className="text-xs font-medium text-primary flex items-center gap-1"
             >
               <ListChecks className="w-3.5 h-3.5" /> Decision
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("study")}
+              className="text-xs font-medium text-primary flex items-center gap-1"
+            >
+              <BookOpen className="w-3.5 h-3.5" /> Guide
             </button>
           </div>
         )}
@@ -165,16 +192,46 @@ export function CircleCanvas({
           </div>
         )}
 
+        {mode === "study" && (
+          <div className="rounded-lg border bg-card p-2.5 space-y-2">
+            <input
+              value={guideTitle}
+              onChange={(e) => setGuideTitle(e.target.value)}
+              placeholder="Study guide title (e.g. BIO-204 Midterm 2)"
+              autoFocus
+              className="w-full bg-transparent text-sm font-semibold outline-none"
+            />
+            <textarea
+              value={guideSections}
+              onChange={(e) => setGuideSections(e.target.value)}
+              placeholder={
+                "Sections, one per line — everyone fills their piece\nGlycolysis\nKrebs cycle\nElectron transport"
+              }
+              rows={4}
+              className="w-full resize-none bg-transparent text-sm outline-none"
+            />
+            <ComposerActions
+              onCancel={reset}
+              onSave={() => void submitStudyGuide()}
+              saving={saving}
+              saveLabel="Start guide"
+            />
+          </div>
+        )}
+
         {list.length === 0 && mode === null && (
           <div className="text-center text-sm text-muted-foreground px-4 py-10">
-            Nothing on the canvas yet. Add a shared note, or post a decision for the circle to vote
-            on — soon your agents&apos; outputs will land here too.
+            Nothing on the canvas yet. Add a shared note, post a decision to vote on, or start a
+            study guide the whole circle fills in — soon your agents&apos; outputs will land here
+            too.
           </div>
         )}
 
         {list.map((card) =>
           card.cardType === "decision" ? (
             <DecisionCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey} />
+          ) : card.cardType === "study" ? (
+            <StudyGuideCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey} />
           ) : (
             <div key={card.cardId} className="rounded-lg border bg-card p-3">
               {card.title && <div className="text-sm font-semibold mb-1">{card.title}</div>}

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCirclesStore } from "../../stores/circles-store";
 import { CirclesView } from "./CirclesView";
+import { sectionSlot } from "./StudyGuideCard";
 
 // PLAN-36 Phase A: the Circles chat shell renders circles + messages + presence
 // from the circles.* RPCs, and the composer sends via circles.send.
@@ -90,8 +91,27 @@ function stubRpcs(enabled = true) {
                 },
               ],
             },
+            {
+              cardId: "sg1",
+              cardType: "study",
+              title: "Midterm 2 guide",
+              text: "Glycolysis\nKrebs cycle",
+              authorPubkey: "ed25519:maya",
+              updatedAt: Date.now(),
+              slices: [
+                {
+                  slot: sectionSlot("Glycolysis"),
+                  value: "glucose → 2 pyruvate, net 2 ATP + 2 NADH",
+                  note: "lecture 12",
+                  authorPubkey: "ed25519:maya",
+                  updatedAt: Date.now(),
+                },
+              ],
+            },
           ],
         });
+      case "circles.canvas.put":
+        return Promise.resolve({ delivered: ["ed25519:maya"], failed: [], cardId: "new" });
       case "circles.canvas.slice":
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
       case "circles.send":
@@ -205,6 +225,53 @@ describe("CirclesView", () => {
       expect(requestMock).toHaveBeenCalledWith(
         "circles.canvas.slice",
         expect.objectContaining({ cardId: "d1", slot: "vote", value: "Fri" }),
+      ),
+    );
+  });
+
+  it("assembles the study guide (C3): sections, contributions, gaps — and publishes mine", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
+    // The guide renders its coverage, Maya's contribution, and the gap section.
+    expect(await screen.findByText("Midterm 2 guide")).toBeTruthy();
+    expect(screen.getByText(/1 of 2 sections covered/i)).toBeTruthy();
+    expect(screen.getByText("glucose → 2 pyruvate, net 2 ATP + 2 NADH")).toBeTruthy();
+    expect(screen.getByText("gap")).toBeTruthy(); // Krebs cycle has no contribution yet
+    // Contribute my piece to the gap section and publish it.
+    const addButtons = screen.getAllByRole("button", { name: /Add yours/i });
+    await userEvent.click(addButtons[addButtons.length - 1]);
+    await userEvent.type(screen.getByPlaceholderText(/Krebs cycle/), "8 steps, 2 turns");
+    await userEvent.click(screen.getByRole("button", { name: /Publish my contribution/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith(
+        "circles.canvas.slice",
+        expect.objectContaining({
+          cardId: "sg1",
+          slot: sectionSlot("Krebs cycle"),
+          value: "8 steps, 2 turns",
+        }),
+      ),
+    );
+  });
+
+  it("starts a study guide from the composer via circles.canvas.put", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Guide/ }));
+    await userEvent.type(screen.getByPlaceholderText(/Study guide title/i), "CHEM final");
+    await userEvent.type(screen.getByPlaceholderText(/Sections, one per line/i), "Acids\nBases");
+    await userEvent.click(screen.getByRole("button", { name: /Start guide/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith(
+        "circles.canvas.put",
+        expect.objectContaining({
+          circleId: "c1",
+          cardType: "study",
+          title: "CHEM final",
+          text: "Acids\nBases",
+        }),
       ),
     );
   });

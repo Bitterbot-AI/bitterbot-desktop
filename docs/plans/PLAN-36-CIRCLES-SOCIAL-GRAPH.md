@@ -716,6 +716,27 @@ render + publish. This proves the typed-slot/per-member-contribution architectur
 end to end. Next: **C3 = the study-guide Co-Canvas** (the beachhead), and Phase B
 (the agent that pre-fills a member's slice).
 
+**C3 LANDED (study-guide Co-Canvas — the §2.5 beachhead card):** a `canvas.card.put`
+with cardType "study"; the guide's SECTIONS ride the card text one per line (the
+decision-options shape), and each member's per-section contribution is a separate
+signed `canvas.slice.put` whose slot is `sec-<fnv1a(normalized section)>` —
+deterministic on every node with no coordination, so the guide ASSEMBLES from
+everyone's pieces (LWW per (card, section, author)) and uncovered sections render
+as amber GAPS (the gap-map seed). No new protocol, no new RPC, no migration: the
+generic C1/C2 machinery carries it; the one server change is raising the slice
+value cap 200→2000 (a contribution is a paragraph, not a vote; the value stays a
+top-level string so the event.append injection scan reaches it). Renderer:
+`StudyGuideCard` (coverage header, per-section attributed contributions +
+source note, add/edit-yours inline composer), a Guide composer in `CircleCanvas`,
+store `putStudyGuide` + generic `putSlice` (vote now delegates to it). Documented
+caveats inherited from C2: renaming a section orphans its contributions (same
+class as editing decision options); a crafted slot collision only merges two
+sections' lists (cosmetic). Tests: cross-node assemble/merge/LWW-edit with a
+
+> 200-char contribution pinning the cap; renderer guide render + gap + publish
+> contribution + composer create. Phase B pre-fills a member's section slice from
+> their private gap history (PLAN-9 mastery), quarantined per §2.5's security note.
+
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
 member pane); connections render as DMs. **Build a new `CircleMessageList`** — do

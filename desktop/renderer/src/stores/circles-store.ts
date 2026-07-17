@@ -79,6 +79,14 @@ interface CirclesState {
   send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
   putCard: (circleId: string, title: string, text: string, cardId?: string) => Promise<boolean>;
   putDecision: (circleId: string, question: string, options: string[]) => Promise<boolean>;
+  putStudyGuide: (circleId: string, title: string, sections: string[]) => Promise<boolean>;
+  putSlice: (
+    circleId: string,
+    cardId: string,
+    slot: string,
+    value: string,
+    note: string,
+  ) => Promise<boolean>;
   vote: (circleId: string, cardId: string, option: string, note: string) => Promise<boolean>;
   markRead: (circleId: string) => void;
   setNotice: (notice: string | null) => void;
@@ -171,15 +179,19 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     }
   },
 
-  vote: async (circleId, cardId, option, note) => {
-    if (!option) return false;
+  putStudyGuide: async (circleId, title, sections) => {
+    const secs = sections.map((s) => s.trim()).filter(Boolean);
+    if (!title.trim() || secs.length === 0) return false;
     try {
-      await request("circles.canvas.slice", {
+      // A study guide (C3) is a card with cardType "study"; sections ride the
+      // text field, one per line. Each member's per-section contribution is a
+      // separate slice (slot = the section's stable id), so the guide ASSEMBLES
+      // from everyone's pieces instead of being one author's document.
+      await request("circles.canvas.put", {
         circleId,
-        cardId,
-        slot: "vote",
-        value: option,
-        note,
+        cardType: "study",
+        title: title.trim(),
+        text: secs.join("\n"),
       });
       await get().loadCards(circleId);
       return true;
@@ -187,6 +199,22 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       set({ notice: String(err) });
       return false;
     }
+  },
+
+  putSlice: async (circleId, cardId, slot, value, note) => {
+    if (!slot || !value) return false;
+    try {
+      await request("circles.canvas.slice", { circleId, cardId, slot, value, note });
+      await get().loadCards(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  vote: async (circleId, cardId, option, note) => {
+    return get().putSlice(circleId, cardId, "vote", option, note);
   },
 
   markRead: (circleId) => {

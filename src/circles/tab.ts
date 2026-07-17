@@ -42,8 +42,9 @@ export type TabEventInput =
     }
   | { type: "canvas.card.remove"; cardId: string; updatedAt: number }
   // A per-member contribution to one SLOT of a card (PLAN-36 C2) — e.g. a vote
-  // on a Decision Card. One slice per (card, slot, author), LWW; this is the
-  // "typed slot each member's agent fills on their behalf" primitive.
+  // on a Decision Card, or a section contribution on a study guide (C3). One
+  // slice per (card, slot, author), LWW; this is the "typed slot each member's
+  // agent fills on their behalf" primitive.
   | {
       type: "canvas.slice.put";
       cardId: string;
@@ -153,7 +154,10 @@ function normalizeInput(input: TabEventInput): { type: string } & Record<string,
         type: "canvas.slice.put",
         card_id: cardId,
         slot,
-        value: input.value.slice(0, 200),
+        // 2000 chars: a study-guide section contribution (C3) is a paragraph,
+        // not a vote. Value stays a top-level string so the event.append
+        // injection scan reaches it.
+        value: input.value.slice(0, 2000),
         note: input.note.slice(0, 1000),
         updated_at: input.updatedAt,
       };
