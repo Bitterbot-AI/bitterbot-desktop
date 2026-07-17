@@ -43,6 +43,11 @@ this session (each: wired + tested + documented + pushed, CI-green):
 - **C2** `cebd6de` — the **Decision Card** (first "collective agent output" object). Options set by
   creator; each member's VOTE is a separate signed `canvas.slice.put` event (LWW per
   (card, slot, author)) so votes MERGE. RPC `circles.canvas.slice`. `DecisionCard.tsx`.
+- **C3** `cfe2d93` — the **study-guide Co-Canvas** (the §2.5 beachhead card). cardType "study";
+  sections ride card.text one per line; each member's per-section contribution is a slice with
+  slot `sec-<fnv1a(normalized section)>` (deterministic, no coordination); uncovered sections
+  render as amber GAPS. Server change: slice value cap 200→2000. `StudyGuideCard.tsx`,
+  store `putStudyGuide` + generic `putSlice` (vote delegates to it). No new RPC/migration.
 
 **Earlier this session (context):** frictionless invite (link+QR, `8449026`), mailbox-mediated join
 so two NAT'd laptops connect with neither reachable (`7098269`, migration v39), and the guest page
@@ -110,9 +115,6 @@ connection was tested and works end to end.
 
 ## 5. What's next (in priority order)
 
-- **C3 — study-guide Co-Canvas** (the college beachhead, PLAN-36 §2.5): a card that assembles from
-  each member's contributions (sections + per-member slices), the richest showcase of collective
-  output. Same slice architecture as C2.
 - **Phase B — the agent in the room (summon-only):** wire inbound `@your-agent` messages into a
   **quarantined, tool-less** agent path that drafts a reply / a card-slice on the member's PERSONAL
   canvas (reuse the existing `create_artifact` / `ArtifactPanel`), quiet-by-default, published only
