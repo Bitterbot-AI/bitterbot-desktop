@@ -414,13 +414,16 @@ function storeInboundMessage(
     return err(A2aErrorCodes.INVALID_PARAMS, `text required (max ${MAX_MESSAGE_CHARS} chars)`);
   }
   const threadId = typeof body.thread_id === "string" ? body.thread_id.slice(0, 64) : null;
+  // A3: the parent's envelope id, if this is a reply. Just an id reference — no
+  // content — so nothing to injection-scan; the parent (if held) renders locally.
+  const replyTo = typeof body.reply_to === "string" ? body.reply_to.slice(0, 64) : null;
   const { content, severity } = sanitizeInboundCircleText(rawText, env.author_pubkey);
   const messageId = crypto.randomUUID();
   db.prepare(
     `INSERT INTO circle_messages
        (message_id, circle_id, author_pubkey, direction, kind, thread_id, content,
-        scan_severity, envelope_id, created_at)
-     VALUES (?, ?, ?, 'in', ?, ?, ?, ?, ?, ?)`,
+        scan_severity, envelope_id, created_at, reply_to)
+     VALUES (?, ?, ?, 'in', ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     messageId,
     env.circle_id,
@@ -431,6 +434,7 @@ function storeInboundMessage(
     severity,
     env.id,
     now,
+    replyTo,
   );
   // Receiving a signed message proves the sender is alive right now, so refresh
   // their presence — an actively-chatting peer must not read as offline just

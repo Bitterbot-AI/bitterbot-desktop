@@ -161,6 +161,24 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(bob.reciprocity()).toEqual({ reciprocatedPeers: 1, activePeers: 1 });
   });
 
+  it("threads a reply to the parent's envelope id across nodes (A3)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    // Ana sends; the envelope id is the reference every node shares.
+    const sent = await ana.sendMessage({ circleId, text: "who's got the notes?" });
+    const bobInbox = bob.messages(circleId).filter((m) => m.direction === "in");
+    expect(bobInbox[0]?.envelopeId).toBe(sent.envelopeId);
+
+    // Bob replies to it; Ana receives the reply carrying the same reference…
+    await bob.sendMessage({ circleId, text: "i do!", replyTo: sent.envelopeId });
+    const anaReply = ana.messages(circleId).find((m) => m.direction === "in" && m.replyTo);
+    expect(anaReply?.replyTo).toBe(sent.envelopeId);
+    // …and Ana holds the parent under that envelope id, so it resolves locally.
+    expect(ana.messages(circleId).some((m) => m.envelopeId === sent.envelopeId)).toBe(true);
+  });
+
   it("propagates presence heartbeats into the peer-presence table", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

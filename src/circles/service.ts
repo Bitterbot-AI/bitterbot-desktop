@@ -652,6 +652,7 @@ export class CirclesService {
     text: string;
     kind?: "message" | "ask" | "answer";
     threadId?: string;
+    replyTo?: string;
   }): Promise<SendReport & { envelopeId: string }> {
     const kind = args.kind ?? "message";
     const circle = this.store.getCircle(args.circleId);
@@ -661,6 +662,11 @@ export class CirclesService {
     const body: Record<string, JsonValue> = { text: args.text };
     if (args.threadId) {
       body.thread_id = args.threadId;
+    }
+    // A3: reference the parent by its envelope id (stable across every node).
+    const replyTo = args.replyTo ? args.replyTo.slice(0, 64) : null;
+    if (replyTo) {
+      body.reply_to = replyTo;
     }
     const envelope = makeCircleEnvelope(
       kind === "message" ? "message" : kind === "ask" ? "ask" : "answer",
@@ -673,8 +679,8 @@ export class CirclesService {
       .prepare(
         `INSERT INTO circle_messages
            (message_id, circle_id, author_pubkey, direction, kind, thread_id, content,
-            scan_severity, envelope_id, created_at, delivery_status)
-         VALUES (?, ?, ?, 'out', ?, ?, ?, NULL, ?, ?, 'pending')`,
+            scan_severity, envelope_id, created_at, delivery_status, reply_to)
+         VALUES (?, ?, ?, 'out', ?, ?, ?, NULL, ?, ?, 'pending', ?)`,
       )
       .run(
         messageId,
@@ -685,6 +691,7 @@ export class CirclesService {
         args.text,
         envelope.id,
         Date.now(),
+        replyTo,
       );
     const method =
       kind === "message" ? "circle/message" : kind === "ask" ? "circle/ask" : "circle/answer";
@@ -1142,6 +1149,7 @@ export class CirclesService {
     limit = 100,
   ): Array<{
     messageId: string;
+    envelopeId: string | null;
     authorPubkey: string;
     direction: string;
     kind: string;
@@ -1149,16 +1157,18 @@ export class CirclesService {
     content: string;
     createdAt: number;
     deliveryStatus: DeliveryStatus | null;
+    replyTo: string | null;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT message_id, author_pubkey, direction, kind, thread_id, content, created_at,
-                delivery_status
+        `SELECT message_id, envelope_id, author_pubkey, direction, kind, thread_id, content,
+                created_at, delivery_status, reply_to
            FROM circle_messages WHERE circle_id = ?
           ORDER BY created_at DESC LIMIT ?`,
       )
       .all(circleId, Math.min(limit, 500)) as unknown as Array<{
       message_id: string;
+      envelope_id: string | null;
       author_pubkey: string;
       direction: string;
       kind: string;
@@ -1166,9 +1176,11 @@ export class CirclesService {
       content: string;
       created_at: number;
       delivery_status: DeliveryStatus | null;
+      reply_to: string | null;
     }>;
     return rows.map((r) => ({
       messageId: r.message_id,
+      envelopeId: r.envelope_id,
       authorPubkey: r.author_pubkey,
       direction: r.direction,
       kind: r.kind,
@@ -1176,6 +1188,7 @@ export class CirclesService {
       content: r.content,
       createdAt: r.created_at,
       deliveryStatus: r.delivery_status,
+      replyTo: r.reply_to,
     }));
   }
 

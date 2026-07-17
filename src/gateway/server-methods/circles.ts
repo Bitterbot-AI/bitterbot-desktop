@@ -204,6 +204,7 @@ export const circlesHandlers: GatewayRequestHandlers = {
         text,
         kind,
         threadId: typeof params.threadId === "string" ? params.threadId : undefined,
+        replyTo: typeof params.replyTo === "string" ? params.replyTo : undefined,
       });
       respond(true, report, undefined);
     } catch (err) {

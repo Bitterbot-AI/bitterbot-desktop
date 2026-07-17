@@ -1,3 +1,4 @@
+import { Reply } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import type { CircleMember, CircleMessage } from "../../stores/circles-store";
 import { cn } from "../../lib/utils";
@@ -31,9 +32,10 @@ interface Props {
   messages: CircleMessage[];
   members: CircleMember[];
   selfPubkey: string | undefined;
+  onReply: (m: CircleMessage) => void;
 }
 
-export function CircleMessageList({ messages, members, selfPubkey }: Props) {
+export function CircleMessageList({ messages, members, selfPubkey, onReply }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const nameOf = useMemo(() => {
@@ -41,6 +43,13 @@ export function CircleMessageList({ messages, members, selfPubkey }: Props) {
     for (const m of members) map.set(m.memberPubkey, m.displayName ?? "friend");
     return (pubkey: string) => map.get(pubkey) ?? "friend";
   }, [members]);
+
+  // Resolve a reply's parent locally by its shared envelope id (A3).
+  const byEnvelope = useMemo(() => {
+    const map = new Map<string, CircleMessage>();
+    for (const m of messages) if (m.envelopeId) map.set(m.envelopeId, m);
+    return map;
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ block: "end" });
@@ -60,8 +69,17 @@ export function CircleMessageList({ messages, members, selfPubkey }: Props) {
         const isSelf = m.direction === "out" || m.authorPubkey === selfPubkey;
         const name = isSelf ? "You" : nameOf(m.authorPubkey);
         const color = isSelf ? "#3a5bd9" : colorFor(m.authorPubkey);
+        const parent = m.replyTo ? byEnvelope.get(m.replyTo) : undefined;
         return (
-          <div key={m.messageId} className="flex gap-3">
+          <div key={m.messageId} className="group relative flex gap-3">
+            <button
+              type="button"
+              onClick={() => onReply(m)}
+              aria-label={`Reply to ${name}`}
+              className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-foreground p-1 rounded"
+            >
+              <Reply className="w-3.5 h-3.5" />
+            </button>
             <div
               className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-xs font-bold text-white"
               style={{ background: color }}
@@ -69,6 +87,23 @@ export function CircleMessageList({ messages, members, selfPubkey }: Props) {
               {initials(name)}
             </div>
             <div className="min-w-0 flex-1">
+              {m.replyTo && (
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-0.5 min-w-0">
+                  <Reply className="w-3 h-3 shrink-0" />
+                  {parent ? (
+                    <>
+                      <span className="font-medium shrink-0">
+                        {parent.direction === "out" || parent.authorPubkey === selfPubkey
+                          ? "You"
+                          : nameOf(parent.authorPubkey)}
+                      </span>
+                      <span className="truncate opacity-80">{parent.content}</span>
+                    </>
+                  ) : (
+                    <span>replied to an earlier message</span>
+                  )}
+                </div>
+              )}
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-sm font-semibold">{name}</span>
                 {isSelf && (

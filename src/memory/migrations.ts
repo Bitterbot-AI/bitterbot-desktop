@@ -1667,6 +1667,18 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 41,
+    description:
+      "PLAN-36 Phase A3 (chat shell): circle_messages.reply_to — the envelope_id " +
+      "of the message a reply answers. The envelope id is stable across all nodes " +
+      "(it is the dedupe key), so a reply resolves to its parent on every member's " +
+      "node. Carried in the message body (reply_to), stored on both the outbound " +
+      "and inbound rows; the UI renders a quoted parent. NULL on non-replies.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_messages", "reply_to", "TEXT");
+    },
+  },
 ];
 
 /**

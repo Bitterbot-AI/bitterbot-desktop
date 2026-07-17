@@ -27,12 +27,14 @@ export interface Circle {
 
 export interface CircleMessage {
   messageId: string;
+  envelopeId?: string | null;
   authorPubkey: string;
   direction: string;
   kind: string;
   content: string;
   createdAt: number;
   deliveryStatus?: "pending" | "delivered" | "partial" | "failed" | null;
+  replyTo?: string | null;
 }
 
 export interface CirclesStatus {
@@ -54,7 +56,7 @@ interface CirclesState {
   refresh: () => Promise<void>;
   selectCircle: (circleId: string) => void;
   loadMessages: (circleId: string) => Promise<void>;
-  send: (circleId: string, text: string) => Promise<boolean>;
+  send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
   markRead: (circleId: string) => void;
   setNotice: (notice: string | null) => void;
 }
@@ -119,11 +121,11 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     }
   },
 
-  send: async (circleId, text) => {
+  send: async (circleId, text, replyTo) => {
     const trimmed = text.trim();
     if (!trimmed) return false;
     try {
-      await request("circles.send", { circleId, text: trimmed });
+      await request("circles.send", { circleId, text: trimmed, replyTo });
       await get().loadMessages(circleId);
       return true;
     } catch (err) {

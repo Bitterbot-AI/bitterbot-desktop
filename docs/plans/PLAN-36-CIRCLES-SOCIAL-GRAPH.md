@@ -677,7 +677,17 @@ RPCs; `"circles"` event nudges an active-circle refresh. Next: A2 read-state/unr
 existing circles as read so no upgrade backlog) + `read-state.ts` (unread = inbound
 newer than the marker; our own sends never count). `circles.list` now returns
 `unread` per circle; new `circles.markRead` RPC. Rail badges the count; opening a
-circle (or inbound arriving while it's on screen) clears it. Next: A3 reactions.
+circle (or inbound arriving while it's on screen) clears it.
+**A3 LANDED (reply-to):** a reply references the parent's `envelope_id` — stable
+across every node (it is the dedupe key), so it resolves locally on each member's
+node. Carried in the message body (`reply_to`), stored on outbound + inbound rows
+(`circle_messages.reply_to`, migration v41); `circles.send` takes `replyTo`,
+`circles.messages` returns `envelopeId` + `replyTo`. The composer shows a quote
+banner; each row a hover reply button + the quoted parent.
+**Reactions + pins are DEFERRED to Phase C** (not a standalone A-increment): both
+are shared-lightweight-state, the same shape as the group-canvas `canvas.*` events,
+so they ride the event log there rather than getting a throwaway verb + table.
+Next: Phase B (summon-only agent in room) or Phase C (group canvas).
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
