@@ -45,18 +45,30 @@ export interface CirclesStatus {
   a2aPublicUrl?: string | null;
 }
 
+export interface CanvasCard {
+  cardId: string;
+  cardType: string;
+  title: string;
+  text: string;
+  authorPubkey: string;
+  updatedAt: number;
+}
+
 interface CirclesState {
   status: CirclesStatus | null;
   circles: Circle[];
   activeCircleId: string | null;
   messagesByCircle: Record<string, CircleMessage[]>;
+  cardsByCircle: Record<string, CanvasCard[]>;
   loading: boolean;
   notice: string | null;
 
   refresh: () => Promise<void>;
   selectCircle: (circleId: string) => void;
   loadMessages: (circleId: string) => Promise<void>;
+  loadCards: (circleId: string) => Promise<void>;
   send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
+  putCard: (circleId: string, title: string, text: string, cardId?: string) => Promise<boolean>;
   markRead: (circleId: string) => void;
   setNotice: (notice: string | null) => void;
 }
@@ -70,6 +82,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   circles: [],
   activeCircleId: null,
   messagesByCircle: {},
+  cardsByCircle: {},
   loading: true,
   notice: null,
 
@@ -91,6 +104,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       set({ status, circles, activeCircleId, loading: false });
       if (activeCircleId) {
         void get().loadMessages(activeCircleId);
+        void get().loadCards(activeCircleId);
         get().markRead(activeCircleId); // the circle on screen is, by definition, read
       }
     } catch (err) {
@@ -101,7 +115,29 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   selectCircle: (circleId) => {
     set({ activeCircleId: circleId });
     void get().loadMessages(circleId);
+    void get().loadCards(circleId);
     get().markRead(circleId);
+  },
+
+  loadCards: async (circleId) => {
+    try {
+      const res = await request<{ cards: CanvasCard[] }>("circles.canvas.list", { circleId });
+      set((s) => ({ cardsByCircle: { ...s.cardsByCircle, [circleId]: res.cards ?? [] } }));
+    } catch (err) {
+      set({ notice: String(err) });
+    }
+  },
+
+  putCard: async (circleId, title, text, cardId) => {
+    if (!title.trim() && !text.trim()) return false;
+    try {
+      await request("circles.canvas.put", { circleId, title: title.trim(), text, cardId });
+      await get().loadCards(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
   },
 
   markRead: (circleId) => {

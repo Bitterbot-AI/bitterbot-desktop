@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
 import { useCirclesStore } from "../../stores/circles-store";
 import { CircleChat } from "./CircleChat";
-import { CircleMembers } from "./CircleMembers";
 import { CircleRail } from "./CircleRail";
+import { CircleRightPane } from "./CircleRightPane";
 import { InvitePanel } from "./InvitePanel";
 
 /**
@@ -20,11 +20,13 @@ export function CirclesView() {
     status,
     circles,
     activeCircleId,
+    cardsByCircle,
     loading,
     notice,
     refresh,
     selectCircle,
     loadMessages,
+    loadCards,
     markRead,
     setNotice,
   } = useCirclesStore();
@@ -41,10 +43,11 @@ export function CirclesView() {
   const onCirclesEvent = useCallback(() => {
     if (activeCircleId) {
       void loadMessages(activeCircleId);
+      void loadCards(activeCircleId); // a peer's canvas event may have arrived
       markRead(activeCircleId); // inbound arrived while you're looking at it
     }
     void refresh();
-  }, [activeCircleId, loadMessages, markRead, refresh]);
+  }, [activeCircleId, loadMessages, loadCards, markRead, refresh]);
   useGatewayEvent("circles", onCirclesEvent);
 
   if (loading) {
@@ -87,7 +90,11 @@ export function CirclesView() {
         {activeCircle ? (
           <>
             <CircleChat circle={activeCircle} selfPubkey={status?.pubkey} />
-            <CircleMembers circle={activeCircle} />
+            <CircleRightPane
+              circle={activeCircle}
+              selfPubkey={status?.pubkey}
+              cardCount={(cardsByCircle[activeCircle.circleId] ?? []).length}
+            />
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">

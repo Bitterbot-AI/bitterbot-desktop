@@ -179,6 +179,44 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(ana.messages(circleId).some((m) => m.envelopeId === sent.envelopeId)).toBe(true);
   });
 
+  it("shares a canvas card across nodes and folds put/update/remove (C1)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const tick = () => new Promise((r) => setTimeout(r, 3)); // distinct updated_at for LWW
+
+    // Ana adds a card; Bob (online) receives it via the event fan-out.
+    await ana.putCanvasCard({
+      circleId,
+      cardId: "card1",
+      cardType: "note",
+      title: "Krebs cycle",
+      text: "acetyl-CoA → …",
+    });
+    expect(bob.canvasCards(circleId).map((c) => c.title)).toContain("Krebs cycle");
+    expect(bob.canvasCards(circleId)[0]?.authorPubkey).toBe(pubkeyId(anaKey));
+
+    // Update the same card (LWW by updated_at) — the newer text wins on both nodes.
+    await tick();
+    await ana.putCanvasCard({
+      circleId,
+      cardId: "card1",
+      cardType: "note",
+      title: "Krebs cycle (v2)",
+      text: "acetyl-CoA → citrate → …",
+    });
+    expect(bob.canvasCards(circleId).find((c) => c.cardId === "card1")?.title).toBe(
+      "Krebs cycle (v2)",
+    );
+    expect(bob.canvasCards(circleId)).toHaveLength(1); // still one card, not two
+
+    // Remove tombstones it everywhere.
+    await tick();
+    await ana.removeCanvasCard({ circleId, cardId: "card1" });
+    expect(bob.canvasCards(circleId).some((c) => c.cardId === "card1")).toBe(false);
+    expect(ana.canvasCards(circleId).some((c) => c.cardId === "card1")).toBe(false);
+  });
+
   it("propagates presence heartbeats into the peer-presence table", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

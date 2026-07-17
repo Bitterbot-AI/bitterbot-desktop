@@ -61,8 +61,23 @@ function stubRpcs(enabled = true) {
             },
           ],
         });
+      case "circles.canvas.list":
+        return Promise.resolve({
+          cards: [
+            {
+              cardId: "card1",
+              cardType: "note",
+              title: "Study plan",
+              text: "cover Krebs first",
+              authorPubkey: "ed25519:maya",
+              updatedAt: Date.now(),
+            },
+          ],
+        });
       case "circles.send":
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
+      case "circles.markRead":
+        return Promise.resolve({ ok: true });
       default:
         return Promise.resolve({});
     }
@@ -145,5 +160,15 @@ describe("CirclesView", () => {
     );
     // …while the other circle badges its unread count.
     expect(await screen.findByText("3")).toBeTruthy();
+  });
+
+  it("shows the group canvas cards on the Canvas tab", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    // Right pane defaults to Members; switch to the Canvas tab.
+    const canvasTab = await screen.findByRole("button", { name: /^Canvas/ });
+    await userEvent.click(canvasTab);
+    expect(await screen.findByText("Study plan")).toBeTruthy();
+    expect(screen.getByText("cover Krebs first")).toBeTruthy();
   });
 });

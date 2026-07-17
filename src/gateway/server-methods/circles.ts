@@ -12,6 +12,8 @@
  *                    the human saw who is asking before calling this).
  *  circles.send    — send a message/ask/answer into a circle as our agent.
  *  circles.messages— the conversation buffer for a circle (wrapped inbound).
+ *  circles.canvas.list/put/remove — the group canvas (typed cards on the event
+ *                    log; PLAN-36 Phase C). put/remove fan out + sync like the tab.
  *
  * Everything is gated by the circles.enabled kill switch (PLAN-31 §8), which
  * defaults ON since the 2026-07-09 red-team phase; handlers answer UNAVAILABLE
@@ -19,6 +21,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import crypto from "node:crypto";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { listDisclosureGrants, setDisclosureGrant } from "../../circles/disclosure.js";
@@ -358,6 +361,72 @@ export const circlesHandlers: GatewayRequestHandlers = {
     try {
       const events = await svc.service.syncEvents(circleId);
       respond(true, events, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.canvas.list": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    respond(true, { cards: svc.service.canvasCards(circleId) }, undefined);
+  },
+
+  "circles.canvas.put": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const title = typeof params.title === "string" ? params.title.trim() : "";
+    const text = typeof params.text === "string" ? params.text : "";
+    if (!circleId || (!title && !text)) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId and a title or text required"),
+      );
+      return;
+    }
+    try {
+      // A new card gets a fresh id; an update targets an existing cardId.
+      const cardId = typeof params.cardId === "string" ? params.cardId : crypto.randomUUID();
+      const cardType = typeof params.cardType === "string" ? params.cardType : "note";
+      const result = await svc.service.putCanvasCard({ circleId, cardId, cardType, title, text });
+      respond(true, { ...result, cardId }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.canvas.remove": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const cardId = typeof params.cardId === "string" ? params.cardId : "";
+    if (!circleId || !cardId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId required"),
+      );
+      return;
+    }
+    try {
+      const result = await svc.service.removeCanvasCard({ circleId, cardId });
+      respond(true, result, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }

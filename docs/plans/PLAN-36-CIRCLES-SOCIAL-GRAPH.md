@@ -687,7 +687,21 @@ banner; each row a hover reply button + the quoted parent.
 **Reactions + pins are DEFERRED to Phase C** (not a standalone A-increment): both
 are shared-lightweight-state, the same shape as the group-canvas `canvas.*` events,
 so they ride the event log there rather than getting a throwaway verb + table.
-Next: Phase B (summon-only agent in room) or Phase C (group canvas).
+
+**C1 LANDED (group-canvas foundation):** the group canvas is a board of typed
+CARDS materialized from the SAME chained event log as the tab. New `canvas.card.put`
+/`canvas.card.remove` event types (`tab.ts` union), a deterministic LWW fold
+(`canvas.ts` `computeCanvasCards` — per card_id the greatest `(updated_at, event_id)`
+wins, a total order every node agrees on), and `putCanvasCard`/`removeCanvasCard`/
+`canvasCards` on the service (reusing the generic `appendTabEvent`, so cards fan
+out + sync exactly like expenses). RPCs `circles.canvas.list/put/remove`. The
+right pane now really switches Members ⇄ Canvas (`CircleRightPane`); the Canvas
+board (`CircleCanvas`) renders cards + a "New card" composer. C1 ships the simplest
+card (a shared note) to prove the whole pipe; peer card text is injection-scanned
+on receipt (event.append) and rendered as escaped text. Inherits the tab's
+fork-freeze + 30-day-sync constraints. Tests: cross-node put/update(LWW)/remove +
+renderer Canvas-tab render. Next: **C2 = the Decision Card** (typed slots + the
+draft→approve→publish consent flow) — the first "collective agent output" object.
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +

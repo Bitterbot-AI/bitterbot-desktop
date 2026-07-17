@@ -28,7 +28,19 @@ import type { JsonValue } from "../commerce/sku.js";
 export type TabEventInput =
   | { type: "expense.add"; memo: string; amountCents: number; participants: string[] }
   | { type: "expense.reversal"; reverses: string }
-  | { type: "note.add"; memo: string };
+  | { type: "note.add"; memo: string }
+  // PLAN-36 Phase C: the group canvas rides the SAME chained event log. A card is
+  // an OR-Set entry (put/remove) with last-writer-wins fields; `updated_at` gives
+  // the fold a deterministic cross-author order (see canvas.ts computeCanvasCards).
+  | {
+      type: "canvas.card.put";
+      cardId: string;
+      cardType: string;
+      title: string;
+      text: string;
+      updatedAt: number;
+    }
+  | { type: "canvas.card.remove"; cardId: string; updatedAt: number };
 
 /** The signed-envelope body fields for a chained event append. */
 export type ChainedEventBody = {
@@ -103,6 +115,25 @@ function normalizeInput(input: TabEventInput): { type: string } & Record<string,
       return { type: "expense.reversal", reverses: input.reverses };
     case "note.add":
       return { type: "note.add", memo: input.memo.slice(0, 2000) };
+    case "canvas.card.put": {
+      const cardId = input.cardId.slice(0, 64);
+      if (!cardId) throw new Error("cardId required");
+      // Title + text are top-level strings so the event.append injection scan
+      // reaches them — peer card content is a hostile principal (§5.1).
+      return {
+        type: "canvas.card.put",
+        card_id: cardId,
+        card_type: input.cardType.slice(0, 32) || "note",
+        title: input.title.slice(0, 200),
+        text: input.text.slice(0, 4000),
+        updated_at: input.updatedAt,
+      };
+    }
+    case "canvas.card.remove": {
+      const cardId = input.cardId.slice(0, 64);
+      if (!cardId) throw new Error("cardId required");
+      return { type: "canvas.card.remove", card_id: cardId, updated_at: input.updatedAt };
+    }
   }
 }
 

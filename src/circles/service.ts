@@ -43,6 +43,7 @@ import {
   type SealedBlob,
 } from "./box-crypto.js";
 import { compileBriefingIfDue, latestBriefing, type CompiledBriefing } from "./briefing.js";
+import { computeCanvasCards, type CanvasCard } from "./canvas.js";
 import { getCircleTopicBus } from "./circle-topic-transport.js";
 import { circleTopicId, publishCircleFrame, type CircleTopicBus } from "./circle-topic.js";
 import { DEFAULT_ANSWER_POSTURE, isDisclosureAllowed, pendingAsks } from "./disclosure.js";
@@ -1041,6 +1042,47 @@ export class CirclesService {
   /** The tab's current fold: net + pairwise balances, display only. */
   tabBalances(circleId: string): TabBalances {
     return computeTabBalances(this.db, circleId);
+  }
+
+  // -------------------------------------------------------------------------
+  // Group canvas (PLAN-36 Phase C): typed cards folded from the event log.
+  // -------------------------------------------------------------------------
+
+  /** The group canvas's current cards. */
+  canvasCards(circleId: string): CanvasCard[] {
+    return computeCanvasCards(this.db, circleId);
+  }
+
+  /** Create or update a canvas card (LWW by cardId) + fan it out. */
+  async putCanvasCard(args: {
+    circleId: string;
+    cardId: string;
+    cardType: string;
+    title: string;
+    text: string;
+  }): Promise<SendReport & { eventId: string; seq: number }> {
+    return this.appendTabEvent({
+      circleId: args.circleId,
+      input: {
+        type: "canvas.card.put",
+        cardId: args.cardId,
+        cardType: args.cardType,
+        title: args.title,
+        text: args.text,
+        updatedAt: Date.now(),
+      },
+    });
+  }
+
+  /** Tombstone a canvas card + fan it out. */
+  async removeCanvasCard(args: {
+    circleId: string;
+    cardId: string;
+  }): Promise<SendReport & { eventId: string; seq: number }> {
+    return this.appendTabEvent({
+      circleId: args.circleId,
+      input: { type: "canvas.card.remove", cardId: args.cardId, updatedAt: Date.now() },
+    });
   }
 
   /**
