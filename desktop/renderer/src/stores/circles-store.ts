@@ -45,6 +45,14 @@ export interface CirclesStatus {
   a2aPublicUrl?: string | null;
 }
 
+export interface CanvasSlice {
+  slot: string;
+  value: string;
+  note: string;
+  authorPubkey: string;
+  updatedAt: number;
+}
+
 export interface CanvasCard {
   cardId: string;
   cardType: string;
@@ -52,6 +60,7 @@ export interface CanvasCard {
   text: string;
   authorPubkey: string;
   updatedAt: number;
+  slices: CanvasSlice[];
 }
 
 interface CirclesState {
@@ -69,6 +78,8 @@ interface CirclesState {
   loadCards: (circleId: string) => Promise<void>;
   send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
   putCard: (circleId: string, title: string, text: string, cardId?: string) => Promise<boolean>;
+  putDecision: (circleId: string, question: string, options: string[]) => Promise<boolean>;
+  vote: (circleId: string, cardId: string, option: string, note: string) => Promise<boolean>;
   markRead: (circleId: string) => void;
   setNotice: (notice: string | null) => void;
 }
@@ -132,6 +143,44 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     if (!title.trim() && !text.trim()) return false;
     try {
       await request("circles.canvas.put", { circleId, title: title.trim(), text, cardId });
+      await get().loadCards(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  putDecision: async (circleId, question, options) => {
+    const opts = options.map((o) => o.trim()).filter(Boolean);
+    if (!question.trim() || opts.length < 2) return false;
+    try {
+      // A Decision Card is a card with cardType "decision"; options ride the
+      // text field, one per line (a scanned string). Votes are per-member slices.
+      await request("circles.canvas.put", {
+        circleId,
+        cardType: "decision",
+        title: question.trim(),
+        text: opts.join("\n"),
+      });
+      await get().loadCards(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  vote: async (circleId, cardId, option, note) => {
+    if (!option) return false;
+    try {
+      await request("circles.canvas.slice", {
+        circleId,
+        cardId,
+        slot: "vote",
+        value: option,
+        note,
+      });
       await get().loadCards(circleId);
       return true;
     } catch (err) {

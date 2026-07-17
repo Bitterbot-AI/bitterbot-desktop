@@ -217,6 +217,46 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(ana.canvasCards(circleId).some((c) => c.cardId === "card1")).toBe(false);
   });
 
+  it("folds per-member votes on a Decision Card (C2)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const tick = () => new Promise((r) => setTimeout(r, 3));
+
+    // Ana posts a decision (a card of type "decision"); both members vote (slices).
+    await ana.putCanvasCard({
+      circleId,
+      cardId: "d1",
+      cardType: "decision",
+      title: "When do we review?",
+      text: "Thu\nFri",
+    });
+    await ana.putCanvasSlice({
+      circleId,
+      cardId: "d1",
+      slot: "vote",
+      value: "Thu",
+      note: "after 6",
+    });
+    await bob.putCanvasSlice({ circleId, cardId: "d1", slot: "vote", value: "Thu", note: "" });
+
+    // Both nodes see the decision card with two vote slices, attributed.
+    const bobCard = bob.canvasCards(circleId).find((c) => c.cardId === "d1");
+    expect(bobCard?.cardType).toBe("decision");
+    const votes = (bobCard?.slices ?? []).filter((s) => s.slot === "vote");
+    expect(votes).toHaveLength(2);
+    expect(votes.map((v) => v.value).toSorted()).toEqual(["Thu", "Thu"]);
+
+    // A member changing their vote is LWW per author — not a second vote.
+    await tick();
+    await ana.putCanvasSlice({ circleId, cardId: "d1", slot: "vote", value: "Fri", note: "" });
+    const after = (bob.canvasCards(circleId).find((c) => c.cardId === "d1")?.slices ?? []).filter(
+      (s) => s.slot === "vote",
+    );
+    expect(after).toHaveLength(2); // still two voters
+    expect(after.find((v) => v.authorPubkey === pubkeyId(anaKey))?.value).toBe("Fri");
+  });
+
   it("propagates presence heartbeats into the peer-presence table", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

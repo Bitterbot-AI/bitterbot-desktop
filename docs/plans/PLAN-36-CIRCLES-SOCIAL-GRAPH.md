@@ -700,8 +700,21 @@ board (`CircleCanvas`) renders cards + a "New card" composer. C1 ships the simpl
 card (a shared note) to prove the whole pipe; peer card text is injection-scanned
 on receipt (event.append) and rendered as escaped text. Inherits the tab's
 fork-freeze + 30-day-sync constraints. Tests: cross-node put/update(LWW)/remove +
-renderer Canvas-tab render. Next: **C2 = the Decision Card** (typed slots + the
-draft→approve→publish consent flow) — the first "collective agent output" object.
+renderer Canvas-tab render.
+
+**C2 LANDED (Decision Card + per-member slices):** the first "collective agent
+output" object. A Decision Card is a `canvas.card.put` with cardType "decision"
+(options in `text`, one per line); each member's VOTE is a SEPARATE signed
+`canvas.slice.put` event (slot "vote", LWW per (card, slot, author)) — so
+contributions MERGE rather than overwrite (`tab.ts` union, `canvas.ts` folds
+slices onto cards, `putCanvasSlice`, RPC `circles.canvas.slice`). Voting IS the
+publish/consent act (Phase B: the member's agent pre-fills the value from private
+context; the human still clicks publish). Renderer: `DecisionCard` (options with
+live tallies + attributed voters + synthesized "leading"), a Note/Decision
+composer toggle. Tests: cross-node vote fold + LWW vote-change; renderer decision
+render + publish. This proves the typed-slot/per-member-contribution architecture
+end to end. Next: **C3 = the study-guide Co-Canvas** (the beachhead), and Phase B
+(the agent that pre-fills a member's slice).
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +

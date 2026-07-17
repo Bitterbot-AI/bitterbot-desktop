@@ -12,8 +12,9 @@
  *                    the human saw who is asking before calling this).
  *  circles.send    — send a message/ask/answer into a circle as our agent.
  *  circles.messages— the conversation buffer for a circle (wrapped inbound).
- *  circles.canvas.list/put/remove — the group canvas (typed cards on the event
- *                    log; PLAN-36 Phase C). put/remove fan out + sync like the tab.
+ *  circles.canvas.list/put/remove/slice — the group canvas (typed cards on the
+ *                    event log; PLAN-36 Phase C). A slice is one member's
+ *                    contribution to a card slot (e.g. a vote). Fan out + sync.
  *
  * Everything is gated by the circles.enabled kill switch (PLAN-31 §8), which
  * defaults ON since the 2026-07-09 red-team phase; handlers answer UNAVAILABLE
@@ -426,6 +427,33 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
     try {
       const result = await svc.service.removeCanvasCard({ circleId, cardId });
+      respond(true, result, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.canvas.slice": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const cardId = typeof params.cardId === "string" ? params.cardId : "";
+    const slot = typeof params.slot === "string" ? params.slot : "";
+    const value = typeof params.value === "string" ? params.value : "";
+    if (!circleId || !cardId || !slot || !value) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId, slot, value required"),
+      );
+      return;
+    }
+    try {
+      const note = typeof params.note === "string" ? params.note : "";
+      const result = await svc.service.putCanvasSlice({ circleId, cardId, slot, value, note });
       respond(true, result, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));

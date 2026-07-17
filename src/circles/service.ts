@@ -1086,6 +1086,32 @@ export class CirclesService {
   }
 
   /**
+   * Contribute OUR slice to a card's slot (C2) — e.g. our vote on a Decision
+   * Card. One slice per (card, slot, us), last-writer-wins; publishing it is the
+   * consent act (in Phase B an agent pre-fills the value; the human still calls
+   * this to publish it).
+   */
+  async putCanvasSlice(args: {
+    circleId: string;
+    cardId: string;
+    slot: string;
+    value: string;
+    note: string;
+  }): Promise<SendReport & { eventId: string; seq: number }> {
+    return this.appendTabEvent({
+      circleId: args.circleId,
+      input: {
+        type: "canvas.slice.put",
+        cardId: args.cardId,
+        slot: args.slot,
+        value: args.value,
+        note: args.note,
+        updatedAt: Date.now(),
+      },
+    });
+  }
+
+  /**
    * Pull missing events from peers and replay each signed envelope through
    * our own validated append path. Best-effort per peer; a peer serving a
    * forked chain freezes the circle here exactly as a live append would.

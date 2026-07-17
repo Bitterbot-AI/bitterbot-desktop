@@ -40,7 +40,18 @@ export type TabEventInput =
       text: string;
       updatedAt: number;
     }
-  | { type: "canvas.card.remove"; cardId: string; updatedAt: number };
+  | { type: "canvas.card.remove"; cardId: string; updatedAt: number }
+  // A per-member contribution to one SLOT of a card (PLAN-36 C2) — e.g. a vote
+  // on a Decision Card. One slice per (card, slot, author), LWW; this is the
+  // "typed slot each member's agent fills on their behalf" primitive.
+  | {
+      type: "canvas.slice.put";
+      cardId: string;
+      slot: string;
+      value: string;
+      note: string;
+      updatedAt: number;
+    };
 
 /** The signed-envelope body fields for a chained event append. */
 export type ChainedEventBody = {
@@ -133,6 +144,19 @@ function normalizeInput(input: TabEventInput): { type: string } & Record<string,
       const cardId = input.cardId.slice(0, 64);
       if (!cardId) throw new Error("cardId required");
       return { type: "canvas.card.remove", card_id: cardId, updated_at: input.updatedAt };
+    }
+    case "canvas.slice.put": {
+      const cardId = input.cardId.slice(0, 64);
+      const slot = input.slot.slice(0, 32);
+      if (!cardId || !slot) throw new Error("cardId and slot required");
+      return {
+        type: "canvas.slice.put",
+        card_id: cardId,
+        slot,
+        value: input.value.slice(0, 200),
+        note: input.note.slice(0, 1000),
+        updated_at: input.updatedAt,
+      };
     }
   }
 }

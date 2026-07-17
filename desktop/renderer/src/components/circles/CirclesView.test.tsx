@@ -71,9 +71,29 @@ function stubRpcs(enabled = true) {
               text: "cover Krebs first",
               authorPubkey: "ed25519:maya",
               updatedAt: Date.now(),
+              slices: [],
+            },
+            {
+              cardId: "d1",
+              cardType: "decision",
+              title: "When do we review?",
+              text: "Thu\nFri",
+              authorPubkey: "ed25519:maya",
+              updatedAt: Date.now(),
+              slices: [
+                {
+                  slot: "vote",
+                  value: "Thu",
+                  note: "after 6",
+                  authorPubkey: "ed25519:maya",
+                  updatedAt: Date.now(),
+                },
+              ],
             },
           ],
         });
+      case "circles.canvas.slice":
+        return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
       case "circles.send":
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
       case "circles.markRead":
@@ -170,5 +190,22 @@ describe("CirclesView", () => {
     await userEvent.click(canvasTab);
     expect(await screen.findByText("Study plan")).toBeTruthy();
     expect(screen.getByText("cover Krebs first")).toBeTruthy();
+  });
+
+  it("renders a Decision Card and publishes a vote via circles.canvas.slice", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
+    // The decision renders with its question and options.
+    expect(await screen.findByText("When do we review?")).toBeTruthy();
+    // Pick the "Fri" option, then publish my vote.
+    await userEvent.click(screen.getByText("Fri"));
+    await userEvent.click(screen.getByRole("button", { name: /Publish my vote/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith(
+        "circles.canvas.slice",
+        expect.objectContaining({ cardId: "d1", slot: "vote", value: "Fri" }),
+      ),
+    );
   });
 });

@@ -23,6 +23,15 @@
 
 import type { DatabaseSync } from "node:sqlite";
 
+/** A per-member contribution to one slot of a card (e.g. a vote). */
+export type CanvasSlice = {
+  slot: string;
+  value: string;
+  note: string;
+  authorPubkey: string;
+  updatedAt: number;
+};
+
 export type CanvasCard = {
   cardId: string;
   cardType: string;
@@ -30,6 +39,8 @@ export type CanvasCard = {
   text: string;
   authorPubkey: string;
   updatedAt: number;
+  /** Folded per-member slices for this card (one per (slot, author), LWW). */
+  slices: CanvasSlice[];
 };
 
 type EventRow = {
@@ -45,21 +56,23 @@ function wins(aUpdated: number, aEventId: string, bUpdated: number, bEventId: st
   return aEventId > bEventId;
 }
 
-/** The canvas's current cards, folded from the circle's canvas.* events. */
+/** The canvas's current cards (with folded per-member slices) from the log. */
 export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCard[] {
   const rows = db
     .prepare(
       `SELECT event_id, author_pubkey, event_type, body_json
          FROM circle_events
-        WHERE circle_id = ? AND event_type IN ('canvas.card.put', 'canvas.card.remove')`,
+        WHERE circle_id = ?
+          AND event_type IN ('canvas.card.put', 'canvas.card.remove', 'canvas.slice.put')`,
     )
     .all(circleId) as unknown as EventRow[];
 
   type Winner = { row: EventRow; updatedAt: number };
-  const latest = new Map<string, Winner>();
+  const cardWinners = new Map<string, Winner>(); // LWW per card_id
+  const sliceWinners = new Map<string, Winner>(); // LWW per (card_id, slot, author)
 
   for (const row of rows) {
-    let body: { card_id?: string; updated_at?: number };
+    let body: { card_id?: string; slot?: string; updated_at?: number };
     try {
       body = JSON.parse(row.body_json) as typeof body;
     } catch {
@@ -68,14 +81,46 @@ export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCa
     const cardId = typeof body.card_id === "string" ? body.card_id : "";
     if (!cardId) continue;
     const updatedAt = typeof body.updated_at === "number" ? body.updated_at : 0;
-    const current = latest.get(cardId);
-    if (!current || wins(updatedAt, row.event_id, current.updatedAt, current.row.event_id)) {
-      latest.set(cardId, { row, updatedAt });
+
+    if (row.event_type === "canvas.slice.put") {
+      const slot = typeof body.slot === "string" ? body.slot : "";
+      if (!slot) continue;
+      const key = `${cardId}\n${slot}\n${row.author_pubkey}`;
+      const cur = sliceWinners.get(key);
+      if (!cur || wins(updatedAt, row.event_id, cur.updatedAt, cur.row.event_id)) {
+        sliceWinners.set(key, { row, updatedAt });
+      }
+    } else {
+      const cur = cardWinners.get(cardId);
+      if (!cur || wins(updatedAt, row.event_id, cur.updatedAt, cur.row.event_id)) {
+        cardWinners.set(cardId, { row, updatedAt });
+      }
     }
   }
 
+  const slicesByCard = new Map<string, CanvasSlice[]>();
+  for (const w of sliceWinners.values()) {
+    let body: { card_id?: string; slot?: string; value?: string; note?: string };
+    try {
+      body = JSON.parse(w.row.body_json) as typeof body;
+    } catch {
+      continue;
+    }
+    const cardId = typeof body.card_id === "string" ? body.card_id : "";
+    if (!cardId) continue;
+    const list = slicesByCard.get(cardId) ?? [];
+    list.push({
+      slot: typeof body.slot === "string" ? body.slot : "",
+      value: typeof body.value === "string" ? body.value : "",
+      note: typeof body.note === "string" ? body.note : "",
+      authorPubkey: w.row.author_pubkey,
+      updatedAt: w.updatedAt,
+    });
+    slicesByCard.set(cardId, list);
+  }
+
   const cards: CanvasCard[] = [];
-  for (const [cardId, w] of latest) {
+  for (const [cardId, w] of cardWinners) {
     if (w.row.event_type === "canvas.card.remove") continue; // tombstoned
     let body: { card_type?: string; title?: string; text?: string };
     try {
@@ -90,9 +135,9 @@ export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCa
       text: typeof body.text === "string" ? body.text : "",
       authorPubkey: w.row.author_pubkey,
       updatedAt: w.updatedAt,
+      slices: (slicesByCard.get(cardId) ?? []).toSorted((a, b) => a.updatedAt - b.updatedAt),
     });
   }
-  // Newest first for display.
-  cards.sort((a, b) => b.updatedAt - a.updatedAt);
+  cards.sort((a, b) => b.updatedAt - a.updatedAt); // newest first
   return cards;
 }
