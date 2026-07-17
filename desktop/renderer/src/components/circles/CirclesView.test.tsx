@@ -1,0 +1,113 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useCirclesStore } from "../../stores/circles-store";
+import { CirclesView } from "./CirclesView";
+
+// PLAN-36 Phase A: the Circles chat shell renders circles + messages + presence
+// from the circles.* RPCs, and the composer sends via circles.send.
+
+const requestMock = vi.fn();
+const gwState = { request: requestMock, status: "connected", subscribe: () => () => {} };
+
+vi.mock("../../stores/gateway-store", () => ({
+  useGatewayStore: Object.assign((selector: (s: unknown) => unknown) => selector(gwState), {
+    getState: () => gwState,
+  }),
+}));
+
+const CIRCLE = {
+  circleId: "c1",
+  name: "Bio 204",
+  kind: "connection",
+  status: "active",
+  members: [
+    {
+      memberPubkey: "ed25519:self",
+      displayName: "Me",
+      role: "creator",
+      isSelf: true,
+      lastSeenAt: Date.now(),
+      lastStatus: "online",
+    },
+    {
+      memberPubkey: "ed25519:maya",
+      displayName: "Maya",
+      role: "member",
+      isSelf: false,
+      lastSeenAt: Date.now(),
+      lastStatus: "online",
+    },
+  ],
+};
+
+function stubRpcs(enabled = true) {
+  requestMock.mockImplementation((method: string) => {
+    switch (method) {
+      case "circles.status":
+        return Promise.resolve({ enabled, pubkey: "ed25519:self" });
+      case "circles.list":
+        return Promise.resolve({ circles: [CIRCLE] });
+      case "circles.messages":
+        return Promise.resolve({
+          messages: [
+            {
+              messageId: "m1",
+              authorPubkey: "ed25519:maya",
+              direction: "in",
+              kind: "message",
+              content: "hi from Maya",
+              createdAt: Date.now(),
+            },
+          ],
+        });
+      case "circles.send":
+        return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
+      default:
+        return Promise.resolve({});
+    }
+  });
+}
+
+beforeEach(() => {
+  requestMock.mockReset();
+  useCirclesStore.setState({
+    status: null,
+    circles: [],
+    activeCircleId: null,
+    messagesByCircle: {},
+    loading: true,
+    notice: null,
+  });
+});
+
+describe("CirclesView", () => {
+  it("renders the circle, its conversation, and its members", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    // Circle name appears in the chat header AND presence shows the peer.
+    await waitFor(() => expect(screen.getAllByText("Bio 204").length).toBeGreaterThan(0));
+    expect(await screen.findByText("hi from Maya")).toBeTruthy();
+    // "Maya" appears as both the message author and in the presence roster.
+    expect(screen.getAllByText("Maya").length).toBeGreaterThan(0);
+  });
+
+  it("sends a message through circles.send", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    const box = await screen.findByPlaceholderText("Message the circle…");
+    await userEvent.type(box, "hello everyone{Enter}");
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.send", {
+        circleId: "c1",
+        text: "hello everyone",
+      }),
+    );
+  });
+
+  it("shows the explainer when circles are disabled", async () => {
+    stubRpcs(false);
+    render(<CirclesView />);
+    expect(await screen.findByText(/Circles are off on this node/i)).toBeTruthy();
+  });
+});

@@ -659,6 +659,21 @@ with two real humans and watch whether it gets muted (cheap, uses instruments
 we already have). **This is the go/no-go gate.** Do not start Phase 3 until the
 loop clears its tripwires (§11).
 
+**Redesign build log `[2026-07-17]`.** After a real friend-to-friend connection
+worked end to end, a 5-agent research fan-out (2 codebase, 3 UX/sync/concept)
+converged on: a calm single-room chat beside a **shared canvas of consent-gated
+collective agent output**, where agents co-fill typed cards (never free-form chat).
+The redesign ships in A→D increments (A: make it a chat · B: summon-only agent in
+room · C: group canvas on the `canvas.*` event log · D: live co-edit + more card
+types). Design mockup + synthesis captured this session.
+**A1 LANDED (renderer-only, no new protocol):** the 3-pane `CirclesView` shell
+(`desktop/renderer/src/components/circles/` — `CircleRail`/`CircleChat`/
+`CircleMessageList`/`CircleMembers`/`InvitePanel`) on a new per-circle keyed
+`circles-store.ts`, replacing the old `PeopleView` stats dashboard (deleted, no
+dead code). Rides the existing `circles.status/list/messages/send/invite/join`
+RPCs; `"circles"` event nudges an active-circle refresh. Next: A2 read-state/unread
+(`circle_read_state` + `markRead`), A3 reactions, A4 reply-to + pins.
+
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
 member pane); connections render as DMs. **Build a new `CircleMessageList`** — do
