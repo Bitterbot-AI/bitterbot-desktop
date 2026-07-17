@@ -22,7 +22,7 @@ converged):**
 > behalf**, and every contribution is **gated by you** before it's group-visible. Agents are
 > **summon-only** (see only what's @-addressed) and quiet-by-default.
 
-Visual mockup of the target UI: https://claude.ai/code/artifact/c2a01557-afcf-4b95-96ea-28bcef1e0884
+Visual mockup of the target UI: <https://claude.ai/code/artifact/c2a01557-afcf-4b95-96ea-28bcef1e0884>
 
 ---
 
@@ -51,7 +51,7 @@ this session (each: wired + tested + documented + pushed, CI-green):
 
 **Earlier this session (context):** frictionless invite (link+QR, `8449026`), mailbox-mediated join
 so two NAT'd laptops connect with neither reachable (`7098269`, migration v39), and the guest page
-deployed live at **https://join.bitterbot.ai/i** (Let's Encrypt). A real friend-to-friend
+deployed live at **<https://join.bitterbot.ai/i>** (Let's Encrypt). A real friend-to-friend
 connection was tested and works end to end.
 
 ---
@@ -129,7 +129,7 @@ connection was tested and works end to end.
 ## 6. How to build, run, test (operational — important)
 
 - **Node/runtime:** WSL2, node 22.22.1. Never use `--dev`/`gateway:dev` — always production config.
-- **The UI you SEE:** the **Vite control UI at http://localhost:5173** (dev server, HMR). Renderer
+- **The UI you SEE:** the **Vite control UI at <http://localhost:5173>** (dev server, HMR). Renderer
   changes are live there after a hard-refresh (`Ctrl+Shift+R`). **The gateway-served built renderer
   (`desktop/dist-renderer`) is stale — do not judge the UI from it.** If Vite is wedged after big
   structural edits, restart it: `cd desktop && pnpm dev`.
