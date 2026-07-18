@@ -214,6 +214,48 @@ beforeEach(() => {
 });
 
 describe("CirclesView", () => {
+  it("orders the thread chronologically: newest message at the bottom", async () => {
+    // The server returns the recent window newest-first (DESC); the thread must
+    // render oldest → newest so the latest lands at the bottom under the scroll.
+    const now = Date.now();
+    requestMock.mockImplementation((method: string) => {
+      switch (method) {
+        case "circles.status":
+          return Promise.resolve({ enabled: true, pubkey: "ed25519:self" });
+        case "circles.list":
+          return Promise.resolve({ circles: [CIRCLE] });
+        case "circles.messages":
+          return Promise.resolve({
+            messages: [
+              {
+                messageId: "m2",
+                authorPubkey: "ed25519:maya",
+                direction: "in",
+                kind: "message",
+                content: "the newer one",
+                createdAt: now,
+              },
+              {
+                messageId: "m1",
+                authorPubkey: "ed25519:maya",
+                direction: "in",
+                kind: "message",
+                content: "the older one",
+                createdAt: now - 60_000,
+              },
+            ],
+          });
+        default:
+          return Promise.resolve({});
+      }
+    });
+    render(<CirclesView />);
+    const older = await screen.findByText("the older one");
+    const newer = await screen.findByText("the newer one");
+    // "older" precedes "newer" in document order (older is higher in the thread).
+    expect(older.compareDocumentPosition(newer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("renders the circle, its conversation, and its members", async () => {
     stubRpcs();
     render(<CirclesView />);

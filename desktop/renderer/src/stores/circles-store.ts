@@ -413,8 +413,12 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         "circles.messages",
         { circleId },
       );
+      // The server returns the recent window newest-first (DESC LIMIT); the
+      // chat renders chronologically, so store it oldest-first — newest lands
+      // at the bottom of the thread under the auto-scroll.
+      const chronological = [...(res.messages ?? [])].reverse();
       set((s) => ({
-        messagesByCircle: { ...s.messagesByCircle, [circleId]: res.messages ?? [] },
+        messagesByCircle: { ...s.messagesByCircle, [circleId]: chronological },
         annotationsByCircle: {
           ...s.annotationsByCircle,
           [circleId]: res.annotations ?? { reactions: {}, pins: [] },
