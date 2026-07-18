@@ -4,6 +4,8 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BitterbotConfig } from "../../config/config.js";
+import { listPendingOutbound } from "../../circles/pending-outbound.js";
+import { CirclesService } from "../../circles/service.js";
 import { keyPairFromPrivateKeyPem, pubkeyId } from "../../commerce/envelope.js";
 import { loadOrCreateDeviceIdentity } from "../../infra/device-identity.js";
 import { CirclesStore, DEFAULT_MEMBER_SCOPES } from "../../memory/circles-store.js";
@@ -103,87 +105,71 @@ describe("circles agent tool", () => {
       }
     ).n;
 
-  it("send is two-phase: preview does NOT send; confirm with the token sends", async () => {
-    const preview = await run("send", { text: "movie night?" });
-    expect(preview.pending).toBe(true);
-    expect((preview.preview as { text: string }).text).toBe("movie night?");
-    expect(typeof preview.confirm_token).toBe("string");
+  it("send only QUEUES for the human — the agent cannot execute, period (§5.3)", async () => {
+    const res = await run("send", { text: "movie night?" });
+    expect(res.queued).toBe(true);
+    expect((res.preview as { text: string }).text).toBe("movie night?");
+    expect(res.confirm_token).toBeUndefined(); // no token exists to steal
     expect(outCount()).toBe(0); // nothing left the node
 
-    const sent = await run("send", {
-      text: "movie night?",
-      confirm: true,
-      confirm_token: preview.confirm_token,
-    });
-    expect(sent.sent).toBe(true);
+    // A prompt-injected agent throwing confirm flags / forged tokens at the
+    // tool changes nothing: every call queues, none executes.
+    const forced = await run("send", { text: "sneaky", confirm: true, confirm_token: "forged" });
+    expect(forced.queued).toBe(true);
+    expect(forced.sent).toBeUndefined();
+    expect(outCount()).toBe(0);
+    expect(listPendingOutbound(db).length).toBe(2); // both await the human
+  });
+
+  it("the human's approval executes the STORED params; reject executes nothing", async () => {
+    await run("send", { text: "movie night?" });
+    await run("send", { text: "second thought" });
+    const [first, second] = listPendingOutbound(db);
+    const svc = new CirclesService({ db, config: cfg(true) });
+
+    // Approve the first: the server executes exactly what was stored.
+    await svc.approvePendingOutbound(first?.id ?? "");
+    expect(outCount()).toBe(1);
+    const sent = db.prepare(`SELECT content FROM circle_messages WHERE direction='out'`).get() as {
+      content: string;
+    };
+    expect(sent.content).toBe("movie night?");
+
+    // Reject the second: nothing more leaves; both are resolved.
+    svc.rejectPendingOutbound(second?.id ?? "");
+    expect(outCount()).toBe(1);
+    expect(listPendingOutbound(db)).toHaveLength(0);
+
+    // Racing double-approve is atomic: the replay throws, no second send.
+    await expect(svc.approvePendingOutbound(first?.id ?? "")).rejects.toThrow(/not awaiting/);
     expect(outCount()).toBe(1);
   });
 
-  it("refuses confirm=true without a valid token (the honor-system hole is closed)", async () => {
-    // No preview -> no token: a prompt-injected agent cannot skip the preview.
-    const noToken = await run("send", { text: "sneaky", confirm: true });
-    expect(noToken.sent).toBeUndefined();
-    expect(String(noToken.error)).toContain("confirm_token");
-    expect(outCount()).toBe(0);
-
-    // A garbage token is rejected too.
-    const badToken = await run("send", { text: "sneaky", confirm: true, confirm_token: "nope" });
-    expect(badToken.sent).toBeUndefined();
-    expect(outCount()).toBe(0);
-  });
-
-  it("token is single-use and bound to the exact params", async () => {
-    const preview = await run("send", { text: "hi" });
-    const token = preview.confirm_token as string;
-
-    // Same token, DIFFERENT text -> refused (params-bound).
-    const swap = await run("send", { text: "wire me $500", confirm: true, confirm_token: token });
-    expect(swap.sent).toBeUndefined();
-    expect(outCount()).toBe(0);
-
-    // Correct params -> sends.
-    const ok = await run("send", { text: "hi", confirm: true, confirm_token: token });
-    expect(ok.sent).toBe(true);
-    expect(outCount()).toBe(1);
-
-    // Replay of the now-used token -> refused.
-    const replay = await run("send", { text: "hi", confirm: true, confirm_token: token });
-    expect(replay.sent).toBeUndefined();
-    expect(outCount()).toBe(1);
-  });
-
-  it("log_expense is two-phase and lands on the tab (no money)", async () => {
-    const preview = await run("log_expense", { memo: "pizza", amount: 42 });
-    expect(preview.pending).toBe(true);
-    expect((preview.preview as { splitAmong: number }).splitAmong).toBe(2); // self + Bob
+  it("log_expense queues; approval lands it on the tab (no money)", async () => {
+    const res = await run("log_expense", { memo: "pizza", amount: 42 });
+    expect(res.queued).toBe(true);
+    expect((res.preview as { splitAmong: number }).splitAmong).toBe(2); // self + Bob
     expect((db.prepare(`SELECT COUNT(*) n FROM circle_events`).get() as { n: number }).n).toBe(0);
 
-    const logged = await run("log_expense", {
-      memo: "pizza",
-      amount: 42,
-      confirm: true,
-      confirm_token: preview.confirm_token,
-    });
-    expect(logged.logged).toBe(true);
+    const svc = new CirclesService({ db, config: cfg(true) });
+    await svc.approvePendingOutbound(listPendingOutbound(db)[0]?.id ?? "");
     const tab = await run("tab");
     expect(tab.expenses).toBe(1);
     expect(tab.totalCents).toBe(4200);
   });
 
-  it("ask is two-phase and carries its category", async () => {
-    const preview = await run("ask", {
+  it("ask queues with its category; approval sends it", async () => {
+    const res = await run("ask", {
       question: "know a dentist?",
       category: "recommendations.dentist",
     });
-    expect(preview.pending).toBe(true);
-    expect((preview.preview as { category: string }).category).toBe("recommendations.dentist");
-    const asked = await run("ask", {
-      question: "know a dentist?",
-      category: "recommendations.dentist",
-      confirm: true,
-      confirm_token: preview.confirm_token,
-    });
-    expect(asked.asked).toBe(true);
-    expect(asked.category).toBe("recommendations.dentist");
+    expect(res.queued).toBe(true);
+    expect((res.preview as { category: string }).category).toBe("recommendations.dentist");
+    const svc = new CirclesService({ db, config: cfg(true) });
+    await svc.approvePendingOutbound(listPendingOutbound(db)[0]?.id ?? "");
+    const asks = db
+      .prepare(`SELECT kind FROM circle_messages WHERE direction='out'`)
+      .all() as unknown as Array<{ kind: string }>;
+    expect(asks.some((a) => a.kind === "ask")).toBe(true);
   });
 });

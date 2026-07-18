@@ -29,6 +29,10 @@
  *                    canvas card slot (vote / study section). The draft comes
  *                    back through the same list/publish/discard consent path;
  *                    publish ships via circles.canvas.slice semantics.
+ *  circles.outbound.list/approve/reject — §5.3 completed: agent tool writes
+ *                    (send/ask/log_expense) only QUEUE; the human's approval
+ *                    card here is the ONLY path that executes (server runs the
+ *                    stored params) or rejects them. 60-min expiry.
  *
  * Everything is gated by the circles.enabled kill switch (PLAN-31 §8), which
  * defaults ON since the 2026-07-09 red-team phase; handlers answer UNAVAILABLE
@@ -489,6 +493,57 @@ export const circlesHandlers: GatewayRequestHandlers = {
       const note = typeof params.note === "string" ? params.note : "";
       const result = await svc.service.putCanvasSlice({ circleId, cardId, slot, value, note });
       respond(true, result, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.outbound.list": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    respond(true, { pending: svc.service.pendingOutbound(circleId) }, undefined);
+  },
+
+  "circles.outbound.approve": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const id = typeof params.id === "string" ? params.id : "";
+    if (!id) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "id required"));
+      return;
+    }
+    try {
+      respond(true, await svc.service.approvePendingOutbound(id), undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.outbound.reject": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const id = typeof params.id === "string" ? params.id : "";
+    if (!id) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "id required"));
+      return;
+    }
+    try {
+      svc.service.rejectPendingOutbound(id);
+      respond(true, { ok: true }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }

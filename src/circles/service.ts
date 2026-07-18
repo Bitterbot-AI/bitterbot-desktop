@@ -77,6 +77,11 @@ import {
   type PendingJoin,
 } from "./pending-join.js";
 import {
+  claimPendingOutbound,
+  listPendingOutbound,
+  type PendingOutbound,
+} from "./pending-outbound.js";
+import {
   PRACTICE_KIND,
   loadOrCreatePracticeKeys,
   practiceReply,
@@ -1153,6 +1158,68 @@ export class CirclesService {
         updatedAt: Date.now(),
       },
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Pending outbound (§5.3): the human approval queue for agent writes.
+  // -------------------------------------------------------------------------
+
+  /** Agent writes awaiting this human's approval (per circle). */
+  pendingOutbound(circleId: string): PendingOutbound[] {
+    return listPendingOutbound(this.db, circleId);
+  }
+
+  /**
+   * The human approved: atomically claim the pending row and execute its
+   * STORED params through the normal paths. The agent supplied the params at
+   * queue time and never touches execution — the approval card is the only
+   * trigger, and racing approvals execute exactly once.
+   */
+  async approvePendingOutbound(id: string): Promise<SendReport> {
+    const pending = claimPendingOutbound(this.db, id, "approved");
+    if (!pending) {
+      throw new Error(`pending outbound ${id} is not awaiting approval`);
+    }
+    const p = pending.params;
+    const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
+    switch (pending.action) {
+      case "send":
+        return this.sendMessage({
+          circleId: pending.circleId,
+          text: str(p.text),
+          // Agent-authored text must not re-enter the @agent summon loop.
+          suppressAgentSummon: true,
+        });
+      case "ask":
+        return this.askPeople({
+          circleId: pending.circleId,
+          question: str(p.question),
+          category: str(p.category, "general"),
+        });
+      case "log_expense": {
+        const participants = Array.isArray(p.participants)
+          ? (p.participants as unknown[]).filter((x): x is string => typeof x === "string")
+          : [];
+        return this.appendTabEvent({
+          circleId: pending.circleId,
+          input: {
+            type: "expense.add",
+            memo: str(p.memo),
+            amountCents: typeof p.amountCents === "number" ? p.amountCents : 0,
+            participants,
+          },
+        });
+      }
+      default:
+        throw new Error(`unknown pending action ${str(pending.action, "?")}`);
+    }
+  }
+
+  /** The human said no. Nothing ever leaves the node. */
+  rejectPendingOutbound(id: string): void {
+    if (!claimPendingOutbound(this.db, id, "rejected")) {
+      throw new Error(`pending outbound ${id} is not awaiting approval`);
+    }
   }
 
   // -------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { useCirclesStore, type Circle, type CircleMessage } from "../../stores/c
 import { AgentDraftCard } from "./AgentDraftCard";
 import { CircleMessageList } from "./CircleMessageList";
 import { FrozenCircleBanner } from "./FrozenCircleBanner";
+import { PendingOutboundCard } from "./PendingOutboundCard";
 
 // PLAN-36 Phase A: the center chat pane — header, conversation stream, composer.
 // A3 adds reply-to (a compact quote banner + the parent's envelope id on send).
@@ -29,6 +30,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const messages = useCirclesStore((s) => s.messagesByCircle[circle.circleId]);
   const annotations = useCirclesStore((s) => s.annotationsByCircle[circle.circleId]);
   const agentDrafts = useCirclesStore((s) => s.draftsByCircle[circle.circleId]);
+  const pendingOutbound = useCirclesStore((s) => s.outboundByCircle[circle.circleId]);
   const send = useCirclesStore((s) => s.send);
   const react = useCirclesStore((s) => s.react);
   const setPinned = useCirclesStore((s) => s.setPinned);
@@ -135,6 +137,10 @@ export function CircleChat({ circle, selfPubkey }: Props) {
       />
 
       {circle.status === "frozen" && <FrozenCircleBanner circle={circle} />}
+
+      {(pendingOutbound ?? []).map((p) => (
+        <PendingOutboundCard key={p.id} pending={p} />
+      ))}
 
       {(agentDrafts ?? [])
         .filter((d) => !d.targetSlot) // slice drafts render on their canvas card, not in chat

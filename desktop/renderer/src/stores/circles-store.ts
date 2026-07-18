@@ -61,6 +61,20 @@ export interface MessageAnnotations {
   pinnedMessages?: PinnedMessage[];
 }
 
+/**
+ * §5.3: an agent tool write awaiting THIS human's approval. The server holds
+ * the exact params it will execute; the card shows the preview. Approval is
+ * the only path to execution.
+ */
+export interface PendingOutbound {
+  id: string;
+  circleId: string;
+  action: string;
+  preview: Record<string, unknown>;
+  createdAt: number;
+  expiresAt: number;
+}
+
 export interface CirclesStatus {
   enabled: boolean;
   pubkey?: string;
@@ -113,6 +127,7 @@ interface CirclesState {
   annotationsByCircle: Record<string, MessageAnnotations>;
   cardsByCircle: Record<string, CanvasCard[]>;
   draftsByCircle: Record<string, AgentDraft[]>;
+  outboundByCircle: Record<string, PendingOutbound[]>;
   loading: boolean;
   notice: string | null;
 
@@ -121,6 +136,9 @@ interface CirclesState {
   loadMessages: (circleId: string) => Promise<void>;
   loadCards: (circleId: string) => Promise<void>;
   loadDrafts: (circleId: string) => Promise<void>;
+  loadOutbound: (circleId: string) => Promise<void>;
+  approveOutbound: (circleId: string, id: string) => Promise<boolean>;
+  rejectOutbound: (circleId: string, id: string) => Promise<boolean>;
   requestSliceDraft: (circleId: string, cardId: string, slot: string) => Promise<boolean>;
   publishDraft: (circleId: string, draftId: string, text: string) => Promise<boolean>;
   discardDraft: (circleId: string, draftId: string) => Promise<boolean>;
@@ -155,6 +173,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   annotationsByCircle: {},
   cardsByCircle: {},
   draftsByCircle: {},
+  outboundByCircle: {},
   loading: true,
   notice: null,
 
@@ -178,6 +197,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         void get().loadMessages(activeCircleId);
         void get().loadCards(activeCircleId);
         void get().loadDrafts(activeCircleId);
+        void get().loadOutbound(activeCircleId);
         get().markRead(activeCircleId); // the circle on screen is, by definition, read
       }
     } catch (err) {
@@ -190,6 +210,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     void get().loadMessages(circleId);
     void get().loadCards(circleId);
     void get().loadDrafts(circleId);
+    void get().loadOutbound(circleId);
     get().markRead(circleId);
   },
 
@@ -199,6 +220,39 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       set((s) => ({ draftsByCircle: { ...s.draftsByCircle, [circleId]: res.drafts ?? [] } }));
     } catch (err) {
       set({ notice: String(err) });
+    }
+  },
+
+  loadOutbound: async (circleId) => {
+    try {
+      const res = await request<{ pending: PendingOutbound[] }>("circles.outbound.list", {
+        circleId,
+      });
+      set((s) => ({ outboundByCircle: { ...s.outboundByCircle, [circleId]: res.pending ?? [] } }));
+    } catch (err) {
+      set({ notice: String(err) });
+    }
+  },
+
+  approveOutbound: async (circleId, id) => {
+    try {
+      await request("circles.outbound.approve", { id });
+      await Promise.all([get().loadOutbound(circleId), get().loadMessages(circleId)]);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  rejectOutbound: async (circleId, id) => {
+    try {
+      await request("circles.outbound.reject", { id });
+      await get().loadOutbound(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
     }
   },
 

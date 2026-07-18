@@ -28,6 +28,7 @@ export function CirclesView() {
     loadMessages,
     loadCards,
     loadDrafts,
+    loadOutbound,
     markRead,
     setNotice,
   } = useCirclesStore();
@@ -46,10 +47,11 @@ export function CirclesView() {
       void loadMessages(activeCircleId);
       void loadCards(activeCircleId); // a peer's canvas event may have arrived
       void loadDrafts(activeCircleId); // Phase B: an @agent draft may be ready
+      void loadOutbound(activeCircleId); // §5.3: an agent write may await approval
       markRead(activeCircleId); // inbound arrived while you're looking at it
     }
     void refresh();
-  }, [activeCircleId, loadMessages, loadCards, loadDrafts, markRead, refresh]);
+  }, [activeCircleId, loadMessages, loadCards, loadDrafts, loadOutbound, markRead, refresh]);
   useGatewayEvent("circles", onCirclesEvent);
 
   if (loading) {

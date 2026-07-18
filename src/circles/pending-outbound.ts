@@ -1,102 +1,162 @@
 /**
- * PLAN-36 §5.3 (Phase 0): server-enforced two-phase gate for agent circle
- * writes.
+ * PLAN-36 §5.3 (completed): the server-enforced HUMAN approval queue for agent
+ * circle writes.
  *
- * The `circles` agent tool's send/ask/log_expense are meant to be two-phase:
- * preview -> human approves -> confirm. But the confirm was prompt-convention
- * only — a single call with confirm=true executed immediately, so a prompt-
- * injected agent could bypass the preview entirely. This module makes the
- * contract real: the preview mints a single-use token bound to the exact
- * action + params, persisted in circle_pending_outbound (migration v37); the
- * confirm leg must present a matching, unused, unexpired token or it is
- * refused.
+ * History: the `circles` agent tool's send/ask/log_expense were "two-phase"
+ * by prompt convention, then (v37 interim) by a preview-minted token — which
+ * still let a prompt-injected agent self-serve preview→confirm with no human
+ * anywhere in the loop. This module closes §5.3 for real:
  *
- * NOTE (interim): the token is minted at PREVIEW time, which enforces
- * "a preview was rendered for these exact params, exactly once" — it closes
- * confirm-on-first-call, replay, and params-swap. It does not yet require a
- * HUMAN action, because the approval UI (the inline pending-outbound card,
- * PLAN-36 Phase 2/3) does not exist. When that card ships, mint the token from
- * the human's approve action instead of the preview; the table and the confirm
- * check here are unchanged.
+ *   agent write  →  QUEUED here (full params + human-facing preview persisted)
+ *   human sees an inline approval card in the Circles UI
+ *   approve (circles.outbound.approve) → the SERVER executes the stored params
+ *   reject / 60-min expiry → nothing ever leaves the node
+ *
+ * The agent never receives a token and there is no confirm leg to inject —
+ * the approval card is the ONLY path. Resolution is an atomic guarded UPDATE
+ * (status='pending'), so racing approvals execute exactly once.
  */
 
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 
-/** How long a preview token stays valid. */
-export const PENDING_OUTBOUND_TTL_MS = 10 * 60_000;
+/** How long a queued write waits for the human before expiring unexecuted. */
+export const PENDING_OUTBOUND_TTL_MS = 60 * 60_000;
+/** Resolved rows older than this are deleted (bounded audit trail). */
+const PRUNE_AFTER_MS = 30 * 24 * 60 * 60_000;
 
-/**
- * Canonical hash of an action + its params, so a token minted for one preview
- * cannot authorize a different send. Callers must build `params` identically at
- * preview and confirm time (stable key order via the caller's object literal;
- * arrays should be pre-sorted by the caller).
- */
-export function hashPendingParams(action: string, params: Record<string, unknown>): string {
-  return crypto.createHash("sha256").update(JSON.stringify({ action, params })).digest("hex");
-}
+export type PendingOutboundAction = "send" | "ask" | "log_expense";
 
-/** Mint + persist a single-use token for a previewed action. */
-export function createPendingOutbound(
-  db: DatabaseSync,
-  action: string,
-  paramsHash: string,
-  now: number,
-): string {
-  const token = crypto.randomUUID();
+export type PendingOutbound = {
+  id: string;
+  circleId: string;
+  action: PendingOutboundAction;
+  /** The exact params the server will execute on approval. */
+  params: Record<string, unknown>;
+  /** What the human is shown on the approval card. */
+  preview: Record<string, unknown>;
+  status: string;
+  createdAt: number;
+  expiresAt: number;
+};
+
+/** Opportunistic housekeeping: expire overdue pendings, prune old resolved. */
+export function sweepPendingOutbound(db: DatabaseSync, now: number = Date.now()): void {
   db.prepare(
-    `INSERT INTO circle_pending_outbound (token, action, params_hash, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).run(token, action, paramsHash, now, now + PENDING_OUTBOUND_TTL_MS);
-  // Opportunistic GC of expired/used rows (cheap, bounded, no scheduler needed).
-  db.prepare(`DELETE FROM circle_pending_outbound WHERE expires_at < ? OR used_at IS NOT NULL`).run(
-    now,
-  );
-  return token;
+    `UPDATE circle_pending_outbound SET status = 'expired', resolved_at = ?
+      WHERE status = 'pending' AND expires_at < ?`,
+  ).run(now, now);
+  db.prepare(
+    `DELETE FROM circle_pending_outbound
+      WHERE status != 'pending' AND COALESCE(resolved_at, expires_at) < ?`,
+  ).run(now - PRUNE_AFTER_MS);
 }
 
-export type ConsumeResult = { ok: true } | { ok: false; reason: string };
+/** Queue an agent write for human approval. Returns the pending id. */
+export function queuePendingOutbound(
+  db: DatabaseSync,
+  args: {
+    circleId: string;
+    action: PendingOutboundAction;
+    params: Record<string, unknown>;
+    preview: Record<string, unknown>;
+    now?: number;
+  },
+): string {
+  const now = args.now ?? Date.now();
+  sweepPendingOutbound(db, now);
+  const id = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO circle_pending_outbound
+       (token, action, params_hash, circle_id, params_json, preview_json,
+        status, created_at, expires_at)
+     VALUES (?, ?, '', ?, ?, ?, 'pending', ?, ?)`,
+  ).run(
+    id,
+    args.action,
+    args.circleId,
+    JSON.stringify(args.params),
+    JSON.stringify(args.preview),
+    now,
+    now + PENDING_OUTBOUND_TTL_MS,
+  );
+  return id;
+}
+
+function toPending(r: {
+  token: string;
+  circle_id: string | null;
+  action: string;
+  params_json: string | null;
+  preview_json: string | null;
+  status: string;
+  created_at: number;
+  expires_at: number;
+}): PendingOutbound | null {
+  if (!r.circle_id || !r.params_json) return null; // legacy v37 token row
+  let params: Record<string, unknown>;
+  let preview: Record<string, unknown>;
+  try {
+    params = JSON.parse(r.params_json) as Record<string, unknown>;
+    preview = JSON.parse(r.preview_json ?? "{}") as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  return {
+    id: r.token,
+    circleId: r.circle_id,
+    action: r.action as PendingOutboundAction,
+    params,
+    preview,
+    status: r.status,
+    createdAt: r.created_at,
+    expiresAt: r.expires_at,
+  };
+}
+
+type Row = Parameters<typeof toPending>[0];
+
+/** Pending (unexpired) agent writes awaiting the human, oldest first. */
+export function listPendingOutbound(db: DatabaseSync, circleId?: string): PendingOutbound[] {
+  sweepPendingOutbound(db);
+  const rows = (circleId
+    ? db
+        .prepare(
+          `SELECT * FROM circle_pending_outbound
+              WHERE status = 'pending' AND circle_id = ? ORDER BY created_at ASC`,
+        )
+        .all(circleId)
+    : db
+        .prepare(
+          `SELECT * FROM circle_pending_outbound
+              WHERE status = 'pending' ORDER BY created_at ASC`,
+        )
+        .all()) as unknown as Row[];
+  return rows.map(toPending).filter((p): p is PendingOutbound => p !== null);
+}
 
 /**
- * Verify + consume a confirm token. Fails (without consuming) when the token is
- * missing/unknown, already used, expired, or was minted for a different
- * action+params. On success marks it used so it cannot be replayed.
+ * Atomically claim a pending write for resolution. Returns the row (with the
+ * stored params to execute) only when THIS call moved it out of 'pending' —
+ * a racing second approve/reject gets null and must not execute.
  */
-export function consumePendingOutbound(
+export function claimPendingOutbound(
   db: DatabaseSync,
-  token: string | undefined,
-  action: string,
-  paramsHash: string,
-  now: number,
-): ConsumeResult {
-  if (!token) {
-    return {
-      ok: false,
-      reason: "missing confirm_token — call once WITHOUT confirm to preview first",
-    };
-  }
-  const row = db
-    .prepare(
-      `SELECT action, params_hash, expires_at, used_at FROM circle_pending_outbound WHERE token = ?`,
-    )
-    .get(token) as
-    | { action: string; params_hash: string; expires_at: number; used_at: number | null }
+  id: string,
+  resolution: "approved" | "rejected",
+  now: number = Date.now(),
+): PendingOutbound | null {
+  const row = db.prepare(`SELECT * FROM circle_pending_outbound WHERE token = ?`).get(id) as
+    | Row
     | undefined;
-  if (!row) {
-    return { ok: false, reason: "unknown confirm_token — preview again to get a fresh one" };
-  }
-  if (row.used_at !== null) {
-    return { ok: false, reason: "confirm_token already used — preview again for a new one" };
-  }
-  if (row.expires_at < now) {
-    return { ok: false, reason: "confirm_token expired — preview again" };
-  }
-  if (row.action !== action || row.params_hash !== paramsHash) {
-    return {
-      ok: false,
-      reason: "confirm_token does not match this action/params — preview the exact message first",
-    };
-  }
-  db.prepare(`UPDATE circle_pending_outbound SET used_at = ? WHERE token = ?`).run(now, token);
-  return { ok: true };
+  if (!row) return null;
+  const pending = toPending(row);
+  if (!pending || row.expires_at < now) return null;
+  const res = db
+    .prepare(
+      `UPDATE circle_pending_outbound SET status = ?, resolved_at = ?
+        WHERE token = ? AND status = 'pending'`,
+    )
+    .run(resolution, now, id);
+  return Number(res.changes) === 1 ? pending : null;
 }

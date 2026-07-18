@@ -11,18 +11,17 @@
  * there is no action that returns inbound message BODIES — the agent can send
  * asks but cannot yet read the answers here; PLAN-36 Phase 3 wires that.
  *
- * WRITE actions (send / ask / log_expense) are TWO-PHASE and server-enforced
- * (PLAN-36 §5.3): the first call (no confirm) returns a PREVIEW and mints a
- * single-use, params-bound token persisted in circle_pending_outbound; the
- * agent shows the human, then calls again with confirm=true AND that
- * confirm_token. The confirm is refused unless the token exists, is unused,
- * unexpired, and was minted for this exact action+params — so a prompt-injected
- * agent can no longer skip the preview, replay a token, or preview innocuous
- * text and confirm something else. (Interim: the token is minted at preview;
- * once the human-approval card ships (Phase 2/3) it will be minted from the
- * human's approve action, fully removing agent self-approval. Same table + same
- * check.) Trust-graph mutations (mint invite / create circle) are deliberately
- * NOT exposed here — they stay in the human UI. No money moves anywhere (v1).
+ * WRITE actions (send / ask / log_expense) are HUMAN-APPROVED and
+ * server-enforced (PLAN-36 §5.3, completed): the agent's call only QUEUES the
+ * write in circle_pending_outbound; the human sees an inline approval card in
+ * the Circles UI and the SERVER executes the stored params on their approve
+ * (circles.outbound.approve) — or nothing happens (reject / 60-min expiry).
+ * There is no confirm leg for a prompt-injected agent to drive: the agent
+ * never receives a token and cannot execute a circle write, period. (The v37
+ * interim minted a token at preview time, which still allowed agent
+ * self-approval; that path is gone.) Trust-graph mutations (mint invite /
+ * create circle) are deliberately NOT exposed here — they stay in the human
+ * UI. No money moves anywhere (v1).
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -30,11 +29,7 @@ import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type { AnyAgentTool } from "./common.js";
 import { pendingAsks } from "../../circles/disclosure.js";
-import {
-  consumePendingOutbound,
-  createPendingOutbound,
-  hashPendingParams,
-} from "../../circles/pending-outbound.js";
+import { queuePendingOutbound } from "../../circles/pending-outbound.js";
 import { CirclesService } from "../../circles/service.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
@@ -81,13 +76,9 @@ const CirclesSchema = Type.Object({
     }),
   ),
   confirm: Type.Optional(
-    Type.Boolean({ description: "Set true ONLY after the human approved the previewed action." }),
-  ),
-  confirm_token: Type.Optional(
-    Type.String({
+    Type.Boolean({
       description:
-        "The single-use token returned by the preview call. Required with confirm=true; " +
-        "a write is refused without a valid, matching, unused token.",
+        "Deprecated and ignored: writes always queue for the human's in-app approval card.",
     }),
   ),
 });
@@ -164,11 +155,11 @@ export function createCirclesTool(options: {
       "READ — action=status (connection count + reciprocity), connections (who + who's online), " +
       "tab (shared expense balances; no money moves), briefing (this week's digest), " +
       "asks (questions from your people awaiting you). " +
-      "WRITE (two-phase, human-approved) — action=send (a message to a circle), ask (put a " +
-      "question to your people), log_expense (add a tracked tab entry). A write with no confirm " +
-      "returns a PREVIEW only; show it to the human, get an explicit yes, then repeat with " +
-      "confirm=true. Use this instead of guessing whenever asked about your connections, circle, " +
-      "roommates, or the shared tab.",
+      "WRITE (human-approved) — action=send (a message to a circle), ask (put a question to " +
+      "your people), log_expense (add a tracked tab entry). A write NEVER executes directly: it " +
+      "is queued for your human, who approves or rejects it on a card in their Circles view. " +
+      "Tell them it is waiting there. Use this instead of guessing whenever asked about your " +
+      "connections, circle, roommates, or the shared tab.",
     parameters: CirclesSchema,
     execute: async (_toolCallId, params) => {
       const action = readStringParam(params, "action", { required: true });
@@ -253,19 +244,7 @@ export function createCirclesTool(options: {
             const r = resolveCircle(svc, readStringParam(params, "circle_id"));
             if (!r.ok) return r.error;
             const text = readStringParam(params, "text", { required: true });
-            const hashParams = { circleId: r.id, text };
-            if (readBool(params, "confirm") !== true) {
-              return preview(db, "send", hashParams, { circle: r.name, circleId: r.id, text });
-            }
-            const gate = requireConfirm(db, "send", hashParams, params);
-            if (gate) return gate;
-            const rep = await svc.sendMessage({ circleId: r.id, text });
-            return jsonResult({
-              available: true,
-              sent: true,
-              delivered: rep.delivered.length,
-              failed: rep.failed.length,
-            });
+            return queued(db, r, "send", { circleId: r.id, text }, { text });
           }
 
           case "ask": {
@@ -273,24 +252,13 @@ export function createCirclesTool(options: {
             if (!r.ok) return r.error;
             const question = readStringParam(params, "question", { required: true });
             const category = readStringParam(params, "category") ?? "general";
-            const hashParams = { circleId: r.id, question, category };
-            if (readBool(params, "confirm") !== true) {
-              return preview(db, "ask", hashParams, {
-                circle: r.name,
-                circleId: r.id,
-                question,
-                category,
-              });
-            }
-            const gate = requireConfirm(db, "ask", hashParams, params);
-            if (gate) return gate;
-            const rep = await svc.askPeople({ circleId: r.id, question, category });
-            return jsonResult({
-              available: true,
-              asked: true,
-              category,
-              delivered: rep.delivered.length,
-            });
+            return queued(
+              db,
+              r,
+              "ask",
+              { circleId: r.id, question, category },
+              { question, category },
+            );
           }
 
           case "log_expense": {
@@ -306,33 +274,13 @@ export function createCirclesTool(options: {
               explicit && explicit.length > 0
                 ? explicit
                 : svc.store.getMembers(r.id).map((m) => m.memberPubkey);
-            const hashParams = {
-              circleId: r.id,
-              memo,
-              amountCents,
-              participants: participants.toSorted(),
-            };
-            if (readBool(params, "confirm") !== true) {
-              return preview(db, "log_expense", hashParams, {
-                circle: r.name,
-                circleId: r.id,
-                memo,
-                amount: dollars,
-                splitAmong: participants.length,
-              });
-            }
-            const gate = requireConfirm(db, "log_expense", hashParams, params);
-            if (gate) return gate;
-            const rep = await svc.appendTabEvent({
-              circleId: r.id,
-              input: { type: "expense.add", memo, amountCents, participants },
-            });
-            return jsonResult({
-              available: true,
-              logged: true,
-              eventId: rep.eventId,
-              note: "Added to the shared tab (no money moved).",
-            });
+            return queued(
+              db,
+              r,
+              "log_expense",
+              { circleId: r.id, memo, amountCents, participants: participants.toSorted() },
+              { memo, amount: dollars, splitAmong: participants.length },
+            );
           }
 
           default:
@@ -348,59 +296,32 @@ export function createCirclesTool(options: {
   };
 }
 
-function readBool(params: unknown, key: string): boolean | undefined {
-  const v = (params as Record<string, unknown> | undefined)?.[key];
-  return typeof v === "boolean" ? v : undefined;
-}
-
 /**
- * Preview a write action AND mint the single-use confirm token that the
- * confirm leg must echo (PLAN-36 §5.3). `hashParams` is the canonical
- * action-defining payload; the confirm leg rebuilds it identically so the token
- * only authorizes this exact message.
+ * Queue a write for the human's approval card (§5.3 completed). The agent's
+ * call ends here — the server executes the STORED params only when the human
+ * approves in the Circles UI. There is no token and no confirm leg.
  */
-function preview(
+function queued(
   db: DatabaseSync,
-  action: string,
-  hashParams: Record<string, unknown>,
-  details: Record<string, unknown>,
+  circle: { id: string; name: string },
+  action: "send" | "ask" | "log_expense",
+  execParams: Record<string, unknown>,
+  previewDetails: Record<string, unknown>,
 ) {
-  const token = createPendingOutbound(
-    db,
+  const id = queuePendingOutbound(db, {
+    circleId: circle.id,
     action,
-    hashPendingParams(action, hashParams),
-    Date.now(),
-  );
-  return jsonResult({
-    pending: true,
-    action,
-    preview: details,
-    confirm_token: token,
-    instruction:
-      "This did NOT happen yet. Show the human exactly what will be sent/logged and to which " +
-      "circle, get their explicit approval, then call `circles` again with the SAME params plus " +
-      "confirm=true and confirm_token set to the token above. Do not confirm on your own; the " +
-      "token is single-use and expires.",
+    params: execParams,
+    preview: { circle: circle.name, ...previewDetails },
   });
-}
-
-/**
- * Gate the confirm leg: returns an error jsonResult if the caller did not
- * present a valid, matching, unused token from a prior preview; returns null
- * when it is safe to execute (and consumes the token).
- */
-function requireConfirm(
-  db: DatabaseSync,
-  action: string,
-  hashParams: Record<string, unknown>,
-  params: Record<string, unknown>,
-) {
-  const res = consumePendingOutbound(
-    db,
-    readStringParam(params, "confirm_token"),
+  return jsonResult({
+    queued: true,
+    pendingId: id,
     action,
-    hashPendingParams(action, hashParams),
-    Date.now(),
-  );
-  return res.ok ? null : jsonResult({ error: `not sent — ${res.reason}` });
+    preview: { circle: circle.name, ...previewDetails },
+    instruction:
+      "This did NOT happen and you cannot make it happen. It is waiting as an approval card in " +
+      "your human's Circles view (expires in 60 minutes). Tell them it's there; they will " +
+      "approve or reject it themselves.",
+  });
 }

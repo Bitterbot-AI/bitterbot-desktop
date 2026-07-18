@@ -173,6 +173,23 @@ function stubRpcs(enabled = true) {
       case "circles.react":
       case "circles.pin":
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
+      case "circles.outbound.list":
+        return Promise.resolve({
+          pending: [
+            {
+              id: "po1",
+              circleId: "c1",
+              action: "send",
+              preview: { circle: "Bio 204", text: "movie night at ours?" },
+              createdAt: Date.now(),
+              expiresAt: Date.now() + 60 * 60_000,
+            },
+          ],
+        });
+      case "circles.outbound.approve":
+        return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
+      case "circles.outbound.reject":
+        return Promise.resolve({ ok: true });
       default:
         return Promise.resolve({});
     }
@@ -188,6 +205,7 @@ beforeEach(() => {
     messagesByCircle: {},
     cardsByCircle: {},
     draftsByCircle: {},
+    outboundByCircle: {},
     loading: true,
     notice: null,
   });
@@ -379,6 +397,23 @@ describe("CirclesView", () => {
         cardId: "sg1",
         slot: sectionSlot("Glycolysis"),
       }),
+    );
+  });
+
+  it("§5.3: shows the agent-write approval card; approve and reject hit the RPCs", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    // The card previews exactly what the server will execute.
+    expect(await screen.findByText(/Your agent wants to send/i)).toBeTruthy();
+    expect(screen.getByText(/movie night at ours\?/)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: /Approve & send/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.outbound.approve", { id: "po1" }),
+    );
+    // Reject path (card re-rendered from the stub after refresh).
+    await userEvent.click(await screen.findByRole("button", { name: /^Reject$/ }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.outbound.reject", { id: "po1" }),
     );
   });
 

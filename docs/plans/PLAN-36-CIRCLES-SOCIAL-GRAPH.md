@@ -895,6 +895,27 @@ for v1, cache before the beachhead), and the same claimed-timestamp clamp
 should eventually be applied to the canvas LWW fold (pre-existing, lower
 stakes — per-key not circle-wide).
 
+**§5.3 COMPLETED (the server-enforced approval card — the Phase-0 hard gate,
+closed for real).** The v37 interim minted the confirm token at PREVIEW time,
+so a prompt-injected agent could still self-serve preview→confirm with no
+human anywhere in the loop — the exact hole §5.3 names. Now an agent tool
+write (send/ask/log_expense) only QUEUES: `circle_pending_outbound` (migration
+v46) persists the full params + a human-facing preview; the agent gets no
+token and there is no confirm leg (`confirm`/`confirm_token` are
+accepted-and-ignored for prompt compat, tool schema + description rewritten);
+the inline `PendingOutboundCard` in the chat is the ONLY path — approve
+(`circles.outbound.approve`) makes the SERVER execute the STORED params
+through the normal signed paths (send suppresses re-summon; ask keeps its
+category; expense lands on the tab), reject or the 60-min expiry means nothing
+ever left the node. Resolution is an atomic guarded claim (racing approvals
+execute exactly once); resolved rows are pruned after 30d; legacy v37 token
+rows are expired defensively at migration. The token-model functions
+(create/consume/hash) are deleted, not orphaned. Tests: queue-only under
+forged confirm flags, approval executes stored params / reject executes
+nothing / atomic double-approve, per-circle listing, expiry, legacy-row
+handling, renderer approval card (preview + approve + reject RPCs). This is
+the enforcement the AGENT-chip compliance story (§6) rests on.
+
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
 member pane); connections render as DMs. **Build a new `CircleMessageList`** — do

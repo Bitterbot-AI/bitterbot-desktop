@@ -1746,6 +1746,32 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circles", "forgiven_forks", "TEXT");
     },
   },
+  {
+    version: 46,
+    description:
+      "PLAN-36 §5.3 completed: circle_pending_outbound becomes the HUMAN " +
+      "approval queue. The v37 interim minted the confirm token at preview " +
+      "time, so a prompt-injected agent could self-serve preview→confirm with " +
+      "no human. Now an agent write (send/ask/log_expense) only QUEUES here " +
+      "(full params + human-facing preview persisted); the inline approval " +
+      "card in the Circles UI is the ONLY path that executes (circles.outbound." +
+      "approve) or rejects it. status: pending|approved|rejected|expired.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_pending_outbound", "circle_id", "TEXT");
+      addColumnIfMissing(db, "circle_pending_outbound", "params_json", "TEXT");
+      addColumnIfMissing(db, "circle_pending_outbound", "preview_json", "TEXT");
+      addColumnIfMissing(
+        db,
+        "circle_pending_outbound",
+        "status",
+        "TEXT NOT NULL DEFAULT 'pending'",
+      );
+      addColumnIfMissing(db, "circle_pending_outbound", "resolved_at", "INTEGER");
+      // Legacy v37 token rows carry no params/preview and can never execute —
+      // resolve them out of the pending set defensively.
+      db.exec(`UPDATE circle_pending_outbound SET status = 'expired' WHERE params_json IS NULL`);
+    },
+  },
 ];
 
 /**
