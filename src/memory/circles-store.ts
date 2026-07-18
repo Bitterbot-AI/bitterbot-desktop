@@ -81,6 +81,8 @@ export type Circle = {
   keyEpoch: number;
   /** `frozen` = event-ledger fork detected; writes refused until a human clears it. */
   status: "active" | "archived" | "frozen";
+  /** JSON fork evidence recorded at freeze time (author, seq, hashes); NULL otherwise. */
+  freezeReason: string | null;
   createdAt: number;
 };
 
@@ -94,6 +96,7 @@ type CircleRow = {
   creator_pubkey: string;
   key_epoch: number;
   status: string;
+  freeze_reason: string | null;
   created_at: number;
 };
 
@@ -119,6 +122,7 @@ function rowToCircle(r: CircleRow): Circle {
     creatorPubkey: r.creator_pubkey,
     keyEpoch: r.key_epoch,
     status: r.status as Circle["status"],
+    freezeReason: r.freeze_reason ?? null,
     createdAt: r.created_at,
   };
 }
@@ -426,12 +430,34 @@ export class CirclesStore {
   /**
    * Freeze a circle (fork detected in the event ledger, PLAN-31 §3.3: a
    * same-seq divergence is cryptographic proof of tampering — writes stop
-   * and humans are surfaced). Unfreezing is a deliberate human act.
+   * and humans are surfaced). `reason` is the JSON fork evidence the UI
+   * shows the human. Unfreezing is a deliberate human act.
    */
-  freezeCircle(circleId: string, now: number = Date.now()): void {
+  freezeCircle(circleId: string, now: number = Date.now(), reason: string | null = null): void {
     this.db
-      .prepare(`UPDATE circles SET status = 'frozen', updated_at = ? WHERE circle_id = ?`)
+      .prepare(
+        `UPDATE circles SET status = 'frozen', freeze_reason = ?, updated_at = ?
+          WHERE circle_id = ?`,
+      )
+      .run(reason, now, circleId);
+  }
+
+  /**
+   * The deliberate human act that ends a freeze: resume writes and clear the
+   * evidence. Only a frozen circle can be unfrozen (returns false otherwise).
+   * Node-local: each member's node froze independently and each member's
+   * human decides independently. The forked author's CHAIN stays divergent —
+   * their future tab/canvas events may still chain-break until they recover —
+   * but conversation and everyone else's events resume.
+   */
+  unfreezeCircle(circleId: string, now: number = Date.now()): boolean {
+    const res = this.db
+      .prepare(
+        `UPDATE circles SET status = 'active', freeze_reason = NULL, updated_at = ?
+          WHERE circle_id = ? AND status = 'frozen'`,
+      )
       .run(now, circleId);
+    return Number(res.changes) === 1;
   }
 
   /** True when the circle exists and accepts writes (active, not frozen). */

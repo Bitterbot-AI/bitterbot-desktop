@@ -4,6 +4,7 @@ import { unwrapForDisplay } from "../../lib/external-content-display";
 import { useCirclesStore, type Circle, type CircleMessage } from "../../stores/circles-store";
 import { AgentDraftCard } from "./AgentDraftCard";
 import { CircleMessageList } from "./CircleMessageList";
+import { FrozenCircleBanner } from "./FrozenCircleBanner";
 
 // PLAN-36 Phase A: the center chat pane — header, conversation stream, composer.
 // A3 adds reply-to (a compact quote banner + the parent's envelope id on send).
@@ -62,6 +63,8 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         selfPubkey={selfPubkey}
         onReply={setReplyTo}
       />
+
+      {circle.status === "frozen" && <FrozenCircleBanner circle={circle} />}
 
       {(agentDrafts ?? [])
         .filter((d) => !d.targetSlot) // slice drafts render on their canvas card, not in chat

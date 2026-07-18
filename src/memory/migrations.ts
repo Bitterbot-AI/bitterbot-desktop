@@ -1721,6 +1721,17 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circle_agent_drafts", "target_slot", "TEXT");
     },
   },
+  {
+    version: 44,
+    description:
+      "PLAN-36 Phase D (unfreeze): circles.freeze_reason — JSON fork evidence " +
+      "(author, seq, held/offered hashes, detected_at) recorded when a ledger " +
+      "fork freezes the circle, shown to the human by the recovery UI, cleared " +
+      "on unfreeze. Previously the evidence lived only in the log.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circles", "freeze_reason", "TEXT");
+    },
+  },
 ];
 
 /**

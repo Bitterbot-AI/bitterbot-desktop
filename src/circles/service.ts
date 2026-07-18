@@ -1154,6 +1154,22 @@ export class CirclesService {
     });
   }
 
+  /**
+   * Phase D: the human's deliberate act ending a fork freeze. Node-local —
+   * this member reviewed the evidence and chose to resume. The forked
+   * author's chain may keep chain-breaking until they recover; conversation
+   * and everyone else's events resume immediately.
+   */
+  unfreezeCircle(circleId: string): void {
+    const circle = this.store.getCircle(circleId);
+    if (!circle) throw new Error(`circle ${circleId} not found`);
+    if (circle.status !== "frozen") {
+      throw new Error(`circle ${circleId} is not frozen`);
+    }
+    this.store.unfreezeCircle(circleId);
+    log.warn(`circle ${circleId} unfrozen by the local human (fork evidence cleared)`);
+  }
+
   // -------------------------------------------------------------------------
   // Agent drafts (PLAN-36 Phase B): summon-only, quarantined, consent-gated.
   // -------------------------------------------------------------------------

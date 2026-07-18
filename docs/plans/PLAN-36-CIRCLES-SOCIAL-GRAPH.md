@@ -826,6 +826,22 @@ the trusted prompt frame) is charset-restricted at the RPC boundary; and
 publish re-checks the target card still exists, refusing to append a slice to
 a tombstoned card (the draft is handed back for discard).
 
+**Phase D unfreeze LANDED (fork-freeze recovery).** A ledger fork previously
+froze the circle with the evidence only in the server log and NO in-app
+recovery — a bricked group for real users. Now: the fork site records JSON
+evidence (author, seq, held/offered hashes, detected_at) into
+`circles.freeze_reason` (migration v44); `circles.list` carries it; the chat
+shows a `FrozenCircleBanner` that names the forked member and entry, explains
+the benign read (a node restored from backup) next to the hostile one
+(tampering), and offers a two-tap "Review & unfreeze" consent flow → new
+`circles.unfreeze` RPC → `store.unfreezeCircle` (guarded UPDATE: only
+frozen→active, clears evidence). Unfreezing is node-local and honest about
+scope: the forked author's chain may keep chain-breaking until they recover;
+conversation and everyone else's events resume. Tests: the a2a fork test now
+also pins the recorded evidence, unfreeze-only-from-frozen, evidence cleared,
+and a valid continuation appending after recovery; renderer test pins the
+banner (named member + entry), the two-tap consent, and the RPC call.
+
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
 member pane); connections render as DMs. **Build a new `CircleMessageList`** — do

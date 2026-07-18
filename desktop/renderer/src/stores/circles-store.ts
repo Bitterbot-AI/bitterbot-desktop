@@ -21,6 +21,8 @@ export interface Circle {
   name: string;
   kind: string;
   status: string;
+  /** JSON fork evidence when status === "frozen" (author, seq, hashes). */
+  freezeReason?: string | null;
   unread?: number;
   members: CircleMember[];
 }
@@ -112,6 +114,7 @@ interface CirclesState {
   ) => Promise<boolean>;
   vote: (circleId: string, cardId: string, option: string, note: string) => Promise<boolean>;
   markRead: (circleId: string) => void;
+  unfreeze: (circleId: string) => Promise<boolean>;
   setNotice: (notice: string | null) => void;
 }
 
@@ -291,6 +294,17 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
 
   vote: async (circleId, cardId, option, note) => {
     return get().putSlice(circleId, cardId, "vote", option, note);
+  },
+
+  unfreeze: async (circleId) => {
+    try {
+      await request("circles.unfreeze", { circleId });
+      await get().refresh(); // status flips back to active everywhere it shows
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
   },
 
   markRead: (circleId) => {

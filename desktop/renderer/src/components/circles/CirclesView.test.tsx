@@ -372,6 +372,45 @@ describe("CirclesView", () => {
     );
   });
 
+  it("Phase D: a frozen circle shows the fork evidence and unfreezes on confirm", async () => {
+    requestMock.mockImplementation((method: string) => {
+      switch (method) {
+        case "circles.status":
+          return Promise.resolve({ enabled: true, pubkey: "ed25519:self" });
+        case "circles.list":
+          return Promise.resolve({
+            circles: [
+              {
+                ...CIRCLE,
+                status: "frozen",
+                freezeReason: JSON.stringify({
+                  author_pubkey: "ed25519:maya",
+                  seq: 7,
+                  held_hash: "aaa",
+                  offered_hash: "bbb",
+                  detected_at: Date.now(),
+                }),
+              },
+            ],
+          });
+        case "circles.unfreeze":
+          return Promise.resolve({ ok: true });
+        default:
+          return Promise.resolve({ messages: [], cards: [], drafts: [] });
+      }
+    });
+    render(<CirclesView />);
+    // The banner names the forked member and the entry, and asks for review.
+    expect(await screen.findByText(/This circle is frozen/i)).toBeTruthy();
+    expect(screen.getByText(/entry #7/)).toBeTruthy();
+    // Two-tap consent: review → confirm → RPC.
+    await userEvent.click(screen.getByRole("button", { name: /Review & unfreeze/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Yes, unfreeze/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.unfreeze", { circleId: "c1" }),
+    );
+  });
+
   it("starts a study guide from the composer via circles.canvas.put", async () => {
     stubRpcs();
     render(<CirclesView />);

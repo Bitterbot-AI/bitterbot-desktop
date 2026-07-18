@@ -6,6 +6,8 @@
  *  circles.status  — enabled?, our pubkey, connection count, reciprocity.
  *  circles.list    — circles we belong to, with members + peer liveness + unread.
  *  circles.markRead— mark a circle read up to now (node-local; clears its badge).
+ *  circles.unfreeze— Phase D: the human's deliberate act ending a fork freeze
+ *                    (node-local; evidence shown by the UI, cleared here).
  *  circles.create  — create a circle (kind free string; "connection" = edge).
  *  circles.invite  — mint an invite code (the code returns ONCE).
  *  circles.join    — redeem a pasted invite code (the invitee-side consent:
@@ -109,6 +111,7 @@ export const circlesHandlers: GatewayRequestHandlers = {
       name: c.name,
       kind: c.kind,
       status: c.status,
+      freezeReason: c.freezeReason,
       keyEpoch: c.keyEpoch,
       createdAt: c.createdAt,
       unread: unread[c.circleId] ?? 0,
@@ -122,6 +125,25 @@ export const circlesHandlers: GatewayRequestHandlers = {
       })),
     }));
     respond(true, { circles }, undefined);
+  },
+
+  "circles.unfreeze": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    try {
+      svc.service.unfreezeCircle(circleId);
+      respond(true, { ok: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
   },
 
   "circles.markRead": async ({ params, respond }) => {

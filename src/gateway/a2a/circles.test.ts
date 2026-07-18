@@ -324,6 +324,18 @@ describe("circle A2A verbs", () => {
     if (!forked.ok) expect(forked.error.message).toMatch(/fork/i);
     expect(store.getCircle(circleId)?.status).toBe("frozen");
 
+    // Phase D: the freeze records the fork EVIDENCE for the recovery UI.
+    const evidence = JSON.parse(store.getCircle(circleId)?.freezeReason ?? "null") as {
+      author_pubkey: string;
+      seq: number;
+      held_hash: string | null;
+      offered_hash: string;
+    };
+    expect(evidence.author_pubkey).toBe(bobKey);
+    expect(evidence.seq).toBe(1);
+    expect(evidence.held_hash).toBeTruthy();
+    expect(evidence.offered_hash).not.toBe(evidence.held_hash);
+
     // Frozen circle refuses further writes.
     const after = makeCircleEnvelope(
       "event",
@@ -339,6 +351,36 @@ describe("circle A2A verbs", () => {
       NOW_S,
     );
     expect(handleCircleMethod("circle/event.append", { envelope: after }, db, NOW).ok).toBe(false);
+
+    // Phase D: unfreezing is a deliberate act — status resumes, evidence
+    // clears, and a VALID continuation appends again.
+    expect(store.unfreezeCircle(circleId)).toBe(true);
+    expect(store.unfreezeCircle(circleId)).toBe(false); // only frozen → active
+    expect(store.getCircle(circleId)?.status).toBe("active");
+    expect(store.getCircle(circleId)?.freezeReason).toBeNull();
+    const hash1 = computeEventHash({
+      circleId,
+      authorPubkey: bobKey,
+      seq: 1,
+      prevHash: hash0,
+      eventType: "note.add",
+      body: { memo: "trip booked" },
+      claimedAt: NOW,
+    });
+    const resume = makeCircleEnvelope(
+      "event",
+      circleId,
+      {
+        seq: 2,
+        prev_hash: hash1,
+        event_type: "note.add",
+        event: { memo: "back on track" },
+        claimed_at: NOW,
+      },
+      bob,
+      NOW_S,
+    );
+    expect(handleCircleMethod("circle/event.append", { envelope: resume }, db, NOW).ok).toBe(true);
   });
 
   it("serves events.since to ledger.read holders and enforces presence + roster", () => {

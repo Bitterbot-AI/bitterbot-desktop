@@ -656,7 +656,19 @@ export function handleCircleEventAppend(
       if (existing && existing.event_hash === expectedHash) {
         return { ok: true, result: { eventId: existing.event_id, seq, duplicate: true } };
       }
-      auth.store.freezeCircle(env.circle_id, now);
+      // Record the evidence WITH the freeze so the recovery UI can show the
+      // human what happened, not just that it happened (Phase D unfreeze).
+      auth.store.freezeCircle(
+        env.circle_id,
+        now,
+        JSON.stringify({
+          author_pubkey: env.author_pubkey,
+          seq,
+          held_hash: existing?.event_hash ?? null,
+          offered_hash: expectedHash,
+          detected_at: now,
+        }),
+      );
       log.error(
         `circle/event.append: FORK detected for ${env.author_pubkey.slice(0, 24)}… at seq ${seq} in ${env.circle_id} — circle frozen`,
       );
