@@ -1166,8 +1166,12 @@ export class CirclesService {
     if (circle.status !== "frozen") {
       throw new Error(`circle ${circleId} is not frozen`);
     }
-    this.store.unfreezeCircle(circleId);
-    log.warn(`circle ${circleId} unfrozen by the local human (fork evidence cleared)`);
+    if (!this.store.unfreezeCircle(circleId)) {
+      throw new Error(`circle ${circleId} is not frozen`);
+    }
+    log.warn(
+      `circle ${circleId} unfrozen by the local human (fork evidence moved to the audit trail)`,
+    );
   }
 
   // -------------------------------------------------------------------------

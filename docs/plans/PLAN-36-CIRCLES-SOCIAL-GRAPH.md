@@ -841,6 +841,21 @@ conversation and everyone else's events resume. Tests: the a2a fork test now
 also pins the recorded evidence, unfreeze-only-from-frozen, evidence cleared,
 and a valid continuation appending after recovery; renderer test pins the
 banner (named member + entry), the two-tap consent, and the RPC call.
+The unfreeze adversarial pass confirmed the mechanism (re-detection intact,
+RPC-only, evidence unforgeable, archived circles can't be activated, v44 safe)
+and found one medium gap, fixed: one replayed fork envelope — a member
+restored from backup re-syncing, or a naive griefer — put the circle straight
+back in the freezer after every unfreeze, with no in-app escape. Unfreezing
+now MOVES the evidence into a bounded `forgiven_forks` audit trail (migration
+v45 — evidence is retained, answering the pass's evidence-destruction note),
+and a forgiven author's fork replays are rejected WITHOUT re-freezing
+(`isForkForgiven` in the fork branch); a fork from a different member still
+freezes. Honest residuals, documented: a determined in-circle attacker can
+still rewrite a different part of their history for one more freeze per
+review (eviction is the §5.5 report/ban primitive, still unbuilt — the banner
+copy now tells the human to abandon a repeatedly-conflicting circle), and
+fork detection remains HEAD-only (a divergence at seq < head chain-breaks
+silently — pre-existing, now on the record).
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +

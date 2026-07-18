@@ -367,6 +367,44 @@ describe("circle A2A verbs", () => {
       body: { memo: "trip booked" },
       claimedAt: NOW,
     });
+    // Phase D follow-up: REPLAYING the reviewed fork (fresh envelope, same
+    // divergent body, head still at the forked seq — the state a
+    // backup-restored member re-syncs into) is rejected but does NOT
+    // re-freeze. The evidence lives on in the audit trail.
+    const replayedFork = makeCircleEnvelope(
+      "event",
+      circleId,
+      {
+        seq: 1,
+        prev_hash: hash0,
+        event_type: "note.add",
+        event: { memo: "REWRITTEN HISTORY" },
+        claimed_at: NOW,
+      },
+      bob,
+      NOW_S,
+    );
+    const replayOut = handleCircleMethod(
+      "circle/event.append",
+      { envelope: replayedFork },
+      db,
+      NOW,
+    );
+    expect(replayOut.ok).toBe(false);
+    if (!replayOut.ok) expect(replayOut.error.message).toMatch(/previously reviewed/i);
+    expect(store.getCircle(circleId)?.status).toBe("active"); // NOT re-frozen
+    const audit = JSON.parse(
+      (
+        db.prepare(`SELECT forgiven_forks FROM circles WHERE circle_id = ?`).get(circleId) as {
+          forgiven_forks: string;
+        }
+      ).forgiven_forks,
+    ) as Array<{ author_pubkey: string; forgiven_at: number }>;
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.author_pubkey).toBe(bobKey);
+    expect(audit[0]?.forgiven_at).toBeTruthy();
+
+    // And the honest chain still moves: a valid continuation appends.
     const resume = makeCircleEnvelope(
       "event",
       circleId,

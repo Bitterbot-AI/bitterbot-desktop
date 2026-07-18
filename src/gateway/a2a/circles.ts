@@ -656,6 +656,16 @@ export function handleCircleEventAppend(
       if (existing && existing.event_hash === expectedHash) {
         return { ok: true, result: { eventId: existing.event_id, seq, duplicate: true } };
       }
+      // Already reviewed: the human unfroze after examining a fork from this
+      // author, so REPLAYS of it don't re-freeze (a member restored from
+      // backup would otherwise re-brick the circle on every sync). The event
+      // is still rejected — a fork is never accepted, only forgiven.
+      if (auth.store.isForkForgiven(env.circle_id, env.author_pubkey)) {
+        return err(
+          A2aErrorCodes.INVALID_REQUEST,
+          "ledger fork rejected (previously reviewed by the human)",
+        );
+      }
       // Record the evidence WITH the freeze so the recovery UI can show the
       // human what happened, not just that it happened (Phase D unfreeze).
       auth.store.freezeCircle(

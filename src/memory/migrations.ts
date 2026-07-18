@@ -1732,6 +1732,20 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circles", "freeze_reason", "TEXT");
     },
   },
+  {
+    version: 45,
+    description:
+      "PLAN-36 Phase D (review follow-up): circles.forgiven_forks — JSON audit " +
+      "of fork evidence the human reviewed when unfreezing (author, seq, hashes, " +
+      "forgiven_at; capped list). A forgiven author's fork REPLAYS are rejected " +
+      "without re-freezing, so a member restored from backup (or a naive " +
+      "griefer) cannot re-freeze the circle after review; a fork from a NEW " +
+      "author still freezes. Doubles as the retained evidence trail (evidence " +
+      "is moved here on unfreeze, not destroyed).",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circles", "forgiven_forks", "TEXT");
+    },
+  },
 ];
 
 /**

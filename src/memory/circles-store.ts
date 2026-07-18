@@ -443,21 +443,70 @@ export class CirclesStore {
   }
 
   /**
-   * The deliberate human act that ends a freeze: resume writes and clear the
-   * evidence. Only a frozen circle can be unfrozen (returns false otherwise).
+   * The deliberate human act that ends a freeze: resume writes, and MOVE the
+   * fork evidence into the `forgiven_forks` audit trail (never destroyed).
+   * Only a frozen circle can be unfrozen (returns false otherwise).
    * Node-local: each member's node froze independently and each member's
    * human decides independently. The forked author's CHAIN stays divergent —
    * their future tab/canvas events may still chain-break until they recover —
-   * but conversation and everyone else's events resume.
+   * but conversation and everyone else's events resume. Because the author is
+   * now forgiven, replays of their fork are rejected WITHOUT re-freezing
+   * (isForkForgiven) — reviewed once is reviewed; a fork from a different
+   * member still freezes.
    */
   unfreezeCircle(circleId: string, now: number = Date.now()): boolean {
+    const circle = this.getCircle(circleId);
+    if (!circle || circle.status !== "frozen") return false;
+    let forgiven: unknown[] = [];
+    const row = this.db
+      .prepare(`SELECT forgiven_forks FROM circles WHERE circle_id = ?`)
+      .get(circleId) as { forgiven_forks: string | null } | undefined;
+    try {
+      const parsed = JSON.parse(row?.forgiven_forks ?? "[]") as unknown;
+      if (Array.isArray(parsed)) forgiven = parsed;
+    } catch {
+      /* corrupt audit trail: start fresh rather than fail the recovery */
+    }
+    if (circle.freezeReason) {
+      let evidence: Record<string, unknown> = {};
+      try {
+        evidence = JSON.parse(circle.freezeReason) as Record<string, unknown>;
+      } catch {
+        evidence = { raw: circle.freezeReason };
+      }
+      forgiven.push({ ...evidence, forgiven_at: now });
+      forgiven = forgiven.slice(-20); // bounded audit trail
+    }
     const res = this.db
       .prepare(
-        `UPDATE circles SET status = 'active', freeze_reason = NULL, updated_at = ?
+        `UPDATE circles SET status = 'active', freeze_reason = NULL, forgiven_forks = ?,
+                updated_at = ?
           WHERE circle_id = ? AND status = 'frozen'`,
       )
-      .run(now, circleId);
+      .run(JSON.stringify(forgiven), now, circleId);
     return Number(res.changes) === 1;
+  }
+
+  /**
+   * Has the human already reviewed (and forgiven) a fork from this author in
+   * this circle? Used by the fork branch to reject replays without
+   * re-freezing — otherwise one replayed envelope (a member restored from
+   * backup, or a griefer) puts the circle straight back in the freezer after
+   * every unfreeze. A determined attacker inside the circle can still fork at
+   * a DIFFERENT seq only by rewriting more of their own history — the audit
+   * trail names them each time; eviction is the §5.5 primitive.
+   */
+  isForkForgiven(circleId: string, authorPubkey: string): boolean {
+    const row = this.db
+      .prepare(`SELECT forgiven_forks FROM circles WHERE circle_id = ?`)
+      .get(circleId) as { forgiven_forks: string | null } | undefined;
+    if (!row?.forgiven_forks) return false;
+    try {
+      const parsed = JSON.parse(row.forgiven_forks) as Array<{ author_pubkey?: string }>;
+      return Array.isArray(parsed) && parsed.some((f) => f.author_pubkey === authorPubkey);
+    } catch {
+      return false;
+    }
   }
 
   /** True when the circle exists and accepts writes (active, not frozen). */

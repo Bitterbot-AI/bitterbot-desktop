@@ -63,7 +63,9 @@ export function FrozenCircleBanner({ circle }: { circle: Circle }) {
         )}{" "}
         This usually means they restored their node from a backup; it can also indicate tampering.
         Unfreezing resumes the circle on <span className="font-medium">your node only</span> — their
-        older shared items may stay out of sync until they reconnect cleanly.
+        older shared items may stay out of sync until they reconnect cleanly, and this same conflict
+        won&apos;t freeze the circle again. If new conflicts keep appearing, treat the circle as
+        compromised and start a fresh one without them.
       </p>
       {confirming ? (
         <div className="flex items-center gap-2 justify-end">
