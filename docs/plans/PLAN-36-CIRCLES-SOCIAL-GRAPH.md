@@ -878,6 +878,23 @@ author, LWW toggle, empty-clear, pin/unpin agreement) + renderer (chip render
 - toggle RPC, pinned bar + unpin RPC). Pins are the artifact-surfacing
   primitive the §2.5 beachhead invite will read from.
 
+The annotations adversarial pass caught one real spoofing bug plus three
+hardening gaps, all fixed: a newline inside `target_envelope_id` could forge
+another member's reaction attribution through the fold's joined LWW key (the
+fold is now structurally nested AND rejects non-printable/oversized targets);
+author-claimed `updated_at` is clamped to received_at+5min so a far-future
+timestamp cannot grief-pin forever; the 8×16 emoji cap is re-applied on the
+fold side (sender normalization is not trusted — a signed 60KB reaction body
+previously rendered hundreds of chips); LWW ties now break on the REPLICATED
+`event_hash` (event_id is per-node and let same-millisecond ties diverge);
+and pinned messages are resolved server-side by envelope id with no window
+limit (pins previously vanished silently once the target left the 100-message
+buffer — defeating their purpose). Hostile-input fold tests pin all of these.
+Known-accepted residuals: annotation rows accrete on the log (fold cost fine
+for v1, cache before the beachhead), and the same claimed-timestamp clamp
+should eventually be applied to the canvas LWW fold (pre-existing, lower
+stakes — per-key not circle-wide).
+
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
 member pane); connections render as DMs. **Build a new `CircleMessageList`** — do
