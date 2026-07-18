@@ -239,17 +239,21 @@ export class CirclesStore {
     this.bumpKeyEpoch(args.circleId, now);
   }
 
-  /** A member leaves. Balances are NOT erased (they live in the ledger). */
+  /**
+   * A member leaves / is evicted (node-local). Balances are NOT erased (they
+   * live in the ledger). Does NOT bump the key epoch: the epoch only blinds
+   * the gossip topic NAME, which an evictee already knows (they know the
+   * circleId), so a bump grants no read-exclusion — and bumping on only one
+   * node desyncs the remaining members' topic home (§5.5 review F2/F3). Write
+   * refusal is total regardless (memberHasScope default-denies non-active).
+   */
   removeMember(circleId: string, memberPubkey: string, now: number = Date.now()): void {
-    const res = this.db
+    this.db
       .prepare(
         `UPDATE circle_members SET status = 'left', updated_at = ?
           WHERE circle_id = ? AND member_pubkey = ? AND status != 'left'`,
       )
       .run(now, circleId, memberPubkey);
-    if (res.changes > 0) {
-      this.bumpKeyEpoch(circleId, now);
-    }
   }
 
   /** Suspend a member's writes (compromise circuit breaker, red-team §5). */

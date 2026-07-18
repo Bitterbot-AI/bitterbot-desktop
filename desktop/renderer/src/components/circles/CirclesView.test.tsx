@@ -402,11 +402,11 @@ describe("CirclesView", () => {
     );
   });
 
-  it("§5.5: the creator can remove a member (two-tap) via circles.member.remove", async () => {
+  it("§5.5: a member can be removed node-locally (two-tap) via circles.member.remove", async () => {
     stubRpcs();
     render(<CirclesView />);
-    // Roster is the right pane's default; the self-creator sees a remove action
-    // on Maya (a member), never on themselves.
+    // Roster is the right pane's default; there's a remove action on Maya (any
+    // member may prune their own node), never on yourself.
     await waitFor(() => expect(screen.getAllByText("Maya").length).toBeGreaterThan(0));
     expect(screen.queryByRole("button", { name: /Remove You/i })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /Remove Maya/i }));

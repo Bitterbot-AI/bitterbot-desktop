@@ -4,9 +4,10 @@ import { cn } from "../../lib/utils";
 import { useCirclesStore, type Circle } from "../../stores/circles-store";
 
 // PLAN-36 Phase A: the member/presence roster (inner content of the right pane;
-// the pane's tabs live in CircleRightPane). §5.5: the circle creator can remove
-// a member — a two-tap eviction that default-denies the removed member's writes
-// on THIS node (the moderation primitive; node-local, honest about scope).
+// the pane's tabs live in CircleRightPane). §5.5: ANY member can remove another
+// from their OWN node — a two-tap prune that default-denies the removed member's
+// writes on THIS node (node-local self-protection; there is no central authority
+// in a P2P circle, so each member decides for their own node).
 
 const ONLINE_WINDOW_MS = 10 * 60_000;
 
@@ -27,9 +28,8 @@ export function CircleMembers({ circle }: { circle: Circle }) {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Only the creator can evict, and only in an active circle.
-  const iAmCreator = circle.members.some((m) => m.isSelf && m.role === "creator");
-  const canModerate = iAmCreator && circle.status === "active";
+  // Any member may prune their own node's roster; only in an active circle.
+  const canModerate = circle.status === "active";
 
   const remove = async (memberPubkey: string) => {
     if (busy) return;

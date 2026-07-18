@@ -571,8 +571,8 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(queued.n).toBe(1); // Bob's, awaiting expiry — never generated
   });
 
-  it("§5.5: the creator removes a member, whose writes are then refused", async () => {
-    const invite = ana.createInviteCode({ name: "Ana & Bob" }); // Ana = creator
+  it("§5.5: a member removes another node-locally, whose writes are then refused", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);
     const circleId = invite.circleId;
 
@@ -580,22 +580,19 @@ describe("CirclesService end-to-end (two nodes)", () => {
     const before = await bob.sendMessage({ circleId, text: "hey" });
     expect(before.delivered).toEqual([pubkeyId(anaKey)]);
 
-    // A non-creator cannot evict; nobody can evict the creator or themselves.
-    expect(() => bob.removeMember({ circleId, memberPubkey: pubkeyId(anaKey) })).toThrow(
-      /only the circle creator/,
-    );
+    // Nobody can remove themselves (that's leaving, not eviction).
     expect(() => ana.removeMember({ circleId, memberPubkey: pubkeyId(anaKey) })).toThrow(
-      /cannot remove themselves/,
+      /cannot remove yourself/,
     );
 
-    // Ana (creator) removes Bob: gone from her active roster, key epoch bumped.
+    // Ana (creator) prunes Bob from HER node. No epoch bump (review F2/F3).
     const epochBefore = ana.store.getCircle(circleId)?.keyEpoch ?? 0;
     ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) });
     expect(ana.store.getMembers(circleId).map((m) => m.memberPubkey)).toEqual([pubkeyId(anaKey)]);
-    expect(ana.store.getCircle(circleId)?.keyEpoch).toBeGreaterThan(epochBefore);
+    expect(ana.store.getCircle(circleId)?.keyEpoch).toBe(epochBefore);
 
-    // Bob's next write is now default-denied at Ana's A2A boundary (delivery
-    // fails — the eviction actually cut him off, not just cosmetically).
+    // Bob (roster intact on his side) writes to Ana; her A2A boundary now
+    // default-denies him — delivery fails, the removal actually cut him off.
     const after = await bob.sendMessage({ circleId, text: "let me back in" });
     expect(after.delivered).toEqual([]);
     expect(after.failed).toEqual([pubkeyId(anaKey)]);
@@ -604,6 +601,25 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(() => ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) })).toThrow(
       /no such active member/,
     );
+
+    // Removal is NOT creator-gated (review F1): a non-creator may protect their
+    // own node too. Bob prunes Ana from HIS node (last — it empties his roster).
+    bob.removeMember({ circleId, memberPubkey: pubkeyId(anaKey) });
+    expect(bob.store.getMembers(circleId).map((m) => m.memberPubkey)).toEqual([pubkeyId(bobKey)]);
+  });
+
+  it("§5.5: removal refuses a removed member's event.append too (shared A2A gate)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    // Bob can put a canvas card before removal.
+    await bob.putCanvasCard({ circleId, cardId: "c1", cardType: "note", title: "hi", text: "" });
+    expect(ana.canvasCards(circleId).some((c) => c.cardId === "c1")).toBe(true);
+    // After Ana removes Bob, his event.append is refused — the card does not
+    // land on Ana's node (event path shares memberHasScope with messages).
+    ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) });
+    await bob.putCanvasCard({ circleId, cardId: "c2", cardType: "note", title: "again", text: "" });
+    expect(ana.canvasCards(circleId).some((c) => c.cardId === "c2")).toBe(false);
   });
 
   it("folds reactions and pins across nodes (Phase D annotations)", async () => {

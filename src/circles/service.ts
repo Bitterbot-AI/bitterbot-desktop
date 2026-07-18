@@ -1163,22 +1163,21 @@ export class CirclesService {
 
   /**
    * §5.5: remove a member from a circle (the moderation primitive — evict a
-   * bad actor). Node-local and creator-gated: only the circle's creator can
-   * remove others, and never themselves. The removed member is marked 'left'
-   * so `memberHasScope` default-denies all their future writes on THIS node
-   * (the A2A boundary already enforces it); their ledger history is untouched.
-   * Removal bumps the key epoch. Node-local by design — there is no central
-   * authority in a P2P circle, so this cuts the member off from OUR node; the
-   * UI tells the human to have the others do the same.
+   * bad actor). NODE-LOCAL self-protection: ANY member may prune another from
+   * THEIR OWN node's roster (never themselves). Creator-gating was dropped in
+   * review — removal only affects this node, so gating it to the creator left
+   * every other member unable to protect themselves while the UI told them to
+   * "ask the others to remove them too" (§5.5 review F1). The removed member is
+   * marked 'left' so `memberHasScope` default-denies all their future writes on
+   * this node (the A2A boundary enforces it), and this node stops fanning out
+   * to them; their ledger history is untouched. There is no central authority
+   * in a P2P circle — each member decides for their own node.
    */
   removeMember(args: { circleId: string; memberPubkey: string }): void {
     const circle = this.store.getCircle(args.circleId);
     if (!circle) throw new Error(`circle ${args.circleId} not found`);
-    if (circle.creatorPubkey !== this.pubkey) {
-      throw new Error("only the circle creator can remove members");
-    }
     if (args.memberPubkey === this.pubkey) {
-      throw new Error("the creator cannot remove themselves");
+      throw new Error("you cannot remove yourself (leave the circle instead)");
     }
     const member = this.store.getMember(args.circleId, args.memberPubkey);
     if (!member || member.status === "left") {
@@ -1186,7 +1185,7 @@ export class CirclesService {
     }
     this.store.removeMember(args.circleId, args.memberPubkey);
     log.warn(
-      `member ${args.memberPubkey.slice(0, 24)}… removed from circle ${args.circleId} by the creator`,
+      `member ${args.memberPubkey.slice(0, 24)}… removed from circle ${args.circleId} (node-local)`,
     );
   }
 
