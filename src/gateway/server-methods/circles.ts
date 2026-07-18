@@ -20,6 +20,10 @@
  *                    an @agent summon (quarantined tool-less generation);
  *                    publish is the human consent tap (ships via circles.send
  *                    semantics), discard throws it away. Never fans out alone.
+ *  circles.drafts.request — B2: ask my agent to pre-fill MY contribution to a
+ *                    canvas card slot (vote / study section). The draft comes
+ *                    back through the same list/publish/discard consent path;
+ *                    publish ships via circles.canvas.slice semantics.
  *
  * Everything is gated by the circles.enabled kill switch (PLAN-31 §8), which
  * defaults ON since the 2026-07-09 red-team phase; handlers answer UNAVAILABLE
@@ -481,6 +485,30 @@ export const circlesHandlers: GatewayRequestHandlers = {
       return;
     }
     respond(true, { drafts: svc.service.agentDrafts(circleId) }, undefined);
+  },
+
+  "circles.drafts.request": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const cardId = typeof params.cardId === "string" ? params.cardId : "";
+    const slot = typeof params.slot === "string" ? params.slot : "";
+    if (!circleId || !cardId || !slot) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId, slot required"),
+      );
+      return;
+    }
+    try {
+      respond(true, svc.service.requestAgentSliceDraft({ circleId, cardId, slot }), undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
   },
 
   "circles.drafts.publish": async ({ params, respond }) => {

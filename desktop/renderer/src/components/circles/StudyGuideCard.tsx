@@ -1,7 +1,8 @@
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { useCirclesStore, type Circle, type CanvasCard } from "../../stores/circles-store";
+import { AgentSliceSuggestion } from "./AgentSliceSuggestion";
 
 // PLAN-36 C3: the study-guide Co-Canvas — the §2.5 beachhead card. The creator
 // posts the guide's SECTIONS (card.text, one per line); each member contributes
@@ -62,8 +63,11 @@ export function StudyGuideCard({
   selfPubkey: string | undefined;
 }) {
   const putSlice = useCirclesStore((s) => s.putSlice);
+  const requestSliceDraft = useCirclesStore((s) => s.requestSliceDraft);
+  const agentDrafts = useCirclesStore((s) => s.draftsByCircle[circle.circleId]);
   const sections = parseSections(card.text);
   const [editingSlot, setEditingSlot] = useState<string | null>(null);
+  const [askedSlots, setAskedSlots] = useState<Record<string, boolean>>({});
   // Drafts are keyed by slot so switching sections mid-edit never discards
   // unsaved text (review finding #4).
   const [drafts, setDrafts] = useState<Record<string, { value: string; note: string }>>({});
@@ -130,6 +134,10 @@ export function StudyGuideCard({
           const mine = slices.find((s) => s.authorPubkey === selfPubkey);
           const isGap = slices.length === 0;
           const editing = editingSlot === slot;
+          // B2: a ready agent suggestion targeting this section.
+          const suggestion = (agentDrafts ?? []).find(
+            (d) => d.targetCardId === card.cardId && d.targetSlot === slot,
+          );
           return (
             <div
               key={slot}
@@ -146,23 +154,42 @@ export function StudyGuideCard({
                   </span>
                 )}
                 {circle.status === "active" && !editing && (
-                  <button
-                    type="button"
-                    onClick={() => openEditor(slot)}
-                    className="text-xs font-medium text-primary flex items-center gap-1 shrink-0"
-                  >
-                    {mine ? (
-                      <>
-                        <Pencil className="w-3 h-3" /> Edit yours
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-3 h-3" /> Add yours
-                      </>
+                  <>
+                    {!suggestion && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAskedSlots((prev) => ({ ...prev, [slot]: true }));
+                          void requestSliceDraft(circle.circleId, card.cardId, slot);
+                        }}
+                        disabled={askedSlots[slot]}
+                        title="Your agent drafts this section privately; you review and publish"
+                        className="text-xs font-medium text-primary flex items-center gap-1 shrink-0 disabled:opacity-50"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        {askedSlots[slot] ? "Drafting…" : "Ask my agent"}
+                      </button>
                     )}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => openEditor(slot)}
+                      className="text-xs font-medium text-primary flex items-center gap-1 shrink-0"
+                    >
+                      {mine ? (
+                        <>
+                          <Pencil className="w-3 h-3" /> Edit yours
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-3 h-3" /> Add yours
+                        </>
+                      )}
+                    </button>
+                  </>
                 )}
               </div>
+
+              {suggestion && <AgentSliceSuggestion draft={suggestion} circleId={circle.circleId} />}
 
               {slices.map((s) => (
                 <div key={`${s.slot}\n${s.authorPubkey}`} className="mt-1.5">

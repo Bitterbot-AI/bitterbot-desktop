@@ -1,7 +1,8 @@
-import { Check } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { useCirclesStore, type Circle, type CanvasCard } from "../../stores/circles-store";
+import { AgentSliceSuggestion } from "./AgentSliceSuggestion";
 
 // PLAN-36 C2: the Decision Card — a constraint-aware group poll. The options are
 // set by the creator (card.text, one per line); each member's VOTE is a separate
@@ -24,16 +25,23 @@ export function DecisionCard({
   selfPubkey: string | undefined;
 }) {
   const vote = useCirclesStore((s) => s.vote);
+  const requestSliceDraft = useCirclesStore((s) => s.requestSliceDraft);
+  const drafts = useCirclesStore((s) => s.draftsByCircle[circle.circleId]);
   const options = card.text
     .split("\n")
     .map((o) => o.trim())
     .filter(Boolean);
   const votes = card.slices.filter((s) => s.slot === "vote");
   const myVote = votes.find((v) => v.authorPubkey === selfPubkey);
+  // B2: a ready agent suggestion targeting this card's vote slot.
+  const suggestion = (drafts ?? []).find(
+    (d) => d.targetCardId === card.cardId && d.targetSlot === "vote",
+  );
 
   const [selected, setSelected] = useState<string>(myVote?.value ?? "");
   const [note, setNote] = useState<string>(myVote?.note ?? "");
   const [publishing, setPublishing] = useState(false);
+  const [asked, setAsked] = useState(false);
 
   const tally = new Map<string, number>();
   for (const v of votes) tally.set(v.value, (tally.get(v.value) ?? 0) + 1);
@@ -117,20 +125,49 @@ export function DecisionCard({
 
       {circle.status === "active" && (
         <div className="px-3 pb-3 pt-1 border-t space-y-2">
+          {suggestion && (
+            <AgentSliceSuggestion
+              draft={suggestion}
+              circleId={circle.circleId}
+              editable={false}
+              canPublish={options.includes(suggestion.content)}
+              hint={
+                options.includes(suggestion.content)
+                  ? undefined
+                  : "not one of the options — vote manually"
+              }
+            />
+          )}
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Why? (optional — shared with the circle)"
             className="w-full bg-transparent text-xs outline-none"
           />
-          <button
-            type="button"
-            onClick={() => void publish()}
-            disabled={!changed || publishing}
-            className="w-full text-xs font-medium py-1.5 rounded bg-primary text-primary-foreground disabled:opacity-50"
-          >
-            {myVote ? "Update my vote" : "Publish my vote"}
-          </button>
+          <div className="flex items-center gap-2">
+            {!suggestion && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAsked(true);
+                  void requestSliceDraft(circle.circleId, card.cardId, "vote");
+                }}
+                disabled={asked}
+                title="Your agent drafts a suggestion only you see; you publish it"
+                className="text-xs font-medium px-2 py-1.5 rounded border text-primary flex items-center gap-1 disabled:opacity-50 shrink-0"
+              >
+                <Sparkles className="w-3 h-3" /> {asked ? "Drafting…" : "Ask my agent"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void publish()}
+              disabled={!changed || publishing}
+              className="flex-1 text-xs font-medium py-1.5 rounded bg-primary text-primary-foreground disabled:opacity-50"
+            >
+              {myVote ? "Update my vote" : "Publish my vote"}
+            </button>
+          </div>
         </div>
       )}
     </div>

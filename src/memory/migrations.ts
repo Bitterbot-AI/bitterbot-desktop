@@ -1707,6 +1707,20 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 43,
+    description:
+      "PLAN-36 Phase B2 (agent-drafted card slices): circle_agent_drafts gains " +
+      "target_card_id + target_slot. A kind='slice' draft is the agent " +
+      "pre-filling the member's OWN contribution to a canvas card slot (a vote, " +
+      "a study-guide section) on the same quarantined path; publishing it ships " +
+      "through the normal circles.canvas.slice consent path. NULL on chat-reply " +
+      "drafts.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_agent_drafts", "target_card_id", "TEXT");
+      addColumnIfMissing(db, "circle_agent_drafts", "target_slot", "TEXT");
+    },
+  },
 ];
 
 /**

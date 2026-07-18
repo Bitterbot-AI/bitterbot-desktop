@@ -73,6 +73,10 @@ export interface AgentDraft {
   circleId: string;
   summonEnvelopeId: string | null;
   summonAuthorPubkey: string | null;
+  /** "reply" (chat) or "slice" (a canvas card slot pre-fill, B2). */
+  kind?: string;
+  targetCardId?: string | null;
+  targetSlot?: string | null;
   content: string;
   createdAt: number;
 }
@@ -92,6 +96,7 @@ interface CirclesState {
   loadMessages: (circleId: string) => Promise<void>;
   loadCards: (circleId: string) => Promise<void>;
   loadDrafts: (circleId: string) => Promise<void>;
+  requestSliceDraft: (circleId: string, cardId: string, slot: string) => Promise<boolean>;
   publishDraft: (circleId: string, draftId: string, text: string) => Promise<boolean>;
   discardDraft: (circleId: string, draftId: string) => Promise<boolean>;
   send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
@@ -168,11 +173,29 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     }
   },
 
+  requestSliceDraft: async (circleId, cardId, slot) => {
+    try {
+      // B2: ask my agent to pre-fill MY slot on this card. The draft comes
+      // back via the "circles" nudge → loadDrafts; publishing a slice draft
+      // ships through circles.canvas.slice on the server.
+      await request("circles.drafts.request", { circleId, cardId, slot });
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
   publishDraft: async (circleId, draftId, text) => {
     if (!text.trim()) return false;
     try {
       await request("circles.drafts.publish", { draftId, text: text.trim() });
-      await Promise.all([get().loadDrafts(circleId), get().loadMessages(circleId)]);
+      // A reply draft lands in messages; a slice draft lands on the canvas.
+      await Promise.all([
+        get().loadDrafts(circleId),
+        get().loadMessages(circleId),
+        get().loadCards(circleId),
+      ]);
       return true;
     } catch (err) {
       set({ notice: String(err) });

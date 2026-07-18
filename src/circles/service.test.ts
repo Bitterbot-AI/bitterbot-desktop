@@ -448,6 +448,55 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(() => anaDrafting.discardAgentDraft(draftId)).toThrow(/not awaiting review/);
   });
 
+  it("B2: agent-drafted slice — request → generate → consent-publish onto the canvas", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const prompts: string[] = [];
+    const anaDrafting = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: anaKey,
+      draftLlm: async (p) => {
+        prompts.push(p);
+        return "Thu";
+      },
+    });
+
+    // Bob posts a decision; Ana asks her agent to pre-fill her vote.
+    await bob.putCanvasCard({
+      circleId,
+      cardId: "d1",
+      cardType: "decision",
+      title: "When do we review?",
+      text: "Thu\nFri",
+    });
+    expect(
+      anaDrafting.requestAgentSliceDraft({ circleId, cardId: "d1", slot: "vote" }).queued,
+    ).toBe(true);
+    await anaDrafting.generateAgentDrafts();
+
+    // The quarantined prompt saw the card; nothing reached Bob yet.
+    expect(prompts[0]).toContain("When do we review?");
+    expect(prompts[0]).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
+    const bobVotesBefore = (bob.canvasCards(circleId).find((c) => c.cardId === "d1")?.slices ?? [])
+      .length;
+    expect(bobVotesBefore).toBe(0); // no autonomous slice
+
+    // Consent tap: publishing ships Ana's vote through the normal slice path.
+    const draft = anaDrafting.agentDrafts(circleId)[0];
+    expect(draft?.kind).toBe("slice");
+    await anaDrafting.publishAgentDraft({ draftId: draft?.draftId ?? "" });
+    const bobVotes = (
+      bob.canvasCards(circleId).find((c) => c.cardId === "d1")?.slices ?? []
+    ).filter((s) => s.slot === "vote");
+    expect(bobVotes).toHaveLength(1);
+    expect(bobVotes[0]?.value).toBe("Thu");
+    expect(bobVotes[0]?.authorPubkey).toBe(pubkeyId(anaKey));
+    expect(anaDrafting.agentDrafts(circleId)).toHaveLength(0);
+  });
+
   it("Phase B: the kill switch silences summons end to end", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

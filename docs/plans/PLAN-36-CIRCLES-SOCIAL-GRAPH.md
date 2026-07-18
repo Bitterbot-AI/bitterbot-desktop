@@ -798,6 +798,27 @@ envelope to the human. The renderer now unwraps for DISPLAY only
 small screened-shield indicator instead; the stored/agent-facing content stays
 wrapped, so the hostile-principal boundary is unchanged.
 
+**B2 LANDED (agent-drafted card slices — "circle = commons, agent = personal
+lens" made concrete).** "Ask my agent" on a Decision Card (vote) or a
+study-guide section queues a `kind='slice'` draft (migration v43 adds
+`target_card_id`/`target_slot`); the same quarantined sweep generates it via
+`buildQuarantinedSlicePrompt` — our constant task frame (a vote must be EXACTLY
+one option line or ABSTAIN; a section gets contribution text), with the card
+title/body, existing member slices, and recent chat all inside ONE untrusted
+envelope. The suggestion renders privately on its card
+(`AgentSliceSuggestion`); publish ships the human-approved text through the
+normal `circles.canvas.slice` path (same atomic ready→publishing claim as
+reply drafts), dismiss discards. Human-initiated only (no peer can request
+your slice draft); shares the per-circle rate bucket with @agent summons; one
+live draft per (card, slot). Non-option vote suggestions (ABSTAIN) render
+publish-disabled with a hint. RPC `circles.drafts.request`. Tests: unit (slice
+queue dedupe + shared bucket, vote-prompt envelope placement with the
+constraint in the trusted frame, end-to-end row targeting) + two-node E2E
+(request → generate → quiet → consent-publish lands the vote slice on both
+nodes) + renderer (suggestion on the card not in chat, publish, per-section
+ask). This is the Phase-4b seed: the same request path later feeds from the
+member's PLAN-9 gap history instead of circle context alone.
+
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
 member pane); connections render as DMs. **Build a new `CircleMessageList`** — do

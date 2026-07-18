@@ -63,9 +63,11 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         onReply={setReplyTo}
       />
 
-      {(agentDrafts ?? []).map((d) => (
-        <AgentDraftCard key={d.draftId} draft={d} circle={circle} selfPubkey={selfPubkey} />
-      ))}
+      {(agentDrafts ?? [])
+        .filter((d) => !d.targetSlot) // slice drafts render on their canvas card, not in chat
+        .map((d) => (
+          <AgentDraftCard key={d.draftId} draft={d} circle={circle} selfPubkey={selfPubkey} />
+        ))}
 
       {replyTo && (
         <div className="mx-3 -mb-1 flex items-center gap-2 text-xs text-muted-foreground border rounded-t-lg bg-muted/50 px-3 py-1.5">

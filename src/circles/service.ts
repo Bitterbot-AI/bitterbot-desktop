@@ -42,6 +42,7 @@ import {
   getAgentDraft,
   listReadyAgentDrafts,
   queueAgentDraft,
+  queueAgentSliceDraft,
   setAgentDraftStatus,
   sweepAgentDraftHousekeeping,
   type AgentDraft,
@@ -1184,6 +1185,33 @@ export class CirclesService {
   }
 
   /**
+   * B2: our human asked their agent to pre-fill THEIR contribution to a card
+   * slot (a vote, a study-guide section). Human-initiated only; the draft
+   * comes back through the same private consent surface.
+   */
+  requestAgentSliceDraft(args: { circleId: string; cardId: string; slot: string }): {
+    queued: boolean;
+    reason?: string;
+  } {
+    if (!this.agentDraftsEnabled()) {
+      return { queued: false, reason: "disabled" };
+    }
+    const circle = this.store.getCircle(args.circleId);
+    if (!circle || circle.status !== "active") {
+      throw new Error(`circle ${args.circleId} is not active`);
+    }
+    const card = computeCanvasCards(this.db, args.circleId).find((c) => c.cardId === args.cardId);
+    if (!card) {
+      throw new Error(`card ${args.cardId} not found in circle`);
+    }
+    return queueAgentSliceDraft(this.db, {
+      circleId: args.circleId,
+      cardId: args.cardId,
+      slot: args.slot.slice(0, 32),
+    });
+  }
+
+  /**
    * The consent tap: publish a draft to the circle AS our human's message.
    * The human may have edited the text; what they approved is what ships.
    * Goes through the normal sendMessage path (signing, fan-out, delivery
@@ -1193,7 +1221,7 @@ export class CirclesService {
   async publishAgentDraft(args: {
     draftId: string;
     text?: string;
-  }): Promise<SendReport & { envelopeId: string }> {
+  }): Promise<SendReport & { envelopeId?: string; eventId?: string }> {
     const draft = getAgentDraft(this.db, args.draftId);
     if (!draft) {
       throw new Error(`draft ${args.draftId} is not awaiting review`);
@@ -1206,12 +1234,25 @@ export class CirclesService {
       throw new Error(`draft ${args.draftId} is not awaiting review`);
     }
     try {
-      const report = await this.sendMessage({
-        circleId: draft.circleId,
-        text,
-        replyTo: draft.summonEnvelopeId ?? undefined,
-        suppressAgentSummon: true,
-      });
+      // A slice draft publishes as OUR contribution to the target card slot
+      // (the normal canvas consent path); a reply draft publishes as a chat
+      // message threaded to the summon. Both are the standard signed paths —
+      // no separate agent send path to audit.
+      const report =
+        draft.kind === "slice" && draft.targetCardId && draft.targetSlot
+          ? await this.putCanvasSlice({
+              circleId: draft.circleId,
+              cardId: draft.targetCardId,
+              slot: draft.targetSlot,
+              value: text,
+              note: "",
+            })
+          : await this.sendMessage({
+              circleId: draft.circleId,
+              text,
+              replyTo: draft.summonEnvelopeId ?? undefined,
+              suppressAgentSummon: true,
+            });
       setAgentDraftStatus(this.db, draft.draftId, "published");
       return report;
     } catch (err) {

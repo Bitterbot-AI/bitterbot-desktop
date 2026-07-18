@@ -134,11 +134,27 @@ function stubRpcs(enabled = true) {
               circleId: "c1",
               summonEnvelopeId: "env-summon",
               summonAuthorPubkey: "ed25519:maya",
+              kind: "reply",
+              targetCardId: null,
+              targetSlot: null,
               content: "Thursday at 6 works for us.",
+              createdAt: Date.now(),
+            },
+            {
+              draftId: "dr2",
+              circleId: "c1",
+              summonEnvelopeId: null,
+              summonAuthorPubkey: null,
+              kind: "slice",
+              targetCardId: "d1",
+              targetSlot: "vote",
+              content: "Thu",
               createdAt: Date.now(),
             },
           ],
         });
+      case "circles.drafts.request":
+        return Promise.resolve({ queued: true });
       case "circles.drafts.publish":
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
       case "circles.drafts.discard":
@@ -320,6 +336,40 @@ describe("CirclesView", () => {
     );
     expect(requestMock).not.toHaveBeenCalledWith("circles.drafts.publish", expect.anything());
     expect(requestMock).not.toHaveBeenCalledWith("circles.send", expect.anything());
+  });
+
+  it("B2: shows the agent's vote suggestion on the Decision Card and publishes it", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
+    // The slice suggestion renders on ITS card, marked private…
+    expect(await screen.findByText(/Your agent suggests/i)).toBeTruthy();
+    // …and NOT as a second chat draft card (only dr1, the reply draft, is in chat).
+    expect(screen.getAllByText(/Your agent drafted a reply/i)).toHaveLength(1);
+    // Publishing ships the suggestion through circles.drafts.publish.
+    await userEvent.click(screen.getByRole("button", { name: /^Publish$/ }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.drafts.publish", {
+        draftId: "dr2",
+        text: "Thu",
+      }),
+    );
+  });
+
+  it("B2: Ask my agent on a study section requests a slice draft for that slot", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
+    await screen.findByText("Midterm 2 guide");
+    const askButtons = screen.getAllByRole("button", { name: /Ask my agent/i });
+    await userEvent.click(askButtons[0] as HTMLElement); // first study section
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.drafts.request", {
+        circleId: "c1",
+        cardId: "sg1",
+        slot: sectionSlot("Glycolysis"),
+      }),
+    );
   });
 
   it("starts a study guide from the composer via circles.canvas.put", async () => {

@@ -4,11 +4,13 @@ import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
 import {
   buildQuarantinedDraftPrompt,
+  buildQuarantinedSlicePrompt,
   claimAgentDraft,
   detectAgentSummon,
   generateQueuedAgentDrafts,
   listReadyAgentDrafts,
   queueAgentDraft,
+  queueAgentSliceDraft,
   sweepAgentDraftHousekeeping,
 } from "./agent-drafts.js";
 
@@ -42,6 +44,28 @@ function seedMessage(db: DatabaseSync, circleId: string, author: string, content
        (message_id, circle_id, author_pubkey, direction, kind, content, created_at)
      VALUES (?, ?, ?, 'in', 'message', ?, ?)`,
   ).run(crypto.randomUUID(), circleId, author, content, Date.now());
+}
+
+function seedDecisionCard(db: DatabaseSync, circleId: string, cardId: string): void {
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO circle_events
+       (event_id, circle_id, author_pubkey, seq, event_type, body_json,
+        envelope_json, event_hash, claimed_at, received_at)
+     VALUES (?, ?, 'ed25519:bob', 0, 'canvas.card.put', ?, '{}', 'h', ?, ?)`,
+  ).run(
+    crypto.randomUUID(),
+    circleId,
+    JSON.stringify({
+      card_id: cardId,
+      card_type: "decision",
+      title: "When do we review?",
+      text: "Thu\nFri",
+      updated_at: now,
+    }),
+    now,
+    now,
+  );
 }
 
 describe("detectAgentSummon", () => {
@@ -101,6 +125,80 @@ describe("queueAgentDraft", () => {
       summonAuthorPubkey: "ed25519:bob",
     });
     expect(replay).toEqual({ queued: false, reason: "duplicate" });
+  });
+});
+
+describe("queueAgentSliceDraft (B2)", () => {
+  let db: DatabaseSync;
+  beforeEach(() => {
+    db = openDb();
+    seedCircle(db, "c1");
+  });
+
+  it("allows one live draft per (card, slot) and shares the circle rate bucket", () => {
+    expect(queueAgentSliceDraft(db, { circleId: "c1", cardId: "d1", slot: "vote" }).queued).toBe(
+      true,
+    );
+    // Re-asking while one is queued/drafting/ready is a no-op.
+    expect(queueAgentSliceDraft(db, { circleId: "c1", cardId: "d1", slot: "vote" })).toEqual({
+      queued: false,
+      reason: "duplicate",
+    });
+    // A different slot queues; the shared per-circle bucket still applies.
+    expect(queueAgentSliceDraft(db, { circleId: "c1", cardId: "sg1", slot: "sec-a" }).queued).toBe(
+      true,
+    );
+    expect(queueAgentSliceDraft(db, { circleId: "c1", cardId: "sg1", slot: "sec-b" }).queued).toBe(
+      true,
+    );
+    expect(queueAgentSliceDraft(db, { circleId: "c1", cardId: "sg1", slot: "sec-c" })).toEqual({
+      queued: false,
+      reason: "rate_limited",
+    });
+  });
+});
+
+describe("buildQuarantinedSlicePrompt (B2)", () => {
+  let db: DatabaseSync;
+  beforeEach(() => {
+    db = openDb();
+    seedCircle(db, "c1");
+    seedDecisionCard(db, "c1", "d1");
+    seedMessage(db, "c1", "ed25519:bob", "I can only do Thursday");
+  });
+
+  it("wraps the card + conversation and constrains a vote to the options", () => {
+    const prompt = buildQuarantinedSlicePrompt(db, {
+      circleId: "c1",
+      cardId: "d1",
+      slot: "vote",
+      selfPubkey: "ed25519:ana",
+    });
+    // The vote task + constraint sit in OUR trusted frame…
+    const START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
+    const startIdx = prompt.indexOf(START);
+    expect(prompt.indexOf("EXACTLY one of those option lines")).toBeLessThan(startIdx);
+    expect(prompt.indexOf("UNTRUSTED DATA")).toBeLessThan(startIdx);
+    // …while the card body (options) and chat are inside the envelope.
+    const endIdx = prompt.indexOf("<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>");
+    for (const s of ["When do we review?", "Thu\nFri", "I can only do Thursday"]) {
+      expect(prompt.indexOf(s)).toBeGreaterThan(startIdx);
+      expect(prompt.indexOf(s)).toBeLessThan(endIdx);
+    }
+  });
+
+  it("generates a slice draft end to end (kind + target ride the row)", async () => {
+    queueAgentSliceDraft(db, { circleId: "c1", cardId: "d1", slot: "vote" });
+    const res = await generateQueuedAgentDrafts(db, async () => "Thu", {
+      selfPubkey: "ed25519:ana",
+    });
+    expect(res.generated).toBe(1);
+    const ready = listReadyAgentDrafts(db, "c1");
+    expect(ready).toHaveLength(1);
+    expect(ready[0]?.kind).toBe("slice");
+    expect(ready[0]?.targetCardId).toBe("d1");
+    expect(ready[0]?.targetSlot).toBe("vote");
+    expect(ready[0]?.content).toBe("Thu");
   });
 });
 
