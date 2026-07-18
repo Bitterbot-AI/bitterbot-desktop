@@ -609,6 +609,8 @@ describe("CirclesService end-to-end (two nodes)", () => {
     await bob.setMessagePinned({ circleId, envelopeId: sent.envelopeId, pinned: true });
     expect(ana.messageAnnotations(circleId).pins).toEqual([sent.envelopeId]);
     expect(bob.messageAnnotations(circleId).pins).toEqual([sent.envelopeId]);
+    // The pinned MESSAGE resolves by envelope id (window-independent, F4).
+    expect(ana.pinnedMessages(circleId)[0]?.content).toContain("pizza friday?");
     await tick();
     await ana.setMessagePinned({ circleId, envelopeId: sent.envelopeId, pinned: false });
     expect(bob.messageAnnotations(circleId).pins).toEqual([]);

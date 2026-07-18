@@ -16,7 +16,11 @@ interface Props {
   selfPubkey: string | undefined;
 }
 
-function replyLabel(m: CircleMessage, selfPubkey: string | undefined, members: Circle["members"]) {
+function replyLabel(
+  m: { direction: string; authorPubkey: string },
+  selfPubkey: string | undefined,
+  members: Circle["members"],
+) {
   if (m.direction === "out" || m.authorPubkey === selfPubkey) return "You";
   return members.find((x) => x.memberPubkey === m.authorPubkey)?.displayName ?? "friend";
 }
@@ -45,9 +49,20 @@ export function CircleChat({ circle, selfPubkey }: Props) {
     void react(circle.circleId, m.envelopeId, next);
   };
 
-  const pinnedMessages = (annotations?.pins ?? [])
-    .map((envId) => (messages ?? []).find((m) => m.envelopeId === envId))
-    .filter((m): m is CircleMessage => !!m);
+  // Server-resolved (no window limit — a pin's point is surfacing OLD
+  // messages); fall back to the local buffer for older gateways.
+  const pinnedMessages =
+    annotations?.pinnedMessages ??
+    (annotations?.pins ?? [])
+      .map((envId) => (messages ?? []).find((m) => m.envelopeId === envId))
+      .filter((m): m is CircleMessage => !!m)
+      .map((m) => ({
+        envelopeId: m.envelopeId ?? m.messageId,
+        authorPubkey: m.authorPubkey,
+        direction: m.direction,
+        content: m.content,
+        createdAt: m.createdAt,
+      }));
 
   const submit = async () => {
     if (!draft.trim() || sending) return;
@@ -91,7 +106,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
           {showPins && (
             <div className="px-3 pb-2 space-y-1.5">
               {pinnedMessages.map((m) => (
-                <div key={m.messageId} className="flex items-baseline gap-2 min-w-0">
+                <div key={m.envelopeId} className="flex items-baseline gap-2 min-w-0">
                   <span className="font-medium shrink-0">
                     {replyLabel(m, selfPubkey, circle.members)}
                   </span>

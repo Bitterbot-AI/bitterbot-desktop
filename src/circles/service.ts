@@ -1164,6 +1164,49 @@ export class CirclesService {
     return computeMessageAnnotations(this.db, circleId);
   }
 
+  /**
+   * The pinned messages themselves, resolved by envelope id with NO window
+   * limit — a pin's whole point is surfacing a message older than the
+   * conversation buffer (review F4: pins silently vanished past the last 100
+   * messages). Pin order preserved; unresolvable ids (30-day horizon, late
+   * join) are dropped.
+   */
+  pinnedMessages(circleId: string): Array<{
+    envelopeId: string;
+    authorPubkey: string;
+    direction: string;
+    content: string;
+    createdAt: number;
+  }> {
+    const pins = this.messageAnnotations(circleId).pins;
+    if (pins.length === 0) return [];
+    const placeholders = pins.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(
+        `SELECT envelope_id, author_pubkey, direction, content, created_at
+           FROM circle_messages
+          WHERE circle_id = ? AND envelope_id IN (${placeholders})`,
+      )
+      .all(circleId, ...pins) as unknown as Array<{
+      envelope_id: string;
+      author_pubkey: string;
+      direction: string;
+      content: string;
+      created_at: number;
+    }>;
+    const byEnvelope = new Map(rows.map((r) => [r.envelope_id, r]));
+    return pins
+      .map((id) => byEnvelope.get(id))
+      .filter((r): r is NonNullable<typeof r> => !!r)
+      .map((r) => ({
+        envelopeId: r.envelope_id,
+        authorPubkey: r.author_pubkey,
+        direction: r.direction,
+        content: r.content,
+        createdAt: r.created_at,
+      }));
+  }
+
   /** Set OUR full reaction set on a message (empty = clear) + fan out. */
   async reactToMessage(args: {
     circleId: string;

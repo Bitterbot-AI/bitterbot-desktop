@@ -593,8 +593,12 @@ export const circlesHandlers: GatewayRequestHandlers = {
       {
         messages: svc.service.messages(circleId, limit),
         // Phase D: reactions + pins ride the same response so one refresh
-        // paints the whole conversation state.
-        annotations: svc.service.messageAnnotations(circleId),
+        // paints the whole conversation state. Pinned messages are resolved
+        // server-side by envelope id (no window limit — review F4).
+        annotations: {
+          ...svc.service.messageAnnotations(circleId),
+          pinnedMessages: svc.service.pinnedMessages(circleId),
+        },
       },
       undefined,
     );

@@ -44,11 +44,21 @@ export interface MessageReaction {
   emojis: string[];
 }
 
+export interface PinnedMessage {
+  envelopeId: string;
+  authorPubkey: string;
+  direction: string;
+  content: string;
+  createdAt: number;
+}
+
 export interface MessageAnnotations {
   /** envelopeId -> per-member reaction sets. */
   reactions: Record<string, MessageReaction[]>;
   /** Pinned envelopeIds, oldest pin first. */
   pins: string[];
+  /** The pinned messages resolved server-side (no message-window limit). */
+  pinnedMessages?: PinnedMessage[];
 }
 
 export interface CirclesStatus {
