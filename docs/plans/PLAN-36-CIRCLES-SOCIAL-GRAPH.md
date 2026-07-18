@@ -531,9 +531,22 @@ adversarial passes ended on (the fork-griefing residual and hostile-member
 containment): a determined bad actor can now be removed. Cross-node eviction
 propagation and the staked-introducer reputation stay Phase-5/6; suspend (the
 reversible circuit-breaker) remains available as an internal primitive. Tests:
-two-node E2E (creator-only guard, no-self, no-creator, actual write refusal,
-re-remove refused) + renderer (creator sees remove on members not self, two-tap
-→ RPC).
+two-node E2E (node-local removal by any member, no-self guard, actual write
+refusal on message AND event.append, re-remove refused) + renderer (remove
+control on members not self, two-tap → RPC).
+The §5.5 adversarial pass confirmed the total write-refusal (every A2A verb
+funnels through `memberHasScope`'s active-status check; single-use invites make
+re-add creator-gated) and flagged two design gaps, both fixed: creator-gating
+was DROPPED — removal is node-local, so gating it to the creator left every
+other member unable to protect their own node while the UI told them to "ask
+the others to remove them too" (F1); and the key-epoch bump was REMOVED from
+removal — it grants no read-exclusion (the evictee knows the circleId, so they
+can recompute the blinded gossip topic name) and bumping on one node only
+desynced the remaining members' topic home (F2/F3). Now any member prunes their
+own node with no epoch churn. Residuals on the record: cross-node propagation
+is still absent (each node decides for itself — the P2P reality), and the
+evictee can still passively read gossip frames they were already able to (no
+confidentiality rotation exists at this layer).
 
 ### 5.6 Identity: petnames + a transparency log with a defined response `[NEW]` + key custody as real mechanism `[v2 — was "declared, not specified"]`
 
