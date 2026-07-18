@@ -36,12 +36,14 @@ import {
   type CircleMember,
 } from "../memory/circles-store.js";
 import {
+  claimAgentDraft,
   detectAgentSummon,
   generateQueuedAgentDrafts,
   getAgentDraft,
   listReadyAgentDrafts,
   queueAgentDraft,
   setAgentDraftStatus,
+  sweepAgentDraftHousekeeping,
   type AgentDraft,
   type DraftLlmCall,
 } from "./agent-drafts.js";
@@ -1167,6 +1169,10 @@ export class CirclesService {
    */
   async generateAgentDrafts(): Promise<{ generated: number }> {
     if (!this.draftLlm || !this.agentDraftsEnabled()) {
+      // Housekeeping still runs: queued rows (the inbound path is config-blind
+      // by design — a2a handlers take no config) expire instead of piling up,
+      // and terminal rows are pruned. Only SPEND is gated by the switch.
+      sweepAgentDraftHousekeeping(this.db);
       return { generated: 0 };
     }
     return generateQueuedAgentDrafts(this.db, this.draftLlm, { selfPubkey: this.pubkey });
@@ -1189,28 +1195,37 @@ export class CirclesService {
     text?: string;
   }): Promise<SendReport & { envelopeId: string }> {
     const draft = getAgentDraft(this.db, args.draftId);
-    if (!draft || draft.status !== "ready") {
+    if (!draft) {
       throw new Error(`draft ${args.draftId} is not awaiting review`);
     }
     const text = (args.text ?? draft.content).trim();
     if (!text) throw new Error("draft text is empty");
-    const report = await this.sendMessage({
-      circleId: draft.circleId,
-      text,
-      replyTo: draft.summonEnvelopeId ?? undefined,
-      suppressAgentSummon: true,
-    });
-    setAgentDraftStatus(this.db, draft.draftId, "published");
-    return report;
+    // Atomic claim BEFORE the awaited send: a racing second publish (or a
+    // publish vs discard) loses here — "approved once, sent once".
+    if (!claimAgentDraft(this.db, draft.draftId, "ready", "publishing")) {
+      throw new Error(`draft ${args.draftId} is not awaiting review`);
+    }
+    try {
+      const report = await this.sendMessage({
+        circleId: draft.circleId,
+        text,
+        replyTo: draft.summonEnvelopeId ?? undefined,
+        suppressAgentSummon: true,
+      });
+      setAgentDraftStatus(this.db, draft.draftId, "published");
+      return report;
+    } catch (err) {
+      // Nothing left the node — hand the draft back for another try.
+      setAgentDraftStatus(this.db, draft.draftId, "ready");
+      throw err;
+    }
   }
 
   /** The other half of consent: throw the draft away. Nothing ever left. */
   discardAgentDraft(draftId: string): void {
-    const draft = getAgentDraft(this.db, draftId);
-    if (!draft || draft.status !== "ready") {
+    if (!claimAgentDraft(this.db, draftId, "ready", "discarded")) {
       throw new Error(`draft ${draftId} is not awaiting review`);
     }
-    setAgentDraftStatus(this.db, draftId, "discarded");
   }
 
   /**

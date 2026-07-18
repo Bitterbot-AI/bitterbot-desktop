@@ -130,6 +130,48 @@ describe("startCirclesScheduler", () => {
     h.stop();
   });
 
+  it("Phase B: a hung draft generation never blocks the drain cadence, and doesn't stack", async () => {
+    let draftCalls = 0;
+    const { svc, calls } = stubService({
+      // Never resolves — the pathological provider case.
+      generateAgentDrafts: () => {
+        draftCalls += 1;
+        return new Promise<{ generated: number }>(() => {});
+      },
+    });
+    const h = startCirclesScheduler({
+      getConfig: () => ({ circles: { enabled: true } }),
+      resolveService: async () => svc,
+      pollIntervalMs: 1_000,
+    });
+    await vi.advanceTimersByTimeAsync(3_500);
+    // The drain keeps its cadence even though generation is stuck…
+    expect(calls.poll).toBeGreaterThanOrEqual(3);
+    // …and the in-flight guard started exactly one generation, not one per cycle.
+    expect(draftCalls).toBe(1);
+    h.stop();
+  });
+
+  it("Phase B: fires onDraftsReady only when the sweep produced drafts", async () => {
+    let generated = 1;
+    const { svc } = stubService({
+      generateAgentDrafts: async () => ({ generated }),
+    });
+    const seen: Array<{ count: number }> = [];
+    const h = startCirclesScheduler({
+      getConfig: () => ({ circles: { enabled: true } }),
+      resolveService: async () => svc,
+      pollIntervalMs: 1_000,
+      onDraftsReady: (info) => seen.push(info),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toEqual([{ count: 1 }]);
+    generated = 0;
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(seen).toEqual([{ count: 1 }]); // quiet sweeps stay quiet
+    h.stop();
+  });
+
   it("stop() cancels the pending timer (no further cycles)", async () => {
     const { svc, calls } = stubService();
     const h = startCirclesScheduler({

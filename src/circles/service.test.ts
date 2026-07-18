@@ -418,6 +418,36 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(anaDrafting.agentDrafts(circleId)).toHaveLength(0);
   });
 
+  it("Phase B: racing publishes send exactly once; discard after claim loses", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const anaDrafting = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: anaKey,
+      draftLlm: async () => "Thursday works.",
+    });
+    await bob.sendMessage({ circleId, text: "@agent thoughts?" });
+    await anaDrafting.generateAgentDrafts();
+    const draftId = anaDrafting.agentDrafts(circleId)[0]?.draftId ?? "";
+
+    // Two publishes race (a double-tap across a re-mount): the atomic claim
+    // lets exactly one through; the circle receives exactly one message.
+    const results = await Promise.allSettled([
+      anaDrafting.publishAgentDraft({ draftId }),
+      anaDrafting.publishAgentDraft({ draftId }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const bobInbound = bob
+      .messages(circleId)
+      .filter((m) => m.direction === "in" && m.content.includes("Thursday works."));
+    expect(bobInbound).toHaveLength(1);
+    // And a discard on the consumed draft fails — it already shipped.
+    expect(() => anaDrafting.discardAgentDraft(draftId)).toThrow(/not awaiting review/);
+  });
+
   it("Phase B: the kill switch silences summons end to end", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

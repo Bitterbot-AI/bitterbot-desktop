@@ -94,6 +94,7 @@ export function startCirclesScheduler(deps: CirclesSchedulerDeps): CirclesSchedu
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastPresenceAt = 0;
   let announcedActive = false;
+  let draftSweepInFlight = false;
 
   const schedule = (ms: number): void => {
     if (stopped) return;
@@ -134,17 +135,27 @@ export function startCirclesScheduler(deps: CirclesSchedulerDeps): CirclesSchedu
           /* never let a UI notification break the loop */
         }
       }
-      // Phase B: generate any queued @agent drafts AFTER the drain, so a
-      // summon that just arrived by mailbox drafts in the same cycle.
-      if (service.generateAgentDrafts) {
-        const drafts = await service.generateAgentDrafts();
-        if (drafts.generated > 0 && deps.onDraftsReady) {
-          try {
-            deps.onDraftsReady({ count: drafts.generated });
-          } catch {
-            /* never let a UI notification break the loop */
-          }
-        }
+      // Phase B: kick off draft generation WITHOUT awaiting it — an LLM call
+      // (peer-induced via @agent) must never delay the next mailbox drain or
+      // the presence beat. The in-flight guard keeps cycles from stacking
+      // generations; each call also carries its own deadline in agent-drafts.
+      if (service.generateAgentDrafts && !draftSweepInFlight) {
+        draftSweepInFlight = true;
+        void service
+          .generateAgentDrafts()
+          .then((drafts) => {
+            if (drafts.generated > 0 && deps.onDraftsReady) {
+              try {
+                deps.onDraftsReady({ count: drafts.generated });
+              } catch {
+                /* never let a UI notification break the loop */
+              }
+            }
+          })
+          .catch((err) => log.debug(`draft sweep failed: ${String(err)}`))
+          .finally(() => {
+            draftSweepInFlight = false;
+          });
       }
       const t = now();
       if (t - lastPresenceAt >= presenceMs) {

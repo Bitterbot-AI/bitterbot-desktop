@@ -773,6 +773,24 @@ failed/empty generation, TTL expiry, envelope placement) + two-node E2E (summon
 → quiet → generate → consent-publish edited text threaded to the summon;
 discard sends nothing; self-summon; no re-summon loop; kill switch) + renderer
 (private consent card, publish-edited, discard).
+The adversarial security pass confirmed the two core surfaces hold (no private
+data reachable from the quarantined prompt — circle-scoped SQL only; no
+envelope escape — hostile display names/bodies carrying forged markers are
+sanitized) and found 2 majors + 4 minors, all fixed: publish/discard now take
+an ATOMIC status claim (guarded UPDATE) so racing publishes send exactly once
+and a failed send hands the draft back; generation runs fire-and-forget off the
+scheduler cycle (in-flight guard, no stacking) with a per-call 20s deadline, so
+a hung provider can no longer stall the mailbox drain or push presence beats
+stale; crash-orphaned 'drafting'/'publishing' rows are recovered by
+housekeeping, terminal rows are pruned after 30d, and housekeeping runs even
+when the kill switch is off (queued rows from the config-blind inbound path
+expire instead of accumulating); the instruction frame now forbids emitting
+"@agent" (the suppressAgentSummon guard is node-local — a published draft
+carrying the token would summon every OTHER member's node; human-gated and
+rate-bucketed at each hop, but the frame rule plus the honest scoping of the
+claim close the review). Corrected containment framing: the real global LLM
+ceiling is the sweep cap (≤2 calls/15s regardless of circle count), not the
+per-circle bucket — the bucket bounds queue growth per circle.
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +

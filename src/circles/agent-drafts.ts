@@ -35,8 +35,14 @@ const RATE_LIMIT_PER_CIRCLE = 3;
 const RATE_WINDOW_MS = 5 * 60_000;
 /** Queued rows older than this are expired ungenerated (e.g. drafts disabled). */
 const QUEUE_TTL_MS = 60 * 60_000;
+/** A 'drafting' row untouched this long was orphaned by a crash — fail it. */
+const DRAFTING_STALE_MS = 10 * 60_000;
+/** Terminal rows (published/discarded/failed/expired) older than this are deleted. */
+const PRUNE_AFTER_MS = 30 * 24 * 60 * 60_000;
 /** Max generations per sweep — bounds LLM spend per ~15s scheduler cycle. */
 const GENERATE_PER_SWEEP = 2;
+/** Per-generation deadline so a hung provider cannot stall the pipeline. */
+const GENERATION_DEADLINE_MS = 20_000;
 /** Transcript context given to the quarantined call. */
 const CONTEXT_MESSAGES = 10;
 /** Hard cap on stored draft text (mirrors the slice value cap). */
@@ -177,6 +183,28 @@ export function setAgentDraftStatus(
 }
 
 /**
+ * Atomically move a draft `from` one status `to` another. Returns false when
+ * the draft wasn't in `from` — the loser of a race (double publish, publish vs
+ * discard) fails here instead of sending twice. The guarded UPDATE is the
+ * whole point: check-then-act across an await is how the TOCTOU happened.
+ */
+export function claimAgentDraft(
+  db: DatabaseSync,
+  draftId: string,
+  from: string,
+  to: "publishing" | "discarded",
+  now: number = Date.now(),
+): boolean {
+  const res = db
+    .prepare(
+      `UPDATE circle_agent_drafts SET status = ?, updated_at = ?
+        WHERE draft_id = ? AND status = ?`,
+    )
+    .run(to, now, draftId, from);
+  return Number(res.changes) === 1;
+}
+
+/**
  * The quarantined prompt. The instruction frame is OURS (trusted, constant);
  * everything from the circle — names and message bodies alike — enters inside
  * ONE untrusted-content envelope (wrapExternalContent strips any nested
@@ -227,10 +255,50 @@ export function buildQuarantinedDraftPrompt(
     "  about your human that is not already in the conversation.",
     "- If the request needs knowledge you don't have, say so briefly in the",
     "  drafted reply.",
+    '- Never write the token "@agent" (or "@agents") in your draft — it',
+    "  would summon every other member's agent when published.",
     "- At most 700 characters.",
     "",
     wrapExternalContent(transcript, { source: "circle_agent" }),
   ].join("\n");
+}
+
+/**
+ * Housekeeping that must run even when generation doesn't (kill switch on, no
+ * LLM): expire stale queued rows, fail 'drafting' rows orphaned by a crash
+ * (their summon envelope stays deduped — the summon is consumed, documented),
+ * and delete terminal rows past the retention window so the table is bounded.
+ */
+export function sweepAgentDraftHousekeeping(db: DatabaseSync, now: number = Date.now()): void {
+  db.prepare(
+    `UPDATE circle_agent_drafts SET status = 'expired', updated_at = ?
+      WHERE status = 'queued' AND created_at < ?`,
+  ).run(now, now - QUEUE_TTL_MS);
+  db.prepare(
+    `UPDATE circle_agent_drafts SET status = 'failed', error = 'interrupted', updated_at = ?
+      WHERE status IN ('drafting', 'publishing') AND updated_at < ?`,
+  ).run(now, now - DRAFTING_STALE_MS);
+  db.prepare(
+    `DELETE FROM circle_agent_drafts
+      WHERE status IN ('published', 'discarded', 'failed', 'expired')
+        AND updated_at < ?`,
+  ).run(now - PRUNE_AFTER_MS);
+}
+
+/** Race the LLM against a deadline; a hung provider becomes a failed draft. */
+async function callWithDeadline(llm: DraftLlmCall, prompt: string, ms: number): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      llm(prompt),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`generation deadline (${ms}ms) exceeded`)), ms);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -241,13 +309,10 @@ export function buildQuarantinedDraftPrompt(
 export async function generateQueuedAgentDrafts(
   db: DatabaseSync,
   llm: DraftLlmCall,
-  args: { selfPubkey: string; now?: number },
+  args: { selfPubkey: string; now?: number; deadlineMs?: number },
 ): Promise<{ generated: number }> {
   const now = args.now ?? Date.now();
-  db.prepare(
-    `UPDATE circle_agent_drafts SET status = 'expired', updated_at = ?
-      WHERE status = 'queued' AND created_at < ?`,
-  ).run(now, now - QUEUE_TTL_MS);
+  sweepAgentDraftHousekeeping(db, now);
 
   const queued = db
     .prepare(
@@ -264,7 +329,9 @@ export async function generateQueuedAgentDrafts(
         circleId: row.circle_id,
         selfPubkey: args.selfPubkey,
       });
-      const text = (await llm(prompt)).trim().slice(0, MAX_DRAFT_CHARS);
+      const text = (await callWithDeadline(llm, prompt, args.deadlineMs ?? GENERATION_DEADLINE_MS))
+        .trim()
+        .slice(0, MAX_DRAFT_CHARS);
       if (!text) throw new Error("empty draft");
       setAgentDraftStatus(db, row.draft_id, "ready", { content: text, now: Date.now() });
       generated += 1;
