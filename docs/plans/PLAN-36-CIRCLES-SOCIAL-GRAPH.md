@@ -482,6 +482,20 @@ answers ("no such person" = "no grant" = "declined"). **Persist the rate buckets
 **hard gate before Phase 5/6**, not cross-cutting, because a worm can span a
 restart.
 
+**Persisted rate buckets LANDED.** The friend-branch limiter was an in-memory
+sliding window (`rateBuckets` Map) that cleared on every gateway restart, so a
+worm saturating its per-(pubkey, verb-class) budget got a fresh one by causing
+or waiting for a bounce. The window now lives in `circle_rate_hits` (migration
+v47): each accepted request records a `(bucket_key, hit_at)` row; the count is
+read from the table, so it survives restart — a saturated attacker stays
+saturated. Rows are GC'd past the widest window (~1 min), keeping the table
+bounded, via a `hit_at` index. `rateLimited` takes the `db` (both call sites
+already held it); `resetCircleRateLimits(db?)` clears the table for tests that
+share a long-lived db (fresh per-test `:memory:` dbs start empty). Test: a
+flooding member is refused, the hits are proven on disk, a post-"restart"
+request (no in-memory state, only the db) stays refused, and the window still
+expires past 60s. This is the last §5 hard gate before Phase 5/6.
+
 ### 5.3 Human gating: honor system → server-enforced token `[NEW, Phase 0 gate]`
 
 `confirm=true` on the first agent-tool call executes with no preview, no token, no

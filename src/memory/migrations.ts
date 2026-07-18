@@ -1772,6 +1772,28 @@ const MIGRATIONS: Migration[] = [
       db.exec(`UPDATE circle_pending_outbound SET status = 'expired' WHERE params_json IS NULL`);
     },
   },
+  {
+    version: 47,
+    description:
+      "PLAN-36 §5.2: circle_rate_hits — PERSISTED per-member A2A rate buckets. " +
+      "The friend-branch rate limiter was an in-memory sliding window that reset " +
+      "(more permissively) on every gateway restart, so a worm could span a " +
+      "restart to refresh its budget. Now each accepted request records a hit " +
+      "row; the window count survives restart. Rows are GC'd past the max " +
+      "window (bounded to ~a minute of traffic).",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_rate_hits (
+          bucket_key TEXT NOT NULL,
+          hit_at     INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_circle_rate_hits_key
+          ON circle_rate_hits (bucket_key, hit_at);
+        CREATE INDEX IF NOT EXISTS idx_circle_rate_hits_at
+          ON circle_rate_hits (hit_at);
+      `);
+    },
+  },
 ];
 
 /**

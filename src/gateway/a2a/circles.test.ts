@@ -499,6 +499,44 @@ describe("circle A2A verbs", () => {
     expect(refused).toBe(true);
   });
 
+  it("persists the rate window so a restart cannot reset an attacker's budget (§5.2)", () => {
+    joinBob();
+    // Saturate Bob's message bucket (limit 30/min) within one window.
+    let refused = false;
+    for (let i = 0; i < 40 && !refused; i++) {
+      const env = makeCircleEnvelope("message", circleId, { text: `m${i}` }, bob, NOW_S);
+      const out = handleCircleMethod("circle/message", { envelope: env }, db, NOW + i);
+      refused = !out.ok && /rate/.test(out.error.message);
+    }
+    expect(refused).toBe(true);
+
+    // The window lives in the DB, not memory — the hits are on disk.
+    const rows = db
+      .prepare(`SELECT COUNT(*) AS n FROM circle_rate_hits WHERE bucket_key = ?`)
+      .get(`message:${pubkeyId(bob)}`) as { n: number };
+    expect(rows.n).toBeGreaterThanOrEqual(30);
+
+    // "Restart" = the handler holds no in-memory bucket state; only `db` does.
+    // A fresh request in the same window is STILL refused (the old bug reset
+    // the in-memory map on restart, handing back a fresh budget).
+    const stillRefused = handleCircleMethod(
+      "circle/message",
+      { envelope: makeCircleEnvelope("message", circleId, { text: "post-restart" }, bob, NOW_S) },
+      db,
+      NOW + 41,
+    );
+    expect(stillRefused.ok).toBe(false);
+
+    // The window still expires: past the 60s horizon the budget refreshes.
+    const afterWindow = handleCircleMethod(
+      "circle/message",
+      { envelope: makeCircleEnvelope("message", circleId, { text: "later" }, bob, NOW_S + 61) },
+      db,
+      NOW + 61_000,
+    );
+    expect(afterWindow.ok).toBe(true);
+  });
+
   it("returns METHOD_NOT_FOUND for unknown circle methods", () => {
     const out = handleCircleMethod("circle/steal-wallet", {}, db, NOW);
     expect(out.ok).toBe(false);

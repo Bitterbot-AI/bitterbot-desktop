@@ -53,8 +53,11 @@ function err<T>(code: number, message: string): CircleOutcome<T> {
 }
 
 // ---------------------------------------------------------------------------
-// Per-member rate limiting (in-memory sliding window). A compromised friend
-// node must not be able to flood; limits are per (pubkey, verb-class).
+// Per-member rate limiting — PERSISTED sliding window (PLAN-36 §5.2). A
+// compromised friend node must not be able to flood; limits are per (pubkey,
+// verb-class). The window state lives in circle_rate_hits (not memory) so a
+// gateway restart cannot reset an attacker's budget more permissively — a worm
+// that saturates its limit stays saturated across a bounce.
 // ---------------------------------------------------------------------------
 
 const RATE_LIMITS: Record<string, { windowMs: number; max: number }> = {
@@ -73,23 +76,37 @@ const RATE_LIMITS: Record<string, { windowMs: number; max: number }> = {
   event: { windowMs: 60_000, max: 120 },
 };
 
-const rateBuckets = new Map<string, number[]>();
+/** The widest window across all classes — the global GC horizon. */
+const MAX_RATE_WINDOW_MS = Math.max(...Object.values(RATE_LIMITS).map((l) => l.windowMs));
 
-/** Exported for tests; resets the in-memory limiter. */
-export function resetCircleRateLimits(): void {
-  rateBuckets.clear();
+/**
+ * Reset the persisted rate buckets. Test helper: pass the db to clear its
+ * table between cases that share a long-lived db. Fresh per-test `:memory:`
+ * dbs start empty, so a no-arg call is a harmless no-op for those.
+ */
+export function resetCircleRateLimits(db?: DatabaseSync): void {
+  db?.prepare(`DELETE FROM circle_rate_hits`).run();
 }
 
-function rateLimited(pubkey: string, cls: keyof typeof RATE_LIMITS, now: number): boolean {
+function rateLimited(
+  db: DatabaseSync,
+  pubkey: string,
+  cls: keyof typeof RATE_LIMITS,
+  now: number,
+): boolean {
   const limit = RATE_LIMITS[cls] ?? RATE_LIMITS.read!;
   const key = `${cls}:${pubkey}`;
-  const hits = (rateBuckets.get(key) ?? []).filter((t) => now - t < limit.windowMs);
-  if (hits.length >= limit.max) {
-    rateBuckets.set(key, hits);
+  // Global GC: every window is ≤ MAX_RATE_WINDOW_MS, so dropping rows older
+  // than that keeps the table to ~a minute of traffic and never affects a
+  // live count. Cheap via idx_circle_rate_hits_at.
+  db.prepare(`DELETE FROM circle_rate_hits WHERE hit_at < ?`).run(now - MAX_RATE_WINDOW_MS);
+  const count = db
+    .prepare(`SELECT COUNT(*) AS n FROM circle_rate_hits WHERE bucket_key = ? AND hit_at >= ?`)
+    .get(key, now - limit.windowMs) as { n: number };
+  if (count.n >= limit.max) {
     return true;
   }
-  hits.push(now);
-  rateBuckets.set(key, hits);
+  db.prepare(`INSERT INTO circle_rate_hits (bucket_key, hit_at) VALUES (?, ?)`).run(key, now);
   return false;
 }
 
@@ -136,7 +153,7 @@ export function authorizeCircleEnvelope(
   if (!store.memberHasScope(env.circle_id, env.author_pubkey, requiredScope)) {
     return { ok: false, error: { code: A2aErrorCodes.UNAUTHORIZED, message: "not authorized" } };
   }
-  if (rateLimited(env.author_pubkey, opts.rateClass ?? "read", now)) {
+  if (rateLimited(db, env.author_pubkey, opts.rateClass ?? "read", now)) {
     return {
       ok: false,
       error: { code: A2aErrorCodes.INVALID_REQUEST, message: "rate limited; slow down" },
@@ -220,7 +237,7 @@ export function handleCircleJoin(
   if (!validation.ok) {
     return err(A2aErrorCodes.UNAUTHORIZED, `invalid join envelope: ${validation.error}`);
   }
-  if (rateLimited(env.author_pubkey, "join", now)) {
+  if (rateLimited(db, env.author_pubkey, "join", now)) {
     return err(A2aErrorCodes.INVALID_REQUEST, "rate limited; slow down");
   }
   const store = new CirclesStore(db);
