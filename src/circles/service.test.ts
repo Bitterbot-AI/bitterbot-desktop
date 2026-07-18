@@ -571,6 +571,41 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(queued.n).toBe(1); // Bob's, awaiting expiry — never generated
   });
 
+  it("§5.5: the creator removes a member, whose writes are then refused", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" }); // Ana = creator
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    // Before removal, Bob's message is delivered to Ana.
+    const before = await bob.sendMessage({ circleId, text: "hey" });
+    expect(before.delivered).toEqual([pubkeyId(anaKey)]);
+
+    // A non-creator cannot evict; nobody can evict the creator or themselves.
+    expect(() => bob.removeMember({ circleId, memberPubkey: pubkeyId(anaKey) })).toThrow(
+      /only the circle creator/,
+    );
+    expect(() => ana.removeMember({ circleId, memberPubkey: pubkeyId(anaKey) })).toThrow(
+      /cannot remove themselves/,
+    );
+
+    // Ana (creator) removes Bob: gone from her active roster, key epoch bumped.
+    const epochBefore = ana.store.getCircle(circleId)?.keyEpoch ?? 0;
+    ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) });
+    expect(ana.store.getMembers(circleId).map((m) => m.memberPubkey)).toEqual([pubkeyId(anaKey)]);
+    expect(ana.store.getCircle(circleId)?.keyEpoch).toBeGreaterThan(epochBefore);
+
+    // Bob's next write is now default-denied at Ana's A2A boundary (delivery
+    // fails — the eviction actually cut him off, not just cosmetically).
+    const after = await bob.sendMessage({ circleId, text: "let me back in" });
+    expect(after.delivered).toEqual([]);
+    expect(after.failed).toEqual([pubkeyId(anaKey)]);
+
+    // Re-removing an already-gone member is refused.
+    expect(() => ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) })).toThrow(
+      /no such active member/,
+    );
+  });
+
   it("folds reactions and pins across nodes (Phase D annotations)", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

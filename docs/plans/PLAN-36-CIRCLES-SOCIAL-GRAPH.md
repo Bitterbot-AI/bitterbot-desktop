@@ -504,7 +504,7 @@ currently logged and dropped) into it. Keep `circle_fof` as a _less-trusted_
 principal (same scan+wrap, tighter limits) — necessary but explicitly not
 sufficient.
 
-### 5.5 The consented graph is the sybil defense — but build the moderation primitive first `[PARTIAL]`
+### 5.5 The consented graph is the sybil defense — but build the moderation primitive first `[PARTIAL → moderation primitive LANDED]`
 
 No edge = no reach; FoF intros **signed by the introducer** (SSB pattern),
 rate-limited; no open "discover any agent" surface. But the staked-introducer
@@ -514,6 +514,26 @@ system is keyed on the _orchestrator_ pubkey (wrong domain), and a composed
 reputation score would stitch three unlinkable identity domains. **Build the
 report/ban primitive (wire `suspendMember` or delete it) before staked intros
 ship** — it is an owned Phase-5 item, not a TODO.
+
+**Member eviction LANDED (the moderation primitive `suspendMember`/`removeMember`
+were wired-but-dead; `removeMember` is now the live path).** The circle CREATOR
+can remove a member: `service.removeMember` is creator-gated (only
+`creatorPubkey === self`; never self), marks the member `'left'`, and bumps the
+key epoch. The store already default-denied `'left'`/`'suspended'` members at the
+A2A boundary (`memberHasScope`), so the removed member's writes are **actually
+refused** from then on — the two-node test proves Bob's post-eviction send is
+delivered=[] / failed=[Ana], not just cosmetically gone. RPC
+`circles.member.remove`; the roster (`CircleMembers`) shows the creator a
+hover remove control with a two-tap confirm, and honest copy: node-local, it cuts
+the member off THIS node and the others must do the same (P2P — no central
+authority to force-evict everyone). This is the escape hatch both prior
+adversarial passes ended on (the fork-griefing residual and hostile-member
+containment): a determined bad actor can now be removed. Cross-node eviction
+propagation and the staked-introducer reputation stay Phase-5/6; suspend (the
+reversible circuit-breaker) remains available as an internal primitive. Tests:
+two-node E2E (creator-only guard, no-self, no-creator, actual write refusal,
+re-remove refused) + renderer (creator sees remove on members not self, two-tap
+→ RPC).
 
 ### 5.6 Identity: petnames + a transparency log with a defined response `[NEW]` + key custody as real mechanism `[v2 — was "declared, not specified"]`
 

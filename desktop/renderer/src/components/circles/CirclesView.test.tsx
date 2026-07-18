@@ -190,6 +190,8 @@ function stubRpcs(enabled = true) {
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
       case "circles.outbound.reject":
         return Promise.resolve({ ok: true });
+      case "circles.member.remove":
+        return Promise.resolve({ ok: true });
       default:
         return Promise.resolve({});
     }
@@ -396,6 +398,25 @@ describe("CirclesView", () => {
         circleId: "c1",
         cardId: "sg1",
         slot: sectionSlot("Glycolysis"),
+      }),
+    );
+  });
+
+  it("§5.5: the creator can remove a member (two-tap) via circles.member.remove", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    // Roster is the right pane's default; the self-creator sees a remove action
+    // on Maya (a member), never on themselves.
+    await waitFor(() => expect(screen.getAllByText("Maya").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("button", { name: /Remove You/i })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /Remove Maya/i }));
+    // Two-tap confirm before the RPC fires.
+    expect(requestMock).not.toHaveBeenCalledWith("circles.member.remove", expect.anything());
+    await userEvent.click(screen.getByRole("button", { name: /^Remove$/ }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.member.remove", {
+        circleId: "c1",
+        memberPubkey: "ed25519:maya",
       }),
     );
   });

@@ -158,6 +158,7 @@ interface CirclesState {
   vote: (circleId: string, cardId: string, option: string, note: string) => Promise<boolean>;
   markRead: (circleId: string) => void;
   unfreeze: (circleId: string) => Promise<boolean>;
+  removeMember: (circleId: string, memberPubkey: string) => Promise<boolean>;
   setNotice: (notice: string | null) => void;
 }
 
@@ -380,6 +381,17 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     try {
       await request("circles.unfreeze", { circleId });
       await get().refresh(); // status flips back to active everywhere it shows
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  removeMember: async (circleId, memberPubkey) => {
+    try {
+      await request("circles.member.remove", { circleId, memberPubkey });
+      await get().refresh(); // roster shrinks everywhere it shows
       return true;
     } catch (err) {
       set({ notice: String(err) });

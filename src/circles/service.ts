@@ -1161,6 +1161,35 @@ export class CirclesService {
     });
   }
 
+  /**
+   * §5.5: remove a member from a circle (the moderation primitive — evict a
+   * bad actor). Node-local and creator-gated: only the circle's creator can
+   * remove others, and never themselves. The removed member is marked 'left'
+   * so `memberHasScope` default-denies all their future writes on THIS node
+   * (the A2A boundary already enforces it); their ledger history is untouched.
+   * Removal bumps the key epoch. Node-local by design — there is no central
+   * authority in a P2P circle, so this cuts the member off from OUR node; the
+   * UI tells the human to have the others do the same.
+   */
+  removeMember(args: { circleId: string; memberPubkey: string }): void {
+    const circle = this.store.getCircle(args.circleId);
+    if (!circle) throw new Error(`circle ${args.circleId} not found`);
+    if (circle.creatorPubkey !== this.pubkey) {
+      throw new Error("only the circle creator can remove members");
+    }
+    if (args.memberPubkey === this.pubkey) {
+      throw new Error("the creator cannot remove themselves");
+    }
+    const member = this.store.getMember(args.circleId, args.memberPubkey);
+    if (!member || member.status === "left") {
+      throw new Error("no such active member in this circle");
+    }
+    this.store.removeMember(args.circleId, args.memberPubkey);
+    log.warn(
+      `member ${args.memberPubkey.slice(0, 24)}… removed from circle ${args.circleId} by the creator`,
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Pending outbound (§5.3): the human approval queue for agent writes.
   // -------------------------------------------------------------------------

@@ -8,6 +8,9 @@
  *  circles.markRead— mark a circle read up to now (node-local; clears its badge).
  *  circles.unfreeze— Phase D: the human's deliberate act ending a fork freeze
  *                    (node-local; evidence shown by the UI, cleared here).
+ *  circles.member.remove — §5.5: the creator evicts a member (node-local; the
+ *                    removed member's writes are default-denied at the A2A
+ *                    boundary from here on).
  *  circles.create  — create a circle (kind free string; "connection" = edge).
  *  circles.invite  — mint an invite code (the code returns ONCE).
  *  circles.join    — redeem a pasted invite code (the invitee-side consent:
@@ -147,6 +150,30 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
     try {
       svc.service.unfreezeCircle(circleId);
+      respond(true, { ok: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.member.remove": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const memberPubkey = typeof params.memberPubkey === "string" ? params.memberPubkey : "";
+    if (!circleId || !memberPubkey) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, memberPubkey required"),
+      );
+      return;
+    }
+    try {
+      svc.service.removeMember({ circleId, memberPubkey });
       respond(true, { ok: true }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
