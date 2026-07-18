@@ -791,6 +791,12 @@ rate-bucketed at each hop, but the frame rule plus the honest scoping of the
 claim close the review). Corrected containment framing: the real global LLM
 ceiling is the sweep cap (≤2 calls/15s regardless of circle count), not the
 per-circle bucket — the bucket bounds queue growth per circle.
+**UX follow-up (first live friend-to-friend session):** inbound messages are
+stored security-wrapped for agent consumers, and the chat was showing the raw
+envelope to the human. The renderer now unwraps for DISPLAY only
+(`external-content-display.ts` — fails open on anything malformed) and shows a
+small screened-shield indicator instead; the stored/agent-facing content stays
+wrapped, so the hostile-principal boundary is unchanged.
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +

@@ -1,5 +1,6 @@
 import { Reply, Send, X } from "lucide-react";
 import { useState } from "react";
+import { unwrapForDisplay } from "../../lib/external-content-display";
 import { useCirclesStore, type Circle, type CircleMessage } from "../../stores/circles-store";
 import { AgentDraftCard } from "./AgentDraftCard";
 import { CircleMessageList } from "./CircleMessageList";
@@ -72,7 +73,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
           <span className="shrink-0 font-medium">
             Replying to {replyLabel(replyTo, selfPubkey, circle.members)}
           </span>
-          <span className="truncate opacity-80">{replyTo.content}</span>
+          <span className="truncate opacity-80">{unwrapForDisplay(replyTo.content).text}</span>
           <button
             type="button"
             onClick={() => setReplyTo(null)}

@@ -1,6 +1,7 @@
-import { Reply } from "lucide-react";
+import { Reply, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import type { CircleMember, CircleMessage } from "../../stores/circles-store";
+import { unwrapForDisplay } from "../../lib/external-content-display";
 import { cn } from "../../lib/utils";
 
 // PLAN-36 Phase A: the circle conversation stream. New rendering (not the
@@ -70,6 +71,9 @@ export function CircleMessageList({ messages, members, selfPubkey, onReply }: Pr
         const name = isSelf ? "You" : nameOf(m.authorPubkey);
         const color = isSelf ? "#3a5bd9" : colorFor(m.authorPubkey);
         const parent = m.replyTo ? byEnvelope.get(m.replyTo) : undefined;
+        // Inbound content is stored security-wrapped for agent consumers;
+        // humans get the body plus a screened indicator, not the plumbing.
+        const display = unwrapForDisplay(m.content);
         return (
           <div key={m.messageId} className="group relative flex gap-3">
             <button
@@ -97,7 +101,9 @@ export function CircleMessageList({ messages, members, selfPubkey, onReply }: Pr
                           ? "You"
                           : nameOf(parent.authorPubkey)}
                       </span>
-                      <span className="truncate opacity-80">{parent.content}</span>
+                      <span className="truncate opacity-80">
+                        {unwrapForDisplay(parent.content).text}
+                      </span>
                     </>
                   ) : (
                     <span>replied to an earlier message</span>
@@ -117,8 +123,16 @@ export function CircleMessageList({ messages, members, selfPubkey, onReply }: Pr
                   </span>
                 )}
                 <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
+                {display.wasWrapped && (
+                  <span
+                    title="Screened on receipt — your agent treats this as untrusted peer content"
+                    className="text-muted-foreground/70"
+                  >
+                    <ShieldCheck className="w-3 h-3" aria-label="screened" />
+                  </span>
+                )}
               </div>
-              <div className="text-sm whitespace-pre-wrap break-words">{m.content}</div>
+              <div className="text-sm whitespace-pre-wrap break-words">{display.text}</div>
               {isSelf && m.deliveryStatus && m.deliveryStatus !== "delivered" && (
                 <span
                   className={cn(
