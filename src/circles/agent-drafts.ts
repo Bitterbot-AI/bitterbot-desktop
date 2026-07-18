@@ -182,10 +182,10 @@ export function queueAgentSliceDraft(
   const live = db
     .prepare(
       `SELECT draft_id FROM circle_agent_drafts
-        WHERE target_card_id = ? AND target_slot = ?
+        WHERE circle_id = ? AND target_card_id = ? AND target_slot = ?
           AND status IN ('queued', 'drafting', 'ready')`,
     )
-    .get(args.cardId, args.slot);
+    .get(args.circleId, args.cardId, args.slot);
   if (live) return { queued: false, reason: "duplicate" };
   db.prepare(
     `INSERT INTO circle_agent_drafts

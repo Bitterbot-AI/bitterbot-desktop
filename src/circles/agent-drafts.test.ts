@@ -156,6 +156,17 @@ describe("queueAgentSliceDraft (B2)", () => {
       reason: "rate_limited",
     });
   });
+
+  it("scopes the live-draft dedupe per circle (review fix)", () => {
+    seedCircle(db, "c2");
+    expect(
+      queueAgentSliceDraft(db, { circleId: "c1", cardId: "shared", slot: "vote" }).queued,
+    ).toBe(true);
+    // The same (cardId, slot) in a DIFFERENT circle is a different card.
+    expect(
+      queueAgentSliceDraft(db, { circleId: "c2", cardId: "shared", slot: "vote" }).queued,
+    ).toBe(true);
+  });
 });
 
 describe("buildQuarantinedSlicePrompt (B2)", () => {

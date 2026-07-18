@@ -1204,10 +1204,17 @@ export class CirclesService {
     if (!card) {
       throw new Error(`card ${args.cardId} not found in circle`);
     }
+    // The slot lands in the TRUSTED prompt frame (section task line), so it
+    // must never carry newlines or frame-breaking text — even from our own
+    // renderer (review hardening; "vote" and "sec-<hex>" both pass).
+    const slot = args.slot.slice(0, 32);
+    if (!/^[a-z0-9_-]+$/i.test(slot)) {
+      throw new Error("slot must be alphanumeric/-/_");
+    }
     return queueAgentSliceDraft(this.db, {
       circleId: args.circleId,
       cardId: args.cardId,
-      slot: args.slot.slice(0, 32),
+      slot,
     });
   }
 
@@ -1237,22 +1244,30 @@ export class CirclesService {
       // A slice draft publishes as OUR contribution to the target card slot
       // (the normal canvas consent path); a reply draft publishes as a chat
       // message threaded to the summon. Both are the standard signed paths —
-      // no separate agent send path to audit.
-      const report =
-        draft.kind === "slice" && draft.targetCardId && draft.targetSlot
-          ? await this.putCanvasSlice({
-              circleId: draft.circleId,
-              cardId: draft.targetCardId,
-              slot: draft.targetSlot,
-              value: text,
-              note: "",
-            })
-          : await this.sendMessage({
-              circleId: draft.circleId,
-              text,
-              replyTo: draft.summonEnvelopeId ?? undefined,
-              suppressAgentSummon: true,
-            });
+      // no separate agent send path to audit. The target card is re-checked
+      // at publish (review: it may have been tombstoned since the draft was
+      // generated — refuse rather than append an orphaned slice).
+      const isSlice = draft.kind === "slice" && draft.targetCardId && draft.targetSlot;
+      if (
+        isSlice &&
+        !computeCanvasCards(this.db, draft.circleId).some((c) => c.cardId === draft.targetCardId)
+      ) {
+        throw new Error("the card this draft targets is no longer on the canvas");
+      }
+      const report = isSlice
+        ? await this.putCanvasSlice({
+            circleId: draft.circleId,
+            cardId: draft.targetCardId as string,
+            slot: draft.targetSlot as string,
+            value: text,
+            note: "",
+          })
+        : await this.sendMessage({
+            circleId: draft.circleId,
+            text,
+            replyTo: draft.summonEnvelopeId ?? undefined,
+            suppressAgentSummon: true,
+          });
       setAgentDraftStatus(this.db, draft.draftId, "published");
       return report;
     } catch (err) {

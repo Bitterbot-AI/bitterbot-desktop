@@ -495,6 +495,48 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(bobVotes[0]?.value).toBe("Thu");
     expect(bobVotes[0]?.authorPubkey).toBe(pubkeyId(anaKey));
     expect(anaDrafting.agentDrafts(circleId)).toHaveLength(0);
+
+    // Hardening (review): a frame-breaking slot is refused at request time.
+    expect(() =>
+      anaDrafting.requestAgentSliceDraft({ circleId, cardId: "d1", slot: "bad\nslot" }),
+    ).toThrow(/alphanumeric/);
+  });
+
+  it("B2: publishing against a tombstoned card is refused; the draft survives", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const anaDrafting = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: anaKey,
+      draftLlm: async () => "Thu",
+    });
+    await ana.putCanvasCard({
+      circleId,
+      cardId: "d2",
+      cardType: "decision",
+      title: "Snacks?",
+      text: "Thu\nFri",
+    });
+    anaDrafting.requestAgentSliceDraft({ circleId, cardId: "d2", slot: "vote" });
+    await anaDrafting.generateAgentDrafts();
+    const draft = anaDrafting.agentDrafts(circleId)[0];
+
+    // The card is removed between generation and consent (review TOCTOU).
+    await ana.removeCanvasCard({ circleId, cardId: "d2" });
+    await expect(anaDrafting.publishAgentDraft({ draftId: draft?.draftId ?? "" })).rejects.toThrow(
+      /no longer on the canvas/,
+    );
+    // Nothing was appended, and the draft is handed back for discard.
+    expect(
+      ana
+        .canvasCards(circleId)
+        .flatMap((c) => c.slices)
+        .filter((s) => s.slot === "vote"),
+    ).toHaveLength(0);
+    expect(anaDrafting.agentDrafts(circleId)).toHaveLength(1);
   });
 
   it("Phase B: the kill switch silences summons end to end", async () => {

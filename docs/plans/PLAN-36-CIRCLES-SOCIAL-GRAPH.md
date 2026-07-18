@@ -818,6 +818,13 @@ constraint in the trusted frame, end-to-end row targeting) + two-node E2E
 nodes) + renderer (suggestion on the card not in chat, publish, per-section
 ask). This is the Phase-4b seed: the same request path later feeds from the
 member's PLAN-9 gap history instead of circle context alone.
+The B2 adversarial pass found no high/critical issues (envelope composition,
+trusted-frame placement, human-initiated-only, rate sharing, atomic claim, and
+injection→canvas parity all confirmed sound); three low findings fixed: the
+one-live-draft dedupe now scopes by circle_id; the slot string (which lands in
+the trusted prompt frame) is charset-restricted at the RPC boundary; and
+publish re-checks the target card still exists, refusing to append a slice to
+a tombstoned card (the draft is handed back for discard).
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
