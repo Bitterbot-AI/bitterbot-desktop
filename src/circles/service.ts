@@ -79,6 +79,7 @@ import {
 import {
   claimPendingOutbound,
   listPendingOutbound,
+  revertPendingOutbound,
   type PendingOutbound,
 } from "./pending-outbound.js";
 import {
@@ -1180,6 +1181,17 @@ export class CirclesService {
     if (!pending) {
       throw new Error(`pending outbound ${id} is not awaiting approval`);
     }
+    try {
+      return await this.executePendingOutbound(pending);
+    } catch (err) {
+      // Nothing left the node — hand the card back so the human can retry
+      // or reject (review F3: a claimed-then-failed write must not vanish).
+      revertPendingOutbound(this.db, id);
+      throw err;
+    }
+  }
+
+  private async executePendingOutbound(pending: PendingOutbound): Promise<SendReport> {
     const p = pending.params;
     const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
     switch (pending.action) {

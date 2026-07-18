@@ -14,8 +14,14 @@ function describe(p: PendingOutbound): string {
       return `send: “${String(v.text ?? "")}”`;
     case "ask":
       return `ask your people (${String(v.category ?? "general")}): “${String(v.question ?? "")}”`;
-    case "log_expense":
-      return `log $${Number(v.amount ?? 0).toFixed(2)} “${String(v.memo ?? "")}” split among ${String(v.splitAmong ?? "?")}`;
+    case "log_expense": {
+      // splitAmong is the NAMED participant list — the human must see exactly
+      // who is on the split, not a count that could hide a crafted list.
+      const who = Array.isArray(v.splitAmong)
+        ? (v.splitAmong as unknown[]).filter((x): x is string => typeof x === "string").join(", ")
+        : String(v.splitAmong ?? "?");
+      return `log $${Number(v.amount ?? 0).toFixed(2)} “${String(v.memo ?? "")}” split among: ${who}`;
+    }
     default:
       return p.action;
   }

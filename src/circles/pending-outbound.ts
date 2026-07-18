@@ -24,6 +24,12 @@ import crypto from "node:crypto";
 export const PENDING_OUTBOUND_TTL_MS = 60 * 60_000;
 /** Resolved rows older than this are deleted (bounded audit trail). */
 const PRUNE_AFTER_MS = 30 * 24 * 60 * 60_000;
+/**
+ * Max unresolved cards per circle (review F2): an injected agent spamming the
+ * queue would otherwise flood the chat with approval cards — approval fatigue
+ * is how humans get talked into bulk-approving.
+ */
+export const MAX_PENDING_PER_CIRCLE = 5;
 
 export type PendingOutboundAction = "send" | "ask" | "log_expense";
 
@@ -65,6 +71,18 @@ export function queuePendingOutbound(
 ): string {
   const now = args.now ?? Date.now();
   sweepPendingOutbound(db, now);
+  const open = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM circle_pending_outbound
+        WHERE circle_id = ? AND status = 'pending'`,
+    )
+    .get(args.circleId) as { n: number };
+  if (open.n >= MAX_PENDING_PER_CIRCLE) {
+    throw new Error(
+      `approval queue is full (${MAX_PENDING_PER_CIRCLE} pending) — ` +
+        "your human hasn't reviewed the existing cards yet",
+    );
+  }
   const id = crypto.randomUUID();
   db.prepare(
     `INSERT INTO circle_pending_outbound
@@ -159,4 +177,17 @@ export function claimPendingOutbound(
     )
     .run(resolution, now, id);
   return Number(res.changes) === 1 ? pending : null;
+}
+
+/**
+ * Hand a claimed-but-unexecuted approval back to the queue (review F3): if
+ * execution throws AFTER the claim (frozen circle, transient fan-out error),
+ * the human's intent must not silently vanish — the card returns and they can
+ * retry or reject. Mirrors publishAgentDraft's revert-to-ready pattern.
+ */
+export function revertPendingOutbound(db: DatabaseSync, id: string): void {
+  db.prepare(
+    `UPDATE circle_pending_outbound SET status = 'pending', resolved_at = NULL
+      WHERE token = ? AND status = 'approved'`,
+  ).run(id);
 }

@@ -145,10 +145,26 @@ describe("circles agent tool", () => {
     expect(outCount()).toBe(1);
   });
 
+  it("a failed approval hands the card back for retry (review F3)", async () => {
+    await run("send", { text: "hello" });
+    const [pending] = listPendingOutbound(db);
+    // The circle freezes between queue and approve — execution throws…
+    new CirclesStore(db).freezeCircle(pending?.circleId ?? "");
+    const svc = new CirclesService({ db, config: cfg(true) });
+    await expect(svc.approvePendingOutbound(pending?.id ?? "")).rejects.toThrow(/not active/);
+    // …and the card is back in the queue instead of silently vanishing.
+    expect(listPendingOutbound(db)).toHaveLength(1);
+    expect(outCount()).toBe(0);
+  });
+
   it("log_expense queues; approval lands it on the tab (no money)", async () => {
     const res = await run("log_expense", { memo: "pizza", amount: 42 });
     expect(res.queued).toBe(true);
-    expect((res.preview as { splitAmong: number }).splitAmong).toBe(2); // self + Bob
+    // The preview NAMES the split (review F1) — a count could hide a crafted
+    // participants list; the human must see who owes.
+    const splitAmong = (res.preview as { splitAmong: string[] }).splitAmong;
+    expect(splitAmong).toHaveLength(2); // self + Bob
+    expect(splitAmong).toContain("Bob");
     expect((db.prepare(`SELECT COUNT(*) n FROM circle_events`).get() as { n: number }).n).toBe(0);
 
     const svc = new CirclesService({ db, config: cfg(true) });

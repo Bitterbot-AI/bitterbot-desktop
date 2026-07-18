@@ -274,12 +274,21 @@ export function createCirclesTool(options: {
               explicit && explicit.length > 0
                 ? explicit
                 : svc.store.getMembers(r.id).map((m) => m.memberPubkey);
+            // The preview must name WHO is on the split (review F1): the human
+            // approves what they see, and "split among 3" could hide a crafted
+            // participants list pinning the cost on someone.
+            const members = svc.store.getMembers(r.id);
+            const names = participants.map(
+              (pk) =>
+                members.find((m) => m.memberPubkey === pk)?.displayName ??
+                (pk === svc.pubkey ? "you" : pk.slice(0, 16)),
+            );
             return queued(
               db,
               r,
               "log_expense",
               { circleId: r.id, memo, amountCents, participants: participants.toSorted() },
-              { memo, amount: dollars, splitAmong: participants.length },
+              { memo, amount: dollars, splitAmong: names.toSorted() },
             );
           }
 

@@ -915,6 +915,18 @@ forged confirm flags, approval executes stored params / reject executes
 nothing / atomic double-approve, per-circle listing, expiry, legacy-row
 handling, renderer approval card (preview + approve + reject RPCs). This is
 the enforcement the AGENT-chip compliance story (§6) rests on.
+The §5.3 adversarial pass confirmed the core claim — a full bypass sweep found
+NO path from agent-influencable input to a circle write without a human claim
+(the gateway agent tool's fixed RPC enum can't dial circles.\*, and the
+composer RPCs are human-surface by design) — and flagged three queue-mechanics
+gaps, all fixed: the expense preview now NAMES the split participants (a
+count could hide a crafted list pinning cost on a victim — the card is the
+informed-consent boundary); the queue caps at 5 unresolved cards per circle
+(approval-fatigue flooding); and a claimed-then-failed approval hands the
+card back to pending for retry instead of silently vanishing (mirrors the
+draft revert pattern). Noted for the record: the autonomous sweeps
+(answerPendingAsks/practice/briefing) are a separate node-local autonomy
+surface outside this gate by design (§3.5 grant line).
 
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
