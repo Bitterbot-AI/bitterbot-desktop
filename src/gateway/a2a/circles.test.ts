@@ -527,7 +527,30 @@ describe("circle A2A verbs", () => {
     );
     expect(stillRefused.ok).toBe(false);
 
-    // The window still expires: past the 60s horizon the budget refreshes.
+    // A REFUSED request writes NOTHING (review F1: the limiter must not do DB
+    // work for the flood it exists to stop). Row count is unchanged by the
+    // over-budget attempt above.
+    const rowsAfterRefusal = (
+      db
+        .prepare(`SELECT COUNT(*) AS n FROM circle_rate_hits WHERE bucket_key = ?`)
+        .get(`message:${pubkeyId(bob)}`) as { n: number }
+    ).n;
+    handleCircleMethod(
+      "circle/message",
+      { envelope: makeCircleEnvelope("message", circleId, { text: "more flood" }, bob, NOW_S) },
+      db,
+      NOW + 42,
+    );
+    expect(
+      (
+        db
+          .prepare(`SELECT COUNT(*) AS n FROM circle_rate_hits WHERE bucket_key = ?`)
+          .get(`message:${pubkeyId(bob)}`) as { n: number }
+      ).n,
+    ).toBe(rowsAfterRefusal); // no new row for the refused attempt
+
+    // The window still expires: past the 60s horizon the budget refreshes, and
+    // the amortized GC has swept the now-stale rows (table bounded).
     const afterWindow = handleCircleMethod(
       "circle/message",
       { envelope: makeCircleEnvelope("message", circleId, { text: "later" }, bob, NOW_S + 61) },
@@ -535,6 +558,12 @@ describe("circle A2A verbs", () => {
       NOW + 61_000,
     );
     expect(afterWindow.ok).toBe(true);
+    const stale = (
+      db
+        .prepare(`SELECT COUNT(*) AS n FROM circle_rate_hits WHERE hit_at < ?`)
+        .get(NOW + 61_000 - 60_000) as { n: number }
+    ).n;
+    expect(stale).toBe(0); // GC bounded the table
   });
 
   it("returns METHOD_NOT_FOUND for unknown circle methods", () => {

@@ -76,15 +76,32 @@ const RATE_LIMITS: Record<string, { windowMs: number; max: number }> = {
   event: { windowMs: 60_000, max: 120 },
 };
 
-/** The widest window across all classes — the global GC horizon. */
+/**
+ * The widest window across all classes — the global GC horizon. Kept DERIVED
+ * (never hardcode it): the GC deletes rows older than this, so it must always
+ * be ≥ every class window or a COUNT could miss a row it still needs. Adding a
+ * longer-window class automatically raises it.
+ */
 const MAX_RATE_WINDOW_MS = Math.max(...Object.values(RATE_LIMITS).map((l) => l.windowMs));
 
 /**
- * Reset the persisted rate buckets. Test helper: pass the db to clear its
- * table between cases that share a long-lived db. Fresh per-test `:memory:`
- * dbs start empty, so a no-arg call is a harmless no-op for those.
+ * Table-size hygiene runs at most this often, not on every request — the GC
+ * only bounds row count (it never affects the windowed COUNT, which filters by
+ * `hit_at` itself), so amortizing it keeps the limiter from doing a write on
+ * every inbound call (review F1). Module-local, not security state — a restart
+ * just triggers one GC on the first call after boot.
+ */
+const GC_INTERVAL_MS = MAX_RATE_WINDOW_MS;
+let lastRateGcAt = 0;
+
+/**
+ * Reset the rate limiter for tests. Pass the db to clear its persisted
+ * `circle_rate_hits` table (needed by cases that share a long-lived db); the
+ * GC throttle clock is always reset so test timelines are deterministic. Fresh
+ * per-test `:memory:` dbs start empty, so those cases need only the clock reset.
  */
 export function resetCircleRateLimits(db?: DatabaseSync): void {
+  lastRateGcAt = 0;
   db?.prepare(`DELETE FROM circle_rate_hits`).run();
 }
 
@@ -96,17 +113,22 @@ function rateLimited(
 ): boolean {
   const limit = RATE_LIMITS[cls] ?? RATE_LIMITS.read!;
   const key = `${cls}:${pubkey}`;
-  // Global GC: every window is ≤ MAX_RATE_WINDOW_MS, so dropping rows older
-  // than that keeps the table to ~a minute of traffic and never affects a
-  // live count. Cheap via idx_circle_rate_hits_at.
-  db.prepare(`DELETE FROM circle_rate_hits WHERE hit_at < ?`).run(now - MAX_RATE_WINDOW_MS);
+  // Read-only window count FIRST: a refused request must do zero write I/O, so
+  // the limiter cannot be turned into DB load by the flood it exists to stop
+  // (review F1). The `hit_at >=` filter makes the count correct without the GC.
   const count = db
     .prepare(`SELECT COUNT(*) AS n FROM circle_rate_hits WHERE bucket_key = ? AND hit_at >= ?`)
     .get(key, now - limit.windowMs) as { n: number };
   if (count.n >= limit.max) {
-    return true;
+    return true; // over budget — no writes, no GC
   }
   db.prepare(`INSERT INTO circle_rate_hits (bucket_key, hit_at) VALUES (?, ?)`).run(key, now);
+  // Amortized global GC (bounds the table to ~a minute of traffic). Only
+  // accepted requests reach here, so it runs at most ~once per window.
+  if (now - lastRateGcAt >= GC_INTERVAL_MS) {
+    lastRateGcAt = now;
+    db.prepare(`DELETE FROM circle_rate_hits WHERE hit_at < ?`).run(now - MAX_RATE_WINDOW_MS);
+  }
   return false;
 }
 

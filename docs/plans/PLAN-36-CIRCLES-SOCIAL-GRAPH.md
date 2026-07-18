@@ -495,6 +495,17 @@ share a long-lived db (fresh per-test `:memory:` dbs start empty). Test: a
 flooding member is refused, the hits are proven on disk, a post-"restart"
 request (no in-memory state, only the db) stays refused, and the window still
 expires past 60s. This is the last §5 hard gate before Phase 5/6.
+The §5.2 adversarial pass confirmed restart-survival, exact limit parity, and a
+bounded table (refused requests skip the INSERT; the derived GC horizon can
+never delete a row a live count needs), and flagged one moderate gap, fixed:
+the limiter did a DELETE+COUNT on EVERY request including the refused ones, so
+it did DB write I/O for the very flood it exists to stop (F1). Now the windowed
+COUNT runs FIRST and an over-budget request returns read-only with zero writes;
+the global GC is amortized to at most once per window (it only bounds table
+size, never the count). The test asserts a refused attempt adds no row and the
+GC leaves no stale rows. F2 (the no-arg reset helper was a silent no-op) is
+softened — it now always resets the amortized-GC clock, and clears the table
+when given a db.
 
 ### 5.3 Human gating: honor system → server-enforced token `[NEW, Phase 0 gate]`
 
