@@ -62,17 +62,17 @@ describe("CirclesStore", () => {
     expect(store.pinnedWalletFor(circleId, "stranger")).toBeNull();
   });
 
-  it("bumps key_epoch on every membership change (channel key rotation signal)", () => {
+  it("bumps key_epoch when a member JOINS (channel key rotation signal)", () => {
     expect(store.getCircle(circleId)!.keyEpoch).toBe(0);
     store.addMember({ circleId, memberPubkey: BOB, pinnedWallet: B_WALLET, now: NOW + 1 });
     expect(store.getCircle(circleId)!.keyEpoch).toBe(1);
     store.addMember({ circleId, memberPubkey: CAROL, now: NOW + 2 });
     expect(store.getCircle(circleId)!.keyEpoch).toBe(2);
+    // §5.5 review F2/F3: removal does NOT bump — the epoch only blinds the
+    // gossip topic name (which an evictee already knows), so a bump grants no
+    // read-exclusion and bumping on one node desyncs the remaining members.
     store.removeMember(circleId, CAROL, NOW + 3);
-    expect(store.getCircle(circleId)!.keyEpoch).toBe(3);
-    // A no-op remove does not bump.
-    store.removeMember(circleId, CAROL, NOW + 4);
-    expect(store.getCircle(circleId)!.keyEpoch).toBe(3);
+    expect(store.getCircle(circleId)!.keyEpoch).toBe(2);
   });
 
   it("re-pairing updates the pinned wallet (the explicit, epoch-bumping path)", () => {
