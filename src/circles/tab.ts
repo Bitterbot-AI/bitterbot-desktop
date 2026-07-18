@@ -52,7 +52,13 @@ export type TabEventInput =
       value: string;
       note: string;
       updatedAt: number;
-    };
+    }
+  // PLAN-36 Phase D (deferred from A): message annotations ride the same log.
+  // A reaction is the author's FULL emoji set on one message (LWW per
+  // (target, author) — toggling re-emits the set, no add/remove tombstones);
+  // a pin is circle-wide LWW per target (any member may flip it).
+  | { type: "message.react"; targetEnvelopeId: string; emojis: string[]; updatedAt: number }
+  | { type: "message.pin"; targetEnvelopeId: string; pinned: boolean; updatedAt: number };
 
 /** The signed-envelope body fields for a chained event append. */
 export type ChainedEventBody = {
@@ -145,6 +151,32 @@ function normalizeInput(input: TabEventInput): { type: string } & Record<string,
       const cardId = input.cardId.slice(0, 64);
       if (!cardId) throw new Error("cardId required");
       return { type: "canvas.card.remove", card_id: cardId, updated_at: input.updatedAt };
+    }
+    case "message.react": {
+      const target = input.targetEnvelopeId.slice(0, 64);
+      if (!target) throw new Error("targetEnvelopeId required");
+      // Cap the set (8) and each entry (16 chars). "Emoji" is any short
+      // string at this layer — peer values are scanned on receipt and
+      // rendered as escaped text like all circle content.
+      const emojis = [...new Set(input.emojis.map((e) => e.slice(0, 16)).filter(Boolean))]
+        .toSorted()
+        .slice(0, 8);
+      return {
+        type: "message.react",
+        target_envelope_id: target,
+        emojis: emojis as unknown as JsonValue,
+        updated_at: input.updatedAt,
+      };
+    }
+    case "message.pin": {
+      const target = input.targetEnvelopeId.slice(0, 64);
+      if (!target) throw new Error("targetEnvelopeId required");
+      return {
+        type: "message.pin",
+        target_envelope_id: target,
+        pinned: input.pinned,
+        updated_at: input.updatedAt,
+      };
     }
     case "canvas.slice.put": {
       const cardId = input.cardId.slice(0, 64);

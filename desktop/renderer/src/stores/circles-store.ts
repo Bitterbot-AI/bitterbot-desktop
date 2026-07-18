@@ -39,6 +39,18 @@ export interface CircleMessage {
   replyTo?: string | null;
 }
 
+export interface MessageReaction {
+  authorPubkey: string;
+  emojis: string[];
+}
+
+export interface MessageAnnotations {
+  /** envelopeId -> per-member reaction sets. */
+  reactions: Record<string, MessageReaction[]>;
+  /** Pinned envelopeIds, oldest pin first. */
+  pins: string[];
+}
+
 export interface CirclesStatus {
   enabled: boolean;
   pubkey?: string;
@@ -88,6 +100,7 @@ interface CirclesState {
   circles: Circle[];
   activeCircleId: string | null;
   messagesByCircle: Record<string, CircleMessage[]>;
+  annotationsByCircle: Record<string, MessageAnnotations>;
   cardsByCircle: Record<string, CanvasCard[]>;
   draftsByCircle: Record<string, AgentDraft[]>;
   loading: boolean;
@@ -102,6 +115,8 @@ interface CirclesState {
   publishDraft: (circleId: string, draftId: string, text: string) => Promise<boolean>;
   discardDraft: (circleId: string, draftId: string) => Promise<boolean>;
   send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
+  react: (circleId: string, envelopeId: string, emojis: string[]) => Promise<boolean>;
+  setPinned: (circleId: string, envelopeId: string, pinned: boolean) => Promise<boolean>;
   putCard: (circleId: string, title: string, text: string, cardId?: string) => Promise<boolean>;
   putDecision: (circleId: string, question: string, options: string[]) => Promise<boolean>;
   putStudyGuide: (circleId: string, title: string, sections: string[]) => Promise<boolean>;
@@ -127,6 +142,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   circles: [],
   activeCircleId: null,
   messagesByCircle: {},
+  annotationsByCircle: {},
   cardsByCircle: {},
   draftsByCircle: {},
   loading: true,
@@ -317,10 +333,41 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
 
   loadMessages: async (circleId) => {
     try {
-      const res = await request<{ messages: CircleMessage[] }>("circles.messages", { circleId });
-      set((s) => ({ messagesByCircle: { ...s.messagesByCircle, [circleId]: res.messages ?? [] } }));
+      const res = await request<{ messages: CircleMessage[]; annotations?: MessageAnnotations }>(
+        "circles.messages",
+        { circleId },
+      );
+      set((s) => ({
+        messagesByCircle: { ...s.messagesByCircle, [circleId]: res.messages ?? [] },
+        annotationsByCircle: {
+          ...s.annotationsByCircle,
+          [circleId]: res.annotations ?? { reactions: {}, pins: [] },
+        },
+      }));
     } catch (err) {
       set({ notice: String(err) });
+    }
+  },
+
+  react: async (circleId, envelopeId, emojis) => {
+    try {
+      await request("circles.react", { circleId, envelopeId, emojis });
+      await get().loadMessages(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  setPinned: async (circleId, envelopeId, pinned) => {
+    try {
+      await request("circles.pin", { circleId, envelopeId, pinned });
+      await get().loadMessages(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
     }
   },
 

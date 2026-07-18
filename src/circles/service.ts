@@ -48,6 +48,7 @@ import {
   type AgentDraft,
   type DraftLlmCall,
 } from "./agent-drafts.js";
+import { computeMessageAnnotations, type MessageAnnotations } from "./annotations.js";
 import {
   loadOrCreateBoxKeys,
   openBox,
@@ -1149,6 +1150,49 @@ export class CirclesService {
         slot: args.slot,
         value: args.value,
         note: args.note,
+        updatedAt: Date.now(),
+      },
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Message annotations (Phase D): reactions + pins on the event log.
+  // -------------------------------------------------------------------------
+
+  /** Current reactions + pins for a circle (folded from the log). */
+  messageAnnotations(circleId: string): MessageAnnotations {
+    return computeMessageAnnotations(this.db, circleId);
+  }
+
+  /** Set OUR full reaction set on a message (empty = clear) + fan out. */
+  async reactToMessage(args: {
+    circleId: string;
+    envelopeId: string;
+    emojis: string[];
+  }): Promise<SendReport & { eventId: string; seq: number }> {
+    return this.appendTabEvent({
+      circleId: args.circleId,
+      input: {
+        type: "message.react",
+        targetEnvelopeId: args.envelopeId,
+        emojis: args.emojis,
+        updatedAt: Date.now(),
+      },
+    });
+  }
+
+  /** Pin or unpin a message for the whole circle (LWW per target) + fan out. */
+  async setMessagePinned(args: {
+    circleId: string;
+    envelopeId: string;
+    pinned: boolean;
+  }): Promise<SendReport & { eventId: string; seq: number }> {
+    return this.appendTabEvent({
+      circleId: args.circleId,
+      input: {
+        type: "message.pin",
+        targetEnvelopeId: args.envelopeId,
+        pinned: args.pinned,
         updatedAt: Date.now(),
       },
     });

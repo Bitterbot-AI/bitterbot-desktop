@@ -13,7 +13,10 @@
  *  circles.join    — redeem a pasted invite code (the invitee-side consent:
  *                    the human saw who is asking before calling this).
  *  circles.send    — send a message/ask/answer into a circle as our agent.
- *  circles.messages— the conversation buffer for a circle (wrapped inbound).
+ *  circles.messages— the conversation buffer for a circle (wrapped inbound)
+ *                    + annotations (reactions/pins folded from the event log).
+ *  circles.react   — set OUR emoji reaction set on a message (empty clears).
+ *  circles.pin     — pin/unpin a message circle-wide (LWW on the event log).
  *  circles.canvas.list/put/remove/slice — the group canvas (typed cards on the
  *                    event log; PLAN-36 Phase C). A slice is one member's
  *                    contribution to a card slot (e.g. a vote). Fan out + sync.
@@ -585,6 +588,69 @@ export const circlesHandlers: GatewayRequestHandlers = {
       return;
     }
     const limit = typeof params.limit === "number" ? params.limit : 100;
-    respond(true, { messages: svc.service.messages(circleId, limit) }, undefined);
+    respond(
+      true,
+      {
+        messages: svc.service.messages(circleId, limit),
+        // Phase D: reactions + pins ride the same response so one refresh
+        // paints the whole conversation state.
+        annotations: svc.service.messageAnnotations(circleId),
+      },
+      undefined,
+    );
+  },
+
+  "circles.react": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const envelopeId = typeof params.envelopeId === "string" ? params.envelopeId : "";
+    const emojis = Array.isArray(params.emojis)
+      ? (params.emojis as unknown[]).filter((e): e is string => typeof e === "string")
+      : null;
+    if (!circleId || !envelopeId || emojis === null) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, envelopeId, emojis[] required"),
+      );
+      return;
+    }
+    try {
+      respond(true, await svc.service.reactToMessage({ circleId, envelopeId, emojis }), undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.pin": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const envelopeId = typeof params.envelopeId === "string" ? params.envelopeId : "";
+    const pinned = typeof params.pinned === "boolean" ? params.pinned : null;
+    if (!circleId || !envelopeId || pinned === null) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, envelopeId, pinned required"),
+      );
+      return;
+    }
+    try {
+      respond(
+        true,
+        await svc.service.setMessagePinned({ circleId, envelopeId, pinned }),
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
   },
 };

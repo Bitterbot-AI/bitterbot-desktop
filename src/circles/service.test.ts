@@ -571,6 +571,49 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(queued.n).toBe(1); // Bob's, awaiting expiry — never generated
   });
 
+  it("folds reactions and pins across nodes (Phase D annotations)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const tick = () => new Promise((r) => setTimeout(r, 3));
+
+    const sent = await ana.sendMessage({ circleId, text: "pizza friday?" });
+
+    // Both members react; sets MERGE per author on every node.
+    await ana.reactToMessage({ circleId, envelopeId: sent.envelopeId, emojis: ["👍"] });
+    await bob.reactToMessage({ circleId, envelopeId: sent.envelopeId, emojis: ["🎉", "👍"] });
+    for (const node of [ana, bob]) {
+      const r = node.messageAnnotations(circleId).reactions[sent.envelopeId] ?? [];
+      expect(r).toHaveLength(2);
+      expect(r.find((x) => x.authorPubkey === pubkeyId(bobKey))?.emojis).toEqual(["🎉", "👍"]);
+    }
+
+    // Toggling replaces the author's set (LWW), never duplicates…
+    await tick();
+    await bob.reactToMessage({ circleId, envelopeId: sent.envelopeId, emojis: ["🎉"] });
+    expect(
+      ana
+        .messageAnnotations(circleId)
+        .reactions[sent.envelopeId]?.find((x) => x.authorPubkey === pubkeyId(bobKey))?.emojis,
+    ).toEqual(["🎉"]);
+    // …and an empty set clears the author entirely.
+    await tick();
+    await ana.reactToMessage({ circleId, envelopeId: sent.envelopeId, emojis: [] });
+    expect(
+      bob
+        .messageAnnotations(circleId)
+        .reactions[sent.envelopeId]?.some((x) => x.authorPubkey === pubkeyId(anaKey)),
+    ).toBeFalsy();
+
+    // Pins: Bob pins Ana's message; both nodes agree; unpin removes it.
+    await bob.setMessagePinned({ circleId, envelopeId: sent.envelopeId, pinned: true });
+    expect(ana.messageAnnotations(circleId).pins).toEqual([sent.envelopeId]);
+    expect(bob.messageAnnotations(circleId).pins).toEqual([sent.envelopeId]);
+    await tick();
+    await ana.setMessagePinned({ circleId, envelopeId: sent.envelopeId, pinned: false });
+    expect(bob.messageAnnotations(circleId).pins).toEqual([]);
+  });
+
   it("propagates presence heartbeats into the peer-presence table", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

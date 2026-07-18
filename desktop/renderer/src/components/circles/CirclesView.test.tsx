@@ -51,9 +51,16 @@ function stubRpcs(enabled = true) {
         return Promise.resolve({ circles: [CIRCLE] });
       case "circles.messages":
         return Promise.resolve({
+          annotations: {
+            reactions: {
+              "env-m1": [{ authorPubkey: "ed25519:maya", emojis: ["🎉"] }],
+            },
+            pins: ["env-m1"],
+          },
           messages: [
             {
               messageId: "m1",
+              envelopeId: "env-m1",
               authorPubkey: "ed25519:maya",
               direction: "in",
               kind: "message",
@@ -163,6 +170,9 @@ function stubRpcs(enabled = true) {
         return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
       case "circles.markRead":
         return Promise.resolve({ ok: true });
+      case "circles.react":
+      case "circles.pin":
+        return Promise.resolve({ delivered: ["ed25519:maya"], failed: [] });
       default:
         return Promise.resolve({});
     }
@@ -368,6 +378,39 @@ describe("CirclesView", () => {
         circleId: "c1",
         cardId: "sg1",
         slot: sectionSlot("Glycolysis"),
+      }),
+    );
+  });
+
+  it("Phase D: renders reaction chips and toggles my reaction via circles.react", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    // Maya's 🎉 renders as a chip with its count…
+    const chip = await screen.findByRole("button", { name: /🎉\s*1/ });
+    // …and clicking it adds 🎉 to MY set (Maya's entry stays hers).
+    await userEvent.click(chip);
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.react", {
+        circleId: "c1",
+        envelopeId: "env-m1",
+        emojis: ["🎉"],
+      }),
+    );
+  });
+
+  it("Phase D: shows the pinned bar and unpins via circles.pin", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    // The pinned bar counts the pin; expanding shows the message.
+    await userEvent.click(await screen.findByRole("button", { name: /1 pinned message/i }));
+    expect(screen.getAllByText(/hi from Maya/).length).toBeGreaterThan(1); // bar + row
+    // The row's hover action unpins.
+    await userEvent.click(screen.getByRole("button", { name: /Unpin message/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.pin", {
+        circleId: "c1",
+        envelopeId: "env-m1",
+        pinned: false,
       }),
     );
   });

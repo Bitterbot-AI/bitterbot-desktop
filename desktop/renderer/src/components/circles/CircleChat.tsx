@@ -1,4 +1,4 @@
-import { Reply, Send, X } from "lucide-react";
+import { Pin, Reply, Send, X } from "lucide-react";
 import { useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
 import { useCirclesStore, type Circle, type CircleMessage } from "../../stores/circles-store";
@@ -23,13 +23,31 @@ function replyLabel(m: CircleMessage, selfPubkey: string | undefined, members: C
 
 export function CircleChat({ circle, selfPubkey }: Props) {
   const messages = useCirclesStore((s) => s.messagesByCircle[circle.circleId]);
+  const annotations = useCirclesStore((s) => s.annotationsByCircle[circle.circleId]);
   const agentDrafts = useCirclesStore((s) => s.draftsByCircle[circle.circleId]);
   const send = useCirclesStore((s) => s.send);
+  const react = useCirclesStore((s) => s.react);
+  const setPinned = useCirclesStore((s) => s.setPinned);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<CircleMessage | null>(null);
+  const [showPins, setShowPins] = useState(false);
 
   const peerCount = circle.members.filter((m) => !m.isSelf).length;
+
+  // Phase D: toggle one emoji in MY reaction set on a message.
+  const toggleReaction = (m: CircleMessage, emoji: string) => {
+    if (!m.envelopeId) return;
+    const mine =
+      annotations?.reactions[m.envelopeId]?.find((r) => r.authorPubkey === selfPubkey)?.emojis ??
+      [];
+    const next = mine.includes(emoji) ? mine.filter((e) => e !== emoji) : [...mine, emoji];
+    void react(circle.circleId, m.envelopeId, next);
+  };
+
+  const pinnedMessages = (annotations?.pins ?? [])
+    .map((envId) => (messages ?? []).find((m) => m.envelopeId === envId))
+    .filter((m): m is CircleMessage => !!m);
 
   const submit = async () => {
     if (!draft.trim() || sending) return;
@@ -57,11 +75,48 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         </span>
       </header>
 
+      {pinnedMessages.length > 0 && (
+        <div className="mx-3 mt-2 rounded-lg border bg-muted/40 text-xs">
+          <button
+            type="button"
+            onClick={() => setShowPins((v) => !v)}
+            className="w-full flex items-center gap-1.5 px-3 py-1.5 text-muted-foreground hover:text-foreground"
+          >
+            <Pin className="w-3 h-3 text-primary shrink-0" />
+            <span className="font-medium">
+              {pinnedMessages.length} pinned {pinnedMessages.length === 1 ? "message" : "messages"}
+            </span>
+            <span className="ml-auto">{showPins ? "hide" : "show"}</span>
+          </button>
+          {showPins && (
+            <div className="px-3 pb-2 space-y-1.5">
+              {pinnedMessages.map((m) => (
+                <div key={m.messageId} className="flex items-baseline gap-2 min-w-0">
+                  <span className="font-medium shrink-0">
+                    {replyLabel(m, selfPubkey, circle.members)}
+                  </span>
+                  <span className="truncate">{unwrapForDisplay(m.content).text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <CircleMessageList
         messages={messages ?? []}
         members={circle.members}
         selfPubkey={selfPubkey}
         onReply={setReplyTo}
+        annotations={annotations}
+        onToggleReaction={circle.status === "active" ? toggleReaction : undefined}
+        onTogglePin={
+          circle.status === "active"
+            ? (m, pinned) => {
+                if (m.envelopeId) void setPinned(circle.circleId, m.envelopeId, pinned);
+              }
+            : undefined
+        }
       />
 
       {circle.status === "frozen" && <FrozenCircleBanner circle={circle} />}

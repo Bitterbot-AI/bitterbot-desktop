@@ -857,6 +857,27 @@ copy now tells the human to abandon a repeatedly-conflicting circle), and
 fork detection remains HEAD-only (a divergence at seq < head chain-breaks
 silently — pre-existing, now on the record).
 
+**Reactions + pins LANDED (the Phase-A deferral, paid off on the event log as
+planned).** Two new event types on the chained log (`tab.ts`): `message.react`
+is the author's FULL emoji set on a message (LWW per (target, author) —
+toggling re-emits the set, so there are no add/remove tombstone pairs; empty
+set clears; capped 8 entries × 16 chars, deduped + sorted), and `message.pin`
+is a circle-wide flag (LWW per target; any member may flip — friends-tier
+trust, v1). Targets are envelope ids, the same stable cross-node reference
+reply-to uses. `annotations.ts` folds both; `circles.messages` now returns
+`annotations` alongside messages (one refresh paints the conversation), with
+`circles.react`/`circles.pin` RPCs writing through `appendTabEvent` (fan-out,
+injection scan on receipt, fork-freeze all inherited — "emoji" strings are
+peer content rendered escaped). Renderer: reaction chips with counts +
+reactor tooltips (own reactions highlighted, chip tap toggles), a hover
+palette (👍 ❤️ 😂 🎉 👀 ✅), hover pin/unpin, a pin glyph on pinned rows, and
+a collapsible "N pinned" bar above the stream (unwrapped previews). No
+migration — rides `circle_events`. Tests: two-node E2E (react merge per
+author, LWW toggle, empty-clear, pin/unpin agreement) + renderer (chip render
+
+- toggle RPC, pinned bar + unpin RPC). Pins are the artifact-surfacing
+  primitive the §2.5 beachhead invite will read from.
+
 **Phase 3 — Discord chat surface (L, ~2-3 wk) — the reward for a positive P2
 reading.** A 3-column `CirclesShell` (circle rail / channel list / message pane +
 member pane); connections render as DMs. **Build a new `CircleMessageList`** — do
