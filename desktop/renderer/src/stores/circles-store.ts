@@ -172,6 +172,9 @@ interface CirclesState {
   markRead: (circleId: string) => void;
   unfreeze: (circleId: string) => Promise<boolean>;
   removeMember: (circleId: string, memberPubkey: string) => Promise<boolean>;
+  archiveCircle: (circleId: string) => Promise<boolean>;
+  unarchiveCircle: (circleId: string) => Promise<boolean>;
+  deleteCircle: (circleId: string) => Promise<boolean>;
   setPetname: (memberPubkey: string, petname: string) => Promise<boolean>;
   setSelfName: (name: string) => Promise<boolean>;
   setNotice: (notice: string | null) => void;
@@ -407,6 +410,41 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     try {
       await request("circles.member.remove", { circleId, memberPubkey });
       await get().refresh(); // roster shrinks everywhere it shows
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  archiveCircle: async (circleId) => {
+    try {
+      await request("circles.archive", { circleId });
+      if (get().activeCircleId === circleId) set({ activeCircleId: null });
+      await get().refresh();
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  unarchiveCircle: async (circleId) => {
+    try {
+      await request("circles.unarchive", { circleId });
+      await get().refresh();
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  deleteCircle: async (circleId) => {
+    try {
+      await request("circles.delete", { circleId });
+      if (get().activeCircleId === circleId) set({ activeCircleId: null });
+      await get().refresh();
       return true;
     } catch (err) {
       set({ notice: String(err) });

@@ -194,6 +194,10 @@ function stubRpcs(enabled = true) {
         return Promise.resolve({ ok: true });
       case "circles.member.remove":
         return Promise.resolve({ ok: true });
+      case "circles.archive":
+      case "circles.unarchive":
+      case "circles.delete":
+        return Promise.resolve({ ok: true });
       case "circles.petname.set":
       case "circles.petname.clear":
         return Promise.resolve({ ok: true });
@@ -219,6 +223,33 @@ beforeEach(() => {
 });
 
 describe("CirclesView", () => {
+  it("deletes a circle from the rail's hover menu behind a confirm", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await waitFor(() => expect(screen.getAllByText("Bio 204").length).toBeGreaterThan(0));
+    // Open the circle's options menu, choose Delete, then confirm.
+    await userEvent.click(screen.getByRole("button", { name: /Bio 204 options/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Delete$/ }));
+    // Confirm step: nothing sent yet.
+    expect(requestMock).not.toHaveBeenCalledWith("circles.delete", expect.anything());
+    await userEvent.click(screen.getByRole("button", { name: /^Delete$/ }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.delete", { circleId: "c1" }),
+    );
+  });
+
+  it("archives a circle from the rail's hover menu behind a confirm", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await waitFor(() => expect(screen.getAllByText("Bio 204").length).toBeGreaterThan(0));
+    await userEvent.click(screen.getByRole("button", { name: /Bio 204 options/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Archive$/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Archive$/ }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.archive", { circleId: "c1" }),
+    );
+  });
+
   it("orders the thread chronologically: newest message at the bottom", async () => {
     // The server returns the recent window newest-first (DESC); the thread must
     // render oldest → newest so the latest lands at the bottom under the scroll.

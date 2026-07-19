@@ -127,6 +127,31 @@ describe("CirclesStore", () => {
     expect(store.getPetnames().get(BOB)?.length).toBe(80);
   });
 
+  it("archives, unarchives, and deletes circles (node-local)", () => {
+    store.addMember({ circleId, memberPubkey: BOB, now: NOW + 1 });
+    // Active circle is in both the work set and the UI set.
+    expect(store.getCirclesForMember(ALICE).some((c) => c.circleId === circleId)).toBe(true);
+    expect(store.getCirclesForMemberUi(ALICE).some((c) => c.circleId === circleId)).toBe(true);
+
+    // Archive: drops from the work set, stays in the UI set (restorable).
+    expect(store.archiveCircle(circleId)).toBe(true);
+    expect(store.getCirclesForMember(ALICE).some((c) => c.circleId === circleId)).toBe(false);
+    expect(store.getCirclesForMemberUi(ALICE).find((c) => c.circleId === circleId)?.status).toBe(
+      "archived",
+    );
+    expect(store.archiveCircle(circleId)).toBe(false); // already archived
+
+    // Unarchive restores it to active.
+    expect(store.unarchiveCircle(circleId)).toBe(true);
+    expect(store.getCircle(circleId)?.status).toBe("active");
+
+    // Delete removes the circle AND its scoped rows from this node.
+    store.deleteCircle(circleId);
+    expect(store.getCircle(circleId)).toBeNull();
+    expect(store.getMembers(circleId)).toHaveLength(0);
+    expect(store.getCirclesForMemberUi(ALICE).some((c) => c.circleId === circleId)).toBe(false);
+  });
+
   it("lists circles for a member across kinds (domain-agnostic)", () => {
     const careId = store.createCircle({
       name: "Mom's Care",

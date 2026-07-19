@@ -7,7 +7,11 @@
  *                    own display name (§5.6).
  *  circles.self.setName — §5.6: set the name friends see you by (node-local
  *                    setting, pushed via presence so existing rosters refresh).
- *  circles.list    — circles we belong to, with members + peer liveness + unread.
+ *  circles.list    — circles we belong to (incl. frozen + archived for the UI),
+ *                    with members + peer liveness + unread.
+ *  circles.archive/unarchive — hide/restore a circle (node-local, reversible).
+ *  circles.delete  — permanently remove a circle from THIS node (all local
+ *                    data; friends keep their own copy — P2P, no central authority).
  *  circles.markRead— mark a circle read up to now (node-local; clears its badge).
  *  circles.unfreeze— Phase D: the human's deliberate act ending a fork freeze
  *                    (node-local; evidence shown by the UI, cleared here).
@@ -134,7 +138,9 @@ export const circlesHandlers: GatewayRequestHandlers = {
     // collision keys on the SPOOFABLE displayName so petnaming a friend doesn't
     // blind the cue to an impostor copying their name (review F1/F2).
     const petnames = svc.service.petnames();
-    const allCircles = svc.service.listCircles();
+    // UI list includes frozen + archived (so the rail can show them, the
+    // unfreeze banner is reachable, and archived circles can be restored).
+    const allCircles = svc.service.listCirclesForUi();
     const membersByCircle = new Map(
       allCircles.map((c) => [c.circleId, svc.service.store.getMembers(c.circleId)] as const),
     );
@@ -171,6 +177,63 @@ export const circlesHandlers: GatewayRequestHandlers = {
       }),
     }));
     respond(true, { circles }, undefined);
+  },
+
+  "circles.archive": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    try {
+      svc.service.archiveCircle(circleId);
+      respond(true, { ok: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.unarchive": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    try {
+      svc.service.unarchiveCircle(circleId);
+      respond(true, { ok: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.delete": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    try {
+      svc.service.deleteCircle(circleId);
+      respond(true, { ok: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
   },
 
   "circles.unfreeze": async ({ params, respond }) => {

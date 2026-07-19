@@ -644,6 +644,26 @@ COALESCE a blank over the stored name — was already fixed proactively
 (receiver treats blank as absent → preserves the name), with the exact test it
 recommended.
 
+**Archive + delete circles LANDED.** The rail had no way to remove a circle.
+Now hovering a tile reveals a "⋯" menu → Archive (reversible hide) or Delete
+(permanent, node-local), each behind a confirm. Store `archiveCircle` /
+`unarchiveCircle` (status active↔archived) + `deleteCircle` (a transaction that
+DELETEs the circle row and every circle-scoped table — members, messages,
+events, invites, read-state, pending-join, pending-outbound, disclosure-grants,
+agent-drafts; person/node-scoped tables — petnames, presence, settings, rate
+buckets — are untouched). Delete is honest about P2P: it removes the circle from
+THIS node only; friends keep their own copy (no central authority dissolves a
+circle). RPCs `circles.archive/unarchive/delete`. A new `listCirclesForUi`
+(active + frozen + archived) backs `circles.list` so the rail can show archived
+circles dimmed with an Unarchive action AND so FROZEN circles surface at all —
+`getCirclesForMember` is active-only, which had been hiding frozen circles and
+making the unfreeze banner unreachable; the scheduler/heartbeat still use the
+active-only set. Archived circles refuse writes via the existing `isWritable`
+gate. Tests: store (archive/unarchive/delete cascade + work-set vs UI-set), two-
+node E2E (archive reversible + refuses writes; delete is node-local — the friend
+keeps their copy; guards throw), renderer (delete + archive from the rail menu,
+each behind a confirm).
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

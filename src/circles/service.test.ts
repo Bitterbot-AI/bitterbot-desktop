@@ -622,6 +622,31 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(ana.canvasCards(circleId).some((c) => c.cardId === "c2")).toBe(false);
   });
 
+  it("archives (reversible) and deletes (permanent, node-local) a circle", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    // Archive: leaves the active work set but stays in the UI list (restorable),
+    // and inbound writes are refused (isWritable false for non-active).
+    ana.archiveCircle(circleId);
+    expect(ana.listCircles().some((c) => c.circleId === circleId)).toBe(false);
+    expect(ana.listCirclesForUi().find((c) => c.circleId === circleId)?.status).toBe("archived");
+    expect(ana.store.isWritable(circleId)).toBe(false);
+    ana.unarchiveCircle(circleId);
+    expect(ana.store.isWritable(circleId)).toBe(true);
+
+    // Delete on Ana's node removes it there; Bob (a separate node) still has it.
+    ana.deleteCircle(circleId);
+    expect(ana.store.getCircle(circleId)).toBeNull();
+    expect(ana.listCirclesForUi().some((c) => c.circleId === circleId)).toBe(false);
+    expect(bob.store.getCircle(circleId)?.status).toBe("active"); // friend keeps their copy
+
+    // Guards: delete/unarchive on a gone circle throw.
+    expect(() => ana.deleteCircle(circleId)).toThrow(/not found/);
+    expect(() => ana.unarchiveCircle(circleId)).toThrow(/not archived/);
+  });
+
   it("§5.6: setting your own name propagates to an existing friend via presence", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

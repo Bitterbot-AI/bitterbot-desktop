@@ -1605,6 +1605,33 @@ export class CirclesService {
     return this.store.getCirclesForMember(this.pubkey);
   }
 
+  /** Circles for the UI — includes frozen + archived (active-only hides them). */
+  listCirclesForUi(): Circle[] {
+    return this.store.getCirclesForMemberUi(this.pubkey);
+  }
+
+  /** Hide a circle (reversible). Node-local. */
+  archiveCircle(circleId: string): void {
+    if (!this.store.getCircle(circleId)) throw new Error(`circle ${circleId} not found`);
+    if (!this.store.archiveCircle(circleId)) {
+      throw new Error("circle cannot be archived (already archived, or gone)");
+    }
+  }
+
+  /** Restore an archived circle. Node-local. */
+  unarchiveCircle(circleId: string): void {
+    if (!this.store.unarchiveCircle(circleId)) {
+      throw new Error("circle is not archived");
+    }
+  }
+
+  /** Permanently delete a circle from this node (all local data). Node-local. */
+  deleteCircle(circleId: string): void {
+    if (!this.store.getCircle(circleId)) throw new Error(`circle ${circleId} not found`);
+    this.store.deleteCircle(circleId);
+    log.warn(`circle ${circleId} deleted from this node (node-local; friends keep their copy)`);
+  }
+
   /** Unread inbound count per circle (PLAN-36 A2), for the rail badges. */
   unreadByCircle(): Record<string, number> {
     return unreadCounts(this.db);

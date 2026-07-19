@@ -295,7 +295,7 @@ export class CirclesStore {
     return row ? rowToMember(row) : null;
   }
 
-  /** Circles this member actively belongs to. */
+  /** Circles this member actively belongs to (ACTIVE only — the work set). */
   getCirclesForMember(memberPubkey: string): Circle[] {
     const rows = this.db
       .prepare(
@@ -306,6 +306,78 @@ export class CirclesStore {
       )
       .all(memberPubkey) as unknown as CircleRow[];
     return rows.map(rowToCircle);
+  }
+
+  /**
+   * Every circle this member belongs to for the UI — active, frozen, AND
+   * archived (active-only would hide frozen circles, making the unfreeze
+   * banner unreachable, and archived circles have nowhere to be restored
+   * from). Archived sort last.
+   */
+  getCirclesForMemberUi(memberPubkey: string): Circle[] {
+    const rows = this.db
+      .prepare(
+        `SELECT c.* FROM circles c
+           JOIN circle_members m ON m.circle_id = c.circle_id
+          WHERE m.member_pubkey = ? AND m.status = 'active'
+            AND c.status IN ('active', 'frozen', 'archived')
+          ORDER BY (c.status = 'archived') ASC, c.created_at ASC`,
+      )
+      .all(memberPubkey) as unknown as CircleRow[];
+    return rows.map(rowToCircle);
+  }
+
+  /** Hide a circle (reversible). Active or frozen → archived. */
+  archiveCircle(circleId: string, now: number = Date.now()): boolean {
+    const res = this.db
+      .prepare(
+        `UPDATE circles SET status = 'archived', updated_at = ?
+          WHERE circle_id = ? AND status IN ('active', 'frozen')`,
+      )
+      .run(now, circleId);
+    return Number(res.changes) === 1;
+  }
+
+  /** Restore an archived circle to active. */
+  unarchiveCircle(circleId: string, now: number = Date.now()): boolean {
+    const res = this.db
+      .prepare(
+        `UPDATE circles SET status = 'active', updated_at = ?
+          WHERE circle_id = ? AND status = 'archived'`,
+      )
+      .run(now, circleId);
+    return Number(res.changes) === 1;
+  }
+
+  /**
+   * Permanently delete a circle from THIS node — every circle-scoped table.
+   * Node-local: friends keep their own copy (there is no central authority to
+   * dissolve a P2P circle). Person/node-scoped tables (petnames, presence,
+   * settings, rate buckets) are NOT touched — they outlive any one circle.
+   */
+  deleteCircle(circleId: string): void {
+    const scoped = [
+      "circle_members",
+      "circle_messages",
+      "circle_events",
+      "circle_invites",
+      "circle_read_state",
+      "circle_pending_join",
+      "circle_pending_outbound",
+      "circle_disclosure_grants",
+      "circle_agent_drafts",
+    ];
+    this.db.exec("BEGIN");
+    try {
+      for (const table of scoped) {
+        this.db.prepare(`DELETE FROM ${table} WHERE circle_id = ?`).run(circleId);
+      }
+      this.db.prepare(`DELETE FROM circles WHERE circle_id = ?`).run(circleId);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
   }
 
   /**
