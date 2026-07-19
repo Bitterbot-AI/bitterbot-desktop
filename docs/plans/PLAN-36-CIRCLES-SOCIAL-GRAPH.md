@@ -634,6 +634,15 @@ your own `displayName`. Tests: two-node E2E (rename propagates to an existing
 friend's roster; empty refused; capped), a2a (presence updates the roster name,
 nameless beat preserves it), renderer (edit your name from the You row →
 `circles.self.setName`).
+The §5.6 self-name adversarial pass confirmed the peer-controlled presence
+rename is sound — the write is scoped to the SIGNED sender's own row (can't
+rename another member or the creator), suspended/removed members are refused
+before any write, the §5.6 collision cue fires on the post-rename displayName
+(a hostile rename to impersonate is flagged), and the petname override is not
+bypassed. Its one finding — an empty/whitespace `display_name` in a beat could
+COALESCE a blank over the stored name — was already fixed proactively
+(receiver treats blank as absent → preserves the name), with the exact test it
+recommended.
 
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
