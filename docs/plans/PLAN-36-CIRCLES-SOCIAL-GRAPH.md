@@ -617,6 +617,24 @@ SPOOFABLE displayName and on your own petnames, and suppressing the badge on
 members you've identified (petnamed). Subtitle softened to "the name they
 chose" (F3); members read once per circle (F5). Attack cases pinned.
 
+**Self-name LANDED (§5.6, the "your say" half).** Naming your OWN agent was
+config-only (`circles.displayName`, defaulting to "Bitterbot agent") with no UI
+— so friends saw the generic default. Now: an in-app "Your name" edit on the
+roster's You row (`circles.self.setName`), stored node-local (`circle_settings`,
+migration v49; the setting wins over config over the default). Two propagation
+fixes so friends actually see it: (a) the creator's own name is now written into
+their member row at circle creation (`creatorDisplayName` — it was NULL, so a
+creator's name never reached the roster before), and (b) presence beats carry
+`display_name`, and the receiver updates the sender's roster name (COALESCE, so
+a nameless beat is a no-op) — so a rename reaches EXISTING friends within ~30s,
+not just new joins. `setDisplayName` pushes a beat immediately. The name is
+peer-controlled on the presence path exactly like the join path (capped 80); the
+petname layer still lets each friend override it. `circles.status` now returns
+your own `displayName`. Tests: two-node E2E (rename propagates to an existing
+friend's roster; empty refused; capped), a2a (presence updates the roster name,
+nameless beat preserves it), renderer (edit your name from the You row →
+`circles.self.setName`).
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

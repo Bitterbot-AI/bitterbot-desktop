@@ -408,6 +408,10 @@ export function handleCirclePresence(
       ? body.mailbox_url
       : null;
   const status = typeof body.status === "string" ? body.status.slice(0, 40) : null;
+  // §5.6: a member's self-asserted name, carried in presence so a rename
+  // reaches existing rosters. Peer-controlled — capped like the join path; the
+  // petname layer defends against a hostile rename.
+  const displayName = typeof body.display_name === "string" ? body.display_name.slice(0, 80) : null;
   db.prepare(
     `INSERT INTO circle_peer_presence
        (peer_pubkey, a2a_url, box_pubkey, mailbox_url, last_seen_at, last_status)
@@ -425,7 +429,7 @@ export function handleCirclePresence(
   auth.store.updateMemberEndpoints(
     auth.envelope.circle_id,
     auth.envelope.author_pubkey,
-    { a2aUrl, boxPubkey, mailboxUrl },
+    { a2aUrl, boxPubkey, mailboxUrl, displayName },
     now,
   );
   return { ok: true, result: { seenAt: now } };

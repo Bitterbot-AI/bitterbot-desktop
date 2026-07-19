@@ -254,6 +254,10 @@ export class CirclesService {
   }
 
   private get displayName(): string {
+    // §5.6: the in-app self-name (node-local setting) wins; then config, then
+    // the assistant name, then the generic default.
+    const set = this.store.getSetting("display_name")?.trim();
+    if (set) return set;
     return this.config.circles?.displayName ?? this.config.ui?.assistant?.name ?? "Bitterbot agent";
   }
 
@@ -281,6 +285,7 @@ export class CirclesService {
       kind: args.kind ?? "connection",
       creatorPubkey: this.pubkey,
       creatorA2aUrl: this.a2aPublicUrl,
+      creatorDisplayName: this.displayName,
     });
   }
 
@@ -804,6 +809,9 @@ export class CirclesService {
           box_pubkey: this.boxKeys.publicKeyB64,
           mailbox_url: this.myMailboxUrl ?? null,
           status: "online",
+          // §5.6: carry our current self-name so a rename reaches existing
+          // friends' rosters on the next beat.
+          display_name: this.displayName,
         },
         this.key,
       );
@@ -1159,6 +1167,33 @@ export class CirclesService {
         updatedAt: Date.now(),
       },
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Self identity (§5.6): the name friends are introduced to you by.
+  // -------------------------------------------------------------------------
+
+  /** The name YOU are shown to friends by (your self-asserted display name). */
+  myDisplayName(): string {
+    return this.displayName;
+  }
+
+  /**
+   * Set your own display name (in-app), then push it to every circle via a
+   * presence beat so EXISTING friends' rosters refresh — not just new joins.
+   * The name is your own input, capped like any name; the peer's petname layer
+   * still lets each friend override it for their eyes.
+   */
+  async setDisplayName(name: string): Promise<void> {
+    const clean = name.trim().slice(0, 80);
+    if (!clean) throw new Error("name cannot be empty");
+    this.store.setSetting("display_name", clean);
+    // Best-effort live propagation; the name is stored regardless of reach.
+    try {
+      await this.heartbeat();
+    } catch (err) {
+      log.debug(`display-name presence push failed (stored anyway): ${String(err)}`);
+    }
   }
 
   // -------------------------------------------------------------------------

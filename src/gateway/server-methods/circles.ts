@@ -3,7 +3,10 @@
  * graph (the UI/CLI drives these; friends' nodes drive the A2A circle/*
  * verbs instead).
  *
- *  circles.status  — enabled?, our pubkey, connection count, reciprocity.
+ *  circles.status  — enabled?, our pubkey, connection count, reciprocity, our
+ *                    own display name (§5.6).
+ *  circles.self.setName — §5.6: set the name friends see you by (node-local
+ *                    setting, pushed via presence so existing rosters refresh).
  *  circles.list    — circles we belong to, with members + peer liveness + unread.
  *  circles.markRead— mark a circle read up to now (node-local; clears its badge).
  *  circles.unfreeze— Phase D: the human's deliberate act ending a fork freeze
@@ -109,6 +112,8 @@ export const circlesHandlers: GatewayRequestHandlers = {
         connectionCount: svc.service.connectionCount(),
         reciprocity: svc.service.reciprocity(),
         a2aPublicUrl: config.circles?.a2aPublicUrl ?? null,
+        // §5.6: the name friends see you by (editable in-app).
+        displayName: svc.service.myDisplayName(),
       },
       undefined,
     );
@@ -182,6 +187,21 @@ export const circlesHandlers: GatewayRequestHandlers = {
     try {
       svc.service.unfreezeCircle(circleId);
       respond(true, { ok: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.self.setName": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const name = typeof params.name === "string" ? params.name : "";
+    try {
+      await svc.service.setDisplayName(name);
+      respond(true, { ok: true, displayName: svc.service.myDisplayName() }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }

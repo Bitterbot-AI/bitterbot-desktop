@@ -160,6 +160,10 @@ export class CirclesStore {
     creatorPubkey: string;
     creatorWallet?: string;
     creatorA2aUrl?: string;
+    /** §5.6: the creator's own display name, so the roster carries it from the
+     *  start (previously NULL — the creator's name only reached friends via a
+     *  later presence beat). */
+    creatorDisplayName?: string;
     now?: number;
   }): string {
     const now = args.now ?? Date.now();
@@ -176,11 +180,12 @@ export class CirclesStore {
         `INSERT INTO circle_members
            (circle_id, member_pubkey, display_name, pinned_wallet, a2a_url, role,
             scopes_json, status, joined_at, updated_at)
-         VALUES (?, ?, NULL, ?, ?, 'creator', ?, 'active', ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, 'creator', ?, 'active', ?, ?)`,
       )
       .run(
         circleId,
         args.creatorPubkey,
+        args.creatorDisplayName?.trim().slice(0, 80) || null,
         args.creatorWallet ?? null,
         args.creatorA2aUrl ?? null,
         JSON.stringify(DEFAULT_MEMBER_SCOPES),
@@ -326,7 +331,15 @@ export class CirclesStore {
   updateMemberEndpoints(
     circleId: string,
     memberPubkey: string,
-    endpoints: { a2aUrl?: string | null; boxPubkey?: string | null; mailboxUrl?: string | null },
+    endpoints: {
+      a2aUrl?: string | null;
+      boxPubkey?: string | null;
+      mailboxUrl?: string | null;
+      // §5.6: a member's self-asserted name carried in presence, so a rename
+      // reaches EXISTING friends' rosters (not just new joins). Peer-controlled,
+      // capped by the caller; the petname layer defends against spoofing.
+      displayName?: string | null;
+    },
     now: number = Date.now(),
   ): void {
     this.db
@@ -335,6 +348,7 @@ export class CirclesStore {
            a2a_url = COALESCE(?, a2a_url),
            box_pubkey = COALESCE(?, box_pubkey),
            mailbox_url = COALESCE(?, mailbox_url),
+           display_name = COALESCE(?, display_name),
            updated_at = ?
          WHERE circle_id = ? AND member_pubkey = ?`,
       )
@@ -342,10 +356,32 @@ export class CirclesStore {
         endpoints.a2aUrl ?? null,
         endpoints.boxPubkey ?? null,
         endpoints.mailboxUrl ?? null,
+        endpoints.displayName ?? null,
         now,
         circleId,
         memberPubkey,
       );
+  }
+
+  // -------------------------------------------------------------------------
+  // Node-local settings (§5.6): this node's own circle profile (e.g. the
+  // display name friends see you by).
+  // -------------------------------------------------------------------------
+
+  getSetting(key: string): string | null {
+    const row = this.db.prepare(`SELECT value FROM circle_settings WHERE key = ?`).get(key) as
+      | { value: string }
+      | undefined;
+    return row?.value ?? null;
+  }
+
+  setSetting(key: string, value: string, now: number = Date.now()): void {
+    this.db
+      .prepare(
+        `INSERT INTO circle_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = ?`,
+      )
+      .run(key, value, now, now);
   }
 
   /**

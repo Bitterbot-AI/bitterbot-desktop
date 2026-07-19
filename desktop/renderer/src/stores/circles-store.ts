@@ -92,6 +92,8 @@ export interface CirclesStatus {
   connectionCount?: number;
   reciprocity?: { reciprocatedPeers: number; activePeers: number };
   a2aPublicUrl?: string | null;
+  /** §5.6: the name friends see you by (editable in-app). */
+  displayName?: string;
 }
 
 export interface CanvasSlice {
@@ -171,6 +173,7 @@ interface CirclesState {
   unfreeze: (circleId: string) => Promise<boolean>;
   removeMember: (circleId: string, memberPubkey: string) => Promise<boolean>;
   setPetname: (memberPubkey: string, petname: string) => Promise<boolean>;
+  setSelfName: (name: string) => Promise<boolean>;
   setNotice: (notice: string | null) => void;
 }
 
@@ -417,6 +420,18 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       const method = petname.trim() ? "circles.petname.set" : "circles.petname.clear";
       await request(method, { memberPubkey, petname: petname.trim() });
       await get().refresh(); // the new label shows everywhere this person appears
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  setSelfName: async (name) => {
+    if (!name.trim()) return false;
+    try {
+      await request("circles.self.setName", { name: name.trim() });
+      await get().refresh(); // status.displayName + how you appear locally
       return true;
     } catch (err) {
       set({ notice: String(err) });

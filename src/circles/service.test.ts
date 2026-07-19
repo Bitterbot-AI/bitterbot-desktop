@@ -622,6 +622,29 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(ana.canvasCards(circleId).some((c) => c.cardId === "c2")).toBe(false);
   });
 
+  it("§5.6: setting your own name propagates to an existing friend via presence", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    // After join, Bob's roster shows Ana's default self-asserted name.
+    const before = bob.store.getMember(circleId, pubkeyId(anaKey))?.displayName;
+    expect(before).toBe("Ana's agent");
+
+    // Ana renames herself in-app; setDisplayName pushes a presence beat.
+    await ana.setDisplayName("Professor Ana");
+    expect(ana.myDisplayName()).toBe("Professor Ana");
+
+    // The EXISTING friend's roster refreshed from the presence beat — not a
+    // re-join. (Bob hasn't petnamed Ana, so he sees her new self-name.)
+    expect(bob.store.getMember(circleId, pubkeyId(anaKey))?.displayName).toBe("Professor Ana");
+
+    // Empty name is refused; the stored name is capped.
+    await expect(ana.setDisplayName("   ")).rejects.toThrow(/empty/);
+    await ana.setDisplayName("x".repeat(200));
+    expect(ana.myDisplayName().length).toBe(80);
+  });
+
   it("§5.6: petnames are node-local, override display_name, and never sync", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

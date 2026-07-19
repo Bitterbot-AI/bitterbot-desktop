@@ -46,7 +46,9 @@ function stubRpcs(enabled = true) {
   requestMock.mockImplementation((method: string) => {
     switch (method) {
       case "circles.status":
-        return Promise.resolve({ enabled, pubkey: "ed25519:self" });
+        return Promise.resolve({ enabled, pubkey: "ed25519:self", displayName: "Bitterbot agent" });
+      case "circles.self.setName":
+        return Promise.resolve({ ok: true, displayName: "Vic" });
       case "circles.list":
         return Promise.resolve({ circles: [CIRCLE] });
       case "circles.messages":
@@ -444,6 +446,24 @@ describe("CirclesView", () => {
         cardId: "sg1",
         slot: sectionSlot("Glycolysis"),
       }),
+    );
+  });
+
+  it("§5.6: you can set your OWN name (how friends see you) from the You row", async () => {
+    localStorage.clear();
+    stubRpcs();
+    render(<CirclesView />);
+    // The You row shows the name friends are introduced to you by.
+    await waitFor(() =>
+      expect(screen.getByText(/friends see you as Bitterbot agent/i)).toBeTruthy(),
+    );
+    // Editing yourself calls circles.self.setName (not a petname).
+    await userEvent.click(screen.getByRole("button", { name: /Edit your name/i }));
+    const input = screen.getByPlaceholderText(/Your name \(friends see this\)/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, "Vic{Enter}");
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.self.setName", { name: "Vic" }),
     );
   });
 

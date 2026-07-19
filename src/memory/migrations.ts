@@ -1815,6 +1815,24 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 49,
+    description:
+      "PLAN-36 §5.6 (self identity): circle_settings — node-local key/value for " +
+      "this node's own circle profile. First key: 'display_name', the name YOU " +
+      "are introduced by (the self-asserted name friends see, previously buried " +
+      "in config and defaulting to 'Bitterbot agent'). Set in-app now; carried " +
+      "in presence so existing friends' rosters refresh, not just new joins.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_settings (
+          key        TEXT PRIMARY KEY,
+          value      TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 /**

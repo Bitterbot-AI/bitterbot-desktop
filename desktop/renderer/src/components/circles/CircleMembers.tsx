@@ -41,6 +41,8 @@ function readDismissed(): Set<string> {
 export function CircleMembers({ circle }: { circle: Circle }) {
   const removeMember = useCirclesStore((s) => s.removeMember);
   const setPetname = useCirclesStore((s) => s.setPetname);
+  const setSelfName = useCirclesStore((s) => s.setSelfName);
+  const selfName = useCirclesStore((s) => s.status?.displayName);
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -54,15 +56,17 @@ export function CircleMembers({ circle }: { circle: Circle }) {
   );
 
   const openEditor = (m: CircleMember) => {
-    setDraft(m.petname ?? "");
+    // Editing yourself edits YOUR display name (what friends see); editing
+    // anyone else edits your private petname for them.
+    setDraft(m.isSelf ? (selfName ?? "") : (m.petname ?? ""));
     setEditing(m.memberPubkey);
     setConfirmingRemove(null);
   };
 
-  const savePetname = async (m: CircleMember) => {
+  const saveName = async (m: CircleMember) => {
     if (busy) return;
     setBusy(true);
-    const ok = await setPetname(m.memberPubkey, draft);
+    const ok = m.isSelf ? await setSelfName(draft) : await setPetname(m.memberPubkey, draft);
     setBusy(false);
     if (ok) setEditing(null);
   };
@@ -154,6 +158,12 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                     </span>
                   )}
                 </div>
+                {/* Your own row: the name friends are introduced to you by. */}
+                {m.isSelf && (
+                  <span className="text-[11px] text-muted-foreground truncate">
+                    friends see you as {selfName ?? "…"}
+                  </span>
+                )}
                 {/* If you renamed them, show their own name underneath. */}
                 {!m.isSelf && m.petname && m.displayName && (
                   <span className="text-[11px] text-muted-foreground truncate">
@@ -164,11 +174,11 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                   <span className="text-[11px] text-muted-foreground">the name they chose</span>
                 )}
               </div>
-              {!m.isSelf && !isEditing && (
+              {!isEditing && (
                 <button
                   type="button"
                   onClick={() => openEditor(m)}
-                  aria-label={`Name ${name}`}
+                  aria-label={m.isSelf ? "Edit your name" : `Name ${name}`}
                   className="ml-auto opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-foreground p-0.5 rounded shrink-0"
                 >
                   <Pencil className="w-3.5 h-3.5" />
@@ -192,17 +202,21 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") void savePetname(m);
+                    if (e.key === "Enter") void saveName(m);
                     if (e.key === "Escape") setEditing(null);
                   }}
-                  placeholder={m.displayName ?? "Their name (only you see it)"}
+                  placeholder={
+                    m.isSelf
+                      ? "Your name (friends see this)"
+                      : (m.displayName ?? "Their name (only you see it)")
+                  }
                   maxLength={80}
                   autoFocus
                   className="flex-1 min-w-0 rounded border bg-background/60 text-xs outline-none px-2 py-1"
                 />
                 <button
                   type="button"
-                  onClick={() => void savePetname(m)}
+                  onClick={() => void saveName(m)}
                   disabled={busy}
                   aria-label="Save name"
                   className="text-primary p-1 disabled:opacity-50"

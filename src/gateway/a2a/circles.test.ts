@@ -421,6 +421,38 @@ describe("circle A2A verbs", () => {
     expect(handleCircleMethod("circle/event.append", { envelope: resume }, db, NOW).ok).toBe(true);
   });
 
+  it("§5.6: a presence beat carrying display_name updates the member's roster name", () => {
+    joinBob();
+    expect(store.getMember(circleId, pubkeyId(bob))?.displayName).toBe("Bob's agent");
+    // Bob renamed himself; his next presence beat carries the new name.
+    const out = handleCircleMethod(
+      "circle/presence",
+      {
+        envelope: makeCircleEnvelope(
+          "presence",
+          circleId,
+          { status: "online", display_name: "Bobby" },
+          bob,
+          NOW_S,
+        ),
+      },
+      db,
+      NOW,
+    );
+    expect(out.ok).toBe(true);
+    expect(store.getMember(circleId, pubkeyId(bob))?.displayName).toBe("Bobby");
+    // A beat without a name leaves the stored name intact (COALESCE).
+    handleCircleMethod(
+      "circle/presence",
+      {
+        envelope: makeCircleEnvelope("presence", circleId, { status: "online" }, bob, NOW_S),
+      },
+      db,
+      NOW + 1,
+    );
+    expect(store.getMember(circleId, pubkeyId(bob))?.displayName).toBe("Bobby");
+  });
+
   it("serves events.since to ledger.read holders and enforces presence + roster", () => {
     joinBob();
     const presence = handleCircleMethod(
