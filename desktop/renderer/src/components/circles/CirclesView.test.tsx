@@ -192,6 +192,9 @@ function stubRpcs(enabled = true) {
         return Promise.resolve({ ok: true });
       case "circles.member.remove":
         return Promise.resolve({ ok: true });
+      case "circles.petname.set":
+      case "circles.petname.clear":
+        return Promise.resolve({ ok: true });
       default:
         return Promise.resolve({});
     }
@@ -442,6 +445,66 @@ describe("CirclesView", () => {
         slot: sectionSlot("Glycolysis"),
       }),
     );
+  });
+
+  it("§5.6: a petname overrides the member's own name and prompts you to set one", async () => {
+    localStorage.clear();
+    stubRpcs();
+    render(<CirclesView />);
+    // Maya has no petname → she shows her self-asserted name with the nudge.
+    await waitFor(() => expect(screen.getAllByText("Maya").length).toBeGreaterThan(0));
+    expect(screen.getByText(/name only you see/i)).toBeTruthy();
+    // The prompt's "Name Maya" (first match; the hover pencil shares the label)
+    // opens an inline editor; save calls petname.set.
+    await userEvent.click(screen.getAllByRole("button", { name: /Name Maya/i })[0] as HTMLElement);
+    const input = screen.getByPlaceholderText("Maya");
+    await userEvent.type(input, "Maya (lab partner){Enter}");
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.petname.set", {
+        memberPubkey: "ed25519:maya",
+        petname: "Maya (lab partner)",
+      }),
+    );
+  });
+
+  it("§5.6: renders a set petname over the self-asserted name, with a collision cue", async () => {
+    localStorage.clear();
+    requestMock.mockImplementation((method: string) => {
+      switch (method) {
+        case "circles.status":
+          return Promise.resolve({ enabled: true, pubkey: "ed25519:self" });
+        case "circles.list":
+          return Promise.resolve({
+            circles: [
+              {
+                ...CIRCLE,
+                members: [
+                  CIRCLE.members[0],
+                  {
+                    memberPubkey: "ed25519:maya",
+                    displayName: "Maya",
+                    petname: "Lab partner Maya",
+                    unverified: false,
+                    nameCollision: true,
+                    role: "member",
+                    isSelf: false,
+                    lastSeenAt: Date.now(),
+                    lastStatus: "online",
+                  },
+                ],
+              },
+            ],
+          });
+        default:
+          return Promise.resolve({ messages: [], cards: [], drafts: [], pending: [] });
+      }
+    });
+    render(<CirclesView />);
+    // The private label shows as the name; her own name shows underneath.
+    expect(await screen.findByText("Lab partner Maya")).toBeTruthy();
+    expect(screen.getByText(/they call themselves Maya/i)).toBeTruthy();
+    // Same-name collision surfaces the impersonation cue.
+    expect(screen.getByLabelText("shared name")).toBeTruthy();
   });
 
   it("§5.5: a member can be removed node-locally (two-tap) via circles.member.remove", async () => {

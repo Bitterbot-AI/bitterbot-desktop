@@ -622,6 +622,25 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(ana.canvasCards(circleId).some((c) => c.cardId === "c2")).toBe(false);
   });
 
+  it("§5.6: petnames are node-local, override display_name, and never sync", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+
+    // Ana privately labels Bob. It's keyed by pubkey, stored on Ana's node only.
+    ana.setPetname(pubkeyId(bobKey), "Bob from class");
+    expect(ana.petnames()[pubkeyId(bobKey)]).toBe("Bob from class");
+    // It NEVER reaches Bob's node — the peer can't learn your private label.
+    expect(bob.petnames()[pubkeyId(bobKey)]).toBeUndefined();
+
+    // You cannot petname yourself, and the pubkey must be well-formed.
+    expect(() => ana.setPetname(pubkeyId(anaKey), "me")).toThrow(/yourself/);
+    expect(() => ana.setPetname("not-a-key", "x")).toThrow(/invalid member pubkey/);
+
+    // Clearing / empty label removes it.
+    ana.setPetname(pubkeyId(bobKey), "   ");
+    expect(ana.petnames()[pubkeyId(bobKey)]).toBeUndefined();
+  });
+
   it("folds reactions and pins across nodes (Phase D annotations)", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

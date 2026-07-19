@@ -11,6 +11,11 @@
  *  circles.member.remove — §5.5: the creator evicts a member (node-local; the
  *                    removed member's writes are default-denied at the A2A
  *                    boundary from here on).
+ *  circles.petname.set/clear — §5.6: the viewer's PRIVATE per-person label for
+ *                    a member (node-local, keyed by pubkey; overrides the
+ *                    self-asserted displayName for this node's eyes only,
+ *                    never synced). circles.list carries petname + the
+ *                    unverified / nameCollision affordances.
  *  circles.create  — create a circle (kind free string; "connection" = edge).
  *  circles.invite  — mint an invite code (the code returns ONCE).
  *  circles.join    — redeem a pasted invite code (the invitee-side consent:
@@ -116,7 +121,26 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
     const presence = new Map(svc.service.peerPresence().map((p) => [p.peerPubkey, p] as const));
     const unread = svc.service.unreadByCircle();
-    const circles = svc.service.listCircles().map((c) => ({
+    const selfPubkey = svc.service.pubkey;
+    // §5.6 petname layer: the viewer's private labels, plus a same-name
+    // collision map so the UI can flag impersonation (a stranger using a name
+    // you already associate with a DIFFERENT key). Names resolve to
+    // petname ?? displayName; collision keys on the effective display name,
+    // case-insensitive, across every circle the viewer is in.
+    const petnames = svc.service.petnames();
+    const allCircles = svc.service.listCircles();
+    const nameToPubkeys = new Map<string, Set<string>>();
+    for (const c of allCircles) {
+      for (const m of svc.service.store.getMembers(c.circleId)) {
+        if (m.memberPubkey === selfPubkey) continue;
+        const shown = (petnames[m.memberPubkey] ?? m.displayName ?? "").trim().toLowerCase();
+        if (!shown) continue;
+        (nameToPubkeys.get(shown) ?? nameToPubkeys.set(shown, new Set()).get(shown)!).add(
+          m.memberPubkey,
+        );
+      }
+    }
+    const circles = allCircles.map((c) => ({
       circleId: c.circleId,
       name: c.name,
       kind: c.kind,
@@ -125,14 +149,24 @@ export const circlesHandlers: GatewayRequestHandlers = {
       keyEpoch: c.keyEpoch,
       createdAt: c.createdAt,
       unread: unread[c.circleId] ?? 0,
-      members: svc.service.store.getMembers(c.circleId).map((m) => ({
-        memberPubkey: m.memberPubkey,
-        displayName: m.displayName,
-        role: m.role,
-        isSelf: m.memberPubkey === svc.service.pubkey,
-        lastSeenAt: presence.get(m.memberPubkey)?.lastSeenAt ?? null,
-        lastStatus: presence.get(m.memberPubkey)?.lastStatus ?? null,
-      })),
+      members: svc.service.store.getMembers(c.circleId).map((m) => {
+        const petname = petnames[m.memberPubkey] ?? null;
+        const shown = (petname ?? m.displayName ?? "").trim().toLowerCase();
+        return {
+          memberPubkey: m.memberPubkey,
+          displayName: m.displayName,
+          petname,
+          role: m.role,
+          isSelf: m.memberPubkey === selfPubkey,
+          // No petname yet → the human hasn't vouched for who this key is.
+          unverified: m.memberPubkey !== selfPubkey && !petname,
+          // Another DIFFERENT key you know shows the same name — check the key.
+          nameCollision:
+            m.memberPubkey !== selfPubkey && !!shown && (nameToPubkeys.get(shown)?.size ?? 0) > 1,
+          lastSeenAt: presence.get(m.memberPubkey)?.lastSeenAt ?? null,
+          lastStatus: presence.get(m.memberPubkey)?.lastStatus ?? null,
+        };
+      }),
     }));
     respond(true, { circles }, undefined);
   },
@@ -154,6 +188,41 @@ export const circlesHandlers: GatewayRequestHandlers = {
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }
+  },
+
+  "circles.petname.set": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const memberPubkey = typeof params.memberPubkey === "string" ? params.memberPubkey : "";
+    const petname = typeof params.petname === "string" ? params.petname : "";
+    if (!memberPubkey) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "memberPubkey required"));
+      return;
+    }
+    try {
+      svc.service.setPetname(memberPubkey, petname);
+      respond(true, { ok: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "circles.petname.clear": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const memberPubkey = typeof params.memberPubkey === "string" ? params.memberPubkey : "";
+    if (!memberPubkey) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "memberPubkey required"));
+      return;
+    }
+    svc.service.clearPetname(memberPubkey);
+    respond(true, { ok: true }, undefined);
   },
 
   "circles.member.remove": async ({ params, respond }) => {

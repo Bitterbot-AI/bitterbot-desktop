@@ -1794,6 +1794,27 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 48,
+    description:
+      "PLAN-36 §5.6 (petname layer): circle_petnames — a NODE-LOCAL, per-person " +
+      "label the human assigns to a member (keyed by member_pubkey, so naming " +
+      "someone names them in every shared circle). The petname overrides the " +
+      "member's self-asserted display_name for THIS node's eyes only; it never " +
+      "syncs or fans out (the peer never learns it). This is the anti-" +
+      "impersonation anchor: the label is bound to the ed25519 key, not the " +
+      "spoofable name string.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_petnames (
+          member_pubkey TEXT PRIMARY KEY,
+          petname       TEXT NOT NULL,
+          created_at    INTEGER NOT NULL,
+          updated_at    INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 /**

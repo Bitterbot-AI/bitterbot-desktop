@@ -1,6 +1,6 @@
 import { ShieldAlert } from "lucide-react";
 import { useState } from "react";
-import { useCirclesStore, type Circle } from "../../stores/circles-store";
+import { memberName, useCirclesStore, type Circle } from "../../stores/circles-store";
 
 // PLAN-36 Phase D: fork-freeze recovery. A same-seq divergence in a member's
 // signed event chain froze this circle (writes refused on THIS node). The
@@ -30,9 +30,13 @@ export function FrozenCircleBanner({ circle }: { circle: Circle }) {
   const [busy, setBusy] = useState(false);
 
   const evidence = parseEvidence(circle.freezeReason);
+  const forkedMember = evidence?.author_pubkey
+    ? circle.members.find((m) => m.memberPubkey === evidence.author_pubkey)
+    : undefined;
   const who = evidence?.author_pubkey
-    ? (circle.members.find((m) => m.memberPubkey === evidence.author_pubkey)?.displayName ??
-      `${evidence.author_pubkey.slice(0, 24)}…`)
+    ? forkedMember
+      ? memberName(forkedMember)
+      : `${evidence.author_pubkey.slice(0, 24)}…`
     : null;
 
   const doUnfreeze = async () => {

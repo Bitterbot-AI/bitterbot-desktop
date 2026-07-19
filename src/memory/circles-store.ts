@@ -431,6 +431,39 @@ export class CirclesStore {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Petnames (PLAN-36 §5.6): node-local, per-person labels. Keyed by pubkey so
+  // one label names a person across every shared circle. Never synced.
+  // -------------------------------------------------------------------------
+
+  /** All petnames as pubkey -> label (node-local; the viewer's private map). */
+  getPetnames(): Map<string, string> {
+    const rows = this.db
+      .prepare(`SELECT member_pubkey, petname FROM circle_petnames`)
+      .all() as unknown as Array<{ member_pubkey: string; petname: string }>;
+    return new Map(rows.map((r) => [r.member_pubkey, r.petname]));
+  }
+
+  /** Set (or replace) our private label for a person. Empty label clears it. */
+  setPetname(memberPubkey: string, petname: string, now: number = Date.now()): void {
+    const label = petname.trim().slice(0, 80);
+    if (!label) {
+      this.clearPetname(memberPubkey);
+      return;
+    }
+    this.db
+      .prepare(
+        `INSERT INTO circle_petnames (member_pubkey, petname, created_at, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(member_pubkey) DO UPDATE SET petname = excluded.petname, updated_at = ?`,
+      )
+      .run(memberPubkey, label, now, now, now);
+  }
+
+  clearPetname(memberPubkey: string): void {
+    this.db.prepare(`DELETE FROM circle_petnames WHERE member_pubkey = ?`).run(memberPubkey);
+  }
+
   /**
    * Freeze a circle (fork detected in the event ledger, PLAN-31 §3.3: a
    * same-seq divergence is cryptographic proof of tampering — writes stop

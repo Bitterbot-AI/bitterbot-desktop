@@ -1161,6 +1161,30 @@ export class CirclesService {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // Petnames (§5.6): node-local per-person labels + name resolution.
+  // -------------------------------------------------------------------------
+
+  /** Our private labels, pubkey -> petname (never leaves this node). */
+  petnames(): Record<string, string> {
+    return Object.fromEntries(this.store.getPetnames());
+  }
+
+  /** Assign / edit our private label for a person (empty clears it). */
+  setPetname(memberPubkey: string, petname: string): void {
+    if (!/^ed25519:[0-9a-f]{64}$/.test(memberPubkey)) {
+      throw new Error("invalid member pubkey");
+    }
+    if (memberPubkey === this.pubkey) {
+      throw new Error("you cannot petname yourself");
+    }
+    this.store.setPetname(memberPubkey, petname);
+  }
+
+  clearPetname(memberPubkey: string): void {
+    this.store.clearPetname(memberPubkey);
+  }
+
   /**
    * §5.5: remove a member from a circle (the moderation primitive — evict a
    * bad actor). NODE-LOCAL self-protection: ANY member may prune another from

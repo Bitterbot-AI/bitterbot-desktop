@@ -10,10 +10,21 @@ import { useGatewayStore } from "./gateway-store";
 export interface CircleMember {
   memberPubkey: string;
   displayName: string | null;
+  /** §5.6: the viewer's private label for this person (overrides displayName). */
+  petname?: string | null;
+  /** No petname set yet — the human hasn't vouched for who this key is. */
+  unverified?: boolean;
+  /** Another different key you know shows the same name — impersonation cue. */
+  nameCollision?: boolean;
   role: string;
   isSelf: boolean;
   lastSeenAt: number | null;
   lastStatus: string | null;
+}
+
+/** The name to show for a member: your private label wins, else their own. */
+export function memberName(m: Pick<CircleMember, "petname" | "displayName">): string {
+  return (m.petname ?? m.displayName ?? "friend").trim() || "friend";
 }
 
 export interface Circle {
@@ -159,6 +170,7 @@ interface CirclesState {
   markRead: (circleId: string) => void;
   unfreeze: (circleId: string) => Promise<boolean>;
   removeMember: (circleId: string, memberPubkey: string) => Promise<boolean>;
+  setPetname: (memberPubkey: string, petname: string) => Promise<boolean>;
   setNotice: (notice: string | null) => void;
 }
 
@@ -392,6 +404,19 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     try {
       await request("circles.member.remove", { circleId, memberPubkey });
       await get().refresh(); // roster shrinks everywhere it shows
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  setPetname: async (memberPubkey, petname) => {
+    try {
+      // Empty label clears it; the server treats blank as clear too.
+      const method = petname.trim() ? "circles.petname.set" : "circles.petname.clear";
+      await request(method, { memberPubkey, petname: petname.trim() });
+      await get().refresh(); // the new label shows everywhere this person appears
       return true;
     } catch (err) {
       set({ notice: String(err) });

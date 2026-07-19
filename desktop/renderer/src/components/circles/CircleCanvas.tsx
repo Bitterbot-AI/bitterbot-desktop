@@ -1,6 +1,6 @@
 import { BookOpen, ListChecks, Plus, StickyNote, X } from "lucide-react";
 import { useState } from "react";
-import { useCirclesStore, type Circle } from "../../stores/circles-store";
+import { memberName, useCirclesStore, type Circle } from "../../stores/circles-store";
 import { DecisionCard } from "./DecisionCard";
 import { StudyGuideCard } from "./StudyGuideCard";
 
@@ -15,7 +15,8 @@ type Mode = "note" | "decision" | "study" | null;
 
 function nameFor(circle: Circle, pubkey: string, selfPubkey: string | undefined): string {
   if (pubkey === selfPubkey) return "You";
-  return circle.members.find((m) => m.memberPubkey === pubkey)?.displayName ?? "friend";
+  const found = circle.members.find((m) => m.memberPubkey === pubkey);
+  return found ? memberName(found) : "friend";
 }
 
 function fmtWhen(ts: number): string {

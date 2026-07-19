@@ -1,7 +1,12 @@
 import { Check, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
-import { useCirclesStore, type Circle, type CanvasCard } from "../../stores/circles-store";
+import {
+  memberName,
+  useCirclesStore,
+  type Circle,
+  type CanvasCard,
+} from "../../stores/circles-store";
 import { AgentSliceSuggestion } from "./AgentSliceSuggestion";
 
 // PLAN-36 C2: the Decision Card — a constraint-aware group poll. The options are
@@ -12,7 +17,8 @@ import { AgentSliceSuggestion } from "./AgentSliceSuggestion";
 
 function nameFor(circle: Circle, pubkey: string, selfPubkey: string | undefined): string {
   if (pubkey === selfPubkey) return "You";
-  return circle.members.find((m) => m.memberPubkey === pubkey)?.displayName ?? "friend";
+  const found = circle.members.find((m) => m.memberPubkey === pubkey);
+  return found ? memberName(found) : "friend";
 }
 
 export function DecisionCard({

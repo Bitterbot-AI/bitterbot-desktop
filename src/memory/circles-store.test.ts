@@ -108,6 +108,25 @@ describe("CirclesStore", () => {
     expect(store.memberHasScope(circleId, CAROL, "ledger.read")).toBe(false);
   });
 
+  it("stores, replaces, and clears node-local petnames keyed by pubkey (§5.6)", () => {
+    store.setPetname(BOB, "Bob from class", NOW);
+    expect(store.getPetnames().get(BOB)).toBe("Bob from class");
+    // Replace.
+    store.setPetname(BOB, "Roommate Bob", NOW + 1);
+    expect(store.getPetnames().get(BOB)).toBe("Roommate Bob");
+    // Blank clears.
+    store.setPetname(BOB, "   ", NOW + 2);
+    expect(store.getPetnames().has(BOB)).toBe(false);
+    // Explicit clear is idempotent.
+    store.setPetname(CAROL, "C", NOW + 3);
+    store.clearPetname(CAROL);
+    store.clearPetname(CAROL);
+    expect(store.getPetnames().has(CAROL)).toBe(false);
+    // Capped at 80 chars.
+    store.setPetname(BOB, "x".repeat(200), NOW + 4);
+    expect(store.getPetnames().get(BOB)?.length).toBe(80);
+  });
+
   it("lists circles for a member across kinds (domain-agnostic)", () => {
     const careId = store.createCircle({
       name: "Mom's Care",

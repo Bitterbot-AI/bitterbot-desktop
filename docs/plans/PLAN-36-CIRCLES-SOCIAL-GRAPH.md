@@ -585,6 +585,29 @@ anchor), **who audits the proofs**, and **the client response on a detected key
 change** (warn + require re-verify before further messaging; a detectable-but-
 unhandled change is just logging); **(4) signed FoF introductions**.
 
+**Petname layer LANDED (§5.6 step 1).** The identity model is now three layers,
+petname-first (Zooko/Spritely + Signal/Briar): the **key** (`member_pubkey`,
+the only authenticated identity) → the member's self-asserted **displayName**
+(their "say", spoofable, unchanged) → a **petname**, the viewer's PRIVATE
+per-person label. Petnames are node-LOCAL, keyed by pubkey (name someone once,
+they're named in every shared circle — `circle_petnames`, migration v48), never
+synced and never fan out (the peer never learns your label). Every name renders
+`petname ?? displayName` (`memberName` helper, threaded through the roster,
+message authorship, and all cards). RPCs `circles.petname.set/clear`;
+`circles.list` now carries `petname`, plus two affordances computed server-side:
+`unverified` (no petname yet — you haven't vouched for this key) and
+`nameCollision` (a DIFFERENT key you know shows the same effective name — the
+anti-impersonation cue). UI: a skippable "name this friend" prompt on new
+connections (dismissal persisted), inline rename from the roster (pencil), the
+renamed person's own name shown as "they call themselves X", and an amber
+shared-name warning. Self-petname and malformed pubkeys are refused; the petname
+is the human's own input (length-capped, React-escaped like all names). Staged
+next per §5.6: (2) QR safety-number verify to mark a binding _verified_, (3) the
+key-transparency log to catch a later key change. Tests: store (set/replace/
+clear/cap), two-node E2E (node-local, no-sync, self/format guards), renderer
+(petname overrides + "they call themselves" + collision cue + rename RPC +
+prompt).
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

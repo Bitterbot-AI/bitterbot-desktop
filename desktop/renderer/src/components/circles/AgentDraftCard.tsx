@@ -1,6 +1,11 @@
 import { Sparkles, X } from "lucide-react";
 import { useState } from "react";
-import { useCirclesStore, type AgentDraft, type Circle } from "../../stores/circles-store";
+import {
+  memberName,
+  useCirclesStore,
+  type AgentDraft,
+  type Circle,
+} from "../../stores/circles-store";
 
 // PLAN-36 Phase B: the consent surface for an @agent draft. The member's own
 // agent wrote this on the quarantined tool-less path after someone summoned it;
@@ -11,10 +16,8 @@ import { useCirclesStore, type AgentDraft, type Circle } from "../../stores/circ
 function summonerName(circle: Circle, draft: AgentDraft, selfPubkey: string | undefined): string {
   if (!draft.summonAuthorPubkey) return "someone";
   if (draft.summonAuthorPubkey === selfPubkey) return "you";
-  return (
-    circle.members.find((m) => m.memberPubkey === draft.summonAuthorPubkey)?.displayName ??
-    "a friend"
-  );
+  const found = circle.members.find((m) => m.memberPubkey === draft.summonAuthorPubkey);
+  return found ? memberName(found) : "a friend";
 }
 
 export function AgentDraftCard({

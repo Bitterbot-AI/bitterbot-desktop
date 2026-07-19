@@ -1,7 +1,12 @@
 import { Pin, Reply, Send, X } from "lucide-react";
 import { useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
-import { useCirclesStore, type Circle, type CircleMessage } from "../../stores/circles-store";
+import {
+  memberName,
+  useCirclesStore,
+  type Circle,
+  type CircleMessage,
+} from "../../stores/circles-store";
 import { AgentDraftCard } from "./AgentDraftCard";
 import { CircleMessageList } from "./CircleMessageList";
 import { FrozenCircleBanner } from "./FrozenCircleBanner";
@@ -23,7 +28,8 @@ function replyLabel(
   members: Circle["members"],
 ) {
   if (m.direction === "out" || m.authorPubkey === selfPubkey) return "You";
-  return members.find((x) => x.memberPubkey === m.authorPubkey)?.displayName ?? "friend";
+  const found = members.find((x) => x.memberPubkey === m.authorPubkey);
+  return found ? memberName(found) : "friend";
 }
 
 export function CircleChat({ circle, selfPubkey }: Props) {

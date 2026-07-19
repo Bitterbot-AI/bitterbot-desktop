@@ -1,8 +1,13 @@
 import { Pin, Reply, ShieldCheck, SmilePlus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CircleMember, CircleMessage, MessageAnnotations } from "../../stores/circles-store";
 import { unwrapForDisplay } from "../../lib/external-content-display";
 import { cn } from "../../lib/utils";
+import {
+  memberName,
+  type CircleMember,
+  type CircleMessage,
+  type MessageAnnotations,
+} from "../../stores/circles-store";
 
 // Phase D reactions: a small fixed palette keeps the picker one tap deep.
 const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
@@ -58,7 +63,7 @@ export function CircleMessageList({
 
   const nameOf = useMemo(() => {
     const map = new Map<string, string>();
-    for (const m of members) map.set(m.memberPubkey, m.displayName ?? "friend");
+    for (const m of members) map.set(m.memberPubkey, memberName(m));
     return (pubkey: string) => map.get(pubkey) ?? "friend";
   }, [members]);
 
