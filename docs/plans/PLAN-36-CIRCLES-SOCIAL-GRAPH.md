@@ -663,6 +663,15 @@ gate. Tests: store (archive/unarchive/delete cascade + work-set vs UI-set), two-
 node E2E (archive reversible + refuses writes; delete is node-local — the friend
 keeps their copy; guards throw), renderer (delete + archive from the rail menu,
 each behind a confirm).
+The archive/delete adversarial pass confirmed delete is complete and safe (no
+orphaned rows, clean re-join, sound transaction, no active-circle crash window)
+and caught one real ARCHIVE bug: `isWritable` gates only the event ledger, so an
+archived circle still stored inbound chat, bumped presence, and queued @agent
+drafts (F1). Fixed — `storeInboundMessage` refuses inbound when the circle is
+archived (frozen circles still take chat; only their ledger is frozen). Plus:
+re-accepting an invite to an archived circle un-archives it (`importCircle`
+resets archived→active, frozen untouched — F3); the delete test now seeds +
+asserts the cascade across scoped tables and its single-circle scope (F2).
 
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
