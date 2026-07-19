@@ -410,8 +410,11 @@ export function handleCirclePresence(
   const status = typeof body.status === "string" ? body.status.slice(0, 40) : null;
   // §5.6: a member's self-asserted name, carried in presence so a rename
   // reaches existing rosters. Peer-controlled — capped like the join path; the
-  // petname layer defends against a hostile rename.
-  const displayName = typeof body.display_name === "string" ? body.display_name.slice(0, 80) : null;
+  // petname layer defends against a hostile rename. Empty/whitespace is treated
+  // as absent (null) so a nameless or blank beat can't COALESCE away a real
+  // stored name.
+  const rawName = typeof body.display_name === "string" ? body.display_name.trim() : "";
+  const displayName = rawName ? rawName.slice(0, 80) : null;
   db.prepare(
     `INSERT INTO circle_peer_presence
        (peer_pubkey, a2a_url, box_pubkey, mailbox_url, last_seen_at, last_status)

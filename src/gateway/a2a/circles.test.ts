@@ -451,6 +451,23 @@ describe("circle A2A verbs", () => {
       NOW + 1,
     );
     expect(store.getMember(circleId, pubkeyId(bob))?.displayName).toBe("Bobby");
+    // A blank/whitespace name must NOT wipe the stored name (empty → treated
+    // as absent, not COALESCE'd in as "").
+    handleCircleMethod(
+      "circle/presence",
+      {
+        envelope: makeCircleEnvelope(
+          "presence",
+          circleId,
+          { status: "online", display_name: "   " },
+          bob,
+          NOW_S,
+        ),
+      },
+      db,
+      NOW + 2,
+    );
+    expect(store.getMember(circleId, pubkeyId(bob))?.displayName).toBe("Bobby");
   });
 
   it("serves events.since to ledger.read holders and enforces presence + roster", () => {
