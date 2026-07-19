@@ -161,9 +161,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                   </span>
                 )}
                 {!m.isSelf && !m.petname && (
-                  <span className="text-[11px] text-muted-foreground">
-                    unverified — the name they chose
-                  </span>
+                  <span className="text-[11px] text-muted-foreground">the name they chose</span>
                 )}
               </div>
               {!m.isSelf && !isEditing && (

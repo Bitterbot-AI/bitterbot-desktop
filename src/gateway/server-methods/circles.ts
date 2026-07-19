@@ -53,6 +53,7 @@ import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { listDisclosureGrants, setDisclosureGrant } from "../../circles/disclosure.js";
 import { inviteLink } from "../../circles/invites.js";
+import { computeNameFlags } from "../../circles/petnames.js";
 import { CirclesService } from "../../circles/service.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
@@ -122,24 +123,24 @@ export const circlesHandlers: GatewayRequestHandlers = {
     const presence = new Map(svc.service.peerPresence().map((p) => [p.peerPubkey, p] as const));
     const unread = svc.service.unreadByCircle();
     const selfPubkey = svc.service.pubkey;
-    // §5.6 petname layer: the viewer's private labels, plus a same-name
-    // collision map so the UI can flag impersonation (a stranger using a name
-    // you already associate with a DIFFERENT key). Names resolve to
-    // petname ?? displayName; collision keys on the effective display name,
-    // case-insensitive, across every circle the viewer is in.
+    // §5.6 petname layer: the viewer's private labels + per-member name-safety
+    // flags. Members are read ONCE per circle; the flags (unverified /
+    // impersonation collision) are computed by the pure, tested helper — the
+    // collision keys on the SPOOFABLE displayName so petnaming a friend doesn't
+    // blind the cue to an impostor copying their name (review F1/F2).
     const petnames = svc.service.petnames();
     const allCircles = svc.service.listCircles();
-    const nameToPubkeys = new Map<string, Set<string>>();
-    for (const c of allCircles) {
-      for (const m of svc.service.store.getMembers(c.circleId)) {
-        if (m.memberPubkey === selfPubkey) continue;
-        const shown = (petnames[m.memberPubkey] ?? m.displayName ?? "").trim().toLowerCase();
-        if (!shown) continue;
-        (nameToPubkeys.get(shown) ?? nameToPubkeys.set(shown, new Set()).get(shown)!).add(
-          m.memberPubkey,
-        );
-      }
-    }
+    const membersByCircle = new Map(
+      allCircles.map((c) => [c.circleId, svc.service.store.getMembers(c.circleId)] as const),
+    );
+    const flags = computeNameFlags(
+      [...membersByCircle.values()].flat().map((m) => ({
+        memberPubkey: m.memberPubkey,
+        displayName: m.displayName,
+        isSelf: m.memberPubkey === selfPubkey,
+      })),
+      petnames,
+    );
     const circles = allCircles.map((c) => ({
       circleId: c.circleId,
       name: c.name,
@@ -149,20 +150,16 @@ export const circlesHandlers: GatewayRequestHandlers = {
       keyEpoch: c.keyEpoch,
       createdAt: c.createdAt,
       unread: unread[c.circleId] ?? 0,
-      members: svc.service.store.getMembers(c.circleId).map((m) => {
-        const petname = petnames[m.memberPubkey] ?? null;
-        const shown = (petname ?? m.displayName ?? "").trim().toLowerCase();
+      members: (membersByCircle.get(c.circleId) ?? []).map((m) => {
+        const f = flags.get(m.memberPubkey);
         return {
           memberPubkey: m.memberPubkey,
           displayName: m.displayName,
-          petname,
+          petname: petnames[m.memberPubkey] ?? null,
           role: m.role,
           isSelf: m.memberPubkey === selfPubkey,
-          // No petname yet → the human hasn't vouched for who this key is.
-          unverified: m.memberPubkey !== selfPubkey && !petname,
-          // Another DIFFERENT key you know shows the same name — check the key.
-          nameCollision:
-            m.memberPubkey !== selfPubkey && !!shown && (nameToPubkeys.get(shown)?.size ?? 0) > 1,
+          unverified: f?.unverified ?? false,
+          nameCollision: f?.nameCollision ?? false,
           lastSeenAt: presence.get(m.memberPubkey)?.lastSeenAt ?? null,
           lastStatus: presence.get(m.memberPubkey)?.lastStatus ?? null,
         };
