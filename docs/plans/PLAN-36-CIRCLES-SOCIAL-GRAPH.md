@@ -607,6 +607,15 @@ key-transparency log to catch a later key change. Tests: store (set/replace/
 clear/cap), two-node E2E (node-local, no-sync, self/format guards), renderer
 (petname overrides + "they call themselves" + collision cue + rename RPC +
 prompt).
+The §5.6 adversarial pass confirmed the anchor is sound and there is NO leak
+(petnames never reach peers, the agent tool, or the LLM draft prompts — all
+read displayName), and caught the collision cue keyed on the RESOLVED name, so
+petnaming a friend BLINDED the cue to an impostor copying that friend's
+displayName and alarmed on the friend too (F1/F2). Fixed: the logic is a pure,
+unit-tested `computeNameFlags` (`circles/petnames.ts`) keying collision on the
+SPOOFABLE displayName and on your own petnames, and suppressing the badge on
+members you've identified (petnamed). Subtitle softened to "the name they
+chose" (F3); members read once per circle (F5). Attack cases pinned.
 
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
