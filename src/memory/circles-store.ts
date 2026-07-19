@@ -494,6 +494,10 @@ export class CirclesStore {
            name = excluded.name,
            kind = excluded.kind,
            key_epoch = MAX(circles.key_epoch, excluded.key_epoch),
+           -- Re-accepting an invite to a circle you ARCHIVED restores it
+           -- (else it re-mirrors but stays hidden). Frozen stays frozen —
+           -- that needs the deliberate unfreeze, not a silent re-import.
+           status = CASE WHEN circles.status = 'archived' THEN 'active' ELSE circles.status END,
            updated_at = excluded.updated_at`,
       )
       .run(

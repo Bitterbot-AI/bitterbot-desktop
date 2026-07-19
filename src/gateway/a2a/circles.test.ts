@@ -421,6 +421,54 @@ describe("circle A2A verbs", () => {
     expect(handleCircleMethod("circle/event.append", { envelope: resume }, db, NOW).ok).toBe(true);
   });
 
+  it("an archived circle refuses inbound messages (stays dormant, no draft queue)", () => {
+    joinBob();
+    // Bob's message lands while active.
+    expect(
+      handleCircleMethod(
+        "circle/message",
+        { envelope: makeCircleEnvelope("message", circleId, { text: "hi" }, bob, NOW_S) },
+        db,
+        NOW,
+      ).ok,
+    ).toBe(true);
+    const before = (
+      db.prepare(`SELECT COUNT(*) AS n FROM circle_messages WHERE direction='in'`).get() as {
+        n: number;
+      }
+    ).n;
+
+    // Archive it: further inbound (including an @agent summon) is refused, so
+    // nothing is stored and no draft is queued.
+    store.archiveCircle(circleId);
+    const out = handleCircleMethod(
+      "circle/message",
+      {
+        envelope: makeCircleEnvelope(
+          "message",
+          circleId,
+          { text: "@agent you there?" },
+          bob,
+          NOW_S,
+        ),
+      },
+      db,
+      NOW + 1,
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.error.message).toMatch(/archived/i);
+    expect(
+      (
+        db.prepare(`SELECT COUNT(*) AS n FROM circle_messages WHERE direction='in'`).get() as {
+          n: number;
+        }
+      ).n,
+    ).toBe(before); // no new inbound row
+    expect(
+      (db.prepare(`SELECT COUNT(*) AS n FROM circle_agent_drafts`).get() as { n: number }).n,
+    ).toBe(0); // no draft queued
+  });
+
   it("§5.6: a presence beat carrying display_name updates the member's roster name", () => {
     joinBob();
     expect(store.getMember(circleId, pubkeyId(bob))?.displayName).toBe("Bob's agent");

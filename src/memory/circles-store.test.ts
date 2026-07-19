@@ -145,11 +145,38 @@ describe("CirclesStore", () => {
     expect(store.unarchiveCircle(circleId)).toBe(true);
     expect(store.getCircle(circleId)?.status).toBe("active");
 
-    // Delete removes the circle AND its scoped rows from this node.
+    // Seed valid rows in several scoped tables + another circle, so the cascade
+    // is actually proven (and proven scoped to ONE circle).
+    const rawDb = (store as unknown as { db: import("node:sqlite").DatabaseSync }).db;
+    const seedMsg = (cid: string) =>
+      rawDb
+        .prepare(
+          `INSERT INTO circle_messages (message_id, circle_id, author_pubkey, direction, content, created_at)
+           VALUES (?, ?, 'x', 'in', 'hi', ?)`,
+        )
+        .run(crypto.randomUUID(), cid, NOW);
+    seedMsg(circleId);
+    rawDb
+      .prepare(`INSERT INTO circle_read_state (circle_id, last_read_at) VALUES (?, ?)`)
+      .run(circleId, NOW);
+    const other = store.createCircle({ name: "Other", creatorPubkey: ALICE });
+    seedMsg(other); // a row in a DIFFERENT circle
+
     store.deleteCircle(circleId);
     expect(store.getCircle(circleId)).toBeNull();
     expect(store.getMembers(circleId)).toHaveLength(0);
     expect(store.getCirclesForMemberUi(ALICE).some((c) => c.circleId === circleId)).toBe(false);
+    const count = (t: string, cid: string) =>
+      (
+        rawDb.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE circle_id = ?`).get(cid) as {
+          n: number;
+        }
+      ).n;
+    expect(count("circle_messages", circleId)).toBe(0);
+    expect(count("circle_read_state", circleId)).toBe(0);
+    expect(count("circle_members", circleId)).toBe(0);
+    // The other circle's data survived — delete is scoped to one circle.
+    expect(count("circle_messages", other)).toBe(1);
   });
 
   it("lists circles for a member across kinds (domain-agnostic)", () => {

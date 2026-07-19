@@ -455,6 +455,13 @@ function storeInboundMessage(
   kind: "message" | "ask" | "answer",
   now: number,
 ): CircleOutcome<{ messageId: string; severity: string }> {
+  // An ARCHIVED circle is parked — refuse inbound so it stays dormant (no
+  // stored message, no presence bump, no @agent draft). Frozen circles still
+  // take chat; only their event ledger is frozen (that gate is in
+  // handleCircleEventAppend, not here).
+  if (new CirclesStore(db).getCircle(env.circle_id)?.status === "archived") {
+    return err(A2aErrorCodes.INVALID_REQUEST, "circle is archived; not accepting messages");
+  }
   const body = env.body as Record<string, unknown>;
   const rawText = typeof body.text === "string" ? body.text : "";
   if (!rawText || rawText.length > MAX_MESSAGE_CHARS) {
