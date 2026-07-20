@@ -65,6 +65,16 @@ function stubFetch(census: { status: number; body?: unknown }) {
   );
 }
 
+function stubGateway(opts: { management: boolean }) {
+  requestMock.mockImplementation((method: string) =>
+    method === "management.health"
+      ? opts.management
+        ? Promise.resolve({ networkHealthScore: 0.9 })
+        : Promise.reject(new Error("management node service not available"))
+      : Promise.resolve({ networkCensus: null, rows: [], count: 0 }),
+  );
+}
+
 describe("P2pDashboard", () => {
   beforeEach(() => {
     useP2pStore.setState({
@@ -77,7 +87,7 @@ describe("P2pDashboard", () => {
       connected: false,
       loading: false,
     });
-    requestMock.mockResolvedValue({ networkCensus: null, rows: [], count: 0 });
+    stubGateway({ management: false });
   });
 
   afterEach(() => {
@@ -109,6 +119,21 @@ describe("P2pDashboard", () => {
     await waitFor(() => expect(screen.getByText("885")).toBeTruthy());
     expect(screen.queryByText("Network Census")).toBeNull();
     expect(screen.queryByText("Peak Concurrent Peers")).toBeNull();
+  });
+
+  it("management node: panels render even when the local orchestrator has no census", async () => {
+    // A management node's own orchestrator may not run --bootnode-mode (or,
+    // on an old binary, lacks the census endpoint entirely) — the operator
+    // still sees the network surfaces, fed by the gossip-pushed snapshot.
+    stubGateway({ management: true });
+    stubFetch({ status: 404 });
+    render(<P2pDashboard />);
+    await waitFor(() => expect(screen.getByText("Peak Concurrent Peers")).toBeTruthy());
+    expect(screen.getByText("Routing Table Size")).toBeTruthy();
+    // No census data yet, so the panel shows its empty state.
+    expect(screen.getByText("Network Census")).toBeTruthy();
+    expect(screen.getByText("Network Growth")).toBeTruthy();
+    expect(screen.queryByText(/HTTP 404/)).toBeNull();
   });
 
   it("census node: operator panels and lifetime metrics render", async () => {

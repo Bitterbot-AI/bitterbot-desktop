@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useIsManagementNode } from "../../hooks/useIsManagementNode";
 import { useP2pStore } from "../../stores/p2p-store";
 import { CensusBreakdown } from "./CensusBreakdown";
 import { ContributionCard } from "./ContributionCard";
@@ -53,11 +54,13 @@ export function P2pDashboard() {
   // bootstrapCensus when this node is itself a bootnode.
   const breakdownSource = networkCensus?.snapshot ?? bootstrapCensus ?? null;
 
-  // Census enabled = this orchestrator runs --bootnode-mode (a management
-  // node). Edge nodes get enabled:false — or no census endpoint at all on
-  // older binaries — and must not see the fleet-operator surfaces: the
-  // census/growth panels and the lifetime/routing metrics row.
-  const isCensusNode = bootstrapCensus?.enabled === true;
+  // Fleet-operator surfaces (census/growth panels + the lifetime/routing
+  // metrics row) show only where an operator is looking: a management node
+  // (management.health succeeds) or a node whose own orchestrator runs
+  // --bootnode-mode. Edge nodes — census enabled:false, or no census endpoint
+  // at all on older released binaries — get a clean per-node dashboard.
+  const isManagementNode = useIsManagementNode();
+  const isCensusNode = isManagementNode || bootstrapCensus?.enabled === true;
 
   return (
     <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto">
@@ -122,8 +125,14 @@ export function P2pDashboard() {
       {isCensusNode && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <ContributionCard
-            title="Network Peers (lifetime)"
-            value={bootstrapCensus.lifetime_unique_peers}
+            title={
+              bootstrapCensus?.enabled ? "Network Peers (lifetime)" : "Peer IDs (this session)"
+            }
+            value={
+              bootstrapCensus?.enabled
+                ? bootstrapCensus.lifetime_unique_peers
+                : (stats?.lifetime_unique_peer_ids ?? 0)
+            }
             icon="users"
           />
           <ContributionCard

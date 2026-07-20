@@ -24,6 +24,7 @@ import {
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIsManagementNode } from "../../hooks/useIsManagementNode";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useChatStore } from "../../stores/chat-store";
@@ -168,28 +169,7 @@ export function Sidebar() {
   const gwStatus = useGatewayStore((s) => s.status);
   const request = useGatewayStore((s) => s.request);
 
-  // Probe whether this node is a management node by calling management.health.
-  // Only runs once on connect; caches the result.
-  const [isManagementNode, setIsManagementNode] = useState(false);
-  useEffect(() => {
-    if (gwStatus !== "connected") {
-      setIsManagementNode(false);
-      return;
-    }
-    let cancelled = false;
-    request("management.health")
-      .then((res) => {
-        if (!cancelled && res && typeof res === "object") {
-          setIsManagementNode(true);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setIsManagementNode(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [gwStatus, request]);
+  const isManagementNode = useIsManagementNode();
 
   const [sessions, setSessions] = useState<SidebarSession[]>([]);
   const [showAllSessions, setShowAllSessions] = useState(false);
