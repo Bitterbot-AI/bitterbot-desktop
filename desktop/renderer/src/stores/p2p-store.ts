@@ -139,14 +139,16 @@ export const useP2pStore = create<P2pState>((set) => ({
   },
 
   fetchContributions: async (httpAddr) => {
+    // Silent on failure: fetchStats (same server) owns the error banner —
+    // a secondary endpoint failing must not red-banner a healthy dashboard.
     try {
       const base = httpAddr ?? DEFAULT_HTTP_ADDR;
       const res = await fetch(`${base}/api/contributions`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) return;
       const contributions = (await res.json()) as P2pContributions;
       set({ contributions });
-    } catch (err) {
-      set({ error: String(err) });
+    } catch {
+      /* connectivity errors surface via fetchStats */
     }
   },
 
@@ -157,14 +159,20 @@ export const useP2pStore = create<P2pState>((set) => ({
   },
 
   fetchBootstrapCensus: async (httpAddr) => {
+    // Older released orchestrator binaries (edge fleet) predate this endpoint
+    // and 404 — that means "not a census node", not an error. Never let this
+    // fetch touch the global error banner; fetchStats owns connectivity.
     try {
       const base = httpAddr ?? DEFAULT_HTTP_ADDR;
       const res = await fetch(`${base}/api/bootstrap/census`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        set({ bootstrapCensus: null });
+        return;
+      }
       const bootstrapCensus = (await res.json()) as P2pBootstrapCensus;
       set({ bootstrapCensus });
-    } catch (err) {
-      set({ error: String(err) });
+    } catch {
+      /* connectivity errors surface via fetchStats */
     }
   },
 
@@ -175,9 +183,8 @@ export const useP2pStore = create<P2pState>((set) => ({
       const request = useGatewayStore.getState().request;
       const res = await request<{ networkCensus: P2pNetworkCensus | null }>("skills.network");
       set({ networkCensus: res?.networkCensus ?? null });
-    } catch (err) {
+    } catch {
       // Silent — first-load races and disconnect noise shouldn't toast.
-      set({ error: String(err) });
     }
   },
 
@@ -199,8 +206,8 @@ export const useP2pStore = create<P2pState>((set) => ({
         params,
       );
       set({ censusHistory: res?.rows ?? [] });
-    } catch (err) {
-      set({ error: String(err) });
+    } catch {
+      // Silent — same rationale as fetchNetworkCensus.
     }
   },
 }));

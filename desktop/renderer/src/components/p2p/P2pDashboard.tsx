@@ -53,6 +53,12 @@ export function P2pDashboard() {
   // bootstrapCensus when this node is itself a bootnode.
   const breakdownSource = networkCensus?.snapshot ?? bootstrapCensus ?? null;
 
+  // Census enabled = this orchestrator runs --bootnode-mode (a management
+  // node). Edge nodes get enabled:false — or no census endpoint at all on
+  // older binaries — and must not see the fleet-operator surfaces: the
+  // census/growth panels and the lifetime/routing metrics row.
+  const isCensusNode = bootstrapCensus?.enabled === true;
+
   return (
     <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto">
       <div className="flex items-center gap-3">
@@ -112,42 +118,45 @@ export function P2pDashboard() {
         />
       </div>
 
-      {/* Network-wide and lifetime metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <ContributionCard
-          title={bootstrapCensus?.enabled ? "Network Peers (lifetime)" : "Peer IDs (this session)"}
-          value={
-            bootstrapCensus?.enabled
-              ? bootstrapCensus.lifetime_unique_peers
-              : (stats?.lifetime_unique_peer_ids ?? 0)
-          }
-          icon="users"
-        />
-        <ContributionCard
-          title="Peak Concurrent Peers"
-          value={stats?.peak_concurrent_peers ?? 0}
-          icon="users"
-        />
-        <ContributionCard
-          title="Routing Table Size"
-          value={stats?.routing_table_size ?? 0}
-          icon="users"
-        />
-        <ContributionCard title="NAT Status" value={stats?.nat_status ?? "unknown"} icon="users" />
-      </div>
+      {/* Network-wide and lifetime metrics — census nodes only. */}
+      {isCensusNode && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <ContributionCard
+            title="Network Peers (lifetime)"
+            value={bootstrapCensus.lifetime_unique_peers}
+            icon="users"
+          />
+          <ContributionCard
+            title="Peak Concurrent Peers"
+            value={stats?.peak_concurrent_peers ?? 0}
+            icon="users"
+          />
+          <ContributionCard
+            title="Routing Table Size"
+            value={stats?.routing_table_size ?? 0}
+            icon="users"
+          />
+          <ContributionCard
+            title="NAT Status"
+            value={stats?.nat_status ?? "unknown"}
+            icon="users"
+          />
+        </div>
+      )}
 
-      {/* Network-wide breakdown (gossipsub-pushed when available, falls back
-          to local bootstrap census when this node is the bootnode). */}
-      <CensusBreakdown
-        byTier={breakdownSource?.by_tier ?? null}
-        byAddressType={breakdownSource?.by_address_type ?? null}
-        source={networkCensus?.source_peer_id ?? null}
-        generatedAt={breakdownSource?.generated_at ?? null}
-      />
-
-      {/* Network growth over time, persisted across restarts in
-          network_census_history. */}
-      <NetworkGrowthSparkline rows={censusHistory} />
+      {/* Network-wide breakdown + growth history — census nodes only
+          (gossipsub-pushed snapshot wins, falls back to the local census). */}
+      {isCensusNode && (
+        <>
+          <CensusBreakdown
+            byTier={breakdownSource?.by_tier ?? null}
+            byAddressType={breakdownSource?.by_address_type ?? null}
+            source={networkCensus?.source_peer_id ?? null}
+            generatedAt={breakdownSource?.generated_at ?? null}
+          />
+          <NetworkGrowthSparkline rows={censusHistory} />
+        </>
+      )}
 
       {/* Uptime & Peer Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
