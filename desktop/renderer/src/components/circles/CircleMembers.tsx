@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Pencil, UserMinus, UserPlus, X } from "lucide-react";
+import { AlertTriangle, Check, Pencil, Plus, UserMinus, X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import {
@@ -106,9 +106,9 @@ export function CircleMembers({ circle }: { circle: Circle }) {
         <button
           type="button"
           onClick={() => setInviting(true)}
-          className="flex items-center gap-2 text-xs font-medium text-primary rounded-md border border-dashed border-primary/40 px-2.5 py-1.5 hover:bg-primary/5"
+          className="flex items-center gap-2 rounded-lg transition-colors bg-[rgba(139,92,246,0.1)] hover:bg-[rgba(139,92,246,0.15)] text-purple-400 px-3 py-2 text-sm font-medium"
         >
-          <UserPlus className="w-3.5 h-3.5" /> Invite someone to this circle
+          <Plus className="w-4 h-4" /> Invite someone to this circle
         </button>
       )}
 
