@@ -5,12 +5,26 @@ import { useGatewayStore } from "../../stores/gateway-store";
 
 // PLAN-36 Phase A: invite + join, moved out of the old PeopleView dashboard into
 // a focused modal opened from the circle rail's "+". Same frictionless invite
-// (link + QR + raw-code fallback) and paste-to-join flow, unchanged.
+// (link + QR + raw-code fallback) and paste-to-join flow.
+//
+// Two modes: default (no circleId) mints an invite that starts a NEW connection
+// circle and offers the paste-to-join box; SCOPED (circleId set) mints an invite
+// that grows an EXISTING circle — the invitee joins that circle, so the join box
+// is hidden (you're adding to your own circle, not connecting to a new one).
 
-export function InvitePanel({ onClose }: { onClose: () => void }) {
+export function InvitePanel({
+  onClose,
+  circleId,
+  circleName,
+}: {
+  onClose: () => void;
+  circleId?: string;
+  circleName?: string;
+}) {
   const request = useGatewayStore((s) => s.request);
   const refresh = useCirclesStore((s) => s.refresh);
   const setNotice = useCirclesStore((s) => s.setNotice);
+  const scoped = !!circleId;
 
   const [invite, setInvite] = useState<{ code: string; link: string; qrPngBase64: string } | null>(
     null,
@@ -22,14 +36,14 @@ export function InvitePanel({ onClose }: { onClose: () => void }) {
     try {
       const res = await request<{ code: string; link: string; qrPngBase64: string }>(
         "circles.invite",
-        {},
+        circleId ? { circleId } : {},
       );
       setInvite({ code: res.code, link: res.link, qrPngBase64: res.qrPngBase64 });
       void refresh();
     } catch (err) {
       setLocal(String(err));
     }
-  }, [request, refresh]);
+  }, [request, refresh, circleId]);
 
   const join = useCallback(async () => {
     if (!joinCode.trim()) return;
@@ -67,7 +81,9 @@ export function InvitePanel({ onClose }: { onClose: () => void }) {
         aria-label="Invite or join a circle"
       >
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-lg">Add a friend</h2>
+          <h2 className="font-semibold text-lg">
+            {scoped ? `Invite to ${circleName ?? "this circle"}` : "Add a friend"}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -81,10 +97,20 @@ export function InvitePanel({ onClose }: { onClose: () => void }) {
         {local && <p className="text-xs text-destructive">{local}</p>}
 
         <div className="space-y-2">
-          <h3 className="font-medium text-sm">Invite a friend</h3>
+          {!scoped && <h3 className="font-medium text-sm">Invite a friend</h3>}
           <p className="text-xs text-muted-foreground">
-            Share the link or let them scan the code. They open it, see who&apos;s asking, and your
-            agents connect.
+            {scoped ? (
+              <>
+                Share the link or let them scan the code. Whoever accepts joins{" "}
+                <span className="font-medium text-foreground">{circleName ?? "this circle"}</span> —
+                it becomes a group.
+              </>
+            ) : (
+              <>
+                Share the link or let them scan the code. They open it, see who&apos;s asking, and
+                your agents connect.
+              </>
+            )}
           </p>
           <button
             type="button"
@@ -125,23 +151,25 @@ export function InvitePanel({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="space-y-2 border-t pt-4">
-          <h3 className="font-medium text-sm">Have an invite?</h3>
-          <textarea
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value)}
-            placeholder="bbc1.…"
-            className="w-full h-16 text-xs font-mono rounded border bg-muted p-2"
-          />
-          <button
-            type="button"
-            onClick={() => void join()}
-            disabled={!joinCode.trim()}
-            className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm disabled:opacity-50"
-          >
-            Connect
-          </button>
-        </div>
+        {!scoped && (
+          <div className="space-y-2 border-t pt-4">
+            <h3 className="font-medium text-sm">Have an invite?</h3>
+            <textarea
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              placeholder="bbc1.…"
+              className="w-full h-16 text-xs font-mono rounded border bg-muted p-2"
+            />
+            <button
+              type="button"
+              onClick={() => void join()}
+              disabled={!joinCode.trim()}
+              className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm disabled:opacity-50"
+            >
+              Connect
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

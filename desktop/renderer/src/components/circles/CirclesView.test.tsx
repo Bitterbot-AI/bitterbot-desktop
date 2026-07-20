@@ -198,6 +198,8 @@ function stubRpcs(enabled = true) {
       case "circles.unarchive":
       case "circles.delete":
         return Promise.resolve({ ok: true });
+      case "circles.invite":
+        return Promise.resolve({ code: "bbc1.xyz", link: "https://join…/xyz", qrPngBase64: "" });
       case "circles.petname.set":
       case "circles.petname.clear":
         return Promise.resolve({ ok: true });
@@ -223,6 +225,21 @@ beforeEach(() => {
 });
 
 describe("CirclesView", () => {
+  it("invites a friend into the EXISTING circle (scoped invite carries circleId)", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    // Members pane is the default right pane; it offers an invite-to-this-circle.
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Invite someone to this circle/i }),
+    );
+    // The scoped panel names the circle and mints an invite bound to it.
+    expect(await screen.findByText(/Invite to Bio 204/i)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: /Create invite/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.invite", { circleId: "c1" }),
+    );
+  });
+
   it("deletes a circle from the rail's hover menu behind a confirm", async () => {
     stubRpcs();
     render(<CirclesView />);

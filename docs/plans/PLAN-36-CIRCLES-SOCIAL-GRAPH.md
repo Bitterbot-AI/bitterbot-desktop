@@ -673,6 +673,17 @@ re-accepting an invite to an archived circle un-archives it (`importCircle`
 resets archived→active, frozen untouched — F3); the delete test now seeds +
 asserts the cascade across scoped tables and its single-circle scope (F2).
 
+**Invite-to-existing-circle LANDED.** The app only ever started NEW 1:1
+connections — `circles.invite` was always called with `{}`, so a circle could
+never grow, even though the backend already accepts a `circleId` and the roster
+sync + N-member handling were tested. Now the members pane has an "Invite
+someone to this circle" action that opens the invite panel in a SCOPED mode
+(passes the active circle's `circleId`); whoever accepts joins that circle (it
+becomes a group). The panel hides the paste-to-join box in scoped mode (you're
+adding to your own circle, not connecting to a new one) and names the target.
+Renderer-only — no gateway rebuild. Test: the scoped invite calls
+`circles.invite` with the circleId.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

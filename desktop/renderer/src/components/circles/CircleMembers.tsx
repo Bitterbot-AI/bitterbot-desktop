@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Pencil, UserMinus, X } from "lucide-react";
+import { AlertTriangle, Check, Pencil, UserMinus, UserPlus, X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import {
@@ -7,6 +7,7 @@ import {
   type Circle,
   type CircleMember,
 } from "../../stores/circles-store";
+import { InvitePanel } from "./InvitePanel";
 
 // PLAN-36 Phase A: the member/presence roster. §5.5: ANY member can remove
 // another from their OWN node. §5.6 petname layer: each friend can be given a
@@ -48,6 +49,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(readDismissed);
+  const [inviting, setInviting] = useState(false);
 
   const canModerate = circle.status === "active";
   // §5.6: peers you haven't named yet (and haven't dismissed the nudge for).
@@ -92,6 +94,24 @@ export function CircleMembers({ circle }: { circle: Circle }) {
 
   return (
     <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2.5">
+      {inviting && (
+        <InvitePanel
+          circleId={circle.circleId}
+          circleName={circle.name}
+          onClose={() => setInviting(false)}
+        />
+      )}
+
+      {canModerate && (
+        <button
+          type="button"
+          onClick={() => setInviting(true)}
+          className="flex items-center gap-2 text-xs font-medium text-primary rounded-md border border-dashed border-primary/40 px-2.5 py-1.5 hover:bg-primary/5"
+        >
+          <UserPlus className="w-3.5 h-3.5" /> Invite someone to this circle
+        </button>
+      )}
+
       {unnamed.length > 0 && editing === null && (
         <div className="rounded-lg border border-primary/40 bg-primary/5 p-2.5 text-xs space-y-2">
           <p className="text-muted-foreground">
