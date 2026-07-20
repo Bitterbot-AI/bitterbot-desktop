@@ -684,6 +684,43 @@ adding to your own circle, not connecting to a new one) and names the target.
 Renderer-only — no gateway rebuild. Test: the scoped invite calls
 `circles.invite` with the circleId.
 
+**Agent conversation read + petname-aware names LANDED (the two agent-tool
+gaps).** The `circles` agent tool could `send` into a circle but never see what
+anyone said — no action returned message bodies, so "what did the group
+decide?" was unanswerable. New `action=messages` (`{circle_id, limit}` —
+default 30, hard cap 50, integer-truncated) returns the recent conversation
+oldest-first: author, direction, kind, createdAt, envelopeId, replyTo, and the
+body EXACTLY as stored — inbound peer text was wrapped as untrusted external
+content at the A2A receipt boundary (`sanitizeInboundCircleText`) and is NEVER
+unwrapped here, the same quarantine the Phase B draft path reads through
+(verified: the only two `circle_messages` writers are `storeInboundMessage`,
+always wrapped, and `sendMessage`, self-authored). And every people-facing
+read (`connections`, `messages`, `asks`, the `log_expense` split preview) now
+resolves names petname-first (`petname ?? displayName ?? pubkey prefix`, plus
+`theyCallThemselves` when they differ) — the agent speaks to its human in the
+human's own names for people. Petnames stay node-local: reads land only in
+agent context, and the §5.3 card means nothing agent-written reaches a peer
+unreviewed; the tool description now tells the agent never to put private
+labels into circle-bound text. Deliberately NOT added: archive/delete, member
+remove, invite, petname/self-name set, react, pin, unfreeze, canvas — all stay
+human-UI-only so a prompt-injected agent cannot touch the trust graph.
+The adversarial pass confirmed the three core invariants (wrap survival on
+every inbound carrier incl. mailbox/mesh/practice, petname privacy through the
+approval card's stored-params execution, self-attribution unforgeable thanks
+to envelope signatures) and caught two real name-surface defects, both fixed:
+a peer's 80-char self-asserted displayName sits NEXT TO wrapped bodies in the
+same tool result and could carry a forged `<<<END_…>>>` boundary marker
+(F1 — every agent-facing name now passes through the exported
+`replaceMarkers`); and a peer naming themselves "your human" collided with the
+self-attribution sentinel (F2 — non-self names matching it fall back to the
+pubkey prefix). Also from review: the read cap dropped 100→50 (8KB bodies ×
+100 was a cheap context-blowing lever for a hostile co-member, F3) and the
+limit is integer-truncated before SQL (F5). Known-accepted residual: each
+wrapped body repeats the standard security notice (~600 chars) — fine at 50,
+dedupe if the cap ever rises. Tests: wrap survives verbatim (would fail on
+raw), petname-first across all three reads, self-label spoof, forged-marker
+sanitization, clamp/truncation.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

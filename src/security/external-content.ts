@@ -147,7 +147,13 @@ function foldMarkerText(input: string): string {
   );
 }
 
-function replaceMarkers(content: string): string {
+/**
+ * Strip/neutralize the untrusted-content boundary markers from a string.
+ * Exported for boundary code that surfaces ATTACKER-CONTROLLED short fields
+ * (e.g. a peer's self-asserted displayName) NEXT TO wrapped content — a forged
+ * marker in such a field could otherwise fake a premature envelope close.
+ */
+export function replaceMarkers(content: string): string {
   const folded = foldMarkerText(content);
   if (!/external_untrusted_content/i.test(folded)) {
     return content;
