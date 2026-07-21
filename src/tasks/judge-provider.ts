@@ -12,9 +12,11 @@
  *   2. config.agents.defaults.model.primary
  *   3. anthropic/claude-opus-4-8 (matches `src/config/defaults.ts:16`)
  *
- * Determinism: temperature is pinned to 0 (SOTA-aligned — judges should
- * be greedy, not creative). Max tokens 600 — a verdict is <= 60 words
- * plus a short `missing[]` list, so 600 is generous.
+ * Sampling: NO temperature/top_p/top_k are sent — `temperature` is removed
+ * on Opus 4.7+/Sonnet 5/Fable 5 and the API 400s any value (that 400 was
+ * silently masked as "model returned no text content" until 2026-07-21).
+ * Determinism/creativity is steered by the prompt. Max tokens 600 — a
+ * verdict is <= 60 words plus a short `missing[]` list, so 600 is generous.
  *
  * Retry envelope: 3 attempts with exponential backoff on rate limits,
  * 5xx responses, and transient network errors. Parse failures bubble up
@@ -30,7 +32,6 @@ const log = createSubsystemLogger("tasks/judge-provider");
 
 const DEFAULT_JUDGE_MODEL = "anthropic/claude-opus-4-8";
 const DEFAULT_MAX_TOKENS = 600;
-const DEFAULT_TEMPERATURE = 0;
 const DEFAULT_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1_000;
 
@@ -38,7 +39,6 @@ export type JudgeProviderOptions = {
   /** Defaults to env BITTERBOT_TASKS_JUDGE_MODEL or config primary. */
   modelRef?: string;
   maxTokens?: number;
-  temperature?: number;
   /** How many total attempts before giving up. Default 3. */
   attempts?: number;
   /** Test seam: sleep impl. Defaults to setTimeout. */
@@ -56,7 +56,6 @@ export function createJudgeLlmCall(
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const attempts = Math.max(1, opts.attempts ?? DEFAULT_ATTEMPTS);
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
-  const temperature = opts.temperature ?? DEFAULT_TEMPERATURE;
 
   return async (prompt: string): Promise<string> => {
     const modelRef = resolveModelRef(cfg, opts.modelRef);
@@ -88,9 +87,15 @@ export function createJudgeLlmCall(
           {
             apiKey: auth?.apiKey,
             maxTokens,
-            temperature,
           },
         );
+        // completeSimple embeds provider errors in the response instead of
+        // throwing — surface the REAL error (e.g. a 400 param rejection)
+        // rather than masking it as "no text content".
+        const failure = res as { stopReason?: string; errorMessage?: string };
+        if (failure.stopReason === "error") {
+          throw new Error("judge-provider: provider error: " + (failure.errorMessage ?? "unknown"));
+        }
         const text = extractText(res);
         if (!text) {
           throw new Error("judge-provider: model returned no text content");

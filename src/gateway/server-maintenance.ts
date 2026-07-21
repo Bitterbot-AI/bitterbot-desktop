@@ -174,9 +174,10 @@ export function startGatewayMaintenanceTimers(params: {
       const { CirclesService } = await import("../circles/service.js");
       // Phase B: the scheduler-owned instance carries the quarantined draft
       // LLM — a single plain completion with no tools, no session history, no
-      // memory (the judge-provider seam, reused with a drafting temperature).
+      // memory (the judge-provider seam; sampling params are not sent — the
+      // current Anthropic models reject temperature with a 400).
       const { createJudgeLlmCall } = await import("../tasks/judge-provider.js");
-      const draftLlm = createJudgeLlmCall(cfg, { temperature: 0.4, maxTokens: 700 });
+      const draftLlm = createJudgeLlmCall(cfg, { maxTokens: 700 });
       return new CirclesService({ db, config: cfg, draftLlm });
     },
   });

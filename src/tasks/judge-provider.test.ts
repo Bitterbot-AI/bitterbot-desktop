@@ -55,9 +55,21 @@ describe("createJudgeLlmCall", () => {
     const [model, request, options] = completeSimpleMock.mock.calls[0];
     expect(model).toBe(fakeModel);
     expect((request as { messages: Array<{ role: string }> }).messages[0].role).toBe("user");
-    expect((options as { temperature: number }).temperature).toBe(0);
+    // Sampling params are REMOVED on current Anthropic models (400 if sent) —
+    // the call must not include temperature at all.
+    expect(options as object).not.toHaveProperty("temperature");
     expect((options as { maxTokens: number }).maxTokens).toBe(600);
     expect((options as { apiKey: string }).apiKey).toBe("sk-test");
+  });
+
+  it("surfaces the provider's embedded error instead of masking it as no-text", async () => {
+    completeSimpleMock.mockResolvedValue({
+      content: [],
+      stopReason: "error",
+      errorMessage: '400 {"error":{"message":"`temperature` is deprecated for this model."}}',
+    });
+    const llm = createJudgeLlmCall(withConfig(), { attempts: 1 });
+    await expect(llm("p")).rejects.toThrow(/temperature.*deprecated/);
   });
 
   it("uses BITTERBOT_TASKS_JUDGE_MODEL when set", async () => {
