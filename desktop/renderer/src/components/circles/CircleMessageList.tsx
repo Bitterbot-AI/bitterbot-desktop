@@ -194,9 +194,18 @@ export function CircleMessageList({
                   {parent ? (
                     <>
                       <span className="font-medium shrink-0">
-                        {parent.direction === "out" || parent.authorPubkey === selfPubkey
-                          ? "You"
-                          : nameOf(parent.authorPubkey)}
+                        {(() => {
+                          // Review #5: provenance carries into reply quotes —
+                          // replying to "Maya's agent" must not quote "Maya".
+                          const pSelf =
+                            parent.direction === "out" || parent.authorPubkey === selfPubkey;
+                          const pOwner = pSelf ? "You" : nameOf(parent.authorPubkey);
+                          return parent.agentAuthored
+                            ? pSelf
+                              ? "Your agent"
+                              : `${pOwner}'s agent`
+                            : pOwner;
+                        })()}
                       </span>
                       <span className="truncate opacity-80">
                         {unwrapForDisplay(parent.content).text}

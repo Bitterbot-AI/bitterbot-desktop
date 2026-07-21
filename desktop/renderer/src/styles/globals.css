@@ -47,6 +47,9 @@
   --color-circle-agent-soft: var(--circle-agent-soft);
   --color-circle-consent: var(--circle-consent);
   --color-circle-consent-soft: var(--circle-consent-soft);
+  --color-circle-you-fg: var(--circle-you-fg);
+  --color-circle-agent-fg: var(--circle-agent-fg);
+  --color-circle-consent-fg: var(--circle-consent-fg);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -139,6 +142,11 @@
   --circle-agent-soft: #f0eafc;
   --circle-consent: #b4530a;
   --circle-consent-soft: #fbeee0;
+  /* Label color ON the solid fills — white passes AA on the light-mode
+     fills; the brighter dark-mode fills need dark text (review #10). */
+  --circle-you-fg: #ffffff;
+  --circle-agent-fg: #ffffff;
+  --circle-consent-fg: #ffffff;
 }
 
 .dark {
@@ -149,6 +157,9 @@
   --circle-agent-soft: #241d3a;
   --circle-consent: #ffb454;
   --circle-consent-soft: #33260f;
+  --circle-you-fg: #0e1016;
+  --circle-agent-fg: #0e1016;
+  --circle-consent-fg: #1a1205;
 
   /* Sidebar theme colors - Dark mode (purple-ish) */
   --sidebar-bg-primary: hsl(262, 20%, 8%);

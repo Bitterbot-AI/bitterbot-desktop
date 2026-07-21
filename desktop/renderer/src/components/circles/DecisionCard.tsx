@@ -37,7 +37,13 @@ export function DecisionCard({
     .split("\n")
     .map((o) => o.trim())
     .filter(Boolean);
-  const votes = card.slices.filter((s) => s.slot === "vote");
+  // Review #1+#2: only CURRENT members' votes for CURRENT options count. An
+  // evicted member's ghost slice must not mint a false "Best fit" consensus,
+  // and a hostile non-option value must not become a blank "winner".
+  const memberSet = new Set(circle.members.map((m) => m.memberPubkey));
+  const votes = card.slices.filter(
+    (s) => s.slot === "vote" && memberSet.has(s.authorPubkey) && options.includes(s.value),
+  );
   const myVote = votes.find((v) => v.authorPubkey === selfPubkey);
   // B2: a ready agent suggestion targeting this card's vote slot.
   const suggestion = (drafts ?? []).find(
@@ -148,6 +154,7 @@ export function DecisionCard({
         <div className="px-3 pb-3 pt-1 border-t space-y-2">
           {suggestion && (
             <AgentSliceSuggestion
+              key={suggestion.draftId}
               draft={suggestion}
               circleId={circle.circleId}
               editable={false}
@@ -184,7 +191,7 @@ export function DecisionCard({
               type="button"
               onClick={() => void publish()}
               disabled={!changed || publishing}
-              className="flex-1 text-xs font-medium py-1.5 rounded bg-circle-you text-white disabled:opacity-50"
+              className="flex-1 text-xs font-medium py-1.5 rounded bg-circle-you text-circle-you-fg disabled:opacity-50"
             >
               {myVote ? "Update my vote" : "Publish my vote"}
             </button>

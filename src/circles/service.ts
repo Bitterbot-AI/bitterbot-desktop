@@ -1025,6 +1025,8 @@ export class CirclesService {
     circleId: string;
     question: string;
     category: string;
+    /** Review #4: set when the QUESTION was agent-written (approved tool ask). */
+    agentAuthored?: boolean;
   }): Promise<SendReport & { threadId: string }> {
     const category = args.category.trim().toLowerCase().replaceAll(":", ".").slice(0, 24);
     if (!category) {
@@ -1036,6 +1038,7 @@ export class CirclesService {
       text: args.question,
       kind: "ask",
       threadId,
+      agentAuthored: args.agentAuthored,
     });
     return { ...report, threadId };
   }
@@ -1064,6 +1067,9 @@ export class CirclesService {
           text: DEFAULT_ANSWER_POSTURE,
           kind: "answer",
           threadId: ask.threadId ?? undefined,
+          // Review #4b: this is automated agent text (no human in the loop) —
+          // it must never render as the human speaking.
+          agentAuthored: true,
         });
         declined += 1;
       } catch (err) {
@@ -1309,6 +1315,7 @@ export class CirclesService {
           circleId: pending.circleId,
           question: str(p.question),
           category: str(p.category, "general"),
+          agentAuthored: true,
         });
       case "log_expense": {
         const participants = Array.isArray(p.participants)
@@ -1358,13 +1365,14 @@ export class CirclesService {
     direction: string;
     content: string;
     createdAt: number;
+    agentAuthored: boolean;
   }> {
     const pins = this.messageAnnotations(circleId).pins;
     if (pins.length === 0) return [];
     const placeholders = pins.map(() => "?").join(",");
     const rows = this.db
       .prepare(
-        `SELECT envelope_id, author_pubkey, direction, content, created_at
+        `SELECT envelope_id, author_pubkey, direction, content, created_at, agent_authored
            FROM circle_messages
           WHERE circle_id = ? AND envelope_id IN (${placeholders})`,
       )
@@ -1374,6 +1382,7 @@ export class CirclesService {
       direction: string;
       content: string;
       created_at: number;
+      agent_authored: number | null;
     }>;
     const byEnvelope = new Map(rows.map((r) => [r.envelope_id, r]));
     return pins
@@ -1385,6 +1394,7 @@ export class CirclesService {
         direction: r.direction,
         content: r.content,
         createdAt: r.created_at,
+        agentAuthored: r.agent_authored === 1,
       }));
   }
 
@@ -1711,7 +1721,10 @@ export class CirclesService {
    * only ever sees what is @-addressed to it.
    */
   selfAgentPosture(): "summon-only" | "off" {
-    return this.agentDraftsEnabled() ? "summon-only" : "off";
+    // Review #6: only advertise a capability this node actually has — with no
+    // draft LLM wired, a summon can never generate, so the posture is "off"
+    // even when the config switch is on.
+    return this.draftLlm && this.agentDraftsEnabled() ? "summon-only" : "off";
   }
 
   messages(

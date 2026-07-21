@@ -93,7 +93,11 @@ export function CirclesView() {
 
         {activeCircle ? (
           <>
-            <CircleChat circle={activeCircle} selfPubkey={status?.pubkey} />
+            <CircleChat
+              key={activeCircle.circleId}
+              circle={activeCircle}
+              selfPubkey={status?.pubkey}
+            />
             <CircleRightPane
               circle={activeCircle}
               selfPubkey={status?.pubkey}
@@ -111,7 +115,7 @@ export function CirclesView() {
             <button
               type="button"
               onClick={() => setShowInvite(true)}
-              className="px-4 py-2 rounded-lg bg-circle-you text-white text-sm"
+              className="px-4 py-2 rounded-lg bg-circle-you text-circle-you-fg text-sm"
             >
               Add a friend
             </button>

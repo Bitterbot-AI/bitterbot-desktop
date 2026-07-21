@@ -55,12 +55,15 @@ export function RedactableDraftLines({
 /** Hook: line-level redact state over a draft, with a text-edit escape hatch. */
 export function useDraftConsent(initial: string) {
   const [text, setText] = useState(initial);
-  const [editing, setEditing] = useState(false);
+  // The mode is LATCHED at mount (review #7): single-line drafts start in the
+  // editor and stay there — otherwise typing a second line would swap the
+  // textarea out from under the user mid-keystroke. Multi-line drafts start
+  // in line review; "Edit first" is the one-way switch to the editor.
+  const [editing, setEditing] = useState(
+    () => initial.split("\n").filter((l) => l.trim() !== "").length <= 1,
+  );
   const [redacted, setRedacted] = useState<Set<number>>(new Set());
   const lines = useMemo(() => text.split("\n"), [text]);
-  // Multi-line drafts get the line review; single-line drafts go straight
-  // to the editor (a redact chip on the only line = discard, already a button).
-  const canReviewLines = lines.filter((l) => l.trim() !== "").length > 1;
 
   const toggle = (i: number) => {
     setRedacted((prev) => {
@@ -73,7 +76,7 @@ export function useDraftConsent(initial: string) {
 
   /** What actually ships, under the active mode. */
   const finalText = () =>
-    editing || !canReviewLines
+    editing
       ? text.trim()
       : lines
           .filter((_, i) => !redacted.has(i))
@@ -83,7 +86,7 @@ export function useDraftConsent(initial: string) {
   const startEditing = () => {
     // Entering the editor collapses the redactions into the text so what
     // you see is what ships — no hidden struck lines behind the textarea.
-    if (canReviewLines && redacted.size > 0) {
+    if (redacted.size > 0) {
       setText(lines.filter((_, i) => !redacted.has(i)).join("\n"));
       setRedacted(new Set());
     }
@@ -98,7 +101,6 @@ export function useDraftConsent(initial: string) {
     redacted,
     toggle,
     lines,
-    canReviewLines,
     finalText,
   };
 }

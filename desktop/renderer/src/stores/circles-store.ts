@@ -65,6 +65,7 @@ export interface PinnedMessage {
   direction: string;
   content: string;
   createdAt: number;
+  agentAuthored?: boolean;
 }
 
 export interface MessageAnnotations {

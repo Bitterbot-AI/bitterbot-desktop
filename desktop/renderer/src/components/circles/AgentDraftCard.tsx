@@ -70,7 +70,7 @@ export function AgentDraftCard({
       {/* Mockup consent card: share only what you choose. Multi-line drafts
           review line-by-line with per-line redact; "Edit first" is the
           free-text escape hatch. Redacted lines never leave the node. */}
-      {consent.editing || !consent.canReviewLines ? (
+      {consent.editing ? (
         <textarea
           value={consent.text}
           onChange={(e) => consent.setText(e.target.value)}
@@ -94,7 +94,7 @@ export function AgentDraftCard({
         >
           Discard
         </button>
-        {!consent.editing && consent.canReviewLines && (
+        {!consent.editing && (
           <button
             type="button"
             onClick={consent.startEditing}
@@ -108,7 +108,7 @@ export function AgentDraftCard({
           type="button"
           onClick={() => void publish()}
           disabled={!consent.finalText() || busy}
-          className="text-xs font-medium px-3 py-1 rounded bg-circle-agent text-white disabled:opacity-50"
+          className="text-xs font-medium px-3 py-1 rounded bg-circle-agent text-circle-agent-fg disabled:opacity-50"
         >
           Publish to circle
         </button>

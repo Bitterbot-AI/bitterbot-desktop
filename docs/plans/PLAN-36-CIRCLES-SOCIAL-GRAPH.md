@@ -784,6 +784,35 @@ Renderer-only; the server still receives one approved text via
 `circles.drafts.publish`. Test: a redacted budget line never reaches the
 publish RPC.
 
+**Mockup-batch adversarial pass: invariants confirmed, 11 findings, all
+material ones fixed.** The reviewer confirmed the batch's core safety claims
+(provenance flag is presentation-only + direction-safe on every consumer;
+posture allowlist is type-confusion-proof; a redacted line cannot ship
+through any path; the collapsed tray is fail-safe because expiry is server-
+side). Fixed from the findings: (#1 MAJOR) an EVICTED member's ghost vote
+could mint a false "Best fit" consensus — the Decision Card now counts only
+current members' votes for current options (also kills #2's blank-winner
+from hostile non-option values); (#3) inbound `agent_authored` messages no
+longer trigger @agent summons — agents cannot summon agents even via an
+approved publish, and spoofing the flag only reduces the sender's own
+capability; (#4) provenance coverage completed — approved agent-tool ASKS
+and the automated §3.5 default-posture answers are now marked agent-
+authored; (#5) provenance carried into the secondary surfaces — reply
+quotes, the pinned bar (`pinnedMessages()` returns it), and the quarantined
+draft-prompt transcript ("Maya's agent: …" so your agent doesn't reason over
+agent text as the human's); (#6) `selfAgentPosture` no longer advertises
+summon-only without a draft LLM wired, and the roster posture carries an
+honesty tooltip (self-report, unverifiable); (#7) the redact/editor mode is
+LATCHED at mount so typing a second line can't swap the textarea out mid-
+keystroke; (#8) a waiting §5.3 card turns the tray line amber + "N needs
+approval", and CircleChat is keyed per circle so tray/pin UI state doesn't
+leak across circles; (#9) slice suggestions keyed by draftId; (#10) new
+`circle-*-fg` tokens fix dark-mode AA contrast on all solid fills; (#11) the
+approval card now uses the consent tokens instead of hardcoded ambers.
+Accepted residuals: posture staleness has no time bound (COALESCE keeps the
+last report), and the deterministic synthesis band wears the mockup's own
+violet-soft.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

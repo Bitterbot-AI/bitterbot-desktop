@@ -267,7 +267,7 @@ export function buildQuarantinedDraftPrompt(
 
   const rows = db
     .prepare(
-      `SELECT author_pubkey, direction, content FROM circle_messages
+      `SELECT author_pubkey, direction, content, agent_authored FROM circle_messages
         WHERE circle_id = ? AND kind = 'message'
         ORDER BY created_at DESC LIMIT ?`,
     )
@@ -275,12 +275,16 @@ export function buildQuarantinedDraftPrompt(
     author_pubkey: string;
     direction: string;
     content: string;
+    agent_authored: number | null;
   }>;
   const transcript = rows
     .toReversed()
     .map((r) => {
-      const who =
+      // Provenance carries into the drafting context too (review #5): the
+      // model must not reason over agent-written text as if the human said it.
+      const owner =
         r.author_pubkey === args.selfPubkey ? "my human" : (names.get(r.author_pubkey) ?? "member");
+      const who = r.agent_authored === 1 ? `${owner}'s agent` : owner;
       return `${who}: ${r.content}`;
     })
     .join("\n\n");

@@ -34,7 +34,7 @@ export function AgentSliceSuggestion({
     await fn();
     setBusy(false);
   };
-  const lineReview = editable && !consent.editing && consent.canReviewLines;
+  const lineReview = editable && !consent.editing;
 
   return (
     <div className="mt-2 rounded-md border border-circle-agent/40 border-l-2 border-l-circle-agent bg-circle-agent-soft/50 p-2 space-y-1.5">
@@ -85,7 +85,7 @@ export function AgentSliceSuggestion({
           type="button"
           onClick={() => void act(() => publishDraft(circleId, draft.draftId, consent.finalText()))}
           disabled={!consent.finalText() || busy || !canPublish}
-          className="text-xs font-medium px-3 py-1 rounded bg-circle-agent text-white disabled:opacity-50"
+          className="text-xs font-medium px-3 py-1 rounded bg-circle-agent text-circle-agent-fg disabled:opacity-50"
         >
           Publish
         </button>

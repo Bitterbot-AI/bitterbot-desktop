@@ -42,9 +42,9 @@ export function PendingOutboundCard({ pending }: { pending: PendingOutbound }) {
   const mins = Math.max(0, Math.round((pending.expiresAt - Date.now()) / 60_000));
 
   return (
-    <div className="mx-3 mb-1 rounded-lg border border-amber-500/50 bg-amber-500/10 p-2.5 space-y-1.5">
+    <div className="mx-3 mb-1 rounded-lg border border-circle-consent/50 bg-circle-consent-soft/60 p-2.5 space-y-1.5">
       <div className="flex items-center gap-1.5 text-xs">
-        <Bot className="w-3.5 h-3.5 text-amber-600 dark:text-amber-500 shrink-0" />
+        <Bot className="w-3.5 h-3.5 text-circle-consent shrink-0" />
         <span className="font-medium">Your agent wants to {pending.action.replace("_", " ")}</span>
         <span className="ml-auto text-muted-foreground shrink-0">expires in {mins}m</span>
       </div>
@@ -62,7 +62,7 @@ export function PendingOutboundCard({ pending }: { pending: PendingOutbound }) {
           type="button"
           onClick={() => void act(() => approveOutbound(pending.circleId, pending.id))}
           disabled={busy}
-          className="text-xs font-medium px-3 py-1 rounded bg-amber-600 text-white disabled:opacity-50"
+          className="text-xs font-medium px-3 py-1 rounded bg-circle-consent text-circle-consent-fg disabled:opacity-50"
         >
           Approve &amp; send
         </button>

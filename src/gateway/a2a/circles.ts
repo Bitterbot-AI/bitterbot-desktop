@@ -487,7 +487,16 @@ function storeInboundMessage(
   // the scheduler sweep (quarantined path), rate-bucketed at queue time, and
   // refused for messages that failed the security scan. The summoner gets no
   // signal either way.
-  if (kind === "message" && severity !== "critical" && detectAgentSummon(rawText)) {
+  // Review #3 (defense-in-depth on the forbidden loop): a message the SENDER
+  // marked agent-written never summons this node's agent — agents must not
+  // summon agents, even via a human-approved publish that slipped an @agent
+  // through. Spoofing the flag only reduces the sender's own capability.
+  if (
+    kind === "message" &&
+    severity !== "critical" &&
+    body.agent_authored !== true &&
+    detectAgentSummon(rawText)
+  ) {
     queueAgentDraft(db, {
       circleId: env.circle_id,
       summonEnvelopeId: env.id,

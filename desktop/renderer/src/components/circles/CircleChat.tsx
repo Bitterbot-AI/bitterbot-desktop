@@ -1,6 +1,7 @@
 import { Bell, Pin, Reply, Send, X } from "lucide-react";
 import { useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
+import { cn } from "../../lib/utils";
 import {
   memberName,
   useCirclesStore,
@@ -23,13 +24,15 @@ interface Props {
 }
 
 function replyLabel(
-  m: { direction: string; authorPubkey: string },
+  m: { direction: string; authorPubkey: string; agentAuthored?: boolean },
   selfPubkey: string | undefined,
   members: Circle["members"],
 ) {
-  if (m.direction === "out" || m.authorPubkey === selfPubkey) return "You";
+  const isSelf = m.direction === "out" || m.authorPubkey === selfPubkey;
   const found = members.find((x) => x.memberPubkey === m.authorPubkey);
-  return found ? memberName(found) : "friend";
+  const owner = isSelf ? "You" : found ? memberName(found) : "friend";
+  // Review #5: provenance carries into the pinned bar too.
+  return m.agentAuthored ? (isSelf ? "Your agent" : `${owner}'s agent`) : owner;
 }
 
 export function CircleChat({ circle, selfPubkey }: Props) {
@@ -69,6 +72,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         envelopeId: m.envelopeId ?? m.messageId,
         authorPubkey: m.authorPubkey,
         direction: m.direction,
+        agentAuthored: m.agentAuthored,
         content: m.content,
         createdAt: m.createdAt,
       }));
@@ -160,10 +164,19 @@ export function CircleChat({ circle, selfPubkey }: Props) {
               onClick={() => setTrayOpen((v) => !v)}
               className="w-full flex items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground"
             >
-              <Bell className="w-3.5 h-3.5 text-circle-agent shrink-0" />
+              {/* Review #8: an awaiting §5.3 card is CONSENT-needed (amber),
+                  not mere agent activity (violet) — and it expires. */}
+              <Bell
+                className={cn(
+                  "w-3.5 h-3.5 shrink-0",
+                  (pendingOutbound ?? []).length > 0 ? "text-circle-consent" : "text-circle-agent",
+                )}
+              />
               <span>
                 Your agent {noticed === 1 ? "noticed 1 thing" : `noticed ${noticed} things`} —
                 nothing posted
+                {(pendingOutbound ?? []).length > 0 &&
+                  ` · ${(pendingOutbound ?? []).length === 1 ? "1 needs" : `${(pendingOutbound ?? []).length} need`} approval`}
               </span>
               <span className="ml-auto">{trayOpen ? "hide" : "review"}</span>
             </button>
@@ -227,7 +240,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
           type="button"
           onClick={() => void submit()}
           disabled={!draft.trim() || sending || circle.status !== "active"}
-          className="w-8 h-8 rounded-lg grid place-items-center bg-circle-you text-white disabled:opacity-40"
+          className="w-8 h-8 rounded-lg grid place-items-center bg-circle-you text-circle-you-fg disabled:opacity-40"
           aria-label="Send message"
         >
           <Send className="w-4 h-4" />

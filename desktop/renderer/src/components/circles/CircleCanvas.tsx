@@ -276,7 +276,7 @@ function ComposerActions({
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="text-xs font-medium px-3 py-1 rounded bg-circle-you text-white disabled:opacity-50"
+        className="text-xs font-medium px-3 py-1 rounded bg-circle-you text-circle-you-fg disabled:opacity-50"
       >
         {saveLabel}
       </button>

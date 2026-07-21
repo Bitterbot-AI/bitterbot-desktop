@@ -195,7 +195,13 @@ export function StudyGuideCard({
                 )}
               </div>
 
-              {suggestion && <AgentSliceSuggestion draft={suggestion} circleId={circle.circleId} />}
+              {suggestion && (
+                <AgentSliceSuggestion
+                  key={suggestion.draftId}
+                  draft={suggestion}
+                  circleId={circle.circleId}
+                />
+              )}
 
               {slices.map((s) => (
                 <div key={`${s.slot}\n${s.authorPubkey}`} className="mt-1.5">
@@ -251,7 +257,7 @@ export function StudyGuideCard({
                       type="button"
                       onClick={() => void publish(slot)}
                       disabled={!drafts[slot]?.value.trim() || publishing}
-                      className="text-xs font-medium px-3 py-1 rounded bg-circle-you text-white disabled:opacity-50"
+                      className="text-xs font-medium px-3 py-1 rounded bg-circle-you text-circle-you-fg disabled:opacity-50"
                     >
                       {mine ? "Update my contribution" : "Publish my contribution"}
                     </button>

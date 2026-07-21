@@ -129,7 +129,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
             <button
               type="button"
               onClick={() => openEditor(unnamed[0] as CircleMember)}
-              className="font-medium px-3 py-1 rounded bg-circle-you text-white"
+              className="font-medium px-3 py-1 rounded bg-circle-you text-circle-you-fg"
             >
               Name {unnamed.length === 1 ? memberName(unnamed[0] as CircleMember) : "them"}
             </button>
@@ -197,7 +197,14 @@ export function CircleMembers({ circle }: { circle: Circle }) {
               {/* Mockup pin 3: the roster answers "who and what can hear
                   this" — each row carries the member's agent posture. */}
               {m.agentPosture && !isEditing && (
-                <span className="ml-auto text-[11px] text-muted-foreground shrink-0">
+                <span
+                  title={
+                    m.isSelf
+                      ? "What your agent can do in this circle"
+                      : "What their node last reported — a self-report, not something this node can verify"
+                  }
+                  className="ml-auto text-[11px] text-muted-foreground shrink-0"
+                >
                   agent: <span className="font-medium">{m.agentPosture}</span>
                 </span>
               )}
