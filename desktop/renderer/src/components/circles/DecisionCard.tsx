@@ -72,18 +72,33 @@ export function DecisionCard({
           Decision · {votes.length} of {circle.members.length} voted
         </div>
         <div className="text-sm font-semibold">{card.title}</div>
-        {max > 0 && (
-          <div className="mt-1 text-xs text-muted-foreground">
-            {leaders.length === 1 ? (
-              <>
-                Leading: <span className="font-medium text-foreground">{leaders[0]}</span> ({max})
-              </>
-            ) : (
-              <>Tied: {leaders.join(", ")}</>
-            )}
-          </div>
-        )}
       </div>
+
+      {/* The mockup's synthesis band: one line that says where the group
+          landed. Deterministic over the signed votes — no model involved:
+          "Best fit" only when EVERY member has voted and one option leads. */}
+      {max > 0 && (
+        <div className="px-3 py-1.5 bg-circle-agent-soft/50 border-y border-border/60 text-xs">
+          {leaders.length > 1 ? (
+            <>
+              Tied: <span className="font-medium">{leaders.join(" · ")}</span> ({votes.length} of{" "}
+              {circle.members.length} voted)
+            </>
+          ) : votes.length === circle.members.length ? (
+            <>
+              <span className="font-semibold text-circle-agent">Best fit: {leaders[0]}</span> —{" "}
+              {max === votes.length
+                ? `all ${votes.length} chose it`
+                : `${max} of ${votes.length} chose it`}
+            </>
+          ) : (
+            <>
+              Leading: <span className="font-medium">{leaders[0]}</span> — {max} of {votes.length}{" "}
+              votes in; {circle.members.length - votes.length} still to vote
+            </>
+          )}
+        </div>
+      )}
 
       <div className="px-3 pb-2 space-y-1.5">
         {options.map((opt) => {

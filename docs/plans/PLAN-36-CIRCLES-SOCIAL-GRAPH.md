@@ -762,6 +762,14 @@ nothing about the consent mechanics changed, only their loudness. The
 "Agents: summon-only" header pill already existed. Renderer-only. Tests
 updated to expand the tray first + a collapsed-by-default count assertion.
 
+**Decision Card synthesis band LANDED.** The card now carries the mockup's
+one-line synthesis where the tally used to whisper: a violet-soft band that
+says where the group landed. DETERMINISTIC over the signed vote slices — no
+model involved: "Best fit: X" appears only when EVERY member has voted and
+one option leads ("all N chose it" / "M of N chose it"); a partial tally
+shows "Leading: X — M of K votes in; R still to vote"; ties say so.
+Renderer-only. Tests: partial state (no Best fit) + full-vote synthesis.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

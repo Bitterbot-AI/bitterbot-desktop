@@ -421,6 +421,10 @@ describe("CirclesView", () => {
     await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
     // The decision renders with its question and options.
     expect(await screen.findByText("When do we review?")).toBeTruthy();
+    // Synthesis band, partial state: Maya voted, I haven't.
+    expect(screen.getByText(/Leading:/)).toBeTruthy();
+    expect(screen.getByText(/1 still to vote/)).toBeTruthy();
+    expect(screen.queryByText(/Best fit:/)).toBeNull();
     // Pick the "Fri" option, then publish my vote.
     await userEvent.click(screen.getByText("Fri"));
     await userEvent.click(screen.getByRole("button", { name: /Publish my vote/i }));
@@ -489,6 +493,34 @@ describe("CirclesView", () => {
     );
     expect(requestMock).not.toHaveBeenCalledWith("circles.drafts.publish", expect.anything());
     expect(requestMock).not.toHaveBeenCalledWith("circles.send", expect.anything());
+  });
+
+  it("synthesizes 'Best fit' on the Decision Card once every member has voted", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method !== "circles.canvas.list") return base(method, params);
+      return Promise.resolve({
+        cards: [
+          {
+            cardId: "d1",
+            cardType: "decision",
+            title: "When do we review?",
+            text: "Thu\nFri",
+            authorPubkey: "ed25519:maya",
+            updatedAt: Date.now(),
+            slices: [
+              { slot: "vote", value: "Thu", note: "", authorPubkey: "ed25519:maya", updatedAt: 1 },
+              { slot: "vote", value: "Thu", note: "", authorPubkey: "ed25519:self", updatedAt: 2 },
+            ],
+          },
+        ],
+      });
+    });
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
+    expect(await screen.findByText("Best fit: Thu")).toBeTruthy();
+    expect(screen.getByText(/all 2 chose it/)).toBeTruthy();
   });
 
   it("B2: shows the agent's vote suggestion on the Decision Card and publishes it", async () => {
