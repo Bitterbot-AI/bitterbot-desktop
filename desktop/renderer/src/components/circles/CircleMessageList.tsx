@@ -90,7 +90,11 @@ export function CircleMessageList({
     <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
       {messages.map((m) => {
         const isSelf = m.direction === "out" || m.authorPubkey === selfPubkey;
-        const name = isSelf ? "You" : nameOf(m.authorPubkey);
+        // Mockup pin 2: agent-written text is attributed to the AGENT, bound
+        // to its owner — "Maya's agent", never plain "Maya".
+        const isAgent = m.agentAuthored === true;
+        const owner = isSelf ? "You" : nameOf(m.authorPubkey);
+        const name = isAgent ? (isSelf ? "Your agent" : `${owner}'s agent`) : owner;
         const color = isSelf ? "#3a5bd9" : colorFor(m.authorPubkey);
         const parent = m.replyTo ? byEnvelope.get(m.replyTo) : undefined;
         // Inbound content is stored security-wrapped for agent consumers;
@@ -168,12 +172,21 @@ export function CircleMessageList({
                 ))}
               </div>
             )}
-            <div
-              className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-xs font-bold text-white"
-              style={{ background: color }}
-            >
-              {initials(name)}
-            </div>
+            {isAgent ? (
+              <div
+                aria-label="agent message"
+                className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-sm border border-circle-agent bg-circle-agent-soft text-circle-agent"
+              >
+                ◆
+              </div>
+            ) : (
+              <div
+                className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-xs font-bold text-white"
+                style={{ background: color }}
+              >
+                {initials(name)}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               {m.replyTo && (
                 <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-0.5 min-w-0">
@@ -196,7 +209,12 @@ export function CircleMessageList({
               )}
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-sm font-semibold">{name}</span>
-                {isSelf && (
+                {isAgent && (
+                  <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-agent-soft text-circle-agent">
+                    agent
+                  </span>
+                )}
+                {isSelf && !isAgent && (
                   <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-you-soft text-circle-you">
                     you
                   </span>
@@ -221,7 +239,15 @@ export function CircleMessageList({
                   </span>
                 )}
               </div>
-              <div className="text-sm whitespace-pre-wrap break-words">{display.text}</div>
+              {isAgent ? (
+                // The mockup's .agentmsg treatment: a quiet violet-edged card
+                // so agent words never blend into human conversation.
+                <div className="mt-0.5 rounded-md border border-border border-l-2 border-l-circle-agent bg-card px-2.5 py-1.5 text-sm whitespace-pre-wrap break-words">
+                  {display.text}
+                </div>
+              ) : (
+                <div className="text-sm whitespace-pre-wrap break-words">{display.text}</div>
+              )}
               {byEmoji.size > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {[...byEmoji.entries()].map(([emoji, reactors]) => (

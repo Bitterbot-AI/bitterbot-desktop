@@ -496,11 +496,17 @@ function storeInboundMessage(
     });
   }
   const messageId = crypto.randomUUID();
+  // Mockup pin 2: the sender labels agent-written text so it renders as
+  // "<name>'s agent" here too. Peer-controlled, but only in the SAFE
+  // direction — a spoofed flag demotes the sender's own words to their
+  // agent; absent means human-authored, so an agent can never pass as the
+  // human by omission on this node's honest binary.
+  const agentAuthored = body.agent_authored === true ? 1 : 0;
   db.prepare(
     `INSERT INTO circle_messages
        (message_id, circle_id, author_pubkey, direction, kind, thread_id, content,
-        scan_severity, envelope_id, created_at, reply_to)
-     VALUES (?, ?, ?, 'in', ?, ?, ?, ?, ?, ?, ?)`,
+        scan_severity, envelope_id, created_at, reply_to, agent_authored)
+     VALUES (?, ?, ?, 'in', ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     messageId,
     env.circle_id,
@@ -512,6 +518,7 @@ function storeInboundMessage(
     env.id,
     now,
     replyTo,
+    agentAuthored,
   );
   // Receiving a signed message proves the sender is alive right now, so refresh
   // their presence — an actively-chatting peer must not read as offline just

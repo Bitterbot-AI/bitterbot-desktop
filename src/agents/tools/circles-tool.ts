@@ -282,6 +282,7 @@ export function createCirclesTool(options: {
               .map((m) => ({
                 from: nameOf(m.authorPubkey),
                 isSelf: m.authorPubkey === svc.pubkey,
+                agentAuthored: m.agentAuthored,
                 direction: m.direction,
                 kind: m.kind,
                 content: m.content,

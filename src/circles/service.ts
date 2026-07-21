@@ -694,6 +694,13 @@ export class CirclesService {
      * must not loop back into generation).
      */
     suppressAgentSummon?: boolean;
+    /**
+     * Mockup pin 2: the text was WRITTEN BY the author's agent (published
+     * draft / approved agent-tool send). Presentation provenance — carried in
+     * the body so every member's stream renders "<name>'s agent", never the
+     * human. Human consent still gated the send; this only labels authorship.
+     */
+    agentAuthored?: boolean;
   }): Promise<SendReport & { envelopeId: string }> {
     const kind = args.kind ?? "message";
     const circle = this.store.getCircle(args.circleId);
@@ -701,6 +708,9 @@ export class CirclesService {
       throw new Error(`circle ${args.circleId} is not active`);
     }
     const body: Record<string, JsonValue> = { text: args.text };
+    if (args.agentAuthored) {
+      body.agent_authored = true;
+    }
     if (args.threadId) {
       body.thread_id = args.threadId;
     }
@@ -720,8 +730,8 @@ export class CirclesService {
       .prepare(
         `INSERT INTO circle_messages
            (message_id, circle_id, author_pubkey, direction, kind, thread_id, content,
-            scan_severity, envelope_id, created_at, delivery_status, reply_to)
-         VALUES (?, ?, ?, 'out', ?, ?, ?, NULL, ?, ?, 'pending', ?)`,
+            scan_severity, envelope_id, created_at, delivery_status, reply_to, agent_authored)
+         VALUES (?, ?, ?, 'out', ?, ?, ?, NULL, ?, ?, 'pending', ?, ?)`,
       )
       .run(
         messageId,
@@ -733,6 +743,7 @@ export class CirclesService {
         envelope.id,
         Date.now(),
         replyTo,
+        args.agentAuthored ? 1 : 0,
       );
     // Phase B self-summon: our human typing @agent in their OWN message queues
     // a draft on this node too (a peer's @agent queues on receipt instead).
@@ -1291,6 +1302,7 @@ export class CirclesService {
           text: str(p.text),
           // Agent-authored text must not re-enter the @agent summon loop.
           suppressAgentSummon: true,
+          agentAuthored: true,
         });
       case "ask":
         return this.askPeople({
@@ -1543,6 +1555,7 @@ export class CirclesService {
             text,
             replyTo: draft.summonEnvelopeId ?? undefined,
             suppressAgentSummon: true,
+            agentAuthored: true,
           });
       setAgentDraftStatus(this.db, draft.draftId, "published");
       return report;
@@ -1715,11 +1728,12 @@ export class CirclesService {
     createdAt: number;
     deliveryStatus: DeliveryStatus | null;
     replyTo: string | null;
+    agentAuthored: boolean;
   }> {
     const rows = this.db
       .prepare(
         `SELECT message_id, envelope_id, author_pubkey, direction, kind, thread_id, content,
-                created_at, delivery_status, reply_to
+                created_at, delivery_status, reply_to, agent_authored
            FROM circle_messages WHERE circle_id = ?
           ORDER BY created_at DESC LIMIT ?`,
       )
@@ -1734,6 +1748,7 @@ export class CirclesService {
       created_at: number;
       delivery_status: DeliveryStatus | null;
       reply_to: string | null;
+      agent_authored: number | null;
     }>;
     return rows.map((r) => ({
       messageId: r.message_id,
@@ -1746,6 +1761,7 @@ export class CirclesService {
       createdAt: r.created_at,
       deliveryStatus: r.delivery_status,
       replyTo: r.reply_to,
+      agentAuthored: r.agent_authored === 1,
     }));
   }
 

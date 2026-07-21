@@ -50,6 +50,8 @@ export interface CircleMessage {
   createdAt: number;
   deliveryStatus?: "pending" | "delivered" | "partial" | "failed" | null;
   replyTo?: string | null;
+  /** Mockup pin 2: the text was written by the author's AGENT (they approved it). */
+  agentAuthored?: boolean;
 }
 
 export interface MessageReaction {

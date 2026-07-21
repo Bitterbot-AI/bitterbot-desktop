@@ -736,6 +736,23 @@ mode, so the mockup's "listening" state intentionally does not exist yet.
 Tests: two-node beat carries posture, allowlist drops forged values /
 absent-keeps-last, roster renders both rows.
 
+**Agent provenance in the stream LANDED (mockup pin 2).** Agent-written text
+now renders as the AGENT's, bound to its owner: "Maya's agent" / "Your
+agent", violet ◆ avatar, violet AGENT tag, and the message body in a quiet
+violet-left-edged card — never blending into human conversation. Provenance
+crosses the wire: `sendMessage` gains `agentAuthored`, set by BOTH
+agent-origin paths (published @agent drafts via `publishAgentDraft`, and
+approved agent-tool sends via `executePendingOutbound`), carried as
+`agent_authored` in the signed body, stored in
+`circle_messages.agent_authored` (migration **v51**) on both the out row and
+every receiver's in row, and returned by `messages()` / `circles.messages` /
+the agent tool's `messages` action. Spoof direction is SAFE: the flag can
+only demote a sender's own words to their agent; absence means
+human-authored, so an agent cannot pass as the human by omission on an
+honest binary. Tests: two-node publish marks both copies while the summoning
+human message stays unmarked; renderer renders "Maya's agent" + tag + agent
+avatar.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

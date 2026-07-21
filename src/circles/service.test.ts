@@ -383,6 +383,17 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(bobInbound.at(-1)?.content).toContain("Thursday at 7 works better.");
     expect(bobInbound.at(-1)?.replyTo).toBe(summon.envelopeId);
     expect(anaDrafting.agentDrafts(circleId)).toHaveLength(0); // consumed
+    // Mockup pin 2: provenance crosses the wire — Bob's copy knows Ana's
+    // AGENT wrote this (and Ana's own out row is marked too), while Bob's
+    // human-typed summon stays unmarked.
+    expect(bobInbound.at(-1)?.agentAuthored).toBe(true);
+    expect(
+      anaDrafting
+        .messages(circleId)
+        .filter((m) => m.direction === "out")
+        .at(-1)?.agentAuthored,
+    ).toBe(true);
+    expect(bob.messages(circleId).find((m) => m.direction === "out")?.agentAuthored).toBe(false);
 
     // Discard is the other consent path: nothing leaves, the draft is gone.
     await bob.sendMessage({ circleId, text: "@agent one more thing?" });

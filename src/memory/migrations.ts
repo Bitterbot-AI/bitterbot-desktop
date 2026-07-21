@@ -1845,6 +1845,19 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circle_peer_presence", "agent_posture", "TEXT");
     },
   },
+  {
+    version: 51,
+    description:
+      "PLAN-36 mockup pin 2 (agent provenance in the stream): " +
+      "circle_messages.agent_authored — 1 when the message text was written " +
+      "by the author's AGENT (a published @agent draft or an approved agent " +
+      "tool send) rather than typed by the human. Presentation-layer " +
+      "provenance: rows render as '<name>'s agent' with the violet agent " +
+      "treatment. Carried in the message body; absent = human-authored.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_messages", "agent_authored", "INTEGER");
+    },
+  },
 ];
 
 /**

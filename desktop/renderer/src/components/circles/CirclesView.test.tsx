@@ -83,6 +83,17 @@ function stubRpcs(enabled = true) {
               ].join("\n"),
               createdAt: Date.now(),
             },
+            {
+              messageId: "m2",
+              envelopeId: "env-m2",
+              authorPubkey: "ed25519:maya",
+              direction: "in",
+              kind: "message",
+              content: "I checked her notes — Thursday 7pm works.",
+              createdAt: Date.now() + 1,
+              // Mockup pin 2: agent-written text carries provenance.
+              agentAuthored: true,
+            },
           ],
         });
       case "circles.canvas.list":
@@ -327,6 +338,11 @@ describe("CirclesView", () => {
     // Mockup pin 3: each roster row shows the member's agent posture.
     expect(screen.getAllByText(/agent:/).length).toBe(2);
     expect(screen.getAllByText("summon-only").length).toBeGreaterThan(0);
+    // Mockup pin 2: agent-written text is attributed to the AGENT, bound to
+    // its owner, with the violet agent treatment — never plain "Maya".
+    expect(screen.getByText("Maya's agent")).toBeTruthy();
+    expect(screen.getByText("I checked her notes — Thursday 7pm works.")).toBeTruthy();
+    expect(screen.getByLabelText("agent message")).toBeTruthy();
   });
 
   it("sends a message through circles.send", async () => {
