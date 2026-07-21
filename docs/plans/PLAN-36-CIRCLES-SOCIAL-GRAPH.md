@@ -753,6 +753,15 @@ honest binary. Tests: two-node publish marks both copies while the summoning
 human message stays unmarked; renderer renders "Maya's agent" + tag + agent
 avatar.
 
+**Quiet tray LANDED (the mockup's "noticed N things — nothing posted").**
+The consent surfaces (§5.3 approval cards + Phase B chat drafts) no longer
+render expanded in the chat; they collapse behind one calm dashed-border
+summary line above the composer — "Your agent noticed 2 things — nothing
+posted" — with a review/hide toggle. Expanding shows the exact same cards;
+nothing about the consent mechanics changed, only their loudness. The
+"Agents: summon-only" header pill already existed. Renderer-only. Tests
+updated to expand the tray first + a collapsed-by-default count assertion.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

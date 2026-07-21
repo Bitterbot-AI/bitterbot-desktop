@@ -1,4 +1,4 @@
-import { Pin, Reply, Send, X } from "lucide-react";
+import { Bell, Pin, Reply, Send, X } from "lucide-react";
 import { useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
 import {
@@ -44,6 +44,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<CircleMessage | null>(null);
   const [showPins, setShowPins] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(false);
 
   const peerCount = circle.members.filter((m) => !m.isSelf).length;
 
@@ -144,15 +145,46 @@ export function CircleChat({ circle, selfPubkey }: Props) {
 
       {circle.status === "frozen" && <FrozenCircleBanner circle={circle} />}
 
-      {(pendingOutbound ?? []).map((p) => (
-        <PendingOutboundCard key={p.id} pending={p} />
-      ))}
-
-      {(agentDrafts ?? [])
-        .filter((d) => !d.targetSlot) // slice drafts render on their canvas card, not in chat
-        .map((d) => (
-          <AgentDraftCard key={d.draftId} draft={d} circle={circle} selfPubkey={selfPubkey} />
-        ))}
+      {/* The quiet tray (mockup pin 2's "noticed N things — nothing posted"):
+          every consent surface — §5.3 approval cards + Phase B chat drafts —
+          collapses behind one calm summary line. Nothing has been posted;
+          expanding shows the cards exactly as before. */}
+      {(() => {
+        const chatDrafts = (agentDrafts ?? []).filter((d) => !d.targetSlot);
+        const noticed = (pendingOutbound ?? []).length + chatDrafts.length;
+        if (noticed === 0) return null;
+        return (
+          <div className="mx-3 mb-1 rounded-lg border border-dashed text-xs">
+            <button
+              type="button"
+              onClick={() => setTrayOpen((v) => !v)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground"
+            >
+              <Bell className="w-3.5 h-3.5 text-circle-agent shrink-0" />
+              <span>
+                Your agent {noticed === 1 ? "noticed 1 thing" : `noticed ${noticed} things`} —
+                nothing posted
+              </span>
+              <span className="ml-auto">{trayOpen ? "hide" : "review"}</span>
+            </button>
+            {trayOpen && (
+              <div className="pb-1.5">
+                {(pendingOutbound ?? []).map((p) => (
+                  <PendingOutboundCard key={p.id} pending={p} />
+                ))}
+                {chatDrafts.map((d) => (
+                  <AgentDraftCard
+                    key={d.draftId}
+                    draft={d}
+                    circle={circle}
+                    selfPubkey={selfPubkey}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {replyTo && (
         <div className="mx-3 -mb-1 flex items-center gap-2 text-xs text-muted-foreground border rounded-t-lg bg-muted/50 px-3 py-1.5">

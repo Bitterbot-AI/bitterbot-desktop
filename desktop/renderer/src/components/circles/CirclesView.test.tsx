@@ -237,6 +237,11 @@ beforeEach(() => {
   });
 });
 
+/** The consent surfaces are collapsed behind the quiet tray; expand it. */
+async function openTray() {
+  await userEvent.click(await screen.findByText(/nothing posted/));
+}
+
 describe("CirclesView", () => {
   it("invites a friend into the EXISTING circle (scoped invite carries circleId)", async () => {
     stubRpcs();
@@ -456,7 +461,8 @@ describe("CirclesView", () => {
   it("Phase B: shows the agent draft privately and publishes the EDITED text on consent", async () => {
     stubRpcs();
     render(<CirclesView />);
-    // The consent card renders above the composer, marked private.
+    // The consent card sits behind the quiet tray, marked private.
+    await openTray();
     expect(await screen.findByText(/Your agent drafted a reply/i)).toBeTruthy();
     expect(screen.getByText(/only you can see this/i)).toBeTruthy();
     const box = screen.getByDisplayValue("Thursday at 6 works for us.");
@@ -475,6 +481,7 @@ describe("CirclesView", () => {
   it("Phase B: discarding the draft never sends anything", async () => {
     stubRpcs();
     render(<CirclesView />);
+    await openTray();
     await screen.findByText(/Your agent drafted a reply/i);
     await userEvent.click(screen.getByRole("button", { name: /^Discard$/ }));
     await waitFor(() =>
@@ -487,6 +494,7 @@ describe("CirclesView", () => {
   it("B2: shows the agent's vote suggestion on the Decision Card and publishes it", async () => {
     stubRpcs();
     render(<CirclesView />);
+    await openTray();
     await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
     // The slice suggestion renders on ITS card, marked private…
     expect(await screen.findByText(/Your agent suggests/i)).toBeTruthy();
@@ -618,6 +626,9 @@ describe("CirclesView", () => {
   it("§5.3: shows the agent-write approval card; approve and reject hit the RPCs", async () => {
     stubRpcs();
     render(<CirclesView />);
+    // Collapsed by default: the tray counts BOTH consent surfaces (po1 + dr1).
+    expect(await screen.findByText(/noticed 2 things — nothing posted/)).toBeTruthy();
+    await openTray();
     // The card previews exactly what the server will execute.
     expect(await screen.findByText(/Your agent wants to send/i)).toBeTruthy();
     expect(screen.getByText(/movie night at ours\?/)).toBeTruthy();
