@@ -38,6 +38,15 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Circles color grammar (PLAN-36 mockup): blue = you/interactive,
+     violet = agent identity, amber = consent-needed. Three distinct hues so a
+     glance tells WHO a surface belongs to — never all brand-purple. */
+  --color-circle-you: var(--circle-you);
+  --color-circle-you-soft: var(--circle-you-soft);
+  --color-circle-agent: var(--circle-agent);
+  --color-circle-agent-soft: var(--circle-agent-soft);
+  --color-circle-consent: var(--circle-consent);
+  --color-circle-consent-soft: var(--circle-consent-soft);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -122,9 +131,25 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Circles grammar — light */
+  --circle-you: #3a5bd9;
+  --circle-you-soft: #eaeefc;
+  --circle-agent: #6a3ecf;
+  --circle-agent-soft: #f0eafc;
+  --circle-consent: #b4530a;
+  --circle-consent-soft: #fbeee0;
 }
 
 .dark {
+  /* Circles grammar — dark */
+  --circle-you: #6d8cff;
+  --circle-you-soft: #1a2340;
+  --circle-agent: #b08cff;
+  --circle-agent-soft: #241d3a;
+  --circle-consent: #ffb454;
+  --circle-consent-soft: #33260f;
+
   /* Sidebar theme colors - Dark mode (purple-ish) */
   --sidebar-bg-primary: hsl(262, 20%, 8%);
   --sidebar-bg-secondary: hsl(262, 25%, 6%);

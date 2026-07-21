@@ -103,21 +103,21 @@ export function CircleCanvas({
             <button
               type="button"
               onClick={() => setMode("note")}
-              className="text-xs font-medium text-primary flex items-center gap-1"
+              className="text-xs font-medium text-circle-you flex items-center gap-1"
             >
               <StickyNote className="w-3.5 h-3.5" /> Note
             </button>
             <button
               type="button"
               onClick={() => setMode("decision")}
-              className="text-xs font-medium text-primary flex items-center gap-1"
+              className="text-xs font-medium text-circle-you flex items-center gap-1"
             >
               <ListChecks className="w-3.5 h-3.5" /> Decision
             </button>
             <button
               type="button"
               onClick={() => setMode("study")}
-              className="text-xs font-medium text-primary flex items-center gap-1"
+              className="text-xs font-medium text-circle-you flex items-center gap-1"
             >
               <BookOpen className="w-3.5 h-3.5" /> Guide
             </button>
@@ -276,7 +276,7 @@ function ComposerActions({
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="text-xs font-medium px-3 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
+        className="text-xs font-medium px-3 py-1 rounded bg-circle-you text-white disabled:opacity-50"
       >
         {saveLabel}
       </button>

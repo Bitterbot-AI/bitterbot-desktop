@@ -68,7 +68,7 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
               className={cn(
                 "w-10 h-10 grid place-items-center text-[13px] font-bold text-white transition-all",
                 active
-                  ? "rounded-[15px] ring-2 ring-primary ring-offset-2 ring-offset-muted/40"
+                  ? "rounded-[15px] ring-2 ring-circle-you ring-offset-2 ring-offset-muted/40"
                   : "rounded-[13px]",
                 archived && "opacity-40 grayscale",
               )}
@@ -160,7 +160,7 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
         onClick={onAdd}
         aria-label="Add a friend"
         title="Add a friend"
-        className="w-10 h-10 rounded-[13px] grid place-items-center border border-dashed text-muted-foreground hover:text-foreground hover:border-primary"
+        className="w-10 h-10 rounded-[13px] grid place-items-center border border-dashed text-muted-foreground hover:text-foreground hover:border-circle-you"
       >
         <Plus className="w-5 h-5" />
       </button>
@@ -226,7 +226,7 @@ function Confirm({
           disabled={busy}
           className={cn(
             "text-xs font-medium px-3 py-1 rounded text-white disabled:opacity-50",
-            destructive ? "bg-destructive" : "bg-primary",
+            destructive ? "bg-destructive" : "bg-circle-you",
           )}
         >
           {cta}

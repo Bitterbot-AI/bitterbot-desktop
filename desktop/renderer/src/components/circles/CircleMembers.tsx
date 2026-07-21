@@ -113,7 +113,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
       )}
 
       {unnamed.length > 0 && editing === null && (
-        <div className="rounded-lg border border-primary/40 bg-primary/5 p-2.5 text-xs space-y-2">
+        <div className="rounded-lg border border-circle-you/40 bg-circle-you-soft/50 p-2.5 text-xs space-y-2">
           <p className="text-muted-foreground">
             Give {unnamed.length === 1 ? "this friend" : "these friends"} a name only you see — it
             keeps impostors from borrowing a name you trust.
@@ -129,7 +129,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
             <button
               type="button"
               onClick={() => openEditor(unnamed[0] as CircleMember)}
-              className="font-medium px-3 py-1 rounded bg-primary text-primary-foreground"
+              className="font-medium px-3 py-1 rounded bg-circle-you text-white"
             >
               Name {unnamed.length === 1 ? memberName(unnamed[0] as CircleMember) : "them"}
             </button>
@@ -239,7 +239,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                   onClick={() => void saveName(m)}
                   disabled={busy}
                   aria-label="Save name"
-                  className="text-primary p-1 disabled:opacity-50"
+                  className="text-circle-you p-1 disabled:opacity-50"
                 >
                   <Check className="w-3.5 h-3.5" />
                 </button>

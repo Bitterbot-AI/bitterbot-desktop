@@ -49,10 +49,10 @@ export function AgentDraftCard({
   };
 
   return (
-    <div className="mx-3 mb-1 rounded-lg border border-primary/40 bg-primary/5 p-2.5 space-y-1.5">
+    <div className="mx-3 mb-1 rounded-lg border border-circle-agent/40 border-l-2 border-l-circle-agent bg-circle-agent-soft/50 p-2.5 space-y-1.5">
       <div className="flex items-center gap-1.5 text-xs">
-        <Sparkles className="w-3.5 h-3.5 text-primary shrink-0" />
-        <span className="font-medium text-primary">
+        <Sparkles className="w-3.5 h-3.5 text-circle-agent shrink-0" />
+        <span className="font-medium text-circle-agent">
           Your agent drafted a reply ({summonerName(circle, draft, selfPubkey)} summoned it)
         </span>
         <span className="text-muted-foreground">· only you can see this</span>
@@ -85,7 +85,7 @@ export function AgentDraftCard({
           type="button"
           onClick={() => void publish()}
           disabled={!text.trim() || busy}
-          className="text-xs font-medium px-3 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
+          className="text-xs font-medium px-3 py-1 rounded bg-circle-agent text-white disabled:opacity-50"
         >
           Publish to circle
         </button>

@@ -76,7 +76,7 @@ export function CircleRightPane({
         onMouseDown={startResize}
         onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
         title="Drag to resize · double-click to reset"
-        className="absolute left-0 top-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize z-10 hover:bg-primary/40"
+        className="absolute left-0 top-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize z-10 hover:bg-circle-you/40"
       />
       <div className="flex gap-1 px-3 pt-2.5 border-b">
         <button
@@ -85,7 +85,7 @@ export function CircleRightPane({
           className={cn(
             "text-xs font-semibold px-2.5 py-1.5 rounded-t-lg",
             tab === "members"
-              ? "bg-muted text-foreground shadow-[inset_0_-2px_0_var(--primary)]"
+              ? "bg-muted text-foreground shadow-[inset_0_-2px_0_var(--circle-you)]"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -97,13 +97,13 @@ export function CircleRightPane({
           className={cn(
             "text-xs font-semibold px-2.5 py-1.5 rounded-t-lg flex items-center gap-1.5",
             tab === "canvas"
-              ? "bg-muted text-foreground shadow-[inset_0_-2px_0_var(--primary)]"
+              ? "bg-muted text-foreground shadow-[inset_0_-2px_0_var(--circle-you)]"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
           Canvas
           {cardCount > 0 && (
-            <span className="text-[10px] font-bold rounded-full bg-primary/15 text-primary px-1.5 min-w-[16px] text-center">
+            <span className="text-[10px] font-bold rounded-full bg-circle-you-soft text-circle-you px-1.5 min-w-[16px] text-center">
               {cardCount}
             </span>
           )}

@@ -99,13 +99,13 @@ export function CircleChat({ circle, selfPubkey }: Props) {
       </header>
 
       {pinnedMessages.length > 0 && (
-        <div className="mx-3 mt-2 rounded-lg border bg-muted/40 text-xs">
+        <div className="mx-3 mt-2 rounded-lg border border-circle-you/20 bg-circle-you-soft/60 text-xs">
           <button
             type="button"
             onClick={() => setShowPins((v) => !v)}
             className="w-full flex items-center gap-1.5 px-3 py-1.5 text-muted-foreground hover:text-foreground"
           >
-            <Pin className="w-3 h-3 text-primary shrink-0" />
+            <Pin className="w-3 h-3 text-circle-you shrink-0" />
             <span className="font-medium">
               {pinnedMessages.length} pinned {pinnedMessages.length === 1 ? "message" : "messages"}
             </span>
@@ -195,7 +195,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
           type="button"
           onClick={() => void submit()}
           disabled={!draft.trim() || sending || circle.status !== "active"}
-          className="w-8 h-8 rounded-lg grid place-items-center bg-primary text-primary-foreground disabled:opacity-40"
+          className="w-8 h-8 rounded-lg grid place-items-center bg-circle-you text-white disabled:opacity-40"
           aria-label="Send message"
         >
           <Send className="w-4 h-4" />

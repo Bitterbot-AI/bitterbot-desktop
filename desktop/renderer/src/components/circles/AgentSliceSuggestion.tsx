@@ -35,10 +35,10 @@ export function AgentSliceSuggestion({
   };
 
   return (
-    <div className="mt-2 rounded-md border border-primary/40 bg-primary/5 p-2 space-y-1.5">
+    <div className="mt-2 rounded-md border border-circle-agent/40 border-l-2 border-l-circle-agent bg-circle-agent-soft/50 p-2 space-y-1.5">
       <div className="flex items-center gap-1.5 text-[11px]">
-        <Sparkles className="w-3 h-3 text-primary shrink-0" />
-        <span className="font-medium text-primary">Your agent suggests</span>
+        <Sparkles className="w-3 h-3 text-circle-agent shrink-0" />
+        <span className="font-medium text-circle-agent">Your agent suggests</span>
         <span className="text-muted-foreground">· only you can see this</span>
       </div>
       {editable ? (
@@ -66,7 +66,7 @@ export function AgentSliceSuggestion({
           type="button"
           onClick={() => void act(() => publishDraft(circleId, draft.draftId, text))}
           disabled={!text.trim() || busy || !canPublish}
-          className="text-xs font-medium px-3 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
+          className="text-xs font-medium px-3 py-1 rounded bg-circle-agent text-white disabled:opacity-50"
         >
           Publish
         </button>

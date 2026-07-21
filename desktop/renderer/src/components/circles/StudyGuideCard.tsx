@@ -121,7 +121,7 @@ export function StudyGuideCard({
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="p-3 pb-2">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-primary mb-1">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
           Study guide · {covered} of {sections.length} sections covered
         </div>
         <div className="text-sm font-semibold">{card.title}</div>
@@ -170,7 +170,7 @@ export function StudyGuideCard({
                         }}
                         disabled={askedSlots[slot]}
                         title="Your agent drafts this section privately; you review and publish"
-                        className="text-xs font-medium text-primary flex items-center gap-1 shrink-0 disabled:opacity-50"
+                        className="text-xs font-medium text-circle-agent flex items-center gap-1 shrink-0 disabled:opacity-50"
                       >
                         <Sparkles className="w-3 h-3" />
                         {askedSlots[slot] ? "Drafting…" : "Ask my agent"}
@@ -179,7 +179,7 @@ export function StudyGuideCard({
                     <button
                       type="button"
                       onClick={() => openEditor(slot)}
-                      className="text-xs font-medium text-primary flex items-center gap-1 shrink-0"
+                      className="text-xs font-medium text-circle-you flex items-center gap-1 shrink-0"
                     >
                       {mine ? (
                         <>
@@ -251,7 +251,7 @@ export function StudyGuideCard({
                       type="button"
                       onClick={() => void publish(slot)}
                       disabled={!drafts[slot]?.value.trim() || publishing}
-                      className="text-xs font-medium px-3 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
+                      className="text-xs font-medium px-3 py-1 rounded bg-circle-you text-white disabled:opacity-50"
                     >
                       {mine ? "Update my contribution" : "Publish my contribution"}
                     </button>

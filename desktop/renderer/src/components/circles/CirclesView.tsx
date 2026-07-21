@@ -75,7 +75,7 @@ export function CirclesView() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {notice && (
-        <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs bg-primary/10 text-foreground border-b">
+        <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs bg-circle-you-soft/60 text-foreground border-b">
           <span>{notice}</span>
           <button type="button" onClick={() => setNotice(null)} className="underline shrink-0">
             dismiss
@@ -111,7 +111,7 @@ export function CirclesView() {
             <button
               type="button"
               onClick={() => setShowInvite(true)}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm"
+              className="px-4 py-2 rounded-lg bg-circle-you text-white text-sm"
             >
               Add a friend
             </button>

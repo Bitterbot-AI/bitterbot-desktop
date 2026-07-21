@@ -68,7 +68,7 @@ export function DecisionCard({
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="p-3 pb-2">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-primary mb-1">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
           Decision · {votes.length} of {circle.members.length} voted
         </div>
         <div className="text-sm font-semibold">{card.title}</div>
@@ -98,11 +98,11 @@ export function DecisionCard({
               onClick={() => setSelected(opt)}
               className={cn(
                 "w-full text-left rounded-md border px-2.5 py-1.5 relative overflow-hidden transition-colors",
-                isSel ? "border-primary" : "border-border hover:border-muted-foreground/40",
+                isSel ? "border-circle-you" : "border-border hover:border-muted-foreground/40",
               )}
             >
               <div
-                className="absolute inset-y-0 left-0 bg-primary/10"
+                className="absolute inset-y-0 left-0 bg-circle-you-soft/70"
                 style={{ width: `${pct}%` }}
                 aria-hidden="true"
               />
@@ -110,13 +110,13 @@ export function DecisionCard({
                 <span
                   className={cn(
                     "w-3.5 h-3.5 rounded-full border shrink-0 grid place-items-center",
-                    isSel ? "border-primary bg-primary" : "border-muted-foreground/50",
+                    isSel ? "border-circle-you bg-circle-you" : "border-muted-foreground/50",
                   )}
                 >
-                  {isSel && <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
+                  {isSel && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                 </span>
                 <span className="text-sm flex-1 min-w-0 truncate">{opt}</span>
-                {isMine && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                {isMine && <Check className="w-3.5 h-3.5 text-circle-you shrink-0" />}
                 <span className="text-xs text-muted-foreground tabular-nums shrink-0">{count}</span>
               </div>
               {count > 0 && (
@@ -160,7 +160,7 @@ export function DecisionCard({
                 }}
                 disabled={asked}
                 title="Your agent drafts a suggestion only you see; you publish it"
-                className="text-xs font-medium px-2 py-1.5 rounded border text-primary flex items-center gap-1 disabled:opacity-50 shrink-0"
+                className="text-xs font-medium px-2 py-1.5 rounded border border-circle-agent/40 text-circle-agent flex items-center gap-1 disabled:opacity-50 shrink-0"
               >
                 <Sparkles className="w-3 h-3" /> {asked ? "Drafting…" : "Ask my agent"}
               </button>
@@ -169,7 +169,7 @@ export function DecisionCard({
               type="button"
               onClick={() => void publish()}
               disabled={!changed || publishing}
-              className="flex-1 text-xs font-medium py-1.5 rounded bg-primary text-primary-foreground disabled:opacity-50"
+              className="flex-1 text-xs font-medium py-1.5 rounded bg-circle-you text-white disabled:opacity-50"
             >
               {myVote ? "Update my vote" : "Publish my vote"}
             </button>

@@ -115,7 +115,7 @@ export function InvitePanel({
           <button
             type="button"
             onClick={() => void mintInvite()}
-            className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm"
+            className="px-3 py-1.5 rounded bg-circle-you text-white text-sm"
           >
             {invite ? "Create another invite" : "Create invite"}
           </button>
@@ -164,7 +164,7 @@ export function InvitePanel({
               type="button"
               onClick={() => void join()}
               disabled={!joinCode.trim()}
-              className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm disabled:opacity-50"
+              className="px-3 py-1.5 rounded bg-circle-you text-white text-sm disabled:opacity-50"
             >
               Connect
             </button>

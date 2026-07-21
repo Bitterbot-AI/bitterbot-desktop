@@ -135,7 +135,7 @@ export function CircleMessageList({
                   aria-label={isPinned ? "Unpin message" : "Pin message"}
                   className={cn(
                     "p-1 rounded hover:text-foreground",
-                    isPinned ? "text-primary" : "text-muted-foreground",
+                    isPinned ? "text-circle-you" : "text-muted-foreground",
                   )}
                 >
                   <Pin className="w-3.5 h-3.5" />
@@ -160,7 +160,7 @@ export function CircleMessageList({
                     aria-label={`React ${e}`}
                     className={cn(
                       "text-base leading-none p-1 rounded hover:bg-muted",
-                      myEmojis.has(e) && "bg-primary/15",
+                      myEmojis.has(e) && "bg-circle-you-soft",
                     )}
                   >
                     {e}
@@ -197,7 +197,7 @@ export function CircleMessageList({
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-sm font-semibold">{name}</span>
                 {isSelf && (
-                  <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-primary/10 text-primary">
+                  <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-you-soft text-circle-you">
                     you
                   </span>
                 )}
@@ -208,7 +208,7 @@ export function CircleMessageList({
                 )}
                 <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
                 {isPinned && (
-                  <span title="Pinned for the circle" className="text-primary">
+                  <span title="Pinned for the circle" className="text-circle-you">
                     <Pin className="w-3 h-3" aria-label="pinned" />
                   </span>
                 )}
@@ -231,14 +231,16 @@ export function CircleMessageList({
                       onClick={() => toggle(emoji)}
                       title={reactors.map((p) => (p === selfPubkey ? "You" : nameOf(p))).join(", ")}
                       className={cn(
-                        "text-xs rounded-full border px-1.5 py-0.5 flex items-center gap-1 hover:border-muted-foreground/50",
+                        // Solid chip on a real border — translucent fills read
+                        // washed-out on the dark card (mockup .react/.react.on).
+                        "text-xs rounded-full border px-2 py-0.5 flex items-center gap-1 transition-colors",
                         myEmojis.has(emoji)
-                          ? "border-primary bg-primary/10"
-                          : "border-border bg-muted/40",
+                          ? "border-circle-you bg-circle-you-soft text-circle-you"
+                          : "border-border bg-card text-muted-foreground hover:border-muted-foreground/60",
                       )}
                     >
                       <span>{emoji}</span>
-                      <span className="tabular-nums text-muted-foreground">{reactors.length}</span>
+                      <span className="tabular-nums font-medium">{reactors.length}</span>
                     </button>
                   ))}
                 </div>
