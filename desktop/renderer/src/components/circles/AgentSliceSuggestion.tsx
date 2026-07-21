@@ -1,6 +1,7 @@
 import { Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useCirclesStore, type AgentDraft } from "../../stores/circles-store";
+import { RedactableDraftLines, useDraftConsent } from "./RedactableDraftLines";
 
 // PLAN-36 B2: the consent surface for an agent-drafted card slice — the agent
 // pre-filled YOUR vote / section contribution on the quarantined path; it is
@@ -24,7 +25,7 @@ export function AgentSliceSuggestion({
 }) {
   const publishDraft = useCirclesStore((s) => s.publishDraft);
   const discardDraft = useCirclesStore((s) => s.discardDraft);
-  const [text, setText] = useState(draft.content);
+  const consent = useDraftConsent(draft.content);
   const [busy, setBusy] = useState(false);
 
   const act = async (fn: () => Promise<boolean>) => {
@@ -33,6 +34,7 @@ export function AgentSliceSuggestion({
     await fn();
     setBusy(false);
   };
+  const lineReview = editable && !consent.editing && consent.canReviewLines;
 
   return (
     <div className="mt-2 rounded-md border border-circle-agent/40 border-l-2 border-l-circle-agent bg-circle-agent-soft/50 p-2 space-y-1.5">
@@ -41,16 +43,23 @@ export function AgentSliceSuggestion({
         <span className="font-medium text-circle-agent">Your agent suggests</span>
         <span className="text-muted-foreground">· only you can see this</span>
       </div>
-      {editable ? (
+      {!editable ? (
+        <div className="text-sm font-medium px-1">{consent.text}</div>
+      ) : lineReview ? (
+        // Mockup consent card: share only what you choose, line by line.
+        <RedactableDraftLines
+          lines={consent.lines}
+          redacted={consent.redacted}
+          onToggle={consent.toggle}
+        />
+      ) : (
         <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
+          value={consent.text}
+          onChange={(e) => consent.setText(e.target.value)}
           rows={3}
           maxLength={2000}
           className="w-full resize-none rounded border bg-background/60 text-sm outline-none px-2 py-1.5"
         />
-      ) : (
-        <div className="text-sm font-medium px-1">{text}</div>
       )}
       <div className="flex items-center gap-2 justify-end">
         {hint && <span className="mr-auto text-[11px] text-muted-foreground">{hint}</span>}
@@ -62,10 +71,20 @@ export function AgentSliceSuggestion({
         >
           Dismiss
         </button>
+        {lineReview && (
+          <button
+            type="button"
+            onClick={consent.startEditing}
+            disabled={busy}
+            className="text-xs font-medium px-2 py-1 rounded border text-muted-foreground hover:text-foreground"
+          >
+            Edit first
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => void act(() => publishDraft(circleId, draft.draftId, text))}
-          disabled={!text.trim() || busy || !canPublish}
+          onClick={() => void act(() => publishDraft(circleId, draft.draftId, consent.finalText()))}
+          disabled={!consent.finalText() || busy || !canPublish}
           className="text-xs font-medium px-3 py-1 rounded bg-circle-agent text-white disabled:opacity-50"
         >
           Publish

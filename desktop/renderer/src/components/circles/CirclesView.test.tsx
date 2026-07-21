@@ -523,6 +523,45 @@ describe("CirclesView", () => {
     expect(screen.getByText(/all 2 chose it/)).toBeTruthy();
   });
 
+  it("per-line redact: a redacted draft line never publishes (mockup consent card)", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method !== "circles.drafts.list") return base(method, params);
+      return Promise.resolve({
+        drafts: [
+          {
+            draftId: "dr9",
+            circleId: "c1",
+            summonEnvelopeId: "env-summon",
+            summonAuthorPubkey: "ed25519:maya",
+            kind: "reply",
+            targetCardId: null,
+            targetSlot: null,
+            content: "Thursday 7pm works.\nMy budget is $40 max.",
+            createdAt: Date.now(),
+          },
+        ],
+      });
+    });
+    render(<CirclesView />);
+    await openTray();
+    // Multi-line drafts get the line review, not the textarea.
+    expect(await screen.findByText("My budget is $40 max.")).toBeTruthy();
+    const redactButtons = screen.getAllByRole("button", { name: /^redact$/ });
+    expect(redactButtons).toHaveLength(2);
+    // Redact the budget line; it flips to a "share" (undo) chip.
+    await userEvent.click(redactButtons[1] as HTMLElement);
+    expect(screen.getByRole("button", { name: /^share$/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: /Publish to circle/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.drafts.publish", {
+        draftId: "dr9",
+        text: "Thursday 7pm works.",
+      }),
+    );
+  });
+
   it("B2: shows the agent's vote suggestion on the Decision Card and publishes it", async () => {
     stubRpcs();
     render(<CirclesView />);

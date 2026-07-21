@@ -770,6 +770,20 @@ one option leads ("all N chose it" / "M of N chose it"); a partial tally
 shows "Leading: X — M of K votes in; R still to vote"; ties say so.
 Renderer-only. Tests: partial state (no Best fit) + full-vote synthesis.
 
+**Per-line redact on the consent surfaces LANDED (the mockup consent card's
+"share only what you choose").** Multi-line agent drafts (chat replies and
+editable canvas slices) now review LINE BY LINE: each line carries a
+redact/share chip; a struck line is excluded from the publish and never
+leaves the node. "Edit first" is the free-text escape hatch (the mockup's
+own button) — entering it collapses redactions into the text so what you
+see is exactly what ships, with no hidden struck lines behind the textarea.
+Single-line drafts keep the plain editor (redacting the only line = the
+Discard button that already exists). Vote suggestions stay read-only.
+Shared `RedactableDraftLines` + `useDraftConsent` used by both cards.
+Renderer-only; the server still receives one approved text via
+`circles.drafts.publish`. Test: a redacted budget line never reaches the
+publish RPC.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

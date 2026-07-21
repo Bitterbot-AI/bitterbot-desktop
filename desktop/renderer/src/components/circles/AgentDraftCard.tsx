@@ -6,6 +6,7 @@ import {
   type AgentDraft,
   type Circle,
 } from "../../stores/circles-store";
+import { RedactableDraftLines, useDraftConsent } from "./RedactableDraftLines";
 
 // PLAN-36 Phase B: the consent surface for an @agent draft. The member's own
 // agent wrote this on the quarantined tool-less path after someone summoned it;
@@ -31,13 +32,14 @@ export function AgentDraftCard({
 }) {
   const publishDraft = useCirclesStore((s) => s.publishDraft);
   const discardDraft = useCirclesStore((s) => s.discardDraft);
-  const [text, setText] = useState(draft.content);
+  const consent = useDraftConsent(draft.content);
   const [busy, setBusy] = useState(false);
 
   const publish = async () => {
-    if (!text.trim() || busy) return;
+    const out = consent.finalText();
+    if (!out || busy) return;
     setBusy(true);
-    await publishDraft(circle.circleId, draft.draftId, text);
+    await publishDraft(circle.circleId, draft.draftId, out);
     setBusy(false);
   };
 
@@ -65,13 +67,24 @@ export function AgentDraftCard({
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={3}
-        maxLength={2000}
-        className="w-full resize-none rounded border bg-background/60 text-sm outline-none px-2 py-1.5"
-      />
+      {/* Mockup consent card: share only what you choose. Multi-line drafts
+          review line-by-line with per-line redact; "Edit first" is the
+          free-text escape hatch. Redacted lines never leave the node. */}
+      {consent.editing || !consent.canReviewLines ? (
+        <textarea
+          value={consent.text}
+          onChange={(e) => consent.setText(e.target.value)}
+          rows={3}
+          maxLength={2000}
+          className="w-full resize-none rounded border bg-background/60 text-sm outline-none px-2 py-1.5"
+        />
+      ) : (
+        <RedactableDraftLines
+          lines={consent.lines}
+          redacted={consent.redacted}
+          onToggle={consent.toggle}
+        />
+      )}
       <div className="flex items-center gap-2 justify-end">
         <button
           type="button"
@@ -81,10 +94,20 @@ export function AgentDraftCard({
         >
           Discard
         </button>
+        {!consent.editing && consent.canReviewLines && (
+          <button
+            type="button"
+            onClick={consent.startEditing}
+            disabled={busy}
+            className="text-xs font-medium px-2 py-1 rounded border text-muted-foreground hover:text-foreground"
+          >
+            Edit first
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void publish()}
-          disabled={!text.trim() || busy}
+          disabled={!consent.finalText() || busy}
           className="text-xs font-medium px-3 py-1 rounded bg-circle-agent text-white disabled:opacity-50"
         >
           Publish to circle
