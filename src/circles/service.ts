@@ -1487,6 +1487,28 @@ export class CirclesService {
    * slot (a vote, a study-guide section). Human-initiated only; the draft
    * comes back through the same private consent surface.
    */
+  /**
+   * Chat-scoped "Ask my agent" (summon-UX): our human asks their agent to
+   * draft a reply to the recent conversation WITHOUT posting a summon message
+   * to the circle. Nothing reaches the wire — the draft comes back through
+   * the same private consent surface, and only a publish tap ever sends.
+   * Shares the per-circle draft rate bucket with @agent summons.
+   */
+  requestAgentReplyDraft(args: { circleId: string }): { queued: boolean; reason?: string } {
+    if (!this.agentDraftsEnabled()) {
+      return { queued: false, reason: "disabled" };
+    }
+    const circle = this.store.getCircle(args.circleId);
+    if (!circle || circle.status !== "active") {
+      throw new Error(`circle ${args.circleId} is not active`);
+    }
+    return queueAgentDraft(this.db, {
+      circleId: args.circleId,
+      summonEnvelopeId: null,
+      summonAuthorPubkey: this.pubkey,
+    });
+  }
+
   requestAgentSliceDraft(args: { circleId: string; cardId: string; slot: string }): {
     queued: boolean;
     reason?: string;

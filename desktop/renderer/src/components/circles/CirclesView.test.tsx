@@ -353,7 +353,7 @@ describe("CirclesView", () => {
   it("sends a message through circles.send", async () => {
     stubRpcs();
     render(<CirclesView />);
-    const box = await screen.findByPlaceholderText("Message the circle…");
+    const box = await screen.findByPlaceholderText(/Message the circle/);
     await userEvent.type(box, "hello everyone{Enter}");
     await waitFor(() =>
       expect(requestMock).toHaveBeenCalledWith("circles.send", {
@@ -361,6 +361,29 @@ describe("CirclesView", () => {
         text: "hello everyone",
       }),
     );
+    // A plain message does NOT start the drafting indicator.
+    expect(screen.queryByText(/Your agent is drafting/)).toBeNull();
+  });
+
+  it("summon-UX: @agent in a sent message starts the loud drafting indicator", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    const box = await screen.findByPlaceholderText(/@agent asks everyone's agents/);
+    await userEvent.type(box, "@agent when should we meet?{Enter}");
+    await waitFor(() => expect(screen.getByText(/Your agent is drafting/)).toBeTruthy());
+  });
+
+  it("summon-UX: Ask my agent requests a private chat draft (no message posted)", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Ask my agent to draft a reply" }),
+    );
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.drafts.request", { circleId: "c1" }),
+    );
+    expect(screen.getByText(/Your agent is drafting/)).toBeTruthy();
+    expect(requestMock).not.toHaveBeenCalledWith("circles.send", expect.anything());
   });
 
   it("shows the explainer when circles are disabled", async () => {
@@ -586,7 +609,9 @@ describe("CirclesView", () => {
     render(<CirclesView />);
     await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
     await screen.findByText("Midterm 2 guide");
-    const askButtons = screen.getAllByRole("button", { name: /Ask my agent/i });
+    // Exact-name match: the composer's "Ask my agent to draft a reply" button
+    // must not be picked up here — we want the study SECTION's button.
+    const askButtons = screen.getAllByRole("button", { name: "Ask my agent" });
     await userEvent.click(askButtons[0] as HTMLElement); // first study section
     await waitFor(() =>
       expect(requestMock).toHaveBeenCalledWith("circles.drafts.request", {

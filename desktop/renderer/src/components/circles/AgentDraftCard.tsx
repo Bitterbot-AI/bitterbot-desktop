@@ -14,11 +14,18 @@ import { RedactableDraftLines, useDraftConsent } from "./RedactableDraftLines";
 // through the Publish tap below (editable first — what the human approves is
 // what ships). Discard means nothing ever left the node.
 
-function summonerName(circle: Circle, draft: AgentDraft, selfPubkey: string | undefined): string {
-  if (!draft.summonAuthorPubkey) return "someone";
-  if (draft.summonAuthorPubkey === selfPubkey) return "you";
-  const found = circle.members.find((m) => m.memberPubkey === draft.summonAuthorPubkey);
-  return found ? memberName(found) : "a friend";
+function draftHeadline(circle: Circle, draft: AgentDraft, selfPubkey: string | undefined): string {
+  // No summon envelope = the chat-scoped "Ask my agent" request.
+  if (!draft.summonEnvelopeId) return "Your agent drafted a reply (you asked for it)";
+  const who = !draft.summonAuthorPubkey
+    ? "someone"
+    : draft.summonAuthorPubkey === selfPubkey
+      ? "you"
+      : (() => {
+          const found = circle.members.find((m) => m.memberPubkey === draft.summonAuthorPubkey);
+          return found ? memberName(found) : "a friend";
+        })();
+  return `Your agent drafted a reply (${who} summoned it)`;
 }
 
 export function AgentDraftCard({
@@ -55,7 +62,7 @@ export function AgentDraftCard({
       <div className="flex items-center gap-1.5 text-xs">
         <Sparkles className="w-3.5 h-3.5 text-circle-agent shrink-0" />
         <span className="font-medium text-circle-agent">
-          Your agent drafted a reply ({summonerName(circle, draft, selfPubkey)} summoned it)
+          {draftHeadline(circle, draft, selfPubkey)}
         </span>
         <span className="text-muted-foreground">· only you can see this</span>
         <button

@@ -759,16 +759,29 @@ export const circlesHandlers: GatewayRequestHandlers = {
     const circleId = typeof params.circleId === "string" ? params.circleId : "";
     const cardId = typeof params.cardId === "string" ? params.cardId : "";
     const slot = typeof params.slot === "string" ? params.slot : "";
-    if (!circleId || !cardId || !slot) {
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    // Two shapes: {circleId, cardId, slot} = B2 slice pre-fill for a canvas
+    // card; {circleId} alone = chat-scoped "Ask my agent" reply draft (no
+    // summon message posted to the circle).
+    if ((cardId && !slot) || (!cardId && slot)) {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId, slot required"),
+        errorShape(ErrorCodes.INVALID_REQUEST, "cardId and slot go together"),
       );
       return;
     }
     try {
-      respond(true, svc.service.requestAgentSliceDraft({ circleId, cardId, slot }), undefined);
+      respond(
+        true,
+        cardId
+          ? svc.service.requestAgentSliceDraft({ circleId, cardId, slot })
+          : svc.service.requestAgentReplyDraft({ circleId }),
+        undefined,
+      );
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }

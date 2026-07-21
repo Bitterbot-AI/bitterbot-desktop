@@ -813,6 +813,27 @@ Accepted residuals: posture staleness has no time bound (COALESCE keeps the
 last report), and the deterministic synthesis band wears the mockup's own
 violet-soft.
 
+**Summon-UX LANDED (why @agent "didn't work").** Investigation of a live
+failed summon found two compounding problems. (1) DRAFT GENERATION WAS DEAD:
+the judge-provider sent `temperature`, which claude-opus-4-8 rejects with a
+400 that completeSimple swallowed into "model returned no text content" — so
+every @agent draft (and every PLAN-16/17 judge call) failed since the model
+rollforward. Fixed by omitting sampling params (the correct current API
+usage) and surfacing embedded provider errors verbatim. (2) EVEN WORKING,
+the flow was unintuitive: nothing taught the @agent verb, the response took
+15-45s and landed COLLAPSED in the quiet tray, and asking YOUR agent
+privately required broadcasting a summon to everyone. Shipped: composer
+placeholder teaches the verb ("@agent asks everyone's agents"); a violet
+sparkles "Ask my agent" button requests a PRIVATE chat-scoped reply draft
+with NO summon posted (new `requestAgentReplyDraft`, `circles.drafts.request`
+with bare `{circleId}`, same rate bucket, prompt framed as self-request);
+when the human explicitly asked (typed @agent or tapped the button), a loud
+"Your agent is drafting…" indicator shows until the draft lands and the
+quiet tray AUTO-OPENS — solicited is loud, unsolicited stays quiet; the
+draft card says "you asked for it" for chat-scoped requests. Tests: two-node
+no-summon-posted + self-request prompt framing + publish path;
+renderer summon indicator, Ask-my-agent RPC shape, plain sends stay quiet.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

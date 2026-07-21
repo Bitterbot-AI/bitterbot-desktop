@@ -158,6 +158,8 @@ interface CirclesState {
   approveOutbound: (circleId: string, id: string) => Promise<boolean>;
   rejectOutbound: (circleId: string, id: string) => Promise<boolean>;
   requestSliceDraft: (circleId: string, cardId: string, slot: string) => Promise<boolean>;
+  /** Chat-scoped "Ask my agent": a private reply draft, no summon message posted. */
+  requestChatDraft: (circleId: string) => Promise<boolean>;
   publishDraft: (circleId: string, draftId: string, text: string) => Promise<boolean>;
   discardDraft: (circleId: string, draftId: string) => Promise<boolean>;
   send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
@@ -286,6 +288,18 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       // back via the "circles" nudge → loadDrafts; publishing a slice draft
       // ships through circles.canvas.slice on the server.
       await request("circles.drafts.request", { circleId, cardId, slot });
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  requestChatDraft: async (circleId) => {
+    try {
+      // Nothing is posted to the circle — the agent drafts privately and the
+      // card lands in the quiet tray for review/publish.
+      await request("circles.drafts.request", { circleId });
       return true;
     } catch (err) {
       set({ notice: String(err) });

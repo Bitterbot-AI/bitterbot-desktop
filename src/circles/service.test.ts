@@ -513,6 +513,46 @@ describe("CirclesService end-to-end (two nodes)", () => {
     ).toThrow(/alphanumeric/);
   });
 
+  it("Ask my agent (chat-scoped): drafts privately with NO summon posted to the circle", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const prompts: string[] = [];
+    const anaDrafting = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: anaKey,
+      draftLlm: async (p) => {
+        prompts.push(p);
+        return "Thursday works for us.";
+      },
+    });
+    await bob.sendMessage({ circleId, text: "when should we meet?" });
+
+    const bobCountBefore = bob.messages(circleId).length;
+    expect(anaDrafting.requestAgentReplyDraft({ circleId }).queued).toBe(true);
+    // Nothing reached Bob — no summon message was posted anywhere.
+    expect(bob.messages(circleId)).toHaveLength(bobCountBefore);
+    expect(anaDrafting.messages(circleId).filter((m) => m.direction === "out")).toHaveLength(0);
+
+    await anaDrafting.generateAgentDrafts();
+    // The prompt frames a self-request, not a summon, and stays quarantined.
+    expect(prompts[0]).toContain("Your human asked you to draft a reply");
+    expect(prompts[0]).not.toContain("summoned you with @agent");
+    expect(prompts[0]).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
+
+    const draft = anaDrafting.agentDrafts(circleId)[0];
+    expect(draft?.kind).toBe("reply");
+    expect(draft?.summonEnvelopeId).toBeNull();
+
+    // Consent tap ships it through the normal signed path, agent-attributed.
+    await anaDrafting.publishAgentDraft({ draftId: draft?.draftId ?? "" });
+    const bobInbound = bob.messages(circleId).filter((m) => m.direction === "in");
+    expect(bobInbound.at(-1)?.content).toContain("Thursday works for us.");
+    expect(bobInbound.at(-1)?.agentAuthored).toBe(true);
+  });
+
   it("B2: publishing against a tombstoned card is refused; the draft survives", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

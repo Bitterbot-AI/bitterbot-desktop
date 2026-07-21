@@ -1,5 +1,5 @@
-import { Bell, Pin, Reply, Send, X } from "lucide-react";
-import { useState } from "react";
+import { Bell, Pin, Reply, Send, Sparkles, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
 import { cn } from "../../lib/utils";
 import {
@@ -43,13 +43,48 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const send = useCirclesStore((s) => s.send);
   const react = useCirclesStore((s) => s.react);
   const setPinned = useCirclesStore((s) => s.setPinned);
+  const requestChatDraft = useCirclesStore((s) => s.requestChatDraft);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<CircleMessage | null>(null);
   const [showPins, setShowPins] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false);
+  // Summon-UX: when the human explicitly asked for a draft (typed @agent or
+  // tapped Ask my agent), the response must be LOUD, not quiet — show a
+  // drafting indicator and auto-open the tray when the draft lands.
+  const [awaitingDraftSince, setAwaitingDraftSince] = useState<number | null>(null);
+  const chatDraftCount = (agentDrafts ?? []).filter((d) => !d.targetSlot).length;
+  const [seenDraftCount, setSeenDraftCount] = useState(chatDraftCount);
+
+  useEffect(() => {
+    if (awaitingDraftSince === null) return;
+    // The awaited draft arrived: stop the indicator, surface the tray.
+    if (chatDraftCount > seenDraftCount) {
+      setAwaitingDraftSince(null);
+      setTrayOpen(true);
+      setSeenDraftCount(chatDraftCount);
+      return;
+    }
+    // Generation runs on a ~15s sweep + one LLM call; give up quietly after
+    // 2 minutes rather than spinning forever (rate-limited / drafts off).
+    const t = setTimeout(() => setAwaitingDraftSince(null), 120_000);
+    return () => clearTimeout(t);
+  }, [awaitingDraftSince, chatDraftCount, seenDraftCount]);
+
+  const beginAwaitingDraft = () => {
+    setSeenDraftCount(chatDraftCount);
+    setAwaitingDraftSince(Date.now());
+  };
+
+  const askMyAgent = async () => {
+    if (awaitingDraftSince !== null) return;
+    const ok = await requestChatDraft(circle.circleId);
+    if (ok) beginAwaitingDraft();
+  };
 
   const peerCount = circle.members.filter((m) => !m.isSelf).length;
+  // Mirror of the server's detectAgentSummon token (agent-drafts.ts).
+  const SUMMON_RE = /(^|[^\w@])@agents?\b/i;
 
   // Phase D: toggle one emoji in MY reaction set on a message.
   const toggleReaction = (m: CircleMessage, emoji: string) => {
@@ -79,12 +114,16 @@ export function CircleChat({ circle, selfPubkey }: Props) {
 
   const submit = async () => {
     if (!draft.trim() || sending) return;
+    const summoned = SUMMON_RE.test(draft);
     setSending(true);
     const ok = await send(circle.circleId, draft, replyTo?.envelopeId ?? undefined);
     setSending(false);
     if (ok) {
       setDraft("");
       setReplyTo(null);
+      // A summon the human just sent must not vanish into silence — start
+      // the drafting indicator (their own agent queues at send time).
+      if (summoned) beginAwaitingDraft();
     }
   };
 
@@ -217,7 +256,31 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         </div>
       )}
 
+      {/* Summon-UX: an explicitly requested draft is loud — the human sees
+          their agent working instead of a 15-45s silence. */}
+      {awaitingDraftSince !== null && (
+        <div className="mx-3 -mb-1 flex items-center gap-2 text-xs text-circle-agent border border-circle-agent/30 rounded-t-lg bg-circle-agent-soft/40 px-3 py-1.5">
+          <Sparkles className="w-3.5 h-3.5 shrink-0 animate-pulse" />
+          <span>
+            Your agent is drafting… it lands above the composer, private to you, and nothing posts
+            until you approve it.
+          </span>
+        </div>
+      )}
+
       <div className="m-3 rounded-xl border bg-card flex items-end gap-2 p-2">
+        {circle.status === "active" && (
+          <button
+            type="button"
+            onClick={() => void askMyAgent()}
+            disabled={awaitingDraftSince !== null}
+            title="Ask your agent to draft a reply to this conversation. Private: nothing is posted to the circle until you review and publish. Typing @agent in a message instead invites EVERYONE's agents to draft for their humans."
+            aria-label="Ask my agent to draft a reply"
+            className="shrink-0 w-8 h-8 rounded-lg grid place-items-center text-circle-agent bg-circle-agent-soft/60 hover:bg-circle-agent-soft disabled:opacity-40"
+          >
+            <Sparkles className="w-4 h-4" />
+          </button>
+        )}
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -230,7 +293,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
           rows={1}
           placeholder={
             circle.status === "active"
-              ? "Message the circle…"
+              ? "Message the circle… @agent asks everyone's agents"
               : "This circle is frozen — messages are paused"
           }
           disabled={circle.status !== "active"}
