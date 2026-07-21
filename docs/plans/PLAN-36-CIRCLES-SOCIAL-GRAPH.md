@@ -721,6 +721,21 @@ dedupe if the cap ever rises. Tests: wrap survives verbatim (would fail on
 raw), petname-first across all three reads, self-label spoof, forged-marker
 sanitization, clamp/truncation.
 
+**Agent posture in the roster LANDED (mockup pin 3).** The members pane now
+answers "who and what can hear this": every roster row carries the member's
+agent posture right-aligned ("agent: summon-only" / "agent: off"). Self is
+computed live from the Phase B kill switch (`selfAgentPosture()`); peers
+self-report on the presence beat (`agent_posture` in the heartbeat body,
+new `circle_peer_presence.agent_posture` column, migration **v50**). The
+peer-controlled value is STRICTLY allowlisted on receipt ("summon-only" |
+"off" — anything else, including a spoofed "TRUSTED ADMIN" string or a
+"listening" no build ships, drops to null rather than rendering in a
+friend's roster); absent on old-binary beats, COALESCE keeps the last honest
+value. v1 has exactly two honest postures — there is no always-listening
+mode, so the mockup's "listening" state intentionally does not exist yet.
+Tests: two-node beat carries posture, allowlist drops forged values /
+absent-keeps-last, roster renders both rows.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS

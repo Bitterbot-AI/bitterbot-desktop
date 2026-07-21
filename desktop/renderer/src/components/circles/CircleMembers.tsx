@@ -194,12 +194,22 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                   <span className="text-[11px] text-muted-foreground">the name they chose</span>
                 )}
               </div>
+              {/* Mockup pin 3: the roster answers "who and what can hear
+                  this" — each row carries the member's agent posture. */}
+              {m.agentPosture && !isEditing && (
+                <span className="ml-auto text-[11px] text-muted-foreground shrink-0">
+                  agent: <span className="font-medium">{m.agentPosture}</span>
+                </span>
+              )}
               {!isEditing && (
                 <button
                   type="button"
                   onClick={() => openEditor(m)}
                   aria-label={m.isSelf ? "Edit your name" : `Name ${name}`}
-                  className="ml-auto opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-foreground p-0.5 rounded shrink-0"
+                  className={cn(
+                    "opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-foreground p-0.5 rounded shrink-0",
+                    !m.agentPosture && "ml-auto",
+                  )}
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>

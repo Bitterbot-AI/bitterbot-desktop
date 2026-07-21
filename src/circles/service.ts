@@ -812,6 +812,9 @@ export class CirclesService {
           // §5.6: carry our current self-name so a rename reaches existing
           // friends' rosters on the next beat.
           display_name: this.displayName,
+          // Roster posture (mockup pin 3): what our agent can do in this
+          // circle, so friends' rosters answer "who and what can hear this".
+          agent_posture: this.selfAgentPosture(),
         },
         this.key,
       );
@@ -1665,10 +1668,11 @@ export class CirclesService {
     a2aUrl: string | null;
     lastSeenAt: number;
     lastStatus: string | null;
+    agentPosture: string | null;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT peer_pubkey, a2a_url, last_seen_at, last_status
+        `SELECT peer_pubkey, a2a_url, last_seen_at, last_status, agent_posture
            FROM circle_peer_presence ORDER BY last_seen_at DESC`,
       )
       .all() as unknown as Array<{
@@ -1676,13 +1680,25 @@ export class CirclesService {
       a2a_url: string | null;
       last_seen_at: number;
       last_status: string | null;
+      agent_posture: string | null;
     }>;
     return rows.map((r) => ({
       peerPubkey: r.peer_pubkey,
       a2aUrl: r.a2a_url,
       lastSeenAt: r.last_seen_at,
       lastStatus: r.last_status,
+      agentPosture: r.agent_posture,
     }));
+  }
+
+  /**
+   * Our own agent's posture in circles (mockup pin 3). v1 has two honest
+   * states: "summon-only" (the Phase B @agent draft path is on) and "off"
+   * (the kill switch is set). There is no always-listening mode — an agent
+   * only ever sees what is @-addressed to it.
+   */
+  selfAgentPosture(): "summon-only" | "off" {
+    return this.agentDraftsEnabled() ? "summon-only" : "off";
   }
 
   messages(

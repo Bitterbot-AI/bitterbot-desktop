@@ -30,6 +30,7 @@ const CIRCLE = {
       isSelf: true,
       lastSeenAt: Date.now(),
       lastStatus: "online",
+      agentPosture: "summon-only",
     },
     {
       memberPubkey: "ed25519:maya",
@@ -38,6 +39,7 @@ const CIRCLE = {
       isSelf: false,
       lastSeenAt: Date.now(),
       lastStatus: "online",
+      agentPosture: "summon-only",
     },
   ],
 };
@@ -322,6 +324,9 @@ describe("CirclesView", () => {
     expect(screen.queryByText(/SECURITY NOTICE/)).toBeNull();
     expect(screen.queryByText(/EXTERNAL_UNTRUSTED_CONTENT/)).toBeNull();
     expect(screen.getByLabelText("screened")).toBeTruthy();
+    // Mockup pin 3: each roster row shows the member's agent posture.
+    expect(screen.getAllByText(/agent:/).length).toBe(2);
+    expect(screen.getAllByText("summon-only").length).toBeGreaterThan(0);
   });
 
   it("sends a message through circles.send", async () => {

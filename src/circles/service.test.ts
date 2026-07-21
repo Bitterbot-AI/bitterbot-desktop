@@ -742,6 +742,10 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]?.peerPubkey).toBe(pubkeyId(bobKey));
     expect(seen[0]?.lastStatus).toBe("online");
+    // Mockup pin 3: the beat carries Bob's agent posture so Ana's roster can
+    // answer "who and what can hear this".
+    expect(seen[0]?.agentPosture).toBe(bob.selfAgentPosture());
+    expect(["summon-only", "off"]).toContain(seen[0]?.agentPosture);
   });
 
   it("refuses to mint invites without a public URL and on inactive circles", () => {

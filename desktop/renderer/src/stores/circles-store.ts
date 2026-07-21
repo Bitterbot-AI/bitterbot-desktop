@@ -20,6 +20,8 @@ export interface CircleMember {
   isSelf: boolean;
   lastSeenAt: number | null;
   lastStatus: string | null;
+  /** Their agent's posture ("summon-only" | "off"); null until their node reports it. */
+  agentPosture?: string | null;
 }
 
 /** The name to show for a member: your private label wins, else their own. */

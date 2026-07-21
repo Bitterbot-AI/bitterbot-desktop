@@ -173,6 +173,13 @@ export const circlesHandlers: GatewayRequestHandlers = {
           nameCollision: f?.nameCollision ?? false,
           lastSeenAt: presence.get(m.memberPubkey)?.lastSeenAt ?? null,
           lastStatus: presence.get(m.memberPubkey)?.lastStatus ?? null,
+          // Mockup pin 3: the roster answers "who and what can hear this".
+          // Self is computed live; peers self-report on the presence beat
+          // (allowlisted on receipt; null until their node ships the field).
+          agentPosture:
+            m.memberPubkey === selfPubkey
+              ? svc.service.selfAgentPosture()
+              : (presence.get(m.memberPubkey)?.agentPosture ?? null),
         };
       }),
     }));

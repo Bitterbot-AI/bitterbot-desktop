@@ -415,17 +415,27 @@ export function handleCirclePresence(
   // stored name.
   const rawName = typeof body.display_name === "string" ? body.display_name.trim() : "";
   const displayName = rawName ? rawName.slice(0, 80) : null;
+  // Peer-controlled agent posture (mockup pin 3): STRICT allowlist — this
+  // string renders verbatim in every friend's roster, so anything else
+  // (including a future "listening" no build ships yet) is dropped to null
+  // rather than displayed. Absent on old-binary beats; COALESCE keeps the
+  // last honest value.
+  const agentPosture =
+    body.agent_posture === "summon-only" || body.agent_posture === "off"
+      ? body.agent_posture
+      : null;
   db.prepare(
     `INSERT INTO circle_peer_presence
-       (peer_pubkey, a2a_url, box_pubkey, mailbox_url, last_seen_at, last_status)
-     VALUES (?, ?, ?, ?, ?, ?)
+       (peer_pubkey, a2a_url, box_pubkey, mailbox_url, last_seen_at, last_status, agent_posture)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(peer_pubkey) DO UPDATE SET
        a2a_url = COALESCE(excluded.a2a_url, circle_peer_presence.a2a_url),
        box_pubkey = COALESCE(excluded.box_pubkey, circle_peer_presence.box_pubkey),
        mailbox_url = COALESCE(excluded.mailbox_url, circle_peer_presence.mailbox_url),
        last_seen_at = excluded.last_seen_at,
-       last_status = excluded.last_status`,
-  ).run(auth.envelope.author_pubkey, a2aUrl, boxPubkey, mailboxUrl, now, status);
+       last_status = excluded.last_status,
+       agent_posture = COALESCE(excluded.agent_posture, circle_peer_presence.agent_posture)`,
+  ).run(auth.envelope.author_pubkey, a2aUrl, boxPubkey, mailboxUrl, now, status, agentPosture);
   // Presence rides a SIGNED member envelope, so it also refreshes the
   // sender's transport endpoints in this circle (mailbox fallback needs
   // box_pubkey + mailbox_url on the member row).

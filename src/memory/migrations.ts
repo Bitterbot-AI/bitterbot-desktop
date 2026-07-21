@@ -1833,6 +1833,18 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 50,
+    description:
+      "PLAN-36 mockup pin 3 (agent posture in the roster): " +
+      "circle_peer_presence.agent_posture — a peer's self-reported agent " +
+      "posture ('summon-only' | 'off'), carried on the presence beat so the " +
+      "roster can answer 'who and what can hear this' in one glance. " +
+      "Allowlist-validated on receipt; absent on old-binary beats (null).",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_peer_presence", "agent_posture", "TEXT");
+    },
+  },
 ];
 
 /**
