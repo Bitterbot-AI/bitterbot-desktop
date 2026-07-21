@@ -463,10 +463,15 @@ export async function summarizeText(params: {
         {
           apiKey,
           maxTokens: Math.ceil(targetLength / 2),
-          temperature: 0.3,
+          // No sampling params: current Anthropic models 400 on temperature,
+          // and completeSimple embeds that error instead of throwing.
           signal: controller.signal,
         },
       );
+      const failure = res as { stopReason?: string; errorMessage?: string };
+      if (failure.stopReason === "error") {
+        throw new Error(`summary llm error: ${failure.errorMessage ?? "unknown"}`);
+      }
 
       const summary = res.content
         .filter(isTextContentBlock)

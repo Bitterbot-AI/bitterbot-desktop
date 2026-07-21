@@ -263,7 +263,8 @@ describe("tts", () => {
       const callArgs = vi.mocked(completeSimple).mock.calls[0];
       expect(callArgs?.[1]?.messages?.[0]?.role).toBe("user");
       expect(callArgs?.[2]?.maxTokens).toBe(250);
-      expect(callArgs?.[2]?.temperature).toBe(0.3);
+      // No sampling params: current Anthropic models 400 on temperature.
+      expect(callArgs?.[2]).not.toHaveProperty("temperature");
       expect(getApiKeyForModel).toHaveBeenCalledTimes(1);
     });
 

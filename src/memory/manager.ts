@@ -3003,9 +3003,14 @@ export class MemoryIndexManager implements MemorySearchManager {
           {
             apiKey: ctx.apiKey,
             maxTokens: 2048,
-            temperature: 0.7,
+            // No sampling params: current Anthropic models 400 on temperature,
+            // and completeSimple embeds that error instead of throwing.
           },
         );
+        const failure = res as { stopReason?: string; errorMessage?: string };
+        if (failure.stopReason === "error") {
+          throw new Error(`llm error (${modelSpec}): ${failure.errorMessage ?? "unknown"}`);
+        }
 
         return (
           res.content

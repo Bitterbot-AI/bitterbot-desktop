@@ -263,7 +263,6 @@ async function probeTool(
       complete(model, context, {
         apiKey,
         maxTokens: 32,
-        temperature: 0,
         toolChoice: "required",
         signal,
       } satisfies OpenAICompletionsOptions),
@@ -311,7 +310,6 @@ async function probeImage(
       complete(model, context, {
         apiKey,
         maxTokens: 16,
-        temperature: 0,
         signal,
       } satisfies OpenAICompletionsOptions),
     );

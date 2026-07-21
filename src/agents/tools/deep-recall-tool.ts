@@ -134,9 +134,14 @@ function buildLlmCallFn(cfg: BitterbotConfig | undefined): RLMLLMCallFn {
       {
         apiKey: auth?.apiKey,
         maxTokens: params.maxTokens ?? 4000,
-        temperature: 0.3,
+        // No sampling params: current Anthropic models 400 on temperature,
+        // and completeSimple embeds that error instead of throwing.
       },
     );
+    const failure = res as { stopReason?: string; errorMessage?: string };
+    if (failure.stopReason === "error") {
+      throw new Error(`deep-recall llm error: ${failure.errorMessage ?? "unknown"}`);
+    }
 
     const text =
       res.content
