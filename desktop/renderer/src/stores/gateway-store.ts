@@ -14,7 +14,29 @@ import {
 const TOAST_DEDUPE_WINDOW_MS = 2000;
 const recentErrorKeys = new Map<string, number>();
 
+// Capability probes: methods whose FAILURE is a signal the caller interprets
+// (e.g. "this is not a management node"), never a user-facing error.
+const QUIET_PROBE_METHODS = new Set(["management.health"]);
+
+// Version skew is a normal fleet condition: an edge node's UI (Vite, latest)
+// can be newer than its gateway binary, so a polled RPC the gateway doesn't
+// know yet must degrade silently — one console note, no toast storm.
+const unsupportedMethods = new Set<string>();
+
 function dispatchErrorToast(err: GatewayRequestError): void {
+  if (QUIET_PROBE_METHODS.has(err.method)) {
+    return;
+  }
+  if (err.message.includes("unknown method")) {
+    if (!unsupportedMethods.has(err.method)) {
+      unsupportedMethods.add(err.method);
+      console.warn(
+        `gateway does not implement ${err.method} (older gateway build); ` +
+          `the feature stays hidden until the gateway is updated`,
+      );
+    }
+    return;
+  }
   const key = `${err.kind}:${err.method}:${err.code ?? ""}`;
   const now = Date.now();
   const lastAt = recentErrorKeys.get(key);

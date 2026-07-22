@@ -7,6 +7,24 @@ import { useGatewayStore } from "./gateway-store";
 // badges) has a home. All state rides the existing circles.* gateway RPCs — no
 // new protocol.
 
+// Version-skew degradation: a gateway older than this UI doesn't know the
+// newer circles.* RPCs. Remember per-method, stop calling, and never surface
+// the failure as a notice — the feature simply stays absent until the
+// gateway is rebuilt. (The gateway-store already suppresses the toast.)
+const unsupportedMethods = new Set<string>();
+/** Test seam: module state must not leak between renderer tests. */
+export function resetUnsupportedMethodsForTests(): void {
+  unsupportedMethods.clear();
+}
+function methodUnavailable(method: string, err: unknown): boolean {
+  if (unsupportedMethods.has(method)) return true;
+  if (String(err).includes("unknown method")) {
+    unsupportedMethods.add(method);
+    return true;
+  }
+  return false;
+}
+
 export interface CircleMember {
   memberPubkey: string;
   displayName: string | null;
@@ -241,21 +259,25 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   },
 
   loadDrafts: async (circleId) => {
+    if (unsupportedMethods.has("circles.drafts.list")) return;
     try {
       const res = await request<{ drafts: AgentDraft[] }>("circles.drafts.list", { circleId });
       set((s) => ({ draftsByCircle: { ...s.draftsByCircle, [circleId]: res.drafts ?? [] } }));
     } catch (err) {
+      if (methodUnavailable("circles.drafts.list", err)) return;
       set({ notice: String(err) });
     }
   },
 
   loadOutbound: async (circleId) => {
+    if (unsupportedMethods.has("circles.outbound.list")) return;
     try {
       const res = await request<{ pending: PendingOutbound[] }>("circles.outbound.list", {
         circleId,
       });
       set((s) => ({ outboundByCircle: { ...s.outboundByCircle, [circleId]: res.pending ?? [] } }));
     } catch (err) {
+      if (methodUnavailable("circles.outbound.list", err)) return;
       set({ notice: String(err) });
     }
   },

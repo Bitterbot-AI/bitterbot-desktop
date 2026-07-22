@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useCirclesStore } from "../../stores/circles-store";
+import { resetUnsupportedMethodsForTests, useCirclesStore } from "../../stores/circles-store";
 import { CirclesView } from "./CirclesView";
 import { sectionSlot } from "./StudyGuideCard";
 
@@ -223,6 +223,7 @@ function stubRpcs(enabled = true) {
 }
 
 beforeEach(() => {
+  resetUnsupportedMethodsForTests();
   requestMock.mockReset();
   useCirclesStore.setState({
     status: null,
@@ -363,6 +364,25 @@ describe("CirclesView", () => {
     );
     // A plain message does NOT start the drafting indicator.
     expect(screen.queryByText(/Your agent is drafting/)).toBeNull();
+  });
+
+  it("version skew: unknown-method RPCs degrade silently (no notice, no crash)", async () => {
+    // An edge node's UI can be newer than its gateway binary: the newer
+    // circles.* polls must not spam errors — the feature just stays absent.
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.outbound.list" || method === "circles.drafts.list") {
+        return Promise.reject(new Error(`${method}: unknown method: ${method} (INVALID_REQUEST)`));
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    await waitFor(() => expect(screen.getAllByText("Bio 204").length).toBeGreaterThan(0));
+    expect(await screen.findByText("hi from Maya")).toBeTruthy();
+    // No error banner, and the (unsupported) consent tray simply isn't there.
+    expect(screen.queryByText(/unknown method/)).toBeNull();
+    expect(screen.queryByText(/nothing posted/)).toBeNull();
   });
 
   it("summon-UX: @agent in a sent message starts the loud drafting indicator", async () => {
