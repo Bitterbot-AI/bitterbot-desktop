@@ -244,6 +244,116 @@ async function openTray() {
 }
 
 describe("CirclesView", () => {
+  it("renames a circle from the rail menu (node-local label)", async () => {
+    stubRpcs();
+    render(<CirclesView />);
+    await waitFor(() => expect(screen.getAllByText("Bio 204").length).toBeGreaterThan(0));
+    await userEvent.click(screen.getByRole("button", { name: "Bio 204 options" }));
+    await userEvent.click(screen.getByRole("button", { name: /Rename/ }));
+    const input = screen.getByLabelText("Circle name");
+    await userEvent.clear(input);
+    await userEvent.type(input, "Roomies{Enter}");
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.rename", {
+        circleId: "c1",
+        name: "Roomies",
+      }),
+    );
+  });
+
+  it("scoped invite offers known connections and sends through the shared circle", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.invite" && (params as { sendToPubkey?: string })?.sendToPubkey) {
+        return Promise.resolve({ inviteId: "i1", sentVia: "c2", delivered: ["ed25519:tom"] });
+      }
+      if (method === "circles.list") {
+        return Promise.resolve({
+          circles: [
+            CIRCLE,
+            {
+              circleId: "c2",
+              name: "Old connection",
+              kind: "connection",
+              status: "active",
+              members: [
+                CIRCLE.members[0],
+                {
+                  memberPubkey: "ed25519:tom",
+                  displayName: "Tom",
+                  role: "member",
+                  isSelf: false,
+                  lastSeenAt: Date.now(),
+                  lastStatus: "online",
+                },
+              ],
+            },
+          ],
+        });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    // Open the scoped invite on c1; Tom (from c2, not in c1) is offered.
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Invite someone to this circle/ }),
+    );
+    const select = await screen.findByLabelText("Choose a connection");
+    await userEvent.selectOptions(select, "ed25519:tom");
+    await userEvent.click(screen.getByRole("button", { name: /Send invite/ }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.invite", {
+        circleId: "c1",
+        sendToPubkey: "ed25519:tom",
+      }),
+    );
+    expect(await screen.findByText(/Invite sent/)).toBeTruthy();
+  });
+
+  it("shows a one-tap Join button when a message carries an invite code", async () => {
+    stubRpcs();
+    const CODE = "bbc1." + "A".repeat(40);
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.inviteInfo") {
+        // knownAs null = the verified signer is a STRANGER (name is a claim).
+        return Promise.resolve({
+          circleName: "Trip crew",
+          inviterName: "Maya",
+          inviterPubkey: "ed25519:" + "b".repeat(64),
+          knownAs: null,
+        });
+      }
+      if (method === "circles.messages") {
+        return Promise.resolve({
+          annotations: { reactions: {}, pins: [] },
+          messages: [
+            {
+              messageId: "mi1",
+              envelopeId: "env-mi1",
+              authorPubkey: "ed25519:maya",
+              direction: "in",
+              kind: "message",
+              content: `I'd like to add you to my circle "Trip crew". Paste this invite code:\n${CODE}`,
+              createdAt: Date.now(),
+            },
+          ],
+        });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /Join this circle/ }));
+    // The confirm warns that the VERIFIED signer is a stranger — the claimed
+    // name must not read as a trusted contact (adversarial review #3).
+    expect(await screen.findByText(/signed by someone you don't know/)).toBeTruthy();
+    expect(screen.getByText(/is their own claim/)).toBeTruthy();
+    expect(requestMock).not.toHaveBeenCalledWith("circles.join", expect.anything());
+    await userEvent.click(screen.getByRole("button", { name: /^Join$/ }));
+    await waitFor(() => expect(requestMock).toHaveBeenCalledWith("circles.join", { code: CODE }));
+  });
+
   it("invites a friend into the EXISTING circle (scoped invite carries circleId)", async () => {
     stubRpcs();
     render(<CirclesView />);

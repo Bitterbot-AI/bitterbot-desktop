@@ -182,7 +182,7 @@ async function circleRpc(
   a2aUrl: string,
   method: string,
   params: Record<string, unknown>,
-): Promise<{ ok: boolean; result?: Record<string, unknown>; error?: string }> {
+): Promise<{ ok: boolean; result?: Record<string, unknown>; error?: string; refused?: boolean }> {
   try {
     const res = await fetchImpl(a2aUrl.replace(/\/$/, "") + "/a2a", {
       method: "POST",
@@ -195,7 +195,10 @@ async function circleRpc(
       result?: Record<string, unknown>;
       error?: { message?: string };
     };
-    if (body.error) return { ok: false, error: body.error.message ?? "rpc error" };
+    // The peer ANSWERED with a refusal — that is a definitive application
+    // outcome (bad secret, bound invite, revoked…), not a reachability
+    // problem. Callers must not retry it through the mailbox.
+    if (body.error) return { ok: false, refused: true, error: body.error.message ?? "rpc error" };
     return { ok: true, result: body.result };
   } catch (err) {
     return { ok: false, error: String(err) };
@@ -293,7 +296,13 @@ export class CirclesService {
    * Mint an invite code for a circle (creating a fresh connection circle
    * when none is given). The code is returned ONCE; only its hash persists.
    */
-  createInviteCode(args: { circleId?: string; name?: string; ttlMs?: number }): CreatedInvite & {
+  createInviteCode(args: {
+    circleId?: string;
+    name?: string;
+    ttlMs?: number;
+    /** Bind redemption to one pubkey (send-to-connection path). */
+    targetPubkey?: string;
+  }): CreatedInvite & {
     circleId: string;
   } {
     // §4: a reachable a2a URL is no longer mandatory — a mailbox rendezvous is an
@@ -326,8 +335,45 @@ export class CirclesService {
       inviterBoxPubkey: hasMailboxRendezvous ? this.boxKeys.publicKeyB64 : undefined,
       scopes: DEFAULT_MEMBER_SCOPES,
       ttlMs: args.ttlMs,
+      targetPubkey: args.targetPubkey,
     });
     return { ...invite, circleId };
+  }
+
+  /**
+   * Deliver an invite code to an ALREADY-CONNECTED peer through a circle you
+   * both share (the "add someone I know" path — no copy/paste ceremony).
+   * The code rides the normal signed message path in the smallest shared
+   * active circle (a 1:1 connection when one exists); the receiver's UI
+   * detects it and offers a one-tap Join. Sending is not consent — the
+   * receiving human still reviews the parsed invite and taps Join themselves.
+   */
+  async sendInviteToConnection(args: {
+    code: string;
+    targetPubkey: string;
+    circleName: string;
+  }): Promise<SendReport & { viaCircleId: string }> {
+    // STRICTLY a 1:1 circle (exactly us + them). Fan-out delivers to every
+    // member of the delivery circle, and even a target-bound code should not
+    // be broadcast to bystanders (adversarial review #2). No 1:1 → refuse and
+    // let the human share the invite link instead.
+    const via = this.listCircles().find((c) => {
+      if (c.status !== "active") return false;
+      const members = this.store.getMembers(c.circleId);
+      return members.length === 2 && members.some((m) => m.memberPubkey === args.targetPubkey);
+    });
+    if (!via) {
+      throw new Error(
+        "no direct 1:1 circle with that person — share the invite link with them instead",
+      );
+    }
+    const report = await this.sendMessage({
+      circleId: via.circleId,
+      text:
+        `I'd like to add you to my circle "${args.circleName}". ` +
+        `Paste this invite code in your Circles pane to join (or tap Join if your app offers it):\n${args.code}`,
+    });
+    return { ...report, viaCircleId: via.circleId };
   }
 
   // -------------------------------------------------------------------------
@@ -384,6 +430,11 @@ export class CirclesService {
           members,
           status: "connected",
         };
+      }
+      if (rpc.refused) {
+        // The inviter's node answered and said no — surface the real reason
+        // instead of masking it as "unreachable" and queuing mailbox retries.
+        throw new Error(`join refused: ${rpc.error}`);
       }
       log.debug(`direct join for ${invite.circleId} failed (${rpc.error}); trying mailbox`);
     }
@@ -1238,6 +1289,19 @@ export class CirclesService {
 
   clearPetname(memberPubkey: string): void {
     this.store.clearPetname(memberPubkey);
+  }
+
+  /**
+   * Rename a circle — NODE-LOCAL, any status. Your label for the group; it
+   * never reaches a peer (their copy keeps whatever they call it).
+   */
+  renameCircle(args: { circleId: string; name: string }): void {
+    const clean = args.name.trim().slice(0, 80);
+    if (!clean) throw new Error("name cannot be empty");
+    if (!this.store.getCircle(args.circleId)) {
+      throw new Error(`circle ${args.circleId} not found`);
+    }
+    this.store.renameCircle(args.circleId, clean);
   }
 
   /**

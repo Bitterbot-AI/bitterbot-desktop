@@ -197,6 +197,17 @@ interface CirclesState {
   markRead: (circleId: string) => void;
   unfreeze: (circleId: string) => Promise<boolean>;
   removeMember: (circleId: string, memberPubkey: string) => Promise<boolean>;
+  renameCircle: (circleId: string, name: string) => Promise<boolean>;
+  /** Verified preview of an invite code (who is REALLY asking) before joining. */
+  inviteInfo: (code: string) => Promise<{
+    circleName: string;
+    inviterName: string | null;
+    inviterPubkey: string;
+    /** Your label for the verified signer when you already know them. */
+    knownAs?: string | null;
+  } | null>;
+  /** One-tap join for an invite code detected in a message. */
+  joinInvite: (code: string) => Promise<boolean>;
   archiveCircle: (circleId: string) => Promise<boolean>;
   unarchiveCircle: (circleId: string) => Promise<boolean>;
   deleteCircle: (circleId: string) => Promise<boolean>;
@@ -451,6 +462,43 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     try {
       await request("circles.member.remove", { circleId, memberPubkey });
       await get().refresh(); // roster shrinks everywhere it shows
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  renameCircle: async (circleId, name) => {
+    try {
+      // Node-local: your label for the group; the wire never carries it.
+      await request("circles.rename", { circleId, name });
+      await get().refresh();
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  inviteInfo: async (code) => {
+    try {
+      return await request<{
+        circleName: string;
+        inviterName: string | null;
+        inviterPubkey: string;
+        knownAs?: string | null;
+      }>("circles.inviteInfo", { code });
+    } catch (err) {
+      set({ notice: String(err) });
+      return null;
+    }
+  },
+
+  joinInvite: async (code) => {
+    try {
+      await request("circles.join", { code });
+      await get().refresh();
       return true;
     } catch (err) {
       set({ notice: String(err) });

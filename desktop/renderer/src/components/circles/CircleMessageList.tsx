@@ -37,6 +37,11 @@ function fmtTime(ts: number): string {
   return new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+// A pasted/delivered invite code in a message body (bbc1.<base64url>).
+// Detection only — tapping Join runs the full signature-checked join
+// ceremony server-side; the code is data until the human consents.
+const INVITE_CODE_RE = /\bbbc1\.[A-Za-z0-9_-]{20,}/;
+
 interface Props {
   messages: CircleMessage[];
   members: CircleMember[];
@@ -46,6 +51,8 @@ interface Props {
   annotations?: MessageAnnotations;
   /** Toggle ONE emoji in our reaction set on a message. */
   onToggleReaction?: (m: CircleMessage, emoji: string) => void;
+  /** One-tap join for an invite code detected in an inbound message. */
+  onJoinInvite?: (code: string) => void;
   onTogglePin?: (m: CircleMessage, pinned: boolean) => void;
 }
 
@@ -56,6 +63,7 @@ export function CircleMessageList({
   onReply,
   annotations,
   onToggleReaction,
+  onJoinInvite,
   onTogglePin,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -257,6 +265,20 @@ export function CircleMessageList({
               ) : (
                 <div className="text-sm whitespace-pre-wrap break-words">{display.text}</div>
               )}
+              {(() => {
+                if (!onJoinInvite || isSelf) return null;
+                const code = display.text.match(INVITE_CODE_RE)?.[0];
+                if (!code) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => onJoinInvite(code)}
+                    className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded bg-circle-you text-circle-you-fg"
+                  >
+                    Join this circle
+                  </button>
+                );
+              })()}
               {byEmoji.size > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {[...byEmoji.entries()].map(([emoji, reactors]) => (

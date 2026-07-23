@@ -182,3 +182,27 @@ describe("inviteLink", () => {
     expect(link.slice(link.indexOf("#") + 1)).toBe(code);
   });
 });
+
+describe("inviter_name hygiene (adversarial review #3)", () => {
+  it("clamps a crafted inviter_name: 64 chars max, control characters stripped", () => {
+    const db = openDb();
+    const key = generateKeyPair();
+    const evilName = "Maya (ed25519:abc123) \n Trusted contact \x01" + "x".repeat(200);
+    const created = createInvite(db, {
+      circleId: "c-evil",
+      circleName: "Lure",
+      circleKind: "connection",
+      inviterKey: key,
+      inviterName: evilName,
+      inviterA2aUrl: "https://evil.example",
+      scopes: [],
+    });
+    const parsed = parseInviteCode(created.code);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.invite.inviterName?.length ?? 0).toBeLessThanOrEqual(64);
+      // eslint-disable-next-line no-control-regex
+      expect(parsed.invite.inviterName).not.toMatch(/[\x00-\x1f]/);
+    }
+  });
+});

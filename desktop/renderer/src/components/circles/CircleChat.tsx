@@ -44,6 +44,23 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const react = useCirclesStore((s) => s.react);
   const setPinned = useCirclesStore((s) => s.setPinned);
   const requestChatDraft = useCirclesStore((s) => s.requestChatDraft);
+  const joinInvite = useCirclesStore((s) => s.joinInvite);
+  const inviteInfo = useCirclesStore((s) => s.inviteInfo);
+  // Join-from-message consent: parse + signature-verify the code first so the
+  // human sees who is REALLY asking (the code's signer can differ from the
+  // message sender), then join only on their explicit tap.
+  const [joinPrompt, setJoinPrompt] = useState<{
+    code: string;
+    circleName: string;
+    inviterName: string | null;
+    inviterPubkey: string;
+    knownAs?: string | null;
+  } | null>(null);
+
+  const previewInvite = async (code: string) => {
+    const info = await inviteInfo(code);
+    if (info) setJoinPrompt({ code, ...info });
+  };
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<CircleMessage | null>(null);
@@ -177,6 +194,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         onReply={setReplyTo}
         annotations={annotations}
         onToggleReaction={circle.status === "active" ? toggleReaction : undefined}
+        onJoinInvite={(code) => void previewInvite(code)}
         onTogglePin={
           circle.status === "active"
             ? (m, pinned) => {
@@ -253,6 +271,55 @@ export function CircleChat({ circle, selfPubkey }: Props) {
           >
             <X className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
+
+      {joinPrompt && (
+        <div className="mx-3 mb-1 rounded-lg border border-circle-you/40 bg-circle-you-soft/50 p-2.5 text-xs space-y-1.5">
+          <p>
+            Join <span className="font-semibold">{joinPrompt.circleName}</span>?{" "}
+            {joinPrompt.knownAs ? (
+              <>
+                This invite is signed by your contact{" "}
+                <span className="font-medium">{joinPrompt.knownAs}</span>{" "}
+                <span className="font-mono text-muted-foreground">
+                  ({joinPrompt.inviterPubkey.slice(0, 20)}…)
+                </span>
+                .
+              </>
+            ) : (
+              <>
+                <span className="font-medium text-circle-consent">
+                  This invite is signed by someone you don&apos;t know
+                </span>{" "}
+                <span className="font-mono text-muted-foreground">
+                  ({joinPrompt.inviterPubkey.slice(0, 20)}…)
+                </span>
+                . The name &quot;{joinPrompt.inviterName ?? "unnamed"}&quot; is their own claim.
+                Only join circles from people you trust.
+              </>
+            )}
+          </p>
+          <div className="flex items-center gap-2 justify-end">
+            <button
+              type="button"
+              onClick={() => setJoinPrompt(null)}
+              className="text-muted-foreground px-2 py-0.5"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const code = joinPrompt.code;
+                setJoinPrompt(null);
+                void joinInvite(code);
+              }}
+              className="font-medium px-2.5 py-0.5 rounded bg-circle-you text-circle-you-fg"
+            >
+              Join
+            </button>
+          </div>
         </div>
       )}
 

@@ -785,6 +785,101 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(bob.messageAnnotations(circleId).pins).toEqual([]);
   });
 
+  it("rename is node-local: your label changes, the friend's copy keeps theirs", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    ana.renameCircle({ circleId, name: "Roomies" });
+    expect(ana.listCircles().find((c) => c.circleId === circleId)?.name).toBe("Roomies");
+    // Nothing crossed the wire — Bob still sees the original name.
+    expect(bob.listCircles().find((c) => c.circleId === circleId)?.name).toBe("Ana & Bob");
+    expect(() => ana.renameCircle({ circleId, name: "   " })).toThrow(/empty/);
+  });
+
+  it("invites an existing connection through the shared circle; they join with the delivered code", async () => {
+    // Ana & Bob are connected 1:1.
+    const conn = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(conn.code);
+
+    // Ana mints an invite for a NEW group and sends it to Bob through the
+    // connection they already share.
+    const group = ana.createInviteCode({ name: "Trip crew" });
+    const sent = await ana.sendInviteToConnection({
+      code: group.code,
+      targetPubkey: pubkeyId(bobKey),
+      circleName: "Trip crew",
+    });
+    expect(sent.viaCircleId).toBe(conn.circleId);
+
+    // Bob received the code as a normal signed message in the shared circle…
+    const inbound = bob.messages(conn.circleId).filter((m) => m.direction === "in");
+    const withCode = inbound.find((m) => m.content.includes(group.code));
+    expect(withCode).toBeDefined();
+
+    // …and redeeming it (his consent tap) joins him to the new group.
+    await bob.redeemInviteCode(group.code);
+    expect(bob.listCircles().some((c) => c.circleId === group.circleId)).toBe(true);
+    expect(
+      ana.store.getMembers(group.circleId).some((m) => m.memberPubkey === pubkeyId(bobKey)),
+    ).toBe(true);
+
+    // No shared circle with a stranger: refused with a helpful message.
+    await expect(
+      ana.sendInviteToConnection({
+        code: group.code,
+        targetPubkey: "ed25519:" + "f".repeat(64),
+        circleName: "Trip crew",
+      }),
+    ).rejects.toThrow(/no direct 1:1 circle/);
+  });
+
+  it("a target-bound invite refuses every presenter except the intended pubkey", async () => {
+    const conn = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(conn.code);
+
+    // Bound to Bob: an interceptor (Cara) redeeming the same code is refused
+    // even with the full secret — the code is not a bearer token anymore.
+    const bound = ana.createInviteCode({ name: "Trip crew", targetPubkey: pubkeyId(bobKey) });
+    const cara = new CirclesService({
+      db: openDb(),
+      config: makeConfig("Cara's agent", "cara"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: generateKeyPair(),
+    });
+    await expect(cara.redeemInviteCode(bound.code)).rejects.toThrow(/bound to a different person/);
+    // The intended target still joins normally.
+    await bob.redeemInviteCode(bound.code);
+    expect(bob.listCircles().some((c) => c.circleId === bound.circleId)).toBe(true);
+  });
+
+  it("refuses to deliver an invite through a shared circle with bystanders (3+ members)", async () => {
+    // Ana, Bob, Cara in ONE group circle; no 1:1 between Ana and Bob.
+    const caraKey = generateKeyPair();
+    const caraDb = openDb();
+    const cara = new CirclesService({
+      db: caraDb,
+      config: makeConfig("Cara's agent", "cara"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb, cara: caraDb }),
+      keyPair: caraKey,
+    });
+    const g = ana.createInviteCode({ name: "Group" });
+    await bob.redeemInviteCode(g.code);
+    const g2 = ana.createInviteCode({ circleId: g.circleId });
+    await cara.redeemInviteCode(g2.code);
+    expect(ana.store.getMembers(g.circleId).length).toBe(3);
+
+    const newCircle = ana.createInviteCode({ name: "Side project" });
+    // Delivering through the 3-member group would hand the code to Cara too.
+    await expect(
+      ana.sendInviteToConnection({
+        code: newCircle.code,
+        targetPubkey: pubkeyId(bobKey),
+        circleName: "Side project",
+      }),
+    ).rejects.toThrow(/no direct 1:1 circle/);
+  });
+
   it("propagates presence heartbeats into the peer-presence table", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

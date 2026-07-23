@@ -327,6 +327,18 @@ export class CirclesStore {
     return rows.map(rowToCircle);
   }
 
+  /**
+   * NODE-LOCAL rename: the circle's name on THIS node only (your label for
+   * the group, like a petname for a person). Never fans out — each member
+   * names their own copy; the wire never carries it.
+   */
+  renameCircle(circleId: string, name: string, now: number = Date.now()): boolean {
+    const res = this.db
+      .prepare(`UPDATE circles SET name = ?, updated_at = ? WHERE circle_id = ?`)
+      .run(name, now, circleId);
+    return Number(res.changes) === 1;
+  }
+
   /** Hide a circle (reversible). Active or frozen → archived. */
   archiveCircle(circleId: string, now: number = Date.now()): boolean {
     const res = this.db

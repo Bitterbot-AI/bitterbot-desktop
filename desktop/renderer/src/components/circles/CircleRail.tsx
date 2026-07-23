@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, MoreVertical, Plus, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { useCirclesStore, type Circle } from "../../stores/circles-store";
@@ -14,7 +14,7 @@ function initials(name: string): string {
   return ((parts[0] as string)[0] + (parts[1] as string)[0]).toUpperCase();
 }
 
-type Step = "menu" | "confirm-archive" | "confirm-delete";
+type Step = "menu" | "rename" | "confirm-archive" | "confirm-delete";
 
 interface Props {
   circles: Circle[];
@@ -25,11 +25,13 @@ interface Props {
 
 export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) {
   const archiveCircle = useCirclesStore((s) => s.archiveCircle);
+  const renameCircle = useCirclesStore((s) => s.renameCircle);
   const unarchiveCircle = useCirclesStore((s) => s.unarchiveCircle);
   const deleteCircle = useCirclesStore((s) => s.deleteCircle);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("menu");
   const [busy, setBusy] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
 
   const openMenu = (circleId: string) => {
     setMenuFor(circleId);
@@ -108,6 +110,14 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
                   </div>
                   {step === "menu" && (
                     <div className="flex flex-col">
+                      <MenuItem
+                        icon={<Pencil className="w-4 h-4" />}
+                        label="Rename"
+                        onClick={() => {
+                          setNameDraft(c.name);
+                          setStep("rename");
+                        }}
+                      />
                       {archived ? (
                         <MenuItem
                           icon={<ArchiveRestore className="w-4 h-4" />}
@@ -127,6 +137,43 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
                         destructive
                         onClick={() => setStep("confirm-delete")}
                       />
+                    </div>
+                  )}
+                  {step === "rename" && (
+                    <div className="p-2 space-y-1.5">
+                      <input
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && nameDraft.trim())
+                            void act(() => renameCircle(c.circleId, nameDraft));
+                          if (e.key === "Escape") close();
+                        }}
+                        maxLength={80}
+                        autoFocus
+                        aria-label="Circle name"
+                        className="w-full rounded border bg-background/60 text-xs outline-none px-2 py-1"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Current members keep their own name for it; new invites use this one.
+                      </p>
+                      <div className="flex items-center gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={close}
+                          className="text-xs text-muted-foreground px-2 py-0.5"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void act(() => renameCircle(c.circleId, nameDraft))}
+                          disabled={busy || !nameDraft.trim()}
+                          className="text-xs font-medium px-2 py-0.5 rounded bg-circle-you text-circle-you-fg disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                      </div>
                     </div>
                   )}
                   {step === "confirm-archive" && (

@@ -1858,6 +1858,18 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circle_messages", "agent_authored", "INTEGER");
     },
   },
+  {
+    version: 52,
+    description:
+      "Target-bound invites (adversarial review of send-to-connection): " +
+      "circle_invites.target_pubkey — when set, ONLY that pubkey can redeem. " +
+      "Closes interception (roster-poisoned delivery) and co-member races on " +
+      "codes delivered through a shared circle: the code stops being a " +
+      "bearer token.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_invites", "target_pubkey", "TEXT");
+    },
+  },
 ];
 
 /**

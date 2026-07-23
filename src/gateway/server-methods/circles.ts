@@ -59,7 +59,7 @@ import crypto from "node:crypto";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { listDisclosureGrants, setDisclosureGrant } from "../../circles/disclosure.js";
-import { inviteLink } from "../../circles/invites.js";
+import { inviteLink, parseInviteCode, revokeInvite } from "../../circles/invites.js";
 import { computeNameFlags } from "../../circles/petnames.js";
 import { CirclesService } from "../../circles/service.js";
 import { loadConfig } from "../../config/config.js";
@@ -184,6 +184,26 @@ export const circlesHandlers: GatewayRequestHandlers = {
       }),
     }));
     respond(true, { circles }, undefined);
+  },
+
+  "circles.rename": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const name = typeof params.name === "string" ? params.name : "";
+    if (!circleId || !name.trim()) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId, name required"));
+      return;
+    }
+    try {
+      svc.service.renameCircle({ circleId, name });
+      respond(true, { ok: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
   },
 
   "circles.archive": async ({ params, respond }) => {
@@ -374,6 +394,49 @@ export const circlesHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
+      const sendToPubkey = typeof params.sendToPubkey === "string" ? params.sendToPubkey : "";
+      if (sendToPubkey) {
+        // "Add someone I know": mint a TARGET-BOUND invite (only that pubkey
+        // can redeem — interception and co-member races are useless) and
+        // deliver it through the 1:1 circle we share. The receiver still
+        // consents by tapping Join on their side.
+        if (!/^ed25519:[0-9a-f]{64}$/.test(sendToPubkey)) {
+          respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "bad sendToPubkey"));
+          return;
+        }
+        if (sendToPubkey === svc.service.pubkey) {
+          respond(
+            false,
+            undefined,
+            errorShape(ErrorCodes.INVALID_REQUEST, "cannot invite yourself"),
+          );
+          return;
+        }
+        const invite = svc.service.createInviteCode({
+          circleId: typeof params.circleId === "string" ? params.circleId : undefined,
+          name: typeof params.name === "string" ? params.name : undefined,
+          targetPubkey: sendToPubkey,
+        });
+        try {
+          const circleName = svc.service.store.getCircle(invite.circleId)?.name ?? "a circle";
+          const sent = await svc.service.sendInviteToConnection({
+            code: invite.code,
+            targetPubkey: sendToPubkey,
+            circleName,
+          });
+          respond(
+            true,
+            { ...invite, sentVia: sent.viaCircleId, delivered: sent.delivered },
+            undefined,
+          );
+        } catch (err) {
+          // Delivery failed: don't leave a live-open invite row behind
+          // (review #5) — the code was never shown to anyone.
+          revokeInvite(svc.service.dbHandle, invite.inviteId);
+          respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+        }
+        return;
+      }
       const invite = svc.service.createInviteCode({
         circleId: typeof params.circleId === "string" ? params.circleId : undefined,
         name: typeof params.name === "string" ? params.name : undefined,
@@ -388,6 +451,56 @@ export const circlesHandlers: GatewayRequestHandlers = {
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }
+  },
+
+  "circles.inviteInfo": async ({ params, respond }) => {
+    // Parse + signature-verify an invite code WITHOUT joining, so the UI can
+    // show WHO is actually asking (the code's verified signer, which may
+    // differ from whoever delivered the code) before the human consents.
+    const code = typeof params.code === "string" ? params.code.trim() : "";
+    if (!code) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "code required"));
+      return;
+    }
+    if (code.length > 8192) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "code too large"));
+      return;
+    }
+    const parsed = parseInviteCode(code);
+    if (!parsed.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, parsed.error));
+      return;
+    }
+    // Cross-check the VERIFIED signer key against people this node already
+    // knows (review #3): a stranger writing inviterName "Maya" must not read
+    // as your Maya. knownAs resolves petname-first from YOUR labels.
+    let knownAs: string | null = null;
+    const svc = await getService();
+    if (svc.ok) {
+      const pk = parsed.invite.inviterPubkey;
+      const petname = svc.service.petnames()[pk];
+      if (petname) {
+        knownAs = petname;
+      } else {
+        for (const c of svc.service.listCircles()) {
+          const m = svc.service.store.getMembers(c.circleId).find((x) => x.memberPubkey === pk);
+          if (m?.displayName) {
+            knownAs = m.displayName;
+            break;
+          }
+        }
+      }
+    }
+    respond(
+      true,
+      {
+        circleName: parsed.invite.circleName,
+        inviterName: parsed.invite.inviterName,
+        inviterPubkey: parsed.invite.inviterPubkey,
+        knownAs,
+      },
+      undefined,
+    );
   },
 
   "circles.join": async ({ params, respond }) => {

@@ -85,6 +85,13 @@ export type CreateInviteArgs = {
   inviterMailboxUrl?: string;
   /** The inviter's X25519 box pubkey, so the invitee can seal that request. */
   inviterBoxPubkey?: string;
+  /**
+   * Bind redemption to ONE pubkey (the "send to someone I know" path). A
+   * bound code is useless to an interceptor or a co-member of the delivery
+   * circle: redeemInvite refuses any other presenter, checked against the
+   * join envelope's SIGNATURE-VERIFIED author key.
+   */
+  targetPubkey?: string;
   scopes: CircleScope[];
   maxUses?: number;
   ttlMs?: number;
@@ -111,8 +118,8 @@ export function createInvite(db: DatabaseSync, args: CreateInviteArgs): CreatedI
   db.prepare(
     `INSERT INTO circle_invites
        (invite_id, circle_id, inviter_pubkey, token_hash, scopes_json, max_uses, uses,
-        expires_at, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'open', ?)`,
+        expires_at, status, created_at, target_pubkey)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'open', ?, ?)`,
   ).run(
     inviteId,
     args.circleId,
@@ -122,6 +129,7 @@ export function createInvite(db: DatabaseSync, args: CreateInviteArgs): CreatedI
     args.maxUses ?? 1,
     expiresAt,
     now,
+    args.targetPubkey ?? null,
   );
 
   const envelope = makeCircleEnvelope(
@@ -239,7 +247,17 @@ export function parseInviteCode(
       circleName: typeof body.circle_name === "string" ? body.circle_name : "circle",
       circleKind: typeof body.circle_kind === "string" ? body.circle_kind : "connection",
       inviterPubkey: env.author_pubkey,
-      inviterName: typeof body.inviter_name === "string" ? body.inviter_name : null,
+      // Attacker-authored display text rendered in the join confirm (review #3):
+      // clamp to 64 chars and strip control characters so a crafted name cannot
+      // visually forge a fingerprint line or multi-line "trusted" claims.
+      inviterName:
+        typeof body.inviter_name === "string"
+          ? // eslint-disable-next-line no-control-regex
+            body.inviter_name
+              .replace(/[\x00-\x1f\x7f]/g, " ")
+              .trim()
+              .slice(0, 64) || null
+          : null,
       inviterA2aUrl,
       inviterMailboxUrl,
       inviterBoxPubkey,
@@ -274,7 +292,7 @@ export function redeemInvite(
   const row = db
     .prepare(
       `SELECT invite_id, circle_id, inviter_pubkey, token_hash, scopes_json, max_uses, uses,
-              expires_at, status
+              expires_at, status, target_pubkey
          FROM circle_invites WHERE invite_id = ?`,
     )
     .get(args.inviteId) as
@@ -288,6 +306,7 @@ export function redeemInvite(
         uses: number;
         expires_at: number;
         status: string;
+        target_pubkey: string | null;
       }
     | undefined;
   if (!row) {
@@ -317,6 +336,12 @@ export function redeemInvite(
   }
   if (record.expiresAt <= now) {
     return { ok: false, error: "invite expired" };
+  }
+  // Target-bound invite: only the intended pubkey may redeem (or rejoin).
+  // presenterPubkey is the join envelope's signature-verified author, so an
+  // interceptor cannot satisfy this without the target's private key.
+  if (row.target_pubkey && args.presenterPubkey !== row.target_pubkey) {
+    return { ok: false, error: "this invite is bound to a different person" };
   }
   if (args.presenterIsActiveMember) {
     return { ok: true, record, rejoin: true };

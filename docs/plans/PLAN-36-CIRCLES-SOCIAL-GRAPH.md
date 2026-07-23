@@ -834,6 +834,35 @@ draft card says "you asked for it" for chat-scoped requests. Tests: two-node
 no-summon-posted + self-request prompt framing + publish path;
 renderer summon indicator, Ask-my-agent RPC shape, plain sends stay quiet.
 
+**Circle rename + invite-a-connection LANDED (with a hard adversarial pass).**
+(1) RENAME: circles can be renamed from the rail's ⋯ menu — NODE-LOCAL like a
+petname (`circles.rename`, bare UPDATE, never fans out; two-node test pins
+that the friend's copy keeps its name). Copy is honest: current members keep
+their own label; NEW invites embed yours (the invite envelope signs
+circle_name from your store). (2) INVITE SOMEONE YOU KNOW: the scoped invite
+panel offers a dropdown of known connections; the server mints the invite and
+delivers the code through the 1:1 circle you share; the receiver's UI detects
+`bbc1.` codes in messages and offers Join behind a confirm. The adversarial
+pass found the v1 design's two HIGH holes — the code was a TARGET-UNBOUND
+BEARER token (any co-member of the delivery circle, or an attacker who
+poisoned a joined roster's URLs, could redeem it first) — closed by:
+**target-bound invites** (`circle_invites.target_pubkey`, migration **v52**;
+redemption compares against the join envelope's SIGNATURE-VERIFIED author,
+so interception is useless) and a **strict 1:1 delivery requirement** (no
+bystanders ever see the code; 3+-member-only sharing refuses with a
+share-the-link message). Also from the pass: `inviter_name` is clamped
+(64 chars, control chars stripped — a crafted name can't visually forge a
+fingerprint line); the Join confirm cross-checks the verified signer against
+YOUR petnames/known members and shows either "your contact X" or a loud
+amber "signed by someone you don't know — the name is their own claim";
+`circles.inviteInfo` rejects >8KB codes; failed sends revoke the orphaned
+invite row; `sendToPubkey` is format-validated and self-invite refused; and a
+latent bug fixed en route: a peer's DEFINITIVE join refusal (bad secret,
+bound invite) was masked as "unreachable" and retried via mailbox — refusals
+now surface verbatim and terminate. Tests: node-local rename, bound-invite
+wrong-presenter refusal + intended-target join, bystander-circle refusal,
+name clamp, stranger-warning confirm, delivered-vs-queued send states.
+
 **Key custody, concretely `[v2 — v1 said "P0 / crown jewels" and specified
 nothing]`.** The keys are plaintext JSON on disk today (`device.json`,
 `node.key`). Given the Moltbook framing, specify: **encryption at rest / OS
