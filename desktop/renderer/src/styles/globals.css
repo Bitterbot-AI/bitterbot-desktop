@@ -91,6 +91,10 @@
 }
 
 :root {
+  /* Native controls (select popups, scrollbars, pickers) must follow the
+     theme — without this, dark mode gets white OS dropdowns with light text. */
+  color-scheme: light;
+
   /* Sidebar theme colors - Light mode */
   --sidebar-bg-primary: oklch(98% 0 0);
   --sidebar-bg-secondary: oklch(96% 0 0);
@@ -150,6 +154,8 @@
 }
 
 .dark {
+  color-scheme: dark;
+
   /* Circles grammar — dark */
   --circle-you: #6d8cff;
   --circle-you-soft: #1a2340;

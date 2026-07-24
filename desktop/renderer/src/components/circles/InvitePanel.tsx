@@ -152,7 +152,7 @@ export function InvitePanel({
                   value={pickedPubkey}
                   onChange={(e) => setPickedPubkey(e.target.value)}
                   aria-label="Choose a connection"
-                  className="flex-1 min-w-0 rounded border bg-background text-sm px-2 py-1.5"
+                  className="flex-1 min-w-0 rounded border bg-background text-foreground text-sm px-2 py-1.5"
                 >
                   <option value="">Choose a connection…</option>
                   {knownConnections.map((k) => (
