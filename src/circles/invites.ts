@@ -184,6 +184,16 @@ export type ParsedInvite = {
  * envelope ts is creation time; invites legitimately outlive the direct-call
  * skew window).
  */
+/** Clamp attacker-authored display text: 64 printable chars, no control codes. */
+function sanitizeInviterName(raw: string): string | null {
+  let out = "";
+  for (const ch of raw) {
+    const c = ch.codePointAt(0) ?? 0;
+    out += c < 32 || c === 127 ? " " : ch;
+  }
+  return out.trim().slice(0, 64) || null;
+}
+
 export function parseInviteCode(
   code: string,
   now: number = Date.now(),
@@ -251,13 +261,7 @@ export function parseInviteCode(
       // clamp to 64 chars and strip control characters so a crafted name cannot
       // visually forge a fingerprint line or multi-line "trusted" claims.
       inviterName:
-        typeof body.inviter_name === "string"
-          ? // eslint-disable-next-line no-control-regex
-            body.inviter_name
-              .replace(/[\x00-\x1f\x7f]/g, " ")
-              .trim()
-              .slice(0, 64) || null
-          : null,
+        typeof body.inviter_name === "string" ? sanitizeInviterName(body.inviter_name) : null,
       inviterA2aUrl,
       inviterMailboxUrl,
       inviterBoxPubkey,

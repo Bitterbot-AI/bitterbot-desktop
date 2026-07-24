@@ -201,8 +201,12 @@ describe("inviter_name hygiene (adversarial review #3)", () => {
     expect(parsed.ok).toBe(true);
     if (parsed.ok) {
       expect(parsed.invite.inviterName?.length ?? 0).toBeLessThanOrEqual(64);
-      // eslint-disable-next-line no-control-regex
-      expect(parsed.invite.inviterName).not.toMatch(/[\x00-\x1f]/);
+      const name = parsed.invite.inviterName ?? "";
+      let hasControl = false;
+      for (let i = 0; i < name.length; i += 1) {
+        if (name.charCodeAt(i) < 32) hasControl = true;
+      }
+      expect(hasControl).toBe(false);
     }
   });
 });
