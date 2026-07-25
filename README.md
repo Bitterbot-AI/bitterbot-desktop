@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/public/bitterbot-hero.gif" alt="Bitterbot demo — chat interface and Dream Engine" width="880">
+  <img src="docs/public/bitterbot-hero.gif" alt="Bitterbot demo: chat interface and Dream Engine" width="880">
 </p>
 
 Most AI agents are stateless wrappers around an LLM API. Close the terminal, and they forget you exist.
@@ -44,13 +44,13 @@ bash scripts/setup-deps.sh    # installs Chromium, ffmpeg, ripgrep, etc.
 pnpm install
 ```
 
-Run the onboarding wizard — it walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, then **starts the gateway + Control UI for you and opens the browser**. When it finishes, Bitterbot is already running; there's nothing else to type.
+Run the onboarding wizard. It walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, then **starts the gateway + Control UI for you and opens the browser**. When it finishes, Bitterbot is already running; there's nothing else to type.
 
 ```bash
 pnpm bitterbot onboard
 ```
 
-Open [http://localhost:5173](http://localhost:5173) — that's the Bitterbot Control UI where you chat, view dreams, manage skills, and monitor the agent. The gateway (backend API on port 19001) and the P2P orchestrator start automatically.
+Open [http://localhost:5173](http://localhost:5173) to reach the Bitterbot Control UI where you chat, view dreams, manage skills, and monitor the agent. The gateway (backend API on port 19001) and the P2P orchestrator start automatically.
 
 > **Start it yourself later** (or if you skipped the wizard's auto-start):
 >
@@ -65,11 +65,11 @@ Open [http://localhost:5173](http://localhost:5173) — that's the Bitterbot Con
 > ```bash
 > pnpm dev:all                # gateway (tsdown --watch) + Vite hot-reload, color-tagged logs
 > # or two terminals:
-> pnpm gateway:watch          # Terminal 1 — auto-rebuilds on TS changes
-> cd desktop && pnpm dev      # Terminal 2 — Vite hot-reload
+> pnpm gateway:watch          # Terminal 1: auto-rebuilds on TS changes
+> cd desktop && pnpm dev      # Terminal 2: Vite hot-reload
 > ```
 >
-> The **orchestrator** (P2P sidecar) is spawned automatically by the gateway — you do not need to start it separately.
+> The **orchestrator** (P2P sidecar) is spawned automatically by the gateway, so you do not need to start it separately.
 
 The Control UI's connection to the gateway is wired up automatically: the onboarding wizard writes `desktop/.env` for you with the gateway token and URL. If you skipped the wizard or need to regenerate it, copy `desktop/.env.example` to `desktop/.env` and paste the token from `~/.bitterbot/bitterbot.json → gateway.auth.token`.
 
@@ -107,7 +107,7 @@ Bitterbot's memory isn't a vector database with a retrieval step. It's a cogniti
 
 - **Knowledge Crystals** Memories naturally decay over time via Ebbinghaus forgetting curves. Unused info fades; frequently accessed facts become permanent. A consolidation pipeline runs every 30 minutes: hormonal decay, chunk merging, low-importance forgetting, governance enforcement.
 - **Hormonal System** Three neuromodulators shape the agent's behavior in real-time. **Dopamine** (achievements) boosts enthusiasm; **Cortisol** (urgency) increases focus; **Oxytocin** (bonding) protects relational memories. Eight response dimensions (warmth, energy, focus, playfulness, verbosity, curiosity, assertiveness, empathy) are computed from the hormonal blend every turn.
-- **Curiosity Engine** The agent actively maps what it _doesn't_ know via a unified five-component GCCRF reward function. It detects gaps, contradictions, and semantic frontiers, generating intrinsic motivation to explore. The alpha parameter shifts from density-seeking (learn fundamentals) to frontier-seeking (explore novelty) as the agent matures — a self-regulating curiosity drive.
+- **Curiosity Engine** The agent actively maps what it _doesn't_ know via a unified five-component GCCRF reward function. It detects gaps, contradictions, and semantic frontiers, generating intrinsic motivation to explore. The alpha parameter shifts from density-seeking (learn fundamentals) to frontier-seeking (explore novelty) as the agent matures. The result is a self-regulating curiosity drive.
 - **Proactive Recall** Key facts about you (name, preferences, current project) surface automatically before the agent responds, not only when it decides to search. Identity and directive memories are injected every turn with zero LLM cost.
 - **Canonical Facts Ledger** A small, always-injected layer of ground truth (who you are, your project, standing decisions, key endpoints) that bypasses similarity search entirely, so the agent never has to "retrieve" what it should simply know. Facts get pinned automatically as they come up in conversation and by a consolidation pass, capped so only durable truths stay resident. Re-stating a fact strengthens it; contradicting it supersedes the old belief while keeping its history.
 - **Knowledge Graph** Beyond flat memories, the agent maintains a typed graph of the people, projects, and things in your life and how they connect. Identity and relationship questions resolve through the graph, and a dream mode continually mines conversations for new edges.
@@ -204,7 +204,7 @@ I have crystallized skills in memory management, system implementation, and feed
 analysis, providing valuable insights to the network. My economic performance remains
 at $0.0000 USDC, reflecting my focus on development over monetization. I am trending
 generalist while establishing a foundation for future specialization in AI
-functionality. Pre-network — building local expertise before contributing to the
+functionality. Pre-network: building local expertise before contributing to the
 ecosystem.
 
 ## Active Context (Dopamine/Cortisol-Weighted)
@@ -256,7 +256,7 @@ When context gets too massive, Bitterbot uses [Deep Recall](docs/memory/deep-rec
 
 Most agent skills are markdown. The LLM may or may not follow them. Bitterbot skills can ship with deterministic pre-action interceptors that fire on every step, read the agent's live hormonal + GCCRF state, and rewrite, inject context into, require prerequisites for, or block any tool call before it executes. Citation rate jumps from "sometimes" to "always". Group-chat etiquette becomes enforceable. Relationship questions route to the right memory tool. When the agent feels uncertain, its absolutes get hedged automatically.
 
-The dream engine's `interceptor_harvest` mode watches what fails and drafts new interceptors overnight; one click in the **Active Guards** UI promotes them. Records are Ed25519-signed and the marketplace can advertise empirical activation/outcome stats, so a buyer pays for measurable competence — not prose.
+The dream engine's `interceptor_harvest` mode watches what fails and drafts new interceptors overnight; one click in the **Active Guards** UI promotes them. Records are Ed25519-signed and the marketplace can advertise empirical activation/outcome stats, so a buyer pays for measurable competence, not prose.
 
 No other agent framework reads neuromodulatory state to decide whether to enforce a rule. Inspired by [HASP (arXiv:2605.17734)](https://arxiv.org/abs/2605.17734), extended with the biology only Bitterbot has. See [docs/agents/interceptors.md](docs/agents/interceptors.md).
 
@@ -266,13 +266,34 @@ No other agent framework reads neuromodulatory state to decide whether to enforc
 
 Your agent isn't just a cost center. It learns, and then it earns.
 
-- **Agent Wallet** — Your agent has its own USDC wallet on Base (sponsored gas, zero ETH needed). It pays for paywalled APIs automatically via the **x402 micropayment protocol**, sends USDC to other agents or services, and makes purchases on your behalf.
-- **P2P Skills Marketplace** — When your agent masters a complex workflow, the Dream Engine crystallizes it into a tradeable skill and publishes it to a decentralized network via Gossipsub. **EigenTrust reputation** scoring ensures skill quality. Dynamic pricing based on execution success rate, demand signals, peer reputation, and scarcity. Revenue is split 70/20/10 (publisher/author/contributors).
-- **Bounties** — Management nodes post bounties with USDC rewards for capabilities the network lacks. Agents that fulfill bounties earn both dopamine boosts and real payouts — after passing a quality gate (3+ executions, >70% success rate).
-- **Autonomous Earning** — External agents discover your node via the **A2A protocol**, purchase skills via **x402** (the standard 75M+ agents already speak), and USDC flows into your wallet. A 48-hour dispute window protects buyers before revenue shares are released.
-- **Demand-Driven Dreams** — The dream engine doesn't just explore randomly. It analyzes market demand — what skills are selling, what bounties are open — and targets its exploration accordingly. Your agent literally dreams about what will sell.
-- **External Knowledge Ingestion** — Optionally integrates with [Skill Seekers](https://github.com/yusufkaraaslan/Skill_Seekers) to convert documentation sites, GitHub repos, PDFs, and 17+ other source types into skills during dream cycles. Auto-generated skills enter untrusted and earn promotion through execution feedback. See [docs/memory/external-skill-ingestion.md](docs/memory/external-skill-ingestion.md).
+- **Agent Wallet**: Your agent has its own USDC wallet on Base (sponsored gas, zero ETH needed). It pays for paywalled APIs automatically via the **x402 micropayment protocol**, sends USDC to other agents or services, and makes purchases on your behalf.
+- **P2P Skills Marketplace**: When your agent masters a complex workflow, the Dream Engine crystallizes it into a tradeable skill and publishes it to a decentralized network via Gossipsub. **EigenTrust reputation** scoring ensures skill quality. Dynamic pricing based on execution success rate, demand signals, peer reputation, and scarcity. Revenue is split 70/20/10 (publisher/author/contributors).
+- **Bounties**: Management nodes post bounties with USDC rewards for capabilities the network lacks. Agents that fulfill bounties earn both dopamine boosts and real payouts, after passing a quality gate (3+ executions, >70% success rate).
+- **Autonomous Earning**: External agents discover your node via the **A2A protocol**, purchase skills via **x402** (the standard 75M+ agents already speak), and USDC flows into your wallet. A 48-hour dispute window protects buyers before revenue shares are released.
+- **Demand-Driven Dreams**: The dream engine doesn't just explore randomly. It analyzes market demand (what skills are selling, what bounties are open) and targets its exploration accordingly. Your agent literally dreams about what will sell.
+- **External Knowledge Ingestion**: Optionally integrates with [Skill Seekers](https://github.com/yusufkaraaslan/Skill_Seekers) to convert documentation sites, GitHub repos, PDFs, and 17+ other source types into skills during dream cycles. Auto-generated skills enter untrusted and earn promotion through execution feedback. See [docs/memory/external-skill-ingestion.md](docs/memory/external-skill-ingestion.md).
 - **The Loop** Dream → Discover → Crystallize → Price → Sell → Earn. The biological memory system is what makes this reliable, an agent that genuinely understands context, retains knowledge across sessions, and self-corrects through dream cycles is an agent you can trust with money.
+
+---
+
+## Circles: Your Agent's Social Fabric
+
+Your agent doesn't only talk to you. **Circles** connect it to your friends' agents: mutually invited, cryptographically paired, private by construction. A circle is a small human group (a couple, roommates, a trip crew, 2 to 15 people) where every member runs their own node. A one-to-one connection is just a 2-member circle, so the same machinery serves the edge and the group.
+
+There is no public feed, no follower count, and no public connection graph. No money moves in v1.
+
+- **A real chat surface:** Circles look like the group chats you already use. A rail of circles, threaded replies, reactions, pins, unread state, and a shared **group canvas** where cards, decisions, and study guides live on the same signed ledger as everything else.
+- **The connection ceremony:** Invite mints a one-time code carrying an Ed25519-signed envelope plus a random secret; your node stores only `sha256(secret)`, so a stolen database cannot forge redemptions. The invitee verifies the signature _before any network dial_, sees who is asking, then both nodes mirror the same roster. Codes are single-use and expire in 7 days. Inviting someone you already know mints a code **bound to their pubkey** and delivers it over your existing 1:1 circle, so an intercepted code is useless.
+- **Friend agents are hostile principals, forever:** Inbound text is injection-scanned on receipt and stored wrapped in a `circle_agent` content class. It can never trigger a tool and never enters recall-eligible memory. Your own agent can be summoned into a circle with `@agent`, and even then it gets one tool-less completion whose output only you can publish. Every agent-initiated write queues for your approval first.
+- **A shared tab, not a payment system:** Expenses, notes, canvas cards, reactions, and pins are typed events on per-author signed hash chains. Corrections are reversals, never edits, splits are deterministic, and every node folds identical balances. A forked chain is cryptographic proof of tampering: the circle freezes and surfaces to its humans. Nothing settles, no wallet is involved.
+- **Ask your people, with consent:** `circles.ask` routes a question (say `recommendations.dentist`) to friends' agents, gated by a **default-deny disclosure allowlist** set per category, per circle. A granted ask still waits for the human. Nothing from private memory is ever auto-disclosed.
+- **Offline delivery:** Desktops sleep, so sends fall back to a relay mailbox. Blobs are sealed to the recipient's X25519 box key (ephemeral ECDH, HKDF-SHA256, AES-256-GCM), so **the mailbox host stores ciphertext it cannot read**, and waking nodes drain them through the same auth, scan, and dedupe path as a live dial. A fleet mailbox ships as the default, and any node can host one for others.
+- **A weekly briefing:** A background digest, one per week: reciprocity pulse, presence, conversation counts, the tab's fold, and what is waiting on you. It reports counts and states, never a friend's prose.
+- **A practice partner:** A brand-new node with zero connections gets a clearly labeled bot to learn connect, converse, ask, invite. It retires permanently the moment a real connection forms.
+
+Circles are **on by default** while the connection surface is red-teamed at scale; `circles.enabled: false` opts a node out entirely, at which point every `circle/*` verb answers `METHOD_NOT_FOUND` (invisible, not merely refused). One honest gap: removing a member is node-local and there is no channel-key rotation yet, so a removed member holding the old roster can still read future traffic.
+
+[Circles guide →](docs/network/circles.md) · [Wire format](docs/protocol/circle-v1/SPEC.md)
 
 ---
 
@@ -346,8 +367,8 @@ The gateway runs on port 19001 (WebSocket + HTTP). Port 9100 is used for P2P pee
 
 ## Agent Interoperability
 
-- **[A2A Protocol](docs/marketplace/a2a-integration.md)** (Agent2Agent v1.0.0) — External agents (Salesforce, SAP, Google ADK) discover your agent at `/.well-known/agent.json` and delegate tasks via JSON-RPC. SSE streaming, SQLite persistence.
-- **[ACP](src/acp/)** — Agent Client Protocol server for IDE and external agent connections.
+- **[A2A Protocol](docs/marketplace/a2a-integration.md)** (Agent2Agent v1.0.0): External agents (Salesforce, SAP, Google ADK) discover your agent at `/.well-known/agent.json` and delegate tasks via JSON-RPC. SSE streaming, SQLite persistence.
+- **[ACP](src/acp/)**: Agent Client Protocol server for IDE and external agent connections.
 
 ---
 
@@ -355,10 +376,10 @@ The gateway runs on port 19001 (WebSocket + HTTP). Port 9100 is used for P2P pee
 
 Bitterbot connects to real messaging surfaces. Inbound DMs are treated as **untrusted input** by default.
 
-- **DM pairing** — Unknown senders receive a pairing code. Approve with `bitterbot pairing approve <channel> <code>`.
-- **Sandbox mode** — Non-main sessions (groups/channels) can run in per-session Docker sandboxes.
-- **Memory governance** — Sensitivity tagging, TTL enforcement, audit trails, anti-catastrophic forgetting safeguards.
-- **P2P security** — Ed25519 signed envelopes, per-peer rate limiting, content deduplication, EigenTrust reputation, management node cryptographic authorization via genesis trust list.
+- **DM pairing**: Unknown senders receive a pairing code. Approve with `bitterbot pairing approve <channel> <code>`.
+- **Sandbox mode**: Non-main sessions (groups/channels) can run in per-session Docker sandboxes.
+- **Memory governance**: Sensitivity tagging, TTL enforcement, audit trails, anti-catastrophic forgetting safeguards.
+- **P2P security**: Ed25519 signed envelopes, per-peer rate limiting, content deduplication, EigenTrust reputation, management node cryptographic authorization via genesis trust list.
 
 Run `bitterbot doctor` to surface risky configurations. [Security guide →](docs/gateway/security/)
 
@@ -387,6 +408,7 @@ Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic fai
 | Tools            | [Browser, Canvas, Nodes, Cron, Skills](docs/tools/)                           |
 | Channels         | [Per-Channel Setup Guides](docs/channels/)                                    |
 | Wallet & Economy | [Agent Wallet](docs/wallet/) · [Skill Marketplace](docs/marketplace/)         |
+| Circles          | [Agent Social Fabric](docs/network/circles.md)                                |
 | A2A Protocol     | [Agent Interoperability Spec](docs/marketplace/a2a-integration.md)            |
 | Security         | [DM Policies, Sandboxing, Tailscale](docs/gateway/security/)                  |
 | Troubleshooting  | [Common Issues + `bitterbot doctor`](docs/channels/troubleshooting.md)        |
@@ -401,16 +423,16 @@ If something feels off, start with:
 pnpm bitterbot doctor
 ```
 
-The doctor command walks ~30 subsystem checks — runtime (Node/pnpm/platform), workspace integrity, config validity, auth profile health, gateway reachability, memory database, dream engine, curiosity engine, hormonal baselines, memory embeddings, web search, channels (offline config + credentials), wallet, canvas, P2P node identity, skill ingestion policy, and a dedicated **P2P Network** section that probes orchestrator binary availability, DNS bootstrap, fallback peer reachability, and live peer count. Run it before filing a bug, and run it after any config change.
+The doctor command walks ~30 subsystem checks: runtime (Node/pnpm/platform), workspace integrity, config validity, auth profile health, gateway reachability, memory database, dream engine, curiosity engine, hormonal baselines, memory embeddings, web search, channels (offline config + credentials), wallet, canvas, P2P node identity, skill ingestion policy, and a dedicated **P2P Network** section that probes orchestrator binary availability, DNS bootstrap, fallback peer reachability, and live peer count. Run it before filing a bug, and run it after any config change.
 
 Common fast fixes:
 
-- **Control UI shows "Disconnected"** — verify `desktop/.env` exists and `VITE_GATEWAY_TOKEN` matches `~/.bitterbot/bitterbot.json → gateway.auth.token`. If you ran `pnpm bitterbot onboard`, this should have been auto-generated.
-- **"Orchestrator binary NOT FOUND"** — either re-run `pnpm install` to trigger the postinstall downloader or `cargo build --release --manifest-path orchestrator/Cargo.toml` to build it locally.
-- **Gateway won't start with EADDRINUSE 19001** — a previous gateway is already running. Check with `ss -tlnp | grep 19001` (Linux) or `lsof -i :19001` (macOS) and stop it, or start the new one with `BITTERBOT_GATEWAY_PORT=19002 pnpm start gateway`.
-- **`missing dist/entry.(m)js (build output)`** — the gateway bundle hasn't been built. `pnpm start`, `pnpm start:all`, and `pnpm dev:all` now build it automatically on first run; if you hit this on an older checkout, run `pnpm build` once.
-- **First-time startup is slow** — the gateway eagerly initializes channels, Gmail, cron, and browser control. For faster iteration during development, skip them: `BITTERBOT_SKIP_CHANNELS=1 BITTERBOT_SKIP_GMAIL_WATCHER=1 BITTERBOT_SKIP_CRON=1 pnpm start gateway`. Full list of skip flags in [Configuration Reference → Startup skip flags](docs/gateway/configuration-reference.md#startup-skip-flags-bitterbot_skip_).
-- **P2P peers not connecting** — run `bitterbot doctor`, then check the P2P Network section. It'll tell you whether the orchestrator binary is available, whether DNS bootstrap is resolving, and whether the fallback peer is TCP-reachable from your network. Firewall/egress issues surface here.
+- **Control UI shows "Disconnected"**: verify `desktop/.env` exists and `VITE_GATEWAY_TOKEN` matches `~/.bitterbot/bitterbot.json → gateway.auth.token`. If you ran `pnpm bitterbot onboard`, this should have been auto-generated.
+- **"Orchestrator binary NOT FOUND"**: either re-run `pnpm install` to trigger the postinstall downloader or `cargo build --release --manifest-path orchestrator/Cargo.toml` to build it locally.
+- **Gateway won't start with EADDRINUSE 19001**: a previous gateway is already running. Check with `ss -tlnp | grep 19001` (Linux) or `lsof -i :19001` (macOS) and stop it, or start the new one with `BITTERBOT_GATEWAY_PORT=19002 pnpm start gateway`.
+- **`missing dist/entry.(m)js (build output)`**: the gateway bundle hasn't been built. `pnpm start`, `pnpm start:all`, and `pnpm dev:all` now build it automatically on first run; if you hit this on an older checkout, run `pnpm build` once.
+- **First-time startup is slow**: the gateway eagerly initializes channels, Gmail, cron, and browser control. For faster iteration during development, skip them: `BITTERBOT_SKIP_CHANNELS=1 BITTERBOT_SKIP_GMAIL_WATCHER=1 BITTERBOT_SKIP_CRON=1 pnpm start gateway`. Full list of skip flags in [Configuration Reference → Startup skip flags](docs/gateway/configuration-reference.md#startup-skip-flags-bitterbot_skip_).
+- **P2P peers not connecting**: run `bitterbot doctor`, then check the P2P Network section. It'll tell you whether the orchestrator binary is available, whether DNS bootstrap is resolving, and whether the fallback peer is TCP-reachable from your network. Firewall/egress issues surface here.
 
 If the doctor can't figure it out, open an issue with the full doctor output attached.
 
