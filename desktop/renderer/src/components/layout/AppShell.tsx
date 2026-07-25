@@ -24,6 +24,7 @@ import { WalletView } from "../wallet/WalletView";
 import { WorkspaceView } from "../workspace/WorkspaceView";
 import { ConnectionBadge } from "./ConnectionBadge";
 import { Sidebar } from "./Sidebar";
+import { UpdateBanner } from "./UpdateBanner";
 
 const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   chat: () => <ChatView />,
@@ -69,6 +70,7 @@ export function AppShell() {
         <div className="h-8 flex-shrink-0 flex items-center justify-end px-4 drag-region">
           <ConnectionBadge />
         </div>
+        <UpdateBanner />
         {/* Main content */}
         <div className="flex-1 overflow-hidden">{VIEW_MAP[activeTab]()}</div>
       </main>

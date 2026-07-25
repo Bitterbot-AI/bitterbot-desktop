@@ -7,13 +7,90 @@ import {
   writeRestartSentinel,
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
-import { normalizeUpdateChannel } from "../../infra/update-channels.js";
+import { DEFAULT_PACKAGE_CHANNEL, normalizeUpdateChannel } from "../../infra/update-channels.js";
+import { checkUpdateStatus, resolveNpmChannelTag } from "../../infra/update-check.js";
 import { runGatewayUpdate } from "../../infra/update-runner.js";
-import { validateUpdateRunParams } from "../protocol/index.js";
+import { computeUpdateStaleness } from "../../infra/update-staleness.js";
+import { VERSION } from "../../version.js";
+import {
+  ErrorCodes,
+  errorShape,
+  validateUpdateCheckParams,
+  validateUpdateRunParams,
+} from "../protocol/index.js";
 import { parseRestartRequestParams } from "./restart-request.js";
 import { assertValidParams } from "./validation.js";
 
+// Single-flight: concurrent update.check calls share one underlying probe so
+// a click-happy client cannot fan out parallel `git fetch` subprocesses.
+let inflightCheck: Promise<Record<string, unknown>> | null = null;
+
+async function performUpdateCheck(fetch: boolean, timeoutMs: number) {
+  const config = loadConfig();
+  const channel = normalizeUpdateChannel(config.update?.channel) ?? null;
+  const root =
+    (await resolveBitterbotPackageRoot({
+      moduleUrl: import.meta.url,
+      argv1: process.argv[1],
+      cwd: process.cwd(),
+    })) ?? process.cwd();
+  const check = await checkUpdateStatus({
+    root,
+    timeoutMs,
+    fetchGit: fetch,
+    includeRegistry: false,
+  });
+  // Package installs compare against their own channel's dist-tag, not
+  // `latest` — a beta node must not be nagged toward a tag it won't install.
+  let channelVersion: string | null = null;
+  if (check.installKind === "package" && fetch) {
+    const resolved = await resolveNpmChannelTag({
+      channel: channel ?? DEFAULT_PACKAGE_CHANNEL,
+      timeoutMs: 2500,
+    });
+    channelVersion = resolved.version;
+  }
+  const staleness = computeUpdateStaleness(check, config.update?.promptBehindCommits, {
+    channelVersion,
+  });
+  return {
+    ok: true,
+    version: VERSION,
+    channel,
+    check,
+    registryLatest: channelVersion,
+    staleness,
+    checkedAt: Date.now(),
+  };
+}
+
 export const updateHandlers: GatewayRequestHandlers = {
+  "update.check": async ({ params, respond }) => {
+    if (!assertValidParams(params, validateUpdateCheckParams, "update.check", respond)) {
+      return;
+    }
+    const fetch = (params as { fetch?: boolean }).fetch !== false;
+    const timeoutMsRaw = (params as { timeoutMs?: unknown }).timeoutMs;
+    const timeoutMs =
+      typeof timeoutMsRaw === "number" && Number.isFinite(timeoutMsRaw)
+        ? Math.min(120_000, Math.max(1000, Math.floor(timeoutMsRaw)))
+        : 15_000;
+    try {
+      if (!inflightCheck) {
+        inflightCheck = performUpdateCheck(fetch, timeoutMs).finally(() => {
+          inflightCheck = null;
+        });
+      }
+      respond(true, await inflightCheck);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `update check failed: ${String(err)}`),
+      );
+    }
+  },
+
   "update.run": async ({ params, respond }) => {
     if (!assertValidParams(params, validateUpdateRunParams, "update.run", respond)) {
       return;
@@ -86,10 +163,16 @@ export const updateHandlers: GatewayRequestHandlers = {
       sentinelPath = null;
     }
 
-    const restart = scheduleGatewaySigusr1Restart({
-      delayMs: restartDelayMs,
-      reason: "update.run",
-    });
+    // Only restart when the update actually applied: a `skipped` (dirty tree,
+    // no upstream) or `error` run changed nothing, and bouncing the gateway
+    // for a no-op would kill live chat/agent sessions for nothing.
+    const restart =
+      result.status === "ok"
+        ? scheduleGatewaySigusr1Restart({
+            delayMs: restartDelayMs,
+            reason: "update.run",
+          })
+        : null;
 
     respond(
       true,

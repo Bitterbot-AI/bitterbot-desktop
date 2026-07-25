@@ -52,6 +52,7 @@ const BASE_METHODS = [
   "skills.incoming.accept",
   "skills.incoming.reject",
   "update.run",
+  "update.check",
   "voicewake.get",
   "voicewake.set",
   "sessions.list",
@@ -195,4 +196,7 @@ export const GATEWAY_EVENTS = [
   // PLAN-36 Phase 0: inbound circle message/ask/answer arrived (direct dial or
   // mailbox drain) — the People pane refreshes on this instead of polling.
   "circles",
+  // Periodic update-staleness status (git behind count / npm version drift);
+  // the Control UI raises or clears its update prompt on this.
+  "update",
 ];

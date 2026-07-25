@@ -150,6 +150,7 @@ export const BitterbotSchema = z
       .object({
         channel: z.union([z.literal("stable"), z.literal("beta"), z.literal("dev")]).optional(),
         checkOnStart: z.boolean().optional(),
+        promptBehindCommits: z.number().int().min(1).optional(),
       })
       .strict()
       .optional(),

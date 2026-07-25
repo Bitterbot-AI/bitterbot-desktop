@@ -52,6 +52,7 @@ import {
   ConfigSchemaParamsSchema,
   ConfigSchemaResponseSchema,
   ConfigSetParamsSchema,
+  UpdateCheckParamsSchema,
   UpdateRunParamsSchema,
 } from "./config.js";
 import {
@@ -234,6 +235,7 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   ChatAbortParams: ChatAbortParamsSchema,
   ChatInjectParams: ChatInjectParamsSchema,
   ChatEvent: ChatEventSchema,
+  UpdateCheckParams: UpdateCheckParamsSchema,
   UpdateRunParams: UpdateRunParamsSchema,
   TickEvent: TickEventSchema,
   ShutdownEvent: ShutdownEventSchema,

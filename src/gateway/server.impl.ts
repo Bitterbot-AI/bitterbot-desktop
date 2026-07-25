@@ -627,9 +627,15 @@ export async function startGatewayServer(
     log,
     isNixMode,
   });
-  if (!minimalTestGateway) {
-    scheduleGatewayUpdateCheck({ cfg: cfgAtStart, log, isNixMode });
-  }
+  const stopUpdateCheck = minimalTestGateway
+    ? null
+    : scheduleGatewayUpdateCheck({
+        cfg: cfgAtStart,
+        log,
+        isNixMode,
+        // Control UI listens for this to raise (or clear) its update prompt.
+        onStatus: (event) => broadcast("update", event, { dropIfSlow: true }),
+      });
   const tailscaleCleanup = minimalTestGateway
     ? null
     : await startGatewayTailscaleExposure({
@@ -727,6 +733,7 @@ export async function startGatewayServer(
     dedupeCleanup,
     eventLoopMonitor,
     circlesScheduler,
+    stopUpdateCheck,
     agentUnsub,
     heartbeatUnsub,
     chatRunState,

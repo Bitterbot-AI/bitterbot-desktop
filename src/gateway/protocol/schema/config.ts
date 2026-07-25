@@ -37,6 +37,15 @@ export const UpdateRunParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const UpdateCheckParamsSchema = Type.Object(
+  {
+    /** Run `git fetch` before computing ahead/behind (default true). */
+    fetch: Type.Optional(Type.Boolean()),
+    timeoutMs: Type.Optional(Type.Integer({ minimum: 1000, maximum: 120_000 })),
+  },
+  { additionalProperties: false },
+);
+
 export const ConfigUiHintSchema = Type.Object(
   {
     label: Type.Optional(Type.String()),

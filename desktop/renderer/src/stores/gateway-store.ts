@@ -138,7 +138,11 @@ interface GatewayState {
    */
   connect: (url: string, tokenOverride?: string) => void;
   disconnect: () => void;
-  request: <T = unknown>(method: string, params?: unknown) => Promise<T>;
+  request: <T = unknown>(
+    method: string,
+    params?: unknown,
+    options?: { timeoutMs?: number },
+  ) => Promise<T>;
   subscribe: (listener: EventListener) => () => void;
 }
 
@@ -212,12 +216,16 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
     set({ client: null, status: "disconnected", hello: null, error: null });
   },
 
-  request: async <T = unknown>(method: string, params?: unknown): Promise<T> => {
+  request: async <T = unknown>(
+    method: string,
+    params?: unknown,
+    options?: { timeoutMs?: number },
+  ): Promise<T> => {
     const client = get().client;
     if (!client) {
       throw new Error("Gateway not connected");
     }
-    return client.request<T>(method, params);
+    return client.request<T>(method, params, options);
   },
 
   subscribe: (listener: EventListener) => {

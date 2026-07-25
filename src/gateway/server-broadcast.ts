@@ -13,6 +13,8 @@ const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   "device.pair.resolved": [PAIRING_SCOPE],
   "node.pair.requested": [PAIRING_SCOPE],
   "node.pair.resolved": [PAIRING_SCOPE],
+  // Node identity (branch/sha/version drift) is operator information.
+  update: [ADMIN_SCOPE],
 };
 
 export type GatewayBroadcastStateVersion = {

@@ -22,6 +22,7 @@ export function createGatewayCloseHandler(params: {
   dedupeCleanup: ReturnType<typeof setInterval>;
   eventLoopMonitor: EventLoopMonitorHandle;
   circlesScheduler: CirclesSchedulerHandle;
+  stopUpdateCheck: (() => void) | null;
   agentUnsub: (() => void) | null;
   heartbeatUnsub: (() => void) | null;
   chatRunState: { clear: () => void };
@@ -80,6 +81,7 @@ export function createGatewayCloseHandler(params: {
     clearInterval(params.dedupeCleanup);
     params.eventLoopMonitor.stop();
     params.circlesScheduler.stop();
+    params.stopUpdateCheck?.();
     if (params.agentUnsub) {
       try {
         params.agentUnsub();

@@ -65,8 +65,14 @@ export type BitterbotConfig = {
   update?: {
     /** Update channel for git + npm installs ("stable", "beta", or "dev"). */
     channel?: "stable" | "beta" | "dev";
-    /** Check for updates on gateway start (npm installs only). */
+    /** Automatic update checks (boot + every 6h). Set false to disable. */
     checkOnStart?: boolean;
+    /**
+     * Git installs: prompt the Control UI to update once the node falls this
+     * many commits behind upstream (default 20; the periodic staleness check
+     * broadcasts the "update" gateway event when crossed).
+     */
+    promptBehindCommits?: number;
   };
   browser?: BrowserConfig;
   ui?: {

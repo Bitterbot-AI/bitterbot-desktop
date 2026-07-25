@@ -86,6 +86,42 @@ High-level:
 8. Runs `bitterbot doctor` as the final “safe update” check.
 9. Syncs plugins to the active channel (dev uses bundled extensions; stable/beta uses npm) and updates npm-installed plugins.
 
+## Updating from the Control UI
+
+The Control UI (Overview tab) exposes the same machinery:
+
+- **Node Version card**: current version, branch@sha, and how many commits
+  behind upstream the node is ("Check for updates" runs a real `git fetch`).
+  "Update now" runs the full safe-update flow above via the `update.run`
+  gateway RPC, then the gateway restarts itself; the UI reconnects when the
+  node is back.
+- **Staleness prompt**: the gateway re-checks for drift at boot and every
+  6 hours and broadcasts the result (`update` gateway event). Once a git
+  node falls `update.promptBehindCommits` commits behind upstream
+  (default 20), the UI shows a dismissible update banner. Set
+  `update.checkOnStart: false` to disable automatic checks, or tune the
+  threshold:
+
+```json
+{
+  "update": {
+    "channel": "dev",
+    "checkOnStart": true,
+    "promptBehindCommits": 20
+  }
+}
+```
+
+RPCs: `update.check` (status + staleness verdict, no side effects) and
+`update.run` (the update itself). Both require the `operator.admin` scope.
+A skipped or failed `update.run` (dirty tree, no upstream, preflight found
+no good commit) does **not** restart the gateway; only a successful update
+restarts.
+
+Known limitation: drift counting works on the `dev` channel (a tracked
+`main` checkout). `stable`/`beta` git checkouts sit on detached tags, so
+"commits behind" is unknown there and the card shows "drift unknown".
+
 ## `--update` shorthand
 
 `bitterbot --update` rewrites to `bitterbot update` (useful for shells and launcher scripts).

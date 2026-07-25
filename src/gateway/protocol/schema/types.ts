@@ -69,6 +69,7 @@ import type {
   ConfigSchemaParamsSchema,
   ConfigSchemaResponseSchema,
   ConfigSetParamsSchema,
+  UpdateCheckParamsSchema,
   UpdateRunParamsSchema,
 } from "./config.js";
 import type {
@@ -258,5 +259,6 @@ export type ChatAbortParams = Static<typeof ChatAbortParamsSchema>;
 export type ChatInjectParams = Static<typeof ChatInjectParamsSchema>;
 export type ChatEvent = Static<typeof ChatEventSchema>;
 export type UpdateRunParams = Static<typeof UpdateRunParamsSchema>;
+export type UpdateCheckParams = Static<typeof UpdateCheckParamsSchema>;
 export type TickEvent = Static<typeof TickEventSchema>;
 export type ShutdownEvent = Static<typeof ShutdownEventSchema>;

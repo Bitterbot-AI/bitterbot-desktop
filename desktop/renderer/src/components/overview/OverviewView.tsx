@@ -3,6 +3,7 @@ import { formatUptime, formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useOverviewStore } from "../../stores/overview-store";
+import { UpdateCard } from "./UpdateCard";
 
 function StatCard({
   label,
@@ -112,6 +113,9 @@ export function OverviewView() {
         <StatCard label="Platform" value={String(platform)} />
         <StatCard label="Channels" value={String(Object.keys(channels).length)} sub="registered" />
       </div>
+
+      {/* Version & updates */}
+      <UpdateCard />
 
       {/* Connection Info */}
       <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">

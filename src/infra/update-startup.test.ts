@@ -10,7 +10,11 @@ vi.mock("./bitterbot-root.js", () => ({
 
 vi.mock("./update-check.js", async () => {
   const parse = (value: string) => value.split(".").map((part) => Number.parseInt(part, 10));
-  const compareSemverStrings = (a: string, b: string) => {
+  // Mirrors the real contract: null in -> null out.
+  const compareSemverStrings = (a: string | null, b: string | null) => {
+    if (a == null || b == null) {
+      return null;
+    }
     const left = parse(a);
     const right = parse(b);
     for (let idx = 0; idx < 3; idx += 1) {
@@ -167,6 +171,82 @@ describe("update-startup", () => {
     const raw = await fs.readFile(statePath, "utf-8");
     const parsed = JSON.parse(raw) as { lastNotifiedTag?: string };
     expect(parsed.lastNotifiedTag).toBe("latest");
+  });
+
+  it("emits onStatus and logs for a stale git install", async () => {
+    vi.mocked(resolveNpmChannelTag).mockClear();
+    vi.mocked(resolveBitterbotPackageRoot).mockResolvedValue("/repo");
+    vi.mocked(checkUpdateStatus).mockResolvedValue({
+      root: "/repo",
+      installKind: "git",
+      packageManager: "pnpm",
+      git: {
+        root: "/repo",
+        sha: "abcdef1234567890",
+        tag: null,
+        branch: "main",
+        upstream: "origin/main",
+        dirty: false,
+        ahead: 0,
+        behind: 25,
+        fetchOk: true,
+      },
+    } satisfies UpdateCheckResult);
+
+    const log = { info: vi.fn() };
+    const events: unknown[] = [];
+    await runGatewayUpdateCheck({
+      cfg: { update: {} },
+      log,
+      isNixMode: false,
+      allowInTests: true,
+      onStatus: (event) => events.push(event),
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      installKind: "git",
+      sha: "abcdef1234567890",
+      branch: "main",
+      staleness: { stale: true, behind: 25, threshold: 20, reason: "git-behind" },
+    });
+    expect(log.info).toHaveBeenCalledWith(expect.stringContaining("25 commits behind upstream"));
+    // The npm notify branch must not run for git installs.
+    expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+  });
+
+  it("emits a fresh status without logging when a git install is current", async () => {
+    vi.mocked(resolveBitterbotPackageRoot).mockResolvedValue("/repo");
+    vi.mocked(checkUpdateStatus).mockResolvedValue({
+      root: "/repo",
+      installKind: "git",
+      packageManager: "pnpm",
+      git: {
+        root: "/repo",
+        sha: "abcdef1234567890",
+        tag: null,
+        branch: "main",
+        upstream: "origin/main",
+        dirty: false,
+        ahead: 0,
+        behind: 0,
+        fetchOk: true,
+      },
+    } satisfies UpdateCheckResult);
+
+    const log = { info: vi.fn() };
+    const events: Array<{ staleness: { stale: boolean } }> = [];
+    await runGatewayUpdateCheck({
+      cfg: { update: { promptBehindCommits: 5 } },
+      log,
+      isNixMode: false,
+      allowInTests: true,
+      onStatus: (event) => events.push(event),
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0].staleness).toMatchObject({ stale: false, threshold: 5 });
+    expect(log.info).not.toHaveBeenCalled();
   });
 
   it("skips update check when disabled in config", async () => {

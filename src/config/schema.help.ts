@@ -2,7 +2,10 @@ export const FIELD_HELP: Record<string, string> = {
   "meta.lastTouchedVersion": "Auto-set when Bitterbot writes the config.",
   "meta.lastTouchedAt": "ISO timestamp of the last config write (auto-set).",
   "update.channel": 'Update channel for git + npm installs ("stable", "beta", or "dev").',
-  "update.checkOnStart": "Check for npm updates when the gateway starts (default: true).",
+  "update.checkOnStart":
+    "Automatic update checks at gateway start and every 6 hours (default: true).",
+  "update.promptBehindCommits":
+    "Git installs: prompt the Control UI to update when the node is at least this many commits behind upstream (default: 20).",
   "gateway.remote.url": "Remote Gateway WebSocket URL (ws:// or wss://).",
   "gateway.remote.tlsFingerprint":
     "Expected sha256 TLS fingerprint for the remote gateway (pin to avoid MITM).",

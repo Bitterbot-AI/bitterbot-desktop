@@ -213,6 +213,8 @@ import {
   TalkModeParamsSchema,
   type TickEvent,
   TickEventSchema,
+  type UpdateCheckParams,
+  UpdateCheckParamsSchema,
   type UpdateRunParams,
   UpdateRunParamsSchema,
   type WakeParams,
@@ -395,6 +397,7 @@ export const validateChatAbortParams = ajv.compile<ChatAbortParams>(ChatAbortPar
 export const validateChatInjectParams = ajv.compile<ChatInjectParams>(ChatInjectParamsSchema);
 export const validateChatEvent = ajv.compile(ChatEventSchema);
 export const validateUpdateRunParams = ajv.compile<UpdateRunParams>(UpdateRunParamsSchema);
+export const validateUpdateCheckParams = ajv.compile<UpdateCheckParams>(UpdateCheckParamsSchema);
 export const validateWebLoginStartParams =
   ajv.compile<WebLoginStartParams>(WebLoginStartParamsSchema);
 export const validateWebLoginWaitParams = ajv.compile<WebLoginWaitParams>(WebLoginWaitParamsSchema);
@@ -527,6 +530,7 @@ export {
   ChatHistoryParamsSchema,
   ChatSendParamsSchema,
   ChatInjectParamsSchema,
+  UpdateCheckParamsSchema,
   UpdateRunParamsSchema,
   TickEventSchema,
   ShutdownEventSchema,
@@ -644,6 +648,7 @@ export type {
   LogsTailParams,
   LogsTailResult,
   PollParams,
+  UpdateCheckParams,
   UpdateRunParams,
   ChatInjectParams,
 };
