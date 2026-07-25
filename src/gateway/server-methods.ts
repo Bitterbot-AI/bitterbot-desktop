@@ -125,6 +125,10 @@ const READ_METHODS = new Set([
   "circles.tab.balances",
   "circles.disclosure.list",
   "circles.briefing",
+  "circles.inviteInfo",
+  "circles.canvas.list",
+  "circles.outbound.list",
+  "circles.drafts.list",
   "management.census",
   "management.anomalies",
   "management.health",
@@ -166,13 +170,34 @@ const WRITE_METHODS = new Set([
   "circles.sync",
   "circles.ask",
   "circles.disclosure.set",
+  "circles.rename",
+  "circles.archive",
+  "circles.unarchive",
+  "circles.delete",
+  "circles.unfreeze",
+  "circles.self.setName",
+  "circles.petname.set",
+  "circles.petname.clear",
+  "circles.member.remove",
+  "circles.markRead",
+  "circles.react",
+  "circles.pin",
+  "circles.canvas.put",
+  "circles.canvas.remove",
+  "circles.canvas.slice",
+  "circles.outbound.approve",
+  "circles.outbound.reject",
+  "circles.drafts.request",
+  "circles.drafts.publish",
+  "circles.drafts.discard",
   "cron.add",
   "cron.update",
   "cron.remove",
   "cron.run",
 ]);
 
-function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["client"]) {
+/** Exported for tests: the scope gate every gateway RPC passes through. */
+export function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["client"]) {
   if (!client?.connect) {
     return null;
   }
