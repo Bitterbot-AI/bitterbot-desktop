@@ -18,11 +18,12 @@
  *    other than a member's pinned wallet must be refused downstream; changing
  *    a pinned wallet requires an explicit re-pair (a new call here), never a
  *    silent update from agent logic.
- *  - Every membership change bumps `key_epoch`. NOTE: this counter is bumped
- *    but not yet CONSUMED — transport is currently unsealed HTTP with no
- *    channel key to rotate, so the "a departed member cannot read future
- *    traffic" property does NOT hold today. Consuming key_epoch (channel-key
- *    rotation) is PLAN-36 §5.6.
+ *  - `key_epoch` bumps on member ADD only (`addMember`) — `removeMember`
+ *    does NOT bump it. Its sole consumer today is gossip topic blinding
+ *    (`circleTopicId` = sha256(circleId:keyEpoch)); that is topic naming,
+ *    not encryption, and direct dial + mailbox ignore it entirely, so the
+ *    "a departed member cannot read future traffic" property does NOT hold
+ *    today. Real channel-key rotation is PLAN-36 §5.6.
  */
 
 import type { DatabaseSync } from "node:sqlite";

@@ -19,6 +19,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { CirclesStore } from "../memory/circles-store.js";
+import { replaceMarkers } from "../security/external-content.js";
 import { pendingAsks } from "./disclosure.js";
 import { computeTabBalances } from "./tab.js";
 
@@ -36,9 +37,25 @@ function centsToUsd(cents: number): string {
   return `$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
 
-function shortName(store: CirclesStore, circleId: string, pubkey: string): string {
-  const member = store.getMember(circleId, pubkey);
-  return member?.displayName ?? `${pubkey.slice(0, 16)}…`;
+/**
+ * Names in the briefing are petname-first, like every other surface: your own
+ * private label wins, then the peer's claimed displayName, then a pubkey
+ * prefix. The claimed displayName is attacker-controlled text landing in a
+ * locally-rendered document, so it passes through `replaceMarkers` first — a
+ * forged quarantine marker inside a display name must not survive into prose
+ * the human (or their agent, reading the briefing later) will trust.
+ */
+function shortName(
+  store: CirclesStore,
+  circleId: string,
+  pubkey: string,
+  petnames: Map<string, string>,
+): string {
+  const petname = petnames.get(pubkey)?.trim();
+  if (petname) return petname;
+  const claimed = store.getMember(circleId, pubkey)?.displayName;
+  const clean = claimed ? replaceMarkers(claimed).trim() : "";
+  return clean || `${pubkey.slice(0, 16)}…`;
 }
 
 /**
@@ -55,6 +72,7 @@ export function compileBriefing(
   const cutoff = now - windowMs;
   const store = new CirclesStore(db);
   const circles = store.getCirclesForMember(args.selfPubkey);
+  const petnames = store.getPetnames();
   const lines: string[] = [];
 
   // Headline: the reciprocity pulse (§9 North Star surfaced, never a raw count race).
@@ -132,8 +150,8 @@ export function compileBriefing(
       for (const [debtor, creditors] of Object.entries(balances.pairwise)) {
         for (const [creditor, cents] of Object.entries(creditors)) {
           debts.push(
-            `${shortName(store, circle.circleId, debtor)} is ${centsToUsd(cents)} behind ` +
-              shortName(store, circle.circleId, creditor),
+            `${shortName(store, circle.circleId, debtor, petnames)} is ${centsToUsd(cents)} behind ` +
+              shortName(store, circle.circleId, creditor, petnames),
           );
         }
       }
@@ -146,7 +164,8 @@ export function compileBriefing(
     lines.push(...section);
   }
 
-  // What needs a decision: granted asks awaiting the human.
+  // What needs a decision: every unanswered ask — waiting on the human's
+  // answer (granted) or on a topic grant (refused so far).
   const waiting = pendingAsks(db, now).filter((a) => a.category !== null);
   if (waiting.length > 0) {
     lines.push(
