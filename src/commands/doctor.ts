@@ -58,6 +58,7 @@ import { maybeRepairSandboxImages, noteSandboxScopeWarnings } from "./doctor-san
 import { noteSecurityWarnings } from "./doctor-security.js";
 import { runSkillsChecks } from "./doctor-skills.js";
 import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integrity.js";
+import { runSubsystemChecks } from "./doctor-subsystems.js";
 import { maybeOfferUpdateBeforeDoctor } from "./doctor-update.js";
 import { runWalletChecks } from "./doctor-wallet.js";
 import { runWebSearchChecks } from "./doctor-web-search.js";
@@ -308,6 +309,10 @@ export async function doctorCommand(
       isGatewayRunning: healthOk,
     });
   }
+
+  // ── Post-Q1 subsystems (embeddings backlog, knowledge graph, canonical
+  //    ledger, circles) — deep DB checks that surface wired-but-dead state ──
+  runSubsystemChecks({ config: cfg });
 
   // ── Wallet (USDC on Base) ──
   await runWalletChecks({ config: cfg });
