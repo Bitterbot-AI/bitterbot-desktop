@@ -46,6 +46,7 @@ import { runIdentityChecks } from "./doctor-identity.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
 import { noteMemorySearchHealth } from "./doctor-memory-search.js";
 import { runMemorySystemChecks } from "./doctor-memory-system.js";
+import { doctorErrorMessages, doctorHasError, resetDoctorOutcome } from "./doctor-outcome.js";
 import { runP2pNetworkChecks } from "./doctor-p2p.js";
 import {
   noteMacLaunchAgentOverrides,
@@ -77,6 +78,7 @@ export async function doctorCommand(
   options: DoctorOptions = {},
 ) {
   const prompter = createDoctorPrompter({ runtime, options });
+  resetDoctorOutcome();
   printWizardHeader(runtime);
   intro("Bitterbot doctor");
 
@@ -350,4 +352,21 @@ export async function doctorCommand(
   }
 
   outro("Doctor complete.");
+
+  // Real exit code: a genuinely broken subsystem (error-level finding) fails
+  // the process. This is what makes the update flow's doctor gate real —
+  // `update-runner.ts` runs `doctor --non-interactive` and only hands off to
+  // the freshly-built gateway when it exits 0. Degraded-but-usable states are
+  // warn-level and do NOT block. Placed after outro so nothing is skipped;
+  // test runtimes pass a no-op exit, so unit/e2e flows are unaffected.
+  if (doctorHasError()) {
+    const errors = doctorErrorMessages();
+    if (errors.length > 0) {
+      runtime.error(
+        `doctor found ${errors.length} error-level problem(s):\n` +
+          errors.map((m) => `  - ${m}`).join("\n"),
+      );
+    }
+    runtime.exit(1);
+  }
 }

@@ -19,6 +19,7 @@ import { parseGenomeHomeostasis, parsePhenotypeConstraints } from "../memory/gen
 import { LATEST_SCHEMA_VERSION } from "../memory/migrations.js";
 import { WORKING_MEMORY_SECTIONS } from "../memory/working-memory-prompt.js";
 import { note } from "../terminal/note.js";
+import { recordDoctorResults } from "./doctor-outcome.js";
 
 // ── Types ──
 
@@ -590,6 +591,9 @@ function renderSection(title: string, results: DoctorCheckResult[]): void {
   if (results.length === 0) {
     return;
   }
+  // Feed the run-level outcome so a broken memory subsystem (corrupt DB,
+  // missing core tables) can fail the process and block an update handoff.
+  recordDoctorResults(results);
   const lines = results.map(formatLevel);
   note(lines.join("\n"), title);
 }
