@@ -27,6 +27,7 @@ import {
 } from "../config/config.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
+import { confirmBootHealthy } from "../infra/boot-verify.js";
 import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
 import { startEventJournal } from "../infra/event-journal.js";
@@ -627,6 +628,12 @@ export async function startGatewayServer(
     log,
     isNixMode,
   });
+  // The server is bound and serving — clear any post-update boot-health
+  // beacon. A healthy boot erases it so doctor never flags a phantom failure;
+  // a boot that never reaches this point leaves it for doctor to surface.
+  if (!minimalTestGateway) {
+    confirmBootHealthy();
+  }
   const stopUpdateCheck = minimalTestGateway
     ? null
     : scheduleGatewayUpdateCheck({

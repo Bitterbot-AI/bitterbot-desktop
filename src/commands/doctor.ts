@@ -32,6 +32,7 @@ import {
   maybeRepairAnthropicOAuthProfileId,
   noteAuthProfileHealth,
 } from "./doctor-auth.js";
+import { noteBootHealth } from "./doctor-boot-health.js";
 import { runCanvasChecks } from "./doctor-canvas.js";
 import { runChannelsChecks } from "./doctor-channels.js";
 import { doctorShellCompletion } from "./doctor-completion.js";
@@ -101,6 +102,10 @@ export async function doctorCommand(
   }
 
   noteSourceInstallIssues(root);
+
+  // A post-update boot that never confirmed healthy is the highest-priority
+  // signal — surface it before anything else.
+  noteBootHealth();
 
   const configResult = await loadAndMaybeMigrateDoctorConfig({
     options,

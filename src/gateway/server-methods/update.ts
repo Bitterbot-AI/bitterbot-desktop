@@ -1,6 +1,7 @@
 import type { GatewayRequestHandlers } from "./types.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveBitterbotPackageRoot } from "../../infra/bitterbot-root.js";
+import { armBootVerify } from "../../infra/boot-verify.js";
 import {
   formatDoctorNonInteractiveHint,
   type RestartSentinelPayload,
@@ -166,13 +167,17 @@ export const updateHandlers: GatewayRequestHandlers = {
     // Only restart when the update actually applied: a `skipped` (dirty tree,
     // no upstream) or `error` run changed nothing, and bouncing the gateway
     // for a no-op would kill live chat/agent sessions for nothing.
-    const restart =
-      result.status === "ok"
-        ? scheduleGatewaySigusr1Restart({
-            delayMs: restartDelayMs,
-            reason: "update.run",
-          })
-        : null;
+    let restart = null;
+    if (result.status === "ok") {
+      // Arm the boot-health beacon BEFORE the restart: if the freshly-built
+      // gateway never comes up, doctor will surface it with this rollback sha.
+      // The new gateway clears the beacon the moment it is listening.
+      armBootVerify({ prevSha: result.before?.sha ?? null, reason: "update.run" });
+      restart = scheduleGatewaySigusr1Restart({
+        delayMs: restartDelayMs,
+        reason: "update.run",
+      });
+    }
 
     respond(
       true,
