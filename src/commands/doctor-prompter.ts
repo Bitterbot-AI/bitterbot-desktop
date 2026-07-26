@@ -11,6 +11,8 @@ export type DoctorOptions = {
   repair?: boolean;
   force?: boolean;
   generateGatewayToken?: boolean;
+  /** Emit a machine-readable JSON report; implies non-interactive. */
+  json?: boolean;
 };
 
 export type DoctorPrompter = {

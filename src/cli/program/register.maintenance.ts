@@ -25,6 +25,11 @@ export function registerMaintenanceCommands(program: Command) {
     .option("--non-interactive", "Run without prompts (safe migrations only)", false)
     .option("--generate-gateway-token", "Generate and configure a gateway token", false)
     .option("--deep", "Scan system services for extra gateway installs", false)
+    .option(
+      "--json",
+      "Emit a machine-readable JSON health report (implies --non-interactive)",
+      false,
+    )
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         await doctorCommand(defaultRuntime, {
@@ -32,9 +37,10 @@ export function registerMaintenanceCommands(program: Command) {
           yes: Boolean(opts.yes),
           repair: Boolean(opts.repair) || Boolean(opts.fix),
           force: Boolean(opts.force),
-          nonInteractive: Boolean(opts.nonInteractive),
+          nonInteractive: Boolean(opts.nonInteractive) || Boolean(opts.json),
           generateGatewayToken: Boolean(opts.generateGatewayToken),
           deep: Boolean(opts.deep),
+          json: Boolean(opts.json),
         });
       });
     });

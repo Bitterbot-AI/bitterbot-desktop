@@ -17,19 +17,13 @@ import {
   __considerationsConsts,
   __considerationsTodayKey,
 } from "../infra/heartbeat-considerations.js";
-import { note } from "../terminal/note.js";
 import { CONFIG_DIR } from "../utils.js";
-
-type Level = "ok" | "warn" | "error" | "info";
-type CheckResult = { level: Level; message: string };
-
-const ok = (message: string): CheckResult => ({ level: "ok", message });
-const info = (message: string): CheckResult => ({ level: "info", message });
-
-function formatLevel(r: CheckResult): string {
-  const icon = r.level === "ok" ? "✓" : r.level === "warn" ? "!" : r.level === "error" ? "✗" : "·";
-  return `${icon} ${r.message}`;
-}
+import {
+  renderSection as renderDoctorSection,
+  type CheckResult,
+  ok,
+  info,
+} from "./doctor-check.js";
 
 type SummaryLine = {
   total: number;
@@ -179,6 +173,5 @@ export async function runAgentRuntimeChecks(): Promise<void> {
 }
 
 function renderSection(results: CheckResult[]): void {
-  if (results.length === 0) return;
-  note(results.map(formatLevel).join("\n"), "Agent runtime");
+  renderDoctorSection("Agent runtime", results);
 }

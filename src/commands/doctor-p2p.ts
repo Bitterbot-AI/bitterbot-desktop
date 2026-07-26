@@ -22,28 +22,14 @@ import {
   probeTcpReachable,
   type BinarySource,
 } from "../infra/orchestrator-binary.js";
-import { note } from "../terminal/note.js";
-
-type Level = "ok" | "warn" | "error" | "info";
-type CheckResult = { level: Level; message: string };
-
-const ok = (message: string): CheckResult => ({ level: "ok", message });
-const warn = (message: string): CheckResult => ({ level: "warn", message });
-const error = (message: string): CheckResult => ({ level: "error", message });
-const info = (message: string): CheckResult => ({ level: "info", message });
-
-function formatLevel(r: CheckResult): string {
-  switch (r.level) {
-    case "ok":
-      return `\u2714 ${r.message}`;
-    case "warn":
-      return `\u26A0 ${r.message}`;
-    case "error":
-      return `\u2718 ${r.message}`;
-    case "info":
-      return `\u2139 ${r.message}`;
-  }
-}
+import {
+  renderSection as renderDoctorSection,
+  type CheckResult,
+  ok,
+  warn,
+  error,
+  info,
+} from "./doctor-check.js";
 
 /**
  * Describe a resolved binary source in operator-facing language.
@@ -251,11 +237,11 @@ export async function runP2pNetworkChecks(params: {
       }
       if (typeof stats.connectedPeers === "number") {
         const label = stats.connectedPeers === 1 ? "peer" : "peers";
-        const level: Level = stats.connectedPeers > 0 ? "ok" : "warn";
-        results.push({
-          level,
-          message: `Connected to ${stats.connectedPeers} ${label}`,
-        });
+        results.push(
+          stats.connectedPeers > 0
+            ? ok(`Connected to ${stats.connectedPeers} ${label}`)
+            : warn(`Connected to ${stats.connectedPeers} ${label}`),
+        );
       }
       if (typeof stats.meshPeers === "number" && stats.meshPeers !== stats.connectedPeers) {
         results.push(info(`Gossipsub mesh peers: ${stats.meshPeers}`));
@@ -292,8 +278,5 @@ export async function runP2pNetworkChecks(params: {
 }
 
 function renderSection(results: CheckResult[]): void {
-  if (results.length === 0) {
-    return;
-  }
-  note(results.map(formatLevel).join("\n"), "P2P Network");
+  renderDoctorSection("P2P Network", results);
 }

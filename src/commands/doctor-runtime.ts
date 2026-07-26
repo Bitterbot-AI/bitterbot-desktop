@@ -19,28 +19,14 @@
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import type { BitterbotConfig } from "../config/config.js";
-import { note } from "../terminal/note.js";
-
-type Level = "ok" | "warn" | "error" | "info";
-type CheckResult = { level: Level; message: string };
-
-const ok = (message: string): CheckResult => ({ level: "ok", message });
-const warn = (message: string): CheckResult => ({ level: "warn", message });
-const error = (message: string): CheckResult => ({ level: "error", message });
-const info = (message: string): CheckResult => ({ level: "info", message });
-
-function formatLevel(r: CheckResult): string {
-  switch (r.level) {
-    case "ok":
-      return `\u2714 ${r.message}`;
-    case "warn":
-      return `\u26A0 ${r.message}`;
-    case "error":
-      return `\u2718 ${r.message}`;
-    case "info":
-      return `\u2139 ${r.message}`;
-  }
-}
+import {
+  renderSection as renderDoctorSection,
+  type CheckResult,
+  ok,
+  warn,
+  error,
+  info,
+} from "./doctor-check.js";
 
 // Kept in sync with package.json#engines.node. Node 22 LTS is the floor
 // because the dream-engine DB uses the stable node:sqlite that ships there,
@@ -145,8 +131,5 @@ export function runRuntimeChecks(params: { config: BitterbotConfig }): void {
 }
 
 function renderSection(results: CheckResult[]): void {
-  if (results.length === 0) {
-    return;
-  }
-  note(results.map(formatLevel).join("\n"), "Runtime");
+  renderDoctorSection("Runtime", results);
 }

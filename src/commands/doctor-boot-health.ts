@@ -1,6 +1,7 @@
 import { readStaleBootVerify } from "../infra/boot-verify.js";
 import { note } from "../terminal/note.js";
-import { recordDoctorLevel } from "./doctor-outcome.js";
+import { isDoctorJsonMode } from "./doctor-check.js";
+import { recordDoctorLevel, recordFinding } from "./doctor-outcome.js";
 
 /**
  * Surface a post-update boot that never confirmed healthy. The beacon is armed
@@ -30,5 +31,7 @@ export function noteBootHealth(now: number = Date.now()): void {
 
   const message = lines.join("\n");
   recordDoctorLevel("error", "post-update boot never confirmed healthy");
+  recordFinding("Update Health", "error", message);
+  if (isDoctorJsonMode()) return;
   note(`✘ ${message}`, "Update Health");
 }

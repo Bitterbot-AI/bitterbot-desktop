@@ -20,29 +20,15 @@
 
 import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
-import { note } from "../terminal/note.js";
+import {
+  renderSection as renderDoctorSection,
+  type CheckResult,
+  ok,
+  warn,
+  info,
+} from "./doctor-check.js";
 
 type SearchProvider = "brave" | "perplexity" | "grok" | "tavily";
-
-type Level = "ok" | "warn" | "error" | "info";
-type CheckResult = { level: Level; message: string };
-
-const ok = (message: string): CheckResult => ({ level: "ok", message });
-const warn = (message: string): CheckResult => ({ level: "warn", message });
-const info = (message: string): CheckResult => ({ level: "info", message });
-
-function formatLevel(r: CheckResult): string {
-  switch (r.level) {
-    case "ok":
-      return `\u2714 ${r.message}`;
-    case "warn":
-      return `\u26A0 ${r.message}`;
-    case "error":
-      return `\u2718 ${r.message}`;
-    case "info":
-      return `\u2139 ${r.message}`;
-  }
-}
 
 const PROVIDER_ENV_VARS: Record<SearchProvider, readonly string[]> = {
   brave: ["BRAVE_API_KEY"],
@@ -140,8 +126,5 @@ export function runWebSearchChecks(params: { config: BitterbotConfig }): void {
 }
 
 function renderSection(results: CheckResult[]): void {
-  if (results.length === 0) {
-    return;
-  }
-  note(results.map(formatLevel).join("\n"), "Web search");
+  renderDoctorSection("Web search", results);
 }

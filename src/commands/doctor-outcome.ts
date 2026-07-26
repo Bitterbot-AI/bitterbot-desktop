@@ -26,10 +26,37 @@ const ORDER: Record<DoctorLevel, number> = { info: 0, ok: 1, warn: 2, error: 3 }
 let worstLevel: DoctorLevel = "ok";
 const errorMessages: string[] = [];
 
+/** One structured finding, for machine-readable (`--json`) output. */
+export type DoctorFinding = { section: string; level: DoctorLevel; message: string };
+const findings: DoctorFinding[] = [];
+
 /** Reset at the start of each doctor run. */
 export function resetDoctorOutcome(): void {
   worstLevel = "ok";
   errorMessages.length = 0;
+  findings.length = 0;
+}
+
+/** Collect a structured finding (does NOT affect the exit code by itself). */
+export function recordFinding(section: string, level: DoctorLevel, message: string): void {
+  findings.push({ section, level, message });
+}
+
+export function doctorFindings(): readonly DoctorFinding[] {
+  return findings;
+}
+
+/**
+ * The worst level across ALL collected findings (for display). Distinct from
+ * `worstDoctorLevel()`, which reflects only exit-code-gated sections — a
+ * channel warning shows here but does not block an update.
+ */
+export function worstFindingLevel(): DoctorLevel {
+  let worst: DoctorLevel = "ok";
+  for (const f of findings) {
+    if (ORDER[f.level] > ORDER[worst]) worst = f.level;
+  }
+  return worst;
 }
 
 /** Record a single finding's level (and message, for error-level). */

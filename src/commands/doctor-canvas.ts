@@ -24,28 +24,14 @@ import type { BitterbotConfig } from "../config/config.js";
 import { resolveGatewayPort } from "../config/config.js";
 import { DEFAULT_CANVAS_HOST_PORT, deriveDefaultCanvasHostPort } from "../config/port-defaults.js";
 import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
-import { note } from "../terminal/note.js";
-
-type Level = "ok" | "warn" | "error" | "info";
-type CheckResult = { level: Level; message: string };
-
-const ok = (message: string): CheckResult => ({ level: "ok", message });
-const warn = (message: string): CheckResult => ({ level: "warn", message });
-const error = (message: string): CheckResult => ({ level: "error", message });
-const info = (message: string): CheckResult => ({ level: "info", message });
-
-function formatLevel(r: CheckResult): string {
-  switch (r.level) {
-    case "ok":
-      return `\u2714 ${r.message}`;
-    case "warn":
-      return `\u26A0 ${r.message}`;
-    case "error":
-      return `\u2718 ${r.message}`;
-    case "info":
-      return `\u2139 ${r.message}`;
-  }
-}
+import {
+  renderSection as renderDoctorSection,
+  type CheckResult,
+  ok,
+  warn,
+  error,
+  info,
+} from "./doctor-check.js";
 
 export async function runCanvasChecks(params: { config: BitterbotConfig }): Promise<void> {
   const { config } = params;
@@ -152,8 +138,5 @@ export async function runCanvasChecks(params: { config: BitterbotConfig }): Prom
 }
 
 function renderSection(results: CheckResult[]): void {
-  if (results.length === 0) {
-    return;
-  }
-  note(results.map(formatLevel).join("\n"), "Canvas (A2UI rendering)");
+  renderDoctorSection("Canvas (A2UI rendering)", results);
 }

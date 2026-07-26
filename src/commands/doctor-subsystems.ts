@@ -20,8 +20,7 @@ import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { applyCirclesDefaults } from "../config/defaults.js";
 import { countMissingEmbeddings } from "../memory/embedding-backfill.js";
-import { note } from "../terminal/note.js";
-import { recordDoctorResults } from "./doctor-outcome.js";
+import { renderSection as renderDoctorSection } from "./doctor-check.js";
 
 type Level = "ok" | "warn" | "error" | "info";
 type CheckResult = { level: Level; message: string };
@@ -29,15 +28,8 @@ const ok = (message: string): CheckResult => ({ level: "ok", message });
 const warn = (message: string): CheckResult => ({ level: "warn", message });
 const info = (message: string): CheckResult => ({ level: "info", message });
 
-function formatLevel(r: CheckResult): string {
-  const icon = r.level === "ok" ? "✔" : r.level === "warn" ? "⚠" : r.level === "error" ? "✘" : "ℹ";
-  return `${icon} ${r.message}`;
-}
-
 function renderSection(title: string, results: CheckResult[]): void {
-  if (results.length === 0) return;
-  recordDoctorResults(results);
-  note(results.map(formatLevel).join("\n"), title);
+  renderDoctorSection(title, results, { gateExitCode: true });
 }
 
 function tableExists(db: DatabaseSync, table: string): boolean {

@@ -22,7 +22,8 @@
 
 import type { BitterbotConfig } from "../config/config.js";
 import { note } from "../terminal/note.js";
-import { recordDoctorLevel } from "./doctor-outcome.js";
+import { isDoctorJsonMode } from "./doctor-check.js";
+import { recordDoctorLevel, recordFinding } from "./doctor-outcome.js";
 
 type Level = "ok" | "warn" | "error" | "info";
 export type ModelCheckOutcome =
@@ -128,6 +129,8 @@ export async function runModelCheck(params: { config: BitterbotConfig }): Promis
   const outcome = await runModelRoundTrip(params.config);
   const result = classifyModelCheck(outcome);
   recordDoctorLevel(result.level, result.level === "error" ? "model round-trip failed" : undefined);
+  recordFinding("Model Round-Trip", result.level, result.message);
+  if (isDoctorJsonMode()) return;
   const icon =
     result.level === "ok"
       ? "✔"

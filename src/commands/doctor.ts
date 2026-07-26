@@ -26,6 +26,7 @@ import { defaultRuntime } from "../runtime.js";
 import { note } from "../terminal/note.js";
 import { stylePromptTitle } from "../terminal/prompt-style.js";
 import { shortenHomePath } from "../utils.js";
+import { VERSION } from "../version.js";
 import { runAgentRuntimeChecks } from "./doctor-agent-runtime.js";
 import {
   maybeRemoveDeprecatedCliAuthProfiles,
@@ -35,6 +36,7 @@ import {
 import { noteBootHealth } from "./doctor-boot-health.js";
 import { runCanvasChecks } from "./doctor-canvas.js";
 import { runChannelsChecks } from "./doctor-channels.js";
+import { setDoctorJsonMode } from "./doctor-check.js";
 import { doctorShellCompletion } from "./doctor-completion.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
 import { maybeRepairGatewayDaemon } from "./doctor-gateway-daemon-flow.js";
@@ -48,7 +50,13 @@ import { noteSourceInstallIssues } from "./doctor-install.js";
 import { noteMemorySearchHealth } from "./doctor-memory-search.js";
 import { runMemorySystemChecks } from "./doctor-memory-system.js";
 import { runModelCheck } from "./doctor-model.js";
-import { doctorErrorMessages, doctorHasError, resetDoctorOutcome } from "./doctor-outcome.js";
+import {
+  doctorErrorMessages,
+  doctorFindings,
+  doctorHasError,
+  resetDoctorOutcome,
+  worstFindingLevel,
+} from "./doctor-outcome.js";
 import { runP2pNetworkChecks } from "./doctor-p2p.js";
 import {
   noteMacLaunchAgentOverrides,
@@ -82,8 +90,12 @@ export async function doctorCommand(
 ) {
   const prompter = createDoctorPrompter({ runtime, options });
   resetDoctorOutcome();
-  printWizardHeader(runtime);
-  intro("Bitterbot doctor");
+  const jsonMode = options.json === true;
+  setDoctorJsonMode(jsonMode);
+  if (!jsonMode) {
+    printWizardHeader(runtime);
+    intro("Bitterbot doctor");
+  }
 
   const root = await resolveBitterbotPackageRoot({
     moduleUrl: import.meta.url,
@@ -365,17 +377,36 @@ export async function doctorCommand(
     }
   }
 
-  outro("Doctor complete.");
+  if (jsonMode) {
+    // Machine-readable report: the structured findings + rollup. The last
+    // stdout line is this object, so a consumer (the UI health surface, an
+    // update gate) can parse it. Exit code still reflects error-level.
+    runtime.log(
+      JSON.stringify({
+        version: VERSION,
+        // worstLevel = worst across all findings (display); hasError/blocksUpdate
+        // = a gated error that fails the process and blocks the update handoff.
+        worstLevel: worstFindingLevel(),
+        hasError: doctorHasError(),
+        blocksUpdate: doctorHasError(),
+        errors: doctorErrorMessages(),
+        findings: doctorFindings(),
+        checkedAt: Date.now(),
+      }),
+    );
+  } else {
+    outro("Doctor complete.");
+  }
 
   // Real exit code: a genuinely broken subsystem (error-level finding) fails
   // the process. This is what makes the update flow's doctor gate real —
   // `update-runner.ts` runs `doctor --non-interactive` and only hands off to
   // the freshly-built gateway when it exits 0. Degraded-but-usable states are
-  // warn-level and do NOT block. Placed after outro so nothing is skipped;
+  // warn-level and do NOT block. Placed after the report so nothing is skipped;
   // test runtimes pass a no-op exit, so unit/e2e flows are unaffected.
   if (doctorHasError()) {
     const errors = doctorErrorMessages();
-    if (errors.length > 0) {
+    if (!jsonMode && errors.length > 0) {
       runtime.error(
         `doctor found ${errors.length} error-level problem(s):\n` +
           errors.map((m) => `  - ${m}`).join("\n"),
