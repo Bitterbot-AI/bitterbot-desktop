@@ -2,11 +2,29 @@ import type { GatewayRequestHandlers } from "./types.js";
 import { resolveMainSessionKeyFromConfig } from "../../config/sessions.js";
 import { getLastHeartbeatEvent } from "../../infra/heartbeat-events.js";
 import { setHeartbeatsEnabled } from "../../infra/heartbeat-runner.js";
+import { scheduleGatewayShutdown, scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
 import { enqueueSystemEvent, isSystemEventContextChanged } from "../../infra/system-events.js";
 import { listSystemPresence, updateSystemPresence } from "../../infra/system-presence.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
 export const systemHandlers: GatewayRequestHandlers = {
+  // Lifecycle controls for the Control UI (operator.admin via the method-gate
+  // fall-through). Restart self-heals through the run-loop's in-process
+  // SIGUSR1 path; shutdown is a deliberate one-way SIGTERM.
+  "system.restart": ({ respond }) => {
+    const restart = scheduleGatewaySigusr1Restart({ reason: "ui.restart" });
+    respond(true, { ok: true, restart }, undefined);
+  },
+  "system.shutdown": ({ respond, context }) => {
+    // Tell any other connected clients before the socket drops.
+    context.broadcast(
+      "shutdown",
+      { reason: "ui.shutdown", pid: process.pid },
+      { dropIfSlow: true },
+    );
+    const shutdown = scheduleGatewayShutdown({ reason: "ui.shutdown" });
+    respond(true, { ok: true, shutdown }, undefined);
+  },
   "last-heartbeat": ({ respond }) => {
     respond(true, getLastHeartbeatEvent(), undefined);
   },

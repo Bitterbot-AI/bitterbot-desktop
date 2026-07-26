@@ -327,6 +327,51 @@ export function scheduleGatewaySigusr1Restart(opts?: {
   };
 }
 
+export type ScheduledShutdown = {
+  ok: true;
+  pid: number;
+  signal: "SIGTERM";
+  delayMs: number;
+  reason?: string;
+};
+
+/**
+ * Schedule a graceful gateway SHUTDOWN (not a restart): a self-directed
+ * SIGTERM after a short delay so the triggering RPC response flushes first.
+ * The run-loop's SIGTERM handler does a clean stop and the process exits —
+ * unlike SIGUSR1, nothing brings it back. Used by the UI's "Shut down"
+ * control (a deliberate, confirmed, one-way action).
+ *
+ * `kill` is injectable so unit tests can assert scheduling without actually
+ * signalling the test runner's own process.
+ */
+export function scheduleGatewayShutdown(opts?: {
+  delayMs?: number;
+  reason?: string;
+  kill?: (pid: number, signal: NodeJS.Signals) => void;
+}): ScheduledShutdown {
+  const delayMsRaw =
+    typeof opts?.delayMs === "number" && Number.isFinite(opts.delayMs)
+      ? Math.floor(opts.delayMs)
+      : 1500;
+  const delayMs = Math.min(Math.max(delayMsRaw, 0), 60_000);
+  const reason =
+    typeof opts?.reason === "string" && opts.reason.trim()
+      ? opts.reason.trim().slice(0, 200)
+      : undefined;
+  const kill = opts?.kill ?? ((pid, signal) => process.kill(pid, signal));
+  setTimeout(() => {
+    try {
+      kill(process.pid, "SIGTERM");
+    } catch {
+      // If the signal cannot be delivered (unusual), fall back to a direct
+      // exit so the UI's shutdown request is still honored.
+      process.exit(0);
+    }
+  }, delayMs);
+  return { ok: true, pid: process.pid, signal: "SIGTERM", delayMs, reason };
+}
+
 export const __testing = {
   resetSigusr1State() {
     sigusr1AuthorizedCount = 0;

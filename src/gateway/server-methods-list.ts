@@ -53,6 +53,8 @@ const BASE_METHODS = [
   "skills.incoming.reject",
   "update.run",
   "update.check",
+  "system.restart",
+  "system.shutdown",
   "voicewake.get",
   "voicewake.set",
   "sessions.list",

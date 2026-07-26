@@ -114,6 +114,14 @@ The Control UI (Overview tab) exposes the same machinery:
 
 RPCs: `update.check` (status + staleness verdict, no side effects) and
 `update.run` (the update itself). Both require the `operator.admin` scope.
+
+The Overview tab also has **Restart gateway** and **Shut down** controls
+(`system.restart` / `system.shutdown`, both `operator.admin`). Restart
+self-heals through the same in-process SIGUSR1 path an update uses. Shut
+down is a deliberate one-way SIGTERM: the Control UI cannot bring the
+gateway back, so relaunch it with `pnpm start gateway` or by reopening the
+app. After a successful in-UI update, the page reloads itself once the
+gateway reconnects so the browser isn't left on the pre-update bundle.
 A skipped or failed `update.run` (dirty tree, no upstream, preflight found
 no good commit) does **not** restart the gateway; only a successful update
 restarts.

@@ -32,6 +32,24 @@ export function UpdateBanner() {
   const setInfo = useUpdateStore((s) => s.setInfo);
   const dismissBanner = useUpdateStore((s) => s.dismissBanner);
   const resetForReconnect = useUpdateStore((s) => s.resetForReconnect);
+  const reloadAfterReconnect = useUpdateStore((s) => s.reloadAfterReconnect);
+
+  // After a successful in-UI update, the gateway rebuilds (renderer included)
+  // and restarts. Once it drops and comes back, reload so the browser isn't
+  // stranded on the pre-update bundle. Gated on an actual drop so we never
+  // reload while still on the old connection.
+  const sawDropForReloadRef = useRef(false);
+  useEffect(() => {
+    if (!reloadAfterReconnect) {
+      sawDropForReloadRef.current = false;
+      return;
+    }
+    if (connectionStatus !== "connected") {
+      sawDropForReloadRef.current = true;
+    } else if (sawDropForReloadRef.current) {
+      window.location.reload();
+    }
+  }, [reloadAfterReconnect, connectionStatus]);
 
   const onEvent = useCallback(
     (payload: unknown) => {

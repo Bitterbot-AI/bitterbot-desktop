@@ -35,6 +35,12 @@ type UpdateState = {
   outcome: UpdateRunOutcome | null;
   /** Local sha the human dismissed the banner for; clears when the node updates. */
   dismissedSha: string | null;
+  /**
+   * Set true when a successful update.run restarts the gateway; the next
+   * disconnect→reconnect triggers a full page reload so the browser picks up
+   * any new renderer bundle. Restart/shutdown do NOT set this (no code change).
+   */
+  reloadAfterReconnect: boolean;
   setInfo: (info: UpdateInfo) => void;
   setChecking: (checking: boolean) => void;
   setUpdating: (updating: boolean) => void;
@@ -42,6 +48,7 @@ type UpdateState = {
   dismissBanner: () => void;
   /** Reconnect: drop pre-restart data so the UI re-learns the node's state. */
   resetForReconnect: () => void;
+  setReloadAfterReconnect: (v: boolean) => void;
 };
 
 export const useUpdateStore = create<UpdateState>((set, get) => ({
@@ -50,12 +57,14 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   updating: false,
   outcome: null,
   dismissedSha: null,
+  reloadAfterReconnect: false,
   setInfo: (info) => set({ info }),
   setChecking: (checking) => set({ checking }),
   setUpdating: (updating) => set({ updating }),
   setOutcome: (outcome) => set({ outcome }),
   dismissBanner: () => set({ dismissedSha: get().info?.sha ?? "unknown" }),
   resetForReconnect: () => set({ info: null, outcome: null, updating: false, checking: false }),
+  setReloadAfterReconnect: (v) => set({ reloadAfterReconnect: v }),
 }));
 
 /** The banner shows only for a stale node the human has not dismissed at this sha. */

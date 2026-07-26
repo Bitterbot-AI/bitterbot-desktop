@@ -3,6 +3,7 @@ import { formatUptime, formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useOverviewStore } from "../../stores/overview-store";
+import { GatewayControls } from "./GatewayControls";
 import { UpdateCard } from "./UpdateCard";
 
 function StatCard({
@@ -150,6 +151,7 @@ export function OverviewView() {
             </div>
           )}
         </div>
+        <GatewayControls />
       </div>
 
       {/* Channel Summary */}

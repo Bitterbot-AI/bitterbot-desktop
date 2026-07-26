@@ -48,8 +48,17 @@ export function UpdateCard() {
   const request = useGatewayStore((s) => s.request);
   const connectionStatus = useGatewayStore((s) => s.status);
   const hello = useGatewayStore((s) => s.hello);
-  const { info, checking, updating, outcome, setInfo, setChecking, setUpdating, setOutcome } =
-    useUpdateStore();
+  const {
+    info,
+    checking,
+    updating,
+    outcome,
+    setInfo,
+    setChecking,
+    setUpdating,
+    setOutcome,
+    setReloadAfterReconnect,
+  } = useUpdateStore();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,6 +105,9 @@ export function UpdateCard() {
         // The gateway only schedules its SIGUSR1 restart on a successful run.
         restarting: status === "ok",
       });
+      // A successful update rebuilds the renderer too; reload once the gateway
+      // is back so the browser isn't left on the old bundle.
+      if (status === "ok") setReloadAfterReconnect(true);
     } catch (err) {
       // The socket dropping here MAY be the restart, or a network blip, or a
       // hung run. Don't claim success: report the interruption and let the
