@@ -68,6 +68,15 @@ export default defineConfig(() => {
     server: {
       port: 5173,
       strictPort: true,
+      // WSL on a Windows-mounted drive (/mnt/*): the 9p filesystem delivers
+      // NO inotify events, so Vite's watcher never sees edits and serves a
+      // stale module graph until the server is bounced ("it did not hot
+      // reload"). Chokidar polling is the only reliable signal there; on
+      // native filesystems this stays off (polling a big tree costs CPU).
+      watch:
+        process.platform === "linux" && __dirname.startsWith("/mnt/")
+          ? { usePolling: true, interval: 400 }
+          : undefined,
     },
     build: {
       outDir: path.resolve(__dirname, "dist-renderer"),
