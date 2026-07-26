@@ -1,7 +1,8 @@
-import { BookOpen, ListChecks, Plus, StickyNote, X } from "lucide-react";
-import { useState } from "react";
+import { BookOpen, GitBranch, ListChecks, Plus, StickyNote, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { memberName, useCirclesStore, type Circle } from "../../stores/circles-store";
 import { DecisionCard } from "./DecisionCard";
+import { MermaidDiagram } from "./MermaidDiagram";
 import { StudyGuideCard } from "./StudyGuideCard";
 
 // PLAN-36 Phase C: the group canvas — a board of typed cards folded from the
@@ -11,7 +12,7 @@ import { StudyGuideCard } from "./StudyGuideCard";
 // contribution slices — the §2.5 beachhead). Card content is peer content:
 // injection-scanned on receipt, rendered as escaped text (never HTML).
 
-type Mode = "note" | "decision" | "study" | null;
+type Mode = "note" | "decision" | "study" | "diagram" | null;
 
 function nameFor(circle: Circle, pubkey: string, selfPubkey: string | undefined): string {
   if (pubkey === selfPubkey) return "You";
@@ -50,6 +51,11 @@ export function CircleCanvas({
   // Study-guide composer
   const [guideTitle, setGuideTitle] = useState("");
   const [guideSections, setGuideSections] = useState("");
+  // Diagram composer (mermaid source; preview renders live below the editor,
+  // debounced — most intermediate keystroke states are parse failures)
+  const [diagramTitle, setDiagramTitle] = useState("");
+  const [diagramCode, setDiagramCode] = useState("");
+  const [previewCode, setPreviewCode] = useState("");
 
   const reset = () => {
     setMode(null);
@@ -59,6 +65,8 @@ export function CircleCanvas({
     setOptions(["", ""]);
     setGuideTitle("");
     setGuideSections("");
+    setDiagramTitle("");
+    setDiagramCode("");
   };
 
   const submitNote = async () => {
@@ -74,6 +82,19 @@ export function CircleCanvas({
     if (!question.trim() || opts.length < 2 || saving) return;
     setSaving(true);
     const ok = await putDecision(circle.circleId, question, opts);
+    setSaving(false);
+    if (ok) reset();
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => setPreviewCode(diagramCode), 400);
+    return () => clearTimeout(timer);
+  }, [diagramCode]);
+
+  const submitDiagram = async () => {
+    if (!diagramCode.trim() || saving) return;
+    setSaving(true);
+    const ok = await putCard(circle.circleId, diagramTitle, diagramCode, undefined, "mermaid");
     setSaving(false);
     if (ok) reset();
   };
@@ -121,6 +142,13 @@ export function CircleCanvas({
             >
               <BookOpen className="w-3.5 h-3.5" /> Guide
             </button>
+            <button
+              type="button"
+              onClick={() => setMode("diagram")}
+              className="text-xs font-medium text-circle-you flex items-center gap-1"
+            >
+              <GitBranch className="w-3.5 h-3.5" /> Diagram
+            </button>
           </div>
         )}
       </div>
@@ -143,6 +171,39 @@ export function CircleCanvas({
               className="w-full resize-none bg-transparent text-sm outline-none"
             />
             <ComposerActions onCancel={reset} onSave={() => void submitNote()} saving={saving} />
+          </div>
+        )}
+
+        {mode === "diagram" && (
+          <div className="rounded-lg border bg-card p-2.5 space-y-2">
+            <input
+              value={diagramTitle}
+              onChange={(e) => setDiagramTitle(e.target.value)}
+              placeholder="Diagram title (optional)"
+              autoFocus
+              className="w-full bg-transparent text-sm font-semibold outline-none"
+            />
+            <textarea
+              value={diagramCode}
+              onChange={(e) => setDiagramCode(e.target.value)}
+              placeholder={
+                "Mermaid source, e.g.\ngraph TD\n  Trip --> Cabin\n  Trip --> Car\n  Cabin --> Split[Split on the tab]"
+              }
+              rows={6}
+              spellCheck={false}
+              className="w-full resize-none bg-transparent text-sm font-mono outline-none"
+            />
+            {previewCode.trim() && (
+              <div className="rounded border border-border/40 bg-background/40 p-2">
+                <MermaidDiagram code={previewCode} />
+              </div>
+            )}
+            <ComposerActions
+              onCancel={reset}
+              onSave={() => void submitDiagram()}
+              saving={saving}
+              saveLabel="Post diagram"
+            />
           </div>
         )}
 
@@ -233,6 +294,18 @@ export function CircleCanvas({
             <DecisionCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey} />
           ) : card.cardType === "study" ? (
             <StudyGuideCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey} />
+          ) : card.cardType === "mermaid" ? (
+            <div key={card.cardId} className="rounded-lg border bg-card p-3">
+              {card.title && <div className="text-sm font-semibold mb-2">{card.title}</div>}
+              <MermaidDiagram code={card.text} />
+              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="font-medium">
+                  {nameFor(circle, card.authorPubkey, selfPubkey)}
+                </span>
+                <span>·</span>
+                <span>{fmtWhen(card.updatedAt)}</span>
+              </div>
+            </div>
           ) : (
             <div key={card.cardId} className="rounded-lg border bg-card p-3">
               {card.title && <div className="text-sm font-semibold mb-1">{card.title}</div>}

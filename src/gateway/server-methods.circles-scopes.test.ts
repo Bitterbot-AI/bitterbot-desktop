@@ -37,7 +37,7 @@ describe("circles RPC scope gating", () => {
   it("registers the surface this test believes it is guarding", () => {
     // If methods are added or renamed, both this count and the READ_ONLY set
     // above deserve a fresh look.
-    expect(ALL_CIRCLES_METHODS.length).toBe(38);
+    expect(ALL_CIRCLES_METHODS.length).toBe(39);
     for (const m of READ_ONLY) {
       expect(ALL_CIRCLES_METHODS).toContain(m);
     }

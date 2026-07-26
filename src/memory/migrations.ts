@@ -1870,6 +1870,21 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circle_invites", "target_pubkey", "TEXT");
     },
   },
+  {
+    version: 53,
+    description:
+      "Circle message deletion: circle_messages.deleted_at/deleted_by. " +
+      "Tombstone, not row removal — reply threads keep their anchor and the " +
+      "row proves a message existed. deleted_by is the requesting pubkey: " +
+      "the author (propagated via the signed circle/message.delete verb, " +
+      "honored by honest peer nodes) or the local human (node-local hide of " +
+      "someone else's message; nothing fans out). Content is blanked on " +
+      "tombstone so deleted text does not linger at rest.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_messages", "deleted_at", "INTEGER");
+      addColumnIfMissing(db, "circle_messages", "deleted_by", "TEXT");
+    },
+  },
 ];
 
 /**

@@ -994,6 +994,32 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
   },
 
+  "circles.message.delete": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const envelopeId = typeof params.envelopeId === "string" ? params.envelopeId : "";
+    if (!circleId || !envelopeId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, envelopeId required"),
+      );
+      return;
+    }
+    try {
+      // Own message -> retraction event on our chain (honest peers tombstone
+      // too); someone else's -> node-local hide. The service decides by
+      // authorship; the response's `scope` says which happened.
+      respond(true, await svc.service.deleteMessage({ circleId, envelopeId }), undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
   "circles.pin": async ({ params, respond }) => {
     const svc = await getService();
     if (!svc.ok) {

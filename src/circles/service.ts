@@ -1438,7 +1438,7 @@ export class CirclesService {
       .prepare(
         `SELECT envelope_id, author_pubkey, direction, content, created_at, agent_authored
            FROM circle_messages
-          WHERE circle_id = ? AND envelope_id IN (${placeholders})`,
+          WHERE circle_id = ? AND envelope_id IN (${placeholders}) AND deleted_at IS NULL`,
       )
       .all(circleId, ...pins) as unknown as Array<{
       envelope_id: string;
@@ -1460,6 +1460,65 @@ export class CirclesService {
         createdAt: r.created_at,
         agentAuthored: r.agent_authored === 1,
       }));
+  }
+
+  /**
+   * Delete a message. Two scopes, decided by authorship:
+   *  - OWN message → a `message.delete` event on our signed chain, fanned out
+   *    like any ledger write (gossip/dial/mailbox + events.since sync), so
+   *    honest peer nodes tombstone it too. Honor-system by construction: a
+   *    modified node can keep its copy — the UI must never promise more.
+   *  - Someone else's message → node-local hide only; nothing fans out.
+   * Either way the local row is tombstoned (content blanked, row kept so
+   * reply threads hold their anchor).
+   */
+  async deleteMessage(args: {
+    circleId: string;
+    envelopeId: string;
+  }): Promise<SendReport & { scope: "everyone" | "local" }> {
+    const row = this.db
+      .prepare(
+        `SELECT author_pubkey, deleted_at FROM circle_messages
+          WHERE circle_id = ? AND envelope_id = ?`,
+      )
+      .get(args.circleId, args.envelopeId) as
+      | { author_pubkey: string; deleted_at: number | null }
+      | undefined;
+    if (!row) {
+      throw new Error("message not found");
+    }
+    const own = row.author_pubkey === this.pubkey;
+    if (row.deleted_at) {
+      return { delivered: [], failed: [], scope: "local" };
+    }
+    const circle = this.store.getCircle(args.circleId);
+    const canPropagate =
+      own && circle && circle.status === "active" && circle.kind !== PRACTICE_KIND;
+    if (canPropagate) {
+      // Propagate FIRST: the local append runs through the same ingest hook,
+      // which applies our tombstone. If the append is refused (rate limit,
+      // chain refusal) nothing has changed locally — the user can retry and
+      // the retraction event is never silently lost.
+      const report = await this.appendTabEvent({
+        circleId: args.circleId,
+        input: {
+          type: "message.delete",
+          targetEnvelopeId: args.envelopeId,
+          updatedAt: Date.now(),
+        },
+      });
+      return { delivered: report.delivered, failed: report.failed, scope: "everyone" };
+    }
+    // Local hide (someone else's message), or an own message in a circle that
+    // refuses writes (frozen/archived/practice): tombstone this node only.
+    this.db
+      .prepare(
+        `UPDATE circle_messages
+            SET deleted_at = ?, deleted_by = ?, content = ''
+          WHERE circle_id = ? AND envelope_id = ?`,
+      )
+      .run(Date.now(), this.pubkey, args.circleId, args.envelopeId);
+    return { delivered: [], failed: [], scope: "local" };
   }
 
   /** Set OUR full reaction set on a message (empty = clear) + fan out. */
@@ -1828,11 +1887,14 @@ export class CirclesService {
     deliveryStatus: DeliveryStatus | null;
     replyTo: string | null;
     agentAuthored: boolean;
+    deleted: boolean;
+    /** The tombstone was a LOCAL hide by this node's human (vs an author retraction). */
+    deletedByMe: boolean;
   }> {
     const rows = this.db
       .prepare(
         `SELECT message_id, envelope_id, author_pubkey, direction, kind, thread_id, content,
-                created_at, delivery_status, reply_to, agent_authored
+                created_at, delivery_status, reply_to, agent_authored, deleted_at, deleted_by
            FROM circle_messages WHERE circle_id = ?
           ORDER BY created_at DESC LIMIT ?`,
       )
@@ -1848,6 +1910,8 @@ export class CirclesService {
       delivery_status: DeliveryStatus | null;
       reply_to: string | null;
       agent_authored: number | null;
+      deleted_at: number | null;
+      deleted_by: string | null;
     }>;
     return rows.map((r) => ({
       messageId: r.message_id,
@@ -1861,6 +1925,9 @@ export class CirclesService {
       deliveryStatus: r.delivery_status,
       replyTo: r.reply_to,
       agentAuthored: r.agent_authored === 1,
+      deleted: r.deleted_at != null,
+      deletedByMe:
+        r.deleted_at != null && r.deleted_by === this.pubkey && r.author_pubkey !== this.pubkey,
     }));
   }
 

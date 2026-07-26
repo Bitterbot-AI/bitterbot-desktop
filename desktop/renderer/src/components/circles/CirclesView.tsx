@@ -20,7 +20,6 @@ export function CirclesView() {
     status,
     circles,
     activeCircleId,
-    cardsByCircle,
     loading,
     notice,
     refresh,
@@ -98,11 +97,7 @@ export function CirclesView() {
               circle={activeCircle}
               selfPubkey={status?.pubkey}
             />
-            <CircleRightPane
-              circle={activeCircle}
-              selfPubkey={status?.pubkey}
-              cardCount={(cardsByCircle[activeCircle.circleId] ?? []).length}
-            />
+            <CircleRightPane circle={activeCircle} selfPubkey={status?.pubkey} />
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">

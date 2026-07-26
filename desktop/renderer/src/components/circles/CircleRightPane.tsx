@@ -1,16 +1,13 @@
 import { useEffect, useState } from "react";
 import type { Circle } from "../../stores/circles-store";
-import { cn } from "../../lib/utils";
 import { CircleCanvas } from "./CircleCanvas";
 import { CircleMembers } from "./CircleMembers";
 
-// PLAN-36 Phase C1: the right pane now really switches between the member
-// roster and the group Canvas (was a stubbed tab). A card count badges the
-// Canvas tab so activity is visible without switching. The pane is resizable
-// (drag its left edge; double-click the handle to reset) — the members roster
-// and especially the Canvas need room; the width persists across sessions.
-
-type Tab = "members" | "canvas";
+// The right pane STACKS the member roster (top, its own scroll, capped) over
+// the always-visible group Canvas (bottom, takes the rest) — the canvas is
+// where things stop scrolling away, so it must never hide behind a tab
+// (2026-07-25 direction). The pane is resizable (drag its left edge;
+// double-click the handle to reset); the width persists across sessions.
 
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 760;
@@ -30,13 +27,10 @@ function readStoredWidth(): number {
 export function CircleRightPane({
   circle,
   selfPubkey,
-  cardCount,
 }: {
   circle: Circle;
   selfPubkey: string | undefined;
-  cardCount: number;
 }) {
-  const [tab, setTab] = useState<Tab>("members");
   const [width, setWidth] = useState<number>(readStoredWidth);
 
   useEffect(() => {
@@ -78,43 +72,12 @@ export function CircleRightPane({
         title="Drag to resize · double-click to reset"
         className="absolute left-0 top-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize z-10 hover:bg-circle-you/40"
       />
-      <div className="flex gap-1 px-3 pt-2.5 border-b">
-        <button
-          type="button"
-          onClick={() => setTab("members")}
-          className={cn(
-            "text-xs font-semibold px-2.5 py-1.5 rounded-t-lg",
-            tab === "members"
-              ? "bg-muted text-foreground shadow-[inset_0_-2px_0_var(--circle-you)]"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          Members
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("canvas")}
-          className={cn(
-            "text-xs font-semibold px-2.5 py-1.5 rounded-t-lg flex items-center gap-1.5",
-            tab === "canvas"
-              ? "bg-muted text-foreground shadow-[inset_0_-2px_0_var(--circle-you)]"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          Canvas
-          {cardCount > 0 && (
-            <span className="text-[10px] font-bold rounded-full bg-circle-you-soft text-circle-you px-1.5 min-w-[16px] text-center">
-              {cardCount}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {tab === "members" ? (
+      {/* Roster on top: scrolls internally, never starves the canvas. */}
+      <div className="shrink-0 max-h-[38%] overflow-y-auto border-b">
         <CircleMembers circle={circle} />
-      ) : (
-        <CircleCanvas circle={circle} selfPubkey={selfPubkey} />
-      )}
+      </div>
+      {/* The canvas is ALWAYS visible below the people it belongs to. */}
+      <CircleCanvas circle={circle} selfPubkey={selfPubkey} />
     </aside>
   );
 }

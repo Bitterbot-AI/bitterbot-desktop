@@ -285,7 +285,10 @@ export function createCirclesTool(options: {
                 agentAuthored: m.agentAuthored,
                 direction: m.direction,
                 kind: m.kind,
-                content: m.content,
+                // Tombstones read as an explicit marker, never a bare empty
+                // string the model has to guess about.
+                content: m.deleted ? "[message deleted]" : m.content,
+                ...(m.deleted ? { deleted: true } : {}),
                 createdAt: m.createdAt,
                 envelopeId: m.envelopeId,
                 replyTo: m.replyTo,

@@ -29,7 +29,8 @@ export function unreadCounts(db: DatabaseSync): Record<string, number> {
       `SELECT m.circle_id AS circleId, COUNT(*) AS n
          FROM circle_messages m
          LEFT JOIN circle_read_state r ON r.circle_id = m.circle_id
-        WHERE m.direction = 'in' AND m.created_at > COALESCE(r.last_read_at, 0)
+        WHERE m.direction = 'in' AND m.deleted_at IS NULL
+          AND m.created_at > COALESCE(r.last_read_at, 0)
         GROUP BY m.circle_id`,
     )
     .all() as unknown as Array<{ circleId: string; n: number }>;

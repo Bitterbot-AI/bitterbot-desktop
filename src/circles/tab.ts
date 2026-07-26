@@ -58,7 +58,8 @@ export type TabEventInput =
   // (target, author) — toggling re-emits the set, no add/remove tombstones);
   // a pin is circle-wide LWW per target (any member may flip it).
   | { type: "message.react"; targetEnvelopeId: string; emojis: string[]; updatedAt: number }
-  | { type: "message.pin"; targetEnvelopeId: string; pinned: boolean; updatedAt: number };
+  | { type: "message.pin"; targetEnvelopeId: string; pinned: boolean; updatedAt: number }
+  | { type: "message.delete"; targetEnvelopeId: string; updatedAt: number };
 
 /** The signed-envelope body fields for a chained event append. */
 export type ChainedEventBody = {
@@ -175,6 +176,19 @@ function normalizeInput(input: TabEventInput): { type: string } & Record<string,
         type: "message.pin",
         target_envelope_id: target,
         pinned: input.pinned,
+        updated_at: input.updatedAt,
+      };
+    }
+    case "message.delete": {
+      // Author-only message retraction. The fold/ingest side enforces that
+      // the event author matches the target message's author — a peer signing
+      // a delete for someone else's message is stored (chain integrity) but
+      // never applied.
+      const target = input.targetEnvelopeId.slice(0, 64);
+      if (!target) throw new Error("targetEnvelopeId required");
+      return {
+        type: "message.delete",
+        target_envelope_id: target,
         updated_at: input.updatedAt,
       };
     }

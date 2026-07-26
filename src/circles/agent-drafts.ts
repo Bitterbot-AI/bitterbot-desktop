@@ -273,7 +273,7 @@ export function buildQuarantinedDraftPrompt(
   const rows = db
     .prepare(
       `SELECT author_pubkey, direction, content, agent_authored FROM circle_messages
-        WHERE circle_id = ? AND kind = 'message'
+        WHERE circle_id = ? AND kind = 'message' AND deleted_at IS NULL
         ORDER BY created_at DESC LIMIT ?`,
     )
     .all(args.circleId, CONTEXT_MESSAGES) as unknown as Array<{
@@ -351,7 +351,7 @@ export function buildQuarantinedSlicePrompt(
   const rows = db
     .prepare(
       `SELECT author_pubkey, content FROM circle_messages
-        WHERE circle_id = ? AND kind = 'message'
+        WHERE circle_id = ? AND kind = 'message' AND deleted_at IS NULL
         ORDER BY created_at DESC LIMIT ?`,
     )
     .all(args.circleId, CONTEXT_MESSAGES) as unknown as Array<{

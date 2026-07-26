@@ -33,25 +33,33 @@ afterEach(() => localStorage.clear());
 
 describe("CircleRightPane width", () => {
   it("defaults to 570px (90% wider than the original 300)", () => {
-    render(<CircleRightPane circle={CIRCLE} selfPubkey="ed25519:self" cardCount={0} />);
+    render(<CircleRightPane circle={CIRCLE} selfPubkey="ed25519:self" />);
     expect(pane().style.width).toBe("570px");
   });
 
   it("restores a persisted width within bounds", () => {
     localStorage.setItem("circles.rightPaneWidth", "480");
-    render(<CircleRightPane circle={CIRCLE} selfPubkey="ed25519:self" cardCount={0} />);
+    render(<CircleRightPane circle={CIRCLE} selfPubkey="ed25519:self" />);
     expect(pane().style.width).toBe("480px");
   });
 
   it("ignores an out-of-bounds persisted width and uses the default", () => {
     localStorage.setItem("circles.rightPaneWidth", "99999");
-    render(<CircleRightPane circle={CIRCLE} selfPubkey="ed25519:self" cardCount={0} />);
+    render(<CircleRightPane circle={CIRCLE} selfPubkey="ed25519:self" />);
     expect(pane().style.width).toBe("570px");
+  });
+
+  it("shows members AND the canvas stacked (no tabs hide the canvas)", () => {
+    render(<CircleRightPane circle={CIRCLE} selfPubkey="ed25519:self" />);
+    // Roster and canvas are simultaneously present — the canvas never hides
+    // behind a tab (2026-07-25 direction).
+    expect(screen.getByText(/shared canvas/i)).toBeTruthy();
+    expect(screen.getByText(/invite someone to this circle/i)).toBeTruthy();
   });
 
   it("double-clicking the handle resets to the default and persists it", async () => {
     localStorage.setItem("circles.rightPaneWidth", "480");
-    render(<CircleRightPane circle={CIRCLE} selfPubkey="ed25519:self" cardCount={0} />);
+    render(<CircleRightPane circle={CIRCLE} selfPubkey="ed25519:self" />);
     expect(pane().style.width).toBe("480px");
     await userEvent.dblClick(screen.getByRole("separator", { name: /resize/i }));
     expect(pane().style.width).toBe("570px");

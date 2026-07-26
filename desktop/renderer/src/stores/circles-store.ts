@@ -70,6 +70,10 @@ export interface CircleMessage {
   replyTo?: string | null;
   /** Mockup pin 2: the text was written by the author's AGENT (they approved it). */
   agentAuthored?: boolean;
+  /** Tombstoned: own-message retraction (propagated) or local hide. */
+  deleted?: boolean;
+  /** The tombstone was a local hide by you (vs the author retracting). */
+  deletedByMe?: boolean;
 }
 
 export interface MessageReaction {
@@ -183,7 +187,18 @@ interface CirclesState {
   send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
   react: (circleId: string, envelopeId: string, emojis: string[]) => Promise<boolean>;
   setPinned: (circleId: string, envelopeId: string, pinned: boolean) => Promise<boolean>;
-  putCard: (circleId: string, title: string, text: string, cardId?: string) => Promise<boolean>;
+  deleteMessage: (
+    circleId: string,
+    envelopeId: string,
+    expectPropagation?: boolean,
+  ) => Promise<boolean>;
+  putCard: (
+    circleId: string,
+    title: string,
+    text: string,
+    cardId?: string,
+    cardType?: string,
+  ) => Promise<boolean>;
   putDecision: (circleId: string, question: string, options: string[]) => Promise<boolean>;
   putStudyGuide: (circleId: string, title: string, sections: string[]) => Promise<boolean>;
   putSlice: (
@@ -377,10 +392,16 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     }
   },
 
-  putCard: async (circleId, title, text, cardId) => {
+  putCard: async (circleId, title, text, cardId, cardType) => {
     if (!title.trim() && !text.trim()) return false;
     try {
-      await request("circles.canvas.put", { circleId, title: title.trim(), text, cardId });
+      await request("circles.canvas.put", {
+        circleId,
+        title: title.trim(),
+        text,
+        cardId,
+        cardType,
+      });
       await get().loadCards(circleId);
       return true;
     } catch (err) {
@@ -610,6 +631,28 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   setPinned: async (circleId, envelopeId, pinned) => {
     try {
       await request("circles.pin", { circleId, envelopeId, pinned });
+      await get().loadMessages(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  deleteMessage: async (circleId, envelopeId, expectPropagation) => {
+    try {
+      const res = await request<{ scope?: string }>("circles.message.delete", {
+        circleId,
+        envelopeId,
+      });
+      // The server decides the real scope (a frozen/archived circle refuses
+      // ledger writes); if the human was promised "everyone", correct it.
+      if (expectPropagation && res?.scope === "local") {
+        set({
+          notice:
+            "Deleted on this device only — the circle is not accepting writes right now, so friends' copies were not retracted.",
+        });
+      }
       await get().loadMessages(circleId);
       return true;
     } catch (err) {

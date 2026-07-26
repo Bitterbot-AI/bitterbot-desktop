@@ -109,10 +109,12 @@ export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCa
     const cardId = typeof body.card_id === "string" ? body.card_id : "";
     if (!cardId) continue;
     const list = slicesByCard.get(cardId) ?? [];
+    // Fold-side re-caps: sender normalization (tab.ts) is NOT trusted — a
+    // hostile peer signs raw bodies (same rule as annotations.ts).
     list.push({
-      slot: typeof body.slot === "string" ? body.slot : "",
-      value: typeof body.value === "string" ? body.value : "",
-      note: typeof body.note === "string" ? body.note : "",
+      slot: typeof body.slot === "string" ? body.slot.slice(0, 32) : "",
+      value: typeof body.value === "string" ? body.value.slice(0, 2000) : "",
+      note: typeof body.note === "string" ? body.note.slice(0, 500) : "",
       authorPubkey: w.row.author_pubkey,
       updatedAt: w.updatedAt,
     });
@@ -130,9 +132,11 @@ export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCa
     }
     cards.push({
       cardId,
-      cardType: typeof body.card_type === "string" ? body.card_type : "note",
-      title: typeof body.title === "string" ? body.title : "",
-      text: typeof body.text === "string" ? body.text : "",
+      // Fold-side re-caps mirror the sender-side caps in tab.ts — a hostile
+      // peer's signed 900KB body must not reach the renderer.
+      cardType: typeof body.card_type === "string" ? body.card_type.slice(0, 32) : "note",
+      title: typeof body.title === "string" ? body.title.slice(0, 200) : "",
+      text: typeof body.text === "string" ? body.text.slice(0, 4000) : "",
       authorPubkey: w.row.author_pubkey,
       updatedAt: w.updatedAt,
       slices: (slicesByCard.get(cardId) ?? []).toSorted((a, b) => a.updatedAt - b.updatedAt),

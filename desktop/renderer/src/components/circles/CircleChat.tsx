@@ -43,6 +43,8 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const send = useCirclesStore((s) => s.send);
   const react = useCirclesStore((s) => s.react);
   const setPinned = useCirclesStore((s) => s.setPinned);
+  const deleteMessage = useCirclesStore((s) => s.deleteMessage);
+  const putCard = useCirclesStore((s) => s.putCard);
   const requestChatDraft = useCirclesStore((s) => s.requestChatDraft);
   const joinInvite = useCirclesStore((s) => s.joinInvite);
   const inviteInfo = useCirclesStore((s) => s.inviteInfo);
@@ -202,6 +204,34 @@ export function CircleChat({ circle, selfPubkey }: Props) {
               }
             : undefined
         }
+        onAddToCanvas={
+          circle.status === "active"
+            ? (m, text) => {
+                // The chat scrolls away; the canvas is where things stop
+                // scrolling. Title = the author, text = what they said.
+                const found = circle.members.find((mm) => mm.memberPubkey === m.authorPubkey);
+                const author =
+                  m.direction === "out" || m.authorPubkey === selfPubkey
+                    ? "You"
+                    : found
+                      ? memberName(found) // petname-first, like every surface
+                      : "friend";
+                // The ledger caps card text at 4000 chars; truncate visibly
+                // rather than letting the tail vanish silently.
+                const body = text.length > 3990 ? `${text.slice(0, 3990)}\u2026 [truncated]` : text;
+                void putCard(circle.circleId, `From ${author}`, body);
+              }
+            : undefined
+        }
+        onDelete={(m, own) => {
+          if (!m.envelopeId) return;
+          const ok = own
+            ? confirm(
+                "Delete this message? It is removed here and on your friends' devices (as far as their nodes cooperate).",
+              )
+            : confirm("Hide this message on this device? Other members still see it.");
+          if (ok) void deleteMessage(circle.circleId, m.envelopeId, own);
+        }}
       />
 
       {circle.status === "frozen" && <FrozenCircleBanner circle={circle} />}

@@ -182,6 +182,7 @@ const WRITE_METHODS = new Set([
   "circles.markRead",
   "circles.react",
   "circles.pin",
+  "circles.message.delete",
   "circles.canvas.put",
   "circles.canvas.remove",
   "circles.canvas.slice",

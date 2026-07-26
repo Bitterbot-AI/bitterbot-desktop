@@ -34,7 +34,7 @@ pending-outbound, pending-join, petnames, read-state, scheduler,
 circle-topic + circle-topic-transport), `src/gateway/a2a/circles.ts`
 (the friend branch), `src/gateway/a2a/mailbox.ts` +
 `src/gateway/a2a/mailbox-host.ts` (store-and-forward), `src/memory/circles-store.ts`,
-`src/gateway/server-methods/circles.ts` (38 RPCs),
+`src/gateway/server-methods/circles.ts` (39 RPCs),
 `src/agents/tools/circles-tool.ts` (the agent's read/queue surface), and the
 renderer at `desktop/renderer/src/components/circles/`.
 Design docs: `docs/plans/PLAN-31-CIRCLES.md` (v1),
@@ -127,10 +127,22 @@ so the UI renders collision cues rather than pretending uniqueness.
 
 - **Chat**: `circles.send` / `circle/message`, with `reply_to` threading,
   reactions and pins (chained ledger events), per-circle read state
-  (`circles.markRead`), and unread badges in the rail.
-- **The group canvas**: cards, per-member slots and votes (Decision Cards),
-  and study-guide Co-Canvas slices, all typed events on the same signed
-  chains as the tab (`circles.canvas.list/put/remove/slice`).
+  (`circles.markRead`), and unread badges in the rail. **Deletion**
+  (`circles.message.delete`): deleting your own message emits a
+  `message.delete` event on your signed chain, so it replicates like any
+  ledger write and honest peer nodes tombstone their copy too (content
+  blanked, row kept so reply threads hold their anchor; only the message's
+  author can tombstone it). Deleting someone else's message hides it on
+  your node only. Honor-system by construction: a modified peer node can
+  keep its copy, and the UI never promises otherwise.
+- **The group canvas**: always visible under the member roster (never
+  behind a tab). Cards, per-member slots and votes (Decision Cards),
+  study-guide Co-Canvas slices, and **mermaid diagram cards** (`cardType:
+"mermaid"`, rendered client-side with `securityLevel: "strict"` because
+  card text is peer content), all typed events on the same signed chains as
+  the tab (`circles.canvas.list/put/remove/slice`). Any chat message can be
+  promoted to a note card from its hover menu — the chat scrolls away, the
+  canvas is where things stop scrolling.
 - **Summon-only agent**: `@agent` in a circle (or a private "ask my agent")
   queues a **quarantined, tool-less** draft: one plain LLM completion over
   the circle's own rows, no tools, no memory writes, rate-limited to
@@ -270,7 +282,7 @@ future traffic**.
 
 ## Gateway RPC surface
 
-38 methods. Read-only methods (`status`, `list`, `messages`,
+39 methods. Read-only methods (`status`, `list`, `messages`,
 `tab.balances`, `disclosure.list`, `briefing`, `inviteInfo`, `canvas.list`,
 `outbound.list`, `drafts.list`) need `operator.read`; every mutating method
 needs `operator.write`. A drift test
@@ -286,7 +298,7 @@ surface until 2026-07-25.
   `circles.petname.clear`
 - **Ceremony**: `circles.invite`, `circles.inviteInfo`, `circles.join`
 - **Chat**: `circles.send`, `circles.messages`, `circles.markRead`,
-  `circles.react`, `circles.pin`
+  `circles.react`, `circles.pin`, `circles.message.delete`
 - **Canvas**: `circles.canvas.list`, `circles.canvas.put`,
   `circles.canvas.remove`, `circles.canvas.slice`
 - **Tab**: `circles.tab.add`, `circles.tab.balances`, `circles.sync`

@@ -558,12 +558,10 @@ describe("CirclesView", () => {
     expect(await screen.findByText("3")).toBeTruthy();
   });
 
-  it("shows the group canvas cards on the Canvas tab", async () => {
+  it("shows the group canvas cards (always visible below the roster)", async () => {
     stubRpcs();
     render(<CirclesView />);
-    // Right pane defaults to Members; switch to the Canvas tab.
-    const canvasTab = await screen.findByRole("button", { name: /^Canvas/ });
-    await userEvent.click(canvasTab);
+    // No tab: the canvas is stacked under the members roster, always on.
     expect(await screen.findByText("Study plan")).toBeTruthy();
     expect(screen.getByText("cover Krebs first")).toBeTruthy();
   });
@@ -571,7 +569,6 @@ describe("CirclesView", () => {
   it("renders a Decision Card and publishes a vote via circles.canvas.slice", async () => {
     stubRpcs();
     render(<CirclesView />);
-    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
     // The decision renders with its question and options.
     expect(await screen.findByText("When do we review?")).toBeTruthy();
     // Synthesis band, partial state: Maya voted, I haven't.
@@ -592,7 +589,6 @@ describe("CirclesView", () => {
   it("assembles the study guide (C3): sections, contributions, gaps — and publishes mine", async () => {
     stubRpcs();
     render(<CirclesView />);
-    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
     // The guide renders its coverage, Maya's contribution, and the gap section.
     expect(await screen.findByText("Midterm 2 guide")).toBeTruthy();
     expect(screen.getByText(/1 of 2 sections covered/i)).toBeTruthy();
@@ -621,7 +617,8 @@ describe("CirclesView", () => {
     // The consent card sits behind the quiet tray, marked private.
     await openTray();
     expect(await screen.findByText(/Your agent drafted a reply/i)).toBeTruthy();
-    expect(screen.getByText(/only you can see this/i)).toBeTruthy();
+    // The chat tray AND the always-visible canvas can each surface the draft.
+    expect(screen.getAllByText(/only you can see this/i).length).toBeGreaterThan(0);
     const box = screen.getByDisplayValue("Thursday at 6 works for us.");
     // The human edits before approving — what they approved is what ships.
     await userEvent.clear(box);
@@ -671,7 +668,6 @@ describe("CirclesView", () => {
       });
     });
     render(<CirclesView />);
-    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
     expect(await screen.findByText("Best fit: Thu")).toBeTruthy();
     expect(screen.getByText(/all 2 chose it/)).toBeTruthy();
   });
@@ -719,7 +715,6 @@ describe("CirclesView", () => {
     stubRpcs();
     render(<CirclesView />);
     await openTray();
-    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
     // The slice suggestion renders on ITS card, marked private…
     expect(await screen.findByText(/Your agent suggests/i)).toBeTruthy();
     // …and NOT as a second chat draft card (only dr1, the reply draft, is in chat).
@@ -737,7 +732,6 @@ describe("CirclesView", () => {
   it("B2: Ask my agent on a study section requests a slice draft for that slot", async () => {
     stubRpcs();
     render(<CirclesView />);
-    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
     await screen.findByText("Midterm 2 guide");
     // Exact-name match: the composer's "Ask my agent to draft a reply" button
     // must not be picked up here — we want the study SECTION's button.
@@ -944,7 +938,6 @@ describe("CirclesView", () => {
   it("starts a study guide from the composer via circles.canvas.put", async () => {
     stubRpcs();
     render(<CirclesView />);
-    await userEvent.click(await screen.findByRole("button", { name: /^Canvas/ }));
     await userEvent.click(await screen.findByRole("button", { name: /Guide/ }));
     await userEvent.type(screen.getByPlaceholderText(/Study guide title/i), "CHEM final");
     await userEvent.type(screen.getByPlaceholderText(/Sections, one per line/i), "Acids\nBases");

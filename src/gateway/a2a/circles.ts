@@ -529,6 +529,26 @@ function storeInboundMessage(
     replyTo,
     agentAuthored,
   );
+  // Out-of-order retraction: the author's `message.delete` event can arrive
+  // BEFORE the message it targets (mailbox drain lag, sync from a third
+  // member). Replays of that event dedupe before the tombstone hook runs, so
+  // this insert is the last chance — honor any retraction already on the
+  // author's own chain, or the "deleted" message would display forever.
+  const priorRetraction = db
+    .prepare(
+      `SELECT received_at FROM circle_events
+        WHERE circle_id = ? AND author_pubkey = ? AND event_type = 'message.delete'
+          AND json_extract(body_json, '$.target_envelope_id') = ?
+        LIMIT 1`,
+    )
+    .get(env.circle_id, env.author_pubkey, env.id) as { received_at: number } | undefined;
+  if (priorRetraction) {
+    db.prepare(
+      `UPDATE circle_messages
+          SET deleted_at = ?, deleted_by = ?, content = ''
+        WHERE message_id = ?`,
+    ).run(now, env.author_pubkey, messageId);
+  }
   // Receiving a signed message proves the sender is alive right now, so refresh
   // their presence — an actively-chatting peer must not read as offline just
   // because their last presence beat aged out (PLAN-36 Phase 0). Bumps
@@ -796,6 +816,26 @@ export function handleCircleEventAppend(
     claimedAt,
     now,
   );
+  // Author-only message retraction: every ingest path (local append, direct
+  // dial, mailbox drain, events.since sync replay) converges here, so this is
+  // the single place the tombstone materializes. The delete only applies when
+  // the DELETE's signed author matches the target message's author — a peer
+  // cannot retract someone else's words. Content is blanked at rest; the row
+  // survives so reply threads keep their anchor.
+  if (eventType === "message.delete") {
+    const target =
+      typeof eventBody.target_envelope_id === "string"
+        ? eventBody.target_envelope_id.slice(0, 64)
+        : "";
+    if (target) {
+      db.prepare(
+        `UPDATE circle_messages
+            SET deleted_at = COALESCE(deleted_at, ?), deleted_by = COALESCE(deleted_by, ?),
+                content = ''
+          WHERE circle_id = ? AND envelope_id = ? AND author_pubkey = ?`,
+      ).run(now, env.author_pubkey, env.circle_id, target, env.author_pubkey);
+    }
+  }
   return { ok: true, result: { eventId, seq } };
 }
 

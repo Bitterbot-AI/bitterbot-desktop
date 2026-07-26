@@ -1,4 +1,4 @@
-import { Pin, Reply, ShieldCheck, SmilePlus } from "lucide-react";
+import { Pin, Reply, ShieldCheck, SmilePlus, StickyNote, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
 import { cn } from "../../lib/utils";
@@ -54,6 +54,13 @@ interface Props {
   /** One-tap join for an invite code detected in an inbound message. */
   onJoinInvite?: (code: string) => void;
   onTogglePin?: (m: CircleMessage, pinned: boolean) => void;
+  /**
+   * Delete: own messages retract everywhere (honest peers tombstone too);
+   * others' messages are hidden on this node only. The handler confirms.
+   */
+  onDelete?: (m: CircleMessage, own: boolean) => void;
+  /** Promote a message to a canvas note card (unwrapped display text). */
+  onAddToCanvas?: (m: CircleMessage, text: string) => void;
 }
 
 export function CircleMessageList({
@@ -65,6 +72,8 @@ export function CircleMessageList({
   onToggleReaction,
   onJoinInvite,
   onTogglePin,
+  onDelete,
+  onAddToCanvas,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
@@ -127,6 +136,26 @@ export function CircleMessageList({
           setPickerFor(null);
           onToggleReaction(m, emoji);
         };
+        if (m.deleted) {
+          return (
+            <div key={m.messageId} className="flex gap-3 opacity-60">
+              <div className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-xs text-muted-foreground border border-border/40">
+                <Trash2 className="w-3.5 h-3.5" aria-label="deleted" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-sm font-semibold text-muted-foreground">
+                    {isSelf ? "You" : nameOf(m.authorPubkey)}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
+                </div>
+                <div className="text-sm italic text-muted-foreground">
+                  {m.deletedByMe ? "hidden by you" : "message deleted"}
+                </div>
+              </div>
+            </div>
+          );
+        }
         return (
           <div key={m.messageId} className="group relative flex gap-3">
             <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center">
@@ -161,6 +190,28 @@ export function CircleMessageList({
               >
                 <Reply className="w-3.5 h-3.5" />
               </button>
+              {onAddToCanvas && (
+                <button
+                  type="button"
+                  onClick={() => onAddToCanvas(m, display.text)}
+                  aria-label="Add to canvas"
+                  title="Add to the shared canvas"
+                  className="text-muted-foreground hover:text-foreground p-1 rounded"
+                >
+                  <StickyNote className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {m.envelopeId && onDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(m, isSelf)}
+                  aria-label={isSelf ? "Delete message" : "Hide message for me"}
+                  title={isSelf ? "Delete for everyone" : "Hide on this device"}
+                  className="text-muted-foreground hover:text-red-400 p-1 rounded"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             {pickerFor === m.messageId && (
               <div className="absolute right-0 top-6 z-10 flex gap-1 rounded-lg border bg-popover p-1 shadow-md">
@@ -215,9 +266,13 @@ export function CircleMessageList({
                             : pOwner;
                         })()}
                       </span>
-                      <span className="truncate opacity-80">
-                        {unwrapForDisplay(parent.content).text}
-                      </span>
+                      {parent.deleted ? (
+                        <em className="truncate opacity-60">message deleted</em>
+                      ) : (
+                        <span className="truncate opacity-80">
+                          {unwrapForDisplay(parent.content).text}
+                        </span>
+                      )}
                     </>
                   ) : (
                     <span>replied to an earlier message</span>
