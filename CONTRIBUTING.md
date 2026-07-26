@@ -85,6 +85,8 @@ Open an issue with the `feature` label. Describe the use case, not just the solu
 
 **Keep PRs focused.** One feature or fix per PR. If you're refactoring + adding a feature, split them.
 
+**Model providers are added by maintainer decision, not by PR.** Unsolicited "add provider X" PRs are closed without review; any OpenAI-compatible endpoint already works today via a custom provider entry in your models config, no code change needed. If you represent a provider and believe there's a real fit, open an issue first.
+
 ### Skills
 
 Writing a skill is the easiest way to contribute. Skills are self-contained directories with a `SKILL.md` and optional scripts:
