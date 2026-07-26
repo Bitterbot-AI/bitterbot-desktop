@@ -22,6 +22,7 @@ import {
   Sun,
   Moon,
   Users,
+  Gauge,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useIsManagementNode } from "../../hooks/useIsManagementNode";
@@ -50,6 +51,10 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   // Control
+  // The gateway dashboard: version/update card, uptime, connection, channels.
+  // (The view existed since the redesign but had NO nav entry — it was only
+  // reachable from the update banner. 2026-07-26 fix.)
+  { id: "overview", label: "Overview", icon: Gauge, group: "control" },
   { id: "channels", label: "Channels", icon: Radio, group: "control" },
   // PLAN-31 C2: the connection graph made visible (§4.4). The pane itself
   // explains + stays inert while circles.enabled is off.
