@@ -49,6 +49,8 @@ export function unsetEnv(vars: string[]) {
 }
 
 export const MODELS_CONFIG_IMPLICIT_ENV_VARS = [
+  "ATLASCLOUD_API_KEY",
+  "ATLAS_CLOUD_API_KEY",
   "CLOUDFLARE_AI_GATEWAY_API_KEY",
   "COPILOT_GITHUB_TOKEN",
   "GH_TOKEN",

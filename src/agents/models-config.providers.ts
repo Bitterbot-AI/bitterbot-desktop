@@ -50,6 +50,16 @@ const MINIMAX_API_COST = {
 
 type ProviderModelConfig = NonNullable<ProviderConfig["models"]>[number];
 
+export const ATLASCLOUD_BASE_URL = "https://api.atlascloud.ai/v1";
+const ATLASCLOUD_DEFAULT_CONTEXT_WINDOW = 1_048_000;
+const ATLASCLOUD_DEFAULT_MAX_TOKENS = 393_000;
+const ATLASCLOUD_DEFAULT_COST = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+};
+
 function buildMinimaxModel(params: {
   id: string;
   name: string;
@@ -484,6 +494,42 @@ function buildMoonshotProvider(): ProviderConfig {
   };
 }
 
+export function buildAtlasCloudProvider(): ProviderConfig {
+  return {
+    baseUrl: ATLASCLOUD_BASE_URL,
+    api: "openai-completions",
+    models: [
+      {
+        id: "deepseek-ai/deepseek-v4-pro",
+        name: "DeepSeek V4 Pro",
+        reasoning: false,
+        input: ["text"],
+        cost: ATLASCLOUD_DEFAULT_COST,
+        contextWindow: ATLASCLOUD_DEFAULT_CONTEXT_WINDOW,
+        maxTokens: ATLASCLOUD_DEFAULT_MAX_TOKENS,
+      },
+      {
+        id: "deepseek-ai/deepseek-v4-flash",
+        name: "DeepSeek V4 Flash",
+        reasoning: false,
+        input: ["text"],
+        cost: ATLASCLOUD_DEFAULT_COST,
+        contextWindow: ATLASCLOUD_DEFAULT_CONTEXT_WINDOW,
+        maxTokens: ATLASCLOUD_DEFAULT_MAX_TOKENS,
+      },
+      {
+        id: "qwen/qwen3.5-27b",
+        name: "Qwen3.5 27B",
+        reasoning: true,
+        input: ["text"],
+        cost: ATLASCLOUD_DEFAULT_COST,
+        contextWindow: 262_000,
+        maxTokens: 65_000,
+      },
+    ],
+  };
+}
+
 function buildQwenPortalProvider(): ProviderConfig {
   return {
     baseUrl: QWEN_PORTAL_BASE_URL,
@@ -674,6 +720,13 @@ export async function resolveImplicitProviders(params: {
   const authStore = ensureAuthProfileStore(params.agentDir, {
     allowKeychainPrompt: false,
   });
+
+  const atlasCloudKey =
+    resolveEnvApiKeyVarName("atlascloud") ??
+    resolveApiKeyFromProfiles({ provider: "atlascloud", store: authStore });
+  if (atlasCloudKey) {
+    providers.atlascloud = { ...buildAtlasCloudProvider(), apiKey: atlasCloudKey };
+  }
 
   const minimaxKey =
     resolveEnvApiKeyVarName("minimax") ??
