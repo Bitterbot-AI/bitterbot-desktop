@@ -1,6 +1,4 @@
 import type { ZodIssue } from "zod";
-import fs from "node:fs/promises";
-import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
 import type { DoctorOptions } from "./doctor-prompter.js";
 import {
@@ -17,7 +15,7 @@ import {
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { listTelegramAccountIds, resolveTelegramAccount } from "../telegram/accounts.js";
 import { note } from "../terminal/note.js";
-import { isRecord, resolveHomeDir } from "../utils.js";
+import { isRecord } from "../utils.js";
 import { normalizeLegacyConfigValues } from "./doctor-legacy-config.js";
 
 type UnrecognizedKeysIssue = ZodIssue & {
@@ -403,58 +401,11 @@ async function maybeRepairTelegramAllowFromUsernames(cfg: BitterbotConfig): Prom
   return { config: next, changes };
 }
 
-async function maybeMigrateLegacyConfig(): Promise<string[]> {
-  const changes: string[] = [];
-  const home = resolveHomeDir();
-  if (!home) {
-    return changes;
-  }
-
-  const targetDir = path.join(home, ".bitterbot");
-  const targetPath = path.join(targetDir, "bitterbot.json");
-  try {
-    await fs.access(targetPath);
-    return changes;
-  } catch {
-    // missing config
-  }
-
-  const legacyCandidates: string[] = [];
-
-  let legacyPath: string | null = null;
-  for (const candidate of legacyCandidates) {
-    try {
-      await fs.access(candidate);
-      legacyPath = candidate;
-      break;
-    } catch {
-      // continue
-    }
-  }
-  if (!legacyPath) {
-    return changes;
-  }
-
-  await fs.mkdir(targetDir, { recursive: true });
-  try {
-    await fs.copyFile(legacyPath, targetPath, fs.constants.COPYFILE_EXCL);
-    changes.push(`Migrated legacy config: ${legacyPath} -> ${targetPath}`);
-  } catch {
-    // If it already exists, skip silently.
-  }
-
-  return changes;
-}
-
 export async function loadAndMaybeMigrateDoctorConfig(params: {
   options: DoctorOptions;
   confirm: (p: { message: string; initialValue: boolean }) => Promise<boolean>;
 }) {
   const shouldRepair = params.options.repair === true || params.options.yes === true;
-  const legacyConfigChanges = await maybeMigrateLegacyConfig();
-  if (legacyConfigChanges.length > 0) {
-    note(legacyConfigChanges.map((entry) => `- ${entry}`).join("\n"), "Doctor changes");
-  }
 
   let snapshot = await readConfigFileSnapshot();
   const baseCfg = snapshot.config ?? {};

@@ -1888,6 +1888,13 @@ const MIGRATIONS: Migration[] = [
 ];
 
 /**
+ * The highest migration version defined here — i.e. the schema version a
+ * fully-migrated database should report. Derived from the array so it can
+ * never drift from a hardcoded literal (as `bitterbot doctor` once did).
+ */
+export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
+
+/**
  * Idempotently add a column. PRAGMA table_info returns the live columns
  * so we can no-op when a migration runs more than once (or against a DB
  * that already has the column from a previous schema).

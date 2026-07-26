@@ -4,12 +4,11 @@ import { DEFAULT_PROTOCOLS_FILENAME } from "../agents/workspace.js";
 import { shortenHomePath } from "../utils.js";
 
 export const MEMORY_SYSTEM_PROMPT = [
-  "Memory system not found in workspace.",
-  "Paste this into your agent:",
-  "",
-  "Install the memory system by applying:",
-  "https://github.com/bitterbot/bitterbot/commit/9ffea23f31ca1df5183b25668f8f814bee0fb34e",
-  "https://github.com/bitterbot/bitterbot/commit/7d1fee70e76f2f634f1b41fca927ee663914183a",
+  "Memory system not initialized in this workspace yet.",
+  "The biological memory system (crystals, dream engine, GCCRF curiosity) is a",
+  "built-in subsystem — MEMORY.md and the identity files are generated on the",
+  "first gateway run / dream cycle. If this persists, run `bitterbot onboard`",
+  "or start the gateway once and let a maintenance tick populate the workspace.",
 ].join("\n");
 
 export async function shouldSuggestMemorySystem(workspaceDir: string): Promise<boolean> {

@@ -23,6 +23,7 @@ import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
 import { resolveGatewayPort } from "../config/config.js";
 import { DEFAULT_CANVAS_HOST_PORT, deriveDefaultCanvasHostPort } from "../config/port-defaults.js";
+import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
 import { note } from "../terminal/note.js";
 
 type Level = "ok" | "warn" | "error" | "info";
@@ -118,10 +119,18 @@ export async function runCanvasChecks(params: { config: BitterbotConfig }): Prom
 
   // ── A2UI bundle ──
   // a2ui.bundle.js is committed (it's a pre-compiled Rust→WASM runtime) so
-  // its presence is a proxy for "this install has the renderer."
-  const a2uiBundle = path.resolve(process.cwd(), "src/canvas-host/a2ui/a2ui.bundle.js");
-  const a2uiBundleAlt = path.resolve(process.cwd(), "dist/canvas-host/a2ui/a2ui.bundle.js");
-  const bundleFound = fs.existsSync(a2uiBundle) || fs.existsSync(a2uiBundleAlt);
+  // its presence is a proxy for "this install has the renderer." Resolve from
+  // the package root, not process.cwd() — a globally-installed CLI run from an
+  // unrelated directory would otherwise always false-warn "bundle NOT found".
+  const pkgRoot =
+    (await resolveBitterbotPackageRoot({
+      moduleUrl: import.meta.url,
+      argv1: process.argv[1],
+      cwd: process.cwd(),
+    })) ?? process.cwd();
+  const bundleFound =
+    fs.existsSync(path.resolve(pkgRoot, "src/canvas-host/a2ui/a2ui.bundle.js")) ||
+    fs.existsSync(path.resolve(pkgRoot, "dist/canvas-host/a2ui/a2ui.bundle.js"));
   if (bundleFound) {
     results.push(ok("A2UI renderer bundle present"));
   } else {

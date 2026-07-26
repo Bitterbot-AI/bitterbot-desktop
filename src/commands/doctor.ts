@@ -196,7 +196,7 @@ export async function doctorCommand(
         [
           `- hooks.gmail.model "${cfg.hooks.gmail.model}" could not be resolved.`,
           `  Fix: set a valid model ref or remove hooks.gmail.model from your config.`,
-          `  Example: ${formatCliCommand('bitterbot config set hooks.gmail.model "anthropic/claude-sonnet-4-5-20250514"')}`,
+          `  Example: ${formatCliCommand(`bitterbot config set hooks.gmail.model "${DEFAULT_PROVIDER}/${DEFAULT_MODEL}"`)}`,
         ].join("\n"),
         "Hooks",
       );

@@ -18,7 +18,9 @@
  *   - Live RPC connectivity to Base (would surface noisy network failures
  *     during dev; runtime checks handle this)
  *   - On-chain balance (would require RPC + risk metrics)
- *   - Seed file integrity (filesystem and lockfile already enforce this)
+ *   - Key material integrity: the wallet is a single CDP Server Wallet (MPC
+ *     EOA) keyed off CDP_WALLET_SECRET — there is no local seed file to check;
+ *     the CDP triple-secret presence check below is the relevant gate.
  */
 
 import fs from "node:fs";

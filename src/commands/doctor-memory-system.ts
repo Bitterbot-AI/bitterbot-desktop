@@ -16,6 +16,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { BitterbotConfig } from "../config/config.js";
 import { DEFAULT_GCCRF_CONFIG } from "../memory/gccrf-reward.js";
 import { parseGenomeHomeostasis, parsePhenotypeConstraints } from "../memory/genome-parser.js";
+import { LATEST_SCHEMA_VERSION } from "../memory/migrations.js";
 import { WORKING_MEMORY_SECTIONS } from "../memory/working-memory-prompt.js";
 import { note } from "../terminal/note.js";
 
@@ -245,11 +246,13 @@ function checkMemoryDatabase(dbPath: string): DoctorCheckResult[] {
         | { value: string }
         | undefined;
       const version = versionRow ? parseInt(versionRow.value, 10) : 0;
-      if (version === 4) {
+      if (version === LATEST_SCHEMA_VERSION) {
         results.push(ok(`Schema version: ${version} (current)`));
       } else if (version > 0) {
         results.push(
-          warn(`Schema version: ${version} (expected 4 — run gateway to trigger migration)`),
+          warn(
+            `Schema version: ${version} (latest is ${LATEST_SCHEMA_VERSION} — run the gateway to apply pending migrations)`,
+          ),
         );
       } else {
         results.push(warn("Schema version not found in meta table"));
