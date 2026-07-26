@@ -1,0 +1,19 @@
+# Tessl Skill Review — runs on PRs that change any SKILL.md
+# Docs: https://github.com/tesslio/skill-review
+name: Tessl Skill Review
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/SKILL.md"
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: tesslio/skill-review@22e928dd837202b2b1d1397e0114c92e0fae5ead
