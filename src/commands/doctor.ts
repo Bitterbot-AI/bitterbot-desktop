@@ -47,6 +47,7 @@ import { runIdentityChecks } from "./doctor-identity.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
 import { noteMemorySearchHealth } from "./doctor-memory-search.js";
 import { runMemorySystemChecks } from "./doctor-memory-system.js";
+import { runModelCheck } from "./doctor-model.js";
 import { doctorErrorMessages, doctorHasError, resetDoctorOutcome } from "./doctor-outcome.js";
 import { runP2pNetworkChecks } from "./doctor-p2p.js";
 import {
@@ -318,6 +319,9 @@ export async function doctorCommand(
   // ── Post-Q1 subsystems (embeddings backlog, knowledge graph, canonical
   //    ledger, circles) — deep DB checks that surface wired-but-dead state ──
   runSubsystemChecks({ config: cfg });
+
+  // ── One real model round-trip — "configured" is not "works" ──
+  await runModelCheck({ config: cfg });
 
   // ── Wallet (USDC on Base) ──
   await runWalletChecks({ config: cfg });
