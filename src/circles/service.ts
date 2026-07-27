@@ -1316,7 +1316,7 @@ export class CirclesService {
    * to them; their ledger history is untouched. There is no central authority
    * in a P2P circle — each member decides for their own node.
    */
-  removeMember(args: { circleId: string; memberPubkey: string }): void {
+  async removeMember(args: { circleId: string; memberPubkey: string }): Promise<void> {
     const circle = this.store.getCircle(args.circleId);
     if (!circle) throw new Error(`circle ${args.circleId} not found`);
     if (args.memberPubkey === this.pubkey) {
@@ -1330,6 +1330,58 @@ export class CirclesService {
     log.warn(
       `member ${args.memberPubkey.slice(0, 24)}… removed from circle ${args.circleId} (node-local)`,
     );
+    // §5.5 follow-through: removal is node-local BY DESIGN (each member guards
+    // their own roster; there is no central authority in a P2P circle), which
+    // used to leave the rest of the circle finding out only out-of-band — the
+    // UI said "ask the others to remove them too" with no mechanism. Fan a
+    // SIGNED removal notice to the remaining members (the evictee is already
+    // excluded: peerMembers is active-only). Receivers store it as a
+    // `system`-kind chat message attributed to us — an informed-consent nudge
+    // their human acts on, never something their node obeys (any member could
+    // make the same claim as free text; this changes visibility, not trust).
+    // Best-effort: the local removal above stands even if every dial fails.
+    if (circle.kind !== PRACTICE_KIND) {
+      try {
+        await this.announceMemberRemoval(args.circleId, args.memberPubkey);
+      } catch (err) {
+        log.debug(`removal notice fan-out for ${args.circleId} failed: ${String(err)}`);
+      }
+    }
+  }
+
+  /**
+   * The §5.5 removal notice: a `circle/message` envelope carrying a
+   * structured `system: "member_removed"` marker plus a plain-text fallback.
+   * Patched receivers store it with kind `system` (rendered as a labeled
+   * system line, @agent summon suppressed); unpatched receivers just show a
+   * readable chat message — graceful both ways. The text carries only the
+   * PUBKEY prefix: a roster displayName is peer-controlled (could smuggle an
+   * @agent summon into receivers' scan path) and a petname must never leave
+   * this node (§5.6). Receiving UIs resolve the pubkey to their own name for
+   * the person.
+   */
+  private async announceMemberRemoval(circleId: string, removedPubkey: string): Promise<void> {
+    const text =
+      `Removed member ${removedPubkey.slice(0, 24)}… from my copy of this circle. ` +
+      `My node no longer accepts their writes or delivers to them. Each member ` +
+      `controls their own roster — review their membership on your node too.`;
+    const envelope = makeCircleEnvelope(
+      "message",
+      circleId,
+      { text, system: "member_removed", removed_pubkey: removedPubkey },
+      this.key,
+    );
+    const messageId = crypto.randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO circle_messages
+           (message_id, circle_id, author_pubkey, direction, kind, thread_id, content,
+            scan_severity, envelope_id, created_at, delivery_status, reply_to, agent_authored)
+         VALUES (?, ?, ?, 'out', 'system', NULL, ?, NULL, ?, ?, 'pending', NULL, 0)`,
+      )
+      .run(messageId, circleId, this.pubkey, text, envelope.id, Date.now());
+    const report = await this.fanOut(circleId, "circle/message", envelope);
+    this.setDeliveryStatus(messageId, deliveryStatusFromReport(report));
   }
 
   // -------------------------------------------------------------------------

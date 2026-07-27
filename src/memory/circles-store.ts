@@ -23,7 +23,12 @@
  *    (`circleTopicId` = sha256(circleId:keyEpoch)); that is topic naming,
  *    not encryption, and direct dial + mailbox ignore it entirely, so the
  *    "a departed member cannot read future traffic" property does NOT hold
- *    today. Real channel-key rotation is PLAN-36 §5.6.
+ *    today. Real channel-key rotation is PLAN-36 §5.6. What DOES exist:
+ *    removal on this node stops this node's fan-out to the evictee
+ *    immediately (getMembers is active-only), and the service fans a signed
+ *    removal NOTICE to the remaining members so their humans can prune their
+ *    own rosters too (CirclesService.removeMember) — informed consent, not
+ *    global revocation.
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -70,7 +75,12 @@ export type CircleMember = {
   mailboxUrl: string | null;
   role: "creator" | "member";
   scopes: CircleScope[];
-  status: "active" | "left" | "suspended";
+  /**
+   * Only "active" members hold scopes, receive fan-out, or appear in rosters.
+   * (A legacy 'suspended' value may exist in rows written by pre-2026-07-27
+   * builds; every check compares against 'active', so it stays default-deny.)
+   */
+  status: "active" | "left";
   joinedAt: number;
 };
 
@@ -262,16 +272,6 @@ export class CirclesStore {
       .run(now, circleId, memberPubkey);
   }
 
-  /** Suspend a member's writes (compromise circuit breaker, red-team §5). */
-  suspendMember(circleId: string, memberPubkey: string, now: number = Date.now()): void {
-    this.db
-      .prepare(
-        `UPDATE circle_members SET status = 'suspended', updated_at = ?
-          WHERE circle_id = ? AND member_pubkey = ? AND status = 'active'`,
-      )
-      .run(now, circleId, memberPubkey);
-  }
-
   getCircle(circleId: string): Circle | null {
     const row = this.db.prepare(`SELECT * FROM circles WHERE circle_id = ?`).get(circleId) as
       | CircleRow
@@ -396,7 +396,8 @@ export class CirclesStore {
   /**
    * Authorization primitive the A2A friend-auth branch calls: does this
    * member hold this scope in this circle right now? Default-deny — an
-   * unknown/left/suspended member or a missing scope returns false.
+   * unknown or non-active member (left, or any legacy status value) or a
+   * missing scope returns false.
    */
   memberHasScope(circleId: string, memberPubkey: string, scope: CircleScope): boolean {
     const m = this.getMember(circleId, memberPubkey);

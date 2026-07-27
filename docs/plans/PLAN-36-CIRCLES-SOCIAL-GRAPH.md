@@ -534,17 +534,22 @@ sufficient.
 No edge = no reach; FoF intros **signed by the introducer** (SSB pattern),
 rate-limited; no open "discover any agent" surface. But the staked-introducer
 reputation needs a **circles-domain report/ban primitive that does not exist**:
-`suspendMember` is wired-but-dead (zero callers, `circles-store.ts:250`), the ban
-system is keyed on the _orchestrator_ pubkey (wrong domain), and a composed
-reputation score would stitch three unlinkable identity domains. **Build the
-report/ban primitive (wire `suspendMember` or delete it) before staked intros
-ship** — it is an owned Phase-5 item, not a TODO.
+the ban system is keyed on the _orchestrator_ pubkey (wrong domain), and a
+composed reputation score would stitch three unlinkable identity domains.
+**Build the report/ban primitive before staked intros ship** — it is an owned
+Phase-5 item, not a TODO. _(2026-07-27 resolution of the "wire `suspendMember`
+or delete it" decision: DELETED — it was redundant with `removeMember`, which
+is already reversible via re-pair; legacy `'suspended'` rows stay
+default-denied.)_
 
-**Member eviction LANDED (the moderation primitive `suspendMember`/`removeMember`
-were wired-but-dead; `removeMember` is now the live path).** The circle CREATOR
-can remove a member: `service.removeMember` is creator-gated (only
-`creatorPubkey === self`; never self), marks the member `'left'`, and bumps the
-key epoch. The store already default-denied `'left'`/`'suspended'` members at the
+**Member eviction LANDED (`removeMember` is the live path; the wired-but-dead
+`suspendMember` was deleted 2026-07-27).** ANY member can prune another from
+their own node (creator-gating was dropped in review — removal is node-local
+self-protection; never self), marking the member `'left'` with no key-epoch
+bump. Since 2026-07-27 the removal also fans a signed `member_removed` notice
+to the remaining members (stored as a `system`-kind chat line, summon-
+suppressed) so their humans can prune their own rosters — informed consent,
+not global revocation. The store default-denies non-active members at the
 A2A boundary (`memberHasScope`), so the removed member's writes are **actually
 refused** from then on — the two-node test proves Bob's post-eviction send is
 delivered=[] / failed=[Ana], not just cosmetically gone. RPC

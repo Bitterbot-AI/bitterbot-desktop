@@ -97,15 +97,21 @@ describe("CirclesStore", () => {
     expect(store.memberHasScope(circleId, "stranger", "ledger.read")).toBe(false); // not a member
   });
 
-  it("suspended and left members lose all scope and drop from active lists", () => {
+  it("left members lose all scope and drop from active lists (default-deny on non-active)", () => {
     store.addMember({ circleId, memberPubkey: BOB, pinnedWallet: B_WALLET, now: NOW + 1 });
-    store.suspendMember(circleId, BOB, NOW + 2);
+    store.removeMember(circleId, BOB, NOW + 2);
     expect(store.memberHasScope(circleId, BOB, "ledger.read")).toBe(false);
     expect(store.getMembers(circleId).map((m) => m.memberPubkey)).not.toContain(BOB);
 
+    // A legacy 'suspended' row (written by a pre-2026-07-27 build; the
+    // suspendMember primitive was removed as redundant with removeMember) is
+    // equally default-denied: every check compares against 'active'.
     store.addMember({ circleId, memberPubkey: CAROL, now: NOW + 3 });
-    store.removeMember(circleId, CAROL, NOW + 4);
+    db.prepare(
+      `UPDATE circle_members SET status = 'suspended' WHERE circle_id = ? AND member_pubkey = ?`,
+    ).run(circleId, CAROL);
     expect(store.memberHasScope(circleId, CAROL, "ledger.read")).toBe(false);
+    expect(store.getMembers(circleId).map((m) => m.memberPubkey)).not.toContain(CAROL);
   });
 
   it("stores, replaces, and clears node-local petnames keyed by pubkey (§5.6)", () => {

@@ -632,13 +632,13 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(before.delivered).toEqual([pubkeyId(anaKey)]);
 
     // Nobody can remove themselves (that's leaving, not eviction).
-    expect(() => ana.removeMember({ circleId, memberPubkey: pubkeyId(anaKey) })).toThrow(
+    await expect(ana.removeMember({ circleId, memberPubkey: pubkeyId(anaKey) })).rejects.toThrow(
       /cannot remove yourself/,
     );
 
     // Ana (creator) prunes Bob from HER node. No epoch bump (review F2/F3).
     const epochBefore = ana.store.getCircle(circleId)?.keyEpoch ?? 0;
-    ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) });
+    await ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) });
     expect(ana.store.getMembers(circleId).map((m) => m.memberPubkey)).toEqual([pubkeyId(anaKey)]);
     expect(ana.store.getCircle(circleId)?.keyEpoch).toBe(epochBefore);
 
@@ -649,14 +649,102 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(after.failed).toEqual([pubkeyId(anaKey)]);
 
     // Re-removing an already-gone member is refused.
-    expect(() => ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) })).toThrow(
+    await expect(ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) })).rejects.toThrow(
       /no such active member/,
     );
 
     // Removal is NOT creator-gated (review F1): a non-creator may protect their
     // own node too. Bob prunes Ana from HIS node (last — it empties his roster).
-    bob.removeMember({ circleId, memberPubkey: pubkeyId(anaKey) });
+    await bob.removeMember({ circleId, memberPubkey: pubkeyId(anaKey) });
     expect(bob.store.getMembers(circleId).map((m) => m.memberPubkey)).toEqual([pubkeyId(bobKey)]);
+  });
+
+  it("§5.5: removal fans a signed notice to the REMAINING members, never the evictee", async () => {
+    const carolDb = openDb();
+    const carolKey = generateKeyPair();
+    const fetchImpl = meshFetch({ ana: anaDb, bob: bobDb, carol: carolDb });
+    ana = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl,
+      keyPair: anaKey,
+    });
+    bob = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob"),
+      fetchImpl,
+      keyPair: bobKey,
+    });
+    const carol = new CirclesService({
+      db: carolDb,
+      config: makeConfig("Carol's agent", "carol"),
+      fetchImpl,
+      keyPair: carolKey,
+    });
+    const circleId = ana.createCircle({ name: "Tahoe Crew", kind: "trip" });
+    await bob.redeemInviteCode(ana.createInviteCode({ circleId }).code);
+    await carol.redeemInviteCode(ana.createInviteCode({ circleId }).code);
+
+    await ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) });
+
+    // Carol received the notice as a `system`-kind message attributed to Ana.
+    const carolNotice = carol
+      .messages(circleId)
+      .find((m) => m.kind === "system" && m.direction === "in");
+    expect(carolNotice).toBeDefined();
+    expect(carolNotice?.authorPubkey).toBe(pubkeyId(anaKey));
+    expect(carolNotice?.content).toContain(pubkeyId(bobKey).slice(0, 24));
+    expect(carolNotice?.content).toContain("review their membership on your node");
+    // Informational only: Carol's ROSTER is untouched — her human decides.
+    expect(carol.store.getMember(circleId, pubkeyId(bobKey))?.status).toBe("active");
+
+    // The evictee got nothing: removal preceded the fan-out, and peerMembers
+    // is active-only.
+    expect(bob.messages(circleId).filter((m) => m.direction === "in")).toHaveLength(0);
+
+    // Ana's node keeps its own outbound copy as a system line with delivery
+    // status, so her chat shows what her node told the circle.
+    const anaCopy = ana
+      .messages(circleId)
+      .find((m) => m.kind === "system" && m.direction === "out");
+    expect(anaCopy).toBeDefined();
+    expect(anaCopy?.deliveryStatus).toBe("delivered");
+  });
+
+  it("§5.5: the removal notice is best-effort — unreachable peers never fail the removal", async () => {
+    const offline = new Set<string>();
+    const fetchImpl = meshFetch({ ana: anaDb, bob: bobDb }, { offline });
+    ana = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl,
+      keyPair: anaKey,
+    });
+    bob = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob"),
+      fetchImpl,
+      keyPair: bobKey,
+    });
+    const circleId = ana.createCircle({ name: "Crew", kind: "trip" });
+    await bob.redeemInviteCode(ana.createInviteCode({ circleId }).code);
+    const carolKey = generateKeyPair();
+    ana.store.addMember({
+      circleId,
+      memberPubkey: pubkeyId(carolKey),
+      displayName: "Carol",
+      a2aUrl: "https://carol.test", // not in the mesh: every dial fails
+    });
+
+    // Bob offline, Carol unreachable, no mailboxes: the fan-out fully fails,
+    // yet the removal itself commits and resolves without throwing.
+    offline.add("bob");
+    await ana.removeMember({ circleId, memberPubkey: pubkeyId(carolKey) });
+    expect(ana.store.getMember(circleId, pubkeyId(carolKey))?.status).toBe("left");
+    const anaCopy = ana
+      .messages(circleId)
+      .find((m) => m.kind === "system" && m.direction === "out");
+    expect(anaCopy?.deliveryStatus).toBe("failed");
   });
 
   it("§5.5: removal refuses a removed member's event.append too (shared A2A gate)", async () => {
@@ -668,7 +756,7 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(ana.canvasCards(circleId).some((c) => c.cardId === "c1")).toBe(true);
     // After Ana removes Bob, his event.append is refused — the card does not
     // land on Ana's node (event path shares memberHasScope with messages).
-    ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) });
+    await ana.removeMember({ circleId, memberPubkey: pubkeyId(bobKey) });
     await bob.putCanvasCard({ circleId, cardId: "c2", cardType: "note", title: "again", text: "" });
     expect(ana.canvasCards(circleId).some((c) => c.cardId === "c2")).toBe(false);
   });

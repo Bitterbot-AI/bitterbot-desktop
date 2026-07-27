@@ -15,9 +15,10 @@ import { runMigrations } from "../../memory/migrations.js";
 import { createCirclesTool } from "./circles-tool.js";
 
 // PLAN-31: the conversational circles tool. Read actions run against a real
-// in-memory circles db; write actions are two-phase (preview then confirm).
-// The tool builds its own CirclesService from the node's device identity, so
-// we pin BITTERBOT_STATE_DIR to a throwaway dir and seed the circle under the
+// in-memory circles db; write actions only QUEUE for the human's approval
+// card (§5.3 — no confirm leg, no token). The tool builds its own
+// CirclesService from the node's device identity, so we pin
+// BITTERBOT_STATE_DIR to a throwaway dir and seed the circle under the
 // node's own pubkey.
 
 let db: DatabaseSync;
@@ -26,9 +27,13 @@ let selfPubkey: string;
 let circleId: string;
 const FRIEND = "ed25519:" + "b".repeat(64);
 
+// The manager mock deliberately answers null for marketplace economics: the
+// tool must resolve its DB via getCirclesDb() (the memory DB), NOT via
+// getMarketplaceEconomics().getDb() — the coupling that silently killed the
+// tool on a2a.marketplace-off nodes while the UI kept working.
 vi.mock("../../memory/index.js", () => ({
   getMemorySearchManager: async () => ({
-    manager: { getMarketplaceEconomics: () => ({ getDb: () => db }) },
+    manager: { getCirclesDb: () => db, getMarketplaceEconomics: () => null },
   }),
 }));
 

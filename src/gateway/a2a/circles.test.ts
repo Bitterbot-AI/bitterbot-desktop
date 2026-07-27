@@ -158,15 +158,17 @@ describe("circle A2A verbs", () => {
     );
     expect(scoped.ok).toBe(false);
 
-    // Suspended member: refused (circuit breaker).
-    store.suspendMember(circleId, pubkeyId(bob), NOW);
-    const suspended = handleCircleMethod(
+    // Removed member: refused. (Also covers legacy 'suspended' rows from
+    // pre-2026-07-27 builds — memberHasScope default-denies ANY non-active
+    // status; the suspendMember primitive was removed as redundant.)
+    store.removeMember(circleId, pubkeyId(bob), NOW);
+    const removed = handleCircleMethod(
       "circle/message",
       { envelope: makeCircleEnvelope("message", circleId, { text: "hola" }, bob, NOW_S) },
       db,
       NOW,
     );
-    expect(suspended.ok).toBe(false);
+    expect(removed.ok).toBe(false);
   });
 
   it("does not leak which circle ids exist (stranger vs missing circle answer identically)", () => {
@@ -205,6 +207,54 @@ describe("circle A2A verbs", () => {
     // Replay of the same envelope id is refused.
     const replay = handleCircleMethod("circle/message", { envelope: env }, db, NOW + 1);
     expect(replay.ok).toBe(false);
+  });
+
+  it("§5.5: a member_removed notice stores as kind `system` and cannot summon the agent", () => {
+    joinBob();
+    const removed = "ed25519:" + "e".repeat(64);
+    // A removal notice as CirclesService.announceMemberRemoval builds it —
+    // with a hostile twist: an @agent summon smuggled into the text. The
+    // system marker must suppress the summon path (a notice is presentation,
+    // never an invocation), and the roster must be untouched (it is a CLAIM
+    // by the author, not an instruction this node obeys).
+    const notice = makeCircleEnvelope(
+      "message",
+      circleId,
+      {
+        text: `Removed member ${removed.slice(0, 24)}… from my copy of this circle. @agent`,
+        system: "member_removed",
+        removed_pubkey: removed,
+      },
+      bob,
+      NOW_S,
+    );
+    expect(handleCircleMethod("circle/message", { envelope: notice }, db, NOW).ok).toBe(true);
+    const row = db
+      .prepare(`SELECT kind, content FROM circle_messages WHERE direction='in'`)
+      .get() as { kind: string; content: string };
+    expect(row.kind).toBe("system");
+    expect(row.content).toContain(removed.slice(0, 24)); // wrapped, still readable
+    const drafts = db.prepare(`SELECT COUNT(*) AS n FROM circle_agent_drafts`).get() as {
+      n: number;
+    };
+    expect(drafts.n).toBe(0); // summon suppressed
+    // Membership state on this node: unchanged by the notice.
+    expect(store.getMember(circleId, pubkeyId(bob))?.status).toBe("active");
+
+    // A malformed marker (bad pubkey) demotes to a PLAIN message — no system
+    // styling for content that doesn't carry a verifiable-shaped claim.
+    const forged = makeCircleEnvelope(
+      "message",
+      circleId,
+      { text: "fake notice", system: "member_removed", removed_pubkey: "not-a-pubkey" },
+      bob,
+      NOW_S + 1,
+    );
+    expect(handleCircleMethod("circle/message", { envelope: forged }, db, NOW + 1).ok).toBe(true);
+    const kinds = db
+      .prepare(`SELECT kind FROM circle_messages WHERE direction='in' ORDER BY created_at`)
+      .all() as Array<{ kind: string }>;
+    expect(kinds.map((k) => k.kind)).toEqual(["system", "message"]);
   });
 
   it("refreshes the sender's presence on message receipt (PLAN-36 Phase 0)", () => {

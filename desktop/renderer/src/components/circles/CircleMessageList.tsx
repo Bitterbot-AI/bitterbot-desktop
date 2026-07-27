@@ -317,6 +317,14 @@ export function CircleMessageList({
                 <div className="mt-0.5 rounded-md border border-border border-l-2 border-l-circle-agent bg-card px-2.5 py-1.5 text-sm whitespace-pre-wrap break-words">
                   {display.text}
                 </div>
+              ) : m.kind === "system" ? (
+                // §5.5 system notices (e.g. a member removal a peer announced):
+                // muted + italic so a node-level statement never reads as
+                // something the person conversationally said. The `system`
+                // kind badge above names the category.
+                <div className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words">
+                  {display.text}
+                </div>
               ) : (
                 <div className="text-sm whitespace-pre-wrap break-words">{display.text}</div>
               )}

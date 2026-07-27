@@ -272,13 +272,22 @@ no-scope return identical errors (no circle-id oracle). Ledger forks freeze
 the circle. Agent-authored content carries an explicit `agent_authored`
 label (sender-asserted; honest-peer assumption for inbound). Member
 **removal** is live (`circles.member.remove`, status → `left`, the A2A
-boundary then refuses that member) but node-local: there is no global
-revocation, member _suspension_ (`suspendMember`) still has no caller, and
-channel-key rotation on membership change remains unbuilt. `key_epoch` now
-has one consumer (it blinds the gossip topic id), but that is topic naming,
-not encryption, and it bumps only on member _add_, never on remove. Until
-rotation lands, **a removed member holding the old roster can still read
-future traffic**.
+boundary then refuses that member) and node-local by design — there is no
+global revocation in a P2P circle; each member governs their own roster.
+Since 2026-07-27 a removal also fans a **signed removal notice** to the
+remaining members (a `circle/message` with a `system: "member_removed"`
+marker, stored as a `system`-kind chat line, @agent summon suppressed on
+receipt): informed consent, so the other humans learn of the eviction and
+can prune their own rosters, while their nodes change nothing
+automatically. The redundant `suspendMember` primitive was deleted the same
+day (removal is already reversible via re-pair; legacy `suspended` rows
+stay default-denied). Channel-key rotation on membership change remains
+unbuilt: `key_epoch` blinds the gossip topic id (topic naming, not
+encryption) and bumps only on member _add_. Until rotation lands, a removed
+member can still read gossip-topic frames (which are unencrypted for any
+mesh node anyway), and members who ignore the notice keep delivering to the
+evictee — **the hard read-exclusion guarantee still requires rotation
+(PLAN-36 §5.6)**.
 
 ## Gateway RPC surface
 

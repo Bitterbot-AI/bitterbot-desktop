@@ -15,9 +15,12 @@
  *  circles.markRead— mark a circle read up to now (node-local; clears its badge).
  *  circles.unfreeze— Phase D: the human's deliberate act ending a fork freeze
  *                    (node-local; evidence shown by the UI, cleared here).
- *  circles.member.remove — §5.5: the creator evicts a member (node-local; the
- *                    removed member's writes are default-denied at the A2A
- *                    boundary from here on).
+ *  circles.member.remove — §5.5: ANY member prunes another from their own
+ *                    node's roster (node-local self-protection; not
+ *                    creator-gated). The removed member's writes are
+ *                    default-denied at the A2A boundary from here on, and a
+ *                    signed removal notice fans to the remaining members so
+ *                    their humans can prune their own rosters too.
  *  circles.petname.set/clear — §5.6: the viewer's PRIVATE per-person label for
  *                    a member (node-local, keyed by pubkey; overrides the
  *                    self-asserted displayName for this node's eyes only,
@@ -349,7 +352,7 @@ export const circlesHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      svc.service.removeMember({ circleId, memberPubkey });
+      await svc.service.removeMember({ circleId, memberPubkey });
       respond(true, { ok: true }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));

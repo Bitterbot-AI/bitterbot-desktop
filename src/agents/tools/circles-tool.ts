@@ -99,12 +99,12 @@ const CirclesSchema = Type.Object({
 async function getCirclesDb(cfg: BitterbotConfig, agentId: string): Promise<DatabaseSync | null> {
   const { manager } = await getMemorySearchManager({ cfg, agentId });
   if (!manager) return null;
-  const economics = (
-    manager as unknown as {
-      getMarketplaceEconomics?: () => { getDb?: () => DatabaseSync | undefined } | null;
-    }
-  ).getMarketplaceEconomics?.();
-  return economics?.getDb?.() ?? null;
+  // Marketplace-independent (PLAN-36 §7 Phase 0): circle tables live in the
+  // memory DB. Routing through getMarketplaceEconomics().getDb() (null when
+  // a2a.marketplace is off) silently killed this tool on marketplace-off
+  // nodes while the UI and peer traffic kept working — the same B2 coupling
+  // already fixed on the RPC, A2A, and maintenance paths.
+  return (manager as unknown as { getCirclesDb?: () => DatabaseSync }).getCirclesDb?.() ?? null;
 }
 
 type ToolResult = ReturnType<typeof jsonResult>;

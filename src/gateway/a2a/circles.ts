@@ -481,6 +481,17 @@ function storeInboundMessage(
   // A3: the parent's envelope id, if this is a reply. Just an id reference — no
   // content — so nothing to injection-scan; the parent (if held) renders locally.
   const replyTo = typeof body.reply_to === "string" ? body.reply_to.slice(0, 64) : null;
+  // §5.5 removal notice: a member telling the circle they pruned someone from
+  // THEIR roster (CirclesService.announceMemberRemoval). Stored with kind
+  // `system` so the UI renders it as a labeled system line instead of plain
+  // chat. Sender-asserted like any message — it is a CLAIM attributed to its
+  // author, and this node changes nothing about its own roster; the marker
+  // only affects presentation and suppresses the @agent summon path below.
+  const systemNotice =
+    kind === "message" &&
+    body.system === "member_removed" &&
+    typeof body.removed_pubkey === "string" &&
+    /^ed25519:[0-9a-f]{64}$/.test(body.removed_pubkey);
   const { content, severity } = sanitizeInboundCircleText(rawText, env.author_pubkey);
   // Phase B: a peer summoning @agent queues a LOCAL draft for OUR human. The
   // raw text is examined only for the summon token; generation is deferred to
@@ -493,6 +504,7 @@ function storeInboundMessage(
   // through. Spoofing the flag only reduces the sender's own capability.
   if (
     kind === "message" &&
+    !systemNotice &&
     severity !== "critical" &&
     body.agent_authored !== true &&
     detectAgentSummon(rawText)
@@ -520,7 +532,7 @@ function storeInboundMessage(
     messageId,
     env.circle_id,
     env.author_pubkey,
-    kind,
+    systemNotice ? "system" : kind,
     threadId,
     content,
     severity,
