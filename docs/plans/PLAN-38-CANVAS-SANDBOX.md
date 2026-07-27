@@ -5,37 +5,49 @@
 > Victor after the 2026-07-27 circles viability review. Nothing here is built.
 > §9 lists the decisions that are Victor's, not mine.
 
-## 0. The pitch, and the correction the evidence forces
+## 0. The pitch, and what "watching" means
 
 **The pitch (Victor's words):** the group canvas today is "just stale messages,
 pretty boring." It should be "a sandbox where the agents can interact and the
 users can join in and guide" — agents doing collective work while owners
 observe, steer, and opt in and out.
 
-**The instinct is right and one word of the framing is wrong.** Five of the six
-reviews converged independently on the same correction, so it is written into
-the thesis rather than buried:
+**Clarified 2026-07-27, and it settles the plan's biggest argument.** "Watch the
+agents" here means **oversight, not spectacle**: making sure they do not go down
+too deep a rabbit hole, and keeping what they are doing visible to their owner.
+The six commissioned reviews initially read "watch" as spectator entertainment
+and spent considerable energy refuting it. That refutation stands as evidence
+about a claim **this plan does not make**, and the two conclusions must not be
+confused:
+
+- **Spectating is not a retention mechanism.** Every watch-the-agents product
+  died: Moltbook (1.5M agents week one, authenticity collapse and acqui-hire in
+  six), SocialAI, Chirper, Claude Plays Pokemon (~95% viewer decay once the loops
+  became familiar). Retention comes from residue: kept artifacts and standing
+  work that names who it is waiting on.
+- **Oversight is not optional and is not measured in engagement.** It is the
+  control surface that makes bounded autonomy tolerable at all. Its success
+  metric is "can the owner tell what their agent is doing, judge whether it is
+  going somewhere dumb, and stop it in one tap" — never viewing time. **A
+  low-traffic oversight pane is a working oversight pane.**
+
+So the thesis is:
 
 > The durable product is that **several private memories can safely work one
-> shared artifact**. The live show is how you discover that for the first time,
-> not why you come back.
+> shared artifact**. Visibility is what keeps that safe and steerable; the
+> artifacts are what bring people back.
 
-Every "watch the agents interact" product has died: Moltbook (1.5M agents in
-week one, authenticity collapse and acqui-hire in six), SocialAI, Chirper,
-Claude Plays Pokemon (viral, then ~95% viewer decay once the loops became
-familiar). The prior-art review found the one counterexample retains on
-_persistent character and stakes_, not capability. Meanwhile the thing nobody
-ships — separate humans' own agents, each carrying private context, working one
-space — is a verified empty quadrant: OpenAI shipped group chats with personal
-memory **forcibly disabled** and retired them 2026-07-09; Claude Tag is one
-identity per channel; Notion/Miro agents are workspace property, not
-member-owned. They all delete the private context because they cannot scope the
-consent. A P2P friend group with per-member local nodes can.
+The thing nobody ships — separate humans' own agents, each carrying private
+context, working one space — is a verified empty quadrant: OpenAI shipped group
+chats with personal memory **forcibly disabled** and retired them 2026-07-09;
+Claude Tag is one identity per channel; Notion/Miro agents are workspace
+property, not member-owned. They all delete the private context because they
+cannot scope the consent. A P2P friend group with per-member local nodes can.
 
-So: **build the sandbox, lead with the residue.** Sessions produce kept,
-signed, attributed artifacts and standing work that names who it is waiting on.
-The live view is an audit-and-demo pane over that, which is also exactly what
-makes it filmable (§8).
+**Design consequence: the oversight pane is a first-class deliverable in the
+earliest phase that ships any autonomy, and rabbit-hole containment (§3.1) is a
+requirement, not a P2 refinement.** It also happens to be the demo (§8), but
+that is a side effect and never its justification.
 
 ### 0.1 What makes this structurally different from Moltbook
 
@@ -145,9 +157,11 @@ filling this by hand. Enroll your agent to fill it for you."_
 
 ---
 
-## 3. UI (the anti-stale-wall contract)
+## 3. UI: the oversight pane (and the anti-stale-wall contract)
 
-Full wireframes in the UI review. The three decisions that matter:
+Full wireframes in the UI review. Per §0, the pane's **primary job is oversight**:
+answer "what is my agent doing, is it going somewhere dumb, how do I stop it"
+without the owner having to read a transcript. The three decisions that matter:
 
 1. **One card per session, and it collapses.** A session lives and dies as a
    single canvas card: `gathering → live → converging → done`. On completion the
@@ -173,6 +187,38 @@ provenance laundering (agent output never ages into human-looking content).
 
 Approval fatigue is handled by **one approval per turn, not per micro-action**,
 rendered identically pre- and post-publish so approving is a glance-and-tap.
+This is the shape the supervision literature endorses: Anthropic's own autonomy
+telemetry (2026-02-18) shows experienced users move from per-action approval to
+**monitor-and-intervene**, with interrupt rates _rising_ as they stop gating.
+The oversight pane is the monitor; pause is the interrupt.
+
+### 3.1 Rabbit-hole containment (requirement, not refinement)
+
+Victor's stated worry, made mechanical. An agent goes "too deep" in four
+distinguishable ways, and each gets its own detector and its own surfaced state,
+because a silent stall and a productive long session must never look alike:
+
+| Failure                                                                             | Detector                                                                                        | Surfaced as                                                                                  |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Looping**: near-identical successive moves, or no new information across k rounds | no-progress detector over the fold (M4), local similarity check on our own last two moves       | auto-pause the enrollment, banner "your agent stopped making progress and paused itself"     |
+| **Drifting**: moves stop relating to the card's goal                                | convergence band shows the goal restated next to the latest move; owner judgment, not a model's | visible divergence; one-tap steer or pause                                                   |
+| **Grinding**: real progress, but far more expensive than the job is worth           | per-enrollment token + turn meters, visible on the posture chip as `4/10`                       | budget exhaustion pauses and asks; never silently continues                                  |
+| **Stalling**: waiting on a peer who will never answer                               | turn deadline + presence freshness                                                              | "waiting on Bob's agent (passes at 4:12)", then a visible pass — never an indefinite spinner |
+
+Three rules follow, and they are binding:
+
+1. **Every terminal state is legible and attributed.** A session that ends
+   because of a cap, a no-progress trip, or budget exhaustion says so in those
+   words. "Quietly stopped" is a bug.
+2. **Cap-hits are alarms, not routine.** Prior art is explicit (LangGraph
+   practice): if more than ~1% of rounds hit the hard cap, the cap is masking a
+   prompt bug. Instrument the rate; treat a rise as a defect signal.
+3. **Fewer rounds is the default, not a limitation.** "Deliberative Illusion"
+   (arXiv 2606.03032) finds facts decay and stances homogenize as rounds
+   increase, and under equal token budget single-agent often beats multi-agent
+   (arXiv 2604.02460). Default round caps stay low (3-5, hard ceiling 20) and
+   every additional round must justify itself against §8's overhead gate. **The
+   rabbit-hole risk and the quality risk point the same direction: shallow.**
 
 ---
 
@@ -283,11 +329,16 @@ advertised enrollment state, any taint label inferred from text.
    and is the T1 laundering vector. **Resolved in favor of security** — auto-mode
    is constrained move types only (a vote must reproduce one card option byte-
    identically); free text is propose-only, permanently.
-2. **How central is the live show.** Victor's framing and the UI review lead with
-   live spectating; holistic, UX, and prior art all say spectating is a one-week
-   novelty and a permanent _audit_ need. **Resolved as: build the live pane
-   (it is the demo and the trust surface), but pre-register kill criteria that
-   cut it if week-3 viewing collapses, and never let retention depend on it.**
+2. **How central is the live view. RESOLVED BY CLARIFICATION, not by
+   adjudication (2026-07-27).** The reviews argued against
+   watching-as-entertainment; Victor meant watching-as-oversight (rabbit-hole
+   containment + visibility of what your agent is doing). Those are different
+   claims and both hold: **spectating is not a retention mechanism, and
+   oversight is mandatory regardless of how much anyone looks at it.** The
+   dispute was a misreading of the brief, and the reviews' anti-spectacle
+   evidence is retained only as a caution against _marketing_ the show. See §0.
+   Consequence: the oversight pane and §3.1 containment ship in the first phase
+   that ships any autonomy, and no engagement metric may retire them.
 3. **Multi-agent rounds at all.** Holistic notes the month-3 survivors (watch,
    study lens) are single-agent degenerate cases and would ship the scheduler
    first; UX says the flagship (negotiation, grade A) is irreducibly multi-agent.
@@ -351,15 +402,28 @@ high-volume generation there is broadcasting to a known-hostile reader).
 4. **Consent gate.** Auto uptake on watch cards < 30% by week 4 → the enrollment
    model is scary or pointless; redesign consent before adding card types.
 
+5. **Oversight-efficacy gate (§0, and it is a gate on autonomy itself).** In
+   dogfood, ask an owner cold: "what did your agent just do on this card, and
+   was it worth it?" If they cannot answer from the pane in under ~15 seconds
+   without opening the raw feed, **the pane has failed and auto-mode does not
+   advance a phase.** Oversight legibility is a prerequisite for autonomy, not a
+   companion to it.
+
 **Kill criteria:**
 
 - Session views per human < ~30% of week-1 by week 3 AND artifacts not re-opened
-  in week 3+ → **cut live spectating entirely, keep standing actions.**
+  in week 3+ → **stop marketing/optimizing the live view as an experience and
+  cut spectator polish.** Note what this does NOT kill: the oversight pane,
+  pause, budget meters, and §3.1 containment stay regardless — they are safety
+  surfaces, and a pane nobody watches recreationally is still doing its job.
 - Blind quality compare: multi-agent rounds fail to beat single-agent on the same
   card while costing >3x tokens → **cap sessions at one round, permanently.**
 - Any prompt-injection propagation through an enrolled agent in red-teaming →
   **halt** (the §11 worm tripwire applies here with more force than anywhere).
 - Any card type muted by >20% of enrolled users → halve its cadence fleet-wide.
+- Rabbit-hole containment misses: any session that loops, drifts, or grinds
+  without the owner being able to see and stop it → **auto-mode reverts to
+  propose fleet-wide** until the detector that missed it is fixed.
 
 **The 30-second demo (the cool test, and the P-1 script):** a canvas card,
 "Spring trip: June, 4 people." Four petnamed agent chips. Round 1, each agent
@@ -380,8 +444,11 @@ attribution, and no cloud singleton reading four people's private context.
 
 ## 9. Decisions for Victor
 
-1. **Framing.** Accept §0's correction (residue-led, show as demo/audit), or
-   overrule it and lead with live spectacle? Everything downstream keys off this.
+1. ~~**Framing.**~~ **CLOSED 2026-07-27 by Victor's clarification:** "watch the
+   agents" = oversight (rabbit-hole containment + visibility), not spectacle. The
+   plan carries both conclusions: artifacts drive retention, oversight is
+   mandatory irrespective of engagement. §0, §3.1, and §6.2 updated; no decision
+   pending.
 2. **Phase order.** P1 standing watch card first (holistic's recommendation,
    safest, retention-bearing) vs jumping to P2 negotiation (the grade-A flagship
    and the better demo)? I recommend watch-first, negotiation second.
