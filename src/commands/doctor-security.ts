@@ -6,9 +6,37 @@ import { formatCliCommand } from "../cli/command-format.js";
 import { resolveGatewayAuth } from "../gateway/auth.js";
 import { isLoopbackHost, resolveGatewayBindHost } from "../gateway/net.js";
 import { readChannelAllowFromStore } from "../pairing/pairing-store.js";
-import { note } from "../terminal/note.js";
+import { renderSection, type CheckResult, ok, warn, info } from "./doctor-check.js";
 
-export async function noteSecurityWarnings(cfg: BitterbotConfig) {
+/**
+ * Fold the flat warning-line list into structured findings: a line starting
+ * with "- " opens a finding; indented lines are continuations of the one
+ * before (fix hints, secondary sentences). Exported for tests.
+ *
+ * Severity: default warn, but deliberate lockdown states ("DMs: disabled",
+ * "DMs: locked … with no allowlist") are INFO — they are safe configurations
+ * the operator chose, and inflating them to warn would make every hardened
+ * node's --json report look degraded. Even the CRITICAL exposure lines stay
+ * warn (never error) on the contract — an exposed gateway is pre-existing
+ * config state, and blocking an update would not reduce the exposure.
+ */
+const NEUTRAL_SECURITY_LINE = /DMs: (disabled|locked)\b/;
+
+export function groupSecurityWarnings(lines: string[]): CheckResult[] {
+  const results: CheckResult[] = [];
+  for (const line of lines) {
+    if (line.startsWith("- ") || results.length === 0) {
+      const message = line.replace(/^- /, "");
+      results.push(NEUTRAL_SECURITY_LINE.test(message) ? info(message) : warn(message));
+    } else {
+      const prev = results[results.length - 1];
+      if (prev) prev.message += `\n${line}`;
+    }
+  }
+  return results;
+}
+
+export async function runSecurityChecks(cfg: BitterbotConfig) {
   const warnings: string[] = [];
   const auditHint = `- Run: ${formatCliCommand("bitterbot security audit --deep")}`;
 
@@ -181,7 +209,10 @@ export async function noteSecurityWarnings(cfg: BitterbotConfig) {
     }
   }
 
-  const lines = warnings.length > 0 ? warnings : ["- No channel security warnings detected."];
-  lines.push(auditHint);
-  note(lines.join("\n"), "Security");
+  const results: CheckResult[] =
+    warnings.length > 0
+      ? groupSecurityWarnings(warnings)
+      : [ok("No channel security warnings detected.")];
+  results.push(info(auditHint.replace(/^- /, "")));
+  renderSection("Security", results);
 }

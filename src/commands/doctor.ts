@@ -39,6 +39,7 @@ import { runChannelsChecks } from "./doctor-channels.js";
 import { error, info, renderSection, setDoctorJsonMode, warn } from "./doctor-check.js";
 import { doctorShellCompletion } from "./doctor-completion.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
+import { runEconomyChecks } from "./doctor-economy.js";
 import { maybeRepairGatewayDaemon } from "./doctor-gateway-daemon-flow.js";
 import { checkGatewayHealth } from "./doctor-gateway-health.js";
 import {
@@ -47,7 +48,7 @@ import {
 } from "./doctor-gateway-services.js";
 import { runIdentityChecks } from "./doctor-identity.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
-import { noteMemorySearchHealth } from "./doctor-memory-search.js";
+import { runMemorySearchChecks } from "./doctor-memory-search.js";
 import { runMemorySystemChecks } from "./doctor-memory-system.js";
 import { runModelCheck } from "./doctor-model.js";
 import {
@@ -63,12 +64,14 @@ import {
   noteMacLaunchctlGatewayEnvOverrides,
 } from "./doctor-platform-notes.js";
 import { createDoctorPrompter, type DoctorOptions } from "./doctor-prompter.js";
+import { runRetrievalChecks } from "./doctor-retrieval.js";
 import { runRuntimeChecks } from "./doctor-runtime.js";
 import { maybeRepairSandboxImages, noteSandboxScopeWarnings } from "./doctor-sandbox.js";
-import { noteSecurityWarnings } from "./doctor-security.js";
+import { runSecurityChecks } from "./doctor-security.js";
 import { runSkillsChecks } from "./doctor-skills.js";
 import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integrity.js";
 import { runSubsystemChecks } from "./doctor-subsystems.js";
+import { runTaskSpineChecks } from "./doctor-tasks.js";
 import { maybeOfferUpdateBeforeDoctor } from "./doctor-update.js";
 import { runWalletChecks } from "./doctor-wallet.js";
 import { runWebSearchChecks } from "./doctor-web-search.js";
@@ -227,7 +230,7 @@ async function runDoctor(
   await noteMacLaunchAgentOverrides();
   await noteMacLaunchctlGatewayEnvOverrides(cfg);
 
-  await noteSecurityWarnings(cfg);
+  await runSecurityChecks(cfg);
 
   if (cfg.hooks?.gmail?.model?.trim()) {
     const hooksModelRef = resolveHooksGmailModel({
@@ -305,7 +308,7 @@ async function runDoctor(
   }
 
   noteWorkspaceStatus(cfg);
-  await noteMemorySearchHealth(cfg);
+  await runMemorySearchChecks(cfg);
 
   // Check and fix shell completion
   await doctorShellCompletion(runtime, prompter, {
@@ -357,6 +360,15 @@ async function runDoctor(
   // ── Post-Q1 subsystems (embeddings backlog, knowledge graph, canonical
   //    ledger, circles) — deep DB checks that surface wired-but-dead state ──
   runSubsystemChecks({ config: cfg });
+
+  // ── Retrieval health (live dead-wire detector + offline trace sweep) ──
+  await runRetrievalChecks({ config: cfg, isGatewayRunning: healthOk });
+
+  // ── Economy (forage settlements, revenue queue, x402 payment gate) ──
+  runEconomyChecks({ config: cfg, isGatewayRunning: healthOk });
+
+  // ── Long-horizon task spine (tasks.sqlite, event journal, cron) ──
+  runTaskSpineChecks({ config: cfg, isGatewayRunning: healthOk });
 
   // ── One real model round-trip — "configured" is not "works" ──
   await runModelCheck({ config: cfg });

@@ -14,13 +14,30 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { BitterbotConfig } from "../config/config.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { applyCirclesDefaults } from "../config/defaults.js";
+import { resolveStateDir } from "../config/paths.js";
 import { countMissingEmbeddings } from "../memory/embedding-backfill.js";
 import { renderSection as renderDoctorSection } from "./doctor-check.js";
+
+/**
+ * The agent memory DB path for doctor's read-only sweeps. Falls back to the
+ * store's default location when memory SEARCH is disabled in config —
+ * `resolveMemorySearchConfig` returns null then, but the DB (and the forage/
+ * revenue ledgers, retrieval traces, dream tables inside it) exists all the
+ * same, and disabling search must not blind doctor to parked money.
+ */
+export function resolveDoctorMemoryDbPath(cfg: BitterbotConfig): string {
+  const agentId = resolveDefaultAgentId(cfg);
+  const configured = resolveMemorySearchConfig(cfg, agentId)?.store?.path;
+  if (configured) return configured;
+  return path.join(resolveStateDir(process.env, os.homedir), "memory", `${agentId}.sqlite`);
+}
 
 type Level = "ok" | "warn" | "error" | "info";
 type CheckResult = { level: Level; message: string };
@@ -314,8 +331,7 @@ export function inspectSubsystems(
  */
 export function runSubsystemChecks(params: { config: BitterbotConfig }): void {
   const cfg = params.config;
-  const agentId = resolveDefaultAgentId(cfg);
-  const dbPath = resolveMemorySearchConfig(cfg, agentId)?.store?.path ?? "";
+  const dbPath = resolveDoctorMemoryDbPath(cfg);
 
   if (!dbPath || !fs.existsSync(dbPath)) {
     renderSection("Subsystems", [

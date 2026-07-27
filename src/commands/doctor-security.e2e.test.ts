@@ -12,9 +12,9 @@ vi.mock("../channels/plugins/index.js", () => ({
   listChannelPlugins: () => pluginRegistry.list,
 }));
 
-import { noteSecurityWarnings } from "./doctor-security.js";
+import { runSecurityChecks } from "./doctor-security.js";
 
-describe("noteSecurityWarnings gateway exposure", () => {
+describe("runSecurityChecks gateway exposure", () => {
   let prevToken: string | undefined;
   let prevPassword: string | undefined;
 
@@ -44,7 +44,7 @@ describe("noteSecurityWarnings gateway exposure", () => {
 
   it("warns when exposed without auth", async () => {
     const cfg = { gateway: { bind: "lan" } } as BitterbotConfig;
-    await noteSecurityWarnings(cfg);
+    await runSecurityChecks(cfg);
     const message = lastMessage();
     expect(message).toContain("CRITICAL");
     expect(message).toContain("without authentication");
@@ -53,7 +53,7 @@ describe("noteSecurityWarnings gateway exposure", () => {
   it("uses env token to avoid critical warning", async () => {
     process.env.BITTERBOT_GATEWAY_TOKEN = "token-123";
     const cfg = { gateway: { bind: "lan" } } as BitterbotConfig;
-    await noteSecurityWarnings(cfg);
+    await runSecurityChecks(cfg);
     const message = lastMessage();
     expect(message).toContain("WARNING");
     expect(message).not.toContain("CRITICAL");
@@ -63,14 +63,14 @@ describe("noteSecurityWarnings gateway exposure", () => {
     const cfg = {
       gateway: { bind: "lan", auth: { mode: "token", token: "   " } },
     } as BitterbotConfig;
-    await noteSecurityWarnings(cfg);
+    await runSecurityChecks(cfg);
     const message = lastMessage();
     expect(message).toContain("CRITICAL");
   });
 
   it("skips warning for loopback bind", async () => {
     const cfg = { gateway: { bind: "loopback" } } as BitterbotConfig;
-    await noteSecurityWarnings(cfg);
+    await runSecurityChecks(cfg);
     const message = lastMessage();
     expect(message).toContain("No channel security warnings detected");
     expect(message).not.toContain("Gateway bound");
@@ -98,7 +98,7 @@ describe("noteSecurityWarnings gateway exposure", () => {
       },
     ];
     const cfg = { session: { dmScope: "main" } } as BitterbotConfig;
-    await noteSecurityWarnings(cfg);
+    await runSecurityChecks(cfg);
     const message = lastMessage();
     expect(message).toContain('config set session.dmScope "per-channel-peer"');
   });

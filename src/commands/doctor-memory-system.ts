@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { BitterbotConfig } from "../config/config.js";
+import { DEFAULT_MODE_CONFIGS, type DreamMode } from "../memory/dream-types.js";
 import { DEFAULT_GCCRF_CONFIG } from "../memory/gccrf-reward.js";
 import { parseGenomeHomeostasis, parsePhenotypeConstraints } from "../memory/genome-parser.js";
 import { LATEST_SCHEMA_VERSION } from "../memory/migrations.js";
@@ -311,7 +312,69 @@ function checkMemoryDatabase(dbPath: string): DoctorCheckResult[] {
   return results;
 }
 
-function checkDreamEngine(dbPath: string, isGatewayRunning: boolean): DoctorCheckResult[] {
+/**
+ * Per-mode liveness across recent completed cycles — exported for tests.
+ * A mode can be enabled, weighted, and wired yet never selected (the exact
+ * fate the empty-knowledge-graph warning tells you to go check by hand for
+ * relationship_mining, and the silent risk for harness_evolve). Only judged
+ * once enough cycles have run that a low-weight mode should have appeared:
+ * with ~3 softmax-weighted slots per cycle and auto-triggers pinning some,
+ * a 0.05-weight mode has meaningful odds of a legitimate 20-cycle absence,
+ * so the threshold sits at 40.
+ *
+ * Known limitation: modes_used records SELECTION. A selected mode can still
+ * be skipped at execution (LLM budget, min-chunks), which this check cannot
+ * see — it catches never-scheduled, not scheduled-but-starved.
+ */
+export function inspectDreamModeLiveness(
+  db: DatabaseSync,
+  cfg: BitterbotConfig,
+): DoctorCheckResult[] {
+  const MIN_CYCLES_TO_JUDGE = 40;
+  const completed = db
+    .prepare(`SELECT COUNT(*) AS c FROM dream_cycles WHERE completed_at IS NOT NULL`)
+    .get() as { c: number };
+  if (completed.c < MIN_CYCLES_TO_JUDGE) {
+    return [];
+  }
+  const used = new Set<string>();
+  const rows = db
+    .prepare(
+      `SELECT modes_used FROM dream_cycles WHERE completed_at IS NOT NULL
+        ORDER BY started_at DESC LIMIT 500`,
+    )
+    .all() as Array<{ modes_used: string | null }>;
+  for (const row of rows) {
+    if (!row.modes_used) continue;
+    try {
+      for (const mode of JSON.parse(row.modes_used) as string[]) used.add(mode);
+    } catch {
+      // ignore malformed rows
+    }
+  }
+  const overrides = cfg.memory?.dream?.modes;
+  const neverRan = (Object.keys(DEFAULT_MODE_CONFIGS) as DreamMode[]).filter((mode) => {
+    const enabled = overrides?.[mode]?.enabled ?? DEFAULT_MODE_CONFIGS[mode].enabled;
+    const weight = overrides?.[mode]?.weight ?? DEFAULT_MODE_CONFIGS[mode].weight;
+    return enabled && weight > 0 && !used.has(mode);
+  });
+  if (neverRan.length === 0) {
+    return [ok(`All enabled dream modes have run at least once (${completed.c} cycles).`)];
+  }
+  return [
+    warn(
+      `Enabled dream mode(s) never selected across ${Math.min(completed.c, 500)} completed ` +
+        `cycles: ${neverRan.join(", ")} — wired-but-never-scheduled. Their maintenance work ` +
+        `(graph mining, harness evolution, canonical promotion…) is not happening.`,
+    ),
+  ];
+}
+
+function checkDreamEngine(
+  cfg: BitterbotConfig,
+  dbPath: string,
+  isGatewayRunning: boolean,
+): DoctorCheckResult[] {
   const results: DoctorCheckResult[] = [];
 
   if (!fs.existsSync(dbPath)) {
@@ -388,6 +451,13 @@ function checkDreamEngine(dbPath: string, isGatewayRunning: boolean): DoctorChec
       }
     } catch (err) {
       results.push(warn(`Could not query last dream cycle: ${String(err)}`));
+    }
+
+    // Per-mode liveness (PLAN-25/28 modes that never get scheduled)
+    try {
+      results.push(...inspectDreamModeLiveness(db, cfg));
+    } catch {
+      // modes_used column may predate this check
     }
 
     // Latest DQS from dream_outcomes
@@ -609,7 +679,7 @@ export async function runMemorySystemChecks(params: {
   renderSection("Memory Database", checkMemoryDatabase(dbPath));
 
   // 5. Dream Engine
-  renderSection("Dream Engine", checkDreamEngine(dbPath, isGatewayRunning));
+  renderSection("Dream Engine", checkDreamEngine(config, dbPath, isGatewayRunning));
 
   // 6. Hormonal System
   renderSection("Hormonal System", checkHormonalSystem(config, workspaceDir));

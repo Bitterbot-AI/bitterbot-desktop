@@ -95,6 +95,45 @@ populated embedding column with an empty index means search finds nothing),
 knowledge-graph population, canonical facts ledger, and Circles tables on
 the resolved agent DB.
 
+## Retrieval health
+
+The wired-but-dead detector, finally consumed: with the gateway running,
+doctor asks the live `memory.retrievalHealth` detector and warns on any
+dead retrieval lane (a layer contributing nothing to recall). It also runs
+an offline sweep of recent `retrieval_trace` samples — a lane with zero
+hits across 20+ sampled retrievals in the last week warns even when the
+gateway is down.
+
+## Economy
+
+The money-moving surfaces: bounty settlements parked at `held_review`
+(money that does not move until a human reviews it), revenue payments past
+their dispute window or failed during payout, the A2A x402 payment gate
+(warns when the gate is armed with nowhere to receive payment, or when a
+public A2A URL has authentication `none`), and Forage Night Shift posture.
+
+## Long-horizon tasks
+
+The task spine's three stores, which doctor previously never opened:
+in-flight tasks in `tasks.sqlite` not seen for >24h **and** holding no
+pending cron wakeup (a stale task with a scheduled wakeup is suspended by
+design, not orphaned), event-journal growth, and the cron store (enabled
+jobs more than 2h past `nextRunAt` while the gateway is running and cron is
+not deliberately disabled mean the scheduler is wedged and suspended tasks
+are dead; repeated per-job failures are flagged).
+
+## Dream-mode liveness
+
+The Dream Engine section also reports per-mode liveness: an enabled dream
+mode (e.g. `harness_evolve`, `relationship_mining`) that has never been
+selected across 40+ completed cycles is wired-but-never-scheduled, and its
+maintenance work is not happening.
+
+Memory-search (including the sqlite-vec probe) and Security sections are on
+the shared contract, so their findings appear in `--json` like everything
+else. Deliberate lockdown states (DMs disabled/locked) report as info, not
+warnings.
+
 ## Agent runtime section
 
 Doctor includes an "Agent runtime" section that surfaces:

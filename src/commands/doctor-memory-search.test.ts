@@ -30,13 +30,17 @@ vi.mock("../agents/model-auth.js", () => ({
   resolveApiKeyForProvider,
 }));
 
-import { noteMemorySearchHealth } from "./doctor-memory-search.js";
+import { runMemorySearchChecks } from "./doctor-memory-search.js";
+import { doctorFindings, resetDoctorOutcome } from "./doctor-outcome.js";
 import { detectLegacyWorkspaceDirs } from "./doctor-workspace.js";
 
-describe("noteMemorySearchHealth", () => {
+describe("runMemorySearchChecks", () => {
   const cfg = {} as BitterbotConfig;
+  const findings = () => doctorFindings().filter((f) => f.section === "Memory search");
+  const warns = () => findings().filter((f) => f.level === "warn");
 
   beforeEach(() => {
+    resetDoctorOutcome();
     note.mockReset();
     resolveDefaultAgentId.mockClear();
     resolveAgentDir.mockClear();
@@ -46,29 +50,32 @@ describe("noteMemorySearchHealth", () => {
     probeSqliteVec.mockResolvedValue({ ok: true });
   });
 
-  it("does not warn when remote apiKey is configured for explicit provider", async () => {
+  it("reports healthy (no warns) when remote apiKey is configured for explicit provider", async () => {
     resolveMemorySearchConfig.mockReturnValue({
       provider: "openai",
       local: {},
       remote: { apiKey: "from-config" },
     });
 
-    await noteMemorySearchHealth(cfg);
+    await runMemorySearchChecks(cfg);
 
-    expect(note).not.toHaveBeenCalled();
+    expect(warns()).toEqual([]);
+    // Healthy is now an explicit ok finding, not silence — a healthy section
+    // must be distinguishable in --json from one that never ran.
+    expect(findings().some((f) => f.level === "ok" && /openai/.test(f.message))).toBe(true);
     expect(resolveApiKeyForProvider).not.toHaveBeenCalled();
   });
 
-  it("does not warn in auto mode when remote apiKey is configured", async () => {
+  it("reports healthy in auto mode when remote apiKey is configured", async () => {
     resolveMemorySearchConfig.mockReturnValue({
       provider: "auto",
       local: {},
       remote: { apiKey: "from-config" },
     });
 
-    await noteMemorySearchHealth(cfg);
+    await runMemorySearchChecks(cfg);
 
-    expect(note).not.toHaveBeenCalled();
+    expect(warns()).toEqual([]);
     expect(resolveApiKeyForProvider).not.toHaveBeenCalled();
   });
 
@@ -84,17 +91,17 @@ describe("noteMemorySearchHealth", () => {
       mode: "api-key",
     });
 
-    await noteMemorySearchHealth(cfg);
+    await runMemorySearchChecks(cfg);
 
     expect(resolveApiKeyForProvider).toHaveBeenCalledWith({
       provider: "google",
       cfg,
       agentDir: "/tmp/agent-default",
     });
-    expect(note).not.toHaveBeenCalled();
+    expect(warns()).toEqual([]);
   });
 
-  it("warns when sqlite-vec fails to load, even with a healthy provider", async () => {
+  it("records a warn finding when sqlite-vec fails to load, even with a healthy provider", async () => {
     resolveMemorySearchConfig.mockReturnValue({
       provider: "openai",
       local: {},
@@ -102,14 +109,14 @@ describe("noteMemorySearchHealth", () => {
     });
     probeSqliteVec.mockResolvedValue({ ok: false, error: "vec0 not found" });
 
-    await noteMemorySearchHealth(cfg);
+    await runMemorySearchChecks(cfg);
 
     expect(probeSqliteVec).toHaveBeenCalled();
-    expect(note).toHaveBeenCalledTimes(1);
-    const message = note.mock.calls[0][0] as string;
-    expect(message).toContain("sqlite-vec extension did not load");
-    expect(message).toContain("keyword-only");
-    expect(message).toContain("vec0 not found");
+    // The finding is structured (visible to --json and the rollup), not just prose.
+    const vecWarn = warns().find((f) => /sqlite-vec extension did not load/.test(f.message));
+    expect(vecWarn).toBeTruthy();
+    expect(vecWarn?.message).toContain("keyword-only");
+    expect(vecWarn?.message).toContain("vec0 not found");
   });
 });
 

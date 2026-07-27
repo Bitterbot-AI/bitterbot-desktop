@@ -283,6 +283,16 @@ available (Homebrew/apt/choco).
 Doctor persists any config changes and stamps wizard metadata to record the
 doctor run.
 
+### 18b) Deep subsystem + economy + task-spine checks
+
+Read-only sweeps that need no running gateway: memory embeddings and
+search-index coverage, knowledge graph, canonical ledger, Circles,
+retrieval health (live dead-wire detector when the gateway is up, offline
+`retrieval_trace` sweep otherwise), the economy ledgers (parked bounty
+settlements, overdue revenue payments, x402 gate config), and the
+long-horizon task spine (`tasks.sqlite` orphans, event-journal growth,
+wedged cron jobs). See [/cli/doctor](/cli/doctor) for details.
+
 ### 19) Workspace tips (backup + memory system)
 
 Doctor suggests a workspace memory system when missing and prints a backup tip
