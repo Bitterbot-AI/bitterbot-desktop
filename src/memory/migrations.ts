@@ -4,6 +4,22 @@
  * Reads `schema_version` from the `meta` table and runs migrations
  * sequentially. Each migration is idempotent via ALTER TABLE IF NOT EXISTS
  * and ensureColumn.
+ *
+ * ── N-1 COMPATIBILITY POLICY (auto-rollback contract) ─────────────────────
+ * Migrations are FORWARD-ONLY: there are no down-migrations, and the boot
+ * watchdog (infra/boot-watchdog.ts) may automatically roll CODE back one
+ * release while leaving the DB schema as-is. Every migration must therefore
+ * keep the PREVIOUS release's code working against the migrated schema:
+ *
+ *   - ADD tables/columns/indexes freely (old code ignores what it doesn't
+ *     know about — the ensureColumn/IF NOT EXISTS style already gives this).
+ *   - NEVER drop or rename a table/column the previous release reads, and
+ *     never change a column's meaning, in the same release that introduces
+ *     the replacement. Deprecate first; remove one release later.
+ *   - Backfills must leave old readers functional mid-backfill.
+ *
+ * Breaking this policy turns an automatic rollback into a crash loop the
+ * watchdog's once-only latch will stop but not fix.
  */
 
 import type { DatabaseSync } from "node:sqlite";

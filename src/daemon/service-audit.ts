@@ -40,6 +40,7 @@ export const SERVICE_AUDIT_CODES = {
   launchdKeepAlive: "launchd-keep-alive",
   launchdRunAtLoad: "launchd-run-at-load",
   systemdAfterNetworkOnline: "systemd-after-network-online",
+  systemdKillMode: "systemd-kill-mode",
   systemdRestartSec: "systemd-restart-sec",
   systemdWantsNetworkOnline: "systemd-wants-network-online",
 } as const;
@@ -149,6 +150,19 @@ async function auditSystemdUnit(
     issues.push({
       code: SERVICE_AUDIT_CODES.systemdRestartSec,
       message: "RestartSec does not match the recommended 5s",
+      detail: unitPath,
+      level: "recommended",
+    });
+  }
+  // KillMode=process is load-bearing for auto-rollback: without it, systemd's
+  // default control-group kill reaps the detached boot watchdog the moment
+  // the gateway restarts, silently disabling post-update rollback on units
+  // installed before KillMode was added.
+  if (!/^\s*KillMode\s*=\s*process\s*$/m.test(content)) {
+    issues.push({
+      code: SERVICE_AUDIT_CODES.systemdKillMode,
+      message:
+        "Missing KillMode=process (the post-update boot watchdog is killed on restart without it)",
       detail: unitPath,
       level: "recommended",
     });

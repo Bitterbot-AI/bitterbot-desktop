@@ -16,7 +16,7 @@ export type CommandRegistration = {
 };
 
 type CoreCliEntry = {
-  commands: Array<{ name: string; description: string }>;
+  commands: Array<{ name: string; description: string; hidden?: boolean }>;
   register: (params: CommandRegisterParams) => Promise<void> | void;
 };
 
@@ -59,6 +59,7 @@ const coreEntries: CoreCliEntry[] = [
   {
     commands: [
       { name: "doctor", description: "Health checks + quick fixes for the gateway and channels" },
+      { name: "boot-watchdog", description: "Internal: post-update boot watchdog", hidden: true },
       { name: "dashboard", description: "Open the Control UI with your current token" },
       { name: "reset", description: "Reset local config/state (keeps the CLI installed)" },
       {
@@ -142,9 +143,11 @@ function registerLazyCoreCommand(
   program: Command,
   ctx: ProgramContext,
   entry: CoreCliEntry,
-  command: { name: string; description: string },
+  command: { name: string; description: string; hidden?: boolean },
 ) {
-  const placeholder = program.command(command.name).description(command.description);
+  const placeholder = program
+    .command(command.name, { hidden: command.hidden === true })
+    .description(command.description);
   placeholder.allowUnknownOption(true);
   placeholder.allowExcessArguments(true);
   placeholder.action(async (...actionArgs) => {

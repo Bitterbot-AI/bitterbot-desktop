@@ -68,7 +68,7 @@ parse the final stdout line rather than the whole stream. `worstLevel` is
 the max severity across all findings; `hasError`/`blocksUpdate` are true
 exactly when `worstLevel` is `"error"`.
 
-## Boot-health beacon
+## Boot-health beacon and auto-rollback
 
 Both update paths (CLI and gateway RPC) arm a beacon file before restarting
 into a freshly-updated build; the gateway clears it the moment it binds. If
@@ -76,6 +76,24 @@ a post-update boot never confirms healthy, the next `bitterbot doctor` run
 reports an error-level **Update Health** finding with the exact rollback
 command (`git reset --hard <previous-sha> && pnpm build && pnpm start gateway`)
 — and, being error-level, blocks further updates until resolved.
+
+On git installs the update flow also spawns a detached **boot watchdog**
+that acts on the same beacon: if the fresh build never confirms a healthy
+boot before the beacon deadline (default 30 min), the watchdog performs
+**one** guarded rollback — clean worktree only, `git reset --hard` to the
+pre-update sha, reinstall, rebuild, best-effort restart. Config and
+databases are never touched (schema migrations follow an N-1 compatibility
+policy, so pre-update code runs against the migrated DB). A once-only latch
+guarantees a rollback that itself fails to boot goes loud instead of
+looping. A performed rollback shows as a persistent warn-level **Update
+Health** finding until the next clean update; a failed rollback attempt is
+error-level with the manual recovery command, and clears automatically the
+next time a gateway boots healthy (so recovering the node also unblocks the
+update gate). State lives in `<stateDir>/rollback-performed.json`; the
+watchdog logs to `<stateDir>/boot-watchdog.log`. Disable with
+`update.autoRollback.enabled: false`. On systemd nodes the unit needs
+`KillMode=process` (current default; doctor's supervisor audit flags and
+repairs older units) or the watchdog is killed with the restarting gateway.
 
 ## Model round-trip
 

@@ -5,8 +5,9 @@ import {
   ensureCompletionCacheExists,
 } from "../../commands/doctor-completion.js";
 import { doctorCommand } from "../../commands/doctor.js";
-import { readConfigFileSnapshot, writeConfigFile } from "../../config/config.js";
-import { armBootVerify, disarmBootVerify } from "../../infra/boot-verify.js";
+import { loadConfig, readConfigFileSnapshot, writeConfigFile } from "../../config/config.js";
+import { armBootVerify, clearRollbackRecord, disarmBootVerify } from "../../infra/boot-verify.js";
+import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
 import {
   channelToNpmTag,
   DEFAULT_GIT_CHANNEL,
@@ -406,10 +407,23 @@ async function maybeRestartService(params: {
     // (the pnpm-start-gateway happy path), and an armed beacon with no boot
     // coming goes stale and false-errors 30 minutes later.
     armBootVerify({ prevSha: params.result.before?.sha ?? null, reason: "cli-update" });
+    // A clean update supersedes any earlier rollback state; then spawn the
+    // detached watchdog so a fresh build that never boots gets ONE guarded
+    // rollback (see infra/boot-watchdog.ts).
+    clearRollbackRecord();
+    if (params.result.root) {
+      spawnBootWatchdog({
+        root: params.result.root,
+        prevSha: params.result.before?.sha ?? null,
+        autoRollbackEnabled: loadConfig().update?.autoRollback?.enabled !== false,
+      });
+    }
 
     try {
       const restarted = await runDaemonRestart();
       if (!restarted) {
+        // Beacon gone → the watchdog (which polls the same file) stands down
+        // on its next tick; no extra IPC needed.
         disarmBootVerify();
       }
       if (!params.opts.json && restarted) {

@@ -1,7 +1,8 @@
 import type { GatewayRequestHandlers } from "./types.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveBitterbotPackageRoot } from "../../infra/bitterbot-root.js";
-import { armBootVerify } from "../../infra/boot-verify.js";
+import { armBootVerify, clearRollbackRecord } from "../../infra/boot-verify.js";
+import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
 import {
   formatDoctorNonInteractiveHint,
   type RestartSentinelPayload,
@@ -173,6 +174,18 @@ export const updateHandlers: GatewayRequestHandlers = {
       // gateway never comes up, doctor will surface it with this rollback sha.
       // The new gateway clears the beacon the moment it is listening.
       armBootVerify({ prevSha: result.before?.sha ?? null, reason: "update.run" });
+      // A clean update supersedes any earlier rollback state.
+      clearRollbackRecord();
+      // The beacon is the signal; the watchdog is the actor. Spawned detached
+      // so it survives this process's restart and can perform ONE guarded
+      // rollback if the fresh build never confirms a healthy boot.
+      if (result.root) {
+        spawnBootWatchdog({
+          root: result.root,
+          prevSha: result.before?.sha ?? null,
+          autoRollbackEnabled: loadConfig().update?.autoRollback?.enabled !== false,
+        });
+      }
       restart = scheduleGatewaySigusr1Restart({
         delayMs: restartDelayMs,
         reason: "update.run",

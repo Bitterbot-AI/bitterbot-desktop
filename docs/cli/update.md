@@ -86,9 +86,13 @@ High-level:
 8. Runs `bitterbot doctor --non-interactive` as the final “safe update” gate.
    Doctor exits non-zero on any error-level finding, which marks the whole
    update as failed — the gateway is **not** restarted into the new build.
-9. Arms a boot-health beacon before restarting. The gateway clears it as
-   soon as it binds; if the new build never boots, the next `bitterbot doctor`
-   goes loud with the exact rollback command.
+9. Arms a boot-health beacon before restarting and (git installs) spawns a
+   detached boot watchdog. The gateway clears the beacon as soon as it
+   binds. If the new build never boots before the beacon deadline, the
+   watchdog performs one guarded automatic rollback (clean worktree only,
+   reset to the pre-update sha, rebuild, restart; config and DB untouched)
+   and `bitterbot doctor` reports what happened. Disable with
+   `update.autoRollback.enabled: false`.
 10. Syncs plugins to the active channel (dev uses bundled extensions; stable/beta uses npm) and updates npm-installed plugins.
 
 ## Updating from the Control UI

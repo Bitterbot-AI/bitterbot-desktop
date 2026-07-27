@@ -45,6 +45,23 @@ export function registerMaintenanceCommands(program: Command) {
       });
     });
 
+  // Internal: the detached post-update boot watchdog (see infra/boot-watchdog.ts).
+  // Spawned by the update flows; not for direct use.
+  program
+    .command("boot-watchdog", { hidden: true })
+    .requiredOption("--root <path>", "Bitterbot package root")
+    .requiredOption("--armed-at <ms>", "armedAt of the beacon this watchdog guards")
+    .action(async (opts) => {
+      const { runBootWatchdog } = await import("../../infra/boot-watchdog.js");
+      await runBootWatchdog({
+        root: String(opts.root),
+        expectedArmedAt: Number(opts.armedAt),
+      });
+      // Defensive: loaded CLI machinery must not keep a resolved watchdog
+      // alive — one leaked process per update would accumulate forever.
+      process.exit(0);
+    });
+
   program
     .command("dashboard")
     .description("Open the Control UI with your current token")
