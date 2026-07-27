@@ -31,6 +31,7 @@ vi.mock("../infra/bitterbot-root.js", () => ({
 }));
 
 vi.mock("../config/config.js", () => ({
+  loadConfig: vi.fn(() => ({})),
   readConfigFileSnapshot: vi.fn(),
   writeConfigFile: vi.fn(),
 }));

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const spawnMock = vi.hoisted(() => vi.fn(() => ({ pid: 4242, unref: vi.fn() })));
+const spawnMock = vi.hoisted(() => vi.fn(() => ({ pid: 4242, unref: vi.fn(), on: vi.fn() })));
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
   return { ...actual, spawn: spawnMock, default: { ...actual, spawn: spawnMock } };
@@ -150,6 +150,10 @@ describe("spawnBootWatchdog guards", () => {
     prev = process.env.BITTERBOT_STATE_DIR;
     process.env.BITTERBOT_STATE_DIR = dir;
     spawnMock.mockClear();
+    // Defeat the test-env guard (spawn here is mocked; production tests never
+    // launch a real detached process).
+    vi.stubEnv("VITEST", "");
+    vi.stubEnv("NODE_ENV", "production");
   });
 
   afterEach(() => {

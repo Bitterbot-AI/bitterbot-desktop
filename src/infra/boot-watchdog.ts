@@ -279,6 +279,8 @@ export function spawnBootWatchdog(params: {
 }): boolean {
   if (!params.autoRollbackEnabled) return false;
   if (!params.prevSha) return false;
+  // Never spawn a real detached process from a test run.
+  if (process.env.VITEST || process.env.NODE_ENV === "test") return false;
   const beacon = readBootVerify();
   if (!beacon) return false;
   try {
@@ -299,6 +301,12 @@ export function spawnBootWatchdog(params: {
         env: process.env,
       },
     );
+    // Spawn failures (ENOENT etc.) arrive ASYNC on the 'error' event; without
+    // a listener they become an uncaughtException in the PARENT — i.e. they
+    // could crash the gateway mid-update. Degrade to beacon-only instead.
+    child.on("error", (err) => {
+      log(`watchdog spawn error: ${String(err)}`);
+    });
     child.unref();
     log(`spawned watchdog pid=${child.pid ?? "?"} for armedAt=${beacon.armedAt}`);
     return true;
