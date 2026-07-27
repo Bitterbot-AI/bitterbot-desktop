@@ -355,26 +355,42 @@ Add `canvas` and `sandbox` to `UNTRUSTED_TOKENS`; assert both key shapes classif
 `untrusted` in `session-trust.test.ts`; add the §5.2 CI guard forbidding any
 memory writer from reading circle tables.
 
-**P-1 — Evidence before engine (days, no product code).**
-Hand-script one session transcript (trip negotiation), render it as a canvas
-replay, show 5-10 target-cohort humans. Two questions: "would you install for
-this?" and, the real one, "would you watch a second one?" Then wizard-of-Oz a
-session on one node using the practice partner. **This is the gate PLAN-36 wrote
-as its prime directive and then skipped twice. Do not skip it a third time.**
+**~~P-1 — Evidence before engine.~~ SKIPPED by decision 2026-07-27.** Victor's
+rationale: he is the first user, can test the built thing directly, and will
+adjust on the fly. Legitimate for a solo builder who dogfoods, and recorded here
+with its consequence rather than as a complaint: **the design is now validated by
+building it, so the build order inside P1 must preserve the ability to adjust.**
+That is why P1 below is specified as a thin end-to-end slice first, breadth
+second. The §8 gates are unchanged and now get read against dogfood rather than
+prototype interviews.
 
-**P1 — Standing single-agent card (~800 LOC).** Watch card: one enrolled agent,
-scheduled trigger (not peer-triggered), private-criteria scoring, hits promoted
-by a human tap. No rounds, no peer-triggered generation, so most of §4's threat
-model does not yet apply and today's approval machinery largely suffices. This is
-the retention engine and the safest possible first contact.
+**P1 — Multi-agent negotiation, propose-mode only (~1,400-1,800 LOC).** Chosen
+over the single-agent watch card by decision 2026-07-27 ("be efficient, go full
+multi-agent"): the flagship grade-A card, and the only one that tests the actual
+thesis. Full turn loop, fold, deterministic speaker order, round barrier,
+provenance sets (M1), opaque-id source blinding, sandbox chain namespace (M6),
+oversight pane + §3.1 containment. Every move is a proposal awaiting its own
+human's tap; no autonomous posting anywhere in this phase.
 
-**P2 — Multi-agent rounds, propose-mode only (~1,400 LOC).** Negotiation card
-(the grade-A flagship). Full turn loop, fold, speaker order, round barrier,
-provenance sets (M1), opaque-id source blinding, sandbox chain namespace (M6).
-Every move is a proposal awaiting its own human's tap. Solo-degraded mode via the
-practice partner ships here so a single fresh install sees a whole session.
+> **P1.0 — Solo-degraded mode is now load-bearing infrastructure, not
+> onboarding polish.** Consequence of skipping P-1: with no prototype and no
+> second installed human, **the practice partner is the only test harness that
+> exists.** A negotiation card must run end to end with one real member plus the
+> labeled practice agent, or the phase cannot be exercised at all before it
+> ships. This moves from "ships in this phase" (v1) to "ships FIRST in this
+> phase, before the second real member is ever required."
+>
+> Build order inside P1, thin slice first so course-correction stays cheap:
+> **(a)** event types + fold + migration (no UI, tested headless);
+> **(b)** one negotiation card, one round, practice partner as the second agent,
+> propose-mode, rendered in the oversight pane;
+> **(c)** multi-round + convergence + containment detectors;
+> **(d)** real second-node participation;
+> **(e)** breadth (more move kinds, richer artifact rendering).
+> Stop and reassess after (b): that is the first point where the thesis is
+> visible on screen and the cheapest place to change your mind.
 
-**P3 — Auto-append, constrained moves only (~800 LOC).** Gated on M1-M6 complete
+**P2 — Auto-append, constrained moves only (~800 LOC).** Gated on M1-M6 complete
 AND a dedicated adversarial pass AND the §8 gates. Default off
 (`circles.sandbox.enabled`), second separate opt-in per enrollment, propose
 preselected always. **Refused entirely in any circle with removal history until
@@ -399,7 +415,7 @@ high-volume generation there is broadcasting to a known-hostile reader).
    standalone features and shelve the engine.
 3. **Round-tax gate.** Median rounds-to-ratification > 5 on negotiation → humans
    would have been faster; fix convergence before scaling.
-4. **Consent gate.** Auto uptake on watch cards < 30% by week 4 → the enrollment
+4. **Consent gate.** Auto uptake < 30% by week 4 once P2 exists → the enrollment
    model is scary or pointless; redesign consent before adding card types.
 
 5. **Oversight-efficacy gate (§0, and it is a gate on autonomy itself).** In
@@ -449,15 +465,40 @@ attribution, and no cloud singleton reading four people's private context.
    plan carries both conclusions: artifacts drive retention, oversight is
    mandatory irrespective of engagement. §0, §3.1, and §6.2 updated; no decision
    pending.
-2. **Phase order.** P1 standing watch card first (holistic's recommendation,
-   safest, retention-bearing) vs jumping to P2 negotiation (the grade-A flagship
-   and the better demo)? I recommend watch-first, negotiation second.
-3. **Run P-1 or skip it?** The plan says the evidence gate is non-negotiable;
-   the honest counterargument is that with ~40 nodes and no installer, N=10
-   interviews may be the only obtainable evidence for months.
-4. **Auto-mode ambition.** Accept "constrained moves only, forever" (security's
-   I7), or fund the research to make free-text auto-append safe later?
-5. **Steer visibility.** Should peers see that a move was human-steered? Private
-   by default protects candor; public improves trust legibility.
-6. **Key rotation dependency.** P3 is refused in circles with removal history
-   until rotation exists. Fund rotation now, or accept the restriction?
+2. **Phase order. CLOSED 2026-07-27: full multi-agent first.** Victor chose the
+   negotiation card over the single-agent watch card ("let's be efficient").
+   Overrides the recommendation (watch-first) and the holistic review's advice;
+   trades risk-retirement for testing the real thesis sooner. §7 P1 rewritten.
+3. **P-1 prototype. CLOSED 2026-07-27: skipped.** Rationale: Victor is the first
+   user, will test the built artifact directly and adjust on the fly.
+   Consequences absorbed into §7: build order is thin-slice-first with a
+   deliberate reassessment point after the first on-screen session, and
+   solo-degraded mode is promoted to load-bearing test infrastructure (P1.0).
+4. **Auto-mode ambition. CLOSED 2026-07-27: constrained moves only**, framed as
+   "until the field solves free-text safely," not forever. Propose mode still
+   carries free text behind a human tap, so the only capability forgone is
+   _unattended_ free-text posting — the worst risk-to-value trade in the plan.
+5. **Steer visibility. CLOSED 2026-07-27: private**, plus the framing fix: the
+   UI states globally that every agent acts for its human and may be directed by
+   them at any time. Direction is the assumption, not a flagged exception, so
+   there is nothing to hide and nothing to chill.
+6. **Key rotation. CLOSED 2026-07-27: accept the restriction.** Rotation is not
+   funded now; P2 auto-append stays refused in circles with removal history. The
+   refusal must be legible and dated when it fires ("sandbox unavailable here
+   because a member was removed and channel keys cannot yet be rotated"), per the
+   §3.1 rule that every terminal state is legible. Rotation gets scheduled before
+   public launch, where it is load-bearing anyway.
+
+### 9.1 Standing risk accepted by decisions 2 + 3 (recorded, not re-litigated)
+
+Choosing the largest build with the least prior validation is a deliberate,
+owner-made trade. It is written down once here so a later reader knows it was
+chosen rather than overlooked, and so the mitigations are visible:
+
+- **Mitigated by:** thin-slice build order with a named reassessment point
+  (§7 P1 (b)); solo-degraded mode first so the thing is testable by one person;
+  propose-mode-only in P1, so nothing autonomous ships before dogfood; §8 gates
+  retained and read against dogfood instead of interviews.
+- **Unmitigated:** if the thesis is wrong (agents contributing private context
+  does not feel valuable), that is discovered after ~1,500 LOC rather than after
+  a days-long prototype. Accepted knowingly.
