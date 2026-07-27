@@ -6,6 +6,7 @@ import {
   armBootVerify,
   confirmBootHealthy,
   DEFAULT_BOOT_VERIFY_DEADLINE_MS,
+  disarmBootVerify,
   readBootVerify,
   readStaleBootVerify,
 } from "./boot-verify.js";
@@ -68,5 +69,16 @@ describe("boot-verify beacon", () => {
     const now = 1_000_000;
     armBootVerify({ prevSha: null, now, deadlineMs: 5 });
     expect(readBootVerify()?.deadlineAt).toBe(now + 60_000);
+  });
+
+  it("disarm removes a beacon whose restart never happened (no stale false-error)", () => {
+    // The CLI update path arms before runDaemonRestart; when no daemon is
+    // installed (restart returns false) the beacon must be disarmed, or it
+    // goes stale 30 minutes later and error-blocks every subsequent update.
+    const now = 1_000_000;
+    armBootVerify({ prevSha: "abc123", now });
+    disarmBootVerify();
+    expect(readBootVerify()).toBeNull();
+    expect(readStaleBootVerify(now + DEFAULT_BOOT_VERIFY_DEADLINE_MS + 1)).toBeNull();
   });
 });

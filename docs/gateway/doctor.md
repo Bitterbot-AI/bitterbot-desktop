@@ -50,6 +50,16 @@ bitterbot doctor --deep
 
 Scan system services for extra gateway installs (launchd/systemd/schtasks).
 
+```bash
+bitterbot doctor --json
+```
+
+Emit a machine-readable report as the last stdout line (implies
+`--non-interactive`). Doctor also exits non-zero whenever any check reports
+an error-level finding — the update flow gates on this exit code, so a
+broken node is never restarted into a fresh build. See
+[/cli/doctor](/cli/doctor) for the report shape and severity policy.
+
 If you want to review changes before writing, open the config file first:
 
 ```bash

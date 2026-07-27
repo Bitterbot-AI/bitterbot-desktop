@@ -36,7 +36,7 @@ import {
 import { noteBootHealth } from "./doctor-boot-health.js";
 import { runCanvasChecks } from "./doctor-canvas.js";
 import { runChannelsChecks } from "./doctor-channels.js";
-import { setDoctorJsonMode } from "./doctor-check.js";
+import { error, info, renderSection, setDoctorJsonMode, warn } from "./doctor-check.js";
 import { doctorShellCompletion } from "./doctor-completion.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
 import { maybeRepairGatewayDaemon } from "./doctor-gateway-daemon-flow.js";
@@ -88,10 +88,31 @@ export async function doctorCommand(
   runtime: RuntimeEnv = defaultRuntime,
   options: DoctorOptions = {},
 ) {
+  const jsonMode = options.json === true;
+  // --json implies non-interactive at the commander layer; enforce it here too
+  // so programmatic doctorCommand({json: true}) callers can never hit a prompt
+  // (or the interactive update offer, whose early-return would skip the report).
+  if (jsonMode && options.nonInteractive !== true) {
+    options = { ...options, nonInteractive: true };
+  }
   const prompter = createDoctorPrompter({ runtime, options });
   resetDoctorOutcome();
-  const jsonMode = options.json === true;
   setDoctorJsonMode(jsonMode);
+  try {
+    await runDoctor(runtime, options, jsonMode, prompter);
+  } finally {
+    // The flag is module-global; a stale `true` would silence the next
+    // in-process doctor run (e.g. update-command's post-restart doctor).
+    setDoctorJsonMode(false);
+  }
+}
+
+async function runDoctor(
+  runtime: RuntimeEnv,
+  options: DoctorOptions,
+  jsonMode: boolean,
+  prompter: ReturnType<typeof createDoctorPrompter>,
+) {
   if (!jsonMode) {
     printWizardHeader(runtime);
     intro("Bitterbot doctor");
@@ -140,7 +161,7 @@ export async function doctorCommand(
     if (!fs.existsSync(configPath)) {
       lines.push(`Missing config: run ${formatCliCommand("bitterbot setup")} first.`);
     }
-    note(lines.join("\n"), "Gateway");
+    renderSection("Gateway", [warn(lines.join("\n"))]);
   }
 
   cfg = await maybeRepairAnthropicOAuthProfileId(cfg, prompter);
@@ -152,7 +173,7 @@ export async function doctorCommand(
   });
   const gatewayDetails = buildGatewayConnectionDetails({ config: cfg });
   if (gatewayDetails.remoteFallbackNote) {
-    note(gatewayDetails.remoteFallbackNote, "Gateway");
+    renderSection("Gateway", [info(gatewayDetails.remoteFallbackNote)]);
   }
   if (resolveMode(cfg) === "local") {
     const auth = resolveGatewayAuth({
@@ -164,10 +185,11 @@ export async function doctorCommand(
       auth.mode !== "trusted-proxy" &&
       (auth.mode !== "token" || !auth.token);
     if (needsToken) {
-      note(
-        "Gateway auth is off or missing a token. Token auth is now the recommended default (including loopback).",
-        "Gateway auth",
-      );
+      renderSection("Gateway auth", [
+        warn(
+          "Gateway auth is off or missing a token. Token auth is now the recommended default (including loopback).",
+        ),
+      ]);
       const shouldSetToken =
         options.generateGatewayToken === true
           ? true
@@ -213,14 +235,15 @@ export async function doctorCommand(
       defaultProvider: DEFAULT_PROVIDER,
     });
     if (!hooksModelRef) {
-      note(
-        [
-          `- hooks.gmail.model "${cfg.hooks.gmail.model}" could not be resolved.`,
-          `  Fix: set a valid model ref or remove hooks.gmail.model from your config.`,
-          `  Example: ${formatCliCommand(`bitterbot config set hooks.gmail.model "${DEFAULT_PROVIDER}/${DEFAULT_MODEL}"`)}`,
-        ].join("\n"),
-        "Hooks",
-      );
+      renderSection("Hooks", [
+        warn(
+          [
+            `hooks.gmail.model "${cfg.hooks.gmail.model}" could not be resolved.`,
+            `  Fix: set a valid model ref or remove hooks.gmail.model from your config.`,
+            `  Example: ${formatCliCommand(`bitterbot config set hooks.gmail.model "${DEFAULT_PROVIDER}/${DEFAULT_MODEL}"`)}`,
+          ].join("\n"),
+        ),
+      ]);
     } else {
       const { provider: defaultProvider, model: defaultModel } = resolveConfiguredModelRef({
         cfg,
@@ -247,7 +270,10 @@ export async function doctorCommand(
         );
       }
       if (warnings.length > 0) {
-        note(warnings.join("\n"), "Hooks");
+        renderSection(
+          "Hooks",
+          warnings.map((w) => warn(w.replace(/^- /, ""))),
+        );
       }
     }
   }
@@ -304,7 +330,7 @@ export async function doctorCommand(
   await runP2pNetworkChecks({ config: cfg, isGatewayRunning: healthOk });
 
   // ── P2P Identity (node tier, keypair, genesis trust list for management) ──
-  runIdentityChecks({ config: cfg });
+  runIdentityChecks({ config: cfg, packageRoot: root });
 
   // ── Skills (P2P ingest policy, quarantine dir, trust list for auto-accept) ──
   runSkillsChecks({ config: cfg });
@@ -353,39 +379,46 @@ export async function doctorCommand(
     await writeConfigFile(cfg);
     logConfigUpdated(runtime);
     const backupPath = `${CONFIG_PATH}.bak`;
-    if (fs.existsSync(backupPath)) {
+    if (!jsonMode && fs.existsSync(backupPath)) {
       runtime.log(`Backup: ${shortenHomePath(backupPath)}`);
     }
-  } else {
+  } else if (!jsonMode) {
     runtime.log(`Run "${formatCliCommand("bitterbot doctor --fix")}" to apply changes.`);
   }
 
   if (options.workspaceSuggestions !== false) {
     const workspaceDir = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
     noteWorkspaceBackupTip(workspaceDir);
-    if (await shouldSuggestMemorySystem(workspaceDir)) {
+    if (!jsonMode && (await shouldSuggestMemorySystem(workspaceDir))) {
       note(MEMORY_SYSTEM_PROMPT, "Workspace");
     }
   }
 
   const finalSnapshot = await readConfigFileSnapshot();
   if (finalSnapshot.exists && !finalSnapshot.valid) {
-    runtime.error("Invalid config:");
-    for (const issue of finalSnapshot.issues) {
-      const path = issue.path || "<root>";
-      runtime.error(`- ${path}: ${issue.message}`);
-    }
+    // Error-level finding: a config the schema rejects means the next gateway
+    // boot runs on defaults/partial config — genuinely broken, blocks updates.
+    renderSection("Config", [
+      error(
+        ["Config file failed validation:"]
+          .concat(finalSnapshot.issues.map((i) => `  - ${i.path || "<root>"}: ${i.message}`))
+          .join("\n"),
+      ),
+    ]);
   }
 
   if (jsonMode) {
     // Machine-readable report: the structured findings + rollup. The last
     // stdout line is this object, so a consumer (the UI health surface, an
     // update gate) can parse it. Exit code still reflects error-level.
+    // All rollup fields derive from the same findings list: worstLevel is the
+    // max severity, hasError/blocksUpdate ⇔ worstLevel === "error".
     runtime.log(
       JSON.stringify({
+        // Report-shape version, independent of the app VERSION — bump when
+        // fields change so consumers can detect drift.
+        schema: 1,
         version: VERSION,
-        // worstLevel = worst across all findings (display); hasError/blocksUpdate
-        // = a gated error that fails the process and blocks the update handoff.
         worstLevel: worstFindingLevel(),
         hasError: doctorHasError(),
         blocksUpdate: doctorHasError(),
@@ -407,9 +440,11 @@ export async function doctorCommand(
   if (doctorHasError()) {
     const errors = doctorErrorMessages();
     if (!jsonMode && errors.length > 0) {
+      // First line only: finding messages can be multi-line prose (the full
+      // text was already rendered in its section above).
       runtime.error(
         `doctor found ${errors.length} error-level problem(s):\n` +
-          errors.map((m) => `  - ${m}`).join("\n"),
+          errors.map((m) => `  - ${m.split("\n")[0]}`).join("\n"),
       );
     }
     runtime.exit(1);

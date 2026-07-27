@@ -403,4 +403,47 @@ describe("runGatewayUpdate", () => {
     expect(result.reason).toBe("doctor-entry-missing");
     expect(result.steps.at(-1)?.name).toBe("bitterbot doctor entry");
   });
+
+  it("marks the update as error when the doctor gate exits non-zero", async () => {
+    // The gate chain that makes doctor findings real: doctor exits 1 on an
+    // error-level finding → the doctor step fails → the whole update reports
+    // status "error" → callers (update.run RPC, update CLI) never restart into
+    // the broken build.
+    await fs.mkdir(path.join(tempDir, ".git"));
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "bitterbot", version: "1.0.0", packageManager: "pnpm@8.0.0" }),
+      "utf-8",
+    );
+    const uiIndexPath = path.join(tempDir, "dist", "control-ui", "index.html");
+    await fs.mkdir(path.dirname(uiIndexPath), { recursive: true });
+    await fs.writeFile(uiIndexPath, "<html></html>", "utf-8");
+    const stableTag = "v1.0.1-1";
+    const { runner } = createRunner({
+      [`git -C ${tempDir} rev-parse --show-toplevel`]: { stdout: tempDir },
+      [`git -C ${tempDir} rev-parse HEAD`]: { stdout: "abc123" },
+      [`git -C ${tempDir} status --porcelain -- :!dist/control-ui/`]: { stdout: "" },
+      [`git -C ${tempDir} fetch --all --prune --tags`]: { stdout: "" },
+      [`git -C ${tempDir} tag --list v* --sort=-v:refname`]: { stdout: `${stableTag}\n` },
+      [`git -C ${tempDir} checkout --detach ${stableTag}`]: { stdout: "" },
+      "pnpm install": { stdout: "" },
+      "pnpm build": { stdout: "" },
+      "pnpm ui:build": { stdout: "" },
+      [`${process.execPath} ${path.join(tempDir, "bitterbot.mjs")} doctor --non-interactive`]: {
+        stdout: "doctor found 1 error-level problem(s)",
+        code: 1,
+      },
+    });
+
+    const result = await runGatewayUpdate({
+      cwd: tempDir,
+      runCommand: async (argv, _options) => runner(argv),
+      timeoutMs: 5000,
+      channel: "stable",
+    });
+
+    expect(result.status).toBe("error");
+    const doctorStep = result.steps.find((s) => s.name.includes("doctor"));
+    expect(doctorStep?.exitCode).toBe(1);
+  });
 });

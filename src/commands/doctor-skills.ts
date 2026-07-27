@@ -23,21 +23,23 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
-import { resolveUserPath } from "../utils.js";
+import { CONFIG_DIR, resolveUserPath } from "../utils.js";
 import {
   renderSection as renderDoctorSection,
   type CheckResult,
   ok,
   warn,
-  error,
   info,
 } from "./doctor-check.js";
 
-const DEFAULT_QUARANTINE_DIR = path.join(os.homedir(), ".bitterbot", "skills", "quarantine");
+// MUST match the runtime default in agents/skills/ingest.ts (listIncomingSkills)
+// — doctor previously checked ~/.bitterbot/skills/quarantine, a directory the
+// ingest path never uses, and green-lit an empty decoy while real quarantined
+// skills accumulated unreviewed in skills-incoming.
+const DEFAULT_QUARANTINE_DIR = path.join(CONFIG_DIR, "skills-incoming");
 
 export function runSkillsChecks(params: { config: BitterbotConfig }): void {
   const { config } = params;
@@ -47,7 +49,7 @@ export function runSkillsChecks(params: { config: BitterbotConfig }): void {
   // ── Policy ──
   const policy = p2p?.ingestPolicy ?? "review";
   if (policy !== "review" && policy !== "auto" && policy !== "deny") {
-    results.push(error(`Unknown skills.p2p.ingestPolicy "${String(policy)}"`));
+    results.push(warn(`Unknown skills.p2p.ingestPolicy "${String(policy)}"`));
     renderSection(results);
     return;
   }
@@ -61,7 +63,7 @@ export function runSkillsChecks(params: { config: BitterbotConfig }): void {
     const trustList = p2p?.trustList ?? [];
     if (trustList.length === 0) {
       results.push(
-        error(
+        warn(
           [
             'Skill ingestion is set to "auto" but no trust list is configured.',
             "  Without trusted signers, auto-ingest will reject every skill — effectively deny.",
@@ -95,10 +97,20 @@ export function runSkillsChecks(params: { config: BitterbotConfig }): void {
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.accessSync(dir, fs.constants.W_OK);
-      results.push(ok(`Quarantine dir: ${dir}`));
+      const pending = countPendingSkills(dir);
+      if (pending > 0) {
+        results.push(
+          warn(
+            `${pending} skill(s) held in quarantine awaiting review (${dir}). ` +
+              `Review with: ${formatCliCommand("bitterbot skills incoming list")}`,
+          ),
+        );
+      } else {
+        results.push(ok(`Quarantine dir: ${dir} (no skills awaiting review)`));
+      }
     } catch (err) {
       results.push(
-        error(
+        warn(
           `Quarantine dir ${dir} not writable: ` +
             (err instanceof Error ? err.message : String(err)),
         ),
@@ -107,6 +119,22 @@ export function runSkillsChecks(params: { config: BitterbotConfig }): void {
   }
 
   renderSection(results);
+}
+
+/**
+ * Count quarantined skills awaiting review: one subdirectory per skill.
+ * Mirrors listIncomingSkills (agents/skills/ingest.ts), which lists EVERY
+ * subdirectory and tolerates a missing envelope — requiring `.envelope.json`
+ * here would report "nothing awaiting review" while `bitterbot skills
+ * incoming list` shows entries.
+ */
+function countPendingSkills(dir: string): number {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).length;
+  } catch {
+    // unreadable dir already surfaced by the writability check
+    return 0;
+  }
 }
 
 function renderSection(results: CheckResult[]): void {

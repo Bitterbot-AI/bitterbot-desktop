@@ -78,7 +78,9 @@ function checkGenomeStructure(workspaceDir: string): DoctorCheckResult[] {
   const genomePath = path.join(workspaceDir, "GENOME.md");
 
   if (!fs.existsSync(genomePath)) {
-    results.push(error("GENOME.md not found — cannot validate structure"));
+    // warn, not error: a not-yet-onboarded node has no GENOME.md and must
+    // still be allowed to update (checkWorkspaceIdentityFiles warns too).
+    results.push(warn("GENOME.md not found — cannot validate structure"));
     return results;
   }
 
@@ -149,7 +151,7 @@ function checkGenomeStructure(workspaceDir: string): DoctorCheckResult[] {
       results.push(warn("Missing ## Core Values section"));
     }
   } catch (err) {
-    results.push(error(`Failed to read GENOME.md: ${String(err)}`));
+    results.push(warn(`Failed to read GENOME.md: ${String(err)}`));
   }
 
   return results;
@@ -193,7 +195,7 @@ function checkMemorySchema(workspaceDir: string): DoctorCheckResult[] {
       );
     }
   } catch (err) {
-    results.push(error(`Failed to read MEMORY.md: ${String(err)}`));
+    results.push(warn(`Failed to read MEMORY.md: ${String(err)}`));
   }
 
   return results;
@@ -402,7 +404,10 @@ function checkDreamEngine(dbPath: string, isGatewayRunning: boolean): DoctorChec
       }
     }
   } catch (err) {
-    results.push(error(`Dream engine check failed: ${String(err)}`));
+    // warn, not error: an unexpected throw here means the CHECK failed, not
+    // that the node is broken — a genuinely corrupt DB already errors in
+    // checkMemoryDatabase, which is the section that should block updates.
+    results.push(warn(`Dream engine check failed: ${String(err)}`));
   } finally {
     try {
       db?.close();
@@ -553,7 +558,7 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
       }
     }
   } catch (err) {
-    results.push(error(`Curiosity engine check failed: ${String(err)}`));
+    results.push(warn(`Curiosity engine check failed: ${String(err)}`));
   } finally {
     try {
       db?.close();
@@ -575,10 +580,9 @@ function checkCuriosityEngine(cfg: BitterbotConfig, dbPath: string): DoctorCheck
 
 function renderSection(title: string, results: DoctorCheckResult[]): void {
   // Delegate to the shared contract: collects structured findings (for
-  // --json) and prints (unless JSON mode). gateExitCode feeds the run-level
-  // outcome so a broken memory subsystem (corrupt DB, missing core tables)
-  // fails the process and blocks an update handoff.
-  renderDoctorSection(title, results, { gateExitCode: true });
+  // --json / the exit code) and prints (unless JSON mode). Error-level
+  // results here (corrupt DB, missing core tables) block the update handoff.
+  renderDoctorSection(title, results);
 }
 
 // ── Main Export ──

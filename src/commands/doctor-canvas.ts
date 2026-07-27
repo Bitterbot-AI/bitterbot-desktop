@@ -29,7 +29,6 @@ import {
   type CheckResult,
   ok,
   warn,
-  error,
   info,
 } from "./doctor-check.js";
 
@@ -68,7 +67,7 @@ export async function runCanvasChecks(params: { config: BitterbotConfig }): Prom
     const root = path.resolve(rootRaw);
     if (root === "/" || root === path.resolve("/")) {
       results.push(
-        error(
+        warn(
           `Canvas root is set to filesystem root "${root}" — refusing to serve (would expose everything)`,
         ),
       );
@@ -76,13 +75,13 @@ export async function runCanvasChecks(params: { config: BitterbotConfig }): Prom
       try {
         const stat = fs.statSync(root);
         if (!stat.isDirectory()) {
-          results.push(error(`Canvas root ${root} exists but is not a directory`));
+          results.push(warn(`Canvas root ${root} exists but is not a directory`));
         } else {
           try {
             fs.accessSync(root, fs.constants.R_OK);
             results.push(ok(`Canvas root: ${root}`));
           } catch {
-            results.push(error(`Canvas root ${root} is not readable`));
+            results.push(warn(`Canvas root ${root} is not readable`));
           }
         }
       } catch (err) {

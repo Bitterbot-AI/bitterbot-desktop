@@ -361,14 +361,20 @@ Subcommands:
 
 ### `doctor`
 
-Health checks + quick fixes (config + gateway + legacy services).
+Health checks + quick fixes (config + gateway + legacy services). Exits
+non-zero when any check reports an error-level finding — this is the gate
+the update flow relies on.
 
 Options:
 
 - `--no-workspace-suggestions`: disable workspace memory hints.
 - `--yes`: accept defaults without prompting (headless).
+- `--repair` / `--fix`: apply recommended repairs without prompting.
+- `--force`: apply aggressive repairs (overwrites custom service config).
 - `--non-interactive`: skip prompts; apply safe migrations only.
+- `--generate-gateway-token`: generate and configure a gateway token.
 - `--deep`: scan system services for extra gateway installs.
+- `--json`: emit a machine-readable report as the last stdout line (implies `--non-interactive`).
 
 ## Channel helpers
 

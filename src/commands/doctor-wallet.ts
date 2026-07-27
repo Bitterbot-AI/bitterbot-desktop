@@ -32,7 +32,6 @@ import {
   type CheckResult,
   ok,
   warn,
-  error,
   info,
 } from "./doctor-check.js";
 
@@ -60,7 +59,7 @@ export async function runWalletChecks(params: { config: BitterbotConfig }): Prom
   // ── Network ──
   const network = wallet.network ?? "base-sepolia";
   if (!KNOWN_NETWORKS.has(network)) {
-    results.push(error(`Unknown network: ${network} (expected base or base-sepolia)`));
+    results.push(warn(`Unknown network: ${network} (expected base or base-sepolia)`));
   } else if (network === "base-sepolia") {
     results.push(info(`Network: ${network} (testnet — switch to 'base' for mainnet earnings)`));
   } else {
@@ -73,11 +72,11 @@ export async function runWalletChecks(params: { config: BitterbotConfig }): Prom
   const session = wallet.sessionSpendCapUsd;
 
   if (perTx !== undefined && perTx <= 0) {
-    results.push(error(`Per-transaction cap must be positive (got ${perTx})`));
+    results.push(warn(`Per-transaction cap must be positive (got ${perTx})`));
   } else if (daily !== undefined && daily <= 0) {
-    results.push(error(`Daily spend limit must be positive (got ${daily})`));
+    results.push(warn(`Daily spend limit must be positive (got ${daily})`));
   } else if (session !== undefined && session <= 0) {
-    results.push(error(`Session spend cap must be positive (got ${session})`));
+    results.push(warn(`Session spend cap must be positive (got ${session})`));
   } else if (perTx !== undefined && daily !== undefined && perTx > daily) {
     results.push(
       warn(
@@ -98,7 +97,7 @@ export async function runWalletChecks(params: { config: BitterbotConfig }): Prom
     results.push(ok(`Wallet store: ${storePath} (writable)`));
   } catch (err) {
     results.push(
-      error(
+      warn(
         `Wallet store ${storePath} not writable: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
@@ -147,7 +146,7 @@ export async function runWalletChecks(params: { config: BitterbotConfig }): Prom
   if (wallet.x402?.enabled) {
     const maxCost = wallet.x402.maxCostPerRequestUsd ?? 1;
     if (maxCost <= 0) {
-      results.push(error(`x402 maxCostPerRequestUsd must be positive (got ${maxCost})`));
+      results.push(warn(`x402 maxCostPerRequestUsd must be positive (got ${maxCost})`));
     } else if (perTx !== undefined && maxCost > perTx) {
       results.push(
         warn(

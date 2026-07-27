@@ -21,9 +21,7 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
-import { note } from "../terminal/note.js";
-import { isDoctorJsonMode } from "./doctor-check.js";
-import { recordDoctorLevel, recordFinding } from "./doctor-outcome.js";
+import { renderSection } from "./doctor-check.js";
 
 type Level = "ok" | "warn" | "error" | "info";
 export type ModelCheckOutcome =
@@ -44,6 +42,18 @@ function isCredentialError(msg: string): boolean {
   );
 }
 
+/**
+ * True when the configured model ref itself cannot be resolved. That is a
+ * config problem ("can't verify"), not proof the call path is broken — and an
+ * update may be exactly what fixes it (e.g. a newer catalog), so it must not
+ * block the gate.
+ */
+function isModelResolutionError(msg: string): boolean {
+  return /\b(cannot resolve model|unknown model|model not found|not in (the )?catalog)\b/i.test(
+    msg,
+  );
+}
+
 /** True for transient/environmental errors that should not block an update. */
 function isTransientError(msg: string): boolean {
   if (
@@ -52,8 +62,24 @@ function isTransientError(msg: string): boolean {
     )
   )
     return true;
-  if (/\b(429|rate)\b/i.test(msg)) return true;
-  for (let i = 500; i < 600; i += 1) if (msg.includes(`${i}`)) return true;
+  if (/\b429\b|rate.?limit|overloaded/i.test(msg)) return true;
+  // HTTP 5xx status. Positional anchoring matters: provider errors embed
+  // 5xx-looking digit runs that are NOT statuses — dated model ids
+  // ("claude-opus-4-5-20251101" contains "511"), token counts
+  // ("max_tokens: 512"), request-id UUIDs ("550e8400-…"). A naive substring
+  // scan here once downgraded the exact 400-param class this check exists to
+  // catch into a non-blocking warn. Accept a 5xx only at the start of the
+  // message or right after a status-ish keyword.
+  if (/(?:^|\b(?:status(?:\s*code)?|http(?:\/[\d.]+)?|code)\s*[:=(]?\s*)5\d\d(?!\d)/i.test(msg)) {
+    return true;
+  }
+  if (
+    /\b(internal server error|bad gateway|service unavailable|gateway timeout|server_error)\b/i.test(
+      msg,
+    )
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -80,6 +106,14 @@ export function classifyModelCheck(outcome: ModelCheckOutcome): { level: Level; 
         `Set one with \`bitterbot models auth\`. Not treated as broken.`,
     };
   }
+  if (isModelResolutionError(msg)) {
+    return {
+      level: "warn",
+      message:
+        `Could not verify the model path — the configured model did not resolve (${msg}). ` +
+        `Check \`bitterbot models list\` and agents.defaults.model. Not treated as broken.`,
+    };
+  }
   if (isTransientError(msg)) {
     return {
       level: "warn",
@@ -103,6 +137,10 @@ export async function runModelRoundTrip(cfg: BitterbotConfig): Promise<ModelChec
   if (shouldSkipInTest()) {
     return { kind: "skipped", reason: "test environment" };
   }
+  // The timeout timer must be cleared on the success path too: doctor has no
+  // force-exit, so a live timer keeps the event loop (and every update's
+  // doctor step) alive for the full 40s after "Doctor complete."
+  let timer: NodeJS.Timeout | undefined;
   try {
     const { createJudgeLlmCall } = await import("../tasks/judge-provider.js");
     // Same clean call path production uses. Single attempt keeps it a fast,
@@ -112,32 +150,23 @@ export async function runModelRoundTrip(cfg: BitterbotConfig): Promise<ModelChec
     const started = Date.now();
     const text = await Promise.race([
       call(PROMPT),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), MODEL_CHECK_TIMEOUT_MS),
-      ),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), MODEL_CHECK_TIMEOUT_MS);
+        timer.unref?.();
+      }),
     ]);
     const latencyMs = Date.now() - started;
     const sample = text.trim().slice(0, 40) || "(empty)";
     return { kind: "ok", latencyMs, sample };
   } catch (err) {
     return { kind: "error", message: err instanceof Error ? err.message : String(err) };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
 /** Doctor section: one live model round-trip, classified and recorded. */
 export async function runModelCheck(params: { config: BitterbotConfig }): Promise<void> {
   const outcome = await runModelRoundTrip(params.config);
-  const result = classifyModelCheck(outcome);
-  recordDoctorLevel(result.level, result.level === "error" ? "model round-trip failed" : undefined);
-  recordFinding("Model Round-Trip", result.level, result.message);
-  if (isDoctorJsonMode()) return;
-  const icon =
-    result.level === "ok"
-      ? "✔"
-      : result.level === "warn"
-        ? "⚠"
-        : result.level === "error"
-          ? "✘"
-          : "ℹ";
-  note(`${icon} ${result.message}`, "Model Round-Trip");
+  renderSection("Model Round-Trip", [classifyModelCheck(outcome)]);
 }

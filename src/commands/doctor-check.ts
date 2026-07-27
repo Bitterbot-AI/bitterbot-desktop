@@ -9,16 +9,26 @@
  * `--json` surface, or a live UI. This module is the single source of truth
  * every section imports instead.
  *
- * `renderSection` collects each result as a structured finding (for `--json`)
- * and prints it (unless JSON mode suppresses console output). It does NOT feed
- * the exit-code accumulator by default — that stays curated to build/boot
- * health so the update gate does not over-block on, say, a channel-credential
- * warning. Pass `{ gateExitCode: true }` for sections whose errors genuinely
- * mean "this node is broken enough to block an update".
+ * `renderSection` collects each result as a structured finding (for `--json`
+ * and the exit code) and prints it (unless JSON mode suppresses console
+ * output).
+ *
+ * Severity IS the gate: an `error`-level result always fails the process and
+ * blocks the update handoff. There is no per-section opt-in — that produced
+ * sections whose "errors" were decorative, the exact disease this contract
+ * exists to cure. The calibration burden sits where it belongs, on the
+ * severity choice:
+ *
+ *   - error → "this node is broken enough that an update must NOT hand off
+ *     to it" (corrupt DB, missing core tables, a provider actively rejecting
+ *     well-formed requests, unsupported Node)
+ *   - warn  → degraded-but-usable, misconfigured, or unverifiable state.
+ *     A keyless wallet, an unreachable relay, or a missing GENOME.md must
+ *     never block an update.
  */
 
 import { note } from "../terminal/note.js";
-import { recordDoctorLevel, recordFinding } from "./doctor-outcome.js";
+import { recordFinding } from "./doctor-outcome.js";
 
 export type DoctorLevel = "ok" | "warn" | "error" | "info";
 export type CheckResult = { level: DoctorLevel; message: string };
@@ -53,20 +63,14 @@ export function isDoctorJsonMode(): boolean {
 }
 
 /**
- * Collect + (unless JSON mode) print a section's results. `gateExitCode` opts
- * the section's severity into the process exit code.
+ * Collect + (unless JSON mode) print a section's results. Every result feeds
+ * the structured findings, and error-level results fail the run (see module
+ * doc: severity is the gate).
  */
-export function renderSection(
-  title: string,
-  results: CheckResult[],
-  opts?: { gateExitCode?: boolean },
-): void {
+export function renderSection(title: string, results: CheckResult[]): void {
   if (results.length === 0) return;
   for (const r of results) {
     recordFinding(title, r.level, r.message);
-    if (opts?.gateExitCode) {
-      recordDoctorLevel(r.level, r.level === "error" ? r.message : undefined);
-    }
   }
   if (!jsonMode) {
     note(results.map(formatLevel).join("\n"), title);

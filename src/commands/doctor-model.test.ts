@@ -38,6 +38,19 @@ describe("classifyModelCheck", () => {
       "fetch failed",
       "429 rate_limit_error",
       "503 Service Unavailable",
+      "overloaded_error: the model is overloaded",
+      "internal server error",
+    ]) {
+      expect(classifyModelCheck({ kind: "error", message: msg }), msg).toMatchObject({
+        level: "warn",
+      });
+    }
+  });
+
+  it("WARNs (does not block) when the configured model does not resolve", () => {
+    for (const msg of [
+      "judge-provider: cannot resolve model anthropic/claude-nonexistent",
+      "unknown model ref",
     ]) {
       expect(classifyModelCheck({ kind: "error", message: msg }), msg).toMatchObject({
         level: "warn",
@@ -55,6 +68,36 @@ describe("classifyModelCheck", () => {
     ]) {
       expect(classifyModelCheck({ kind: "error", message: msg }), msg).toMatchObject({
         level: "error",
+      });
+    }
+  });
+
+  it("ERRORs even when the message embeds 5xx-looking digits that are not a status (regression)", () => {
+    // A naive 500-599 substring scan matched dates inside model ids
+    // ("...-20251101" contains "511"), token counts, and request-id UUIDs,
+    // downgrading the exact 400-param class this check exists to catch into a
+    // non-blocking warn.
+    for (const msg of [
+      "400 temperature: unsupported parameter for model claude-opus-4-5-20251101",
+      "400 invalid_request_error: temperature unsupported for claude-sonnet-4-5-20250514",
+      "provider error: model returned no text content (model=claude-opus-4-5-20251101)",
+      "400 invalid_request_error: max_tokens: 512 exceeds the maximum",
+      "400 invalid_request_error (request id 550e8400-e29b-41d4)",
+    ]) {
+      expect(classifyModelCheck({ kind: "error", message: msg }), msg).toMatchObject({
+        level: "error",
+      });
+    }
+  });
+
+  it("still WARNs on a real 5xx status next to non-status digits", () => {
+    for (const msg of [
+      "502 Bad Gateway from provider (model claude-opus-4-5-20251101)",
+      "Request failed with status code 529",
+      "HTTP/2 503 from upstream",
+    ]) {
+      expect(classifyModelCheck({ kind: "error", message: msg }), msg).toMatchObject({
+        level: "warn",
       });
     }
   });

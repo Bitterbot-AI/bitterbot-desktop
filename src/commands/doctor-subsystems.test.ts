@@ -57,7 +57,90 @@ describe("doctor subsystem checks", () => {
     const results = sectionResults(db, EMPTY_CFG, "Memory Embeddings");
     // With only semantic set, procedural/causal/entity are missing → warn is
     // expected; assert it is at least not a false "all embedded" when they are.
-    expect(results.length).toBe(1);
+    expect(results.some((r) => /All .*crystals embedded/.test(r.message))).toBe(false);
+    db.close();
+  });
+
+  it("warns when crystals carry embeddings but the vector index is absent (false-green fix)", () => {
+    // The 2026-06 sqlite-vec incident: embedding COLUMNS populated, but
+    // chunks_vec never written → "all embedded" while vector search finds
+    // nothing. The column check alone reported this node healthy.
+    const db = freshDb();
+    insertChunk(db, "a", "[0.1,0.2]");
+    const results = sectionResults(db, EMPTY_CFG, "Memory Embeddings");
+    expect(results.some((r) => r.level === "warn" && /Vector index absent/.test(r.message))).toBe(
+      true,
+    );
+    db.close();
+  });
+
+  it("still runs coverage checks when the DB mixes embedded and ''-embedding rows", () => {
+    // json_array_length THROWS on '' (a first-class "unembedded" state); an
+    // unguarded count aborted and silently skipped every coverage check on
+    // exactly the degraded DBs the detector was built for.
+    const db = freshDb();
+    insertChunk(db, "a", "[0.1,0.2]");
+    insertChunk(db, "b", "");
+    const results = sectionResults(db, EMPTY_CFG, "Memory Embeddings");
+    expect(results.some((r) => r.level === "warn" && /Vector index absent/.test(r.message))).toBe(
+      true,
+    );
+    db.close();
+  });
+
+  it("warns when the vector index exists but is empty, ok when it covers embedded crystals", () => {
+    const db = freshDb();
+    insertChunk(db, "a", "[0.1,0.2]");
+    // Simulate the vec0 table pair with plain tables: doctor counts the
+    // chunks_vec_rowids shadow table so it needs no sqlite-vec extension.
+    db.exec(`CREATE TABLE chunks_vec (id TEXT); CREATE TABLE chunks_vec_rowids (rowid INTEGER)`);
+    let results = sectionResults(db, EMPTY_CFG, "Memory Embeddings");
+    expect(results.some((r) => r.level === "warn" && /Vector index is EMPTY/.test(r.message))).toBe(
+      true,
+    );
+
+    db.prepare(`INSERT INTO chunks_vec_rowids (rowid) VALUES (1)`).run();
+    results = sectionResults(db, EMPTY_CFG, "Memory Embeddings");
+    expect(results.some((r) => r.level === "ok" && /Vector index: 1\/1/.test(r.message))).toBe(
+      true,
+    );
+    db.close();
+  });
+
+  it("warns when the FTS index is absent or empty despite embedded crystals", () => {
+    const db = freshDb();
+    insertChunk(db, "a", "[0.1,0.2]");
+    // The test schema is built with ftsEnabled: false, so chunks_fts is absent.
+    let results = sectionResults(db, EMPTY_CFG, "Memory Embeddings");
+    expect(
+      results.some((r) => r.level === "warn" && /Keyword \(FTS\) index absent/.test(r.message)),
+    ).toBe(true);
+
+    // Present but empty (plain table stands in for fts5) → EMPTY warn.
+    db.exec(`CREATE TABLE chunks_fts (id TEXT)`);
+    results = sectionResults(db, EMPTY_CFG, "Memory Embeddings");
+    expect(
+      results.some((r) => r.level === "warn" && /Keyword \(FTS\) index is EMPTY/.test(r.message)),
+    ).toBe(true);
+    db.close();
+  });
+
+  it("does not warn about missing indexes when search is disabled in config", () => {
+    const db = freshDb();
+    insertChunk(db, "a", "[0.1,0.2]");
+    const cfg = {
+      agents: {
+        defaults: {
+          memorySearch: {
+            store: { vector: { enabled: false } },
+            query: { hybrid: { enabled: false } },
+          },
+        },
+      },
+    } as unknown as BitterbotConfig;
+    const results = sectionResults(db, cfg, "Memory Embeddings");
+    expect(results.some((r) => /Vector index absent/.test(r.message))).toBe(false);
+    expect(results.some((r) => /Keyword \(FTS\) index absent/.test(r.message))).toBe(false);
     db.close();
   });
 

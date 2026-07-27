@@ -27,7 +27,6 @@ import {
   type CheckResult,
   ok,
   warn,
-  error,
   info,
 } from "./doctor-check.js";
 
@@ -151,8 +150,11 @@ export async function runP2pNetworkChecks(params: {
       results.push(ok(`Orchestrator: ${describeSource(probe.source)}`));
     }
   } else {
+    // warn, not error: a p2p-less node still functions locally, and the
+    // update gate re-running pnpm install may be exactly what restores the
+    // binary — blocking the update would prevent the fix.
     results.push(
-      error(
+      warn(
         "Orchestrator binary NOT FOUND — node cannot join the P2P network.\n" +
           `  Build locally:   cargo build --release --manifest-path orchestrator/Cargo.toml\n` +
           `  Or download:     reinstall with \`pnpm install\` to run the postinstall fetcher`,

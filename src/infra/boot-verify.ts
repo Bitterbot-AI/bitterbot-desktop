@@ -78,6 +78,17 @@ export function confirmBootHealthy(): void {
   }
 }
 
+/**
+ * Remove an armed beacon because the restart it was guarding never happened
+ * (daemon not installed, restart threw). Same file removal as
+ * confirmBootHealthy, distinct name so call sites read as what they mean: a
+ * beacon with no boot coming would go stale and false-error 30 minutes later —
+ * and, doctor errors being update-blocking, brick every subsequent update.
+ */
+export function disarmBootVerify(): void {
+  confirmBootHealthy();
+}
+
 /** The raw beacon if one is armed, else null. */
 export function readBootVerify(): BootVerifyRecord | null {
   try {

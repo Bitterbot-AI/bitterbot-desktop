@@ -83,8 +83,13 @@ High-level:
 5. Rebases onto the selected commit (dev only).
 6. Installs deps (pnpm preferred; npm fallback).
 7. Builds + builds the Control UI.
-8. Runs `bitterbot doctor` as the final “safe update” check.
-9. Syncs plugins to the active channel (dev uses bundled extensions; stable/beta uses npm) and updates npm-installed plugins.
+8. Runs `bitterbot doctor --non-interactive` as the final “safe update” gate.
+   Doctor exits non-zero on any error-level finding, which marks the whole
+   update as failed — the gateway is **not** restarted into the new build.
+9. Arms a boot-health beacon before restarting. The gateway clears it as
+   soon as it binds; if the new build never boots, the next `bitterbot doctor`
+   goes loud with the exact rollback command.
+10. Syncs plugins to the active channel (dev uses bundled extensions; stable/beta uses npm) and updates npm-installed plugins.
 
 ## Updating from the Control UI
 

@@ -24,16 +24,16 @@ describe("doctor-check shared contract", () => {
     ]);
   });
 
-  it("does NOT gate the exit code by default (warn/error only surface)", () => {
-    renderSection("Channels", [error("bad creds")]);
-    expect(doctorHasError()).toBe(false); // not opted into the gate
-    expect(worstDoctorLevel()).toBe("ok");
-  });
-
-  it("gates the exit code when gateExitCode is set", () => {
-    renderSection("Memory Database", [error("core table missing")], { gateExitCode: true });
+  it("error-level results always gate the exit code (severity IS the gate)", () => {
+    renderSection("Memory Database", [error("core table missing")]);
     expect(doctorHasError()).toBe(true);
     expect(worstDoctorLevel()).toBe("error");
+  });
+
+  it("warn-level results never gate (degraded-but-usable must not block updates)", () => {
+    renderSection("Channels", [warn("bad creds")]);
+    expect(doctorHasError()).toBe(false);
+    expect(worstDoctorLevel()).toBe("warn");
   });
 
   it("prints in normal mode, suppresses in JSON mode", () => {

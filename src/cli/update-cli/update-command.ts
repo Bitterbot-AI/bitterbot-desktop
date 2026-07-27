@@ -6,6 +6,7 @@ import {
 } from "../../commands/doctor-completion.js";
 import { doctorCommand } from "../../commands/doctor.js";
 import { readConfigFileSnapshot, writeConfigFile } from "../../config/config.js";
+import { armBootVerify, disarmBootVerify } from "../../infra/boot-verify.js";
 import {
   channelToNpmTag,
   DEFAULT_GIT_CHANNEL,
@@ -25,7 +26,7 @@ import {
 import { runGatewayUpdate, type UpdateRunResult } from "../../infra/update-runner.js";
 import { syncPluginsForUpdateChannel, updateNpmInstalledPlugins } from "../../plugins/update.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
-import { defaultRuntime } from "../../runtime.js";
+import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
 import { stylePromptMessage } from "../../terminal/prompt-style.js";
 import { theme } from "../../terminal/theme.js";
 import { pathExists } from "../../utils.js";
@@ -395,8 +396,22 @@ async function maybeRestartService(params: {
       defaultRuntime.log(theme.heading("Restarting service..."));
     }
 
+    // Arm the boot-health beacon before the restart, exactly like the gateway
+    // update.run path does: if the freshly-updated build never confirms a
+    // healthy boot, a later doctor run goes loud with the rollback sha.
+    // Previously only gateway-RPC updates were covered — a CLI update that
+    // died on boot stayed silent. Must be armed BEFORE the restart (arming
+    // after would race a fast boot), so the no-restart paths below disarm it:
+    // runDaemonRestart returns false on a node with no installed daemon
+    // (the pnpm-start-gateway happy path), and an armed beacon with no boot
+    // coming goes stale and false-errors 30 minutes later.
+    armBootVerify({ prevSha: params.result.before?.sha ?? null, reason: "cli-update" });
+
     try {
       const restarted = await runDaemonRestart();
+      if (!restarted) {
+        disarmBootVerify();
+      }
       if (!params.opts.json && restarted) {
         defaultRuntime.log(theme.success("Daemon restarted successfully."));
         defaultRuntime.log("");
@@ -404,9 +419,24 @@ async function maybeRestartService(params: {
         try {
           const interactiveDoctor =
             Boolean(process.stdin.isTTY) && !params.opts.json && params.opts.yes !== true;
-          await doctorCommand(defaultRuntime, {
-            nonInteractive: !interactiveDoctor,
-          });
+          // Advisory post-restart run: doctor now exits non-zero on error-level
+          // findings, but this run must not hard-kill the update flow — swap in
+          // a non-exiting runtime and report the outcome instead.
+          let doctorExitCode = 0;
+          const recordExit = ((code: number) => {
+            doctorExitCode = code;
+          }) as RuntimeEnv["exit"];
+          await doctorCommand(
+            { ...defaultRuntime, exit: recordExit },
+            { nonInteractive: !interactiveDoctor },
+          );
+          if (doctorExitCode !== 0) {
+            defaultRuntime.log(
+              theme.warn(
+                "Doctor found error-level problems after the restart — see the findings above.",
+              ),
+            );
+          }
         } catch (err) {
           defaultRuntime.log(theme.warn(`Doctor failed: ${String(err)}`));
         } finally {
@@ -414,6 +444,8 @@ async function maybeRestartService(params: {
         }
       }
     } catch (err) {
+      // No restart happened — a beacon with no boot coming would go stale.
+      disarmBootVerify();
       if (!params.opts.json) {
         defaultRuntime.log(theme.warn(`Daemon restart failed: ${String(err)}`));
         defaultRuntime.log(

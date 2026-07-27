@@ -29,7 +29,7 @@ const warn = (message: string): CheckResult => ({ level: "warn", message });
 const info = (message: string): CheckResult => ({ level: "info", message });
 
 function renderSection(title: string, results: CheckResult[]): void {
-  renderDoctorSection(title, results, { gateExitCode: true });
+  renderDoctorSection(title, results);
 }
 
 function tableExists(db: DatabaseSync, table: string): boolean {
@@ -52,6 +52,114 @@ export type SubsystemReport = {
   title: string;
   results: CheckResult[];
 }[];
+
+/**
+ * Count rows in the vector index without loading sqlite-vec: `chunks_vec` is
+ * a vec0 virtual table (COUNT on it throws "no such module" in a process that
+ * hasn't loaded the extension), but its `chunks_vec_rowids` shadow table is a
+ * plain table with one row per stored vector.
+ */
+function countVectorIndexRows(db: DatabaseSync): number | null {
+  for (const sql of [
+    `SELECT COUNT(*) AS c FROM chunks_vec_rowids`,
+    `SELECT COUNT(*) AS c FROM chunks_vec`,
+  ]) {
+    try {
+      const row = db.prepare(sql).get() as { c: number } | undefined;
+      if (row) return row.c;
+    } catch {
+      // try the next form
+    }
+  }
+  return null;
+}
+
+function checkVectorIndexCoverage(
+  db: DatabaseSync,
+  embedded: number,
+  vectorEnabled: boolean,
+): CheckResult[] {
+  if (!tableExists(db, "chunks_vec")) {
+    if (!vectorEnabled) {
+      return [info("Vector search disabled in config — no vector index expected.")];
+    }
+    return [
+      warn(
+        `Vector index absent: ${embedded} crystals carry embeddings but the chunks_vec table ` +
+          `does not exist — sqlite-vec was unavailable at write time, so vector search finds ` +
+          `NOTHING despite "embedded" data. See the Memory search section for the sqlite-vec probe.`,
+      ),
+    ];
+  }
+  const indexed = countVectorIndexRows(db);
+  if (indexed === null) {
+    return [info("Vector index present but not countable from this process — coverage unknown.")];
+  }
+  if (indexed === 0) {
+    return [
+      warn(
+        `Vector index is EMPTY: ${embedded} crystals carry embeddings but 0 are indexed in ` +
+          `chunks_vec — vector search finds nothing (wired-but-dead index).`,
+      ),
+    ];
+  }
+  if (indexed < embedded * 0.9) {
+    return [
+      warn(
+        `Vector index covers ${indexed}/${embedded} embedded crystals — ` +
+          `${embedded - indexed} are unreachable by vector search until the index is rebuilt.`,
+      ),
+    ];
+  }
+  return [ok(`Vector index: ${indexed}/${embedded} embedded crystals indexed.`)];
+}
+
+function checkFtsIndexCoverage(
+  db: DatabaseSync,
+  embedded: number,
+  total: number,
+  ftsEnabled: boolean,
+): CheckResult[] {
+  if (!tableExists(db, "chunks_fts")) {
+    if (!ftsEnabled) {
+      return [info("Hybrid keyword search disabled in config — no FTS index expected.")];
+    }
+    return [
+      warn(
+        `Keyword (FTS) index absent with ${total} crystals present — keyword search finds nothing.`,
+      ),
+    ];
+  }
+  let indexed: number | null = null;
+  try {
+    const row = db.prepare(`SELECT COUNT(*) AS c FROM chunks_fts`).get() as
+      | { c: number }
+      | undefined;
+    indexed = row?.c ?? null;
+  } catch {
+    return [info("FTS index present but not countable from this process — coverage unknown.")];
+  }
+  if (indexed === null) {
+    return [info("FTS index present but not countable from this process — coverage unknown.")];
+  }
+  if (indexed === 0) {
+    return [
+      warn(
+        `Keyword (FTS) index is EMPTY: ${embedded} embedded crystals but 0 rows in chunks_fts — ` +
+          `keyword search finds nothing (wired-but-dead index).`,
+      ),
+    ];
+  }
+  if (indexed < embedded * 0.9) {
+    return [
+      warn(
+        `Keyword (FTS) index has ${indexed} rows vs ${embedded} embedded crystals — ` +
+          `a large share of memory may be unreachable by keyword search until the index is rebuilt.`,
+      ),
+    ];
+  }
+  return [ok(`Keyword (FTS) index: ${indexed} rows for ${embedded} embedded crystals.`)];
+}
 
 /**
  * Pure inspection of an already-open DB. Exported for tests so the checks can
@@ -84,6 +192,30 @@ export function inspectSubsystems(
             `Details per perspective: ${JSON.stringify(missing)}.`,
         ),
       );
+    }
+    // Search-index coverage. The embedding COLUMN being populated proves
+    // nothing about searchability: chunks_vec/chunks_fts rows are only written
+    // when sqlite-vec/FTS were available at write time, so a node can report
+    // "all embedded" while vector search finds nothing (the 2026-06 sqlite-vec
+    // incident). Compare indexed rows against chunks that actually carry an
+    // embedding.
+    // json_valid guard first: '' is a first-class "unembedded" state and
+    // json_array_length THROWS on it, which would abort the count and silently
+    // skip the coverage checks on exactly the degraded DBs they exist for.
+    const embedded = count(
+      db,
+      `SELECT COUNT(*) AS c FROM chunks
+        WHERE model IS NOT NULL AND model <> 'pending'
+          AND json_valid(embedding) AND json_array_length(embedding) > 0
+          AND (lifecycle_state IS NULL OR lifecycle_state <> 'forgotten')
+          AND (lifecycle IS NULL OR lifecycle <> 'expired')`,
+    );
+    const memCfg = resolveMemorySearchConfig(cfg, resolveDefaultAgentId(cfg));
+    if (embedded > 0 && memCfg) {
+      const vectorEnabled = memCfg.store.vector.enabled;
+      const ftsEnabled = memCfg.query.hybrid.enabled;
+      embedding.push(...checkVectorIndexCoverage(db, embedded, vectorEnabled));
+      embedding.push(...checkFtsIndexCoverage(db, embedded, totalChunks, ftsEnabled));
     }
   }
   report.push({ title: "Memory Embeddings", results: embedding });

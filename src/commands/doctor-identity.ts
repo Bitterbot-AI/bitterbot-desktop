@@ -24,7 +24,6 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
@@ -34,14 +33,28 @@ import {
   type CheckResult,
   ok,
   warn,
-  error,
   info,
 } from "./doctor-check.js";
 
-const DEFAULT_KEY_DIR = path.join(os.homedir(), ".bitterbot", "keys");
-const DEFAULT_GENESIS_TRUST_FILE = path.join(os.homedir(), ".bitterbot", "genesis-trust.txt");
+/**
+ * When `p2p.keyDir` is unset, the TS side passes no `--key-dir` and the Rust
+ * orchestrator falls back to its own default: `./keys` RELATIVE TO ITS CWD
+ * (orchestrator/src/main.rs). Doctor previously checked `~/.bitterbot/keys`,
+ * a directory the orchestrator never touches, and reported a healthy node as
+ * key-less. `<packageRoot>/keys` is where a repo-root `pnpm start gateway`
+ * run puts them; daemon installs that set no WorkingDirectory may resolve
+ * `./keys` elsewhere ($HOME under systemd, / under launchd) — the keypair
+ * messages below therefore stay warn/info, and pinning `p2p.keyDir`
+ * explicitly is the reliable setup.
+ */
+function defaultKeyDir(packageRoot: string | null): string {
+  return path.join(packageRoot ?? process.cwd(), "keys");
+}
 
-export function runIdentityChecks(params: { config: BitterbotConfig }): void {
+export function runIdentityChecks(params: {
+  config: BitterbotConfig;
+  packageRoot?: string | null;
+}): void {
   const { config } = params;
   const p2p = config.p2p;
   const results: CheckResult[] = [];
@@ -55,7 +68,7 @@ export function runIdentityChecks(params: { config: BitterbotConfig }): void {
   // ── Node tier ──
   const tier = p2p?.nodeTier ?? "edge";
   if (tier !== "edge" && tier !== "management") {
-    results.push(error(`Unknown p2p.nodeTier "${String(tier)}" (expected "edge" or "management")`));
+    results.push(warn(`Unknown p2p.nodeTier "${String(tier)}" (expected "edge" or "management")`));
     renderSection(results);
     return;
   }
@@ -66,7 +79,7 @@ export function runIdentityChecks(params: { config: BitterbotConfig }): void {
   );
 
   // ── Key directory ──
-  const keyDirRaw = p2p?.keyDir?.trim() || DEFAULT_KEY_DIR;
+  const keyDirRaw = p2p?.keyDir?.trim() || defaultKeyDir(params.packageRoot ?? null);
   const keyDir = resolveUserPath(keyDirRaw);
   const privPath = path.join(keyDir, "node.key");
   const pubPath = path.join(keyDir, "node.pub");
@@ -75,7 +88,7 @@ export function runIdentityChecks(params: { config: BitterbotConfig }): void {
     if (fs.existsSync(keyDir)) {
       const stat = fs.statSync(keyDir);
       if (!stat.isDirectory()) {
-        results.push(error(`keyDir ${keyDir} exists but is not a directory`));
+        results.push(warn(`keyDir ${keyDir} exists but is not a directory`));
       } else {
         try {
           fs.accessSync(keyDir, fs.constants.W_OK);
@@ -98,13 +111,13 @@ export function runIdentityChecks(params: { config: BitterbotConfig }): void {
             );
           }
         } catch {
-          results.push(error(`keyDir ${keyDir} exists but is not writable`));
+          results.push(warn(`keyDir ${keyDir} exists but is not writable`));
         }
       }
     } else {
       results.push(
         info(
-          `keyDir ${keyDir} doesn't exist yet — orchestrator will create it and generate a keypair on first start.`,
+          `keyDir ${keyDir} doesn't exist yet — orchestrator will create it and generate a keypair on first start (set p2p.keyDir to pin the location).`,
         ),
       );
     }
@@ -117,7 +130,10 @@ export function runIdentityChecks(params: { config: BitterbotConfig }): void {
   // ── Management tier: genesis trust list ──
   if (tier === "management") {
     const inline = p2p?.genesisTrustList ?? [];
-    const trustPathRaw = p2p?.genesisTrustListPath?.trim() || DEFAULT_GENESIS_TRUST_FILE;
+    // Mirror the orchestrator's own fallback (main.rs): unset path means
+    // `<key_dir>/genesis_trust_list.txt`.
+    const trustPathRaw =
+      p2p?.genesisTrustListPath?.trim() || path.join(keyDir, "genesis_trust_list.txt");
     const trustPath = resolveUserPath(trustPathRaw);
 
     let hasTrust = false;
@@ -148,8 +164,11 @@ export function runIdentityChecks(params: { config: BitterbotConfig }): void {
       }
     }
     if (!hasTrust) {
+      // warn, not error: a mis-set-up management node is degraded (orchestrator
+      // refuses management mode), but blocking updates on it would prevent the
+      // very update that might fix it.
       results.push(
-        error(
+        warn(
           [
             "Management tier requires a genesis trust list.",
             `  Expected at: ${trustPath}`,
