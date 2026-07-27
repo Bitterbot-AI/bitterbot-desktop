@@ -43,6 +43,7 @@ import {
   listReadyAgentDrafts,
   queueAgentDraft,
   queueAgentSliceDraft,
+  queueAgentStudyDraft,
   setAgentDraftStatus,
   sweepAgentDraftHousekeeping,
   type AgentDraft,
@@ -89,6 +90,7 @@ import {
   realConnectionCount,
 } from "./practice.js";
 import { markCircleRead, unreadCounts } from "./read-state.js";
+import { listStudyState, recordStudyResult, type StudySectionState } from "./study.js";
 import {
   buildChainedEventBody,
   computeTabBalances,
@@ -1714,6 +1716,52 @@ export class CirclesService {
   }
 
   /**
+   * Phase 4b: our human asked their agent for a personal study aid built from
+   * a shared study-guide card, tuned to their own mastery state. The draft
+   * renders to our human ONLY — no publish path exists for this kind, so
+   * nothing here can ever reach the circle.
+   */
+  requestAgentStudyDraft(args: { circleId: string; cardId: string }): {
+    queued: boolean;
+    reason?: string;
+  } {
+    if (!this.agentDraftsEnabled()) {
+      return { queued: false, reason: "disabled" };
+    }
+    const circle = this.store.getCircle(args.circleId);
+    if (!circle || circle.status !== "active") {
+      throw new Error(`circle ${args.circleId} is not active`);
+    }
+    const card = computeCanvasCards(this.db, args.circleId).find((c) => c.cardId === args.cardId);
+    if (!card) {
+      throw new Error(`card ${args.cardId} not found in circle`);
+    }
+    return queueAgentStudyDraft(this.db, { circleId: args.circleId, cardId: args.cardId });
+  }
+
+  /**
+   * Phase 4b: record one quiz result — the human's own tap on a study draft
+   * question. Member-own data (§5.2): this is the ONLY thing the study loop
+   * persists, and it never fans out.
+   */
+  recordStudyResult(args: {
+    circleId: string;
+    cardId: string;
+    slot: string;
+    correct: boolean;
+  }): StudySectionState {
+    if (!this.store.getCircle(args.circleId)) {
+      throw new Error(`circle ${args.circleId} not found`);
+    }
+    return recordStudyResult(this.db, args);
+  }
+
+  /** Phase 4b: this member's own mastery state (per card, or the whole circle). */
+  studyState(circleId: string, cardId?: string): StudySectionState[] {
+    return listStudyState(this.db, circleId, cardId);
+  }
+
+  /**
    * The consent tap: publish a draft to the circle AS our human's message.
    * The human may have edited the text; what they approved is what ships.
    * Goes through the normal sendMessage path (signing, fan-out, delivery
@@ -1727,6 +1775,12 @@ export class CirclesService {
     const draft = getAgentDraft(this.db, args.draftId);
     if (!draft) {
       throw new Error(`draft ${args.draftId} is not awaiting review`);
+    }
+    // Phase 4b hard rule: a study draft is render-to-own-human ONLY. There is
+    // no path from the study lens to the wire — sharing insights with the
+    // circle is a normal human-typed message, never a publish of this draft.
+    if (draft.kind === "study") {
+      throw new Error("study drafts render to your own screen only and cannot be published");
     }
     const text = (args.text ?? draft.content).trim();
     if (!text) throw new Error("draft text is empty");

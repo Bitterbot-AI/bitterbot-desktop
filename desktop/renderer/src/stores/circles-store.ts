@@ -159,6 +159,19 @@ export interface AgentDraft {
   createdAt: number;
 }
 
+/**
+ * PLAN-36 Phase 4b: this member's OWN mastery state for one study-guide
+ * section (Leitner box + spaced-repetition due date). Node-local, derived
+ * only from the human's own quiz taps; never fans out.
+ */
+export interface StudySectionState {
+  slot: string;
+  box: number;
+  correctCount: number;
+  missCount: number;
+  dueAt: number;
+}
+
 interface CirclesState {
   status: CirclesStatus | null;
   circles: Circle[];
@@ -167,6 +180,8 @@ interface CirclesState {
   annotationsByCircle: Record<string, MessageAnnotations>;
   cardsByCircle: Record<string, CanvasCard[]>;
   draftsByCircle: Record<string, AgentDraft[]>;
+  /** Phase 4b study state, keyed `${circleId}:${cardId}`. */
+  studyByCard: Record<string, StudySectionState[]>;
   outboundByCircle: Record<string, PendingOutbound[]>;
   loading: boolean;
   notice: string | null;
@@ -180,6 +195,16 @@ interface CirclesState {
   approveOutbound: (circleId: string, id: string) => Promise<boolean>;
   rejectOutbound: (circleId: string, id: string) => Promise<boolean>;
   requestSliceDraft: (circleId: string, cardId: string, slot: string) => Promise<boolean>;
+  /** Phase 4b: ask my agent for a personal study aid from this card (private; never publishable). */
+  requestStudyDraft: (circleId: string, cardId: string) => Promise<boolean>;
+  loadStudyState: (circleId: string, cardId: string) => Promise<void>;
+  /** Phase 4b: record one quiz tap; refreshes the card's study state. */
+  recordStudy: (
+    circleId: string,
+    cardId: string,
+    slot: string,
+    correct: boolean,
+  ) => Promise<boolean>;
   /** Chat-scoped "Ask my agent": a private reply draft, no summon message posted. */
   requestChatDraft: (circleId: string) => Promise<boolean>;
   publishDraft: (circleId: string, draftId: string, text: string) => Promise<boolean>;
@@ -243,6 +268,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   annotationsByCircle: {},
   cardsByCircle: {},
   draftsByCircle: {},
+  studyByCard: {},
   outboundByCircle: {},
   loading: true,
   notice: null,
@@ -336,6 +362,44 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       // back via the "circles" nudge → loadDrafts; publishing a slice draft
       // ships through circles.canvas.slice on the server.
       await request("circles.drafts.request", { circleId, cardId, slot });
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  requestStudyDraft: async (circleId, cardId) => {
+    try {
+      // Phase 4b: the agent builds a private study aid (quiz + gap map) from
+      // the shared card, tuned to MY mastery state. Renders to me only; the
+      // server has no publish path for study drafts.
+      await request("circles.drafts.request", { circleId, cardId, kind: "study" });
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  loadStudyState: async (circleId, cardId) => {
+    try {
+      const res = await request<{ sections: StudySectionState[] }>("circles.study.state", {
+        circleId,
+        cardId,
+      });
+      set((s) => ({
+        studyByCard: { ...s.studyByCard, [`${circleId}:${cardId}`]: res.sections ?? [] },
+      }));
+    } catch {
+      // Older gateway without Phase 4b: no badges, everything else works.
+    }
+  },
+
+  recordStudy: async (circleId, cardId, slot, correct) => {
+    try {
+      await request("circles.study.record", { circleId, cardId, slot, correct });
+      await get().loadStudyState(circleId, cardId);
       return true;
     } catch (err) {
       set({ notice: String(err) });

@@ -761,6 +761,63 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(ana.canvasCards(circleId).some((c) => c.cardId === "c2")).toBe(false);
   });
 
+  it("Phase 4b: the study loop — request → quarantined generate → private lens → mastery feedback", async () => {
+    const invite = ana.createInviteCode({ name: "Study crew" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    await ana.putCanvasCard({
+      circleId,
+      cardId: "guide",
+      cardType: "study",
+      title: "Bio 301 final",
+      text: "Glycolysis\nKrebs cycle",
+    });
+
+    let lastPrompt = "";
+    const anaGen = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: anaKey,
+      draftLlm: async (prompt) => {
+        lastPrompt = prompt;
+        return "QUIZ\nQ1 [sec-b9b14b81] What does glycolysis yield?\nGAP MAP\nsec-b9b14b81: untouched — start here.\nNEXT REVIEW\nGlycolysis in 1d.";
+      },
+    });
+
+    expect(anaGen.requestAgentStudyDraft({ circleId, cardId: "guide" }).queued).toBe(true);
+    await anaGen.generateAgentDrafts();
+    const [draft] = anaGen.agentDrafts(circleId);
+    expect(draft?.kind).toBe("study");
+    expect(draft?.targetCardId).toBe("guide");
+    expect(draft?.content).toContain("Q1 [sec-b9b14b81]");
+
+    // Render-to-own-human ONLY: publish is refused outright, the draft
+    // survives for the human, and nothing ever reached the wire.
+    await expect(anaGen.publishAgentDraft({ draftId: draft!.draftId })).rejects.toThrow(
+      /cannot be published/,
+    );
+    expect(anaGen.agentDrafts(circleId).some((d) => d.draftId === draft!.draftId)).toBe(true);
+    const bobInbound = bobDb
+      .prepare(`SELECT COUNT(*) AS n FROM circle_messages WHERE direction = 'in'`)
+      .get() as { n: number };
+    expect(bobInbound.n).toBe(0);
+
+    // The human quizzes and misses: mastery is THEIR own data, and the next
+    // study draft's TRUSTED frame carries it (the loop actually closes).
+    anaGen.recordStudyResult({ circleId, cardId: "guide", slot: "sec-b9b14b81", correct: false });
+    expect(anaGen.studyState(circleId, "guide")[0]).toMatchObject({
+      slot: "sec-b9b14b81",
+      box: 0,
+      missCount: 1,
+    });
+    anaGen.discardAgentDraft(draft!.draftId);
+    expect(anaGen.requestAgentStudyDraft({ circleId, cardId: "guide" }).queued).toBe(true);
+    await anaGen.generateAgentDrafts();
+    expect(lastPrompt).toContain("- section sec-b9b14b81");
+    expect(lastPrompt).toContain("1 missed");
+  });
+
   it("archives (reversible) and deletes (permanent, node-local) a circle", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

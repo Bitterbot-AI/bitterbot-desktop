@@ -1901,6 +1901,35 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circle_messages", "deleted_by", "TEXT");
     },
   },
+  {
+    version: 54,
+    description:
+      "PLAN-36 Phase 4b (the study loop): circle_study_state — THIS member's " +
+      "own mastery + spaced-repetition state per study-guide section, keyed " +
+      "(circle_id, card_id, slot). Node-local and member-own by construction: " +
+      "derived only from the human's own quiz results, never fanned out, and " +
+      "never entering recall-eligible memory (the §5.2 taint rule holds — the " +
+      "shared artifact is processed per draft; what accumulates is ours). " +
+      "`box` is the Leitner ladder position (0-4) driving the 1d/3d/7d/14d/30d " +
+      "review schedule (PLAN-9 GAP-7 spacing applied to member mastery).",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_study_state (
+          circle_id        TEXT NOT NULL,
+          card_id          TEXT NOT NULL,
+          slot             TEXT NOT NULL,
+          box              INTEGER NOT NULL DEFAULT 0,
+          correct_count    INTEGER NOT NULL DEFAULT 0,
+          miss_count       INTEGER NOT NULL DEFAULT 0,
+          last_result      TEXT,
+          last_reviewed_at INTEGER,
+          due_at           INTEGER NOT NULL,
+          updated_at       INTEGER NOT NULL,
+          PRIMARY KEY (circle_id, card_id, slot)
+        );
+      `);
+    },
+  },
 ];
 
 /**

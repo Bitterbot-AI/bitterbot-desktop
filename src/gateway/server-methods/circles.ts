@@ -43,6 +43,11 @@
  *                    an @agent summon (quarantined tool-less generation);
  *                    publish is the human consent tap (ships via circles.send
  *                    semantics), discard throws it away. Never fans out alone.
+ *  circles.study.record/state — Phase 4b: the study lens's member-own mastery
+ *                    loop. `record` logs one quiz result (the human's own tap
+ *                    on a study draft question; Leitner box + spaced due date
+ *                    update); `state` reads it back for due badges. Node-local
+ *                    data that never fans out and never enters recall (§5.2).
  *  circles.drafts.request — B2: ask my agent to pre-fill MY contribution to a
  *                    canvas card slot (vote / study section). The draft comes
  *                    back through the same list/publish/discard consent path;
@@ -875,14 +880,25 @@ export const circlesHandlers: GatewayRequestHandlers = {
     const circleId = typeof params.circleId === "string" ? params.circleId : "";
     const cardId = typeof params.cardId === "string" ? params.cardId : "";
     const slot = typeof params.slot === "string" ? params.slot : "";
+    const kind = typeof params.kind === "string" ? params.kind : "";
     if (!circleId) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
       return;
     }
-    // Two shapes: {circleId, cardId, slot} = B2 slice pre-fill for a canvas
-    // card; {circleId} alone = chat-scoped "Ask my agent" reply draft (no
-    // summon message posted to the circle).
-    if ((cardId && !slot) || (!cardId && slot)) {
+    // Three shapes: {circleId, cardId, slot} = B2 slice pre-fill for a canvas
+    // card; {circleId, cardId, kind:'study'} = Phase 4b personal study aid
+    // (renders to this human only, never publishable); {circleId} alone =
+    // chat-scoped "Ask my agent" reply draft (no summon message posted).
+    if (kind === "study") {
+      if (!cardId || slot) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "study drafts take cardId and no slot"),
+        );
+        return;
+      }
+    } else if ((cardId && !slot) || (!cardId && slot)) {
       respond(
         false,
         undefined,
@@ -893,14 +909,64 @@ export const circlesHandlers: GatewayRequestHandlers = {
     try {
       respond(
         true,
-        cardId
-          ? svc.service.requestAgentSliceDraft({ circleId, cardId, slot })
-          : svc.service.requestAgentReplyDraft({ circleId }),
+        kind === "study"
+          ? svc.service.requestAgentStudyDraft({ circleId, cardId })
+          : cardId
+            ? svc.service.requestAgentSliceDraft({ circleId, cardId, slot })
+            : svc.service.requestAgentReplyDraft({ circleId }),
         undefined,
       );
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }
+  },
+
+  // Phase 4b: record one quiz result from the study lens. The human's own tap;
+  // member-own data — nothing fans out. Slot charset is enforced in study.ts
+  // (it can land in a future trusted prompt frame via the mastery summary).
+  "circles.study.record": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const cardId = typeof params.cardId === "string" ? params.cardId : "";
+    const slot = typeof params.slot === "string" ? params.slot : "";
+    const correct = params.correct === true;
+    if (!circleId || !cardId || !slot || typeof params.correct !== "boolean") {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId, slot, correct required"),
+      );
+      return;
+    }
+    try {
+      respond(
+        true,
+        { state: svc.service.recordStudyResult({ circleId, cardId, slot, correct }) },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  // Phase 4b: this member's own mastery state (for due badges + the lens).
+  "circles.study.state": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const cardId = typeof params.cardId === "string" ? params.cardId : undefined;
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
+      return;
+    }
+    respond(true, { sections: svc.service.studyState(circleId, cardId) }, undefined);
   },
 
   "circles.drafts.publish": async ({ params, respond }) => {

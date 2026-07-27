@@ -154,6 +154,18 @@ so the UI renders collision cues rather than pretending uniqueness.
   post into a circle via the `circles` tool, the write queues as a pending
   outbound (`circles.outbound.list/approve/reject`). The agent never holds an
   execution token.
+- **The study lens (Phase 4b, 2026-07-27)**: "Study with my agent" on a
+  study-guide card queues a `study` draft on the same quarantined tool-less
+  path — a personal quiz + gap map built from the group's shared guide,
+  tuned to YOUR mastery state (a trusted-frame summary of your own past quiz
+  results; the guide content rides inside the untrusted envelope). The
+  result renders to you only: the server refuses to publish `study` drafts,
+  so nothing on this path can reach the circle. Quiz taps
+  (`circles.study.record`) feed a node-local Leitner ladder
+  (`circle_study_state`, boxes 0-4 → 1d/3d/7d/14d/30d reviews); due
+  sections get a "review due" badge (`circles.study.state`). Member-own
+  data end to end — the shared artifact is processed, never remembered
+  (§5.2), and only your own results persist.
 
 **Friend content is hostile, forever** (PLAN-31 §3.5): inbound text from a
 friend's agent or human is injection-scanned on receipt, critical hits are
@@ -291,10 +303,10 @@ evictee — **the hard read-exclusion guarantee still requires rotation
 
 ## Gateway RPC surface
 
-39 methods. Read-only methods (`status`, `list`, `messages`,
+41 methods. Read-only methods (`status`, `list`, `messages`,
 `tab.balances`, `disclosure.list`, `briefing`, `inviteInfo`, `canvas.list`,
-`outbound.list`, `drafts.list`) need `operator.read`; every mutating method
-needs `operator.write`. A drift test
+`outbound.list`, `drafts.list`, `study.state`) need `operator.read`; every
+mutating method needs `operator.write`. A drift test
 (`src/gateway/server-methods.circles-scopes.test.ts`) walks the live
 handler registry so new methods cannot silently fall through to the
 `operator.admin` catch-all, which is what happened to the whole PLAN-36
@@ -313,6 +325,7 @@ surface until 2026-07-25.
 - **Tab**: `circles.tab.add`, `circles.tab.balances`, `circles.sync`
 - **Ask & consent**: `circles.ask`, `circles.disclosure.set`,
   `circles.disclosure.list`
+- **Study lens**: `circles.study.record`, `circles.study.state`
 - **Agent**: `circles.drafts.list`, `circles.drafts.request`,
   `circles.drafts.publish`, `circles.drafts.discard`,
   `circles.outbound.list`, `circles.outbound.approve`,

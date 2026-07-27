@@ -29,6 +29,7 @@ const READ_ONLY = new Set([
   "circles.canvas.list",
   "circles.outbound.list",
   "circles.drafts.list",
+  "circles.study.state",
 ]);
 
 const ALL_CIRCLES_METHODS = Object.keys(circlesHandlers).filter((m) => m.startsWith("circles."));
@@ -36,8 +37,9 @@ const ALL_CIRCLES_METHODS = Object.keys(circlesHandlers).filter((m) => m.startsW
 describe("circles RPC scope gating", () => {
   it("registers the surface this test believes it is guarding", () => {
     // If methods are added or renamed, both this count and the READ_ONLY set
-    // above deserve a fresh look.
-    expect(ALL_CIRCLES_METHODS.length).toBe(39);
+    // above deserve a fresh look. 39 → 41 on 2026-07-27: Phase 4b added
+    // circles.study.record (write) + circles.study.state (read).
+    expect(ALL_CIRCLES_METHODS.length).toBe(41);
     for (const m of READ_ONLY) {
       expect(ALL_CIRCLES_METHODS).toContain(m);
     }

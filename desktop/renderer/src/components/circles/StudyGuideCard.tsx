@@ -1,5 +1,5 @@
-import { Pencil, Plus, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { GraduationCap, Pencil, Plus, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import {
   memberName,
@@ -8,6 +8,7 @@ import {
   type CanvasCard,
 } from "../../stores/circles-store";
 import { AgentSliceSuggestion } from "./AgentSliceSuggestion";
+import { StudyLens } from "./StudyLens";
 
 // PLAN-36 C3: the study-guide Co-Canvas — the §2.5 beachhead card. The creator
 // posts the guide's SECTIONS (card.text, one per line); each member contributes
@@ -70,10 +71,24 @@ export function StudyGuideCard({
 }) {
   const putSlice = useCirclesStore((s) => s.putSlice);
   const requestSliceDraft = useCirclesStore((s) => s.requestSliceDraft);
+  const requestStudyDraft = useCirclesStore((s) => s.requestStudyDraft);
+  const loadStudyState = useCirclesStore((s) => s.loadStudyState);
+  const studyState = useCirclesStore((s) => s.studyByCard[`${circle.circleId}:${card.cardId}`]);
   const agentDrafts = useCirclesStore((s) => s.draftsByCircle[circle.circleId]);
   const sections = parseSections(card.text);
   const [editingSlot, setEditingSlot] = useState<string | null>(null);
   const [askedSlots, setAskedSlots] = useState<Record<string, boolean>>({});
+  const [askedStudy, setAskedStudy] = useState(false);
+  // Phase 4b: MY mastery per section, for due badges + the study lens.
+  useEffect(() => {
+    void loadStudyState(circle.circleId, card.cardId);
+  }, [loadStudyState, circle.circleId, card.cardId]);
+  const studyDraft = (agentDrafts ?? []).find(
+    (d) => d.kind === "study" && d.targetCardId === card.cardId,
+  );
+  const dueBySlot = new Map(
+    (studyState ?? []).map((s) => [s.slot, s.dueAt <= Date.now()] as const),
+  );
   // Drafts are keyed by slot so switching sections mid-edit never discards
   // unsaved text (review finding #4).
   const [drafts, setDrafts] = useState<Record<string, { value: string; note: string }>>({});
@@ -121,8 +136,25 @@ export function StudyGuideCard({
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="p-3 pb-2">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
-          Study guide · {covered} of {sections.length} sections covered
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1 flex-1">
+            Study guide · {covered} of {sections.length} sections covered
+          </div>
+          {circle.status === "active" && !studyDraft && sections.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setAskedStudy(true);
+                void requestStudyDraft(circle.circleId, card.cardId);
+              }}
+              disabled={askedStudy}
+              title="Your agent builds a private quiz + gap map from this guide, tuned to what YOU have missed. It renders only to you."
+              className="text-xs font-medium text-circle-agent flex items-center gap-1 shrink-0 disabled:opacity-50"
+            >
+              <GraduationCap className="w-3 h-3" />
+              {askedStudy ? "Building…" : "Study with my agent"}
+            </button>
+          )}
         </div>
         <div className="text-sm font-semibold">{card.title}</div>
         {contributors > 0 && (
@@ -130,6 +162,15 @@ export function StudyGuideCard({
             {card.slices.length} contribution{card.slices.length === 1 ? "" : "s"} from{" "}
             {contributors} member{contributors === 1 ? "" : "s"}
           </div>
+        )}
+        {studyDraft && (
+          <StudyLens
+            key={studyDraft.draftId}
+            draft={studyDraft}
+            circleId={circle.circleId}
+            cardId={card.cardId}
+            validSlots={new Set(sections.map(sectionSlot))}
+          />
         )}
       </div>
 
@@ -157,6 +198,14 @@ export function StudyGuideCard({
                 {isGap && (
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-500 shrink-0">
                     gap
+                  </span>
+                )}
+                {dueBySlot.get(slot) && (
+                  <span
+                    title="Your spaced-repetition schedule says review this section now"
+                    className="text-[10px] font-semibold uppercase tracking-wide text-circle-agent shrink-0"
+                  >
+                    review due
                   </span>
                 )}
                 {circle.status === "active" && !editing && (

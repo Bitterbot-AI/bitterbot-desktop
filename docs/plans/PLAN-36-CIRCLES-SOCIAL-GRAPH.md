@@ -104,10 +104,19 @@ DCUtR can't punch ([arXiv 2510.27500]: ~70% ± 7% direct-connect in the wild).
 graveyard) and simultaneously the install barrier that kills node-social — and
 §3.3's fleet-hosted default mailbox concedes a server for the NAT'd tail anyway.
 Hold both truths. The defensible core that survives the bear case is narrow but
-real: **always-on-node store-and-forward + accumulated bitemporal relationship
-memory on user-owned hardware + a post-Moltbook trust/consent posture.** Call
-that the flagship narrative; do not pretend it is a growth engine until the loop
-proves it.
+real: **always-on-node store-and-forward + the member's own PERSONAL memory
+acting on the group's shared commons + a post-Moltbook trust/consent posture.**
+_[v4 2026-07-27 — the earlier "accumulated bitemporal relationship memory"
+phrasing contradicted §5.2's own taint rule: circle artifacts are processed
+per-session, never recalled, so no cross-member relationship memory
+accumulates by design. What actually compounds on user-owned hardware is each
+member's own gap history, mastery state, and preferences — private data their
+agent brings TO the shared artifact (§2.5 "circle = commons; agent = personal
+lens"). That is the honest moat: incumbents run one cloud singleton per
+surface and firewall personal memory out (OpenAI's group chats did exactly
+this, then died); only a per-member local agent can safely combine the two.]_
+Call that the flagship narrative; do not pretend it is a growth engine until
+the loop proves it.
 
 ---
 
@@ -408,7 +417,24 @@ agent holds and delivers on install. Live generated guest chat is a later gated
 phase. This keeps the loop measurable at launch without shipping autonomous
 generation onto the least-authenticated surface first.
 
-**Pre-bundle connections (Bluesky starter-pack lesson).** A "join this circle"
+**`[v4 2026-07-27]` The PARTICIPATING nodeless guest is restored as a
+pre-launch REQUIREMENT, not a nice-to-have.** PLAN-31 §8 C3 made a standing,
+participating guest identity — receives the briefing, votes in polls, sits on
+the tab, all without a node — "v3-REQUIRED before any launch." This document's
+v2 quietly weakened that to the canned profile page above, which is the single
+worst place to cut scope: §2 names the asymmetric zero-install guest path as
+"the single mechanism the literature says decides the outcome," and every
+conversion number in §10-§11 assumes an invitee can experience the circle
+before installing. Resolution: the canned page is the launch FLOOR, and the
+participating guest is the launch GATE. Scope discipline holds — a
+participating guest needs no generation and no broker plaintext beyond the
+already-conceded escrow shape: the guest holds a signed guest token minted
+with the invite; their poll votes, tab acknowledgments, and briefing reads are
+escrowed through the inviter's node exactly like the "leave a message" path,
+attributed as `guest:<invite-id>` (never a member pubkey, no scopes beyond
+vote/ack/read, revoked when the invite expires). No autonomous generation
+touches the guest surface (§5.1-C stays gated behind Phase 8). P2 cannot be
+called "measured" while the guest an invitee meets is a business card.
 link arriving with the friend's agent, avatar, and shared context pre-attached
 converts far better than a blank friend request. Seed the first cohorts by hand
 into real friend groups (§2 N₀ problem).
@@ -1294,7 +1320,16 @@ pinned messages (a pin convention on the existing message model, not a new
 protocol object; versioned by re-pin).
 
 **Phase 4b — The study loop (M, ~1-1.5 wk) `[v3 — the beachhead value prop;
-lands with the chat surface, before the mesh].`** The per-member half of §2.5:
+lands with the chat surface, before the mesh]` `[v4 CORE LANDED 2026-07-27:
+"Study with my agent" on a study-guide card → quarantined tool-less study
+draft (personal quiz + gap map, mastery summary in the TRUSTED frame, guide
+content in the untrusted envelope), render-to-own-human only (publish is
+server-refused for kind='study'), quiz taps feed a member-own Leitner ladder
+(circle_study_state, migration v54; 1d/3d/7d/14d/30d) with "review due"
+badges. RPCs circles.study.record/state; src/circles/study.ts. Not yet:
+briefing-surfaced due reminders, quiz-item provenance links back into the
+guide, and any use of the member's broader PLAN-9 memory (the mastery frame
+is study-state only for now)].`** The per-member half of §2.5:
 a member's agent takes a pinned circle artifact and acts on it **for its own
 human only** — generates quizzes against the member's gap history, schedules
 spaced repetition via the PLAN-9 spacing/mastery machinery, renders a personal

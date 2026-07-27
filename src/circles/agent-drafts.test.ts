@@ -5,14 +5,17 @@ import { runMigrations } from "../memory/migrations.js";
 import {
   buildQuarantinedDraftPrompt,
   buildQuarantinedSlicePrompt,
+  buildQuarantinedStudyPrompt,
   claimAgentDraft,
   detectAgentSummon,
   generateQueuedAgentDrafts,
   listReadyAgentDrafts,
   queueAgentDraft,
   queueAgentSliceDraft,
+  queueAgentStudyDraft,
   sweepAgentDraftHousekeeping,
 } from "./agent-drafts.js";
+import { recordStudyResult } from "./study.js";
 
 // PLAN-36 Phase B: the quarantined draft pipeline in isolation — summon
 // detection, cost-bounded queueing, and tool-less generation with the
@@ -210,6 +213,126 @@ describe("buildQuarantinedSlicePrompt (B2)", () => {
     expect(ready[0]?.targetCardId).toBe("d1");
     expect(ready[0]?.targetSlot).toBe("vote");
     expect(ready[0]?.content).toBe("Thu");
+  });
+});
+
+function seedStudyCard(db: DatabaseSync, circleId: string, cardId: string): void {
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO circle_events
+       (event_id, circle_id, author_pubkey, seq, event_type, body_json,
+        envelope_json, event_hash, claimed_at, received_at)
+     VALUES (?, ?, 'ed25519:bob', 0, 'canvas.card.put', ?, '{}', 'sh', ?, ?)`,
+  ).run(
+    crypto.randomUUID(),
+    circleId,
+    JSON.stringify({
+      card_id: cardId,
+      card_type: "study",
+      title: "Bio 301 final",
+      text: "Glycolysis\nKrebs cycle",
+      updated_at: now,
+    }),
+    now,
+    now,
+  );
+}
+
+describe("study drafts (Phase 4b)", () => {
+  let db: DatabaseSync;
+  beforeEach(() => {
+    db = openDb();
+    seedCircle(db, "c1");
+    seedStudyCard(db, "c1", "guide-1");
+  });
+
+  it("allows one live study draft per card and shares the circle rate bucket", () => {
+    expect(queueAgentStudyDraft(db, { circleId: "c1", cardId: "guide-1" }).queued).toBe(true);
+    // Duplicate while live: refused.
+    expect(queueAgentStudyDraft(db, { circleId: "c1", cardId: "guide-1" })).toEqual({
+      queued: false,
+      reason: "duplicate",
+    });
+    // Shares the per-circle bucket with summons/slices (3 per window total).
+    expect(
+      queueAgentDraft(db, { circleId: "c1", summonEnvelopeId: "e1", summonAuthorPubkey: "x" })
+        .queued,
+    ).toBe(true);
+    expect(
+      queueAgentSliceDraft(db, { circleId: "c1", cardId: "guide-1", slot: "sec-b9b14b81" }).queued,
+    ).toBe(true);
+    expect(queueAgentStudyDraft(db, { circleId: "c1", cardId: "other" })).toEqual({
+      queued: false,
+      reason: "rate_limited",
+    });
+  });
+
+  it("puts the member's OWN mastery in the trusted frame and all peer content in ONE envelope", () => {
+    recordStudyResult(db, {
+      circleId: "c1",
+      cardId: "guide-1",
+      slot: "sec-b9b14b81",
+      correct: false,
+      now: Date.now() - 3 * 24 * 60 * 60_000, // missed 3 days ago → due NOW
+    });
+    const prompt = buildQuarantinedStudyPrompt(db, { circleId: "c1", cardId: "guide-1" });
+    const START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
+    const END = "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
+    expect(prompt.split(START)).toHaveLength(2); // exactly one envelope
+    expect(prompt.split(END)).toHaveLength(2);
+    const trusted = prompt.slice(0, prompt.indexOf(START));
+    const untrusted = prompt.slice(prompt.indexOf(START));
+    // Mastery (our own data) sits in the TRUSTED frame, flagged due.
+    expect(trusted).toContain("sec-b9b14b81");
+    expect(trusted).toContain("due NOW");
+    // The valid slot list is trusted (hex ids, frame-safe).
+    expect(trusted).toContain("Valid section slot ids: sec-b9b14b81, sec-a34f5662");
+    // Peer content — the card title and section TITLES — is only inside.
+    expect(trusted).not.toContain("Bio 301 final");
+    expect(trusted).not.toContain("Glycolysis");
+    expect(untrusted).toContain("Bio 301 final");
+    expect(untrusted).toContain("sec-b9b14b81 = Glycolysis");
+  });
+
+  it("generates a study draft end to end; the row carries kind + target card", async () => {
+    queueAgentStudyDraft(db, { circleId: "c1", cardId: "guide-1" });
+    const out = await generateQueuedAgentDrafts(
+      db,
+      async () =>
+        "QUIZ\nQ1 [sec-b9b14b81] What does glycolysis yield?\nGAP MAP\nsec-b9b14b81: untouched — start here.\nNEXT REVIEW\nGlycolysis in 1d.",
+      { selfPubkey: "ed25519:ana" },
+    );
+    expect(out.generated).toBe(1);
+    const [draft] = listReadyAgentDrafts(db, "c1");
+    expect(draft?.kind).toBe("study");
+    expect(draft?.targetCardId).toBe("guide-1");
+    // The chat tray filters on targetSlot — study drafts must carry one.
+    expect(draft?.targetSlot).toBe("study");
+    expect(draft?.content).toContain("Q1 [sec-b9b14b81]");
+  });
+
+  it("refuses to build a prompt for a sectionless card", () => {
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO circle_events
+         (event_id, circle_id, author_pubkey, seq, event_type, body_json,
+          envelope_json, event_hash, claimed_at, received_at)
+       VALUES (?, 'c1', 'ed25519:bob', 1, 'canvas.card.put', ?, '{}', 'sh2', ?, ?)`,
+    ).run(
+      crypto.randomUUID(),
+      JSON.stringify({
+        card_id: "empty-1",
+        card_type: "study",
+        title: "Empty",
+        text: "  \n ",
+        updated_at: now,
+      }),
+      now,
+      now,
+    );
+    expect(() => buildQuarantinedStudyPrompt(db, { circleId: "c1", cardId: "empty-1" })).toThrow(
+      /no sections/,
+    );
   });
 });
 
