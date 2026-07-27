@@ -28,6 +28,7 @@ import { stylePromptTitle } from "../terminal/prompt-style.js";
 import { shortenHomePath } from "../utils.js";
 import { VERSION } from "../version.js";
 import { runAgentRuntimeChecks } from "./doctor-agent-runtime.js";
+import { runAgentTurnProbe } from "./doctor-agent-turn.js";
 import {
   maybeRemoveDeprecatedCliAuthProfiles,
   maybeRepairAnthropicOAuthProfileId,
@@ -372,6 +373,14 @@ async function runDoctor(
 
   // ── One real model round-trip — "configured" is not "works" ──
   await runModelCheck({ config: cfg });
+
+  // ── One real agent turn through the gateway — the model check proves the
+  //    provider, this proves the pipeline (warn-only during burn-in) ──
+  await runAgentTurnProbe({
+    config: cfg,
+    isGatewayRunning: healthOk,
+    forceDuringUpdate: options.forceAgentTurnProbe === true,
+  });
 
   // ── Wallet (USDC on Base) ──
   await runWalletChecks({ config: cfg });

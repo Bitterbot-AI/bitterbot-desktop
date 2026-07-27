@@ -13,6 +13,14 @@ export type DoctorOptions = {
   generateGatewayToken?: boolean;
   /** Emit a machine-readable JSON report; implies non-interactive. */
   json?: boolean;
+  /**
+   * Run the agent-turn probe even while BITTERBOT_UPDATE_IN_PROGRESS is set.
+   * The update flow's POST-restart doctor passes this: at that point the
+   * running gateway IS the freshly installed build, which is exactly the
+   * pipeline worth probing. (The pre-restart gate doctor leaves it unset —
+   * there the live gateway is still the outgoing build.)
+   */
+  forceAgentTurnProbe?: boolean;
 };
 
 export type DoctorPrompter = {

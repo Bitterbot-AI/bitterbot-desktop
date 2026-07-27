@@ -86,6 +86,19 @@ is not "works": a provider that actively rejects a well-formed request (the
 missing credentials, an unresolvable model ref, network failures, and 5xx
 responses only warn.
 
+## Agent-turn probe
+
+With the gateway running, doctor also sends **one real agent turn** through
+the full production pipeline (RPC ingress → session resolution → embedded
+runner → reply) on a throwaway `doctor-probe-*` session that is deleted
+afterward (orphans from interrupted runs are swept on the next doctor).
+A gateway that answers health checks but cannot run a turn is caught here
+and nowhere else. Failures are **warn-level during burn-in** — the probe has
+more moving parts than the model check, so it does not block updates. The
+pre-restart update gate skips it (the running gateway is still the outgoing
+build); the post-restart doctor after `bitterbot update` forces it, so the
+freshly installed build gets a real turn through its pipeline.
+
 ## Subsystem checks
 
 Doctor opens the agent memory DB read-only and verifies live state:

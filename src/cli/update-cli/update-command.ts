@@ -428,7 +428,10 @@ async function maybeRestartService(params: {
           }) as RuntimeEnv["exit"];
           await doctorCommand(
             { ...defaultRuntime, exit: recordExit },
-            { nonInteractive: !interactiveDoctor },
+            // forceAgentTurnProbe: the gateway just restarted into the FRESH
+            // build — this is the one moment the agent-turn probe verifies
+            // the build that was actually installed.
+            { nonInteractive: !interactiveDoctor, forceAgentTurnProbe: true },
           );
           if (doctorExitCode !== 0) {
             defaultRuntime.log(
