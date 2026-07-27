@@ -89,9 +89,15 @@ vi.mock("./session.js", () => {
 import { monitorWebInbox, resetWebInboundDedupe } from "./inbound.js";
 
 async function waitForMessage(onMessage: ReturnType<typeof vi.fn>) {
+  // Generous timeout: between the upsert emit and onMessage sits a REAL
+  // saveMediaBuffer (recursive mkdir + mime sniff + disk write). On loaded
+  // Windows CI runners that regularly blew a 250ms budget (chronic flake:
+  // both media tests failing with "called 0 times", passing on rerun).
+  // vi.waitFor resolves as soon as the condition holds, so a large timeout
+  // costs healthy runs nothing.
   await vi.waitFor(() => expect(onMessage).toHaveBeenCalledTimes(1), {
-    interval: 1,
-    timeout: 250,
+    interval: 25,
+    timeout: 15_000,
   });
   return onMessage.mock.calls[0][0];
 }
