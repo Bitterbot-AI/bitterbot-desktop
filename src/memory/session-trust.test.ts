@@ -31,6 +31,13 @@ describe("classifySessionKeyTrust", () => {
     expect(classifySessionKeyTrust("agent:main:telegram:channel:c1")).toBe("untrusted");
     expect(classifySessionKeyTrust("agent:main:circles:mailbox:abc")).toBe("untrusted");
     expect(classifySessionKeyTrust("agent:main:subagent:xyz")).toBe("untrusted");
+    // PLAN-38 §4.1 T9: canvas/sandbox sessions carry peer card text and other
+    // members' agent moves. These classified first_party before 2026-07-27 —
+    // the prefix guard below deliberately does not match "canvas", so the
+    // tokens must be listed explicitly. Regressing this re-opens a path from
+    // peer content to canonical pins and standing directives.
+    expect(classifySessionKeyTrust("agent:main:canvas:card-1")).toBe("untrusted");
+    expect(classifySessionKeyTrust("agent:main:sandbox:card-1:round-2")).toBe("untrusted");
   });
 
   it("fails closed on malformed keys", () => {

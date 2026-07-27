@@ -41,6 +41,14 @@ const UNTRUSTED_TOKENS = new Set([
   "channel",
   "circle",
   "circles",
+  // PLAN-38 §4.1 T9: the circle canvas and the sandbox carry peer-authored
+  // card text and other members' agent moves. Without these tokens a session
+  // keyed "agent:<id>:canvas:<cardId>" classified FIRST-PARTY and its content
+  // would have been eligible for canonical pins and standing user directives.
+  // No such key is minted today (verified 2026-07-27) — this closes the hole
+  // ahead of the surface that would open it, per the plan's P0.0.
+  "canvas",
+  "sandbox",
   "guest",
   "subagent",
 ]);
