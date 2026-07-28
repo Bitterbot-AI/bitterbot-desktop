@@ -177,7 +177,9 @@ describe("sandboxed workspace paths", () => {
             capDrop: ["ALL"],
             env: { LANG: "C.UTF-8" },
           },
-          tools: { allow: [], deny: [] },
+          // Absent allowlist (only the denylist applies): since the fail-open
+          // fix, an explicit `allow: []` means "no tools pass".
+          tools: { deny: [] },
           browserAllowHostControl: false,
         };
 

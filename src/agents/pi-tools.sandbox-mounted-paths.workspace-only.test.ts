@@ -83,7 +83,10 @@ function createSandbox(params: {
       capDrop: ["ALL"],
       env: { LANG: "C.UTF-8" },
     },
-    tools: { allow: [], deny: [] },
+    // No allowlist CONFIGURED (absent, not empty): since the fail-open fix,
+    // an explicit `allow: []` means "no tools pass" — this fixture wants the
+    // pre-policy default of "only the denylist applies".
+    tools: { deny: [] },
     browserAllowHostControl: false,
   };
 }
