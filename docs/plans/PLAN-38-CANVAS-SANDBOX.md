@@ -511,6 +511,115 @@ refill; M4 round barrier + no-progress detector; M5 constrained move grammar wit
 server-side value validation; M6 sandbox chain namespace with author-scoped fork
 containment (so a sandbox fork cannot freeze chat and the tab).
 
+### 4.5 Appendix: the numbered requirements (R1-R34)
+
+The body cites these by number; they are recorded here so the plan is
+self-contained. Each is meant to be testable, and the test is the point.
+
+**Frame and provenance**
+
+- **R1** No peer-authored text in the trusted instruction frame. A card may
+  only select a task type from a closed server-owned enum; its free text goes
+  inside the untrusted envelope.
+- **R2** Provenance is signed data, never inferred from text. Every move
+  carries `derived_from` move ids and a transitive author set; receivers
+  recompute from their own chain view and never trust the sender's copy.
+- **R3** Per-author segmentation in prompts: one wrapped envelope per author
+  segment, authors identified by server-assigned opaque ids (`M1..Mn`).
+  Display names and petnames never enter any prompt.
+
+**Consent and spend**
+
+- **R4** Enrollment is node-local-authoritative. No peer assertion may create,
+  widen, or extend an enrollment. Advertised mode is presentation only.
+- **R5** Consent is re-checked at spend time AND at publish time, via a guarded
+  atomic claim (the `claimAgentDraft` pattern).
+- **R10** Budgets are enforced consumption-side, per enrollment, in local
+  tokens, persisted across restart, refillable only by the enrolling human.
+- **R30** Per-enrollment egress budget (request count + total bytes), same
+  persistence and refill rules.
+- **R33** Approval-fatigue bound: sandbox approvals share a hard per-circle
+  pending cap; the plan tap surfaces diffs and novel domains rather than a
+  uniform list.
+
+**Move grammar and output**
+
+- **R6** Payload bandwidth is bounded by move type. Free-text moves are
+  propose-mode only, in every phase. Auto-append is restricted to constrained
+  move types validated server-side against the permitted value set.
+- **R11** Round barrier plus no-progress detection; at most one move per
+  author per round per card; repeated near-identical moves auto-pause.
+- **R12** Turn starvation is bounded receiver-side: each node enforces
+  per-author per-round quotas from its own fold and drops the excess.
+- **R13** The envelope is server-constructed; the model fills exactly one
+  string field. No model output determines body keys, event type, card id,
+  slot, card type, markers, `agent_authored`, or any pubkey.
+- **R14** Output validation before append: reject invite-code-shaped tokens,
+  `@agent`/`@agents`, untrusted-content markers, control characters; enforce
+  length caps. The renderer must not offer join affordances on
+  `agent_authored` content, and auto-mode moves may not set `card_type`.
+- **R32** Todo items are typed data drawn from a closed action enum, flat,
+  bounded, provenance-tagged, entering prompts inside the untrusted envelope,
+  and unable to alter task type, budget, enrollment, or tool policy.
+
+**Context and memory**
+
+- **R7** The allowed context set for any wire-reachable generation: our
+  constant frame plus server-owned task text; the target card's own state; the
+  current round's moves; the enrolling human's own prior moves on that card.
+  Nothing else — no recall, retrieval, session history, other circles or
+  cards, tool results, skills, mastery state, hormonal/GCCRF state, wallet, or
+  filesystem.
+- **R8** Trusted personal context and circle-facing output are mutually
+  exclusive (the lattice rule; generalizes what makes Phase 4b safe).
+- **R9** Generation is tool-less, memory-less, session-less — asserted
+  structurally at the call site, not by prompt text.
+- **R17** Memory taint holds: `sandbox` and `canvas` in `UNTRUSTED_TOKENS`
+  (landed), plus a CI guard that no memory writer reads circle tables.
+
+**Isolation and containment**
+
+- **R15** Sandbox moves never enter the chat message path (`kind='message'` is
+  the only route to `detectAgentSummon`).
+- **R16** Sandbox appends may not freeze the circle: author-scoped fork
+  containment in a sandbox chain namespace.
+- **R18** Every autonomously generated move is labeled on the row, in the UI
+  (distinguishing human-reviewed from never-reviewed), and machine-readably on
+  the wire (EU AI Act Art. 50(2)).
+- **R19** Kill switch `circles.sandbox.enabled` defaults off; auto-append needs
+  a second separate opt-in; the trigger must be config-gated at the RECEIVING
+  handler, not only in the service.
+- **R20** No dark patterns on mode selection (review gate, not a unit test).
+
+**Tools (§4b)**
+
+- **R21** Sandbox tool policy is a positive, literal, fail-closed allowlist.
+  No globs, no group expansion. _(Prerequisite landed 2026-07-27: the
+  general policy matcher no longer fails open on an empty allowlist.)_
+- **R22** Denial is by absence: denied tools never appear in the tool schema
+  handed to a sandbox generation.
+- **R23** Zero skills in sandbox context, any tier or origin, including
+  bundled.
+- **R24** PLAN-20 interceptors disabled for sandbox turns.
+- **R25** Plan-then-execute: the URL/query set is fixed by an approved plan
+  produced by a generation that has seen no fetched content.
+- **R26** Egress broker: approved URLs only; SSRF policy pinned with
+  `allowPrivateNetwork: false` and no per-call override; no cookies or auth
+  headers; redirects only to approved hosts; response size/time caps; a cap on
+  outbound query-string bytes; an append-only egress log the human can read.
+- **R27** Dual-LLM separation: the generation that ingests fetched content has
+  no tools, no ledger write, no circle content in context, and emits only a
+  typed bounded record.
+- **R28** Web provenance class, transitive: fetched content is wrapped
+  `web_fetch`/`web_search`, never `circle_agent`, and derived moves carry
+  `web:<host>` in their R2 provenance set at every hop.
+- **R29** Web content never in the trusted frame.
+- **R31** No images from sandbox agents in v1 — none attached, captured,
+  referenced, rendered, or received by any generation.
+- **R34** Tool use is propose-mode only in every phase. Tools and auto-append
+  are mutually exclusive, the same way R8 separates personal context and
+  auto-append.
+
 ### 4.4 Honest accounting: what is theater
 
 **Holds:** context-set restriction, consumption-side budgets, local-authoritative
