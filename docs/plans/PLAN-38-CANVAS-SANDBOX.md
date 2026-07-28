@@ -721,6 +721,13 @@ human's tap; no autonomous posting anywhere in this phase.
 > `[revised 2026-07-27 for the §3.2/§4b scope]`:
 > **(a)** event types + fold + migration, incl. `sandbox.plan.put` and
 > `sandbox.evidence.put` (no UI, tested headless);
+> `[LANDED 2026-07-27: src/circles/sandbox.ts (grammar + fold + speaker
+order + my-turn + enrollment ledger), six event types in tab.ts,
+migration v55 circle_sandbox_enrollments, 19 tests incl. two-node
+convergence and raw-hostile-body re-caps. Fold LWW tie-breaks use
+event_hash (content-derived) rather than event_id (node-local UUID) —
+canvas.ts's event_id tie-break is a latent cross-node nondeterminism the
+sandbox does not inherit.]`
 > **(b)** one negotiation card, one round, practice partner as the second
 > agent, propose-mode, rendered as: verdict band (work ratio), shared
 > checklist, containment banner, live pill;

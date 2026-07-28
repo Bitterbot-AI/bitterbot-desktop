@@ -1930,6 +1930,39 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 55,
+    description:
+      "PLAN-38 P1(a) (canvas sandbox): circle_sandbox_enrollments — the " +
+      "PRIVATE half of sandbox enrollment (I4/R4: consent is node-local-" +
+      "authoritative). Peers learn only `mode` via the signed " +
+      "sandbox.enroll.put event; budgets, guidance, and pause state live " +
+      "here on member-own hardware and never fan out. This row gates ALL " +
+      "spend: turns and tokens are claimed/recorded consumption-side " +
+      "(guarded UPDATE, the claimAgentDraft pattern) and only the enrolling " +
+      "human can refill them (R5/R10/M2/M3). mode is 'off'|'propose' until " +
+      "P2 ships auto-append behind its own opt-in (R19).",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_sandbox_enrollments (
+          circle_id    TEXT NOT NULL,
+          card_id      TEXT NOT NULL,
+          mode         TEXT NOT NULL DEFAULT 'off',
+          turn_budget  INTEGER NOT NULL DEFAULT 10,
+          turns_used   INTEGER NOT NULL DEFAULT 0,
+          token_budget INTEGER NOT NULL DEFAULT 200000,
+          tokens_used  INTEGER NOT NULL DEFAULT 0,
+          guidance     TEXT NOT NULL DEFAULT '',
+          paused_at    INTEGER,
+          pause_reason TEXT,
+          expires_at   INTEGER,
+          created_at   INTEGER NOT NULL,
+          updated_at   INTEGER NOT NULL,
+          PRIMARY KEY (circle_id, card_id)
+        );
+      `);
+    },
+  },
 ];
 
 /**

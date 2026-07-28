@@ -184,7 +184,10 @@ messages per call, and never unwrapped.
 - **The shared tab**: `circles.tab.add` / `circles.tab.balances`. Typed,
   namespaced events (`expense.add`, `expense.reversal`, `note.add` on the
   tab; `canvas.card.*`, `canvas.slice.put`, `message.react`, `message.pin`
-  for canvas and chat annotations) on per-author signed hash chains.
+  for canvas and chat annotations; `sandbox.*` for the PLAN-38 canvas
+  sandbox — frame, enroll, move, close, plan, evidence — with a closed move
+  grammar, one honored move per (card, author, round), and deterministic
+  per-round speaker order) on per-author signed hash chains.
   Corrections are reversals, never edits, and only the expense's author can
   reverse it. Splits are deterministic (largest-remainder with hash
   tie-breaks); every node folds the identical net + pairwise balances. A

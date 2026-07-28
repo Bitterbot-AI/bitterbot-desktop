@@ -24,6 +24,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { JsonValue } from "../commerce/sku.js";
+import { normalizeSandboxInput, type SandboxEventInput } from "./sandbox.js";
 
 export type TabEventInput =
   | { type: "expense.add"; memo: string; amountCents: number; participants: string[] }
@@ -59,7 +60,10 @@ export type TabEventInput =
   // a pin is circle-wide LWW per target (any member may flip it).
   | { type: "message.react"; targetEnvelopeId: string; emojis: string[]; updatedAt: number }
   | { type: "message.pin"; targetEnvelopeId: string; pinned: boolean; updatedAt: number }
-  | { type: "message.delete"; targetEnvelopeId: string; updatedAt: number };
+  | { type: "message.delete"; targetEnvelopeId: string; updatedAt: number }
+  // PLAN-38 P1(a): the canvas sandbox rides the same chained log. Grammar,
+  // caps, and the deterministic fold live in sandbox.ts.
+  | SandboxEventInput;
 
 /** The signed-envelope body fields for a chained event append. */
 export type ChainedEventBody = {
@@ -208,6 +212,13 @@ function normalizeInput(input: TabEventInput): { type: string } & Record<string,
         updated_at: input.updatedAt,
       };
     }
+    case "sandbox.frame.put":
+    case "sandbox.enroll.put":
+    case "sandbox.move":
+    case "sandbox.close":
+    case "sandbox.plan.put":
+    case "sandbox.evidence.put":
+      return normalizeSandboxInput(input);
   }
 }
 
