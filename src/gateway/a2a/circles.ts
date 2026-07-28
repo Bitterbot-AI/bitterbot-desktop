@@ -52,6 +52,39 @@ function err<T>(code: number, message: string): CircleOutcome<T> {
   return { ok: false, error: { code, message } };
 }
 
+/** Depth/count bounds for the recursive event-body scan (DoS guard). */
+const SCAN_MAX_DEPTH = 4;
+const SCAN_MAX_STRINGS = 128;
+
+/**
+ * Does any string ANYWHERE in this value fail the injection scan critically?
+ * Walks nested arrays and objects — a peer that buries a payload one level
+ * down (in an array of sources, options, or emoji) must not bypass the gate
+ * that top-level fields pass through. Bounded: past the depth or string
+ * budget the walk stops scanning rather than recursing forever, so the cost
+ * of the check is capped no matter what a hostile peer sends.
+ */
+function containsCriticalInjection(
+  value: unknown,
+  depth = 0,
+  budget = { n: SCAN_MAX_STRINGS },
+): boolean {
+  if (depth > SCAN_MAX_DEPTH || budget.n <= 0) {
+    return false;
+  }
+  if (typeof value === "string") {
+    budget.n -= 1;
+    return scanSkillForInjection(value).severity === "critical";
+  }
+  if (Array.isArray(value)) {
+    return value.some((v) => containsCriticalInjection(v, depth + 1, budget));
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).some((v) => containsCriticalInjection(v, depth + 1, budget));
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Per-member rate limiting — PERSISTED sliding window (PLAN-36 §5.2). A
 // compromised friend node must not be able to flood; limits are per (pubkey,
@@ -725,12 +758,16 @@ export function handleCircleEventAppend(
     return err(A2aErrorCodes.INVALID_PARAMS, "seq, event_type, event required");
   }
 
-  // Injection hygiene on every string field of the event body: the tab is
-  // rendered into briefings, so a poisoned memo is a poisoned briefing.
-  for (const v of Object.values(eventBody)) {
-    if (typeof v === "string" && scanSkillForInjection(v).severity === "critical") {
-      return err(A2aErrorCodes.INVALID_REQUEST, "event content failed security scan");
-    }
+  // Injection hygiene on every string in the event body: the tab is rendered
+  // into briefings, so a poisoned memo is a poisoned briefing. The walk is
+  // RECURSIVE (PLAN-38 media review): the previous `Object.values` pass saw
+  // top-level strings only, so anything nested in an array or object skipped
+  // the scan entirely — `message.react.emojis` already does today (harmless at
+  // 16 chars, not harmless once event types carry arrays of URLs, titles, and
+  // snippets). Bounded on depth and count so a hostile deeply-nested body
+  // cannot burn CPU on the receive path.
+  if (containsCriticalInjection(eventBody)) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "event content failed security scan");
   }
 
   const expectedHash = computeEventHash({
