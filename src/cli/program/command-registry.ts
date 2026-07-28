@@ -60,6 +60,11 @@ const coreEntries: CoreCliEntry[] = [
     commands: [
       { name: "doctor", description: "Health checks + quick fixes for the gateway and channels" },
       { name: "boot-watchdog", description: "Internal: post-update boot watchdog", hidden: true },
+      {
+        name: "ui-restart",
+        description: "Internal: post-update Control-UI restarter",
+        hidden: true,
+      },
       { name: "dashboard", description: "Open the Control UI with your current token" },
       { name: "reset", description: "Reset local config/state (keeps the CLI installed)" },
       {

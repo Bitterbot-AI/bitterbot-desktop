@@ -62,6 +62,19 @@ export function registerMaintenanceCommands(program: Command) {
       process.exit(0);
     });
 
+  // Internal: the detached Control-UI restarter (see infra/ui-restart.ts).
+  // Spawned after a successful update.run and after an auto-rollback — the
+  // vite dev server cannot pick up an applied update on its own.
+  program
+    .command("ui-restart", { hidden: true })
+    .requiredOption("--root <path>", "Bitterbot package root")
+    .option("--reason <reason>", "why the restart was requested", "update")
+    .action(async (opts) => {
+      const { runUiRestart } = await import("../../infra/ui-restart.js");
+      await runUiRestart({ root: String(opts.root), reason: String(opts.reason) });
+      process.exit(0);
+    });
+
   program
     .command("dashboard")
     .description("Open the Control UI with your current token")

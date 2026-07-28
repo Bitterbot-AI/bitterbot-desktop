@@ -61,3 +61,42 @@ describe("start:all planStack", () => {
     },
   );
 });
+
+// The child-exit policy: the gateway stays all-or-nothing (it is the
+// substrate), but the Control UI is respawned — that is how the post-update
+// ui-restarter delivers new code when start:all owns the UI child — unless it
+// is genuinely crash-looping (sliding window).
+describe("start:all decideChildExitAction", () => {
+  it.runIf(process.platform !== "win32")("gateway death still shuts everything down", async () => {
+    const { decideChildExitAction } = await import("../../scripts/start-all.mjs");
+    expect(decideChildExitAction({ name: "gateway", recentRespawns: [], now: 0 })).toEqual({
+      action: "shutdown",
+    });
+  });
+
+  it.runIf(process.platform !== "win32")("a dead UI child is respawned, not fatal", async () => {
+    const { decideChildExitAction } = await import("../../scripts/start-all.mjs");
+    const d = decideChildExitAction({ name: "ui", recentRespawns: [], now: 1000 });
+    expect(d.action).toBe("respawn-ui");
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "a flapping UI shuts down; old respawns age out of the window",
+    async () => {
+      const { decideChildExitAction, UI_RESPAWN_MAX_IN_WINDOW, UI_RESPAWN_WINDOW_MS } =
+        await import("../../scripts/start-all.mjs");
+      const now = 10 * 60_000;
+      const recent = Array.from({ length: UI_RESPAWN_MAX_IN_WINDOW }, (_, i) => now - 1000 - i);
+      expect(decideChildExitAction({ name: "ui", recentRespawns: recent, now })).toMatchObject({
+        action: "shutdown",
+        reason: "ui-flapping",
+      });
+      // The same respawns, older than the window: fine again — a long session
+      // with periodic deliberate update-bounces must never accumulate to death.
+      const aged = recent.map((t) => t - UI_RESPAWN_WINDOW_MS);
+      expect(decideChildExitAction({ name: "ui", recentRespawns: aged, now }).action).toBe(
+        "respawn-ui",
+      );
+    },
+  );
+});

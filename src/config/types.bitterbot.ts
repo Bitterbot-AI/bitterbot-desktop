@@ -83,6 +83,17 @@ export type BitterbotConfig = {
     autoRollback?: {
       enabled?: boolean;
     };
+    /**
+     * Restart the Control UI (vite dev server) after a code change — a
+     * successful update.run or an auto-rollback. The dev server cannot pick
+     * up an applied update on its own (deps swapped under its cache, env
+     * baked at server start, watchers blind on WSL /mnt/*), so a detached
+     * restarter bounces it: only if it was running, and only when the
+     * listener is identifiably this checkout's vite. Default: enabled.
+     */
+    uiRestart?: {
+      enabled?: boolean;
+    };
   };
   browser?: BrowserConfig;
   ui?: {

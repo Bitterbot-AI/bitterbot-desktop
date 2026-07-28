@@ -94,6 +94,16 @@ High-level:
    and `bitterbot doctor` reports what happened. Disable with
    `update.autoRollback.enabled: false`.
 10. Syncs plugins to the active channel (dev uses bundled extensions; stable/beta uses npm) and updates npm-installed plugins.
+11. Restarts the Control UI. The vite dev server is a separate process that
+    cannot pick up an applied update on its own (its dependency cache is
+    stale after the install, the gateway URL/token are baked in at server
+    start, and file watchers are blind on some filesystems), so a successful
+    update — and an auto-rollback — spawns a detached restarter that bounces
+    it. It only ever restarts a UI that was already running, and only when
+    the process holding the port is identifiably this checkout's vite;
+    under `pnpm start:all` the supervisor respawns the fresh UI itself. Open
+    browser tabs reconnect and reload on their own. Disable with
+    `update.uiRestart.enabled: false` (log: `<stateDir>/ui-restart.log`).
 
 ## Updating from the Control UI
 

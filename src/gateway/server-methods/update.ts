@@ -9,6 +9,7 @@ import {
   writeRestartSentinel,
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
+import { spawnUiRestarter } from "../../infra/ui-restart.js";
 import { DEFAULT_PACKAGE_CHANNEL, normalizeUpdateChannel } from "../../infra/update-channels.js";
 import { checkUpdateStatus, resolveNpmChannelTag } from "../../infra/update-check.js";
 import { runGatewayUpdate } from "../../infra/update-runner.js";
@@ -190,6 +191,19 @@ export const updateHandlers: GatewayRequestHandlers = {
         delayMs: restartDelayMs,
         reason: "update.run",
       });
+      // The Control UI (vite) is a separate process this gateway does not
+      // own, and it cannot pick up the update on its own (swapped deps under
+      // its cache, define-baked env, watchers blind on some filesystems). A
+      // detached restarter bounces it — only if it was running, and only if
+      // the listener is identifiably OUR vite. Kill switch:
+      // update.uiRestart.enabled=false.
+      if (result.root) {
+        spawnUiRestarter({
+          root: result.root,
+          reason: "update.run",
+          enabled: loadConfig().update?.uiRestart?.enabled !== false,
+        });
+      }
     }
 
     respond(

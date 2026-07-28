@@ -113,6 +113,33 @@ export function planStack({ gatewayManagedElsewhere, gatewayUp, uiUp }) {
   };
 }
 
+// UI respawn budget: a real crash-loop must not flap forever, but a deliberate
+// external bounce (the post-update ui-restarter kills a stale vite so a fresh
+// one comes up with the new code) must be survivable, repeatedly over a long
+// session. Sliding window, not a lifetime cap.
+export const UI_RESPAWN_WINDOW_MS = 5 * 60_000;
+export const UI_RESPAWN_MAX_IN_WINDOW = 5;
+
+/**
+ * Pure decision: what to do when a child WE started exits (and we are not
+ * already shutting down). The gateway is the substrate — its death remains
+ * all-or-nothing. The Control UI is presentation — it gets respawned with a
+ * fresh process (which is exactly how the post-update restarter delivers new
+ * code under start:all), unless it is flapping.
+ *
+ * `recentRespawns` = timestamps of prior UI respawns; `now` the current time.
+ */
+export function decideChildExitAction({ name, recentRespawns, now }) {
+  if (name !== "ui") {
+    return { action: "shutdown" };
+  }
+  const windowed = recentRespawns.filter((t) => now - t < UI_RESPAWN_WINDOW_MS);
+  if (windowed.length >= UI_RESPAWN_MAX_IN_WINDOW) {
+    return { action: "shutdown", reason: "ui-flapping" };
+  }
+  return { action: "respawn-ui", windowed };
+}
+
 async function main() {
   const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 
@@ -171,19 +198,56 @@ async function main() {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
   let exited = 0;
-  for (const { name, child } of started) {
-    child.on("exit", (code, signal) => {
-      meta(`${name} exited (code=${code}, signal=${signal ?? "none"})`);
-      exited++;
-      // If one of the things we started dies, take the rest down too — start:all
-      // is an all-or-nothing bring-up of the pieces it launched.
-      if (!shuttingDown) {
-        shutdown(`${name}-exit`);
+  let uiRespawns = [];
+
+  const watchChild = (entry) => {
+    entry.child.on("exit", (code, signal) => {
+      meta(`${entry.name} exited (code=${code}, signal=${signal ?? "none"})`);
+      if (shuttingDown) {
+        exited++;
+        if (exited >= started.length) {
+          process.exit(code ?? 0);
+        }
+        return;
       }
+      const decision = decideChildExitAction({
+        name: entry.name,
+        recentRespawns: uiRespawns,
+        now: Date.now(),
+      });
+      if (decision.action === "respawn-ui") {
+        // The UI is presentation, not substrate: bring a fresh dev server up
+        // instead of tearing the gateway down. This is also how the
+        // post-update ui-restarter delivers new code when start:all owns the
+        // UI — it kills the stale vite and this respawn picks up the update.
+        uiRespawns = [...decision.windowed, Date.now()];
+        meta(
+          `Control UI exited — respawning (${uiRespawns.length}/${UI_RESPAWN_MAX_IN_WINDOW} in window)`,
+        );
+        const fresh = startChild("ui", colors.ui, "pnpm", ["dev"], {
+          cwd: path.join(repoRoot, "desktop"),
+        });
+        const idx = started.indexOf(entry);
+        if (idx >= 0) started[idx] = fresh;
+        watchChild(fresh);
+        return;
+      }
+      // Gateway death (or a flapping UI): all-or-nothing, as before.
+      if (decision.reason === "ui-flapping") {
+        meta(
+          `Control UI is crash-looping (${UI_RESPAWN_MAX_IN_WINDOW} respawns in 5min) — shutting down`,
+        );
+      }
+      exited++;
+      shutdown(`${entry.name}-exit`);
       if (exited >= started.length) {
         process.exit(code ?? 0);
       }
     });
+  };
+
+  for (const entry of started) {
+    watchChild(entry);
   }
 }
 
