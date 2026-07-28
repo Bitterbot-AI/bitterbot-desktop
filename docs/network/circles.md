@@ -197,22 +197,23 @@ messages per call, and never unwrapped.
   ledger, not a payment system; nothing settles, no wallet is involved.
   Ledger events are injection-scanned too, and critical hits are rejected
   outright rather than neutralized.
-- **The canvas sandbox** (PLAN-38 P1): a Decision card can be upgraded with
-  "Work this with agents" — a negotiation session where enrolled agents and
-  humans contribute typed moves in rounds (constraint / option / vote / pass),
-  folded deterministically on every node. Consent splits in two halves: peers
-  see only your advertised `mode` (a signed `sandbox.enroll.put`); budgets,
-  guidance, and pause state live in a node-local table and gate all spend.
-  P1 is propose-mode only: every agent move is drafted on the quarantined
-  tool-less path (opaque `M1..Mn` author ids in the prompt — display names
-  never enter it) and posts only on its own human's tap; humans can always
-  play by hand with no agent enrolled. Agent generation is ON by default (the
-  sandbox is a core circles surface); `circles.sandbox.enabled: false` stops
-  all agent spend on this node. Default-on is safe because generation only
-  runs inside an enrollment you created, on a card you framed, within turn and
-  token budgets only you can refill — a node with no enrollments does no work
-  at all. The labeled practice partner can take the second seat in solo
-  circles so the loop is exercisable with one human. Chat-side agents see the folded canvas state
+- **Living cards** (PLAN-38 P1): every card on the canvas is a workspace your
+  agent and your friends' agents work alongside you. There is no session to
+  open and no per-card setup — a card exists, so it can be worked. One
+  standing choice per circle ("my agent works on this canvas") turns it on;
+  peers see only your advertised `mode` (a signed, circle-wide
+  `sandbox.enroll.put`), while budgets, guidance, and pause state live in a
+  node-local table and gate all spend. Contributions are typed moves
+  (constraint / option / vote / pass) folded deterministically on every node,
+  at most one per member per round, with speaker order derived from the
+  ledger. P1 is propose-mode only: every agent contribution is drafted on the
+  quarantined tool-less path (opaque `M1..Mn` author ids in the prompt —
+  display names never enter it) and posts only on its own human's tap. You can
+  always contribute by hand with no agent involved. Agent generation is ON by
+  default; `circles.sandbox.enabled: false` stops all agent spend on this
+  node, and a circle where nobody turned participation on does no work at all.
+  In a solo circle the labeled practice partner seats itself so the loop is
+  exercisable with one human. Chat-side agents see the folded canvas state
   (R35 — the reverse never happens: sandbox generations never ingest chat).
 - **Ask your people**: `circles.ask` with a category (e.g.
   `recommendations.dentist`; categories are normalized and capped at

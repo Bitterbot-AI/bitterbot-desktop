@@ -346,6 +346,46 @@ execution** — the single genuine pane complaint found anywhere was a product
 where occluding the view stalled the task, punishing exactly the walk-away
 behaviour every user exhibits.
 
+### 3.2.6 Cards are alive by nature `[added 2026-07-28 — Victor: "it is all supposed to be worked into dynamic cards. Things need to be simple and intuitive."]`
+
+The first build of P1(b) got the shape wrong, and the correction is important
+enough to record rather than quietly fix. It shipped a static card with an
+opt-in agent mode bolted on: create a Decision card, tap "Work this with
+agents", tap "Enroll your agent", tap "+ Practice seat", wait, tap approve.
+Five deliberate acts before an agent did anything, three of them concepts a
+person had to learn that mapped to nothing outside the implementation — and
+the service literally told users to "frame it first".
+
+**The intent is that a card on the canvas IS a live workspace.** You put
+something on the canvas; your agent and your friends' agents work it alongside
+you. Consequences, all now built:
+
+- **No session to open.** Every card carries one, derived from the card
+  itself: the goal is the card's title. `sandbox.frame.put` survives only as
+  an optional override of goal or round cap. Cards that predate the code light
+  up with no migration.
+- **No per-card enrollment.** One standing choice per circle — "my agent works
+  on this canvas" — carrying the budgets and guidance. Migration v56 collapses
+  the per-card rows.
+- **No summoning the practice partner.** Turning participation on seats it
+  automatically in a solo circle, and never when real members are present.
+- **One component, two states.** The live layer renders under whatever the
+  card already shows: a quiet line when nothing is happening, the work when
+  something is. It is not a card type and not a mode.
+- **The vocabulary is internal.** "Sandbox", "session", "negotiation",
+  "frame", "enroll" appear nowhere on screen.
+
+The flow is now: make a card → your agent suggests → you tap. One learned
+concept, and it is the only one that is load-bearing.
+
+**No safety property was traded for this.** The two things that genuinely need
+consent are spend and reaching the wire, and neither needed per-card ceremony:
+spend stays bounded by budgets only the human refills (a circle nobody turned
+on does no work at all), and the wire stays gated per move by propose-mode,
+which is where the meaningful tap belongs. I4, I5, I7 and R4 all hold; only
+the granularity moved, from ceremony-before-value to approval-at-the-moment-of-
+consequence.
+
 ### 3.3 Continuity across surfaces `[added 2026-07-28 per Victor: chat-side agents must be aware of the canvas]`
 
 Two kinds of continuity, resolved differently:

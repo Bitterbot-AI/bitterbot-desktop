@@ -15,7 +15,7 @@ import {
   sweepSandboxTurns,
   validateSandboxMoveText,
 } from "./sandbox-agent.js";
-import { getSandboxEnrollment } from "./sandbox.js";
+import { getSandboxParticipation } from "./sandbox.js";
 import { CirclesService } from "./service.js";
 
 // PLAN-38 P1(b): the sandbox's agent half. Under test: R14 output validation,
@@ -93,7 +93,17 @@ describe("sandbox agent loop (service + real handlers)", () => {
     circleId = service.createCircle({ name: "Solo", kind: "connection" });
   });
 
-  async function frameCard(): Promise<void> {
+  /**
+   * Turning participation on also seats the practice partner (solo circle), so
+   * the deterministic speaker order decides who is up first. Let the partner
+   * play if it leads; then it is our turn either way.
+   */
+  async function letPartnerLead(): Promise<void> {
+    await practiceSandboxSweep(db, { partnerKey, now: NOW });
+  }
+
+  /** A card on the canvas is all it takes — cards are alive by nature. */
+  async function putCard(): Promise<void> {
     await service.putCanvasCard({
       circleId,
       cardId: CARD,
@@ -101,14 +111,12 @@ describe("sandbox agent loop (service + real handlers)", () => {
       title: "Spring trip: June, 4 people",
       text: "",
     });
-    await service.frameSandboxSession({ circleId, cardId: CARD });
   }
 
-  it("frames a session on an existing card only, goal defaulting to the title", async () => {
-    await expect(service.frameSandboxSession({ circleId, cardId: "ghost" })).rejects.toThrow(
-      /not on the canvas/,
-    );
-    await frameCard();
+  it("a card on the canvas is live with no framing act at all", async () => {
+    // Before any card there is nothing to work.
+    expect(service.sandboxState(circleId).sessions).toHaveLength(0);
+    await putCard();
     const state = service.sandboxState(circleId);
     expect(state.sessions).toHaveLength(1);
     expect(state.sessions[0]!.goal).toBe("Spring trip: June, 4 people");
@@ -132,7 +140,7 @@ describe("sandbox agent loop (service + real handlers)", () => {
   });
 
   it("with no enrollment the sweep spends nothing, default-on or not", async () => {
-    await frameCard();
+    await putCard();
     // Framing alone must never spend: enrollment is a separate human act, and
     // it is what makes default-on safe.
     expect(sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW }).queued).toBe(0);
@@ -140,29 +148,29 @@ describe("sandbox agent loop (service + real handlers)", () => {
   });
 
   it("sweeps a turn: claims spend atomically, queues one proposal, never duplicates", async () => {
-    await frameCard();
-    await service.enrollSandbox({
+    await putCard();
+    await service.setCanvasParticipation({
       circleId,
-      cardId: CARD,
       mode: "propose",
       turnBudget: 3,
       guidance: "Free June 19-26; prefer driving distance; cap $200/night.",
     });
+    await letPartnerLead();
     expect(sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW }).queued).toBe(1);
-    expect(getSandboxEnrollment(db, circleId, CARD)?.turnsUsed).toBe(1);
+    expect(getSandboxParticipation(db, circleId)?.turnsUsed).toBe(1);
     // Live proposal exists: no re-queue, no second spend.
     expect(sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW }).queued).toBe(0);
-    expect(getSandboxEnrollment(db, circleId, CARD)?.turnsUsed).toBe(1);
+    expect(getSandboxParticipation(db, circleId)?.turnsUsed).toBe(1);
   });
 
   it("generates via the quarantined prompt and publishes behind the tap (R5 both gates)", async () => {
-    await frameCard();
-    await service.enrollSandbox({
+    await putCard();
+    await service.setCanvasParticipation({
       circleId,
-      cardId: CARD,
       mode: "propose",
       guidance: "Free June 19-26.",
     });
+    await letPartnerLead();
     sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW });
     const { generated } = await generateQueuedAgentDrafts(
       db,
@@ -176,35 +184,38 @@ describe("sandbox agent loop (service + real handlers)", () => {
 
     await service.publishAgentDraft({ draftId: draft!.draftId });
     const session = service.sandboxState(circleId).sessions[0]!;
-    expect(session.moves).toHaveLength(1);
-    expect(session.moves[0]).toMatchObject({
-      kind: "constraint",
-      round: 0,
-      agentAuthored: true,
-      authorPubkey: service.pubkey,
-    });
+    // The practice partner may also have moved; ours is the one under test.
+    const mine = session.moves.find((m) => m.authorPubkey === service.pubkey);
+    expect(mine).toMatchObject({ kind: "constraint", round: 0, agentAuthored: true });
   });
 
   it("refuses the publish tap when the enrollment was paused since the claim", async () => {
-    await frameCard();
-    await service.enrollSandbox({ circleId, cardId: CARD, mode: "propose" });
+    await putCard();
+    await service.setCanvasParticipation({ circleId, mode: "propose" });
+    await letPartnerLead();
     sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW });
     await generateQueuedAgentDrafts(db, async () => "A perfectly fine move.", {
       selfPubkey: service.pubkey,
     });
     const draft = service.agentDrafts(circleId).find((d) => d.kind === SANDBOX_DRAFT_KIND)!;
-    service.pauseSandbox({ circleId, cardId: CARD, reason: "thinking it over" });
+    service.pauseSandbox({ circleId, reason: "thinking it over" });
     await expect(service.publishAgentDraft({ draftId: draft.draftId })).rejects.toThrow(/paused/);
-    // Nothing reached the ledger; the draft went back to ready for later.
-    expect(service.sandboxState(circleId).sessions[0]!.moves).toHaveLength(0);
+    // OUR move never reached the ledger; the draft went back to ready for
+    // later. (The practice partner may have moved — assert on ours, not on a
+    // total that depends on whose turn came first.)
+    const mineOnCard = () =>
+      service
+        .sandboxState(circleId)
+        .sessions[0]!.moves.filter((m) => m.authorPubkey === service.pubkey);
+    expect(mineOnCard()).toHaveLength(0);
     expect(service.agentDrafts(circleId).some((d) => d.draftId === draft.draftId)).toBe(true);
-    service.resumeSandbox({ circleId, cardId: CARD });
+    service.resumeSandbox({ circleId });
     await service.publishAgentDraft({ draftId: draft.draftId });
-    expect(service.sandboxState(circleId).sessions[0]!.moves).toHaveLength(1);
+    expect(mineOnCard()).toHaveLength(1);
   });
 
   it("keeps display names out of the sandbox prompt (R3 opaque ids)", async () => {
-    await frameCard();
+    await putCard();
     // A second member with a distinctive display name, enrolled via raw event.
     const other = generateKeyPair();
     new CirclesStore(db).addMember({
@@ -213,7 +224,7 @@ describe("sandbox agent loop (service + real handlers)", () => {
       displayName: "AnaVeryVisibleName",
       scopes: DEFAULT_MEMBER_SCOPES,
     });
-    await service.enrollSandbox({ circleId, cardId: CARD, mode: "propose" });
+    await service.setCanvasParticipation({ circleId, mode: "propose" });
     await service.postSandboxMove({
       circleId,
       cardId: CARD,
@@ -232,7 +243,7 @@ describe("sandbox agent loop (service + real handlers)", () => {
   });
 
   it("human composer: moves by hand, one per round, votes only for real options", async () => {
-    await frameCard();
+    await putCard();
     // Votes validate against the real option set (M5 at send time) — before
     // any option exists, every vote is refused legibly.
     await expect(
@@ -258,15 +269,18 @@ describe("sandbox agent loop (service + real handlers)", () => {
     session = service.sandboxState(circleId).sessions[0]!;
     expect(session.status).toBe("closed");
     await expect(service.postSandboxMove({ circleId, cardId: CARD, kind: "pass" })).rejects.toThrow(
-      /closed/,
+      /finished/,
     );
   });
 
   it("seats the practice partner in a solo circle and it plays its rounds", async () => {
-    await frameCard();
-    await service.enrollSandbox({ circleId, cardId: CARD, mode: "propose" });
-    const seat = await service.addSandboxPracticeSeat({ circleId, cardId: CARD });
-    expect(seat.partnerPubkey).toBe(pubkeyId(partnerKey));
+    await putCard();
+    await service.setCanvasParticipation({ circleId, mode: "propose" });
+    // Turning participation on ALSO seats the labeled practice partner in a
+    // solo circle — no summoning act exists.
+    const partnerPubkey = pubkeyId(partnerKey);
+    const seat = { partnerPubkey };
+    expect(service.sandboxState(circleId).practicePubkey).toBe(partnerPubkey);
     const roster = service.store.getMembers(circleId);
     expect(roster.find((m) => m.memberPubkey === seat.partnerPubkey)?.displayName).toBe(
       PRACTICE_PARTNER_NAME,
@@ -296,20 +310,19 @@ describe("sandbox agent loop (service + real handlers)", () => {
     expect(partnerMove!.text).toContain("Practice partner");
   });
 
-  it("refuses the practice seat when real members are present", async () => {
-    await frameCard();
+  it("does not seat the practice partner when real members are present", async () => {
+    await putCard();
     new CirclesStore(db).addMember({
       circleId,
       memberPubkey: pubkeyId(generateKeyPair()),
       scopes: DEFAULT_MEMBER_SCOPES,
     });
-    await expect(service.addSandboxPracticeSeat({ circleId, cardId: CARD })).rejects.toThrow(
-      /solo circles/,
-    );
+    await service.setCanvasParticipation({ circleId, mode: "propose" });
+    expect(service.sandboxState(circleId).practicePubkey).toBeNull();
   });
 
   it("R35: the chat draft prompt carries the folded canvas state", async () => {
-    await frameCard();
+    await putCard();
     await service.postSandboxMove({
       circleId,
       cardId: CARD,

@@ -1,22 +1,27 @@
 /**
- * PLAN-38 P1(a): the canvas sandbox — several private memories safely working
- * one shared artifact. This module owns the sandbox grammar and the
- * deterministic fold; NO generation, NO UI, NO tools live here (those are
- * later P1 slices, and everything wire-reachable stays inside the §4
- * invariants).
+ * PLAN-38 P1: the canvas sandbox — several private memories safely working one
+ * shared artifact. This module owns the grammar and the deterministic fold; NO
+ * generation, NO UI, NO tools live here (those are later slices, and
+ * everything wire-reachable stays inside the §4 invariants).
+ *
+ * **Cards are alive by nature** `[reshaped 2026-07-28]`. There is no session to
+ * open and no per-card enrollment: every card on the canvas can be worked by
+ * the members whose agents participate in the circle. The vocabulary below is
+ * internal — none of it belongs on screen.
  *
  * Six event types ride the existing `circle/event.append` verb (no new wire
  * verbs; old nodes tolerate them silently because the handler validates chain
  * and scan, not type):
  *
- *  - sandbox.frame.put    — declare/update a sandbox session ON a canvas card
- *                           (one card per session, §3). `task_type` is a
- *                           closed server-owned enum (R1); the free-text goal
- *                           is peer content and stays untrusted.
- *  - sandbox.enroll.put   — the PUBLIC half of enrollment: `mode` only (R4 —
- *                           presentation, never authorization). The private
- *                           half (budgets, guidance) is a node-local row in
- *                           `circle_sandbox_enrollments` and never leaves.
+ *  - sandbox.frame.put    — OPTIONAL override of a card's goal or round cap.
+ *                           Never required: a card's own title is its goal.
+ *                           `task_type` is a closed server-owned enum (R1);
+ *                           the free-text goal is peer content, so untrusted.
+ *  - sandbox.enroll.put   — the PUBLIC half of participation: `mode` only (R4 —
+ *                           presentation, never authorization), declared once
+ *                           per CIRCLE. The private half (budgets, guidance)
+ *                           is a node-local row in
+ *                           `circle_sandbox_participation` and never leaves.
  *  - sandbox.move         — one contribution to one round, from a closed move
  *                           grammar (M5/R6). At most one move per
  *                           (card, author, round) is honored (R11/R12), so
@@ -47,6 +52,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { JsonValue } from "../commerce/sku.js";
+import { computeCanvasCards } from "./canvas.js";
 
 // ---------------------------------------------------------------------------
 // Closed server-owned enums (R1, R6, M5) and caps. Peer values outside an
@@ -129,7 +135,9 @@ export type SandboxEventInput =
       roundCap?: number;
       updatedAt: number;
     }
-  | { type: "sandbox.enroll.put"; cardId: string; mode: SandboxMode; updatedAt: number }
+  // Circle-wide since 2026-07-28: no cardId, because participation is a
+  // standing choice about the circle, not a per-card act.
+  | { type: "sandbox.enroll.put"; mode: SandboxMode; updatedAt: number }
   | {
       type: "sandbox.move";
       cardId: string;
@@ -225,7 +233,7 @@ export function normalizeSandboxInput(
       }
       return {
         type: "sandbox.enroll.put",
-        card_id: requireCardId(input.cardId),
+        card_id: "", // circle-wide; kept for wire shape only
         mode: input.mode,
         updated_at: input.updatedAt,
       };
@@ -460,10 +468,24 @@ function str(v: unknown, cap: number): string {
 }
 
 /**
- * The sandbox fold: every session (one per framed card), materialized from
- * the circle's chained event log. Deterministic on every node from the same
- * event set, regardless of arrival order. All strings are re-capped and all
- * enums re-validated here — sender normalization is NOT trusted.
+ * The fold: EVERY card on the canvas carries a live session, materialized
+ * from the circle's chained event log `[reshaped 2026-07-28 — cards are alive
+ * by nature, not by opt-in]`.
+ *
+ * There is no "open a session" act. A card exists, therefore it can be worked:
+ * the goal is the card's own title, the task type defaults to the only one we
+ * have. `sandbox.frame.put` survives ONLY as an optional override (a custom
+ * goal, a different round cap) and is never required — which is also why
+ * cards that predate this code light up with no migration and no backfill.
+ *
+ * Participation is circle-wide (see `sandbox.enroll.put` below): a member
+ * declares once that their agent works this circle's canvas, and that applies
+ * to every card in it. Speaker order still derives from the ledger, so it
+ * stays deterministic on every node.
+ *
+ * Deterministic from the same event set regardless of arrival order. All
+ * strings are re-capped and all enums re-validated here — sender
+ * normalization is NOT trusted.
  */
 export function computeSandboxSessions(db: DatabaseSync, circleId: string): SandboxSession[] {
   const rows = db
@@ -477,8 +499,8 @@ export function computeSandboxSessions(db: DatabaseSync, circleId: string): Sand
     .all(circleId) as unknown as EventRow[];
 
   type Framed = { row: EventRow; body: Record<string, unknown>; updatedAt: number };
-  const frames = new Map<string, Framed>(); // LWW per card_id
-  const enrolls = new Map<string, Framed>(); // LWW per (card, author)
+  const frames = new Map<string, Framed>(); // LWW per card_id (optional override)
+  const enrolls = new Map<string, Framed>(); // LWW per author — CIRCLE-wide
   const moveCandidates = new Map<string, Framed>(); // honored per (card, author, round)
   const plans = new Map<string, Framed>(); // LWW per (card, author)
   const evidence = new Map<string, Framed>(); // LWW per (card, author, round)
@@ -488,9 +510,11 @@ export function computeSandboxSessions(db: DatabaseSync, circleId: string): Sand
     const body = parseBody(row);
     if (!body) continue;
     const cardId = str(body.card_id, 64);
-    if (!cardId) continue;
     const updatedAt = typeof body.updated_at === "number" ? body.updated_at : 0;
     const entry: Framed = { row, body, updatedAt };
+    // Every type except the circle-wide participation declaration is scoped
+    // to one card and is meaningless without it.
+    if (!cardId && row.event_type !== "sandbox.enroll.put") continue;
 
     switch (row.event_type) {
       case "sandbox.frame.put": {
@@ -504,7 +528,10 @@ export function computeSandboxSessions(db: DatabaseSync, circleId: string): Sand
         break;
       }
       case "sandbox.enroll.put": {
-        const key = `${cardId}\n${row.author_pubkey}`;
+        // CIRCLE-scoped since 2026-07-28: one standing declaration per member
+        // covers every card here, so `card_id` is ignored (older per-card
+        // events still fold correctly — they just apply circle-wide).
+        const key = row.author_pubkey;
         const cur = enrolls.get(key);
         if (!cur || wins(updatedAt, row.event_hash, cur.updatedAt, cur.row.event_hash)) {
           enrolls.set(key, entry);
@@ -563,27 +590,35 @@ export function computeSandboxSessions(db: DatabaseSync, circleId: string): Sand
     }
   }
 
+  // Participation is circle-wide, so it is computed ONCE and shared by every
+  // card's session rather than recomputed per card.
+  const enrollments: SandboxSession["enrollments"] = [];
+  for (const e of enrolls.values()) {
+    const mode = SANDBOX_MODES.includes(e.body.mode as SandboxMode)
+      ? (e.body.mode as SandboxMode)
+      : "off"; // fail closed on garbage
+    enrollments.push({ authorPubkey: e.row.author_pubkey, mode, updatedAt: e.updatedAt });
+  }
+  enrollments.sort((a, b) => (a.authorPubkey < b.authorPubkey ? -1 : 1));
+  const speakers = enrollments.filter((e) => e.mode !== "off").map((e) => e.authorPubkey);
+
+  // One session per LIVE CARD — the card is the session. A frame event, when
+  // one exists, only overrides the goal and round cap.
   const sessions: SandboxSession[] = [];
-  for (const [cardId, frame] of frames) {
-    const taskType = frame.body.task_type as SandboxTaskType;
-    const roundCapRaw = frame.body.round_cap;
+  for (const card of computeCanvasCards(db, circleId)) {
+    const cardId = card.cardId;
+    const frame = frames.get(cardId);
+    const taskType =
+      frame && SANDBOX_TASK_TYPES.includes(frame.body.task_type as SandboxTaskType)
+        ? (frame.body.task_type as SandboxTaskType)
+        : "negotiation";
+    const roundCapRaw = frame?.body.round_cap;
     const roundCap =
       Number.isInteger(roundCapRaw) &&
       (roundCapRaw as number) >= 1 &&
       (roundCapRaw as number) <= SANDBOX_ROUND_HARD_CEILING
         ? (roundCapRaw as number)
         : SANDBOX_DEFAULT_ROUND_CAP;
-
-    const enrollments: SandboxSession["enrollments"] = [];
-    for (const [key, e] of enrolls) {
-      if (!key.startsWith(`${cardId}\n`)) continue;
-      const mode = SANDBOX_MODES.includes(e.body.mode as SandboxMode)
-        ? (e.body.mode as SandboxMode)
-        : "off"; // fail closed on garbage
-      enrollments.push({ authorPubkey: e.row.author_pubkey, mode, updatedAt: e.updatedAt });
-    }
-    enrollments.sort((a, b) => (a.authorPubkey < b.authorPubkey ? -1 : 1));
-    const speakers = enrollments.filter((e) => e.mode !== "off").map((e) => e.authorPubkey);
 
     // Honored moves, with fold-side re-caps and per-kind validation.
     const byHash = new Map<string, SandboxMove>();
@@ -783,10 +818,11 @@ export function computeSandboxSessions(db: DatabaseSync, circleId: string): Sand
     sessions.push({
       cardId,
       taskType,
-      goal: str(frame.body.goal, GOAL_CAP),
+      // The card IS the goal. An explicit frame only overrides it.
+      goal: frame ? str(frame.body.goal, GOAL_CAP) || card.title : card.title,
       roundCap,
-      framedBy: frame.row.author_pubkey,
-      frameUpdatedAt: frame.updatedAt,
+      framedBy: frame ? frame.row.author_pubkey : card.authorPubkey,
+      frameUpdatedAt: frame ? frame.updatedAt : card.updatedAt,
       enrollments,
       speakers,
       moves,
@@ -824,18 +860,24 @@ export function isMyTurn(session: SandboxSession, myPubkey: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// The PRIVATE half of enrollment: circle_sandbox_enrollments. Node-local,
-// never fanned out, and the ONLY thing that gates spend (I4/I5, R4/R5/R10).
-// A peer learns `mode` from sandbox.enroll.put; budgets and guidance stay
-// here on member-own hardware.
+// The PRIVATE half of participation: circle_sandbox_participation. ONE row per
+// circle — "my agent works this circle's canvas" is a single standing choice,
+// not a per-card ceremony `[reshaped 2026-07-28]`. Node-local, never fanned
+// out, and still the ONLY thing that gates spend (I4/I5, R4/R5/R10). A peer
+// learns `mode` from sandbox.enroll.put; budgets and guidance stay here on
+// member-own hardware.
+//
+// Moving from per-card to per-circle loses no safety: spend is still bounded
+// by budgets only this human refills, and every generated move still waits for
+// their tap before it reaches the wire. What it removes is the ceremony that
+// stood between a person and the thing working.
 // ---------------------------------------------------------------------------
 
-export const SANDBOX_DEFAULT_TURN_BUDGET = 10;
-export const SANDBOX_DEFAULT_TOKEN_BUDGET = 200_000;
+export const SANDBOX_DEFAULT_TURN_BUDGET = 20;
+export const SANDBOX_DEFAULT_TOKEN_BUDGET = 400_000;
 
-export type SandboxEnrollment = {
+export type SandboxParticipation = {
   circleId: string;
-  cardId: string;
   mode: "off" | "propose";
   turnBudget: number;
   turnsUsed: number;
@@ -849,9 +891,8 @@ export type SandboxEnrollment = {
   updatedAt: number;
 };
 
-type EnrollmentRow = {
+type ParticipationRow = {
   circle_id: string;
-  card_id: string;
   mode: string;
   turn_budget: number;
   turns_used: number;
@@ -865,10 +906,9 @@ type EnrollmentRow = {
   updated_at: number;
 };
 
-function toEnrollment(r: EnrollmentRow): SandboxEnrollment {
+function toParticipation(r: ParticipationRow): SandboxParticipation {
   return {
     circleId: r.circle_id,
-    cardId: r.card_id,
     mode: r.mode === "propose" ? "propose" : "off",
     turnBudget: r.turn_budget,
     turnsUsed: r.turns_used,
@@ -884,16 +924,15 @@ function toEnrollment(r: EnrollmentRow): SandboxEnrollment {
 }
 
 /**
- * Create or update this human's enrollment for one card. Only the local human
+ * Set this human's standing participation for a circle. Only the local human
  * reaches this path (there is no wire verb into it), which is what makes the
- * budget human-only-refillable (R10). Setting budgets here IS the refill.
- * Re-enrolling also clears a pause (the human deciding to resume).
+ * budget human-only-refillable (R10). Setting budgets here IS the refill, and
+ * setting participation again clears a pause (the human deciding to resume).
  */
-export function upsertSandboxEnrollment(
+export function setSandboxParticipation(
   db: DatabaseSync,
   args: {
     circleId: string;
-    cardId: string;
     mode: "off" | "propose";
     turnBudget?: number;
     tokenBudget?: number;
@@ -901,11 +940,11 @@ export function upsertSandboxEnrollment(
     expiresAt?: number | null;
     now?: number;
   },
-): SandboxEnrollment {
+): SandboxParticipation {
   const now = args.now ?? Date.now();
   if (args.mode !== "off" && args.mode !== "propose") {
-    // 'auto' arrives in P2 behind circles.sandbox.enabled + its own opt-in
-    // (R19); until that machinery exists the store refuses to represent it.
+    // 'auto' arrives in P2 behind its own separate opt-in (R19); until that
+    // machinery exists the store refuses to represent it.
     throw new Error("mode must be 'off' or 'propose'");
   }
   const turnBudget = args.turnBudget ?? SANDBOX_DEFAULT_TURN_BUDGET;
@@ -914,11 +953,11 @@ export function upsertSandboxEnrollment(
   if (!Number.isInteger(tokenBudget) || tokenBudget < 0)
     throw new Error("tokenBudget must be >= 0");
   db.prepare(
-    `INSERT INTO circle_sandbox_enrollments
-       (circle_id, card_id, mode, turn_budget, turns_used, token_budget, tokens_used,
+    `INSERT INTO circle_sandbox_participation
+       (circle_id, mode, turn_budget, turns_used, token_budget, tokens_used,
         guidance, paused_at, pause_reason, expires_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 0, ?, 0, ?, NULL, NULL, ?, ?, ?)
-     ON CONFLICT(circle_id, card_id) DO UPDATE SET
+     VALUES (?, ?, ?, 0, ?, 0, ?, NULL, NULL, ?, ?, ?)
+     ON CONFLICT(circle_id) DO UPDATE SET
        mode = excluded.mode,
        turn_budget = excluded.turn_budget,
        token_budget = excluded.token_budget,
@@ -929,7 +968,6 @@ export function upsertSandboxEnrollment(
        updated_at = excluded.updated_at`,
   ).run(
     args.circleId,
-    args.cardId.slice(0, 64),
     args.mode,
     turnBudget,
     tokenBudget,
@@ -938,111 +976,110 @@ export function upsertSandboxEnrollment(
     now,
     now,
   );
-  return getSandboxEnrollment(db, args.circleId, args.cardId)!;
+  return getSandboxParticipation(db, args.circleId)!;
 }
 
-export function getSandboxEnrollment(
+export function getSandboxParticipation(
   db: DatabaseSync,
   circleId: string,
-  cardId: string,
-): SandboxEnrollment | null {
+): SandboxParticipation | null {
   const row = db
-    .prepare(`SELECT * FROM circle_sandbox_enrollments WHERE circle_id = ? AND card_id = ?`)
-    .get(circleId, cardId.slice(0, 64)) as EnrollmentRow | undefined;
-  return row ? toEnrollment(row) : null;
+    .prepare(`SELECT * FROM circle_sandbox_participation WHERE circle_id = ?`)
+    .get(circleId) as ParticipationRow | undefined;
+  return row ? toParticipation(row) : null;
 }
 
 /**
  * Atomically claim one agent turn (the claimAgentDraft guarded-UPDATE
- * pattern, R5): succeeds only while the enrollment is active, unpaused,
- * unexpired, and inside both budgets. Returns false otherwise — the caller
- * must not generate. A claimed turn is spent even if generation then fails
- * (conservative by design: a crashing generation must not become an
- * unmetered retry loop).
+ * pattern, R5): succeeds only while participation is on, unpaused, unexpired,
+ * and inside both budgets. Returns false otherwise — the caller must not
+ * generate. A claimed turn is spent even if generation then fails
+ * (conservative by design: a crashing generation must not become an unmetered
+ * retry loop).
  */
 export function claimSandboxTurn(
   db: DatabaseSync,
-  args: { circleId: string; cardId: string; now?: number },
+  args: { circleId: string; now?: number },
 ): boolean {
   const now = args.now ?? Date.now();
   const res = db
     .prepare(
-      `UPDATE circle_sandbox_enrollments
+      `UPDATE circle_sandbox_participation
           SET turns_used = turns_used + 1, updated_at = ?
-        WHERE circle_id = ? AND card_id = ?
+        WHERE circle_id = ?
           AND mode = 'propose'
           AND paused_at IS NULL
           AND turns_used < turn_budget
           AND tokens_used < token_budget
           AND (expires_at IS NULL OR expires_at > ?)`,
     )
-    .run(now, args.circleId, args.cardId.slice(0, 64), now);
+    .run(now, args.circleId, now);
   return Number(res.changes) === 1;
 }
 
-/** Record consumption-side token spend for one enrollment (R10/M3). */
+/** Record consumption-side token spend for one circle (R10/M3). */
 export function recordSandboxTokenSpend(
   db: DatabaseSync,
-  args: { circleId: string; cardId: string; tokens: number; now?: number },
+  args: { circleId: string; tokens: number; now?: number },
 ): void {
   if (!Number.isInteger(args.tokens) || args.tokens < 0) {
     throw new Error("tokens must be a non-negative integer");
   }
   db.prepare(
-    `UPDATE circle_sandbox_enrollments
+    `UPDATE circle_sandbox_participation
         SET tokens_used = tokens_used + ?, updated_at = ?
-      WHERE circle_id = ? AND card_id = ?`,
-  ).run(args.tokens, args.now ?? Date.now(), args.circleId, args.cardId.slice(0, 64));
+      WHERE circle_id = ?`,
+  ).run(args.tokens, args.now ?? Date.now(), args.circleId);
 }
 
 /**
- * Every enrollment that could spend RIGHT NOW: propose mode, unpaused,
+ * Every circle whose agent could spend RIGHT NOW: propose mode, unpaused,
  * unexpired, inside both budgets. The turn sweep iterates exactly this set —
  * anything filtered here can never reach a generation (R5 spend-time gate,
  * first check of two; claimSandboxTurn re-checks atomically).
  */
-export function listSpendableSandboxEnrollments(
+export function listSpendableSandboxCircles(
   db: DatabaseSync,
   now: number = Date.now(),
-): SandboxEnrollment[] {
+): SandboxParticipation[] {
   const rows = db
     .prepare(
-      `SELECT * FROM circle_sandbox_enrollments
+      `SELECT * FROM circle_sandbox_participation
         WHERE mode = 'propose'
           AND paused_at IS NULL
           AND turns_used < turn_budget
           AND tokens_used < token_budget
           AND (expires_at IS NULL OR expires_at > ?)
-        ORDER BY circle_id, card_id`,
+        ORDER BY circle_id`,
     )
-    .all(now) as unknown as EnrollmentRow[];
-  return rows.map(toEnrollment);
+    .all(now) as unknown as ParticipationRow[];
+  return rows.map(toParticipation);
 }
 
 /**
- * Pause an enrollment with a stated reason (§3.1: every stop is legible —
- * this is what the no-progress detector and the pause button both call).
+ * Pause with a stated reason (§3.1: every stop is legible — this is what the
+ * no-progress detector and the pause control both call).
  */
-export function pauseSandboxEnrollment(
+export function pauseSandboxParticipation(
   db: DatabaseSync,
-  args: { circleId: string; cardId: string; reason: string; now?: number },
+  args: { circleId: string; reason: string; now?: number },
 ): void {
   const now = args.now ?? Date.now();
   db.prepare(
-    `UPDATE circle_sandbox_enrollments
+    `UPDATE circle_sandbox_participation
         SET paused_at = ?, pause_reason = ?, updated_at = ?
-      WHERE circle_id = ? AND card_id = ?`,
-  ).run(now, args.reason.slice(0, 200), now, args.circleId, args.cardId.slice(0, 64));
+      WHERE circle_id = ?`,
+  ).run(now, args.reason.slice(0, 200), now, args.circleId);
 }
 
 /** The human resuming: clears the pause, touches nothing else. */
-export function resumeSandboxEnrollment(
+export function resumeSandboxParticipation(
   db: DatabaseSync,
-  args: { circleId: string; cardId: string; now?: number },
+  args: { circleId: string; now?: number },
 ): void {
   db.prepare(
-    `UPDATE circle_sandbox_enrollments
+    `UPDATE circle_sandbox_participation
         SET paused_at = NULL, pause_reason = NULL, updated_at = ?
-      WHERE circle_id = ? AND card_id = ?`,
-  ).run(args.now ?? Date.now(), args.circleId, args.cardId.slice(0, 64));
+      WHERE circle_id = ?`,
+  ).run(args.now ?? Date.now(), args.circleId);
 }

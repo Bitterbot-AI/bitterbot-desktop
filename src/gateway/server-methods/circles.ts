@@ -1027,62 +1027,34 @@ export const circlesHandlers: GatewayRequestHandlers = {
     respond(true, svc.service.sandboxState(circleId), undefined);
   },
 
-  "circles.sandbox.frame": async ({ params, respond }) => {
+  // ONE consent act: "my agent works this circle's canvas." Replaces the old
+  // frame + per-card enroll + practice-seat trio, which were three ceremonies
+  // standing between a person and the thing working.
+  "circles.sandbox.participation": async ({ params, respond }) => {
     const svc = await getService();
     if (!svc.ok) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
       return;
     }
     const circleId = typeof params.circleId === "string" ? params.circleId : "";
-    const cardId = typeof params.cardId === "string" ? params.cardId : "";
-    if (!circleId || !cardId) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId required"),
-      );
-      return;
-    }
-    try {
-      const result = await svc.service.frameSandboxSession({
-        circleId,
-        cardId,
-        goal: typeof params.goal === "string" ? params.goal : undefined,
-        roundCap: typeof params.roundCap === "number" ? params.roundCap : undefined,
-      });
-      respond(true, result, undefined);
-    } catch (err) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
-    }
-  },
-
-  "circles.sandbox.enroll": async ({ params, respond }) => {
-    const svc = await getService();
-    if (!svc.ok) {
-      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
-      return;
-    }
-    const circleId = typeof params.circleId === "string" ? params.circleId : "";
-    const cardId = typeof params.cardId === "string" ? params.cardId : "";
     const mode = params.mode === "off" || params.mode === "propose" ? params.mode : null;
-    if (!circleId || !cardId || !mode) {
+    if (!circleId || !mode) {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId, mode ('off'|'propose') required"),
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, mode ('off'|'propose') required"),
       );
       return;
     }
     try {
-      const enrollment = await svc.service.enrollSandbox({
+      const participation = await svc.service.setCanvasParticipation({
         circleId,
-        cardId,
         mode,
         turnBudget: typeof params.turnBudget === "number" ? params.turnBudget : undefined,
         tokenBudget: typeof params.tokenBudget === "number" ? params.tokenBudget : undefined,
         guidance: typeof params.guidance === "string" ? params.guidance : undefined,
       });
-      respond(true, { enrollment }, undefined);
+      respond(true, { participation }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }
@@ -1136,19 +1108,13 @@ export const circlesHandlers: GatewayRequestHandlers = {
       return;
     }
     const circleId = typeof params.circleId === "string" ? params.circleId : "";
-    const cardId = typeof params.cardId === "string" ? params.cardId : "";
-    if (!circleId || !cardId) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId required"),
-      );
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
       return;
     }
     try {
       svc.service.pauseSandbox({
         circleId,
-        cardId,
         reason: typeof params.reason === "string" ? params.reason : undefined,
       });
       respond(true, { ok: true }, undefined);
@@ -1164,16 +1130,11 @@ export const circlesHandlers: GatewayRequestHandlers = {
       return;
     }
     const circleId = typeof params.circleId === "string" ? params.circleId : "";
-    const cardId = typeof params.cardId === "string" ? params.cardId : "";
-    if (!circleId || !cardId) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId required"),
-      );
+    if (!circleId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
       return;
     }
-    svc.service.resumeSandbox({ circleId, cardId });
+    svc.service.resumeSandbox({ circleId });
     respond(true, { ok: true }, undefined);
   },
 
@@ -1185,8 +1146,8 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
     const circleId = typeof params.circleId === "string" ? params.circleId : "";
     const cardId = typeof params.cardId === "string" ? params.cardId : "";
-    // The UI closes as 'done' (ratified) or 'human' (someone pulled the plug);
-    // detector reasons (cap, no_progress, budget) are machine-set, later slice.
+    // The UI finishes as 'done' (ratified) or 'human' (someone pulled the
+    // plug); detector reasons (cap, no_progress, budget) are machine-set.
     const reason = params.reason === "done" || params.reason === "human" ? params.reason : null;
     if (!circleId || !cardId || !reason) {
       respond(
@@ -1201,29 +1162,6 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
     try {
       respond(true, await svc.service.closeSandboxSession({ circleId, cardId, reason }), undefined);
-    } catch (err) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
-    }
-  },
-
-  "circles.sandbox.practiceSeat": async ({ params, respond }) => {
-    const svc = await getService();
-    if (!svc.ok) {
-      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
-      return;
-    }
-    const circleId = typeof params.circleId === "string" ? params.circleId : "";
-    const cardId = typeof params.cardId === "string" ? params.cardId : "";
-    if (!circleId || !cardId) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId required"),
-      );
-      return;
-    }
-    try {
-      respond(true, await svc.service.addSandboxPracticeSeat({ circleId, cardId }), undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }

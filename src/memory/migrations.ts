@@ -1963,6 +1963,62 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 56,
+    description:
+      "PLAN-38 P1 reshape (cards are alive by nature): sandbox participation " +
+      "moves from PER-CARD to PER-CIRCLE. 'My agent works this circle's " +
+      "canvas' is one standing choice, not a ceremony repeated on every card " +
+      "— the per-card enrollment step was pure friction between a person and " +
+      "the thing working. Consent is unchanged in kind: still node-local and " +
+      "authoritative (I4/R4), still the only gate on spend (R5/R10), still " +
+      "propose-mode so every generated move waits for its human's tap (I7). " +
+      "Existing rows collapse to their circle, keeping the largest budgets " +
+      "and any guidance, so nothing a human configured is silently dropped.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_sandbox_participation (
+          circle_id    TEXT PRIMARY KEY,
+          mode         TEXT NOT NULL DEFAULT 'off',
+          turn_budget  INTEGER NOT NULL DEFAULT 20,
+          turns_used   INTEGER NOT NULL DEFAULT 0,
+          token_budget INTEGER NOT NULL DEFAULT 400000,
+          tokens_used  INTEGER NOT NULL DEFAULT 0,
+          guidance     TEXT NOT NULL DEFAULT '',
+          paused_at    INTEGER,
+          pause_reason TEXT,
+          expires_at   INTEGER,
+          created_at   INTEGER NOT NULL,
+          updated_at   INTEGER NOT NULL
+        );
+      `);
+      // Collapse any per-card rows into one row per circle. 'propose' wins
+      // over 'off' (a human who turned it on anywhere meant it), budgets take
+      // the max, spend takes the sum so nothing already spent is forgiven.
+      const hasOld = db
+        .prepare(
+          `SELECT name FROM sqlite_master WHERE type='table' AND name='circle_sandbox_enrollments'`,
+        )
+        .get();
+      if (hasOld) {
+        db.exec(`
+          INSERT OR IGNORE INTO circle_sandbox_participation
+            (circle_id, mode, turn_budget, turns_used, token_budget, tokens_used,
+             guidance, paused_at, pause_reason, expires_at, created_at, updated_at)
+          SELECT circle_id,
+                 CASE WHEN MAX(mode = 'propose') = 1 THEN 'propose' ELSE 'off' END,
+                 MAX(turn_budget), SUM(turns_used),
+                 MAX(token_budget), SUM(tokens_used),
+                 COALESCE(MAX(NULLIF(guidance, '')), ''),
+                 MAX(paused_at), MAX(pause_reason), MAX(expires_at),
+                 MIN(created_at), MAX(updated_at)
+            FROM circle_sandbox_enrollments
+           GROUP BY circle_id;
+        `);
+        db.exec(`DROP TABLE circle_sandbox_enrollments;`);
+      }
+    },
+  },
 ];
 
 /**

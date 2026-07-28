@@ -99,14 +99,14 @@ import {
 } from "./sandbox-agent.js";
 import {
   computeSandboxSessions,
-  getSandboxEnrollment,
+  getSandboxParticipation,
   isMyTurn,
-  pauseSandboxEnrollment,
-  resumeSandboxEnrollment,
-  upsertSandboxEnrollment,
+  pauseSandboxParticipation,
+  resumeSandboxParticipation,
+  setSandboxParticipation,
   type SandboxCloseReason,
-  type SandboxEnrollment,
   type SandboxMoveKind,
+  type SandboxParticipation,
   type SandboxSession,
 } from "./sandbox.js";
 import { listStudyState, recordStudyResult, type StudySectionState } from "./study.js";
@@ -1824,26 +1824,20 @@ export class CirclesService {
   }
 
   /**
-   * The sandbox fold for the UI, augmented with node-local view state: whose
-   * turn, who the current round waits on, and OUR private enrollment (which
-   * never leaves this node — the UI it feeds is the only reader).
+   * The canvas for the UI: every card's live state plus our node-local view
+   * (whose turn, who a round waits on) and our standing participation. No
+   * "sessions" concept crosses this boundary — cards are simply alive.
    */
   sandboxState(circleId: string): {
     generationEnabled: boolean;
     practicePubkey: string | null;
-    sessions: Array<
-      SandboxSession & {
-        myTurn: boolean;
-        waitingOn: string[];
-        myEnrollment: SandboxEnrollment | null;
-      }
-    >;
+    participation: SandboxParticipation | null;
+    sessions: Array<SandboxSession & { myTurn: boolean; waitingOn: string[] }>;
   } {
-    const members = this.store.getMembers(circleId);
     const partnerPk = pubkeyId(this.practiceKey());
-    const practiceMember = members.some(
-      (m) => m.memberPubkey === partnerPk && m.status === "active",
-    );
+    const practiceMember = this.store
+      .getMembers(circleId)
+      .some((m) => m.memberPubkey === partnerPk && m.status === "active");
     const sessions = computeSandboxSessions(this.db, circleId).map((s) => {
       const moved = new Set(
         s.moves.filter((m) => m.round === s.currentRound).map((m) => m.authorPubkey),
@@ -1852,86 +1846,106 @@ export class CirclesService {
         ...s,
         myTurn: isMyTurn(s, this.pubkey),
         waitingOn: s.status === "closed" ? [] : s.speakers.filter((pk) => !moved.has(pk)),
-        myEnrollment: getSandboxEnrollment(this.db, circleId, s.cardId),
       };
     });
     return {
       generationEnabled: this.sandboxGenerationEnabled(),
       practicePubkey: practiceMember ? partnerPk : null,
+      participation: getSandboxParticipation(this.db, circleId),
       sessions,
     };
   }
 
   /**
-   * Open a sandbox session ON an existing canvas card ("Work this with
-   * agents"). The card is the artifact; the session is an upgrade applied to
-   * it — never a new card type. Goal defaults to the card's title.
+   * The ONE consent act: "my agent works this circle's canvas." Two halves
+   * (R4) — the private row (budgets, guidance; never leaves the node) and a
+   * circle-wide signed event carrying `mode` only, so peers know whether we
+   * speak and every node derives the same speaker order. Setting it again
+   * clears a pause.
+   *
+   * Turning participation ON also seats the practice partner when this is a
+   * solo circle, because a canvas with one agent cannot demonstrate anything
+   * and asking a person to summon a test fixture is not a feature.
    */
-  async frameSandboxSession(args: {
+  async setCanvasParticipation(args: {
     circleId: string;
-    cardId: string;
-    goal?: string;
-    roundCap?: number;
-  }): Promise<SendReport & { eventId: string; seq: number }> {
-    const card = computeCanvasCards(this.db, args.circleId).find((c) => c.cardId === args.cardId);
-    if (!card) throw new Error(`card ${args.cardId} is not on the canvas`);
-    const goal = (args.goal ?? "").trim() || card.title || card.text.slice(0, 200);
-    return this.appendTabEvent({
-      circleId: args.circleId,
-      input: {
-        type: "sandbox.frame.put",
-        cardId: args.cardId,
-        taskType: "negotiation",
-        goal,
-        roundCap: args.roundCap,
-        updatedAt: Date.now(),
-      },
-    });
-  }
-
-  /**
-   * Enroll (or change mode for) OUR agent on a card. Two halves (R4): the
-   * private row (budgets, guidance — never leaves the node) and the public
-   * signed event carrying `mode` only. Re-enrolling clears a pause.
-   */
-  async enrollSandbox(args: {
-    circleId: string;
-    cardId: string;
     mode: "off" | "propose";
     turnBudget?: number;
     tokenBudget?: number;
     guidance?: string;
-    expiresAt?: number | null;
-  }): Promise<SandboxEnrollment> {
-    const session = computeSandboxSessions(this.db, args.circleId).find(
-      (s) => s.cardId === args.cardId,
-    );
-    if (!session) throw new Error(`no sandbox session on card ${args.cardId} — frame it first`);
-    const enrollment = upsertSandboxEnrollment(this.db, {
+  }): Promise<SandboxParticipation> {
+    const participation = setSandboxParticipation(this.db, {
       circleId: args.circleId,
-      cardId: args.cardId,
       mode: args.mode,
       turnBudget: args.turnBudget,
       tokenBudget: args.tokenBudget,
       guidance: args.guidance,
-      expiresAt: args.expiresAt,
     });
     await this.appendTabEvent({
       circleId: args.circleId,
-      input: {
-        type: "sandbox.enroll.put",
-        cardId: args.cardId,
-        mode: args.mode,
-        updatedAt: Date.now(),
-      },
+      input: { type: "sandbox.enroll.put", mode: args.mode, updatedAt: Date.now() },
     });
-    return enrollment;
+    if (args.mode === "propose") {
+      await this.ensurePracticePartnerSeat(args.circleId);
+    }
+    return participation;
   }
 
   /**
-   * The HUMAN composer (§2's "join in" half): post a move by hand — no
-   * enrollment, no agent, no budget involved. Bound by the same one-move-per-
-   * member-per-round rule as everyone else, with a legible refusal.
+   * Solo circles get the labeled practice partner automatically (P1.0 — with
+   * one human installed it is the only thing that can exercise a card end to
+   * end). Silently does nothing when real members are present or the partner
+   * is disabled; this is never a user-facing act.
+   */
+  private async ensurePracticePartnerSeat(circleId: string): Promise<string | null> {
+    if (this.config.circles?.practicePartner?.enabled === false) return null;
+    const partnerKey = this.practiceKey();
+    const partnerPk = pubkeyId(partnerKey);
+    const members = this.store.getMembers(circleId);
+    const realOthers = members.filter(
+      (m) =>
+        m.status === "active" && m.memberPubkey !== this.pubkey && m.memberPubkey !== partnerPk,
+    );
+    if (realOthers.length > 0) return null;
+    if (!members.some((m) => m.memberPubkey === partnerPk && m.status === "active")) {
+      this.store.addMember({
+        circleId,
+        memberPubkey: partnerPk,
+        displayName: PRACTICE_PARTNER_NAME,
+        scopes: DEFAULT_MEMBER_SCOPES,
+      });
+    }
+    // The partner's own circle-wide participation, signed by its own key
+    // through the same validated append path a real peer would use.
+    const already = computeSandboxSessions(this.db, circleId)[0]?.enrollments.some(
+      (e) => e.authorPubkey === partnerPk && e.mode !== "off",
+    );
+    if (!already) {
+      const body = buildChainedEventBody(this.db, {
+        circleId,
+        authorPubkey: partnerPk,
+        input: { type: "sandbox.enroll.put", mode: "propose", updatedAt: Date.now() },
+      });
+      const envelope = makeCircleEnvelope(
+        "event",
+        circleId,
+        body as unknown as Record<string, JsonValue>,
+        partnerKey,
+      );
+      const { handleCircleMethod } = await import("../gateway/a2a/circles.js");
+      const outcome = handleCircleMethod("circle/event.append", { envelope }, this.db);
+      if (!outcome.ok) {
+        log.debug(`practice participation refused: ${outcome.error.message}`);
+        return null;
+      }
+    }
+    return partnerPk;
+  }
+
+  /**
+   * A move by hand (§2's "join in" half): no participation, no agent, no
+   * budget involved. Bound by the same one-move-per-member-per-round rule as
+   * everyone else, with a legible refusal.
    */
   async postSandboxMove(args: {
     circleId: string;
@@ -1944,9 +1958,9 @@ export class CirclesService {
     const session = computeSandboxSessions(this.db, args.circleId).find(
       (s) => s.cardId === args.cardId,
     );
-    if (!session) throw new Error(`no sandbox session on card ${args.cardId}`);
+    if (!session) throw new Error(`card ${args.cardId} is not on the canvas`);
     if (session.status === "closed") {
-      throw new Error(`this session is closed (${session.closed?.reason ?? "done"})`);
+      throw new Error(`this card is finished (${session.closed?.reason ?? "done"})`);
     }
     if (
       session.moves.some((m) => m.round === session.currentRound && m.authorPubkey === this.pubkey)
@@ -1977,22 +1991,18 @@ export class CirclesService {
   }
 
   /** One-tap pause (§3.1): nothing generates or publishes until resumed. */
-  pauseSandbox(args: { circleId: string; cardId: string; reason?: string }): void {
-    if (!getSandboxEnrollment(this.db, args.circleId, args.cardId)) {
-      throw new Error("no enrollment on this card");
-    }
-    pauseSandboxEnrollment(this.db, {
+  pauseSandbox(args: { circleId: string; reason?: string }): void {
+    pauseSandboxParticipation(this.db, {
       circleId: args.circleId,
-      cardId: args.cardId,
       reason: args.reason?.trim() || "paused by you",
     });
   }
 
-  resumeSandbox(args: { circleId: string; cardId: string }): void {
-    resumeSandboxEnrollment(this.db, { circleId: args.circleId, cardId: args.cardId });
+  resumeSandbox(args: { circleId: string }): void {
+    resumeSandboxParticipation(this.db, { circleId: args.circleId });
   }
 
-  /** Close the session with a legible, attributed reason (§3.1). */
+  /** Finish a card with a legible, attributed reason (§3.1). */
   async closeSandboxSession(args: {
     circleId: string;
     cardId: string;
@@ -2007,74 +2017,6 @@ export class CirclesService {
         updatedAt: Date.now(),
       },
     });
-  }
-
-  /**
-   * P1.0: seat the labeled practice partner on a session so the card is
-   * exercisable with ONE human installed. Solo circles only — with real
-   * members present the seat is refused, legibly (practice moves would be
-   * unverifiable noise on their ledgers).
-   */
-  async addSandboxPracticeSeat(args: { circleId: string; cardId: string }): Promise<{
-    partnerPubkey: string;
-  }> {
-    if (this.config.circles?.practicePartner?.enabled === false) {
-      throw new Error("the practice partner is disabled on this node");
-    }
-    const session = computeSandboxSessions(this.db, args.circleId).find(
-      (s) => s.cardId === args.cardId,
-    );
-    if (!session) throw new Error(`no sandbox session on card ${args.cardId} — frame it first`);
-    const partnerKey = this.practiceKey();
-    const partnerPk = pubkeyId(partnerKey);
-    const members = this.store.getMembers(args.circleId);
-    const realOthers = members.filter(
-      (m) =>
-        m.status === "active" && m.memberPubkey !== this.pubkey && m.memberPubkey !== partnerPk,
-    );
-    if (realOthers.length > 0) {
-      throw new Error(
-        "the practice seat is for solo circles — real members are here, so invite their agents instead",
-      );
-    }
-    if (!members.some((m) => m.memberPubkey === partnerPk && m.status === "active")) {
-      this.store.addMember({
-        circleId: args.circleId,
-        memberPubkey: partnerPk,
-        displayName: PRACTICE_PARTNER_NAME,
-        scopes: DEFAULT_MEMBER_SCOPES,
-      });
-    }
-    // The partner's PUBLIC enrollment (mode only), signed by its own key
-    // through the same validated append path a real peer would use.
-    if (!session.enrollments.some((e) => e.authorPubkey === partnerPk && e.mode !== "off")) {
-      const body = buildChainedEventBody(this.db, {
-        circleId: args.circleId,
-        authorPubkey: partnerPk,
-        input: {
-          type: "sandbox.enroll.put",
-          cardId: args.cardId,
-          mode: "propose",
-          updatedAt: Date.now(),
-        },
-      });
-      const envelope = makeCircleEnvelope(
-        "event",
-        args.circleId,
-        body as unknown as Record<string, JsonValue>,
-        partnerKey,
-      );
-      const { handleCircleMethod } = await import("../gateway/a2a/circles.js");
-      const outcome = handleCircleMethod("circle/event.append", { envelope }, this.db);
-      if (!outcome.ok) {
-        throw new Error(`practice enrollment refused: ${outcome.error.message}`);
-      }
-    }
-    // Let the partner move now rather than after the next ~15s sweep.
-    if (this.sandboxGenerationEnabled()) {
-      await practiceSandboxSweep(this.db, { partnerKey });
-    }
-    return { partnerPubkey: partnerPk };
   }
 
   /**
@@ -2157,19 +2099,19 @@ export class CirclesService {
     cardId: string,
     text: string,
   ): Promise<SendReport & { eventId: string; seq: number }> {
-    const enr = getSandboxEnrollment(this.db, circleId, cardId);
-    if (!enr || enr.mode !== "propose") {
-      throw new Error("your sandbox enrollment on this card is off — re-enroll to post");
+    const part = getSandboxParticipation(this.db, circleId);
+    if (!part || part.mode !== "propose") {
+      throw new Error("your agent is not working this circle's canvas — turn it on to post");
     }
-    if (enr.pausedAt) {
+    if (part.pausedAt) {
       throw new Error(
-        `your agent is paused on this card (${enr.pauseReason ?? "paused"}) — resume before posting`,
+        `your agent is paused (${part.pauseReason ?? "paused"}) — resume before posting`,
       );
     }
     const session = computeSandboxSessions(this.db, circleId).find((s) => s.cardId === cardId);
-    if (!session) throw new Error("no sandbox session on this card");
+    if (!session) throw new Error("that card is no longer on the canvas");
     if (session.status === "closed") {
-      throw new Error(`this session is closed (${session.closed?.reason ?? "done"})`);
+      throw new Error(`this card is finished (${session.closed?.reason ?? "done"})`);
     }
     if (
       session.moves.some((m) => m.round === session.currentRound && m.authorPubkey === this.pubkey)

@@ -174,8 +174,8 @@ export interface SandboxMove {
   claimedAt: number;
 }
 
-/** The node-local half of enrollment (never leaves this node). */
-export interface SandboxEnrollment {
+/** The node-local half of participation, per CIRCLE (never leaves this node). */
+export interface SandboxParticipation {
   mode: "off" | "propose";
   turnBudget: number;
   turnsUsed: number;
@@ -203,13 +203,14 @@ export interface SandboxSession {
   status: "gathering" | "live" | "closed";
   myTurn: boolean;
   waitingOn: string[];
-  myEnrollment: SandboxEnrollment | null;
 }
 
 export interface SandboxState {
-  /** R19 kill switch: agent generation on this node (humans always work). */
+  /** Agent generation on this node (humans always work regardless). */
   generationEnabled: boolean;
   practicePubkey: string | null;
+  /** One standing choice for the whole circle: does my agent work here. */
+  participation: SandboxParticipation | null;
   sessions: SandboxSession[];
 }
 
@@ -246,11 +247,9 @@ interface CirclesState {
   loadMessages: (circleId: string) => Promise<void>;
   loadCards: (circleId: string) => Promise<void>;
   loadSandbox: (circleId: string) => Promise<void>;
-  /** "Work this with agents": open a session on an existing card. */
-  frameSandbox: (circleId: string, cardId: string) => Promise<boolean>;
-  enrollSandbox: (
+  /** The one consent act: does my agent work this circle's canvas. */
+  setCanvasParticipation: (
     circleId: string,
-    cardId: string,
     mode: "off" | "propose",
     opts?: { guidance?: string; turnBudget?: number },
   ) => Promise<boolean>;
@@ -261,10 +260,9 @@ interface CirclesState {
     kind: "constraint" | "option.add" | "vote" | "pass",
     opts?: { text?: string; optionId?: string; label?: string },
   ) => Promise<boolean>;
-  pauseSandbox: (circleId: string, cardId: string) => Promise<boolean>;
-  resumeSandbox: (circleId: string, cardId: string) => Promise<boolean>;
+  pauseSandbox: (circleId: string) => Promise<boolean>;
+  resumeSandbox: (circleId: string) => Promise<boolean>;
   closeSandbox: (circleId: string, cardId: string, reason: "done" | "human") => Promise<boolean>;
-  addPracticeSeat: (circleId: string, cardId: string) => Promise<boolean>;
   loadDrafts: (circleId: string) => Promise<void>;
   loadOutbound: (circleId: string) => Promise<void>;
   approveOutbound: (circleId: string, id: string) => Promise<boolean>;
@@ -546,6 +544,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       const state: SandboxState = {
         generationEnabled: res?.generationEnabled === true,
         practicePubkey: typeof res?.practicePubkey === "string" ? res.practicePubkey : null,
+        participation: res?.participation ?? null,
         sessions: Array.isArray(res?.sessions) ? res.sessions : [],
       };
       set((s) => ({ sandboxByCircle: { ...s.sandboxByCircle, [circleId]: state } }));
@@ -554,27 +553,16 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     }
   },
 
-  frameSandbox: async (circleId, cardId) => {
+  setCanvasParticipation: async (circleId, mode, opts) => {
     try {
-      await request("circles.sandbox.frame", { circleId, cardId });
-      await get().loadSandbox(circleId);
-      return true;
-    } catch (err) {
-      set({ notice: String(err) });
-      return false;
-    }
-  },
-
-  enrollSandbox: async (circleId, cardId, mode, opts) => {
-    try {
-      await request("circles.sandbox.enroll", {
+      await request("circles.sandbox.participation", {
         circleId,
-        cardId,
         mode,
         guidance: opts?.guidance,
         turnBudget: opts?.turnBudget,
       });
       await get().loadSandbox(circleId);
+      await get().refresh(); // a solo circle may have gained the practice bot
       return true;
     } catch (err) {
       set({ notice: String(err) });
@@ -593,9 +581,9 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     }
   },
 
-  pauseSandbox: async (circleId, cardId) => {
+  pauseSandbox: async (circleId) => {
     try {
-      await request("circles.sandbox.pause", { circleId, cardId });
+      await request("circles.sandbox.pause", { circleId });
       await get().loadSandbox(circleId);
       return true;
     } catch (err) {
@@ -604,9 +592,9 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     }
   },
 
-  resumeSandbox: async (circleId, cardId) => {
+  resumeSandbox: async (circleId) => {
     try {
-      await request("circles.sandbox.resume", { circleId, cardId });
+      await request("circles.sandbox.resume", { circleId });
       await get().loadSandbox(circleId);
       return true;
     } catch (err) {
@@ -619,18 +607,6 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     try {
       await request("circles.sandbox.close", { circleId, cardId, reason });
       await get().loadSandbox(circleId);
-      return true;
-    } catch (err) {
-      set({ notice: String(err) });
-      return false;
-    }
-  },
-
-  addPracticeSeat: async (circleId, cardId) => {
-    try {
-      await request("circles.sandbox.practiceSeat", { circleId, cardId });
-      await get().loadSandbox(circleId);
-      await get().refresh(); // the roster gained the labeled bot member
       return true;
     } catch (err) {
       set({ notice: String(err) });

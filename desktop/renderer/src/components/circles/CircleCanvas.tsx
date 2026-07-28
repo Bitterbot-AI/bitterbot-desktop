@@ -1,9 +1,9 @@
-import { BookOpen, GitBranch, ListChecks, Plus, StickyNote, X, Zap } from "lucide-react";
+import { BookOpen, Bot, GitBranch, ListChecks, Plus, StickyNote, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { memberName, useCirclesStore, type Circle } from "../../stores/circles-store";
+import { CardLiveLayer } from "./CardLiveLayer";
 import { DecisionCard } from "./DecisionCard";
 import { MermaidDiagram } from "./MermaidDiagram";
-import { SandboxCard } from "./SandboxCard";
 import { StudyGuideCard } from "./StudyGuideCard";
 
 // PLAN-36 Phase C: the group canvas — a board of typed cards folded from the
@@ -39,10 +39,10 @@ export function CircleCanvas({
 }) {
   const cards = useCirclesStore((s) => s.cardsByCircle[circle.circleId]);
   const sandbox = useCirclesStore((s) => s.sandboxByCircle[circle.circleId]);
-  const frameSandbox = useCirclesStore((s) => s.frameSandbox);
   const putCard = useCirclesStore((s) => s.putCard);
   const putDecision = useCirclesStore((s) => s.putDecision);
   const putStudyGuide = useCirclesStore((s) => s.putStudyGuide);
+  const setCanvasParticipation = useCirclesStore((s) => s.setCanvasParticipation);
   const [mode, setMode] = useState<Mode>(null);
   const [saving, setSaving] = useState(false);
   // Note composer
@@ -155,6 +155,38 @@ export function CircleCanvas({
           </div>
         )}
       </div>
+
+      {/* The ONE consent control for the whole canvas: does my agent work
+          here. Not a per-card act, not a mode — a standing choice, stated in
+          plain words. */}
+      {circle.status === "active" && (
+        <label className="flex items-center gap-2 px-3 py-1.5 border-b text-[11px] text-muted-foreground cursor-pointer">
+          <input
+            type="checkbox"
+            checked={sandbox?.participation?.mode === "propose"}
+            onChange={(e) =>
+              void setCanvasParticipation(circle.circleId, e.target.checked ? "propose" : "off")
+            }
+            className="accent-emerald-600"
+          />
+          <Bot className="w-3 h-3 text-circle-agent" />
+          <span>
+            My agent works on this canvas
+            {sandbox?.participation?.mode === "propose" && (
+              <span className="text-muted-foreground">
+                {" "}
+                — it suggests, you decide
+                {sandbox.participation.turnBudget > 0 && (
+                  <span className="tabular-nums">
+                    {" "}
+                    ({sandbox.participation.turnsUsed}/{sandbox.participation.turnBudget} turns)
+                  </span>
+                )}
+              </span>
+            )}
+          </span>
+        </label>
+      )}
 
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
         {mode === "note" && (
@@ -293,57 +325,41 @@ export function CircleCanvas({
         )}
 
         {list.map((card) => {
-          // PLAN-38: a card carrying a sandbox session renders as the session
-          // (formats and jobs are different axes — the session is an upgrade
-          // applied to the card, never a fifth card type).
-          const session = sandbox?.sessions.find((s) => s.cardId === card.cardId);
-          if (session && sandbox) {
+          // Every card carries the live layer — agents and people work the
+          // card itself. There is no separate card type and nothing to enable.
+          const live = (
+            <CardLiveLayer
+              cardId={card.cardId}
+              circle={circle}
+              selfPubkey={selfPubkey}
+              sandbox={sandbox}
+            />
+          );
+          if (card.cardType === "decision") {
             return (
-              <SandboxCard
-                key={card.cardId}
-                card={card}
-                session={session}
-                sandbox={sandbox}
-                circle={circle}
-                selfPubkey={selfPubkey}
-              />
+              <DecisionCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey}>
+                <div className="px-3 pb-3">{live}</div>
+              </DecisionCard>
             );
           }
-          return card.cardType === "decision" ? (
-            <div key={card.cardId} className="space-y-1">
-              <DecisionCard card={card} circle={circle} selfPubkey={selfPubkey} />
-              {circle.status === "active" && (
-                <button
-                  type="button"
-                  onClick={() => void frameSandbox(circle.circleId, card.cardId)}
-                  className="w-full rounded-md border border-dashed border-circle-agent/40 px-2 py-1 text-[11px] text-circle-agent flex items-center justify-center gap-1"
-                  title="Open an agent session on this card — same card, same votes; agents are an upgrade"
-                >
-                  <Zap className="w-3 h-3" /> Work this with agents
-                </button>
-              )}
-            </div>
-          ) : card.cardType === "study" ? (
-            <StudyGuideCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey} />
-          ) : card.cardType === "mermaid" ? (
-            <div key={card.cardId} className="rounded-lg border bg-card p-3">
-              {card.title && <div className="text-sm font-semibold mb-2">{card.title}</div>}
-              <MermaidDiagram code={card.text} />
-              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span className="font-medium">
-                  {nameFor(circle, card.authorPubkey, selfPubkey)}
-                </span>
-                <span>·</span>
-                <span>{fmtWhen(card.updatedAt)}</span>
-              </div>
-            </div>
-          ) : (
+          if (card.cardType === "study") {
+            return (
+              <StudyGuideCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey}>
+                <div className="px-3 pb-3">{live}</div>
+              </StudyGuideCard>
+            );
+          }
+          return (
             <div key={card.cardId} className="rounded-lg border bg-card p-3">
               {card.title && <div className="text-sm font-semibold mb-1">{card.title}</div>}
-              {card.text && (
-                <div className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
-                  {card.text}
-                </div>
+              {card.cardType === "mermaid" ? (
+                <MermaidDiagram code={card.text} />
+              ) : (
+                card.text && (
+                  <div className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+                    {card.text}
+                  </div>
+                )
               )}
               <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <span className="font-medium">
@@ -352,6 +368,7 @@ export function CircleCanvas({
                 <span>·</span>
                 <span>{fmtWhen(card.updatedAt)}</span>
               </div>
+              {live}
             </div>
           );
         })}

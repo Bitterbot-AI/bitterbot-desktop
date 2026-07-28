@@ -1,3 +1,4 @@
+import type React from "react";
 import { Check, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
@@ -25,10 +26,13 @@ export function DecisionCard({
   card,
   circle,
   selfPubkey,
+  children,
 }: {
   card: CanvasCard;
   circle: Circle;
   selfPubkey: string | undefined;
+  /** The card's live layer (agents + people working it). */
+  children?: React.ReactNode;
 }) {
   const vote = useCirclesStore((s) => s.vote);
   const requestSliceDraft = useCirclesStore((s) => s.requestSliceDraft);
@@ -198,6 +202,7 @@ export function DecisionCard({
           </div>
         </div>
       )}
+      {children}
     </div>
   );
 }

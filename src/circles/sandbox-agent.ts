@@ -40,9 +40,9 @@ import { makeCircleEnvelope } from "./envelope.js";
 import {
   claimSandboxTurn,
   computeSandboxSessions,
-  getSandboxEnrollment,
+  getSandboxParticipation,
   isMyTurn,
-  listSpendableSandboxEnrollments,
+  listSpendableSandboxCircles,
   type SandboxEventInput,
   type SandboxSession,
 } from "./sandbox.js";
@@ -127,7 +127,7 @@ export function buildQuarantinedSandboxMovePrompt(
   // The enrolling human's own guidance: their typed words to their own agent,
   // node-local. This is P1's private-context pipe (I2 allows it BECAUSE every
   // output waits for the same human's tap).
-  const guidance = getSandboxEnrollment(db, args.circleId, args.cardId)?.guidance?.trim() ?? "";
+  const guidance = getSandboxParticipation(db, args.circleId)?.guidance?.trim() ?? "";
 
   const moveLines = session.moves.map((m) => {
     const who = label(m.authorPubkey);
@@ -229,30 +229,28 @@ export function sweepSandboxTurns(
 ): { queued: number } {
   const now = args.now ?? Date.now();
   let queued = 0;
-  const sessionCache = new Map<string, SandboxSession[]>();
-  for (const enr of listSpendableSandboxEnrollments(db, now)) {
+  for (const part of listSpendableSandboxCircles(db, now)) {
     if (queued >= QUEUE_PER_SWEEP) break;
-    let sessions = sessionCache.get(enr.circleId);
-    if (!sessions) {
-      sessions = computeSandboxSessions(db, enr.circleId);
-      sessionCache.set(enr.circleId, sessions);
+    // Every live card in a participating circle is fair game; we act only
+    // where it is actually our turn, so an idle canvas costs one fold.
+    for (const session of computeSandboxSessions(db, part.circleId)) {
+      if (queued >= QUEUE_PER_SWEEP) break;
+      if (session.status === "closed") continue;
+      if (!isMyTurn(session, args.selfPubkey)) continue;
+      const live = db
+        .prepare(
+          `SELECT draft_id FROM circle_agent_drafts
+            WHERE circle_id = ? AND target_card_id = ? AND kind = ?
+              AND status IN ('queued', 'drafting', 'ready')`,
+        )
+        .get(part.circleId, session.cardId, SANDBOX_DRAFT_KIND);
+      if (live) continue;
+      // Spend-time gate (R5): the guarded UPDATE is the authority. A turn is
+      // spent even if generation later fails — conservative by design.
+      if (!claimSandboxTurn(db, { circleId: part.circleId, now })) break;
+      const q = queueSandboxMoveDraft(db, { circleId: part.circleId, cardId: session.cardId, now });
+      if (q.queued) queued += 1;
     }
-    const session = sessions.find((s) => s.cardId === enr.cardId);
-    if (!session || session.status === "closed") continue;
-    if (!isMyTurn(session, args.selfPubkey)) continue;
-    const live = db
-      .prepare(
-        `SELECT draft_id FROM circle_agent_drafts
-          WHERE circle_id = ? AND target_card_id = ? AND kind = ?
-            AND status IN ('queued', 'drafting', 'ready')`,
-      )
-      .get(enr.circleId, enr.cardId, SANDBOX_DRAFT_KIND);
-    if (live) continue;
-    // Spend-time gate (R5): the guarded UPDATE is the authority. A turn is
-    // spent even if generation later fails — conservative by design.
-    if (!claimSandboxTurn(db, { circleId: enr.circleId, cardId: enr.cardId, now })) continue;
-    const q = queueSandboxMoveDraft(db, { circleId: enr.circleId, cardId: enr.cardId, now });
-    if (q.queued) queued += 1;
   }
   return { queued };
 }

@@ -11,14 +11,14 @@ import {
   claimSandboxTurn,
   computeSandboxSessions,
   evidenceHost,
-  getSandboxEnrollment,
+  getSandboxParticipation,
   isMyTurn,
   normalizeSandboxInput,
-  pauseSandboxEnrollment,
+  pauseSandboxParticipation,
   recordSandboxTokenSpend,
   SANDBOX_DEFAULT_ROUND_CAP,
+  setSandboxParticipation,
   speakerOrderFor,
-  upsertSandboxEnrollment,
   type SandboxEventInput,
   type SandboxSession,
 } from "./sandbox.js";
@@ -60,7 +60,7 @@ describe("normalizeSandboxInput (the sender-side grammar)", () => {
       }),
     ).toThrow(/taskType/);
     expect(() =>
-      normalizeSandboxInput({ type: "sandbox.enroll.put", ...base, mode: "loud" as never }),
+      normalizeSandboxInput({ type: "sandbox.enroll.put", mode: "loud" as never, updatedAt: NOW }),
     ).toThrow(/mode/);
     expect(() =>
       normalizeSandboxInput({ type: "sandbox.close", ...base, reason: "vibes" as never }),
@@ -78,7 +78,7 @@ describe("normalizeSandboxInput (the sender-side grammar)", () => {
 
   it("refuses auto mode until P2 ships its machinery (R19)", () => {
     expect(() =>
-      normalizeSandboxInput({ type: "sandbox.enroll.put", ...base, mode: "auto" }),
+      normalizeSandboxInput({ type: "sandbox.enroll.put", mode: "auto", updatedAt: NOW }),
     ).toThrow(/P2/);
   });
 
@@ -228,16 +228,22 @@ describe("the sandbox fold (real handlers, two members)", () => {
     return sessions[0]!;
   }
 
-  function frameAndEnrollBoth(): void {
+  /** A card on the canvas IS the session — no framing act exists. */
+  function putCard(title = "Spring trip: June, 4 people"): void {
     append(ana, {
-      type: "sandbox.frame.put",
+      type: "canvas.card.put",
       cardId: CARD,
-      taskType: "negotiation",
-      goal: "Spring trip: June, 4 people",
+      cardType: "decision",
+      title,
+      text: "",
       updatedAt: NOW,
     });
-    append(ana, { type: "sandbox.enroll.put", cardId: CARD, mode: "propose", updatedAt: NOW });
-    append(bob, { type: "sandbox.enroll.put", cardId: CARD, mode: "propose", updatedAt: NOW });
+  }
+
+  function cardAndBothParticipating(): void {
+    putCard();
+    append(ana, { type: "sandbox.enroll.put", mode: "propose", updatedAt: NOW });
+    append(bob, { type: "sandbox.enroll.put", mode: "propose", updatedAt: NOW });
   }
 
   /** Replay a list of captured envelopes into a mirrored second node. */
@@ -288,7 +294,7 @@ describe("the sandbox fold (real handlers, two members)", () => {
   });
 
   it("folds frame + enrollments into a gathering session", () => {
-    frameAndEnrollBoth();
+    cardAndBothParticipating();
     const s = session();
     expect(s.cardId).toBe(CARD);
     expect(s.taskType).toBe("negotiation");
@@ -301,7 +307,7 @@ describe("the sandbox fold (real handlers, two members)", () => {
   });
 
   it("honors concurrent moves (one per author per round) and drops an author's duplicate", () => {
-    frameAndEnrollBoth();
+    cardAndBothParticipating();
     append(ana, {
       type: "sandbox.move",
       cardId: CARD,
@@ -343,14 +349,15 @@ describe("the sandbox fold (real handlers, two members)", () => {
     const envelopes: Envelope[] = [];
     envelopes.push(
       append(ana, {
-        type: "sandbox.frame.put",
+        type: "canvas.card.put",
         cardId: CARD,
-        taskType: "negotiation",
-        goal: "goal",
+        cardType: "decision",
+        title: "goal",
+        text: "",
         updatedAt: NOW,
       }),
-      append(ana, { type: "sandbox.enroll.put", cardId: CARD, mode: "propose", updatedAt: NOW }),
-      append(bob, { type: "sandbox.enroll.put", cardId: CARD, mode: "propose", updatedAt: NOW }),
+      append(ana, { type: "sandbox.enroll.put", mode: "propose", updatedAt: NOW }),
+      append(bob, { type: "sandbox.enroll.put", mode: "propose", updatedAt: NOW }),
       append(ana, {
         type: "sandbox.move",
         cardId: CARD,
@@ -395,7 +402,7 @@ describe("the sandbox fold (real handlers, two members)", () => {
   });
 
   it("re-caps and re-validates raw hostile bodies fold-side (sender caps are never trusted)", () => {
-    frameAndEnrollBoth();
+    cardAndBothParticipating();
     // A hostile node signs raw bodies: oversized goal, a 5KB move, a bogus
     // move kind, an out-of-range round, an evidence "host" carrying a query
     // string, and a 40-step plan.
@@ -472,7 +479,7 @@ describe("the sandbox fold (real handlers, two members)", () => {
   });
 
   it("computes identical speaker order on both nodes, and rotates it across rounds", () => {
-    frameAndEnrollBoth();
+    cardAndBothParticipating();
     const envelopes: Envelope[] = [];
     // Rebuild node B from scratch in reversed author order.
     const rows = db
@@ -499,7 +506,7 @@ describe("the sandbox fold (real handlers, two members)", () => {
   });
 
   it("walks turns in speaker order (the my-turn test)", () => {
-    frameAndEnrollBoth();
+    cardAndBothParticipating();
     let s = session();
     const order = speakerOrderFor(CARD, 0, s.speakers);
     const [firstKey, secondKey] = order[0] === A ? [ana, bob] : [bob, ana];
@@ -535,7 +542,7 @@ describe("the sandbox fold (real handlers, two members)", () => {
   });
 
   it("tallies votes only against options that exist (M5) and keeps each author's latest", () => {
-    frameAndEnrollBoth();
+    cardAndBothParticipating();
     append(ana, {
       type: "sandbox.move",
       cardId: CARD,
@@ -570,7 +577,7 @@ describe("the sandbox fold (real handlers, two members)", () => {
   });
 
   it("recomputes transitive author provenance receiver-side (M1)", () => {
-    frameAndEnrollBoth();
+    cardAndBothParticipating();
     append(ana, {
       type: "sandbox.move",
       cardId: CARD,
@@ -598,7 +605,7 @@ describe("the sandbox fold (real handlers, two members)", () => {
   });
 
   it("closes terminally with an attributed, legible reason", () => {
-    frameAndEnrollBoth();
+    cardAndBothParticipating();
     append(bob, { type: "sandbox.close", cardId: CARD, reason: "human", updatedAt: NOW });
     const s = session();
     expect(s.status).toBe("closed");
@@ -611,7 +618,7 @@ describe("the sandbox fold (real handlers, two members)", () => {
   });
 });
 
-describe("circle_sandbox_enrollments (the private half — gates all spend)", () => {
+describe("circle_sandbox_participation (the private half — gates all spend)", () => {
   let db: DatabaseSync;
   const circleId = "c1";
 
@@ -620,48 +627,46 @@ describe("circle_sandbox_enrollments (the private half — gates all spend)", ()
   });
 
   it("claims turns atomically until the turn budget is spent", () => {
-    upsertSandboxEnrollment(db, {
+    setSandboxParticipation(db, {
       circleId,
-      cardId: CARD,
       mode: "propose",
       turnBudget: 2,
       now: NOW,
     });
-    expect(claimSandboxTurn(db, { circleId, cardId: CARD, now: NOW })).toBe(true);
-    expect(claimSandboxTurn(db, { circleId, cardId: CARD, now: NOW })).toBe(true);
-    expect(claimSandboxTurn(db, { circleId, cardId: CARD, now: NOW })).toBe(false);
-    expect(getSandboxEnrollment(db, circleId, CARD)?.turnsUsed).toBe(2);
+    expect(claimSandboxTurn(db, { circleId, now: NOW })).toBe(true);
+    expect(claimSandboxTurn(db, { circleId, now: NOW })).toBe(true);
+    expect(claimSandboxTurn(db, { circleId, now: NOW })).toBe(false);
+    expect(getSandboxParticipation(db, circleId)?.turnsUsed).toBe(2);
   });
 
   it("refuses claims when off, paused, expired, or out of token budget", () => {
-    upsertSandboxEnrollment(db, { circleId, cardId: CARD, mode: "off", now: NOW });
-    expect(claimSandboxTurn(db, { circleId, cardId: CARD, now: NOW })).toBe(false);
+    setSandboxParticipation(db, { circleId, mode: "off", now: NOW });
+    expect(claimSandboxTurn(db, { circleId, now: NOW })).toBe(false);
 
-    upsertSandboxEnrollment(db, { circleId, cardId: CARD, mode: "propose", now: NOW });
-    pauseSandboxEnrollment(db, { circleId, cardId: CARD, reason: "no progress", now: NOW });
-    expect(claimSandboxTurn(db, { circleId, cardId: CARD, now: NOW })).toBe(false);
-    expect(getSandboxEnrollment(db, circleId, CARD)?.pauseReason).toBe("no progress");
+    setSandboxParticipation(db, { circleId, mode: "propose", now: NOW });
+    pauseSandboxParticipation(db, { circleId, reason: "no progress", now: NOW });
+    expect(claimSandboxTurn(db, { circleId, now: NOW })).toBe(false);
+    expect(getSandboxParticipation(db, circleId)?.pauseReason).toBe("no progress");
 
     // Re-enrolling is the human resuming: the pause clears.
-    upsertSandboxEnrollment(db, {
+    setSandboxParticipation(db, {
       circleId,
-      cardId: CARD,
       mode: "propose",
       tokenBudget: 100,
       expiresAt: NOW + 1000,
       now: NOW,
     });
-    expect(claimSandboxTurn(db, { circleId, cardId: CARD, now: NOW })).toBe(true);
-    expect(claimSandboxTurn(db, { circleId, cardId: CARD, now: NOW + 2000 })).toBe(false); // expired
-    recordSandboxTokenSpend(db, { circleId, cardId: CARD, tokens: 100, now: NOW });
-    expect(claimSandboxTurn(db, { circleId, cardId: CARD, now: NOW })).toBe(false); // tokens gone
+    expect(claimSandboxTurn(db, { circleId, now: NOW })).toBe(true);
+    expect(claimSandboxTurn(db, { circleId, now: NOW + 2000 })).toBe(false); // expired
+    recordSandboxTokenSpend(db, { circleId, tokens: 100, now: NOW });
+    expect(claimSandboxTurn(db, { circleId, now: NOW })).toBe(false); // tokens gone
   });
 
   it("refuses to represent auto mode until P2 (R19) and missing enrollments never claim", () => {
     expect(() =>
-      upsertSandboxEnrollment(db, { circleId, cardId: CARD, mode: "auto" as never, now: NOW }),
+      setSandboxParticipation(db, { circleId, mode: "auto" as never, now: NOW }),
     ).toThrow(/mode/);
-    expect(claimSandboxTurn(db, { circleId, cardId: CARD, now: NOW })).toBe(false);
-    expect(getSandboxEnrollment(db, circleId, CARD)).toBeNull();
+    expect(claimSandboxTurn(db, { circleId, now: NOW })).toBe(false);
+    expect(getSandboxParticipation(db, circleId)).toBeNull();
   });
 });

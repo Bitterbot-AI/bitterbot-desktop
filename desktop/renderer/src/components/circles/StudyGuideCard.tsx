@@ -64,10 +64,13 @@ export function StudyGuideCard({
   card,
   circle,
   selfPubkey,
+  children,
 }: {
   card: CanvasCard;
   circle: Circle;
   selfPubkey: string | undefined;
+  /** The card's live layer (agents + people working it). */
+  children?: React.ReactNode;
 }) {
   const putSlice = useCirclesStore((s) => s.putSlice);
   const requestSliceDraft = useCirclesStore((s) => s.requestSliceDraft);
@@ -317,6 +320,7 @@ export function StudyGuideCard({
           );
         })}
       </div>
+      {children}
     </div>
   );
 }
