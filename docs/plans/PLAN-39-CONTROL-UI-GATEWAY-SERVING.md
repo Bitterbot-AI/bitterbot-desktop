@@ -251,8 +251,8 @@ Two consequences, before the rest of Phase 0 even runs:
       update, verify `dist/control-ui/index.html` exists post-build). Un-mock
       the tests: they currently mock `pnpm ui:build`; make them assert the
       real step ordering. `doctor-update.ts:54`'s message becomes true.
-- [ ] Dockerfile: replace the broken `COPY ui/package.json` / `RUN pnpm
-    ui:build` / `patches/` lines with the real paths (`desktop/`), or, if
+- [ ] Dockerfile: replace the broken lines that reference `ui/package.json`,
+      `pnpm ui:build`, and `patches/` with the real paths (`desktop/`), or, if
       Victor prefers (§12 D4), delete Docker support and the file. It cannot
       build today either way; leaving it broken is not an option.
 - [ ] `run-gateway-fast.mjs`: no change needed for the copy (it rsyncs `dist/`
