@@ -346,6 +346,36 @@ execution** — the single genuine pane complaint found anywhere was a product
 where occluding the view stalled the task, punishing exactly the walk-away
 behaviour every user exhibits.
 
+### 3.3 Continuity across surfaces `[added 2026-07-28 per Victor: chat-side agents must be aware of the canvas]`
+
+Two kinds of continuity, resolved differently:
+
+**Continuity across time is achieved by the ledger, not by memory.** The taint
+rule (R17, §5.2) means circle content never enters recall-eligible memory, and
+that does not change. An agent re-derives the canvas by folding the signed
+chain at every invocation: it never "remembers" what a card looked like, it
+re-reads what the card _is_. No staleness, no divergence between members,
+cryptographic attribution. The ledger is the shared memory.
+
+**Continuity across surfaces (chat ↔ canvas) is one-directional, by design:**
+
+- **The chat-side agent learns the canvas (R35, build in P1 (b)).** Both chat
+  invocation paths are canvas-blind today, verified 2026-07-28:
+  `buildQuarantinedDraftPrompt` sweeps only `circle_messages`
+  (`agent-drafts.ts`), and the `circles` tool exposes no canvas read action.
+  Fix both with reads: the folded card state (typed — options, votes,
+  wait-line, session status; never raw move prose) enters the quarantined
+  draft sweep wrapped in the untrusted envelope, and the `circles` tool gains
+  a `cards` action with the same wrapping and caps as `messages`. This is
+  safe because canvas state is the same trust class as the chat sweep it sits
+  beside: peer content, wrapped, informing a propose-gated draft.
+- **The sandbox generation never ingests chat. Permanent.** R7's "nothing
+  else" is pointed at exactly this. The sandbox generation is the one that
+  eventually acts with less supervision (P2), and chat is unbounded free
+  text — the richest T1 laundering fuel there is. A later session noticing
+  the "asymmetry" and fixing it symmetrically would be re-opening the hole,
+  not closing a gap; this paragraph exists so that does not happen.
+
 ---
 
 ## 4b. Tools: what an enrolled agent may actually do `[v2 2026-07-27]`
@@ -576,6 +606,13 @@ self-contained. Each is meant to be testable, and the test is the point.
   structurally at the call site, not by prompt text.
 - **R17** Memory taint holds: `sandbox` and `canvas` in `UNTRUSTED_TOKENS`
   (landed), plus a CI guard that no memory writer reads circle tables.
+- **R35** _[added 2026-07-28]_ Chat-side canvas awareness, one-directional
+  (§3.3): the quarantined chat-draft sweep and the `circles` tool read the
+  FOLDED card state (typed, wrapped, capped — never raw move prose) so a
+  summoned or chatting agent knows what is on the canvas. The reverse is
+  forbidden permanently: no sandbox generation ingests chat content, in any
+  mode or phase (reasserts R7; the asymmetry is the control, not an
+  oversight).
 
 **Isolation and containment**
 
@@ -730,7 +767,11 @@ canvas.ts's event_id tie-break is a latent cross-node nondeterminism the
 sandbox does not inherit.]`
 > **(b)** one negotiation card, one round, practice partner as the second
 > agent, propose-mode, rendered as: verdict band (work ratio), shared
-> checklist, containment banner, live pill;
+> checklist, containment banner, live pill; PLUS `[added 2026-07-28]` the
+> human composer on the card (add constraint / add option / vote by hand —
+> the §2 gradient's "join in" half, so the human is a co-player, never only
+> an approver) and R35 chat-side canvas awareness (draft sweep + `circles`
+> tool read the folded card state);
 > **(c)** multi-round + convergence + containment detectors + plan-vs-actual
 > diff;
 > **(d)** tools — the §4b five-step turn with the plan tap and egress broker;

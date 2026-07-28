@@ -11,7 +11,7 @@ arbitrary without it.
 
 Build PLAN-38 (Canvas Sandbox) per `docs/plans/PLAN-38-CANVAS-SANDBOX.md`.
 **Read that document in full before writing code.** It is self-contained: §4.5
-holds the numbered requirements R1-R34, §4.2 the non-relaxable invariants
+holds the numbered requirements R1-R35, §4.2 the non-relaxable invariants
 I1-I12, §4.3 the machinery M1-M6, §7 the phasing and build order.
 
 Start at **P1 step (a)**: sandbox event types + fold + migration, headless and
@@ -19,7 +19,9 @@ tested, no UI. Nothing has been written yet — the file `src/circles/sandbox.ts
 does not exist.
 
 **Stop and report after step (b)** (one negotiation card, one round, practice
-partner as the second agent, propose-mode, rendered in the oversight pane).
+partner as the second agent, propose-mode, rendered in the oversight pane;
+per the 2026-07-28 amendments (b) also includes the human composer on the
+card and R35 chat-side canvas awareness — see plan §3.3 and §7).
 §7 designates that as the reassessment point: the first moment the thesis is
 visible on screen and the cheapest place for Victor to change his mind. Do not
 blow through it.
