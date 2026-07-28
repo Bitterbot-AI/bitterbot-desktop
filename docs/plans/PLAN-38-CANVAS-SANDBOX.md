@@ -730,21 +730,56 @@ attribution, and no cloud singleton reading four people's private context.
    §3.1 rule that every terminal state is legible. Rotation gets scheduled before
    public launch, where it is load-bearing anyway.
 
-### 9.2 Open decisions from the tools/canvas escalation `[new 2026-07-27]`
+### 9.2 Decisions from the tools/canvas escalation — ALL CLOSED 2026-07-27
 
-7. **Cross-member images.** Both reviews refuse for v1 (T10: phishing-lookalike
-   screenshots have no technical mitigation). You get own-agent-local
-   screenshots and cross-member evidence cards. Accept, or fund the middle
-   option (raster-only, re-encoded, hard-chromed, hash-pinned)?
-8. **Tool scope.** Accept the two-entry allowlist (`web_search`, `web_fetch`)
-   and the permanent skills refusal, or push for more surface with the
-   machinery that would require?
-9. **Plan-first vs ticker-first.** The evidence says build the pre-flight plan
-   gate and the plan-vs-actual diff rather than the live scrolling list. This
-   is close to but not identical to what you asked for; confirm the swap.
-10. **Shared WIP backpressure.** Cap un-reviewed agent output in flight across
-    the circle. Nobody ships it, it is the single highest-leverage mechanic
-    found, and it will occasionally block an eager member. In or out?
+Victor: _"I'll go with your recommendations on the decisions."_ Recorded as
+taken, with the recommendation that was accepted:
+
+7. **Cross-member images: REFUSED for v1.** Own-agent-local screenshots (full
+   fidelity, node-local) plus cross-member evidence cards carrying
+   metadata + a content hash. The blocker is T10: a phishing-lookalike
+   screenshot has no technical mitigation, and a signature proves who is
+   accountable, never that the page said that. The hash ships on the ledger
+   from day one so cross-member pixels stay purely additive later.
+8. **Tool scope: ACCEPTED as ruled.** Two-entry allowlist (`web_search`,
+   `web_fetch`), fail-closed and literal; skills refused permanently at any
+   tier or origin; interceptors off for sandbox turns; tools and auto-append
+   mutually exclusive in every phase.
+9. **Plan-first: SWAP ACCEPTED.** Build the pre-flight plan gate, the
+   plan-vs-actual diff, `blocked` as a real state with a reason, and
+   evidence-gated completion. The live list stays ambient and capped rather
+   than becoming the oversight surface.
+10. **Shared WIP backpressure: IN.** Cap un-reviewed agent output in flight
+    across the circle, composing with the existing `MAX_PENDING_PER_CIRCLE`
+    precedent. It will occasionally block an eager member; that is the point,
+    and it is the direct counter to the cheap-generation /
+    expensive-verification asymmetry that §3.2.2 identifies as the binding
+    constraint for a group.
+
+### 9.3 Live-code fixes landed alongside this plan `[2026-07-27]`
+
+Found by the PLAN-38 reviews in code that already ships, fixed independently
+of whether the sandbox is ever built:
+
+- **Session-trust taint gap** (P0.0): `canvas`/`sandbox` session keys
+  classified first-party. Closed pre-emptively.
+- **Nested injection scan**: `event.append` scanned top-level strings only, so
+  a payload one level down inside an array reached the ledger unscanned.
+  Now a bounded recursive walk.
+- **CSP tracking-pixel hole**: `img-src` carried a `https://*` wildcard, so any
+  peer- or agent-supplied URL reaching an `<img>` beaconed the viewer's IP and
+  read-time to a third party. Wildcard removed; remote image URLs now render as
+  an explicit click-to-open link, so that disclosure is a human choice.
+- **Fail-open tool policy**: an explicitly empty `allow: []` was
+  indistinguishable from an absent allowlist and granted EVERY tool. Now fails
+  closed, which is also the prerequisite for R21 (the sandbox allowlist).
+
+**Still open, deliberately not done blind:** `tauri.conf.json` sets
+`"security": { "csp": null }`, so the meta-tag CSP is the only one enforced. A
+header CSP is strictly stronger, but setting it requires a desktop build to
+verify Tauri IPC still works under it, which cannot be validated from this
+environment. Left as a follow-up with the reason recorded rather than changed
+unverified.
 
 ### 9.1 Standing risk accepted by decisions 2 + 3 (recorded, not re-litigated)
 

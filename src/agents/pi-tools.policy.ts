@@ -14,6 +14,13 @@ function makeToolPolicyMatcher(policy: SandboxToolPolicy) {
     raw: expandToolGroups(policy.deny ?? []),
     normalize: normalizeToolName,
   });
+  // Was an allowlist CONFIGURED at all? This is the distinction the empty
+  // check below turns on, and conflating the two was a fail-open bug: an
+  // operator writing `allow: []` to mean "this agent gets no tools" was
+  // handed EVERY tool instead, silently, because an absent allowlist and an
+  // empty one looked identical here. Absent means "only the denylist
+  // applies"; present-but-empty means "nothing passes".
+  const allowConfigured = policy.allow !== undefined;
   const allow = compileGlobPatterns({
     raw: expandToolGroups(policy.allow ?? []),
     normalize: normalizeToolName,
@@ -24,7 +31,11 @@ function makeToolPolicyMatcher(policy: SandboxToolPolicy) {
       return false;
     }
     if (allow.length === 0) {
-      return true;
+      // Fail CLOSED when an allowlist was configured and nothing survives it,
+      // which also covers an allowlist whose entries expand to nothing (e.g.
+      // a group name that no longer resolves) — that must not silently widen
+      // to allow-all either.
+      return !allowConfigured;
     }
     if (matchesAnyGlobPattern(normalized, allow)) {
       return true;
@@ -124,11 +135,15 @@ function unionAllow(base?: string[], extra?: string[]) {
   if (!Array.isArray(extra) || extra.length === 0) {
     return base;
   }
-  // If the user is using alsoAllow without an allowlist, treat it as additive on top of
-  // an implicit allow-all policy.
-  if (!Array.isArray(base) || base.length === 0) {
+  // No allowlist configured at all: alsoAllow is additive on top of an
+  // implicit allow-all policy.
+  if (!Array.isArray(base)) {
     return Array.from(new Set(["*", ...extra]));
   }
+  // An EXPLICITLY empty allowlist means "nothing passes", so alsoAllow names
+  // the complete permitted set rather than widening it to everything. (This
+  // used to fall into the allow-all branch above alongside the absent case —
+  // the same fail-open conflation fixed in makeToolPolicyMatcher.)
   return Array.from(new Set([...base, ...extra]));
 }
 

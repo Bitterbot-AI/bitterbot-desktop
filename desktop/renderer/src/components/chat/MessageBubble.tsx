@@ -24,6 +24,25 @@ interface MessageBubbleProps {
 
 const COMPLETE_CHIP_NAMES = new Set(["complete", "task_complete", "task-complete"]);
 
+/**
+ * May this image URL be rendered inline? Only loopback and data URLs, which
+ * are the two sources the CSP still permits and the two that cannot beacon
+ * the viewer's IP to a third party. Everything else (any remote host, and
+ * anything unparseable) renders as a click-to-open link instead. Parsed, not
+ * string-matched: `https://evil.example/?x=http://localhost` must not pass.
+ */
+export function isLocalImageUrl(raw: string): boolean {
+  if (raw.startsWith("data:")) return true;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+}
+
 /** Map tool names to icons (same logic as ToolCallPanel). */
 function getToolChipIcon(name: string) {
   const lower = name.toLowerCase();
@@ -145,21 +164,39 @@ export const MessageBubble = memo(function MessageBubble({
           </details>
         )}
 
-        {/* Images */}
+        {/* Images. Inline bytes (base64) and loopback URLs render directly.
+            A REMOTE url renders as a click-to-open link, never an <img>: the
+            CSP no longer permits remote image hosts, because loading one
+            beacons this viewer's IP and read-time to whoever chose the URL.
+            Making it a link keeps the content reachable while turning that
+            disclosure into an explicit human choice. */}
         {message.images && message.images.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">
-            {message.images.map((img, i) => (
-              <img
-                key={i}
-                src={
-                  img.type === "url"
-                    ? img.data
-                    : `data:${img.mimeType ?? "image/png"};base64,${img.data}`
-                }
-                alt="attachment"
-                className="max-w-[300px] max-h-[200px] rounded-lg border border-border/30 object-contain"
-              />
-            ))}
+            {message.images.map((img, i) =>
+              img.type === "url" && !isLocalImageUrl(img.data) ? (
+                <a
+                  key={i}
+                  href={img.data}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title={img.data}
+                  className="max-w-[300px] rounded-lg border border-border/30 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground truncate"
+                >
+                  🖼 remote image — open in browser
+                </a>
+              ) : (
+                <img
+                  key={i}
+                  src={
+                    img.type === "url"
+                      ? img.data
+                      : `data:${img.mimeType ?? "image/png"};base64,${img.data}`
+                  }
+                  alt="attachment"
+                  className="max-w-[300px] max-h-[200px] rounded-lg border border-border/30 object-contain"
+                />
+              ),
+            )}
           </div>
         )}
 

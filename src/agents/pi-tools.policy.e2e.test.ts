@@ -18,6 +18,34 @@ function createStubTool(name: string): AgentTool<unknown, unknown> {
 }
 
 describe("pi-tools.policy", () => {
+  it("an EXPLICITLY empty allowlist denies everything (fail closed)", () => {
+    // Regression: `allow: []` and "no allow key at all" compiled to the same
+    // empty pattern list, and the matcher answered allow-all for both. An
+    // operator locking an agent down with `allow: []` was handed every tool.
+    const tools = [createStubTool("read"), createStubTool("exec")];
+    expect(filterToolsByPolicy(tools, { allow: [] })).toEqual([]);
+    expect(isToolAllowedByPolicyName("read", { allow: [] })).toBe(false);
+
+    // An allowlist whose entries expand to nothing must not widen either.
+    expect(filterToolsByPolicy(tools, { allow: ["no_such_group_or_tool_xyz"] })).toEqual([]);
+  });
+
+  it("an ABSENT allowlist still means 'only the denylist applies'", () => {
+    const tools = [createStubTool("read"), createStubTool("exec")];
+    // deny-only policy: everything not denied passes.
+    expect(filterToolsByPolicy(tools, { deny: ["exec"] }).map((t) => t.name)).toEqual(["read"]);
+    // and a policy object with neither key is inert.
+    expect(filterToolsByPolicy(tools, {}).map((t) => t.name)).toEqual(["read", "exec"]);
+    expect(isToolAllowedByPolicyName("read", { deny: ["exec"] })).toBe(true);
+  });
+
+  it("deny still beats an allow entry", () => {
+    const tools = [createStubTool("read"), createStubTool("exec")];
+    expect(filterToolsByPolicy(tools, { allow: ["*"], deny: ["exec"] }).map((t) => t.name)).toEqual(
+      ["read"],
+    );
+  });
+
   it("treats * in allow as allow-all", () => {
     const tools = [createStubTool("read"), createStubTool("exec")];
     const filtered = filterToolsByPolicy(tools, { allow: ["*"] });
