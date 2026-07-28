@@ -1,8 +1,9 @@
-import { BookOpen, GitBranch, ListChecks, Plus, StickyNote, X } from "lucide-react";
+import { BookOpen, GitBranch, ListChecks, Plus, StickyNote, X, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { memberName, useCirclesStore, type Circle } from "../../stores/circles-store";
 import { DecisionCard } from "./DecisionCard";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { SandboxCard } from "./SandboxCard";
 import { StudyGuideCard } from "./StudyGuideCard";
 
 // PLAN-36 Phase C: the group canvas — a board of typed cards folded from the
@@ -37,6 +38,8 @@ export function CircleCanvas({
   selfPubkey: string | undefined;
 }) {
   const cards = useCirclesStore((s) => s.cardsByCircle[circle.circleId]);
+  const sandbox = useCirclesStore((s) => s.sandboxByCircle[circle.circleId]);
+  const frameSandbox = useCirclesStore((s) => s.frameSandbox);
   const putCard = useCirclesStore((s) => s.putCard);
   const putDecision = useCirclesStore((s) => s.putDecision);
   const putStudyGuide = useCirclesStore((s) => s.putStudyGuide);
@@ -289,9 +292,37 @@ export function CircleCanvas({
           </div>
         )}
 
-        {list.map((card) =>
-          card.cardType === "decision" ? (
-            <DecisionCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey} />
+        {list.map((card) => {
+          // PLAN-38: a card carrying a sandbox session renders as the session
+          // (formats and jobs are different axes — the session is an upgrade
+          // applied to the card, never a fifth card type).
+          const session = sandbox?.sessions.find((s) => s.cardId === card.cardId);
+          if (session && sandbox) {
+            return (
+              <SandboxCard
+                key={card.cardId}
+                card={card}
+                session={session}
+                sandbox={sandbox}
+                circle={circle}
+                selfPubkey={selfPubkey}
+              />
+            );
+          }
+          return card.cardType === "decision" ? (
+            <div key={card.cardId} className="space-y-1">
+              <DecisionCard card={card} circle={circle} selfPubkey={selfPubkey} />
+              {circle.status === "active" && (
+                <button
+                  type="button"
+                  onClick={() => void frameSandbox(circle.circleId, card.cardId)}
+                  className="w-full rounded-md border border-dashed border-circle-agent/40 px-2 py-1 text-[11px] text-circle-agent flex items-center justify-center gap-1"
+                  title="Open an agent session on this card — same card, same votes; agents are an upgrade"
+                >
+                  <Zap className="w-3 h-3" /> Work this with agents
+                </button>
+              )}
+            </div>
           ) : card.cardType === "study" ? (
             <StudyGuideCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey} />
           ) : card.cardType === "mermaid" ? (
@@ -322,8 +353,8 @@ export function CircleCanvas({
                 <span>{fmtWhen(card.updatedAt)}</span>
               </div>
             </div>
-          ),
-        )}
+          );
+        })}
       </div>
     </div>
   );

@@ -30,6 +30,7 @@ const READ_ONLY = new Set([
   "circles.outbound.list",
   "circles.drafts.list",
   "circles.study.state",
+  "circles.sandbox.state",
 ]);
 
 const ALL_CIRCLES_METHODS = Object.keys(circlesHandlers).filter((m) => m.startsWith("circles."));
@@ -38,8 +39,10 @@ describe("circles RPC scope gating", () => {
   it("registers the surface this test believes it is guarding", () => {
     // If methods are added or renamed, both this count and the READ_ONLY set
     // above deserve a fresh look. 39 → 41 on 2026-07-27: Phase 4b added
-    // circles.study.record (write) + circles.study.state (read).
-    expect(ALL_CIRCLES_METHODS.length).toBe(41);
+    // circles.study.record (write) + circles.study.state (read). 41 → 49 on
+    // 2026-07-28: PLAN-38 P1(b) added circles.sandbox.state (read) + frame,
+    // enroll, move, pause, resume, close, practiceSeat (writes).
+    expect(ALL_CIRCLES_METHODS.length).toBe(49);
     for (const m of READ_ONLY) {
       expect(ALL_CIRCLES_METHODS).toContain(m);
     }

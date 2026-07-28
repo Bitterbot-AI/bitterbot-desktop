@@ -25,6 +25,11 @@ import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { wrapExternalContent } from "../security/external-content.js";
 import { computeCanvasCards } from "./canvas.js";
+import {
+  buildCanvasContextSummary,
+  buildQuarantinedSandboxMovePrompt,
+  SANDBOX_DRAFT_KIND,
+} from "./sandbox-agent.js";
 import { buildMasterySummary, parseSections } from "./study.js";
 
 const log = createSubsystemLogger("circles/agent-drafts");
@@ -336,6 +341,16 @@ export function buildQuarantinedDraftPrompt(
     })
     .join("\n\n");
 
+  // R35 (§3.3, one-directional continuity): the chat-side agent sees the
+  // FOLDED canvas state — typed, re-capped, same trust class as the transcript
+  // it sits beside — so a draft about "the trip card" knows what is on it.
+  // The reverse never happens: no sandbox generation reads this transcript.
+  const canvasSummary = buildCanvasContextSummary(db, {
+    circleId: args.circleId,
+    nameOf: (pk) => (pk === args.selfPubkey ? "my human" : (names.get(pk) ?? "member")),
+  });
+  const untrusted = canvasSummary ? `${transcript}\n\n${canvasSummary}` : transcript;
+
   return [
     "You are the private drafting assistant for the human who owns this node.",
     args.selfRequested
@@ -360,7 +375,7 @@ export function buildQuarantinedDraftPrompt(
     "  would summon every other member's agent when published.",
     "- At most 700 characters.",
     "",
-    wrapExternalContent(transcript, { source: "circle_agent" }),
+    wrapExternalContent(untrusted, { source: "circle_agent" }),
   ].join("\n");
 }
 
@@ -574,24 +589,30 @@ export async function generateQueuedAgentDrafts(
     setAgentDraftStatus(db, row.draft_id, "drafting", { now });
     try {
       const prompt =
-        row.kind === "study" && row.target_card_id
-          ? buildQuarantinedStudyPrompt(db, {
+        row.kind === SANDBOX_DRAFT_KIND && row.target_card_id
+          ? buildQuarantinedSandboxMovePrompt(db, {
               circleId: row.circle_id,
               cardId: row.target_card_id,
-              now,
+              selfPubkey: args.selfPubkey,
             })
-          : row.kind === "slice" && row.target_card_id && row.target_slot
-            ? buildQuarantinedSlicePrompt(db, {
+          : row.kind === "study" && row.target_card_id
+            ? buildQuarantinedStudyPrompt(db, {
                 circleId: row.circle_id,
                 cardId: row.target_card_id,
-                slot: row.target_slot,
-                selfPubkey: args.selfPubkey,
+                now,
               })
-            : buildQuarantinedDraftPrompt(db, {
-                circleId: row.circle_id,
-                selfPubkey: args.selfPubkey,
-                selfRequested: !row.summon_envelope_id,
-              });
+            : row.kind === "slice" && row.target_card_id && row.target_slot
+              ? buildQuarantinedSlicePrompt(db, {
+                  circleId: row.circle_id,
+                  cardId: row.target_card_id,
+                  slot: row.target_slot,
+                  selfPubkey: args.selfPubkey,
+                })
+              : buildQuarantinedDraftPrompt(db, {
+                  circleId: row.circle_id,
+                  selfPubkey: args.selfPubkey,
+                  selfRequested: !row.summon_envelope_id,
+                });
       const text = (await callWithDeadline(llm, prompt, args.deadlineMs ?? GENERATION_DEADLINE_MS))
         .trim()
         .slice(0, MAX_DRAFT_CHARS);

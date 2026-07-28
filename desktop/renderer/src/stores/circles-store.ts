@@ -159,6 +159,60 @@ export interface AgentDraft {
   createdAt: number;
 }
 
+/** PLAN-38 P1(b): one honored move in a sandbox session's fold. */
+export interface SandboxMove {
+  round: number;
+  kind: "constraint" | "option.add" | "vote" | "pass";
+  text: string;
+  optionId: string;
+  label: string;
+  authorPubkey: string;
+  agentAuthored: boolean;
+  /** R2/M1: transitive author provenance, recomputed by OUR node. */
+  authors: string[];
+  eventHash: string;
+  claimedAt: number;
+}
+
+/** The node-local half of enrollment (never leaves this node). */
+export interface SandboxEnrollment {
+  mode: "off" | "propose";
+  turnBudget: number;
+  turnsUsed: number;
+  tokenBudget: number;
+  tokensUsed: number;
+  guidance: string;
+  pausedAt: number | null;
+  pauseReason: string | null;
+}
+
+/** A sandbox session folded from the ledger, plus our node-local view state. */
+export interface SandboxSession {
+  cardId: string;
+  taskType: string;
+  goal: string;
+  roundCap: number;
+  framedBy: string;
+  enrollments: Array<{ authorPubkey: string; mode: string; updatedAt: number }>;
+  speakers: string[];
+  moves: SandboxMove[];
+  options: Array<{ optionId: string; label: string; text: string; proposedBy: string }>;
+  votes: Record<string, string[]>;
+  closed: { reason: string; byPubkey: string; at: number } | null;
+  currentRound: number;
+  status: "gathering" | "live" | "closed";
+  myTurn: boolean;
+  waitingOn: string[];
+  myEnrollment: SandboxEnrollment | null;
+}
+
+export interface SandboxState {
+  /** R19 kill switch: agent generation on this node (humans always work). */
+  generationEnabled: boolean;
+  practicePubkey: string | null;
+  sessions: SandboxSession[];
+}
+
 /**
  * PLAN-36 Phase 4b: this member's OWN mastery state for one study-guide
  * section (Leitner box + spaced-repetition due date). Node-local, derived
@@ -179,6 +233,7 @@ interface CirclesState {
   messagesByCircle: Record<string, CircleMessage[]>;
   annotationsByCircle: Record<string, MessageAnnotations>;
   cardsByCircle: Record<string, CanvasCard[]>;
+  sandboxByCircle: Record<string, SandboxState>;
   draftsByCircle: Record<string, AgentDraft[]>;
   /** Phase 4b study state, keyed `${circleId}:${cardId}`. */
   studyByCard: Record<string, StudySectionState[]>;
@@ -190,6 +245,26 @@ interface CirclesState {
   selectCircle: (circleId: string) => void;
   loadMessages: (circleId: string) => Promise<void>;
   loadCards: (circleId: string) => Promise<void>;
+  loadSandbox: (circleId: string) => Promise<void>;
+  /** "Work this with agents": open a session on an existing card. */
+  frameSandbox: (circleId: string, cardId: string) => Promise<boolean>;
+  enrollSandbox: (
+    circleId: string,
+    cardId: string,
+    mode: "off" | "propose",
+    opts?: { guidance?: string; turnBudget?: number },
+  ) => Promise<boolean>;
+  /** The human composer: post a move by hand. */
+  sandboxMove: (
+    circleId: string,
+    cardId: string,
+    kind: "constraint" | "option.add" | "vote" | "pass",
+    opts?: { text?: string; optionId?: string; label?: string },
+  ) => Promise<boolean>;
+  pauseSandbox: (circleId: string, cardId: string) => Promise<boolean>;
+  resumeSandbox: (circleId: string, cardId: string) => Promise<boolean>;
+  closeSandbox: (circleId: string, cardId: string, reason: "done" | "human") => Promise<boolean>;
+  addPracticeSeat: (circleId: string, cardId: string) => Promise<boolean>;
   loadDrafts: (circleId: string) => Promise<void>;
   loadOutbound: (circleId: string) => Promise<void>;
   approveOutbound: (circleId: string, id: string) => Promise<boolean>;
@@ -267,6 +342,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   messagesByCircle: {},
   annotationsByCircle: {},
   cardsByCircle: {},
+  sandboxByCircle: {},
   draftsByCircle: {},
   studyByCard: {},
   outboundByCircle: {},
@@ -292,6 +368,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       if (activeCircleId) {
         void get().loadMessages(activeCircleId);
         void get().loadCards(activeCircleId);
+        void get().loadSandbox(activeCircleId);
         void get().loadDrafts(activeCircleId);
         void get().loadOutbound(activeCircleId);
         get().markRead(activeCircleId); // the circle on screen is, by definition, read
@@ -305,6 +382,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     set({ activeCircleId: circleId });
     void get().loadMessages(circleId);
     void get().loadCards(circleId);
+    void get().loadSandbox(circleId);
     void get().loadDrafts(circleId);
     void get().loadOutbound(circleId);
     get().markRead(circleId);
@@ -453,6 +531,110 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       set((s) => ({ cardsByCircle: { ...s.cardsByCircle, [circleId]: res.cards ?? [] } }));
     } catch (err) {
       set({ notice: String(err) });
+    }
+  },
+
+  // PLAN-38 P1(b): the canvas sandbox. Version-skew safe: an older gateway
+  // without the sandbox RPCs leaves the feature absent, never noisy.
+  loadSandbox: async (circleId) => {
+    if (unsupportedMethods.has("circles.sandbox.state")) return;
+    try {
+      const res = await request<Partial<SandboxState>>("circles.sandbox.state", { circleId });
+      // Normalize defensively: a gateway of a different vintage answering with
+      // an unexpected shape must degrade to "no sessions", never crash the
+      // canvas render.
+      const state: SandboxState = {
+        generationEnabled: res?.generationEnabled === true,
+        practicePubkey: typeof res?.practicePubkey === "string" ? res.practicePubkey : null,
+        sessions: Array.isArray(res?.sessions) ? res.sessions : [],
+      };
+      set((s) => ({ sandboxByCircle: { ...s.sandboxByCircle, [circleId]: state } }));
+    } catch (err) {
+      if (!methodUnavailable("circles.sandbox.state", err)) set({ notice: String(err) });
+    }
+  },
+
+  frameSandbox: async (circleId, cardId) => {
+    try {
+      await request("circles.sandbox.frame", { circleId, cardId });
+      await get().loadSandbox(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  enrollSandbox: async (circleId, cardId, mode, opts) => {
+    try {
+      await request("circles.sandbox.enroll", {
+        circleId,
+        cardId,
+        mode,
+        guidance: opts?.guidance,
+        turnBudget: opts?.turnBudget,
+      });
+      await get().loadSandbox(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  sandboxMove: async (circleId, cardId, kind, opts) => {
+    try {
+      await request("circles.sandbox.move", { circleId, cardId, kind, ...opts });
+      await get().loadSandbox(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  pauseSandbox: async (circleId, cardId) => {
+    try {
+      await request("circles.sandbox.pause", { circleId, cardId });
+      await get().loadSandbox(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  resumeSandbox: async (circleId, cardId) => {
+    try {
+      await request("circles.sandbox.resume", { circleId, cardId });
+      await get().loadSandbox(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  closeSandbox: async (circleId, cardId, reason) => {
+    try {
+      await request("circles.sandbox.close", { circleId, cardId, reason });
+      await get().loadSandbox(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  addPracticeSeat: async (circleId, cardId) => {
+    try {
+      await request("circles.sandbox.practiceSeat", { circleId, cardId });
+      await get().loadSandbox(circleId);
+      await get().refresh(); // the roster gained the labeled bot member
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
     }
   },
 

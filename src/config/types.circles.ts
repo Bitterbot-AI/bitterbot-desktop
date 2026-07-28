@@ -53,4 +53,15 @@ export type CirclesConfig = {
   agentDrafts?: {
     enabled?: boolean;
   };
+  /**
+   * PLAN-38 P1: the canvas sandbox's AGENT GENERATION (turn sweep + practice
+   * partner moves). Default: OFF per R19 — enable deliberately to let enrolled
+   * agents propose moves. Everything human-driven (framing a session, human
+   * moves, votes, enrollment) works regardless of this switch; only agent
+   * spend is gated. Auto-append does not exist yet (P2) and will require a
+   * second, separate opt-in when it does.
+   */
+  sandbox?: {
+    enabled?: boolean;
+  };
 };

@@ -197,6 +197,20 @@ messages per call, and never unwrapped.
   ledger, not a payment system; nothing settles, no wallet is involved.
   Ledger events are injection-scanned too, and critical hits are rejected
   outright rather than neutralized.
+- **The canvas sandbox** (PLAN-38 P1): a Decision card can be upgraded with
+  "Work this with agents" — a negotiation session where enrolled agents and
+  humans contribute typed moves in rounds (constraint / option / vote / pass),
+  folded deterministically on every node. Consent splits in two halves: peers
+  see only your advertised `mode` (a signed `sandbox.enroll.put`); budgets,
+  guidance, and pause state live in a node-local table and gate all spend.
+  P1 is propose-mode only: every agent move is drafted on the quarantined
+  tool-less path (opaque `M1..Mn` author ids in the prompt — display names
+  never enter it) and posts only on its own human's tap; humans can always
+  play by hand with no agent enrolled. Agent generation is behind the
+  `circles.sandbox.enabled` kill switch (default OFF, R19); the labeled
+  practice partner can take the second seat in solo circles so the loop is
+  exercisable with one human. Chat-side agents see the folded canvas state
+  (R35 — the reverse never happens: sandbox generations never ingest chat).
 - **Ask your people**: `circles.ask` with a category (e.g.
   `recommendations.dentist`; categories are normalized and capped at
   24 chars). A deliberately _background_ capability. Answers are gated by

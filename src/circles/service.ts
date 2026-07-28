@@ -85,11 +85,30 @@ import {
 } from "./pending-outbound.js";
 import {
   PRACTICE_KIND,
+  PRACTICE_PARTNER_NAME,
   loadOrCreatePracticeKeys,
   practiceReply,
   realConnectionCount,
 } from "./practice.js";
 import { markCircleRead, unreadCounts } from "./read-state.js";
+import {
+  practiceSandboxSweep,
+  SANDBOX_DRAFT_KIND,
+  sweepSandboxTurns,
+  validateSandboxMoveText,
+} from "./sandbox-agent.js";
+import {
+  computeSandboxSessions,
+  getSandboxEnrollment,
+  isMyTurn,
+  pauseSandboxEnrollment,
+  resumeSandboxEnrollment,
+  upsertSandboxEnrollment,
+  type SandboxCloseReason,
+  type SandboxEnrollment,
+  type SandboxMoveKind,
+  type SandboxSession,
+} from "./sandbox.js";
 import { listStudyState, recordStudyResult, type StudySectionState } from "./study.js";
 import {
   buildChainedEventBody,
@@ -1644,6 +1663,18 @@ export class CirclesService {
    * drafts disabled — queued rows then simply expire.
    */
   async generateAgentDrafts(): Promise<{ generated: number }> {
+    // PLAN-38: the sandbox sweeps ride this same scheduler slot. Gated by the
+    // R19 kill switch (default OFF); a sweep failure never blocks drafts.
+    if (this.sandboxGenerationEnabled()) {
+      try {
+        sweepSandboxTurns(this.db, { selfPubkey: this.pubkey });
+        if (this.config.circles?.practicePartner?.enabled !== false) {
+          await practiceSandboxSweep(this.db, { partnerKey: this.practiceKey() });
+        }
+      } catch (err) {
+        log.debug(`sandbox sweep failed: ${String(err)}`);
+      }
+    }
     if (!this.draftLlm || !this.agentDraftsEnabled()) {
       // Housekeeping still runs: queued rows (the inbound path is config-blind
       // by design — a2a handlers take no config) expire instead of piling up,
@@ -1761,6 +1792,275 @@ export class CirclesService {
     return listStudyState(this.db, circleId, cardId);
   }
 
+  // -------------------------------------------------------------------------
+  // PLAN-38 P1(b): the canvas sandbox. Human acts (frame, enroll, move, close)
+  // are ordinary signed events on the ledger; agent GENERATION is gated by the
+  // R19 kill switch and every generated move waits for its human's tap.
+  // -------------------------------------------------------------------------
+
+  /** R19: agent generation (turn sweep + practice moves) defaults OFF. */
+  sandboxGenerationEnabled(): boolean {
+    return this.config.circles?.sandbox?.enabled === true;
+  }
+
+  private practiceKey(): KeyPair {
+    return (this.practiceKeysLazy ??= loadOrCreatePracticeKeys());
+  }
+
+  /**
+   * The sandbox fold for the UI, augmented with node-local view state: whose
+   * turn, who the current round waits on, and OUR private enrollment (which
+   * never leaves this node — the UI it feeds is the only reader).
+   */
+  sandboxState(circleId: string): {
+    generationEnabled: boolean;
+    practicePubkey: string | null;
+    sessions: Array<
+      SandboxSession & {
+        myTurn: boolean;
+        waitingOn: string[];
+        myEnrollment: SandboxEnrollment | null;
+      }
+    >;
+  } {
+    const members = this.store.getMembers(circleId);
+    const partnerPk = pubkeyId(this.practiceKey());
+    const practiceMember = members.some(
+      (m) => m.memberPubkey === partnerPk && m.status === "active",
+    );
+    const sessions = computeSandboxSessions(this.db, circleId).map((s) => {
+      const moved = new Set(
+        s.moves.filter((m) => m.round === s.currentRound).map((m) => m.authorPubkey),
+      );
+      return {
+        ...s,
+        myTurn: isMyTurn(s, this.pubkey),
+        waitingOn: s.status === "closed" ? [] : s.speakers.filter((pk) => !moved.has(pk)),
+        myEnrollment: getSandboxEnrollment(this.db, circleId, s.cardId),
+      };
+    });
+    return {
+      generationEnabled: this.sandboxGenerationEnabled(),
+      practicePubkey: practiceMember ? partnerPk : null,
+      sessions,
+    };
+  }
+
+  /**
+   * Open a sandbox session ON an existing canvas card ("Work this with
+   * agents"). The card is the artifact; the session is an upgrade applied to
+   * it — never a new card type. Goal defaults to the card's title.
+   */
+  async frameSandboxSession(args: {
+    circleId: string;
+    cardId: string;
+    goal?: string;
+    roundCap?: number;
+  }): Promise<SendReport & { eventId: string; seq: number }> {
+    const card = computeCanvasCards(this.db, args.circleId).find((c) => c.cardId === args.cardId);
+    if (!card) throw new Error(`card ${args.cardId} is not on the canvas`);
+    const goal = (args.goal ?? "").trim() || card.title || card.text.slice(0, 200);
+    return this.appendTabEvent({
+      circleId: args.circleId,
+      input: {
+        type: "sandbox.frame.put",
+        cardId: args.cardId,
+        taskType: "negotiation",
+        goal,
+        roundCap: args.roundCap,
+        updatedAt: Date.now(),
+      },
+    });
+  }
+
+  /**
+   * Enroll (or change mode for) OUR agent on a card. Two halves (R4): the
+   * private row (budgets, guidance — never leaves the node) and the public
+   * signed event carrying `mode` only. Re-enrolling clears a pause.
+   */
+  async enrollSandbox(args: {
+    circleId: string;
+    cardId: string;
+    mode: "off" | "propose";
+    turnBudget?: number;
+    tokenBudget?: number;
+    guidance?: string;
+    expiresAt?: number | null;
+  }): Promise<SandboxEnrollment> {
+    const session = computeSandboxSessions(this.db, args.circleId).find(
+      (s) => s.cardId === args.cardId,
+    );
+    if (!session) throw new Error(`no sandbox session on card ${args.cardId} — frame it first`);
+    const enrollment = upsertSandboxEnrollment(this.db, {
+      circleId: args.circleId,
+      cardId: args.cardId,
+      mode: args.mode,
+      turnBudget: args.turnBudget,
+      tokenBudget: args.tokenBudget,
+      guidance: args.guidance,
+      expiresAt: args.expiresAt,
+    });
+    await this.appendTabEvent({
+      circleId: args.circleId,
+      input: {
+        type: "sandbox.enroll.put",
+        cardId: args.cardId,
+        mode: args.mode,
+        updatedAt: Date.now(),
+      },
+    });
+    return enrollment;
+  }
+
+  /**
+   * The HUMAN composer (§2's "join in" half): post a move by hand — no
+   * enrollment, no agent, no budget involved. Bound by the same one-move-per-
+   * member-per-round rule as everyone else, with a legible refusal.
+   */
+  async postSandboxMove(args: {
+    circleId: string;
+    cardId: string;
+    kind: SandboxMoveKind;
+    text?: string;
+    optionId?: string;
+    label?: string;
+  }): Promise<SendReport & { eventId: string; seq: number }> {
+    const session = computeSandboxSessions(this.db, args.circleId).find(
+      (s) => s.cardId === args.cardId,
+    );
+    if (!session) throw new Error(`no sandbox session on card ${args.cardId}`);
+    if (session.status === "closed") {
+      throw new Error(`this session is closed (${session.closed?.reason ?? "done"})`);
+    }
+    if (
+      session.moves.some((m) => m.round === session.currentRound && m.authorPubkey === this.pubkey)
+    ) {
+      throw new Error(
+        `one move per member per round — you already moved in round ${session.currentRound + 1}`,
+      );
+    }
+    // M5 at send time too: a vote must name an option that exists in OUR fold
+    // (the fold re-validates on every node regardless).
+    if (args.kind === "vote" && !session.options.some((o) => o.optionId === args.optionId)) {
+      throw new Error("vote must pick an option that is on the card");
+    }
+    const text = args.text?.trim() ? validateSandboxMoveText(args.text) : "";
+    return this.appendTabEvent({
+      circleId: args.circleId,
+      input: {
+        type: "sandbox.move",
+        cardId: args.cardId,
+        round: session.currentRound,
+        kind: args.kind,
+        text,
+        optionId: args.optionId,
+        label: args.label,
+        agentAuthored: false,
+      },
+    });
+  }
+
+  /** One-tap pause (§3.1): nothing generates or publishes until resumed. */
+  pauseSandbox(args: { circleId: string; cardId: string; reason?: string }): void {
+    if (!getSandboxEnrollment(this.db, args.circleId, args.cardId)) {
+      throw new Error("no enrollment on this card");
+    }
+    pauseSandboxEnrollment(this.db, {
+      circleId: args.circleId,
+      cardId: args.cardId,
+      reason: args.reason?.trim() || "paused by you",
+    });
+  }
+
+  resumeSandbox(args: { circleId: string; cardId: string }): void {
+    resumeSandboxEnrollment(this.db, { circleId: args.circleId, cardId: args.cardId });
+  }
+
+  /** Close the session with a legible, attributed reason (§3.1). */
+  async closeSandboxSession(args: {
+    circleId: string;
+    cardId: string;
+    reason: SandboxCloseReason;
+  }): Promise<SendReport & { eventId: string; seq: number }> {
+    return this.appendTabEvent({
+      circleId: args.circleId,
+      input: {
+        type: "sandbox.close",
+        cardId: args.cardId,
+        reason: args.reason,
+        updatedAt: Date.now(),
+      },
+    });
+  }
+
+  /**
+   * P1.0: seat the labeled practice partner on a session so the card is
+   * exercisable with ONE human installed. Solo circles only — with real
+   * members present the seat is refused, legibly (practice moves would be
+   * unverifiable noise on their ledgers).
+   */
+  async addSandboxPracticeSeat(args: { circleId: string; cardId: string }): Promise<{
+    partnerPubkey: string;
+  }> {
+    if (this.config.circles?.practicePartner?.enabled === false) {
+      throw new Error("the practice partner is disabled on this node");
+    }
+    const session = computeSandboxSessions(this.db, args.circleId).find(
+      (s) => s.cardId === args.cardId,
+    );
+    if (!session) throw new Error(`no sandbox session on card ${args.cardId} — frame it first`);
+    const partnerKey = this.practiceKey();
+    const partnerPk = pubkeyId(partnerKey);
+    const members = this.store.getMembers(args.circleId);
+    const realOthers = members.filter(
+      (m) =>
+        m.status === "active" && m.memberPubkey !== this.pubkey && m.memberPubkey !== partnerPk,
+    );
+    if (realOthers.length > 0) {
+      throw new Error(
+        "the practice seat is for solo circles — real members are here, so invite their agents instead",
+      );
+    }
+    if (!members.some((m) => m.memberPubkey === partnerPk && m.status === "active")) {
+      this.store.addMember({
+        circleId: args.circleId,
+        memberPubkey: partnerPk,
+        displayName: PRACTICE_PARTNER_NAME,
+        scopes: DEFAULT_MEMBER_SCOPES,
+      });
+    }
+    // The partner's PUBLIC enrollment (mode only), signed by its own key
+    // through the same validated append path a real peer would use.
+    if (!session.enrollments.some((e) => e.authorPubkey === partnerPk && e.mode !== "off")) {
+      const body = buildChainedEventBody(this.db, {
+        circleId: args.circleId,
+        authorPubkey: partnerPk,
+        input: {
+          type: "sandbox.enroll.put",
+          cardId: args.cardId,
+          mode: "propose",
+          updatedAt: Date.now(),
+        },
+      });
+      const envelope = makeCircleEnvelope(
+        "event",
+        args.circleId,
+        body as unknown as Record<string, JsonValue>,
+        partnerKey,
+      );
+      const { handleCircleMethod } = await import("../gateway/a2a/circles.js");
+      const outcome = handleCircleMethod("circle/event.append", { envelope }, this.db);
+      if (!outcome.ok) {
+        throw new Error(`practice enrollment refused: ${outcome.error.message}`);
+      }
+    }
+    // Let the partner move now rather than after the next ~15s sweep.
+    if (this.sandboxGenerationEnabled()) {
+      await practiceSandboxSweep(this.db, { partnerKey });
+    }
+    return { partnerPubkey: partnerPk };
+  }
+
   /**
    * The consent tap: publish a draft to the circle AS our human's message.
    * The human may have edited the text; what they approved is what ships.
@@ -1796,6 +2096,7 @@ export class CirclesService {
       // no separate agent send path to audit. The target card is re-checked
       // at publish (review: it may have been tombstoned since the draft was
       // generated — refuse rather than append an orphaned slice).
+      const isSandbox = draft.kind === SANDBOX_DRAFT_KIND && draft.targetCardId;
       const isSlice = draft.kind === "slice" && draft.targetCardId && draft.targetSlot;
       if (
         isSlice &&
@@ -1803,21 +2104,23 @@ export class CirclesService {
       ) {
         throw new Error("the card this draft targets is no longer on the canvas");
       }
-      const report = isSlice
-        ? await this.putCanvasSlice({
-            circleId: draft.circleId,
-            cardId: draft.targetCardId as string,
-            slot: draft.targetSlot as string,
-            value: text,
-            note: "",
-          })
-        : await this.sendMessage({
-            circleId: draft.circleId,
-            text,
-            replyTo: draft.summonEnvelopeId ?? undefined,
-            suppressAgentSummon: true,
-            agentAuthored: true,
-          });
+      const report = isSandbox
+        ? await this.publishSandboxMoveFromDraft(draft.circleId, draft.targetCardId as string, text)
+        : isSlice
+          ? await this.putCanvasSlice({
+              circleId: draft.circleId,
+              cardId: draft.targetCardId as string,
+              slot: draft.targetSlot as string,
+              value: text,
+              note: "",
+            })
+          : await this.sendMessage({
+              circleId: draft.circleId,
+              text,
+              replyTo: draft.summonEnvelopeId ?? undefined,
+              suppressAgentSummon: true,
+              agentAuthored: true,
+            });
       setAgentDraftStatus(this.db, draft.draftId, "published");
       return report;
     } catch (err) {
@@ -1825,6 +2128,52 @@ export class CirclesService {
       setAgentDraftStatus(this.db, draft.draftId, "ready");
       throw err;
     }
+  }
+
+  /**
+   * The approved sandbox proposal becomes a signed move. Publish-time consent
+   * re-check (R5, second gate): the enrollment may have been paused or turned
+   * off since the turn was claimed, the session may have closed, and the
+   * round may already carry our move — every refusal is legible.
+   */
+  private async publishSandboxMoveFromDraft(
+    circleId: string,
+    cardId: string,
+    text: string,
+  ): Promise<SendReport & { eventId: string; seq: number }> {
+    const enr = getSandboxEnrollment(this.db, circleId, cardId);
+    if (!enr || enr.mode !== "propose") {
+      throw new Error("your sandbox enrollment on this card is off — re-enroll to post");
+    }
+    if (enr.pausedAt) {
+      throw new Error(
+        `your agent is paused on this card (${enr.pauseReason ?? "paused"}) — resume before posting`,
+      );
+    }
+    const session = computeSandboxSessions(this.db, circleId).find((s) => s.cardId === cardId);
+    if (!session) throw new Error("no sandbox session on this card");
+    if (session.status === "closed") {
+      throw new Error(`this session is closed (${session.closed?.reason ?? "done"})`);
+    }
+    if (
+      session.moves.some((m) => m.round === session.currentRound && m.authorPubkey === this.pubkey)
+    ) {
+      throw new Error(
+        `one move per member per round — you already moved in round ${session.currentRound + 1}`,
+      );
+    }
+    const clean = validateSandboxMoveText(text);
+    return this.appendTabEvent({
+      circleId,
+      input: {
+        type: "sandbox.move",
+        cardId,
+        round: session.currentRound,
+        kind: "constraint",
+        text: clean,
+        agentAuthored: true,
+      },
+    });
   }
 
   /** The other half of consent: throw the draft away. Nothing ever left. */

@@ -996,6 +996,30 @@ export function recordSandboxTokenSpend(
 }
 
 /**
+ * Every enrollment that could spend RIGHT NOW: propose mode, unpaused,
+ * unexpired, inside both budgets. The turn sweep iterates exactly this set —
+ * anything filtered here can never reach a generation (R5 spend-time gate,
+ * first check of two; claimSandboxTurn re-checks atomically).
+ */
+export function listSpendableSandboxEnrollments(
+  db: DatabaseSync,
+  now: number = Date.now(),
+): SandboxEnrollment[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM circle_sandbox_enrollments
+        WHERE mode = 'propose'
+          AND paused_at IS NULL
+          AND turns_used < turn_budget
+          AND tokens_used < token_budget
+          AND (expires_at IS NULL OR expires_at > ?)
+        ORDER BY circle_id, card_id`,
+    )
+    .all(now) as unknown as EnrollmentRow[];
+  return rows.map(toEnrollment);
+}
+
+/**
  * Pause an enrollment with a stated reason (§3.1: every stop is legible —
  * this is what the no-progress detector and the pause button both call).
  */
@@ -1009,4 +1033,16 @@ export function pauseSandboxEnrollment(
         SET paused_at = ?, pause_reason = ?, updated_at = ?
       WHERE circle_id = ? AND card_id = ?`,
   ).run(now, args.reason.slice(0, 200), now, args.circleId, args.cardId.slice(0, 64));
+}
+
+/** The human resuming: clears the pause, touches nothing else. */
+export function resumeSandboxEnrollment(
+  db: DatabaseSync,
+  args: { circleId: string; cardId: string; now?: number },
+): void {
+  db.prepare(
+    `UPDATE circle_sandbox_enrollments
+        SET paused_at = NULL, pause_reason = NULL, updated_at = ?
+      WHERE circle_id = ? AND card_id = ?`,
+  ).run(args.now ?? Date.now(), args.circleId, args.cardId.slice(0, 64));
 }

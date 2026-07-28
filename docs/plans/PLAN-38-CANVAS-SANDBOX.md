@@ -772,6 +772,17 @@ sandbox does not inherit.]`
 > the §2 gradient's "join in" half, so the human is a co-player, never only
 > an approver) and R35 chat-side canvas awareness (draft sweep + `circles`
 > tool read the folded card state);
+> `[LANDED 2026-07-28: sandbox-agent.ts (turn sweep on the fast scheduler
+with guarded turn claims, R3 opaque-id quarantined prompt, R14 output
+validation, scripted practice partner over the real signed append path,
+R35 canvas summary), sandbox drafts on circle_agent_drafts with the
+publish tap re-checking consent (R5 both gates), 8 circles.sandbox.* RPCs,
+the SandboxCard renderer (artifact-above-feed, named wait line, propose
+tray, human composer, one-tap pause, per-card oversight drawer), and the
+"Work this with agents" upgrade on Decision cards. Generation behind
+circles.sandbox.enabled (default OFF, R19). The §3.1 containment
+DETECTORS and plan-vs-actual diff remain step (c) as scheduled; the
+containment SURFACE (paused-with-reason banner) ships now.]`
 > **(c)** multi-round + convergence + containment detectors + plan-vs-actual
 > diff;
 > **(d)** tools — the §4b five-step turn with the plan tap and egress broker;
