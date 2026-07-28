@@ -206,10 +206,13 @@ messages per call, and never unwrapped.
   P1 is propose-mode only: every agent move is drafted on the quarantined
   tool-less path (opaque `M1..Mn` author ids in the prompt — display names
   never enter it) and posts only on its own human's tap; humans can always
-  play by hand with no agent enrolled. Agent generation is behind the
-  `circles.sandbox.enabled` kill switch (default OFF, R19); the labeled
-  practice partner can take the second seat in solo circles so the loop is
-  exercisable with one human. Chat-side agents see the folded canvas state
+  play by hand with no agent enrolled. Agent generation is ON by default (the
+  sandbox is a core circles surface); `circles.sandbox.enabled: false` stops
+  all agent spend on this node. Default-on is safe because generation only
+  runs inside an enrollment you created, on a card you framed, within turn and
+  token budgets only you can refill — a node with no enrollments does no work
+  at all. The labeled practice partner can take the second seat in solo
+  circles so the loop is exercisable with one human. Chat-side agents see the folded canvas state
   (R35 — the reverse never happens: sandbox generations never ingest chat).
 - **Ask your people**: `circles.ask` with a category (e.g.
   `recommendations.dentist`; categories are normalized and capped at

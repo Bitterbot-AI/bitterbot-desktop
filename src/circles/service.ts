@@ -1798,9 +1798,25 @@ export class CirclesService {
   // R19 kill switch and every generated move waits for its human's tap.
   // -------------------------------------------------------------------------
 
-  /** R19: agent generation (turn sweep + practice moves) defaults OFF. */
+  /**
+   * Agent generation (turn sweep + practice moves). ON by default
+   * `[R19 amended 2026-07-28 by Victor: the sandbox is core, not opt-in]`.
+   *
+   * Why this is safe for P1 specifically: the switch was never the gate that
+   * mattered here. Generation is already behind three explicit human acts —
+   * framing a session on a card, enrolling (mode is never set automatically),
+   * and the per-enrollment turn/token budgets only that human can refill —
+   * and the sweep reads ONLY this node's own enrollments, so a node with none
+   * does zero work and spends nothing. Every generated move still waits for
+   * its own human's tap (propose-mode is all of P1), so nothing reaches the
+   * wire unseen either way.
+   *
+   * What R19 was protecting stays protected: P2 auto-append remains a
+   * SEPARATE, still-default-off opt-in per enrollment, and `enabled: false`
+   * here continues to stop all agent spend on this node.
+   */
   sandboxGenerationEnabled(): boolean {
-    return this.config.circles?.sandbox?.enabled === true;
+    return this.config.circles?.sandbox?.enabled !== false;
   }
 
   private practiceKey(): KeyPair {

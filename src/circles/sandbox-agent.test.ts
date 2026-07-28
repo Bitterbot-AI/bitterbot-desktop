@@ -40,9 +40,10 @@ function openDb(): DatabaseSync {
 }
 
 function makeConfig(): BitterbotConfig {
-  return {
-    circles: { enabled: true, sandbox: { enabled: true } },
-  } as unknown as BitterbotConfig;
+  // No `sandbox` key at all: generation must be ON by default (R19 amended
+  // 2026-07-28 — the sandbox is core, not opt-in). The tests below therefore
+  // exercise the shipping default rather than an enabled-only path.
+  return { circles: { enabled: true } } as unknown as BitterbotConfig;
 }
 
 /** No network in these tests: every dial fails soft (peers unreachable). */
@@ -111,7 +112,31 @@ describe("sandbox agent loop (service + real handlers)", () => {
     const state = service.sandboxState(circleId);
     expect(state.sessions).toHaveLength(1);
     expect(state.sessions[0]!.goal).toBe("Spring trip: June, 4 people");
+    // No sandbox config key was set: generation is ON by default.
     expect(state.generationEnabled).toBe(true);
+  });
+
+  it("generation is on by default and `enabled: false` is the only way off", () => {
+    expect(service.sandboxGenerationEnabled()).toBe(true);
+    const off = new CirclesService({
+      db,
+      config: {
+        circles: { enabled: true, sandbox: { enabled: false } },
+      } as unknown as BitterbotConfig,
+      keyPair: key,
+      practiceKeys: partnerKey,
+      fetchImpl: stubFetch(),
+      topicBus: null,
+    });
+    expect(off.sandboxGenerationEnabled()).toBe(false);
+  });
+
+  it("with no enrollment the sweep spends nothing, default-on or not", async () => {
+    await frameCard();
+    // Framing alone must never spend: enrollment is a separate human act, and
+    // it is what makes default-on safe.
+    expect(sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW }).queued).toBe(0);
+    expect(service.agentDrafts(circleId)).toHaveLength(0);
   });
 
   it("sweeps a turn: claims spend atomically, queues one proposal, never duplicates", async () => {

@@ -55,11 +55,16 @@ export type CirclesConfig = {
   };
   /**
    * PLAN-38 P1: the canvas sandbox's AGENT GENERATION (turn sweep + practice
-   * partner moves). Default: OFF per R19 — enable deliberately to let enrolled
-   * agents propose moves. Everything human-driven (framing a session, human
-   * moves, votes, enrollment) works regardless of this switch; only agent
-   * spend is gated. Auto-append does not exist yet (P2) and will require a
-   * second, separate opt-in when it does.
+   * partner moves). Default: TRUE — the sandbox is a core circles surface
+   * (R19 amended 2026-07-28); `false` opts out and stops all agent spend on
+   * this node.
+   *
+   * Default-on is safe because this switch was never the gate that mattered:
+   * generation only ever runs inside an enrollment the human created, on a
+   * card they framed, within turn/token budgets only they can refill, and
+   * every generated move waits for their tap before it reaches the wire. A
+   * node with no enrollments does no work at all. Auto-append (P2) is a
+   * separate opt-in that remains default-off.
    */
   sandbox?: {
     enabled?: boolean;

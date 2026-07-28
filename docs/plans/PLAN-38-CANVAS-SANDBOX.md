@@ -623,9 +623,20 @@ self-contained. Each is meant to be testable, and the test is the point.
 - **R18** Every autonomously generated move is labeled on the row, in the UI
   (distinguishing human-reviewed from never-reviewed), and machine-readably on
   the wire (EU AI Act Art. 50(2)).
-- **R19** Kill switch `circles.sandbox.enabled` defaults off; auto-append needs
-  a second separate opt-in; the trigger must be config-gated at the RECEIVING
-  handler, not only in the service.
+- **R19** ~~Kill switch `circles.sandbox.enabled` defaults off~~ **AMENDED
+  2026-07-28 by Victor: "the feature should always be on as it is core."**
+  The kill switch exists and still stops all agent spend when set to `false`,
+  but it now defaults **on**. Auto-append still needs a second separate
+  opt-in, still default-off, and the trigger must still be config-gated at the
+  RECEIVING handler, not only in the service.
+  _Why the override is sound for P1, recorded so it is not re-litigated:_ the
+  switch was never the gate that mattered here. Generation runs only inside an
+  enrollment the human created, on a card they framed, within turn/token
+  budgets only they can refill, and the sweep reads only this node's own
+  enrollments — so a node with no enrollments does zero work and spends
+  nothing (pinned by a test). Every generated move still waits for its own
+  human's tap, so nothing reaches the wire unseen either way. What R19 was
+  really protecting is P2's autonomous posting, and that gate is untouched.
 - **R20** No dark patterns on mode selection (review gate, not a unit test).
 
 **Tools (§4b)**
@@ -779,10 +790,11 @@ R35 canvas summary), sandbox drafts on circle_agent_drafts with the
 publish tap re-checking consent (R5 both gates), 8 circles.sandbox.* RPCs,
 the SandboxCard renderer (artifact-above-feed, named wait line, propose
 tray, human composer, one-tap pause, per-card oversight drawer), and the
-"Work this with agents" upgrade on Decision cards. Generation behind
-circles.sandbox.enabled (default OFF, R19). The §3.1 containment
-DETECTORS and plan-vs-actual diff remain step (c) as scheduled; the
-containment SURFACE (paused-with-reason banner) ships now.]`
+"Work this with agents" upgrade on Decision cards. Generation rides
+circles.sandbox.enabled, default ON since 2026-07-28 (R19 amended —
+see §4.5). The §3.1 containment DETECTORS and plan-vs-actual diff
+remain step (c) as scheduled; the containment SURFACE
+(paused-with-reason banner) ships now.]`
 > **(c)** multi-round + convergence + containment detectors + plan-vs-actual
 > diff;
 > **(d)** tools — the §4b five-step turn with the plan tap and egress broker;
