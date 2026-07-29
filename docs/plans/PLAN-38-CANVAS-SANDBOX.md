@@ -419,6 +419,85 @@ precisely where the value lives. All five fixed the same day:
    this…" while a proposal generates (queued/drafting surfaced as
    `thinkingCardIds`), and steering is reachable from the chat composer.
 
+### 3.2.8 Chat is the venue, cards are the record `[added 2026-07-29 — Victor: "our canvas still seems clunky. More needs to happen in the chat vs the canvas UI."]`
+
+The five fixes made the cards capable; they also made them crowded. The live
+layer stacks a goal line, speaker status, pause banners, the proposal tray,
+the vote tally, a composer, and a steering box onto every card — eight
+surfaces on what should read as one artifact — while the chat says nothing
+about any of it. That is inverted. Coordination is conversation-shaped, and
+we render it as card furniture.
+
+The 2026-07-29 Bloome research (docs/reviews/) independently validates the
+split we should have had, and names it well: **chat = coordination, card =
+content, pill = state.** Adopted, with our own mechanics:
+
+- **Moves to the chat timeline** (each item carries a card chip that taps
+  through to highlight the card on the canvas):
+  - The proposal tray: "Your agent suggests, on _Venue_: … [Add it] [No]".
+  - Narration one-liners: "your agent added an option on _Venue_", "everyone
+    agrees on _Friday_ — lock it in?", "your agent is out of turns [Give it
+    more turns]", "your agent passed (no answer in time)".
+  - Thinking state: "your agent is thinking on _Venue_…".
+  - The member-join recap (Bloome steal): when someone joins, one derived
+    chat item summarizing the canvas — cards, their states, what is waiting
+    on whom. Computed from the fold we already have.
+- **Stays on the card**: title/goal, the content itself, options with the one
+  tally, the human composer ("+ Add something" / "+ Add an option" — human
+  contributions ARE content), and a **status pill + byline** replacing the
+  banner stack: "Your agent · thinking", "Pending your OK", "Agreed ·
+  lock it in?", "Paused · out of turns", "Closed · round cap".
+- **Steering stays in chat** (`/steer` already lives there; the card textarea
+  goes away — one faucet, in the conversational surface where it belongs).
+
+**No new wire events, and §3.3 is untouched.** Every moved item is _derived
+per-viewer from the fold_ and interleaved into the local chat timeline — the
+exact mechanism agent-tool messages already use (wrapped, cap 50) and the
+same derived-not-evented discipline as §3.1's lapses. Peers never sync your
+proposal tray; it was always personal to you. The §3.3 asymmetry survives
+because it governs _ingestion_: rendering coordination INTO chat is output,
+and the taps are structured RPCs — no chat text enters sandbox generation,
+ever. R35's summary keeps flowing the other way unchanged.
+
+**Ordering consequence:** this reshape lands before (d). The §4b plan tap is
+a conversational consent moment; it should be born in the chat timeline, not
+retrofitted onto a card.
+
+### 3.2.9 Cards can die: delete and clear `[added 2026-07-29 — Victor]`
+
+Delete turned out to be the recurring pattern again — wired-but-dead:
+`canvas.card.remove` exists as a tombstone in the fold, `removeCanvasCard`
+exists in the service, `circles.canvas.remove` is a registered RPC, and the
+renderer never calls any of it. No card has ever been deletable from the UI.
+
+- **Delete = the existing tombstone, finally surfaced.** A remove event wins
+  the card's LWW slot; the fold drops the card; the session dies with it
+  (sessions are derived from live cards, §3.2.6). Undo exists by
+  construction: a later `card.put` on the same id outwins the tombstone and
+  resurrects the card — surfaced as "Undo" on the deletion's narration line.
+- **Clear = a UI gesture, not a wire concept.** "Clear" tombstones the old
+  card and immediately re-puts a fresh card with the same title (text kept or
+  wiped — user's choice on the confirm). The new card id means a fresh
+  session, round 1, no moves, no votes — by construction, with zero fold
+  changes and zero new event types. The alternative (an epoch counter on the
+  card, moves stamped with the epoch they were made against) was designed and
+  rejected for now: it preserves card-id continuity but grows the wire format
+  and the fold for a benefit chat anchors barely notice. Revisit only if
+  cleared-card history in anchors proves confusing in dogfood.
+- **Anyone in the circle can delete or clear any card.** Circles are small
+  trusted groups; the act is signed, attributed, narrated in chat ("Victor
+  removed _Venue_ [Undo]"), and reversible. Roles can tighten this later if
+  real circles demand it.
+- **Spend is not refunded** by delete or clear — R10 keeps every refill a
+  deliberate human act. Clearing a card to farm fresh rounds costs the same
+  budget it always did.
+- **Two build-time obligations.** (1) The canvas LWW tie-break uses
+  node-local `event_id` — the known latent flaw — and delete/put races across
+  nodes now make it load-bearing; fix it to content-derived `event_hash` ties
+  (the sandbox fold's rule) in the same change. (2) A queued agent draft
+  whose card is deleted before publish must die legibly at the claim step
+  ("that card is gone"), not post to a resurrected ghost.
+
 ### 3.3 Continuity across surfaces `[added 2026-07-28 per Victor: chat-side agents must be aware of the canvas]`
 
 Two kinds of continuity, resolved differently:
