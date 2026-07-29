@@ -22,11 +22,16 @@ import {
 
 const FINISHED_LABELS: Record<string, string> = {
   done: "finished",
-  cap: "stopped: round limit reached",
-  no_progress: "stopped: no progress",
-  budget: "stopped: budget spent",
+  cap: "stopped — it ran out of rounds",
+  no_progress: "stopped — no new ground was being covered",
+  budget: "stopped — the turn budget ran out",
   human: "finished by a member",
 };
+
+/** "passes at 4:12" — a wait always names a person AND a time (§3.1). */
+function atTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
 
 function nameFor(circle: Circle, pubkey: string, selfPubkey: string | undefined): string {
   if (pubkey === selfPubkey) return "You";
@@ -105,6 +110,12 @@ export function CardLiveLayer({
 
   return (
     <div className="mt-2 border-t pt-2 space-y-2">
+      {/* The goal restated next to the latest work: drifting is the owner's
+          judgment to make, never a model's, so the comparison is on screen. */}
+      {hasActivity && session.goal && (
+        <div className="text-[11px] text-muted-foreground italic">Working on: {session.goal}</div>
+      )}
+
       {/* who is working this, and what it waits on */}
       <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
         {session.speakers.length > 0 ? (
@@ -121,7 +132,11 @@ export function CardLiveLayer({
         {session.waitingOn.length > 0 && hasActivity && (
           <span className="text-amber-600 font-medium">
             · waiting on {session.waitingOn.map(who).join(", ")}
+            {session.passesAt !== null && ` (passes at ${atTime(session.passesAt)})`}
           </span>
+        )}
+        {session.lapsed.length > 0 && (
+          <span className="italic">· {session.lapsed.map(who).join(", ")} passed, no answer</span>
         )}
         {paused && (
           <span className="ml-auto flex items-center gap-1.5 text-emerald-600 font-medium">
@@ -146,6 +161,41 @@ export function CardLiveLayer({
           </button>
         )}
       </div>
+
+      {/* §3.1: a stop is never quiet. The agent paused itself, in words, with
+          one tap back — and the reason is the one the detector recorded, not
+          a generic "something happened". */}
+      {paused && part?.pauseReason && (
+        <div className="rounded-md border border-amber-600/40 bg-amber-500/10 px-2 py-1.5 text-xs">
+          <b className="text-amber-700">Paused.</b> {part.pauseReason}
+        </div>
+      )}
+      {!paused && session.noProgressAuthors.length > 0 && (
+        <div className="text-[11px] text-amber-600">
+          {session.noProgressAuthors.map(who).join(", ")} repeated{" "}
+          {session.noProgressAuthors.length === 1 ? "itself" : "themselves"} — nothing new is being
+          added
+        </div>
+      )}
+
+      {/* Everyone agrees: say so, and let a human be the one to finish it. */}
+      {session.agreedOptionId && (
+        <div className="flex items-center gap-2 rounded-md border border-emerald-600/40 bg-emerald-500/10 px-2 py-1.5 text-xs">
+          <span>
+            <b className="text-emerald-700">Everyone agrees</b> on{" "}
+            {session.options.find((o) => o.optionId === session.agreedOptionId)?.label ??
+              session.agreedOptionId}
+          </span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void run(() => store.closeSandbox(circle.circleId, cardId, "done"))}
+            className="ml-auto rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white"
+          >
+            Lock it in
+          </button>
+        </div>
+      )}
 
       {/* your agent's proposal, awaiting your tap — the one meaningful gate */}
       {proposal && (

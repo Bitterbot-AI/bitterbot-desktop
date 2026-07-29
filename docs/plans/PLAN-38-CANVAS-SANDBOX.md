@@ -837,6 +837,31 @@ remain step (c) as scheduled; the containment SURFACE
 (paused-with-reason banner) ships now.]`
 > **(c)** multi-round + convergence + containment detectors + plan-vs-actual
 > diff;
+> `[LANDED 2026-07-28: §3.1 containment, all four failure modes with a
+surfaced state each. STALLING — a turn deadline lapses a silent speaker to
+a visible pass derived in the fold (no event, so a vanished peer can never
+wedge a card), and late moves still fold into their own round. LOOPING —
+two signals, because one is measurably insufficient: verbatim similarity
+AND a structural no-delta test. GRINDING — budget exhaustion pauses and
+names itself instead of going quiet. CAP — running out of rounds closes the
+card with a derived, legible reason. Plus convergence surfaced ("everyone
+agrees on X") for a human to ratify, and the goal restated beside the work
+so drift stays the owner's judgment. The plan-vs-actual diff moves to (d)
+with its producer: nothing generates plans until the §4b turn shape exists,
+and a diff of nothing is decoration.]`
+>
+> **Measured finding, recorded because it changed the design.** §3.1 names
+> "near-identical successive moves" as the looping detector. Implemented
+> literally, that is word-set similarity — and against §3.1's own example (an
+> agent rephrasing the same fare comparison) it scores ~0.4, far below any
+> threshold that is safe from false positives. **Lexical similarity cannot
+> detect semantic restatement**, so it was demoted to a floor that catches
+> verbatim loops, and the real detector is structural: §3.2.3's work ratio as
+> a predicate — N contributions with zero artifact deltas (no option added,
+> no vote cast) is a rabbit hole regardless of how freshly it is worded. The
+> plan's own "10 turns · 0 deltas" line turned out to be the better
+> specification than its containment table.
+
 > **(d)** tools — the §4b five-step turn with the plan tap and egress broker;
 > **(e)** real second-node participation;
 > **(f)** breadth (work view, evidence strip, replay scrubber, own-agent

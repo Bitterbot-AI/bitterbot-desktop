@@ -43,6 +43,7 @@ import {
   getSandboxParticipation,
   isMyTurn,
   listSpendableSandboxCircles,
+  pauseSandboxParticipation,
   type SandboxEventInput,
   type SandboxSession,
 } from "./sandbox.js";
@@ -233,9 +234,21 @@ export function sweepSandboxTurns(
     if (queued >= QUEUE_PER_SWEEP) break;
     // Every live card in a participating circle is fair game; we act only
     // where it is actually our turn, so an idle canvas costs one fold.
-    for (const session of computeSandboxSessions(db, part.circleId)) {
+    for (const session of computeSandboxSessions(db, part.circleId, now)) {
       if (queued >= QUEUE_PER_SWEEP) break;
       if (session.status === "closed") continue;
+      // §3.1 LOOPING: our own agent said the same thing twice. Pause the whole
+      // circle's participation and SAY SO — a silent stall and a productive
+      // long session must never look alike. The human resumes deliberately.
+      if (session.noProgressAuthors.includes(args.selfPubkey)) {
+        pauseSandboxParticipation(db, {
+          circleId: part.circleId,
+          reason: "your agent stopped making progress and paused itself",
+          now,
+        });
+        log.info(`no-progress detector tripped on card ${session.cardId} — participation paused`);
+        break; // this circle is paused; nothing else here can spend
+      }
       if (!isMyTurn(session, args.selfPubkey)) continue;
       const live = db
         .prepare(
@@ -247,7 +260,18 @@ export function sweepSandboxTurns(
       if (live) continue;
       // Spend-time gate (R5): the guarded UPDATE is the authority. A turn is
       // spent even if generation later fails — conservative by design.
-      if (!claimSandboxTurn(db, { circleId: part.circleId, now })) break;
+      if (!claimSandboxTurn(db, { circleId: part.circleId, now })) {
+        // §3.1 GRINDING: the claim can only fail here on budget (the listing
+        // already filtered mode/pause/expiry), so name it instead of going
+        // quiet — "budget exhaustion pauses and asks; never silently
+        // continues".
+        pauseSandboxParticipation(db, {
+          circleId: part.circleId,
+          reason: "your agent used its turn budget for this circle — refill to continue",
+          now,
+        });
+        break;
+      }
       const q = queueSandboxMoveDraft(db, { circleId: part.circleId, cardId: session.cardId, now });
       if (q.queued) queued += 1;
     }

@@ -203,6 +203,15 @@ export interface SandboxSession {
   status: "gathering" | "live" | "closed";
   myTurn: boolean;
   waitingOn: string[];
+  // §3.1 containment, derived by the fold so every node agrees.
+  /** Speakers whose turn deadline passed: a visible pass, not a spinner. */
+  lapsed: string[];
+  /** When the current round's stragglers lapse (ms epoch). */
+  passesAt: number | null;
+  /** Authors whose last two contributions said the same thing. */
+  noProgressAuthors: string[];
+  /** Everyone voting agrees on this option — surfaced, never auto-closed. */
+  agreedOptionId: string | null;
 }
 
 export interface SandboxState {

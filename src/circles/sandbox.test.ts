@@ -10,16 +10,20 @@ import { makeCircleEnvelope } from "./envelope.js";
 import {
   claimSandboxTurn,
   computeSandboxSessions,
+  detectNoProgress,
   evidenceHost,
   getSandboxParticipation,
   isMyTurn,
+  moveSimilarity,
   normalizeSandboxInput,
   pauseSandboxParticipation,
   recordSandboxTokenSpend,
   SANDBOX_DEFAULT_ROUND_CAP,
+  SANDBOX_TURN_DEADLINE_MS,
   setSandboxParticipation,
   speakerOrderFor,
   type SandboxEventInput,
+  type SandboxMoveKind,
   type SandboxSession,
 } from "./sandbox.js";
 import { buildChainedEventBody, type ChainedEventBody } from "./tab.js";
@@ -668,5 +672,246 @@ describe("circle_sandbox_participation (the private half — gates all spend)", 
     ).toThrow(/mode/);
     expect(claimSandboxTurn(db, { circleId, now: NOW })).toBe(false);
     expect(getSandboxParticipation(db, circleId)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PLAN-38 P1(c): §3.1 containment. The section's binding claim is that a
+// silent stall and a productive long session must never look alike, so each
+// detector is tested for what it SAYS as much as what it does.
+// ---------------------------------------------------------------------------
+
+describe("moveSimilarity + detectNoProgress (looping)", () => {
+  it("scores a reworded restatement high and a new fact low", () => {
+    const a = "Comparing fares again: the $185 rate still beats the lakehouse on total cost.";
+    const b = "Fare comparison: the $185 rate remains cheaper than the lakehouse on total cost.";
+    expect(moveSimilarity(a, a)).toBe(1);
+    // MEASURED, and the reason the structural detector exists: a genuine
+    // reworded restatement — the exact failure §3.1 describes — only scores
+    // ~0.4, well under any threshold safe from false positives. Lexical
+    // similarity catches verbatim loops and nothing subtler.
+    expect(moveSimilarity(a, b)).toBeGreaterThan(0.3);
+    expect(moveSimilarity(a, b)).toBeLessThan(0.6);
+    expect(moveSimilarity(a, "Sam's calendar blocks June 12-14.")).toBeLessThan(0.15);
+    expect(moveSimilarity("", "")).toBe(1);
+    expect(moveSimilarity("something", "")).toBe(0);
+  });
+
+  it("trips only on an author's own repeated substance, never on votes or passes", () => {
+    const mk = (authorPubkey: string, kind: SandboxMoveKind, text: string, round: number) => ({
+      authorPubkey,
+      kind,
+      text,
+      round,
+    });
+    const repeated = [
+      mk("A", "constraint", "the cabin is cheaper overall", 0),
+      mk("A", "constraint", "the cabin is cheaper overall", 1),
+    ];
+    expect(detectNoProgress(repeated, "A")).toBe(true);
+    // Someone else's repetition is not ours to answer for.
+    expect(detectNoProgress(repeated, "B")).toBe(false);
+    // Real progress does not trip.
+    expect(
+      detectNoProgress(
+        [
+          mk("A", "constraint", "the cabin is cheaper overall", 0),
+          mk("A", "constraint", "Ana cannot fly on a red-eye", 1),
+        ],
+        "A",
+      ),
+    ).toBe(false);
+    // The structural signal: three contributions, all fresh wording, none of
+    // which moved the artifact — the loop lexical similarity cannot see.
+    expect(
+      detectNoProgress(
+        [
+          mk("A", "constraint", "the cabin is cheaper overall", 0),
+          mk("A", "constraint", "Ana cannot fly on a red-eye", 1),
+          mk("A", "constraint", "weekends in June book out early", 2),
+        ],
+        "A",
+      ),
+    ).toBe(true);
+    // ...but adding an option is a delta, so the same three do not trip.
+    expect(
+      detectNoProgress(
+        [
+          mk("A", "constraint", "the cabin is cheaper overall", 0),
+          mk("A", "option.add", "Cabin B", 1),
+          mk("A", "constraint", "weekends in June book out early", 2),
+        ],
+        "A",
+      ),
+    ).toBe(false);
+    // Voting the same way twice is agreement, not looping.
+    expect(detectNoProgress([mk("A", "vote", "", 0), mk("A", "vote", "", 1)], "A")).toBe(false);
+    // A single move can never loop.
+    expect(detectNoProgress([mk("A", "constraint", "x", 0)], "A")).toBe(false);
+  });
+});
+
+describe("the containment fold (stalling, cap, convergence)", () => {
+  let db: DatabaseSync;
+  let store: CirclesStore;
+  let circleId: string;
+  let ana: KeyPair;
+  let bob: KeyPair;
+  let A: string;
+  let B: string;
+
+  function append(key: KeyPair, input: Parameters<typeof buildChainedEventBody>[1]["input"]) {
+    const body = buildChainedEventBody(db, {
+      circleId,
+      authorPubkey: pubkeyId(key),
+      input,
+      now: NOW,
+    });
+    const envelope = makeCircleEnvelope(
+      "event",
+      circleId,
+      body as unknown as Record<string, JsonValue>,
+      key,
+      NOW_S,
+    );
+    const res = handleCircleMethod("circle/event.append", { envelope }, db, NOW);
+    if (!res.ok) throw new Error(`append failed: ${JSON.stringify(res.error)}`);
+  }
+
+  beforeEach(() => {
+    resetCircleRateLimits();
+    db = openDb();
+    store = new CirclesStore(db);
+    ana = generateKeyPair();
+    bob = generateKeyPair();
+    A = pubkeyId(ana);
+    B = pubkeyId(bob);
+    circleId = store.createCircle({ name: "Solo", kind: "connection", creatorPubkey: A, now: NOW });
+    store.addMember({ circleId, memberPubkey: B, scopes: DEFAULT_MEMBER_SCOPES, now: NOW });
+    append(ana, {
+      type: "canvas.card.put",
+      cardId: CARD,
+      cardType: "decision",
+      title: "Spring trip",
+      text: "",
+      updatedAt: NOW,
+    });
+    append(ana, { type: "sandbox.enroll.put", mode: "propose", updatedAt: NOW });
+    append(bob, { type: "sandbox.enroll.put", mode: "propose", updatedAt: NOW });
+  });
+
+  it("a silent peer lapses to a visible pass instead of wedging the round", () => {
+    // Ana moves; Bob never does.
+    append(ana, {
+      type: "sandbox.move",
+      cardId: CARD,
+      round: 0,
+      kind: "constraint",
+      text: "free June 19-26",
+      agentAuthored: false,
+    });
+
+    // Before the deadline the round genuinely waits on Bob, and says when.
+    const waiting = computeSandboxSessions(db, circleId, NOW + 60_000)[0]!;
+    expect(waiting.currentRound).toBe(0);
+    expect(waiting.lapsed).toEqual([]);
+    expect(waiting.passesAt).toBe(NOW + SANDBOX_TURN_DEADLINE_MS);
+    expect(isMyTurn(waiting, B)).toBe(true);
+
+    // Past it, Bob lapses: the round moves on and the pass is visible.
+    const after = computeSandboxSessions(db, circleId, NOW + SANDBOX_TURN_DEADLINE_MS + 1)[0]!;
+    expect(after.lapsed).toEqual([B]);
+    expect(after.currentRound).toBe(1);
+    // Timeouts only ever PERMIT: Bob's late move still folds into round 0.
+    append(bob, {
+      type: "sandbox.move",
+      cardId: CARD,
+      round: 0,
+      kind: "constraint",
+      text: "ceiling is $900",
+      agentAuthored: false,
+    });
+    const late = computeSandboxSessions(db, circleId, NOW + SANDBOX_TURN_DEADLINE_MS + 2)[0]!;
+    expect(late.moves.filter((m) => m.round === 0)).toHaveLength(2);
+  });
+
+  it("running out of rounds closes the card legibly rather than quietly", () => {
+    for (let r = 0; r < SANDBOX_DEFAULT_ROUND_CAP; r++) {
+      append(ana, {
+        type: "sandbox.move",
+        cardId: CARD,
+        round: r,
+        kind: "constraint",
+        text: `ana round ${r}`,
+        agentAuthored: false,
+      });
+      append(bob, {
+        type: "sandbox.move",
+        cardId: CARD,
+        round: r,
+        kind: "constraint",
+        text: `bob round ${r}`,
+        agentAuthored: false,
+      });
+    }
+    const s = computeSandboxSessions(db, circleId, NOW)[0]!;
+    expect(s.status).toBe("closed");
+    expect(s.closed?.reason).toBe("cap");
+    // A closed card is nobody's turn.
+    expect(isMyTurn(s, A)).toBe(false);
+    expect(isMyTurn(s, B)).toBe(false);
+  });
+
+  it("surfaces agreement only when every speaker has voted the same way", () => {
+    append(ana, {
+      type: "sandbox.move",
+      cardId: CARD,
+      round: 0,
+      kind: "option.add",
+      optionId: "cabin-b",
+      label: "Cabin B",
+      agentAuthored: false,
+    });
+    append(bob, {
+      type: "sandbox.move",
+      cardId: CARD,
+      round: 0,
+      kind: "vote",
+      optionId: "cabin-b",
+      agentAuthored: false,
+    });
+    // Only Bob has voted: not yet agreement.
+    expect(computeSandboxSessions(db, circleId, NOW)[0]!.agreedOptionId).toBeNull();
+    append(ana, {
+      type: "sandbox.move",
+      cardId: CARD,
+      round: 1,
+      kind: "vote",
+      optionId: "cabin-b",
+      agentAuthored: false,
+    });
+    expect(computeSandboxSessions(db, circleId, NOW)[0]!.agreedOptionId).toBe("cabin-b");
+  });
+
+  it("reports a looping author on every node, not just their own", () => {
+    for (const r of [0, 1]) {
+      append(ana, {
+        type: "sandbox.move",
+        cardId: CARD,
+        round: r,
+        kind: "constraint",
+        text: "the cabin is cheaper overall",
+        agentAuthored: true,
+      });
+      append(bob, {
+        type: "sandbox.move",
+        cardId: CARD,
+        round: r,
+        kind: "pass",
+        agentAuthored: false,
+      });
+    }
+    const s = computeSandboxSessions(db, circleId, NOW)[0]!;
+    expect(s.noProgressAuthors).toEqual([A]);
   });
 });

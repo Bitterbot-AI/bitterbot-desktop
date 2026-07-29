@@ -84,6 +84,31 @@ export type SandboxPlanStepState = (typeof SANDBOX_PLAN_STEP_STATES)[number];
 
 /** §3.1: default round caps stay low; 20 is the hard ceiling everywhere. */
 export const SANDBOX_DEFAULT_ROUND_CAP = 3;
+/**
+ * How long a round waits on a speaker before they lapse to a visible pass.
+ * Generous: a peer node polls its mailbox every ~15s but may be asleep, and
+ * lapsing someone who WOULD have answered is worse than waiting. Timeouts
+ * only ever PERMIT later speakers — a late move still folds into its own
+ * round retroactively (§1), so nothing is lost by waiting.
+ */
+export const SANDBOX_TURN_DEADLINE_MS = 10 * 60_000;
+/**
+ * Word-set similarity at or above which two successive moves count as a
+ * VERBATIM restatement. Set for near-copies only: measured against the
+ * failure §3.1 describes (an agent rephrasing the same fare comparison), real
+ * reworded restatements score around 0.4, so a lexical test alone cannot be
+ * the detector — see SANDBOX_NO_DELTA_MOVES for the one that actually works.
+ */
+export const SANDBOX_NO_PROGRESS_SIMILARITY = 0.8;
+/**
+ * How many of an author's own moves may pass without changing the artifact
+ * (no option added, no vote cast) before it counts as no progress. This is
+ * the STRUCTURAL detector and the load-bearing one: §3.2.3's "10 turns · 0
+ * deltas reads as a rabbit hole" measured rather than eyeballed. It catches
+ * the sophisticated loop — endless well-phrased restatement — that lexical
+ * similarity provably misses.
+ */
+export const SANDBOX_NO_DELTA_MOVES = 3;
 export const SANDBOX_ROUND_HARD_CEILING = 20;
 export const SANDBOX_MAX_PLAN_STEPS = 12;
 export const SANDBOX_MAX_EVIDENCE_SOURCES = 8;
@@ -342,6 +367,74 @@ export function normalizeSandboxInput(
 // Speaker order + turn test
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// §3.1 containment primitives. Pure and exported so the detectors are
+// testable on their own — the point of the section is that a silent stall and
+// a productive long session must never look alike.
+// ---------------------------------------------------------------------------
+
+/** Word set of a move's text, for the similarity check. */
+function wordSet(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Jaccard similarity of two move texts (0 = nothing shared, 1 = same words).
+ * Word-set based rather than character-based so a re-ordered restatement —
+ * the actual observed failure, an agent saying the same thing a new way —
+ * still scores high. Two empty texts are identical by definition.
+ */
+export function moveSimilarity(a: string, b: string): number {
+  const A = wordSet(a);
+  const B = wordSet(b);
+  if (A.size === 0 && B.size === 0) return 1;
+  if (A.size === 0 || B.size === 0) return 0;
+  let shared = 0;
+  for (const w of A) if (B.has(w)) shared += 1;
+  return shared / (A.size + B.size - shared);
+}
+
+/**
+ * Has this author stopped making progress (M4)? Two independent signals,
+ * because one of them is measurably insufficient on its own:
+ *
+ *  1. VERBATIM: their two most recent substantive moves say the same thing.
+ *     Catches the crude loop. Lexical similarity is weak for reworded
+ *     restatement (the §3.1 example pair scores ~0.4), so this is a floor,
+ *     not the detector.
+ *  2. NO DELTA: they have made SANDBOX_NO_DELTA_MOVES or more moves without
+ *     ever changing the artifact — no option added, no vote cast. This is
+ *     §3.2.3's work ratio as a predicate, and it is what actually catches an
+ *     agent that talks forever in fresh words while converging on nothing.
+ *
+ * A vote or a pass never trips either signal: voting the same way twice is
+ * agreement, and passing is a legitimate answer.
+ */
+export function detectNoProgress(
+  moves: Array<{ authorPubkey: string; kind: SandboxMoveKind; text: string; round: number }>,
+  authorPubkey: string,
+  threshold: number = SANDBOX_NO_PROGRESS_SIMILARITY,
+): boolean {
+  const theirs = moves
+    .filter((m) => m.authorPubkey === authorPubkey)
+    .toSorted((a, b) => a.round - b.round);
+  const substantive = theirs.filter((m) => m.kind === "constraint" || m.kind === "option.add");
+  if (substantive.length >= 2) {
+    const last = substantive[substantive.length - 1]!;
+    const prev = substantive[substantive.length - 2]!;
+    if (moveSimilarity(last.text, prev.text) >= threshold) return true;
+  }
+  const contributed = theirs.filter((m) => m.kind !== "pass");
+  const deltas = theirs.filter((m) => m.kind === "option.add" || m.kind === "vote");
+  return contributed.length >= SANDBOX_NO_DELTA_MOVES && deltas.length === 0;
+}
+
 /**
  * Speaker order for one round: enrolled speakers sorted by
  * sha256(cardId:round:pubkey). Deterministic on every node, rotates fairly
@@ -434,6 +527,28 @@ export type SandboxSession = {
    *  roundCap when every round is complete. */
   currentRound: number;
   status: "gathering" | "live" | "closed";
+  // --- §3.1 containment, all DERIVED so every node agrees -----------------
+  /**
+   * Speakers in the current round whose turn deadline has passed without a
+   * move: they lapse to a VISIBLE pass rather than blocking the round
+   * forever ("never an indefinite spinner"). Derived, so no event is needed
+   * and a peer who simply vanished cannot wedge the card.
+   */
+  lapsed: string[];
+  /** When the current round's remaining speakers lapse (ms epoch), or null
+   *  when the round has not started or everyone has moved. */
+  passesAt: number | null;
+  /**
+   * Authors whose last two moves on this card are near-identical — the
+   * looping signal (M4). Their own node auto-pauses; every node can SEE it,
+   * which is what makes "it stopped and said why" true for peers too.
+   */
+  noProgressAuthors: string[];
+  /**
+   * Everyone who is voting agrees on this option. Surfaced, never
+   * auto-closed: ratifying is a human act (§5 draft-PR semantics).
+   */
+  agreedOptionId: string | null;
 };
 
 type EventRow = {
@@ -487,7 +602,11 @@ function str(v: unknown, cap: number): string {
  * strings are re-capped and all enums re-validated here — sender
  * normalization is NOT trusted.
  */
-export function computeSandboxSessions(db: DatabaseSync, circleId: string): SandboxSession[] {
+export function computeSandboxSessions(
+  db: DatabaseSync,
+  circleId: string,
+  now: number = Date.now(),
+): SandboxSession[] {
   const rows = db
     .prepare(
       `SELECT author_pubkey, seq, event_type, body_json, event_hash, claimed_at
@@ -792,8 +911,11 @@ export function computeSandboxSessions(db: DatabaseSync, circleId: string): Sand
         }
       : null;
 
-    // Current round: smallest round some enrolled speaker has not moved in.
+    // Current round: the smallest round some enrolled speaker has neither
+    // moved in NOR lapsed out of. Lapsing is what keeps a vanished peer from
+    // wedging the card forever (§3.1 stalling).
     const movedIn = new Map<number, Set<string>>();
+    const roundStartedAt = new Map<number, number>();
     for (const m of moves) {
       let set = movedIn.get(m.round);
       if (!set) {
@@ -801,19 +923,61 @@ export function computeSandboxSessions(db: DatabaseSync, circleId: string): Sand
         movedIn.set(m.round, set);
       }
       set.add(m.authorPubkey);
+      // A round begins when its FIRST move lands. claimed_at is peer-asserted,
+      // but it can only ever PERMIT a later speaker here, never suppress one
+      // (§1), so a lying clock buys an attacker nothing but an earlier pass.
+      const started = roundStartedAt.get(m.round);
+      if (started === undefined || m.claimedAt < started) {
+        roundStartedAt.set(m.round, m.claimedAt);
+      }
     }
+    const deadlineFor = (r: number): number | null => {
+      const started = roundStartedAt.get(r);
+      return started === undefined ? null : started + SANDBOX_TURN_DEADLINE_MS;
+    };
+    const hasSettled = (r: number, pk: string): boolean => {
+      if (movedIn.get(r)?.has(pk)) return true;
+      const deadline = deadlineFor(r);
+      return deadline !== null && now >= deadline; // lapsed to a visible pass
+    };
+
     let currentRound = roundCap;
     if (speakers.length === 0) {
       currentRound = 0;
     } else {
       for (let r = 0; r < roundCap; r++) {
-        const moved = movedIn.get(r);
-        if (!moved || speakers.some((pk) => !moved.has(pk))) {
+        if (speakers.some((pk) => !hasSettled(r, pk))) {
           currentRound = r;
           break;
         }
       }
     }
+
+    // Lapses in the round we are waiting on — or, when a lapse is exactly
+    // what let the round advance, the round we just left. Otherwise "Bob
+    // passed, no answer" would disappear the instant it became true.
+    const lapsesIn = (r: number): string[] =>
+      r < 0 || r >= roundCap
+        ? []
+        : speakers.filter((pk) => !movedIn.get(r)?.has(pk) && hasSettled(r, pk));
+    const currentLapses = lapsesIn(currentRound);
+    const lapsed = currentLapses.length > 0 ? currentLapses : lapsesIn(currentRound - 1);
+    const passesAt = currentRound < roundCap ? deadlineFor(currentRound) : null;
+    const noProgressAuthors = speakers.filter((pk) => detectNoProgress(moves, pk));
+
+    // Convergence: everyone who voted picked the same option, and everyone
+    // who speaks has voted. Surfaced only — ratifying stays a human act.
+    const voterEntries = Object.entries(votes);
+    const allVoters = new Set(voterEntries.flatMap(([, v]) => v));
+    const agreedOptionId =
+      voterEntries.length === 1 && speakers.length > 0 && speakers.every((pk) => allVoters.has(pk))
+        ? (voterEntries[0]![0] ?? null)
+        : null;
+
+    // §3.1 rule 1: a card that runs out of rounds says so in those words,
+    // rather than sitting in a state nobody can name. Derived, so every node
+    // agrees without racing to write a close event.
+    const capReached = !closed && speakers.length > 0 && currentRound >= roundCap;
 
     sessions.push({
       cardId,
@@ -832,9 +996,17 @@ export function computeSandboxSessions(db: DatabaseSync, circleId: string): Sand
       votes,
       plans: foldedPlans,
       evidence: foldedEvidence,
-      closed,
+      closed:
+        closed ??
+        (capReached
+          ? { reason: "cap" as SandboxCloseReason, byPubkey: "", at: passesAt ?? 0 }
+          : null),
       currentRound,
-      status: closed ? "closed" : moves.length === 0 ? "gathering" : "live",
+      status: closed || capReached ? "closed" : moves.length === 0 ? "gathering" : "live",
+      lapsed,
+      passesAt,
+      noProgressAuthors,
+      agreedOptionId,
     });
   }
   sessions.sort((a, b) => b.frameUpdatedAt - a.frameUpdatedAt); // newest first
@@ -856,7 +1028,10 @@ export function isMyTurn(session: SandboxSession, myPubkey: string): boolean {
   if (mine < 0) return false;
   const moved = new Set(session.moves.filter((m) => m.round === r).map((m) => m.authorPubkey));
   if (moved.has(myPubkey)) return false;
-  return order.slice(0, mine).every((pk) => moved.has(pk));
+  // Earlier speakers who LAPSED no longer block us — that is the whole point
+  // of the deadline (§3.1 stalling: never an indefinite spinner).
+  const settled = new Set([...moved, ...session.lapsed]);
+  return order.slice(0, mine).every((pk) => settled.has(pk));
 }
 
 // ---------------------------------------------------------------------------
