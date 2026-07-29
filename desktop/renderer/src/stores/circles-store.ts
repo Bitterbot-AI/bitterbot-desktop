@@ -263,11 +263,14 @@ interface CirclesState {
   outboundByCircle: Record<string, PendingOutbound[]>;
   loading: boolean;
   notice: string | null;
+  /** §3.2.8: a chat item's card chip focuses its card on the canvas. */
+  focusCardId: string | null;
 
   refresh: () => Promise<void>;
   selectCircle: (circleId: string) => void;
   loadMessages: (circleId: string) => Promise<void>;
   loadCards: (circleId: string) => Promise<void>;
+  setFocusCard: (cardId: string | null) => void;
   removeCard: (circleId: string, cardId: string) => Promise<boolean>;
   clearCard: (circleId: string, cardId: string, keepText: boolean) => Promise<boolean>;
   undoRemoveCard: (circleId: string, removed: RemovedCanvasCard) => Promise<boolean>;
@@ -368,6 +371,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   annotationsByCircle: {},
   cardsByCircle: {},
   removedByCircle: {},
+  focusCardId: null,
   sandboxByCircle: {},
   draftsByCircle: {},
   studyByCard: {},
@@ -565,6 +569,8 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       set({ notice: String(err) });
     }
   },
+
+  setFocusCard: (cardId) => set({ focusCardId: cardId }),
 
   removeCard: async (circleId, cardId) => {
     try {

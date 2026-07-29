@@ -9,6 +9,7 @@ import {
   type CircleMessage,
 } from "../../stores/circles-store";
 import { AgentDraftCard } from "./AgentDraftCard";
+import { CanvasLiveStrip } from "./CanvasActivity";
 import { CircleMessageList } from "./CircleMessageList";
 import { FrozenCircleBanner } from "./FrozenCircleBanner";
 import { PendingOutboundCard } from "./PendingOutboundCard";
@@ -253,6 +254,11 @@ export function CircleChat({ circle, selfPubkey }: Props) {
       />
 
       {circle.status === "frozen" && <FrozenCircleBanner circle={circle} />}
+
+      {/* §3.2.8: chat is the venue — the canvas's conversational surface
+          (proposals, narration, pauses, agreement, removals) renders here,
+          derived per-viewer, each item chipped to its card. */}
+      <CanvasLiveStrip circle={circle} selfPubkey={selfPubkey} />
 
       {/* The quiet tray (mockup pin 2's "noticed N things — nothing posted"):
           every consent surface — §5.3 approval cards + Phase B chat drafts —

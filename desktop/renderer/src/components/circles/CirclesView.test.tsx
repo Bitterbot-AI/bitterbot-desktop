@@ -602,8 +602,11 @@ describe("CirclesView", () => {
   it("renders a Decision card with ONE vote surface (the live layer)", async () => {
     stubRpcs();
     render(<CirclesView />);
-    // The decision renders with its question and its options.
-    expect(await screen.findByText("When do we review?")).toBeTruthy();
+    // The decision renders with its question and its options. (§3.2.8: the
+    // question may ALSO appear as a card chip in the chat strip — the card
+    // title itself is the non-button occurrence.)
+    const questionNodes = await screen.findAllByText("When do we review?");
+    expect(questionNodes.some((n) => n.tagName !== "BUTTON")).toBe(true);
     // "Thu" appears as an option row AND inside the agent's pending
     // proposal — both are the same unified surface, so multiple is right.
     expect((await screen.findAllByText("Thu")).length).toBeGreaterThan(0);
@@ -766,11 +769,12 @@ describe("CirclesView", () => {
     );
   });
 
-  it("shows the agent's proposal in the card's live layer and adds it on tap", async () => {
+  it("shows the agent's proposal in the chat strip (§3.2.8) and adds it on tap", async () => {
     stubRpcs();
     render(<CirclesView />);
     await openTray();
-    // The proposal renders on ITS card, awaiting the tap…
+    // §3.2.8: the proposal renders in the chat pane's live strip (chat is the
+    // venue), chipped to its card, awaiting the tap…
     expect(await screen.findByText(/Your agent suggests/i)).toBeTruthy();
     // …and NOT as a second chat draft card (only dr1, the reply draft, is in chat).
     expect(screen.getAllByText(/Your agent drafted a reply/i)).toHaveLength(1);
@@ -781,6 +785,38 @@ describe("CirclesView", () => {
         draftId: "dr2",
         text: "Thu",
       }),
+    );
+  });
+
+  it("narrates a removal in the chat strip and undoes it by re-putting the body (§3.2.9)", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method !== "circles.canvas.list") return base(method, params);
+      return Promise.resolve({
+        cards: [],
+        removed: [
+          {
+            cardId: "gone1",
+            cardType: "note",
+            title: "Venue shortlist",
+            text: "Cabin A\nCabin B",
+            removedBy: "ed25519:maya",
+            removedAt: Date.now() - 60_000,
+          },
+        ],
+      });
+    });
+    render(<CirclesView />);
+    // The removal is legible — named, attributed, in the chat strip…
+    expect(await screen.findByText(/removed “Venue shortlist”/)).toBeTruthy();
+    // …and reversible: Undo re-puts the tombstoned body under its original id.
+    await userEvent.click(screen.getByRole("button", { name: /^Undo$/ }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith(
+        "circles.canvas.put",
+        expect.objectContaining({ cardId: "gone1", title: "Venue shortlist" }),
+      ),
     );
   });
 

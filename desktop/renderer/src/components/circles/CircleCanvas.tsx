@@ -52,11 +52,11 @@ export function CircleCanvas({
   selfPubkey: string | undefined;
 }) {
   const cards = useCirclesStore((s) => s.cardsByCircle[circle.circleId]);
-  const removed = useCirclesStore((s) => s.removedByCircle[circle.circleId]);
   const sandbox = useCirclesStore((s) => s.sandboxByCircle[circle.circleId]);
   const removeCard = useCirclesStore((s) => s.removeCard);
   const clearCard = useCirclesStore((s) => s.clearCard);
-  const undoRemoveCard = useCirclesStore((s) => s.undoRemoveCard);
+  const focusCardId = useCirclesStore((s) => s.focusCardId);
+  const setFocusCard = useCirclesStore((s) => s.setFocusCard);
   const putCard = useCirclesStore((s) => s.putCard);
   const putDecision = useCirclesStore((s) => s.putDecision);
   const putStudyGuide = useCirclesStore((s) => s.putStudyGuide);
@@ -77,6 +77,20 @@ export function CircleCanvas({
   const [diagramTitle, setDiagramTitle] = useState("");
   const [diagramCode, setDiagramCode] = useState("");
   const [previewCode, setPreviewCode] = useState("");
+
+  // §3.2.8: a chat item's card chip focuses its card here — scroll it into
+  // view, flash a ring, then release the focus so the next chip works too.
+  useEffect(() => {
+    if (!focusCardId) return;
+    document
+      .getElementById(`canvas-card-${focusCardId}`)
+      ?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    const t = setTimeout(() => setFocusCard(null), 1600);
+    return () => clearTimeout(t);
+  }, [focusCardId, setFocusCard]);
+
+  const focusRing = (cardId: string) =>
+    focusCardId === cardId ? " ring-2 ring-circle-agent ring-offset-1" : "";
 
   const reset = () => {
     setMode(null);
@@ -341,27 +355,6 @@ export function CircleCanvas({
           </div>
         )}
 
-        {/* §3.2.9: removals are legible and reversible. A later put outwins
-            the tombstone, so Undo is just re-putting the removed body. */}
-        {(removed ?? []).slice(0, 3).map((r) => (
-          <div
-            key={`removed-${r.cardId}`}
-            className="flex items-center justify-between rounded-lg border border-dashed px-3 py-1.5 text-[11px] text-muted-foreground"
-          >
-            <span className="truncate">
-              {nameFor(circle, r.removedBy, selfPubkey)} removed “{r.title || "a card"}” ·{" "}
-              {fmtWhen(r.removedAt)}
-            </span>
-            <button
-              type="button"
-              className="ml-2 shrink-0 font-medium underline-offset-2 hover:underline"
-              onClick={() => void undoRemoveCard(circle.circleId, r)}
-            >
-              Undo
-            </button>
-          </div>
-        ))}
-
         {list.map((card) => {
           // Every card carries the live layer — agents and people work the
           // card itself. There is no separate card type and nothing to enable.
@@ -415,7 +408,11 @@ export function CircleCanvas({
             // DecisionCard poll is gone — two disagreeing vote systems on one
             // card was the worst incoherence on the canvas.
             return (
-              <div key={card.cardId} className="relative rounded-lg border bg-card p-3">
+              <div
+                key={card.cardId}
+                id={`canvas-card-${card.cardId}`}
+                className={`relative rounded-lg border bg-card p-3${focusRing(card.cardId)}`}
+              >
                 {actions}
                 <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
                   Decision
@@ -434,7 +431,11 @@ export function CircleCanvas({
           }
           if (card.cardType === "study") {
             return (
-              <div key={card.cardId} className="relative">
+              <div
+                key={card.cardId}
+                id={`canvas-card-${card.cardId}`}
+                className={`relative${focusRing(card.cardId)}`}
+              >
                 {actions}
                 <StudyGuideCard card={card} circle={circle} selfPubkey={selfPubkey}>
                   <div className="px-3 pb-3">{live}</div>
@@ -443,7 +444,11 @@ export function CircleCanvas({
             );
           }
           return (
-            <div key={card.cardId} className="relative rounded-lg border bg-card p-3">
+            <div
+              key={card.cardId}
+              id={`canvas-card-${card.cardId}`}
+              className={`relative rounded-lg border bg-card p-3${focusRing(card.cardId)}`}
+            >
               {actions}
               {card.title && <div className="text-sm font-semibold mb-1 pr-6">{card.title}</div>}
               {card.cardType === "mermaid" ? (
