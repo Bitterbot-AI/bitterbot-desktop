@@ -109,4 +109,4 @@ These are structural constraints, not policy notes:
 | `src/memory/peer-reputation.ts`      | `recordSettlementOutcome` (commerce trust)       |
 
 The full design, phasing, and open questions are in
-[`docs/plans/PLAN-26-SWARM-COMMERCE-C2M-COORDINATION.md`](../plans/PLAN-26-SWARM-COMMERCE-C2M-COORDINATION.md).
+`docs/plans/PLAN-26-SWARM-COMMERCE-C2M-COORDINATION.md` (internal planning doc).

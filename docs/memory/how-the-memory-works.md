@@ -106,7 +106,7 @@ Two safeguards ride on top of this:
 - **Citation validation at write time.** As each fact is stored, the system checks that the cited lines actually support it (a cheap token-overlap test). A fact whose citation does not back it up is flagged in the audit log as a possible confabulation, so the memory-construction loop can learn from it.
 - **Faithfulness on rewrite.** Before any later process rewrites a fact in its labile window, the rewrite is re-verified against the original evidence and rejected if it has drifted away from the source. A memory can be strengthened or reorganized, but it cannot quietly become something its source never said.
 
-Provenance is on by default; set `memory.provenance.enabled: false` to turn it off. This is the foundation of the HORMA-style memory scaffolding ([PLAN-24](../plans/PLAN-24-HORMA-MEMORY-SCAFFOLDING.md)): compact, navigable notes that never lose the thread back to ground truth.
+Provenance is on by default; set `memory.provenance.enabled: false` to turn it off. This is the foundation of the HORMA-style memory scaffolding (PLAN-24, internal planning doc): compact, navigable notes that never lose the thread back to ground truth.
 
 ---
 

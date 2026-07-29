@@ -233,3 +233,6 @@ benchmarks/arc-agi-3/results/
 # PLAN-24 Phase 2 contrastive run scratch + timestamped artifacts
 benchmarks/longmemeval/.work-contrastive/
 benchmarks/longmemeval/results/contrastive_*
+
+# Internal planning docs stay local (removed from tracking 2026-07-29)
+docs/plans/
