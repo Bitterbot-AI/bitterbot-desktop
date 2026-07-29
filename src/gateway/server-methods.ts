@@ -187,6 +187,7 @@ const WRITE_METHODS = new Set([
   "circles.message.delete",
   "circles.canvas.put",
   "circles.canvas.remove",
+  "circles.canvas.clear",
   "circles.canvas.slice",
   "circles.outbound.approve",
   "circles.outbound.reject",

@@ -216,6 +216,63 @@ describe("sandbox agent loop (service + real handlers)", () => {
     expect(mineOnCard()).toHaveLength(1);
   });
 
+  it("a draft for a deleted card dies legibly at the tap and is discarded, not retried (§3.2.9)", async () => {
+    await putCard();
+    await service.setCanvasParticipation({ circleId, mode: "propose" });
+    await letPartnerLead();
+    sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW });
+    await generateQueuedAgentDrafts(db, async () => "A perfectly fine move.", {
+      selfPubkey: service.pubkey,
+    });
+    const draft = service.agentDrafts(circleId).find((d) => d.kind === SANDBOX_DRAFT_KIND)!;
+    await service.removeCanvasCard({ circleId, cardId: CARD });
+    await expect(service.publishAgentDraft({ draftId: draft.draftId })).rejects.toThrow(
+      /no longer on the canvas/,
+    );
+    // Discarded, not handed back: the card cannot come back the same, so a
+    // "ready" draft would just fail forever.
+    expect(service.agentDrafts(circleId).some((d) => d.draftId === draft.draftId)).toBe(false);
+  });
+
+  it("clear mints a fresh card: same title, fresh session, no refund (§3.2.9)", async () => {
+    await putCard();
+    await service.setCanvasParticipation({ circleId, mode: "propose", turnBudget: 3 });
+    await letPartnerLead();
+    sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW });
+    await generateQueuedAgentDrafts(db, async () => "Victor is free June 19-26.", {
+      selfPubkey: service.pubkey,
+    });
+    const draft = service.agentDrafts(circleId).find((d) => d.kind === SANDBOX_DRAFT_KIND)!;
+    await service.publishAgentDraft({ draftId: draft.draftId });
+    const spentBefore = getSandboxParticipation(db, circleId)?.turnsUsed ?? 0;
+    expect(spentBefore).toBeGreaterThan(0);
+
+    const { newCardId } = await service.clearCanvasCard({
+      circleId,
+      cardId: CARD,
+      keepText: false,
+    });
+    expect(newCardId).not.toBe(CARD);
+
+    const state = service.canvasState(circleId);
+    // The old card is a legible tombstone; the new card carries the title on.
+    expect(state.cards).toHaveLength(1);
+    expect(state.cards[0]).toMatchObject({
+      cardId: newCardId,
+      title: "Spring trip: June, 4 people",
+      text: "",
+    });
+    expect(state.removed[0]?.cardId).toBe(CARD);
+
+    // Fresh session by construction: the new card id has no moves, round 0.
+    const sessions = service.sandboxState(circleId).sessions;
+    const fresh = sessions.find((s) => s.cardId === newCardId)!;
+    expect(fresh.moves).toHaveLength(0);
+    expect(sessions.some((s) => s.cardId === CARD)).toBe(false);
+    // R10: clearing never refunds spend.
+    expect(getSandboxParticipation(db, circleId)?.turnsUsed).toBe(spentBefore);
+  });
+
   it("keeps display names out of the sandbox prompt (R3 opaque ids)", async () => {
     await putCard();
     // A second member with a distinctive display name, enrolled via raw event.

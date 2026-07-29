@@ -720,7 +720,8 @@ export const circlesHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "circleId required"));
       return;
     }
-    respond(true, { cards: svc.service.canvasCards(circleId) }, undefined);
+    const state = svc.service.canvasState(circleId);
+    respond(true, { cards: state.cards, removed: state.removed }, undefined);
   },
 
   "circles.canvas.put": async ({ params, respond }) => {
@@ -769,6 +770,34 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
     try {
       const result = await svc.service.removeCanvasCard({ circleId, cardId });
+      respond(true, result, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  // §3.2.9: clear = tombstone + re-put with the same title under a fresh card
+  // id (fresh session by construction). keepText chooses whether the body
+  // survives the reset.
+  "circles.canvas.clear": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const cardId = typeof params.cardId === "string" ? params.cardId : "";
+    if (!circleId || !cardId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, cardId required"),
+      );
+      return;
+    }
+    try {
+      const keepText = params.keepText === true;
+      const result = await svc.service.clearCanvasCard({ circleId, cardId, keepText });
       respond(true, result, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));

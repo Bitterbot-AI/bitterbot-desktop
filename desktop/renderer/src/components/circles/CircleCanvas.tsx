@@ -1,6 +1,21 @@
-import { BookOpen, Bot, GitBranch, ListChecks, Plus, StickyNote, X } from "lucide-react";
+import {
+  BookOpen,
+  Bot,
+  GitBranch,
+  ListChecks,
+  MoreHorizontal,
+  Plus,
+  StickyNote,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { memberName, useCirclesStore, type Circle } from "../../stores/circles-store";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { CardLiveLayer } from "./CardLiveLayer";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { StudyGuideCard } from "./StudyGuideCard";
@@ -37,7 +52,11 @@ export function CircleCanvas({
   selfPubkey: string | undefined;
 }) {
   const cards = useCirclesStore((s) => s.cardsByCircle[circle.circleId]);
+  const removed = useCirclesStore((s) => s.removedByCircle[circle.circleId]);
   const sandbox = useCirclesStore((s) => s.sandboxByCircle[circle.circleId]);
+  const removeCard = useCirclesStore((s) => s.removeCard);
+  const clearCard = useCirclesStore((s) => s.clearCard);
+  const undoRemoveCard = useCirclesStore((s) => s.undoRemoveCard);
   const putCard = useCirclesStore((s) => s.putCard);
   const putDecision = useCirclesStore((s) => s.putDecision);
   const putStudyGuide = useCirclesStore((s) => s.putStudyGuide);
@@ -322,6 +341,27 @@ export function CircleCanvas({
           </div>
         )}
 
+        {/* §3.2.9: removals are legible and reversible. A later put outwins
+            the tombstone, so Undo is just re-putting the removed body. */}
+        {(removed ?? []).slice(0, 3).map((r) => (
+          <div
+            key={`removed-${r.cardId}`}
+            className="flex items-center justify-between rounded-lg border border-dashed px-3 py-1.5 text-[11px] text-muted-foreground"
+          >
+            <span className="truncate">
+              {nameFor(circle, r.removedBy, selfPubkey)} removed “{r.title || "a card"}” ·{" "}
+              {fmtWhen(r.removedAt)}
+            </span>
+            <button
+              type="button"
+              className="ml-2 shrink-0 font-medium underline-offset-2 hover:underline"
+              onClick={() => void undoRemoveCard(circle.circleId, r)}
+            >
+              Undo
+            </button>
+          </div>
+        ))}
+
         {list.map((card) => {
           // Every card carries the live layer — agents and people work the
           // card itself. There is no separate card type and nothing to enable.
@@ -333,6 +373,41 @@ export function CircleCanvas({
               sandbox={sandbox}
             />
           );
+          // §3.2.9: every card can die — clear starts the work fresh under
+          // the same title; delete tombstones it (undo-able above).
+          const actions = (
+            <div className="absolute right-2 top-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Card actions"
+                    className="rounded p-1 text-muted-foreground hover:bg-muted"
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => void clearCard(circle.circleId, card.cardId, true)}
+                  >
+                    Start fresh (keep content)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => void clearCard(circle.circleId, card.cardId, false)}
+                  >
+                    Start fresh (empty)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => void removeCard(circle.circleId, card.cardId)}
+                  >
+                    Delete card
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
           if (card.cardType === "decision") {
             // ONE vote surface `[unified 2026-07-28]`: the live layer owns the
             // options and the tally (the fold seeds options from the card's
@@ -340,11 +415,12 @@ export function CircleCanvas({
             // DecisionCard poll is gone — two disagreeing vote systems on one
             // card was the worst incoherence on the canvas.
             return (
-              <div key={card.cardId} className="rounded-lg border bg-card p-3">
+              <div key={card.cardId} className="relative rounded-lg border bg-card p-3">
+                {actions}
                 <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
                   Decision
                 </div>
-                <div className="text-sm font-semibold">{card.title}</div>
+                <div className="text-sm font-semibold pr-6">{card.title}</div>
                 <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   <span className="font-medium">
                     {nameFor(circle, card.authorPubkey, selfPubkey)}
@@ -358,14 +434,18 @@ export function CircleCanvas({
           }
           if (card.cardType === "study") {
             return (
-              <StudyGuideCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey}>
-                <div className="px-3 pb-3">{live}</div>
-              </StudyGuideCard>
+              <div key={card.cardId} className="relative">
+                {actions}
+                <StudyGuideCard card={card} circle={circle} selfPubkey={selfPubkey}>
+                  <div className="px-3 pb-3">{live}</div>
+                </StudyGuideCard>
+              </div>
             );
           }
           return (
-            <div key={card.cardId} className="rounded-lg border bg-card p-3">
-              {card.title && <div className="text-sm font-semibold mb-1">{card.title}</div>}
+            <div key={card.cardId} className="relative rounded-lg border bg-card p-3">
+              {actions}
+              {card.title && <div className="text-sm font-semibold mb-1 pr-6">{card.title}</div>}
               {card.cardType === "mermaid" ? (
                 <MermaidDiagram code={card.text} />
               ) : (

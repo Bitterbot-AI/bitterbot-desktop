@@ -553,7 +553,7 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(bobInbound.at(-1)?.agentAuthored).toBe(true);
   });
 
-  it("B2: publishing against a tombstoned card is refused; the draft survives", async () => {
+  it("B2: publishing against a tombstoned card is refused; the draft is discarded (§3.2.9)", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);
     const circleId = invite.circleId;
@@ -580,14 +580,16 @@ describe("CirclesService end-to-end (two nodes)", () => {
     await expect(anaDrafting.publishAgentDraft({ draftId: draft?.draftId ?? "" })).rejects.toThrow(
       /no longer on the canvas/,
     );
-    // Nothing was appended, and the draft is handed back for discard.
+    // Nothing was appended, and the draft died with the card (§3.2.9:
+    // discarded, not handed back — a gone card can't come back the same, so a
+    // "ready" draft would just fail forever).
     expect(
       ana
         .canvasCards(circleId)
         .flatMap((c) => c.slices)
         .filter((s) => s.slot === "vote"),
     ).toHaveLength(0);
-    expect(anaDrafting.agentDrafts(circleId)).toHaveLength(1);
+    expect(anaDrafting.agentDrafts(circleId)).toHaveLength(0);
   });
 
   it("Phase B: the kill switch silences summons end to end", async () => {

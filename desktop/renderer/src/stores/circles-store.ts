@@ -141,6 +141,16 @@ export interface CanvasCard {
   slices: CanvasSlice[];
 }
 
+/** A tombstoned card (§3.2.9) — enough to narrate the removal and offer Undo. */
+export interface RemovedCanvasCard {
+  cardId: string;
+  cardType: string;
+  title: string;
+  text: string;
+  removedBy: string;
+  removedAt: number;
+}
+
 /**
  * PLAN-36 Phase B: a node-local draft the member's own agent wrote after an
  * @agent summon. Visible only to this node's human; publishing it (optionally
@@ -245,6 +255,7 @@ interface CirclesState {
   messagesByCircle: Record<string, CircleMessage[]>;
   annotationsByCircle: Record<string, MessageAnnotations>;
   cardsByCircle: Record<string, CanvasCard[]>;
+  removedByCircle: Record<string, RemovedCanvasCard[]>;
   sandboxByCircle: Record<string, SandboxState>;
   draftsByCircle: Record<string, AgentDraft[]>;
   /** Phase 4b study state, keyed `${circleId}:${cardId}`. */
@@ -257,6 +268,9 @@ interface CirclesState {
   selectCircle: (circleId: string) => void;
   loadMessages: (circleId: string) => Promise<void>;
   loadCards: (circleId: string) => Promise<void>;
+  removeCard: (circleId: string, cardId: string) => Promise<boolean>;
+  clearCard: (circleId: string, cardId: string, keepText: boolean) => Promise<boolean>;
+  undoRemoveCard: (circleId: string, removed: RemovedCanvasCard) => Promise<boolean>;
   loadSandbox: (circleId: string) => Promise<void>;
   /** The one consent act: does my agent work this circle's canvas. */
   setCanvasParticipation: (
@@ -353,6 +367,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   messagesByCircle: {},
   annotationsByCircle: {},
   cardsByCircle: {},
+  removedByCircle: {},
   sandboxByCircle: {},
   draftsByCircle: {},
   studyByCard: {},
@@ -538,10 +553,59 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
 
   loadCards: async (circleId) => {
     try {
-      const res = await request<{ cards: CanvasCard[] }>("circles.canvas.list", { circleId });
-      set((s) => ({ cardsByCircle: { ...s.cardsByCircle, [circleId]: res.cards ?? [] } }));
+      const res = await request<{ cards: CanvasCard[]; removed?: RemovedCanvasCard[] }>(
+        "circles.canvas.list",
+        { circleId },
+      );
+      set((s) => ({
+        cardsByCircle: { ...s.cardsByCircle, [circleId]: res.cards ?? [] },
+        removedByCircle: { ...s.removedByCircle, [circleId]: res.removed ?? [] },
+      }));
     } catch (err) {
       set({ notice: String(err) });
+    }
+  },
+
+  removeCard: async (circleId, cardId) => {
+    try {
+      await request("circles.canvas.remove", { circleId, cardId });
+      await get().loadCards(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  // §3.2.9: clear = tombstone + fresh card with the same title. The server
+  // mints the new card id; a fresh session comes for free.
+  clearCard: async (circleId, cardId, keepText) => {
+    try {
+      await request("circles.canvas.clear", { circleId, cardId, keepText });
+      await get().loadCards(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  // Undo a removal: re-put the tombstoned card's body under its original id —
+  // a later put outwins the tombstone in the fold (undo by construction).
+  undoRemoveCard: async (circleId, removed) => {
+    try {
+      await request("circles.canvas.put", {
+        circleId,
+        cardId: removed.cardId,
+        cardType: removed.cardType,
+        title: removed.title,
+        text: removed.text,
+      });
+      await get().loadCards(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
     }
   },
 

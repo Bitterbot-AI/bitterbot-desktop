@@ -58,7 +58,12 @@ import {
   type SealedBlob,
 } from "./box-crypto.js";
 import { compileBriefingIfDue, latestBriefing, type CompiledBriefing } from "./briefing.js";
-import { computeCanvasCards, type CanvasCard } from "./canvas.js";
+import {
+  computeCanvasCards,
+  computeCanvasState,
+  type CanvasCard,
+  type CanvasState,
+} from "./canvas.js";
 import { getCircleTopicBus } from "./circle-topic-transport.js";
 import { circleTopicId, publishCircleFrame, type CircleTopicBus } from "./circle-topic.js";
 import { DEFAULT_ANSWER_POSTURE, isDisclosureAllowed, pendingAsks } from "./disclosure.js";
@@ -1205,6 +1210,36 @@ export class CirclesService {
     return computeCanvasCards(this.db, circleId);
   }
 
+  /** Live cards plus legible tombstones (§3.2.9: narration + Undo). */
+  canvasState(circleId: string): CanvasState {
+    return computeCanvasState(this.db, circleId);
+  }
+
+  /**
+   * Clear a card: tombstone it and immediately re-put a fresh card with the
+   * same title (§3.2.9 — a UI gesture, not a wire concept). The new card id
+   * means a fresh sandbox session by construction: round 1, no moves, no
+   * votes, zero fold changes. Spend is NOT refunded (R10).
+   */
+  async clearCanvasCard(args: {
+    circleId: string;
+    cardId: string;
+    keepText: boolean;
+  }): Promise<SendReport & { eventId: string; seq: number; newCardId: string }> {
+    const card = computeCanvasCards(this.db, args.circleId).find((c) => c.cardId === args.cardId);
+    if (!card) throw new Error("that card is not on the canvas");
+    await this.removeCanvasCard({ circleId: args.circleId, cardId: args.cardId });
+    const newCardId = crypto.randomUUID();
+    const report = await this.putCanvasCard({
+      circleId: args.circleId,
+      cardId: newCardId,
+      cardType: card.cardType,
+      title: card.title,
+      text: args.keepText ? card.text : "",
+    });
+    return { ...report, newCardId };
+  }
+
   /** Create or update a canvas card (LWW by cardId) + fan it out. */
   async putCanvasCard(args: {
     circleId: string;
@@ -2067,6 +2102,20 @@ export class CirclesService {
     }
     const text = (args.text ?? draft.content).trim();
     if (!text) throw new Error("draft text is empty");
+    const isSandbox = draft.kind === SANDBOX_DRAFT_KIND && draft.targetCardId;
+    const isSlice = draft.kind === "slice" && draft.targetCardId && draft.targetSlot;
+    // §3.2.9: a draft whose card was deleted (or cleared — clear mints a new
+    // card id) dies legibly BEFORE the claim, never posts to a resurrected
+    // ghost. Discarded, not handed back: a gone card can't come back the same,
+    // so "ready" would just fail forever. (Pre-claim on purpose — the generic
+    // publish-failure catch below hands drafts back to "ready".)
+    if (
+      (isSlice || isSandbox) &&
+      !computeCanvasCards(this.db, draft.circleId).some((c) => c.cardId === draft.targetCardId)
+    ) {
+      setAgentDraftStatus(this.db, draft.draftId, "discarded");
+      throw new Error("the card this draft targets is no longer on the canvas");
+    }
     // Atomic claim BEFORE the awaited send: a racing second publish (or a
     // publish vs discard) loses here — "approved once, sent once".
     if (!claimAgentDraft(this.db, draft.draftId, "ready", "publishing")) {
@@ -2079,14 +2128,6 @@ export class CirclesService {
       // no separate agent send path to audit. The target card is re-checked
       // at publish (review: it may have been tombstoned since the draft was
       // generated — refuse rather than append an orphaned slice).
-      const isSandbox = draft.kind === SANDBOX_DRAFT_KIND && draft.targetCardId;
-      const isSlice = draft.kind === "slice" && draft.targetCardId && draft.targetSlot;
-      if (
-        isSlice &&
-        !computeCanvasCards(this.db, draft.circleId).some((c) => c.cardId === draft.targetCardId)
-      ) {
-        throw new Error("the card this draft targets is no longer on the canvas");
-      }
       const report = isSandbox
         ? await this.publishSandboxMoveFromDraft(
             draft.circleId,

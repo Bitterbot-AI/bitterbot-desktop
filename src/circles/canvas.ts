@@ -11,9 +11,13 @@
  * on every member's node — no CRDT library, no round-trips.
  *
  * The fold here is the deterministic reducer: for each card_id, the event with
- * the greatest (updated_at, event_id) wins — a total order every node agrees on
- * from the same event set. A losing concurrent edit is silently dropped (the
- * documented LWW caveat); C2+ can move to per-field registers if needed.
+ * the greatest (updated_at, event_hash) wins — a total order every node agrees
+ * on from the same event set. The tiebreak is the content-derived event_hash,
+ * NEVER the node-local event_id: two nodes assign different event_ids to the
+ * same received event, so an id tiebreak would let a delete/put race resolve
+ * differently per node (§3.2.9 made this load-bearing). A losing concurrent
+ * edit is silently dropped (the documented LWW caveat); C2+ can move to
+ * per-field registers if needed.
  *
  * NOTE (hostile principal): title/text are peer content. The event.append scan
  * rejects critical-severity injection on receipt, and the renderer shows card
@@ -43,24 +47,53 @@ export type CanvasCard = {
   slices: CanvasSlice[];
 };
 
+/** A tombstoned card, exposed so removal is legible (narration + Undo). */
+export type RemovedCanvasCard = {
+  cardId: string;
+  /** From the last winning put — what "Undo" would restore. */
+  cardType: string;
+  title: string;
+  text: string;
+  removedBy: string;
+  removedAt: number;
+};
+
+export type CanvasState = {
+  cards: CanvasCard[];
+  /** Most recent tombstones first, capped — enough for narration, not a history UI. */
+  removed: RemovedCanvasCard[];
+};
+
+const REMOVED_CARDS_CAP = 20;
+
 type EventRow = {
   event_id: string;
   author_pubkey: string;
   event_type: string;
   body_json: string;
+  event_hash: string;
 };
 
-/** Does `a` win the last-writer-wins race against `b`? Deterministic tiebreak. */
-function wins(aUpdated: number, aEventId: string, bUpdated: number, bEventId: string): boolean {
+/**
+ * Does `a` win the last-writer-wins race against `b`? Tiebreak is the
+ * content-derived event_hash (identical on every node), NEVER the node-local
+ * event_id — same rule as the sandbox fold (sandbox.ts).
+ */
+function wins(aUpdated: number, aHash: string, bUpdated: number, bHash: string): boolean {
   if (aUpdated !== bUpdated) return aUpdated > bUpdated;
-  return aEventId > bEventId;
+  return aHash > bHash;
 }
 
 /** The canvas's current cards (with folded per-member slices) from the log. */
 export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCard[] {
+  return computeCanvasState(db, circleId).cards;
+}
+
+/** Full canvas fold: live cards plus legible tombstones (§3.2.9). */
+export function computeCanvasState(db: DatabaseSync, circleId: string): CanvasState {
   const rows = db
     .prepare(
-      `SELECT event_id, author_pubkey, event_type, body_json
+      `SELECT event_id, author_pubkey, event_type, body_json, event_hash
          FROM circle_events
         WHERE circle_id = ?
           AND event_type IN ('canvas.card.put', 'canvas.card.remove', 'canvas.slice.put')`,
@@ -68,7 +101,8 @@ export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCa
     .all(circleId) as unknown as EventRow[];
 
   type Winner = { row: EventRow; updatedAt: number };
-  const cardWinners = new Map<string, Winner>(); // LWW per card_id
+  const cardWinners = new Map<string, Winner>(); // LWW per card_id (put AND remove)
+  const putWinners = new Map<string, Winner>(); // LWW per card_id among puts only
   const sliceWinners = new Map<string, Winner>(); // LWW per (card_id, slot, author)
 
   for (const row of rows) {
@@ -87,13 +121,19 @@ export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCa
       if (!slot) continue;
       const key = `${cardId}\n${slot}\n${row.author_pubkey}`;
       const cur = sliceWinners.get(key);
-      if (!cur || wins(updatedAt, row.event_id, cur.updatedAt, cur.row.event_id)) {
+      if (!cur || wins(updatedAt, row.event_hash, cur.updatedAt, cur.row.event_hash)) {
         sliceWinners.set(key, { row, updatedAt });
       }
     } else {
       const cur = cardWinners.get(cardId);
-      if (!cur || wins(updatedAt, row.event_id, cur.updatedAt, cur.row.event_id)) {
+      if (!cur || wins(updatedAt, row.event_hash, cur.updatedAt, cur.row.event_hash)) {
         cardWinners.set(cardId, { row, updatedAt });
+      }
+      if (row.event_type === "canvas.card.put") {
+        const curPut = putWinners.get(cardId);
+        if (!curPut || wins(updatedAt, row.event_hash, curPut.updatedAt, curPut.row.event_hash)) {
+          putWinners.set(cardId, { row, updatedAt });
+        }
       }
     }
   }
@@ -122,8 +162,29 @@ export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCa
   }
 
   const cards: CanvasCard[] = [];
+  const removed: RemovedCanvasCard[] = [];
   for (const [cardId, w] of cardWinners) {
-    if (w.row.event_type === "canvas.card.remove") continue; // tombstoned
+    if (w.row.event_type === "canvas.card.remove") {
+      // Tombstoned. Surface it (narration + Undo) with the last put's body —
+      // a card that never had a winning put has nothing to narrate or restore.
+      const put = putWinners.get(cardId);
+      if (!put) continue;
+      let putBody: { card_type?: string; title?: string; text?: string };
+      try {
+        putBody = JSON.parse(put.row.body_json) as typeof putBody;
+      } catch {
+        continue;
+      }
+      removed.push({
+        cardId,
+        cardType: typeof putBody.card_type === "string" ? putBody.card_type.slice(0, 32) : "note",
+        title: typeof putBody.title === "string" ? putBody.title.slice(0, 200) : "",
+        text: typeof putBody.text === "string" ? putBody.text.slice(0, 4000) : "",
+        removedBy: w.row.author_pubkey,
+        removedAt: w.updatedAt,
+      });
+      continue;
+    }
     let body: { card_type?: string; title?: string; text?: string };
     try {
       body = JSON.parse(w.row.body_json) as typeof body;
@@ -143,5 +204,6 @@ export function computeCanvasCards(db: DatabaseSync, circleId: string): CanvasCa
     });
   }
   cards.sort((a, b) => b.updatedAt - a.updatedAt); // newest first
-  return cards;
+  removed.sort((a, b) => b.removedAt - a.removedAt);
+  return { cards, removed: removed.slice(0, REMOVED_CARDS_CAP) };
 }
