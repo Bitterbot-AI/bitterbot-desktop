@@ -809,12 +809,45 @@ export function computeSandboxSessions(
       return a.eventHash < b.eventHash ? -1 : 1;
     });
 
-    // Option set: keyed by option_id; winner = earliest (round, event_hash).
+    // Option set: keyed by option_id.
+    //
+    // A DECISION card's own lines are options in the fold `[unified
+    // 2026-07-28]` — before this, the card carried two vote systems (the
+    // legacy slice poll and sandbox votes) with disagreeing tallies on one
+    // card. The card's text is folded LWW state, so seeding from it is
+    // deterministic on every node, and votes on those options are legal all
+    // the way down (service check, fold-side M5, everywhere).
     const options = new Map<string, SandboxOption & { eventHash: string }>();
+    if (card.cardType === "decision") {
+      for (const line of card.text.split("\n")) {
+        const label = line.trim().slice(0, 200);
+        if (!label) continue;
+        const optionId = `opt-${label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 24)}`;
+        if (!SLUG_RE.test(optionId) || options.has(optionId)) continue;
+        options.set(optionId, {
+          optionId,
+          label,
+          text: "",
+          proposedBy: card.authorPubkey,
+          round: 0,
+          eventHash: "",
+        });
+      }
+    }
+    // Moves may add more (earliest (round, event_hash) wins per id; a card
+    // line always predates any move, so it keeps its slot).
     for (const m of moves) {
       if (m.kind !== "option.add") continue;
       const cur = options.get(m.optionId);
-      if (!cur || m.round < cur.round || (m.round === cur.round && m.eventHash < cur.eventHash)) {
+      if (
+        !cur ||
+        (cur.eventHash !== "" &&
+          (m.round < cur.round || (m.round === cur.round && m.eventHash < cur.eventHash)))
+      ) {
         options.set(m.optionId, {
           optionId: m.optionId,
           label: m.label,
@@ -838,6 +871,18 @@ export function computeSandboxSessions(
     const votes: Record<string, string[]> = {};
     for (const v of latestVote.values()) {
       (votes[v.optionId] ??= []).push(v.authorPubkey);
+    }
+    // Legacy slice votes (the pre-sandbox Decision poll) still count when
+    // that member has not voted through a move — an existing vote must never
+    // vanish because the machinery under the card changed.
+    const optionByLabel = new Map([...options.values()].map((o) => [o.label.trim(), o.optionId]));
+    for (const slice of card.slices) {
+      if (slice.slot !== "vote") continue;
+      if (latestVote.has(slice.authorPubkey)) continue;
+      const optionId = optionByLabel.get(slice.value.trim());
+      if (!optionId) continue;
+      const arr = (votes[optionId] ??= []);
+      if (!arr.includes(slice.authorPubkey)) arr.push(slice.authorPubkey);
     }
     for (const k of Object.keys(votes)) votes[k]!.sort();
 
@@ -1136,6 +1181,11 @@ export function setSandboxParticipation(
        mode = excluded.mode,
        turn_budget = excluded.turn_budget,
        token_budget = excluded.token_budget,
+       -- Re-affirming participation IS the refill: the human tapping "yes,
+       -- keep working" again is exactly the deliberate act R10 wants behind
+       -- new spend, so spent counters reset here and nowhere else.
+       turns_used = 0,
+       tokens_used = 0,
        guidance = excluded.guidance,
        paused_at = NULL,
        pause_reason = NULL,
@@ -1229,6 +1279,30 @@ export function listSpendableSandboxCircles(
     )
     .all(now) as unknown as ParticipationRow[];
   return rows.map(toParticipation);
+}
+
+/**
+ * Steer: update guidance ONLY — the human's own words to their own agent,
+ * P1's private-context pipe. Never touches budgets, counters, or pause state
+ * (steering an exhausted or paused agent is advice for later, not a refill).
+ * Steering with no row yet creates one in propose mode: telling your agent
+ * what you want IS wanting it to work, and everything stays propose-gated.
+ */
+export function steerSandboxParticipation(
+  db: DatabaseSync,
+  args: { circleId: string; guidance: string; now?: number },
+): SandboxParticipation {
+  const now = args.now ?? Date.now();
+  const guidance = args.guidance.slice(0, 2000);
+  const res = db
+    .prepare(
+      `UPDATE circle_sandbox_participation SET guidance = ?, updated_at = ? WHERE circle_id = ?`,
+    )
+    .run(guidance, now, args.circleId);
+  if (Number(res.changes) === 0) {
+    return setSandboxParticipation(db, { circleId: args.circleId, mode: "propose", guidance, now });
+  }
+  return getSandboxParticipation(db, args.circleId)!;
 }
 
 /**

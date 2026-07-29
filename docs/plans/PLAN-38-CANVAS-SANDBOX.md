@@ -386,6 +386,39 @@ which is where the meaningful tap belongs. I4, I5, I7 and R4 all hold; only
 the granularity moved, from ceremony-before-value to approval-at-the-moment-of-
 consequence.
 
+### 3.2.7 The holistic pass: five gaps between machinery and value `[2026-07-28]`
+
+After (c), Victor asked the right question — does any of this add value from
+the user's chair? — and the honest audit found the 20% that was missing was
+precisely where the value lives. All five fixed the same day:
+
+1. **Steering had no faucet.** The reshape lost the guidance UI, so the
+   private-context pipe — the §0.1 load-bearing thesis — was unreachable, and
+   agents could only ask their humans for input forever. Now: "Steer your
+   agent" on the card, and `/steer <text>` in chat (intercepted client-side,
+   routed to the steer RPC, NEVER posted — steering is first-party text, so
+   the §3.3 chat/canvas asymmetry is untouched; decision 5 keeps it private).
+2. **Decision cards had two disagreeing vote systems** (the legacy slice poll
+   and sandbox votes). Unified at the FOLD: a decision card's own lines are
+   options in the fold, legacy slice votes count until that member votes
+   through a move, and the live layer is the one vote surface. The old poll
+   UI is gone.
+3. **Agents could only speak in constraints.** The server now picks the
+   proposal kind from the fold (R13 preserved — the model still fills exactly
+   one string): options exist and we have not voted → vote (label matched
+   byte-identically, M5); constraints from two or more authors and no options
+   → synthesize THE option (§2's "that agent generates the option set");
+   otherwise → constraint.
+4. **Budget exhaustion was a dead end** (pause said "refill" and nothing
+   could). Re-affirming participation IS the refill — the checkbox resets
+   spent counters — and the budget-pause banner carries a "Give it more
+   turns" button. Found while testing: the pause could also never FIRE,
+   because an exhausted circle never enters the spendable listing; it now
+   fires at the top of the sweep, where it is actually reachable.
+5. **Dead air and a silent chat.** Cards say "your agent is thinking on
+   this…" while a proposal generates (queued/drafting surfaced as
+   `thinkingCardIds`), and steering is reachable from the chat composer.
+
 ### 3.3 Continuity across surfaces `[added 2026-07-28 per Victor: chat-side agents must be aware of the canvas]`
 
 Two kinds of continuity, resolved differently:

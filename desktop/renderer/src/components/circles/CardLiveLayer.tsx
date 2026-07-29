@@ -1,4 +1,4 @@
-import { Check, Pause, Play, Sparkles, X } from "lucide-react";
+import { Check, Compass, Pause, Play, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import {
   memberName,
@@ -55,6 +55,8 @@ export function CardLiveLayer({
   const [busy, setBusy] = useState(false);
   const [composer, setComposer] = useState<"constraint" | "option" | null>(null);
   const [text, setText] = useState("");
+  const [steering, setSteering] = useState(false);
+  const [steerText, setSteerText] = useState("");
 
   const session: SandboxSession | undefined = sandbox?.sessions.find((s) => s.cardId === cardId);
   if (!session) return null;
@@ -64,7 +66,9 @@ export function CardLiveLayer({
   const paused = Boolean(part?.pausedAt);
   const finished = session.status === "closed";
   const proposal = (drafts ?? []).find((d) => d.kind === "sandbox" && d.targetCardId === cardId);
-  const hasActivity = session.moves.length > 0 || Boolean(proposal);
+  const thinking = sandbox?.thinkingCardIds.includes(cardId) ?? false;
+  const budgetPaused = paused && /budget/.test(part?.pauseReason ?? "");
+  const hasActivity = session.moves.length > 0 || Boolean(proposal) || thinking;
 
   const run = async (fn: () => Promise<boolean>) => {
     if (busy) return;
@@ -77,13 +81,16 @@ export function CardLiveLayer({
     run(async () => {
       const value = text.trim();
       if (!value) return false;
+      const slug = value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 24);
       const optionId =
         kind === "option.add"
-          ? `opt-${value
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "-")
-              .replace(/^-+|-+$/g, "")
-              .slice(0, 24)}` || `opt-${session.moves.length + 1}`
+          ? slug
+            ? `opt-${slug}`
+            : `opt-${session.moves.length + 1}`
           : undefined;
       const ok = await store.sandboxMove(circle.circleId, cardId, kind, {
         text: kind === "constraint" ? value : undefined,
@@ -166,8 +173,23 @@ export function CardLiveLayer({
           one tap back — and the reason is the one the detector recorded, not
           a generic "something happened". */}
       {paused && part?.pauseReason && (
-        <div className="rounded-md border border-amber-600/40 bg-amber-500/10 px-2 py-1.5 text-xs">
-          <b className="text-amber-700">Paused.</b> {part.pauseReason}
+        <div className="flex items-center gap-2 rounded-md border border-amber-600/40 bg-amber-500/10 px-2 py-1.5 text-xs">
+          <span>
+            <b className="text-amber-700">Paused.</b> {part.pauseReason}
+          </span>
+          {budgetPaused && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void run(() => store.setCanvasParticipation(circle.circleId, "propose"))
+              }
+              className="ml-auto shrink-0 rounded bg-amber-600 px-2 py-0.5 text-[11px] font-semibold text-white"
+              title="Give your agent a fresh set of turns"
+            >
+              Give it more turns
+            </button>
+          )}
         </div>
       )}
       {!paused && session.noProgressAuthors.length > 0 && (
@@ -194,6 +216,14 @@ export function CardLiveLayer({
           >
             Lock it in
           </button>
+        </div>
+      )}
+
+      {/* Dead air is a bug: while the proposal generates, the card says so. */}
+      {thinking && !proposal && (
+        <div className="text-[11px] text-circle-agent animate-pulse">
+          <Sparkles className="w-3 h-3 inline mr-1" />
+          Your agent is thinking on this…
         </div>
       )}
 
@@ -302,7 +332,50 @@ export function CardLiveLayer({
       )}
 
       {/* your own hands — always available, no agent required */}
-      {composer === null ? (
+      {steering && (
+        <div className="rounded-md border border-circle-agent/40 p-1.5 space-y-1.5">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-circle-agent">
+            <Compass className="w-3 h-3 inline mr-1" />
+            Tell your agent what you want
+          </div>
+          <textarea
+            value={steerText}
+            onChange={(e) => setSteerText(e.target.value)}
+            autoFocus
+            rows={2}
+            placeholder="e.g. “free June 19–26, prefer cabins, nothing over $200/night” — private, only your agent sees it"
+            className="w-full resize-none rounded border bg-transparent px-2 py-1 text-sm outline-none"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy || !steerText.trim()}
+              onClick={() =>
+                void run(async () => {
+                  const ok = await store.steerAgent(circle.circleId, steerText.trim());
+                  if (ok) setSteering(false);
+                  return ok;
+                })
+              }
+              className="rounded bg-circle-agent px-2 py-0.5 text-[11px] font-semibold text-white"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setSteering(false)}
+              className="text-[11px] text-muted-foreground"
+            >
+              Cancel
+            </button>
+            <span className="text-[10px] text-muted-foreground ml-auto">
+              it uses this on its next turn
+            </span>
+          </div>
+        </div>
+      )}
+
+      {composer === null && !steering ? (
         <div className="flex items-center gap-3 text-[11px]">
           <button
             type="button"
@@ -318,8 +391,22 @@ export function CardLiveLayer({
           >
             + Add an option
           </button>
+          {part?.mode === "propose" && (
+            <button
+              type="button"
+              onClick={() => {
+                setSteerText(part?.guidance ?? "");
+                setSteering(true);
+              }}
+              className="text-circle-agent font-medium"
+              title="Private guidance for your own agent — never posted"
+            >
+              <Compass className="w-3 h-3 inline mr-0.5" />
+              Steer your agent
+            </button>
+          )}
         </div>
-      ) : (
+      ) : composer !== null ? (
         <div className="rounded-md border p-1.5 space-y-1.5">
           <input
             value={text}
@@ -353,7 +440,7 @@ export function CardLiveLayer({
             </button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

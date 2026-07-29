@@ -92,6 +92,7 @@ import {
 } from "./practice.js";
 import { markCircleRead, unreadCounts } from "./read-state.js";
 import {
+  parseProposalSlot,
   practiceSandboxSweep,
   SANDBOX_DRAFT_KIND,
   sweepSandboxTurns,
@@ -104,6 +105,7 @@ import {
   pauseSandboxParticipation,
   resumeSandboxParticipation,
   setSandboxParticipation,
+  steerSandboxParticipation,
   type SandboxCloseReason,
   type SandboxMoveKind,
   type SandboxParticipation,
@@ -1832,6 +1834,7 @@ export class CirclesService {
     generationEnabled: boolean;
     practicePubkey: string | null;
     participation: SandboxParticipation | null;
+    thinkingCardIds: string[];
     sessions: Array<SandboxSession & { myTurn: boolean; waitingOn: string[] }>;
   } {
     const partnerPk = pubkeyId(this.practiceKey());
@@ -1848,10 +1851,20 @@ export class CirclesService {
         waitingOn: s.status === "closed" ? [] : s.speakers.filter((pk) => !moved.has(pk)),
       };
     });
+    // Fix for the dead-air problem: cards whose proposal is still being
+    // generated say so, instead of nothing happening for a sweep cycle.
+    const thinking = this.db
+      .prepare(
+        `SELECT DISTINCT target_card_id FROM circle_agent_drafts
+          WHERE circle_id = ? AND kind = ? AND status IN ('queued', 'drafting')
+            AND target_card_id IS NOT NULL`,
+      )
+      .all(circleId, SANDBOX_DRAFT_KIND) as unknown as Array<{ target_card_id: string }>;
     return {
       generationEnabled: this.sandboxGenerationEnabled(),
       practicePubkey: practiceMember ? partnerPk : null,
       participation: getSandboxParticipation(this.db, circleId),
+      thinkingCardIds: thinking.map((t) => t.target_card_id),
       sessions,
     };
   }
@@ -1990,6 +2003,18 @@ export class CirclesService {
     });
   }
 
+  /**
+   * Steer: the human's own words to their own agent (decision 5: private).
+   * Reachable from the card AND from chat (/steer) — both are first-party
+   * text, so neither touches the §3.3 asymmetry. Never a wire event.
+   */
+  steerSandbox(args: { circleId: string; guidance: string }): SandboxParticipation {
+    return steerSandboxParticipation(this.db, {
+      circleId: args.circleId,
+      guidance: args.guidance,
+    });
+  }
+
   /** One-tap pause (§3.1): nothing generates or publishes until resumed. */
   pauseSandbox(args: { circleId: string; reason?: string }): void {
     pauseSandboxParticipation(this.db, {
@@ -2063,7 +2088,12 @@ export class CirclesService {
         throw new Error("the card this draft targets is no longer on the canvas");
       }
       const report = isSandbox
-        ? await this.publishSandboxMoveFromDraft(draft.circleId, draft.targetCardId as string, text)
+        ? await this.publishSandboxMoveFromDraft(
+            draft.circleId,
+            draft.targetCardId as string,
+            text,
+            parseProposalSlot(draft.targetSlot),
+          )
         : isSlice
           ? await this.putCanvasSlice({
               circleId: draft.circleId,
@@ -2098,6 +2128,7 @@ export class CirclesService {
     circleId: string,
     cardId: string,
     text: string,
+    proposal: "constraint" | "option" | "vote" = "constraint",
   ): Promise<SendReport & { eventId: string; seq: number }> {
     const part = getSandboxParticipation(this.db, circleId);
     if (!part || part.mode !== "propose") {
@@ -2121,6 +2152,62 @@ export class CirclesService {
       );
     }
     const clean = validateSandboxMoveText(text);
+
+    // The server chose the proposal kind at queue time (R13); here the human-
+    // approved string maps onto exactly that kind's one field, value-checked.
+    if (proposal === "vote") {
+      if (/^abstain$/i.test(clean)) {
+        return this.appendTabEvent({
+          circleId,
+          input: {
+            type: "sandbox.move",
+            cardId,
+            round: session.currentRound,
+            kind: "pass",
+            agentAuthored: true,
+          },
+        });
+      }
+      // M5: the approved text must reproduce one option label byte-for-byte
+      // (after trim) — anything else is refused legibly, never guessed at.
+      const match = session.options.find((o) => o.label.trim() === clean);
+      if (!match) {
+        throw new Error(
+          "the approved vote no longer matches an option on the card — ask again or vote by hand",
+        );
+      }
+      return this.appendTabEvent({
+        circleId,
+        input: {
+          type: "sandbox.move",
+          cardId,
+          round: session.currentRound,
+          kind: "vote",
+          optionId: match.optionId,
+          agentAuthored: true,
+        },
+      });
+    }
+    if (proposal === "option") {
+      const slug = clean
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 24);
+      const optionId = slug ? `opt-${slug}` : `opt-${session.moves.length + 1}`;
+      return this.appendTabEvent({
+        circleId,
+        input: {
+          type: "sandbox.move",
+          cardId,
+          round: session.currentRound,
+          kind: "option.add",
+          optionId,
+          label: clean.slice(0, 200),
+          agentAuthored: true,
+        },
+      });
+    }
     return this.appendTabEvent({
       circleId,
       input: {

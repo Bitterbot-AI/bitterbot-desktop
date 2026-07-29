@@ -57,6 +57,44 @@ const log = createSubsystemLogger("circles/sandbox-agent");
 export const SANDBOX_DRAFT_KIND = "sandbox";
 export const SANDBOX_DRAFT_SLOT = "sandbox";
 
+/** What kind of move a proposal is for; stored in target_slot so the tray
+ *  filter (`!targetSlot`) keeps excluding these and publish stays
+ *  deterministic (R13: the server picked the kind, the model filled one
+ *  string). */
+export type SandboxProposalKind = "constraint" | "option" | "vote";
+export function proposalSlot(kind: SandboxProposalKind): string {
+  return kind === "constraint" ? SANDBOX_DRAFT_SLOT : `${SANDBOX_DRAFT_SLOT}:${kind}`;
+}
+export function parseProposalSlot(slot: string | null): SandboxProposalKind {
+  if (slot === `${SANDBOX_DRAFT_SLOT}:vote`) return "vote";
+  if (slot === `${SANDBOX_DRAFT_SLOT}:option`) return "option";
+  return "constraint";
+}
+
+/**
+ * Which move serves the card best right now? Server-decided (R13), from the
+ * fold alone, so the model never chooses its own capability:
+ *  - options exist and we have not voted → VOTE (settling beats talking);
+ *  - no options but the table already holds constraints from at least two
+ *    authors → OPTION: synthesize the one concrete proposal the constraints
+ *    point at (§2's "that agent generates the option set");
+ *  - otherwise → CONSTRAINT: bring our human's context to the table.
+ */
+export function decideProposalKind(
+  session: SandboxSession,
+  selfPubkey: string,
+): SandboxProposalKind {
+  if (session.options.length > 0) {
+    const voted = Object.values(session.votes).some((v) => v.includes(selfPubkey));
+    if (!voted) return "vote";
+  }
+  const constraintAuthors = new Set(
+    session.moves.filter((m) => m.kind === "constraint").map((m) => m.authorPubkey),
+  );
+  if (session.options.length === 0 && constraintAuthors.size >= 2) return "option";
+  return "constraint";
+}
+
 /** Bounds for the sweep: proposals queued per cycle and practice moves posted
  *  per cycle. Both exist so one busy circle cannot starve the scheduler. */
 const QUEUE_PER_SWEEP = 2;
@@ -118,10 +156,11 @@ export function opaqueAuthorIds(session: SandboxSession, selfPubkey: string): Ma
  */
 export function buildQuarantinedSandboxMovePrompt(
   db: DatabaseSync,
-  args: { circleId: string; cardId: string; selfPubkey: string },
+  args: { circleId: string; cardId: string; selfPubkey: string; proposal?: SandboxProposalKind },
 ): string {
   const session = computeSandboxSessions(db, args.circleId).find((s) => s.cardId === args.cardId);
   if (!session) throw new Error(`no sandbox session on card ${args.cardId}`);
+  const proposal = args.proposal ?? decideProposalKind(session, args.selfPubkey);
   const ids = opaqueAuthorIds(session, args.selfPubkey);
   const label = (pk: string) => ids.get(pk) ?? "M?";
 
@@ -146,18 +185,39 @@ export function buildQuarantinedSandboxMovePrompt(
     ...(moveLines.length > 0 ? ["Moves so far:", ...moveLines] : ["No moves yet."]),
   ].join("\n");
 
+  const task =
+    proposal === "vote"
+      ? [
+          "It is time to settle. Pick the option that best fits your human's",
+          "guidance and the constraints on the table. Output EXACTLY one of",
+          "the option labels below, character for character, and nothing",
+          "else. If none fits what your human wants, output the single word",
+          "ABSTAIN.",
+        ]
+      : proposal === "option"
+        ? [
+            "The table holds everyone's constraints but no options yet. Write",
+            "ONE concrete option that satisfies as many of the constraints as",
+            "possible — a short label someone could vote on (a place, a date",
+            'range, a price; e.g. "Cabin B — $185/night · June 20-24").',
+            "Output ONLY the option label, nothing else.",
+          ]
+        : [
+            "Write the text of a single CONSTRAINT move: the most useful",
+            "concrete constraint or preference your human would want the",
+            "group to know for this goal (dates, budget ceiling, hard",
+            "requirements). Ground it ONLY in your human's guidance below —",
+            "if the guidance gives nothing to work with, say what input you",
+            "need from your human instead of inventing facts.",
+          ];
+
   return [
     "You are the private negotiation assistant for the human who owns this",
     "node. Their group is working a shared negotiation card, and it is your",
     "human's turn to contribute ONE move. Your human reviews, edits, or",
     "discards whatever you write before anything is posted.",
     "",
-    "Write the text of a single CONSTRAINT move: the most useful concrete",
-    "constraint or preference your human would want the group to know for",
-    "this goal (dates, budget ceiling, hard requirements). Ground it ONLY in",
-    "your human's guidance below — if the guidance gives nothing to work",
-    "with, say what input you need from your human instead of inventing",
-    "facts.",
+    ...task,
     "",
     ...(guidance
       ? ["Your human's guidance (trusted, from them to you):", guidance, ""]
@@ -190,7 +250,7 @@ export function buildQuarantinedSandboxMovePrompt(
  */
 export function queueSandboxMoveDraft(
   db: DatabaseSync,
-  args: { circleId: string; cardId: string; now?: number },
+  args: { circleId: string; cardId: string; proposal?: SandboxProposalKind; now?: number },
 ): { queued: boolean; reason?: string } {
   const now = args.now ?? Date.now();
   const live = db
@@ -211,7 +271,7 @@ export function queueSandboxMoveDraft(
     args.circleId,
     SANDBOX_DRAFT_KIND,
     args.cardId,
-    SANDBOX_DRAFT_SLOT,
+    proposalSlot(args.proposal ?? "constraint"),
     now,
     now,
   );
@@ -230,6 +290,22 @@ export function sweepSandboxTurns(
 ): { queued: number } {
   const now = args.now ?? Date.now();
   let queued = 0;
+  // §3.1 GRINDING, done where it can actually fire: an exhausted circle never
+  // appears in the spendable listing at all, so waiting for a failed claim
+  // means waiting forever — the budget runs out and everything just quietly
+  // stops. Instead, name it the moment it is true: any propose-mode, unpaused
+  // participation past either budget pauses HERE, with the reason in words.
+  db.prepare(
+    `UPDATE circle_sandbox_participation
+        SET paused_at = ?, updated_at = ?,
+            pause_reason = CASE
+              WHEN turns_used >= turn_budget
+                THEN 'your agent used its turn budget for this circle — refill to continue'
+              ELSE 'your agent used its token budget for this circle — refill to continue'
+            END
+      WHERE mode = 'propose' AND paused_at IS NULL
+        AND (turns_used >= turn_budget OR tokens_used >= token_budget)`,
+  ).run(now, now);
   for (const part of listSpendableSandboxCircles(db, now)) {
     if (queued >= QUEUE_PER_SWEEP) break;
     // Every live card in a participating circle is fair game; we act only
@@ -261,18 +337,16 @@ export function sweepSandboxTurns(
       // Spend-time gate (R5): the guarded UPDATE is the authority. A turn is
       // spent even if generation later fails — conservative by design.
       if (!claimSandboxTurn(db, { circleId: part.circleId, now })) {
-        // §3.1 GRINDING: the claim can only fail here on budget (the listing
-        // already filtered mode/pause/expiry), so name it instead of going
-        // quiet — "budget exhaustion pauses and asks; never silently
-        // continues".
-        pauseSandboxParticipation(db, {
-          circleId: part.circleId,
-          reason: "your agent used its turn budget for this circle — refill to continue",
-          now,
-        });
+        // Raced to exhaustion between the listing and the claim; the top-of-
+        // sweep pass names it next cycle. Nothing spends either way.
         break;
       }
-      const q = queueSandboxMoveDraft(db, { circleId: part.circleId, cardId: session.cardId, now });
+      const q = queueSandboxMoveDraft(db, {
+        circleId: part.circleId,
+        cardId: session.cardId,
+        proposal: decideProposalKind(session, args.selfPubkey),
+        now,
+      });
       if (q.queued) queued += 1;
     }
   }

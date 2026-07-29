@@ -167,11 +167,44 @@ function stubRpcs(enabled = true) {
               circleId: "c1",
               summonEnvelopeId: null,
               summonAuthorPubkey: null,
-              kind: "slice",
+              kind: "sandbox",
               targetCardId: "d1",
-              targetSlot: "vote",
+              targetSlot: "sandbox:vote",
               content: "Thu",
               createdAt: Date.now(),
+            },
+          ],
+        });
+      case "circles.sandbox.state":
+        return Promise.resolve({
+          generationEnabled: true,
+          practicePubkey: null,
+          participation: null,
+          thinkingCardIds: [],
+          sessions: [
+            {
+              cardId: "d1",
+              taskType: "negotiation",
+              goal: "When do we review?",
+              roundCap: 3,
+              framedBy: "ed25519:maya",
+              enrollments: [],
+              speakers: [],
+              moves: [],
+              options: [
+                { optionId: "opt-thu", label: "Thu", text: "", proposedBy: "ed25519:maya" },
+                { optionId: "opt-fri", label: "Fri", text: "", proposedBy: "ed25519:maya" },
+              ],
+              votes: { "opt-thu": ["ed25519:maya"] },
+              closed: null,
+              currentRound: 0,
+              status: "live",
+              myTurn: false,
+              waitingOn: [],
+              lapsed: [],
+              passesAt: null,
+              noProgressAuthors: [],
+              agreedOptionId: null,
             },
           ],
         });
@@ -566,22 +599,24 @@ describe("CirclesView", () => {
     expect(screen.getByText("cover Krebs first")).toBeTruthy();
   });
 
-  it("renders a Decision Card and publishes a vote via circles.canvas.slice", async () => {
+  it("renders a Decision card with ONE vote surface (the live layer)", async () => {
     stubRpcs();
     render(<CirclesView />);
-    // The decision renders with its question and options.
+    // The decision renders with its question and its options.
     expect(await screen.findByText("When do we review?")).toBeTruthy();
-    // Synthesis band, partial state: Maya voted, I haven't.
-    expect(screen.getByText(/Leading:/)).toBeTruthy();
-    expect(screen.getByText(/1 still to vote/)).toBeTruthy();
-    expect(screen.queryByText(/Best fit:/)).toBeNull();
-    // Pick the "Fri" option, then publish my vote.
-    await userEvent.click(screen.getByText("Fri"));
-    await userEvent.click(screen.getByRole("button", { name: /Publish my vote/i }));
+    // "Thu" appears as an option row AND inside the agent's pending
+    // proposal — both are the same unified surface, so multiple is right.
+    expect((await screen.findAllByText("Thu")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Fri")).toBeTruthy();
+    // Maya's existing vote shows on the tally; there is no second poll UI.
+    expect(screen.queryByText(/Publish my vote/i)).toBeNull();
+    // One tap votes, through the unified move path.
+    const voteButtons = screen.getAllByRole("button", { name: /^Vote$/ });
+    await userEvent.click(voteButtons[voteButtons.length - 1] as HTMLElement); // Fri
     await waitFor(() =>
       expect(requestMock).toHaveBeenCalledWith(
-        "circles.canvas.slice",
-        expect.objectContaining({ cardId: "d1", slot: "vote", value: "Fri" }),
+        "circles.sandbox.move",
+        expect.objectContaining({ cardId: "d1", kind: "vote", optionId: "opt-fri" }),
       ),
     );
   });
@@ -645,31 +680,51 @@ describe("CirclesView", () => {
     expect(requestMock).not.toHaveBeenCalledWith("circles.send", expect.anything());
   });
 
-  it("synthesizes 'Best fit' on the Decision Card once every member has voted", async () => {
+  it("surfaces agreement for a human to lock in once everyone voted the same way", async () => {
     stubRpcs();
     const base = requestMock.getMockImplementation()!;
     requestMock.mockImplementation((method: string, params?: unknown) => {
-      if (method !== "circles.canvas.list") return base(method, params);
+      if (method !== "circles.sandbox.state") return base(method, params);
       return Promise.resolve({
-        cards: [
+        generationEnabled: true,
+        practicePubkey: null,
+        participation: null,
+        thinkingCardIds: [],
+        sessions: [
           {
             cardId: "d1",
-            cardType: "decision",
-            title: "When do we review?",
-            text: "Thu\nFri",
-            authorPubkey: "ed25519:maya",
-            updatedAt: Date.now(),
-            slices: [
-              { slot: "vote", value: "Thu", note: "", authorPubkey: "ed25519:maya", updatedAt: 1 },
-              { slot: "vote", value: "Thu", note: "", authorPubkey: "ed25519:self", updatedAt: 2 },
-            ],
+            taskType: "negotiation",
+            goal: "When do we review?",
+            roundCap: 3,
+            framedBy: "ed25519:maya",
+            enrollments: [],
+            speakers: ["ed25519:maya", "ed25519:self"],
+            moves: [],
+            options: [{ optionId: "opt-thu", label: "Thu", text: "", proposedBy: "ed25519:maya" }],
+            votes: { "opt-thu": ["ed25519:maya", "ed25519:self"] },
+            closed: null,
+            currentRound: 0,
+            status: "live",
+            myTurn: false,
+            waitingOn: [],
+            lapsed: [],
+            passesAt: null,
+            noProgressAuthors: [],
+            agreedOptionId: "opt-thu",
           },
         ],
       });
     });
     render(<CirclesView />);
-    expect(await screen.findByText("Best fit: Thu")).toBeTruthy();
-    expect(screen.getByText(/all 2 chose it/)).toBeTruthy();
+    // Agreement is announced — and finishing it stays a human act.
+    expect(await screen.findByText(/Everyone agrees/)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: /Lock it in/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith(
+        "circles.sandbox.close",
+        expect.objectContaining({ cardId: "d1", reason: "done" }),
+      ),
+    );
   });
 
   it("per-line redact: a redacted draft line never publishes (mockup consent card)", async () => {
@@ -711,16 +766,16 @@ describe("CirclesView", () => {
     );
   });
 
-  it("B2: shows the agent's vote suggestion on the Decision Card and publishes it", async () => {
+  it("shows the agent's proposal in the card's live layer and adds it on tap", async () => {
     stubRpcs();
     render(<CirclesView />);
     await openTray();
-    // The slice suggestion renders on ITS card, marked private…
+    // The proposal renders on ITS card, awaiting the tap…
     expect(await screen.findByText(/Your agent suggests/i)).toBeTruthy();
     // …and NOT as a second chat draft card (only dr1, the reply draft, is in chat).
     expect(screen.getAllByText(/Your agent drafted a reply/i)).toHaveLength(1);
-    // Publishing ships the suggestion through circles.drafts.publish.
-    await userEvent.click(screen.getByRole("button", { name: /^Publish$/ }));
+    // The tap ships it through the same consent path as every draft.
+    await userEvent.click(screen.getByRole("button", { name: /Add it/i }));
     await waitFor(() =>
       expect(requestMock).toHaveBeenCalledWith("circles.drafts.publish", {
         draftId: "dr2",

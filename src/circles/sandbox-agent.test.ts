@@ -10,12 +10,14 @@ import { buildQuarantinedDraftPrompt, generateQueuedAgentDrafts } from "./agent-
 import { PRACTICE_PARTNER_NAME } from "./practice.js";
 import {
   buildQuarantinedSandboxMovePrompt,
+  decideProposalKind,
   practiceSandboxSweep,
+  queueSandboxMoveDraft,
   SANDBOX_DRAFT_KIND,
   sweepSandboxTurns,
   validateSandboxMoveText,
 } from "./sandbox-agent.js";
-import { getSandboxParticipation } from "./sandbox.js";
+import { claimSandboxTurn, getSandboxParticipation } from "./sandbox.js";
 import { CirclesService } from "./service.js";
 
 // PLAN-38 P1(b): the sandbox's agent half. Under test: R14 output validation,
@@ -342,5 +344,202 @@ describe("sandbox agent loop (service + real handlers)", () => {
     const start = prompt.indexOf("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
     expect(start).toBeGreaterThan(-1);
     expect(prompt.indexOf("Shared canvas")).toBeGreaterThan(start);
+  });
+});
+
+describe("the five UX fixes (steer, refill, proposal kinds)", () => {
+  let db: DatabaseSync;
+  let key: KeyPair;
+  let partnerKey: KeyPair;
+  let service: CirclesService;
+  let circleId: string;
+
+  beforeEach(() => {
+    resetCircleRateLimits();
+    db = openDb();
+    key = generateKeyPair();
+    partnerKey = generateKeyPair();
+    service = new CirclesService({
+      db,
+      config: makeConfig(),
+      keyPair: key,
+      practiceKeys: partnerKey,
+      fetchImpl: stubFetch(),
+      topicBus: null,
+    });
+    circleId = service.createCircle({ name: "Solo", kind: "connection" });
+  });
+
+  it("steering updates guidance only — budgets, counters, and pause untouched", async () => {
+    await service.setCanvasParticipation({ circleId, mode: "propose", turnBudget: 5 });
+    claimSandboxTurn(db, { circleId });
+    service.pauseSandbox({ circleId, reason: "resting" });
+    service.steerSandbox({ circleId, guidance: "prefer cabins under $200" });
+    const part = getSandboxParticipation(db, circleId)!;
+    expect(part.guidance).toBe("prefer cabins under $200");
+    expect(part.turnsUsed).toBe(1); // not a refill
+    expect(part.pausedAt).not.toBeNull(); // not a resume
+    // Steering with no participation row creates one — still propose-gated.
+    const c2 = service.createCircle({ name: "Fresh", kind: "connection" });
+    service.steerSandbox({ circleId: c2, guidance: "hello" });
+    expect(getSandboxParticipation(db, c2)?.mode).toBe("propose");
+  });
+
+  it("re-affirming participation IS the refill and clears a budget pause", async () => {
+    await service.setCanvasParticipation({ circleId, mode: "propose", turnBudget: 1 });
+    expect(claimSandboxTurn(db, { circleId })).toBe(true);
+    expect(claimSandboxTurn(db, { circleId })).toBe(false); // spent
+    await service.setCanvasParticipation({ circleId, mode: "propose", turnBudget: 1 });
+    const part = getSandboxParticipation(db, circleId)!;
+    expect(part.turnsUsed).toBe(0);
+    expect(claimSandboxTurn(db, { circleId })).toBe(true);
+  });
+
+  it("the sweep names the budget when it pauses (grinding is never silent)", async () => {
+    await service.putCanvasCard({
+      circleId,
+      cardId: CARD,
+      cardType: "decision",
+      title: "t",
+      text: "",
+    });
+    await service.setCanvasParticipation({ circleId, mode: "propose", turnBudget: 1 });
+    // Spend the last turn, as real work would; the NEXT sweep names it.
+    expect(claimSandboxTurn(db, { circleId })).toBe(true);
+    sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW });
+    const part = getSandboxParticipation(db, circleId)!;
+    expect(part.pausedAt).not.toBeNull();
+    expect(part.pauseReason).toMatch(/turn budget/);
+  });
+
+  it("picks the proposal kind from the fold: constraint → option synthesis → vote", () => {
+    const base = {
+      cardId: CARD,
+      taskType: "negotiation" as const,
+      goal: "g",
+      roundCap: 3,
+      framedBy: "x",
+      frameUpdatedAt: 0,
+      enrollments: [],
+      speakers: ["A", "B"],
+      options: [],
+      votes: {},
+      plans: [],
+      evidence: [],
+      closed: null,
+      currentRound: 1,
+      status: "live" as const,
+      lapsed: [],
+      passesAt: null,
+      noProgressAuthors: [],
+      agreedOptionId: null,
+    };
+    const move = (authorPubkey: string, kind: "constraint" | "option.add" | "vote") => ({
+      round: 0,
+      kind,
+      text: "t",
+      optionId: kind === "constraint" ? "" : "opt-x",
+      label: "",
+      authorPubkey,
+      agentAuthored: false,
+      derivedFrom: [],
+      authors: [authorPubkey],
+      eventHash: `h-${authorPubkey}-${kind}`,
+      seq: 0,
+      claimedAt: 0,
+    });
+    // Nothing on the table: bring context.
+    expect(decideProposalKind({ ...base, moves: [] }, "A")).toBe("constraint");
+    // Two authors' constraints, no options: synthesize the option set (§2).
+    expect(
+      decideProposalKind(
+        { ...base, moves: [move("A", "constraint"), move("B", "constraint")] },
+        "A",
+      ),
+    ).toBe("option");
+    // Options exist and we have not voted: settle.
+    const withOption = {
+      ...base,
+      moves: [move("B", "option.add")],
+      options: [{ optionId: "opt-x", label: "X", text: "", proposedBy: "B", round: 0 }],
+    };
+    expect(decideProposalKind(withOption, "A")).toBe("vote");
+    // Already voted: back to contributing.
+    expect(decideProposalKind({ ...withOption, votes: { "opt-x": ["A"] } }, "A")).toBe(
+      "constraint",
+    );
+  });
+
+  it("an approved vote proposal maps byte-identically onto a real option (M5)", async () => {
+    await service.putCanvasCard({
+      circleId,
+      cardId: CARD,
+      cardType: "decision",
+      title: "Where?",
+      text: "Cabin B\nLakehouse",
+    });
+    await service.setCanvasParticipation({ circleId, mode: "propose" });
+    // Queue a VOTE proposal directly and generate it with a stub LLM that
+    // picks an option verbatim.
+    queueSandboxMoveDraft(db, { circleId, cardId: CARD, proposal: "vote" });
+    await generateQueuedAgentDrafts(db, async () => "Cabin B", { selfPubkey: service.pubkey });
+    const draft = service.agentDrafts(circleId).find((d) => d.kind === SANDBOX_DRAFT_KIND)!;
+    expect(draft.targetSlot).toBe("sandbox:vote");
+    await service.publishAgentDraft({ draftId: draft.draftId });
+    const session = service.sandboxState(circleId).sessions[0]!;
+    const mine = session.moves.find((m) => m.authorPubkey === service.pubkey)!;
+    expect(mine.kind).toBe("vote");
+    expect(session.votes["opt-cabin-b"]).toContain(service.pubkey);
+  });
+
+  it("a decision card's own lines are options in the fold (one vote surface)", async () => {
+    await service.putCanvasCard({
+      circleId,
+      cardId: CARD,
+      cardType: "decision",
+      title: "Where?",
+      text: "Cabin B\nLakehouse",
+    });
+    const session = service.sandboxState(circleId).sessions[0]!;
+    expect(session.options.map((o) => o.label).toSorted()).toEqual(["Cabin B", "Lakehouse"]);
+    // Voting by hand on a card-line option is legal all the way down.
+    await service.postSandboxMove({
+      circleId,
+      cardId: CARD,
+      kind: "vote",
+      optionId: "opt-cabin-b",
+    });
+    expect(service.sandboxState(circleId).sessions[0]!.votes["opt-cabin-b"]).toContain(
+      service.pubkey,
+    );
+  });
+
+  it("legacy slice votes still count until that member votes through a move", async () => {
+    await service.putCanvasCard({
+      circleId,
+      cardId: CARD,
+      cardType: "decision",
+      title: "Where?",
+      text: "Cabin B\nLakehouse",
+    });
+    await service.putCanvasSlice({
+      circleId,
+      cardId: CARD,
+      slot: "vote",
+      value: "Lakehouse",
+      note: "",
+    });
+    let session = service.sandboxState(circleId).sessions[0]!;
+    expect(session.votes["opt-lakehouse"]).toContain(service.pubkey);
+    // A real move supersedes the legacy slice.
+    await service.postSandboxMove({
+      circleId,
+      cardId: CARD,
+      kind: "vote",
+      optionId: "opt-cabin-b",
+    });
+    session = service.sandboxState(circleId).sessions[0]!;
+    expect(session.votes["opt-cabin-b"]).toContain(service.pubkey);
+    expect(session.votes["opt-lakehouse"] ?? []).not.toContain(service.pubkey);
   });
 });

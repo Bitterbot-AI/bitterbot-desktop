@@ -46,6 +46,9 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const deleteMessage = useCirclesStore((s) => s.deleteMessage);
   const putCard = useCirclesStore((s) => s.putCard);
   const requestChatDraft = useCirclesStore((s) => s.requestChatDraft);
+  const steerAgent = useCirclesStore((s) => s.steerAgent);
+  const setNotice = useCirclesStore((s) => s.setNotice);
+  const sandbox = useCirclesStore((s) => s.sandboxByCircle[circle.circleId]);
   const joinInvite = useCirclesStore((s) => s.joinInvite);
   const inviteInfo = useCirclesStore((s) => s.inviteInfo);
   // Join-from-message consent: parse + signature-verify the code first so the
@@ -133,6 +136,21 @@ export function CircleChat({ circle, selfPubkey }: Props) {
 
   const submit = async () => {
     if (!draft.trim() || sending) return;
+    // /steer <text>: private guidance for YOUR OWN agent's canvas work.
+    // Intercepted client-side and routed to the steer RPC — it is never sent
+    // to the circle (decision 5: steering is private; and it is first-party
+    // text, so the §3.3 chat/canvas asymmetry is untouched).
+    const steerMatch = draft.trim().match(/^\/steer\s+([\s\S]+)/i);
+    if (steerMatch) {
+      setSending(true);
+      const ok = await steerAgent(circle.circleId, steerMatch[1].trim());
+      setSending(false);
+      if (ok) {
+        setDraft("");
+        setNotice("Guidance saved — your agent uses it on its next canvas turn. (Never posted.)");
+      }
+      return;
+    }
     const summoned = SUMMON_RE.test(draft);
     setSending(true);
     const ok = await send(circle.circleId, draft, replyTo?.envelopeId ?? undefined);

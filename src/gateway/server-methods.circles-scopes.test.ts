@@ -43,8 +43,9 @@ describe("circles RPC scope gating", () => {
     // 2026-07-28: PLAN-38 P1(b) added circles.sandbox.state (read) + frame,
     // enroll, move, pause, resume, close, practiceSeat (writes) — then the
     // "cards are alive" reshape collapsed frame + enroll + practiceSeat into
-    // one circles.sandbox.participation, so 49 -> 47.
-    expect(ALL_CIRCLES_METHODS.length).toBe(47);
+    // one circles.sandbox.participation, so 49 -> 47. 47 -> 48: the steer
+    // channel (guidance from card or chat, decision 5: private).
+    expect(ALL_CIRCLES_METHODS.length).toBe(48);
     for (const m of READ_ONLY) {
       expect(ALL_CIRCLES_METHODS).toContain(m);
     }

@@ -2,7 +2,6 @@ import { BookOpen, Bot, GitBranch, ListChecks, Plus, StickyNote, X } from "lucid
 import { useEffect, useState } from "react";
 import { memberName, useCirclesStore, type Circle } from "../../stores/circles-store";
 import { CardLiveLayer } from "./CardLiveLayer";
-import { DecisionCard } from "./DecisionCard";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { StudyGuideCard } from "./StudyGuideCard";
 
@@ -318,9 +317,8 @@ export function CircleCanvas({
 
         {list.length === 0 && mode === null && (
           <div className="text-center text-sm text-muted-foreground px-4 py-10">
-            Nothing on the canvas yet. Add a shared note, post a decision to vote on, or start a
-            study guide the whole circle fills in — soon your agents&apos; outputs will land here
-            too.
+            Nothing on the canvas yet. Add a note, a decision to settle, or a study guide — every
+            card is a live workspace your agents work alongside you.
           </div>
         )}
 
@@ -336,10 +334,26 @@ export function CircleCanvas({
             />
           );
           if (card.cardType === "decision") {
+            // ONE vote surface `[unified 2026-07-28]`: the live layer owns the
+            // options and the tally (the fold seeds options from the card's
+            // own lines and honors legacy slice votes), so the old
+            // DecisionCard poll is gone — two disagreeing vote systems on one
+            // card was the worst incoherence on the canvas.
             return (
-              <DecisionCard key={card.cardId} card={card} circle={circle} selfPubkey={selfPubkey}>
-                <div className="px-3 pb-3">{live}</div>
-              </DecisionCard>
+              <div key={card.cardId} className="rounded-lg border bg-card p-3">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
+                  Decision
+                </div>
+                <div className="text-sm font-semibold">{card.title}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="font-medium">
+                    {nameFor(circle, card.authorPubkey, selfPubkey)}
+                  </span>
+                  <span>·</span>
+                  <span>{fmtWhen(card.updatedAt)}</span>
+                </div>
+                {live}
+              </div>
             );
           }
           if (card.cardType === "study") {

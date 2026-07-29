@@ -195,6 +195,7 @@ const WRITE_METHODS = new Set([
   "circles.drafts.discard",
   "circles.study.record",
   "circles.sandbox.participation",
+  "circles.sandbox.steer",
   "circles.sandbox.move",
   "circles.sandbox.pause",
   "circles.sandbox.resume",

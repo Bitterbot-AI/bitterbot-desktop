@@ -220,6 +220,8 @@ export interface SandboxState {
   practicePubkey: string | null;
   /** One standing choice for the whole circle: does my agent work here. */
   participation: SandboxParticipation | null;
+  /** Cards whose proposal is still generating — "thinking", not dead air. */
+  thinkingCardIds: string[];
   sessions: SandboxSession[];
 }
 
@@ -269,6 +271,8 @@ interface CirclesState {
     kind: "constraint" | "option.add" | "vote" | "pass",
     opts?: { text?: string; optionId?: string; label?: string },
   ) => Promise<boolean>;
+  /** Steer: your words to your own agent (private, never posted anywhere). */
+  steerAgent: (circleId: string, guidance: string) => Promise<boolean>;
   pauseSandbox: (circleId: string) => Promise<boolean>;
   resumeSandbox: (circleId: string) => Promise<boolean>;
   closeSandbox: (circleId: string, cardId: string, reason: "done" | "human") => Promise<boolean>;
@@ -554,6 +558,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         generationEnabled: res?.generationEnabled === true,
         practicePubkey: typeof res?.practicePubkey === "string" ? res.practicePubkey : null,
         participation: res?.participation ?? null,
+        thinkingCardIds: Array.isArray(res?.thinkingCardIds) ? res.thinkingCardIds : [],
         sessions: Array.isArray(res?.sessions) ? res.sessions : [],
       };
       set((s) => ({ sandboxByCircle: { ...s.sandboxByCircle, [circleId]: state } }));
@@ -582,6 +587,17 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   sandboxMove: async (circleId, cardId, kind, opts) => {
     try {
       await request("circles.sandbox.move", { circleId, cardId, kind, ...opts });
+      await get().loadSandbox(circleId);
+      return true;
+    } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  steerAgent: async (circleId, guidance) => {
+    try {
+      await request("circles.sandbox.steer", { circleId, guidance });
       await get().loadSandbox(circleId);
       return true;
     } catch (err) {

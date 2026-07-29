@@ -28,6 +28,7 @@ import { computeCanvasCards } from "./canvas.js";
 import {
   buildCanvasContextSummary,
   buildQuarantinedSandboxMovePrompt,
+  parseProposalSlot,
   SANDBOX_DRAFT_KIND,
 } from "./sandbox-agent.js";
 import { buildMasterySummary, parseSections } from "./study.js";
@@ -594,6 +595,7 @@ export async function generateQueuedAgentDrafts(
               circleId: row.circle_id,
               cardId: row.target_card_id,
               selfPubkey: args.selfPubkey,
+              proposal: parseProposalSlot(row.target_slot),
             })
           : row.kind === "study" && row.target_card_id
             ? buildQuarantinedStudyPrompt(db, {

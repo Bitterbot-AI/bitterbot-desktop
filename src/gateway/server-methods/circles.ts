@@ -1101,6 +1101,29 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
   },
 
+  "circles.sandbox.steer": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    const circleId = typeof params.circleId === "string" ? params.circleId : "";
+    const guidance = typeof params.guidance === "string" ? params.guidance : null;
+    if (!circleId || guidance === null) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "circleId, guidance required"),
+      );
+      return;
+    }
+    try {
+      respond(true, { participation: svc.service.steerSandbox({ circleId, guidance }) }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
   "circles.sandbox.pause": async ({ params, respond }) => {
     const svc = await getService();
     if (!svc.ok) {
