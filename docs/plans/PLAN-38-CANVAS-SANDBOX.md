@@ -894,7 +894,7 @@ and a diff of nothing is decoration.]`
 > no vote cast) is a rabbit hole regardless of how freshly it is worded. The
 > plan's own "10 turns · 0 deltas" line turned out to be the better
 > specification than its containment table.
-
+>
 > **(d)** tools — the §4b five-step turn with the plan tap and egress broker;
 > **(e)** real second-node participation;
 > **(f)** breadth (work view, evidence strip, replay scrubber, own-agent
