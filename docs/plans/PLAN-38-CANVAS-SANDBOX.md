@@ -498,6 +498,73 @@ renderer never calls any of it. No card has ever been deletable from the UI.
   whose card is deleted before publish must die legibly at the claim step
   ("that card is gone"), not post to a resurrected ghost.
 
+### 3.2.10 Aesthetics: the quiet interface `[added 2026-07-29 — Victor: Buzz "looks much more polished"; make ours more pleasing]`
+
+The 2026-07-29 Buzz teardown (docs/reviews/buzz-harvest-2026-07-29.md) made
+their polish legible, and the lesson is uncomfortable in a useful way:
+**their polish is restraint, not effects.** Buzz's theme layer is a set of
+quiet neutral surfaces (Catppuccin palettes behind semantic tokens), ONE
+accent color used only for primary/active states, a named motion system,
+hover-only scrollbars, hairline-plus-soft shadow grammar — and exactly one
+memorable signature (a single vertical gradient across the sidebar canvas).
+Everything else stays out of the way so the content reads.
+
+Ours is the opposite, and it is measurable. `bitterbot-theme.css` today:
+**141 `!important` declarations** (a specificity war against our own
+component library), purple-tinted borders on every surface, glow box-shadows,
+orange gradient buttons, `backdrop-filter: blur(20px)` on five different
+chromes, and triple radial-gradient background washes (purple/pink/indigo).
+Components carry **250 pixel-literal font sizes** (`text-[13px]`-style),
+so nothing sits on a type scale. The purple identity is real and worth
+keeping — but as an accent, not as weather.
+
+The workstream, sequenced to ride WITH the §3.2.8 reshape (same files, one
+visual language for the new chat-first surfaces):
+
+1. **Rebuild the theme as semantic tokens, quiet by default.**
+   Neutral surfaces and neutral borders (border color ≈ foreground at low
+   alpha, never tinted); purple ONLY at the points of meaning — primary
+   actions, active/selected states, focus rings, the agent-attribution
+   accent. Delete the glow shadows, the orange gradients, the radial washes,
+   and all five blur chromes. Gate: `!important` count in the theme goes
+   141 → 0.
+2. **Keep one signature.** Buzz's entire theme identity is one gradient;
+   ours becomes one deliberate purple-to-dark vertical gradient on the
+   sidebar canvas (chrome transparent over a single paint layer, their
+   documented pattern), plus the identity purple in the signature moments
+   above. Everything else neutral.
+3. **A named type ramp.** Adopt the sub-`xs` scale (`2xs` 11px for
+   timestamps/meta, `badge` 10px for pills) in rem, plus display sizes with
+   tightened tracking. Port Buzz's `check-px-text.mjs` CI guard. Gate:
+   px-literal font sizes 250 → 0.
+4. **A named motion system.** `motion.css` with token durations
+   (instant 120 / fast 180 / standard 240 / arrival 500ms), two easings, and
+   one semantic class to start: `.motion-enter-conversation` (blur + rise
+   arrival) applied to §3.2.8's derived chat items — agent narration
+   _settling in_ instead of popping. `prefers-reduced-motion` collapses all
+   of it. Motion is defined here once; features only decide when it runs.
+5. **Surface depth grammar.** Two shadow tokens (`content-edge` hairline,
+   `panel-left` hairline + soft lift — Buzz's rationale comments are worth
+   copying with the code) instead of ad-hoc shadows; hover-only scrollbars
+   on the sidebar and canvas.
+6. **Card chrome = the §3.2.8 grammar.** Status pill + byline is the card's
+   entire decoration. No per-card borders in accent colors, no banner
+   stack — state is a pill, attribution is a byline, content is content.
+7. **CI guards land with the change**: `check-px-text.mjs`,
+   `check-file-sizes.mjs` (1,000-line cap — CircleCanvas.tsx and friends are
+   already close), and the pubkey-truncation guard from the harvest (our
+   Ed25519 display has the same vanity-grinding exposure).
+
+**What we explicitly do not chase**: Buzz's translucent-window glass (WKWebView
+machinery we don't need), their Catppuccin palette itself (we keep purple —
+it is the brand; we change its job description), and any new visual effect.
+The pass removes decoration; it does not add any.
+
+Acceptance is Victor's eye plus the two numeric gates (0 importants,
+0 px-literals). The standing wire-test-document rule applies: theme rebuild,
+CI guards, and the reshape's component chrome land together, not as a
+"cleanup later."
+
 ### 3.3 Continuity across surfaces `[added 2026-07-28 per Victor: chat-side agents must be aware of the canvas]`
 
 Two kinds of continuity, resolved differently:
