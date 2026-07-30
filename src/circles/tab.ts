@@ -41,7 +41,16 @@ export type TabEventInput =
       text: string;
       updatedAt: number;
     }
-  | { type: "canvas.card.remove"; cardId: string; updatedAt: number }
+  | {
+      type: "canvas.card.remove";
+      cardId: string;
+      updatedAt: number;
+      // §3.2.9: set when this tombstone is a CLEAR (the card is immediately
+      // re-put under this new id), not a deletion — the fold hides superseded
+      // tombstones from the removal strip so a clear never offers a
+      // card-duplicating Undo.
+      supersededBy?: string;
+    }
   // A per-member contribution to one SLOT of a card (PLAN-36 C2) — e.g. a vote
   // on a Decision Card, or a section contribution on a study guide (C3). One
   // slice per (card, slot, author), LWW; this is the "typed slot each member's
@@ -155,7 +164,13 @@ function normalizeInput(input: TabEventInput): { type: string } & Record<string,
     case "canvas.card.remove": {
       const cardId = input.cardId.slice(0, 64);
       if (!cardId) throw new Error("cardId required");
-      return { type: "canvas.card.remove", card_id: cardId, updated_at: input.updatedAt };
+      const body: { type: string; card_id: string; updated_at: number; superseded_by?: string } = {
+        type: "canvas.card.remove",
+        card_id: cardId,
+        updated_at: input.updatedAt,
+      };
+      if (input.supersededBy) body.superseded_by = input.supersededBy.slice(0, 64);
+      return body;
     }
     case "message.react": {
       const target = input.targetEnvelopeId.slice(0, 64);

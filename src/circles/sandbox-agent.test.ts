@@ -115,6 +115,30 @@ describe("sandbox agent loop (service + real handlers)", () => {
     });
   }
 
+  /**
+   * Simulate a hostile/skewed peer's canvas.card.put with a caller-chosen
+   * updated_at, inserted straight into the log as a separate author so it
+   * cannot be produced through the service's own (now-clamped) write path.
+   * The fold reads circle_events by type + body_json, so this is a faithful
+   * stand-in for a forged future-dated event.
+   */
+  function injectFutureCard(cardId: string, updatedAt: number, title: string, text: string): void {
+    const body = JSON.stringify({
+      type: "canvas.card.put",
+      card_id: cardId,
+      card_type: "note",
+      title,
+      text,
+      updated_at: updatedAt,
+    });
+    db.prepare(
+      `INSERT INTO circle_events
+         (event_id, circle_id, author_pubkey, seq, event_type, body_json,
+          envelope_json, event_hash, claimed_at, received_at)
+       VALUES (?, ?, 'ed25519:peer', ?, 'canvas.card.put', ?, '{}', ?, ?, ?)`,
+    ).run(`peer-${cardId}`, circleId, updatedAt, body, `hash-${cardId}`, updatedAt, NOW);
+  }
+
   it("a card on the canvas is live with no framing act at all", async () => {
     // Before any card there is nothing to work.
     expect(service.sandboxState(circleId).sessions).toHaveLength(0);
@@ -258,6 +282,55 @@ describe("sandbox agent loop (service + real handlers)", () => {
     expect(service.agentDrafts(circleId).some((d) => d.draftId === draft.draftId)).toBe(false);
   });
 
+  it("a future-dated card can still be deleted and cleared (write-side clamp, §3.2.9)", async () => {
+    // A peer (or a skewed clock) signs a put stamped far in the future. The
+    // fold trusts claimed timestamps, so a naive delete stamped with local now
+    // would lose the LWW forever. The write-side clamp stamps above the winner.
+    const FUTURE = NOW + 10 * 365 * 24 * 3600_000;
+    injectFutureCard("ghost", FUTURE, "Undeletable?", "");
+    expect(service.canvasCards(circleId).some((c) => c.cardId === "ghost")).toBe(true);
+
+    await service.removeCanvasCard({ circleId, cardId: "ghost" });
+    // Gone everywhere: the remove out-stamped the future-dated put.
+    expect(service.canvasCards(circleId).some((c) => c.cardId === "ghost")).toBe(false);
+    // And it narrates as a real removal (not a superseded clear).
+    expect(service.canvasState(circleId).removed.some((r) => r.cardId === "ghost")).toBe(true);
+  });
+
+  it("clearing a future-dated card leaves exactly one card, not a duplicate (§3.2.9)", async () => {
+    const FUTURE = NOW + 10 * 365 * 24 * 3600_000;
+    injectFutureCard("dup", FUTURE, "Original", "keep me");
+    const { newCardId } = await service.clearCanvasCard({
+      circleId,
+      cardId: "dup",
+      keepText: true,
+    });
+    const live = service.canvasCards(circleId);
+    // The original is gone (clamp beat its future stamp); only the replacement
+    // remains — no undeletable-original-beside-duplicate.
+    expect(live.map((c) => c.cardId)).toContain(newCardId);
+    expect(live.some((c) => c.cardId === "dup")).toBe(false);
+    // The clear did not narrate as a deletion.
+    expect(service.canvasState(circleId).removed.some((r) => r.cardId === "dup")).toBe(false);
+  });
+
+  it("clearing a title-less card keeps its text (never an empty un-editable card, §3.2.9)", async () => {
+    await service.putCanvasCard({
+      circleId,
+      cardId: "notecard",
+      cardType: "note",
+      title: "",
+      text: "just body text",
+    });
+    const { newCardId } = await service.clearCanvasCard({
+      circleId,
+      cardId: "notecard",
+      keepText: false, // asked to wipe, but no title → text is forced to survive
+    });
+    const fresh = service.canvasCards(circleId).find((c) => c.cardId === newCardId)!;
+    expect(fresh.text).toBe("just body text");
+  });
+
   it("clear mints a fresh card: same title, fresh session, no refund (§3.2.9)", async () => {
     await putCard();
     await service.setCanvasParticipation({ circleId, mode: "propose", turnBudget: 3 });
@@ -279,14 +352,16 @@ describe("sandbox agent loop (service + real handlers)", () => {
     expect(newCardId).not.toBe(CARD);
 
     const state = service.canvasState(circleId);
-    // The old card is a legible tombstone; the new card carries the title on.
+    // The new card carries the title on; the old card is gone from live cards.
     expect(state.cards).toHaveLength(1);
     expect(state.cards[0]).toMatchObject({
       cardId: newCardId,
       title: "Spring trip: June, 4 people",
       text: "",
     });
-    expect(state.removed[0]?.cardId).toBe(CARD);
+    // A clear is NOT a deletion: the superseded tombstone stays out of the
+    // removal strip (no card-duplicating Undo offered).
+    expect(state.removed.some((r) => r.cardId === CARD)).toBe(false);
 
     // Fresh session by construction: the new card id has no moves, round 0.
     const sessions = service.sandboxState(circleId).sessions;

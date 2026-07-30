@@ -592,6 +592,49 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(anaDrafting.agentDrafts(circleId)).toHaveLength(0);
   });
 
+  it("B2: a retried publish of an already-published draft cannot flip it to discarded (§3.2.9)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    const anaDrafting = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl: meshFetch({ ana: anaDb, bob: bobDb }),
+      keyPair: anaKey,
+      draftLlm: async () => "Thu",
+    });
+    await ana.putCanvasCard({
+      circleId,
+      cardId: "d3",
+      cardType: "decision",
+      title: "When?",
+      text: "Thu\nFri",
+    });
+    anaDrafting.requestAgentSliceDraft({ circleId, cardId: "d3", slot: "vote" });
+    await anaDrafting.generateAgentDrafts();
+    const draft = anaDrafting.agentDrafts(circleId)[0]!;
+
+    // Publish succeeds: the slice is on the canvas, the draft is 'published'.
+    await anaDrafting.publishAgentDraft({ draftId: draft.draftId });
+    expect(
+      ana
+        .canvasCards(circleId)
+        .flatMap((c) => c.slices)
+        .filter((s) => s.slot === "vote"),
+    ).toHaveLength(1);
+
+    // Now the card is cleared (retires the old id), and the client retries the
+    // publish (dropped response / double-tap). The deleted-card check must NOT
+    // overwrite the 'published' status to 'discarded' — the move is on the
+    // wire; the audit record must not lie that it never shipped.
+    await ana.clearCanvasCard({ circleId, cardId: "d3", keepText: true });
+    await expect(anaDrafting.publishAgentDraft({ draftId: draft.draftId })).rejects.toThrow();
+    const row = anaDb
+      .prepare(`SELECT status FROM circle_agent_drafts WHERE draft_id = ?`)
+      .get(draft.draftId) as { status: string } | undefined;
+    expect(row?.status).toBe("published");
+  });
+
   it("Phase B: the kill switch silences summons end to end", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

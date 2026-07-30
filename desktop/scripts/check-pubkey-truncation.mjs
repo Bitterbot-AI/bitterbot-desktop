@@ -27,9 +27,14 @@ const SKIP_DIRS = new Set(["node_modules", "dist", ".git"]);
 const ALLOWED_FILES = new Set(["desktop/renderer/src/lib/pubkey.ts"]);
 
 // Receiver identifier containing pubkey / pub_key / publickey (any case),
-// immediately followed by .slice(0, N) or .substring(0, N).
+// immediately followed by a prefix-slicing call: .slice(0, N), .substring(0, N),
+// or the legacy .substr(0, N). This is a best-effort lexical guard, not a
+// dataflow analysis — an aliased binding (const pk = m.pubkey; pk.slice(...))
+// still slips past, so it catches the common shape, not every possible one.
+// The real safety net is the single-home policy: truncate only via
+// truncatePubkey. This guard exists to catch the obvious regressions.
 const PUBKEY_SLICE_RE =
-  /\b[\w$]*(pubkey|pub_key|publickey)[\w$]*\??\.(slice|substring)\(\s*0\s*,\s*\d+\s*\)/gi;
+  /\b[\w$]*(pubkey|pub_key|publickey)[\w$]*\??\.(slice|substring|substr)\(\s*0\s*,\s*\d+\s*\)/gi;
 
 async function walk(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });

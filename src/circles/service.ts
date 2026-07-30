@@ -61,6 +61,7 @@ import { compileBriefingIfDue, latestBriefing, type CompiledBriefing } from "./b
 import {
   computeCanvasCards,
   computeCanvasState,
+  maxCardStamp,
   type CanvasCard,
   type CanvasState,
 } from "./canvas.js";
@@ -1228,19 +1229,36 @@ export class CirclesService {
   }): Promise<SendReport & { eventId: string; seq: number; newCardId: string }> {
     const card = computeCanvasCards(this.db, args.circleId).find((c) => c.cardId === args.cardId);
     if (!card) throw new Error("that card is not on the canvas");
-    await this.removeCanvasCard({ circleId: args.circleId, cardId: args.cardId });
     const newCardId = crypto.randomUUID();
+    // A card must never clear to fully empty (no title AND no text) — that is
+    // an un-editable, un-restorable blank. If it has no title, keep the text
+    // regardless so the fresh card still carries content.
+    const keepText = args.keepText || !card.title.trim();
+    // The tombstone is marked superseded_by the replacement so the fold hides
+    // it from the removal strip (a clear is not a deletion; no Undo). It is
+    // stamped to WIN the old card's slot (§3.2.9 clamp) so a future-dated peer
+    // put can't leave the original alive beside the replacement.
+    await this.removeCanvasCard({
+      circleId: args.circleId,
+      cardId: args.cardId,
+      supersededBy: newCardId,
+    });
     const report = await this.putCanvasCard({
       circleId: args.circleId,
       cardId: newCardId,
       cardType: card.cardType,
       title: card.title,
-      text: args.keepText ? card.text : "",
+      text: keepText ? card.text : "",
     });
     return { ...report, newCardId };
   }
 
-  /** Create or update a canvas card (LWW by cardId) + fan it out. */
+  /**
+   * Create or update a canvas card (LWW by cardId) + fan it out. The stamp
+   * clamps to beat any existing event for this card (§3.2.9): a fresh create
+   * gets `now`; an edit or an undo re-put out-orders the prior winner even if
+   * that winner (or a peer's forgery) carried a future timestamp.
+   */
   async putCanvasCard(args: {
     circleId: string;
     cardId: string;
@@ -1256,20 +1274,36 @@ export class CirclesService {
         cardType: args.cardType,
         title: args.title,
         text: args.text,
-        updatedAt: Date.now(),
+        updatedAt: this.nextCardStamp(args.circleId, args.cardId),
       },
     });
   }
 
-  /** Tombstone a canvas card + fan it out. */
+  /** Tombstone a canvas card + fan it out. Stamped to win the slot (§3.2.9). */
   async removeCanvasCard(args: {
     circleId: string;
     cardId: string;
+    supersededBy?: string;
   }): Promise<SendReport & { eventId: string; seq: number }> {
     return this.appendTabEvent({
       circleId: args.circleId,
-      input: { type: "canvas.card.remove", cardId: args.cardId, updatedAt: Date.now() },
+      input: {
+        type: "canvas.card.remove",
+        cardId: args.cardId,
+        updatedAt: this.nextCardStamp(args.circleId, args.cardId),
+        supersededBy: args.supersededBy,
+      },
     });
+  }
+
+  /**
+   * The stamp a slot-winning write must carry: strictly above every existing
+   * put/remove for this card, and never below local now. Lets an honest actor
+   * always out-order a forged or clock-skewed future timestamp so delete /
+   * clear / undo cannot be permanently defeated (§3.2.9 write-side clamp).
+   */
+  private nextCardStamp(circleId: string, cardId: string): number {
+    return Math.max(Date.now(), maxCardStamp(this.db, circleId, cardId) + 1);
   }
 
   /**
@@ -2107,13 +2141,15 @@ export class CirclesService {
     // §3.2.9: a draft whose card was deleted (or cleared — clear mints a new
     // card id) dies legibly BEFORE the claim, never posts to a resurrected
     // ghost. Discarded, not handed back: a gone card can't come back the same,
-    // so "ready" would just fail forever. (Pre-claim on purpose — the generic
-    // publish-failure catch below hands drafts back to "ready".)
+    // so "ready" would just fail forever. Guarded on the 'ready'→'discarded'
+    // transition (claimAgentDraft) so a retried publish of an ALREADY-published
+    // draft can never overwrite its status to 'discarded' — that would corrupt
+    // the R5 audit record for a move already on the wire.
     if (
       (isSlice || isSandbox) &&
       !computeCanvasCards(this.db, draft.circleId).some((c) => c.cardId === draft.targetCardId)
     ) {
-      setAgentDraftStatus(this.db, draft.draftId, "discarded");
+      claimAgentDraft(this.db, draft.draftId, "ready", "discarded");
       throw new Error("the card this draft targets is no longer on the canvas");
     }
     // Atomic claim BEFORE the awaited send: a racing second publish (or a

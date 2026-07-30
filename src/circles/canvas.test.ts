@@ -178,4 +178,45 @@ describe("delete and clear surface (§3.2.9)", () => {
     expect(state.removed[0]?.title).toBe("Card 24"); // newest removal first
     expect(state.removed.at(-1)?.title).toBe("Card 5"); // oldest five aged out
   });
+
+  it("a clear tombstone (superseded_by) never enters the removal strip", () => {
+    const db = openDb();
+    insert(db, put("c1", "Venue", NOW, "aaaa", "evt-1"));
+    // Clear = remove marked superseded_by the replacement + a fresh-id re-put.
+    insert(db, {
+      eventId: "evt-2",
+      author: "ana",
+      type: "canvas.card.remove",
+      body: { card_id: "c1", updated_at: NOW + 1000, superseded_by: "c2" },
+      hash: "cccc",
+    });
+    insert(db, put("c2", "Venue", NOW + 1001, "dddd", "evt-3"));
+
+    const state = computeCanvasState(db, CIRCLE);
+    // The replacement is live; the cleared original is NOT offered as an Undo
+    // (offering it would resurrect the old card beside its replacement).
+    expect(state.cards.map((c) => c.cardId)).toEqual(["c2"]);
+    expect(state.removed).toHaveLength(0);
+  });
+
+  it("removed[] cap membership is deterministic across nodes on removedAt ties", () => {
+    // 21 tombstones, ALL tied on removedAt — only a content tiebreak (cardId)
+    // keeps the cap-20 SET identical when nodes received events in different
+    // orders. Build two nodes with opposite insertion order.
+    const rows: Row[] = [];
+    for (let i = 0; i < 21; i++) {
+      const id = `card${String(i).padStart(2, "0")}`;
+      rows.push(put(id, `Card ${i}`, NOW, `p${i}`, `evtp${i}`));
+      rows.push(remove(id, NOW + 1000, `r${i}`, `evtr${i}`)); // identical removedAt
+    }
+    const node1 = openDb();
+    for (const r of rows) insert(node1, r);
+    const node2 = openDb();
+    for (const r of rows.toReversed()) insert(node2, r);
+
+    const s1 = computeCanvasState(node1, CIRCLE).removed.map((r) => r.cardId);
+    const s2 = computeCanvasState(node2, CIRCLE).removed.map((r) => r.cardId);
+    expect(s1).toHaveLength(20);
+    expect(s1).toEqual(s2); // same SET and same order, from the same event set
+  });
 });

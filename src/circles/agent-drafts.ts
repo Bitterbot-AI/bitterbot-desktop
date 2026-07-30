@@ -616,20 +616,31 @@ export async function generateQueuedAgentDrafts(
                   selfPubkey: args.selfPubkey,
                   selfRequested: !row.summon_envelope_id,
                 });
+      // M3: feed the token meter. The DraftLlmCall interface returns text
+      // only (provider usage never crosses it), so spend is an estimate — but
+      // it must be conservative and it must bill even on failure, since the
+      // prompt IS sent to the provider regardless of whether a usable draft
+      // comes back (a deadline/empty-draft throw still cost the prompt). So
+      // the prompt side is recorded BEFORE the call. UTF-8 byte length, not
+      // .length: peer content is often multibyte (CJK etc.) where UTF-16 code
+      // units undercount ~3-4x, which would let the budget bind at a multiple
+      // of its face value. The budget binding on a conservative estimate is
+      // the property M3 needs — a runaway cannot spend unbounded while
+      // tokens_used sits at 0.
+      if (row.kind === SANDBOX_DRAFT_KIND) {
+        recordSandboxTokenSpend(db, {
+          circleId: row.circle_id,
+          tokens: Math.ceil(Buffer.byteLength(prompt, "utf8") / 4),
+        });
+      }
       const text = (await callWithDeadline(llm, prompt, args.deadlineMs ?? GENERATION_DEADLINE_MS))
         .trim()
         .slice(0, MAX_DRAFT_CHARS);
       if (!text) throw new Error("empty draft");
-      // M3: the token meter finally gets fed. The DraftLlmCall interface
-      // returns text only (provider usage never crosses it), so spend is a
-      // conservative chars/4 ESTIMATE over prompt + response — the budget
-      // binds on the estimate, which is the property M3 needs (a runaway
-      // cannot spend unbounded tokens while tokens_used sits at 0). Recorded
-      // even if the later status write fails: the model call is the spend.
       if (row.kind === SANDBOX_DRAFT_KIND) {
         recordSandboxTokenSpend(db, {
           circleId: row.circle_id,
-          tokens: Math.ceil((prompt.length + text.length) / 4),
+          tokens: Math.ceil(Buffer.byteLength(text, "utf8") / 4),
         });
       }
       setAgentDraftStatus(db, row.draft_id, "ready", { content: text, now: Date.now() });

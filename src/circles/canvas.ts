@@ -169,6 +169,17 @@ export function computeCanvasState(db: DatabaseSync, circleId: string): CanvasSt
       // a card that never had a winning put has nothing to narrate or restore.
       const put = putWinners.get(cardId);
       if (!put) continue;
+      let removeBody: { superseded_by?: string };
+      try {
+        removeBody = JSON.parse(w.row.body_json) as typeof removeBody;
+      } catch {
+        removeBody = {};
+      }
+      // A CLEAR is a tombstone + immediate re-put under a fresh id; its remove
+      // carries superseded_by. It is not a deletion, so it never enters the
+      // removal strip — offering Undo on it would resurrect the old card
+      // beside its replacement (§3.2.9 duplicate). Only true deletes narrate.
+      if (typeof removeBody.superseded_by === "string" && removeBody.superseded_by) continue;
       let putBody: { card_type?: string; title?: string; text?: string };
       try {
         putBody = JSON.parse(put.row.body_json) as typeof putBody;
@@ -203,7 +214,43 @@ export function computeCanvasState(db: DatabaseSync, circleId: string): CanvasSt
       slices: (slicesByCard.get(cardId) ?? []).toSorted((a, b) => a.updatedAt - b.updatedAt),
     });
   }
-  cards.sort((a, b) => b.updatedAt - a.updatedAt); // newest first
-  removed.sort((a, b) => b.removedAt - a.removedAt);
+  // Deterministic ordering AND cap membership across nodes: updatedAt/removedAt
+  // are peer-supplied and tie-able (forced, or same-ms bulk), so a bare
+  // timestamp sort would resolve ties by node-local Map insertion order (the
+  // un-ORDER-BY'd scan order) — diverging the cap-20 tombstone SET between
+  // members. cardId is content-derived and unique, so it is the stable
+  // cross-node tiebreak (same rule the per-card LWW uses on event_hash).
+  cards.sort((a, b) => b.updatedAt - a.updatedAt || (a.cardId < b.cardId ? -1 : 1));
+  removed.sort((a, b) => b.removedAt - a.removedAt || (a.cardId < b.cardId ? -1 : 1));
   return { cards, removed: removed.slice(0, REMOVED_CARDS_CAP) };
+}
+
+/**
+ * The greatest updated_at any put/remove event has claimed for this card slot,
+ * or 0 if none. A write that must WIN the slot (delete, clear's tombstone, an
+ * undo re-put) stamps at max(now, thisStamp + 1) so an honest actor can always
+ * out-order a peer's future-dated event — §3.2.9's "cards can die" contract
+ * cannot be defeated by a forged (or clock-skewed) timestamp. This is a
+ * write-side clamp; the fold itself stays a pure function of claimed stamps.
+ */
+export function maxCardStamp(db: DatabaseSync, circleId: string, cardId: string): number {
+  const rows = db
+    .prepare(
+      `SELECT body_json FROM circle_events
+        WHERE circle_id = ?
+          AND event_type IN ('canvas.card.put', 'canvas.card.remove')`,
+    )
+    .all(circleId) as unknown as { body_json: string }[];
+  let max = 0;
+  for (const r of rows) {
+    try {
+      const b = JSON.parse(r.body_json) as { card_id?: string; updated_at?: number };
+      if (b.card_id === cardId && typeof b.updated_at === "number" && b.updated_at > max) {
+        max = b.updated_at;
+      }
+    } catch {
+      // skip unparseable
+    }
+  }
+  return max;
 }

@@ -27,6 +27,11 @@ const ALLOWED = new Set(["circles-store.ts", "migrations.ts"]);
 
 const CIRCLE_TABLE_RE = /\bcircle_[a-z_]+\b/;
 const BARE_CIRCLES_SQL_RE = /\b(from|into|update|join|table)\s+circles\b/i;
+// Closes the obvious bypass: a memory file that reaches circle data by
+// importing the allowlisted circles-store (or the circles service) and
+// calling its readers leaves zero table-token hits. Importing either from
+// src/memory is itself the violation.
+const CIRCLE_IMPORT_RE = /\bfrom\s+["'][^"']*(?:circles-store|\/circles\/)[^"']*["']/;
 
 function* walk(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -42,7 +47,11 @@ for (const file of walk(MEMORY_DIR)) {
   if (ALLOWED.has(base)) continue;
   const lines = readFileSync(file, "utf8").split("\n");
   lines.forEach((line, i) => {
-    if (CIRCLE_TABLE_RE.test(line) || BARE_CIRCLES_SQL_RE.test(line)) {
+    if (
+      CIRCLE_TABLE_RE.test(line) ||
+      BARE_CIRCLES_SQL_RE.test(line) ||
+      CIRCLE_IMPORT_RE.test(line)
+    ) {
       violations.push(`${relative(ROOT, file)}:${i + 1}  ${line.trim().slice(0, 120)}`);
     }
   });

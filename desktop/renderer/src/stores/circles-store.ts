@@ -540,6 +540,9 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       return true;
     } catch (err) {
       set({ notice: String(err) });
+      // §3.2.9: a failed publish may have discarded the draft server-side (its
+      // card was deleted). Reload both so a now-dead proposal leaves the strip.
+      await Promise.all([get().loadDrafts(circleId), get().loadCards(circleId)]);
       return false;
     }
   },
@@ -551,6 +554,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       return true;
     } catch (err) {
       set({ notice: String(err) });
+      await get().loadDrafts(circleId); // draft may already be gone; drop it
       return false;
     }
   },
