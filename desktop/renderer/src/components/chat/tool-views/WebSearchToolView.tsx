@@ -170,7 +170,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
           <div className="p-3 space-y-3">
             {/* Result count header */}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-zinc-500 font-medium">
+              <span className="text-2xs text-zinc-500 font-medium">
                 {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
               </span>
             </div>
@@ -185,7 +185,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
             {/* Image grid */}
             {images.length > 0 && (
               <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-medium uppercase tracking-wider">
+                <div className="flex items-center gap-1.5 text-badge text-zinc-500 font-medium uppercase tracking-wider">
                   <Image className="w-3 h-3" />
                   Images
                 </div>
@@ -210,7 +210,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
                 {images.length > 6 && !showAllImages && (
                   <button
                     onClick={() => setShowAllImages(true)}
-                    className="text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors"
+                    className="text-2xs text-cyan-400 hover:text-cyan-300 transition-colors"
                   >
                     View {images.length - 6} more images
                   </button>
@@ -249,7 +249,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
                         </span>
                         <span
                           className={cn(
-                            "text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 uppercase tracking-wider",
+                            "text-3xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 uppercase tracking-wider",
                             TYPE_COLORS[resultType] ?? TYPE_COLORS.Website,
                           )}
                         >
@@ -261,7 +261,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
                       {result.url && (
                         <div className="flex items-center gap-1 mt-0.5">
                           <Globe className="w-2.5 h-2.5 text-zinc-500 flex-shrink-0" />
-                          <span className="text-[10px] text-zinc-500 truncate font-mono">
+                          <span className="text-badge text-zinc-500 truncate font-mono">
                             {extractDomain(result.url)}
                           </span>
                         </div>

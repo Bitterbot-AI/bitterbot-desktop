@@ -15,7 +15,7 @@ export function TreeFilterInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Filter files..."
-        className="flex-1 bg-transparent text-[11px] text-zinc-300 placeholder:text-zinc-600 border-none outline-none font-mono"
+        className="flex-1 bg-transparent text-2xs text-zinc-300 placeholder:text-zinc-600 border-none outline-none font-mono"
       />
       {value && (
         <button

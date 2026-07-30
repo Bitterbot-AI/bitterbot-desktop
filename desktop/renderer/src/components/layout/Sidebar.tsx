@@ -297,12 +297,12 @@ export function Sidebar() {
       >
         {!isCollapsed && (
           <div className="flex items-center justify-between mb-1">
-            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-[#00D4E6]">
+            <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6]">
               CONVERSATIONS
             </div>
             {selectedSessions.size > 0 ? (
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-badge text-muted-foreground">
                   {selectedSessions.size} selected
                 </span>
                 <button
@@ -335,7 +335,7 @@ export function Sidebar() {
                     // Enter selection mode with nothing selected
                     setSelectedSessions(new Set(["__selection_mode__"]));
                   }}
-                  className="px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground rounded hover:bg-muted/30 transition-colors"
+                  className="px-1.5 py-0.5 text-badge text-muted-foreground hover:text-foreground rounded hover:bg-muted/30 transition-colors"
                 >
                   Select
                 </button>
@@ -447,7 +447,7 @@ export function Sidebar() {
               {!isCollapsed && sessions.length > MAX_VISIBLE_SESSIONS && (
                 <button
                   onClick={() => setShowAllSessions(!showAllSessions)}
-                  className="flex items-center gap-1 w-full px-3 py-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex items-center gap-1 w-full px-3 py-1 text-badge text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showAllSessions ? (
                     <>
@@ -478,7 +478,7 @@ export function Sidebar() {
           return (
             <div key={group}>
               {!isCollapsed && (
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-[#00D4E6]">
+                <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6]">
                   {GROUP_LABELS[group]}
                 </div>
               )}

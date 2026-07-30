@@ -163,7 +163,7 @@ function MetricsLine({ metrics }: { metrics: SkillMetrics | undefined }) {
     metrics.avgExecutionTimeMs > 0 ? `${Math.round(metrics.avgExecutionTimeMs)}ms` : null;
   return (
     <div
-      className="text-[10px] text-muted-foreground mt-1 flex flex-wrap gap-x-3"
+      className="text-badge text-muted-foreground mt-1 flex flex-wrap gap-x-3"
       title={`Last run: ${new Date(metrics.lastExecutedAt).toLocaleString()}`}
     >
       <span>
@@ -251,13 +251,13 @@ function SkillCard({
           {skill.tier === "executable" && (
             <span
               title={`Executable tier — ships with ${skill.interceptorCount ?? "0"} deterministic interceptor${(skill.interceptorCount ?? 0) === 1 ? "" : "s"}`}
-              className="text-[10px] px-1.5 py-0.5 rounded border border-cyan-400/40 bg-cyan-400/10 text-cyan-200 uppercase tracking-wider"
+              className="text-badge px-1.5 py-0.5 rounded border border-cyan-400/40 bg-cyan-400/10 text-cyan-200 uppercase tracking-wider"
             >
               executable
             </span>
           )}
           {skill.tier === "data" && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-400/40 bg-slate-400/10 text-slate-300 uppercase tracking-wider">
+            <span className="text-badge px-1.5 py-0.5 rounded border border-slate-400/40 bg-slate-400/10 text-slate-300 uppercase tracking-wider">
               data
             </span>
           )}
@@ -270,7 +270,7 @@ function SkillCard({
             {skill.requires.bins.map((bin) => (
               <span
                 key={bin}
-                className="text-[10px] px-1 py-0.5 rounded bg-muted font-mono text-muted-foreground"
+                className="text-badge px-1 py-0.5 rounded bg-muted font-mono text-muted-foreground"
               >
                 {bin}
               </span>
@@ -278,7 +278,7 @@ function SkillCard({
           </div>
         )}
         {skill.origin?.registry && (
-          <div className="text-[10px] text-muted-foreground mt-1 flex flex-wrap gap-x-2">
+          <div className="text-badge text-muted-foreground mt-1 flex flex-wrap gap-x-2">
             <span title="Registry the skill was imported from">
               from <span className="text-foreground/80">{skill.origin.registry}</span>
             </span>
@@ -403,7 +403,7 @@ export function SkillsView() {
         >
           Incoming
           {incomingCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300">
+            <span className="text-badge px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300">
               {incomingCount}
             </span>
           )}
@@ -651,7 +651,7 @@ function InstalledSkillsView() {
               )}
             >
               {t.label}
-              <span className="ml-1.5 text-[10px] text-muted-foreground">{tabCounts[t.id]}</span>
+              <span className="ml-1.5 text-badge text-muted-foreground">{tabCounts[t.id]}</span>
             </button>
           );
         })}

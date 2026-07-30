@@ -50,7 +50,7 @@ function TreeNode({
       <button
         onClick={() => (isDir ? onToggleDir(node.path) : onOpenFile(node.path))}
         className={cn(
-          "w-full flex items-center gap-1 py-[3px] px-2 text-left text-[12px] font-mono",
+          "w-full flex items-center gap-1 py-[3px] px-2 text-left text-xs font-mono",
           "hover:bg-[rgba(139,92,246,0.06)] transition-colors",
           isActive && "bg-[rgba(139,92,246,0.12)] text-purple-300",
           !isActive && "text-zinc-400",
@@ -67,7 +67,7 @@ function TreeNode({
         />
         <span className="truncate">{node.name}</span>
         {!isDir && node.size !== undefined && (
-          <span className="ml-auto text-[10px] text-zinc-600 flex-shrink-0">
+          <span className="ml-auto text-badge text-zinc-600 flex-shrink-0">
             {formatSize(node.size)}
           </span>
         )}
@@ -155,8 +155,8 @@ function FileContent() {
     <div className="flex-1 flex flex-col min-w-0">
       {/* File header bar */}
       <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/50 bg-zinc-900/40">
-        <span className="text-[10px] text-zinc-500 flex-shrink-0 font-mono">{tab.language}</span>
-        <span className="text-[10px] text-zinc-600 flex-shrink-0">{formatSize(tab.size)}</span>
+        <span className="text-badge text-zinc-500 flex-shrink-0 font-mono">{tab.language}</span>
+        <span className="text-badge text-zinc-600 flex-shrink-0">{formatSize(tab.size)}</span>
 
         <div className="ml-auto flex items-center gap-1">
           <button
@@ -318,7 +318,7 @@ export function WorkspaceView() {
         <FolderOpen className="w-4 h-4 text-purple-400" />
         <h2 className="text-sm font-semibold text-foreground">Workspace</h2>
         {root && (
-          <span className="text-[10px] text-zinc-500 font-mono truncate max-w-[400px]">{root}</span>
+          <span className="text-badge text-zinc-500 font-mono truncate max-w-[400px]">{root}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
           <button

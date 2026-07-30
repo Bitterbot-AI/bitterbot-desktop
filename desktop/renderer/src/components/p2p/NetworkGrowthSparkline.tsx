@@ -24,9 +24,9 @@ export function NetworkGrowthSparkline({ rows, width = 360, height = 80 }: Spark
         <h3 className="text-sm font-medium text-foreground mb-1">Network Growth</h3>
         <p className="text-xs text-muted-foreground/80">
           Snapshot history will populate as bootnodes broadcast over
-          <span className="font-mono text-[11px] mx-1">bitterbot/census/v1</span>
+          <span className="font-mono text-2xs mx-1">bitterbot/census/v1</span>
           (every 60s when a bootnode is in{" "}
-          <code className="px-1 rounded bg-muted/50 text-[11px]">--bootnode-mode</code>).
+          <code className="px-1 rounded bg-muted/50 text-2xs">--bootnode-mode</code>).
         </p>
       </div>
     );
@@ -89,7 +89,7 @@ export function NetworkGrowthSparkline({ rows, width = 360, height = 80 }: Spark
         </span>
         <span className="text-purple-300 font-medium">{lastPoint.v.toLocaleString()}</span>
       </div>
-      <div className="mt-1 flex items-baseline justify-between text-[10px] text-muted-foreground/60">
+      <div className="mt-1 flex items-baseline justify-between text-badge text-muted-foreground/60">
         <span>{firstSnapshot.toLocaleString()}</span>
         <span>{lastSnapshot.toLocaleString()}</span>
       </div>

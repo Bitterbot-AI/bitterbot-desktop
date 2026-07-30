@@ -140,7 +140,7 @@ export function StudyGuideCard({
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="p-3 pb-2">
         <div className="flex items-center gap-2">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1 flex-1">
+          <div className="text-badge font-bold uppercase tracking-wide text-muted-foreground mb-1 flex-1">
             Study guide · {covered} of {sections.length} sections covered
           </div>
           {circle.status === "active" && !studyDraft && sections.length > 0 && (
@@ -199,14 +199,14 @@ export function StudyGuideCard({
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium flex-1 min-w-0 truncate">{section}</span>
                 {isGap && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-500 shrink-0">
+                  <span className="text-badge font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-500 shrink-0">
                     gap
                   </span>
                 )}
                 {dueBySlot.get(slot) && (
                   <span
                     title="Your spaced-repetition schedule says review this section now"
-                    className="text-[10px] font-semibold uppercase tracking-wide text-circle-agent shrink-0"
+                    className="text-badge font-semibold uppercase tracking-wide text-circle-agent shrink-0"
                   >
                     review due
                   </span>
@@ -257,12 +257,12 @@ export function StudyGuideCard({
 
               {slices.map((s) => (
                 <div key={`${s.slot}\n${s.authorPubkey}`} className="mt-1.5">
-                  <div className="text-[11px] font-medium text-muted-foreground">
+                  <div className="text-2xs font-medium text-muted-foreground">
                     {nameFor(circle, s.authorPubkey, selfPubkey)}
                   </div>
                   <div className="text-sm whitespace-pre-wrap break-words">{s.value}</div>
                   {s.note && (
-                    <div className="text-[11px] italic text-muted-foreground break-words">
+                    <div className="text-2xs italic text-muted-foreground break-words">
                       {s.note}
                     </div>
                   )}

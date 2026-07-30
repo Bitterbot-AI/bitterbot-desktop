@@ -92,7 +92,7 @@ function TransactionRow({ tx, network }: { tx: WalletTransaction; network: strin
             href={`${explorerBase}${tx.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] text-muted-foreground/60 hover:text-purple-400 font-mono"
+            className="text-2xs text-muted-foreground/60 hover:text-purple-400 font-mono"
           >
             {truncateHash(tx.txHash)}
           </a>
@@ -106,7 +106,7 @@ function TransactionRow({ tx, network }: { tx: WalletTransaction; network: strin
           {tx.amount} {tx.token}
         </span>
         {tx.timestamp > 0 && (
-          <p className="text-[10px] text-muted-foreground/40">
+          <p className="text-badge text-muted-foreground/40">
             {new Date(tx.timestamp).toLocaleDateString()}
           </p>
         )}

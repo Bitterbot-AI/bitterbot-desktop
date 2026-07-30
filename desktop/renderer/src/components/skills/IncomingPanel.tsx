@@ -291,7 +291,7 @@ export function IncomingPanel({
             {item.description && (
               <p className="text-xs text-muted-foreground">{item.description}</p>
             )}
-            <div className="text-[11px] text-muted-foreground space-y-0.5 font-mono">
+            <div className="text-2xs text-muted-foreground space-y-0.5 font-mono">
               <div>From: {shortPeer(peer)}</div>
               <div>Received: {formatTimestamp(item.timestamp)}</div>
               {item.contentHash && (
@@ -304,7 +304,7 @@ export function IncomingPanel({
                 {item.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground"
+                    className="text-badge px-1 py-0.5 rounded bg-muted text-muted-foreground"
                   >
                     {tag}
                   </span>

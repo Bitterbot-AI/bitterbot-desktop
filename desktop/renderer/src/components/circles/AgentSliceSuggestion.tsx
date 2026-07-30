@@ -38,7 +38,7 @@ export function AgentSliceSuggestion({
 
   return (
     <div className="mt-2 rounded-md border border-circle-agent/40 border-l-2 border-l-circle-agent bg-circle-agent-soft/50 p-2 space-y-1.5">
-      <div className="flex items-center gap-1.5 text-[11px]">
+      <div className="flex items-center gap-1.5 text-2xs">
         <Sparkles className="w-3 h-3 text-circle-agent shrink-0" />
         <span className="font-medium text-circle-agent">Your agent suggests</span>
         <span className="text-muted-foreground">· only you can see this</span>
@@ -62,7 +62,7 @@ export function AgentSliceSuggestion({
         />
       )}
       <div className="flex items-center gap-2 justify-end">
-        {hint && <span className="mr-auto text-[11px] text-muted-foreground">{hint}</span>}
+        {hint && <span className="mr-auto text-2xs text-muted-foreground">{hint}</span>}
         <button
           type="button"
           onClick={() => void act(() => discardDraft(circleId, draft.draftId))}

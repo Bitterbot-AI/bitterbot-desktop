@@ -21,12 +21,12 @@ function AgentFilePanel({
         <div className="flex items-center gap-2">
           <span className="text-xs font-mono text-foreground">{file.name}</span>
           {file.missing && (
-            <span className="text-[10px] px-1 py-0.5 rounded bg-yellow-500/10 text-yellow-400">
+            <span className="text-badge px-1 py-0.5 rounded bg-yellow-500/10 text-yellow-400">
               missing
             </span>
           )}
           {file.size != null && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-badge text-muted-foreground">
               {file.size < 1024 ? `${file.size}B` : `${(file.size / 1024).toFixed(1)}KB`}
             </span>
           )}
@@ -112,7 +112,7 @@ function FilesSections({
           <h4 className="text-xs font-semibold text-[#a855f7] uppercase tracking-wider px-1 mb-2">
             Genome — Immutable Core
           </h4>
-          <p className="text-[10px] text-muted-foreground px-1 mb-2">
+          <p className="text-badge text-muted-foreground px-1 mb-2">
             Safety axioms, hormonal homeostasis baselines, phenotype constraints, and core values.
             This is your agent's DNA — it constrains how the Phenotype can evolve but never changes
             itself.
@@ -130,7 +130,7 @@ function FilesSections({
           <h4 className="text-xs font-semibold text-[#00D4E6] uppercase tracking-wider px-1 mb-2">
             Working Memory — Emergent Identity
           </h4>
-          <p className="text-[10px] text-muted-foreground px-1 mb-2">
+          <p className="text-badge text-muted-foreground px-1 mb-2">
             Dream-synthesized every cycle: The Phenotype (self-concept), The Bond (user model), The
             Niche (ecosystem role), Active Context, Crystal Pointers, Curiosity Gaps, Emerging
             Skills.
@@ -148,7 +148,7 @@ function FilesSections({
           <h4 className="text-xs font-semibold text-foreground/70 uppercase tracking-wider px-1 mb-2">
             Protocols — Operating Procedures
           </h4>
-          <p className="text-[10px] text-muted-foreground px-1 mb-2">
+          <p className="text-badge text-muted-foreground px-1 mb-2">
             Runtime behavior, memory conventions, safety rules, tools config. These govern what the
             agent does, not who it is.
           </p>
@@ -346,7 +346,7 @@ export function AgentsView() {
                     <span className="truncate">{agent.name ?? agent.id}</span>
                   </div>
                   {agent.isDefault && (
-                    <span className="text-[10px] text-purple-400/60">default</span>
+                    <span className="text-badge text-purple-400/60">default</span>
                   )}
                 </button>
               ))}

@@ -42,7 +42,7 @@ export function FileTabBar({
             }}
             className={cn(
               "group flex items-center gap-1.5 border-r border-zinc-800/30 transition-colors",
-              compact ? "px-2 py-1 text-[10px]" : "px-3 py-1.5 text-[11px]",
+              compact ? "px-2 py-1 text-badge" : "px-3 py-1.5 text-2xs",
               isActive
                 ? "bg-zinc-800/50 text-zinc-200 border-b-2 border-b-purple-500"
                 : "text-zinc-500 hover:bg-zinc-800/30 hover:text-zinc-300 border-b-2 border-b-transparent",

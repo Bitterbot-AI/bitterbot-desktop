@@ -29,12 +29,12 @@ export function ApprovalBanner({ message, onApprove, onDeny, onDismiss }: Approv
         <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <p className="text-xs text-amber-200 font-medium">Approval Required</p>
-          <p className="text-[11px] text-amber-200/70 mt-0.5 line-clamp-3">{message}</p>
+          <p className="text-2xs text-amber-200/70 mt-0.5 line-clamp-3">{message}</p>
           <div className="flex items-center gap-2 mt-2">
             <button
               onClick={onApprove}
               className={cn(
-                "px-3 py-1 rounded-md text-[11px] font-medium transition-colors",
+                "px-3 py-1 rounded-md text-2xs font-medium transition-colors",
                 "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/20",
               )}
             >
@@ -43,7 +43,7 @@ export function ApprovalBanner({ message, onApprove, onDeny, onDismiss }: Approv
             <button
               onClick={onDeny}
               className={cn(
-                "px-3 py-1 rounded-md text-[11px] font-medium transition-colors",
+                "px-3 py-1 rounded-md text-2xs font-medium transition-colors",
                 "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20",
               )}
             >

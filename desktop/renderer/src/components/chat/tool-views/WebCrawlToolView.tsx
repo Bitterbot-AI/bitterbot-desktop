@@ -46,7 +46,7 @@ export function WebCrawlToolView({ toolCall }: ToolViewProps) {
           />
           <div className="flex-1 min-w-0">
             <div className="text-xs text-zinc-300 font-medium truncate">{domain}</div>
-            <div className="text-[10px] text-zinc-500 font-mono truncate">{url}</div>
+            <div className="text-badge text-zinc-500 font-mono truncate">{url}</div>
           </div>
           <a
             href={url}
@@ -65,10 +65,10 @@ export function WebCrawlToolView({ toolCall }: ToolViewProps) {
         <div className="flex items-center gap-3 px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30">
           <div className="flex items-center gap-1.5">
             <FileText className="w-3 h-3 text-zinc-500" />
-            <span className="text-[10px] text-zinc-500">{stats.words.toLocaleString()} words</span>
+            <span className="text-badge text-zinc-500">{stats.words.toLocaleString()} words</span>
           </div>
-          <span className="text-[10px] text-zinc-600">{stats.chars.toLocaleString()} chars</span>
-          <span className="text-[10px] text-zinc-600">{stats.lines.toLocaleString()} lines</span>
+          <span className="text-badge text-zinc-600">{stats.chars.toLocaleString()} chars</span>
+          <span className="text-badge text-zinc-600">{stats.lines.toLocaleString()} lines</span>
           {/* Copy button */}
           <button
             onClick={handleCopy}

@@ -20,7 +20,7 @@ export function FileBreadcrumb({
 
   return (
     <Breadcrumb className="px-3 py-1.5 border-b border-zinc-800/30 bg-zinc-900/20">
-      <BreadcrumbList className="text-[11px] gap-1 flex-nowrap">
+      <BreadcrumbList className="text-2xs gap-1 flex-nowrap">
         {dirSegments.map((seg, i) => {
           const dirPath = segments.slice(0, i + 1).join("/");
           return (
@@ -36,9 +36,7 @@ export function FileBreadcrumb({
           );
         })}
         <BreadcrumbItem>
-          <BreadcrumbPage className="text-zinc-300 font-mono text-[11px]">
-            {fileName}
-          </BreadcrumbPage>
+          <BreadcrumbPage className="text-zinc-300 font-mono text-2xs">{fileName}</BreadcrumbPage>
         </BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>

@@ -97,11 +97,11 @@ export function ArtifactPanel({ onClose }: ArtifactPanelProps) {
         <span className="text-xs font-medium text-foreground truncate flex-1">
           {artifact.title}
         </span>
-        <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+        <span className="text-badge text-muted-foreground/60 uppercase tracking-wider">
           {artifact.type}
         </span>
         {artifact.version > 1 && (
-          <span className="text-[10px] text-muted-foreground/50">v{artifact.version}</span>
+          <span className="text-badge text-muted-foreground/50">v{artifact.version}</span>
         )}
       </div>
 
@@ -134,7 +134,7 @@ function ActionButton({
       onClick={onClick}
       title={label}
       className={cn(
-        "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] text-muted-foreground",
+        "flex items-center gap-1.5 px-2 py-1 rounded-md text-badge text-muted-foreground",
         "hover:bg-accent hover:text-foreground transition-colors",
       )}
     >

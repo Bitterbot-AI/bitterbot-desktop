@@ -39,7 +39,7 @@ export function ArtifactToolView({ toolCall }: ToolViewProps) {
         <div className="rounded-lg bg-zinc-900/40 border border-zinc-800/30 p-3 space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-foreground">{title}</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 px-1.5 py-0.5 rounded bg-zinc-800/50">
+            <span className="text-badge uppercase tracking-wider text-muted-foreground/60 px-1.5 py-0.5 rounded bg-zinc-800/50">
               {type}
             </span>
           </div>

@@ -153,7 +153,7 @@ export function ChatInput() {
         </div>
       </div>
 
-      <p className="text-[10px] text-muted-foreground/40 text-center mt-2">
+      <p className="text-badge text-muted-foreground/40 text-center mt-2">
         Press Enter to send, Shift+Enter for newline
       </p>
     </div>

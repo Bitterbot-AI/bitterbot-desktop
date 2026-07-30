@@ -192,15 +192,15 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
         <footer className="text-xs text-muted-foreground border-t border-border/40 pt-4 space-y-1">
           <p>
             Need to start the gateway?{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-[11px]">pnpm start gateway</code> or{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-[11px]">pnpm dev:all</code> (spawns
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm start gateway</code> or{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm dev:all</code> (spawns
             gateway + Control UI in one terminal).
           </p>
           <p>
             Don't have a token yet?{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-[11px]">pnpm bitterbot onboard</code>{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm bitterbot onboard</code>{" "}
             walks you through full setup and auto-generates{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-[11px]">desktop/.env</code>.
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">desktop/.env</code>.
           </p>
         </footer>
       </div>

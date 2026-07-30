@@ -1,5 +1,6 @@
 import { ShieldAlert } from "lucide-react";
 import { useState } from "react";
+import { truncatePubkey } from "../../lib/pubkey";
 import { memberName, useCirclesStore, type Circle } from "../../stores/circles-store";
 
 // PLAN-36 Phase D: fork-freeze recovery. A same-seq divergence in a member's
@@ -36,7 +37,7 @@ export function FrozenCircleBanner({ circle }: { circle: Circle }) {
   const who = evidence?.author_pubkey
     ? forkedMember
       ? memberName(forkedMember)
-      : `${evidence.author_pubkey.slice(0, 24)}…`
+      : truncatePubkey(evidence.author_pubkey, 24)
     : null;
 
   const doUnfreeze = async () => {

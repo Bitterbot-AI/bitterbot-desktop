@@ -43,7 +43,7 @@ export function GenericToolView({ toolCall }: ToolViewProps) {
         {/* Arguments as key-value table */}
         {hasArgs && (
           <div className="space-y-1.5">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
               Parameters
             </span>
             <div className="rounded-lg bg-zinc-900/40 border border-zinc-800/30 overflow-hidden">
@@ -61,7 +61,7 @@ export function GenericToolView({ toolCall }: ToolViewProps) {
         {/* Output */}
         {formattedOutput ? (
           <div className="space-y-1.5">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
               Output
             </span>
             {formattedOutput.isJson ? (
@@ -109,7 +109,7 @@ function ArgRow({ name, value }: { name: string; value: unknown }) {
         {isLong && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
+            className="ml-1 inline-flex items-center gap-0.5 text-badge text-purple-400 hover:text-purple-300 transition-colors"
           >
             {expanded ? (
               <>

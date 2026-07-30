@@ -104,7 +104,7 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
 
       {/* Summary */}
       {query.trim() && (
-        <div className="flex-shrink-0 px-3 py-1 text-[10px] text-zinc-500 border-b border-zinc-800/20">
+        <div className="flex-shrink-0 px-3 py-1 text-badge text-zinc-500 border-b border-zinc-800/20">
           {searchLoading ? (
             <span className="flex items-center gap-1">
               <Loader2 className="w-3 h-3 animate-spin" /> Searching...
@@ -125,8 +125,8 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
               {/* File header */}
               <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-900/40 sticky top-0">
                 <Icon className="w-3 h-3 text-blue-400/60 flex-shrink-0" />
-                <span className="text-[11px] font-mono text-zinc-400 truncate">{filePath}</span>
-                <span className="ml-auto text-[10px] text-zinc-600">{results.length}</span>
+                <span className="text-2xs font-mono text-zinc-400 truncate">{filePath}</span>
+                <span className="ml-auto text-badge text-zinc-600">{results.length}</span>
               </div>
               {/* Line results */}
               {results.map((r, i) => (
@@ -135,10 +135,10 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
                   onClick={() => openFile(filePath)}
                   className="w-full flex items-center gap-2 px-3 py-[3px] text-left hover:bg-[rgba(139,92,246,0.06)] transition-colors"
                 >
-                  <span className="text-[10px] text-zinc-600 w-8 text-right flex-shrink-0 font-mono">
+                  <span className="text-badge text-zinc-600 w-8 text-right flex-shrink-0 font-mono">
                     {r.line}
                   </span>
-                  <span className="text-[11px] text-zinc-400 font-mono truncate">{r.content}</span>
+                  <span className="text-2xs text-zinc-400 font-mono truncate">{r.content}</span>
                 </button>
               ))}
             </div>

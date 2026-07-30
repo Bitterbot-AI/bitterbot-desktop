@@ -78,7 +78,7 @@ export function DecisionCard({
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="p-3 pb-2">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
+        <div className="text-badge font-bold uppercase tracking-wide text-muted-foreground mb-1">
           Decision · {votes.length} of {circle.members.length} voted
         </div>
         <div className="text-sm font-semibold">{card.title}</div>
@@ -145,7 +145,7 @@ export function DecisionCard({
                 <span className="text-xs text-muted-foreground tabular-nums shrink-0">{count}</span>
               </div>
               {count > 0 && (
-                <div className="relative text-[11px] text-muted-foreground mt-0.5 pl-5 truncate">
+                <div className="relative text-2xs text-muted-foreground mt-0.5 pl-5 truncate">
                   {votersFor(opt).join(", ")}
                 </div>
               )}

@@ -147,7 +147,7 @@ export function CircleMessageList({
                   <span className="text-sm font-semibold text-muted-foreground">
                     {isSelf ? "You" : nameOf(m.authorPubkey)}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
+                  <span className="text-2xs text-muted-foreground">{fmtTime(m.createdAt)}</span>
                 </div>
                 <div className="text-sm italic text-muted-foreground">
                   {m.deletedByMe ? "hidden by you" : "message deleted"}
@@ -248,7 +248,7 @@ export function CircleMessageList({
             )}
             <div className="min-w-0 flex-1">
               {m.replyTo && (
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-0.5 min-w-0">
+                <div className="flex items-center gap-1.5 text-2xs text-muted-foreground mb-0.5 min-w-0">
                   <Reply className="w-3 h-3 shrink-0" />
                   {parent ? (
                     <>
@@ -282,21 +282,21 @@ export function CircleMessageList({
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-sm font-semibold">{name}</span>
                 {isAgent && (
-                  <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-agent-soft text-circle-agent">
+                  <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-agent-soft text-circle-agent">
                     agent
                   </span>
                 )}
                 {isSelf && !isAgent && (
-                  <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-you-soft text-circle-you">
+                  <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-you-soft text-circle-you">
                     you
                   </span>
                 )}
                 {m.kind !== "message" && (
-                  <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-muted text-muted-foreground">
+                  <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-muted text-muted-foreground">
                     {m.kind}
                   </span>
                 )}
-                <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
+                <span className="text-2xs text-muted-foreground">{fmtTime(m.createdAt)}</span>
                 {isPinned && (
                   <span title="Pinned for the circle" className="text-circle-you">
                     <Pin className="w-3 h-3" aria-label="pinned" />
@@ -368,7 +368,7 @@ export function CircleMessageList({
               {isSelf && m.deliveryStatus && m.deliveryStatus !== "delivered" && (
                 <span
                   className={cn(
-                    "inline-block mt-1 text-[10px] font-medium rounded px-1.5 py-0.5",
+                    "inline-block mt-1 text-badge font-medium rounded px-1.5 py-0.5",
                     m.deliveryStatus === "failed"
                       ? "bg-destructive/10 text-destructive"
                       : "bg-muted text-muted-foreground",

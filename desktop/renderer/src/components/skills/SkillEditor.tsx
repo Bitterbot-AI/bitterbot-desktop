@@ -437,7 +437,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
       <div className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-xl border border-border/30 bg-card shadow-2xl">
         <div className="flex items-center justify-between px-5 py-3 border-b border-border/20">
           <h2 className="text-lg font-semibold text-foreground">Create skill</h2>
-          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-3 text-2xs text-muted-foreground">
             {name && draftStatus === "restored" && (
               <span className="text-amber-300">Draft restored</span>
             )}
@@ -493,7 +493,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
                     onClick={() => applyTemplate(key)}
                     disabled={busy}
                     className={cn(
-                      "px-2 py-0.5 text-[11px] rounded border transition-colors",
+                      "px-2 py-0.5 text-2xs rounded border transition-colors",
                       key === templateKey
                         ? "bg-purple-500/15 border-purple-500/30 text-foreground"
                         : "border-border/30 text-muted-foreground hover:text-foreground",
@@ -526,7 +526,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
           </div>
           {!validation.ok && <div className="text-xs text-amber-300">{validation.message}</div>}
           {validation.ok && validation.warnings.length > 0 && (
-            <ul className="text-[11px] text-amber-300/80 list-disc list-inside space-y-0.5">
+            <ul className="text-2xs text-amber-300/80 list-disc list-inside space-y-0.5">
               {validation.warnings.map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
@@ -538,7 +538,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
               onClick={() => void runValidate()}
               disabled={busy || validateBusy}
               className={cn(
-                "px-2.5 py-1 text-[11px] rounded-md border transition-colors",
+                "px-2.5 py-1 text-2xs rounded-md border transition-colors",
                 "bg-card/50 text-muted-foreground border-border/30 hover:text-foreground",
                 (busy || validateBusy) && "opacity-50 cursor-not-allowed",
               )}
@@ -550,7 +550,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
               onClick={() => void publish()}
               disabled={busy || publishBusy || !validation.ok || !name.trim()}
               className={cn(
-                "px-2.5 py-1 text-[11px] rounded-md border transition-colors",
+                "px-2.5 py-1 text-2xs rounded-md border transition-colors",
                 "bg-card/50 text-muted-foreground border-border/30 hover:text-foreground",
                 (busy || publishBusy || !validation.ok || !name.trim()) &&
                   "opacity-50 cursor-not-allowed",
@@ -563,7 +563,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
               onClick={() => void upload()}
               disabled={busy || uploadBusy || !validation.ok || !name.trim()}
               className={cn(
-                "px-2.5 py-1 text-[11px] rounded-md border transition-colors",
+                "px-2.5 py-1 text-2xs rounded-md border transition-colors",
                 "bg-card/50 text-muted-foreground border-border/30 hover:text-foreground",
                 (busy || uploadBusy || !validation.ok || !name.trim()) &&
                   "opacity-50 cursor-not-allowed",
@@ -576,7 +576,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
 
           {validateResult && (
             <div className="space-y-1 rounded-md border border-border/20 bg-card/40 p-2">
-              <div className="text-[11px] text-muted-foreground flex items-center justify-between">
+              <div className="text-2xs text-muted-foreground flex items-center justify-between">
                 <span>
                   Validator:{" "}
                   <span className={validateResult.ok ? "text-green-300" : "text-red-300"}>
@@ -603,15 +603,15 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
                 </span>
                 <button
                   onClick={() => setValidateResult(null)}
-                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                  className="text-badge text-muted-foreground hover:text-foreground"
                 >
                   dismiss
                 </button>
               </div>
               {validateResult.diagnostics.length === 0 ? (
-                <div className="text-[11px] text-muted-foreground">No diagnostics.</div>
+                <div className="text-2xs text-muted-foreground">No diagnostics.</div>
               ) : (
-                <ul className="text-[11px] space-y-0.5">
+                <ul className="text-2xs space-y-0.5">
                   {validateResult.diagnostics.map((d, i) => (
                     <li
                       key={i}
@@ -636,7 +636,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
           {publishMessage && (
             <div
               className={cn(
-                "text-[11px]",
+                "text-2xs",
                 publishMessage.kind === "ok" ? "text-green-300" : "text-red-300",
               )}
             >
@@ -646,7 +646,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
           {uploadMessage && (
             <div
               className={cn(
-                "text-[11px]",
+                "text-2xs",
                 uploadMessage.kind === "ok" ? "text-green-300" : "text-red-300",
               )}
             >
@@ -655,7 +655,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
           )}
 
           {error && <div className="text-xs text-red-300">{error}</div>}
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Skills you create stay disabled until you toggle them on. Drafts are auto-saved per name
             to localStorage; saving the skill clears the draft.
           </p>

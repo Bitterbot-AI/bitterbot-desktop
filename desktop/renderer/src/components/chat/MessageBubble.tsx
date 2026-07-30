@@ -244,7 +244,7 @@ export const MessageBubble = memo(function MessageBubble({
                   key={tc.id ?? i}
                   onClick={() => handleChipClick(tc.id)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium",
+                    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-2xs font-medium",
                     "border transition-all cursor-pointer hover:scale-[1.02]",
                     isError
                       ? "bg-red-500/5 border-red-500/20 text-red-400 hover:bg-red-500/10"
@@ -279,7 +279,7 @@ export const MessageBubble = memo(function MessageBubble({
         {/* Timestamp */}
         <div
           className={cn(
-            "text-[10px] text-muted-foreground/50 mt-1 opacity-0 group-hover:opacity-100 transition-opacity",
+            "text-badge text-muted-foreground/50 mt-1 opacity-0 group-hover:opacity-100 transition-opacity",
             isUser ? "text-right" : "text-left",
           )}
         >

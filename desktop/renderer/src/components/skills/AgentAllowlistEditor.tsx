@@ -142,7 +142,7 @@ export function AgentAllowlistEditor({
               )}
             >
               <div className="font-medium">All skills</div>
-              <div className="text-[10px] opacity-80">No restriction (default)</div>
+              <div className="text-badge opacity-80">No restriction (default)</div>
             </button>
             <button
               onClick={() => setMode("allowlist")}
@@ -154,7 +154,7 @@ export function AgentAllowlistEditor({
               )}
             >
               <div className="font-medium">Custom allowlist</div>
-              <div className="text-[10px] opacity-80">
+              <div className="text-badge opacity-80">
                 {mode === "allowlist" ? `${allowed.size} selected` : "Pick specific skills"}
               </div>
             </button>
@@ -175,13 +175,13 @@ export function AgentAllowlistEditor({
             />
             <button
               onClick={setAll}
-              className="px-2 py-1 text-[11px] rounded border border-border/30 hover:text-foreground text-muted-foreground"
+              className="px-2 py-1 text-2xs rounded border border-border/30 hover:text-foreground text-muted-foreground"
             >
               Select all
             </button>
             <button
               onClick={setNone}
-              className="px-2 py-1 text-[11px] rounded border border-border/30 hover:text-foreground text-muted-foreground"
+              className="px-2 py-1 text-2xs rounded border border-border/30 hover:text-foreground text-muted-foreground"
             >
               Clear
             </button>
@@ -219,11 +219,11 @@ export function AgentAllowlistEditor({
                       <span className="flex-1 min-w-0">
                         <span className="text-sm text-foreground">{s.name}</span>
                         {s.description && (
-                          <span className="block text-[11px] text-muted-foreground line-clamp-1">
+                          <span className="block text-2xs text-muted-foreground line-clamp-1">
                             {s.description}
                           </span>
                         )}
-                        <span className="block text-[10px] font-mono text-muted-foreground/70">
+                        <span className="block text-badge font-mono text-muted-foreground/70">
                           {s.key}
                         </span>
                       </span>

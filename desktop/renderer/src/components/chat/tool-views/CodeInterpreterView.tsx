@@ -83,7 +83,7 @@ export function CodeInterpreterView({ toolCall }: ToolViewProps) {
         <span className="text-xs font-medium text-zinc-300">Code Interpreter</span>
         <span
           className={cn(
-            "text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded",
+            "text-badge uppercase tracking-wider px-1.5 py-0.5 rounded",
             language === "python"
               ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
               : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20",
@@ -95,19 +95,19 @@ export function CodeInterpreterView({ toolCall }: ToolViewProps) {
           {isRunning && !execResult && (
             <>
               <Loader2 className="w-3 h-3 text-emerald-400 animate-spin" />
-              <span className="text-[10px] text-emerald-400">Running</span>
+              <span className="text-badge text-emerald-400">Running</span>
             </>
           )}
           {execResult && !execResult.error && (
             <>
               <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              <span className="text-[10px] text-emerald-400">Completed</span>
+              <span className="text-badge text-emerald-400">Completed</span>
             </>
           )}
           {(isError || execResult?.error) && (
             <>
               <AlertCircle className="w-3 h-3 text-red-400" />
-              <span className="text-[10px] text-red-400">Error</span>
+              <span className="text-badge text-red-400">Error</span>
             </>
           )}
         </div>
@@ -118,7 +118,7 @@ export function CodeInterpreterView({ toolCall }: ToolViewProps) {
         <div className="border-b border-zinc-800/50">
           <div className="px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30 flex items-center gap-1.5">
             <Play className="w-3 h-3 text-muted-foreground/50" />
-            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+            <span className="text-badge text-muted-foreground/60 uppercase tracking-wider">
               Code
             </span>
           </div>
@@ -134,7 +134,7 @@ export function CodeInterpreterView({ toolCall }: ToolViewProps) {
         {(hasOutput || isRunning) && (
           <div className="border-b border-zinc-800/30">
             <div className="px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30">
-              <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+              <span className="text-badge text-muted-foreground/60 uppercase tracking-wider">
                 Output
               </span>
             </div>
@@ -167,7 +167,7 @@ export function CodeInterpreterView({ toolCall }: ToolViewProps) {
           <div>
             <div className="px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30 flex items-center gap-1.5">
               <Image className="w-3 h-3 text-muted-foreground/50" />
-              <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+              <span className="text-badge text-muted-foreground/60 uppercase tracking-wider">
                 Charts ({execResult.images.length})
               </span>
             </div>

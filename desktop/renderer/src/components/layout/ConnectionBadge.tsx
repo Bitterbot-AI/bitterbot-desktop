@@ -25,7 +25,7 @@ export function ConnectionBadge() {
   return (
     <div
       className={cn(
-        "flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] no-drag",
+        "flex items-center gap-1.5 px-2 py-0.5 rounded-full text-2xs no-drag",
         "bg-background/50 border border-border/30",
         statusConfig.textClass,
       )}

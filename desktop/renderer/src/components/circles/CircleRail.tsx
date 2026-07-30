@@ -68,7 +68,7 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
               aria-label={unread > 0 ? `${c.name}, ${unread} unread` : c.name}
               aria-current={active ? "true" : undefined}
               className={cn(
-                "w-10 h-10 grid place-items-center text-[13px] font-bold text-white transition-all",
+                "w-10 h-10 grid place-items-center text-sm font-bold text-white transition-all",
                 active
                   ? "rounded-[15px] ring-2 ring-circle-you ring-offset-2 ring-offset-muted/40"
                   : "rounded-[13px]",
@@ -80,7 +80,7 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
             </button>
 
             {unread > 0 && !active && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold grid place-items-center border-2 border-muted/40">
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-badge font-bold grid place-items-center border-2 border-muted/40">
                 {unread > 99 ? "99+" : unread}
               </span>
             )}
@@ -154,7 +154,7 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
                         aria-label="Circle name"
                         className="w-full rounded border bg-background/60 text-xs outline-none px-2 py-1"
                       />
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-badge text-muted-foreground">
                         Current members keep their own name for it; new invites use this one.
                       </p>
                       <div className="flex items-center gap-2 justify-end">

@@ -32,7 +32,7 @@ function DailyChart({ daily }: { daily: UsageResult["aggregates"]["daily"] }) {
                 title={`${day.date}: ${formatTokens(day.tokens)} tokens, ${formatCost(day.cost)}`}
               />
               {daily.length <= 14 && (
-                <span className="text-[8px] text-muted-foreground/40 mt-1 rotate-[-45deg] origin-top-left whitespace-nowrap">
+                <span className="text-3xs text-muted-foreground/40 mt-1 rotate-[-45deg] origin-top-left whitespace-nowrap">
                   {day.date.slice(5)}
                 </span>
               )}
@@ -91,7 +91,7 @@ function SessionList({ sessions }: { sessions: UsageResult["sessions"] }) {
                 {session.label ?? session.key}
               </span>
               {session.model && (
-                <span className="text-[10px] text-muted-foreground/60">{session.model}</span>
+                <span className="text-badge text-muted-foreground/60">{session.model}</span>
               )}
             </div>
             <div className="flex items-center gap-3 flex-shrink-0 text-xs">
@@ -230,7 +230,7 @@ export function UsageView() {
               key={String(label)}
               className="rounded-lg border border-border/10 bg-card/40 px-3 py-2"
             >
-              <p className="text-[10px] text-muted-foreground">{label}</p>
+              <p className="text-badge text-muted-foreground">{label}</p>
               <p className="text-sm font-medium text-foreground">{String(value)}</p>
             </div>
           ))}

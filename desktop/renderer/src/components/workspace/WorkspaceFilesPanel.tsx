@@ -44,7 +44,7 @@ function MiniTreeNode({
       <button
         onClick={() => (isDir ? onToggle(node.path) : onOpen(node.path))}
         className={cn(
-          "w-full flex items-center gap-1 py-[2px] px-1 text-left text-[11px] font-mono",
+          "w-full flex items-center gap-1 py-[2px] px-1 text-left text-2xs font-mono",
           "hover:bg-[rgba(139,92,246,0.06)] transition-colors",
           isActive && "bg-[rgba(139,92,246,0.12)] text-purple-300",
           !isActive && "text-zinc-400",
@@ -185,7 +185,7 @@ export function WorkspaceFilesPanel() {
             <>
               {/* Compact file header */}
               <div className="flex-shrink-0 flex items-center gap-2 px-2 py-1 border-b border-zinc-800/40 bg-zinc-900/40">
-                <span className="text-[10px] font-mono text-zinc-500 truncate flex-1">
+                <span className="text-badge font-mono text-zinc-500 truncate flex-1">
                   {activeTab.path}
                 </span>
                 <button

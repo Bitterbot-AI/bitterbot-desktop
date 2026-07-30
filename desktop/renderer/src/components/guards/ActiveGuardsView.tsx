@@ -177,14 +177,14 @@ export function ActiveGuardsView() {
               >
                 <div className="flex items-center gap-2">
                   <div className="font-medium">{skill}</div>
-                  <span className={cn("text-[10px] ml-auto", vl.tone)}>{vl.label}</span>
+                  <span className={cn("text-badge ml-auto", vl.tone)}>{vl.label}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <Stat label="fires" value={totalFires} />
                   <Stat label="success" value={totalSuccess} tone="text-emerald-400" />
                   <Stat label="failure" value={totalFailure} tone="text-red-400" />
                 </div>
-                <div className="text-[10px] text-muted-foreground space-y-0.5">
+                <div className="text-badge text-muted-foreground space-y-0.5">
                   {summaries.map((s) => (
                     <div key={s.interceptorId} className="flex items-center gap-2 font-mono">
                       <span>{s.interceptorId}</span>
@@ -206,8 +206,8 @@ export function ActiveGuardsView() {
                   className="rounded-xl border border-border/20 bg-card/40 p-3 space-y-1 opacity-70"
                 >
                   <div className="font-medium">{r.skill}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono">{r.id}</div>
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-badge text-muted-foreground font-mono">{r.id}</div>
+                  <div className="text-badge text-muted-foreground">
                     registered · no activations yet
                   </div>
                 </div>
@@ -290,13 +290,13 @@ export function ActiveGuardsView() {
                     {s.strikes} {s.strikes === 1 ? "strike" : "strikes"}
                   </span>
                   {s.disabled && (
-                    <span className="text-[10px] uppercase tracking-wider text-red-300">
+                    <span className="text-badge uppercase tracking-wider text-red-300">
                       disabled
                     </span>
                   )}
                 </div>
                 {s.lastFailureReason && (
-                  <div className="text-muted-foreground/80 font-mono text-[10px]">
+                  <div className="text-muted-foreground/80 font-mono text-badge">
                     {s.lastFailureReason}
                   </div>
                 )}
@@ -312,7 +312,7 @@ export function ActiveGuardsView() {
                     }
                   }}
                   className={cn(
-                    "px-2 py-1 text-[10px] rounded-md border",
+                    "px-2 py-1 text-badge rounded-md border",
                     "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
                     "border-purple-500/30",
                   )}
@@ -357,18 +357,18 @@ function CandidateCard({
     <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 space-y-2">
       <div className="flex items-center gap-2">
         <div className="font-semibold">{candidate.skill}</div>
-        <span className="text-[10px] uppercase tracking-wider text-purple-300 ml-auto">
+        <span className="text-badge uppercase tracking-wider text-purple-300 ml-auto">
           staged {stagedAt}
         </span>
       </div>
-      <pre className="whitespace-pre-wrap break-words text-[11px] text-muted-foreground font-mono leading-tight">
+      <pre className="whitespace-pre-wrap break-words text-2xs text-muted-foreground font-mono leading-tight">
         {expanded ? candidate.body : preview}
         {!expanded && candidate.body.split("\n").length > 25 ? "\n…" : ""}
       </pre>
       <div className="flex items-center gap-2 text-xs">
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="px-2 py-1 text-[11px] rounded-md border bg-card border-border/30 hover:bg-muted"
+          className="px-2 py-1 text-2xs rounded-md border bg-card border-border/30 hover:bg-muted"
         >
           {expanded ? "Hide" : "Show full SKILL.md"}
         </button>
@@ -399,7 +399,7 @@ function CandidateCard({
 function Stat({ label, value, tone }: { label: string; value: number; tone?: string }) {
   return (
     <div className="flex flex-col">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-badge uppercase tracking-wider text-muted-foreground">{label}</span>
       <span className={cn("font-mono tabular-nums text-sm", tone)}>{value}</span>
     </div>
   );

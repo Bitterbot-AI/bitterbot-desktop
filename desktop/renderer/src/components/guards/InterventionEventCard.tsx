@@ -56,7 +56,7 @@ export function InterventionEventCard({ event }: { event: InterventionFiredEvent
       )}
     >
       <div className="flex items-center gap-2">
-        <span className={cn("px-1.5 py-0.5 rounded text-[10px] border", typeClass)}>
+        <span className={cn("px-1.5 py-0.5 rounded text-badge border", typeClass)}>
           {typeLabel}
         </span>
         <span className="font-mono text-muted-foreground">{event.toolName}</span>
@@ -65,7 +65,7 @@ export function InterventionEventCard({ event }: { event: InterventionFiredEvent
       <div className="flex items-center gap-2">
         <span className="text-foreground">{event.skill}</span>
         <span className="text-muted-foreground/60">·</span>
-        <span className="text-muted-foreground font-mono text-[10px]">{event.interceptorId}</span>
+        <span className="text-muted-foreground font-mono text-badge">{event.interceptorId}</span>
         {typeof event.latencyMs === "number" && (
           <span className="ml-auto text-muted-foreground/60 tabular-nums">
             {event.latencyMs.toFixed(1)}ms

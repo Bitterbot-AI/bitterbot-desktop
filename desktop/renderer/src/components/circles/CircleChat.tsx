@@ -1,6 +1,7 @@
 import { Bell, Pin, Reply, Send, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
+import { truncatePubkey } from "../../lib/pubkey";
 import { cn } from "../../lib/utils";
 import {
   memberName,
@@ -169,13 +170,13 @@ export function CircleChat({ circle, selfPubkey }: Props) {
     <section className="flex-1 flex flex-col min-w-0">
       <header className="flex items-center justify-between gap-3 px-4 py-3 border-b">
         <div className="flex flex-col gap-0.5 min-w-0">
-          <span className="font-semibold text-[15px] truncate">{circle.name}</span>
+          <span className="font-semibold text-base truncate">{circle.name}</span>
           <span className="text-xs text-muted-foreground">
             {peerCount === 1 ? "1 friend" : `${peerCount} friends`}
             {circle.status !== "active" && ` · ${circle.status}`}
           </span>
         </div>
-        <span className="text-[11px] font-medium px-2 py-1 rounded-full border text-muted-foreground whitespace-nowrap">
+        <span className="text-2xs font-medium px-2 py-1 rounded-full border text-muted-foreground whitespace-nowrap">
           Agents: summon-only
         </span>
       </header>
@@ -337,7 +338,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
                 This invite is signed by your contact{" "}
                 <span className="font-medium">{joinPrompt.knownAs}</span>{" "}
                 <span className="font-mono text-muted-foreground">
-                  ({joinPrompt.inviterPubkey.slice(0, 20)}…)
+                  ({truncatePubkey(joinPrompt.inviterPubkey)})
                 </span>
                 .
               </>
@@ -347,7 +348,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
                   This invite is signed by someone you don&apos;t know
                 </span>{" "}
                 <span className="font-mono text-muted-foreground">
-                  ({joinPrompt.inviterPubkey.slice(0, 20)}…)
+                  ({truncatePubkey(joinPrompt.inviterPubkey)})
                 </span>
                 . The name &quot;{joinPrompt.inviterName ?? "unnamed"}&quot; is their own claim.
                 Only join circles from people you trust.

@@ -82,14 +82,14 @@ export function CommandToolView({ toolCall }: ToolViewProps) {
           <span className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
         </div>
         {sessionName && (
-          <span className="text-[10px] text-zinc-500 font-mono ml-2">{sessionName}</span>
+          <span className="text-badge text-zinc-500 font-mono ml-2">{sessionName}</span>
         )}
         <div className="ml-auto flex items-center gap-2">
           {/* Exit code badge */}
           {exitCode !== null && (
             <span
               className={cn(
-                "text-[10px] font-semibold px-1.5 py-0.5 rounded border",
+                "text-badge font-semibold px-1.5 py-0.5 rounded border",
                 exitCode === 0
                   ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                   : "bg-red-500/10 text-red-400 border-red-500/20",
@@ -98,7 +98,7 @@ export function CommandToolView({ toolCall }: ToolViewProps) {
               Exit {exitCode}
             </span>
           )}
-          <span className="text-[10px] text-zinc-500 font-mono">bash</span>
+          <span className="text-badge text-zinc-500 font-mono">bash</span>
         </div>
       </div>
 
@@ -142,7 +142,7 @@ export function CommandToolView({ toolCall }: ToolViewProps) {
       {totalLines > MAX_COLLAPSED_LINES && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center justify-center gap-1.5 px-3 py-1.5 border-t border-zinc-800/50 bg-zinc-900/40 text-[11px] text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800/40 transition-colors"
+          className="flex items-center justify-center gap-1.5 px-3 py-1.5 border-t border-zinc-800/50 bg-zinc-900/40 text-2xs text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800/40 transition-colors"
         >
           {expanded ? (
             <>

@@ -52,7 +52,7 @@ function StatusPill({
   };
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full px-2 py-px text-[10px] font-medium ${tones[tone]}`}
+      className={`inline-flex shrink-0 items-center rounded-full px-2 py-px text-badge font-medium ${tones[tone]}`}
       data-testid="card-status-pill"
     >
       {label}
@@ -160,7 +160,7 @@ export function CardLiveLayer({
   if (finished) {
     return (
       <div className="mt-2 border-t pt-1.5">
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-2xs text-muted-foreground">
           <StatusPill tone="done" label={pill.label} />
           <span>
             {who(session.closed?.byPubkey ?? "")} · {session.moves.length} contributions
@@ -175,7 +175,7 @@ export function CardLiveLayer({
 
   return (
     <div className="mt-2 space-y-2 border-t pt-2">
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
         <StatusPill tone={pill.tone} label={pill.label} />
         <span>{byline}</span>
         {session.lapsed.length > 0 && (
@@ -194,7 +194,7 @@ export function CardLiveLayer({
                 }`}
               />
               <div className="min-w-0">
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   <span className="font-medium text-foreground">{who(m.authorPubkey)}</span>
                   {m.agentAuthored && <span className="text-circle-agent">&apos;s agent</span>}
                 </div>
@@ -231,7 +231,7 @@ export function CardLiveLayer({
 
       {/* your own hands — always available, no agent required */}
       {composer === null ? (
-        <div className="flex items-center gap-3 text-[11px]">
+        <div className="flex items-center gap-3 text-2xs">
           <button
             type="button"
             onClick={() => setComposer("constraint")}
@@ -265,7 +265,7 @@ export function CardLiveLayer({
               type="button"
               disabled={busy || !text.trim()}
               onClick={() => void post(composer === "constraint" ? "constraint" : "option.add")}
-              className="rounded bg-circle-you px-2 py-0.5 text-[11px] font-semibold text-circle-you-fg"
+              className="rounded bg-circle-you px-2 py-0.5 text-2xs font-semibold text-circle-you-fg"
             >
               Add
             </button>
@@ -275,7 +275,7 @@ export function CardLiveLayer({
                 setComposer(null);
                 setText("");
               }}
-              className="text-[11px] text-muted-foreground"
+              className="text-2xs text-muted-foreground"
             >
               Cancel
             </button>
@@ -312,11 +312,11 @@ function OptionsTally({
             <span className={`min-w-0 flex-1 truncate ${agreed ? "font-semibold" : ""}`}>
               {o.label}
             </span>
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {voters.length > 0 ? voters.map(who).join(" · ") : ""}
             </span>
             {mine ? (
-              <span className="shrink-0 text-[11px] font-medium text-emerald-600">
+              <span className="shrink-0 text-2xs font-medium text-emerald-600">
                 <Check className="inline h-3 w-3" /> you
               </span>
             ) : (
@@ -325,7 +325,7 @@ function OptionsTally({
                   type="button"
                   disabled={busy}
                   onClick={() => onVote?.(o.optionId)}
-                  className="shrink-0 rounded border border-emerald-600 px-2 py-0.5 text-[11px] font-medium text-emerald-600"
+                  className="shrink-0 rounded border border-emerald-600 px-2 py-0.5 text-2xs font-medium text-emerald-600"
                 >
                   Vote
                 </button>

@@ -43,13 +43,13 @@ function NodeCard({ node }: { node: NodeEntry }) {
               {node.commands.slice(0, 10).map((cmd) => (
                 <span
                   key={cmd}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 font-mono"
+                  className="text-badge px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 font-mono"
                 >
                   {cmd}
                 </span>
               ))}
               {node.commands.length > 10 && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-badge text-muted-foreground">
                   +{node.commands.length - 10} more
                 </span>
               )}
@@ -60,7 +60,7 @@ function NodeCard({ node }: { node: NodeEntry }) {
               {node.caps.map((cap) => (
                 <span
                   key={cap}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono"
+                  className="text-badge px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono"
                 >
                   {cap}
                 </span>

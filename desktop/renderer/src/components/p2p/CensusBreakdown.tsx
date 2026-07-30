@@ -32,9 +32,9 @@ export function CensusBreakdown({
         <h3 className="text-sm font-medium text-foreground mb-1">Network Census</h3>
         <p className="text-xs text-muted-foreground/80">
           No bootnode census received yet. Subscribe a bootnode running with
-          <code className="mx-1 px-1 rounded bg-muted/50 text-[11px]">--bootnode-mode</code>
+          <code className="mx-1 px-1 rounded bg-muted/50 text-2xs">--bootnode-mode</code>
           and snapshots will arrive over{" "}
-          <span className="font-mono text-[11px]">bitterbot/census/v1</span>.
+          <span className="font-mono text-2xs">bitterbot/census/v1</span>.
         </p>
       </div>
     );
@@ -107,7 +107,7 @@ function DistributionPanel({
         })}
       </ul>
       {(source || generatedAt) && (
-        <div className="mt-3 pt-2 border-t border-border/20 flex items-center justify-between text-[10px] text-muted-foreground/60">
+        <div className="mt-3 pt-2 border-t border-border/20 flex items-center justify-between text-badge text-muted-foreground/60">
           {source ? (
             <span className="font-mono truncate max-w-[180px]" title={source}>
               {abbreviate(source)}

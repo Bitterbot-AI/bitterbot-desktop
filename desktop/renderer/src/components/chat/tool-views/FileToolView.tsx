@@ -139,7 +139,7 @@ export function FileToolView({ toolCall }: ToolViewProps) {
       <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/60 border-b border-zinc-800/50">
         <Icon className={cn("w-3.5 h-3.5", iconColor)} />
         <span className="text-xs font-medium text-zinc-300">{label}</span>
-        {langDisplay && <span className="text-[10px] text-zinc-500 ml-auto">{langDisplay}</span>}
+        {langDisplay && <span className="text-badge text-zinc-500 ml-auto">{langDisplay}</span>}
         {/* Copy button */}
         {output && (
           <button
@@ -154,7 +154,7 @@ export function FileToolView({ toolCall }: ToolViewProps) {
 
       {/* File path */}
       {filePath && (
-        <div className="px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30 font-mono text-[11px] text-zinc-400 truncate">
+        <div className="px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30 font-mono text-2xs text-zinc-400 truncate">
           {filePath}
         </div>
       )}

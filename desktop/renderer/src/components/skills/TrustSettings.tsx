@@ -275,7 +275,7 @@ function Row({
     <div className="flex items-start justify-between gap-3">
       <div className="flex-1 min-w-0">
         <div className="text-xs text-foreground">{label}</div>
-        {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
+        {hint && <div className="text-2xs text-muted-foreground">{hint}</div>}
       </div>
       <div className="flex-shrink-0">{children}</div>
     </div>

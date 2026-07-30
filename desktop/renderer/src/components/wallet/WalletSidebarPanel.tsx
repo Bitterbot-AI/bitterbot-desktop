@@ -101,13 +101,13 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
       {/* Section header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-[#00D4E6]">
+          <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6]">
             WALLET
           </div>
           {network && (
             <span
               className={cn(
-                "text-[9px] font-medium px-1.5 py-0.5 rounded-full",
+                "text-3xs font-medium px-1.5 py-0.5 rounded-full",
                 network === "base"
                   ? "bg-emerald-500/15 text-emerald-400"
                   : "bg-amber-500/15 text-amber-400",
@@ -135,8 +135,8 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
 
       {error ? (
         <div className="flex items-center justify-between px-2 py-1">
-          <span className="text-[11px] text-[var(--sidebar-text-muted)]">USDC</span>
-          <span className="text-[12px] font-medium tabular-nums text-emerald-400">$0.00</span>
+          <span className="text-2xs text-[var(--sidebar-text-muted)]">USDC</span>
+          <span className="text-xs font-medium tabular-nums text-emerald-400">$0.00</span>
         </div>
       ) : (
         <>
@@ -150,7 +150,7 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
               className="group flex items-center gap-1.5 w-full px-2 py-1 rounded-md hover:bg-[var(--sidebar-hover)] transition-colors mb-1.5"
               title={`Copy: ${address}`}
             >
-              <span className="text-[11px] font-mono text-[var(--sidebar-text-secondary)]">
+              <span className="text-2xs font-mono text-[var(--sidebar-text-secondary)]">
                 {truncateAddress(address)}
               </span>
               <Copy className="w-3 h-3 text-[var(--sidebar-text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -164,10 +164,10 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
                 key={bal.token}
                 className="flex items-center justify-between px-2 py-1 rounded-md"
               >
-                <span className="text-[11px] text-[var(--sidebar-text-muted)]">{bal.token}</span>
+                <span className="text-2xs text-[var(--sidebar-text-muted)]">{bal.token}</span>
                 <span
                   className={cn(
-                    "text-[12px] font-medium tabular-nums",
+                    "text-xs font-medium tabular-nums",
                     parseFloat(bal.balance) > 0
                       ? "text-emerald-400"
                       : "text-[var(--sidebar-text-secondary)]",
@@ -179,20 +179,18 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
             ))}
             {balances.length === 0 && !loading && (
               <div className="flex items-center justify-between px-2 py-1 rounded-md">
-                <span className="text-[11px] text-[var(--sidebar-text-muted)]">USDC</span>
-                <span className="text-[12px] font-medium tabular-nums text-emerald-400">$0.00</span>
+                <span className="text-2xs text-[var(--sidebar-text-muted)]">USDC</span>
+                <span className="text-xs font-medium tabular-nums text-emerald-400">$0.00</span>
               </div>
             )}
             {loading && (
-              <div className="text-[11px] text-[var(--sidebar-text-muted)] px-2 py-1">
-                Loading...
-              </div>
+              <div className="text-2xs text-[var(--sidebar-text-muted)] px-2 py-1">Loading...</div>
             )}
           </div>
 
           {/* "Open wallet" affordance — the whole panel is clickable, this
               just makes the affordance visible. */}
-          <div className="flex items-center gap-1 mt-2 px-2 py-1 text-[10px] text-purple-400">
+          <div className="flex items-center gap-1 mt-2 px-2 py-1 text-badge text-purple-400">
             <span>Open wallet</span>
             <ExternalLink className="w-2.5 h-2.5" />
           </div>

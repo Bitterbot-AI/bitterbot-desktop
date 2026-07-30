@@ -43,7 +43,7 @@ export function ProjectSwitcher() {
       <button
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors",
+          "flex items-center gap-1.5 px-2 py-1 rounded-md text-2xs transition-colors",
           activeProject
             ? "text-purple-400 bg-purple-500/10 border border-purple-500/20"
             : "text-muted-foreground hover:bg-accent",

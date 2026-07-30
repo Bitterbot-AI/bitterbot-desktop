@@ -75,19 +75,19 @@ function TaskNode({ task, depth = 0 }: { task: CoworkTask; depth?: number }) {
           </span>
 
           {task.reasoning && (
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5 line-clamp-2">
+            <p className="text-badge text-muted-foreground/60 mt-0.5 line-clamp-2">
               {task.reasoning}
             </p>
           )}
 
           {task.error && (
-            <p className="text-[10px] text-red-400/80 mt-0.5 line-clamp-2">{task.error}</p>
+            <p className="text-badge text-red-400/80 mt-0.5 line-clamp-2">{task.error}</p>
           )}
         </div>
 
         {/* Duration */}
         {task.startedAt && task.endedAt && (
-          <span className="text-[10px] text-muted-foreground/40 flex-shrink-0 mt-0.5">
+          <span className="text-badge text-muted-foreground/40 flex-shrink-0 mt-0.5">
             {formatDuration(task.endedAt - task.startedAt)}
           </span>
         )}

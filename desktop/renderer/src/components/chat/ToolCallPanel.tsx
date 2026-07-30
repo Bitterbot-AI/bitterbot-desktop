@@ -216,7 +216,7 @@ export function ToolCallPanel() {
       <div className="flex-shrink-0 border-b border-border/30">
         {/* Branding */}
         <div className="px-3 pt-2 pb-0.5">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+          <span className="text-badge font-semibold uppercase tracking-widest text-muted-foreground/50">
             BitterBot&apos;s Computer
           </span>
         </div>
@@ -348,7 +348,7 @@ export function ToolCallPanel() {
                   />
                 </div>
 
-                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-1 text-badge text-muted-foreground">
                   <CheckCircle className="w-3 h-3 text-emerald-400/70" />
                   <span>{completedCount}</span>
                 </div>
@@ -404,14 +404,14 @@ function StatusButton({
       return (
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[10px] font-medium text-emerald-400">Live</span>
+          <span className="text-badge font-medium text-emerald-400">Live</span>
         </div>
       );
     }
     return (
       <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-500/10 border border-zinc-500/20">
         <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-        <span className="text-[10px] font-medium text-zinc-400">Latest</span>
+        <span className="text-badge font-medium text-zinc-400">Latest</span>
       </div>
     );
   }
@@ -433,7 +433,7 @@ function StatusButton({
         )}
       />
       <span
-        className={cn("text-[10px] font-medium", isRunning ? "text-emerald-400" : "text-blue-400")}
+        className={cn("text-badge font-medium", isRunning ? "text-emerald-400" : "text-blue-400")}
       >
         {isRunning ? "Jump to Live" : "Jump to Latest"}
       </span>
@@ -582,14 +582,14 @@ function ToolHeader({ toolCall }: { toolCall: ActiveToolCall }) {
       <div className="flex-1 min-w-0">
         <span className="text-xs font-medium text-foreground">{displayName}</span>
         {subtitle && (
-          <div className="text-[10px] text-muted-foreground/70 font-mono truncate mt-0.5">
+          <div className="text-badge text-muted-foreground/70 font-mono truncate mt-0.5">
             {subtitle}
           </div>
         )}
       </div>
       <span
         className={cn(
-          "flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full flex-shrink-0",
+          "flex items-center gap-1 text-badge uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full flex-shrink-0",
           toolCall.status === "running"
             ? "bg-emerald-500/10 text-emerald-400"
             : toolCall.status === "error"
@@ -624,13 +624,13 @@ function ToolFooter({ toolCall }: { toolCall: ActiveToolCall }) {
         {badges.map((badge, i) => (
           <span
             key={i}
-            className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border", badge.color)}
+            className={cn("text-badge font-medium px-1.5 py-0.5 rounded border", badge.color)}
           >
             {badge.label}
           </span>
         ))}
       </div>
-      <span className="text-[10px] text-muted-foreground/60">{time}</span>
+      <span className="text-badge text-muted-foreground/60">{time}</span>
     </div>
   );
 }

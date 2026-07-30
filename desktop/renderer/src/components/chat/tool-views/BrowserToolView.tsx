@@ -86,12 +86,10 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
       {/* URL bar */}
       <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 border-b border-zinc-700/30">
         <Globe className="w-3 h-3 text-zinc-500 flex-shrink-0" />
-        <div className="flex-1 text-[11px] font-mono text-zinc-400 truncate">
+        <div className="flex-1 text-2xs font-mono text-zinc-400 truncate">
           {url ?? "about:blank"}
         </div>
-        {url && (
-          <span className="text-[9px] text-zinc-600 flex-shrink-0">{extractDomain(url)}</span>
-        )}
+        {url && <span className="text-3xs text-zinc-600 flex-shrink-0">{extractDomain(url)}</span>}
       </div>
 
       {/* Progress bar */}
@@ -112,7 +110,7 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
         <div className="absolute top-[90px] right-3 z-10">
           <div
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium shadow-lg backdrop-blur-sm",
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-badge font-medium shadow-lg backdrop-blur-sm",
               isRunning
                 ? "bg-blue-500/15 text-blue-400 border border-blue-500/20"
                 : isError

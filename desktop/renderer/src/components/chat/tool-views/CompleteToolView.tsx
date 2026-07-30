@@ -84,7 +84,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         </div>
         <span
           className={cn(
-            "text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full",
+            "text-badge uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full",
             isRunning
               ? "bg-amber-500/10 text-amber-400"
               : isError
@@ -117,7 +117,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         {/* Summary */}
         {summary && (
           <div className="space-y-1.5">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
               Summary
             </span>
             <div className="rounded-lg bg-zinc-900/50 border border-zinc-800/30 p-3">
@@ -131,7 +131,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         {/* Tasks Completed */}
         {tasksCompleted.length > 0 && (
           <div className="space-y-1.5">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
               Tasks Completed
             </span>
             <div className="rounded-lg bg-zinc-900/50 border border-zinc-800/30 p-3 space-y-2">
@@ -148,7 +148,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         {/* Attachments */}
         {attachments.length > 0 && (
           <div className="space-y-1.5">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
               Attachments
             </span>
             <div className="space-y-1.5">
@@ -162,7 +162,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
                     <FileText className="w-4 h-4 text-blue-400 flex-shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm text-zinc-300 font-medium truncate">{fileName}</div>
-                      <div className="text-[10px] text-zinc-500 font-mono truncate">{filePath}</div>
+                      <div className="text-badge text-zinc-500 font-mono truncate">{filePath}</div>
                     </div>
                   </div>
                 );
@@ -187,7 +187,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
       <div className="flex items-center justify-between px-4 py-2 border-t border-border/20 flex-shrink-0">
         <span
           className={cn(
-            "text-[10px] font-medium px-2 py-0.5 rounded-full border",
+            "text-badge font-medium px-2 py-0.5 rounded-full border",
             isError
               ? "bg-red-500/10 text-red-400 border-red-500/20"
               : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -196,7 +196,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
           Task Completion
         </span>
         {toolCall.timestamp && (
-          <span className="text-[10px] text-muted-foreground/60">
+          <span className="text-badge text-muted-foreground/60">
             {new Date(toolCall.timestamp).toLocaleTimeString(undefined, {
               hour: "2-digit",
               minute: "2-digit",

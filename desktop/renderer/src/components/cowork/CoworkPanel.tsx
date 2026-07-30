@@ -35,13 +35,13 @@ export function CoworkPanel() {
           {taskCount} task{taskCount !== 1 ? "s" : ""}
         </span>
         {runningCount > 0 && (
-          <span className="flex items-center gap-1 text-[10px] text-blue-400">
+          <span className="flex items-center gap-1 text-badge text-blue-400">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
             {runningCount} running
           </span>
         )}
         {completedCount > 0 && (
-          <span className="text-[10px] text-emerald-400/70">{completedCount} done</span>
+          <span className="text-badge text-emerald-400/70">{completedCount} done</span>
         )}
       </div>
 

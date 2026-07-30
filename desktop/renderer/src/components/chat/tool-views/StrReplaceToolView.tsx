@@ -57,13 +57,13 @@ export function StrReplaceToolView({ toolCall }: ToolViewProps) {
         {/* Diff stats */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {stats.additions > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+            <span className="flex items-center gap-0.5 text-badge font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
               <Plus className="w-2.5 h-2.5" />
               {stats.additions}
             </span>
           )}
           {stats.deletions > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] font-semibold text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">
+            <span className="flex items-center gap-0.5 text-badge font-semibold text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">
               <Minus className="w-2.5 h-2.5" />
               {stats.deletions}
             </span>
@@ -101,7 +101,7 @@ export function StrReplaceToolView({ toolCall }: ToolViewProps) {
 
       {/* File path */}
       {filePath && (
-        <div className="px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30 font-mono text-[11px] text-zinc-400 truncate">
+        <div className="px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30 font-mono text-2xs text-zinc-400 truncate">
           {filePath}
         </div>
       )}
@@ -124,7 +124,7 @@ export function StrReplaceToolView({ toolCall }: ToolViewProps) {
 
 function UnifiedDiff({ lines }: { lines: DiffLine[] }) {
   return (
-    <div className="font-mono text-[11px] leading-[1.5]">
+    <div className="font-mono text-2xs leading-[1.5]">
       {lines.map((line, i) => (
         <div
           key={i}
@@ -207,7 +207,7 @@ function SplitDiff({ lines }: { lines: DiffLine[] }) {
   }
 
   return (
-    <div className="flex font-mono text-[11px] leading-[1.5]">
+    <div className="flex font-mono text-2xs leading-[1.5]">
       {/* Left (old) */}
       <div className="flex-1 border-r border-zinc-800/50">
         {leftLines.map((line, i) => (

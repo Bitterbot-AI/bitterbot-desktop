@@ -70,7 +70,7 @@ export function FileEditor({
       {/* Line numbers */}
       <div
         ref={lineNumbersRef}
-        className="flex-shrink-0 py-3 pl-2 pr-1 select-none text-right font-mono text-[11px] leading-[1.45] text-zinc-600 overflow-hidden"
+        className="flex-shrink-0 py-3 pl-2 pr-1 select-none text-right font-mono text-2xs leading-[1.45] text-zinc-600 overflow-hidden"
       >
         {Array.from({ length: actualLineCount }, (_, i) => (
           <div key={i}>{i + 1}</div>
@@ -84,7 +84,7 @@ export function FileEditor({
         onScroll={handleScroll}
         onKeyDown={handleKeyDown}
         spellCheck={false}
-        className="flex-1 py-3 pr-3 pl-1 font-mono text-[11px] leading-[1.45] text-zinc-300 bg-transparent border-none outline-none resize-none whitespace-pre overflow-auto caret-purple-400"
+        className="flex-1 py-3 pr-3 pl-1 font-mono text-2xs leading-[1.45] text-zinc-300 bg-transparent border-none outline-none resize-none whitespace-pre overflow-auto caret-purple-400"
       />
     </div>
   );

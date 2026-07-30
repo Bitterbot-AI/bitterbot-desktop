@@ -144,10 +144,10 @@ export function CircleMembers({ circle }: { circle: Circle }) {
         const isEditing = editing === m.memberPubkey;
         return (
           <div key={m.memberPubkey} className="group flex flex-col gap-1">
-            <div className="flex items-center gap-2.5 text-[13px]">
+            <div className="flex items-center gap-2.5 text-sm">
               <div className="relative shrink-0">
                 <div
-                  className="w-6 h-6 rounded-lg grid place-items-center text-[11px] font-bold text-white"
+                  className="w-6 h-6 rounded-lg grid place-items-center text-2xs font-bold text-white"
                   style={{ background: m.isSelf ? "#3a5bd9" : "#0f9d68" }}
                 >
                   {initials(name)}
@@ -165,7 +165,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                 <div className="flex items-center gap-1.5">
                   <span className="font-semibold truncate">{name}</span>
                   {m.role === "creator" && (
-                    <span className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-muted text-muted-foreground shrink-0">
+                    <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-muted text-muted-foreground shrink-0">
                       creator
                     </span>
                   )}
@@ -180,18 +180,18 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                 </div>
                 {/* Your own row: the name friends are introduced to you by. */}
                 {m.isSelf && (
-                  <span className="text-[11px] text-muted-foreground truncate">
+                  <span className="text-2xs text-muted-foreground truncate">
                     friends see you as {selfName ?? "…"}
                   </span>
                 )}
                 {/* If you renamed them, show their own name underneath. */}
                 {!m.isSelf && m.petname && m.displayName && (
-                  <span className="text-[11px] text-muted-foreground truncate">
+                  <span className="text-2xs text-muted-foreground truncate">
                     they call themselves {m.displayName}
                   </span>
                 )}
                 {!m.isSelf && !m.petname && (
-                  <span className="text-[11px] text-muted-foreground">the name they chose</span>
+                  <span className="text-2xs text-muted-foreground">the name they chose</span>
                 )}
               </div>
               {/* Mockup pin 3: the roster answers "who and what can hear
@@ -203,7 +203,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                       ? "What your agent can do in this circle"
                       : "What their node last reported — a self-report, not something this node can verify"
                   }
-                  className="ml-auto text-[11px] text-muted-foreground shrink-0"
+                  className="ml-auto text-2xs text-muted-foreground shrink-0"
                 >
                   agent: <span className="font-medium">{m.agentPosture}</span>
                 </span>
@@ -272,7 +272,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
             )}
 
             {removable && confirmingRemove === m.memberPubkey && (
-              <div className="ml-8 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-[11px] space-y-1.5">
+              <div className="ml-8 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-2xs space-y-1.5">
                 <p className="text-muted-foreground">
                   Remove <span className="font-medium text-foreground">{name}</span>? Their writes
                   stop reaching this node. This only affects{" "}

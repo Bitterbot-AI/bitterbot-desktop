@@ -70,18 +70,18 @@ export function PeerMap({ connectedPeers }: PeerMapProps) {
           strokeWidth="2"
           style={{ animationDuration: "2s" }}
         />
-        <text x={150} y={130} textAnchor="middle" className="fill-muted-foreground text-[10px]">
+        <text x={150} y={130} textAnchor="middle" className="fill-muted-foreground text-badge">
           You
         </text>
 
         {connectedPeers === 0 && (
-          <text x={150} y={105} textAnchor="middle" className="fill-muted-foreground text-[11px]">
+          <text x={150} y={105} textAnchor="middle" className="fill-muted-foreground text-2xs">
             No peers connected
           </text>
         )}
 
         {connectedPeers > 24 && (
-          <text x={150} y={190} textAnchor="middle" className="fill-muted-foreground text-[10px]">
+          <text x={150} y={190} textAnchor="middle" className="fill-muted-foreground text-badge">
             +{connectedPeers - 24} more peers
           </text>
         )}

@@ -45,7 +45,7 @@ export function ArtifactChip({ artifactId }: ArtifactChipProps) {
     <button
       onClick={handleClick}
       className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium",
+        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-2xs font-medium",
         "border transition-all cursor-pointer hover:scale-[1.02]",
         "bg-blue-500/5 border-blue-500/20 text-blue-400 hover:bg-blue-500/10",
       )}
@@ -53,7 +53,7 @@ export function ArtifactChip({ artifactId }: ArtifactChipProps) {
       <Icon className="w-3 h-3 flex-shrink-0" />
       <span className="truncate max-w-[200px]">{artifact.title}</span>
       <span className="text-muted-foreground/40">|</span>
-      <span className="text-muted-foreground/70 text-[10px] font-normal uppercase">
+      <span className="text-muted-foreground/70 text-badge font-normal uppercase">
         {artifact.type}
       </span>
     </button>

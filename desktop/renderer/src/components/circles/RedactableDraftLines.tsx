@@ -36,7 +36,7 @@ export function RedactableDraftLines({
                 type="button"
                 onClick={() => onToggle(i)}
                 className={cn(
-                  "shrink-0 text-[11px] rounded border px-1.5 py-0.5",
+                  "shrink-0 text-2xs rounded border px-1.5 py-0.5",
                   off
                     ? "text-circle-you border-circle-you/50"
                     : "text-muted-foreground border-border hover:text-foreground",

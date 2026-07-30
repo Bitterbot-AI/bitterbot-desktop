@@ -192,7 +192,7 @@ export function CircleCanvas({
           here. Not a per-card act, not a mode — a standing choice, stated in
           plain words. */}
       {circle.status === "active" && (
-        <label className="flex items-center gap-2 px-3 py-1.5 border-b text-[11px] text-muted-foreground cursor-pointer">
+        <label className="flex items-center gap-2 px-3 py-1.5 border-b text-2xs text-muted-foreground cursor-pointer">
           <input
             type="checkbox"
             checked={sandbox?.participation?.mode === "propose"}
@@ -414,11 +414,11 @@ export function CircleCanvas({
                 className={`relative rounded-lg border bg-card p-3${focusRing(card.cardId)}`}
               >
                 {actions}
-                <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
+                <div className="text-badge font-bold uppercase tracking-wide text-muted-foreground mb-1">
                   Decision
                 </div>
                 <div className="text-sm font-semibold pr-6">{card.title}</div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <div className="mt-1 flex items-center gap-1.5 text-2xs text-muted-foreground">
                   <span className="font-medium">
                     {nameFor(circle, card.authorPubkey, selfPubkey)}
                   </span>
@@ -460,7 +460,7 @@ export function CircleCanvas({
                   </div>
                 )
               )}
-              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <div className="mt-2 flex items-center gap-1.5 text-2xs text-muted-foreground">
                 <span className="font-medium">
                   {nameFor(circle, card.authorPubkey, selfPubkey)}
                 </span>

@@ -57,7 +57,7 @@ export function StudyLens({
     <div className="mt-2 rounded-md border border-border border-l-2 border-l-circle-agent bg-card px-2.5 py-2">
       <div className="flex items-center gap-2 mb-1.5">
         <GraduationCap className="w-3.5 h-3.5 text-circle-agent" />
-        <span className="text-[10px] font-bold uppercase tracking-wide text-circle-agent flex-1">
+        <span className="text-badge font-bold uppercase tracking-wide text-circle-agent flex-1">
           Your study lens — private, never posted
         </span>
         <button
@@ -83,7 +83,7 @@ export function StudyLens({
                       type="button"
                       onClick={() => answer(q.n, q.slot, true)}
                       aria-label={`Got question ${q.n} right`}
-                      className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-circle-you-soft text-circle-you inline-flex items-center gap-0.5"
+                      className="text-2xs font-medium rounded px-1.5 py-0.5 bg-circle-you-soft text-circle-you inline-flex items-center gap-0.5"
                     >
                       <Check className="w-3 h-3" /> Got it
                     </button>
@@ -91,7 +91,7 @@ export function StudyLens({
                       type="button"
                       onClick={() => answer(q.n, q.slot, false)}
                       aria-label={`Missed question ${q.n}`}
-                      className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-muted text-muted-foreground inline-flex items-center gap-0.5"
+                      className="text-2xs font-medium rounded px-1.5 py-0.5 bg-muted text-muted-foreground inline-flex items-center gap-0.5"
                     >
                       <X className="w-3 h-3" /> Missed
                     </button>
@@ -101,8 +101,8 @@ export function StudyLens({
                   <span
                     className={
                       answered === "correct"
-                        ? "ml-2 text-[11px] font-medium text-circle-you"
-                        : "ml-2 text-[11px] font-medium text-amber-600 dark:text-amber-500"
+                        ? "ml-2 text-2xs font-medium text-circle-you"
+                        : "ml-2 text-2xs font-medium text-amber-600 dark:text-amber-500"
                     }
                   >
                     {answered === "correct" ? "✓ recorded" : "✗ scheduled for review"}

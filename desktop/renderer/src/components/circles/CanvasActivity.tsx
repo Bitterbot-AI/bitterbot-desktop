@@ -38,7 +38,7 @@ function CardChip({ title, cardId }: { title: string; cardId: string }) {
       type="button"
       onClick={() => setFocusCard(cardId)}
       title="Show this card on the canvas"
-      className="inline-flex max-w-40 items-center rounded border bg-muted/60 px-1.5 py-px text-[10px] font-medium text-foreground align-baseline truncate hover:bg-muted"
+      className="inline-flex max-w-40 items-center rounded border bg-muted/60 px-1.5 py-px text-badge font-medium text-foreground align-baseline truncate hover:bg-muted"
     >
       {title || "card"}
     </button>
@@ -107,9 +107,9 @@ export function CanvasLiveStrip({
       {proposals.map((p) => (
         <div
           key={p.draftId}
-          className="rounded-lg border border-circle-agent/40 bg-circle-agent-soft/40 px-3 py-2"
+          className="motion-enter-conversation rounded-lg border border-circle-agent/40 bg-circle-agent-soft/40 px-3 py-2"
         >
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-circle-agent">
+          <div className="flex items-center gap-1.5 text-badge font-bold uppercase tracking-wide text-circle-agent">
             <Sparkles className="h-3 w-3" />
             Your agent suggests
             <CardChip title={titleOf(p.targetCardId ?? "")} cardId={p.targetCardId ?? ""} />
@@ -122,7 +122,7 @@ export function CanvasLiveStrip({
               onClick={() =>
                 void run(() => store.publishDraft(circle.circleId, p.draftId, p.content))
               }
-              className="rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white"
+              className="rounded bg-emerald-600 px-2 py-0.5 text-2xs font-semibold text-white"
             >
               Add it
             </button>
@@ -130,12 +130,12 @@ export function CanvasLiveStrip({
               type="button"
               disabled={busy}
               onClick={() => void run(() => store.discardDraft(circle.circleId, p.draftId))}
-              className="rounded border px-2 py-0.5 text-[11px]"
+              className="rounded border px-2 py-0.5 text-2xs"
             >
               <X className="mr-0.5 inline h-3 w-3" />
               No
             </button>
-            <span className="ml-auto text-[10px] text-muted-foreground">
+            <span className="ml-auto text-badge text-muted-foreground">
               nothing posts without you
             </span>
           </div>
@@ -146,7 +146,7 @@ export function CanvasLiveStrip({
       {agreements.map((s) => (
         <div
           key={`agree-${s.cardId}`}
-          className="flex items-center gap-2 rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-3 py-1.5"
+          className="motion-enter-conversation flex items-center gap-2 rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-3 py-1.5"
         >
           <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
           <span className="min-w-0">
@@ -158,7 +158,7 @@ export function CanvasLiveStrip({
             type="button"
             disabled={busy}
             onClick={() => void run(() => store.closeSandbox(circle.circleId, s.cardId, "done"))}
-            className="ml-auto shrink-0 rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white"
+            className="ml-auto shrink-0 rounded bg-emerald-600 px-2 py-0.5 text-2xs font-semibold text-white"
           >
             Lock it in
           </button>
@@ -167,7 +167,7 @@ export function CanvasLiveStrip({
 
       {/* §3.1: a stop is never quiet — the reason is the detector's, verbatim. */}
       {paused && part?.pauseReason && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-1.5">
+        <div className="motion-enter-conversation flex items-center gap-2 rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-1.5">
           <span className="min-w-0">
             <b className="text-amber-700">Your agent paused.</b> {part.pauseReason}
           </span>
@@ -178,7 +178,7 @@ export function CanvasLiveStrip({
               onClick={() =>
                 void run(() => store.setCanvasParticipation(circle.circleId, "propose"))
               }
-              className="ml-auto shrink-0 rounded bg-amber-600 px-2 py-0.5 text-[11px] font-semibold text-white"
+              className="ml-auto shrink-0 rounded bg-amber-600 px-2 py-0.5 text-2xs font-semibold text-white"
             >
               Give it more turns
             </button>
@@ -187,7 +187,7 @@ export function CanvasLiveStrip({
               type="button"
               disabled={busy}
               onClick={() => void run(() => store.resumeSandbox(circle.circleId))}
-              className="ml-auto shrink-0 rounded border border-amber-600 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+              className="ml-auto shrink-0 rounded border border-amber-600 px-2 py-0.5 text-2xs font-medium text-amber-700"
             >
               Resume
             </button>
@@ -199,21 +199,21 @@ export function CanvasLiveStrip({
       {thinkingIds.map((id) => (
         <div
           key={`think-${id}`}
-          className="flex items-center gap-1.5 px-1 text-[11px] text-circle-agent"
+          className="flex items-center gap-1.5 px-1 text-2xs text-circle-agent"
         >
           <Sparkles className="h-3 w-3 animate-pulse" />
           Your agent is thinking on <CardChip title={titleOf(id)} cardId={id} />…
         </div>
       ))}
       {lapses.map((s) => (
-        <div key={`lapse-${s.cardId}`} className="px-1 text-[11px] italic text-muted-foreground">
+        <div key={`lapse-${s.cardId}`} className="px-1 text-2xs italic text-muted-foreground">
           {s.lapsed.map(who).join(", ")} passed on{" "}
           <CardChip title={titleOf(s.cardId)} cardId={s.cardId} /> (no answer in time
           {s.passesAt !== null && `; next pass at ${atTime(s.passesAt)}`})
         </div>
       ))}
       {stalls.map((s) => (
-        <div key={`stall-${s.cardId}`} className="px-1 text-[11px] text-amber-600">
+        <div key={`stall-${s.cardId}`} className="px-1 text-2xs text-amber-600">
           {s.noProgressAuthors.map(who).join(", ")} repeated{" "}
           {s.noProgressAuthors.length === 1 ? "itself" : "themselves"} on{" "}
           <CardChip title={titleOf(s.cardId)} cardId={s.cardId} /> — nothing new is being added
@@ -222,7 +222,7 @@ export function CanvasLiveStrip({
       {recentRemovals.map((r) => (
         <div
           key={`rm-${r.cardId}`}
-          className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground"
+          className="flex items-center gap-2 px-1 text-2xs text-muted-foreground"
         >
           <span className="min-w-0 truncate">
             {who(r.removedBy)} removed “{r.title || "a card"}” · {atTime(r.removedAt)}
