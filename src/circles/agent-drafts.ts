@@ -31,6 +31,7 @@ import {
   parseProposalSlot,
   SANDBOX_DRAFT_KIND,
 } from "./sandbox-agent.js";
+import { recordSandboxTokenSpend } from "./sandbox.js";
 import { buildMasterySummary, parseSections } from "./study.js";
 
 const log = createSubsystemLogger("circles/agent-drafts");
@@ -619,6 +620,18 @@ export async function generateQueuedAgentDrafts(
         .trim()
         .slice(0, MAX_DRAFT_CHARS);
       if (!text) throw new Error("empty draft");
+      // M3: the token meter finally gets fed. The DraftLlmCall interface
+      // returns text only (provider usage never crosses it), so spend is a
+      // conservative chars/4 ESTIMATE over prompt + response — the budget
+      // binds on the estimate, which is the property M3 needs (a runaway
+      // cannot spend unbounded tokens while tokens_used sits at 0). Recorded
+      // even if the later status write fails: the model call is the spend.
+      if (row.kind === SANDBOX_DRAFT_KIND) {
+        recordSandboxTokenSpend(db, {
+          circleId: row.circle_id,
+          tokens: Math.ceil((prompt.length + text.length) / 4),
+        });
+      }
       setAgentDraftStatus(db, row.draft_id, "ready", { content: text, now: Date.now() });
       generated += 1;
     } catch (err) {

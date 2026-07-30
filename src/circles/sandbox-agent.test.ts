@@ -216,6 +216,30 @@ describe("sandbox agent loop (service + real handlers)", () => {
     expect(mineOnCard()).toHaveLength(1);
   });
 
+  it("M3: generation feeds the token meter, and the token budget binds", async () => {
+    await putCard();
+    await service.setCanvasParticipation({ circleId, mode: "propose" });
+    await letPartnerLead();
+    sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW });
+    await generateQueuedAgentDrafts(db, async () => "Victor is free June 19-26.", {
+      selfPubkey: service.pubkey,
+    });
+    // The meter moved: spend is a conservative chars/4 estimate over
+    // prompt + response, recorded at the moment of the model call.
+    const spent = getSandboxParticipation(db, circleId)?.tokensUsed ?? 0;
+    expect(spent).toBeGreaterThan(0);
+
+    // And it BINDS: an exhausted token budget removes the circle from the
+    // spendable set, and the sweep pauses it naming the right budget.
+    db.prepare(
+      `UPDATE circle_sandbox_participation SET tokens_used = token_budget WHERE circle_id = ?`,
+    ).run(circleId);
+    expect(sweepSandboxTurns(db, { selfPubkey: service.pubkey, now: NOW }).queued).toBe(0);
+    const part = getSandboxParticipation(db, circleId);
+    expect(part?.pausedAt).not.toBeNull();
+    expect(part?.pauseReason).toMatch(/token/i);
+  });
+
   it("a draft for a deleted card dies legibly at the tap and is discarded, not retried (§3.2.9)", async () => {
     await putCard();
     await service.setCanvasParticipation({ circleId, mode: "propose" });

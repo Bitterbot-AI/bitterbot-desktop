@@ -95,7 +95,7 @@
     "ios:gen": "cd apps/ios && xcodegen generate",
     "ios:open": "cd apps/ios && xcodegen generate && open Bitterbot.xcodeproj",
     "ios:run": "bash -lc 'cd apps/ios && xcodegen generate && xcodebuild -project Bitterbot.xcodeproj -scheme Bitterbot -destination \"${IOS_DEST:-platform=iOS Simulator,name=iPhone 17}\" -configuration Debug build && xcrun simctl boot \"${IOS_SIM:-iPhone 17}\" || true && xcrun simctl launch booted ai.bitterbot.ios'",
-    "lint": "oxlint --type-aware && node desktop/scripts/check-px-text.mjs && node desktop/scripts/check-pubkey-truncation.mjs && node desktop/scripts/check-file-sizes.mjs",
+    "lint": "oxlint --type-aware && node desktop/scripts/check-px-text.mjs && node desktop/scripts/check-pubkey-truncation.mjs && node desktop/scripts/check-file-sizes.mjs && node scripts/check-memory-circle-isolation.mjs",
     "lint:all": "pnpm lint && pnpm lint:swift",
     "lint:docs": "pnpm dlx markdownlint-cli2",
     "lint:docs:fix": "pnpm dlx markdownlint-cli2 --fix",
