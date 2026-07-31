@@ -134,6 +134,16 @@ export const ChannelsLogoutParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const ChannelsUpdateParamsSchema = Type.Object(
+  {
+    channel: NonEmptyString,
+    accountId: Type.Optional(Type.String()),
+    /** Enable or disable the account; the gateway stops/starts it in-process. */
+    enabled: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
 export const WebLoginStartParamsSchema = Type.Object(
   {
     force: Type.Optional(Type.Boolean()),

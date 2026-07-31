@@ -1,3 +1,4 @@
+import type { BitterbotConfig } from "../../config/config.js";
 import type { ChannelOnboardingAdapter } from "./onboarding-types.js";
 import type {
   ChannelAuthAdapter,
@@ -18,6 +19,7 @@ import type {
 import type {
   ChannelAgentTool,
   ChannelAgentToolFactory,
+  ChannelAvailability,
   ChannelCapabilities,
   ChannelId,
   ChannelAgentPromptAdapter,
@@ -55,6 +57,14 @@ export type ChannelPlugin<ResolvedAccount = any, Probe = unknown, Audit = unknow
     };
   };
   reload?: { configPrefixes: string[]; noopPrefixes?: string[] };
+  /**
+   * Optional gateway-host capability probe (required binaries, OS services).
+   * Runs in addition to the static meta.platforms check; both must pass for
+   * the channel to be offered as enable-able in UIs.
+   */
+  availability?: (params: {
+    cfg: BitterbotConfig;
+  }) => Promise<ChannelAvailability> | ChannelAvailability;
   // CLI onboarding wizard hooks for this channel.
   onboarding?: ChannelOnboardingAdapter;
   config: ChannelConfigAdapter<ResolvedAccount>;

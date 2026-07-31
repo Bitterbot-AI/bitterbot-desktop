@@ -71,6 +71,16 @@ export type ChannelHeartbeatDeps = {
   hasActiveWebListener?: () => boolean;
 };
 
+/**
+ * Result of a channel's host capability check. `available: false` means the
+ * GATEWAY host (not the browser viewing the Control UI) cannot run this
+ * channel; `reason` is user-facing copy explaining why.
+ */
+export type ChannelAvailability = {
+  available: boolean;
+  reason?: string;
+};
+
 export type ChannelMeta = {
   id: ChannelId;
   label: string;
@@ -79,6 +89,11 @@ export type ChannelMeta = {
   docsLabel?: string;
   blurb: string;
   order?: number;
+  /**
+   * Platforms (process.platform of the gateway host) the channel can run on.
+   * Omit for channels that work everywhere. Example: iMessage => ["darwin"].
+   */
+  platforms?: Array<"darwin" | "linux" | "win32">;
   aliases?: string[];
   selectionDocsPrefix?: string;
   selectionDocsOmitLabel?: boolean;

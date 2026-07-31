@@ -59,6 +59,7 @@ import type {
 } from "./agents-models-skills.js";
 import type {
   ChannelsLogoutParamsSchema,
+  ChannelsUpdateParamsSchema,
   TalkConfigParamsSchema,
   TalkConfigResultSchema,
   ChannelsStatusParamsSchema,
@@ -201,6 +202,7 @@ export type TalkConfigResult = Static<typeof TalkConfigResultSchema>;
 export type ChannelsStatusParams = Static<typeof ChannelsStatusParamsSchema>;
 export type ChannelsStatusResult = Static<typeof ChannelsStatusResultSchema>;
 export type ChannelsLogoutParams = Static<typeof ChannelsLogoutParamsSchema>;
+export type ChannelsUpdateParams = Static<typeof ChannelsUpdateParamsSchema>;
 export type WebLoginStartParams = Static<typeof WebLoginStartParamsSchema>;
 export type WebLoginWaitParams = Static<typeof WebLoginWaitParamsSchema>;
 export type AgentSummary = Static<typeof AgentSummarySchema>;

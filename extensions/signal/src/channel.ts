@@ -6,6 +6,7 @@ import {
   createDefaultChannelRuntimeState,
   DEFAULT_ACCOUNT_ID,
   deleteAccountFromConfigSection,
+  detectBinary,
   formatPairingApproveHint,
   getChatChannelMeta,
   listSignalAccountIds,
@@ -65,6 +66,23 @@ export const signalPlugin: ChannelPlugin<ResolvedSignalAccount> = {
     blockStreamingCoalesceDefaults: { minChars: 1500, idleMs: 1000 },
   },
   reload: { configPrefixes: ["channels.signal"] },
+  availability: async ({ cfg }) => {
+    // An external signal-cli daemon (httpUrl) needs no local binary.
+    const hasExternalDaemon = listSignalAccountIds(cfg).some((accountId) =>
+      Boolean(resolveSignalAccount({ cfg, accountId }).config.httpUrl?.trim()),
+    );
+    if (hasExternalDaemon) {
+      return { available: true };
+    }
+    const cliPath = cfg.channels?.signal?.cliPath?.trim() || "signal-cli";
+    const found = await detectBinary(cliPath);
+    return found
+      ? { available: true }
+      : {
+          available: false,
+          reason: `signal-cli not found on the gateway host (looked for "${cliPath}"). Install it or set channels.signal.cliPath.`,
+        };
+  },
   configSchema: buildChannelConfigSchema(SignalConfigSchema),
   config: {
     listAccountIds: (cfg) => listSignalAccountIds(cfg),

@@ -5,6 +5,7 @@ const BASE_METHODS = [
   "logs.tail",
   "channels.status",
   "channels.logout",
+  "channels.update",
   "status",
   "usage.status",
   "usage.cost",

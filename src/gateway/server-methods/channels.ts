@@ -10,7 +10,7 @@ import {
   normalizeChannelId,
 } from "../../channels/plugins/index.js";
 import { buildChannelAccountSnapshot } from "../../channels/plugins/status.js";
-import { loadConfig, readConfigFileSnapshot } from "../../config/config.js";
+import { loadConfig, readConfigFileSnapshot, writeConfigFile } from "../../config/config.js";
 import { getChannelActivity } from "../../infra/channel-activity.js";
 import { DEFAULT_ACCOUNT_ID } from "../../routing/session-key.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -20,8 +20,56 @@ import {
   formatValidationErrors,
   validateChannelsLogoutParams,
   validateChannelsStatusParams,
+  validateChannelsUpdateParams,
 } from "../protocol/index.js";
 import { formatForLog } from "../ws-log.js";
+
+export type ChannelCapabilityInfo = {
+  /** False when the gateway host cannot run this channel at all. */
+  supported: boolean;
+  /** User-facing copy: why the channel is unavailable on this host. */
+  reason?: string;
+  /** Static platform requirement from the plugin meta, when declared. */
+  platforms?: string[];
+};
+
+/**
+ * Host capability check per channel: static meta.platforms first (checked
+ * against the GATEWAY host's process.platform - remote Control UIs run on a
+ * different OS than the gateway), then the plugin's availability() probe
+ * (binaries like signal-cli). UIs render unsupported channels greyed with
+ * the reason rather than hiding them.
+ */
+export async function buildChannelCapabilities(params: {
+  plugins: ChannelPlugin[];
+  cfg: BitterbotConfig;
+}): Promise<Record<string, ChannelCapabilityInfo>> {
+  const result: Record<string, ChannelCapabilityInfo> = {};
+  for (const plugin of params.plugins) {
+    const platforms = plugin.meta.platforms;
+    let supported = true;
+    let reason: string | undefined;
+    if (platforms && !platforms.includes(process.platform as never)) {
+      supported = false;
+      reason = `Requires a ${platforms.join(" or ")} gateway host (this gateway runs on ${process.platform}).`;
+    } else if (plugin.availability) {
+      try {
+        const availability = await plugin.availability({ cfg: params.cfg });
+        supported = availability.available;
+        reason = availability.reason;
+      } catch (err) {
+        supported = false;
+        reason = `Availability check failed: ${formatForLog(err)}`;
+      }
+    }
+    result[plugin.id] = {
+      supported,
+      ...(reason ? { reason } : {}),
+      ...(platforms ? { platforms } : {}),
+    };
+  }
+  return result;
+}
 
 type ChannelLogoutPayload = {
   channel: ChannelId;
@@ -201,6 +249,7 @@ export const channelsHandlers: GatewayRequestHandlers = {
       channelDetailLabels: uiCatalog.detailLabels,
       channelSystemImages: uiCatalog.systemImages,
       channelMeta: uiCatalog.entries,
+      channelCapabilities: await buildChannelCapabilities({ plugins, cfg }),
       channels: {} as Record<string, unknown>,
       channelAccounts: {} as Record<string, unknown>,
       channelDefaultAccountId: {} as Record<string, unknown>,
@@ -233,6 +282,79 @@ export const channelsHandlers: GatewayRequestHandlers = {
     }
 
     respond(true, payload, undefined);
+  },
+  "channels.update": async ({ params, respond, context }) => {
+    if (!validateChannelsUpdateParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid channels.update params: ${formatValidationErrors(validateChannelsUpdateParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const channelId = normalizeChannelId(params.channel);
+    if (!channelId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "invalid channels.update channel"),
+      );
+      return;
+    }
+    const plugin = getChannelPlugin(channelId);
+    if (!plugin?.config.setAccountEnabled) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `channel ${channelId} does not support enable/disable`,
+        ),
+      );
+      return;
+    }
+    const snapshot = await readConfigFileSnapshot();
+    if (!snapshot.valid) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "config invalid; fix it before toggling channels"),
+      );
+      return;
+    }
+    const cfg = snapshot.config ?? {};
+    const accountId =
+      params.accountId?.trim() ||
+      plugin.config.defaultAccountId?.(cfg) ||
+      plugin.config.listAccountIds(cfg)[0] ||
+      DEFAULT_ACCOUNT_ID;
+    const enabled = params.enabled;
+    try {
+      const next = plugin.config.setAccountEnabled({ cfg, accountId, enabled });
+      await writeConfigFile(next);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatForLog(err)));
+      return;
+    }
+    // Drive the lifecycle explicitly instead of relying on the config
+    // watcher: some channels (WhatsApp) declare their config prefix as a
+    // noop, so a config write alone would leave the runtime unchanged.
+    let runtime = enabled ? "started" : "stopped";
+    try {
+      if (enabled) {
+        await context.startChannel(channelId, accountId);
+      } else {
+        await context.stopChannel(channelId, accountId);
+      }
+    } catch (err) {
+      // Config write succeeded; report the runtime hiccup honestly instead
+      // of failing the toggle (the channel may simply not be configured yet).
+      runtime = `error: ${formatForLog(err)}`;
+    }
+    respond(true, { ok: true, channel: channelId, accountId, enabled, runtime }, undefined);
   },
   "channels.logout": async ({ params, respond, context }) => {
     if (!validateChannelsLogoutParams(params)) {

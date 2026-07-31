@@ -368,6 +368,7 @@ export {
   resolveSignalAccount,
   type ResolvedSignalAccount,
 } from "../signal/accounts.js";
+export { detectBinary } from "../commands/onboard-helpers.js";
 export { signalOnboardingAdapter } from "../channels/plugins/onboarding/signal.js";
 export {
   looksLikeSignalTargetId,

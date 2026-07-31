@@ -67,6 +67,7 @@ you revoke it with `bitterbot devices revoke --device <id> --role <role>`. See
 - Models & Keys panel (Settings group): change the node default model (`models.setDefault`, applies next turn, no restart), see per-provider credential status including which source wins (profile vs env var vs config) and cooldown warnings (`models.auth.list`), test a key live before saving (`models.auth.test`), and add/rotate/delete keys (`models.auth.set`, `models.auth.delete`). Secrets are write-only: the UI never receives stored key material back.
 - Stream tool calls + live tool output cards in Chat (agent events)
 - Channels: WhatsApp/Telegram/Discord/Slack + plugin channels (Mattermost, etc.) status + QR login + per-channel config (`channels.status`, `web.login.*`, `config.patch`)
+- Channels on/off mid-session (`channels.update`): each account row has an enable/disable switch; the gateway flips the config flag and stops/starts just that account in-process - no gateway restart, other channels untouched. Channels the gateway host cannot run (wrong OS, missing binary like signal-cli) render greyed with the reason ("Requires a darwin gateway host...") via the `channelCapabilities` block in `channels.status`. Note the capability check reflects the GATEWAY host's OS, not the machine running the browser.
 - Instances: presence list + refresh (`system-presence`)
 - Sessions: list + per-session thinking/verbose overrides (`sessions.list`, `sessions.patch`)
 - Cron jobs: list/add/run/enable/disable + run history (`cron.*`)
