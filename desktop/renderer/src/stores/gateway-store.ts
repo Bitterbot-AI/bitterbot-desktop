@@ -16,7 +16,10 @@ const recentErrorKeys = new Map<string, number>();
 
 // Capability probes: methods whose FAILURE is a signal the caller interprets
 // (e.g. "this is not a management node"), never a user-facing error.
-const QUIET_PROBE_METHODS = new Set(["management.health"]);
+// sessions.resolve: the ModelPicker resolves the chat session key on every
+// mount; a brand-new session legitimately has no store entry yet and the
+// caller falls back to defaults, so "No session found" is not an error.
+const QUIET_PROBE_METHODS = new Set(["management.health", "sessions.resolve"]);
 
 // Version skew is a normal fleet condition: an edge node's UI (Vite, latest)
 // can be newer than its gateway binary, so a polled RPC the gateway doesn't

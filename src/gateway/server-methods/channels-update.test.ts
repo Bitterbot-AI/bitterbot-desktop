@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getChannelPlugin } from "../../channels/plugins/index.js";
 import { readConfigFileSnapshot, writeConfigFile } from "../../config/config.js";
-import { buildChannelCapabilities, channelsHandlers } from "./channels.js";
+import {
+  __resetChannelCapabilityCacheForTest,
+  buildChannelCapabilities,
+  channelsHandlers,
+} from "./channels.js";
 
 vi.mock("../../channels/plugins/index.js", () => ({
   getChannelPlugin: vi.fn(),
@@ -60,6 +64,7 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ valid: true, config: {} } as never);
   vi.mocked(writeConfigFile).mockClear();
+  __resetChannelCapabilityCacheForTest();
 });
 
 describe("channels.update", () => {

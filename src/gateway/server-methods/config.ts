@@ -28,7 +28,11 @@ import {
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
 import { loadBitterbotPlugins } from "../../plugins/loader.js";
-import { buildGatewayReloadPlan, diffConfigPaths } from "../config-reload.js";
+import {
+  buildGatewayReloadPlan,
+  diffConfigPaths,
+  resolveGatewayReloadSettings,
+} from "../config-reload.js";
 import {
   ErrorCodes,
   errorShape,
@@ -358,7 +362,13 @@ export const configHandlers: GatewayRequestHandlers = {
     // unconditional restart here was the Control UI's biggest footgun.
     const changedPaths = diffConfigPaths(snapshot.config, validated.config);
     const plan = buildGatewayReloadPlan(changedPaths);
-    if (!plan.restartGateway) {
+    const reloadSettings = resolveGatewayReloadSettings(validated.config);
+    // Hot actions are only actually applied by the watcher in hot/hybrid
+    // mode; with mode off/restart, claiming a hot reload would be a lie, so
+    // fall through to the legacy restart path unless nothing needs applying.
+    const watcherAppliesHot = reloadSettings.mode === "hot" || reloadSettings.mode === "hybrid";
+    const skipRestart = !plan.restartGateway && (plan.hotReasons.length === 0 || watcherAppliesHot);
+    if (skipRestart) {
       respond(
         true,
         {
@@ -370,6 +380,11 @@ export const configHandlers: GatewayRequestHandlers = {
             mode: plan.hotReasons.length > 0 ? "hot" : "none",
             changedPaths,
             hotReasons: plan.hotReasons,
+            // Paths under a channel's noopPrefix take no runtime action by
+            // design (e.g. channels.whatsapp.*): the channel reads config
+            // live or is lifecycle-managed via channels.update. Surfaced so
+            // callers never mistake "no action needed" for "applied".
+            noopPaths: plan.noopPaths,
           },
         },
         undefined,

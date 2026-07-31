@@ -111,6 +111,63 @@ describe("startSignalLinkQr / waitForSignalLinkQr", () => {
     expect(wait.message).toContain("Start one first");
   });
 
+  it("a stale wait or failed start never clobbers a newer link for the same account", async () => {
+    const childA = new FakeChild();
+    const childB = new FakeChild();
+    const children = [childA, childB];
+    const spawnFn = vi.fn(() => children.shift() as never);
+
+    // Start A and begin waiting on it.
+    const startA = startSignalLinkQr({ accountId: "default", cliPath: "signal-cli", spawnFn });
+    childA.stdout.emit("data", Buffer.from("sgnl://linkdevice?uuid=aaa\n"));
+    await startA;
+    const waitA = waitForSignalLinkQr({ accountId: "default" });
+
+    // User restarts the flow: A's QR is stale from the map's perspective
+    // only after we force-replace; simulate by resetting freshness via a
+    // second start after killing A (start kills the existing child).
+    resetSignalLinkForTest();
+
+    const startB = startSignalLinkQr({ accountId: "default", cliPath: "signal-cli", spawnFn });
+    childB.stdout.emit("data", Buffer.from("sgnl://linkdevice?uuid=bbb\n"));
+    await startB;
+
+    // A dies now; the pending waitA settles but must NOT delete B's entry.
+    childA.emitExit(1);
+    await waitA;
+
+    const waitB = waitForSignalLinkQr({ accountId: "default" });
+    childB.stdout.emit("data", Buffer.from("Associated with: +15550001111\n"));
+    childB.emitExit(0);
+    const result = await waitB;
+    expect(result.connected).toBe(true);
+  });
+
+  it("redacts URI-shaped credentials from failure diagnostics", async () => {
+    const child = new FakeChild();
+    const start = await startSignalLinkQr({
+      accountId: "default",
+      cliPath: "signal-cli",
+      uriTimeoutMs: 20,
+      spawnFn: () => child as never,
+    });
+    // No URI matched our patterns, but stderr contained something URI-shaped:
+    // it must not be echoed back verbatim.
+    child.stderr.emit("data", Buffer.from("mystery://linkdevice?secret=abc\n"));
+    const start2 = await startSignalLinkQr({
+      accountId: "default",
+      cliPath: "signal-cli",
+      uriTimeoutMs: 20,
+      spawnFn: () => {
+        const c = new FakeChild();
+        setTimeout(() => c.stderr.emit("data", Buffer.from("mystery2://dev?tok=xyz\n")), 5);
+        return c as never;
+      },
+    });
+    expect(start.message).toContain("did not produce a linking URI");
+    expect(start2.message).not.toContain("tok=xyz");
+  });
+
   it("reuses a fresh pending link's QR instead of respawning", async () => {
     const child = new FakeChild();
     const spawnFn = vi.fn(() => child as never);

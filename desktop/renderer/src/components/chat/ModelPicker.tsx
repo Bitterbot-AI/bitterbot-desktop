@@ -26,6 +26,7 @@ export function ModelPicker() {
   const status = useGatewayStore((s) => s.status);
   const hello = useGatewayStore((s) => s.hello);
   const catalog = useModelsStore((s) => s.catalog);
+  const catalogLoading = useModelsStore((s) => s.catalogLoading);
   const loadCatalog = useModelsStore((s) => s.loadCatalog);
   const loadSessionModel = useModelsStore((s) => s.loadSessionModel);
   const setSessionModel = useModelsStore((s) => s.setSessionModel);
@@ -98,7 +99,11 @@ export function ModelPicker() {
           <CommandInput placeholder="Search models…" />
           <CommandList>
             <CommandEmpty>
-              {catalog.length === 0 ? "Loading catalog…" : "No models match."}
+              {catalog.length > 0
+                ? "No models match."
+                : catalogLoading
+                  ? "Loading catalog…"
+                  : "Catalog unavailable - close and reopen to retry."}
             </CommandEmpty>
             {current?.overridden && (
               <>

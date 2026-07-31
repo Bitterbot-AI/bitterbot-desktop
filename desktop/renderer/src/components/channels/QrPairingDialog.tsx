@@ -9,6 +9,7 @@ interface QrPairingDialogProps {
   onOpenChange: (open: boolean) => void;
   channelId: string;
   label: string;
+  accountId?: string;
   onLinked?: () => void;
 }
 
@@ -24,6 +25,7 @@ export function QrPairingDialog({
   onOpenChange,
   channelId,
   label,
+  accountId,
   onLinked,
 }: QrPairingDialogProps) {
   const request = useGatewayStore((s) => s.request);
@@ -31,6 +33,11 @@ export function QrPairingDialog({
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const runRef = useRef(0);
+  // Callback props live in refs so parent re-renders (e.g. the refresh that
+  // onLinked itself triggers) can NEVER re-fire the flow effect: a restarted
+  // flow calls web.login.start, which stops the channel that just linked.
+  const onLinkedRef = useRef(onLinked);
+  onLinkedRef.current = onLinked;
 
   const runFlow = useCallback(async () => {
     const run = ++runRef.current;
@@ -40,7 +47,7 @@ export function QrPairingDialog({
     try {
       const start = await request<{ qrDataUrl?: string; message?: string }>(
         "web.login.start",
-        { channel: channelId },
+        { channel: channelId, ...(accountId ? { accountId } : {}) },
         { timeoutMs: 60_000 },
       );
       if (run !== runRef.current) return;
@@ -55,7 +62,7 @@ export function QrPairingDialog({
 
       const wait = await request<{ connected?: boolean; message?: string }>(
         "web.login.wait",
-        { channel: channelId, timeoutMs: 120_000 },
+        { channel: channelId, ...(accountId ? { accountId } : {}), timeoutMs: 120_000 },
         { timeoutMs: 150_000 },
       );
       if (run !== runRef.current) return;
@@ -63,7 +70,7 @@ export function QrPairingDialog({
         setPhase("linked");
         setMessage(wait.message ?? "Linked.");
         toast.success(`${label} linked`, { description: wait.message });
-        onLinked?.();
+        onLinkedRef.current?.();
       } else {
         setPhase("error");
         setMessage(wait?.message ?? "Linking did not complete.");
@@ -73,7 +80,7 @@ export function QrPairingDialog({
       setPhase("error");
       setMessage(err instanceof Error ? err.message : String(err));
     }
-  }, [channelId, label, onLinked, request]);
+  }, [channelId, accountId, label, request]);
 
   useEffect(() => {
     if (!open) {
@@ -82,6 +89,8 @@ export function QrPairingDialog({
       return;
     }
     void runFlow();
+    // runFlow's deps are stable for a given target (channelId/accountId);
+    // the flow starts once per open, not once per parent render.
   }, [open, runFlow]);
 
   return (

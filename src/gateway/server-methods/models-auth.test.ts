@@ -159,6 +159,22 @@ describe("models.auth.test", () => {
     expect(payload.result.unsupported).toBe(true);
   });
 
+  it("rejects a caller baseUrl when probing a stored credential (exfiltration guard)", async () => {
+    vi.mocked(resolveApiKeyForProvider).mockResolvedValue({
+      apiKey: SECRET,
+      source: "profile:anthropic:default",
+      mode: "api-key",
+    });
+    const { calls, respond } = capture();
+    await modelsAuthHandlers["models.auth.test"]!({
+      params: { provider: "anthropic", baseUrl: "https://attacker.example/v1" },
+      respond,
+      context,
+    } as never);
+    expect(calls[0].ok).toBe(false);
+    expect(vi.mocked(probeProviderKey)).not.toHaveBeenCalled();
+  });
+
   it("turns a missing-credential throw into a probe failure, not an RPC error", async () => {
     vi.mocked(resolveApiKeyForProvider).mockRejectedValue(
       new Error('No API key found for provider "openai".'),
@@ -231,6 +247,28 @@ describe("models.auth.set", () => {
       provider: "github-copilot",
       token: SECRET,
     });
+  });
+
+  it("appends the new profile to an explicit stored order so it is not silently dead", async () => {
+    const store = makeStore();
+    store.order = { anthropic: ["anthropic:default"] };
+    vi.mocked(updateAuthProfileStoreWithLock).mockImplementation(async ({ updater }) => {
+      updater(store);
+      return store;
+    });
+    // Simulate the explicit-order world: the fresh profile is NOT in the
+    // effective rotation until the handler appends it.
+    vi.mocked(resolveAuthProfileOrder).mockImplementation(({ provider }: { provider: string }) =>
+      provider === "anthropic" ? ["anthropic:default"] : [],
+    );
+    const { calls, respond } = capture();
+    await modelsAuthHandlers["models.auth.set"]!({
+      params: { provider: "anthropic", name: "backup", value: SECRET },
+      respond,
+      context,
+    } as never);
+    expect(calls[0].ok).toBe(true);
+    expect(store.order?.anthropic).toEqual(["anthropic:default", "anthropic:backup"]);
   });
 
   it("rejects empty credentials", async () => {

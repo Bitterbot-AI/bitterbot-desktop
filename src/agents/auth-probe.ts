@@ -66,7 +66,15 @@ export function resolveProbeRecipe(params: {
   const configured = params.cfg?.models?.providers?.[provider];
   const explicitBase = params.baseUrl?.trim() || configured?.baseUrl?.trim();
   if (explicitBase) {
-    const style: ProbeStyle = configured?.api === "anthropic-messages" ? "anthropic" : "openai";
+    // Style precedence: configured api mode, then the provider's built-in
+    // recipe (an anthropic key tested against a custom proxy still needs
+    // x-api-key), then openai-compatible as the default.
+    const style: ProbeStyle =
+      configured?.api === "anthropic-messages"
+        ? "anthropic"
+        : configured?.api
+          ? "openai"
+          : (PROVIDER_PROBE_RECIPES[provider]?.style ?? "openai");
     return { baseUrl: explicitBase, style };
   }
   return PROVIDER_PROBE_RECIPES[provider] ?? null;

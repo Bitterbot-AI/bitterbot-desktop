@@ -784,6 +784,9 @@ export function listSessionsFromStore(params: {
         responseUsage: entry?.responseUsage,
         modelProvider,
         model,
+        // The raw entry is stripped before responding, so surface the
+        // override as a scalar or UIs can never tell override from default.
+        modelOverridden: Boolean(entry?.modelOverride?.trim()),
         contextTokens: entry?.contextTokens,
         deliveryContext: deliveryFields.deliveryContext,
         lastChannel: deliveryFields.lastChannel ?? entry?.lastChannel,

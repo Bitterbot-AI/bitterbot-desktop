@@ -1,5 +1,5 @@
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { type AuthProbeResult, useModelsStore } from "../../stores/models-store";
 import { Button } from "../ui/button";
@@ -39,16 +39,23 @@ export function KeyEntryModal({ open, onOpenChange, provider, onSaved }: KeyEntr
   const [saving, setSaving] = useState(false);
   const [probe, setProbe] = useState<AuthProbeResult | null>(null);
 
-  // Reset per open so a previous session's secret never lingers.
+  // Reset per open so a previous session's secret (or provider) never
+  // lingers. The open sync lives in an effect because the parent opens the
+  // dialog by prop, which never passes through Radix's onOpenChange.
+  useEffect(() => {
+    if (open) {
+      setProviderDraft(provider ?? "");
+    }
+  }, [open, provider]);
+
   const handleOpenChange = (next: boolean) => {
     if (!next) {
       setValue("");
       setProbe(null);
       setName("");
+      setProviderDraft("");
       setTesting(false);
       setSaving(false);
-    } else {
-      setProviderDraft(provider ?? "");
     }
     onOpenChange(next);
   };
@@ -178,10 +185,18 @@ export function KeyEntryModal({ open, onOpenChange, provider, onSaved }: KeyEntr
         </div>
 
         <DialogFooter>
+          {/* The live probe authenticates as an API key; bearer tokens use
+              provider-specific schemes the probe can't exercise, so testing
+              one would report a false negative. */}
           <Button
             variant="outline"
             onClick={() => void handleTest()}
-            disabled={!canSubmit || testing || saving}
+            disabled={!canSubmit || testing || saving || credentialType === "token"}
+            title={
+              credentialType === "token"
+                ? "Live testing supports API keys; tokens are saved untested."
+                : undefined
+            }
           >
             {testing && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
             Test

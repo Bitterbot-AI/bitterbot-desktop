@@ -43,7 +43,7 @@ function primeGatewayResponses(overrides?: {
             key: "agent:main:main",
             model: "claude-opus-4-8",
             modelProvider: "anthropic",
-            entry: {},
+            modelOverridden: false,
           },
         ],
         defaults: { model: "claude-opus-4-8", modelProvider: "anthropic" },
@@ -108,7 +108,7 @@ describe("ModelPicker", () => {
         key: "agent:main:main",
         model: "gpt-5.3",
         modelProvider: "openai",
-        entry: { modelOverride: "gpt-5.3" },
+        modelOverridden: true,
       },
       patchResult: {
         ok: true,
@@ -152,7 +152,7 @@ describe("ModelPicker", () => {
               key: "agent:main:main",
               model: "claude-opus-4-8",
               modelProvider: "anthropic",
-              entry: {},
+              modelOverridden: false,
             },
           ],
         });

@@ -22,7 +22,7 @@ interface SessionsListRow {
   key: string;
   model?: string;
   modelProvider?: string;
-  entry?: { modelOverride?: string };
+  modelOverridden?: boolean;
 }
 
 interface SessionsListResult {
@@ -108,6 +108,10 @@ export function groupCatalogByProvider(
   return [...groups.entries()].toSorted((a, b) => a[0].localeCompare(b[0]));
 }
 
+// Monotonic sequence per session key: a slow loadSessionModel (two RPCs)
+// must never overwrite the result of a later load or a sessions.patch.
+const sessionModelSeq: Record<string, number> = {};
+
 export const useModelsStore = create<ModelsState>((set, get) => ({
   catalog: [],
   catalogLoaded: false,
@@ -137,6 +141,7 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
   },
 
   loadSessionModel: async (sessionKey) => {
+    const seq = (sessionModelSeq[sessionKey] = (sessionModelSeq[sessionKey] ?? 0) + 1);
     const request = useGatewayStore.getState().request;
     // Resolve the UI's session key (often an alias like "default") to the
     // canonical store key so we can match the sessions.list row.
@@ -147,10 +152,15 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
       });
       if (resolved?.key) canonicalKey = resolved.key;
     } catch {
-      // Older gateways or unresolvable keys: fall back to the raw key.
+      // Older gateways, or a brand-new session with no store entry yet:
+      // fall back to the raw key (the defaults below still apply).
     }
     try {
       const res = await request<SessionsListResult>("sessions.list", {});
+      if (sessionModelSeq[sessionKey] !== seq) {
+        // A later load or a sessions.patch won while we were in flight.
+        return;
+      }
       const row = res?.sessions?.find((s) => s.key === canonicalKey);
       const model = row?.model ?? res?.defaults?.model ?? "";
       const provider = row?.modelProvider ?? res?.defaults?.modelProvider ?? "";
@@ -161,7 +171,7 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
           [sessionKey]: {
             model,
             provider,
-            overridden: Boolean(row?.entry?.modelOverride?.trim()),
+            overridden: row?.modelOverridden === true,
           },
         },
       }));
@@ -171,6 +181,9 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
   },
 
   setSessionModel: async (sessionKey, modelRef) => {
+    // Invalidate any in-flight loadSessionModel so its stale response can't
+    // overwrite the patch result we're about to write.
+    sessionModelSeq[sessionKey] = (sessionModelSeq[sessionKey] ?? 0) + 1;
     const request = useGatewayStore.getState().request;
     const res = await request<{
       ok?: boolean;

@@ -30,6 +30,7 @@ export function ModelsView() {
   const status = useGatewayStore((s) => s.status);
   const hello = useGatewayStore((s) => s.hello);
   const catalog = useModelsStore((s) => s.catalog);
+  const catalogLoading = useModelsStore((s) => s.catalogLoading);
   const authStatus = useModelsStore((s) => s.authStatus);
   const authLoading = useModelsStore((s) => s.authLoading);
   const defaultModel = useModelsStore((s) => s.defaultModel);
@@ -151,7 +152,11 @@ export function ModelsView() {
                 <CommandInput placeholder="Search models…" />
                 <CommandList>
                   <CommandEmpty>
-                    {catalog.length === 0 ? "Loading catalog…" : "No models match."}
+                    {catalog.length > 0
+                      ? "No models match."
+                      : catalogLoading
+                        ? "Loading catalog…"
+                        : "Catalog unavailable - close and reopen to retry."}
                   </CommandEmpty>
                   {groups.map(([provider, entries]) => (
                     <CommandGroup key={provider} heading={provider}>

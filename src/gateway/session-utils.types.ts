@@ -37,6 +37,8 @@ export type GatewaySessionRow = {
   responseUsage?: "on" | "off" | "tokens" | "full";
   modelProvider?: string;
   model?: string;
+  /** True when the session carries a stored per-session model override. */
+  modelOverridden?: boolean;
   contextTokens?: number;
   deliveryContext?: DeliveryContext;
   lastChannel?: SessionEntry["lastChannel"];

@@ -230,6 +230,7 @@ export function ChannelSetupDrawer({
         onOpenChange={setQrOpen}
         channelId={channelId}
         label={label}
+        accountId={accountId}
         onLinked={onSaved}
       />
     </>

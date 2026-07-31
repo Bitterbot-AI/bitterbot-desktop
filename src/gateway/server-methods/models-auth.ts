@@ -160,6 +160,21 @@ export const modelsAuthHandlers: GatewayRequestHandlers = {
       const provider = normalizeProviderId(params.provider);
       let apiKey = normalizeSecretInput(params.apiKey ?? "");
       if (!apiKey) {
+        // Write-only contract: a stored credential may only be probed
+        // against its own configured endpoint. Combining a stored key with
+        // a caller-supplied baseUrl would send the secret to an arbitrary
+        // host - that is credential exfiltration, not a test.
+        if (params.baseUrl?.trim()) {
+          respond(
+            false,
+            undefined,
+            errorShape(
+              ErrorCodes.INVALID_REQUEST,
+              "baseUrl requires a draft apiKey; stored credentials only probe their configured endpoint",
+            ),
+          );
+          return;
+        }
         // No draft key: probe whatever credential currently wins for the
         // provider (or the named profile). OAuth-backed credentials resolve
         // to a bearer token that the probe can't exercise meaningfully.
@@ -242,6 +257,29 @@ export const modelsAuthHandlers: GatewayRequestHandlers = {
     if (!updated) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "auth store update failed"));
       return;
+    }
+    // When an explicit rotation order exists (store.order, cfg.auth.order,
+    // or cfg.auth.profiles), resolveAuthProfileOrder drops any profile not
+    // in it - a freshly saved key would be silently dead: never used at
+    // runtime and invisible in models.auth.list. Append it to a stored
+    // order (stored order takes precedence over config order).
+    const effectiveOrder = resolveAuthProfileOrder({
+      cfg: loadConfig(),
+      store: updated,
+      provider,
+    });
+    if (!effectiveOrder.includes(profileId)) {
+      await updateAuthProfileStoreWithLock({
+        updater: (store) => {
+          store.order = store.order ?? {};
+          const existingKey =
+            Object.keys(store.order).find((key) => normalizeProviderId(key) === provider) ??
+            provider;
+          const base = store.order[existingKey] ?? effectiveOrder;
+          store.order[existingKey] = [...base.filter((id) => id !== profileId), profileId];
+          return true;
+        },
+      });
     }
     // New credentials can surface new providers/models; stale cache would
     // hide them from every picker until restart.

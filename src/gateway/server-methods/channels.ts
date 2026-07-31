@@ -43,10 +43,23 @@ export type ChannelCapabilityInfo = {
  * (binaries like signal-cli). UIs render unsupported channels greyed with
  * the reason rather than hiding them.
  */
+// Availability probes can spawn processes (e.g. `which signal-cli`);
+// channels.status is read-scoped and may be polled, so cache briefly to
+// keep it from becoming a process-spawn amplifier.
+const AVAILABILITY_CACHE_TTL_MS = 60_000;
+let availabilityCache: { at: number; value: Record<string, ChannelCapabilityInfo> } | null = null;
+
+export function __resetChannelCapabilityCacheForTest(): void {
+  availabilityCache = null;
+}
+
 export async function buildChannelCapabilities(params: {
   plugins: ChannelPlugin[];
   cfg: BitterbotConfig;
 }): Promise<Record<string, ChannelCapabilityInfo>> {
+  if (availabilityCache && Date.now() - availabilityCache.at < AVAILABILITY_CACHE_TTL_MS) {
+    return availabilityCache.value;
+  }
   const result: Record<string, ChannelCapabilityInfo> = {};
   for (const plugin of params.plugins) {
     const platforms = plugin.meta.platforms;
@@ -71,6 +84,7 @@ export async function buildChannelCapabilities(params: {
       ...(platforms ? { platforms } : {}),
     };
   }
+  availabilityCache = { at: Date.now(), value: result };
   return result;
 }
 
@@ -419,6 +433,25 @@ export const channelsHandlers: GatewayRequestHandlers = {
     const cfg = loadConfig();
     const accountId = params.accountId?.trim() || resolveDefaultAccountIdForPlugin(plugin, cfg);
     const input = sanitizeSetupInput(params.input);
+    // The dry-run probe must not become a file-read oracle: a draft
+    // tokenFile would make the gateway read an arbitrary path and leak
+    // existence/validity through differing probe errors. Path-based setup
+    // goes through channels.configure (a real config write, same trust as
+    // config.set).
+    if (typeof input.tokenFile === "string") {
+      respond(
+        true,
+        {
+          result: {
+            ok: false,
+            error: "tokenFile cannot be validated as a draft; save it via Save & Enable instead.",
+          },
+          probed: false,
+        },
+        undefined,
+      );
+      return;
+    }
     const validationError = plugin.setup.validateInput?.({ cfg, accountId, input });
     if (validationError) {
       respond(true, { result: { ok: false, error: validationError }, probed: false }, undefined);

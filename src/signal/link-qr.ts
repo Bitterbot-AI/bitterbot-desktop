@@ -51,6 +51,15 @@ function extractLinkedNumber(output: string): string | null {
   return match ? match[1] : null;
 }
 
+/**
+ * signal-cli output excerpts go back to RPC callers (and the browser UI);
+ * the linking URI is itself a bearer credential, so strip anything
+ * URI-shaped before echoing diagnostics.
+ */
+function redactUris(text: string): string {
+  return text.replace(/\S+:\/{1,2}\S+/g, "[uri]");
+}
+
 export function resetSignalLinkForTest(accountId?: string): void {
   if (accountId) {
     activeLinks.delete(accountId);
@@ -141,7 +150,7 @@ export async function startSignalLinkQr(params: {
           });
           return;
         }
-        const detail = stderrBuf.trim().split("\n").slice(-3).join(" ").slice(0, 400);
+        const detail = redactUris(stderrBuf.trim().split("\n").slice(-3).join(" ")).slice(0, 400);
         resolve({
           connected: false,
           message: `signal-cli link exited with code ${code}${detail ? `: ${detail}` : ""}`,
@@ -162,8 +171,15 @@ export async function startSignalLinkQr(params: {
     } catch {
       // Already dead.
     }
-    activeLinks.delete(params.accountId);
-    const detail = (stderrBuf || stdoutBuf).trim().split("\n").slice(-2).join(" ").slice(0, 400);
+    // Only delete OUR entry: a concurrent start may have replaced it (it
+    // killed our child, which is why we are here), and deleting blindly
+    // would orphan the replacement's signal-cli process.
+    if (activeLinks.get(params.accountId) === link) {
+      activeLinks.delete(params.accountId);
+    }
+    const detail = redactUris(
+      (stderrBuf || stdoutBuf).trim().split("\n").slice(-2).join(" "),
+    ).slice(0, 400);
     return {
       message: `signal-cli did not produce a linking URI${detail ? ` (${detail})` : ""}. Check that "${params.cliPath}" is signal-cli and up to date.`,
     };
@@ -205,7 +221,10 @@ export async function waitForSignalLinkQr(params: {
       ).unref?.(),
     ),
   ]);
-  if (link.settled) {
+  // Only delete the entry we waited on: if a newer link replaced it while
+  // we were blocked, deleting by accountId would clobber the active flow
+  // and make its eventual success unobservable.
+  if (link.settled && activeLinks.get(params.accountId) === link) {
     activeLinks.delete(params.accountId);
   }
   return result;
