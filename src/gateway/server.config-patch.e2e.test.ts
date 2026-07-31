@@ -69,6 +69,8 @@ describe("gateway config methods", () => {
           }>;
         };
       };
+      restart?: unknown;
+      reload?: { mode?: string; changedPaths?: string[] };
     }>(ws, "config.patch", {
       baseHash: snapshotRes.payload?.hash,
       raw: JSON.stringify({
@@ -83,6 +85,11 @@ describe("gateway config methods", () => {
       }),
     });
     expect(patchRes.ok).toBe(true);
+    // agents.* is a hot-by-construction config prefix: patching it must NOT
+    // schedule a gateway restart (the historical unconditional SIGUSR1 was
+    // the Control UI's biggest footgun).
+    expect(patchRes.payload?.restart ?? null).toBeNull();
+    expect(patchRes.payload?.reload?.mode).toBe("none");
 
     const list = patchRes.payload?.config?.agents?.list ?? [];
     expect(list).toHaveLength(2);

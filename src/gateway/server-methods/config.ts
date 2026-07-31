@@ -28,6 +28,7 @@ import {
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
 import { loadBitterbotPlugins } from "../../plugins/loader.js";
+import { buildGatewayReloadPlan, diffConfigPaths } from "../config-reload.js";
 import {
   ErrorCodes,
   errorShape,
@@ -351,6 +352,31 @@ export const configHandlers: GatewayRequestHandlers = {
     }
     await writeConfigFile(validated.config, writeOptions);
 
+    // Only restart when a changed path actually requires it. Hot/none paths
+    // (models, agents, per-channel prefixes, ...) are applied by the config
+    // watcher without the multi-minute gateway blackout - the historical
+    // unconditional restart here was the Control UI's biggest footgun.
+    const changedPaths = diffConfigPaths(snapshot.config, validated.config);
+    const plan = buildGatewayReloadPlan(changedPaths);
+    if (!plan.restartGateway) {
+      respond(
+        true,
+        {
+          ok: true,
+          path: CONFIG_PATH,
+          config: redactConfigObject(validated.config, schemaPatch.uiHints),
+          restart: null,
+          reload: {
+            mode: plan.hotReasons.length > 0 ? "hot" : "none",
+            changedPaths,
+            hotReasons: plan.hotReasons,
+          },
+        },
+        undefined,
+      );
+      return;
+    }
+
     const { sessionKey, note, restartDelayMs, deliveryContext, threadId } =
       resolveConfigRestartRequest(params);
     const payload = buildConfigRestartSentinelPayload({
@@ -373,6 +399,7 @@ export const configHandlers: GatewayRequestHandlers = {
         path: CONFIG_PATH,
         config: redactConfigObject(validated.config, schemaPatch.uiHints),
         restart,
+        restartReasons: plan.restartReasons,
         sentinel: {
           path: sentinelPath,
           payload,

@@ -78,6 +78,7 @@ you revoke it with `bitterbot devices revoke --device <id> --role <role>`. See
 - Exec approvals: edit gateway or node allowlists + ask policy for `exec host=gateway/node` (`exec.approvals.*`)
 - Config: view/edit `~/.bitterbot/bitterbot.json` (`config.get`, `config.set`)
 - Config: apply + restart with validation (`config.apply`) and wake the last active session
+- `config.patch` is restart-aware: it diffs the changed paths against the reload rules and only schedules a gateway restart when a changed path actually requires one (gateway/plugins/discovery/canvasHost). Hot and no-op paths (models, agents, per-channel prefixes) apply via the config watcher with `restart: null` and a `reload` summary in the response - no gateway blackout.
 - Config writes include a base-hash guard to prevent clobbering concurrent edits
 - Config schema + form rendering (`config.schema`, including plugin + channel schemas); Raw JSON editor remains available
 - Debug: status/health/models snapshots + event log + manual RPC calls (`status`, `health`, `models.list`)
