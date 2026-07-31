@@ -4,6 +4,8 @@ import { cn } from "../../lib/utils";
 import { useChannelsStore } from "../../stores/channels-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { Switch } from "../ui/switch";
+import { CHANNEL_SETUP_DESCRIPTORS } from "./channel-setup-fields";
+import { ChannelSetupDrawer } from "./ChannelSetupDrawer";
 
 type ChannelAccount = {
   accountId: string;
@@ -34,15 +36,19 @@ type ChannelData = {
 function ChannelCard({
   channel,
   canToggle,
+  canConfigure,
   togglingKey,
   onToggle,
   onLogout,
+  onSetup,
 }: {
   channel: ChannelData;
   canToggle: boolean;
+  canConfigure: boolean;
   togglingKey: string | null;
   onToggle: (channelId: string, accountId: string, enabled: boolean) => void;
   onLogout: (channelId: string, accountId: string) => void;
+  onSetup: (channelId: string, accountId?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const primaryAccount = channel.accounts[0];
@@ -104,6 +110,17 @@ function ChannelCard({
         <div className="px-4 pb-3 border-t border-border/10 pt-3 space-y-3">
           {unsupported && channel.capability?.reason && (
             <p className="text-xs text-muted-foreground">{channel.capability.reason}</p>
+          )}
+          {canConfigure && !unsupported && CHANNEL_SETUP_DESCRIPTORS[channel.channelId] && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetup(channel.channelId, primaryAccount?.accountId);
+              }}
+              className="px-2 py-1 text-xs rounded bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border border-purple-500/20"
+            >
+              {primaryAccount?.configured ? "Edit setup" : "Set up"}
+            </button>
           )}
           {channel.accounts.map((account) => {
             const toggleKey = `${channel.channelId}:${account.accountId}`;
@@ -179,11 +196,17 @@ export function ChannelsView() {
   const [channels, setChannels] = useState<ChannelData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [togglingKey, setTogglingKey] = useState<string | null>(null);
+  const [setupTarget, setSetupTarget] = useState<{
+    channelId: string;
+    label: string;
+    accountId?: string;
+  } | null>(null);
 
   // Version skew: older gateways don't implement channels.update; hide the
   // switches instead of rendering controls that error.
   const methods = hello?.features?.methods;
   const canToggle = methods ? methods.includes("channels.update") : true;
+  const canConfigure = methods ? methods.includes("channels.configure") : true;
 
   const refresh = useCallback(
     async (probe = false) => {
@@ -308,13 +331,34 @@ export function ChannelsView() {
               key={channel.channelId}
               channel={channel}
               canToggle={canToggle}
+              canConfigure={canConfigure}
               togglingKey={togglingKey}
               onToggle={handleToggle}
               onLogout={handleLogout}
+              onSetup={(channelId, accountId) =>
+                setSetupTarget({
+                  channelId,
+                  label: channels.find((c) => c.channelId === channelId)?.label ?? channelId,
+                  accountId,
+                })
+              }
             />
           ))
         )}
       </div>
+
+      {setupTarget && (
+        <ChannelSetupDrawer
+          open={Boolean(setupTarget)}
+          onOpenChange={(open) => {
+            if (!open) setSetupTarget(null);
+          }}
+          channelId={setupTarget.channelId}
+          label={setupTarget.label}
+          accountId={setupTarget.accountId}
+          onSaved={() => refresh()}
+        />
+      )}
     </div>
   );
 }

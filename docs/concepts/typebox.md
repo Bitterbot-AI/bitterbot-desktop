@@ -41,16 +41,17 @@ Client                    Gateway
 
 Common methods + events:
 
-| Category  | Examples                                                  | Notes                                              |
-| --------- | --------------------------------------------------------- | -------------------------------------------------- |
-| Core      | `connect`, `health`, `status`                             | `connect` must be first                            |
-| Messaging | `send`, `poll`, `agent`, `agent.wait`                     | side-effects need `idempotencyKey`                 |
-| Chat      | `chat.history`, `chat.send`, `chat.abort`, `chat.inject`  | WebChat uses these                                 |
-| Sessions  | `sessions.list`, `sessions.patch`, `sessions.delete`      | session admin                                      |
-| Models    | `models.list`, `models.auth.list/test/set/delete`         | catalog + key management (secrets are write-only)  |
-| Channels  | `channels.status`, `channels.update`, `channels.logout`   | live per-account enable/disable, host capabilities |
-| Nodes     | `node.list`, `node.invoke`, `node.pair.*`                 | Gateway WS + node actions                          |
-| Events    | `tick`, `presence`, `agent`, `chat`, `health`, `shutdown` | server push                                        |
+| Category  | Examples                                                                                           | Notes                                                        |
+| --------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Core      | `connect`, `health`, `status`                                                                      | `connect` must be first                                      |
+| Messaging | `send`, `poll`, `agent`, `agent.wait`                                                              | side-effects need `idempotencyKey`                           |
+| Chat      | `chat.history`, `chat.send`, `chat.abort`, `chat.inject`                                           | WebChat uses these                                           |
+| Sessions  | `sessions.list`, `sessions.patch`, `sessions.delete`                                               | session admin                                                |
+| Models    | `models.list`, `models.auth.list/test/set/delete`                                                  | catalog + key management (secrets are write-only)            |
+| Channels  | `channels.status`, `channels.update`, `channels.validate`, `channels.configure`, `channels.logout` | live enable/disable, guided setup with probe-before-save     |
+| QR login  | `web.login.start`, `web.login.wait`                                                                | QR device linking; `channel` param scopes WhatsApp vs Signal |
+| Nodes     | `node.list`, `node.invoke`, `node.pair.*`                                                          | Gateway WS + node actions                                    |
+| Events    | `tick`, `presence`, `agent`, `chat`, `health`, `shutdown`                                          | server push                                                  |
 
 Authoritative list lives in `src/gateway/server.ts` (`METHODS`, `EVENTS`).
 

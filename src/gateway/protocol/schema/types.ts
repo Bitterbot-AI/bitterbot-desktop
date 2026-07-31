@@ -60,6 +60,8 @@ import type {
 import type {
   ChannelsLogoutParamsSchema,
   ChannelsUpdateParamsSchema,
+  ChannelsValidateParamsSchema,
+  ChannelsConfigureParamsSchema,
   TalkConfigParamsSchema,
   TalkConfigResultSchema,
   ChannelsStatusParamsSchema,
@@ -203,6 +205,8 @@ export type ChannelsStatusParams = Static<typeof ChannelsStatusParamsSchema>;
 export type ChannelsStatusResult = Static<typeof ChannelsStatusResultSchema>;
 export type ChannelsLogoutParams = Static<typeof ChannelsLogoutParamsSchema>;
 export type ChannelsUpdateParams = Static<typeof ChannelsUpdateParamsSchema>;
+export type ChannelsValidateParams = Static<typeof ChannelsValidateParamsSchema>;
+export type ChannelsConfigureParams = Static<typeof ChannelsConfigureParamsSchema>;
 export type WebLoginStartParams = Static<typeof WebLoginStartParamsSchema>;
 export type WebLoginWaitParams = Static<typeof WebLoginWaitParamsSchema>;
 export type AgentSummary = Static<typeof AgentSummarySchema>;

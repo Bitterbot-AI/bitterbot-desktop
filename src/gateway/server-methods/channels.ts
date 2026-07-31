@@ -11,6 +11,7 @@ import {
 } from "../../channels/plugins/index.js";
 import { buildChannelAccountSnapshot } from "../../channels/plugins/status.js";
 import { loadConfig, readConfigFileSnapshot, writeConfigFile } from "../../config/config.js";
+import { REDACTED_SENTINEL } from "../../config/redact-snapshot.js";
 import { getChannelActivity } from "../../infra/channel-activity.js";
 import { DEFAULT_ACCOUNT_ID } from "../../routing/session-key.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -18,9 +19,11 @@ import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
+  validateChannelsConfigureParams,
   validateChannelsLogoutParams,
   validateChannelsStatusParams,
   validateChannelsUpdateParams,
+  validateChannelsValidateParams,
 } from "../protocol/index.js";
 import { formatForLog } from "../ws-log.js";
 
@@ -69,6 +72,38 @@ export async function buildChannelCapabilities(params: {
     };
   }
   return result;
+}
+
+/**
+ * Sanitize a guided-setup draft: drop empty/sentinel values so redacted
+ * placeholders round-tripped from the UI never overwrite stored secrets.
+ * The returned object is what gets handed to plugin.setup.applyAccountConfig.
+ */
+export function sanitizeSetupInput(raw: Record<string, unknown>): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed || trimmed === REDACTED_SENTINEL) {
+        continue;
+      }
+      input[key] = trimmed;
+      continue;
+    }
+    input[key] = value;
+  }
+  return input;
+}
+
+function resolveDefaultAccountIdForPlugin(plugin: ChannelPlugin, cfg: BitterbotConfig): string {
+  return (
+    plugin.config.defaultAccountId?.(cfg) ||
+    plugin.config.listAccountIds(cfg)[0] ||
+    DEFAULT_ACCOUNT_ID
+  );
 }
 
 type ChannelLogoutPayload = {
@@ -355,6 +390,175 @@ export const channelsHandlers: GatewayRequestHandlers = {
       runtime = `error: ${formatForLog(err)}`;
     }
     respond(true, { ok: true, channel: channelId, accountId, enabled, runtime }, undefined);
+  },
+  "channels.validate": async ({ params, respond }) => {
+    if (!validateChannelsValidateParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid channels.validate params: ${formatValidationErrors(validateChannelsValidateParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const channelId = normalizeChannelId(params.channel);
+    const plugin = channelId ? getChannelPlugin(channelId) : null;
+    if (!plugin?.setup?.applyAccountConfig) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `channel ${params.channel} does not support guided setup`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const accountId = params.accountId?.trim() || resolveDefaultAccountIdForPlugin(plugin, cfg);
+    const input = sanitizeSetupInput(params.input);
+    const validationError = plugin.setup.validateInput?.({ cfg, accountId, input });
+    if (validationError) {
+      respond(true, { result: { ok: false, error: validationError }, probed: false }, undefined);
+      return;
+    }
+    try {
+      // Draft config lives only in this handler; it is never written to disk
+      // and the draft secrets are never logged.
+      const draftCfg = plugin.setup.applyAccountConfig({ cfg, accountId, input });
+      const account = plugin.config.resolveAccount(draftCfg, accountId);
+      const configured = plugin.config.isConfigured
+        ? await plugin.config.isConfigured(account, draftCfg)
+        : true;
+      if (!configured) {
+        respond(
+          true,
+          {
+            result: {
+              ok: false,
+              error:
+                plugin.config.unconfiguredReason?.(account, draftCfg) ??
+                "Required fields are still missing.",
+            },
+            probed: false,
+          },
+          undefined,
+        );
+        return;
+      }
+      if (!plugin.status?.probeAccount) {
+        respond(
+          true,
+          {
+            result: { ok: true },
+            probed: false,
+            note: "This channel has no live probe; fields look complete.",
+          },
+          undefined,
+        );
+        return;
+      }
+      const timeoutMs = params.timeoutMs ?? 10_000;
+      const probe = await plugin.status.probeAccount({ account, timeoutMs, cfg: draftCfg });
+      respond(true, { result: probe, probed: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatForLog(err)));
+    }
+  },
+  "channels.configure": async ({ params, respond, context }) => {
+    if (!validateChannelsConfigureParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid channels.configure params: ${formatValidationErrors(validateChannelsConfigureParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const channelId = normalizeChannelId(params.channel);
+    const plugin = channelId ? getChannelPlugin(channelId) : null;
+    if (!plugin?.setup?.applyAccountConfig || !channelId) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `channel ${params.channel} does not support guided setup`,
+        ),
+      );
+      return;
+    }
+    const snapshot = await readConfigFileSnapshot();
+    if (!snapshot.valid) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "config invalid; fix it before configuring"),
+      );
+      return;
+    }
+    const cfg = snapshot.config ?? {};
+    const accountId = params.accountId?.trim() || resolveDefaultAccountIdForPlugin(plugin, cfg);
+    const input = sanitizeSetupInput(params.input);
+    const validationError = plugin.setup.validateInput?.({ cfg, accountId, input });
+    if (validationError) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, validationError));
+      return;
+    }
+    try {
+      let next = plugin.setup.applyAccountConfig({ cfg, accountId, input });
+      const name = params.name?.trim();
+      if (name && plugin.setup.applyAccountName) {
+        next = plugin.setup.applyAccountName({ cfg: next, accountId, name });
+      }
+      await writeConfigFile(next);
+
+      // Hot-restart just this account so the new credentials take effect
+      // now (the watcher can't be relied on for noopPrefix channels).
+      try {
+        await context.stopChannel(channelId, accountId);
+      } catch {
+        // Not running; fine.
+      }
+      const account = plugin.config.resolveAccount(next, accountId);
+      const enabled = plugin.config.isEnabled
+        ? plugin.config.isEnabled(account, next)
+        : !account ||
+          typeof account !== "object" ||
+          (account as { enabled?: boolean }).enabled !== false;
+      let runtime = "stopped";
+      if (enabled) {
+        try {
+          await context.startChannel(channelId, accountId);
+          runtime = "started";
+        } catch (err) {
+          runtime = `error: ${formatForLog(err)}`;
+        }
+      }
+      // Post-save probe so the UI can show a green/red result immediately.
+      let probe: unknown;
+      const configured = plugin.config.isConfigured
+        ? await plugin.config.isConfigured(account, next)
+        : true;
+      if (configured && plugin.status?.probeAccount) {
+        try {
+          probe = await plugin.status.probeAccount({ account, timeoutMs: 10_000, cfg: next });
+        } catch (err) {
+          probe = { ok: false, error: formatForLog(err) };
+        }
+      }
+      respond(
+        true,
+        { ok: true, channel: channelId, accountId, runtime, configured, probe },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatForLog(err)));
+    }
   },
   "channels.logout": async ({ params, respond, context }) => {
     if (!validateChannelsLogoutParams(params)) {

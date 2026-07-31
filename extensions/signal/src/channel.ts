@@ -22,6 +22,8 @@ import {
   setAccountEnabledInConfigSection,
   signalOnboardingAdapter,
   SignalConfigSchema,
+  startSignalLinkQr,
+  waitForSignalLinkQr,
   type ChannelMessageActionAdapter,
   type ChannelPlugin,
   type ResolvedSignalAccount,
@@ -297,6 +299,7 @@ export const signalPlugin: ChannelPlugin<ResolvedSignalAccount> = {
       lastOutboundAt: runtime?.lastOutboundAt ?? null,
     }),
   },
+  gatewayMethods: ["web.login.start", "web.login.wait"],
   gateway: {
     startAccount: async (ctx) => {
       const account = ctx.account;
@@ -312,6 +315,25 @@ export const signalPlugin: ChannelPlugin<ResolvedSignalAccount> = {
         runtime: ctx.runtime,
         abortSignal: ctx.abortSignal,
         mediaMaxMb: account.config.mediaMaxMb,
+      });
+    },
+    loginWithQrStart: async ({ accountId, timeoutMs }) => {
+      const runtime = getSignalRuntime();
+      const cfg = runtime.config.loadConfig();
+      const resolvedAccountId = normalizeAccountId(accountId ?? DEFAULT_ACCOUNT_ID);
+      const account = resolveSignalAccount({ cfg, accountId: resolvedAccountId });
+      const cliPath =
+        account.config.cliPath?.trim() || cfg.channels?.signal?.cliPath?.trim() || "signal-cli";
+      return await startSignalLinkQr({
+        accountId: resolvedAccountId,
+        cliPath,
+        uriTimeoutMs: timeoutMs,
+      });
+    },
+    loginWithQrWait: async ({ accountId, timeoutMs }) => {
+      return await waitForSignalLinkQr({
+        accountId: normalizeAccountId(accountId ?? DEFAULT_ACCOUNT_ID),
+        timeoutMs,
       });
     },
   },

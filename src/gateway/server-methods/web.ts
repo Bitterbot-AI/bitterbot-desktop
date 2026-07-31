@@ -1,5 +1,5 @@
 import type { GatewayRequestHandlers, RespondFn } from "./types.js";
-import { listChannelPlugins } from "../../channels/plugins/index.js";
+import { listChannelPlugins, normalizeChannelId } from "../../channels/plugins/index.js";
 import {
   ErrorCodes,
   errorShape,
@@ -11,10 +11,18 @@ import { formatForLog } from "../ws-log.js";
 
 const WEB_LOGIN_METHODS = new Set(["web.login.start", "web.login.wait"]);
 
-const resolveWebLoginProvider = () =>
-  listChannelPlugins().find((plugin) =>
+// More than one channel supports QR pairing (WhatsApp, Signal), so callers
+// can scope by channel; without one, first-match keeps legacy behavior.
+const resolveWebLoginProvider = (channelRaw?: unknown) => {
+  const candidates = listChannelPlugins().filter((plugin) =>
     (plugin.gatewayMethods ?? []).some((method) => WEB_LOGIN_METHODS.has(method)),
-  ) ?? null;
+  );
+  if (typeof channelRaw === "string" && channelRaw.trim()) {
+    const channelId = normalizeChannelId(channelRaw);
+    return candidates.find((plugin) => plugin.id === channelId) ?? null;
+  }
+  return candidates[0] ?? null;
+};
 
 function resolveAccountId(params: unknown): string | undefined {
   return typeof (params as { accountId?: unknown }).accountId === "string"
@@ -53,7 +61,7 @@ export const webHandlers: GatewayRequestHandlers = {
     }
     try {
       const accountId = resolveAccountId(params);
-      const provider = resolveWebLoginProvider();
+      const provider = resolveWebLoginProvider((params as { channel?: unknown }).channel);
       if (!provider) {
         respondProviderUnavailable(respond);
         return;
@@ -91,7 +99,7 @@ export const webHandlers: GatewayRequestHandlers = {
     }
     try {
       const accountId = resolveAccountId(params);
-      const provider = resolveWebLoginProvider();
+      const provider = resolveWebLoginProvider((params as { channel?: unknown }).channel);
       if (!provider) {
         respondProviderUnavailable(respond);
         return;

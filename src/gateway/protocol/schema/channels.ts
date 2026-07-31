@@ -144,8 +144,36 @@ export const ChannelsUpdateParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const ChannelsValidateParamsSchema = Type.Object(
+  {
+    channel: NonEmptyString,
+    accountId: Type.Optional(Type.String()),
+    /**
+     * Draft ChannelSetupInput fields (botToken, token, appToken, ...).
+     * Merged into an in-memory config copy and probed live; NEVER persisted.
+     */
+    input: Type.Record(Type.String(), Type.Unknown()),
+    timeoutMs: Type.Optional(Type.Integer({ minimum: 1000 })),
+  },
+  { additionalProperties: false },
+);
+
+export const ChannelsConfigureParamsSchema = Type.Object(
+  {
+    channel: NonEmptyString,
+    accountId: Type.Optional(Type.String()),
+    /** Optional display name for the account. */
+    name: Type.Optional(Type.String()),
+    /** ChannelSetupInput fields to persist (sentinel values keep existing secrets). */
+    input: Type.Record(Type.String(), Type.Unknown()),
+  },
+  { additionalProperties: false },
+);
+
 export const WebLoginStartParamsSchema = Type.Object(
   {
+    /** Scope to a specific QR-capable channel (whatsapp, signal). First match when omitted. */
+    channel: Type.Optional(NonEmptyString),
     force: Type.Optional(Type.Boolean()),
     timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
     verbose: Type.Optional(Type.Boolean()),
@@ -156,6 +184,8 @@ export const WebLoginStartParamsSchema = Type.Object(
 
 export const WebLoginWaitParamsSchema = Type.Object(
   {
+    /** Scope to a specific QR-capable channel (whatsapp, signal). First match when omitted. */
+    channel: Type.Optional(NonEmptyString),
     timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
     accountId: Type.Optional(Type.String()),
   },

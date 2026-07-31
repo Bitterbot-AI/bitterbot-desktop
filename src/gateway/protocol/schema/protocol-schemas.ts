@@ -43,6 +43,8 @@ import {
 import {
   ChannelsLogoutParamsSchema,
   ChannelsUpdateParamsSchema,
+  ChannelsValidateParamsSchema,
+  ChannelsConfigureParamsSchema,
   TalkConfigParamsSchema,
   TalkConfigResultSchema,
   ChannelsStatusParamsSchema,
@@ -195,6 +197,8 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   ChannelsStatusResult: ChannelsStatusResultSchema,
   ChannelsLogoutParams: ChannelsLogoutParamsSchema,
   ChannelsUpdateParams: ChannelsUpdateParamsSchema,
+  ChannelsValidateParams: ChannelsValidateParamsSchema,
+  ChannelsConfigureParams: ChannelsConfigureParamsSchema,
   WebLoginStartParams: WebLoginStartParamsSchema,
   WebLoginWaitParams: WebLoginWaitParamsSchema,
   AgentSummary: AgentSummarySchema,
