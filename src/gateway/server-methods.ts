@@ -19,6 +19,7 @@ import { guardsHandlers } from "./server-methods/guards.js";
 import { healthHandlers } from "./server-methods/health.js";
 import { logsHandlers } from "./server-methods/logs.js";
 import { managementHandlers } from "./server-methods/management.js";
+import { modelsAuthHandlers } from "./server-methods/models-auth.js";
 import { modelsHandlers } from "./server-methods/models.js";
 import { nodeHandlers } from "./server-methods/nodes.js";
 import { projectsHandlers } from "./server-methods/projects.js";
@@ -292,6 +293,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...guardsHandlers,
   ...webHandlers,
   ...modelsHandlers,
+  ...modelsAuthHandlers,
   ...configHandlers,
   ...wizardHandlers,
   ...talkHandlers,

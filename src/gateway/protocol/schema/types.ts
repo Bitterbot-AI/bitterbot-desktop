@@ -25,6 +25,10 @@ import type {
   AgentsUpdateParamsSchema,
   AgentsUpdateResultSchema,
   ModelChoiceSchema,
+  ModelsAuthDeleteParamsSchema,
+  ModelsAuthListParamsSchema,
+  ModelsAuthSetParamsSchema,
+  ModelsAuthTestParamsSchema,
   ModelsListParamsSchema,
   ModelsListResultSchema,
   SkillsBinsParamsSchema,
@@ -216,6 +220,10 @@ export type AgentsListParams = Static<typeof AgentsListParamsSchema>;
 export type AgentsListResult = Static<typeof AgentsListResultSchema>;
 export type ModelChoice = Static<typeof ModelChoiceSchema>;
 export type ModelsListParams = Static<typeof ModelsListParamsSchema>;
+export type ModelsAuthListParams = Static<typeof ModelsAuthListParamsSchema>;
+export type ModelsAuthTestParams = Static<typeof ModelsAuthTestParamsSchema>;
+export type ModelsAuthSetParams = Static<typeof ModelsAuthSetParamsSchema>;
+export type ModelsAuthDeleteParams = Static<typeof ModelsAuthDeleteParamsSchema>;
 export type ModelsListResult = Static<typeof ModelsListResultSchema>;
 export type SkillsStatusParams = Static<typeof SkillsStatusParamsSchema>;
 export type SkillsBinsParams = Static<typeof SkillsBinsParamsSchema>;

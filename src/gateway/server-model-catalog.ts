@@ -17,3 +17,13 @@ export function __resetModelCatalogCacheForTest() {
 export async function loadGatewayModelCatalog(): Promise<GatewayModelChoice[]> {
   return await loadModelCatalog({ config: loadConfig() });
 }
+
+/**
+ * Bust the process-lifetime catalog cache and reload. Must be called after
+ * any write that changes which providers/models exist (auth profile saved,
+ * models.providers config edit) or new entries stay invisible in every
+ * picker until the gateway restarts.
+ */
+export async function refreshGatewayModelCatalog(): Promise<GatewayModelChoice[]> {
+  return await loadModelCatalog({ config: loadConfig(), useCache: false });
+}

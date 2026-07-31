@@ -112,6 +112,19 @@ Notes:
 
 Full command behavior/config: [Slash commands](/tools/slash-commands).
 
+The Control UI offers the same session-scoped switch as a model pill in the chat header (backed by `sessions.patch`), so no chat command or restart is needed.
+
+## Key management over RPC (`models.auth.*`)
+
+The gateway exposes a key-management surface so UIs can manage provider credentials without the CLI wizard (admin scope required):
+
+- `models.auth.list` - per-provider status: auth profiles (with cooldown/disabled state), whether a provider env var is set, whether `models.providers.<id>.apiKey` is set in config, and which source currently wins under the runtime precedence chain (profile, then env, then config). Responses never contain secret material.
+- `models.auth.test` - live-probe a credential against the provider's model-listing endpoint before saving. Pass `apiKey` to test a draft key without persisting anything, or omit it to test the stored credential. OAuth/aws-sdk credentials report `unsupported` instead of probing.
+- `models.auth.set` - save or rotate a key (`provider`, optional `name`, optional `credentialType: api_key|token`, `value`). Writes through the auth-profiles helpers with input normalization, clears any cooldown/failure state the old key accumulated, and refreshes the model catalog cache so new providers appear in pickers immediately.
+- `models.auth.delete` - remove a profile plus its usage stats, rotation-order entries, and last-good pointer.
+
+Secrets are write-only across this surface: keys go in, only redacted status comes out. `models.list` additionally accepts `refresh: true` to bust the process-lifetime catalog cache after out-of-band provider changes.
+
 ## CLI commands
 
 ```bash

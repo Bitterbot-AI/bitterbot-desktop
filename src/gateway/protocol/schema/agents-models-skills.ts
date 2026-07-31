@@ -164,11 +164,50 @@ export const AgentsFilesSetResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const ModelsListParamsSchema = Type.Object({}, { additionalProperties: false });
+export const ModelsListParamsSchema = Type.Object(
+  {
+    /** Bust the process-lifetime catalog cache before listing (used after key/provider writes). */
+    refresh: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
 
 export const ModelsListResultSchema = Type.Object(
   {
     models: Type.Array(ModelChoiceSchema),
+  },
+  { additionalProperties: false },
+);
+
+export const ModelsAuthListParamsSchema = Type.Object({}, { additionalProperties: false });
+
+export const ModelsAuthTestParamsSchema = Type.Object(
+  {
+    provider: NonEmptyString,
+    /** Draft key to probe without saving. Omit to probe the stored credential. */
+    apiKey: Type.Optional(Type.String()),
+    profileId: Type.Optional(NonEmptyString),
+    /** Custom endpoint base URL (OpenAI/Anthropic compatible). */
+    baseUrl: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const ModelsAuthSetParamsSchema = Type.Object(
+  {
+    provider: NonEmptyString,
+    /** Profile name; defaults to "default" (profile id becomes provider:name). */
+    name: Type.Optional(Type.String()),
+    credentialType: Type.Optional(Type.Union([Type.Literal("api_key"), Type.Literal("token")])),
+    /** The secret. Write-only: never echoed back by any models.auth.* method. */
+    value: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const ModelsAuthDeleteParamsSchema = Type.Object(
+  {
+    profileId: NonEmptyString,
   },
   { additionalProperties: false },
 );
