@@ -16,6 +16,8 @@ import { useGatewayStore } from "../../stores/gateway-store";
 import { useUIStore } from "../../stores/ui-store";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
+import { ModelPicker } from "./ModelPicker";
+import { SessionSelector } from "./SessionSelector";
 
 const ARTIFACT_TOOL_NAMES = new Set(["create_artifact", "create-artifact"]);
 const PLAN_TOOL_NAMES = new Set(["plan"]);
@@ -388,6 +390,12 @@ export function ChatView() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Session + model controls */}
+      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border/50">
+        <SessionSelector />
+        <ModelPicker />
+      </div>
+
       {/* Messages */}
       <MessageList />
 
