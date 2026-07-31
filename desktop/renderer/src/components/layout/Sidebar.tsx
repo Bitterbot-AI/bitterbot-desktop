@@ -23,6 +23,7 @@ import {
   Moon,
   Users,
   Gauge,
+  KeyRound,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useIsManagementNode } from "../../hooks/useIsManagementNode";
@@ -74,6 +75,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "cron", label: "Cron", icon: Clock, group: "agent" },
   { id: "dreams", label: "Dreams (beta)", icon: BrainCircuit, group: "agent" },
   // Settings
+  { id: "models", label: "Models & Keys", icon: KeyRound, group: "settings" },
   { id: "config", label: "Config", icon: Settings, group: "settings" },
 ];
 

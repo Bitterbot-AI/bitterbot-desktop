@@ -19,6 +19,7 @@ export type TabId =
   | "p2p"
   | "dreams"
   | "management"
+  | "models"
   | "config"
   | "debug"
   | "logs";

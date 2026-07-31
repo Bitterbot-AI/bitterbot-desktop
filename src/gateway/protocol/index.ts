@@ -121,6 +121,8 @@ import {
   ModelsAuthTestParamsSchema,
   type ModelsListParams,
   ModelsListParamsSchema,
+  type ModelsSetDefaultParams,
+  ModelsSetDefaultParamsSchema,
   type NodeDescribeParams,
   NodeDescribeParamsSchema,
   type NodeEventParams,
@@ -348,6 +350,9 @@ export const validateModelsAuthSetParams =
 export const validateModelsAuthDeleteParams = ajv.compile<ModelsAuthDeleteParams>(
   ModelsAuthDeleteParamsSchema,
 );
+export const validateModelsSetDefaultParams = ajv.compile<ModelsSetDefaultParams>(
+  ModelsSetDefaultParamsSchema,
+);
 export const validateSkillsStatusParams = ajv.compile<SkillsStatusParams>(SkillsStatusParamsSchema);
 export const validateSkillsBinsParams = ajv.compile<SkillsBinsParams>(SkillsBinsParamsSchema);
 export const validateSkillsInstallParams =
@@ -532,6 +537,7 @@ export {
   ModelsAuthSetParamsSchema,
   ModelsAuthTestParamsSchema,
   ModelsListParamsSchema,
+  ModelsSetDefaultParamsSchema,
   SkillsStatusParamsSchema,
   SkillsInstallParamsSchema,
   SkillsUpdateParamsSchema,

@@ -64,6 +64,7 @@ you revoke it with `bitterbot devices revoke --device <id> --role <role>`. See
 
 - Chat with the model via Gateway WS (`chat.history`, `chat.send`, `chat.abort`, `chat.inject`)
 - Switch the chat session's model on the fly from the chat header (`models.list`, `sessions.patch`): a model pill next to the session selector opens a searchable catalog grouped by provider; picking a model applies a per-session override live (no gateway restart), and "Reset to default" returns the session to the node's configured default. The pill turns amber while an override is active.
+- Models & Keys panel (Settings group): change the node default model (`models.setDefault`, applies next turn, no restart), see per-provider credential status including which source wins (profile vs env var vs config) and cooldown warnings (`models.auth.list`), test a key live before saving (`models.auth.test`), and add/rotate/delete keys (`models.auth.set`, `models.auth.delete`). Secrets are write-only: the UI never receives stored key material back.
 - Stream tool calls + live tool output cards in Chat (agent events)
 - Channels: WhatsApp/Telegram/Discord/Slack + plugin channels (Mattermost, etc.) status + QR login + per-channel config (`channels.status`, `web.login.*`, `config.patch`)
 - Instances: presence list + refresh (`system-presence`)

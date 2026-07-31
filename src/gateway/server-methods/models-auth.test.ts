@@ -4,6 +4,7 @@ import { probeProviderKey } from "../../agents/auth-probe.js";
 import { ensureAuthProfileStore, resolveAuthProfileOrder } from "../../agents/auth-profiles.js";
 import { updateAuthProfileStoreWithLock } from "../../agents/auth-profiles/store.js";
 import { resolveApiKeyForProvider, resolveEnvApiKey } from "../../agents/model-auth.js";
+import { applyDefaultModelPrimaryUpdate, updateConfig } from "../../commands/models/shared.js";
 import { refreshGatewayModelCatalog } from "../server-model-catalog.js";
 import { modelsAuthHandlers } from "./models-auth.js";
 import { modelsHandlers } from "./models.js";
@@ -31,6 +32,10 @@ vi.mock("../../agents/auth-probe.js", () => ({
 }));
 vi.mock("../server-model-catalog.js", () => ({
   refreshGatewayModelCatalog: vi.fn(async () => []),
+}));
+vi.mock("../../commands/models/shared.js", () => ({
+  updateConfig: vi.fn(),
+  applyDefaultModelPrimaryUpdate: vi.fn(),
 }));
 
 const SECRET = "sk-test-super-secret-value";
@@ -269,6 +274,37 @@ describe("models.auth.delete", () => {
     const { calls, respond } = capture();
     await modelsAuthHandlers["models.auth.delete"]!({
       params: { profileId: "nope:missing" },
+      respond,
+      context,
+    } as never);
+    expect(calls[0].ok).toBe(false);
+  });
+});
+
+describe("models.setDefault", () => {
+  it("writes agents.defaults.model.primary via the CLI-shared update path", async () => {
+    vi.mocked(updateConfig).mockImplementation(async (mutator) => mutator({} as never));
+    vi.mocked(applyDefaultModelPrimaryUpdate).mockReturnValue({
+      agents: { defaults: { model: { primary: "openai/gpt-5.3" } } },
+    } as never);
+    const { calls, respond } = capture();
+    await modelsHandlers["models.setDefault"]!({
+      params: { model: "openai/gpt-5.3" },
+      respond,
+      context,
+    } as never);
+    expect(calls[0].ok).toBe(true);
+    expect((calls[0].payload as { model: string }).model).toBe("openai/gpt-5.3");
+    expect(vi.mocked(applyDefaultModelPrimaryUpdate)).toHaveBeenCalledWith(
+      expect.objectContaining({ modelRaw: "openai/gpt-5.3", field: "model" }),
+    );
+  });
+
+  it("maps an invalid ref to an INVALID_REQUEST error", async () => {
+    vi.mocked(updateConfig).mockRejectedValue(new Error("Invalid model reference: nope"));
+    const { calls, respond } = capture();
+    await modelsHandlers["models.setDefault"]!({
+      params: { model: "nope" },
       respond,
       context,
     } as never);

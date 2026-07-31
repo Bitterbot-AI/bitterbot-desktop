@@ -30,16 +30,63 @@ interface SessionsListResult {
   defaults?: { model?: string | null; modelProvider?: string | null };
 }
 
+export interface ProviderProfileStatus {
+  profileId: string;
+  type: "api_key" | "token" | "oauth";
+  email?: string;
+  inCooldown: boolean;
+  disabledUntil?: number;
+  errorCount?: number;
+  lastUsed?: number;
+}
+
+export interface ProviderAuthStatus {
+  provider: string;
+  profiles: ProviderProfileStatus[];
+  envPresent: boolean;
+  envSource?: string;
+  configKeyPresent: boolean;
+  winningSource: string | null;
+}
+
+export interface AuthProbeResult {
+  ok: boolean;
+  status?: number;
+  error?: string;
+  unsupported?: boolean;
+}
+
 interface ModelsState {
   catalog: ModelCatalogEntry[];
   catalogLoaded: boolean;
   catalogLoading: boolean;
   /** Effective model per chat session key, as last fetched/patched. */
   sessionModels: Record<string, SessionModelInfo>;
+  /** Per-provider credential status from models.auth.list. */
+  authStatus: ProviderAuthStatus[];
+  authLoading: boolean;
+  /** The node's default model ("provider/model") from sessions.list defaults. */
+  defaultModel: string | null;
 
   loadCatalog: (opts?: { force?: boolean }) => Promise<void>;
   loadSessionModel: (sessionKey: string) => Promise<void>;
   setSessionModel: (sessionKey: string, modelRef: string | null) => Promise<SessionModelInfo>;
+  loadAuthStatus: () => Promise<void>;
+  loadDefaultModel: () => Promise<void>;
+  setDefaultModel: (modelRef: string) => Promise<void>;
+  testKey: (params: {
+    provider: string;
+    apiKey?: string;
+    profileId?: string;
+    baseUrl?: string;
+  }) => Promise<AuthProbeResult>;
+  saveKey: (params: {
+    provider: string;
+    name?: string;
+    credentialType?: "api_key" | "token";
+    value: string;
+  }) => Promise<{ profileId: string }>;
+  deleteProfile: (profileId: string) => Promise<void>;
 }
 
 /**
@@ -66,6 +113,9 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
   catalogLoaded: false,
   catalogLoading: false,
   sessionModels: {},
+  authStatus: [],
+  authLoading: false,
+  defaultModel: null,
 
   loadCatalog: async (opts) => {
     const { catalogLoaded, catalogLoading } = get();
@@ -138,5 +188,79 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
       }));
     }
     return info;
+  },
+
+  loadAuthStatus: async () => {
+    if (get().authLoading) return;
+    set({ authLoading: true });
+    try {
+      const request = useGatewayStore.getState().request;
+      const res = await request<{ providers?: ProviderAuthStatus[] }>("models.auth.list", {});
+      set({ authStatus: Array.isArray(res?.providers) ? res.providers : [], authLoading: false });
+    } catch {
+      set({ authLoading: false });
+    }
+  },
+
+  loadDefaultModel: async () => {
+    try {
+      const request = useGatewayStore.getState().request;
+      const res = await request<{
+        defaults?: { model?: string | null; modelProvider?: string | null };
+      }>("sessions.list", {});
+      const model = res?.defaults?.model;
+      const provider = res?.defaults?.modelProvider;
+      set({ defaultModel: model ? (provider ? `${provider}/${model}` : model) : null });
+    } catch {
+      // Central toast covers failures.
+    }
+  },
+
+  setDefaultModel: async (modelRef) => {
+    const request = useGatewayStore.getState().request;
+    const res = await request<{ ok?: boolean; model?: string }>("models.setDefault", {
+      model: modelRef,
+    });
+    if (res?.model) {
+      set({ defaultModel: res.model });
+    }
+    // The allowlist may have gained an entry; keep the catalog view fresh.
+    await get().loadDefaultModel();
+  },
+
+  testKey: async (params) => {
+    const request = useGatewayStore.getState().request;
+    const res = await request<{ result?: AuthProbeResult }>("models.auth.test", params);
+    return res?.result ?? { ok: false, error: "empty probe response" };
+  },
+
+  saveKey: async (params) => {
+    const request = useGatewayStore.getState().request;
+    const res = await request<{ ok?: boolean; profileId?: string }>("models.auth.set", params);
+    // New keys can add providers/models: refresh both the auth panel and the
+    // catalog (server already busted its cache; refresh:true keeps the UI in
+    // lockstep even if that failed).
+    await Promise.all([
+      get().loadAuthStatus(),
+      (async () => {
+        try {
+          const fresh = await request<{ models?: ModelCatalogEntry[] }>("models.list", {
+            refresh: true,
+          });
+          if (Array.isArray(fresh?.models)) {
+            set({ catalog: fresh.models, catalogLoaded: true });
+          }
+        } catch {
+          // Non-fatal; the stale catalog stays until the next open.
+        }
+      })(),
+    ]);
+    return { profileId: res?.profileId ?? "" };
+  },
+
+  deleteProfile: async (profileId) => {
+    const request = useGatewayStore.getState().request;
+    await request("models.auth.delete", { profileId });
+    await get().loadAuthStatus();
   },
 }));

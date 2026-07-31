@@ -37,6 +37,7 @@ const BASE_METHODS = [
   "models.auth.test",
   "models.auth.set",
   "models.auth.delete",
+  "models.setDefault",
   "agents.list",
   "agents.create",
   "agents.update",

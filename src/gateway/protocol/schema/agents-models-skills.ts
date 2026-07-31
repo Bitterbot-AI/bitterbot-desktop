@@ -212,6 +212,14 @@ export const ModelsAuthDeleteParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const ModelsSetDefaultParamsSchema = Type.Object(
+  {
+    /** Model ref ("provider/model", alias, or bare model id for the default provider). */
+    model: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
 export const SkillsStatusParamsSchema = Type.Object(
   {
     agentId: Type.Optional(NonEmptyString),

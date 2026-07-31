@@ -13,6 +13,7 @@ import { ActiveGuardsView } from "../guards/ActiveGuardsView";
 import { InstancesView } from "../instances/InstancesView";
 import { LogsView } from "../logs/LogsView";
 import { ManagementView } from "../management/ManagementView";
+import { ModelsView } from "../models/ModelsView";
 import { NodesView } from "../nodes/NodesView";
 import { OverviewView } from "../overview/OverviewView";
 import { P2pDashboard } from "../p2p/P2pDashboard";
@@ -45,6 +46,7 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   people: () => <CirclesView />,
   dreams: () => <DreamsView />,
   management: () => <ManagementView />,
+  models: () => <ModelsView />,
   config: () => <ConfigView />,
   debug: () => <DebugView />,
   logs: () => <LogsView />,

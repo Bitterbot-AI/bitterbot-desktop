@@ -123,7 +123,9 @@ The gateway exposes a key-management surface so UIs can manage provider credenti
 - `models.auth.set` - save or rotate a key (`provider`, optional `name`, optional `credentialType: api_key|token`, `value`). Writes through the auth-profiles helpers with input normalization, clears any cooldown/failure state the old key accumulated, and refreshes the model catalog cache so new providers appear in pickers immediately.
 - `models.auth.delete` - remove a profile plus its usage stats, rotation-order entries, and last-good pointer.
 
-Secrets are write-only across this surface: keys go in, only redacted status comes out. `models.list` additionally accepts `refresh: true` to bust the process-lifetime catalog cache after out-of-band provider changes.
+Secrets are write-only across this surface: keys go in, only redacted status comes out. `models.list` additionally accepts `refresh: true` to bust the process-lifetime catalog cache after out-of-band provider changes, and `models.setDefault` sets `agents.defaults.model.primary` through the same validated path as `bitterbot models set` (restart-free).
+
+The Control UI's **Models & Keys** panel (Settings group) is built on this surface: default-model picker, per-provider status with the winning source, test-before-save key entry, and profile deletion.
 
 ## CLI commands
 

@@ -30,6 +30,7 @@ import type {
   ModelsAuthSetParamsSchema,
   ModelsAuthTestParamsSchema,
   ModelsListParamsSchema,
+  ModelsSetDefaultParamsSchema,
   ModelsListResultSchema,
   SkillsBinsParamsSchema,
   SkillsBinsResultSchema,
@@ -224,6 +225,7 @@ export type ModelsAuthListParams = Static<typeof ModelsAuthListParamsSchema>;
 export type ModelsAuthTestParams = Static<typeof ModelsAuthTestParamsSchema>;
 export type ModelsAuthSetParams = Static<typeof ModelsAuthSetParamsSchema>;
 export type ModelsAuthDeleteParams = Static<typeof ModelsAuthDeleteParamsSchema>;
+export type ModelsSetDefaultParams = Static<typeof ModelsSetDefaultParamsSchema>;
 export type ModelsListResult = Static<typeof ModelsListResultSchema>;
 export type SkillsStatusParams = Static<typeof SkillsStatusParamsSchema>;
 export type SkillsBinsParams = Static<typeof SkillsBinsParamsSchema>;
