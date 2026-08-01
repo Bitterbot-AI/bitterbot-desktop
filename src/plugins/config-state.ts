@@ -17,6 +17,20 @@ export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
   "device-pair",
   "phone-control",
   "talk-voice",
+  // Bundled CHANNEL extensions register at boot so a fresh node can see and
+  // set them up from the Control UI (channels.status / channels.configure).
+  // Registration is cheap and safe: ChannelManager.startChannel skips every
+  // account that is not both enabled and configured, so nothing connects
+  // until credentials exist. Without this, a node with no channels
+  // configured had an empty Channels tab and no way to do first-time setup
+  // from the UI (the plugin only auto-enabled AFTER config existed).
+  // An explicit plugins.entries.<id>.enabled=false still wins.
+  "telegram",
+  "whatsapp",
+  "discord",
+  "slack",
+  "signal",
+  "twitch",
 ]);
 
 const normalizeList = (value: unknown): string[] => {
