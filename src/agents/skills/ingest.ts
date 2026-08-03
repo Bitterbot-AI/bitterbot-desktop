@@ -66,6 +66,21 @@ export async function ingestSkill(params: {
   envelope: SkillEnvelope;
   config: BitterbotConfig;
   workspaceDir?: string;
+  /**
+   * Where this skill came from. "peer" (default) is the zero-trust gossip
+   * receive path that skills-incoming/ is specced for. "external-scrape" is
+   * the node's OWN research output (skill-seekers harvesting a GitHub repo) —
+   * a local artifact, NOT a peer skill, so it is accepted directly rather than
+   * laundered through the peer quarantine under a synthetic peer id. The origin
+   * is also recorded so the review UI can label local vs peer content honestly.
+   */
+  origin?: "peer" | "external-scrape";
+  /**
+   * Our own skill-publish pubkey. When set, a "peer" skill whose author_pubkey
+   * matches it is dropped as self-loopback (a crystal we broadcast came back to
+   * us over gossip) instead of being quarantined as if a stranger sent it.
+   */
+  ownPublishPubkey?: string;
   reputationManager?: {
     getTrustLevel(pubkey: string): string;
     recordSkillReceived(pubkey: string, peerId: string): void;
@@ -76,11 +91,27 @@ export async function ingestSkill(params: {
   notifyQuarantine?: (message: string) => void;
 }): Promise<IngestResult> {
   const { envelope, config, workspaceDir } = params;
+  const origin = params.origin ?? "peer";
+  const isLocalOrigin = origin === "external-scrape";
   const p2pConfig = config.skills?.p2p;
   const policy = p2pConfig?.ingestPolicy ?? "review";
 
-  // Policy: deny all
-  if (policy === "deny") {
+  // Self-loopback guard: a crystal this node published can be delivered back to
+  // it over gossip. Dropping it here stops the node from quarantining its own
+  // output as an anonymous inbound peer skill (a source of the "received from
+  // unknown peer" clutter). Local-origin ingests are exempt (they are ours by
+  // definition and take the accept path below).
+  if (
+    !isLocalOrigin &&
+    params.ownPublishPubkey &&
+    envelope.author_pubkey === params.ownPublishPubkey
+  ) {
+    return { ok: false, action: "rejected", reason: "self-loopback (own published skill)" };
+  }
+
+  // Policy: deny all. Local-origin research output is not subject to the peer
+  // ingest policy (it never touched the network) — only genuine peer skills are.
+  if (policy === "deny" && !isLocalOrigin) {
     return { ok: false, action: "rejected", reason: "ingestion policy is deny" };
   }
 
@@ -160,9 +191,14 @@ export async function ingestSkill(params: {
   // Record in reputation system if available
   params.reputationManager?.recordSkillReceived(envelope.author_pubkey, envelope.author_peer_id);
 
-  // 8. Determine destination based on policy, trust level, and injection scan.
-  // `forceQuarantine` overrides auto-accept when the scanner returns critical.
-  if (policy === "auto" && isAutoAccepted && !forceQuarantine) {
+  // 8. Determine destination based on origin, policy, trust level, and scan.
+  // `forceQuarantine` overrides accept when the scanner returns critical — the
+  // injection scan still guards even our own scraped content. A skill is
+  // accepted directly when it is local-origin (our own research) OR a trusted
+  // peer under `auto` policy; everything else is held for review.
+  const acceptDirectly =
+    !forceQuarantine && (isLocalOrigin || (policy === "auto" && isAutoAccepted));
+  if (acceptDirectly) {
     // Accept directly into skills directory
     const skillName = normalizeSkillName(envelope.name);
     const skillDir = path.join(CONFIG_DIR, "skills", skillName);
@@ -176,6 +212,7 @@ export async function ingestSkill(params: {
       metaPath,
       JSON.stringify(
         {
+          origin,
           author_peer_id: envelope.author_peer_id,
           author_pubkey: envelope.author_pubkey,
           signature: envelope.signature,
@@ -198,7 +235,9 @@ export async function ingestSkill(params: {
       changedPath: skillPath,
     });
 
-    log.info(`Auto-accepted skill: ${skillName} from ${envelope.author_peer_id}`);
+    log.info(
+      `Accepted skill (${origin}): ${skillName}${isLocalOrigin ? "" : ` from ${envelope.author_peer_id}`}`,
+    );
     params.reputationManager?.recordIngestionResult(envelope.author_pubkey, true);
     return { ok: true, action: "accepted", skillName, skillPath };
   }
@@ -210,17 +249,19 @@ export async function ingestSkill(params: {
   const skillName = normalizeSkillName(envelope.name);
   const incomingDir = path.join(quarantineDir, skillName);
   await fs.mkdir(incomingDir, { recursive: true });
-  const skillPath = path.join(incomingDir, "SKILL.md");
-  await fs.writeFile(skillPath, skillContent, "utf-8");
 
-  // Write full envelope plus the scan result so the operator review UX can
-  // show why this skill was held even if policy was `auto`.
+  // Write the envelope BEFORE the SKILL.md: the review list keys a skill's
+  // origin/peer off the envelope, so if the process is killed mid-write an
+  // envelope-first order can never leave a SKILL.md with no envelope (which the
+  // UI would render as "received from unknown peer"). An envelope with no
+  // SKILL.md yet is a recognizably-incomplete entry, not a phantom peer.
   const envelopePath = path.join(incomingDir, ".envelope.json");
   await fs.writeFile(
     envelopePath,
     JSON.stringify(
       {
         ...envelope,
+        origin,
         injection_scan: scanResult ?? undefined,
         force_quarantined: forceQuarantine,
       },
@@ -229,6 +270,8 @@ export async function ingestSkill(params: {
     ),
     "utf-8",
   );
+  const skillPath = path.join(incomingDir, "SKILL.md");
+  await fs.writeFile(skillPath, skillContent, "utf-8");
 
   // Reputation: a force-quarantine on a previously-trusted peer is the loud
   // signal we want to feed back into trust. Counts as a rejected ingestion.
@@ -386,8 +429,19 @@ export async function rejectIncomingSkillsByPeer(params: {
   return { ok: errored.length === 0, rejected, errored };
 }
 
+/**
+ * Where an item in the review queue actually came from. The UI must not label
+ * local content as "received from a peer":
+ *  - "peer"           genuine inbound skill from another node (foreign pubkey)
+ *  - "external-scrape" this node's own harvest (skill-seekers / agentskills.io)
+ *  - "local-dream"     this node's own dream-engine crystal that looped back
+ *  - "incomplete"      an envelope-less / unparseable dir (interrupted write)
+ */
+export type IncomingSkillOrigin = "peer" | "external-scrape" | "local-dream" | "incomplete";
+
 export type IncomingSkillSummary = {
   name: string;
+  origin: IncomingSkillOrigin;
   author_peer_id?: string;
   timestamp?: number;
   description?: string;
@@ -399,6 +453,36 @@ export type IncomingSkillSummary = {
   contentHash?: string;
   expiresAt?: number;
 };
+
+/** The synthetic peer id the skill-seekers harvester stamps on local scrapes. */
+const LOCAL_SCRAPE_PEER_IDS = new Set([
+  "local-skill-seekers",
+  "local-skill-seek",
+  "agentskills.io",
+]);
+
+function classifyIncomingOrigin(params: {
+  envelope: SkillEnvelope | undefined;
+  decodedSkillMd: string | undefined;
+  description: string | undefined;
+}): IncomingSkillOrigin {
+  const { envelope, decodedSkillMd, description } = params;
+  // No parseable envelope = an interrupted/corrupt write, NOT an anonymous peer.
+  if (!envelope) return "incomplete";
+  // Envelopes written since the origin fix carry it explicitly.
+  const stamped = (envelope as unknown as { origin?: string }).origin;
+  if (stamped === "external-scrape") return "external-scrape";
+  if (stamped === "local-dream") return "local-dream";
+  // Back-compat classification for envelopes written before the origin field.
+  if (envelope.author_peer_id && LOCAL_SCRAPE_PEER_IDS.has(envelope.author_peer_id)) {
+    return "external-scrape";
+  }
+  const md = decodedSkillMd ?? "";
+  if (description === "Dream-generated skill crystal" || /\bcrystal_id:/.test(md)) {
+    return "local-dream";
+  }
+  return "peer";
+}
 
 function extractDescriptionFromFrontmatter(content: string): string | undefined {
   if (!content.startsWith("---")) return undefined;
@@ -433,12 +517,25 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<Incom
         envelopeMeta = envelope as unknown as Record<string, unknown>;
       } catch {}
       let description: string | undefined;
+      let decodedSkillMd: string | undefined;
       if (envelope?.skill_md) {
         try {
-          const decoded = Buffer.from(envelope.skill_md, "base64").toString("utf-8");
-          description = extractDescriptionFromFrontmatter(decoded);
+          decodedSkillMd = Buffer.from(envelope.skill_md, "base64").toString("utf-8");
+          description = extractDescriptionFromFrontmatter(decodedSkillMd);
         } catch {}
       }
+      // Fall back to reading SKILL.md directly when the envelope lacks the body
+      // (e.g. an interrupted write) so we can still classify origin.
+      if (!decodedSkillMd) {
+        try {
+          decodedSkillMd = await fs.readFile(
+            path.join(quarantineDir, entry.name, "SKILL.md"),
+            "utf-8",
+          );
+          description = description ?? extractDescriptionFromFrontmatter(decodedSkillMd);
+        } catch {}
+      }
+      const origin = classifyIncomingOrigin({ envelope, decodedSkillMd, description });
       const injectionScan = envelopeMeta?.injection_scan as
         | { severity?: InjectionSeverity; matches?: { length?: number } | unknown[] }
         | undefined;
@@ -447,6 +544,7 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<Incom
         : (injectionScan?.matches as { length?: number } | undefined)?.length;
       skills.push({
         name: entry.name,
+        origin,
         author_peer_id: envelope?.author_peer_id,
         timestamp: envelope?.timestamp,
         description,

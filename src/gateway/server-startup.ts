@@ -287,6 +287,12 @@ export async function startGatewaySidecars(params: {
           envelope,
           config: loadConfig(),
           workspaceDir: params.defaultWorkspaceDir,
+          // Wire the live reputation manager so a genuine peer receipt is
+          // actually counted (peer_reputation.skills_received) and graduated
+          // trust can auto-accept verified peers. Without this the receive
+          // path was structurally silent — receipts never recorded, nothing
+          // ever auto-accepted, everything piled into review.
+          reputationManager: skillNetworkBridge?.getPeerReputation() ?? undefined,
         }).catch((err) => {
           params.log.warn(`P2P skill ingestion failed: ${String(err)}`);
           return null;

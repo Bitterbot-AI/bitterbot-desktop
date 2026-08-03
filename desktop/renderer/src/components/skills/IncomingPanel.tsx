@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 
+type IncomingOrigin = "peer" | "external-scrape" | "local-dream" | "incomplete";
+
 type IncomingSkill = {
   name: string;
+  origin?: IncomingOrigin;
   author_peer_id?: string;
   timestamp?: number;
   description?: string;
@@ -14,6 +17,33 @@ type IncomingSkill = {
   provenance?: Record<string, unknown>;
   contentHash?: string;
   expiresAt?: number;
+};
+
+/** Honest source line — only genuine peer skills are "received from" a peer. */
+function sourceLine(item: IncomingSkill): string {
+  switch (item.origin) {
+    case "external-scrape":
+      return "Harvested locally (this node)";
+    case "local-dream":
+      return "Generated locally (dream engine)";
+    case "incomplete":
+      return "Incomplete download";
+    case "peer":
+      return `Received from ${shortPeer(item.author_peer_id)}`;
+    default:
+      // Older gateway with no origin field: fall back to prior behavior but
+      // don't assert a peer we can't name.
+      return item.author_peer_id
+        ? `Received from ${shortPeer(item.author_peer_id)}`
+        : "Local (this node)";
+  }
+}
+
+const ORIGIN_BADGE: Record<IncomingOrigin, { label: string; cls: string } | null> = {
+  peer: { label: "from peer", cls: "bg-blue-500/10 text-blue-300 border-blue-500/20" },
+  "external-scrape": { label: "local harvest", cls: "bg-muted text-muted-foreground" },
+  "local-dream": { label: "local · dream", cls: "bg-purple-500/10 text-purple-300" },
+  incomplete: { label: "incomplete", cls: "bg-amber-500/10 text-amber-300 border-amber-500/20" },
 };
 
 type IncomingListResult = { skills?: IncomingSkill[] };
@@ -259,6 +289,16 @@ export function IncomingPanel({
           >
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold text-foreground">{item.name}</span>
+              {item.origin && ORIGIN_BADGE[item.origin] && (
+                <span
+                  className={cn(
+                    "text-xs px-1.5 py-0.5 rounded border",
+                    ORIGIN_BADGE[item.origin]!.cls,
+                  )}
+                >
+                  {ORIGIN_BADGE[item.origin]!.label}
+                </span>
+              )}
               {item.category && (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300">
                   {item.category}
@@ -292,8 +332,8 @@ export function IncomingPanel({
               <p className="text-xs text-muted-foreground">{item.description}</p>
             )}
             <div className="text-2xs text-muted-foreground space-y-0.5 font-mono">
-              <div>From: {shortPeer(peer)}</div>
-              <div>Received: {formatTimestamp(item.timestamp)}</div>
+              <div>{sourceLine(item)}</div>
+              <div>Added: {formatTimestamp(item.timestamp)}</div>
               {item.contentHash && (
                 <div title={item.contentHash}>Hash: {item.contentHash.slice(0, 16)}…</div>
               )}

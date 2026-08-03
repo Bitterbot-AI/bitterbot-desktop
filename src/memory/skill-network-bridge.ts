@@ -99,6 +99,11 @@ export class SkillNetworkBridge {
     this.skillVerifier = verifier;
   }
 
+  /** The live reputation manager, so the ingest path can record receipts. */
+  getPeerReputation(): PeerReputationManager | null {
+    return this.peerReputation;
+  }
+
   setPeerReputation(manager: PeerReputationManager | null): void {
     this.peerReputation = manager;
   }
@@ -378,6 +383,19 @@ export class SkillNetworkBridge {
     // Check provenance for confidential parents
     if (!this.checkProvenanceSafe(crystalId)) {
       log.debug(`crystal ${crystalId} has confidential ancestors, skipping`);
+      return null;
+    }
+
+    // Maturity gate: only propagate crystals that have proven out — the same
+    // bar the marketplace uses to list (SkillVerifier passes + >=3 executions +
+    // >70% success, see checkBountyClaimQuality). Auto-publish is the mesh's
+    // main amplifier; without this gate every raw dream mutation is broadcast
+    // to ~40 peers on the cycle it is generated, and every node quarantines
+    // everyone else's — the fleet-wide "skills from nowhere" flood. A crystal
+    // that is actually used and succeeds still propagates; unexecuted dream
+    // output does not.
+    if (!this.checkBountyClaimQuality(crystalId, row.text)) {
+      log.debug(`crystal ${crystalId} has not matured (verifier/executions), skipping publish`);
       return null;
     }
 
@@ -1028,6 +1046,12 @@ export class SkillNetworkBridge {
         continue;
       }
       if (gov.sensitivity === "confidential") {
+        continue;
+      }
+      // Same maturity gate as auto-publish: a query answer is still an outbound
+      // broadcast to the mesh, so an immature/unexecuted dream crystal must not
+      // be re-broadcast as a "response-*" skill (a second amplification vector).
+      if (!this.checkBountyClaimQuality(crystal.id, crystal.text)) {
         continue;
       }
 

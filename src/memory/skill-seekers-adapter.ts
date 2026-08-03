@@ -538,6 +538,12 @@ export class SkillSeekersAdapter {
         const result = await ingestSkill({
           envelope,
           config: this.bitterbotConfig,
+          // This is the node's OWN harvest of a public repo, not a peer skill.
+          // Marking the origin routes it directly into skills/ instead of the
+          // zero-trust peer quarantine, and stops it rendering as "received
+          // from unknown peer" (the author_peer_id here is a synthetic label,
+          // not a real sender).
+          origin: "external-scrape",
         });
         ingested.push(result);
         this.skillsGeneratedThisCycle++;
