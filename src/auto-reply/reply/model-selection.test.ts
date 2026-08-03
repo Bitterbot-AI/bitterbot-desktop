@@ -127,6 +127,10 @@ describe("createModelSelectionState parent inheritance", () => {
     const cfg = {
       agents: {
         defaults: {
+          // Opt into restriction so the map acts as an allowlist — otherwise a
+          // populated `models` map is just a catalog and never disallows
+          // anything (a default model must not forbid every other model).
+          restrictModels: true,
           models: {
             "openai/gpt-4o-mini": {},
           },
