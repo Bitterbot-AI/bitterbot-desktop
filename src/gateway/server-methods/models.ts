@@ -1,5 +1,7 @@
 import type { GatewayRequestHandlers } from "./types.js";
+import { getModelRefStatus, resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { applyDefaultModelPrimaryUpdate, updateConfig } from "../../commands/models/shared.js";
+import { loadConfig } from "../../config/config.js";
 import {
   ErrorCodes,
   errorShape,
@@ -30,7 +32,28 @@ export const modelsHandlers: GatewayRequestHandlers = {
         params.refresh === true
           ? await refreshGatewayModelCatalog()
           : await context.loadGatewayModelCatalog();
-      respond(true, { models }, undefined);
+      // Annotate each entry with whether it may actually be selected under the
+      // node's model policy, so the picker can hide models sessions.patch would
+      // reject (they only diverge when restrictModels is on). Any failure here
+      // is non-fatal — the list still returns, just unannotated.
+      let annotated = models;
+      try {
+        const cfg = loadConfig();
+        const def = resolveDefaultModelForAgent({ cfg });
+        annotated = models.map((m) => ({
+          ...m,
+          allowed: getModelRefStatus({
+            cfg,
+            catalog: models,
+            ref: { provider: m.provider, model: m.id },
+            defaultProvider: def.provider,
+            defaultModel: def.model,
+          }).allowed,
+        }));
+      } catch {
+        // leave models unannotated (older-gateway behavior: absent = allowed)
+      }
+      respond(true, { models: annotated }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }

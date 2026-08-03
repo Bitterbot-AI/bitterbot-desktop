@@ -102,6 +102,42 @@ describe("ModelPicker", () => {
     await waitFor(() => expect(screen.getByText("gpt-5.3")).toBeTruthy());
   });
 
+  it("hides models the node policy disallows (allowed:false), keeps allowed and unannotated", async () => {
+    requestMock.mockImplementation((method: string) => {
+      if (method === "models.list")
+        return Promise.resolve({
+          models: [
+            { ...catalog[0], allowed: true }, // opus: allowed
+            { ...catalog[1] }, // sonnet: unannotated → treated as allowed
+            { ...catalog[2], allowed: false }, // gpt: disallowed → hidden
+          ],
+        });
+      if (method === "sessions.resolve")
+        return Promise.resolve({ ok: true, key: "agent:main:main" });
+      if (method === "sessions.list")
+        return Promise.resolve({
+          sessions: [
+            {
+              key: "agent:main:main",
+              model: "claude-opus-4-8",
+              modelProvider: "anthropic",
+              modelOverridden: false,
+            },
+          ],
+          defaults: { model: "claude-opus-4-8", modelProvider: "anthropic" },
+        });
+      return Promise.resolve({ ok: true });
+    });
+    const user = userEvent.setup();
+    render(<ModelPicker />);
+    await waitFor(() => expect(screen.getByText("claude-opus-4-8")).toBeTruthy());
+    await user.click(screen.getByText("claude-opus-4-8"));
+    await waitFor(() => expect(screen.getByText("Claude Sonnet 5")).toBeTruthy());
+    // The disallowed model is never offered; the allowed and unannotated are.
+    expect(screen.queryByText("GPT-5.3")).toBeNull();
+    expect(screen.queryByText("openai")).toBeNull();
+  });
+
   it("offers reset-to-default only when the session is overridden, and sends model:null", async () => {
     primeGatewayResponses({
       listRow: {

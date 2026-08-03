@@ -8,6 +8,12 @@ export const ModelChoiceSchema = Type.Object(
     provider: NonEmptyString,
     contextWindow: Type.Optional(Type.Integer({ minimum: 1 })),
     reasoning: Type.Optional(Type.Boolean()),
+    /**
+     * Whether this model may be selected under the node's current model policy.
+     * Absent means allowed (older gateways don't set it). The picker hides
+     * disallowed models so it never offers a choice sessions.patch would reject.
+     */
+    allowed: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );

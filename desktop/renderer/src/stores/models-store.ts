@@ -8,6 +8,8 @@ export interface ModelCatalogEntry {
   contextWindow?: number;
   reasoning?: boolean;
   input?: Array<"text" | "image">;
+  /** Selectable under the node's model policy. Absent = allowed (old gateway). */
+  allowed?: boolean;
 }
 
 export interface SessionModelInfo {

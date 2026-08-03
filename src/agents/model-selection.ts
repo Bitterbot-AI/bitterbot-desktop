@@ -133,6 +133,12 @@ export function buildConfiguredAllowlistKeys(params: {
   cfg: BitterbotConfig | undefined;
   defaultProvider: string;
 }): Set<string> | null {
+  // Same rule as buildAllowedModelSet: the `models` map only restricts (here,
+  // the fallback candidate set) when the operator opts in via restrictModels.
+  // null means "no allowlist — consider any candidate".
+  if (params.cfg?.agents?.defaults?.restrictModels !== true) {
+    return null;
+  }
   const rawAllowlist = Object.keys(params.cfg?.agents?.defaults?.models ?? {});
   if (rawAllowlist.length === 0) {
     return null;
@@ -285,10 +291,15 @@ export function buildAllowedModelSet(params: {
   allowedCatalog: ModelCatalogEntry[];
   allowedKeys: Set<string>;
 } {
-  const rawAllowlist = (() => {
-    const modelMap = params.cfg.agents?.defaults?.models ?? {};
-    return Object.keys(modelMap);
-  })();
+  // The `models` map is a CATALOG (aliases/params + the current default), not a
+  // restriction list. It only acts as an allowlist when the operator explicitly
+  // opts in via agents.defaults.restrictModels. Without that, a node behaves as
+  // allow-any — otherwise setting a default (which registers it in the map)
+  // would forbid every other model, breaking the mid-session model picker.
+  const restrictEnabled = params.cfg.agents?.defaults?.restrictModels === true;
+  const rawAllowlist = restrictEnabled
+    ? Object.keys(params.cfg.agents?.defaults?.models ?? {})
+    : [];
   const allowAny = rawAllowlist.length === 0;
   const defaultModel = params.defaultModel?.trim();
   const defaultKey =

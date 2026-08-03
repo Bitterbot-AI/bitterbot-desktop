@@ -69,7 +69,10 @@ export function ModelPicker() {
   };
 
   const label = current?.model ?? "model";
-  const groups = groupCatalogByProvider(catalog);
+  // Only offer models the node will actually accept (sessions.patch enforces
+  // the same policy). `allowed` is absent on older gateways, which means allow.
+  const selectable = catalog.filter((m) => m.allowed !== false);
+  const groups = groupCatalogByProvider(selectable);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

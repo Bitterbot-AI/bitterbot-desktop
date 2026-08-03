@@ -128,6 +128,15 @@ export type AgentDefaultsConfig = {
   imageModel?: AgentModelListConfig;
   /** Model catalog with optional aliases (full provider/model keys). */
   models?: Record<string, AgentModelEntryConfig>;
+  /**
+   * Restrict usable models to the keys of `models` above. OFF by default: the
+   * `models` map is a catalog of configured/aliased models (and always holds
+   * the current default), so treating a merely-populated map as an allowlist
+   * would forbid every other model the moment a default is set. Set this true
+   * only to deliberately lock the node to the listed models. The current
+   * default model is always permitted regardless.
+   */
+  restrictModels?: boolean;
   /** Agent working directory (preferred). Used as the default cwd for agent runs. */
   workspace?: string;
   /** Optional repository root for system prompt runtime line (overrides auto-detect). */

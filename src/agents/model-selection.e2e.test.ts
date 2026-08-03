@@ -7,9 +7,65 @@ import {
   buildModelAliasIndex,
   normalizeProviderId,
   modelKey,
+  resolveAllowedModelRef,
 } from "./model-selection.js";
 
 describe("model-selection", () => {
+  describe("model allowlist (restrictModels opt-in)", () => {
+    // A populated `models` map is a catalog (aliases/params + the default), so
+    // it must NOT restrict unless the operator opts in. This is the regression
+    // guard for the mid-session picker: setting a default should never forbid
+    // every other model.
+    const catalog = [
+      { provider: "anthropic", id: "claude-opus-4-8", name: "Opus" },
+      {
+        provider: "amazon-bedrock",
+        id: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        name: "Sonnet",
+      },
+    ];
+    const cfgWithDefaultInMap = {
+      agents: {
+        defaults: {
+          model: { primary: "anthropic/claude-opus-4-8" },
+          models: { "anthropic/claude-opus-4-8": { params: { cacheRetention: "short" } } },
+        },
+      },
+    } as unknown as BitterbotConfig;
+    const pick = (cfg: BitterbotConfig, raw: string) =>
+      resolveAllowedModelRef({
+        cfg,
+        catalog,
+        raw,
+        defaultProvider: "anthropic",
+        defaultModel: "claude-opus-4-8",
+      });
+
+    it("a populated models map does NOT restrict by default", () => {
+      // The exact model from the bug report must resolve, not be rejected.
+      const r = pick(
+        cfgWithDefaultInMap,
+        "amazon-bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
+      );
+      expect("error" in r).toBe(false);
+    });
+
+    it("restrictModels:true enforces the map as an allowlist", () => {
+      const restricted = {
+        agents: {
+          defaults: {
+            ...cfgWithDefaultInMap.agents!.defaults,
+            restrictModels: true,
+          },
+        },
+      } as unknown as BitterbotConfig;
+      const blocked = pick(restricted, "amazon-bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0");
+      expect("error" in blocked).toBe(true);
+      // ...but the allowlisted model (and the default) still resolve.
+      expect("error" in pick(restricted, "anthropic/claude-opus-4-8")).toBe(false);
+    });
+  });
+
   describe("normalizeProviderId", () => {
     it("should normalize provider names", () => {
       expect(normalizeProviderId("Anthropic")).toBe("anthropic");
