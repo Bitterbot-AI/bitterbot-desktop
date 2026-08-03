@@ -10,6 +10,7 @@ import type { DreamInsight } from "./dream-types.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { SkillNetworkBridge } from "./skill-network-bridge.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { cosineSimilarity, parseEmbedding } from "./internal.js";
 import { SkillVerifier } from "./skill-verifier.js";
 
 const log = createSubsystemLogger("memory/skill-refiner");
@@ -29,11 +30,20 @@ export type SkillRefinementConfig = {
   promotionThreshold?: number;
   /** Maximum mutations to evaluate per cycle. Default: 5. */
   maxMutationsPerCycle?: number;
+  /**
+   * Cosine-similarity threshold above which a candidate mutation is treated as
+   * a near-duplicate of an existing crystal and archived instead of
+   * crystallized. Default 0.9. This is the novelty gate the dream engine was
+   * missing: without it the engine produces runs of reworded copies of the
+   * same idea (68 near-identical "resilient middleware" crystals in the field).
+   */
+  dedupSimilarityThreshold?: number;
 };
 
 const DEFAULT_CONFIG: Required<SkillRefinementConfig> = {
   promotionThreshold: 0.7,
   maxMutationsPerCycle: 5,
+  dedupSimilarityThreshold: 0.9,
 };
 
 export class SkillRefiner {
@@ -101,6 +111,18 @@ export class SkillRefiner {
             promoted: false,
             reason: `Verification failed: ${verification.overallReason}`,
           });
+          continue;
+        }
+
+        // Novelty gate: archive a mutation that is semantically a near-duplicate
+        // of an existing crystal instead of minting yet another copy. This is
+        // what stops the dream engine from producing runs of reworded variants
+        // of one idea.
+        const dup = this.findSemanticDuplicate(mutation, original.id);
+        if (dup) {
+          const reason = `Near-duplicate of ${dup.id} (cosine ${dup.similarity.toFixed(3)})`;
+          this.archiveMutation(mutation, reason);
+          results.mutations.push({ insight: mutation, score, promoted: false, reason });
           continue;
         }
 
@@ -228,6 +250,52 @@ export class SkillRefiner {
    *
    * Handles versioning (Phase 6): inherits stable_skill_id from parent or creates new one.
    */
+  /**
+   * Find an existing skill crystal that is a semantic near-duplicate of the
+   * candidate mutation. Compares the mutation's embedding against active skill
+   * crystals in the same lineage (stable_skill_id) or category — the places a
+   * reworded copy would land. Returns the closest match at/above the threshold,
+   * or null. If the mutation carries no embedding (nothing to compare), returns
+   * null so behavior degrades to the pre-existing (non-dedup) path.
+   */
+  private findSemanticDuplicate(
+    mutation: DreamInsight,
+    originalId: string,
+  ): { id: string; similarity: number } | null {
+    const emb = mutation.embedding;
+    if (!Array.isArray(emb) || emb.length === 0) return null;
+
+    const lineage = this.db
+      .prepare(`SELECT stable_skill_id, skill_category FROM chunks WHERE id = ?`)
+      .get(originalId) as { stable_skill_id?: string; skill_category?: string } | undefined;
+
+    const rows = this.db
+      .prepare(
+        `SELECT id, embedding FROM chunks
+          WHERE semantic_type = 'skill'
+            AND lifecycle_state = 'active'
+            AND embedding IS NOT NULL AND embedding != '[]'
+            AND id != ?
+            AND (stable_skill_id IS ? OR skill_category IS ?)
+          LIMIT 300`,
+      )
+      .all(originalId, lineage?.stable_skill_id ?? null, lineage?.skill_category ?? null) as Array<{
+      id: string;
+      embedding: string;
+    }>;
+
+    let best: { id: string; similarity: number } | null = null;
+    for (const row of rows) {
+      const other = parseEmbedding(row.embedding);
+      if (other.length !== emb.length) continue;
+      const sim = cosineSimilarity(emb, other);
+      if (sim >= this.config.dedupSimilarityThreshold && (!best || sim > best.similarity)) {
+        best = { id: row.id, similarity: sim };
+      }
+    }
+    return best;
+  }
+
   private queueForCrystallization(mutation: DreamInsight, originalId: string): boolean {
     const now = Date.now();
     const crystalId = crypto.randomUUID();
@@ -319,6 +387,16 @@ export class SkillRefiner {
           originalRow?.skill_tags ?? "[]",
           provenanceDag,
         );
+
+      // Persist the mutation's embedding on the crystal (the INSERT defaults it
+      // to '[]'). This is what makes semantic dedup possible: the next cycle's
+      // findSemanticDuplicate compares against these stored vectors. Also chips
+      // at the "skill crystals never embedded" gap.
+      if (Array.isArray(mutation.embedding) && mutation.embedding.length > 0) {
+        this.db
+          .prepare(`UPDATE chunks SET embedding = ? WHERE id = ?`)
+          .run(JSON.stringify(mutation.embedding), crystalId);
+      }
 
       // Record provenance: link mutation back to original skill
       this.db

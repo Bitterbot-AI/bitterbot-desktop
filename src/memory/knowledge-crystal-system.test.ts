@@ -1553,8 +1553,16 @@ describe("Skill Refiner", () => {
   });
 
   it("promotes high-scoring mutations with sufficient confidence", () => {
-    // Insert the dream_insights table is already created by ensureDreamSchema
-    const refiner = new SkillRefiner(db, { promotionThreshold: 0.5 });
+    // NOTE on dedupSimilarityThreshold: 1.1 (used on every SkillRefiner here):
+    // fakeEmbedding(seed) = [seed/norm, 1, 2, 3]/norm, so all fixture vectors
+    // share the [_,1,2,3] tail and are near-parallel (cosine > 0.9). That trips
+    // the real semantic-dedup gate, which these crystallization-path tests are
+    // not exercising. A threshold > 1 disables dedup (cosine never exceeds 1);
+    // the gate itself is covered by skill-refiner.dedup.test.ts.
+    const refiner = new SkillRefiner(db, {
+      promotionThreshold: 0.5,
+      dedupSimilarityThreshold: 1.1,
+    });
 
     const original = {
       id: "skill-orig",
@@ -1598,7 +1606,10 @@ describe("Skill Refiner", () => {
   });
 
   it("archives low-scoring mutations", () => {
-    const refiner = new SkillRefiner(db, { promotionThreshold: 0.99 });
+    const refiner = new SkillRefiner(db, {
+      promotionThreshold: 0.99,
+      dedupSimilarityThreshold: 1.1,
+    });
 
     const result = refiner.evaluateMutations(
       { id: "s1", text: "Complex multistep deployment process" },
@@ -1630,7 +1641,7 @@ describe("Skill Refiner", () => {
   });
 
   it("scores mutation based on keyword coverage, novelty, and structure", () => {
-    const refiner = new SkillRefiner(db);
+    const refiner = new SkillRefiner(db, { dedupSimilarityThreshold: 1.1 });
 
     const original = {
       id: "s2",
@@ -1666,9 +1677,13 @@ describe("Skill Refiner", () => {
 
   it("invokes onSkillCrystallized callback on promotion", () => {
     let callbackId: string | null = null;
-    const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
-      callbackId = id;
-    });
+    const refiner = new SkillRefiner(
+      db,
+      { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
+      (id) => {
+        callbackId = id;
+      },
+    );
 
     const mutation: DreamInsight = {
       id: "callback-mut",
@@ -2519,9 +2534,13 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // 3. Evaluate and crystallize with SkillRefiner
       let crystallizedId: string | null = null;
-      const refiner = new SkillRefiner(db, { promotionThreshold: 0.4 }, (id) => {
-        crystallizedId = id;
-      });
+      const refiner = new SkillRefiner(
+        db,
+        { promotionThreshold: 0.4, dedupSimilarityThreshold: 1.1 },
+        (id) => {
+          crystallizedId = id;
+        },
+      );
 
       const sourceId = mutations[0]!.sourceChunkIds[0]!;
       const source = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(sourceId) as
@@ -2622,9 +2641,13 @@ describe("Integration: Cross-system feedback loops", () => {
       );
 
       let crystallizedId: string | null = null;
-      const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, async (id) => {
-        crystallizedId = id;
-      });
+      const refiner = new SkillRefiner(
+        db,
+        { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
+        async (id) => {
+          crystallizedId = id;
+        },
+      );
       refiner.evaluateMutations(
         { id: originalId, text: "Original deployment skill with Docker and Kubernetes" },
         [mutation],
@@ -2740,9 +2763,13 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // Crystallize cycle 1 mutation (dream engine already stored insights)
       let gen1CrystalId: string | null = null;
-      const refiner1 = new SkillRefiner(db, { promotionThreshold: 0.4 }, (id) => {
-        gen1CrystalId = id;
-      });
+      const refiner1 = new SkillRefiner(
+        db,
+        { promotionThreshold: 0.4, dedupSimilarityThreshold: 1.1 },
+        (id) => {
+          gen1CrystalId = id;
+        },
+      );
       const source1 = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(origId) as
         | { id: string; text: string }
         | undefined;
@@ -2789,9 +2816,13 @@ describe("Integration: Cross-system feedback loops", () => {
 
       // Crystallize cycle 2 mutation (dream engine already stored insights)
       let gen2CrystalId: string | null = null;
-      const refiner2 = new SkillRefiner(db, { promotionThreshold: 0.4 }, async (id) => {
-        gen2CrystalId = id;
-      });
+      const refiner2 = new SkillRefiner(
+        db,
+        { promotionThreshold: 0.4, dedupSimilarityThreshold: 1.1 },
+        async (id) => {
+          gen2CrystalId = id;
+        },
+      );
       const source2 = db
         .prepare("SELECT id, text FROM chunks WHERE id = ?")
         .get(muts2[0]!.sourceChunkIds[0]!) as { id: string; text: string } | undefined;
@@ -2875,9 +2906,13 @@ describe("Integration: Cross-system feedback loops", () => {
       );
 
       let gen1Id: string | null = null;
-      const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
-        gen1Id = id;
-      });
+      const refiner = new SkillRefiner(
+        db,
+        { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
+        (id) => {
+          gen1Id = id;
+        },
+      );
       refiner.evaluateMutations({ id: gen0Id, text: "Base skill: deploy with Docker" }, [
         gen1Mutation,
       ]);
@@ -2914,9 +2949,13 @@ describe("Integration: Cross-system feedback loops", () => {
       );
 
       let gen2Id: string | null = null;
-      const refiner2 = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
-        gen2Id = id;
-      });
+      const refiner2 = new SkillRefiner(
+        db,
+        { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
+        (id) => {
+          gen2Id = id;
+        },
+      );
       const gen1Chunk = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(gen1Id!) as
         | { id: string; text: string }
         | undefined;

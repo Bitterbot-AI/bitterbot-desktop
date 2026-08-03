@@ -1614,9 +1614,12 @@ describe("End-to-End P2P Skill Propagation", () => {
     const networkBridge = new SkillNetworkBridge(dbA, mockBridge);
 
     let crystallizedId: string | null = null;
+    // dedupSimilarityThreshold: 1.1 disables the semantic-dedup gate here: the
+    // fakeEmbedding fixtures are near-parallel and would otherwise be flagged as
+    // near-duplicates. The gate is covered by skill-refiner.dedup.test.ts.
     const refiner = new SkillRefiner(
       dbA,
-      { promotionThreshold: 0.4 },
+      { promotionThreshold: 0.4, dedupSimilarityThreshold: 1.1 },
       (id) => {
         crystallizedId = id;
       },
@@ -1722,9 +1725,13 @@ describe("End-to-End P2P Skill Propagation", () => {
     );
 
     let gen1Id: string | null = null;
-    const refiner = new SkillRefiner(db, { promotionThreshold: 0.3 }, (id) => {
-      gen1Id = id;
-    });
+    const refiner = new SkillRefiner(
+      db,
+      { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
+      (id) => {
+        gen1Id = id;
+      },
+    );
     refiner.evaluateMutations({ id: gen0, text: "Base deployment skill" }, [gen1Mutation]);
     expect(gen1Id).not.toBeNull();
 
