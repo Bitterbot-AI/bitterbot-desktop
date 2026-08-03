@@ -81,11 +81,20 @@ export const BedrockDiscoverySchema = z
   .strict()
   .optional();
 
+export const LiveModelDiscoverySchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    timeoutMs: z.number().int().positive().optional(),
+  })
+  .strict()
+  .optional();
+
 export const ModelsConfigSchema = z
   .object({
     mode: z.union([z.literal("merge"), z.literal("replace")]).optional(),
     providers: z.record(z.string(), ModelProviderSchema).optional(),
     bedrockDiscovery: BedrockDiscoverySchema,
+    liveDiscovery: LiveModelDiscoverySchema,
   })
   .strict()
   .optional();

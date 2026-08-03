@@ -221,3 +221,46 @@ mode, pass `--yes` to accept defaults.
 Custom providers in `models.providers` are written into `models.json` under the
 agent directory (default `~/.bitterbot/agents/<agentId>/models.json`). This file
 is merged by default unless `models.mode` is set to `replace`.
+
+## Live model discovery
+
+The model picker's list starts from the vendored `@mariozechner/pi-ai` catalog,
+which goes stale between releases: it can list retired snapshots the provider
+now rejects (e.g. `claude-3-5-sonnet-20241022`, `claude-sonnet-4-20250514`) and
+omit models shipped after the SDK was published (e.g. the Claude 5 family,
+`claude-opus-4-8`). Picking a retired model surfaces as
+`LLM request rejected: ... not_found_error`.
+
+To keep the list honest, Bitterbot queries each provider's `/models` endpoint at
+catalog-build time and replaces that provider's slice with what it actually
+serves right now. Discovery covers providers reachable with a stored key plus a
+simple GET:
+
+- **anthropic-messages** family → `GET {baseUrl}/v1/models` (`x-api-key`)
+- **openai-completions / openai-responses** → `GET {baseUrl}/models` (`Bearer`)
+- **google-generative-ai** → `GET {baseUrl}/models?key=...`
+
+Discovered IDs are the source of truth for _which_ models exist; capability
+metadata (context window, image support, reasoning) is joined from the vendored
+catalog, and synthesized from the provider's richest known model for IDs the SDK
+has never seen. Providers without a listable endpoint (Bedrock via SigV4, Codex
+/ Gemini-CLI / Antigravity via OAuth) keep their vendored/curated entries.
+
+Discovery is **safe by construction**: any missing credential, non-200, timeout,
+or parse failure falls back to the vendored list for that provider — a failed
+probe never removes a working entry. It is skipped under tests.
+
+```jsonc
+// bitterbot.json — defaults shown; the whole block is optional
+{
+  "models": {
+    "liveDiscovery": {
+      "enabled": true, // set false to use the vendored/curated list only
+      "timeoutMs": 6000, // per-provider probe timeout
+    },
+  },
+}
+```
+
+The catalog is cached for the gateway process lifetime; `models.list` with
+`refresh: true` (and any credential write) re-runs discovery.

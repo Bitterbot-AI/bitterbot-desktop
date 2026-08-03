@@ -1,6 +1,7 @@
 import { type BitterbotConfig, loadConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveBitterbotAgentDir } from "./agent-paths.js";
+import { applyLiveDiscovery, type ProviderMeta } from "./model-live-discovery.js";
 import { ensureBitterbotModelsJson } from "./models-config.js";
 
 const log = createSubsystemLogger("agent/model-catalog");
@@ -21,6 +22,8 @@ type DiscoveredModel = {
   contextWindow?: number;
   reasoning?: boolean;
   input?: Array<"text" | "image">;
+  baseUrl?: string;
+  api?: string;
 };
 
 type PiSdkModule = typeof import("./pi-model-discovery.js");
@@ -111,6 +114,9 @@ export async function loadModelCatalog(params?: {
           }
         | Array<DiscoveredModel>;
       const entries = Array.isArray(registry) ? registry : registry.getAll();
+      // provider -> {baseUrl, api} captured from the vendored catalog, so live
+      // discovery knows where and how to probe each provider. First entry wins.
+      const providerMeta = new Map<string, ProviderMeta>();
       for (const entry of entries) {
         const id = String(entry?.id ?? "").trim();
         if (!id) {
@@ -127,6 +133,12 @@ export async function loadModelCatalog(params?: {
             : undefined;
         const reasoning = typeof entry?.reasoning === "boolean" ? entry.reasoning : undefined;
         const input = Array.isArray(entry?.input) ? entry.input : undefined;
+        if (!providerMeta.has(provider)) {
+          providerMeta.set(provider, {
+            baseUrl: typeof entry?.baseUrl === "string" ? entry.baseUrl : undefined,
+            api: typeof entry?.api === "string" ? entry.api : undefined,
+          });
+        }
         models.push({ id, name, provider, contextWindow, reasoning, input });
       }
       applyOpenAICodexSparkFallback(models);
@@ -136,7 +148,8 @@ export async function loadModelCatalog(params?: {
         modelCatalogPromise = null;
       }
 
-      return sortModels(models);
+      const discovered = await maybeApplyLiveDiscovery(models, providerMeta, cfg);
+      return sortModels(discovered);
     } catch (error) {
       if (!hasLoggedModelCatalogError) {
         hasLoggedModelCatalogError = true;
@@ -152,6 +165,51 @@ export async function loadModelCatalog(params?: {
   })();
 
   return modelCatalogPromise;
+}
+
+// Live discovery talks to the network, so it is skipped under tests (mirrors
+// the ollama/vllm/bedrock discovery gates) and can be turned off entirely via
+// config. Any failure inside falls back to the vendored catalog unchanged.
+async function maybeApplyLiveDiscovery(
+  models: ModelCatalogEntry[],
+  providerMeta: Map<string, ProviderMeta>,
+  cfg: BitterbotConfig,
+): Promise<ModelCatalogEntry[]> {
+  if (models.length === 0) {
+    return models;
+  }
+  const isTest = Boolean(process.env.VITEST) || process.env.NODE_ENV === "test";
+  if (isTest) {
+    return models;
+  }
+  if (cfg.models?.liveDiscovery?.enabled === false) {
+    return models;
+  }
+  try {
+    const { resolveApiKeyForProvider } = await import("./model-auth.js");
+    const agentDir = resolveBitterbotAgentDir();
+    const merged = await applyLiveDiscovery({
+      vendored: models,
+      providerMeta,
+      timeoutMs: cfg.models?.liveDiscovery?.timeoutMs,
+      resolveKey: async (provider) => {
+        try {
+          return await resolveApiKeyForProvider({ provider, cfg, agentDir });
+        } catch {
+          return null;
+        }
+      },
+      logWarn: (message) => log.warn(message),
+    });
+    // applyLiveDiscovery returns ModelCatalogEntry-compatible objects (it only
+    // reads/writes id/name/provider/contextWindow/reasoning/input).
+    return merged as ModelCatalogEntry[];
+  } catch (error) {
+    if (!hasLoggedModelCatalogError) {
+      log.warn(`Live model discovery pass failed: ${String(error)}`);
+    }
+    return models;
+  }
 }
 
 /**

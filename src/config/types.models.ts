@@ -60,8 +60,20 @@ export type BedrockDiscoveryConfig = {
   defaultMaxTokens?: number;
 };
 
+export type LiveModelDiscoveryConfig = {
+  // Query each provider's /models endpoint at catalog-build time so the picker
+  // reflects what the provider actually serves (retired snapshots gone, newer-
+  // than-SDK models present) instead of the vendored pi-ai catalog. Default on;
+  // set false to fall back to the vendored/curated list only. Failures always
+  // degrade to the vendored list, so this is safe to leave enabled.
+  enabled?: boolean;
+  // Per-provider probe timeout in milliseconds (default 6000).
+  timeoutMs?: number;
+};
+
 export type ModelsConfig = {
   mode?: "merge" | "replace";
   providers?: Record<string, ModelProviderConfig>;
   bedrockDiscovery?: BedrockDiscoveryConfig;
+  liveDiscovery?: LiveModelDiscoveryConfig;
 };
