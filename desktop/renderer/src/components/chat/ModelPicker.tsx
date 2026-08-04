@@ -1,9 +1,15 @@
-import { Check, ChevronDown, RotateCcw } from "lucide-react";
+import { Check, ChevronDown, ListPlus, RotateCcw, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useChatStore } from "../../stores/chat-store";
 import { useGatewayStore } from "../../stores/gateway-store";
-import { groupCatalogByProvider, useModelsStore } from "../../stores/models-store";
+import {
+  groupCatalogByProvider,
+  groupFeaturedByTier,
+  type ModelCatalogEntry,
+  TIER_LABEL,
+  useModelsStore,
+} from "../../stores/models-store";
 import {
   Command,
   CommandEmpty,
@@ -34,6 +40,8 @@ export function ModelPicker() {
 
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [query, setQuery] = useState("");
 
   // Version skew: older gateways advertise their methods in the hello frame.
   // Without both RPCs the picker can't work, so render nothing.
@@ -72,10 +80,44 @@ export function ModelPicker() {
   // Only offer models the node will actually accept (sessions.patch enforces
   // the same policy). `allowed` is absent on older gateways, which means allow.
   const selectable = catalog.filter((m) => m.allowed !== false);
-  const groups = groupCatalogByProvider(selectable);
+  const featuredTiers = groupFeaturedByTier(selectable);
+  const providerGroups = groupCatalogByProvider(selectable);
+  const hasFeatured = featuredTiers.length > 0;
+  // Default to the lean curated view; fall through to the full catalog when the
+  // user searches, opts in, or the node has nothing featured to promote.
+  const searching = query.trim().length > 0;
+  const showFullList = showAll || searching || !hasFeatured;
+
+  const renderItem = (entry: ModelCatalogEntry, opts?: { showProvider?: boolean }) => {
+    const isCurrent = current?.model === entry.id && current?.provider === entry.provider;
+    return (
+      <CommandItem
+        key={`${entry.provider}/${entry.id}`}
+        value={`${entry.provider}/${entry.id} ${entry.name}`}
+        onSelect={() => void handleSelect(`${entry.provider}/${entry.id}`)}
+      >
+        <Check className={cn("h-3.5 w-3.5 mr-2", isCurrent ? "opacity-100" : "opacity-0")} />
+        <span className="truncate">{entry.name || entry.id}</span>
+        {entry.isDefault && <span className="ml-2 text-2xs text-emerald-400/90">recommended</span>}
+        <span className="ml-auto flex items-center gap-2 pl-2 text-2xs text-muted-foreground">
+          {opts?.showProvider && <span className="truncate max-w-[90px]">{entry.provider}</span>}
+          {entry.reasoning && <span>reasoning</span>}
+        </span>
+      </CommandItem>
+    );
+  };
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      // Reopen fresh in the lean curated view.
+      setShowAll(false);
+      setQuery("");
+    }
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           disabled={saving || status !== "connected"}
@@ -99,7 +141,7 @@ export function ModelPicker() {
       </PopoverTrigger>
       <PopoverContent className="w-[320px] p-0" align="end">
         <Command>
-          <CommandInput placeholder="Search models…" />
+          <CommandInput placeholder="Search models…" value={query} onValueChange={setQuery} />
           <CommandList>
             <CommandEmpty>
               {catalog.length > 0
@@ -119,31 +161,32 @@ export function ModelPicker() {
                 <CommandSeparator />
               </>
             )}
-            {groups.map(([provider, entries]) => (
-              <CommandGroup key={provider} heading={provider}>
-                {entries.map((entry) => {
-                  const isCurrent =
-                    current?.model === entry.id && current?.provider === entry.provider;
-                  return (
-                    <CommandItem
-                      key={`${entry.provider}/${entry.id}`}
-                      value={`${entry.provider}/${entry.id} ${entry.name}`}
-                      onSelect={() => void handleSelect(`${entry.provider}/${entry.id}`)}
-                    >
-                      <Check
-                        className={cn("h-3.5 w-3.5 mr-2", isCurrent ? "opacity-100" : "opacity-0")}
-                      />
-                      <span className="truncate">{entry.name || entry.id}</span>
-                      {entry.reasoning && (
-                        <span className="ml-auto text-2xs text-muted-foreground pl-2">
-                          reasoning
-                        </span>
-                      )}
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            ))}
+            {showFullList
+              ? providerGroups.map(([provider, entries]) => (
+                  <CommandGroup key={provider} heading={provider}>
+                    {entries.map((entry) => renderItem(entry))}
+                  </CommandGroup>
+                ))
+              : featuredTiers.map(([tier, entries]) => (
+                  <CommandGroup key={tier} heading={TIER_LABEL[tier]}>
+                    {entries.map((entry) => renderItem(entry, { showProvider: true }))}
+                  </CommandGroup>
+                ))}
+            {hasFeatured && !searching && (
+              <>
+                <CommandSeparator />
+                <CommandGroup>
+                  <CommandItem value="__toggle_all__" onSelect={() => setShowAll((v) => !v)}>
+                    {showAll ? (
+                      <Sparkles className="h-3.5 w-3.5 mr-2" />
+                    ) : (
+                      <ListPlus className="h-3.5 w-3.5 mr-2" />
+                    )}
+                    {showAll ? "Show featured only" : `Show all ${selectable.length} models`}
+                  </CommandItem>
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

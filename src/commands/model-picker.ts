@@ -4,6 +4,7 @@ import { ensureAuthProfileStore, listProfilesForProvider } from "../agents/auth-
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { getCustomProviderApiKey, resolveEnvApiKey } from "../agents/model-auth.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
+import { classifyFeatured, type ModelTier, TIER_LABEL } from "../agents/model-featured.js";
 import {
   buildAllowedModelSet,
   buildModelAliasIndex,
@@ -117,6 +118,10 @@ function addModelSelectOption(params: {
   seen: Set<string>;
   aliasIndex: ReturnType<typeof buildModelAliasIndex>;
   hasAuth: (provider: string) => boolean;
+  /** Curated tier, when this is a featured pick — shown first in the hint. */
+  tier?: ModelTier;
+  /** The single recommended everyday default. */
+  isDefault?: boolean;
 }) {
   const key = modelKey(params.entry.provider, params.entry.id);
   if (params.seen.has(key)) {
@@ -127,6 +132,12 @@ function addModelSelectOption(params: {
     return;
   }
   const hints: string[] = [];
+  if (params.isDefault) {
+    hints.push("recommended");
+  }
+  if (params.tier) {
+    hints.push(TIER_LABEL[params.tier]);
+  }
   if (params.entry.name && params.entry.name !== params.entry.id) {
     hints.push(params.entry.name);
   }
@@ -280,7 +291,35 @@ export async function promptDefaultModel(
 
   const seen = new Set<string>();
 
+  // Lead with the curated featured picks (frontier -> mid -> workhorse), each
+  // tagged with its tier, so the wizard offers a lean recommended set first
+  // instead of the raw catalog. Everything else follows in catalog order and
+  // stays selectable.
+  const tierRank: Record<ModelTier, number> = { frontier: 0, mid: 1, workhorse: 2 };
+  const featured: Array<{ entry: (typeof models)[number]; tier?: ModelTier; isDefault?: boolean }> =
+    [];
+  const rest: Array<(typeof models)[number]> = [];
   for (const entry of models) {
+    const info = classifyFeatured(entry.provider, entry.id);
+    if (info.featured) {
+      featured.push({ entry, tier: info.tier, isDefault: info.isDefault });
+    } else {
+      rest.push(entry);
+    }
+  }
+  featured.sort((a, b) => tierRank[a.tier ?? "workhorse"] - tierRank[b.tier ?? "workhorse"]);
+  for (const f of featured) {
+    addModelSelectOption({
+      entry: f.entry,
+      options,
+      seen,
+      aliasIndex,
+      hasAuth,
+      tier: f.tier,
+      isDefault: f.isDefault,
+    });
+  }
+  for (const entry of rest) {
     addModelSelectOption({ entry, options, seen, aliasIndex, hasAuth });
   }
 

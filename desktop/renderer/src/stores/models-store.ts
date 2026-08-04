@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { useGatewayStore } from "./gateway-store";
 
+export type ModelTier = "frontier" | "mid" | "workhorse";
+
 export interface ModelCatalogEntry {
   id: string;
   name: string;
@@ -10,6 +12,12 @@ export interface ModelCatalogEntry {
   input?: Array<"text" | "image">;
   /** Selectable under the node's model policy. Absent = allowed (old gateway). */
   allowed?: boolean;
+  /** Promoted in the lean curated picker. Absent on older gateways. */
+  featured?: boolean;
+  /** Curated tier for grouping the featured set. */
+  tier?: ModelTier;
+  /** The single recommended everyday default. */
+  isDefault?: boolean;
 }
 
 export interface SessionModelInfo {
@@ -108,6 +116,35 @@ export function groupCatalogByProvider(
     }
   }
   return [...groups.entries()].toSorted((a, b) => a[0].localeCompare(b[0]));
+}
+
+const TIER_ORDER: ModelTier[] = ["frontier", "mid", "workhorse"];
+export const TIER_LABEL: Record<ModelTier, string> = {
+  frontier: "Frontier",
+  mid: "Mid",
+  workhorse: "Workhorse",
+};
+
+/**
+ * Group the featured (curated) entries by tier, frontier first, so the picker
+ * can show a lean promoted menu. Non-featured entries are ignored here — they
+ * remain reachable via search and the "show all" toggle. Returns only tiers
+ * that have at least one model.
+ */
+export function groupFeaturedByTier(
+  catalog: ModelCatalogEntry[],
+): Array<[ModelTier, ModelCatalogEntry[]]> {
+  const groups = new Map<ModelTier, ModelCatalogEntry[]>();
+  for (const entry of catalog) {
+    if (!entry.featured || !entry.tier) continue;
+    const list = groups.get(entry.tier);
+    if (list) {
+      list.push(entry);
+    } else {
+      groups.set(entry.tier, [entry]);
+    }
+  }
+  return TIER_ORDER.filter((t) => groups.has(t)).map((t) => [t, groups.get(t) ?? []]);
 }
 
 // Monotonic sequence per session key: a slow loadSessionModel (two RPCs)

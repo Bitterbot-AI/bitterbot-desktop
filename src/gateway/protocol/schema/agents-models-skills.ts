@@ -14,6 +14,16 @@ export const ModelChoiceSchema = Type.Object(
      * disallowed models so it never offers a choice sessions.patch would reject.
      */
     allowed: Type.Optional(Type.Boolean()),
+    /**
+     * Curated-menu overlay. `featured` = promoted in the lean default picker;
+     * `tier` groups it (frontier|mid|workhorse); `isDefault` marks the single
+     * recommended everyday model. Absent on older gateways (picker shows all).
+     */
+    featured: Type.Optional(Type.Boolean()),
+    tier: Type.Optional(
+      Type.Union([Type.Literal("frontier"), Type.Literal("mid"), Type.Literal("workhorse")]),
+    ),
+    isDefault: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );

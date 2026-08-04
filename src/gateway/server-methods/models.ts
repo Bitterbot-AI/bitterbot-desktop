@@ -1,4 +1,5 @@
 import type { GatewayRequestHandlers } from "./types.js";
+import { classifyFeatured } from "../../agents/model-featured.js";
 import { getModelRefStatus, resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { applyDefaultModelPrimaryUpdate, updateConfig } from "../../commands/models/shared.js";
 import { loadConfig } from "../../config/config.js";
@@ -40,16 +41,23 @@ export const modelsHandlers: GatewayRequestHandlers = {
       try {
         const cfg = loadConfig();
         const def = resolveDefaultModelForAgent({ cfg });
-        annotated = models.map((m) => ({
-          ...m,
-          allowed: getModelRefStatus({
-            cfg,
-            catalog: models,
-            ref: { provider: m.provider, model: m.id },
-            defaultProvider: def.provider,
-            defaultModel: def.model,
-          }).allowed,
-        }));
+        annotated = models.map((m) => {
+          const featured = classifyFeatured(m.provider, m.id);
+          return {
+            ...m,
+            allowed: getModelRefStatus({
+              cfg,
+              catalog: models,
+              ref: { provider: m.provider, model: m.id },
+              defaultProvider: def.provider,
+              defaultModel: def.model,
+            }).allowed,
+            // Curated-menu overlay so the picker can promote a lean default set.
+            featured: featured.featured,
+            ...(featured.tier ? { tier: featured.tier } : {}),
+            ...(featured.isDefault ? { isDefault: true } : {}),
+          };
+        });
       } catch {
         // leave models unannotated (older-gateway behavior: absent = allowed)
       }

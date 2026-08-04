@@ -264,3 +264,33 @@ probe never removes a working entry. It is skipped under tests.
 
 The catalog is cached for the gateway process lifetime; `models.list` with
 `refresh: true` (and any credential write) re-runs discovery.
+
+## Featured (curated) models
+
+Live discovery decides which models _exist_; a curated **featured** overlay
+decides which we _recommend_. `src/agents/model-featured.ts` tiers a lean set —
+`frontier` / `mid` / `workhorse` — with one model marked as the everyday
+`isDefault` (Claude Sonnet 5). `models.list` annotates every catalog entry with
+`featured`, `tier`, and `isDefault` (alongside `allowed`).
+
+The overlay is additive, never a filter: a model that matches no rule stays
+selectable, it just isn't promoted. Rules that name an unconfigured provider
+never match, so the featured menu fills in tier-by-tier as providers are added.
+Matching is by lowercased provider + id prefix, so it survives whatever exact
+IDs a provider serves (both `claude-opus-5` and `claude-opus-4-8` map to the
+frontier slot; a dated snapshot like `claude-sonnet-4-5-20250929` is not
+featured).
+
+Two surfaces consume it:
+
+- **In-session picker** (Control UI chat header): shows the featured set grouped
+  by tier by default, with a **Show all N models** toggle for the full
+  discovered catalog. Typing a search always spans everything. Nodes with no
+  featured models fall back to the full provider-grouped list.
+- **Onboarding wizard** (`bitterbot onboard`): the model select leads with the
+  featured picks (frontier → mid → workhorse), each tagged with its tier and the
+  recommended default flagged, ahead of the rest of the catalog.
+
+To change the recommended lineup, edit the `FEATURED_RULES` table in
+`src/agents/model-featured.ts` — it is the single source of truth for both
+surfaces.
