@@ -45,6 +45,13 @@ jobs:
         if: runner.os != 'Windows'
         run: pnpm build
 
+      # Production build of the Control UI. Typecheck alone (above) does not
+      # catch bundler-time failures — those only surfaced at Railway deploy
+      # time before this step existed. Matches the Railway image's UI build.
+      - name: Build (desktop renderer)
+        if: runner.os != 'Windows'
+        run: pnpm --filter bitterbot-control-ui build
+
       - name: Unit tests
         run: pnpm test:fast
 
