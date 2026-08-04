@@ -476,7 +476,20 @@ export function applyCompactionDefaults(cfg: BitterbotConfig): BitterbotConfig {
  * is permanently retired.
  */
 const FALLBACK_BOOTSTRAP_PEERS: readonly string[] = [
-  // Railway bootnode #1 (us-east, persistent volume)
+  // DigitalOcean relay fleet (deployed 2026-04-28) — fixed-IP nodes that are
+  // both the relay fleet and 3 of the 5 genesis-trust quorum members. These are
+  // the true DNS-independent backstop: raw /ip4 multiaddrs that resolve even if
+  // p2p.bitterbot.ai (the primary DNS path) is down. Keep these current with the
+  // fleet; primary discovery is still DNS, so hosts can rotate without a release.
+  // nyc1
+  "/ip4/142.93.113.64/tcp/9100/p2p/12D3KooWRWqC9ha4zvFpLTWdKWr3B8EaiQnWqr2Mp3vyRSNQNPJN",
+  // fra1
+  "/ip4/46.101.181.98/tcp/9100/p2p/12D3KooWMnnCHGVtZxyAFaJoEzk2hT1eD3SEvjLDiUNwiJsXdRty",
+  // sgp1
+  "/ip4/139.59.233.83/tcp/9100/p2p/12D3KooWNZdviN1579x6LrLQt78d6VRZczLHbBWhyyXzoun2k2L3",
+  // Railway bootnode #1 (us-east, persistent volume) — retained as an extra
+  // backstop. Now that the DO fleet above is the primary fallback, this line
+  // can be removed once the Railway service is retired.
   "/dns4/metro.proxy.rlwy.net/tcp/12838/p2p/12D3KooWCwCCFMHCVv8eXZnAGMTUjTDPPePfYRTJ1fZvRpqcQXKt",
 ];
 
