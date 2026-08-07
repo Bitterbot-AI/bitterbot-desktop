@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { circleIdentity, hueFor, leadingEmoji } from "./circle-identity";
+import { circleIdentity, hueFor, initialsFor, leadingEmoji } from "./circle-identity";
 
 // Phase B: circle identity is pure and stable — same circleId, same color,
 // forever; the name's leading emoji (and only a LEADING one) claims the tile.
@@ -29,6 +29,20 @@ describe("leadingEmoji", () => {
     expect(leadingEmoji("Bio 204")).toBeNull();
     expect(leadingEmoji("")).toBeNull();
   });
+
+  it("recognizes flags and keycaps (outside Extended_Pictographic)", () => {
+    expect(leadingEmoji("🇺🇸 Team USA")).toBe("🇺🇸");
+    expect(leadingEmoji("1️⃣ Squad")).toBe("1️⃣");
+  });
+});
+
+describe("initialsFor", () => {
+  it("never slices a surrogate pair in half", () => {
+    // A flag as a "word": the first CODE POINT (🇺) must come back whole,
+    // not a lone \uD83C that renders as a broken glyph.
+    expect(initialsFor("Team 🇺🇸")).toBe("T🇺");
+    expect(initialsFor("🎉party time")).toBe("🎉T");
+  });
 });
 
 describe("circleIdentity", () => {
@@ -40,6 +54,9 @@ describe("circleIdentity", () => {
     const plain = circleIdentity("c1", "Bio 204");
     expect(plain.emoji).toBeNull();
     expect(plain.initials).toBe("B2");
+    const flag = circleIdentity("c1", "🇺🇸 Team USA");
+    expect(flag.emoji).toBe("🇺🇸");
+    expect(flag.initials).toBe("TU");
   });
 
   it("derives gradient and accent from the circleId hue", () => {

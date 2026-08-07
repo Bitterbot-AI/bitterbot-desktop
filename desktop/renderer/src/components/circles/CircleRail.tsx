@@ -27,7 +27,7 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
   const unarchiveCircle = useCirclesStore((s) => s.unarchiveCircle);
   const deleteCircle = useCirclesStore((s) => s.deleteCircle);
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  const [menuTop, setMenuTop] = useState(0);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const [step, setStep] = useState<Step>("menu");
   const [busy, setBusy] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
@@ -35,14 +35,25 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
 
   const archivedCircles = circles.filter((c) => c.status === "archived");
   const visibleCircles = circles.filter((c) => c.status !== "archived");
-  const shown = showArchived ? [...visibleCircles, ...archivedCircles] : visibleCircles;
+  // If the ACTIVE circle is archived (picked via the toggle, or auto-archived
+  // server-side like the practice circle), keep the archived tiles visible —
+  // a selected chat must never point at a tile the rail is hiding.
+  const activeIsArchived = archivedCircles.some((c) => c.circleId === activeCircleId);
+  const revealArchived = showArchived || activeIsArchived;
+  const shown = revealArchived ? [...visibleCircles, ...archivedCircles] : visibleCircles;
 
   const openMenu = (circleId: string, anchor: HTMLElement) => {
-    // Fixed positioning (viewport coords): the menu must escape the tile
-    // scroller's clip, and tiles near the bottom must not push it below the
-    // fold. ~260px covers the tallest step (rename/confirm).
+    // Fixed positioning ANCHORED TO THE TRIGGER's viewport rect: the menu
+    // must escape the tile scroller's clip, must not assume the rail sits at
+    // viewport x=0 (the app sidebar is to its left), and tiles near the
+    // bottom must not push it below the fold (~260px covers the tallest
+    // step). Scrolling the rail closes it — a one-shot position must never
+    // drift onto a different tile.
     const rect = anchor.getBoundingClientRect();
-    setMenuTop(Math.max(8, Math.min(rect.top, window.innerHeight - 260)));
+    setMenuPos({
+      top: Math.max(8, Math.min(rect.top, window.innerHeight - 260)),
+      left: rect.right + 8,
+    });
     setMenuFor(circleId);
     setStep("menu");
   };
@@ -64,7 +75,10 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
       className="w-[60px] shrink-0 border-r bg-muted/40 flex flex-col items-center py-3"
       aria-label="Your circles"
     >
-      <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden flex flex-col items-center gap-2.5 [scrollbar-width:none]">
+      <div
+        onScroll={menuFor ? close : undefined}
+        className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden flex flex-col items-center gap-2.5 py-1 [scrollbar-width:none]"
+      >
         {shown.map((c) => {
           const active = c.circleId === activeCircleId;
           const unread = c.unread ?? 0;
@@ -117,8 +131,8 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
                   {/* click-outside backdrop */}
                   <div className="fixed inset-0 z-40" onClick={close} aria-hidden="true" />
                   <div
-                    className="fixed left-[64px] z-50 w-56 rounded-lg border bg-popover shadow-md p-1.5 text-sm"
-                    style={{ top: menuTop }}
+                    className="fixed z-50 w-56 rounded-lg border bg-popover shadow-md p-1.5 text-sm"
+                    style={{ top: menuPos.top, left: menuPos.left }}
                   >
                     <div className="px-2 py-1 text-xs font-semibold text-muted-foreground truncate">
                       {c.name}
@@ -226,16 +240,16 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
           <button
             type="button"
             onClick={() => setShowArchived((v) => !v)}
-            aria-pressed={showArchived}
+            aria-pressed={revealArchived}
             aria-label={
-              showArchived
+              revealArchived
                 ? "Hide archived circles"
                 : `Show ${archivedCircles.length} archived ${archivedCircles.length === 1 ? "circle" : "circles"}`
             }
-            title={showArchived ? "Hide archived" : "Show archived"}
+            title={revealArchived ? "Hide archived" : "Show archived"}
             className={cn(
               "w-10 h-8 rounded-[10px] grid place-items-center border border-dashed",
-              showArchived
+              revealArchived
                 ? "text-foreground border-circle-you"
                 : "text-muted-foreground hover:text-foreground",
             )}

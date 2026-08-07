@@ -12,7 +12,7 @@ import { InviteTrustPrompt, type InvitePreview } from "./InviteTrustPrompt";
 // for it. The first mint creates the circle ONCE and every further mint
 // reuses it — "New invite code" can never silently mint another circle
 // (the old "Create another invite" bug). "Create without inviting" makes a
-// solo circle (canvas + practice partner) with no invite at all.
+// solo circle (just you + its canvas) with no invite at all.
 //
 // Joining pastes a code — which now runs the SAME signature-verified
 // inviteInfo preview as the in-message Join path before anything joins
@@ -31,8 +31,7 @@ export function InvitePanel({
   const refresh = useCirclesStore((s) => s.refresh);
   const setNotice = useCirclesStore((s) => s.setNotice);
   const circles = useCirclesStore((s) => s.circles);
-  const createCircle = useCirclesStore((s) => s.createCircle);
-  const inviteInfo = useCirclesStore((s) => s.inviteInfo);
+  const selectCircle = useCirclesStore((s) => s.selectCircle);
   const scoped = !!circleId;
 
   // "Add someone you know": every peer from your other circles who isn't
@@ -76,6 +75,7 @@ export function InvitePanel({
   );
   // Phase B: the circle the FIRST mint created — every further mint reuses it.
   const [mintedCircleId, setMintedCircleId] = useState<string | null>(null);
+  const [minting, setMinting] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -83,7 +83,14 @@ export function InvitePanel({
   const [joining, setJoining] = useState(false);
   const [local, setLocal] = useState<string | null>(null);
 
+  // Reuse guard (review): an unscoped re-mint is only safe when the first
+  // response told us WHICH circle it created. An older gateway that omits
+  // circleId gets exactly one mint per modal open — never silent duplicates.
+  const canRemint = scoped || !invite || mintedCircleId !== null;
+
   const mintInvite = useCallback(async () => {
+    if (minting || !canRemint) return;
+    setMinting(true);
     try {
       // Scoped → the given circle. Unscoped → the circle the first mint
       // created, else a fresh one carrying the typed name (server names it
@@ -99,29 +106,63 @@ export function InvitePanel({
       setInvite({ code: res.code, link: res.link, qrPngBase64: res.qrPngBase64 });
       if (!scoped && !mintedCircleId && typeof res.circleId === "string") {
         setMintedCircleId(res.circleId);
+        // Land in the new circle: closing the modal shows it selected, and
+        // re-inviting later goes through the members pane's scoped path
+        // (which is why losing this modal's state on close is harmless).
+        await refresh();
+        selectCircle(res.circleId);
+      } else {
+        void refresh();
       }
-      void refresh();
     } catch (err) {
       setLocal(String(err));
+    } finally {
+      setMinting(false);
     }
-  }, [request, refresh, circleId, mintedCircleId, newName, scoped]);
+  }, [
+    request,
+    refresh,
+    selectCircle,
+    circleId,
+    mintedCircleId,
+    minting,
+    canRemint,
+    newName,
+    scoped,
+  ]);
 
   const createOnly = useCallback(async () => {
     if (!newName.trim() || creating) return;
     setCreating(true);
-    const created = await createCircle(newName);
-    setCreating(false);
-    if (created) onClose();
-  }, [newName, creating, createCircle, onClose]);
+    try {
+      const res = await request<{ circleId: string }>("circles.create", {
+        name: newName.trim(),
+      });
+      await refresh();
+      if (res.circleId) selectCircle(res.circleId);
+      onClose();
+    } catch (err) {
+      // In-modal error: the store notice renders BEHIND this modal's overlay.
+      setLocal(String(err));
+    } finally {
+      setCreating(false);
+    }
+  }, [newName, creating, request, refresh, selectCircle, onClose]);
 
   // Join parity: verify the code's signer FIRST — same prompt as the
-  // in-message Join path. Only the explicit Join tap redeems.
+  // in-message Join path. Only the explicit Join tap redeems. Direct request
+  // (not the store helper): a bad code must error INSIDE the modal, not into
+  // the notice bar the overlay is covering.
   const previewJoin = useCallback(async () => {
     const code = joinCode.trim();
     if (!code) return;
-    const info = await inviteInfo(code);
-    if (info) setJoinPreview({ code, ...info });
-  }, [joinCode, inviteInfo]);
+    try {
+      const info = await request<Omit<InvitePreview, "code">>("circles.inviteInfo", { code });
+      setJoinPreview({ code, ...info });
+    } catch (err) {
+      setLocal(String(err));
+    }
+  }, [joinCode, request]);
 
   const join = useCallback(async () => {
     if (!joinPreview || joining) return;
@@ -260,19 +301,29 @@ export function InvitePanel({
             )}
           </p>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void mintInvite()}
-              className="px-3 py-1.5 rounded bg-circle-you text-circle-you-fg text-sm"
-            >
-              {invite ? "New invite code" : "Create invite"}
-            </button>
+            {canRemint ? (
+              <button
+                type="button"
+                onClick={() => void mintInvite()}
+                disabled={minting}
+                className="px-3 py-1.5 rounded bg-circle-you text-circle-you-fg text-sm disabled:opacity-50"
+              >
+                {minting ? "Creating…" : invite ? "New invite code" : "Create invite"}
+              </button>
+            ) : (
+              // Older gateway didn't say which circle the mint created — a
+              // re-mint here would silently make another circle. One per open.
+              <p className="text-xs text-muted-foreground">
+                Invite created. To mint another for this circle, open it and use{" "}
+                <span className="font-medium">Invite someone to this circle</span>.
+              </p>
+            )}
             {!scoped && !invite && (
               <button
                 type="button"
                 onClick={() => void createOnly()}
                 disabled={!newName.trim() || creating}
-                title="Make the circle now and invite people later — you get its canvas and a practice partner"
+                title="Make the circle now and invite people later — it starts with just you and its shared canvas"
                 className="text-xs underline text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:no-underline"
               >
                 {creating ? "Creating…" : "Create without inviting"}

@@ -8,6 +8,7 @@ import {
   type CircleMessage,
   type MessageAnnotations,
 } from "../../stores/circles-store";
+import { hash32, initialsFor as initials } from "./circle-identity";
 import { CircleMarkdown } from "./CircleMarkdown";
 import { buildTimeline, fmtFullDate, fmtTime } from "./timeline";
 
@@ -24,16 +25,7 @@ const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
 const AVATAR_COLORS = ["#0f9d68", "#3a5bd9", "#c9871a", "#8b5cf6", "#d6336c", "#0c8599", "#e8590c"];
 
 function colorFor(pubkey: string): string {
-  let h = 0;
-  for (let i = 0; i < pubkey.length; i += 1) h = (h * 31 + pubkey.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[h % AVATAR_COLORS.length] as string;
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return (parts[0] as string).slice(0, 2).toUpperCase();
-  return ((parts[0] as string)[0] + (parts[1] as string)[0]).toUpperCase();
+  return AVATAR_COLORS[hash32(pubkey) % AVATAR_COLORS.length] as string;
 }
 
 // A pasted/delivered invite code in a message body (bbc1.<base64url>).

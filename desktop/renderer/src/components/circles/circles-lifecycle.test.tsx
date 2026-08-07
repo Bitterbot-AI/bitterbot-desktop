@@ -162,6 +162,24 @@ describe("circle lifecycle (Phase B)", () => {
     await waitFor(() => expect(requestMock).toHaveBeenCalledWith("circles.join", { code: CODE }));
   });
 
+  it("never auto-selects an archived circle: all-archived shows the empty state", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.list") {
+        return Promise.resolve({
+          circles: [{ ...CIRCLE, circleId: "c-old", name: "Old crew", status: "archived" }],
+        });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    // The only circle is archived → nothing auto-selected, no hidden-tile
+    // dead-end; the empty state (with its CTA) shows instead.
+    expect(await screen.findByText(/No circles yet/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Old crew" })).toBeNull();
+  });
+
   it("hides archived circles behind the rail's archive toggle", async () => {
     stubRpcs();
     const base = requestMock.getMockImplementation()!;

@@ -71,8 +71,6 @@ interface CirclesState {
 
   refresh: () => Promise<void>;
   selectCircle: (circleId: string) => void;
-  /** Phase B: explicit circle creation (named BEFORE it exists); selects it. */
-  createCircle: (name: string) => Promise<string | null>;
   loadMessages: (circleId: string) => Promise<void>;
   /** Prepend the next (older) history page; resolves to how many were added. */
   loadOlderMessages: (circleId: string) => Promise<number>;
@@ -201,13 +199,15 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       const circles = list.circles ?? [];
       // Keep the current selection if it still exists; else pick the first.
       const prev = get().activeCircleId;
-      // Default selection prefers a non-archived circle — archived tiles are
-      // hidden from the rail (Phase B), so auto-landing on one would show a
-      // chat whose tile isn't visible.
-      const activeCircleId =
-        prev && circles.some((c) => c.circleId === prev)
-          ? prev
-          : ((circles.find((c) => c.status !== "archived") ?? circles[0])?.circleId ?? null);
+      // AUTO-selection never lands on an archived circle — its tile is hidden
+      // (Phase B), so the user would be stuck on a chat with no tile. An
+      // EXPLICIT selection of an archived circle (prev, via the rail's
+      // archive toggle) is respected: the rail force-reveals the archived
+      // section while one is active. All-archived → null (empty state).
+      const prevExists = prev && circles.some((c) => c.circleId === prev);
+      const activeCircleId = prevExists
+        ? prev
+        : (circles.find((c) => c.status !== "archived")?.circleId ?? null);
       set({ status, circles, activeCircleId, loading: false });
       // First activation (boot / the previous circle vanished): freeze the
       // "New" divider frontier from the marker BEFORE markRead bumps it.
@@ -257,19 +257,6 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     void get().loadDrafts(circleId);
     void get().loadOutbound(circleId);
     get().markRead(circleId);
-  },
-
-  createCircle: async (name) => {
-    if (!name.trim()) return null;
-    try {
-      const res = await request<{ circleId: string }>("circles.create", { name: name.trim() });
-      await get().refresh();
-      if (res.circleId) get().selectCircle(res.circleId);
-      return res.circleId ?? null;
-    } catch (err) {
-      set({ notice: String(err) });
-      return null;
-    }
   },
 
   loadDrafts: async (circleId) => {

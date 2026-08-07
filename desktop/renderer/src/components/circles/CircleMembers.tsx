@@ -7,6 +7,7 @@ import {
   type Circle,
   type CircleMember,
 } from "../../stores/circles-store";
+import { initialsFor as initials } from "./circle-identity";
 import { InvitePanel } from "./InvitePanel";
 
 // PLAN-36 Phase A: the member/presence roster. §5.5: ANY member can remove
@@ -22,13 +23,6 @@ const DISMISS_KEY = "circles.petnamePromptDismissed";
 function statusOf(lastSeenAt: number | null, lastStatus: string | null): "on" | "idle" | "off" {
   if (!lastSeenAt || Date.now() - lastSeenAt > ONLINE_WINDOW_MS) return "off";
   return lastStatus === "online" ? "on" : "idle";
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return (parts[0] as string).slice(0, 2).toUpperCase();
-  return ((parts[0] as string)[0] + (parts[1] as string)[0]).toUpperCase();
 }
 
 function readDismissed(): Set<string> {
