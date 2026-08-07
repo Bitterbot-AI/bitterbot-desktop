@@ -66,7 +66,10 @@ function CodeBlockCode({
       });
       setHighlightedHtml(html);
     }
-    highlight();
+    // The fence language can be peer/model-authored (```notareallang) —
+    // shiki rejects unknown grammars; fall back to the plain <pre> render
+    // instead of an unhandled rejection.
+    highlight().catch(() => setHighlightedHtml(null));
   }, [code, language, theme]);
 
   const classNames = cn(

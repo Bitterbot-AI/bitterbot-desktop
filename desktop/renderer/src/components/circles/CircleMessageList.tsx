@@ -3,6 +3,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
 import { cn } from "../../lib/utils";
 import {
+  HISTORY_PAGE,
   memberName,
   type CircleMember,
   type CircleMessage,
@@ -104,7 +105,9 @@ export function CircleMessageList({
   const [loadingOlder, setLoadingOlder] = useState(false);
   // Anchored scroll state lives in refs — scrolling must never re-render.
   const atBottomRef = useRef(true);
+  const firstIdRef = useRef<string | undefined>(undefined);
   const lastIdRef = useRef<string | undefined>(undefined);
+  const countRef = useRef(0);
   const prependRef = useRef<{ height: number; top: number } | null>(null);
 
   const nameOf = useMemo(() => {
@@ -133,37 +136,45 @@ export function CircleMessageList({
   };
 
   // The anchor logic. Runs after every commit that changed the message run:
-  //  - a history prepend restores the exact prior viewport (no jump);
+  //  - a history prepend (detected by the FIRST id changing while the anchor
+  //    is armed — never by the mere presence of the armed ref, so a poll
+  //    append landing while the page RPC is in flight can't consume it and
+  //    yank the reader) restores the exact prior viewport;
   //  - first load / own send / already-at-bottom sticks to the bottom;
-  //  - new messages while scrolled up leave the viewport alone and count up
-  //    the jump pill instead. Reading history is never yanked away.
+  //  - anything else that grew the run — tail appends AND out-of-order
+  //    mid-inserts (routine in P2P delivery) — counts up the jump pill.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || messages === undefined) return;
-    const last = messages[messages.length - 1];
-    const lastId = last?.messageId;
+    const firstId = messages[0]?.messageId;
+    const lastId = messages[messages.length - 1]?.messageId;
+    const grewBy = messages.length - countRef.current;
+    const firstLoad = lastIdRef.current === undefined && countRef.current === 0;
+    const prepended =
+      prependRef.current !== null && !firstLoad && firstId !== firstIdRef.current && grewBy > 0;
 
-    if (prependRef.current) {
+    if (prepended && prependRef.current) {
       el.scrollTop = el.scrollHeight - prependRef.current.height + prependRef.current.top;
       prependRef.current = null;
-      lastIdRef.current = lastId;
-      return;
-    }
-    if (lastId === lastIdRef.current) return; // annotation-only refresh
-
-    const firstLoad = lastIdRef.current === undefined;
-    const ownSend =
-      !!last && (last.direction === "out" || last.authorPubkey === selfPubkey) && !last.deleted;
-    if (firstLoad || ownSend || atBottomRef.current) {
-      el.scrollTop = el.scrollHeight;
-      atBottomRef.current = true;
-      setPendingNew(0);
-    } else {
+    } else if (grewBy > 0 || lastId !== lastIdRef.current) {
+      // Own sends scroll even when a slightly-later peer message merged in
+      // the same window — any own message among the new tail counts.
       const prevIdx = messages.findIndex((m) => m.messageId === lastIdRef.current);
-      const appended = prevIdx >= 0 ? messages.length - 1 - prevIdx : 1;
-      setPendingNew((n) => n + appended);
+      const appendedTail = prevIdx >= 0 ? messages.slice(prevIdx + 1) : [];
+      const ownSend = appendedTail.some(
+        (m) => (m.direction === "out" || m.authorPubkey === selfPubkey) && !m.deleted,
+      );
+      if (firstLoad || ownSend || atBottomRef.current) {
+        el.scrollTop = el.scrollHeight;
+        atBottomRef.current = true;
+        setPendingNew(0);
+      } else if (grewBy > 0) {
+        setPendingNew((n) => n + grewBy);
+      }
     }
+    firstIdRef.current = firstId;
     lastIdRef.current = lastId;
+    countRef.current = messages.length;
   }, [messages, selfPubkey]);
 
   const onScroll = () => {
@@ -197,7 +208,8 @@ export function CircleMessageList({
     );
   }
 
-  const showLoadOlder = !!onLoadOlder && hasMoreHistory !== false && messages.length >= 100;
+  const showLoadOlder =
+    !!onLoadOlder && hasMoreHistory !== false && messages.length >= HISTORY_PAGE;
 
   return (
     <div className="relative flex-1 min-h-0">
@@ -267,6 +279,9 @@ export function CircleMessageList({
             reactionSets.find((r) => r.authorPubkey === selfPubkey)?.emojis ?? [],
           );
           const isPinned = !!m.envelopeId && (annotations?.pins ?? []).includes(m.envelopeId);
+          // A pinned follow-up keeps its full header — the pin marker lives
+          // there and must never be silently dropped by grouping (review #6).
+          const continuation = item.isContinuation && !isPinned;
           const toggle = (emoji: string) => {
             if (!onToggleReaction) return;
             setPickerFor(null);
@@ -300,7 +315,7 @@ export function CircleMessageList({
           return (
             <div
               key={m.messageId}
-              className={cn("group relative flex gap-3", item.isContinuation ? "mt-0.5" : "mt-3")}
+              className={cn("group relative flex gap-3", continuation ? "mt-0.5" : "mt-3")}
             >
               <div className="absolute right-0 top-0 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center rounded-md border bg-background/95 shadow-sm px-0.5">
                 {m.envelopeId && onToggleReaction && (
@@ -375,7 +390,7 @@ export function CircleMessageList({
                   ))}
                 </div>
               )}
-              {item.isContinuation ? (
+              {continuation ? (
                 // Continuation gutter: avatar-width, hover-revealed timestamp.
                 <div className="w-8 shrink-0 flex items-start justify-end pt-1">
                   <span
@@ -433,7 +448,7 @@ export function CircleMessageList({
                     )}
                   </div>
                 )}
-                {!item.isContinuation && (
+                {!continuation && (
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="text-sm font-semibold">{name}</span>
                     {isAgent && (

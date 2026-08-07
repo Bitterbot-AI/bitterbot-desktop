@@ -206,6 +206,23 @@ describe("CirclesService end-to-end (two nodes)", () => {
     // Past the top of history: empty (the UI reads a short page as "done").
     expect(ana.messages(circleId, 100, 1000)).toEqual([]);
 
+    // Tied-millisecond burst (mailbox drains stamp many rows in one ms): the
+    // keyset cursor (before + beforeId) reaches the rows a bare timestamp
+    // cursor would skip forever.
+    anaDb
+      .prepare(
+        `UPDATE circle_messages SET created_at = 2000 WHERE circle_id = ? AND created_at = ?`,
+      )
+      .run(circleId, 1000); // now: three@3000, two@2000, one@2000
+    const win = ana.messages(circleId, 2); // [3000, tied-higher-id@2000]
+    expect(win.map((m) => m.createdAt)).toEqual([3000, 2000]);
+    const cursor = win[1] as { createdAt: number; messageId: string };
+    const next = ana.messages(circleId, 2, cursor.createdAt, cursor.messageId);
+    expect(next.map((m) => m.createdAt)).toEqual([2000]); // the tied sibling
+    expect((next[0] as { messageId: string }).messageId < cursor.messageId).toBe(true);
+    // Without the tiebreak the tied sibling is unreachable — the old bug.
+    expect(ana.messages(circleId, 2, 2000)).toEqual([]);
+
     // Read markers: absent until the human opens the circle, then the divider
     // frontier the UI freezes; unread clears with it.
     expect(ana.lastReadByCircle()[circleId]).toBeUndefined();

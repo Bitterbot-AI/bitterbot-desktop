@@ -362,8 +362,9 @@ surface until 2026-07-25.
 - **Identity**: `circles.self.setName`, `circles.petname.set`,
   `circles.petname.clear`
 - **Ceremony**: `circles.invite`, `circles.inviteInfo`, `circles.join`
-- **Chat**: `circles.send`, `circles.messages` (paged: `limit` +
-  `before` ms-epoch cursor), `circles.markRead`, `circles.react`,
+- **Chat**: `circles.send`, `circles.messages` (paged: `limit` + keyset
+  cursor `before` ms-epoch / `beforeId` tiebreak, so bursts sharing one
+  millisecond are never skipped), `circles.markRead`, `circles.react`,
   `circles.pin`, `circles.message.delete`. `circles.list` rows carry
   `lastReadAt` so the UI can freeze the "New" divider at open.
 - **Canvas**: `circles.canvas.list`, `circles.canvas.put`,

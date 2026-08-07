@@ -36,6 +36,10 @@ describe("sameLocalDay / dayLabel", () => {
   it("labels today, yesterday, same-year weekday, and prior years", () => {
     expect(dayLabel(NOON, NOON)).toBe("Today");
     expect(dayLabel(NOON - 24 * 60 * 60 * 1000, NOON)).toBe("Yesterday");
+    // Calendar day, not 24 elapsed hours: catches DST/naive-arithmetic bugs.
+    const sep1 = new Date(2026, 8, 1, 0, 30).getTime();
+    const aug31 = new Date(2026, 7, 31, 23, 0).getTime();
+    expect(dayLabel(aug31, sep1)).toBe("Yesterday");
     const march = new Date(2026, 2, 31, 9, 0).getTime();
     expect(dayLabel(march, NOON)).toMatch(/March 31/);
     expect(dayLabel(march, NOON)).not.toMatch(/2026/);
@@ -64,6 +68,26 @@ describe("isContinuation", () => {
     const prevNight = msg({ messageId: "a", createdAt: new Date(2026, 7, 6, 23, 59).getTime() });
     const nextMorning = msg({ messageId: "b", createdAt: new Date(2026, 7, 7, 0, 0).getTime() });
     expect(isContinuation(prevNight, nextMorning)).toBe(false);
+  });
+
+  it("a wrap-status flip restarts the group (the shield lives in the header)", () => {
+    const wrapped = [
+      "<<<EXTERNAL_UNTRUSTED_CONTENT>>>",
+      "Source: peer",
+      "---",
+      "hello",
+      "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>",
+    ].join("\n");
+    expect(
+      isContinuation(prev, msg({ messageId: "b", createdAt: NOON + 1, content: wrapped })),
+    ).toBe(false);
+    // Homogeneous wrapped runs still group — the group header carries the cue.
+    expect(
+      isContinuation(
+        msg({ messageId: "a", createdAt: NOON, content: wrapped }),
+        msg({ messageId: "b", createdAt: NOON + 1, content: wrapped }),
+      ),
+    ).toBe(true);
   });
 
   it("a human and their agent never group, even same pubkey", () => {
@@ -167,5 +191,24 @@ describe("mergeMessages", () => {
     const history = [msg({ messageId: "old", createdAt: 500 })];
     const window = [msg({ messageId: "new", createdAt: 9000 })];
     expect(mergeMessages(history, window).map((m) => m.messageId)).toEqual(["old", "new"]);
+  });
+
+  it("is reference-stable: idle polls return the existing array untouched", () => {
+    const existing = [
+      msg({ messageId: "a", createdAt: 1000 }),
+      msg({ messageId: "b", createdAt: 2000 }),
+    ];
+    // The poll always parses fresh objects with identical content.
+    const freshCopies = existing.map((m) => ({ ...m }));
+    expect(mergeMessages(existing, freshCopies)).toBe(existing);
+  });
+
+  it("keeps unchanged message refs when only one message changed", () => {
+    const a = msg({ messageId: "a", createdAt: 1000 });
+    const b = msg({ messageId: "b", createdAt: 2000 });
+    const merged = mergeMessages([a, b], [{ ...b, deleted: true }]);
+    expect(merged[0]).toBe(a);
+    expect(merged[1]).not.toBe(b);
+    expect(merged[1]?.deleted).toBe(true);
   });
 });

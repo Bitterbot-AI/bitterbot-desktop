@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  HISTORY_PAGE,
   mergeMessages,
   type AgentDraft,
   type CanvasCard,
@@ -240,9 +241,18 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   },
 
   selectCircle: (circleId) => {
-    // Re-freeze the divider frontier on every explicit switch: messages that
-    // arrived since you last had this circle open are "New" again. Older
-    // gateways omit lastReadAt — leave the frontier unset (no divider).
+    // Re-clicking the circle you're already reading must NOT re-freeze the
+    // "New" divider — refresh() marks it read every poll, so a re-freeze
+    // would erase the line mid-read (review a324d9d #4a).
+    if (get().activeCircleId === circleId) {
+      void get().loadMessages(circleId);
+      return;
+    }
+    // Re-freeze the divider frontier on every explicit SWITCH: messages that
+    // arrived since you last had this circle open are "New" again. markRead
+    // bumps lastReadAt locally too, so hopping A→B→A inside one poll window
+    // freezes at your actual visit, not a stale pre-visit marker (#4b).
+    // Older gateways omit lastReadAt — leave the frontier unset (no divider).
     const c = get().circles.find((x) => x.circleId === circleId);
     set((s) => ({
       activeCircleId: circleId,
@@ -750,9 +760,16 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   },
 
   markRead: (circleId) => {
-    // Optimistically clear the badge, then persist server-side (fire-and-forget).
+    // Optimistically clear the badge AND bump the local read marker — the
+    // next selectCircle freeze must see this visit, not the pre-visit marker
+    // the 20s-stale circles.list still carries. Persist fire-and-forget.
+    const now = Date.now();
     set((s) => ({
-      circles: s.circles.map((c) => (c.circleId === circleId ? { ...c, unread: 0 } : c)),
+      circles: s.circles.map((c) =>
+        c.circleId === circleId
+          ? { ...c, unread: 0, lastReadAt: Math.max(c.lastReadAt ?? 0, now) }
+          : c,
+      ),
     }));
     void request("circles.markRead", { circleId }).catch(() => {});
   },
@@ -770,18 +787,32 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       // loadOlderMessages must survive the 20s poll. The fresh window wins on
       // id collisions (tombstones, delivery-status flips).
       const window = [...(res.messages ?? [])].reverse();
-      set((s) => ({
-        messagesByCircle: {
-          ...s.messagesByCircle,
-          [circleId]: mergeMessages(s.messagesByCircle[circleId] ?? [], window),
-        },
-        annotationsByCircle: {
-          ...s.annotationsByCircle,
-          [circleId]: res.annotations ?? { reactions: {}, pins: [] },
-        },
-      }));
+      set((s) => {
+        const prevMsgs = s.messagesByCircle[circleId] ?? [];
+        const nextMsgs = mergeMessages(prevMsgs, window);
+        // Annotation reference stability: idle polls return equal content in
+        // fresh objects; keep the old reference so subscribers don't re-render.
+        const nextAnn = res.annotations ?? { reactions: {}, pins: [] };
+        const prevAnn = s.annotationsByCircle[circleId];
+        const annChanged = !prevAnn || JSON.stringify(prevAnn) !== JSON.stringify(nextAnn);
+        if (nextMsgs === prevMsgs && !annChanged && circleId in s.messagesByCircle) return s;
+        return {
+          messagesByCircle: { ...s.messagesByCircle, [circleId]: nextMsgs },
+          annotationsByCircle: {
+            ...s.annotationsByCircle,
+            [circleId]: annChanged ? nextAnn : prevAnn,
+          },
+        };
+      });
     } catch (err) {
-      set({ notice: String(err) });
+      // Never leave the timeline on the skeleton forever: an unloaded circle
+      // whose fetch failed degrades to an honest empty state + the notice.
+      set((s) => ({
+        notice: String(err),
+        messagesByCircle: s.messagesByCircle[circleId]
+          ? s.messagesByCircle
+          : { ...s.messagesByCircle, [circleId]: [] },
+      }));
     }
   },
 
@@ -789,13 +820,16 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     const s = get();
     if (s.historyExhaustedByCircle[circleId]) return 0;
     const existing = s.messagesByCircle[circleId] ?? [];
-    const oldest = existing[0]?.createdAt;
-    if (oldest === undefined) return 0;
-    const PAGE = 100;
+    const oldest = existing[0];
+    if (!oldest) return 0;
+    const PAGE = HISTORY_PAGE;
     try {
       const res = await request<{ messages: CircleMessage[] }>("circles.messages", {
         circleId,
-        before: oldest,
+        // Keyset cursor: ts + id tiebreak, so a burst sharing the boundary
+        // millisecond is never skipped (review a324d9d #1).
+        before: oldest.createdAt,
+        beforeId: oldest.messageId,
         limit: PAGE,
       });
       const page = [...(res.messages ?? [])].reverse();
@@ -820,10 +854,9 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       });
       return added;
     } catch (err) {
-      set((st) => ({
-        historyExhaustedByCircle: { ...st.historyExhaustedByCircle, [circleId]: true },
-        notice: String(err),
-      }));
+      // A transient RPC failure is NOT the top of history — latching
+      // exhausted here would permanently hide the affordance (review #5).
+      set({ notice: String(err) });
       return 0;
     }
   },
@@ -864,6 +897,19 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
             "Deleted on this device only — the circle is not accepting writes right now, so friends' copies were not retracted.",
         });
       }
+      // Tombstone locally too: loadMessages only refetches the recent window,
+      // so a paged-in older message would otherwise stay visibly undeleted on
+      // the deleter's own screen for the session (review a324d9d #2).
+      set((s) => ({
+        messagesByCircle: {
+          ...s.messagesByCircle,
+          [circleId]: (s.messagesByCircle[circleId] ?? []).map((m) =>
+            m.envelopeId === envelopeId
+              ? { ...m, deleted: true, deletedByMe: !expectPropagation || res?.scope === "local" }
+              : m,
+          ),
+        },
+      }));
       await get().loadMessages(circleId);
       return true;
     } catch (err) {

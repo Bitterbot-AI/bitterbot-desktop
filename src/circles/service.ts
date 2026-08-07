@@ -2459,6 +2459,12 @@ export class CirclesService {
     limit = 100,
     /** Only messages strictly older than this ms-epoch (history paging). */
     before?: number,
+    /**
+     * Keyset tiebreak: with `before`, rows AT that exact ms are included when
+     * their message_id sorts below this one. Bursts (mailbox drains) stamp
+     * many rows in one ms — a bare timestamp cursor would skip them forever.
+     */
+    beforeId?: string,
   ): Array<{
     messageId: string;
     envelopeId: string | null;
@@ -2475,14 +2481,22 @@ export class CirclesService {
     /** The tombstone was a LOCAL hide by this node's human (vs an author retraction). */
     deletedByMe: boolean;
   }> {
+    // Keyset pagination on (created_at, message_id): the ORDER BY carries the
+    // same tiebreak so window membership is deterministic across polls, and
+    // the cursor never skips rows that share the boundary millisecond.
+    const cutTs = before ?? Number.MAX_SAFE_INTEGER;
+    // No beforeId → tie branch never matches (id < "") and semantics stay
+    // strictly-older-than, exactly the pre-keyset contract.
+    const cutId = before !== undefined && beforeId !== undefined ? beforeId : "";
     const rows = this.db
       .prepare(
         `SELECT message_id, envelope_id, author_pubkey, direction, kind, thread_id, content,
                 created_at, delivery_status, reply_to, agent_authored, deleted_at, deleted_by
-           FROM circle_messages WHERE circle_id = ? AND created_at < ?
-          ORDER BY created_at DESC LIMIT ?`,
+           FROM circle_messages
+          WHERE circle_id = ? AND (created_at < ? OR (created_at = ? AND message_id < ?))
+          ORDER BY created_at DESC, message_id DESC LIMIT ?`,
       )
-      .all(circleId, before ?? Number.MAX_SAFE_INTEGER, Math.min(limit, 500)) as unknown as Array<{
+      .all(circleId, cutTs, cutTs, cutId, Math.min(limit, 500)) as unknown as Array<{
       message_id: string;
       envelope_id: string | null;
       author_pubkey: string;

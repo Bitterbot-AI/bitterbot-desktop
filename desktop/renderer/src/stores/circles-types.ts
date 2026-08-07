@@ -228,11 +228,33 @@ export interface StudySectionState {
   dueAt: number;
 }
 
+/** One history page — the store's fetch size AND the component's "a full
+ * window is loaded, offer paging" gate derive from this single constant. */
+export const HISTORY_PAGE = 100;
+
+/** The fields the server can legitimately change on a known message. */
+function sameMessage(a: CircleMessage, b: CircleMessage): boolean {
+  return (
+    a.content === b.content &&
+    a.createdAt === b.createdAt &&
+    a.envelopeId === b.envelopeId &&
+    a.deliveryStatus === b.deliveryStatus &&
+    a.replyTo === b.replyTo &&
+    a.agentAuthored === b.agentAuthored &&
+    a.deleted === b.deleted &&
+    a.deletedByMe === b.deletedByMe
+  );
+}
+
 /**
  * Union two chronological message runs by messageId, `incoming` winning on
  * collisions (tombstones, delivery-status flips), sorted oldest-first with
  * messageId as the stable tiebreak. Used both for the 20s poll window (which
  * must not clobber older pages) and for history-page prepends.
+ *
+ * Reference-stable: an unchanged message keeps its existing object, and a
+ * no-op merge returns `existing` itself — idle 20s polls must not force a
+ * re-render of every row (the poll always parses fresh objects).
  */
 export function mergeMessages(
   existing: CircleMessage[],
@@ -240,8 +262,15 @@ export function mergeMessages(
 ): CircleMessage[] {
   const byId = new Map<string, CircleMessage>();
   for (const m of existing) byId.set(m.messageId, m);
-  for (const m of incoming) byId.set(m.messageId, m);
-  return [...byId.values()].sort(
+  for (const m of incoming) {
+    const prev = byId.get(m.messageId);
+    byId.set(m.messageId, prev && sameMessage(prev, m) ? prev : m);
+  }
+  const merged = [...byId.values()].sort(
     (a, b) => a.createdAt - b.createdAt || (a.messageId < b.messageId ? -1 : 1),
   );
+  if (merged.length === existing.length && merged.every((m, i) => m === existing[i])) {
+    return existing;
+  }
+  return merged;
 }

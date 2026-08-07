@@ -1,4 +1,5 @@
 import type { CircleMessage } from "../../stores/circles-store";
+import { unwrapForDisplay } from "../../lib/external-content-display";
 
 // Phase A (readable timeline): pure layout logic for the circle conversation
 // stream — consecutive-message grouping, day dividers, and the frozen "New"
@@ -32,7 +33,11 @@ export function sameLocalDay(a: number, b: number): boolean {
 /** "Today" / "Yesterday" / "Monday, March 31" (+ ", 2025" for prior years). */
 export function dayLabel(ts: number, now: number): string {
   if (sameLocalDay(ts, now)) return "Today";
-  if (sameLocalDay(ts, now - 24 * 60 * 60 * 1000)) return "Yesterday";
+  // Calendar-decremented yesterday, NOT now-24h: across a DST transition 24
+  // elapsed hours is not one calendar day (review a324d9d #10).
+  const n = new Date(now);
+  const yesterday = new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1).getTime();
+  if (sameLocalDay(ts, yesterday)) return "Yesterday";
   const d = new Date(ts);
   const opts: Intl.DateTimeFormatOptions =
     d.getFullYear() === new Date(now).getFullYear()
@@ -72,6 +77,12 @@ export function isContinuation(prev: CircleMessage | undefined, m: CircleMessage
   if (prev.authorPubkey !== m.authorPubkey) return false;
   if ((prev.agentAuthored === true) !== (m.agentAuthored === true)) return false;
   if (m.deliveryStatus && m.deliveryStatus !== "delivered") return false;
+  // The screened-content shield renders in the group HEADER — a follow-up
+  // whose wrap status differs from its group's must restart the group so the
+  // trust cue is never silently dropped (review a324d9d #6).
+  if (unwrapForDisplay(prev.content).wasWrapped !== unwrapForDisplay(m.content).wasWrapped) {
+    return false;
+  }
   if (!sameLocalDay(prev.createdAt, m.createdAt)) return false;
   return m.createdAt - prev.createdAt <= GROUPING_WINDOW_MS;
 }

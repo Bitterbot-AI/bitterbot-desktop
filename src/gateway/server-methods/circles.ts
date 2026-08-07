@@ -1235,14 +1235,16 @@ export const circlesHandlers: GatewayRequestHandlers = {
       return;
     }
     const limit = typeof params.limit === "number" ? params.limit : 100;
-    // History paging: `before` (ms epoch) returns the window strictly older
-    // than the caller's oldest loaded message. The UI infers "no more history"
-    // from a short page.
+    // History paging: keyset cursor (`before` ms epoch + `beforeId` tiebreak)
+    // returns the window older than the caller's oldest loaded message —
+    // including rows sharing that exact millisecond. The UI infers "no more
+    // history" from a short page.
     const before = typeof params.before === "number" ? params.before : undefined;
+    const beforeId = typeof params.beforeId === "string" ? params.beforeId : undefined;
     respond(
       true,
       {
-        messages: svc.service.messages(circleId, limit, before),
+        messages: svc.service.messages(circleId, limit, before, beforeId),
         // Phase D: reactions + pins ride the same response so one refresh
         // paints the whole conversation state. Pinned messages are resolved
         // server-side by envelope id (no window limit — review F4).
