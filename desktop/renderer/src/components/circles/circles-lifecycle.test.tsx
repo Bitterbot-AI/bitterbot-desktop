@@ -1,0 +1,192 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetUnsupportedMethodsForTests, useCirclesStore } from "../../stores/circles-store";
+import { CirclesView } from "./CirclesView";
+
+// PLAN-36 Phase B (identity & lifecycle): creation-before-invite, invite
+// reuse, paste-to-join trust parity, and archive-actually-hides. Split from
+// CirclesView.test.tsx (file-size cap).
+
+const requestMock = vi.fn();
+const gwState = { request: requestMock, status: "connected", subscribe: () => () => {} };
+
+vi.mock("../../stores/gateway-store", () => ({
+  useGatewayStore: Object.assign((selector: (s: unknown) => unknown) => selector(gwState), {
+    getState: () => gwState,
+  }),
+}));
+
+const CIRCLE = {
+  circleId: "c1",
+  name: "Bio 204",
+  kind: "connection",
+  status: "active",
+  members: [
+    {
+      memberPubkey: "ed25519:self",
+      displayName: "Me",
+      role: "creator",
+      isSelf: true,
+      lastSeenAt: Date.now(),
+      lastStatus: "online",
+      agentPosture: "summon-only",
+    },
+    {
+      memberPubkey: "ed25519:maya",
+      displayName: "Maya",
+      role: "member",
+      isSelf: false,
+      lastSeenAt: Date.now(),
+      lastStatus: "online",
+      agentPosture: "summon-only",
+    },
+  ],
+};
+
+function stubRpcs() {
+  requestMock.mockImplementation((method: string) => {
+    switch (method) {
+      case "circles.status":
+        return Promise.resolve({ enabled: true, pubkey: "ed25519:self", displayName: "Me" });
+      case "circles.list":
+        return Promise.resolve({ circles: [CIRCLE] });
+      case "circles.messages":
+        return Promise.resolve({ annotations: { reactions: {}, pins: [] }, messages: [] });
+      case "circles.canvas.list":
+        return Promise.resolve({ cards: [] });
+      case "circles.invite":
+        return Promise.resolve({ code: "bbc1.xyz", link: "https://join…/xyz", qrPngBase64: "" });
+      default:
+        return Promise.resolve({});
+    }
+  });
+}
+
+beforeEach(() => {
+  resetUnsupportedMethodsForTests();
+  requestMock.mockReset();
+  useCirclesStore.setState({
+    status: null,
+    circles: [],
+    activeCircleId: null,
+    messagesByCircle: {},
+    annotationsByCircle: {},
+    readFrontierByCircle: {},
+    historyExhaustedByCircle: {},
+    cardsByCircle: {},
+    removedByCircle: {},
+    sandboxByCircle: {},
+    draftsByCircle: {},
+    studyByCard: {},
+    outboundByCircle: {},
+    loading: true,
+    notice: null,
+    focusCardId: null,
+  });
+});
+
+describe("circle lifecycle (Phase B)", () => {
+  it("names a new circle up front and reuses it across invite mints", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.invite") {
+        const p = params as { circleId?: string };
+        return Promise.resolve({
+          code: p.circleId ? "bbc1.second" : "bbc1.first",
+          link: "https://join…/x",
+          qrPngBase64: "",
+          circleId: p.circleId ?? "c9",
+        });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /New circle/i }));
+    await userEvent.type(screen.getByLabelText("Circle name"), "Tahoe trip");
+    await userEvent.click(screen.getByRole("button", { name: /Create invite/i }));
+    // The name travels with the FIRST mint — the circle is named before it exists.
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.invite", { name: "Tahoe trip" }),
+    );
+    // Every further mint reuses the created circle: no accidental duplicates.
+    await userEvent.click(await screen.findByRole("button", { name: /New invite code/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.invite", { circleId: "c9" }),
+    );
+  });
+
+  it("creates a circle without inviting (explicit circles.create path)", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.create") return Promise.resolve({ circleId: "c9" });
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /New circle/i }));
+    await userEvent.type(screen.getByLabelText("Circle name"), "Study group");
+    await userEvent.click(screen.getByRole("button", { name: /Create without inviting/i }));
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.create", { name: "Study group" }),
+    );
+  });
+
+  it("paste-to-join verifies the code's signer before joining (join parity)", async () => {
+    stubRpcs();
+    const CODE = "bbc1." + "B".repeat(40);
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.inviteInfo") {
+        return Promise.resolve({
+          circleName: "Trip crew",
+          inviterName: "Maya",
+          inviterPubkey: "ed25519:" + "b".repeat(64),
+          knownAs: null,
+        });
+      }
+      if (method === "circles.join") {
+        return Promise.resolve({ circleName: "Trip crew", inviterName: "Maya" });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByRole("button", { name: /New circle/i }));
+    await userEvent.type(screen.getByPlaceholderText("bbc1.…"), CODE);
+    // Pasting is not joining: the code is verified and the signer shown first.
+    await userEvent.click(screen.getByRole("button", { name: /Check invite/i }));
+    expect(await screen.findByText(/signed by someone you don't know/)).toBeTruthy();
+    expect(requestMock).not.toHaveBeenCalledWith("circles.join", expect.anything());
+    await userEvent.click(screen.getByRole("button", { name: /^Join$/ }));
+    await waitFor(() => expect(requestMock).toHaveBeenCalledWith("circles.join", { code: CODE }));
+  });
+
+  it("hides archived circles behind the rail's archive toggle", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.list") {
+        return Promise.resolve({
+          circles: [
+            CIRCLE,
+            {
+              circleId: "c-old",
+              name: "Old crew",
+              kind: "connection",
+              status: "archived",
+              members: [],
+            },
+          ],
+        });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    await waitFor(() => expect(screen.getAllByText("Bio 204").length).toBeGreaterThan(0));
+    // Archived = actually hidden (the confirm's promise), until the toggle.
+    expect(screen.queryByRole("button", { name: "Old crew" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /Show 1 archived circle/ }));
+    expect(await screen.findByRole("button", { name: "Old crew" })).toBeTruthy();
+  });
+});

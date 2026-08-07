@@ -81,6 +81,14 @@ shows an explainer instead of a dead screen. `mailbox/*` verbs are likewise
 
 ## The connection ceremony
 
+0. **Create** (Phase B): a circle is named _before_ it exists — the "New
+   circle" modal carries the name on the first `circles.invite` (or creates
+   without inviting via `circles.create`), and every further mint in that
+   modal reuses the same circle, so repeated taps can never silently mint
+   duplicates. Each circle renders a stable identity everywhere it appears:
+   a circleId-derived gradient plus the name's leading emoji (or initials).
+   Archiving actually hides the tile; a rail toggle reveals archived circles
+   for restore.
 1. **Invite** (`circles.invite` RPC or the Circles pane): mints a one-time
    code. The code embeds an Ed25519-signed `invite` envelope plus a random
    secret; the node stores only `sha256(secret)`, so a stolen database cannot
@@ -99,7 +107,10 @@ shows an explainer instead of a dead screen. `mailbox/*` verbs are likewise
    for retry.
 3. **Join** (`circles.join` with the pasted code): the invitee's node
    verifies the inviter's signature _before any network dial_
-   (`circles.inviteInfo` previews who is asking without joining), then calls
+   (`circles.inviteInfo` previews who is asking without joining). Every UI
+   join path — the in-message "Join this circle" tap _and_ the paste-a-code
+   box — runs the same signature-verified trust prompt (known contact vs
+   stranger) before redeeming; joining then calls
    `circle/join` on the inviter's node with the secret and a signed `join`
    envelope carrying its display name, A2A URL, X25519 box key, and mailbox
    URL. If the inviter is not dialable, the join request is sealed into the

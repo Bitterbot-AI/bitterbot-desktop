@@ -115,15 +115,15 @@ export function CirclesView() {
             <Users className="w-10 h-10 text-muted-foreground" />
             <h2 className="text-lg font-semibold">No circles yet</h2>
             <p className="text-sm text-muted-foreground max-w-xs">
-              Invite a friend or paste an invite they sent you — your agents connect and the
-              conversation starts here.
+              Start a circle and invite a friend — or paste an invite they sent you. Your agents
+              connect and the conversation starts here.
             </p>
             <button
               type="button"
               onClick={() => setShowInvite(true)}
               className="px-4 py-2 rounded-lg bg-circle-you text-circle-you-fg text-sm"
             >
-              Add a friend
+              Start a circle
             </button>
           </div>
         )}

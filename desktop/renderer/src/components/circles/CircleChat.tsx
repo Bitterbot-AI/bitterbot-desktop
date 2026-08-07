@@ -1,7 +1,6 @@
 import { Bell, Pin, Reply, Send, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
-import { truncatePubkey } from "../../lib/pubkey";
 import { cn } from "../../lib/utils";
 import {
   memberName,
@@ -11,8 +10,10 @@ import {
 } from "../../stores/circles-store";
 import { AgentDraftCard } from "./AgentDraftCard";
 import { CanvasLiveStrip } from "./CanvasActivity";
+import { circleIdentity } from "./circle-identity";
 import { CircleMessageList } from "./CircleMessageList";
 import { FrozenCircleBanner } from "./FrozenCircleBanner";
+import { InviteTrustPrompt, type InvitePreview } from "./InviteTrustPrompt";
 import { PendingOutboundCard } from "./PendingOutboundCard";
 
 // PLAN-36 Phase A: the center chat pane — header, conversation stream, composer.
@@ -59,13 +60,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   // Join-from-message consent: parse + signature-verify the code first so the
   // human sees who is REALLY asking (the code's signer can differ from the
   // message sender), then join only on their explicit tap.
-  const [joinPrompt, setJoinPrompt] = useState<{
-    code: string;
-    circleName: string;
-    inviterName: string | null;
-    inviterPubkey: string;
-    knownAs?: string | null;
-  } | null>(null);
+  const [joinPrompt, setJoinPrompt] = useState<InvitePreview | null>(null);
 
   const previewInvite = async (code: string) => {
     const info = await inviteInfo(code);
@@ -172,12 +167,28 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   return (
     <section className="flex-1 flex flex-col min-w-0">
       <header className="flex items-center justify-between gap-3 px-4 py-3 border-b">
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <span className="font-semibold text-base truncate">{circle.name}</span>
-          <span className="text-xs text-muted-foreground">
-            {peerCount === 1 ? "1 friend" : `${peerCount} friends`}
-            {circle.status !== "active" && ` · ${circle.status}`}
-          </span>
+        <div className="flex items-center gap-2.5 min-w-0">
+          {(() => {
+            // Phase B: the same identity as the rail tile, so the pane and the
+            // rail read as one thing.
+            const id = circleIdentity(circle.circleId, circle.name);
+            return (
+              <div
+                aria-hidden="true"
+                className="w-7 h-7 rounded-lg shrink-0 grid place-items-center text-xs font-bold text-white"
+                style={{ background: id.gradient }}
+              >
+                {id.emoji ?? id.initials}
+              </div>
+            );
+          })()}
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="font-semibold text-base truncate">{circle.name}</span>
+            <span className="text-xs text-muted-foreground">
+              {peerCount === 1 ? "1 friend" : `${peerCount} friends`}
+              {circle.status !== "active" && ` · ${circle.status}`}
+            </span>
+          </div>
         </div>
         <span className="text-2xs font-medium px-2 py-1 rounded-full border text-muted-foreground whitespace-nowrap">
           Agents: summon-only
@@ -336,51 +347,16 @@ export function CircleChat({ circle, selfPubkey }: Props) {
       )}
 
       {joinPrompt && (
-        <div className="mx-3 mb-1 rounded-lg border border-circle-you/40 bg-circle-you-soft/50 p-2.5 text-xs space-y-1.5">
-          <p>
-            Join <span className="font-semibold">{joinPrompt.circleName}</span>?{" "}
-            {joinPrompt.knownAs ? (
-              <>
-                This invite is signed by your contact{" "}
-                <span className="font-medium">{joinPrompt.knownAs}</span>{" "}
-                <span className="font-mono text-muted-foreground">
-                  ({truncatePubkey(joinPrompt.inviterPubkey)})
-                </span>
-                .
-              </>
-            ) : (
-              <>
-                <span className="font-medium text-circle-consent">
-                  This invite is signed by someone you don&apos;t know
-                </span>{" "}
-                <span className="font-mono text-muted-foreground">
-                  ({truncatePubkey(joinPrompt.inviterPubkey)})
-                </span>
-                . The name &quot;{joinPrompt.inviterName ?? "unnamed"}&quot; is their own claim.
-                Only join circles from people you trust.
-              </>
-            )}
-          </p>
-          <div className="flex items-center gap-2 justify-end">
-            <button
-              type="button"
-              onClick={() => setJoinPrompt(null)}
-              className="text-muted-foreground px-2 py-0.5"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const code = joinPrompt.code;
-                setJoinPrompt(null);
-                void joinInvite(code);
-              }}
-              className="font-medium px-2.5 py-0.5 rounded bg-circle-you text-circle-you-fg"
-            >
-              Join
-            </button>
-          </div>
+        <div className="mx-3 mb-1">
+          <InviteTrustPrompt
+            preview={joinPrompt}
+            onCancel={() => setJoinPrompt(null)}
+            onJoin={() => {
+              const code = joinPrompt.code;
+              setJoinPrompt(null);
+              void joinInvite(code);
+            }}
+          />
         </div>
       )}
 
