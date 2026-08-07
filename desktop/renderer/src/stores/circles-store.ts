@@ -1,5 +1,23 @@
 import { create } from "zustand";
+import {
+  mergeMessages,
+  type AgentDraft,
+  type CanvasCard,
+  type Circle,
+  type CircleMessage,
+  type CirclesStatus,
+  type MessageAnnotations,
+  type PendingOutbound,
+  type RemovedCanvasCard,
+  type SandboxState,
+  type StudySectionState,
+} from "./circles-types";
 import { useGatewayStore } from "./gateway-store";
+
+// Data shapes + pure helpers live in circles-types.ts (file-size split);
+// re-exported here so existing `from "../../stores/circles-store"` imports
+// keep working unchanged.
+export * from "./circles-types";
 
 // PLAN-36 Phase A (redesign): the per-circle keyed store the Discord-style
 // CirclesView is built on. Replaces PeopleView's ad-hoc local useState. Keeps
@@ -25,235 +43,20 @@ function methodUnavailable(method: string, err: unknown): boolean {
   return false;
 }
 
-export interface CircleMember {
-  memberPubkey: string;
-  displayName: string | null;
-  /** §5.6: the viewer's private label for this person (overrides displayName). */
-  petname?: string | null;
-  /** No petname set yet — the human hasn't vouched for who this key is. */
-  unverified?: boolean;
-  /** Another different key you know shows the same name — impersonation cue. */
-  nameCollision?: boolean;
-  role: string;
-  isSelf: boolean;
-  lastSeenAt: number | null;
-  lastStatus: string | null;
-  /** Their agent's posture ("summon-only" | "off"); null until their node reports it. */
-  agentPosture?: string | null;
-}
-
-/** The name to show for a member: your private label wins, else their own. */
-export function memberName(m: Pick<CircleMember, "petname" | "displayName">): string {
-  return (m.petname ?? m.displayName ?? "friend").trim() || "friend";
-}
-
-export interface Circle {
-  circleId: string;
-  name: string;
-  kind: string;
-  status: string;
-  /** JSON fork evidence when status === "frozen" (author, seq, hashes). */
-  freezeReason?: string | null;
-  unread?: number;
-  members: CircleMember[];
-}
-
-export interface CircleMessage {
-  messageId: string;
-  envelopeId?: string | null;
-  authorPubkey: string;
-  direction: string;
-  kind: string;
-  content: string;
-  createdAt: number;
-  deliveryStatus?: "pending" | "delivered" | "partial" | "failed" | null;
-  replyTo?: string | null;
-  /** Mockup pin 2: the text was written by the author's AGENT (they approved it). */
-  agentAuthored?: boolean;
-  /** Tombstoned: own-message retraction (propagated) or local hide. */
-  deleted?: boolean;
-  /** The tombstone was a local hide by you (vs the author retracting). */
-  deletedByMe?: boolean;
-}
-
-export interface MessageReaction {
-  authorPubkey: string;
-  emojis: string[];
-}
-
-export interface PinnedMessage {
-  envelopeId: string;
-  authorPubkey: string;
-  direction: string;
-  content: string;
-  createdAt: number;
-  agentAuthored?: boolean;
-}
-
-export interface MessageAnnotations {
-  /** envelopeId -> per-member reaction sets. */
-  reactions: Record<string, MessageReaction[]>;
-  /** Pinned envelopeIds, oldest pin first. */
-  pins: string[];
-  /** The pinned messages resolved server-side (no message-window limit). */
-  pinnedMessages?: PinnedMessage[];
-}
-
-/**
- * §5.3: an agent tool write awaiting THIS human's approval. The server holds
- * the exact params it will execute; the card shows the preview. Approval is
- * the only path to execution.
- */
-export interface PendingOutbound {
-  id: string;
-  circleId: string;
-  action: string;
-  preview: Record<string, unknown>;
-  createdAt: number;
-  expiresAt: number;
-}
-
-export interface CirclesStatus {
-  enabled: boolean;
-  pubkey?: string;
-  connectionCount?: number;
-  reciprocity?: { reciprocatedPeers: number; activePeers: number };
-  a2aPublicUrl?: string | null;
-  /** §5.6: the name friends see you by (editable in-app). */
-  displayName?: string;
-}
-
-export interface CanvasSlice {
-  slot: string;
-  value: string;
-  note: string;
-  authorPubkey: string;
-  updatedAt: number;
-}
-
-export interface CanvasCard {
-  cardId: string;
-  cardType: string;
-  title: string;
-  text: string;
-  authorPubkey: string;
-  updatedAt: number;
-  slices: CanvasSlice[];
-}
-
-/** A tombstoned card (§3.2.9) — enough to narrate the removal and offer Undo. */
-export interface RemovedCanvasCard {
-  cardId: string;
-  cardType: string;
-  title: string;
-  text: string;
-  removedBy: string;
-  removedAt: number;
-}
-
-/**
- * PLAN-36 Phase B: a node-local draft the member's own agent wrote after an
- * @agent summon. Visible only to this node's human; publishing it (optionally
- * edited) is the consent tap that actually sends it to the circle.
- */
-export interface AgentDraft {
-  draftId: string;
-  circleId: string;
-  summonEnvelopeId: string | null;
-  summonAuthorPubkey: string | null;
-  /** "reply" (chat) or "slice" (a canvas card slot pre-fill, B2). */
-  kind?: string;
-  targetCardId?: string | null;
-  targetSlot?: string | null;
-  content: string;
-  createdAt: number;
-}
-
-/** PLAN-38 P1(b): one honored move in a sandbox session's fold. */
-export interface SandboxMove {
-  round: number;
-  kind: "constraint" | "option.add" | "vote" | "pass";
-  text: string;
-  optionId: string;
-  label: string;
-  authorPubkey: string;
-  agentAuthored: boolean;
-  /** R2/M1: transitive author provenance, recomputed by OUR node. */
-  authors: string[];
-  eventHash: string;
-  claimedAt: number;
-}
-
-/** The node-local half of participation, per CIRCLE (never leaves this node). */
-export interface SandboxParticipation {
-  mode: "off" | "propose";
-  turnBudget: number;
-  turnsUsed: number;
-  tokenBudget: number;
-  tokensUsed: number;
-  guidance: string;
-  pausedAt: number | null;
-  pauseReason: string | null;
-}
-
-/** A sandbox session folded from the ledger, plus our node-local view state. */
-export interface SandboxSession {
-  cardId: string;
-  taskType: string;
-  goal: string;
-  roundCap: number;
-  framedBy: string;
-  enrollments: Array<{ authorPubkey: string; mode: string; updatedAt: number }>;
-  speakers: string[];
-  moves: SandboxMove[];
-  options: Array<{ optionId: string; label: string; text: string; proposedBy: string }>;
-  votes: Record<string, string[]>;
-  closed: { reason: string; byPubkey: string; at: number } | null;
-  currentRound: number;
-  status: "gathering" | "live" | "closed";
-  myTurn: boolean;
-  waitingOn: string[];
-  // §3.1 containment, derived by the fold so every node agrees.
-  /** Speakers whose turn deadline passed: a visible pass, not a spinner. */
-  lapsed: string[];
-  /** When the current round's stragglers lapse (ms epoch). */
-  passesAt: number | null;
-  /** Authors whose last two contributions said the same thing. */
-  noProgressAuthors: string[];
-  /** Everyone voting agrees on this option — surfaced, never auto-closed. */
-  agreedOptionId: string | null;
-}
-
-export interface SandboxState {
-  /** Agent generation on this node (humans always work regardless). */
-  generationEnabled: boolean;
-  practicePubkey: string | null;
-  /** One standing choice for the whole circle: does my agent work here. */
-  participation: SandboxParticipation | null;
-  /** Cards whose proposal is still generating — "thinking", not dead air. */
-  thinkingCardIds: string[];
-  sessions: SandboxSession[];
-}
-
-/**
- * PLAN-36 Phase 4b: this member's OWN mastery state for one study-guide
- * section (Leitner box + spaced-repetition due date). Node-local, derived
- * only from the human's own quiz taps; never fans out.
- */
-export interface StudySectionState {
-  slot: string;
-  box: number;
-  correctCount: number;
-  missCount: number;
-  dueAt: number;
-}
-
 interface CirclesState {
   status: CirclesStatus | null;
   circles: Circle[];
   activeCircleId: string | null;
   messagesByCircle: Record<string, CircleMessage[]>;
   annotationsByCircle: Record<string, MessageAnnotations>;
+  /**
+   * The circle's read marker AS IT STOOD WHEN THE HUMAN OPENED IT — the "New"
+   * divider anchors here and must not slide while they read (markRead bumps
+   * the live marker the moment the circle is opened).
+   */
+  readFrontierByCircle: Record<string, number>;
+  /** History paging: true once a short page proved there is nothing older. */
+  historyExhaustedByCircle: Record<string, boolean>;
   cardsByCircle: Record<string, CanvasCard[]>;
   removedByCircle: Record<string, RemovedCanvasCard[]>;
   sandboxByCircle: Record<string, SandboxState>;
@@ -269,6 +72,8 @@ interface CirclesState {
   refresh: () => Promise<void>;
   selectCircle: (circleId: string) => void;
   loadMessages: (circleId: string) => Promise<void>;
+  /** Prepend the next (older) history page; resolves to how many were added. */
+  loadOlderMessages: (circleId: string) => Promise<number>;
   loadCards: (circleId: string) => Promise<void>;
   setFocusCard: (cardId: string | null) => void;
   removeCard: (circleId: string, cardId: string) => Promise<boolean>;
@@ -369,6 +174,8 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   activeCircleId: null,
   messagesByCircle: {},
   annotationsByCircle: {},
+  readFrontierByCircle: {},
+  historyExhaustedByCircle: {},
   cardsByCircle: {},
   removedByCircle: {},
   focusCardId: null,
@@ -395,6 +202,23 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       const activeCircleId =
         prev && circles.some((c) => c.circleId === prev) ? prev : (circles[0]?.circleId ?? null);
       set({ status, circles, activeCircleId, loading: false });
+      // First activation (boot / the previous circle vanished): freeze the
+      // "New" divider frontier from the marker BEFORE markRead bumps it.
+      // Re-polls of the already-active circle must NOT re-freeze — the line
+      // would slide down while the human reads. Version skew: an older
+      // gateway omits lastReadAt entirely — leave the frontier unset (no
+      // divider) rather than pinning a permanent "New" above all history.
+      if (activeCircleId && get().readFrontierByCircle[activeCircleId] === undefined) {
+        const c = circles.find((x) => x.circleId === activeCircleId);
+        if (typeof c?.lastReadAt === "number") {
+          set((s) => ({
+            readFrontierByCircle: {
+              ...s.readFrontierByCircle,
+              [activeCircleId]: c.lastReadAt as number,
+            },
+          }));
+        }
+      }
       if (activeCircleId) {
         void get().loadMessages(activeCircleId);
         void get().loadCards(activeCircleId);
@@ -409,7 +233,17 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   },
 
   selectCircle: (circleId) => {
-    set({ activeCircleId: circleId });
+    // Re-freeze the divider frontier on every explicit switch: messages that
+    // arrived since you last had this circle open are "New" again. Older
+    // gateways omit lastReadAt — leave the frontier unset (no divider).
+    const c = get().circles.find((x) => x.circleId === circleId);
+    set((s) => ({
+      activeCircleId: circleId,
+      readFrontierByCircle:
+        typeof c?.lastReadAt === "number"
+          ? { ...s.readFrontierByCircle, [circleId]: c.lastReadAt }
+          : s.readFrontierByCircle,
+    }));
     void get().loadMessages(circleId);
     void get().loadCards(circleId);
     void get().loadSandbox(circleId);
@@ -924,10 +758,16 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       );
       // The server returns the recent window newest-first (DESC LIMIT); the
       // chat renders chronologically, so store it oldest-first — newest lands
-      // at the bottom of the thread under the auto-scroll.
-      const chronological = [...(res.messages ?? [])].reverse();
+      // at the bottom of the thread under the auto-scroll. MERGE with what's
+      // already loaded instead of replacing: older pages fetched via
+      // loadOlderMessages must survive the 20s poll. The fresh window wins on
+      // id collisions (tombstones, delivery-status flips).
+      const window = [...(res.messages ?? [])].reverse();
       set((s) => ({
-        messagesByCircle: { ...s.messagesByCircle, [circleId]: chronological },
+        messagesByCircle: {
+          ...s.messagesByCircle,
+          [circleId]: mergeMessages(s.messagesByCircle[circleId] ?? [], window),
+        },
         annotationsByCircle: {
           ...s.annotationsByCircle,
           [circleId]: res.annotations ?? { reactions: {}, pins: [] },
@@ -935,6 +775,49 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       }));
     } catch (err) {
       set({ notice: String(err) });
+    }
+  },
+
+  loadOlderMessages: async (circleId) => {
+    const s = get();
+    if (s.historyExhaustedByCircle[circleId]) return 0;
+    const existing = s.messagesByCircle[circleId] ?? [];
+    const oldest = existing[0]?.createdAt;
+    if (oldest === undefined) return 0;
+    const PAGE = 100;
+    try {
+      const res = await request<{ messages: CircleMessage[] }>("circles.messages", {
+        circleId,
+        before: oldest,
+        limit: PAGE,
+      });
+      const page = [...(res.messages ?? [])].reverse();
+      let added = 0;
+      set((st) => {
+        const current = st.messagesByCircle[circleId] ?? [];
+        const merged = mergeMessages(current, page);
+        added = merged.length - current.length;
+        return {
+          messagesByCircle: { ...st.messagesByCircle, [circleId]: merged },
+          // A short page means the top of history. An older gateway ignores
+          // `before` and echoes the recent window (all duplicates, added=0) —
+          // treat that as exhausted too, or the button becomes a no-op loop.
+          historyExhaustedByCircle: {
+            ...st.historyExhaustedByCircle,
+            [circleId]:
+              page.length < PAGE || added === 0
+                ? true
+                : (st.historyExhaustedByCircle[circleId] ?? false),
+          },
+        };
+      });
+      return added;
+    } catch (err) {
+      set((st) => ({
+        historyExhaustedByCircle: { ...st.historyExhaustedByCircle, [circleId]: true },
+        notice: String(err),
+      }));
+      return 0;
     }
   },
 

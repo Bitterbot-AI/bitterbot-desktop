@@ -19,6 +19,21 @@ export function markCircleRead(db: DatabaseSync, circleId: string, now: number):
 }
 
 /**
+ * The raw read markers per circle (ms epoch of the last mark-read). The UI
+ * freezes this at circle-open to place the "New" divider — the marker itself
+ * moves forward the moment the circle is opened, so the divider must be
+ * derived from the value as it stood *before* that bump.
+ */
+export function readMarkers(db: DatabaseSync): Record<string, number> {
+  const rows = db
+    .prepare(`SELECT circle_id AS circleId, last_read_at AS lastReadAt FROM circle_read_state`)
+    .all() as unknown as Array<{ circleId: string; lastReadAt: number }>;
+  const out: Record<string, number> = {};
+  for (const row of rows) out[row.circleId] = row.lastReadAt;
+  return out;
+}
+
+/**
  * Unread inbound count per circle: inbound messages newer than the read marker
  * (missing marker → everything inbound counts, e.g. a freshly-joined circle).
  * Returns a plain map so callers can attach it to circles.list rows.

@@ -139,6 +139,7 @@ export const circlesHandlers: GatewayRequestHandlers = {
     }
     const presence = new Map(svc.service.peerPresence().map((p) => [p.peerPubkey, p] as const));
     const unread = svc.service.unreadByCircle();
+    const lastRead = svc.service.lastReadByCircle();
     const selfPubkey = svc.service.pubkey;
     // §5.6 petname layer: the viewer's private labels + per-member name-safety
     // flags. Members are read ONCE per circle; the flags (unverified /
@@ -169,6 +170,9 @@ export const circlesHandlers: GatewayRequestHandlers = {
       keyEpoch: c.keyEpoch,
       createdAt: c.createdAt,
       unread: unread[c.circleId] ?? 0,
+      // The read marker as it stands NOW — the UI freezes this at circle-open
+      // to place the "New" divider before markRead moves the marker forward.
+      lastReadAt: lastRead[c.circleId] ?? 0,
       members: (membersByCircle.get(c.circleId) ?? []).map((m) => {
         const f = flags.get(m.memberPubkey);
         return {
@@ -1231,10 +1235,14 @@ export const circlesHandlers: GatewayRequestHandlers = {
       return;
     }
     const limit = typeof params.limit === "number" ? params.limit : 100;
+    // History paging: `before` (ms epoch) returns the window strictly older
+    // than the caller's oldest loaded message. The UI infers "no more history"
+    // from a short page.
+    const before = typeof params.before === "number" ? params.before : undefined;
     respond(
       true,
       {
-        messages: svc.service.messages(circleId, limit),
+        messages: svc.service.messages(circleId, limit, before),
         // Phase D: reactions + pins ride the same response so one refresh
         // paints the whole conversation state. Pinned messages are resolved
         // server-side by envelope id (no window limit — review F4).

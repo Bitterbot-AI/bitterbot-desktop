@@ -179,6 +179,42 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(ana.messages(circleId).some((m) => m.envelopeId === sent.envelopeId)).toBe(true);
   });
 
+  it("pages history with `before` and exposes read markers (Phase A timeline)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+
+    await bob.sendMessage({ circleId, text: "one" });
+    await bob.sendMessage({ circleId, text: "two" });
+    await bob.sendMessage({ circleId, text: "three" });
+    // Pin deterministic timestamps — real traffic lands in the same ms, and
+    // the pager cuts strictly-older-than.
+    for (const [word, t] of [
+      ["one", 1000],
+      ["two", 2000],
+      ["three", 3000],
+    ] as const) {
+      anaDb
+        .prepare(`UPDATE circle_messages SET created_at = ? WHERE circle_id = ? AND content LIKE ?`)
+        .run(t, circleId, `%${word}%`);
+    }
+
+    // Recent window, newest-first.
+    expect(ana.messages(circleId, 2).map((m) => m.createdAt)).toEqual([3000, 2000]);
+    // The next page: strictly older than the caller's oldest loaded message.
+    expect(ana.messages(circleId, 2, 2000).map((m) => m.createdAt)).toEqual([1000]);
+    // Past the top of history: empty (the UI reads a short page as "done").
+    expect(ana.messages(circleId, 100, 1000)).toEqual([]);
+
+    // Read markers: absent until the human opens the circle, then the divider
+    // frontier the UI freezes; unread clears with it.
+    expect(ana.lastReadByCircle()[circleId]).toBeUndefined();
+    expect(ana.unreadByCircle()[circleId]).toBe(3);
+    ana.markRead(circleId);
+    expect(ana.lastReadByCircle()[circleId]).toBeGreaterThan(0);
+    expect(ana.unreadByCircle()[circleId]).toBeUndefined();
+  });
+
   it("shares a canvas card across nodes and folds put/update/remove (C1)", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

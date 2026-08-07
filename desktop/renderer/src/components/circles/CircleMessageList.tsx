@@ -1,5 +1,5 @@
-import { Pin, Reply, ShieldCheck, SmilePlus, StickyNote, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, Pin, Reply, ShieldCheck, SmilePlus, StickyNote, Trash2 } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
 import { cn } from "../../lib/utils";
 import {
@@ -8,15 +8,18 @@ import {
   type CircleMessage,
   type MessageAnnotations,
 } from "../../stores/circles-store";
+import { CircleMarkdown } from "./CircleMarkdown";
+import { buildTimeline, fmtFullDate, fmtTime } from "./timeline";
 
 // Phase D reactions: a small fixed palette keeps the picker one tap deep.
 const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
 
-// PLAN-36 Phase A: the circle conversation stream. New rendering (not the
-// two-party chat MessageList) — every row carries author identity and a
-// human/you chip, oldest-first, auto-scrolled to the newest. Agent-authored
-// styling + reactions/reply-to land in Phase B/A-later; the row is structured
-// to grow into them.
+// PLAN-36 Phase A + Phase A' (readable timeline): the circle conversation
+// stream. Rows group Slack-style inside a 10-minute same-author window, day
+// dividers orient history, the frozen "New" line marks what arrived since the
+// circle was last open, and scroll is ANCHORED — it follows the conversation
+// only when you're already at the bottom; otherwise a jump pill counts what
+// you're missing. Bodies render restricted markdown (CircleMarkdown).
 
 const AVATAR_COLORS = ["#0f9d68", "#3a5bd9", "#c9871a", "#8b5cf6", "#d6336c", "#0c8599", "#e8590c"];
 
@@ -33,19 +36,25 @@ function initials(name: string): string {
   return ((parts[0] as string)[0] + (parts[1] as string)[0]).toUpperCase();
 }
 
-function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-}
-
 // A pasted/delivered invite code in a message body (bbc1.<base64url>).
 // Detection only — tapping Join runs the full signature-checked join
 // ceremony server-side; the code is data until the human consents.
 const INVITE_CODE_RE = /\bbbc1\.[A-Za-z0-9_-]{20,}/;
 
+/** How close to the bottom still counts as "at the bottom" (px). */
+const AT_BOTTOM_SLACK_PX = 48;
+
 interface Props {
-  messages: CircleMessage[];
+  /** undefined = still loading (skeleton); [] = truly empty. */
+  messages: CircleMessage[] | undefined;
   members: CircleMember[];
   selfPubkey: string | undefined;
+  /** The frozen read marker anchoring the "New" divider (0 = never read). */
+  readFrontier?: number;
+  /** Fetch the next older history page; resolves to how many were added. */
+  onLoadOlder?: () => Promise<number>;
+  /** False once the top of history is proven — hides the load affordance. */
+  hasMoreHistory?: boolean;
   onReply: (m: CircleMessage) => void;
   /** Phase D: reactions + pins folded from the event log. */
   annotations?: MessageAnnotations;
@@ -63,10 +72,32 @@ interface Props {
   onAddToCanvas?: (m: CircleMessage, text: string) => void;
 }
 
+function TimelineSkeleton() {
+  // Loading is NOT "no messages yet" — a circle with history must never flash
+  // the empty-state copy while the RPC is in flight.
+  const widths = ["w-3/5", "w-2/5", "w-4/5", "w-1/3", "w-1/2", "w-2/3"];
+  return (
+    <div className="flex-1 overflow-hidden px-4 py-3 space-y-4" aria-label="Loading messages">
+      {widths.map((w, i) => (
+        <div key={i} className="flex gap-3 animate-pulse">
+          <div className="w-8 h-8 rounded-lg shrink-0 bg-muted" />
+          <div className="min-w-0 flex-1 space-y-1.5 pt-0.5">
+            <div className="h-3 w-24 rounded bg-muted" />
+            <div className={cn("h-3 rounded bg-muted/70", w)} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function CircleMessageList({
   messages,
   members,
   selfPubkey,
+  readFrontier,
+  onLoadOlder,
+  hasMoreHistory,
   onReply,
   annotations,
   onToggleReaction,
@@ -75,8 +106,14 @@ export function CircleMessageList({
   onDelete,
   onAddToCanvas,
 }: Props) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  const [pendingNew, setPendingNew] = useState(0);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  // Anchored scroll state lives in refs — scrolling must never re-render.
+  const atBottomRef = useRef(true);
+  const lastIdRef = useRef<string | undefined>(undefined);
+  const prependRef = useRef<{ height: number; top: number } | null>(null);
 
   const nameOf = useMemo(() => {
     const map = new Map<string, string>();
@@ -87,13 +124,78 @@ export function CircleMessageList({
   // Resolve a reply's parent locally by its shared envelope id (A3).
   const byEnvelope = useMemo(() => {
     const map = new Map<string, CircleMessage>();
-    for (const m of messages) if (m.envelopeId) map.set(m.envelopeId, m);
+    for (const m of messages ?? []) if (m.envelopeId) map.set(m.envelopeId, m);
     return map;
   }, [messages]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView?.({ block: "end" });
-  }, [messages]);
+  const timeline = useMemo(
+    () => buildTimeline(messages ?? [], readFrontier),
+    [messages, readFrontier],
+  );
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    atBottomRef.current = true;
+    setPendingNew(0);
+  };
+
+  // The anchor logic. Runs after every commit that changed the message run:
+  //  - a history prepend restores the exact prior viewport (no jump);
+  //  - first load / own send / already-at-bottom sticks to the bottom;
+  //  - new messages while scrolled up leave the viewport alone and count up
+  //    the jump pill instead. Reading history is never yanked away.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || messages === undefined) return;
+    const last = messages[messages.length - 1];
+    const lastId = last?.messageId;
+
+    if (prependRef.current) {
+      el.scrollTop = el.scrollHeight - prependRef.current.height + prependRef.current.top;
+      prependRef.current = null;
+      lastIdRef.current = lastId;
+      return;
+    }
+    if (lastId === lastIdRef.current) return; // annotation-only refresh
+
+    const firstLoad = lastIdRef.current === undefined;
+    const ownSend =
+      !!last && (last.direction === "out" || last.authorPubkey === selfPubkey) && !last.deleted;
+    if (firstLoad || ownSend || atBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+      atBottomRef.current = true;
+      setPendingNew(0);
+    } else {
+      const prevIdx = messages.findIndex((m) => m.messageId === lastIdRef.current);
+      const appended = prevIdx >= 0 ? messages.length - 1 - prevIdx : 1;
+      setPendingNew((n) => n + appended);
+    }
+    lastIdRef.current = lastId;
+  }, [messages, selfPubkey]);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < AT_BOTTOM_SLACK_PX;
+    atBottomRef.current = atBottom;
+    if (atBottom) setPendingNew(0);
+  };
+
+  const loadOlder = async () => {
+    const el = scrollRef.current;
+    if (!onLoadOlder || loadingOlder || !el) return;
+    setLoadingOlder(true);
+    prependRef.current = { height: el.scrollHeight, top: el.scrollTop };
+    try {
+      const added = await onLoadOlder();
+      if (added === 0) prependRef.current = null;
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+
+  if (messages === undefined) return <TimelineSkeleton />;
 
   if (messages.length === 0) {
     return (
@@ -103,289 +205,370 @@ export function CircleMessageList({
     );
   }
 
+  const showLoadOlder = !!onLoadOlder && hasMoreHistory !== false && messages.length >= 100;
+
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-      {messages.map((m) => {
-        const isSelf = m.direction === "out" || m.authorPubkey === selfPubkey;
-        // Mockup pin 2: agent-written text is attributed to the AGENT, bound
-        // to its owner — "Maya's agent", never plain "Maya".
-        const isAgent = m.agentAuthored === true;
-        const owner = isSelf ? "You" : nameOf(m.authorPubkey);
-        const name = isAgent ? (isSelf ? "Your agent" : `${owner}'s agent`) : owner;
-        const color = isSelf ? "#3a5bd9" : colorFor(m.authorPubkey);
-        const parent = m.replyTo ? byEnvelope.get(m.replyTo) : undefined;
-        // Inbound content is stored security-wrapped for agent consumers;
-        // humans get the body plus a screened indicator, not the plumbing.
-        const display = unwrapForDisplay(m.content);
-        // Phase D: fold this message's reactions into emoji -> reactors.
-        const reactionSets = (m.envelopeId && annotations?.reactions[m.envelopeId]) || [];
-        const byEmoji = new Map<string, string[]>();
-        for (const r of reactionSets) {
-          for (const e of r.emojis) {
-            const list = byEmoji.get(e) ?? [];
-            list.push(r.authorPubkey);
-            byEmoji.set(e, list);
-          }
-        }
-        const myEmojis = new Set(
-          reactionSets.find((r) => r.authorPubkey === selfPubkey)?.emojis ?? [],
-        );
-        const isPinned = !!m.envelopeId && (annotations?.pins ?? []).includes(m.envelopeId);
-        const toggle = (emoji: string) => {
-          if (!onToggleReaction) return;
-          setPickerFor(null);
-          onToggleReaction(m, emoji);
-        };
-        if (m.deleted) {
-          return (
-            <div key={m.messageId} className="flex gap-3 opacity-60">
-              <div className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-xs text-muted-foreground border border-border/40">
-                <Trash2 className="w-3.5 h-3.5" aria-label="deleted" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-semibold text-muted-foreground">
-                    {isSelf ? "You" : nameOf(m.authorPubkey)}
-                  </span>
-                  <span className="text-2xs text-muted-foreground">{fmtTime(m.createdAt)}</span>
-                </div>
-                <div className="text-sm italic text-muted-foreground">
-                  {m.deletedByMe ? "hidden by you" : "message deleted"}
-                </div>
-              </div>
-            </div>
-          );
-        }
-        return (
-          <div key={m.messageId} className="group relative flex gap-3">
-            <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center">
-              {m.envelopeId && onToggleReaction && (
-                <button
-                  type="button"
-                  onClick={() => setPickerFor(pickerFor === m.messageId ? null : m.messageId)}
-                  aria-label="Add reaction"
-                  className="text-muted-foreground hover:text-foreground p-1 rounded"
-                >
-                  <SmilePlus className="w-3.5 h-3.5" />
-                </button>
-              )}
-              {m.envelopeId && onTogglePin && (
-                <button
-                  type="button"
-                  onClick={() => onTogglePin(m, !isPinned)}
-                  aria-label={isPinned ? "Unpin message" : "Pin message"}
-                  className={cn(
-                    "p-1 rounded hover:text-foreground",
-                    isPinned ? "text-circle-you" : "text-muted-foreground",
-                  )}
-                >
-                  <Pin className="w-3.5 h-3.5" />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => onReply(m)}
-                aria-label={`Reply to ${name}`}
-                className="text-muted-foreground hover:text-foreground p-1 rounded"
+    <div className="relative flex-1 min-h-0">
+      <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto px-4 py-3">
+        {showLoadOlder && (
+          <div className="flex justify-center mb-2">
+            <button
+              type="button"
+              onClick={() => void loadOlder()}
+              disabled={loadingOlder}
+              className="text-xs text-muted-foreground hover:text-foreground border rounded-full px-3 py-1 disabled:opacity-50"
+            >
+              {loadingOlder ? "Loading…" : "Load earlier messages"}
+            </button>
+          </div>
+        )}
+        {timeline.map((item, idx) => {
+          if (item.type === "day") {
+            return (
+              <div
+                key={`day-${item.ts}`}
+                className={cn("flex items-center gap-3", idx === 0 ? "mb-3" : "my-3")}
               >
-                <Reply className="w-3.5 h-3.5" />
-              </button>
-              {onAddToCanvas && (
-                <button
-                  type="button"
-                  onClick={() => onAddToCanvas(m, display.text)}
-                  aria-label="Add to canvas"
-                  title="Add to the shared canvas"
-                  className="text-muted-foreground hover:text-foreground p-1 rounded"
-                >
-                  <StickyNote className="w-3.5 h-3.5" />
-                </button>
-              )}
-              {m.envelopeId && onDelete && (
-                <button
-                  type="button"
-                  onClick={() => onDelete(m, isSelf)}
-                  aria-label={isSelf ? "Delete message" : "Hide message for me"}
-                  title={isSelf ? "Delete for everyone" : "Hide on this device"}
-                  className="text-muted-foreground hover:text-red-400 p-1 rounded"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-            {pickerFor === m.messageId && (
-              <div className="absolute right-0 top-6 z-10 flex gap-1 rounded-lg border bg-popover p-1 shadow-md">
-                {REACTION_PALETTE.map((e) => (
+                <div className="h-px flex-1 bg-border" />
+                <span className="shrink-0 rounded-full border px-2.5 py-0.5 text-2xs font-medium text-muted-foreground">
+                  {item.label}
+                </span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            );
+          }
+          if (item.type === "unread") {
+            return (
+              <div key="unread" className="flex items-center gap-2 my-2" aria-label="New messages">
+                <div className="h-px flex-1 bg-circle-you/50" />
+                <span className="shrink-0 text-2xs font-semibold uppercase tracking-wide text-circle-you">
+                  New
+                </span>
+                <div className="h-px flex-1 bg-circle-you/50" />
+              </div>
+            );
+          }
+
+          const m = item.message;
+          const isSelf = m.direction === "out" || m.authorPubkey === selfPubkey;
+          // Mockup pin 2: agent-written text is attributed to the AGENT, bound
+          // to its owner — "Maya's agent", never plain "Maya".
+          const isAgent = m.agentAuthored === true;
+          const owner = isSelf ? "You" : nameOf(m.authorPubkey);
+          const name = isAgent ? (isSelf ? "Your agent" : `${owner}'s agent`) : owner;
+          const color = isSelf ? "#3a5bd9" : colorFor(m.authorPubkey);
+          const parent = m.replyTo ? byEnvelope.get(m.replyTo) : undefined;
+          // Inbound content is stored security-wrapped for agent consumers;
+          // humans get the body plus a screened indicator, not the plumbing.
+          const display = unwrapForDisplay(m.content);
+          // Phase D: fold this message's reactions into emoji -> reactors.
+          const reactionSets = (m.envelopeId && annotations?.reactions[m.envelopeId]) || [];
+          const byEmoji = new Map<string, string[]>();
+          for (const r of reactionSets) {
+            for (const e of r.emojis) {
+              const list = byEmoji.get(e) ?? [];
+              list.push(r.authorPubkey);
+              byEmoji.set(e, list);
+            }
+          }
+          const myEmojis = new Set(
+            reactionSets.find((r) => r.authorPubkey === selfPubkey)?.emojis ?? [],
+          );
+          const isPinned = !!m.envelopeId && (annotations?.pins ?? []).includes(m.envelopeId);
+          const toggle = (emoji: string) => {
+            if (!onToggleReaction) return;
+            setPickerFor(null);
+            onToggleReaction(m, emoji);
+          };
+          if (m.deleted) {
+            return (
+              <div key={m.messageId} className="flex gap-3 opacity-60 mt-3">
+                <div className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-xs text-muted-foreground border border-border/40">
+                  <Trash2 className="w-3.5 h-3.5" aria-label="deleted" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-semibold text-muted-foreground">
+                      {isSelf ? "You" : nameOf(m.authorPubkey)}
+                    </span>
+                    <span
+                      className="text-2xs text-muted-foreground tabular-nums"
+                      title={fmtFullDate(m.createdAt)}
+                    >
+                      {fmtTime(m.createdAt)}
+                    </span>
+                  </div>
+                  <div className="text-sm italic text-muted-foreground">
+                    {m.deletedByMe ? "hidden by you" : "message deleted"}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div
+              key={m.messageId}
+              className={cn("group relative flex gap-3", item.isContinuation ? "mt-0.5" : "mt-3")}
+            >
+              <div className="absolute right-0 top-0 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center rounded-md border bg-background/95 shadow-sm px-0.5">
+                {m.envelopeId && onToggleReaction && (
                   <button
-                    key={e}
                     type="button"
-                    onClick={() => toggle(e)}
-                    aria-label={`React ${e}`}
+                    onClick={() => setPickerFor(pickerFor === m.messageId ? null : m.messageId)}
+                    aria-label="Add reaction"
+                    className="text-muted-foreground hover:text-foreground p-1 rounded"
+                  >
+                    <SmilePlus className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {m.envelopeId && onTogglePin && (
+                  <button
+                    type="button"
+                    onClick={() => onTogglePin(m, !isPinned)}
+                    aria-label={isPinned ? "Unpin message" : "Pin message"}
                     className={cn(
-                      "text-base leading-none p-1 rounded hover:bg-muted",
-                      myEmojis.has(e) && "bg-circle-you-soft",
+                      "p-1 rounded hover:text-foreground",
+                      isPinned ? "text-circle-you" : "text-muted-foreground",
                     )}
                   >
-                    {e}
+                    <Pin className="w-3.5 h-3.5" />
                   </button>
-                ))}
-              </div>
-            )}
-            {isAgent ? (
-              <div
-                aria-label="agent message"
-                className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-sm border border-circle-agent bg-circle-agent-soft text-circle-agent"
-              >
-                ◆
-              </div>
-            ) : (
-              <div
-                className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-xs font-bold text-white"
-                style={{ background: color }}
-              >
-                {initials(name)}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              {m.replyTo && (
-                <div className="flex items-center gap-1.5 text-2xs text-muted-foreground mb-0.5 min-w-0">
-                  <Reply className="w-3 h-3 shrink-0" />
-                  {parent ? (
-                    <>
-                      <span className="font-medium shrink-0">
-                        {(() => {
-                          // Review #5: provenance carries into reply quotes —
-                          // replying to "Maya's agent" must not quote "Maya".
-                          const pSelf =
-                            parent.direction === "out" || parent.authorPubkey === selfPubkey;
-                          const pOwner = pSelf ? "You" : nameOf(parent.authorPubkey);
-                          return parent.agentAuthored
-                            ? pSelf
-                              ? "Your agent"
-                              : `${pOwner}'s agent`
-                            : pOwner;
-                        })()}
-                      </span>
-                      {parent.deleted ? (
-                        <em className="truncate opacity-60">message deleted</em>
-                      ) : (
-                        <span className="truncate opacity-80">
-                          {unwrapForDisplay(parent.content).text}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span>replied to an earlier message</span>
-                  )}
-                </div>
-              )}
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-sm font-semibold">{name}</span>
-                {isAgent && (
-                  <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-agent-soft text-circle-agent">
-                    agent
-                  </span>
                 )}
-                {isSelf && !isAgent && (
-                  <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-you-soft text-circle-you">
-                    you
-                  </span>
-                )}
-                {m.kind !== "message" && (
-                  <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-muted text-muted-foreground">
-                    {m.kind}
-                  </span>
-                )}
-                <span className="text-2xs text-muted-foreground">{fmtTime(m.createdAt)}</span>
-                {isPinned && (
-                  <span title="Pinned for the circle" className="text-circle-you">
-                    <Pin className="w-3 h-3" aria-label="pinned" />
-                  </span>
-                )}
-                {display.wasWrapped && (
-                  <span
-                    title="Screened on receipt — your agent treats this as untrusted peer content"
-                    className="text-muted-foreground/70"
-                  >
-                    <ShieldCheck className="w-3 h-3" aria-label="screened" />
-                  </span>
-                )}
-              </div>
-              {isAgent ? (
-                // The mockup's .agentmsg treatment: a quiet violet-edged card
-                // so agent words never blend into human conversation.
-                <div className="mt-0.5 rounded-md border border-border border-l-2 border-l-circle-agent bg-card px-2.5 py-1.5 text-sm whitespace-pre-wrap break-words">
-                  {display.text}
-                </div>
-              ) : m.kind === "system" ? (
-                // §5.5 system notices (e.g. a member removal a peer announced):
-                // muted + italic so a node-level statement never reads as
-                // something the person conversationally said. The `system`
-                // kind badge above names the category.
-                <div className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words">
-                  {display.text}
-                </div>
-              ) : (
-                <div className="text-sm whitespace-pre-wrap break-words">{display.text}</div>
-              )}
-              {(() => {
-                if (!onJoinInvite || isSelf) return null;
-                const code = display.text.match(INVITE_CODE_RE)?.[0];
-                if (!code) return null;
-                return (
+                <button
+                  type="button"
+                  onClick={() => onReply(m)}
+                  aria-label={`Reply to ${name}`}
+                  className="text-muted-foreground hover:text-foreground p-1 rounded"
+                >
+                  <Reply className="w-3.5 h-3.5" />
+                </button>
+                {onAddToCanvas && (
                   <button
                     type="button"
-                    onClick={() => onJoinInvite(code)}
-                    className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded bg-circle-you text-circle-you-fg"
+                    onClick={() => onAddToCanvas(m, display.text)}
+                    aria-label="Add to canvas"
+                    title="Add to the shared canvas"
+                    className="text-muted-foreground hover:text-foreground p-1 rounded"
                   >
-                    Join this circle
+                    <StickyNote className="w-3.5 h-3.5" />
                   </button>
-                );
-              })()}
-              {byEmoji.size > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {[...byEmoji.entries()].map(([emoji, reactors]) => (
+                )}
+                {m.envelopeId && onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(m, isSelf)}
+                    aria-label={isSelf ? "Delete message" : "Hide message for me"}
+                    title={isSelf ? "Delete for everyone" : "Hide on this device"}
+                    className="text-muted-foreground hover:text-red-400 p-1 rounded"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              {pickerFor === m.messageId && (
+                <div className="absolute right-0 top-6 z-10 flex gap-1 rounded-lg border bg-popover p-1 shadow-md">
+                  {REACTION_PALETTE.map((e) => (
                     <button
-                      key={emoji}
+                      key={e}
                       type="button"
-                      onClick={() => toggle(emoji)}
-                      title={reactors.map((p) => (p === selfPubkey ? "You" : nameOf(p))).join(", ")}
+                      onClick={() => toggle(e)}
+                      aria-label={`React ${e}`}
                       className={cn(
-                        // Solid chip on a real border — translucent fills read
-                        // washed-out on the dark card (mockup .react/.react.on).
-                        "text-xs rounded-full border px-2 py-0.5 flex items-center gap-1 transition-colors",
-                        myEmojis.has(emoji)
-                          ? "border-circle-you bg-circle-you-soft text-circle-you"
-                          : "border-border bg-card text-muted-foreground hover:border-muted-foreground/60",
+                        "text-base leading-none p-1 rounded hover:bg-muted",
+                        myEmojis.has(e) && "bg-circle-you-soft",
                       )}
                     >
-                      <span>{emoji}</span>
-                      <span className="tabular-nums font-medium">{reactors.length}</span>
+                      {e}
                     </button>
                   ))}
                 </div>
               )}
-              {isSelf && m.deliveryStatus && m.deliveryStatus !== "delivered" && (
-                <span
-                  className={cn(
-                    "inline-block mt-1 text-badge font-medium rounded px-1.5 py-0.5",
-                    m.deliveryStatus === "failed"
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-muted text-muted-foreground",
-                  )}
+              {item.isContinuation ? (
+                // Continuation gutter: avatar-width, hover-revealed timestamp.
+                <div className="w-8 shrink-0 flex items-start justify-end pt-1">
+                  <span
+                    className="text-3xs text-muted-foreground tabular-nums opacity-0 group-hover:opacity-100"
+                    title={fmtFullDate(m.createdAt)}
+                  >
+                    {fmtTime(m.createdAt)}
+                  </span>
+                </div>
+              ) : isAgent ? (
+                <div
+                  aria-label="agent message"
+                  className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-sm border border-circle-agent bg-circle-agent-soft text-circle-agent"
                 >
-                  {m.deliveryStatus === "failed"
-                    ? "not delivered"
-                    : m.deliveryStatus === "partial"
-                      ? "partly delivered"
-                      : "sending…"}
-                </span>
+                  ◆
+                </div>
+              ) : (
+                <div
+                  className="w-8 h-8 rounded-lg shrink-0 grid place-items-center text-xs font-bold text-white"
+                  style={{ background: color }}
+                >
+                  {initials(name)}
+                </div>
               )}
+              <div className="min-w-0 flex-1">
+                {m.replyTo && (
+                  <div className="flex items-center gap-1.5 text-2xs text-muted-foreground mb-0.5 min-w-0">
+                    <Reply className="w-3 h-3 shrink-0" />
+                    {parent ? (
+                      <>
+                        <span className="font-medium shrink-0">
+                          {(() => {
+                            // Review #5: provenance carries into reply quotes —
+                            // replying to "Maya's agent" must not quote "Maya".
+                            const pSelf =
+                              parent.direction === "out" || parent.authorPubkey === selfPubkey;
+                            const pOwner = pSelf ? "You" : nameOf(parent.authorPubkey);
+                            return parent.agentAuthored
+                              ? pSelf
+                                ? "Your agent"
+                                : `${pOwner}'s agent`
+                              : pOwner;
+                          })()}
+                        </span>
+                        {parent.deleted ? (
+                          <em className="truncate opacity-60">message deleted</em>
+                        ) : (
+                          <span className="truncate opacity-80">
+                            {unwrapForDisplay(parent.content).text}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span>replied to an earlier message</span>
+                    )}
+                  </div>
+                )}
+                {!item.isContinuation && (
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-sm font-semibold">{name}</span>
+                    {isAgent && (
+                      <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-agent-soft text-circle-agent">
+                        agent
+                      </span>
+                    )}
+                    {isSelf && !isAgent && (
+                      <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-circle-you-soft text-circle-you">
+                        you
+                      </span>
+                    )}
+                    {m.kind !== "message" && (
+                      <span className="text-badge font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-muted text-muted-foreground">
+                        {m.kind}
+                      </span>
+                    )}
+                    <span
+                      className="text-2xs text-muted-foreground tabular-nums"
+                      title={fmtFullDate(m.createdAt)}
+                    >
+                      {fmtTime(m.createdAt)}
+                    </span>
+                    {isPinned && (
+                      <span title="Pinned for the circle" className="text-circle-you">
+                        <Pin className="w-3 h-3" aria-label="pinned" />
+                      </span>
+                    )}
+                    {display.wasWrapped && (
+                      <span
+                        title="Screened on receipt — your agent treats this as untrusted peer content"
+                        className="text-muted-foreground/70"
+                      >
+                        <ShieldCheck className="w-3 h-3" aria-label="screened" />
+                      </span>
+                    )}
+                  </div>
+                )}
+                {isAgent ? (
+                  // The mockup's .agentmsg treatment: a quiet violet-edged card
+                  // so agent words never blend into human conversation.
+                  <div className="mt-0.5 rounded-md border border-border border-l-2 border-l-circle-agent bg-card px-2.5 py-1.5 text-sm break-words">
+                    <CircleMarkdown text={display.text} />
+                  </div>
+                ) : m.kind === "system" ? (
+                  // §5.5 system notices (e.g. a member removal a peer announced):
+                  // muted + italic so a node-level statement never reads as
+                  // something the person conversationally said. The `system`
+                  // kind badge above names the category.
+                  <div className="text-sm italic text-muted-foreground whitespace-pre-wrap break-words">
+                    {display.text}
+                  </div>
+                ) : (
+                  <div className="text-sm break-words">
+                    <CircleMarkdown text={display.text} />
+                  </div>
+                )}
+                {(() => {
+                  if (!onJoinInvite || isSelf) return null;
+                  const code = display.text.match(INVITE_CODE_RE)?.[0];
+                  if (!code) return null;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => onJoinInvite(code)}
+                      className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded bg-circle-you text-circle-you-fg"
+                    >
+                      Join this circle
+                    </button>
+                  );
+                })()}
+                {byEmoji.size > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {[...byEmoji.entries()].map(([emoji, reactors]) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => toggle(emoji)}
+                        title={reactors
+                          .map((p) => (p === selfPubkey ? "You" : nameOf(p)))
+                          .join(", ")}
+                        className={cn(
+                          // Solid chip on a real border — translucent fills read
+                          // washed-out on the dark card (mockup .react/.react.on).
+                          "text-xs rounded-full border px-2 py-0.5 flex items-center gap-1 transition-colors",
+                          myEmojis.has(emoji)
+                            ? "border-circle-you bg-circle-you-soft text-circle-you"
+                            : "border-border bg-card text-muted-foreground hover:border-muted-foreground/60",
+                        )}
+                      >
+                        <span>{emoji}</span>
+                        <span className="tabular-nums font-medium">{reactors.length}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {isSelf && m.deliveryStatus && m.deliveryStatus !== "delivered" && (
+                  <span
+                    className={cn(
+                      "inline-block mt-1 text-badge font-medium rounded px-1.5 py-0.5",
+                      m.deliveryStatus === "failed"
+                        ? "bg-destructive/10 text-destructive"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {m.deliveryStatus === "failed"
+                      ? "not delivered"
+                      : m.deliveryStatus === "partial"
+                        ? "partly delivered"
+                        : "sending…"}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })}
-      <div ref={bottomRef} />
+          );
+        })}
+      </div>
+      {pendingNew > 0 && (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full border bg-background/95 shadow-sm px-3 py-1 text-xs font-medium text-circle-you hover:bg-circle-you-soft"
+        >
+          <ArrowDown className="w-3.5 h-3.5" />
+          {pendingNew === 1 ? "1 new message" : `${pendingNew} new messages`}
+        </button>
+      )}
     </div>
   );
 }

@@ -40,6 +40,9 @@ function replyLabel(
 export function CircleChat({ circle, selfPubkey }: Props) {
   const messages = useCirclesStore((s) => s.messagesByCircle[circle.circleId]);
   const annotations = useCirclesStore((s) => s.annotationsByCircle[circle.circleId]);
+  const readFrontier = useCirclesStore((s) => s.readFrontierByCircle[circle.circleId]);
+  const historyExhausted = useCirclesStore((s) => s.historyExhaustedByCircle[circle.circleId]);
+  const loadOlderMessages = useCirclesStore((s) => s.loadOlderMessages);
   const agentDrafts = useCirclesStore((s) => s.draftsByCircle[circle.circleId]);
   const pendingOutbound = useCirclesStore((s) => s.outboundByCircle[circle.circleId]);
   const send = useCirclesStore((s) => s.send);
@@ -210,9 +213,12 @@ export function CircleChat({ circle, selfPubkey }: Props) {
       )}
 
       <CircleMessageList
-        messages={messages ?? []}
+        messages={messages}
         members={circle.members}
         selfPubkey={selfPubkey}
+        readFrontier={readFrontier}
+        onLoadOlder={() => loadOlderMessages(circle.circleId)}
+        hasMoreHistory={!historyExhausted}
         onReply={setReplyTo}
         annotations={annotations}
         onToggleReaction={circle.status === "active" ? toggleReaction : undefined}

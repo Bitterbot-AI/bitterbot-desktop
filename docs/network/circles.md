@@ -127,7 +127,19 @@ so the UI renders collision cues rather than pretending uniqueness.
 
 - **Chat**: `circles.send` / `circle/message`, with `reply_to` threading,
   reactions and pins (chained ledger events), per-circle read state
-  (`circles.markRead`), and unread badges in the rail. **Deletion**
+  (`circles.markRead`), and unread badges in the rail. **The timeline reads
+  like a chat app**: consecutive messages from the same author inside a
+  10-minute window group under one header (a hover reveals the follow-up
+  timestamps), day dividers orient history, and a "New" line — frozen at
+  the read marker as it stood when the circle was opened (`lastReadAt` on
+  `circles.list`) — marks what arrived since you last looked. Scroll is
+  anchored: it follows the conversation only when you are already at the
+  bottom; otherwise a "N new messages" pill counts what you're missing, and
+  "Load earlier messages" pages history (`circles.messages` with `before` +
+  `limit`). Bodies render **restricted markdown** (links, lists, code,
+  quotes, tables; images never load and headings demote to bold — peer
+  content stays inert) while the stored row keeps its untrusted-content
+  wrap for agent consumers. **Deletion**
   (`circles.message.delete`): deleting your own message emits a
   `message.delete` event on your signed chain, so it replicates like any
   ledger write and honest peer nodes tombstone their copy too (content
@@ -339,8 +351,10 @@ surface until 2026-07-25.
 - **Identity**: `circles.self.setName`, `circles.petname.set`,
   `circles.petname.clear`
 - **Ceremony**: `circles.invite`, `circles.inviteInfo`, `circles.join`
-- **Chat**: `circles.send`, `circles.messages`, `circles.markRead`,
-  `circles.react`, `circles.pin`, `circles.message.delete`
+- **Chat**: `circles.send`, `circles.messages` (paged: `limit` +
+  `before` ms-epoch cursor), `circles.markRead`, `circles.react`,
+  `circles.pin`, `circles.message.delete`. `circles.list` rows carry
+  `lastReadAt` so the UI can freeze the "New" divider at open.
 - **Canvas**: `circles.canvas.list`, `circles.canvas.put`,
   `circles.canvas.remove`, `circles.canvas.slice`
 - **Tab**: `circles.tab.add`, `circles.tab.balances`, `circles.sync`

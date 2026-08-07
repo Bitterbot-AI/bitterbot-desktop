@@ -96,7 +96,7 @@ import {
   practiceReply,
   realConnectionCount,
 } from "./practice.js";
-import { markCircleRead, unreadCounts } from "./read-state.js";
+import { markCircleRead, readMarkers, unreadCounts } from "./read-state.js";
 import {
   parseProposalSlot,
   practiceSandboxSweep,
@@ -2385,6 +2385,11 @@ export class CirclesService {
     return unreadCounts(this.db);
   }
 
+  /** Raw read markers per circle — the UI's frozen "New" divider frontier. */
+  lastReadByCircle(): Record<string, number> {
+    return readMarkers(this.db);
+  }
+
   /** Mark a circle read up to now — called when the human opens it (A2). */
   markRead(circleId: string): void {
     markCircleRead(this.db, circleId, Date.now());
@@ -2452,6 +2457,8 @@ export class CirclesService {
   messages(
     circleId: string,
     limit = 100,
+    /** Only messages strictly older than this ms-epoch (history paging). */
+    before?: number,
   ): Array<{
     messageId: string;
     envelopeId: string | null;
@@ -2472,10 +2479,10 @@ export class CirclesService {
       .prepare(
         `SELECT message_id, envelope_id, author_pubkey, direction, kind, thread_id, content,
                 created_at, delivery_status, reply_to, agent_authored, deleted_at, deleted_by
-           FROM circle_messages WHERE circle_id = ?
+           FROM circle_messages WHERE circle_id = ? AND created_at < ?
           ORDER BY created_at DESC LIMIT ?`,
       )
-      .all(circleId, Math.min(limit, 500)) as unknown as Array<{
+      .all(circleId, before ?? Number.MAX_SAFE_INTEGER, Math.min(limit, 500)) as unknown as Array<{
       message_id: string;
       envelope_id: string | null;
       author_pubkey: string;
