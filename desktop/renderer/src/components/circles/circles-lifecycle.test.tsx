@@ -1,7 +1,11 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resetUnsupportedMethodsForTests, useCirclesStore } from "../../stores/circles-store";
+import {
+  circlesAttention,
+  resetUnsupportedMethodsForTests,
+  useCirclesStore,
+} from "../../stores/circles-store";
 import { CirclesView } from "./CirclesView";
 
 // PLAN-36 Phase B (identity & lifecycle): creation-before-invite, invite
@@ -178,6 +182,68 @@ describe("circle lifecycle (Phase B)", () => {
     // dead-end; the empty state (with its CTA) shows instead.
     expect(await screen.findByText(/No circles yet/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Old crew" })).toBeNull();
+  });
+
+  it("shows pending approvals as an amber rail badge (Phase C)", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.list") {
+        return Promise.resolve({ circles: [{ ...CIRCLE, pendingApprovals: 2, unread: 0 }] });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    expect(await screen.findByTitle(/2 agent actions need your approval/)).toBeTruthy();
+  });
+
+  it("posture chip is real and toggles the drafts switch (Phase C)", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.agentDrafts.set") {
+        return Promise.resolve({ enabled: false, posture: "off" });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    // Chip reads the roster's self row (agentPosture: "summon-only").
+    const chip = await screen.findByRole("button", { name: /Agents: summon-only/ });
+    await userEvent.click(chip);
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("circles.agentDrafts.set", { enabled: false }),
+    );
+  });
+
+  it("disables canvas participation with the reason when generation is off (Phase C)", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.sandbox.state") {
+        return Promise.resolve({
+          generationEnabled: false,
+          practicePubkey: null,
+          participation: null,
+          thinkingCardIds: [],
+          sessions: [],
+        });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    // Ticking the box would be a silent no-op — it must say so and disable.
+    expect(await screen.findByText(/Agent generation is off on this node/)).toBeTruthy();
+    const checkbox = screen.getByRole("checkbox");
+    expect((checkbox as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("circlesAttention sums unread + approvals, excluding archived", () => {
+    const attention = circlesAttention([
+      { ...CIRCLE, unread: 3, pendingApprovals: 1 },
+      { ...CIRCLE, circleId: "c2", unread: 2, pendingApprovals: 0 },
+      { ...CIRCLE, circleId: "c3", status: "archived", unread: 50, pendingApprovals: 9 },
+    ]);
+    expect(attention).toEqual({ unread: 5, approvals: 1 });
   });
 
   it("hides archived circles behind the rail's archive toggle", async () => {

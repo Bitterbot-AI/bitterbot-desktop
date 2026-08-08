@@ -35,7 +35,31 @@ export interface Circle {
   unread?: number;
   /** Server read marker (ms epoch); frozen at circle-open for the "New" divider. */
   lastReadAt?: number;
+  /** §5.3 agent writes awaiting THIS human's approval (Phase C badges). */
+  pendingApprovals?: number;
   members: CircleMember[];
+}
+
+/** What the rail tiles and the app sidebar surface without the tab open. */
+export interface CircleAttention {
+  unread: number;
+  approvals: number;
+}
+
+/**
+ * Aggregate attention across circles for the app-sidebar badge (Phase C).
+ * Archived circles are excluded — their tiles are hidden, so their counts
+ * would nag about something the rail doesn't show.
+ */
+export function circlesAttention(circles: Circle[]): CircleAttention {
+  let unread = 0;
+  let approvals = 0;
+  for (const c of circles) {
+    if (c.status === "archived") continue;
+    unread += c.unread ?? 0;
+    approvals += c.pendingApprovals ?? 0;
+  }
+  return { unread, approvals };
 }
 
 export interface CircleMessage {

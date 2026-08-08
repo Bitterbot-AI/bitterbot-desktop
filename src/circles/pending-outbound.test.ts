@@ -6,6 +6,7 @@ import {
   PENDING_OUTBOUND_TTL_MS,
   claimPendingOutbound,
   listPendingOutbound,
+  pendingOutboundCounts,
   queuePendingOutbound,
   revertPendingOutbound,
 } from "./pending-outbound.js";
@@ -30,6 +31,32 @@ describe("pending-outbound approval queue", () => {
   let db: DatabaseSync;
   beforeEach(() => {
     db = openDb();
+  });
+
+  it("counts pending approvals per circle for attention badges (Phase C)", () => {
+    queuePendingOutbound(db, {
+      circleId: "c1",
+      action: "send",
+      params: { circleId: "c1", text: "a" },
+      preview: {},
+    });
+    queuePendingOutbound(db, {
+      circleId: "c1",
+      action: "ask",
+      params: { circleId: "c1", question: "b", category: "general" },
+      preview: {},
+    });
+    const expiredId = queuePendingOutbound(db, {
+      circleId: "c2",
+      action: "send",
+      params: { circleId: "c2", text: "c" },
+      preview: {},
+    });
+    expect(pendingOutboundCounts(db)).toEqual({ c1: 2, c2: 1 });
+    // Resolved and expired rows stop counting — the badge is live pressure.
+    claimPendingOutbound(db, expiredId, "rejected");
+    expect(pendingOutboundCounts(db)).toEqual({ c1: 2 });
+    expect(pendingOutboundCounts(db, Date.now() + PENDING_OUTBOUND_TTL_MS + 1)).toEqual({});
   });
 
   it("queues with params + preview and lists per circle until resolved", () => {

@@ -157,6 +157,8 @@ interface CirclesState {
   } | null>;
   /** One-tap join for an invite code detected in a message. */
   joinInvite: (code: string) => Promise<boolean>;
+  /** Phase C posture control: flip the agent-drafts switch (persisted + live). */
+  setAgentDrafts: (enabled: boolean) => Promise<boolean>;
   archiveCircle: (circleId: string) => Promise<boolean>;
   unarchiveCircle: (circleId: string) => Promise<boolean>;
   deleteCircle: (circleId: string) => Promise<boolean>;
@@ -233,7 +235,9 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         void get().loadSandbox(activeCircleId);
         void get().loadDrafts(activeCircleId);
         void get().loadOutbound(activeCircleId);
-        get().markRead(activeCircleId); // the circle on screen is, by definition, read
+        // NOTE: refresh() deliberately does NOT markRead — it also runs from
+        // the app-wide background sync (Phase C), where the circle is NOT on
+        // screen. The Circles view marks read on mount/select/inbound-event.
       }
     } catch (err) {
       set({ notice: String(err), loading: false });
@@ -694,6 +698,32 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (err) {
+      set({ notice: String(err) });
+      return false;
+    }
+  },
+
+  setAgentDrafts: async (enabled) => {
+    try {
+      const res = await request<{ enabled: boolean; posture: string }>("circles.agentDrafts.set", {
+        enabled,
+      });
+      await get().refresh(); // the posture chip reads the roster's self row
+      if (enabled && res.posture === "off") {
+        set({
+          notice:
+            "Agent drafts are on, but no draft model is wired on this node — summons stay off until one is configured.",
+        });
+      }
+      return true;
+    } catch (err) {
+      if (methodUnavailable("circles.agentDrafts.set", err)) {
+        set({
+          notice:
+            "This gateway is older than the UI — change circles.agentDrafts.enabled in the config file instead.",
+        });
+        return false;
+      }
       set({ notice: String(err) });
       return false;
     }

@@ -46,8 +46,9 @@ describe("circles RPC scope gating", () => {
     // one circles.sandbox.participation, so 49 -> 47. 47 -> 48: the steer
     // channel (guidance from card or chat, decision 5: private). 48 -> 49 on
     // 2026-07-29: §3.2.9 added circles.canvas.clear (write; tombstone +
-    // fresh-id re-put).
-    expect(ALL_CIRCLES_METHODS.length).toBe(49);
+    // fresh-id re-put). 49 -> 50 on 2026-08-07: Phase C posture control added
+    // circles.agentDrafts.set (write).
+    expect(ALL_CIRCLES_METHODS.length).toBe(50);
     for (const m of READ_ONLY) {
       expect(ALL_CIRCLES_METHODS).toContain(m);
     }

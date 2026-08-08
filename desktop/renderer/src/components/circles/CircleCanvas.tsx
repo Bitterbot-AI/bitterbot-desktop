@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { cn } from "../../lib/utils";
 import { memberName, useCirclesStore, type Circle } from "../../stores/circles-store";
 import {
   DropdownMenu,
@@ -191,34 +192,59 @@ export function CircleCanvas({
       {/* The ONE consent control for the whole canvas: does my agent work
           here. Not a per-card act, not a mode — a standing choice, stated in
           plain words. */}
-      {circle.status === "active" && (
-        <label className="flex items-center gap-2 px-3 py-1.5 border-b text-2xs text-muted-foreground cursor-pointer">
-          <input
-            type="checkbox"
-            checked={sandbox?.participation?.mode === "propose"}
-            onChange={(e) =>
-              void setCanvasParticipation(circle.circleId, e.target.checked ? "propose" : "off")
-            }
-            className="accent-emerald-600"
-          />
-          <Bot className="w-3 h-3 text-circle-agent" />
-          <span>
-            My agent works on this canvas
-            {sandbox?.participation?.mode === "propose" && (
-              <span className="text-muted-foreground">
-                {" "}
-                — it suggests, you decide
-                {sandbox.participation.turnBudget > 0 && (
-                  <span className="tabular-nums">
-                    {" "}
-                    ({sandbox.participation.turnsUsed}/{sandbox.participation.turnBudget} turns)
-                  </span>
+      {circle.status === "active" &&
+        (() => {
+          // Phase C honesty: when agent generation is disabled on this node
+          // (circles.sandbox.enabled=false), ticking the box would be a
+          // silent no-op — say so and disable it instead (wired-but-dead
+          // review). `undefined` sandbox = still loading; keep it enabled.
+          const generationOff = sandbox !== undefined && sandbox.generationEnabled === false;
+          return (
+            <label
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 border-b text-2xs text-muted-foreground",
+                generationOff ? "cursor-not-allowed opacity-70" : "cursor-pointer",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={sandbox?.participation?.mode === "propose"}
+                disabled={generationOff}
+                onChange={(e) =>
+                  void setCanvasParticipation(circle.circleId, e.target.checked ? "propose" : "off")
+                }
+                className="accent-emerald-600"
+              />
+              <Bot className="w-3 h-3 text-circle-agent" />
+              <span>
+                {generationOff ? (
+                  <>
+                    Agent generation is off on this node{" "}
+                    <span className="font-mono">(circles.sandbox.enabled)</span> — the canvas stays
+                    human-only.
+                  </>
+                ) : (
+                  <>
+                    My agent works on this canvas
+                    {sandbox?.participation?.mode === "propose" && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — it suggests, you decide
+                        {sandbox.participation.turnBudget > 0 && (
+                          <span className="tabular-nums">
+                            {" "}
+                            ({sandbox.participation.turnsUsed}/{sandbox.participation.turnBudget}{" "}
+                            turns)
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </>
                 )}
               </span>
-            )}
-          </span>
-        </label>
-      )}
+            </label>
+          );
+        })()}
 
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
         {mode === "note" && (

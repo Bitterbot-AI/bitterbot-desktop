@@ -111,6 +111,18 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
                 </span>
               )}
 
+              {/* §5.3 approvals awaiting the human: amber (consent), shown
+                  even on the active tile — an expiring approval must never
+                  be one quiet grey line (Phase C). */}
+              {(c.pendingApprovals ?? 0) > 0 && (
+                <span
+                  title={`${c.pendingApprovals} agent ${c.pendingApprovals === 1 ? "action needs" : "actions need"} your approval`}
+                  className="absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-circle-consent text-circle-consent-fg text-badge font-bold grid place-items-center border-2 border-muted/40"
+                >
+                  {(c.pendingApprovals ?? 0) > 9 ? "9+" : c.pendingApprovals}
+                </span>
+              )}
+
               {/* Hover-reveal menu trigger. */}
               <button
                 type="button"

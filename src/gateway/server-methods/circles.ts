@@ -70,7 +70,12 @@ import { listDisclosureGrants, setDisclosureGrant } from "../../circles/disclosu
 import { inviteLink, parseInviteCode, revokeInvite } from "../../circles/invites.js";
 import { computeNameFlags } from "../../circles/petnames.js";
 import { CirclesService } from "../../circles/service.js";
-import { loadConfig } from "../../config/config.js";
+import {
+  loadConfig,
+  readConfigFileSnapshotForWrite,
+  writeConfigFile,
+} from "../../config/config.js";
+import { applyMergePatch } from "../../config/merge-patch.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { renderQrPngBase64 } from "../../web/qr-image.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
@@ -140,6 +145,7 @@ export const circlesHandlers: GatewayRequestHandlers = {
     const presence = new Map(svc.service.peerPresence().map((p) => [p.peerPubkey, p] as const));
     const unread = svc.service.unreadByCircle();
     const lastRead = svc.service.lastReadByCircle();
+    const approvals = svc.service.pendingApprovalsByCircle();
     const selfPubkey = svc.service.pubkey;
     // §5.6 petname layer: the viewer's private labels + per-member name-safety
     // flags. Members are read ONCE per circle; the flags (unverified /
@@ -173,6 +179,9 @@ export const circlesHandlers: GatewayRequestHandlers = {
       // The read marker as it stands NOW — the UI freezes this at circle-open
       // to place the "New" divider before markRead moves the marker forward.
       lastReadAt: lastRead[c.circleId] ?? 0,
+      // §5.3 approvals awaiting the human — rail + sidebar badges (Phase C):
+      // an expiring approval must be visible without the circle being open.
+      pendingApprovals: approvals[c.circleId] ?? 0,
       members: (membersByCircle.get(c.circleId) ?? []).map((m) => {
         const f = flags.get(m.memberPubkey);
         return {
@@ -1037,6 +1046,43 @@ export const circlesHandlers: GatewayRequestHandlers = {
     try {
       svc.service.discardAgentDraft(draftId);
       respond(true, { ok: true }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  // Phase C posture control: flip the agent-drafts kill switch from the UI.
+  // Persists to the config file (survives restarts) AND flips the running
+  // service, so the posture chip is honest immediately. The response carries
+  // the resulting posture — enabling drafts on a node with no draft LLM wired
+  // still reads "off", and the UI says so instead of pretending.
+  "circles.agentDrafts.set": async ({ params, respond }) => {
+    const svc = await getService();
+    if (!svc.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, svc.error));
+      return;
+    }
+    if (typeof params.enabled !== "boolean") {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "enabled (boolean) required"),
+      );
+      return;
+    }
+    const enabled = params.enabled;
+    try {
+      const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite();
+      if (snapshot.valid) {
+        const merged = applyMergePatch(
+          snapshot.config,
+          { circles: { agentDrafts: { enabled } } },
+          { mergeObjectArraysById: true },
+        );
+        await writeConfigFile(merged as Parameters<typeof writeConfigFile>[0], writeOptions);
+      }
+      svc.service.setAgentDraftsEnabled(enabled);
+      respond(true, { enabled, posture: svc.service.selfAgentPosture() }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }

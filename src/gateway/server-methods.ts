@@ -195,6 +195,7 @@ const WRITE_METHODS = new Set([
   "circles.drafts.request",
   "circles.drafts.publish",
   "circles.drafts.discard",
+  "circles.agentDrafts.set",
   "circles.study.record",
   "circles.sandbox.participation",
   "circles.sandbox.steer",

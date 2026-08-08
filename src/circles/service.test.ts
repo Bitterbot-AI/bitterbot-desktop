@@ -232,6 +232,17 @@ describe("CirclesService end-to-end (two nodes)", () => {
     expect(ana.unreadByCircle()[circleId]).toBeUndefined();
   });
 
+  it("flips agent drafts live so the posture chip stays honest (Phase C)", () => {
+    // Test services have no draft LLM wired, so posture is "off" regardless —
+    // but the switch itself must flip immediately without a restart.
+    expect(ana.agentDraftsEnabled()).toBe(true);
+    ana.setAgentDraftsEnabled(false);
+    expect(ana.agentDraftsEnabled()).toBe(false);
+    expect(ana.selfAgentPosture()).toBe("off");
+    ana.setAgentDraftsEnabled(true);
+    expect(ana.agentDraftsEnabled()).toBe(true);
+  });
+
   it("shares a canvas card across nodes and folds put/update/remove (C1)", async () => {
     const invite = ana.createInviteCode({ name: "Ana & Bob" });
     await bob.redeemInviteCode(invite.code);

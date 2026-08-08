@@ -34,14 +34,19 @@ export function CirclesView() {
   } = useCirclesStore();
   const [showInvite, setShowInvite] = useState(false);
 
+  // Mount: refresh immediately (CirclesGlobalSync keeps the list warm
+  // app-wide on its own 45s cadence), then mark the on-screen circle read —
+  // refresh() itself never marks read because it also runs tab-closed.
   useEffect(() => {
-    void refresh();
-    const timer = setInterval(() => void refresh(), 20_000);
-    return () => clearInterval(timer);
-  }, [refresh]);
+    void refresh().then(() => {
+      const id = useCirclesStore.getState().activeCircleId;
+      if (id) markRead(id);
+    });
+  }, [refresh, markRead]);
 
-  // Inbound (direct dial or mailbox drain) pushes a "circles" event — refresh
-  // the active circle immediately instead of waiting for the poll.
+  // Inbound (direct dial or mailbox drain) pushes a "circles" event — reload
+  // the active circle's panes immediately. (The list refresh rides
+  // CirclesGlobalSync's handler for the same event.)
   const onCirclesEvent = useCallback(() => {
     if (activeCircleId) {
       void loadMessages(activeCircleId);
@@ -51,17 +56,7 @@ export function CirclesView() {
       void loadOutbound(activeCircleId); // §5.3: an agent write may await approval
       markRead(activeCircleId); // inbound arrived while you're looking at it
     }
-    void refresh();
-  }, [
-    activeCircleId,
-    loadMessages,
-    loadCards,
-    loadSandbox,
-    loadDrafts,
-    loadOutbound,
-    markRead,
-    refresh,
-  ]);
+  }, [activeCircleId, loadMessages, loadCards, loadSandbox, loadDrafts, loadOutbound, markRead]);
   useGatewayEvent("circles", onCirclesEvent);
 
   if (loading) {

@@ -25,11 +25,12 @@ import {
   Gauge,
   KeyRound,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsManagementNode } from "../../hooks/useIsManagementNode";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useChatStore } from "../../stores/chat-store";
+import { circlesAttention, useCirclesStore } from "../../stores/circles-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useUIStore, type TabId } from "../../stores/ui-store";
 import { WalletSidebarPanel } from "../wallet/WalletSidebarPanel";
@@ -177,6 +178,12 @@ export function Sidebar() {
   const request = useGatewayStore((s) => s.request);
 
   const isManagementNode = useIsManagementNode();
+
+  // Phase C: circles attention reaches the sidebar — kept fresh app-wide by
+  // CirclesGlobalSync, so unread + pending approvals surface even while the
+  // Circles tab is closed. Amber (consent) outranks red (unread).
+  const circles = useCirclesStore((s) => s.circles);
+  const attention = useMemo(() => circlesAttention(circles), [circles]);
 
   const [sessions, setSessions] = useState<SidebarSession[]>([]);
   const [showAllSessions, setShowAllSessions] = useState(false);
@@ -487,6 +494,9 @@ export function Sidebar() {
               <div className="space-y-0.5">
                 {items.map((item) => {
                   const Icon = item.icon;
+                  const isCircles = item.id === "people";
+                  const showAttention =
+                    isCircles && (attention.unread > 0 || attention.approvals > 0);
                   return (
                     <button
                       key={item.id}
@@ -494,7 +504,7 @@ export function Sidebar() {
                       data-active={activeTab === item.id ? "true" : undefined}
                       title={isCollapsed ? item.label : undefined}
                       className={cn(
-                        "flex items-center rounded-md text-sm transition-all",
+                        "relative flex items-center rounded-md text-sm transition-all",
                         "hover:bg-[rgba(139,92,246,0.05)] hover:text-[#d8b4fe]",
                         activeTab === item.id
                           ? "bg-[rgba(139,92,246,0.1)] text-[#c084fc] font-medium"
@@ -504,6 +514,35 @@ export function Sidebar() {
                     >
                       <Icon className="w-4 h-4 flex-shrink-0" />
                       {!isCollapsed && <span>{item.label}</span>}
+                      {showAttention &&
+                        (isCollapsed ? (
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "absolute top-0.5 right-0.5 w-2 h-2 rounded-full",
+                              attention.approvals > 0 ? "bg-circle-consent" : "bg-red-500",
+                            )}
+                          />
+                        ) : (
+                          <span className="ml-auto flex items-center gap-1">
+                            {attention.approvals > 0 && (
+                              <span
+                                title={`${attention.approvals} agent ${attention.approvals === 1 ? "action needs" : "actions need"} your approval`}
+                                className="min-w-[16px] h-4 px-1 rounded-full bg-circle-consent text-circle-consent-fg text-badge font-bold grid place-items-center"
+                              >
+                                {attention.approvals > 99 ? "99+" : attention.approvals}
+                              </span>
+                            )}
+                            {attention.unread > 0 && (
+                              <span
+                                title={`${attention.unread} unread`}
+                                className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-badge font-bold grid place-items-center"
+                              >
+                                {attention.unread > 99 ? "99+" : attention.unread}
+                              </span>
+                            )}
+                          </span>
+                        ))}
                     </button>
                   );
                 })}

@@ -52,6 +52,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const deleteMessage = useCirclesStore((s) => s.deleteMessage);
   const putCard = useCirclesStore((s) => s.putCard);
   const requestChatDraft = useCirclesStore((s) => s.requestChatDraft);
+  const setAgentDrafts = useCirclesStore((s) => s.setAgentDrafts);
   const steerAgent = useCirclesStore((s) => s.steerAgent);
   const setNotice = useCirclesStore((s) => s.setNotice);
   const sandbox = useCirclesStore((s) => s.sandboxByCircle[circle.circleId]);
@@ -97,6 +98,21 @@ export function CircleChat({ circle, selfPubkey }: Props) {
     setSeenDraftCount(chatDraftCount);
     setAwaitingDraftSince(Date.now());
   };
+
+  // Phase C: the working indicator shows honest elapsed time (Buzz-style
+  // "how long has it actually been") and carries its own dismiss.
+  const [draftElapsed, setDraftElapsed] = useState(0);
+  useEffect(() => {
+    if (awaitingDraftSince === null) {
+      setDraftElapsed(0);
+      return;
+    }
+    const tick = () =>
+      setDraftElapsed(Math.max(0, Math.floor((Date.now() - awaitingDraftSince) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [awaitingDraftSince]);
 
   const askMyAgent = async () => {
     if (awaitingDraftSince !== null) return;
@@ -190,9 +206,31 @@ export function CircleChat({ circle, selfPubkey }: Props) {
             </span>
           </div>
         </div>
-        <span className="text-2xs font-medium px-2 py-1 rounded-full border text-muted-foreground whitespace-nowrap">
-          Agents: summon-only
-        </span>
+        {(() => {
+          // Phase C: the posture chip is REAL — it reads your own roster row
+          // (the server computes it from the drafts switch + whether a draft
+          // model is actually wired) and clicking it flips the switch.
+          const posture = circle.members.find((m) => m.isSelf)?.agentPosture ?? null;
+          if (!posture) return null; // older gateway: no honest value to show
+          const on = posture !== "off";
+          return (
+            <button
+              type="button"
+              onClick={() => void setAgentDrafts(!on)}
+              title={
+                on
+                  ? "Your agent answers only when summoned (@agent or ✨), and drafts are private until you publish. Click to turn agent drafts off."
+                  : "Agent drafts are off — summons do nothing on this node. Click to enable summon-only drafting."
+              }
+              className={cn(
+                "text-2xs font-medium px-2 py-1 rounded-full border whitespace-nowrap hover:text-foreground",
+                on ? "text-circle-agent border-circle-agent/40" : "text-muted-foreground",
+              )}
+            >
+              Agents: {on ? posture : "off"}
+            </button>
+          );
+        })()}
       </header>
 
       {pinnedMessages.length > 0 && (
@@ -365,10 +403,19 @@ export function CircleChat({ circle, selfPubkey }: Props) {
       {awaitingDraftSince !== null && (
         <div className="mx-3 -mb-1 flex items-center gap-2 text-xs text-circle-agent border border-circle-agent/30 rounded-t-lg bg-circle-agent-soft/40 px-3 py-1.5">
           <Sparkles className="w-3.5 h-3.5 shrink-0 animate-pulse" />
-          <span>
-            Your agent is drafting… it lands above the composer, private to you, and nothing posts
-            until you approve it.
+          <span className="min-w-0">
+            Your agent is drafting <span className="tabular-nums">({draftElapsed}s)</span> — it
+            lands above the composer, private to you, and nothing posts until you approve it.
           </span>
+          <button
+            type="button"
+            onClick={() => setAwaitingDraftSince(null)}
+            aria-label="Stop waiting for the draft"
+            title="Stop waiting — if the draft still lands, it goes to the quiet tray."
+            className="ml-auto shrink-0 hover:text-foreground"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 

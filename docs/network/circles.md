@@ -347,7 +347,7 @@ evictee — **the hard read-exclusion guarantee still requires rotation
 
 ## Gateway RPC surface
 
-41 methods. Read-only methods (`status`, `list`, `messages`,
+50 methods. Read-only methods (`status`, `list`, `messages`,
 `tab.balances`, `disclosure.list`, `briefing`, `inviteInfo`, `canvas.list`,
 `outbound.list`, `drafts.list`, `study.state`) need `operator.read`; every
 mutating method needs `operator.write`. A drift test
@@ -366,7 +366,15 @@ surface until 2026-07-25.
   cursor `before` ms-epoch / `beforeId` tiebreak, so bursts sharing one
   millisecond are never skipped), `circles.markRead`, `circles.react`,
   `circles.pin`, `circles.message.delete`. `circles.list` rows carry
-  `lastReadAt` so the UI can freeze the "New" divider at open.
+  `lastReadAt` (the UI freezes the "New" divider at open) and
+  `pendingApprovals` (§5.3 approval counts for the rail + app-sidebar
+  attention badges — an expiring approval is visible without the tab open;
+  a headless app-wide sync keeps the counts fresh and never marks read).
+- **Posture**: `circles.agentDrafts.set` — the chat header's posture chip
+  is real (it reads your roster row) and clicking it flips the
+  agent-drafts switch: persisted to the config file AND applied to the
+  running service, with the response carrying the resulting posture so a
+  node with no draft model wired honestly stays "off".
 - **Canvas**: `circles.canvas.list`, `circles.canvas.put`,
   `circles.canvas.remove`, `circles.canvas.slice`
 - **Tab**: `circles.tab.add`, `circles.tab.balances`, `circles.sync`

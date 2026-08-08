@@ -134,6 +134,27 @@ function toPending(r: {
 
 type Row = Parameters<typeof toPending>[0];
 
+/**
+ * Pending-approval counts per circle, for circles.list attention badges —
+ * an expiring approval must be visible from the rail and the app sidebar,
+ * not only after the circle happens to be opened (Phase C).
+ */
+export function pendingOutboundCounts(
+  db: DatabaseSync,
+  now: number = Date.now(),
+): Record<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT circle_id AS circleId, COUNT(*) AS n FROM circle_pending_outbound
+        WHERE status = 'pending' AND expires_at >= ? AND circle_id IS NOT NULL
+        GROUP BY circle_id`,
+    )
+    .all(now) as unknown as Array<{ circleId: string; n: number }>;
+  const out: Record<string, number> = {};
+  for (const row of rows) out[row.circleId] = row.n;
+  return out;
+}
+
 /** Pending (unexpired) agent writes awaiting the human, oldest first. */
 export function listPendingOutbound(db: DatabaseSync, circleId?: string): PendingOutbound[] {
   sweepPendingOutbound(db);

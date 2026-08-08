@@ -86,6 +86,7 @@ import {
 import {
   claimPendingOutbound,
   listPendingOutbound,
+  pendingOutboundCounts,
   revertPendingOutbound,
   type PendingOutbound,
 } from "./pending-outbound.js";
@@ -2388,6 +2389,23 @@ export class CirclesService {
   /** Raw read markers per circle — the UI's frozen "New" divider frontier. */
   lastReadByCircle(): Record<string, number> {
     return readMarkers(this.db);
+  }
+
+  /** §5.3 pending-approval counts per circle, for attention badges (Phase C). */
+  pendingApprovalsByCircle(): Record<string, number> {
+    return pendingOutboundCounts(this.db);
+  }
+
+  /**
+   * Flip the agent-drafts kill switch on the RUNNING service (Phase C posture
+   * control). The caller persists the same value to the config file; this
+   * keeps selfAgentPosture() honest without a restart.
+   */
+  setAgentDraftsEnabled(enabled: boolean): void {
+    this.config.circles = {
+      ...this.config.circles,
+      agentDrafts: { ...this.config.circles?.agentDrafts, enabled },
+    };
   }
 
   /** Mark a circle read up to now — called when the human opens it (A2). */

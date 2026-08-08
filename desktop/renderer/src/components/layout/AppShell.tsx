@@ -4,6 +4,7 @@ import { AgentsView } from "../agents/AgentsView";
 import { ChannelsView } from "../channels/ChannelsView";
 import { ChatView } from "../chat/ChatView";
 import { ToolCallPanel } from "../chat/ToolCallPanel";
+import { CirclesGlobalSync } from "../circles/CirclesGlobalSync";
 import { CirclesView } from "../circles/CirclesView";
 import { ConfigView } from "../config/ConfigView";
 import { CronView } from "../cron/CronView";
@@ -61,6 +62,9 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background">
+      {/* Headless: keeps circles unread/approval counts fresh app-wide for
+          the sidebar badge — only the active tab's view is mounted below. */}
+      <CirclesGlobalSync />
       {sidebarOpen && <Sidebar />}
       <main
         className={cn(
