@@ -15,7 +15,9 @@ export const DraftingBanner = memo(function DraftingBanner({
   count: number;
   onDismiss: () => void;
 }) {
-  const [elapsedMs, setElapsedMs] = useState(0);
+  // Lazy init so the FIRST paint already shows a clamped duration — a 0-init
+  // would flash "(0ms)" for a frame before the effect runs (8254135 review).
+  const [elapsedMs, setElapsedMs] = useState(() => Math.max(1000, Date.now() - since));
   useEffect(() => {
     const tick = () => setElapsedMs(Math.max(1000, Date.now() - since));
     tick();

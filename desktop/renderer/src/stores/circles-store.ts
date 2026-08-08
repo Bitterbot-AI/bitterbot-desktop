@@ -140,12 +140,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     }
     const activeCircleId = get().activeCircleId;
     if (activeCircleId) {
-      void get().loadMessages(activeCircleId);
-      void get().loadCards(activeCircleId);
-      void get().loadSandbox(activeCircleId);
-      void get().loadDrafts(activeCircleId);
-      void get().loadOutbound(activeCircleId);
-      void get().loadTab(activeCircleId);
+      get().loadCirclePanes(activeCircleId);
       // NOTE: refresh() deliberately does NOT markRead — the Circles view
       // marks read on mount/active-change/select/inbound-event.
     }
@@ -174,12 +169,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
           ? { ...s.readFrontierByCircle, [circleId]: c.lastReadAt }
           : s.readFrontierByCircle,
     }));
-    void get().loadMessages(circleId);
-    void get().loadCards(circleId);
-    void get().loadSandbox(circleId);
-    void get().loadDrafts(circleId);
-    void get().loadOutbound(circleId);
-    void get().loadTab(circleId);
+    get().loadCirclePanes(circleId);
     get().markRead(circleId);
   },
 
@@ -209,15 +199,31 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
 
   // The shared expense tab: the surface behind log_expense approvals — a
   // human must be able to SEE the balances they approve into existence
-  // (research doc §3 carved exception). Ambient pane: failures stay quiet.
+  // (research doc §3 carved exception).
   loadTab: async (circleId) => {
     if (unsupportedMethods.has("circles.tab.balances")) return;
     try {
       const res = await request<TabBalances>("circles.tab.balances", { circleId });
       set((s) => ({ tabByCircle: { ...s.tabByCircle, [circleId]: res } }));
     } catch (err) {
-      methodUnavailable("circles.tab.balances", err);
+      // Version skew stays silent; a TRANSIENT failure surfaces like every
+      // sibling loader — especially post-approval, where invisible stale
+      // balances defeat the pane's whole point (8254135 review C1).
+      if (methodUnavailable("circles.tab.balances", err)) return;
+      set({ notice: String(err), noticeLevel: "error" });
     }
+  },
+
+  // The one pane fan-out (8254135 review C4): every "this circle is on
+  // screen, load its panes" site calls THIS, so adding the next pane can't
+  // silently miss one of the three call paths again.
+  loadCirclePanes: (circleId) => {
+    void get().loadMessages(circleId);
+    void get().loadCards(circleId);
+    void get().loadSandbox(circleId);
+    void get().loadDrafts(circleId);
+    void get().loadOutbound(circleId);
+    void get().loadTab(circleId);
   },
 
   approveOutbound: async (circleId, id) => {

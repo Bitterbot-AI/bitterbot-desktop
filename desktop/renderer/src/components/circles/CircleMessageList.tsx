@@ -112,13 +112,15 @@ export function CircleMessageList({
   const countRef = useRef(0);
   const prependRef = useRef<{ height: number; top: number } | null>(null);
   // Entrance animation (the plan's deferred Buzz arrival treatment): only
-  // messages that ARRIVE animate — never the initial load and never a
-  // history-page prepend (prependRef is armed during that commit's render).
-  // animatedIds keeps the class stable across re-renders so the one-shot
-  // CSS animation isn't cut mid-flight.
+  // messages that ARRIVE animate — never the initial load and never
+  // history-page prepends. The diffing lives in the layout effect (render
+  // stays pure); arrivedIds is state so the class is committed before paint
+  // and stays on the row until it pages out — the one-shot animation is
+  // never cut mid-flight.
   const knownIdsRef = useRef<Set<string>>(new Set());
   const seededRef = useRef(false);
-  const animatedIdsRef = useRef<Set<string>>(new Set());
+  const prevFirstCreatedAtRef = useRef<number | undefined>(undefined);
+  const [arrivedIds, setArrivedIds] = useState<ReadonlySet<string>>(new Set());
 
   const nameOf = useMemo(() => {
     const map = new Map<string, string>();
@@ -154,14 +156,40 @@ export function CircleMessageList({
   //  - anything else that grew the run — tail appends AND out-of-order
   //    mid-inserts (routine in P2P delivery) — counts up the jump pill.
   useLayoutEffect(() => {
+    if (messages === undefined) return;
     const el = scrollRef.current;
-    if (!el || messages === undefined) return;
     const firstId = messages[0]?.messageId;
     const lastId = messages[messages.length - 1]?.messageId;
     const grewBy = messages.length - countRef.current;
     const firstLoad = lastIdRef.current === undefined && countRef.current === 0;
     const prepended =
       prependRef.current !== null && !firstLoad && firstId !== firstIdRef.current && grewBy > 0;
+
+    // Arrival-animation bookkeeping runs even with NO scroller mounted — the
+    // first message into an open empty circle must animate too (review #4).
+    // Prepended history (rows at or older than the previous window head)
+    // never animates (#5); arrivedIds is pruned to the live list, never
+    // wholesale-cleared (#7).
+    const prevFloor = prevFirstCreatedAtRef.current ?? Number.MAX_SAFE_INTEGER;
+    const fresh = seededRef.current
+      ? messages
+          .filter((m) => !knownIdsRef.current.has(m.messageId) && !m.deleted)
+          .filter((m) => !(prepended && m.createdAt <= prevFloor))
+          .map((m) => m.messageId)
+      : [];
+    knownIdsRef.current = new Set(messages.map((m) => m.messageId));
+    prevFirstCreatedAtRef.current = messages[0]?.createdAt;
+    seededRef.current = true;
+    if (fresh.length > 0) {
+      setArrivedIds((prev) => {
+        const live = knownIdsRef.current;
+        const next = new Set([...prev].filter((id) => live.has(id)));
+        for (const id of fresh) next.add(id);
+        return next;
+      });
+    }
+
+    if (!el) return;
 
     if (prepended && prependRef.current) {
       el.scrollTop = el.scrollHeight - prependRef.current.height + prependRef.current.top;
@@ -185,11 +213,6 @@ export function CircleMessageList({
     firstIdRef.current = firstId;
     lastIdRef.current = lastId;
     countRef.current = messages.length;
-    // Seed/refresh the arrival tracker AFTER the commit so this render's
-    // genuinely-new rows were detected against the previous run.
-    knownIdsRef.current = new Set(messages.map((m) => m.messageId));
-    if (animatedIdsRef.current.size > 500) animatedIdsRef.current.clear();
-    seededRef.current = true;
   }, [messages, selfPubkey]);
 
   const onScroll = () => {
@@ -356,15 +379,7 @@ export function CircleMessageList({
               className={cn(
                 "group relative flex gap-3 rounded-md transition-colors duration-500",
                 continuation ? "mt-0.5" : "mt-3",
-                (() => {
-                  const isNewArrival =
-                    seededRef.current &&
-                    prependRef.current === null &&
-                    !m.deleted &&
-                    !knownIdsRef.current.has(m.messageId);
-                  if (isNewArrival) animatedIdsRef.current.add(m.messageId);
-                  return animatedIdsRef.current.has(m.messageId) && "motion-enter-conversation";
-                })(),
+                arrivedIds.has(m.messageId) && "motion-enter-conversation",
                 !!m.envelopeId && highlightId === m.envelopeId && "bg-circle-you-soft/60",
               )}
             >

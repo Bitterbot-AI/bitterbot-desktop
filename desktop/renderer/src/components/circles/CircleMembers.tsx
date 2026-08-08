@@ -1,5 +1,6 @@
 import { AlertTriangle, Check, Pencil, Plus, UserMinus, X } from "lucide-react";
 import { useState } from "react";
+import { formatCost } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import {
   memberName,
@@ -303,13 +304,13 @@ export function CircleMembers({ circle }: { circle: Circle }) {
           who approves a log_expense must be able to SEE the balances it
           lands on — this was backend-with-no-UI until now. Renders only
           once the tab has activity. */}
-      {tab && tab.expenses > 0 && (
+      {tab && (tab.expenses > 0 || tab.reversed > 0) && (
         <div className="rounded-lg border p-2.5 text-xs space-y-1.5">
           <div className="flex items-baseline justify-between gap-2">
             <span className="font-semibold">Shared tab</span>
             <span className="text-muted-foreground tabular-nums">
-              {tab.expenses} {tab.expenses === 1 ? "expense" : "expenses"} · $
-              {(tab.totalCents / 100).toFixed(2)}
+              {tab.expenses} {tab.expenses === 1 ? "expense" : "expenses"} ·{" "}
+              {formatCost(tab.totalCents / 100)}
             </span>
           </div>
           {Object.entries(tab.net)
@@ -330,8 +331,8 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                     )}
                   >
                     {cents > 0
-                      ? `is owed $${(cents / 100).toFixed(2)}`
-                      : `owes $${(-cents / 100).toFixed(2)}`}
+                      ? `is owed ${formatCost(cents / 100)}`
+                      : `owes ${formatCost(-cents / 100)}`}
                   </span>
                 </div>
               );

@@ -26,12 +26,7 @@ export function CirclesView() {
     noticeLevel,
     refresh,
     selectCircle,
-    loadMessages,
-    loadCards,
-    loadSandbox,
-    loadDrafts,
-    loadOutbound,
-    loadTab,
+    loadCirclePanes,
     markRead,
     setNotice,
   } = useCirclesStore();
@@ -51,29 +46,16 @@ export function CirclesView() {
     if (activeCircleId) markRead(activeCircleId);
   }, [activeCircleId, markRead]);
 
-  // Inbound (direct dial or mailbox drain) pushes a "circles" event — reload
+  // Inbound (direct dial, mailbox drain, or a peer's ledger event — expense,
+  // canvas card, reaction, sandbox move) pushes a "circles" event — reload
   // the active circle's panes immediately. (The list refresh rides
   // CirclesGlobalSync's handler for the same event.)
   const onCirclesEvent = useCallback(() => {
     if (activeCircleId) {
-      void loadMessages(activeCircleId);
-      void loadCards(activeCircleId); // a peer's canvas event may have arrived
-      void loadSandbox(activeCircleId); // PLAN-38: a sandbox move may have folded in
-      void loadDrafts(activeCircleId); // Phase B: an @agent draft may be ready
-      void loadOutbound(activeCircleId); // §5.3: an agent write may await approval
-      void loadTab(activeCircleId); // a peer's expense may have landed on the tab
+      loadCirclePanes(activeCircleId);
       markRead(activeCircleId); // inbound arrived while you're looking at it
     }
-  }, [
-    activeCircleId,
-    loadMessages,
-    loadCards,
-    loadSandbox,
-    loadDrafts,
-    loadOutbound,
-    loadTab,
-    markRead,
-  ]);
+  }, [activeCircleId, loadCirclePanes, markRead]);
   useGatewayEvent("circles", onCirclesEvent);
 
   if (loading) {

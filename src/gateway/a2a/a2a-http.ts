@@ -81,7 +81,11 @@ export function createA2aHttpHandler(opts: {
    * can push a "circles" event to the UI instead of it polling (PLAN-36 Phase
    * 0). Best-effort; must never throw into the request path.
    */
-  onCircleInbound?: (info: { circleId?: string; kind: "message" | "ask" | "answer" }) => void;
+  onCircleInbound?: (info: {
+    circleId?: string;
+    /** "event" = a ledger append (expense, canvas card, reaction, sandbox move). */
+    kind: "message" | "ask" | "answer" | "event";
+  }) => void;
   /** Optional pre-opened DB (for tests). */
   taskDb?: DatabaseSync;
 }): A2aHttpHandler {
@@ -351,9 +355,12 @@ export function createA2aHttpHandler(opts: {
         circleDb,
         Date.now(),
       );
-      // Push a "circles" event to the UI on a freshly-stored inbound message so
-      // it appears without waiting for the 30s poll (PLAN-36 Phase 0). Only for
-      // content verbs, only on success; best-effort.
+      // Push a "circles" event to the UI on freshly-stored inbound so it
+      // appears without waiting for a poll (PLAN-36 Phase 0). Content verbs
+      // AND the shared-state ledger: expenses, canvas cards, reactions, pins,
+      // and sandbox moves all ride circle/event.append — without it here, the
+      // direct-dial (peer-online) path left those panes stale indefinitely
+      // once the view's own poll was retired (8254135 review G1). Best-effort.
       if (outcome.ok && opts.onCircleInbound) {
         const inboundKind =
           rpcRequest.method === "circle/message"
@@ -362,7 +369,9 @@ export function createA2aHttpHandler(opts: {
               ? "ask"
               : rpcRequest.method === "circle/answer"
                 ? "answer"
-                : undefined;
+                : rpcRequest.method === "circle/event.append"
+                  ? "event"
+                  : undefined;
         if (inboundKind) {
           const circleId = (rpcRequest.params as { envelope?: { circle_id?: string } })?.envelope
             ?.circle_id;

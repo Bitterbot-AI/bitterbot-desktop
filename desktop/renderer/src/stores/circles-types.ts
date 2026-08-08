@@ -381,6 +381,8 @@ export interface CirclesState {
   loadOutbound: (circleId: string) => Promise<void>;
   /** Load the shared expense tab (a user must be able to SEE what they approve). */
   loadTab: (circleId: string) => Promise<void>;
+  /** Fire-and-forget ALL of a circle's pane loads — the one fan-out site. */
+  loadCirclePanes: (circleId: string) => void;
   approveOutbound: (circleId: string, id: string) => Promise<boolean>;
   rejectOutbound: (circleId: string, id: string) => Promise<boolean>;
   requestSliceDraft: (circleId: string, cardId: string, slot: string) => Promise<boolean>;

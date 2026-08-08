@@ -1,5 +1,6 @@
 import { Bot } from "lucide-react";
 import { useState } from "react";
+import { formatCost } from "../../lib/format";
 import { useCirclesStore, type PendingOutbound } from "../../stores/circles-store";
 
 // PLAN-36 §5.3: THE approval card — the only path by which an agent tool write
@@ -20,7 +21,9 @@ function describe(p: PendingOutbound): string {
       const who = Array.isArray(v.splitAmong)
         ? (v.splitAmong as unknown[]).filter((x): x is string => typeof x === "string").join(", ")
         : String(v.splitAmong ?? "?");
-      return `log $${Number(v.amount ?? 0).toFixed(2)} “${String(v.memo ?? "")}” split among: ${who}`;
+      // formatCost: the approval preview and the resulting Shared-tab balance
+      // must render the same amount identically (8254135 review cleanup).
+      return `log ${formatCost(Number(v.amount ?? 0))} “${String(v.memo ?? "")}” split among: ${who}`;
     }
     default:
       return p.action;
