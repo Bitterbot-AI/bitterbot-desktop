@@ -45,6 +45,85 @@ export interface ArchiveMeta {
   surfacesTouched?: string[];
 }
 
+/**
+ * One provenance record per harness-mutation event (promotion, rejection,
+ * rollback). This is the evidence trail: what triggered the edit, the
+ * statistical outcome that justified (or killed) it, and which held-out
+ * traces were judged. Appended to harness-policy-archive/provenance.jsonl.
+ */
+export interface HarnessPolicyProvenance {
+  timestamp: number;
+  event: "promote" | "reject" | "rollback";
+  /** Version promoted, or the version rolled back TO. Absent on reject. */
+  version?: number;
+  reason: string;
+  delta?: number;
+  ci95Low?: number;
+  ci95High?: number;
+  nPaired?: number;
+  surfacesTouched?: string[];
+  /** What motivated the candidate: targeted mechanism + mined failure clusters. */
+  trigger?: {
+    mechanism?: string;
+    clusters?: Array<{ signature: string; count: number; sampleIds: string[] }>;
+  };
+  /** Held-out skill_executions ids the gate judged against. */
+  heldOutIds?: string[];
+}
+
+const PROVENANCE_FILE = "provenance.jsonl";
+const PROVENANCE_MAX_BYTES = 512_000;
+const PROVENANCE_KEEP_LINES = 200;
+
+/** Append a provenance record. Never throws — evidence loss must not block the mutation. */
+export async function appendHarnessPolicyProvenance(
+  record: Omit<HarnessPolicyProvenance, "timestamp">,
+  opts: { configDir?: string } = {},
+): Promise<void> {
+  try {
+    const { archiveDir } = resolveHarnessPolicyRoots(opts);
+    await fsp.mkdir(archiveDir, { recursive: true });
+    const file = path.join(archiveDir, PROVENANCE_FILE);
+    await fsp.appendFile(
+      file,
+      JSON.stringify({ ...record, timestamp: Date.now() }) + "\n",
+      "utf-8",
+    );
+    // Rotate: keep the newest N records once the log grows past the cap
+    const stat = await fsp.stat(file);
+    if (stat.size > PROVENANCE_MAX_BYTES) {
+      const raw = await fsp.readFile(file, "utf-8");
+      const lines = raw.split("\n").filter((l) => l.trim());
+      await fsp.writeFile(file, lines.slice(-PROVENANCE_KEEP_LINES).join("\n") + "\n", "utf-8");
+    }
+  } catch (err) {
+    log.warn(`failed to append harness-policy provenance: ${String(err)}`);
+  }
+}
+
+/** Read provenance records, oldest first (last `limit`). */
+export async function readHarnessPolicyProvenance(
+  limit = 100,
+  opts: { configDir?: string } = {},
+): Promise<HarnessPolicyProvenance[]> {
+  try {
+    const { archiveDir } = resolveHarnessPolicyRoots(opts);
+    const raw = await fsp.readFile(path.join(archiveDir, PROVENANCE_FILE), "utf-8");
+    const records: HarnessPolicyProvenance[] = [];
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        records.push(JSON.parse(line) as HarnessPolicyProvenance);
+      } catch {
+        // Skip corrupt lines
+      }
+    }
+    return records.slice(-limit);
+  } catch {
+    return [];
+  }
+}
+
 export function resolveHarnessPolicyRoots(opts: { configDir?: string } = {}): HarnessPolicyRoots {
   const root = opts.configDir ?? CONFIG_DIR;
   return {
@@ -204,6 +283,7 @@ export async function rollbackPolicy(
   await archiveLive(roots, `pre-rollback snapshot (target v${version}: ${reason})`, {});
   const restored: HarnessPolicy = { ...target, provenance: "evolved" };
   await atomicWrite(path.join(roots.liveDir, POLICY_FILE), JSON.stringify(restored, null, 2));
+  await appendHarnessPolicyProvenance({ event: "rollback", version, reason }, opts);
   log.info(`rolled back harness policy to v${version} (${reason})`);
   return restored;
 }

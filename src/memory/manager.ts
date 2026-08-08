@@ -110,6 +110,13 @@ import {
   WORKING_MEMORY_SECTIONS,
   type WorkingMemoryContext,
 } from "./working-memory-prompt.js";
+import {
+  snapshotWorkingMemory,
+  restoreWorkingMemorySnapshot,
+  listWorkingMemorySnapshots,
+  readWorkingMemoryProvenance,
+  type WorkingMemoryProvenance,
+} from "./working-memory-snapshots.js";
 import { scanForOpenLoops } from "./zeigarnik-effect.js";
 
 const SNIPPET_MAX_CHARS = 700;
@@ -3871,7 +3878,17 @@ export class MemoryIndexManager implements MemorySearchManager {
    * First cycle is conservative (appends a dream-generated section).
    * Subsequent cycles perform full state updates.
    */
-  private async rewriteWorkingMemory(stats: DreamStats): Promise<void> {
+  /** Serializes rewrites: dream cycles and event flushes must not interleave. */
+  private workingMemoryRewriteLock: Promise<void> = Promise.resolve();
+
+  private rewriteWorkingMemory(stats: DreamStats): Promise<void> {
+    const run = this.workingMemoryRewriteLock.then(() => this.rewriteWorkingMemoryInner(stats));
+    // The lock chain must survive a failed rewrite
+    this.workingMemoryRewriteLock = run.catch(() => {});
+    return run;
+  }
+
+  private async rewriteWorkingMemoryInner(stats: DreamStats): Promise<void> {
     const memoryMdPath = path.join(this.workspaceDir, "MEMORY.md");
     const scratchPath = path.join(this.workspaceDir, "memory", "scratch.md");
 
@@ -4000,6 +4017,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     let newState: string;
     let usedHeuristicFallback = false;
+    let validationSummary: WorkingMemoryProvenance["validation"] = null;
 
     // Try LLM synthesis first — prefer synthesisLlmCall (stronger model) over llmCall
     const dreamCfg = this.cfg.memory?.dream;
@@ -4009,6 +4027,12 @@ export class MemoryIndexManager implements MemorySearchManager {
         const prompt = buildWorkingMemorySynthesisPrompt(ctx);
         const raw = await synthesisCall(prompt);
         const validation = validateWorkingMemory(raw, isFirstSynthesis ? undefined : oldState);
+        validationSummary = {
+          collapsed: validation.collapsed,
+          valid: validation.valid,
+          warnings: validation.warnings.length,
+          bondDriftRatio: validation.bondDriftRatio,
+        };
         if (validation.collapsed) {
           log.warn(
             `RLM synthesis collapsed: ${validation.collapseReason}; using heuristic fallback`,
@@ -4043,18 +4067,31 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
 
     // Conservative first cycle: append below existing user content
-    if (hasUserContent) {
-      const combined =
-        oldState.trimEnd() +
+    const finalContent = hasUserContent
+      ? oldState.trimEnd() +
         "\n\n---\n\n" +
         "<!-- Dream-generated working memory follows. Subsequent dream cycles will gradually integrate the above content. -->\n\n" +
-        newState;
-      await fs.writeFile(memoryMdPath, combined, "utf-8");
+        newState
+      : newState;
+
+    // Snapshot the previous state + record provenance before overwriting, so
+    // every state-vector update is evidence-backed and reversible.
+    await snapshotWorkingMemory(this.workspaceDir, oldState, {
+      event: "rewrite",
+      trigger: stats.cycle.cycleId,
+      synthesisModel: dreamCfg?.synthesisModel || dreamCfg?.model || "heuristic",
+      wasHeuristicFallback: usedHeuristicFallback,
+      validation: validationSummary,
+      lengthBefore: oldState.length,
+      lengthAfter: finalContent.length,
+    });
+
+    await fs.writeFile(memoryMdPath, finalContent, "utf-8");
+    if (hasUserContent) {
       log.info(
         "RLM: first synthesis — appended dream-generated section below existing MEMORY.md content",
       );
     } else {
-      await fs.writeFile(memoryMdPath, newState, "utf-8");
       log.info("RLM: wrote updated working memory state to MEMORY.md");
     }
 
@@ -4111,6 +4148,71 @@ export class MemoryIndexManager implements MemorySearchManager {
         // Non-critical
       }
     }
+  }
+
+  /** Minimum gap between event-triggered working-memory syntheses. */
+  private static readonly EVENT_SYNTHESIS_DEBOUNCE_MS = 10 * 60 * 1000;
+  private lastEventSynthesisAt = 0;
+
+  /**
+   * Event-triggered working-memory synthesis: preserve state at the moment of
+   * context pressure (compaction, session end) instead of waiting for the
+   * next dream tick. Only fires when the scratch WAL has unsynthesized notes,
+   * and is debounced so hook storms can't thrash MEMORY.md.
+   * Returns true when a synthesis ran.
+   */
+  async flushWorkingMemory(reason: string): Promise<boolean> {
+    const now = Date.now();
+    if (now - this.lastEventSynthesisAt < MemoryIndexManager.EVENT_SYNTHESIS_DEBOUNCE_MS) {
+      return false;
+    }
+    let scratch = "";
+    try {
+      scratch = await fs.readFile(path.join(this.workspaceDir, "memory", "scratch.md"), "utf-8");
+    } catch {
+      return false;
+    }
+    // Only note lines count as pending state (the file keeps a header)
+    const pendingNotes = scratch.split("\n").filter((l) => l.trim().startsWith("- [")).length;
+    if (pendingNotes === 0) {
+      return false;
+    }
+    this.lastEventSynthesisAt = now;
+    const stats: DreamStats = {
+      cycle: {
+        cycleId: `event-${reason}-${now}`,
+        startedAt: now,
+        completedAt: now,
+        durationMs: 0,
+        state: "AWAKENING" as const,
+        clustersProcessed: 0,
+        insightsGenerated: 0,
+        chunksAnalyzed: 0,
+        llmCallsUsed: 0,
+        error: null,
+      },
+      newInsights: [],
+    };
+    log.info(`Event-triggered working-memory synthesis (${reason}, ${pendingNotes} notes)`);
+    await this.rewriteWorkingMemory(stats);
+    return true;
+  }
+
+  /** Restore MEMORY.md from a snapshot (latest when no file given). */
+  async restoreWorkingMemory(fileName?: string): Promise<{ restored: string } | { error: string }> {
+    return restoreWorkingMemorySnapshot(this.workspaceDir, fileName);
+  }
+
+  /** List working-memory snapshots, newest first. */
+  async listWorkingMemorySnapshots(): Promise<
+    Array<{ file: string; savedAt: string; bytes: number }>
+  > {
+    return listWorkingMemorySnapshots(this.workspaceDir);
+  }
+
+  /** Read working-memory rewrite provenance records, newest last. */
+  async getWorkingMemoryProvenance(limit = 50): Promise<WorkingMemoryProvenance[]> {
+    return readWorkingMemoryProvenance(this.workspaceDir, limit);
   }
 
   /**

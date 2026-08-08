@@ -328,6 +328,62 @@ export class TaskStore {
     return next;
   }
 
+  // -------------------------------------------------------------------------
+  // Per-task workspace: durable machine-readable state (variables, artifact
+  // paths, handles) that survives handoffs, wakeups, and compaction. Rides in
+  // metadata.workspace with merge semantics so concurrent metadata writers
+  // that spread `existing.metadata` don't clobber it.
+  // -------------------------------------------------------------------------
+
+  static readonly WORKSPACE_KEY = "workspace";
+  static readonly WORKSPACE_MAX_BYTES = 65_536;
+
+  /** Read the per-task workspace ({} when unset). Throws if the task is missing. */
+  getWorkspace(id: string): Record<string, unknown> {
+    const task = this.get(id);
+    if (!task) {
+      throw new Error(`task ${id} not found`);
+    }
+    const ws = task.metadata?.[TaskStore.WORKSPACE_KEY];
+    return ws && typeof ws === "object" && !Array.isArray(ws)
+      ? (ws as Record<string, unknown>)
+      : {};
+  }
+
+  /**
+   * Merge entries into the per-task workspace. A null value deletes its key.
+   * Read-modify-write on the whole metadata object so other metadata keys
+   * are preserved. Enforces a serialized-size cap to prevent workspace bloat.
+   */
+  mergeWorkspace(id: string, patch: Record<string, unknown>): Task {
+    const existing = this.get(id);
+    if (!existing) {
+      throw new Error(`task ${id} not found`);
+    }
+    const current = this.getWorkspace(id);
+    const workspace: Record<string, unknown> = { ...current };
+    for (const [key, value] of Object.entries(patch)) {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        throw new Error(`workspace key "${key}" is not allowed`);
+      }
+      if (value === null) {
+        delete workspace[key];
+      } else {
+        workspace[key] = value;
+      }
+    }
+    const serialized = JSON.stringify(workspace);
+    if (serialized.length > TaskStore.WORKSPACE_MAX_BYTES) {
+      throw new Error(
+        `workspace for task ${id} would exceed ${TaskStore.WORKSPACE_MAX_BYTES} bytes ` +
+          `(${serialized.length}); store large artifacts as files and keep paths here`,
+      );
+    }
+    return this.update(id, {
+      metadata: { ...existing.metadata, [TaskStore.WORKSPACE_KEY]: workspace },
+    });
+  }
+
   /** Atomic plan-step mutation; bumps lastSeen + cursor. */
   setStepStatus(id: string, stepId: string, status: PlanStep["status"], output?: string): Task {
     const existing = this.get(id);

@@ -106,6 +106,23 @@ The `validateWorkingMemory()` function includes three collapse guards:
 - **Eviction runaway:** Rejects if >20 crystal pointers (LLM over-evicting active topics)
 - **Empty synthesis:** Rejects if all section headers present but <50 chars of substance
 
+### Snapshots, Provenance, and Rollback
+
+Every rewrite of MEMORY.md is **evidence-backed and reversible** (`working-memory-snapshots.ts`):
+
+- **Snapshot before overwrite:** the previous state is saved to `memory/memory-snapshots/MEMORY-<timestamp>.md` (last 10 kept) before the new state is written.
+- **Provenance record:** each rewrite appends a JSONL record to `memory/memory-snapshots/provenance.jsonl` — trigger (dream cycle id, `first-breath-*`, or `event-<reason>`), synthesis model, whether the heuristic fallback fired, the validation outcome (collapsed/valid/warnings/bond drift), and before/after lengths. Provenance survives snapshot pruning.
+- **Rollback:** `manager.restoreWorkingMemory(fileName?)` restores a snapshot (latest by default). The bad state is snapshotted first, so a restore is itself reversible. `manager.listWorkingMemorySnapshots()` and `manager.getWorkingMemoryProvenance()` expose the history.
+
+### Event-Triggered Synthesis
+
+Besides the dream tick, a synthesis fires at moments of **context pressure** via `manager.flushWorkingMemory(reason)`:
+
+- **After compaction** — context was just discarded; unsynthesized scratch notes are folded into MEMORY.md immediately.
+- **On session end** — when a session key is replaced by a new session.
+
+The flush is a no-op when the scratch WAL has no pending notes, and is debounced (10 min) so hook storms can't thrash MEMORY.md.
+
 ### Economic Data in The Niche
 
 The Niche section receives economic data from the MarketplaceEconomics system:

@@ -10,7 +10,7 @@
  */
 
 import { createContext, Script, type Context } from "node:vm";
-import type { SandboxExecutionResult } from "./types.js";
+import type { RLMLiveApis, SandboxExecutionResult } from "./types.js";
 
 export type SandboxOptions = {
   /** The full context string to explore. */
@@ -21,7 +21,12 @@ export type SandboxOptions = {
   onLLMQuery: (prompt: string, subContext?: string) => Promise<string>;
   /** Async callback for parallel LLM sub-calls. */
   onLLMQueryParallel?: (queries: Array<{ prompt: string; context?: string }>) => Promise<string[]>;
+  /** Live read-only data-access APIs (search, transcripts). */
+  liveApis?: RLMLiveApis;
 };
+
+/** Cap live-API return payloads so a single call can't blow the REPL loop. */
+const LIVE_API_MAX_CHARS = 400_000;
 
 export class RLMSandbox {
   private vmContext: Context;
@@ -30,10 +35,34 @@ export class RLMSandbox {
   private finalAnswer: string | null = null;
   private finalVarName: string | null = null;
   private readonly timeout: number;
+  // Mutable handler slots so a persistent sandbox can be re-bound to a new
+  // executor run (each run brings its own cost tracker closure).
+  private handlers: {
+    onLLMQuery: SandboxOptions["onLLMQuery"];
+    onLLMQueryParallel?: SandboxOptions["onLLMQueryParallel"];
+  };
 
   constructor(private options: SandboxOptions) {
     this.timeout = options.timeout ?? 30_000;
+    this.handlers = {
+      onLLMQuery: options.onLLMQuery,
+      onLLMQueryParallel: options.onLLMQueryParallel,
+    };
     this.vmContext = this.buildContext();
+  }
+
+  /** Re-bind LLM callbacks for a new executor run (persistent sandbox reuse). */
+  setHandlers(handlers: {
+    onLLMQuery: SandboxOptions["onLLMQuery"];
+    onLLMQueryParallel?: SandboxOptions["onLLMQueryParallel"];
+  }): void {
+    this.handlers = handlers;
+  }
+
+  /** Whether live data-access APIs are available in this sandbox. */
+  hasLiveApis(): boolean {
+    const apis = this.options.liveApis;
+    return Boolean(apis && (apis.search || apis.loadTranscript || apis.listSessions));
   }
 
   private buildContext(): Context {
@@ -95,9 +124,69 @@ export class RLMSandbox {
       };
     }
 
+    // Live API wrappers: guard errors, cap payload sizes, stay read-only.
+    const liveApis = this.options.liveApis ?? {};
+    const capText = (text: string): string =>
+      text.length > LIVE_API_MAX_CHARS
+        ? text.slice(0, LIVE_API_MAX_CHARS) + "\n[... truncated: live API payload cap reached ...]"
+        : text;
+    const liveApiBindings: Record<string, unknown> = {};
+    if (liveApis.search) {
+      const searchFn = liveApis.search;
+      liveApiBindings.search = async (query: string, opts?: { maxResults?: number }) => {
+        try {
+          const results = await searchFn(String(query), {
+            maxResults: Math.min(Math.max(1, Number(opts?.maxResults) || 10), 50),
+          });
+          return results.map((r) => ({
+            snippet: capText(String(r.snippet ?? "")).slice(0, 4000),
+            score: r.score,
+            path: r.path,
+            source: r.source,
+          }));
+        } catch (err) {
+          return [
+            {
+              snippet: `[search error: ${err instanceof Error ? err.message : String(err)}]`,
+              score: 0,
+            },
+          ];
+        }
+      };
+    }
+    if (liveApis.loadTranscript) {
+      const loadFn = liveApis.loadTranscript;
+      liveApiBindings.loadTranscript = async (sessionId: string) => {
+        try {
+          const text = await loadFn(String(sessionId));
+          return text === null ? null : capText(text);
+        } catch (err) {
+          return `[loadTranscript error: ${err instanceof Error ? err.message : String(err)}]`;
+        }
+      };
+    }
+    if (liveApis.listSessions) {
+      const listFn = liveApis.listSessions;
+      liveApiBindings.listSessions = async () => {
+        try {
+          return await listFn();
+        } catch (err) {
+          return [
+            {
+              sessionId: `[listSessions error: ${err instanceof Error ? err.message : String(err)}]`,
+              modifiedAt: "",
+            },
+          ];
+        }
+      };
+    }
+
     return createContext({
       // The context data to explore
       context: this.options.context,
+
+      // Live data access (read-only; only present when the host provides them)
+      ...liveApiBindings,
 
       // Output capture
       print: (...args: unknown[]) => {
@@ -115,18 +204,23 @@ export class RLMSandbox {
         },
       },
 
-      // LLM recursive sub-calls
-      llm_query: this.options.onLLMQuery,
-      llm_query_parallel:
-        this.options.onLLMQueryParallel ??
-        (async (queries: Array<{ prompt: string; context?: string }>) => {
-          // Fallback: sequential execution if parallel not provided
+      // LLM recursive sub-calls (routed through mutable handler slots so a
+      // persistent sandbox can be re-bound across executor runs)
+      llm_query: (prompt: string, subContext?: string) =>
+        this.handlers.onLLMQuery(prompt, subContext),
+      llm_query_parallel: (queries: Array<{ prompt: string; context?: string }>) => {
+        if (this.handlers.onLLMQueryParallel) {
+          return this.handlers.onLLMQueryParallel(queries);
+        }
+        // Fallback: sequential execution if parallel not provided
+        return (async () => {
           const results: string[] = [];
           for (const q of queries) {
-            results.push(await this.options.onLLMQuery(q.prompt, q.context));
+            results.push(await this.handlers.onLLMQuery(q.prompt, q.context));
           }
           return results;
-        }),
+        })();
+      },
 
       // Text utility functions
       chunk,
@@ -260,6 +354,48 @@ export class RLMSandbox {
   /** Get the last captured output. */
   getLastOutput(): string {
     return this.output.join("\n");
+  }
+
+  /**
+   * Clear completion signals only (keep the store). Called when a persistent
+   * sandbox is reused for a new query so a stale FINAL from the previous run
+   * can't terminate the new run on its first iteration.
+   */
+  clearFinal(): void {
+    this.finalAnswer = null;
+    this.finalVarName = null;
+  }
+
+  /** Export JSON-serializable store entries (for durable persistence). */
+  exportStore(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of this.persistentStore) {
+      try {
+        JSON.stringify(value);
+        out[key] = value;
+      } catch {
+        // Skip non-serializable entries
+      }
+    }
+    return out;
+  }
+
+  /** Import previously exported store entries (merge, existing keys win). */
+  importStore(data: Record<string, unknown>): void {
+    for (const [key, value] of Object.entries(data)) {
+      if (!this.persistentStore.has(key)) {
+        this.persistentStore.set(key, value);
+      }
+    }
+  }
+
+  /**
+   * Replace the context string (e.g. rebuilt after TTL expiry) while
+   * preserving the persistent store. Rebuilds the VM context.
+   */
+  updateContext(newContext: string): void {
+    this.options = { ...this.options, context: newContext };
+    this.vmContext = this.buildContext();
   }
 
   /** Reset for reuse (keeps context string, clears state). */

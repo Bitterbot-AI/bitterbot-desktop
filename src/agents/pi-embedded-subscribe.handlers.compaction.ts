@@ -73,5 +73,28 @@ export function handleAutoCompactionEnd(
           ctx.log.warn(`after_compaction hook failed: ${String(err)}`);
         });
     }
+
+    // Context was just discarded — flush unsynthesized scratch notes into the
+    // working-memory state vector now instead of waiting for the dream tick.
+    // Debounced + no-op when scratch is empty (fire-and-forget).
+    void flushWorkingMemoryAfterCompaction(ctx);
+  }
+}
+
+async function flushWorkingMemoryAfterCompaction(ctx: EmbeddedPiSubscribeContext): Promise<void> {
+  try {
+    const cfg = ctx.params.config;
+    if (!cfg) {
+      return;
+    }
+    const { resolveSessionAgentId } = await import("./agent-scope.js");
+    const { getMemorySearchManager } = await import("../memory/index.js");
+    const agentId = resolveSessionAgentId({ sessionKey: ctx.params.sessionKey, config: cfg });
+    const { manager } = await getMemorySearchManager({ cfg, agentId });
+    if (manager?.flushWorkingMemory) {
+      await manager.flushWorkingMemory("compaction");
+    }
+  } catch (err) {
+    ctx.log.debug(`working-memory flush after compaction failed: ${String(err)}`);
   }
 }

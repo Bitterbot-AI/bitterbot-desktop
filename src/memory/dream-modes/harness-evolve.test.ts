@@ -4,7 +4,10 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ScorePairFn } from "../dream-slow-update.js";
-import { readLivePolicy } from "../../agents/pi-embedded-runner/harness-policy-store.js";
+import {
+  readHarnessPolicyProvenance,
+  readLivePolicy,
+} from "../../agents/pi-embedded-runner/harness-policy-store.js";
 import { defaultHarnessPolicy } from "../../agents/pi-embedded-runner/harness-policy.js";
 import { runHarnessEvolve } from "./harness-evolve.js";
 
@@ -80,6 +83,23 @@ describe("runHarnessEvolve (PLAN-25 orchestrator)", () => {
     const live = readLivePolicy({ configDir: dir });
     expect(live?.provenance).toBe("evolved");
     expect(live?.tools.descriptionOverrides.memory_search).toContain("recall");
+
+    // The promotion left a full evidence trail: trigger clusters, gate
+    // statistics, and the held-out execution ids that were judged.
+    const provenance = await readHarnessPolicyProvenance(100, { configDir: dir });
+    const promote = provenance.filter((r) => r.event === "promote");
+    expect(promote).toHaveLength(1);
+    expect(promote[0]).toMatchObject({
+      version: res.promotedVersion,
+      reason: "skill:tool_not_found",
+      surfacesTouched: ["tools"],
+      trigger: { mechanism: "skill:tool_not_found" },
+    });
+    expect(promote[0]!.ci95Low).toBeGreaterThan(0);
+    expect(promote[0]!.nPaired).toBeGreaterThan(0);
+    expect(promote[0]!.trigger?.clusters?.length).toBeGreaterThanOrEqual(1);
+    expect(promote[0]!.trigger?.clusters?.[0]?.sampleIds.length).toBeGreaterThan(0);
+    expect(promote[0]!.heldOutIds?.length).toBeGreaterThan(0);
   });
 
   it("is inert with no trace data", async () => {
@@ -112,5 +132,12 @@ describe("runHarnessEvolve (PLAN-25 orchestrator)", () => {
     });
     expect(res.promotedVersion).toBeNull();
     expect(readLivePolicy({ configDir: dir })).toBeNull();
+
+    // Rejections leave evidence too
+    const provenance = await readHarnessPolicyProvenance(100, { configDir: dir });
+    const rejects = provenance.filter((r) => r.event === "reject");
+    expect(rejects.length).toBeGreaterThanOrEqual(1);
+    expect(rejects[0]!.reason).toMatch(/no-improvement|ci-includes-zero/);
+    expect(rejects[0]!.heldOutIds?.length).toBeGreaterThan(0);
   });
 });

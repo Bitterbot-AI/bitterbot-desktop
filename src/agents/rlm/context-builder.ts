@@ -163,6 +163,47 @@ async function listSessionFiles(
 }
 
 /**
+ * List session transcripts for the live `listSessions()` sandbox API.
+ * Cheap: no parsing, just directory metadata, newest first.
+ */
+export async function listSessionSummaries(
+  agentId: string,
+): Promise<Array<{ sessionId: string; modifiedAt: string }>> {
+  const files = await listSessionFiles(agentId);
+  return files.map((f) => ({
+    sessionId: path.basename(f.path, ".jsonl"),
+    modifiedAt: formatTimestamp(f.mtimeMs),
+  }));
+}
+
+/**
+ * Load a single session transcript as formatted text for the live
+ * `loadTranscript(sessionId)` sandbox API. Returns null when not found.
+ */
+export async function loadTranscriptText(
+  agentId: string,
+  sessionId: string,
+): Promise<string | null> {
+  const files = await listSessionFiles(agentId);
+  const match = files.find((f) => path.basename(f.path, ".jsonl").includes(sessionId));
+  if (!match) {
+    return null;
+  }
+  const transcript = await parseSessionFile(match.path);
+  if (!transcript) {
+    return null;
+  }
+  const lines: string[] = [
+    `--- Session: ${transcript.sessionId} (${transcript.messageCount} messages) ---`,
+  ];
+  for (const msg of transcript.messages) {
+    const ts = msg.timestamp ? formatTimestamp(msg.timestamp) : "??:??";
+    lines.push(`[${ts}] ${msg.role.toUpperCase()}: ${msg.text}`);
+  }
+  return lines.join("\n");
+}
+
+/**
  * Build the context string for RLM deep recall.
  *
  * Returns a formatted text string containing session transcripts and optionally

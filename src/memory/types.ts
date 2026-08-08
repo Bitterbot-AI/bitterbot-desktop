@@ -101,6 +101,13 @@ export interface MemorySearchManager {
   probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult>;
   probeVectorAvailability(): Promise<boolean>;
   close?(): Promise<void>;
+  // Working-memory state vector (snapshots, provenance, event-triggered flush)
+  flushWorkingMemory?(reason: string): Promise<boolean>;
+  restoreWorkingMemory?(fileName?: string): Promise<{ restored: string } | { error: string }>;
+  listWorkingMemorySnapshots?(): Promise<Array<{ file: string; savedAt: string; bytes: number }>>;
+  getWorkingMemoryProvenance?(
+    limit?: number,
+  ): Promise<import("./working-memory-snapshots.js").WorkingMemoryProvenance[]>;
   // Dream Engine
   dreamSearch?(
     query: string,

@@ -5,11 +5,25 @@
  * and the hampton-io/RLM TypeScript reference implementation.
  */
 
-export function buildRLMSystemPrompt(contextStats: {
-  chars: number;
-  lines: number;
-  tokenEstimate: number;
-}): string {
+export function buildRLMSystemPrompt(
+  contextStats: {
+    chars: number;
+    lines: number;
+    tokenEstimate: number;
+  },
+  features?: { liveApis?: boolean },
+): string {
+  const liveApiSection = features?.liveApis
+    ? `
+### Live Data Access
+The \`context\` variable is a bootstrap snapshot — these async functions reach the FULL live history beyond it:
+- \`await search(query, {maxResults?})\` — Hybrid semantic+keyword search over all memory and indexed sessions. Returns \`[{snippet, score, path, source}]\`.
+- \`await listSessions()\` — List all session transcripts, newest first. Returns \`[{sessionId, modifiedAt}]\`.
+- \`await loadTranscript(sessionId)\` — Load a full session transcript as "[timestamp] ROLE: text" lines. Returns null if not found.
+
+Prefer \`search()\` to locate where information lives, then \`loadTranscript()\` to read the surrounding conversation. Anything missing from \`context\` may still exist — check live before concluding it doesn't.
+`
+    : "";
   return `You are an RLM (Recursive Language Model) agent. Your task is to answer questions by writing JavaScript code that programmatically explores a large context string.
 
 ## Environment
@@ -17,6 +31,7 @@ export function buildRLMSystemPrompt(contextStats: {
 You are running in a sandboxed JavaScript REPL. A variable called \`context\` contains the full text to search (${contextStats.chars.toLocaleString()} chars, ~${contextStats.lines.toLocaleString()} lines, ~${contextStats.tokenEstimate.toLocaleString()} tokens). This context may be too large to read in one pass — you MUST explore it programmatically.
 
 ## Available Functions
+${liveApiSection}
 
 ### Text Exploration
 - \`chunk(text, size, overlap?)\` — Split text into chunks of \`size\` characters with optional overlap

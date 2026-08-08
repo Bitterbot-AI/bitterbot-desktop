@@ -721,7 +721,97 @@ export function createTaskReadHandoffTool(): AnyAgentTool {
       if (!latest) {
         return jsonResult({ ok: false, error: `no handoff for task ${taskId}` });
       }
-      return jsonResult({ ok: true, handoff: latest });
+      // Surface the machine-readable workspace alongside the narrative handoff
+      let workspace: Record<string, unknown> | undefined;
+      try {
+        const ws = store.getWorkspace(taskId);
+        if (Object.keys(ws).length > 0) {
+          workspace = ws;
+        }
+      } catch {
+        // Task lookup failed — handoff alone is still useful
+      }
+      return jsonResult({ ok: true, handoff: latest, ...(workspace ? { workspace } : {}) });
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// task_workspace_get / task_workspace_merge — durable per-task machine state.
+// ---------------------------------------------------------------------------
+
+const WorkspaceGetSchema = Type.Object({
+  task_id: Type.String({ minLength: 1 }),
+});
+
+export function createTaskWorkspaceGetTool(): AnyAgentTool {
+  return {
+    label: "Get Task Workspace",
+    name: "task_workspace_get",
+    description:
+      "Read a task's durable workspace: machine-readable state (variables, artifact " +
+      "paths, handles, intermediate results) that survives handoffs, wakeups, and " +
+      "compaction. Read it when resuming a task, alongside task_read_handoff. " +
+      "Returns { ok, workspace }.",
+    parameters: WorkspaceGetSchema,
+    execute: safeExecute(async (_toolCallId, params) => {
+      const store = getActiveTaskStore();
+      if (!store) return storeUnavailable();
+      const taskId = readStringParam(params, "task_id", { required: true });
+      try {
+        return jsonResult({ ok: true, workspace: store.getWorkspace(taskId) });
+      } catch (err) {
+        return jsonResult({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }),
+  };
+}
+
+const WorkspaceMergeSchema = Type.Object({
+  task_id: Type.String({ minLength: 1 }),
+  entries: Type.Record(Type.String(), Type.Unknown(), {
+    description:
+      "Key/value entries to merge into the workspace. Values must be JSON-serializable; " +
+      "set a key to null to delete it. Keep values small (64KB total cap) — store large " +
+      "artifacts as files and keep their paths here.",
+  }),
+});
+
+export function createTaskWorkspaceMergeTool(): AnyAgentTool {
+  return {
+    label: "Merge Task Workspace",
+    name: "task_workspace_merge",
+    description:
+      "Merge machine-readable state into a task's durable workspace (variables, " +
+      "artifact paths, handles, parsed results). Unlike the narrative handoff, the " +
+      "workspace is structured data the resuming run can use directly without " +
+      "re-deriving it. Merge semantics: existing keys are preserved unless " +
+      "overwritten; null deletes a key. Returns { ok, workspace }.",
+    parameters: WorkspaceMergeSchema,
+    execute: safeExecute(async (_toolCallId, params) => {
+      const store = getActiveTaskStore();
+      if (!store) return storeUnavailable();
+      const taskId = readStringParam(params, "task_id", { required: true });
+      const entries = params.entries;
+      if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
+        return jsonResult({ ok: false, error: "entries must be an object" });
+      }
+      try {
+        store.mergeWorkspace(taskId, entries as Record<string, unknown>);
+        const workspace = store.getWorkspace(taskId);
+        emitTaskEvent(taskId, "workspace_merged", {
+          keys: Object.keys(entries as Record<string, unknown>),
+        });
+        return jsonResult({ ok: true, workspace });
+      } catch (err) {
+        return jsonResult({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }),
   };
 }

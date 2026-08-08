@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import type { ScorePairFn } from "../dream-slow-update.js";
 import type { DreamInsight } from "../dream-types.js";
 import {
+  appendHarnessPolicyProvenance,
   promotePolicy,
   readLivePolicy,
   readPolicyHistory,
@@ -132,6 +133,14 @@ export async function runHarnessEvolve(args: HarnessEvolveArgs): Promise<Harness
   // ── Mine → Propose → Validate → Promote (one promotion per cycle) ──
   const clusters = mineFailureClusters(args.db, { nowMs: args.nowMs });
   const live = readLive();
+  // Evidence shared by every provenance record this cycle: the mined failure
+  // clusters that motivated the candidates, and the held-out traces judged.
+  const triggerClusters = clusters.slice(0, 3).map((c) => ({
+    signature: `${c.signature.surface}|${c.signature.terminalCause}|${c.signature.mechanism}`,
+    count: c.count,
+    sampleIds: c.sampleIds,
+  }));
+  const heldOutIds = selectionSet.map((e) => e.id);
   if (clusters.length > 0) {
     const proposals = await proposeHarnessCandidates({
       live,
@@ -153,6 +162,24 @@ export async function runHarnessEvolve(args: HarnessEvolveArgs): Promise<Harness
       });
       if (!verdict.accepted) {
         log.debug(`candidate rejected: ${verdict.reason} (Δ=${verdict.delta ?? "n/a"})`);
+        // Rejections are evidence too — record why the candidate died
+        await appendHarnessPolicyProvenance(
+          {
+            event: "reject",
+            reason: verdict.reason,
+            delta: verdict.delta,
+            ci95Low: verdict.statistical?.ci95Low,
+            ci95High: verdict.statistical?.ci95High,
+            nPaired: verdict.statistical?.nPaired,
+            surfacesTouched: verdict.surfacesTouched,
+            trigger: {
+              mechanism: proposal.audit.targetedMechanism,
+              clusters: triggerClusters,
+            },
+            heldOutIds,
+          },
+          storeOpts,
+        );
         continue;
       }
       try {
@@ -167,6 +194,24 @@ export async function runHarnessEvolve(args: HarnessEvolveArgs): Promise<Harness
           storeOpts,
         );
         promotedVersion = promoted.version;
+        await appendHarnessPolicyProvenance(
+          {
+            event: "promote",
+            version: promoted.version,
+            reason: proposal.audit.targetedMechanism || "harness-evolve",
+            delta: verdict.delta,
+            ci95Low: verdict.statistical?.ci95Low,
+            ci95High: verdict.statistical?.ci95High,
+            nPaired: verdict.statistical?.nPaired,
+            surfacesTouched: verdict.surfacesTouched,
+            trigger: {
+              mechanism: proposal.audit.targetedMechanism,
+              clusters: triggerClusters,
+            },
+            heldOutIds,
+          },
+          storeOpts,
+        );
         insights.push(
           makeInsight({
             cycleId: args.cycleId,

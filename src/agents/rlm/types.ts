@@ -16,7 +16,11 @@ export type RLMConfig = {
   subModel?: string;
   /** Max REPL loop iterations. Default: 15. */
   maxIterations?: number;
-  /** Max recursion depth (1 = sub-calls are plain LLMs). Default: 1. */
+  /**
+   * Max recursion depth. 1 = sub-calls are plain LLM completions;
+   * 2 = sub-calls run their own mini-REPL whose sub-calls are plain LLMs.
+   * Capped at 3. Default: 1.
+   */
   maxDepth?: number;
   /** Max cost in USD per invocation. Default: 0.50. */
   maxBudget?: number;
@@ -48,6 +52,27 @@ export const DEFAULT_RLM_CONFIG: Required<RLMConfig> = {
 
 export type RLMScope = "current_session" | "recent_sessions" | "all_sessions";
 
+// ---------------------------------------------------------------------------
+// Live environment APIs (state-outside-the-snapshot)
+// ---------------------------------------------------------------------------
+
+/**
+ * Live, read-only data-access callbacks injected into the sandbox so the
+ * REPL can reach beyond the bootstrap `context` snapshot. All host-side;
+ * the sandbox only ever sees the async function wrappers.
+ */
+export type RLMLiveApis = {
+  /** Hybrid memory search over crystals and indexed sessions. */
+  search?: (
+    query: string,
+    opts?: { maxResults?: number },
+  ) => Promise<Array<{ snippet: string; score: number; path?: string; source?: string }>>;
+  /** Load a full session transcript as formatted text ("[ts] ROLE: text" lines). */
+  loadTranscript?: (sessionId: string) => Promise<string | null>;
+  /** List available session transcripts, newest first. */
+  listSessions?: () => Promise<Array<{ sessionId: string; modifiedAt: string }>>;
+};
+
 export type RLMExecutorOptions = {
   /** Root LLM model ID (the agent's current model). */
   model: string;
@@ -67,6 +92,8 @@ export type RLMExecutorOptions = {
   maxSubCalls: number;
   /** Per code-block timeout ms. */
   timeout: number;
+  /** Live data-access APIs to inject into the sandbox. */
+  liveApis?: RLMLiveApis;
 };
 
 export type RLMResult = {

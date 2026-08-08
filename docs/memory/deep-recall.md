@@ -1,6 +1,6 @@
 # Deep Recall — RLM Infinite Memory
 
-Deep Recall extends the agent's memory beyond the context window using the **Recursive Language Model (RLM)** pattern. When the agent needs to answer a question that requires reasoning over many messages or old memories, it spawns a sandboxed sub-LLM that writes and executes its own search code against the full conversation history and crystal database.
+Deep Recall extends the agent's memory beyond the context window using the **Recursive Language Model (RLM)** pattern. When the agent needs to answer a question that requires reasoning over many messages or old memories, it runs a sandboxed REPL where the model writes and executes search code against conversation history and the crystal database.
 
 **Key source files:** `rlm/executor.ts`, `rlm/sandbox.ts`, `rlm/prompts.ts`, `rlm/cost-tracker.ts`, `rlm/context-builder.ts`, `rlm/types.ts`, `tools/deep-recall-tool.ts`
 
@@ -10,68 +10,100 @@ Deep Recall extends the agent's memory beyond the context window using the **Rec
 
 ```mermaid
 sequenceDiagram
-    participant Agent as Agent (root model)
+    participant Agent as Agent (chat loop)
     participant Tool as deep_recall tool
-    participant Sub as Sub-LLM (cheap model)
+    participant Root as Root model (REPL)
     participant Sandbox as VM Sandbox
-    participant DB as Memory DB
+    participant DB as Memory DB / Transcripts
 
     Agent->>Tool: "What did we discuss about GCCRF last week?"
     Tool->>Tool: Smart shortcut check (quick search)
-    alt Quick results sufficient (score ≥ 0.8)
+    alt Quick results sufficient (score ≥ 0.8, 3+ hits)
         Tool-->>Agent: Return quick results directly
     else Need deep search
-        Tool->>Sub: REPL prompt + conversation history as variable
-        Sub->>Sandbox: JavaScript code to search/filter/analyze
-        Sandbox->>DB: Execute searches, load transcripts
-        Sandbox-->>Sub: Results
-        Sub->>Sandbox: Refine search, cross-reference...
-        Note over Sub,Sandbox: Up to 5 REPL iterations
-        Sub-->>Tool: Final synthesized answer
-        Tool-->>Agent: Formatted results with sources
+        Tool->>Root: REPL prompt + bootstrap context as variable
+        Root->>Sandbox: JavaScript code (grep/chunk/search/loadTranscript)
+        Sandbox->>DB: Live search + transcript loads
+        Sandbox-->>Root: Results
+        Root->>Sandbox: Refine, cross-reference, llm_query sub-calls...
+        Note over Root,Sandbox: Up to 15 REPL iterations (default)
+        Root-->>Tool: FINAL(answer)
+        Tool-->>Agent: Answer with cost/iteration stats
     end
 ```
 
-### The Key Insight (from RLM Paper, arxiv 2512.24601)
+### The Key Insight (from RLM Paper, arXiv:2512.24601)
 
-The sub-LLM writes its own search code rather than having pre-baked search functions. This means it can:
+The model writes its own search code rather than calling pre-baked search functions. This means it can:
 
 - Combine semantic search with keyword filtering
 - Cross-reference results across sessions
 - Apply temporal reasoning ("messages from last Tuesday")
 - Chain multiple searches based on intermediate results
 
+### Live environment, not just a snapshot
+
+The `context` variable is a **bootstrap snapshot** (capped by `maxContextTokens`, default 500k tokens). Beyond it, the sandbox exposes **live async APIs** that reach the full history:
+
+| API                                  | What it does                                                      |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| `await search(query, {maxResults?})` | Hybrid semantic+keyword search over crystals and indexed sessions |
+| `await listSessions()`               | List all session transcripts, newest first                        |
+| `await loadTranscript(sessionId)`    | Load a full transcript as `[timestamp] ROLE: text` lines          |
+
+Live API payloads are size-capped, errors come back as data (never crash the REPL), and all access is read-only.
+
 ### Example REPL Loop
 
 ```javascript
-// Iteration 1: Sub-LLM writes this code
-const results = await search("GCCRF implementation details", { limit: 20 });
-const gccrf = results.filter((r) => r.score > 0.6);
+// Iteration 1: search live memory beyond the snapshot
+const hits = await search("GCCRF implementation details", { maxResults: 20 });
+store(
+  "hits",
+  hits.filter((r) => r.score > 0.6),
+);
 
-// Iteration 2: Refine based on results
-const dates = gccrf.map((r) => new Date(r.created_at).toISOString().slice(0, 10));
-const recentResults = await search("GCCRF changes March 2026", { limit: 10 });
+// Iteration 2: read the surrounding conversation
+const sessions = await listSessions();
+const transcript = await loadTranscript(sessions[2].sessionId);
+const relevant = grep(transcript, "GCCRF");
 
-// Iteration 3: Synthesize
-return {
-  summary: "GCCRF was discussed on March 12 and March 26...",
-  sources: gccrf.slice(0, 5).map((r) => ({ id: r.id, text: r.text.slice(0, 200) })),
-};
+// Iteration 3: synthesize and finish
+FINAL("GCCRF was discussed on March 12 and March 26: ...");
 ```
+
+---
+
+## Session-Persistent Sandbox
+
+The sandbox is cached per `agent:session:scope` and **reused across `deep_recall` calls**: values saved with `store()` in one query are readable via `get()` in the next, so repeated recalls build on earlier exploration instead of starting cold.
+
+- The bootstrap snapshot is rebuilt after a 15-minute TTL (the store survives the rebuild; live APIs cover the gap in between).
+- JSON-serializable store entries are persisted to disk (`<agent dir>/rlm-store/`) and re-imported after a gateway restart.
+- Completion signals (`FINAL`) are cleared between runs; the store is not.
+
+---
+
+## Recursion Depth
+
+`memory.rlm.maxDepth` controls what a sub-call is (capped at 3):
+
+- **1 (default):** `llm_query()` sub-calls are plain one-shot completions on the cheap model — the paper's depth-1 regime.
+- **2:** each sub-call becomes a **nested mini-RLM**: the cheap model gets its own REPL over the sub-context (5 iterations max), and its own sub-calls are plain completions. Nested cost and sub-calls are charged to the parent budget.
 
 ---
 
 ## Smart Shortcut
 
-Before spawning the expensive sub-LLM, the tool runs a quick hybrid search (BM25 + vector). If results score ≥ 0.8, they're returned directly — skipping the REPL.
+Before spawning the REPL, the tool runs a quick hybrid search (BM25 + vector). If 3+ results score ≥ 0.8, they're returned directly — skipping the REPL.
 
 **Important:** The 0.8 threshold is applied **client-side** after retrieval, because the RRF (Reciprocal Rank Fusion) merge strategy ignores the `minScore` parameter. This was a critical bug that caused the shortcut to ALWAYS fire.
 
 ```typescript
 // Fixed: filter scores client-side
-const quickResults = rawResults.filter((r) => r.score >= 0.8);
-if (quickResults.length >= 3) {
-  return formatQuickResults(quickResults); // Skip REPL
+const highConfidence = quickResults.filter((r) => r.score >= 0.8);
+if (highConfidence.length >= 3) {
+  return formatQuickResults(highConfidence); // Skip REPL
 }
 ```
 
@@ -79,53 +111,41 @@ if (quickResults.length >= 3) {
 
 ## Model Routing
 
-| Role           | Model                                       | Why                                          |
-| -------------- | ------------------------------------------- | -------------------------------------------- |
-| Root agent     | User's configured model (e.g., Claude Opus) | Understands the question, uses the answer    |
-| Sub-LLM (REPL) | Cheap model (e.g., GPT-4o-mini, Haiku)      | Writes search code — doesn't need creativity |
+| Role                    | Model                                       | Why                                                   |
+| ----------------------- | ------------------------------------------- | ----------------------------------------------------- |
+| Root (writes REPL code) | User's configured model (e.g., Claude Opus) | Exploration strategy needs the strong model           |
+| Sub-LLM (`llm_query`)   | Cheap model (e.g., GPT-4o-mini, Haiku)      | Summarizing/extracting from chunks doesn't need power |
 
-Resolved via `resolveAgentModelPrimary()` for root, hardcoded cheap model for sub-calls.
+Root resolved via `resolveAgentModelPrimary()`; sub-model auto-picked from available API keys (`memory.rlm.subModel` overrides).
 
 ---
 
 ## Sandbox Security
 
-The sub-LLM's code runs in a **Node.js VM sandbox** (`vm.createContext`):
+The REPL code runs in a **Node.js VM sandbox** (`vm.createContext`):
 
 - **Isolated context** — no access to `process`, `require`, `fs`, or network
-- **Available APIs:** `search()`, `loadTranscript()`, `listSessions()`, `console.log()`
-- **Timeout:** Configurable per execution (on `runInContext`, not `Script` constructor)
-- **Cleanup:** `vmContext` is nulled after disposal to prevent memory leaks
-- **Iteration limit:** Maximum 5 REPL iterations per query
+- **Available APIs:** text utilities (`grep`, `chunk`, `getLines`, ...), `store()`/`get()`, `llm_query()`/`llm_query_parallel()`, and the read-only live APIs (`search`, `loadTranscript`, `listSessions`)
+- **Timeout:** per code block (`memory.rlm.sandboxTimeout`, default 30s), plus a hard outer timeout covering async calls
+- **Cleanup:** cached sandboxes are disposed on LRU eviction (8 max)
 
 ---
 
-## Cost Tracking
+## Budgets and Cost Tracking
 
-The `CostTracker` monitors sub-LLM token usage:
+The `CostTracker` enforces per-invocation limits (defaults): 15 REPL iterations, 20 sub-calls, $0.50. The model gets an explicit budget warning as limits approach, and results report iterations, sub-calls, and dollar cost.
 
-```typescript
-interface CostSnapshot {
-  inputTokens: number;
-  outputTokens: number;
-  estimatedCostUsd: number;
-  iterations: number;
-}
-```
-
-Typical cost: $0.005-0.02 per deep recall query (1-5 cheap model calls).
+Typical cost: $0.005-0.02 per deep recall query.
 
 ---
 
 ## Context Building
 
-The `ContextBuilder` prepares the REPL prompt with:
+The `ContextBuilder` prepares the bootstrap snapshot with:
 
-1. **Conversation history** — Recent messages as a variable the sub-LLM can reference
-2. **Available sessions** — List of session keys for cross-session queries
-3. **Search API docs** — Function signatures and usage examples
-4. **Original query** — The user's question
-5. **Diverse seed queries** — Multiple search angles generated from the question (replaced a wildcard `"*"` that returned random results)
+1. **Conversation history** — recent session transcripts (scope-dependent)
+2. **Knowledge crystals** — diverse seed queries against memory (replaced a wildcard `"*"` that returned random results)
+3. **Metadata** — session list, date ranges, message counts
 
 ---
 
@@ -140,6 +160,28 @@ Identical (or near-identical) queries within a 1-hour window return cached resul
 ### Blind Spot Registration
 
 When `deep_recall` returns no useful answer, the failed query is registered as a high-priority exploration target (`knowledge_gap` type, priority 0.85, 7-day TTL) in the curiosity engine. This ensures the dream engine's exploration mode specifically targets the gap during the next cycle. Over time, the system actively fills the holes that users care about most.
+
+---
+
+## Configuration
+
+```json5
+{
+  memory: {
+    rlm: {
+      enabled: true, // kill switch
+      subModel: "auto", // or "provider/model"
+      maxIterations: 15,
+      maxDepth: 1, // 2 = nested mini-RLM sub-calls (cap 3)
+      maxBudget: 0.5, // USD per invocation
+      maxSubCalls: 20,
+      sandboxTimeout: 30000,
+      maxContextTokens: 500000, // bootstrap snapshot size
+      defaultScope: "recent_sessions",
+    },
+  },
+}
+```
 
 ---
 

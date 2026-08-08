@@ -158,6 +158,91 @@ describe("rewriteWorkingMemory integration", () => {
     ).rewriteWorkingMemory(stats);
   }
 
+  function resetFlushDebounce(): void {
+    (manager as unknown as { lastEventSynthesisAt: number }).lastEventSynthesisAt = 0;
+  }
+
+  // ── Snapshot / Provenance / Event Flush ──
+
+  it("snapshots the previous state and records provenance on rewrite", async () => {
+    await callRewriteWorkingMemory(makeDreamStats());
+    const firstState = await fs.readFile(path.join(workspaceDir, "MEMORY.md"), "utf-8");
+    await callRewriteWorkingMemory(makeDreamStats());
+
+    const snapshotDir = path.join(memoryDir, "memory-snapshots");
+    const entries = await fs.readdir(snapshotDir);
+    const snapshots = entries.filter((e) => e.startsWith("MEMORY-") && e.endsWith(".md"));
+    expect(snapshots.length).toBeGreaterThanOrEqual(1);
+
+    // The newest snapshot holds the pre-rewrite state
+    const newest = snapshots.toSorted().at(-1)!;
+    const snapshotContent = await fs.readFile(path.join(snapshotDir, newest), "utf-8");
+    expect(snapshotContent).toBe(firstState);
+
+    // Provenance records the trigger and outcome of the rewrite
+    const provenance = await manager!.getWorkingMemoryProvenance!();
+    const latest = provenance.at(-1)!;
+    expect(latest.event).toBe("rewrite");
+    expect(latest.trigger).toBe("test-cycle-1");
+    expect(latest.snapshotFile).toBe(newest);
+    expect(latest.lengthBefore).toBe(firstState.length);
+    expect(latest.wasHeuristicFallback).toBe(true); // no LLM in this harness
+  });
+
+  it("restoreWorkingMemory rolls MEMORY.md back to a snapshot", async () => {
+    await callRewriteWorkingMemory(makeDreamStats());
+    const goodState = await fs.readFile(path.join(workspaceDir, "MEMORY.md"), "utf-8");
+    await callRewriteWorkingMemory(makeDreamStats());
+
+    const result = await manager!.restoreWorkingMemory!();
+    expect(result).toHaveProperty("restored");
+    const restored = await fs.readFile(path.join(workspaceDir, "MEMORY.md"), "utf-8");
+    expect(restored).toBe(goodState);
+  });
+
+  it("flushWorkingMemory synthesizes when scratch has pending notes", async () => {
+    resetFlushDebounce();
+    await fs.writeFile(
+      path.join(memoryDir, "scratch.md"),
+      "# Scratch Buffer (Working Memory WAL)\n\n- [2026-03-12T14:30:00Z] (importance: 0.8) User's name is Douglas and the deadline is March 20\n",
+      "utf-8",
+    );
+
+    const ran = await manager!.flushWorkingMemory!("compaction");
+    expect(ran).toBe(true);
+
+    const content = await fs.readFile(path.join(workspaceDir, "MEMORY.md"), "utf-8");
+    expect(content).toContain("# Working Memory State");
+
+    // Scratch was consumed
+    const scratch = await fs.readFile(path.join(memoryDir, "scratch.md"), "utf-8");
+    expect(scratch).not.toContain("Douglas");
+
+    // Provenance records the event trigger
+    const provenance = await manager!.getWorkingMemoryProvenance!();
+    expect(provenance.at(-1)!.trigger).toMatch(/^event-compaction-/);
+  });
+
+  it("flushWorkingMemory is a no-op on empty scratch and while debounced", async () => {
+    resetFlushDebounce();
+    // No scratch file at all
+    expect(await manager!.flushWorkingMemory!("session-end")).toBe(false);
+
+    // With notes: first flush runs, second is debounced
+    await fs.writeFile(
+      path.join(memoryDir, "scratch.md"),
+      "# Scratch Buffer (Working Memory WAL)\n\n- [2026-03-12T14:30:00Z] (importance: 0.7) A fact worth keeping around\n",
+      "utf-8",
+    );
+    expect(await manager!.flushWorkingMemory!("session-end")).toBe(true);
+    await fs.writeFile(
+      path.join(memoryDir, "scratch.md"),
+      "# Scratch Buffer (Working Memory WAL)\n\n- [2026-03-12T14:31:00Z] (importance: 0.7) Another fact arriving right after\n",
+      "utf-8",
+    );
+    expect(await manager!.flushWorkingMemory!("session-end")).toBe(false);
+  });
+
   // ── Core State Vector Tests ──
 
   it("should create MEMORY.md with all 7 sections on first synthesis (no prior state)", async () => {

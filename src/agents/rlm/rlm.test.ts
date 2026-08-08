@@ -198,6 +198,77 @@ describe("RLMSandbox", () => {
     const result = await sandbox.execute('print(get("x"));');
     expect(result.output).toBe("undefined");
   });
+
+  it("clearFinal clears completion signals but keeps the store", async () => {
+    await sandbox.execute('store("kept", "yes"); FINAL("done");');
+    sandbox.clearFinal();
+    expect(sandbox.resolveFinalAnswer()).toBeNull();
+    const result = await sandbox.execute('print(get("kept"));');
+    expect(result.output).toBe("yes");
+  });
+
+  it("exportStore/importStore round-trips serializable entries", async () => {
+    await sandbox.execute('store("a", {x: 1}); store("b", "text");');
+    const exported = sandbox.exportStore();
+    expect(exported).toEqual({ a: { x: 1 }, b: "text" });
+
+    const fresh = new RLMSandbox({
+      context: "other",
+      timeout: 5000,
+      onLLMQuery: async () => "mock",
+    });
+    fresh.importStore(exported);
+    const result = await fresh.execute('print(JSON.stringify(get("a")));');
+    expect(result.output).toBe('{"x":1}');
+    fresh.dispose();
+  });
+
+  it("updateContext swaps context but preserves the store", async () => {
+    await sandbox.execute('store("keep", "v1");');
+    sandbox.updateContext("brand new context");
+    const result = await sandbox.execute('print(context); print(get("keep"));');
+    expect(result.output).toContain("brand new context");
+    expect(result.output).toContain("v1");
+  });
+
+  it("live APIs are injected when provided and guarded on error", async () => {
+    const live = new RLMSandbox({
+      context: "bootstrap snapshot",
+      timeout: 5000,
+      onLLMQuery: async () => "mock",
+      liveApis: {
+        search: async (query) => [{ snippet: `hit for ${query}`, score: 0.9, source: "memory" }],
+        loadTranscript: async (id) => (id === "s1" ? "[t] USER: hello" : null),
+        listSessions: async () => {
+          throw new Error("db locked");
+        },
+      },
+    });
+    expect(live.hasLiveApis()).toBe(true);
+
+    const searchResult = await live.execute(
+      'const r = await search("gccrf"); print(r[0].snippet + " @" + r[0].score);',
+    );
+    expect(searchResult.output).toBe("hit for gccrf @0.9");
+
+    const transcriptResult = await live.execute(
+      'print(await loadTranscript("s1")); print(await loadTranscript("nope"));',
+    );
+    expect(transcriptResult.output).toContain("[t] USER: hello");
+    expect(transcriptResult.output).toContain("null");
+
+    // Errors come back as data, never as sandbox crashes
+    const listResult = await live.execute("const s = await listSessions(); print(s[0].sessionId);");
+    expect(listResult.output).toContain("listSessions error: db locked");
+    expect(listResult.error).toBeUndefined();
+    live.dispose();
+  });
+
+  it("live APIs are absent when not provided", async () => {
+    expect(sandbox.hasLiveApis()).toBe(false);
+    const result = await sandbox.execute("print(typeof search);");
+    expect(result.output).toBe("undefined");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -335,6 +406,128 @@ describe("RLMExecutor", () => {
 
     expect(result.success).toBe(true);
     expect(result.answer).toBe("found it");
+  });
+
+  it("parallel sub-calls reserve slots synchronously against the cap", async () => {
+    const mockLlm: RLMLLMCallFn = async ({ model }) => {
+      if (model === "root-model") {
+        return {
+          text: '```js\nconst rs = await llm_query_parallel([{prompt:"a"},{prompt:"b"},{prompt:"c"}]);\nFINAL(String(rs.filter(r => r.includes("Budget exceeded")).length));\n```',
+          cost: 0.001,
+        };
+      }
+      return { text: "sub answer", cost: 0.0001 };
+    };
+
+    const executor = new RLMExecutor(mockLlm);
+    const result = await executor.execute("test", "context", {
+      ...defaultOptions,
+      model: "root-model",
+      subModel: "sub-model",
+      maxSubCalls: 2,
+    });
+
+    // 3 parallel queries against a cap of 2: exactly one must be refused,
+    // even though all three dispatch before any sub-call completes.
+    expect(result.answer).toBe("1");
+  });
+
+  it("maxDepth 2 runs sub-calls as nested mini-RLMs", async () => {
+    const rootCalls: string[] = [];
+    const mockLlm: RLMLLMCallFn = async ({ messages, model }) => {
+      const system = messages.find((m) => m.role === "system");
+      const lastMsg = messages[messages.length - 1]!;
+      rootCalls.push(`${model}:${lastMsg.content.slice(0, 40)}`);
+      if (model === "root-model") {
+        return {
+          text: '```js\nconst answer = await llm_query("count the lines", "A\\nB\\nC");\nFINAL(answer);\n```',
+          cost: 0.001,
+        };
+      }
+      // Nested mini-RLM: the sub model also gets a REPL system prompt
+      if (system && lastMsg.content.includes("Question:")) {
+        return {
+          text: '```js\nFINAL("3 lines (from nested REPL)");\n```',
+          cost: 0.0005,
+        };
+      }
+      return { text: "plain completion", cost: 0.0005 };
+    };
+
+    const executor = new RLMExecutor(mockLlm);
+    const result = await executor.execute("How many lines?", "outer context", {
+      ...defaultOptions,
+      model: "root-model",
+      subModel: "sub-model",
+      maxDepth: 2,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.answer).toBe("3 lines (from nested REPL)");
+    // The nested run's iterations show up as a sub-RLM trace entry
+    expect(result.trace.some((t) => t.type === "sub_call" && t.content.includes("sub-RLM"))).toBe(
+      true,
+    );
+    // Nested cost charged to the parent run
+    expect(result.cost).toBeGreaterThan(0.001);
+  });
+
+  it("maxDepth 1 keeps sub-calls as plain completions", async () => {
+    const subSystemPrompts: number[] = [];
+    const mockLlm: RLMLLMCallFn = async ({ messages, model }) => {
+      if (model === "root-model") {
+        return {
+          text: '```js\nconst a = await llm_query("summarize", "some text");\nFINAL(a);\n```',
+          cost: 0.001,
+        };
+      }
+      subSystemPrompts.push(messages.filter((m) => m.role === "system").length);
+      return { text: "plain summary", cost: 0.0005 };
+    };
+
+    const executor = new RLMExecutor(mockLlm);
+    const result = await executor.execute("test", "context", {
+      ...defaultOptions,
+      model: "root-model",
+      subModel: "sub-model",
+      maxDepth: 1,
+    });
+
+    expect(result.answer).toBe("plain summary");
+    // Plain sub-calls carry no REPL system prompt
+    expect(subSystemPrompts).toEqual([0]);
+  });
+
+  it("reuses an external sandbox and preserves its store across runs", async () => {
+    const sandbox = new RLMSandbox({
+      context: "shared context",
+      timeout: 5000,
+      onLLMQuery: async () => "[unbound]",
+    });
+
+    const firstLlm: RLMLLMCallFn = async () => ({
+      text: '```js\nstore("finding", "cached-insight");\nFINAL("first done");\n```',
+      cost: 0.001,
+    });
+    const executor1 = new RLMExecutor(firstLlm);
+    const r1 = await executor1.execute("first", "shared context", defaultOptions, sandbox);
+    expect(r1.answer).toBe("first done");
+
+    // Second run on the same sandbox: stale FINAL must not short-circuit,
+    // and the store from run 1 must still be readable.
+    const secondLlm: RLMLLMCallFn = async () => ({
+      text: '```js\nFINAL("recalled: " + get("finding"));\n```',
+      cost: 0.001,
+    });
+    const executor2 = new RLMExecutor(secondLlm);
+    const r2 = await executor2.execute("second", "shared context", defaultOptions, sandbox);
+    expect(r2.answer).toBe("recalled: cached-insight");
+    expect(r2.iterations).toBe(1);
+
+    // External sandbox is not disposed by the executor
+    const probe = await sandbox.execute('print(get("finding"));');
+    expect(probe.output).toBe("cached-insight");
+    sandbox.dispose();
   });
 
   it("tracks sub-calls via llm_query", async () => {

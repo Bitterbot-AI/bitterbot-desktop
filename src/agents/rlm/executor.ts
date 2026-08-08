@@ -92,97 +92,107 @@ export class RLMExecutor {
       .slice(0, 16);
   }
 
-  async execute(query: string, context: string, options: RLMExecutorOptions): Promise<RLMResult> {
+  async execute(
+    query: string,
+    context: string,
+    options: RLMExecutorOptions,
+    externalSandbox?: RLMSandbox,
+  ): Promise<RLMResult> {
     const trace: RLMTraceEntry[] = [];
+    // Depth is capped at 3; ≥2 means sub-calls spawn their own mini-REPL.
+    const maxDepth = Math.min(Math.max(1, options.maxDepth), 3);
     const costTracker = new CostTracker(
       options.maxBudget,
       options.maxSubCalls,
       options.maxIterations,
     );
 
-    // Track sub-call cost for the sandbox callbacks
-    let currentDepth = 0;
-
-    // Create sandbox with LLM sub-call wiring
-    const sandbox = new RLMSandbox({
-      context,
-      timeout: options.timeout,
-      onLLMQuery: async (prompt: string, subContext?: string) => {
-        if (!costTracker.canAffordSubCall()) {
-          return "[Budget exceeded — cannot make more sub-calls]";
-        }
-        if (currentDepth >= options.maxDepth) {
-          // At max depth, sub-calls are plain LLM calls (no recursion)
-          const messages: RLMMessage[] = [
-            { role: "user", content: subContext ? `Context:\n${subContext}\n\n${prompt}` : prompt },
-          ];
-          const result = await this.llmCall({
-            messages,
-            model: options.subModel,
-            provider: options.subProvider,
-            maxTokens: 2000,
-          });
-          costTracker.addCost(result.cost);
-          costTracker.addSubCall();
-          trace.push({
-            type: "sub_call",
-            content: `[sub-call] ${prompt.slice(0, 100)}...`,
-            timestamp: Date.now(),
-          });
-          return result.text;
-        }
-        // Could support deeper recursion here in the future
-        const messages: RLMMessage[] = [
-          { role: "user", content: subContext ? `Context:\n${subContext}\n\n${prompt}` : prompt },
-        ];
-        currentDepth++;
-        const result = await this.llmCall({
-          messages,
+    /**
+     * Run one sub-call. At maxDepth 1 this is a plain LLM completion.
+     * At maxDepth ≥ 2 the sub-call becomes a nested mini-RLM: the cheap model
+     * gets its own REPL over the sub-context, with its sub-calls one level
+     * shallower. Nested cost/sub-calls are charged to this run's tracker.
+     *
+     * The sub-call SLOT is reserved synchronously (before any await) so a
+     * parallel batch can't all pass the affordability check on the same
+     * snapshot; `budgetShare` splits the remaining budget across a batch so
+     * N parallel sub-RLMs can't each spend the full remainder.
+     */
+    const runSubCall = async (
+      prompt: string,
+      subContext?: string,
+      budgetShare = 1,
+    ): Promise<string> => {
+      if (!costTracker.canAffordSubCall()) {
+        return "[Budget exceeded — cannot make more sub-calls]";
+      }
+      costTracker.addSubCall(); // reserve synchronously
+      if (maxDepth >= 2) {
+        const summary = costTracker.getSummary();
+        const nested = await this.execute(prompt, subContext ?? context, {
+          ...options,
           model: options.subModel,
           provider: options.subProvider,
-          maxTokens: 2000,
+          maxDepth: maxDepth - 1,
+          maxIterations: Math.min(5, options.maxIterations),
+          maxBudget: summary.budgetRemaining * budgetShare,
+          maxSubCalls: Math.min(8, summary.subCallsRemaining),
         });
-        currentDepth--;
-        costTracker.addCost(result.cost);
-        costTracker.addSubCall();
+        costTracker.addCost(nested.cost);
         trace.push({
           type: "sub_call",
-          content: `[sub-call] ${prompt.slice(0, 100)}...`,
+          content: `[sub-RLM depth=${maxDepth - 1}] ${prompt.slice(0, 100)}... (iterations=${nested.iterations}, subCalls=${nested.subCalls}, cost=$${nested.cost.toFixed(4)})`,
           timestamp: Date.now(),
         });
-        return result.text;
+        return nested.answer ?? "[sub-RLM produced no answer]";
+      }
+      // Plain LLM completion (paper's depth-1 regime)
+      const messages: RLMMessage[] = [
+        { role: "user", content: subContext ? `Context:\n${subContext}\n\n${prompt}` : prompt },
+      ];
+      const result = await this.llmCall({
+        messages,
+        model: options.subModel,
+        provider: options.subProvider,
+        maxTokens: 2000,
+      });
+      costTracker.addCost(result.cost);
+      trace.push({
+        type: "sub_call",
+        content: `[sub-call] ${prompt.slice(0, 100)}...`,
+        timestamp: Date.now(),
+      });
+      return result.text;
+    };
+
+    const handlers = {
+      onLLMQuery: (prompt: string, subContext?: string) => runSubCall(prompt, subContext),
+      onLLMQueryParallel: (queries: Array<{ prompt: string; context?: string }>) => {
+        const share = 1 / Math.max(1, queries.length);
+        return Promise.all(queries.map((q) => runSubCall(q.prompt, q.context, share)));
       },
-      onLLMQueryParallel: async (queries) => {
-        const _results: string[] = [];
-        // Execute in parallel but track each call
-        const promises = queries.map(async (q) => {
-          if (!costTracker.canAffordSubCall()) {
-            return "[Budget exceeded — cannot make more sub-calls]";
-          }
-          const messages: RLMMessage[] = [
-            {
-              role: "user",
-              content: q.context ? `Context:\n${q.context}\n\n${q.prompt}` : q.prompt,
-            },
-          ];
-          const result = await this.llmCall({
-            messages,
-            model: options.subModel,
-            provider: options.subProvider,
-            maxTokens: 2000,
-          });
-          costTracker.addCost(result.cost);
-          costTracker.addSubCall();
-          trace.push({
-            type: "sub_call",
-            content: `[parallel sub-call] ${q.prompt.slice(0, 80)}...`,
-            timestamp: Date.now(),
-          });
-          return result.text;
-        });
-        return await Promise.all(promises);
-      },
-    });
+    };
+
+    // Reuse a persistent sandbox when provided; otherwise create an owned one.
+    const ownsSandbox = !externalSandbox;
+    let sandbox: RLMSandbox;
+    if (externalSandbox) {
+      sandbox = externalSandbox;
+      sandbox.setHandlers(handlers);
+      sandbox.clearFinal();
+    } else {
+      sandbox = new RLMSandbox({
+        context,
+        timeout: options.timeout,
+        liveApis: options.liveApis,
+        ...handlers,
+      });
+    }
+    const finishSandbox = () => {
+      if (ownsSandbox) {
+        sandbox.dispose();
+      }
+    };
 
     // Build context stats for the system prompt
     const contextStats = {
@@ -193,7 +203,10 @@ export class RLMExecutor {
 
     // Initialize conversation with system prompt and user query
     const messages: RLMMessage[] = [
-      { role: "system", content: buildRLMSystemPrompt(contextStats) },
+      {
+        role: "system",
+        content: buildRLMSystemPrompt(contextStats, { liveApis: sandbox.hasLiveApis() }),
+      },
       { role: "user", content: buildRLMUserPrompt(query) },
     ];
 
@@ -221,7 +234,7 @@ export class RLMExecutor {
           const finalAnswer = sandbox.resolveFinalAnswer();
           if (finalAnswer) {
             trace.push({ type: "final", content: finalAnswer, timestamp: Date.now() });
-            sandbox.dispose();
+            finishSandbox();
             return {
               answer: finalAnswer,
               success: true,
@@ -258,7 +271,7 @@ export class RLMExecutor {
         const finalAnswer = sandbox.resolveFinalAnswer();
         if (finalAnswer) {
           trace.push({ type: "final", content: finalAnswer, timestamp: Date.now() });
-          sandbox.dispose();
+          finishSandbox();
           return {
             answer: finalAnswer,
             success: true,
@@ -272,7 +285,7 @@ export class RLMExecutor {
         // Check budget limits
         const limit = costTracker.isExceeded();
         if (limit) {
-          sandbox.dispose();
+          finishSandbox();
           // Try to get any partial answer from the last output
           const partialAnswer = execResult.output || null;
           return {
@@ -304,7 +317,7 @@ export class RLMExecutor {
       }
 
       // Iteration limit reached
-      sandbox.dispose();
+      finishSandbox();
       const lastOutput = trace.filter((t) => t.type === "output").pop()?.content;
       return {
         answer: lastOutput || null,
@@ -316,7 +329,7 @@ export class RLMExecutor {
         limitReached: "iterations",
       };
     } catch (err) {
-      sandbox.dispose();
+      finishSandbox();
       const errorMsg = err instanceof Error ? err.message : String(err);
       trace.push({ type: "error", content: errorMsg, timestamp: Date.now() });
       return {

@@ -10,18 +10,96 @@
  */
 
 import { Type } from "@sinclair/typebox";
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { MemorySearchManager } from "../../memory/types.js";
-import type { RLMScope, RLMLLMCallFn } from "../rlm/types.js";
+import type { RLMScope, RLMLLMCallFn, RLMLiveApis } from "../rlm/types.js";
 import type { AnyAgentTool } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId, resolveAgentModelPrimary } from "../agent-scope.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
-import { buildDeepRecallContext } from "../rlm/context-builder.js";
+import {
+  buildDeepRecallContext,
+  listSessionSummaries,
+  loadTranscriptText,
+} from "../rlm/context-builder.js";
 import { RLMExecutor } from "../rlm/executor.js";
+import { RLMSandbox } from "../rlm/sandbox.js";
 import { DEFAULT_RLM_CONFIG } from "../rlm/types.js";
 import { jsonResult, readStringParam } from "./common.js";
+
+// ---------------------------------------------------------------------------
+// Session-persistent sandboxes (state survives across deep_recall calls)
+// ---------------------------------------------------------------------------
+
+type SessionSandboxEntry = {
+  sandbox: RLMSandbox;
+  context: string;
+  builtAt: number;
+  storePath: string;
+  /** True while an executor run holds this sandbox (overlap falls back to an owned sandbox). */
+  busy: boolean;
+};
+
+/** Sandbox reused across deep_recall calls within the same session+scope. */
+const sessionSandboxes = new Map<string, SessionSandboxEntry>();
+/** Rebuild the context snapshot after this long (live APIs cover the gap). */
+const SANDBOX_CONTEXT_TTL_MS = 15 * 60 * 1000;
+const MAX_CACHED_SANDBOXES = 8;
+
+function sandboxCacheKey(agentId: string, sessionKey: string | undefined, scope: string): string {
+  return `${agentId}:${sessionKey ?? "global"}:${scope}`;
+}
+
+function resolveStorePath(agentDir: string, cacheKey: string): string {
+  const hash = crypto.createHash("sha256").update(cacheKey).digest("hex").slice(0, 16);
+  return path.join(agentDir, "rlm-store", `${hash}.json`);
+}
+
+async function loadPersistedStore(storePath: string): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await fs.readFile(storePath, "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Missing or corrupt store file — start fresh
+  }
+  return null;
+}
+
+async function persistStore(storePath: string, data: Record<string, unknown>): Promise<void> {
+  try {
+    await fs.mkdir(path.dirname(storePath), { recursive: true });
+    await fs.writeFile(storePath, JSON.stringify(data), "utf-8");
+  } catch {
+    // Durability is best-effort; the in-memory store still works
+  }
+}
+
+function evictStaleSandboxes(): void {
+  if (sessionSandboxes.size <= MAX_CACHED_SANDBOXES) {
+    return;
+  }
+  const entries = [...sessionSandboxes.entries()].toSorted((a, b) => a[1].builtAt - b[1].builtAt);
+  while (sessionSandboxes.size > MAX_CACHED_SANDBOXES && entries.length > 0) {
+    const [key, entry] = entries.shift()!;
+    entry.sandbox.dispose();
+    sessionSandboxes.delete(key);
+  }
+}
+
+/** Test hook: clear the sandbox cache. */
+export function clearDeepRecallSandboxCache(): void {
+  for (const entry of sessionSandboxes.values()) {
+    entry.sandbox.dispose();
+  }
+  sessionSandboxes.clear();
+}
 
 const DeepRecallSchema = Type.Object({
   query: Type.String({
@@ -233,21 +311,76 @@ export function createDeepRecallTool(options: {
         });
       }
 
-      // Step 3: Build context
-      const maxTokens = rlmCfg?.maxContextTokens ?? DEFAULT_RLM_CONFIG.maxContextTokens;
-      const context = await buildDeepRecallContext({
-        agentId,
-        scope,
-        sessionKey: options.agentSessionKey,
-        includeMemory,
-        maxTokens,
-        memoryManager: manager,
-      });
+      // Step 3: Live data-access APIs — the context snapshot below is only a
+      // bootstrap; these let the REPL reach the full live history beyond it.
+      const liveApis: RLMLiveApis = {
+        loadTranscript: (sessionId) => loadTranscriptText(agentId, sessionId),
+        listSessions: () => listSessionSummaries(agentId),
+      };
+      if (manager) {
+        const mgr = manager;
+        liveApis.search = async (q, opts) => {
+          const results = await mgr.search(q, { maxResults: opts?.maxResults ?? 10 });
+          return results.map((r) => ({
+            snippet: r.snippet,
+            score: r.score,
+            path: r.path,
+            source: r.source,
+          }));
+        };
+      }
 
-      if (context.length < 50) {
-        return jsonResult({
-          error: "No session history or memory found to search.",
+      // Step 3b: Session-persistent sandbox — reuse REPL state (stored
+      // variables, prior findings) across deep_recall calls in this session.
+      const cacheKey = sandboxCacheKey(agentId, options.agentSessionKey, scope);
+      const maxTokens = rlmCfg?.maxContextTokens ?? DEFAULT_RLM_CONFIG.maxContextTokens;
+      let entry = sessionSandboxes.get(cacheKey);
+      let context: string;
+      if (entry && Date.now() - entry.builtAt <= SANDBOX_CONTEXT_TTL_MS) {
+        context = entry.context;
+      } else {
+        context = await buildDeepRecallContext({
+          agentId,
+          scope,
+          sessionKey: options.agentSessionKey,
+          includeMemory,
+          maxTokens,
+          memoryManager: manager,
         });
+        if (context.length < 50 && !entry) {
+          return jsonResult({
+            error: "No session history or memory found to search.",
+          });
+        }
+        if (entry) {
+          // Refresh the stale snapshot but keep the accumulated store
+          entry.sandbox.updateContext(context);
+          entry.context = context;
+          entry.builtAt = Date.now();
+        } else {
+          let storePath = "";
+          try {
+            const { resolveBitterbotAgentDir } = await import("../agent-paths.js");
+            storePath = resolveStorePath(resolveBitterbotAgentDir(), cacheKey);
+          } catch {
+            // No durable store path — session-only persistence
+          }
+          const sandbox = new RLMSandbox({
+            context,
+            timeout: rlmCfg?.sandboxTimeout ?? DEFAULT_RLM_CONFIG.sandboxTimeout,
+            liveApis,
+            onLLMQuery: async () => "[llm handlers not bound]",
+          });
+          if (storePath) {
+            const persisted = await loadPersistedStore(storePath);
+            if (persisted) {
+              sandbox.importStore(persisted);
+            }
+          }
+          entry = { sandbox, context, builtAt: Date.now(), storePath, busy: false };
+          sessionSandboxes.set(cacheKey, entry);
+          evictStaleSandboxes();
+        }
       }
 
       // Step 4: Execute RLM
@@ -319,7 +452,11 @@ export function createDeepRecallTool(options: {
         });
       }
 
-      const result = await executor.execute(query, context, {
+      // Overlapping calls on the same key would corrupt shared REPL state
+      // (handler rebinding, FINAL clearing, output interleaving). If the
+      // cached sandbox is busy, run on a transient owned sandbox seeded from
+      // its store instead.
+      const executorOptions = {
         model: rootModel,
         provider: rootProvider,
         subModel: subModelRef.model,
@@ -329,7 +466,34 @@ export function createDeepRecallTool(options: {
         maxBudget: rlmCfg?.maxBudget ?? DEFAULT_RLM_CONFIG.maxBudget,
         maxSubCalls: rlmCfg?.maxSubCalls ?? DEFAULT_RLM_CONFIG.maxSubCalls,
         timeout: rlmCfg?.sandboxTimeout ?? DEFAULT_RLM_CONFIG.sandboxTimeout,
-      });
+        liveApis,
+      };
+      let result;
+      if (entry.busy) {
+        const transient = new RLMSandbox({
+          context,
+          timeout: executorOptions.timeout,
+          liveApis,
+          onLLMQuery: async () => "[llm handlers not bound]",
+        });
+        transient.importStore(entry.sandbox.exportStore());
+        try {
+          result = await executor.execute(query, context, executorOptions, transient);
+        } finally {
+          transient.dispose();
+        }
+      } else {
+        entry.busy = true;
+        try {
+          result = await executor.execute(query, context, executorOptions, entry.sandbox);
+        } finally {
+          entry.busy = false;
+        }
+        // Persist the REPL store so accumulated state survives restarts
+        if (entry.storePath) {
+          void persistStore(entry.storePath, entry.sandbox.exportStore());
+        }
+      }
 
       // Step 5: Trigger hormonal event based on result + Plan 7 self-improvement
       if (manager) {

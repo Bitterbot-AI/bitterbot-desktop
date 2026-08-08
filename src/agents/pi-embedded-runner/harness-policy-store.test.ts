@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  appendHarnessPolicyProvenance,
   loadActiveHarnessPolicy,
   promotePolicy,
+  readHarnessPolicyProvenance,
   readLivePolicy,
   readPolicyHistory,
   rollbackPolicy,
@@ -64,5 +66,56 @@ describe("harness-policy-store (PLAN-25)", () => {
 
   it("rollback to a missing version is a safe no-op", async () => {
     expect(await rollbackPolicy(999, "nope", { configDir: dir })).toBeNull();
+  });
+
+  it("provenance records append and round-trip with full evidence", async () => {
+    await appendHarnessPolicyProvenance(
+      {
+        event: "promote",
+        version: 1,
+        reason: "tool_not_found guidance",
+        delta: 0.21,
+        ci95Low: 0.05,
+        ci95High: 0.4,
+        nPaired: 12,
+        surfacesTouched: ["prompt"],
+        trigger: {
+          mechanism: "tool_not_found",
+          clusters: [{ signature: "tools|tool_not_found|missing", count: 4, sampleIds: ["e1"] }],
+        },
+        heldOutIds: ["e1", "e2"],
+      },
+      { configDir: dir },
+    );
+    await appendHarnessPolicyProvenance(
+      { event: "reject", reason: "ci-includes-zero", delta: 0.02 },
+      { configDir: dir },
+    );
+
+    const records = await readHarnessPolicyProvenance(100, { configDir: dir });
+    expect(records).toHaveLength(2);
+    expect(records[0]).toMatchObject({
+      event: "promote",
+      version: 1,
+      ci95Low: 0.05,
+      nPaired: 12,
+      trigger: { mechanism: "tool_not_found" },
+    });
+    expect(records[0]!.timestamp).toBeGreaterThan(0);
+    expect(records[1]!.event).toBe("reject");
+  });
+
+  it("rollback writes a provenance record", async () => {
+    const first = await promotePolicy(candidate("alpha"), { reason: "v1" }, { configDir: dir });
+    await promotePolicy(candidate("beta"), { reason: "v2" }, { configDir: dir });
+    await rollbackPolicy(first.version, "regression", { configDir: dir });
+    const records = await readHarnessPolicyProvenance(100, { configDir: dir });
+    const rollback = records.filter((r) => r.event === "rollback");
+    expect(rollback).toHaveLength(1);
+    expect(rollback[0]).toMatchObject({ version: first.version, reason: "regression" });
+  });
+
+  it("readHarnessPolicyProvenance returns [] when no log exists", async () => {
+    expect(await readHarnessPolicyProvenance(100, { configDir: dir })).toEqual([]);
   });
 });

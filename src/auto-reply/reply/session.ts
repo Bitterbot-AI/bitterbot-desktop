@@ -430,6 +430,21 @@ export async function initSessionState(params: {
           )
           .catch(() => {});
       }
+
+      // Old session over — flush unsynthesized scratch notes into the
+      // working-memory state vector (debounced, no-op when scratch is empty).
+      void (async () => {
+        try {
+          const { getMemorySearchManager } = await import("../../memory/index.js");
+          const agentId = resolveSessionAgentId({ sessionKey, config: cfg });
+          const { manager } = await getMemorySearchManager({ cfg, agentId });
+          if (manager?.flushWorkingMemory) {
+            await manager.flushWorkingMemory("session-end");
+          }
+        } catch {
+          // Best-effort: never block session turnover on memory synthesis
+        }
+      })();
     }
 
     // Fire session_start for the new session

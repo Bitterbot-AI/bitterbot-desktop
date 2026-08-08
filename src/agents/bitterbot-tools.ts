@@ -55,6 +55,8 @@ import {
   createTaskScheduleWakeupTool,
   createTaskStopTool,
   createTaskUpdateTool,
+  createTaskWorkspaceGetTool,
+  createTaskWorkspaceMergeTool,
   createTaskWriteHandoffTool,
 } from "./tools/task-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
@@ -213,6 +215,8 @@ export function createBitterbotTools(options?: {
     createTaskOutputTool(),
     createTaskWriteHandoffTool(),
     createTaskReadHandoffTool(),
+    createTaskWorkspaceGetTool(),
+    createTaskWorkspaceMergeTool(),
     createTaskScheduleWakeupTool(),
     createTaskResumeInlineTool({ agentSessionKey: options?.agentSessionKey }),
     createTaskJudgeTool(),

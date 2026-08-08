@@ -70,7 +70,9 @@ agent gets these tools added to its loadout:
 | `task_output`          | Return the final artifact ref for a completed task                                           |
 | `task_monitor`         | Stream durable events from the journal (incremental polling via `since_seq`)                 |
 | `task_write_handoff`   | Author a structured handoff before suspending                                                |
-| `task_read_handoff`    | First call on resume — rebuild context cold from the handoff                                 |
+| `task_read_handoff`    | First call on resume — rebuild context cold from the handoff (includes the workspace)        |
+| `task_workspace_get`   | Read the task's durable machine-readable workspace                                           |
+| `task_workspace_merge` | Merge structured state (variables, artifact paths, handles) into the workspace               |
 | `task_schedule_wakeup` | Schedule a future agent invocation that resumes this task                                    |
 | `task_judge`           | Run the independent Judge to verify `done_criteria`                                          |
 
@@ -120,10 +122,37 @@ when blocked on an external dependency — do this:
 The fresh agent's flow:
 
 1. `task_read_handoff({ task_id })` — load intent, decisions, pending
+   (the response also carries the task workspace when one exists)
 2. `task_get({ task_id })` — load status, plan, original goal /
    done_criteria
 3. Continue the work using whatever tools are appropriate
 4. When done, set `status="judging"` and call `task_judge`
+
+## The task workspace (machine-readable state)
+
+The handoff is narrative — intent and decisions in prose. The
+**workspace** is its structured complement: a durable JSON object on the
+task (riding in `metadata.workspace`) for state the resuming run should
+use directly instead of re-deriving — parsed results, artifact paths,
+cursors, external handles. It survives handoffs, wakeups, and
+compaction, exactly like kernel state surviving compaction in RLM-style
+agents.
+
+```ts
+task_workspace_merge({
+  task_id: "task-abc-123",
+  entries: {
+    parsedRows: 4212,
+    artifactPath: "out/analysis.md",
+    resumeCursor: { file: "data.csv", line: 90210 },
+    obsoleteKey: null, // null deletes a key
+  },
+});
+```
+
+Merge semantics: existing keys survive unless overwritten; `null`
+deletes. The serialized workspace is capped at 64KB — store large
+artifacts as files and keep their **paths** here.
 
 ## The Judge
 
