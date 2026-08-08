@@ -7,7 +7,7 @@ import {
   type Circle,
   type CircleMember,
 } from "../../stores/circles-store";
-import { initialsFor as initials } from "./circle-identity";
+import { initialsFor as initials, memberColor } from "./circle-identity";
 import { InvitePanel } from "./InvitePanel";
 
 // PLAN-36 Phase A: the member/presence roster. §5.5: ANY member can remove
@@ -100,7 +100,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
         <button
           type="button"
           onClick={() => setInviting(true)}
-          className="flex items-center gap-2 rounded-lg transition-colors bg-[rgba(139,92,246,0.1)] hover:bg-[rgba(139,92,246,0.15)] text-purple-400 px-3 py-2 text-sm font-medium"
+          className="flex items-center gap-2 rounded-lg transition-colors bg-circle-you-soft/70 hover:bg-circle-you-soft text-circle-you px-3 py-2 text-sm font-medium"
         >
           <Plus className="w-4 h-4" /> Invite someone to this circle
         </button>
@@ -140,9 +140,11 @@ export function CircleMembers({ circle }: { circle: Circle }) {
           <div key={m.memberPubkey} className="group flex flex-col gap-1">
             <div className="flex items-center gap-2.5 text-sm">
               <div className="relative shrink-0">
+                {/* Phase D: the SAME hash color as this member's timeline
+                    avatar — the roster stopped painting every peer green. */}
                 <div
                   className="w-6 h-6 rounded-lg grid place-items-center text-2xs font-bold text-white"
-                  style={{ background: m.isSelf ? "#3a5bd9" : "#0f9d68" }}
+                  style={{ background: memberColor(m.memberPubkey, m.isSelf) }}
                 >
                   {initials(name)}
                 </div>

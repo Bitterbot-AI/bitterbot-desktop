@@ -213,7 +213,7 @@ export function CircleCanvas({
                 onChange={(e) =>
                   void setCanvasParticipation(circle.circleId, e.target.checked ? "propose" : "off")
                 }
-                className="accent-emerald-600"
+                className="accent-circle-agent"
               />
               <Bot className="w-3 h-3 text-circle-agent" />
               <span>
@@ -254,14 +254,14 @@ export function CircleCanvas({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Card title"
               autoFocus
-              className="w-full bg-transparent text-sm font-semibold outline-none"
+              className="w-full rounded border bg-background/50 px-2 py-1 text-sm font-semibold outline-none focus:border-circle-you"
             />
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="Anything the whole circle should see…"
               rows={3}
-              className="w-full resize-none bg-transparent text-sm outline-none"
+              className="w-full resize-none rounded border bg-background/50 px-2 py-1 text-sm outline-none focus:border-circle-you"
             />
             <ComposerActions onCancel={reset} onSave={() => void submitNote()} saving={saving} />
           </div>
@@ -274,7 +274,7 @@ export function CircleCanvas({
               onChange={(e) => setDiagramTitle(e.target.value)}
               placeholder="Diagram title (optional)"
               autoFocus
-              className="w-full bg-transparent text-sm font-semibold outline-none"
+              className="w-full rounded border bg-background/50 px-2 py-1 text-sm font-semibold outline-none focus:border-circle-you"
             />
             <textarea
               value={diagramCode}
@@ -284,7 +284,7 @@ export function CircleCanvas({
               }
               rows={6}
               spellCheck={false}
-              className="w-full resize-none bg-transparent text-sm font-mono outline-none"
+              className="w-full resize-none rounded border bg-background/50 px-2 py-1 text-sm font-mono outline-none focus:border-circle-you"
             />
             {previewCode.trim() && (
               <div className="rounded border border-border/40 bg-background/40 p-2">
@@ -307,7 +307,7 @@ export function CircleCanvas({
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="What are we deciding? (e.g. when do we review?)"
               autoFocus
-              className="w-full bg-transparent text-sm font-semibold outline-none"
+              className="w-full rounded border bg-background/50 px-2 py-1 text-sm font-semibold outline-none focus:border-circle-you"
             />
             {options.map((opt, i) => (
               <div key={i} className="flex items-center gap-2">
@@ -354,7 +354,7 @@ export function CircleCanvas({
               onChange={(e) => setGuideTitle(e.target.value)}
               placeholder="Study guide title (e.g. BIO-204 Midterm 2)"
               autoFocus
-              className="w-full bg-transparent text-sm font-semibold outline-none"
+              className="w-full rounded border bg-background/50 px-2 py-1 text-sm font-semibold outline-none focus:border-circle-you"
             />
             <textarea
               value={guideSections}
@@ -363,7 +363,7 @@ export function CircleCanvas({
                 "Sections, one per line — everyone fills their piece\nGlycolysis\nKrebs cycle\nElectron transport"
               }
               rows={4}
-              className="w-full resize-none bg-transparent text-sm outline-none"
+              className="w-full resize-none rounded border bg-background/50 px-2 py-1 text-sm outline-none focus:border-circle-you"
             />
             <ComposerActions
               onCancel={reset}

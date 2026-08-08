@@ -22,30 +22,37 @@ import { useEffect, useState } from "react";
 
 const MAX_DIAGRAM_CHARS = 20_000;
 
+/** The full config is re-applied per render (initialize merges are not
+ * trusted): the theme tracks the app's light/dark mode instead of the old
+ * hardcoded "dark" that rendered dark-on-light in light mode (Phase D). */
+function mermaidConfig(): Parameters<typeof import("mermaid").default.initialize>[0] {
+  return {
+    startOnLoad: false,
+    securityLevel: "strict",
+    suppressErrorRendering: true,
+    theme: document.documentElement.classList.contains("dark") ? "dark" : "default",
+    fontFamily: "inherit",
+    secure: [
+      "secure",
+      "securityLevel",
+      "startOnLoad",
+      "maxTextSize",
+      "suppressErrorRendering",
+      "maxEdges",
+      "themeCSS",
+      "themeVariables",
+      "fontFamily",
+      "altFontFamily",
+    ],
+  };
+}
+
 let mermaidPromise: Promise<typeof import("mermaid").default> | null = null;
 
 function loadMermaid() {
   mermaidPromise ??= import("mermaid")
     .then((mod) => {
-      mod.default.initialize({
-        startOnLoad: false,
-        securityLevel: "strict",
-        suppressErrorRendering: true,
-        theme: "dark",
-        fontFamily: "inherit",
-        secure: [
-          "secure",
-          "securityLevel",
-          "startOnLoad",
-          "maxTextSize",
-          "suppressErrorRendering",
-          "maxEdges",
-          "themeCSS",
-          "themeVariables",
-          "fontFamily",
-          "altFontFamily",
-        ],
-      });
+      mod.default.initialize(mermaidConfig());
       return mod.default;
     })
     .catch((err: unknown) => {
@@ -66,6 +73,11 @@ function renderSerialized(code: string): Promise<string> {
     .catch(() => {}) // a prior card's failure never blocks the queue
     .then(async () => {
       const mermaid = await loadMermaid();
+      // Re-assert the FULL config every render: the serialized chain makes
+      // this safe, a peer directive from a prior card can't bleed through,
+      // and the theme picks up a mode toggle for the next render. (Already
+      // rendered SVGs keep their theme until their card re-renders.)
+      mermaid.initialize(mermaidConfig());
       const out = await mermaid.render(`circle-mmd-${++renderSeq}`, code);
       return out.svg;
     });

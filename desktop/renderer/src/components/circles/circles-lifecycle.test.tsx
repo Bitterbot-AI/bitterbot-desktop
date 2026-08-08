@@ -237,6 +237,56 @@ describe("circle lifecycle (Phase B)", () => {
     expect((checkbox as HTMLInputElement).disabled).toBe(true);
   });
 
+  it("errors render as errors, tips as tips (Phase D notice split)", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.send") return Promise.reject(new Error("fan-out failed"));
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    const composer = await screen.findByPlaceholderText(/Message the circle/);
+    await userEvent.type(composer, "hello{Enter}");
+    // A failed send wears the destructive treatment, not the friendly blue.
+    const bar = await screen.findByRole("alert");
+    expect(bar.textContent).toContain("fan-out failed");
+    // Info notices keep the status role.
+    useCirclesStore.getState().setNotice("just a tip");
+    expect(await screen.findByRole("status")).toBeTruthy();
+  });
+
+  it("a pin tap jumps to its message (Phase D clickable pins)", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.messages") {
+        return Promise.resolve({
+          annotations: { reactions: {}, pins: ["env-p1"] },
+          messages: [
+            {
+              messageId: "p1",
+              envelopeId: "env-p1",
+              authorPubkey: "ed25519:maya",
+              direction: "in",
+              kind: "message",
+              content: "the pinned plan",
+              createdAt: Date.now(),
+            },
+          ],
+        });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    await userEvent.click(await screen.findByText(/1 pinned message/));
+    await userEvent.click(await screen.findByTitle("Jump to this message"));
+    // The row briefly highlights (scrolled + flashed).
+    await waitFor(() => {
+      const row = document.querySelector('[data-envelope="env-p1"]');
+      expect(row?.className).toContain("bg-circle-you-soft");
+    });
+  });
+
   it("circlesAttention sums unread + approvals, excluding archived", () => {
     const attention = circlesAttention([
       { ...CIRCLE, unread: 3, pendingApprovals: 1 },

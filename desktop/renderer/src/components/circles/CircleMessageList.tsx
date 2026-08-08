@@ -1,15 +1,16 @@
 import { ArrowDown, Pin, Reply, ShieldCheck, SmilePlus, StickyNote, Trash2 } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { unwrapForDisplay } from "../../lib/external-content-display";
 import { cn } from "../../lib/utils";
 import {
   HISTORY_PAGE,
   memberName,
+  useCirclesStore,
   type CircleMember,
   type CircleMessage,
   type MessageAnnotations,
 } from "../../stores/circles-store";
-import { hash32, initialsFor as initials } from "./circle-identity";
+import { initialsFor as initials, memberColor } from "./circle-identity";
 import { CircleMarkdown } from "./CircleMarkdown";
 import { buildTimeline, fmtFullDate, fmtTime } from "./timeline";
 
@@ -22,12 +23,6 @@ const REACTION_PALETTE = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
 // circle was last open, and scroll is ANCHORED — it follows the conversation
 // only when you're already at the bottom; otherwise a jump pill counts what
 // you're missing. Bodies render restricted markdown (CircleMarkdown).
-
-const AVATAR_COLORS = ["#0f9d68", "#3a5bd9", "#c9871a", "#8b5cf6", "#d6336c", "#0c8599", "#e8590c"];
-
-function colorFor(pubkey: string): string {
-  return AVATAR_COLORS[hash32(pubkey) % AVATAR_COLORS.length] as string;
-}
 
 // A pasted/delivered invite code in a message body (bbc1.<base64url>).
 // Detection only — tapping Join runs the full signature-checked join
@@ -48,6 +43,10 @@ interface Props {
   onLoadOlder?: () => Promise<number>;
   /** False once the top of history is proven — hides the load affordance. */
   hasMoreHistory?: boolean;
+  /** Phase D: a pin tap jumps to (and briefly highlights) this message. */
+  focusEnvelopeId?: string | null;
+  /** Called once the jump has been handled (found or not). */
+  onFocusConsumed?: () => void;
   onReply: (m: CircleMessage) => void;
   /** Phase D: reactions + pins folded from the event log. */
   annotations?: MessageAnnotations;
@@ -91,6 +90,8 @@ export function CircleMessageList({
   readFrontier,
   onLoadOlder,
   hasMoreHistory,
+  focusEnvelopeId,
+  onFocusConsumed,
   onReply,
   annotations,
   onToggleReaction,
@@ -103,6 +104,7 @@ export function CircleMessageList({
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [pendingNew, setPendingNew] = useState(0);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   // Anchored scroll state lives in refs — scrolling must never re-render.
   const atBottomRef = useRef(true);
   const firstIdRef = useRef<string | undefined>(undefined);
@@ -185,6 +187,28 @@ export function CircleMessageList({
     if (atBottom) setPendingNew(0);
   };
 
+  // Phase D: a pin tap jumps to its message. If the message is older than the
+  // loaded history, say so instead of doing nothing.
+  useEffect(() => {
+    if (!focusEnvelopeId) return;
+    const escaped =
+      typeof CSS !== "undefined" && "escape" in CSS ? CSS.escape(focusEnvelopeId) : focusEnvelopeId;
+    const el = scrollRef.current?.querySelector(`[data-envelope="${escaped}"]`);
+    if (el) {
+      (el as HTMLElement).scrollIntoView?.({ block: "center" });
+      setHighlightId(focusEnvelopeId);
+      const t = setTimeout(() => setHighlightId(null), 1800);
+      onFocusConsumed?.();
+      return () => clearTimeout(t);
+    }
+    useCirclesStore
+      .getState()
+      .setNotice(
+        "That pinned message is older than the loaded history — use “Load earlier messages” to reach it.",
+      );
+    onFocusConsumed?.();
+  }, [focusEnvelopeId, onFocusConsumed]);
+
   const loadOlder = async () => {
     const el = scrollRef.current;
     if (!onLoadOlder || loadingOlder || !el) return;
@@ -260,7 +284,7 @@ export function CircleMessageList({
           const isAgent = m.agentAuthored === true;
           const owner = isSelf ? "You" : nameOf(m.authorPubkey);
           const name = isAgent ? (isSelf ? "Your agent" : `${owner}'s agent`) : owner;
-          const color = isSelf ? "#3a5bd9" : colorFor(m.authorPubkey);
+          const color = memberColor(m.authorPubkey, isSelf);
           const parent = m.replyTo ? byEnvelope.get(m.replyTo) : undefined;
           // Inbound content is stored security-wrapped for agent consumers;
           // humans get the body plus a screened indicator, not the plumbing.
@@ -315,7 +339,12 @@ export function CircleMessageList({
           return (
             <div
               key={m.messageId}
-              className={cn("group relative flex gap-3", continuation ? "mt-0.5" : "mt-3")}
+              data-envelope={m.envelopeId ?? undefined}
+              className={cn(
+                "group relative flex gap-3 rounded-md transition-colors duration-500",
+                continuation ? "mt-0.5" : "mt-3",
+                !!m.envelopeId && highlightId === m.envelopeId && "bg-circle-you-soft/60",
+              )}
             >
               <div className="absolute right-0 top-0 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center rounded-md border bg-background/95 shadow-sm px-0.5">
                 {m.envelopeId && onToggleReaction && (
@@ -570,7 +599,7 @@ export function CircleMessageList({
         <button
           type="button"
           onClick={scrollToBottom}
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full border bg-background/95 shadow-sm px-3 py-1 text-xs font-medium text-circle-you hover:bg-circle-you-soft"
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 motion-enter-conversation flex items-center gap-1.5 rounded-full border bg-background/95 shadow-sm px-3 py-1 text-xs font-medium text-circle-you hover:bg-circle-you-soft"
         >
           <ArrowDown className="w-3.5 h-3.5" />
           {pendingNew === 1 ? "1 new message" : `${pendingNew} new messages`}

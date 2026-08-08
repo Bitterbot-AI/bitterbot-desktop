@@ -1,6 +1,7 @@
 import { Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
+import { cn } from "../../lib/utils";
 import { useCirclesStore } from "../../stores/circles-store";
 import { CircleChat } from "./CircleChat";
 import { CircleRail } from "./CircleRail";
@@ -22,6 +23,7 @@ export function CirclesView() {
     activeCircleId,
     loading,
     notice,
+    noticeLevel,
     refresh,
     selectCircle,
     loadMessages,
@@ -80,7 +82,16 @@ export function CirclesView() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {notice && (
-        <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs bg-circle-you-soft/60 text-foreground border-b">
+        <div
+          role={noticeLevel === "error" ? "alert" : "status"}
+          className={cn(
+            "flex items-center justify-between gap-3 px-4 py-2 text-xs border-b",
+            // Phase D: a failed send must not look like a friendly tip.
+            noticeLevel === "error"
+              ? "bg-destructive/10 text-destructive border-destructive/30"
+              : "bg-circle-you-soft/60 text-foreground",
+          )}
+        >
           <span>{notice}</span>
           <button type="button" onClick={() => setNotice(null)} className="underline shrink-0">
             dismiss

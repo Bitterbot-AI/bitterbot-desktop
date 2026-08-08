@@ -72,6 +72,12 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const [replyTo, setReplyTo] = useState<CircleMessage | null>(null);
   const [showPins, setShowPins] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false);
+  // Phase D: message delete confirms IN-APP (native confirm() is gone) and
+  // pins jump to their message (the whole point of a pin).
+  const [confirmDelete, setConfirmDelete] = useState<{ m: CircleMessage; own: boolean } | null>(
+    null,
+  );
+  const [focusEnvelopeId, setFocusEnvelopeId] = useState<string | null>(null);
   // Summon-UX: when the human explicitly asked for a draft (typed @agent or
   // tapped Ask my agent), the response must be LOUD, not quiet — show a
   // drafting indicator and auto-open the tray when the draft lands.
@@ -249,12 +255,18 @@ export function CircleChat({ circle, selfPubkey }: Props) {
           {showPins && (
             <div className="px-3 pb-2 space-y-1.5">
               {pinnedMessages.map((m) => (
-                <div key={m.envelopeId} className="flex items-baseline gap-2 min-w-0">
+                <button
+                  key={m.envelopeId}
+                  type="button"
+                  onClick={() => setFocusEnvelopeId(m.envelopeId)}
+                  title="Jump to this message"
+                  className="flex items-baseline gap-2 min-w-0 w-full text-left hover:text-foreground"
+                >
                   <span className="font-medium shrink-0">
                     {replyLabel(m, selfPubkey, circle.members)}
                   </span>
                   <span className="truncate">{unwrapForDisplay(m.content).text}</span>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -298,14 +310,11 @@ export function CircleChat({ circle, selfPubkey }: Props) {
               }
             : undefined
         }
+        focusEnvelopeId={focusEnvelopeId}
+        onFocusConsumed={() => setFocusEnvelopeId(null)}
         onDelete={(m, own) => {
           if (!m.envelopeId) return;
-          const ok = own
-            ? confirm(
-                "Delete this message? It is removed here and on your friends' devices (as far as their nodes cooperate).",
-              )
-            : confirm("Hide this message on this device? Other members still see it.");
-          if (ok) void deleteMessage(circle.circleId, m.envelopeId, own);
+          setConfirmDelete({ m, own });
         }}
       />
 
@@ -325,7 +334,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         const noticed = (pendingOutbound ?? []).length + chatDrafts.length;
         if (noticed === 0) return null;
         return (
-          <div className="mx-3 mb-1 rounded-lg border border-dashed text-xs">
+          <div className="mx-3 mb-1 motion-enter-conversation rounded-lg border border-dashed text-xs">
             <button
               type="button"
               onClick={() => setTrayOpen((v) => !v)}
@@ -384,8 +393,38 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         </div>
       )}
 
+      {confirmDelete && (
+        <div className="mx-3 mb-1 motion-enter-conversation rounded-lg border border-destructive/40 bg-destructive/10 p-2.5 text-xs space-y-1.5">
+          <p>
+            {confirmDelete.own
+              ? "Delete this message? It is removed here and on your friends' devices (as far as their nodes cooperate)."
+              : "Hide this message on this device? Other members still see it."}
+          </p>
+          <div className="flex items-center gap-2 justify-end">
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(null)}
+              className="text-muted-foreground px-2 py-0.5"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const { m, own } = confirmDelete;
+                setConfirmDelete(null);
+                if (m.envelopeId) void deleteMessage(circle.circleId, m.envelopeId, own);
+              }}
+              className="font-medium px-2.5 py-0.5 rounded bg-destructive text-white"
+            >
+              {confirmDelete.own ? "Delete" : "Hide"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {joinPrompt && (
-        <div className="mx-3 mb-1">
+        <div className="mx-3 mb-1 motion-enter-conversation">
           <InviteTrustPrompt
             preview={joinPrompt}
             onCancel={() => setJoinPrompt(null)}
@@ -401,7 +440,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
       {/* Summon-UX: an explicitly requested draft is loud — the human sees
           their agent working instead of a 15-45s silence. */}
       {awaitingDraftSince !== null && (
-        <div className="mx-3 -mb-1 flex items-center gap-2 text-xs text-circle-agent border border-circle-agent/30 rounded-t-lg bg-circle-agent-soft/40 px-3 py-1.5">
+        <div className="mx-3 -mb-1 motion-enter-conversation flex items-center gap-2 text-xs text-circle-agent border border-circle-agent/30 rounded-t-lg bg-circle-agent-soft/40 px-3 py-1.5">
           <Sparkles className="w-3.5 h-3.5 shrink-0 animate-pulse" />
           <span className="min-w-0">
             Your agent is drafting <span className="tabular-nums">({draftElapsed}s)</span> — it

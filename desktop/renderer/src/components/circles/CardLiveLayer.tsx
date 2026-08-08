@@ -47,8 +47,8 @@ function StatusPill({
   const tones: Record<string, string> = {
     quiet: "border text-muted-foreground",
     live: "border-circle-agent/50 bg-circle-agent-soft/50 text-circle-agent",
-    waiting: "border-amber-600/50 bg-amber-500/10 text-amber-700",
-    done: "border-emerald-600/50 bg-emerald-500/10 text-emerald-700",
+    waiting: "border-amber-600/50 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    done: "border-emerald-600/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
   };
   return (
     <span
@@ -258,7 +258,7 @@ export function CardLiveLayer({
                 ? "Something the group should know, e.g. “free June 19–26, under $200/night”"
                 : "An option to consider, e.g. “Cabin B — $185/night”"
             }
-            className="w-full bg-transparent text-sm outline-none"
+            className="w-full rounded border bg-background/50 px-2 py-1 text-sm outline-none focus:border-circle-you"
           />
           <div className="flex items-center gap-2">
             <button
@@ -325,7 +325,7 @@ function OptionsTally({
                   type="button"
                   disabled={busy}
                   onClick={() => onVote?.(o.optionId)}
-                  className="shrink-0 rounded border border-emerald-600 px-2 py-0.5 text-2xs font-medium text-emerald-600"
+                  className="shrink-0 rounded border border-emerald-600 px-2 py-0.5 text-2xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
                 >
                   Vote
                 </button>

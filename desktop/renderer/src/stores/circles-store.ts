@@ -67,6 +67,8 @@ interface CirclesState {
   outboundByCircle: Record<string, PendingOutbound[]>;
   loading: boolean;
   notice: string | null;
+  /** Phase D: errors must LOOK like errors — a failed send is not a tip. */
+  noticeLevel: "info" | "error";
   /** §3.2.8: a chat item's card chip focuses its card on the canvas. */
   focusCardId: string | null;
 
@@ -188,8 +190,11 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   outboundByCircle: {},
   loading: true,
   notice: null,
+  noticeLevel: "info",
 
-  setNotice: (notice) => set({ notice }),
+  // setNotice is the INFO channel (tips, confirmations); error sites set the
+  // level explicitly so a failure can never wear the friendly blue.
+  setNotice: (notice) => set({ notice, noticeLevel: "info" }),
 
   refresh: async () => {
     try {
@@ -240,7 +245,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         // screen. The Circles view marks read on mount/select/inbound-event.
       }
     } catch (err) {
-      set({ notice: String(err), loading: false });
+      set({ notice: String(err), noticeLevel: "error", loading: false });
     }
   },
 
@@ -280,7 +285,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       set((s) => ({ draftsByCircle: { ...s.draftsByCircle, [circleId]: res.drafts ?? [] } }));
     } catch (err) {
       if (methodUnavailable("circles.drafts.list", err)) return;
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
     }
   },
 
@@ -293,7 +298,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       set((s) => ({ outboundByCircle: { ...s.outboundByCircle, [circleId]: res.pending ?? [] } }));
     } catch (err) {
       if (methodUnavailable("circles.outbound.list", err)) return;
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
     }
   },
 
@@ -303,7 +308,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await Promise.all([get().loadOutbound(circleId), get().loadMessages(circleId)]);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -314,7 +319,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadOutbound(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -327,7 +332,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await request("circles.drafts.request", { circleId, cardId, slot });
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -340,7 +345,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await request("circles.drafts.request", { circleId, cardId, kind: "study" });
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -365,7 +370,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadStudyState(circleId, cardId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -377,7 +382,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await request("circles.drafts.request", { circleId });
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -394,7 +399,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       ]);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       // §3.2.9: a failed publish may have discarded the draft server-side (its
       // card was deleted). Reload both so a now-dead proposal leaves the strip.
       await Promise.all([get().loadDrafts(circleId), get().loadCards(circleId)]);
@@ -408,7 +413,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadDrafts(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       await get().loadDrafts(circleId); // draft may already be gone; drop it
       return false;
     }
@@ -425,7 +430,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         removedByCircle: { ...s.removedByCircle, [circleId]: res.removed ?? [] },
       }));
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
     }
   },
 
@@ -437,7 +442,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadCards(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -450,7 +455,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadCards(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -469,7 +474,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadCards(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -492,7 +497,8 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       };
       set((s) => ({ sandboxByCircle: { ...s.sandboxByCircle, [circleId]: state } }));
     } catch (err) {
-      if (!methodUnavailable("circles.sandbox.state", err)) set({ notice: String(err) });
+      if (!methodUnavailable("circles.sandbox.state", err))
+        set({ notice: String(err), noticeLevel: "error" });
     }
   },
 
@@ -508,7 +514,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh(); // a solo circle may have gained the practice bot
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -519,7 +525,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadSandbox(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -530,7 +536,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadSandbox(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -541,7 +547,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadSandbox(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -552,7 +558,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadSandbox(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -563,7 +569,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadSandbox(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -581,7 +587,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadCards(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -601,7 +607,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadCards(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -623,7 +629,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadCards(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -635,7 +641,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadCards(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -650,7 +656,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh(); // status flips back to active everywhere it shows
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -661,7 +667,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh(); // roster shrinks everywhere it shows
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -673,7 +679,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -687,7 +693,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         knownAs?: string | null;
       }>("circles.inviteInfo", { code });
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return null;
     }
   },
@@ -698,7 +704,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -713,6 +719,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         set({
           notice:
             "Agent drafts are on, but no draft model is wired on this node — summons stay off until one is configured.",
+          noticeLevel: "info",
         });
       }
       return true;
@@ -721,10 +728,11 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         set({
           notice:
             "This gateway is older than the UI — change circles.agentDrafts.enabled in the config file instead.",
+          noticeLevel: "info",
         });
         return false;
       }
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -736,7 +744,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -747,7 +755,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -759,7 +767,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -772,7 +780,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh(); // the new label shows everywhere this person appears
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -784,7 +792,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().refresh(); // status.displayName + how you appear locally
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -839,6 +847,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       // whose fetch failed degrades to an honest empty state + the notice.
       set((s) => ({
         notice: String(err),
+        noticeLevel: "error" as const,
         messagesByCircle: s.messagesByCircle[circleId]
           ? s.messagesByCircle
           : { ...s.messagesByCircle, [circleId]: [] },
@@ -886,7 +895,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     } catch (err) {
       // A transient RPC failure is NOT the top of history — latching
       // exhausted here would permanently hide the affordance (review #5).
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return 0;
     }
   },
@@ -897,7 +906,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadMessages(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -908,7 +917,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadMessages(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -925,6 +934,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         set({
           notice:
             "Deleted on this device only — the circle is not accepting writes right now, so friends' copies were not retracted.",
+          noticeLevel: "info",
         });
       }
       // Tombstone locally too: loadMessages only refetches the recent window,
@@ -943,7 +953,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadMessages(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
@@ -956,7 +966,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       await get().loadMessages(circleId);
       return true;
     } catch (err) {
-      set({ notice: String(err) });
+      set({ notice: String(err), noticeLevel: "error" });
       return false;
     }
   },
