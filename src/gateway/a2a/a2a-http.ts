@@ -61,6 +61,30 @@ export type A2aHttpHandler = {
 };
 
 /**
+ * Which circle verbs push a "circles" UI event when inbound stores
+ * successfully: the content verbs AND circle/event.append — the shared-state
+ * ledger that expenses, canvas cards, reactions, pins, and sandbox moves all
+ * ride. Exported for tests: this whitelist going stale is exactly how ledger
+ * panes went silently stale on the direct-dial path (8254135 review G1).
+ */
+export function circleInboundKind(
+  method: string,
+): "message" | "ask" | "answer" | "event" | undefined {
+  switch (method) {
+    case "circle/message":
+      return "message";
+    case "circle/ask":
+      return "ask";
+    case "circle/answer":
+      return "answer";
+    case "circle/event.append":
+      return "event";
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Handle A2A HTTP requests in the gateway request pipeline.
  *
  * Handles:
@@ -356,22 +380,9 @@ export function createA2aHttpHandler(opts: {
         Date.now(),
       );
       // Push a "circles" event to the UI on freshly-stored inbound so it
-      // appears without waiting for a poll (PLAN-36 Phase 0). Content verbs
-      // AND the shared-state ledger: expenses, canvas cards, reactions, pins,
-      // and sandbox moves all ride circle/event.append — without it here, the
-      // direct-dial (peer-online) path left those panes stale indefinitely
-      // once the view's own poll was retired (8254135 review G1). Best-effort.
+      // appears without waiting for a poll (PLAN-36 Phase 0). Best-effort.
       if (outcome.ok && opts.onCircleInbound) {
-        const inboundKind =
-          rpcRequest.method === "circle/message"
-            ? "message"
-            : rpcRequest.method === "circle/ask"
-              ? "ask"
-              : rpcRequest.method === "circle/answer"
-                ? "answer"
-                : rpcRequest.method === "circle/event.append"
-                  ? "event"
-                  : undefined;
+        const inboundKind = circleInboundKind(rpcRequest.method);
         if (inboundKind) {
           const circleId = (rpcRequest.params as { envelope?: { circle_id?: string } })?.envelope
             ?.circle_id;

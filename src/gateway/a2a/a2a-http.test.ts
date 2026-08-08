@@ -2,7 +2,7 @@ import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createA2aHttpHandler } from "./a2a-http.js";
+import { circleInboundKind, createA2aHttpHandler } from "./a2a-http.js";
 import { DEFAULT_MAX_TASKS_PER_MINUTE, resetTaskRateLimit } from "./task-rate-limit.js";
 
 // The task-spawn limiter is module-global; clear it so message/send tests in
@@ -310,6 +310,31 @@ describe("createA2aHttpHandler — auth", () => {
     await h.handle(req, res, baseAuthOpts());
     expect(res.statusCode).toBe(401);
     h.close();
+  });
+});
+
+describe("circleInboundKind — the circles UI-event whitelist", () => {
+  it("covers the content verbs AND the shared-state ledger", () => {
+    expect(circleInboundKind("circle/message")).toBe("message");
+    expect(circleInboundKind("circle/ask")).toBe("ask");
+    expect(circleInboundKind("circle/answer")).toBe("answer");
+    // 8254135 review G1: expenses, canvas cards, reactions, pins, and
+    // sandbox moves ALL ride event.append — dropping it from this whitelist
+    // is exactly how those panes went silently stale on the direct-dial path.
+    expect(circleInboundKind("circle/event.append")).toBe("event");
+  });
+
+  it("stays silent for non-content verbs", () => {
+    for (const method of [
+      "circle/join",
+      "circle/roster",
+      "circle/presence",
+      "circle/events.since",
+      "mailbox/post",
+      "not-a-circle-verb",
+    ]) {
+      expect(circleInboundKind(method), method).toBeUndefined();
+    }
   });
 });
 
