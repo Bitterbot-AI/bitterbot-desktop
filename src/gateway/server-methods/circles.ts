@@ -106,7 +106,15 @@ async function getService(): Promise<
   if (!db) {
     return { ok: false, error: "circles storage unavailable" };
   }
-  return { ok: true, service: new CirclesService({ db, config }) };
+  // The RPC-owned instance carries the same quarantined draft-LLM seam as the
+  // scheduler-owned one (server-maintenance.ts) — the factory just returns a
+  // lazy closure, and without it selfAgentPosture() misreports "off" on every
+  // RPC response: the posture chip, the roster's self row, and presence beats
+  // would all lie whenever drafts are actually enabled (Phase C review).
+  // Generation itself still runs only on the scheduler's sweep.
+  const { createJudgeLlmCall } = await import("../../tasks/judge-provider.js");
+  const draftLlm = createJudgeLlmCall(config, { maxTokens: 700 });
+  return { ok: true, service: new CirclesService({ db, config, draftLlm }) };
 }
 
 export const circlesHandlers: GatewayRequestHandlers = {
@@ -1073,14 +1081,23 @@ export const circlesHandlers: GatewayRequestHandlers = {
     const enabled = params.enabled;
     try {
       const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite();
-      if (snapshot.valid) {
-        const merged = applyMergePatch(
-          snapshot.config,
-          { circles: { agentDrafts: { enabled } } },
-          { mergeObjectArraysById: true },
+      if (!snapshot.valid) {
+        // Same contract as config.patch: never claim success for a consent
+        // flip that silently reverts on restart (review #3). The runtime is
+        // not flipped either — state and file must not diverge.
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "invalid config; fix before changing settings"),
         );
-        await writeConfigFile(merged as Parameters<typeof writeConfigFile>[0], writeOptions);
+        return;
       }
+      const merged = applyMergePatch(
+        snapshot.config,
+        { circles: { agentDrafts: { enabled } } },
+        { mergeObjectArraysById: true },
+      );
+      await writeConfigFile(merged as Parameters<typeof writeConfigFile>[0], writeOptions);
       svc.service.setAgentDraftsEnabled(enabled);
       respond(true, { enabled, posture: svc.service.selfAgentPosture() }, undefined);
     } catch (err) {

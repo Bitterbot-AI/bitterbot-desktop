@@ -47,6 +47,12 @@ const DEFAULT_RELOAD_SETTINGS: GatewayReloadSettings = {
 const BASE_RELOAD_RULES: ReloadRule[] = [
   { prefix: "gateway.remote", kind: "none" },
   { prefix: "gateway.reload", kind: "none" },
+  // circles.* is read per-request (loadConfig in the RPC handlers) and the
+  // agentDrafts switch is ALSO applied to the running service by
+  // circles.agentDrafts.set — without this rule the posture-chip toggle's
+  // config write fell through to restart-required and every click
+  // stealth-scheduled a full gateway restart (d638276 review #1).
+  { prefix: "circles", kind: "none" },
   { prefix: "hooks.gmail", kind: "hot", actions: ["restart-gmail-watcher"] },
   { prefix: "hooks", kind: "hot", actions: ["reload-hooks"] },
   {

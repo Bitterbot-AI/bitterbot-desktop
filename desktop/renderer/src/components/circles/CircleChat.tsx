@@ -81,28 +81,40 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   // Summon-UX: when the human explicitly asked for a draft (typed @agent or
   // tapped Ask my agent), the response must be LOUD, not quiet — show a
   // drafting indicator and auto-open the tray when the draft lands.
+  // Attribution is a COUNTER (drafts carry no request ids): each arriving
+  // draft retires one outstanding summon, so a dismissed wait can no longer
+  // mis-clear a later summon's indicator (d638276 review #8).
+  const [awaitingCount, setAwaitingCount] = useState(0);
   const [awaitingDraftSince, setAwaitingDraftSince] = useState<number | null>(null);
   const chatDraftCount = (agentDrafts ?? []).filter((d) => !d.targetSlot).length;
   const [seenDraftCount, setSeenDraftCount] = useState(chatDraftCount);
 
   useEffect(() => {
+    const arrived = chatDraftCount - seenDraftCount;
+    if (arrived === 0) return;
+    setSeenDraftCount(chatDraftCount);
+    // Discards shrink the count; only growth retires outstanding summons.
+    if (arrived < 0 || awaitingCount === 0) return;
+    const remaining = Math.max(0, awaitingCount - arrived);
+    setAwaitingCount(remaining);
+    setTrayOpen(true);
+    setAwaitingDraftSince(remaining === 0 ? null : Date.now());
+  }, [chatDraftCount, seenDraftCount, awaitingCount]);
+
+  // Generation runs on a ~15s sweep + one LLM call; give up quietly after
+  // 2 minutes of silence rather than spinning forever (rate-limited / off).
+  useEffect(() => {
     if (awaitingDraftSince === null) return;
-    // The awaited draft arrived: stop the indicator, surface the tray.
-    if (chatDraftCount > seenDraftCount) {
+    const t = setTimeout(() => {
+      setAwaitingCount(0);
       setAwaitingDraftSince(null);
-      setTrayOpen(true);
-      setSeenDraftCount(chatDraftCount);
-      return;
-    }
-    // Generation runs on a ~15s sweep + one LLM call; give up quietly after
-    // 2 minutes rather than spinning forever (rate-limited / drafts off).
-    const t = setTimeout(() => setAwaitingDraftSince(null), 120_000);
+    }, 120_000);
     return () => clearTimeout(t);
-  }, [awaitingDraftSince, chatDraftCount, seenDraftCount]);
+  }, [awaitingDraftSince]);
 
   const beginAwaitingDraft = () => {
-    setSeenDraftCount(chatDraftCount);
-    setAwaitingDraftSince(Date.now());
+    setAwaitingCount((c) => c + 1);
+    setAwaitingDraftSince((s) => s ?? Date.now());
   };
 
   // Phase C: the working indicator shows honest elapsed time (Buzz-style
@@ -217,7 +229,20 @@ export function CircleChat({ circle, selfPubkey }: Props) {
           // (the server computes it from the drafts switch + whether a draft
           // model is actually wired) and clicking it flips the switch.
           const posture = circle.members.find((m) => m.isSelf)?.agentPosture ?? null;
-          if (!posture) return null; // older gateway: no honest value to show
+          if (!posture) {
+            // Pre-posture gateway (no self-row agentPosture): keep the static
+            // consent indicator those builds always showed — losing the
+            // "agents are summon-only, drafts are private" statement entirely
+            // would be the real regression (d638276 review #9).
+            return (
+              <span
+                title="Agents in circles are summon-only by design; drafts stay private until you publish. Upgrade the gateway to control this from here."
+                className="text-2xs font-medium px-2 py-1 rounded-full border text-muted-foreground whitespace-nowrap"
+              >
+                Agents: summon-only
+              </span>
+            );
+          }
           const on = posture !== "off";
           return (
             <button
@@ -443,12 +468,16 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         <div className="mx-3 -mb-1 motion-enter-conversation flex items-center gap-2 text-xs text-circle-agent border border-circle-agent/30 rounded-t-lg bg-circle-agent-soft/40 px-3 py-1.5">
           <Sparkles className="w-3.5 h-3.5 shrink-0 animate-pulse" />
           <span className="min-w-0">
-            Your agent is drafting <span className="tabular-nums">({draftElapsed}s)</span> — it
-            lands above the composer, private to you, and nothing posts until you approve it.
+            Your agent is drafting{awaitingCount > 1 ? ` ×${awaitingCount}` : ""}{" "}
+            <span className="tabular-nums">({draftElapsed}s)</span> — it lands above the composer,
+            private to you, and nothing posts until you approve it.
           </span>
           <button
             type="button"
-            onClick={() => setAwaitingDraftSince(null)}
+            onClick={() => {
+              setAwaitingCount(0);
+              setAwaitingDraftSince(null);
+            }}
             aria-label="Stop waiting for the draft"
             title="Stop waiting — if the draft still lands, it goes to the quiet tray."
             className="ml-auto shrink-0 hover:text-foreground"

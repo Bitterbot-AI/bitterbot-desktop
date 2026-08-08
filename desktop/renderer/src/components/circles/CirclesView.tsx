@@ -37,14 +37,18 @@ export function CirclesView() {
   const [showInvite, setShowInvite] = useState(false);
 
   // Mount: refresh immediately (CirclesGlobalSync keeps the list warm
-  // app-wide on its own 45s cadence), then mark the on-screen circle read —
-  // refresh() itself never marks read because it also runs tab-closed.
+  // app-wide on its own 45s cadence).
   useEffect(() => {
-    void refresh().then(() => {
-      const id = useCirclesStore.getState().activeCircleId;
-      if (id) markRead(id);
-    });
-  }, [refresh, markRead]);
+    void refresh();
+  }, [refresh]);
+
+  // Whatever circle is ON SCREEN is read — including one AUTO-selected after
+  // an archive/delete, which never passes through selectCircle (d638276
+  // review #4). Only the mounted view runs this; the background sync never
+  // marks anything read.
+  useEffect(() => {
+    if (activeCircleId) markRead(activeCircleId);
+  }, [activeCircleId, markRead]);
 
   // Inbound (direct dial or mailbox drain) pushes a "circles" event — reload
   // the active circle's panes immediately. (The list refresh rides

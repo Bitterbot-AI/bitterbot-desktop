@@ -25,7 +25,8 @@ import {
   Gauge,
   KeyRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useIsManagementNode } from "../../hooks/useIsManagementNode";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
@@ -181,9 +182,10 @@ export function Sidebar() {
 
   // Phase C: circles attention reaches the sidebar — kept fresh app-wide by
   // CirclesGlobalSync, so unread + pending approvals surface even while the
-  // Circles tab is closed. Amber (consent) outranks red (unread).
-  const circles = useCirclesStore((s) => s.circles);
-  const attention = useMemo(() => circlesAttention(circles), [circles]);
+  // Circles tab is closed. Amber (consent) outranks red (unread). useShallow:
+  // the list array is a fresh reference every poll; the whole Sidebar must
+  // re-render only when the two COUNTS change (d638276 review #10).
+  const attention = useCirclesStore(useShallow((s) => circlesAttention(s.circles)));
 
   const [sessions, setSessions] = useState<SidebarSession[]>([]);
   const [showAllSessions, setShowAllSessions] = useState(false);

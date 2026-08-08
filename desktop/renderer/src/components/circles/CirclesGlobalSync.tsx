@@ -10,20 +10,24 @@ import { useGatewayStore } from "../../stores/gateway-store";
 // refreshes the cheap list; per-circle loads stay with the view. It never
 // marks anything read: nothing here is on screen.
 export function CirclesGlobalSync() {
-  const refresh = useCirclesStore((s) => s.refresh);
+  // refreshList, NOT refresh: the cheap status+list pair only. The full
+  // refresh fires 5 per-circle pane RPCs for a circle nobody is viewing and
+  // writes user-facing error notices — both wrong for a headless loop
+  // (d638276 review #7). The view owns pane loads and error surfacing.
+  const refreshList = useCirclesStore((s) => s.refreshList);
   const status = useGatewayStore((s) => s.status);
 
   useEffect(() => {
     if (status !== "connected") return;
-    void refresh();
-    const timer = setInterval(() => void refresh(), 45_000);
+    void refreshList();
+    const timer = setInterval(() => void refreshList(), 45_000);
     return () => clearInterval(timer);
-  }, [status, refresh]);
+  }, [status, refreshList]);
 
   // Inbound (direct dial or mailbox drain) pushes a "circles" event.
   useGatewayEvent(
     "circles",
-    useCallback(() => void refresh(), [refresh]),
+    useCallback(() => void refreshList(), [refreshList]),
   );
 
   return null;

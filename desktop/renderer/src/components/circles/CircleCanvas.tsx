@@ -198,18 +198,23 @@ export function CircleCanvas({
           // (circles.sandbox.enabled=false), ticking the box would be a
           // silent no-op — say so and disable it instead (wired-but-dead
           // review). `undefined` sandbox = still loading; keep it enabled.
+          // Revoking is ALWAYS possible: a standing "propose" consent must be
+          // withdrawable even while generation is off, or it silently
+          // resumes when the flag flips back (d638276 review #6).
           const generationOff = sandbox !== undefined && sandbox.generationEnabled === false;
+          const consented = sandbox?.participation?.mode === "propose";
+          const locked = generationOff && !consented;
           return (
             <label
               className={cn(
                 "flex items-center gap-2 px-3 py-1.5 border-b text-2xs text-muted-foreground",
-                generationOff ? "cursor-not-allowed opacity-70" : "cursor-pointer",
+                locked ? "cursor-not-allowed opacity-70" : "cursor-pointer",
               )}
             >
               <input
                 type="checkbox"
-                checked={sandbox?.participation?.mode === "propose"}
-                disabled={generationOff}
+                checked={consented}
+                disabled={locked}
                 onChange={(e) =>
                   void setCanvasParticipation(circle.circleId, e.target.checked ? "propose" : "off")
                 }
@@ -220,8 +225,10 @@ export function CircleCanvas({
                 {generationOff ? (
                   <>
                     Agent generation is off on this node{" "}
-                    <span className="font-mono">(circles.sandbox.enabled)</span> — the canvas stays
-                    human-only.
+                    <span className="font-mono">(circles.sandbox.enabled)</span> —{" "}
+                    {consented
+                      ? "your standing consent remains; untick to withdraw it before generation returns."
+                      : "the canvas stays human-only."}
                   </>
                 ) : (
                   <>

@@ -298,3 +298,136 @@ export function mergeMessages(
   }
   return merged;
 }
+
+/** The circles store's full state + action surface (lives here for the
+ * file-size split; the store implements it). */
+export interface CirclesState {
+  status: CirclesStatus | null;
+  circles: Circle[];
+  activeCircleId: string | null;
+  messagesByCircle: Record<string, CircleMessage[]>;
+  annotationsByCircle: Record<string, MessageAnnotations>;
+  /**
+   * The circle's read marker AS IT STOOD WHEN THE HUMAN OPENED IT — the "New"
+   * divider anchors here and must not slide while they read (markRead bumps
+   * the live marker the moment the circle is opened).
+   */
+  readFrontierByCircle: Record<string, number>;
+  /** History paging: true once a short page proved there is nothing older. */
+  historyExhaustedByCircle: Record<string, boolean>;
+  /** When each circle was last locally marked read (session-only): the ack
+   * guard against a racing circles.list resurrecting a cleared badge. */
+  readSyncByCircle: Record<string, number>;
+  cardsByCircle: Record<string, CanvasCard[]>;
+  removedByCircle: Record<string, RemovedCanvasCard[]>;
+  sandboxByCircle: Record<string, SandboxState>;
+  draftsByCircle: Record<string, AgentDraft[]>;
+  /** Phase 4b study state, keyed `${circleId}:${cardId}`. */
+  studyByCard: Record<string, StudySectionState[]>;
+  outboundByCircle: Record<string, PendingOutbound[]>;
+  loading: boolean;
+  notice: string | null;
+  /** Phase D: errors must LOOK like errors — a failed send is not a tip. */
+  noticeLevel: "info" | "error";
+  /** §3.2.8: a chat item's card chip focuses its card on the canvas. */
+  focusCardId: string | null;
+
+  /** Cheap list-only sync (status + list + selection) — safe for the
+   * app-wide background loop: no pane loads, no markRead, no notices. */
+  refreshList: () => Promise<{ ok: boolean; error?: string }>;
+  refresh: () => Promise<void>;
+  selectCircle: (circleId: string) => void;
+  loadMessages: (circleId: string) => Promise<void>;
+  /** Prepend the next (older) history page; resolves to how many were added. */
+  loadOlderMessages: (circleId: string) => Promise<number>;
+  loadCards: (circleId: string) => Promise<void>;
+  setFocusCard: (cardId: string | null) => void;
+  removeCard: (circleId: string, cardId: string) => Promise<boolean>;
+  clearCard: (circleId: string, cardId: string, keepText: boolean) => Promise<boolean>;
+  undoRemoveCard: (circleId: string, removed: RemovedCanvasCard) => Promise<boolean>;
+  loadSandbox: (circleId: string) => Promise<void>;
+  /** The one consent act: does my agent work this circle's canvas. */
+  setCanvasParticipation: (
+    circleId: string,
+    mode: "off" | "propose",
+    opts?: { guidance?: string; turnBudget?: number },
+  ) => Promise<boolean>;
+  /** The human composer: post a move by hand. */
+  sandboxMove: (
+    circleId: string,
+    cardId: string,
+    kind: "constraint" | "option.add" | "vote" | "pass",
+    opts?: { text?: string; optionId?: string; label?: string },
+  ) => Promise<boolean>;
+  /** Steer: your words to your own agent (private, never posted anywhere). */
+  steerAgent: (circleId: string, guidance: string) => Promise<boolean>;
+  pauseSandbox: (circleId: string) => Promise<boolean>;
+  resumeSandbox: (circleId: string) => Promise<boolean>;
+  closeSandbox: (circleId: string, cardId: string, reason: "done" | "human") => Promise<boolean>;
+  loadDrafts: (circleId: string) => Promise<void>;
+  loadOutbound: (circleId: string) => Promise<void>;
+  approveOutbound: (circleId: string, id: string) => Promise<boolean>;
+  rejectOutbound: (circleId: string, id: string) => Promise<boolean>;
+  requestSliceDraft: (circleId: string, cardId: string, slot: string) => Promise<boolean>;
+  /** Phase 4b: ask my agent for a personal study aid from this card (private; never publishable). */
+  requestStudyDraft: (circleId: string, cardId: string) => Promise<boolean>;
+  loadStudyState: (circleId: string, cardId: string) => Promise<void>;
+  /** Phase 4b: record one quiz tap; refreshes the card's study state. */
+  recordStudy: (
+    circleId: string,
+    cardId: string,
+    slot: string,
+    correct: boolean,
+  ) => Promise<boolean>;
+  /** Chat-scoped "Ask my agent": a private reply draft, no summon message posted. */
+  requestChatDraft: (circleId: string) => Promise<boolean>;
+  publishDraft: (circleId: string, draftId: string, text: string) => Promise<boolean>;
+  discardDraft: (circleId: string, draftId: string) => Promise<boolean>;
+  send: (circleId: string, text: string, replyTo?: string) => Promise<boolean>;
+  react: (circleId: string, envelopeId: string, emojis: string[]) => Promise<boolean>;
+  setPinned: (circleId: string, envelopeId: string, pinned: boolean) => Promise<boolean>;
+  deleteMessage: (
+    circleId: string,
+    envelopeId: string,
+    expectPropagation?: boolean,
+  ) => Promise<boolean>;
+  putCard: (
+    circleId: string,
+    title: string,
+    text: string,
+    cardId?: string,
+    cardType?: string,
+  ) => Promise<boolean>;
+  putDecision: (circleId: string, question: string, options: string[]) => Promise<boolean>;
+  putStudyGuide: (circleId: string, title: string, sections: string[]) => Promise<boolean>;
+  putSlice: (
+    circleId: string,
+    cardId: string,
+    slot: string,
+    value: string,
+    note: string,
+  ) => Promise<boolean>;
+  vote: (circleId: string, cardId: string, option: string, note: string) => Promise<boolean>;
+  markRead: (circleId: string) => void;
+  unfreeze: (circleId: string) => Promise<boolean>;
+  removeMember: (circleId: string, memberPubkey: string) => Promise<boolean>;
+  renameCircle: (circleId: string, name: string) => Promise<boolean>;
+  /** Verified preview of an invite code (who is REALLY asking) before joining. */
+  inviteInfo: (code: string) => Promise<{
+    circleName: string;
+    inviterName: string | null;
+    inviterPubkey: string;
+    /** Your label for the verified signer when you already know them. */
+    knownAs?: string | null;
+  } | null>;
+  /** One-tap join for an invite code detected in a message. */
+  joinInvite: (code: string) => Promise<boolean>;
+  /** Phase C posture control: flip the agent-drafts switch (persisted + live). */
+  setAgentDrafts: (enabled: boolean) => Promise<boolean>;
+  archiveCircle: (circleId: string) => Promise<boolean>;
+  unarchiveCircle: (circleId: string) => Promise<boolean>;
+  deleteCircle: (circleId: string) => Promise<boolean>;
+  setPetname: (memberPubkey: string, petname: string) => Promise<boolean>;
+  setSelfName: (name: string) => Promise<boolean>;
+  setNotice: (notice: string | null) => void;
+}
