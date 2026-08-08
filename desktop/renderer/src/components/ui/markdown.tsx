@@ -18,7 +18,8 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
   return tokens.map((token: any) => token.raw);
 }
 
-function extractLanguage(className?: string): string {
+/** Fence language from react-markdown's className (shared with CircleMarkdown). */
+export function extractLanguage(className?: string): string {
   if (!className) return "plaintext";
   const match = className.match(/language-(\w+)/);
   return match?.[1] ?? "plaintext";

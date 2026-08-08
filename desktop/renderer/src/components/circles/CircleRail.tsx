@@ -2,6 +2,7 @@ import { Archive, ArchiveRestore, MoreVertical, Pencil, Plus, Trash2 } from "luc
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { useCirclesStore, type Circle } from "../../stores/circles-store";
+import { approvalsTitle, AttentionBadge } from "./AttentionBadge";
 import { circleIdentity } from "./circle-identity";
 
 // PLAN-36 Phase A + Phase B (identity & lifecycle): the left circle rail.
@@ -105,23 +106,23 @@ export function CircleRail({ circles, activeCircleId, onSelect, onAdd }: Props) 
                 {id.emoji ?? id.initials}
               </button>
 
-              {unread > 0 && !active && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-badge font-bold grid place-items-center border-2 border-muted/40">
-                  {unread > 99 ? "99+" : unread}
-                </span>
+              {!active && (
+                <AttentionBadge
+                  count={unread}
+                  tone="unread"
+                  className="absolute -top-1 -right-1 border-2 border-muted/40"
+                />
               )}
 
               {/* §5.3 approvals awaiting the human: amber (consent), shown
                   even on the active tile — an expiring approval must never
                   be one quiet grey line (Phase C). */}
-              {(c.pendingApprovals ?? 0) > 0 && (
-                <span
-                  title={`${c.pendingApprovals} agent ${c.pendingApprovals === 1 ? "action needs" : "actions need"} your approval`}
-                  className="absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-circle-consent text-circle-consent-fg text-badge font-bold grid place-items-center border-2 border-muted/40"
-                >
-                  {(c.pendingApprovals ?? 0) > 9 ? "9+" : c.pendingApprovals}
-                </span>
-              )}
+              <AttentionBadge
+                count={c.pendingApprovals ?? 0}
+                tone="consent"
+                title={approvalsTitle(c.pendingApprovals ?? 0)}
+                className="absolute -top-1 -left-1 border-2 border-muted/40"
+              />
 
               {/* Hover-reveal menu trigger. */}
               <button

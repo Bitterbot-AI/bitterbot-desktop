@@ -34,6 +34,7 @@ import { useChatStore } from "../../stores/chat-store";
 import { circlesAttention, useCirclesStore } from "../../stores/circles-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useUIStore, type TabId } from "../../stores/ui-store";
+import { approvalsTitle, AttentionBadge } from "../circles/AttentionBadge";
 import { WalletSidebarPanel } from "../wallet/WalletSidebarPanel";
 
 interface SidebarSession {
@@ -527,22 +528,16 @@ export function Sidebar() {
                           />
                         ) : (
                           <span className="ml-auto flex items-center gap-1">
-                            {attention.approvals > 0 && (
-                              <span
-                                title={`${attention.approvals} agent ${attention.approvals === 1 ? "action needs" : "actions need"} your approval`}
-                                className="min-w-[16px] h-4 px-1 rounded-full bg-circle-consent text-circle-consent-fg text-badge font-bold grid place-items-center"
-                              >
-                                {attention.approvals > 99 ? "99+" : attention.approvals}
-                              </span>
-                            )}
-                            {attention.unread > 0 && (
-                              <span
-                                title={`${attention.unread} unread`}
-                                className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-badge font-bold grid place-items-center"
-                              >
-                                {attention.unread > 99 ? "99+" : attention.unread}
-                              </span>
-                            )}
+                            <AttentionBadge
+                              count={attention.approvals}
+                              tone="consent"
+                              title={approvalsTitle(attention.approvals)}
+                            />
+                            <AttentionBadge
+                              count={attention.unread}
+                              tone="unread"
+                              title={`${attention.unread} unread`}
+                            />
                           </span>
                         ))}
                     </button>

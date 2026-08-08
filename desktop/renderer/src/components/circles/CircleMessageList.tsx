@@ -111,6 +111,14 @@ export function CircleMessageList({
   const lastIdRef = useRef<string | undefined>(undefined);
   const countRef = useRef(0);
   const prependRef = useRef<{ height: number; top: number } | null>(null);
+  // Entrance animation (the plan's deferred Buzz arrival treatment): only
+  // messages that ARRIVE animate — never the initial load and never a
+  // history-page prepend (prependRef is armed during that commit's render).
+  // animatedIds keeps the class stable across re-renders so the one-shot
+  // CSS animation isn't cut mid-flight.
+  const knownIdsRef = useRef<Set<string>>(new Set());
+  const seededRef = useRef(false);
+  const animatedIdsRef = useRef<Set<string>>(new Set());
 
   const nameOf = useMemo(() => {
     const map = new Map<string, string>();
@@ -177,6 +185,11 @@ export function CircleMessageList({
     firstIdRef.current = firstId;
     lastIdRef.current = lastId;
     countRef.current = messages.length;
+    // Seed/refresh the arrival tracker AFTER the commit so this render's
+    // genuinely-new rows were detected against the previous run.
+    knownIdsRef.current = new Set(messages.map((m) => m.messageId));
+    if (animatedIdsRef.current.size > 500) animatedIdsRef.current.clear();
+    seededRef.current = true;
   }, [messages, selfPubkey]);
 
   const onScroll = () => {
@@ -343,6 +356,15 @@ export function CircleMessageList({
               className={cn(
                 "group relative flex gap-3 rounded-md transition-colors duration-500",
                 continuation ? "mt-0.5" : "mt-3",
+                (() => {
+                  const isNewArrival =
+                    seededRef.current &&
+                    prependRef.current === null &&
+                    !m.deleted &&
+                    !knownIdsRef.current.has(m.messageId);
+                  if (isNewArrival) animatedIdsRef.current.add(m.messageId);
+                  return animatedIdsRef.current.has(m.messageId) && "motion-enter-conversation";
+                })(),
                 !!m.envelopeId && highlightId === m.envelopeId && "bg-circle-you-soft/60",
               )}
             >

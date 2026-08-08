@@ -287,6 +287,30 @@ describe("circle lifecycle (Phase B)", () => {
     });
   });
 
+  it("surfaces the shared tab balances (see what you approve)", async () => {
+    stubRpcs();
+    const base = requestMock.getMockImplementation()!;
+    requestMock.mockImplementation((method: string, params?: unknown) => {
+      if (method === "circles.tab.balances") {
+        return Promise.resolve({
+          net: { "ed25519:self": 1250, "ed25519:maya": -1250 },
+          pairwise: {},
+          expenses: 2,
+          reversed: 1,
+          totalCents: 2500,
+        });
+      }
+      return base(method, params);
+    });
+    render(<CirclesView />);
+    // The backend-with-no-UI gap is closed: balances render in the roster pane.
+    expect(await screen.findByText("Shared tab")).toBeTruthy();
+    expect(screen.getByText(/is owed \$12\.50/)).toBeTruthy();
+    expect(screen.getByText(/owes \$12\.50/)).toBeTruthy();
+    expect(screen.getByText(/2 expenses/)).toBeTruthy();
+    expect(screen.getByText(/1 reversed entry/)).toBeTruthy();
+  });
+
   it("circlesAttention sums unread + approvals, excluding archived", () => {
     const attention = circlesAttention([
       { ...CIRCLE, unread: 3, pendingApprovals: 1 },

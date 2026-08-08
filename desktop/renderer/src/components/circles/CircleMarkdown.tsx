@@ -1,6 +1,6 @@
 import type { Components } from "react-markdown";
 import { CodeBlock, CodeBlockCode } from "../ui/code-block";
-import { Markdown } from "../ui/markdown";
+import { extractLanguage, Markdown } from "../ui/markdown";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -16,11 +16,6 @@ import { Markdown } from "../ui/markdown";
 //  - raw HTML stays escaped (react-markdown default, no rehype-raw here);
 //  - links keep the default URL sanitizer (http/https/mailto only) and open
 //    externally with rel=noopener.
-
-function extractLanguage(className?: string): string {
-  const match = className?.match(/language-(\w+)/);
-  return match?.[1] ?? "plaintext";
-}
 
 const CIRCLE_COMPONENTS: Partial<Components> = {
   p: ({ children, ...props }: any) => (

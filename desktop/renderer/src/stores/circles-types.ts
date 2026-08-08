@@ -117,6 +117,17 @@ export interface PendingOutbound {
   expiresAt: number;
 }
 
+/** The shared expense tab (circles.tab.balances), folded from the ledger. */
+export interface TabBalances {
+  /** Net position per member in cents: positive = the circle owes them. */
+  net: Record<string, number>;
+  /** Pairwise debts for display: debtor -> creditor -> cents. */
+  pairwise: Record<string, Record<string, number>>;
+  expenses: number;
+  reversed: number;
+  totalCents: number;
+}
+
 export interface CirclesStatus {
   enabled: boolean;
   pubkey?: string;
@@ -325,6 +336,8 @@ export interface CirclesState {
   /** Phase 4b study state, keyed `${circleId}:${cardId}`. */
   studyByCard: Record<string, StudySectionState[]>;
   outboundByCircle: Record<string, PendingOutbound[]>;
+  /** Shared expense tab per circle — the surface behind log_expense approvals. */
+  tabByCircle: Record<string, TabBalances>;
   loading: boolean;
   notice: string | null;
   /** Phase D: errors must LOOK like errors — a failed send is not a tip. */
@@ -366,6 +379,8 @@ export interface CirclesState {
   closeSandbox: (circleId: string, cardId: string, reason: "done" | "human") => Promise<boolean>;
   loadDrafts: (circleId: string) => Promise<void>;
   loadOutbound: (circleId: string) => Promise<void>;
+  /** Load the shared expense tab (a user must be able to SEE what they approve). */
+  loadTab: (circleId: string) => Promise<void>;
   approveOutbound: (circleId: string, id: string) => Promise<boolean>;
   rejectOutbound: (circleId: string, id: string) => Promise<boolean>;
   requestSliceDraft: (circleId: string, cardId: string, slot: string) => Promise<boolean>;

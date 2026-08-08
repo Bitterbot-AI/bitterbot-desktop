@@ -31,6 +31,7 @@ export function CirclesView() {
     loadSandbox,
     loadDrafts,
     loadOutbound,
+    loadTab,
     markRead,
     setNotice,
   } = useCirclesStore();
@@ -60,9 +61,19 @@ export function CirclesView() {
       void loadSandbox(activeCircleId); // PLAN-38: a sandbox move may have folded in
       void loadDrafts(activeCircleId); // Phase B: an @agent draft may be ready
       void loadOutbound(activeCircleId); // §5.3: an agent write may await approval
+      void loadTab(activeCircleId); // a peer's expense may have landed on the tab
       markRead(activeCircleId); // inbound arrived while you're looking at it
     }
-  }, [activeCircleId, loadMessages, loadCards, loadSandbox, loadDrafts, loadOutbound, markRead]);
+  }, [
+    activeCircleId,
+    loadMessages,
+    loadCards,
+    loadSandbox,
+    loadDrafts,
+    loadOutbound,
+    loadTab,
+    markRead,
+  ]);
   useGatewayEvent("circles", onCirclesEvent);
 
   if (loading) {

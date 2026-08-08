@@ -38,6 +38,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
   const setPetname = useCirclesStore((s) => s.setPetname);
   const setSelfName = useCirclesStore((s) => s.setSelfName);
   const selfName = useCirclesStore((s) => s.status?.displayName);
+  const tab = useCirclesStore((s) => s.tabByCircle[circle.circleId]);
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -297,6 +298,51 @@ export function CircleMembers({ circle }: { circle: Circle }) {
           </div>
         );
       })}
+
+      {/* The shared expense tab (research-doc carved exception): the human
+          who approves a log_expense must be able to SEE the balances it
+          lands on — this was backend-with-no-UI until now. Renders only
+          once the tab has activity. */}
+      {tab && tab.expenses > 0 && (
+        <div className="rounded-lg border p-2.5 text-xs space-y-1.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="font-semibold">Shared tab</span>
+            <span className="text-muted-foreground tabular-nums">
+              {tab.expenses} {tab.expenses === 1 ? "expense" : "expenses"} · $
+              {(tab.totalCents / 100).toFixed(2)}
+            </span>
+          </div>
+          {Object.entries(tab.net)
+            .filter(([, cents]) => cents !== 0)
+            .sort(([, a], [, b]) => b - a)
+            .map(([pubkey, cents]) => {
+              const member = circle.members.find((m) => m.memberPubkey === pubkey);
+              const who = member?.isSelf ? "You" : member ? memberName(member) : "former member";
+              return (
+                <div key={pubkey} className="flex items-baseline justify-between gap-2">
+                  <span className="truncate">{who}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 tabular-nums",
+                      cents > 0
+                        ? "text-emerald-700 dark:text-emerald-400"
+                        : "text-amber-700 dark:text-amber-400",
+                    )}
+                  >
+                    {cents > 0
+                      ? `is owed $${(cents / 100).toFixed(2)}`
+                      : `owes $${(-cents / 100).toFixed(2)}`}
+                  </span>
+                </div>
+              );
+            })}
+          {tab.reversed > 0 && (
+            <p className="text-badge text-muted-foreground">
+              {tab.reversed} reversed {tab.reversed === 1 ? "entry" : "entries"} excluded.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

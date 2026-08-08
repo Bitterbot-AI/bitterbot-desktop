@@ -13,6 +13,7 @@ import {
   type RemovedCanvasCard,
   type SandboxState,
   type StudySectionState,
+  type TabBalances,
 } from "./circles-types";
 import { useGatewayStore } from "./gateway-store";
 
@@ -65,6 +66,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   draftsByCircle: {},
   studyByCard: {},
   outboundByCircle: {},
+  tabByCircle: {},
   loading: true,
   notice: null,
   noticeLevel: "info",
@@ -143,6 +145,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       void get().loadSandbox(activeCircleId);
       void get().loadDrafts(activeCircleId);
       void get().loadOutbound(activeCircleId);
+      void get().loadTab(activeCircleId);
       // NOTE: refresh() deliberately does NOT markRead — the Circles view
       // marks read on mount/active-change/select/inbound-event.
     }
@@ -176,6 +179,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     void get().loadSandbox(circleId);
     void get().loadDrafts(circleId);
     void get().loadOutbound(circleId);
+    void get().loadTab(circleId);
     get().markRead(circleId);
   },
 
@@ -203,10 +207,27 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
     }
   },
 
+  // The shared expense tab: the surface behind log_expense approvals — a
+  // human must be able to SEE the balances they approve into existence
+  // (research doc §3 carved exception). Ambient pane: failures stay quiet.
+  loadTab: async (circleId) => {
+    if (unsupportedMethods.has("circles.tab.balances")) return;
+    try {
+      const res = await request<TabBalances>("circles.tab.balances", { circleId });
+      set((s) => ({ tabByCircle: { ...s.tabByCircle, [circleId]: res } }));
+    } catch (err) {
+      methodUnavailable("circles.tab.balances", err);
+    }
+  },
+
   approveOutbound: async (circleId, id) => {
     try {
       await request("circles.outbound.approve", { id });
-      await Promise.all([get().loadOutbound(circleId), get().loadMessages(circleId)]);
+      await Promise.all([
+        get().loadOutbound(circleId),
+        get().loadMessages(circleId),
+        get().loadTab(circleId), // an approved log_expense lands on the tab
+      ]);
       return true;
     } catch (err) {
       set({ notice: String(err), noticeLevel: "error" });

@@ -12,6 +12,7 @@ import { AgentDraftCard } from "./AgentDraftCard";
 import { CanvasLiveStrip } from "./CanvasActivity";
 import { circleIdentity } from "./circle-identity";
 import { CircleMessageList } from "./CircleMessageList";
+import { DraftingBanner } from "./DraftingBanner";
 import { FrozenCircleBanner } from "./FrozenCircleBanner";
 import { InviteTrustPrompt, type InvitePreview } from "./InviteTrustPrompt";
 import { PendingOutboundCard } from "./PendingOutboundCard";
@@ -116,21 +117,6 @@ export function CircleChat({ circle, selfPubkey }: Props) {
     setAwaitingCount((c) => c + 1);
     setAwaitingDraftSince((s) => s ?? Date.now());
   };
-
-  // Phase C: the working indicator shows honest elapsed time (Buzz-style
-  // "how long has it actually been") and carries its own dismiss.
-  const [draftElapsed, setDraftElapsed] = useState(0);
-  useEffect(() => {
-    if (awaitingDraftSince === null) {
-      setDraftElapsed(0);
-      return;
-    }
-    const tick = () =>
-      setDraftElapsed(Math.max(0, Math.floor((Date.now() - awaitingDraftSince) / 1000)));
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [awaitingDraftSince]);
 
   const askMyAgent = async () => {
     if (awaitingDraftSince !== null) return;
@@ -465,26 +451,14 @@ export function CircleChat({ circle, selfPubkey }: Props) {
       {/* Summon-UX: an explicitly requested draft is loud — the human sees
           their agent working instead of a 15-45s silence. */}
       {awaitingDraftSince !== null && (
-        <div className="mx-3 -mb-1 motion-enter-conversation flex items-center gap-2 text-xs text-circle-agent border border-circle-agent/30 rounded-t-lg bg-circle-agent-soft/40 px-3 py-1.5">
-          <Sparkles className="w-3.5 h-3.5 shrink-0 animate-pulse" />
-          <span className="min-w-0">
-            Your agent is drafting{awaitingCount > 1 ? ` ×${awaitingCount}` : ""}{" "}
-            <span className="tabular-nums">({draftElapsed}s)</span> — it lands above the composer,
-            private to you, and nothing posts until you approve it.
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setAwaitingCount(0);
-              setAwaitingDraftSince(null);
-            }}
-            aria-label="Stop waiting for the draft"
-            title="Stop waiting — if the draft still lands, it goes to the quiet tray."
-            className="ml-auto shrink-0 hover:text-foreground"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <DraftingBanner
+          since={awaitingDraftSince}
+          count={awaitingCount}
+          onDismiss={() => {
+            setAwaitingCount(0);
+            setAwaitingDraftSince(null);
+          }}
+        />
       )}
 
       <div className="m-3 rounded-xl border bg-card flex items-end gap-2 p-2">
