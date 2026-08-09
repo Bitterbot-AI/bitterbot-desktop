@@ -110,4 +110,6 @@ else
 fi
 
 echo ""
-echo "✅ Done! Run 'pnpm install && pnpm build' to build Bitterbot."
+echo "✅ Done! Next steps:"
+echo "   1. pnpm install"
+echo "   2. pnpm bitterbot onboard   (builds automatically, then walks you through setup)"

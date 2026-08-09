@@ -96,7 +96,7 @@ Then run `pnpm bitterbot configure` to set gateway port/bind/auth, channels, and
 You can also talk to your agent from the terminal:
 
 ```bash
-bitterbot agent --message "What have you learned about me so far?"
+pnpm bitterbot agent --agent main --message "What have you learned about me so far?"
 ```
 
 ---
@@ -389,7 +389,7 @@ To report a vulnerability, email **[security@bitterbot.net](mailto:security@bitt
 
 ## Models
 
-Works with any LLM provider. Recommended: **Anthropic Claude Opus 4.7** (released 2026-04-19) via Anthropic API key for long-context strength and prompt-injection resistance.
+Works with any LLM provider. Recommended: **Anthropic Claude Opus 4.8** (the default) via Anthropic API key for long-context strength and prompt-injection resistance. The model catalog is discovered live from your provider, so newer models appear automatically.
 
 Supported auth: OAuth (Anthropic, OpenAI), API keys, local models. Automatic failover between providers.
 
