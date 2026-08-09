@@ -6,7 +6,7 @@ import type { RLMLLMCallFn, RLMExecutorOptions } from "./types.js";
 import { resolveStorePath, toPiMessages } from "../tools/deep-recall-tool.js";
 import { isTranscriptFile, transcriptSessionId } from "./context-builder.js";
 import { CostTracker } from "./cost-tracker.js";
-import { RLMExecutor } from "./executor.js";
+import { capOutputForFeedback, RLMExecutor } from "./executor.js";
 import { RLMSandbox } from "./sandbox.js";
 
 // ---------------------------------------------------------------------------
@@ -31,6 +31,18 @@ describe("transcript file handling", () => {
 // ---------------------------------------------------------------------------
 // pi-ai message mapping (deep-recall-tool)
 // ---------------------------------------------------------------------------
+
+describe("capOutputForFeedback", () => {
+  it("passes small output through and truncates huge output with head+tail", () => {
+    expect(capOutputForFeedback("small result")).toBe("small result");
+    const huge = "A".repeat(5_000) + "MIDDLE" + "Z".repeat(200_000);
+    const capped = capOutputForFeedback(huge);
+    expect(capped.length).toBeLessThan(10_000);
+    expect(capped.startsWith("AAAA")).toBe(true);
+    expect(capped.endsWith("Z".repeat(100))).toBe(true);
+    expect(capped).toContain("output truncated");
+  });
+});
 
 describe("resolveStorePath", () => {
   it("is scope-independent: one durable store per agent+session", () => {

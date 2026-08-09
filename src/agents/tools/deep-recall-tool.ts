@@ -540,7 +540,9 @@ export function createDeepRecallTool(options: {
         }
         // Persist the REPL store so accumulated state survives restarts
         if (entry.storePath) {
-          void persistStore(entry.storePath, entry.sandbox.exportStore());
+          // Awaited: back-to-back calls (even in one turn) must read a
+          // consistent store — fire-and-forget here raced same-turn readers.
+          await persistStore(entry.storePath, entry.sandbox.exportStore());
         }
       }
 

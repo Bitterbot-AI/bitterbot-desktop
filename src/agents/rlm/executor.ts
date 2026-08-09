@@ -26,6 +26,24 @@ import {
 } from "./prompts.js";
 import { RLMSandbox } from "./sandbox.js";
 
+/**
+ * Cap on sandbox output fed back to the root model per iteration. Without
+ * this, one `print(context)` puts ~100k tokens into EVERY subsequent root
+ * call: the budget blows out mid-run and the partial answer is raw transcript
+ * bleed. The REPL keeps full values in variables; the model only needs a
+ * peek, not a dump.
+ */
+const MAX_FEEDBACK_CHARS = 8_000;
+
+export function capOutputForFeedback(output: string): string {
+  if (output.length <= MAX_FEEDBACK_CHARS) {
+    return output;
+  }
+  const head = output.slice(0, 6_000);
+  const tail = output.slice(-1_500);
+  return `${head}\n[... output truncated: ${output.length.toLocaleString()} chars total. Slice or store() what you need instead of printing large values ...]\n${tail}`;
+}
+
 /** Extract the first JavaScript code block from an LLM response. */
 function extractCodeBlock(text: string): string | null {
   // Match ```js, ```javascript, or bare ``` code blocks
@@ -296,7 +314,7 @@ export class RLMExecutor {
         if (limit) {
           finishSandbox();
           // Try to get any partial answer from the last output
-          const partialAnswer = execResult.output || null;
+          const partialAnswer = execResult.output ? capOutputForFeedback(execResult.output) : null;
           return {
             answer: partialAnswer,
             success: false,
@@ -310,7 +328,10 @@ export class RLMExecutor {
         }
 
         // Feed output back to LLM
-        let feedback = buildRLMOutputFeedback(execResult.output, execResult.error);
+        let feedback = buildRLMOutputFeedback(
+          capOutputForFeedback(execResult.output),
+          execResult.error,
+        );
 
         // Add budget warning if running low
         const summary = costTracker.getSummary();
@@ -327,7 +348,8 @@ export class RLMExecutor {
 
       // Iteration limit reached
       finishSandbox();
-      const lastOutput = trace.filter((t) => t.type === "output").pop()?.content;
+      const rawLastOutput = trace.filter((t) => t.type === "output").pop()?.content;
+      const lastOutput = rawLastOutput ? capOutputForFeedback(rawLastOutput) : undefined;
       return {
         answer: lastOutput || null,
         success: false,
