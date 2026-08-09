@@ -3,6 +3,20 @@ packages:
   - desktop
   - extensions/*
 
+# pnpm settings live HERE, not in package.json's "pnpm" field: pnpm 10.24+
+# ignores that field (with a warning every new operator sees on first
+# install), which silently dropped our security overrides on fresh installs.
+
+minimumReleaseAge: 2880
+
+overrides:
+  fast-xml-parser: 5.3.4
+  form-data: 2.5.4
+  qs: 6.14.2
+  "@sinclair/typebox": 0.34.48
+  tar: 7.5.9
+  tough-cookie: 4.1.3
+
 onlyBuiltDependencies:
   - "@lydell/node-pty"
   - "@matrix-org/matrix-sdk-crypto-nodejs"
