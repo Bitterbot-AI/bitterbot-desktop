@@ -155,6 +155,51 @@ function formatErr(err: unknown): string {
   return String(err);
 }
 
+/**
+ * Build the gateway `agent` RPC params for a cron-fired turn. Exported for
+ * tests: this shape MUST validate against AgentParamsSchema — the previous
+ * inputProvenance shape ({kind:"cron", jobId, sessionKey}) was rejected with
+ * INVALID_REQUEST, which silently broke EVERY task wakeup: cron fired, the
+ * agent RPC bounced, and tasks sat in waiting_external forever.
+ */
+export function buildIsolatedAgentTurnParams(args: {
+  message: string;
+  sessionKey: string;
+  agentId: string;
+  idempotencyKey: string;
+  model?: string;
+  thinking?: string;
+}): Record<string, unknown> {
+  const params: Record<string, unknown> = {
+    message: args.message,
+    sessionKey: args.sessionKey,
+    idempotencyKey: args.idempotencyKey,
+    deliver: false,
+    channel: INTERNAL_MESSAGE_CHANNEL,
+    lane: AGENT_LANE_NESTED,
+    agentId: args.agentId,
+    // Canonical InputProvenance: the job id lives in the message text and
+    // the task journal; it needs no schema field.
+    inputProvenance: {
+      kind: "internal_system",
+      sourceChannel: "cron",
+      sourceSessionKey: args.sessionKey,
+    },
+  };
+  if (args.model) {
+    // The agent RPC schema has no `model` field and the server method never
+    // read one — sending it is schema-fatal (additionalProperties: false).
+    // Surface the unsupported override instead of failing the whole turn.
+    log.warn(
+      `cron payload.model ("${args.model}") is not supported on the agent RPC; using the session's configured model`,
+    );
+  }
+  if (args.thinking) {
+    params.thinking = args.thinking;
+  }
+  return params;
+}
+
 async function invokeAgentTurn(args: {
   job: CronJob;
   sessionKey: string;
@@ -168,26 +213,14 @@ async function invokeAgentTurn(args: {
     typeof payload.timeoutSeconds === "number" && payload.timeoutSeconds > 0
       ? Math.min(payload.timeoutSeconds * 1_000, 30 * 60_000)
       : DEFAULT_TURN_TIMEOUT_MS;
-  const params: Record<string, unknown> = {
+  const params = buildIsolatedAgentTurnParams({
     message,
     sessionKey,
-    idempotencyKey: idem,
-    deliver: false,
-    channel: INTERNAL_MESSAGE_CHANNEL,
-    lane: AGENT_LANE_NESTED,
     agentId,
-    inputProvenance: {
-      kind: "cron",
-      jobId: job.jobId,
-      sessionKey,
-    },
-  };
-  if (payload.model) {
-    params.model = payload.model;
-  }
-  if (payload.thinking) {
-    params.thinking = payload.thinking;
-  }
+    idempotencyKey: idem,
+    model: payload.model,
+    thinking: payload.thinking,
+  });
 
   const response = await callGateway<{ runId?: string }>({
     method: "agent",

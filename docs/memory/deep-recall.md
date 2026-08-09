@@ -155,7 +155,7 @@ The RLM executor includes two self-improvement mechanisms:
 
 ### Query Result Cache
 
-Identical (or near-identical) queries within a 1-hour window return cached results immediately, avoiding redundant REPL sessions. The cache is keyed on `SHA-256(scope + lowercase query)` and holds up to 50 entries. Cache is invalidated whenever new session extraction runs (facts have changed).
+Identical (or near-identical) queries within a 1-hour window return cached results immediately, avoiding redundant REPL sessions. The cache is keyed on `SHA-256(scope + lowercase query)`, holds up to 50 entries, and lives on the per-session tool instance; staleness is bounded by the 1-hour TTL.
 
 ### Blind Spot Registration
 

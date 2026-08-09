@@ -54,8 +54,19 @@ function sandboxCacheKey(agentId: string, sessionKey: string | undefined, scope:
   return `${agentId}:${sessionKey ?? "global"}:${scope}`;
 }
 
-function resolveStorePath(agentDir: string, cacheKey: string): string {
-  const hash = crypto.createHash("sha256").update(cacheKey).digest("hex").slice(0, 16);
+/**
+ * Durable store path. Deliberately scope-INDEPENDENT (unlike the sandbox
+ * cache key): findings stored while exploring one scope must survive into
+ * queries at another, or continuity fragments across scopes. Exported for
+ * tests.
+ */
+export function resolveStorePath(
+  agentDir: string,
+  agentId: string,
+  sessionKey: string | undefined,
+): string {
+  const key = `${agentId}:${sessionKey ?? "global"}`;
+  const hash = crypto.createHash("sha256").update(key).digest("hex").slice(0, 16);
   return path.join(agentDir, "rlm-store", `${hash}.json`);
 }
 
@@ -281,6 +292,11 @@ export function createDeepRecallTool(options: {
     return null;
   }
 
+  // One executor per tool instance so the 1h query-result cache actually
+  // persists across deep_recall calls (a per-call executor can never hit it).
+  const llmCall = buildLlmCallFn(cfg);
+  const executor = new RLMExecutor(llmCall);
+
   return {
     label: "Deep Recall",
     name: "deep_recall",
@@ -383,7 +399,11 @@ export function createDeepRecallTool(options: {
           let storePath = "";
           try {
             const { resolveBitterbotAgentDir } = await import("../agent-paths.js");
-            storePath = resolveStorePath(resolveBitterbotAgentDir(), cacheKey);
+            storePath = resolveStorePath(
+              resolveBitterbotAgentDir(),
+              agentId,
+              options.agentSessionKey,
+            );
           } catch {
             // No durable store path — session-only persistence
           }
@@ -420,9 +440,6 @@ export function createDeepRecallTool(options: {
           rootModel = rootModelSpec;
         }
       }
-
-      const llmCall = buildLlmCallFn(cfg);
-      const executor = new RLMExecutor(llmCall);
 
       // PLAN-9 GAP-12: Somatic marker assessment — check emotional signature of knowledge region
       let somaticWarning: string | undefined;

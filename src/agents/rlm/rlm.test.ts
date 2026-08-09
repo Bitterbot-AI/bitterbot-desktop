@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import type { RLMLLMCallFn, RLMExecutorOptions } from "./types.js";
-import { toPiMessages } from "../tools/deep-recall-tool.js";
+import { resolveStorePath, toPiMessages } from "../tools/deep-recall-tool.js";
 import { isTranscriptFile, transcriptSessionId } from "./context-builder.js";
 import { CostTracker } from "./cost-tracker.js";
 import { RLMExecutor } from "./executor.js";
@@ -31,6 +31,18 @@ describe("transcript file handling", () => {
 // ---------------------------------------------------------------------------
 // pi-ai message mapping (deep-recall-tool)
 // ---------------------------------------------------------------------------
+
+describe("resolveStorePath", () => {
+  it("is scope-independent: one durable store per agent+session", () => {
+    // The sandbox cache is keyed per scope, but findings stored under one
+    // scope must be readable from another — same path regardless of scope.
+    const a = resolveStorePath("/agent/dir", "main", "agent:main:main");
+    expect(a).toContain("rlm-store");
+    expect(resolveStorePath("/agent/dir", "main", "agent:main:main")).toBe(a);
+    expect(resolveStorePath("/agent/dir", "main", undefined)).not.toBe(a);
+    expect(resolveStorePath("/agent/dir", "other", "agent:main:main")).not.toBe(a);
+  });
+});
 
 describe("toPiMessages", () => {
   it("wraps assistant content in text blocks, keeps user/system as strings", () => {
@@ -445,6 +457,17 @@ describe("RLMExecutor", () => {
 
     expect(result.success).toBe(true);
     expect(result.answer).toBe("found it");
+  });
+
+  it("query cache round-trips per executor instance with scope keying", () => {
+    const executor = new RLMExecutor(async () => ({ text: "", cost: 0 }));
+    expect(executor.getCachedResult("what is x", "recent_sessions")).toBeNull();
+    executor.cacheResult("what is x", "recent_sessions", "x is 42");
+    // Case-insensitive on query, exact on scope
+    expect(executor.getCachedResult("WHAT IS X", "recent_sessions")).toBe("x is 42");
+    expect(executor.getCachedResult("what is x", "all_sessions")).toBeNull();
+    executor.invalidateCache();
+    expect(executor.getCachedResult("what is x", "recent_sessions")).toBeNull();
   });
 
   it("parallel sub-calls reserve slots synchronously against the cap", async () => {
