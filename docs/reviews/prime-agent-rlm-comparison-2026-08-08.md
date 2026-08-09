@@ -1,7 +1,7 @@
 # Prime Agent (RLM) vs Bitterbot Harness: Deep Research Report
 
 **Date:** 2026-08-08
-**Subject:** https://github.com/PrimeIntellect-ai/prime-agent (released 2026-08-05/06)
+**Subject:** <https://github.com/PrimeIntellect-ai/prime-agent> (released 2026-08-05/06)
 **Method:** 5-angle web sweep, 22 sources fetched, 110 claims extracted, top 25 adversarially verified (3-vote refutation panel): 24 confirmed, 1 refuted.
 **Our goals assessed against it:**
 (a) agent autonomously _identifies_ that a task is long-horizon and executes it to completion;

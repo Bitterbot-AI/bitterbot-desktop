@@ -27,6 +27,20 @@ type SessionTranscript = {
   lastTimestamp?: number;
 };
 
+/**
+ * Transcript files: live sessions are `<id>.jsonl`; session resets rename the
+ * old file to `<id>.jsonl.reset.<timestamp>`. Deep recall must see BOTH —
+ * pre-reset history is exactly what it exists to reach. Exported for tests.
+ */
+export function isTranscriptFile(name: string): boolean {
+  return name.endsWith(".jsonl") || /\.jsonl\.reset\./.test(name);
+}
+
+/** Session id from a transcript file name (strips .jsonl and any .reset suffix). */
+export function transcriptSessionId(fileName: string): string {
+  return fileName.replace(/\.jsonl(\.reset\..*)?$/, "");
+}
+
 /** Format epoch ms to readable date string. */
 function formatTimestamp(ts: number): string {
   return new Date(ts)
@@ -44,7 +58,7 @@ async function parseSessionFile(absPath: string): Promise<SessionTranscript | nu
     const raw = await fs.readFile(absPath, "utf-8");
     const lines = raw.split("\n");
     const messages: SessionTranscriptMessage[] = [];
-    let sessionId = path.basename(absPath, ".jsonl");
+    let sessionId = transcriptSessionId(path.basename(absPath));
 
     for (const line of lines) {
       if (!line.trim()) {
@@ -140,7 +154,7 @@ async function listSessionFiles(
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     const files = entries
-      .filter((e) => e.isFile() && e.name.endsWith(".jsonl"))
+      .filter((e) => e.isFile() && isTranscriptFile(e.name))
       .map((e) => path.join(dir, e.name));
 
     const stats = await Promise.all(
@@ -171,7 +185,7 @@ export async function listSessionSummaries(
 ): Promise<Array<{ sessionId: string; modifiedAt: string }>> {
   const files = await listSessionFiles(agentId);
   return files.map((f) => ({
-    sessionId: path.basename(f.path, ".jsonl"),
+    sessionId: transcriptSessionId(path.basename(f.path)),
     modifiedAt: formatTimestamp(f.mtimeMs),
   }));
 }
@@ -185,7 +199,7 @@ export async function loadTranscriptText(
   sessionId: string,
 ): Promise<string | null> {
   const files = await listSessionFiles(agentId);
-  const match = files.find((f) => path.basename(f.path, ".jsonl").includes(sessionId));
+  const match = files.find((f) => transcriptSessionId(path.basename(f.path)).includes(sessionId));
   if (!match) {
     return null;
   }
@@ -232,7 +246,9 @@ export async function buildDeepRecallContext(params: {
   let filesToLoad: Array<{ path: string; mtimeMs: number }>;
   if (scope === "current_session" && sessionKey) {
     // Find the specific session file
-    const match = sessionFiles.find((f) => path.basename(f.path, ".jsonl").includes(sessionKey));
+    const match = sessionFiles.find((f) =>
+      transcriptSessionId(path.basename(f.path)).includes(sessionKey),
+    );
     filesToLoad = match ? [match] : sessionFiles.slice(0, 1);
   } else if (scope === "recent_sessions") {
     // Load up to 10 most recent sessions

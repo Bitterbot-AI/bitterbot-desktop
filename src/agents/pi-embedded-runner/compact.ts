@@ -736,6 +736,25 @@ export async function compactEmbeddedPiSessionDirect(
             });
         }
 
+        // Context was just discarded — flush unsynthesized scratch notes into
+        // the working-memory state vector (debounced, no-op on empty scratch).
+        // Mirrors the auto-compaction-end wiring; covers manual /compact.
+        void (async () => {
+          try {
+            const cfg = params.config;
+            if (!cfg) return;
+            const { resolveSessionAgentId } = await import("../agent-scope.js");
+            const { getMemorySearchManager } = await import("../../memory/index.js");
+            const agentId = resolveSessionAgentId({ sessionKey: params.sessionKey, config: cfg });
+            const { manager } = await getMemorySearchManager({ cfg, agentId });
+            if (manager?.flushWorkingMemory) {
+              await manager.flushWorkingMemory("compaction");
+            }
+          } catch (flushErr) {
+            log.debug(`working-memory flush after manual compaction failed: ${String(flushErr)}`);
+          }
+        })();
+
         const postMetrics = diagEnabled ? summarizeCompactionMessages(session.messages) : undefined;
         if (diagEnabled && preMetrics && postMetrics) {
           log.debug(

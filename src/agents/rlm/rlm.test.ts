@@ -3,9 +3,48 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import type { RLMLLMCallFn, RLMExecutorOptions } from "./types.js";
+import { toPiMessages } from "../tools/deep-recall-tool.js";
+import { isTranscriptFile, transcriptSessionId } from "./context-builder.js";
 import { CostTracker } from "./cost-tracker.js";
 import { RLMExecutor } from "./executor.js";
 import { RLMSandbox } from "./sandbox.js";
+
+// ---------------------------------------------------------------------------
+// Transcript file naming (context-builder)
+// ---------------------------------------------------------------------------
+
+describe("transcript file handling", () => {
+  it("recognizes live and reset transcripts, rejects others", () => {
+    expect(isTranscriptFile("abc-123.jsonl")).toBe(true);
+    // Session resets rename transcripts — pre-reset history must stay visible
+    expect(isTranscriptFile("abc-123.jsonl.reset.2026-08-08T21-51-38.501Z")).toBe(true);
+    expect(isTranscriptFile("abc-123.json")).toBe(false);
+    expect(isTranscriptFile("notes.md")).toBe(false);
+  });
+
+  it("extracts session ids from both name forms", () => {
+    expect(transcriptSessionId("abc-123.jsonl")).toBe("abc-123");
+    expect(transcriptSessionId("abc-123.jsonl.reset.2026-08-08T21-51-38.501Z")).toBe("abc-123");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pi-ai message mapping (deep-recall-tool)
+// ---------------------------------------------------------------------------
+
+describe("toPiMessages", () => {
+  it("wraps assistant content in text blocks, keeps user/system as strings", () => {
+    const mapped = toPiMessages([
+      { role: "system", content: "sys" },
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "reply text" },
+    ]);
+    expect(mapped[0]!.content).toBe("sys");
+    expect(mapped[1]!.content).toBe("hi");
+    // Assistant content must be a block ARRAY — pi-ai providers flatMap it
+    expect(mapped[2]!.content).toEqual([{ type: "text", text: "reply text" }]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // CostTracker

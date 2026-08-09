@@ -185,6 +185,30 @@ async function resolveSubModel(
 }
 
 /**
+ * Map RLM messages to pi-ai's wire shape. pi-ai requires assistant message
+ * content as content-block ARRAYS (providers flatMap over them); string
+ * content crashes with "assistantMsg.content.flatMap is not a function" on
+ * the second REPL iteration. Exported for tests.
+ */
+export function toPiMessages(
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+): Array<{ role: string; content: string | Array<{ type: "text"; text: string }> }> {
+  return messages.map((m) =>
+    m.role === "assistant"
+      ? {
+          role: "assistant" as const,
+          content: [{ type: "text" as const, text: m.content }],
+          timestamp: Date.now(),
+        }
+      : {
+          role: m.role,
+          content: m.content,
+          timestamp: Date.now(),
+        },
+  );
+}
+
+/**
  * Build the LLM call function that the RLM executor uses for root and sub-calls.
  */
 function buildLlmCallFn(cfg: BitterbotConfig | undefined): RLMLLMCallFn {
@@ -200,11 +224,9 @@ function buildLlmCallFn(cfg: BitterbotConfig | undefined): RLMLLMCallFn {
 
     const auth = await getApiKeyForModel({ model: resolved.model, cfg });
 
-    const messages = params.messages.map((m) => ({
-      role: m.role as "system" | "user" | "assistant",
-      content: m.content,
-      timestamp: Date.now(),
-    })) as unknown as import("@mariozechner/pi-ai").Message[];
+    const messages = toPiMessages(
+      params.messages,
+    ) as unknown as import("@mariozechner/pi-ai").Message[];
 
     const res = await completeSimple(
       resolved.model,

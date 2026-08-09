@@ -8,7 +8,7 @@ export function ensureMemoryIndexSchema(params: {
   embeddingCacheTable: string;
   ftsTable: string;
   ftsEnabled: boolean;
-}): { ftsAvailable: boolean; ftsError?: string } {
+}): { ftsAvailable: boolean; ftsError?: string; ftsBackfilled?: number } {
   params.db.exec(`
     CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
@@ -77,6 +77,31 @@ export function ensureMemoryIndexSchema(params: {
     }
   }
 
+  // Self-healing FTS backfill: chunks written outside the embedding sync path
+  // (scratch crystals, migrations, rebuilds that cleared the FTS table) never
+  // got FTS rows, silently killing keyword recall. Re-insert any chunk the
+  // FTS table is missing. Idempotent and cheap when the tables are in sync.
+  let ftsBackfilled = 0;
+  if (ftsAvailable) {
+    try {
+      const before = (
+        params.db.prepare(`SELECT count(*) AS c FROM ${params.ftsTable}`).get() as { c: number }
+      ).c;
+      params.db.exec(
+        `INSERT INTO ${params.ftsTable} (text, id, path, source, model, start_line, end_line)
+         SELECT c.text, c.id, c.path, c.source, c.model, c.start_line, c.end_line
+         FROM chunks c
+         WHERE c.id NOT IN (SELECT id FROM ${params.ftsTable})`,
+      );
+      const after = (
+        params.db.prepare(`SELECT count(*) AS c FROM ${params.ftsTable}`).get() as { c: number }
+      ).c;
+      ftsBackfilled = after - before;
+    } catch {
+      // Backfill is best-effort; search still works via the vector lane
+    }
+  }
+
   ensureColumn(params.db, "files", "source", "TEXT NOT NULL DEFAULT 'memory'");
   ensureColumn(params.db, "chunks", "source", "TEXT NOT NULL DEFAULT 'memory'");
   ensureColumn(params.db, "chunks", "importance_score", "REAL DEFAULT 1.0");
@@ -120,7 +145,7 @@ export function ensureMemoryIndexSchema(params: {
   // Knowledge Crystal migrations (versioned, idempotent)
   runMigrations(params.db);
 
-  return { ftsAvailable, ...(ftsError ? { ftsError } : {}) };
+  return { ftsAvailable, ...(ftsError ? { ftsError } : {}), ftsBackfilled };
 }
 
 export function ensureColumn(

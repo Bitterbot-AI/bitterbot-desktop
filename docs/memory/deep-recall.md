@@ -45,11 +45,11 @@ The model writes its own search code rather than calling pre-baked search functi
 
 The `context` variable is a **bootstrap snapshot** (capped by `maxContextTokens`, default 500k tokens). Beyond it, the sandbox exposes **live async APIs** that reach the full history:
 
-| API                                  | What it does                                                      |
-| ------------------------------------ | ----------------------------------------------------------------- |
-| `await search(query, {maxResults?})` | Hybrid semantic+keyword search over crystals and indexed sessions |
-| `await listSessions()`               | List all session transcripts, newest first                        |
-| `await loadTranscript(sessionId)`    | Load a full transcript as `[timestamp] ROLE: text` lines          |
+| API                                  | What it does                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| `await search(query, {maxResults?})` | Hybrid semantic+keyword search over crystals and indexed sessions        |
+| `await listSessions()`               | List all session transcripts, newest first, including pre-reset archives |
+| `await loadTranscript(sessionId)`    | Load a full transcript as `[timestamp] ROLE: text` lines                 |
 
 Live API payloads are size-capped, errors come back as data (never crash the REPL), and all access is read-only.
 

@@ -344,6 +344,23 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       agentId: target.agentId,
       reason: "reset",
     });
+    // Old session over — flush unsynthesized scratch notes into the
+    // working-memory state vector (debounced, no-op when scratch is empty).
+    // This RPC is the reset path for the CLI and Control UI; channel-message
+    // resets flush via initSessionState instead.
+    if (oldSessionId) {
+      void (async () => {
+        try {
+          const { getMemorySearchManager } = await import("../../memory/index.js");
+          const { manager } = await getMemorySearchManager({ cfg, agentId: target.agentId });
+          if (manager?.flushWorkingMemory) {
+            await manager.flushWorkingMemory("session-end");
+          }
+        } catch {
+          // Best-effort: never fail the reset RPC on memory synthesis
+        }
+      })();
+    }
     respond(true, { ok: true, key: target.canonicalKey, entry: next }, undefined);
   },
   "sessions.delete": async ({ params, respond }) => {

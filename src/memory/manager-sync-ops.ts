@@ -325,6 +325,11 @@ class MemoryManagerSyncOps {
       this.fts.loadError = result.ftsError;
       log.warn(`fts unavailable: ${result.ftsError}`);
     }
+    if (result.ftsBackfilled && result.ftsBackfilled > 0) {
+      log.warn(
+        `fts drift repaired: backfilled ${result.ftsBackfilled} chunks missing from ${FTS_TABLE}`,
+      );
+    }
   }
 
   private ensureWatcher() {

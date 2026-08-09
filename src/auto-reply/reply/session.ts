@@ -28,12 +28,15 @@ import {
 } from "../../config/sessions.js";
 import { archiveSessionTranscripts } from "../../gateway/session-utils.fs.js";
 import { deliverSessionMaintenanceWarning } from "../../infra/session-maintenance-warning.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { normalizeSessionDeliveryFields } from "../../utils/delivery-context.js";
 import { resolveCommandAuthorization } from "../command-auth.js";
 import { normalizeInboundTextNewlines } from "./inbound-text.js";
 import { stripMentions, stripStructuralPrefixes } from "./mentions.js";
+
+const log = createSubsystemLogger("auto-reply/session");
 
 export type SessionInitResult = {
   sessionCtx: TemplateContext;
@@ -409,6 +412,37 @@ export async function initSessionState(params: {
     IsNewSession: isNewSession ? "true" : "false",
   };
 
+  // Old session replaced — flush unsynthesized scratch notes into the
+  // working-memory state vector (debounced, no-op when scratch is empty).
+  // Independent of the plugin hook runner (must fire on nodes with no hooks)
+  // and covers BOTH replacement paths: explicit reset triggers (/new) and
+  // freshness-policy expiry, where `entry` still holds the old session.
+  const replacedSessionEntry = previousSessionEntry ?? (isNewSession ? entry : undefined);
+  if (
+    isNewSession &&
+    replacedSessionEntry?.sessionId &&
+    replacedSessionEntry.sessionId !== (sessionId ?? "")
+  ) {
+    log.debug(
+      `session replaced (${replacedSessionEntry.sessionId.slice(0, 8)} -> ${(sessionId ?? "").slice(0, 8)}); attempting working-memory flush`,
+    );
+    void (async () => {
+      try {
+        const { getMemorySearchManager } = await import("../../memory/index.js");
+        const agentId = resolveSessionAgentId({ sessionKey, config: cfg });
+        const { manager } = await getMemorySearchManager({ cfg, agentId });
+        if (manager?.flushWorkingMemory) {
+          await manager.flushWorkingMemory("session-end");
+        } else {
+          log.debug("session-end flush skipped: no manager/flushWorkingMemory");
+        }
+      } catch (err) {
+        // Best-effort: never block session turnover on memory synthesis
+        log.warn(`session-end working-memory flush failed: ${String(err)}`);
+      }
+    })();
+  }
+
   // Run session plugin hooks (fire-and-forget)
   const hookRunner = getGlobalHookRunner();
   if (hookRunner && isNewSession) {
@@ -430,21 +464,6 @@ export async function initSessionState(params: {
           )
           .catch(() => {});
       }
-
-      // Old session over — flush unsynthesized scratch notes into the
-      // working-memory state vector (debounced, no-op when scratch is empty).
-      void (async () => {
-        try {
-          const { getMemorySearchManager } = await import("../../memory/index.js");
-          const agentId = resolveSessionAgentId({ sessionKey, config: cfg });
-          const { manager } = await getMemorySearchManager({ cfg, agentId });
-          if (manager?.flushWorkingMemory) {
-            await manager.flushWorkingMemory("session-end");
-          }
-        } catch {
-          // Best-effort: never block session turnover on memory synthesis
-        }
-      })();
     }
 
     // Fire session_start for the new session
