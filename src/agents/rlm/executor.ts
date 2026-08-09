@@ -46,10 +46,19 @@ interface CachedRLMResult {
 }
 
 export class RLMExecutor {
-  constructor(private readonly llmCall: RLMLLMCallFn) {}
+  constructor(
+    private readonly llmCall: RLMLLMCallFn,
+    /** Cache namespace (agent/session identity) so answers never cross agents. */
+    private readonly cacheNamespace = "",
+  ) {}
 
   // ── Plan 7, Phase 8: Query Result Cache ──
-  private cache = new Map<string, CachedRLMResult>();
+  // Class-level: tool instances (and their executors) are rebuilt per agent
+  // turn, so an instance cache can never span turns. Entries are namespaced.
+  private static cache = new Map<string, CachedRLMResult>();
+  private get cache(): Map<string, CachedRLMResult> {
+    return RLMExecutor.cache;
+  }
   private readonly cacheTtlMs = 60 * 60 * 1000; // 1 hour
 
   getCachedResult(query: string, scope: string): string | null {
@@ -87,7 +96,7 @@ export class RLMExecutor {
   private hashQuery(query: string, scope: string): string {
     return crypto
       .createHash("sha256")
-      .update(`${scope}:${query.toLowerCase().trim()}`)
+      .update(`${this.cacheNamespace}:${scope}:${query.toLowerCase().trim()}`)
       .digest("hex")
       .slice(0, 16);
   }

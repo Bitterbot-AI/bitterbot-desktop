@@ -292,10 +292,10 @@ export function createDeepRecallTool(options: {
     return null;
   }
 
-  // One executor per tool instance so the 1h query-result cache actually
-  // persists across deep_recall calls (a per-call executor can never hit it).
+  // The 1h query-result cache is class-level (tool instances are rebuilt per
+  // agent turn); namespace it by agent+session so answers never cross agents.
   const llmCall = buildLlmCallFn(cfg);
-  const executor = new RLMExecutor(llmCall);
+  const executor = new RLMExecutor(llmCall, `${agentId}:${options.agentSessionKey ?? "global"}`);
 
   return {
     label: "Deep Recall",
@@ -489,6 +489,16 @@ export function createDeepRecallTool(options: {
           source: "cache",
           note: "Returned from RLM cache (1h TTL). New session extraction invalidates cache.",
         });
+      }
+
+      // Sandboxes are cached per scope but the durable store is shared per
+      // agent+session: merge the latest disk state into this sandbox so keys
+      // stored under OTHER scopes are visible here (in-memory keys win).
+      if (entry.storePath) {
+        const persisted = await loadPersistedStore(entry.storePath);
+        if (persisted) {
+          entry.sandbox.importStore(persisted);
+        }
       }
 
       // Overlapping calls on the same key would corrupt shared REPL state

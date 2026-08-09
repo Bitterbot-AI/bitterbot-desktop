@@ -459,15 +459,26 @@ describe("RLMExecutor", () => {
     expect(result.answer).toBe("found it");
   });
 
-  it("query cache round-trips per executor instance with scope keying", () => {
-    const executor = new RLMExecutor(async () => ({ text: "", cost: 0 }));
-    expect(executor.getCachedResult("what is x", "recent_sessions")).toBeNull();
-    executor.cacheResult("what is x", "recent_sessions", "x is 42");
+  it("query cache spans executor instances within a namespace, never across", () => {
+    const llm: RLMLLMCallFn = async () => ({ text: "", cost: 0 });
+    const a1 = new RLMExecutor(llm, "main:sess-1");
+    expect(a1.getCachedResult("what is x", "recent_sessions")).toBeNull();
+    a1.cacheResult("what is x", "recent_sessions", "x is 42");
     // Case-insensitive on query, exact on scope
-    expect(executor.getCachedResult("WHAT IS X", "recent_sessions")).toBe("x is 42");
-    expect(executor.getCachedResult("what is x", "all_sessions")).toBeNull();
-    executor.invalidateCache();
-    expect(executor.getCachedResult("what is x", "recent_sessions")).toBeNull();
+    expect(a1.getCachedResult("WHAT IS X", "recent_sessions")).toBe("x is 42");
+    expect(a1.getCachedResult("what is x", "all_sessions")).toBeNull();
+
+    // A NEW executor with the same namespace hits (tool instances are
+    // rebuilt per agent turn — this is the cross-turn case)
+    const a2 = new RLMExecutor(llm, "main:sess-1");
+    expect(a2.getCachedResult("what is x", "recent_sessions")).toBe("x is 42");
+
+    // A different agent/session namespace never sees it
+    const b = new RLMExecutor(llm, "other:sess-9");
+    expect(b.getCachedResult("what is x", "recent_sessions")).toBeNull();
+
+    a2.invalidateCache();
+    expect(a1.getCachedResult("what is x", "recent_sessions")).toBeNull();
   });
 
   it("parallel sub-calls reserve slots synchronously against the cap", async () => {
