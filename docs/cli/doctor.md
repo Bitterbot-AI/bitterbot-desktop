@@ -160,6 +160,23 @@ mode (e.g. `harness_evolve`, `relationship_mining`) that has never been
 selected across 40+ completed cycles is wired-but-never-scheduled, and its
 maintenance work is not happening.
 
+## Artifact liveness
+
+Born from the 2026-08-09 wired-but-dead audit: loops that run on schedule,
+throw nothing, and never produce their output artifact. The section asserts
+on the artifacts directly, so a silent regression announces itself:
+skill crystals born without a `skill_category` (invisible to
+`skills.metrics`), an interceptor guard chain that has never written an
+intervention record despite tool traffic, peers who have offered many skills
+with no accept/reject decision ever recorded (nobody can graduate out of
+manual review), curiosity targets that only expire and never resolve,
+curiosity progress rows keyed to region ids that no longer exist (region
+identity churn resets learning forever), doubled execution telemetry (the
+`after_tool_call` double-fire), skills past the publish maturity gate that
+were never published, and dream modes selected repeatedly that have never
+produced a single insight. All findings are warn/info — a dead loop is
+operator-attention state, never an update blocker.
+
 Memory-search (including the sqlite-vec probe) and Security sections are on
 the shared contract, so their findings appear in `--json` like everything
 else. Deliberate lockdown states (DMs disabled/locked) report as info, not

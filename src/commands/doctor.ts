@@ -49,6 +49,7 @@ import {
 } from "./doctor-gateway-services.js";
 import { runIdentityChecks } from "./doctor-identity.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
+import { runLivenessChecks } from "./doctor-liveness.js";
 import { runMemorySearchChecks } from "./doctor-memory-search.js";
 import { runMemorySystemChecks } from "./doctor-memory-system.js";
 import { runModelCheck } from "./doctor-model.js";
@@ -367,6 +368,10 @@ async function runDoctor(
 
   // ── Economy (forage settlements, revenue queue, x402 payment gate) ──
   runEconomyChecks({ config: cfg, isGatewayRunning: healthOk });
+
+  // ── Artifact liveness (loops that run but whose output never appears —
+  //    the wired-but-dead defect class from the 2026-08-09 audit) ──
+  runLivenessChecks({ config: cfg });
 
   // ── Long-horizon task spine (tasks.sqlite, event journal, cron) ──
   runTaskSpineChecks({ config: cfg, isGatewayRunning: healthOk });
