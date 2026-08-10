@@ -675,7 +675,12 @@ export class MemoryIndexManager implements MemorySearchManager {
        */
       scopeKey?: string;
     },
-  ): Promise<{ facts: string | undefined; embedding: number[] | null }> {
+  ): Promise<{
+    facts: string | undefined;
+    embedding: number[] | null;
+    /** PLAN-40 funnel: dream-origin chunk ids that survived the render. */
+    renderedDreamChunkIds?: string[];
+  }> {
     if (!text || !text.trim()) {
       return { facts: undefined, embedding: null };
     }
