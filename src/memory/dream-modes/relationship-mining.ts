@@ -190,7 +190,25 @@ export async function runRelationshipMining(params: {
     return EMPTY;
   }
 
-  const cursor = readCursor(db);
+  // Clamp the cursor to the live rowid ceiling. SQLite reuses rowids after
+  // deletes, so when the forgetting engine prunes high-rowid chunks the
+  // stored cursor can point PAST every surviving row — on the live node it
+  // sat at 48686 against a max rowid of 28096, which made the eligible-rows
+  // query return empty forever and killed the mode silently (dream-engine
+  // utility evaluation 2026-08-10). A cursor beyond the ceiling means "resume
+  // from the newest surviving row", not "done for the next 20k inserts".
+  let cursor = readCursor(db);
+  try {
+    const ceiling = db.prepare(`SELECT COALESCE(MAX(rowid), 0) AS m FROM chunks`).get() as {
+      m: number;
+    };
+    if (cursor > ceiling.m) {
+      cursor = ceiling.m;
+      writeCursor(db, cursor);
+    }
+  } catch {
+    /* ceiling probe failed — proceed with the stored cursor */
+  }
   let rows: FactRow[];
   try {
     rows = db

@@ -117,6 +117,43 @@ describe("runRelationshipMining (PLAN-28 A2)", () => {
     expect(secondCalled).toBe(false);
   });
 
+  it("clamps a cursor stranded past pruned rowids so new chunks mine again", async () => {
+    // The forgetting engine can delete high-rowid chunks, leaving the stored
+    // cursor pointing past every surviving row — the live node sat at 48686
+    // vs max rowid 28096 and the mode was silently dead. A stranded cursor
+    // must clamp to the current ceiling and process newly-inserted chunks.
+    db.prepare(
+      `INSERT INTO meta (key, value) VALUES ('relationship_mining_cursor', '48686')`,
+    ).run();
+    seedFact("c1", "Victor works on Bitterbot");
+    const llmCall = async () =>
+      JSON.stringify({
+        triples: [
+          {
+            i: 1,
+            source: "Victor",
+            sourceType: "person",
+            target: "Bitterbot",
+            targetType: "project",
+            relation: "works_on",
+          },
+        ],
+      });
+    // First run after stranding: clamps to ceiling. The seeded fact's rowid IS
+    // the ceiling, so it stays behind the cursor (backlog belongs to the A3
+    // backfill); the run must not throw and must persist the clamped cursor.
+    await runRelationshipMining({ db, kg, llmCall, hormones: null, maxChunks: 10 });
+    const clamped = db
+      .prepare(`SELECT value FROM meta WHERE key = 'relationship_mining_cursor'`)
+      .get() as { value: string };
+    expect(Number(clamped.value)).toBeLessThanOrEqual(1);
+    // A chunk inserted AFTER the clamp is eligible on the next run.
+    seedFact("c2", "Sylvia collaborates with Victor");
+    const res = await runRelationshipMining({ db, kg, llmCall, hormones: null, maxChunks: 10 });
+    expect(res.chunksProcessed).toBeGreaterThan(0);
+    expect(kg.getStats().relationshipCount).toBeGreaterThan(0);
+  });
+
   it("tolerates malformed LLM JSON without throwing or ingesting", async () => {
     seedFact("c1", "Victor works on Bitterbot");
     const res = await runRelationshipMining({
