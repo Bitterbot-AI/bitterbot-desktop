@@ -65,16 +65,24 @@ function normalizeToolName(name: string): string {
 function findMatchingSkill(db: DatabaseSync, toolName: string): string | null {
   const normalized = normalizeToolName(toolName);
   try {
+    // PLAN-40 Phase 2a (adversarial F6/F8): EXACT skill_category match only,
+    // deterministic tie-break, dream-origin crystals excluded. The old
+    // `text LIKE '%tool%' LIMIT 1` with no ORDER BY let a generic tool name
+    // credit an arbitrary unrelated crystal, and dream-made paraphrase
+    // crystals could absorb real executions — enabling exactly the
+    // self-distillation loop Lane 1 forbids.
     const row = db
       .prepare(
         `SELECT id FROM chunks
          WHERE (COALESCE(semantic_type, 'general') = 'skill'
                 OR COALESCE(memory_type, 'plaintext') = 'skill')
            AND COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
-           AND (skill_category = ? OR skill_category = ? OR text LIKE '%' || ? || '%')
+           AND COALESCE(origin, '') != 'dream'
+           AND (skill_category = ? OR skill_category = ?)
+         ORDER BY created_at DESC
          LIMIT 1`,
       )
-      .get(normalized, toolName, normalized) as { id: string } | undefined;
+      .get(normalized, toolName) as { id: string } | undefined;
     return row?.id ?? null;
   } catch {
     return null;
@@ -125,7 +133,10 @@ export function createExecutionTrackingHook(
         return;
       }
 
-      const execId = tracker.startExecution(skillId, ctx.sessionKey);
+      const execId = tracker.startExecution(skillId, ctx.sessionKey, {
+        toolName: event.toolName,
+        recordedBy: "after_tool_call",
+      });
 
       const outcome: ExecutionOutcome = {
         success: !event.error,

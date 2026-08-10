@@ -143,6 +143,10 @@ export async function runCliAgent(params: {
     agentId: sessionAgentId,
     promptMode: "full",
     liveUserTurn: cliLiveUserTurn,
+    // PLAN-40 Lane 3: CLI sessions have no channel peer — the person at the
+    // terminal is the owner; the same heartbeat guard attempt.ts applies is
+    // folded into cliLiveUserTurn's prompt requirement.
+    ownerTurn: cliLiveUserTurn && !/:dm:|:group:/.test(params.sessionKey ?? ""),
   }).catch(() => undefined);
 
   const systemPrompt = buildSystemPrompt({

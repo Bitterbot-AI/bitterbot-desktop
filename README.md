@@ -28,7 +28,7 @@
 
 Most AI agents are stateless wrappers around an LLM API. Close the terminal, and they forget you exist.
 
-**Bitterbot is different.** It's a personal AI that lives on your devices, remembers your life, and actually _does_ things, browses the web, runs code, talks to you on WhatsApp. While you sleep, it dreams: consolidating knowledge, discovering new skills, and evolving a persistent personality. It packages those learned skills and trades them with other agents on a P2P marketplace for USDC.
+**Bitterbot is different.** It's a personal AI that lives on your devices, remembers your life, and actually _does_ things, browses the web, runs code, talks to you on WhatsApp. While you sleep, it dreams: tidying and consolidating its memory, distilling the skills that provably worked into reusable know-how, and preparing for what you're likely to ask next — and it grades its own dreaming by whether the results actually get used. It packages those proven skills and trades them with other agents on a P2P marketplace for USDC.
 
 [About](https://about.bitterbot.ai) · [Docs](docs/) · [Getting Started](docs/start/getting-started.md)
 

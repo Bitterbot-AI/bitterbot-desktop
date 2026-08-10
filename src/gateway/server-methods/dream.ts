@@ -684,6 +684,57 @@ export const dreamHandlers: GatewayRequestHandlers = {
     }
   },
 
+  // PLAN-40 Phase 2: the D1 review surface — recent lane artifacts with
+  // their content, for thumbs up/down rating (the pilot's measurement
+  // instrument; kill criteria read these ratings).
+  "dream.utility.review": async ({ respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as { db: import("node:sqlite").DatabaseSync }).db;
+      const rows = db
+        .prepare(
+          `SELECT u.id, u.lane, u.artifact_kind, u.artifact_id, u.produced_at,
+                  u.first_consumed_at, u.consumed_kind, u.rating, u.rated_at,
+                  COALESCE(c.text, b.answer_sketch) AS content
+             FROM dream_utility u
+             LEFT JOIN chunks c ON c.id = u.artifact_id
+             LEFT JOIN dream_briefs b ON b.id = u.artifact_id
+            WHERE u.lane IN ('distillation', 'anticipation', 'hygiene')
+            ORDER BY u.produced_at DESC
+            LIMIT 25`,
+        )
+        .all();
+      respond(true, { items: rows });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // Rating write: +1 / -1 on a funnel artifact. Persisted on the funnel row
+  // so pilot verdicts and the doctor read the same store.
+  "dream.utility.rate": async ({ params, respond }) => {
+    try {
+      const artifactId = typeof params?.artifactId === "string" ? params.artifactId : "";
+      const rating = params?.rating === 1 ? 1 : params?.rating === -1 ? -1 : null;
+      if (!artifactId || rating === null) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "artifactId and rating (+1|-1) required"),
+        );
+        return;
+      }
+      const manager = await getManager();
+      const db = (manager as unknown as { db: import("node:sqlite").DatabaseSync }).db;
+      const res = db
+        .prepare(`UPDATE dream_utility SET rating = ?, rated_at = ? WHERE artifact_id = ?`)
+        .run(rating, Date.now(), artifactId);
+      respond(true, { updated: res.changes > 0 });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
   // PLAN-40 Phase 0: the utility funnel — the engine's only honest score.
   // Reads the SAME shared query module the doctor's dream-utility section
   // uses; the dashboard must never grow a second implementation (the

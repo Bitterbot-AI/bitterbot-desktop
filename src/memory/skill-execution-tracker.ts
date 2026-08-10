@@ -20,15 +20,39 @@ export class SkillExecutionTracker {
   /**
    * Record when a skill starts executing. Returns the execution ID.
    */
-  startExecution(skillCrystalId: string, sessionId?: string): string {
+  startExecution(
+    skillCrystalId: string,
+    sessionId?: string,
+    provenance?: { toolName?: string; recordedBy?: string },
+  ): string {
     const id = crypto.randomUUID();
     const now = Date.now();
-    this.db
-      .prepare(
-        `INSERT INTO skill_executions (id, skill_crystal_id, session_id, started_at)
-         VALUES (?, ?, ?, ?)`,
-      )
-      .run(id, skillCrystalId, sessionId ?? null, now);
+    // PLAN-40 Phase 2a: tool_name + recorded_by give Lane 1 the provenance
+    // the adversarial pass proved missing — pre-migration rows are
+    // unattributable and excluded from distillation eligibility. Falls back
+    // to the legacy column set on pre-v58 schemas.
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO skill_executions (id, skill_crystal_id, session_id, started_at, tool_name, recorded_by)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          skillCrystalId,
+          sessionId ?? null,
+          now,
+          provenance?.toolName ?? null,
+          provenance?.recordedBy ?? null,
+        );
+    } catch {
+      this.db
+        .prepare(
+          `INSERT INTO skill_executions (id, skill_crystal_id, session_id, started_at)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(id, skillCrystalId, sessionId ?? null, now);
+    }
     return id;
   }
 

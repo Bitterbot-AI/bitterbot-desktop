@@ -2069,7 +2069,9 @@ const MIGRATIONS: Migration[] = [
           produced_at       INTEGER NOT NULL,
           first_consumed_at INTEGER,
           consumed_kind     TEXT,
-          cycle_id          TEXT
+          cycle_id          TEXT,
+          rating            INTEGER,
+          rated_at          INTEGER
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_dream_utility_artifact
           ON dream_utility (artifact_id);

@@ -22,7 +22,9 @@ export type DreamMode =
   | "harness_evolve" // PLAN-25: mine harness-level failures → propose + validate + promote HarnessPolicy edits
   | "relationship_mining" // PLAN-28 A2: offline LLM mining of typed triples from fact chunks → populate the graph
   | "canonical_promotion" // PLAN-33 Phase 3: offline promotion of stable key-value facts into the canonical ledger
-  | "hygiene"; // PLAN-40 Lane 2: embedding backfill + near-duplicate merge + canonical staleness questions
+  | "hygiene" // PLAN-40 Lane 2: embedding backfill + near-duplicate merge + canonical staleness questions
+  | "distillation" // PLAN-40 Lane 1: verified-success workflow distillation (AWM/Voyager shape)
+  | "anticipation"; // PLAN-40 Lane 3: grounded briefs for predictable next questions
 
 export type DreamModeConfig = {
   enabled: boolean;
@@ -66,6 +68,11 @@ export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   // without any model; the merge half draws from the cycle's remaining LLM
   // budget when one is available and silently skips otherwise.
   hygiene: { enabled: true, weight: 0.15, maxChunks: 200, requiresLlm: false },
+  // PLAN-40 Lane 1: skips silently when no NEW verified successes exist
+  // since its cursor — expected common early while execution volume grows.
+  distillation: { enabled: true, weight: 0.1, maxChunks: 10, requiresLlm: true },
+  // PLAN-40 Lane 3: at most 1 brief/cycle, 5 open; skips when context is quiet.
+  anticipation: { enabled: true, weight: 0.1, maxChunks: 12, requiresLlm: true },
 };
 
 export type DreamCluster = {
@@ -117,6 +124,9 @@ export const DEFAULT_MODE_TIERS: Record<DreamMode, ComputeTier> = {
   harness_evolve: "cloud",
   relationship_mining: "cloud",
   canonical_promotion: "cloud",
+  hygiene: "cloud",
+  distillation: "cloud",
+  anticipation: "cloud",
 };
 
 export type DreamCycleMetadata = {

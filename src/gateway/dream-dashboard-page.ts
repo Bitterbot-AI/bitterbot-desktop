@@ -120,6 +120,7 @@ canvas { display: block; margin: 0 auto; }
     <div class="stats-grid" id="utility-stats"></div>
     <div class="card"><h3 style="margin-bottom:12px">Consumed-artifact funnel (28d)</h3><div id="utility-funnel"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Held modes — wake counters</h3><div id="utility-holds"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Review queue — rate lane outputs (D1 pilot)</h3><div id="utility-review"></div></div>
   </div>
 
   <!-- HISTORY TAB -->
@@ -578,6 +579,23 @@ async function loadUtility() {
         '<span class="pct">'+h.current+'/'+h.wakeAt+'</span></div>';
     }).join('') || '<div class="empty">No holds</div>';
   } catch(e) { console.warn('utility error', e); }
+  try {
+    const r = await rpc('dream.utility.review');
+    const items = r.items || [];
+    document.getElementById('utility-review').innerHTML = items.length ? items.map(it => {
+      const rated = it.rating === 1 ? ' &#128077;' : it.rating === -1 ? ' &#128078;' : '';
+      const content = (it.content || '(content unavailable)').slice(0, 260);
+      return '<div class="insight-item"><div>'+content.replace(/</g,'&lt;')+'</div>' +
+        '<div class="meta">'+it.lane+' &middot; '+it.artifact_kind+' &middot; '+new Date(it.produced_at).toLocaleString()+rated+
+        (it.rating == null ? ' &middot; <a href="#" onclick="rateArtifact(\\''+it.artifact_id+'\\',1);return false">&#128077;</a> <a href="#" onclick="rateArtifact(\\''+it.artifact_id+'\\',-1);return false">&#128078;</a>' : '') +
+        '</div></div>';
+    }).join('') : '<div class="empty">No lane outputs to review yet</div>';
+  } catch(e) { console.warn('review error', e); }
+}
+
+async function rateArtifact(artifactId, rating) {
+  try { await rpc('dream.utility.rate', { artifactId, rating }); loadUtility(); }
+  catch(e) { console.warn('rate error', e); }
 }
 
 async function loadAnalytics() {

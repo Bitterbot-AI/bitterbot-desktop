@@ -26,6 +26,15 @@ export async function resolveResearchFindingsBlock(params: {
    * The caller computes this from the session key + heartbeat flag.
    */
   liveUserTurn?: boolean;
+  /**
+   * PLAN-40 Lane 3: anticipatory briefs synthesize across the OWNER's
+   * sessions, and `first_party` is a token-denylist (a stranger's DM
+   * classifies first_party — adversarial F5-r2). Briefs drain ONLY when the
+   * caller resolves the session to the owner: CLI/local sessions, or a
+   * channel DM whose peer is in ownerNumbers. Findings keep the looser
+   * first-party gate for backward compatibility.
+   */
+  ownerTurn?: boolean;
 }): Promise<string | undefined> {
   if (params.promptMode && params.promptMode !== "full") {
     return undefined;
@@ -50,19 +59,42 @@ export async function resolveResearchFindingsBlock(params: {
       return undefined;
     }
     const findings = manager.consumeResearchFindings(3);
-    if (findings.length === 0) {
+    const brief =
+      params.ownerTurn === true &&
+      typeof (manager as { consumeDreamBrief?: () => { question: string; answer: string } | null })
+        .consumeDreamBrief === "function"
+        ? (
+            manager as unknown as {
+              consumeDreamBrief(): { question: string; answer: string } | null;
+            }
+          ).consumeDreamBrief()
+        : null;
+    if (findings.length === 0 && !brief) {
       return undefined;
     }
     const lines = findings.map(
       (f) => `- ${f.finding}${f.sourceUrl ? ` (source: ${f.sourceUrl})` : ""}`,
     );
-    return [
-      "## Research Findings",
-      "While idle, background research looked into open curiosity gaps.",
-      "Mention these briefly to the user early in your reply (one sentence,",
-      'e.g. "while you were away, I looked into X") — then move on.',
-      ...lines,
-    ].join("\n");
+    const briefLines = brief
+      ? [
+          "",
+          "## Anticipated (machine hunch — offer, don't assert)",
+          `You suspected they may ask: ${brief.question}`,
+          `Sketch: ${brief.answer}`,
+          "If relevant, offer this naturally; if not, ignore it silently.",
+        ]
+      : [];
+    const findingLines =
+      findings.length > 0
+        ? [
+            "## Research Findings",
+            "While idle, background research looked into open curiosity gaps.",
+            "Mention these briefly to the user early in your reply (one sentence,",
+            'e.g. "while you were away, I looked into X") — then move on.',
+            ...lines,
+          ]
+        : [];
+    return [...findingLines, ...briefLines].join("\n");
   } catch (err) {
     log.debug(`research findings block unavailable: ${String(err)}`);
     return undefined;

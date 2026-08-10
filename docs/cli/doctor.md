@@ -177,6 +177,15 @@ were never published, and dream modes selected repeatedly that have never
 produced a single insight. All findings are warn/info — a dead loop is
 operator-attention state, never an update blocker.
 
+The section also reports the PLAN-40 **dream-utility funnel** (per-lane
+produced vs consumed artifacts over 28 days, via the same shared query
+module as the `dream.utility` RPC and the dashboard's Utility tab — one
+implementation, no divergent numbers) and the **hold wake counters** for
+the disabled fuel-starved modes (`harness_evolve` at ≥25 completed
+executions, `interceptor_harvest` at ≥10 outcome-tagged records,
+`relationship_reconsolidation` at ≥100 active relationships) so re-enabling
+them is a visible threshold, not a remembered chore.
+
 Memory-search (including the sqlite-vec probe) and Security sections are on
 the shared contract, so their findings appear in `--json` like everything
 else. Deliberate lockdown states (DMs disabled/locked) report as info, not

@@ -92,6 +92,34 @@ Each mode serves a different purpose and has a default weight controlling how of
 
 **`research` is disabled by default** (PLAN-34 Phase 0): the mode has no organic fuel — skill-execution telemetry only records against existing skill crystals, which only mint from existing execution rows — and its promotion path wrote directly to live chunk text with no staging gate. PLAN-40 retires it permanently: the verified-success distillation lane is the gated replacement.
 
+**`hygiene` (PLAN-40 Lane 2, enabled, reserved slot):** the evidence-backed
+consolidation lane. Each cycle it (a) drains the never-embedded crystal
+backlog (200/cycle, no LLM, cursorless), (b) merges up to 2 clusters of
+near-duplicate NON-skill memories (cosine ≥ 0.92) into single summary
+chunks — members are demoted transactionally with their vector/FTS index
+rows deleted, and are never re-merged (`hygiene_done`), and (c) enqueues up
+to 2 "still true?" questions for canonical facts unconfirmed for 90+ days
+(3 asks max, then the fact transitions to `unconfirmed`). One selection
+slot per cycle is reserved for utility lanes round-robin so softmax
+competition can never starve them.
+
+**`distillation` (PLAN-40 Lane 1, enabled, reserved slot):** verified-success
+distillation — the AWM/Voyager shape. Skills with ≥3 completed executions
+recorded by the attributed hook path (`recorded_by='after_tool_call'`),
+success rate ≥ 0.7, and no negative user feedback get ONE "what works"
+workflow note (`semantic_type='task_pattern'`, evidence refs = execution
+ids), searchable immediately. `reward_score` is never consulted (it is a
+length heuristic); dream-origin crystals never qualify (no paraphrase
+self-distillation); the cursor rides `started_at`, never rowid.
+
+**`anticipation` (PLAN-40 Lane 3, enabled, reserved slot):** grounded briefs
+for predictable next questions, from the user's demonstrably-active context
+(recently-confirmed canonical facts + recent first-party episodes). At most
+1 brief/cycle, 5 open; each must cite ≥2 real sources. Briefs are NOT
+memory chunks — they live in `dream_briefs`, invisible to every retrieval
+surface, and drain (one per session start) only into sessions that resolve
+to the OWNER, marked explicitly as machine hunches.
+
 **Disabled by default since PLAN-40 Phase 0 (2026-08-10):** `mutation`
 (paraphrase treadmill with no success signal — see the utility evaluation),
 and the three structurally-unfueled holds `interceptor_harvest`,

@@ -71,6 +71,19 @@ auto-config and adds nothing on top.
 | `long_horizon.work_step`   | One unit of agent work                                            | `phase=work`, `cycle`                                                                  |
 | `long_horizon.dream_step`  | One dream pass at the end of a cycle                              | `phase=dream`, `cycle`                                                                 |
 
+### Dream utility funnel (PLAN-40)
+
+The dream engine's score is the **consumed-artifact rate**: every artifact a
+dream lane produces gets a `dream_utility` row, and a set-once
+`first_consumed_at` stamp written only where content provably enters a model
+prompt (proactive-fact render in full prompt mode, `memory_search` tool
+output), a distilled skill executes, or a brief surfaces. Read it via the
+`dream.utility` RPC, the `/dreams` dashboard's Utility tab, or `bitterbot
+doctor`'s Artifact-liveness section — all three consume the same query
+module, so the numbers cannot diverge. The old DQS score is retired: it
+measured cycle plumbing and reported ~0.9 regardless of whether anything
+produced was ever used.
+
 Gateway RPC and tool spans are the ones most operators want first —
 they directly answer "where is the latency coming from" and "which
 tool errored". Memory and long-horizon spans are most useful for

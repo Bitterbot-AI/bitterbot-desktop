@@ -2657,6 +2657,28 @@ export class MemoryIndexManager implements MemorySearchManager {
     // so it performs the actual write; the engine owns the gate.
     this.dreamEngine.setInsightChunkWriter((row) => this.writePromotedInsightChunk(row));
 
+    // PLAN-40 Lane 1: distillation ops — workflow notes as searchable
+    // task_pattern chunks with execution-id evidence.
+    this.dreamEngine.setDistillationOps({
+      writeWorkflowNote: (p) => this.writeWorkflowNoteChunk(p),
+    });
+
+    // PLAN-40 Lane 2: hygiene ops — the existing pending-embedding drainer
+    // (cursorless, self-consuming predicate) + the transactional merge write.
+    this.dreamEngine.setHygieneOps({
+      // Mixin method (manager-embedding-ops) — not on the class type, same
+      // cast the CLI uses.
+      backfillEmbeddings: (limit) =>
+        (
+          this as unknown as {
+            backfillPendingEmbeddings(opts?: {
+              limit?: number;
+            }): Promise<{ embedded: number; remaining: number }>;
+          }
+        ).backfillPendingEmbeddings({ limit }),
+      writeMergedSummary: (p) => this.writeMergedSummaryChunk(p),
+    });
+
     // PLAN-34 Phase 4 (§6.3): promoted extrapolation predictions route into
     // prospective memory as "[dream prediction]" rows. The manager wires
     // the writer because it owns the prospective engine and the embedding
@@ -5280,11 +5302,215 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   /**
+   * PLAN-40 Lane 1: write a distilled workflow note as a searchable
+   * task_pattern chunk. Path is deterministic per source skill so the lane's
+   * one-note-per-skill guard can check existence cheaply.
+   */
+  async writeWorkflowNoteChunk(params: {
+    text: string;
+    skillCrystalId: string;
+    evidenceExecutionIds: string[];
+  }): Promise<string | null> {
+    const id = `distill_${crypto.randomUUID()}`;
+    const now = Date.now();
+    const hash = crypto.createHash("sha256").update(params.text).digest("hex");
+    const source = this.sources.has("memory") ? "memory" : ([...this.sources][0] ?? "memory");
+    let embedding: number[] = [];
+    try {
+      embedding = ((await this.embedQueryWithTimeout(params.text)) as number[]) ?? [];
+    } catch {
+      /* pending backfill */
+    }
+    const model = embedding.length > 0 ? this.provider.model : "pending";
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+             importance_score, lifecycle, origin, semantic_type, evidence_refs,
+             access_count, created_at, updated_at)
+           VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, 0.7, 'activated', 'dream', 'task_pattern', ?, 0, ?, ?)`,
+        )
+        .run(
+          id,
+          `distill/workflow/${params.skillCrystalId}`,
+          source,
+          params.text,
+          hash,
+          model,
+          JSON.stringify(embedding),
+          JSON.stringify(
+            params.evidenceExecutionIds.map((eid) => ({ kind: "execution", id: eid })),
+          ),
+          now,
+          now,
+        );
+    } catch (err) {
+      log.debug(`workflow note insert failed: ${String(err)}`);
+      return null;
+    }
+    if (embedding.length > 0) {
+      try {
+        this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(id);
+        this.db
+          .prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`)
+          .run(id, Buffer.from(new Float32Array(embedding).buffer));
+      } catch {
+        /* vec absent */
+      }
+    }
+    if (this.fts.enabled && this.fts.available) {
+      try {
+        this.db
+          .prepare(
+            `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)
+             VALUES (?, ?, ?, ?, ?, 0, 0)`,
+          )
+          .run(params.text, id, `distill/workflow/${params.skillCrystalId}`, source, model);
+      } catch {
+        /* fts absent */
+      }
+    }
+    return id;
+  }
+
+  /**
+   * PLAN-40 Lane 2: transactional near-duplicate merge write. Inserts the
+   * summary chunk (embedded, vec+FTS indexed), demotes members
+   * (lifecycle='consolidated', parent_id=summary id, hygiene_done=1) and
+   * DELETES their vec/FTS index rows — lifecycle marking alone removes
+   * nothing from retrieval (adversarial F1/E11); the index deletion IS the
+   * mechanism. All-or-nothing: any failure rolls the whole merge back
+   * (mark-before-durable-write was the F3-bootstrap disease, F4/F13).
+   * Recovery: member text remains in chunks; a re-index script can restore.
+   */
+  async writeMergedSummaryChunk(params: {
+    text: string;
+    memberIds: string[];
+    semanticType: string;
+  }): Promise<string | null> {
+    const id = `hygiene_merge_${crypto.randomUUID()}`;
+    const now = Date.now();
+    const hash = crypto.createHash("sha256").update(params.text).digest("hex");
+    const source = this.sources.has("memory") ? "memory" : ([...this.sources][0] ?? "memory");
+    let embedding: number[] = [];
+    try {
+      embedding = ((await this.embedQueryWithTimeout(params.text)) as number[]) ?? [];
+    } catch {
+      /* embed failure → summary still written, model 'pending' for backfill */
+    }
+    const model = embedding.length > 0 ? this.provider.model : "pending";
+    try {
+      this.db.exec("BEGIN");
+      this.db
+        .prepare(
+          `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+             importance_score, lifecycle, semantic_type, hygiene_done,
+             access_count, created_at, updated_at)
+           VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, 0.6, 'activated', ?, 1, 0, ?, ?)`,
+        )
+        .run(
+          id,
+          `hygiene/merge/${id}`,
+          source,
+          params.text,
+          hash,
+          model,
+          JSON.stringify(embedding),
+          params.semanticType,
+          now,
+          now,
+        );
+      if (embedding.length > 0) {
+        try {
+          this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(id);
+          this.db
+            .prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`)
+            .run(id, Buffer.from(new Float32Array(embedding).buffer));
+        } catch {
+          /* vec table absent — summary still keyword-searchable */
+        }
+      }
+      if (this.fts.enabled && this.fts.available) {
+        try {
+          this.db
+            .prepare(
+              `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)
+               VALUES (?, ?, ?, ?, ?, 0, 0)`,
+            )
+            .run(params.text, id, `hygiene/merge/${id}`, source, model);
+        } catch {
+          /* fts absent */
+        }
+      }
+      const demote = this.db.prepare(
+        `UPDATE chunks SET lifecycle = 'consolidated', parent_id = ?, hygiene_done = 1,
+                updated_at = ? WHERE id = ?`,
+      );
+      for (const memberId of params.memberIds) {
+        demote.run(id, now, memberId);
+        try {
+          this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(memberId);
+        } catch {
+          /* vec absent */
+        }
+        if (this.fts.enabled && this.fts.available) {
+          try {
+            this.db.prepare(`DELETE FROM ${FTS_TABLE} WHERE id = ?`).run(memberId);
+          } catch {
+            /* fts absent */
+          }
+        }
+      }
+      this.db.exec("COMMIT");
+      return id;
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        /* ignore */
+      }
+      log.debug(`hygiene merge write failed (rolled back): ${String(err)}`);
+      return null;
+    }
+  }
+
+  /**
    * PLAN-34 Phase 2b: drain unsurfaced idle-research findings for prompt
    * injection. Marks the returned rows surfaced so a finding is voiced in
    * exactly one session ("while you were away, I looked into X" — then it
    * lives on only as its world_fact crystal and dashboard history).
    */
+  /**
+   * PLAN-40 Lane 3: drain at most ONE open anticipatory brief (drain=1 is
+   * the plan's cadence rule). Marks it surfaced + stamps the funnel. The
+   * CALLER enforces the owner gate — a brief synthesizes across the owner's
+   * sessions and must never surface to anyone else.
+   */
+  consumeDreamBrief(): { question: string; answer: string } | null {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT id, question, answer_sketch FROM dream_briefs
+            WHERE status = 'open' ORDER BY created_at ASC LIMIT 1`,
+        )
+        .get() as { id: string; question: string; answer_sketch: string } | undefined;
+      if (!row) {
+        return null;
+      }
+      this.db
+        .prepare(`UPDATE dream_briefs SET status = 'surfaced', surfaced_at = ? WHERE id = ?`)
+        .run(Date.now(), row.id);
+      void import("./dream-utility.js")
+        .then(({ markDreamConsumption }) => {
+          markDreamConsumption(this.db, row.id, "surfaced");
+        })
+        .catch(() => {});
+      return { question: row.question, answer: row.answer_sketch };
+    } catch {
+      return null;
+    }
+  }
+
   consumeResearchFindings(limit = 3): Array<{ finding: string; sourceUrl: string | null }> {
     try {
       const rows = this.db

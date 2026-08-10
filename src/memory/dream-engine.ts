@@ -216,6 +216,8 @@ export class DreamEngine {
    * overshoot).
    */
   private cycleLlmRemaining = 0;
+  /** PLAN-40: round-robin cursor for the reserved utility-lane slot. */
+  private laneRotationCounter = 0;
 
   constructor(
     db: DatabaseSync,
@@ -1166,11 +1168,25 @@ export class DreamEngine {
     const selected: DreamMode[] = [];
     const numModes = Math.min(3, Math.max(1, adjustedModes.length));
 
+    // PLAN-40 (adversarial F10): ONE slot per cycle is reserved for the
+    // utility lanes, rotating round-robin, so softmax competition can never
+    // starve a lane out of its pilot window. The rotation only spans lanes
+    // that are enabled; with a single enabled lane it simply always runs.
+    const LANE_ROTATION: DreamMode[] = ["hygiene", "distillation", "anticipation"];
+    const enabledLanes = LANE_ROTATION.filter((m) => this.config.modes[m]?.enabled);
+    if (enabledLanes.length > 0) {
+      selected.push(enabledLanes[this.laneRotationCounter++ % enabledLanes.length]!);
+    }
+
     // Check for auto-triggers
     const hasCuriosityTargets = this.countCuriosityTargets() > 0;
     const hasSkillCrystals = this.countSkillCrystals() > 0;
 
-    if (hasCuriosityTargets && this.config.modes.exploration.enabled) {
+    if (
+      hasCuriosityTargets &&
+      this.config.modes.exploration.enabled &&
+      selected.length < numModes
+    ) {
       selected.push("exploration");
     }
     if (hasSkillCrystals && this.config.modes.mutation.enabled && selected.length < numModes) {
@@ -1342,8 +1358,97 @@ export class DreamEngine {
         return this.runRelationshipMiningMode(cycleId);
       case "canonical_promotion":
         return this.runCanonicalPromotionMode(cycleId);
+      case "hygiene":
+        return this.runHygieneMode(cycleId);
+      case "distillation":
+        return this.runDistillationMode(cycleId);
+      case "anticipation":
+        return this.runAnticipationMode(cycleId);
       default:
         return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    }
+  }
+
+  // ── PLAN-40 Lane 1: verified-success distillation ──
+  private distillationOps: import("./dream-modes/distillation.js").DistillationOps | null = null;
+
+  /** Wire the distillation ops (workflow-note writer). Called by MemoryManager. */
+  setDistillationOps(ops: import("./dream-modes/distillation.js").DistillationOps): void {
+    this.distillationOps = ops;
+  }
+
+  private async runAnticipationMode(
+    cycleId: string,
+  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
+    try {
+      const { runAnticipation } = await import("./dream-modes/anticipation.js");
+      const llmCall = this.getLlmCallForMode("anticipation");
+      const result = await runAnticipation({
+        db: this.db,
+        llmCall,
+        llmBudget: this.cycleLlmRemaining,
+        cycleId,
+      });
+      log.debug(`anticipation cycle ${cycleId}: briefs=${result.briefs}`);
+      return { insights: [], llmCalls: result.llmCalls, chunksAnalyzed: result.chunksAnalyzed };
+    } catch (err) {
+      log.warn(`anticipation mode failed: ${String(err)}`);
+      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    }
+  }
+
+  private async runDistillationMode(
+    cycleId: string,
+  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
+    try {
+      const { runDistillation } = await import("./dream-modes/distillation.js");
+      const llmCall = this.getLlmCallForMode("distillation");
+      const result = await runDistillation({
+        db: this.db,
+        llmCall,
+        ops: this.distillationOps,
+        llmBudget: this.cycleLlmRemaining,
+        cycleId,
+      });
+      log.debug(
+        `distillation cycle ${cycleId}: notes=${result.notes} considered=${result.skillsConsidered}`,
+      );
+      return { insights: [], llmCalls: result.llmCalls, chunksAnalyzed: result.chunksAnalyzed };
+    } catch (err) {
+      log.warn(`distillation mode failed: ${String(err)}`);
+      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
+    }
+  }
+
+  // ── PLAN-40 Lane 2: memory hygiene ──
+  private hygieneOps: import("./dream-modes/hygiene.js").HygieneOps | null = null;
+
+  /** Wire the hygiene ops (backfill + transactional merge). Called by MemoryManager. */
+  setHygieneOps(ops: import("./dream-modes/hygiene.js").HygieneOps): void {
+    this.hygieneOps = ops;
+  }
+
+  private async runHygieneMode(
+    cycleId: string,
+  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
+    try {
+      const { runHygiene } = await import("./dream-modes/hygiene.js");
+      const llmCall = this.getLlmCallForMode("hygiene");
+      const result = await runHygiene({
+        db: this.db,
+        llmCall,
+        ops: this.hygieneOps,
+        llmBudget: this.cycleLlmRemaining,
+        cycleId,
+      });
+      log.debug(
+        `hygiene cycle ${cycleId}: backfilled=${result.backfilled} merged=${result.merged} ` +
+          `staleAsks=${result.staleAsks} unconfirmed=${result.factsMarkedUnconfirmed}`,
+      );
+      return { insights: [], llmCalls: result.llmCalls, chunksAnalyzed: result.chunksProcessed };
+    } catch (err) {
+      log.warn(`hygiene mode failed: ${String(err)}`);
+      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
   }
 
