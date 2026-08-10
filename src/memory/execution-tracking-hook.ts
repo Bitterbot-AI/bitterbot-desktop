@@ -82,13 +82,30 @@ function findMatchingSkill(db: DatabaseSync, toolName: string): string | null {
 }
 
 /**
+ * Publish maturity gate (mirrors checkBountyClaimQuality's execution floor in
+ * skill-network-bridge.ts): re-attempt network publish once a skill has this
+ * many completed executions.
+ */
+const PUBLISH_MATURITY_EXECUTIONS = 3;
+
+/**
  * Create an `after_tool_call` hook handler that records executions
  * to the SkillExecutionTracker.
+ *
+ * `onMaturedUnpublished` closes audit F5: network publish used to fire ONLY
+ * at crystallization time, when a crystal has zero executions by construction
+ * — so the ≥3-execution maturity gate rejected it and nothing ever re-tried,
+ * leaving every matured skill local forever. Execution-recording is the one
+ * moment a skill can CROSS the gate, so that is where the re-attempt lives.
+ * The callback target (publishCrystalSkill) re-runs the full gate chain
+ * (governance, provenance, verifier, maturity) and no-ops when not ready, so
+ * over-calling is safe.
  */
 export function createExecutionTrackingHook(
   tracker: SkillExecutionTracker,
   db: DatabaseSync,
   hormonalManager?: HormonalStateManager | null,
+  onMaturedUnpublished?: (skillCrystalId: string) => void,
 ): (event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void {
   return (event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext): void => {
     try {
@@ -120,6 +137,27 @@ export function createExecutionTrackingHook(
       };
 
       tracker.completeExecution(execId, outcome);
+
+      if (outcome.success && onMaturedUnpublished) {
+        try {
+          const mature = db
+            .prepare(
+              `SELECT (SELECT COUNT(*) FROM skill_executions
+                        WHERE skill_crystal_id = ? AND completed_at IS NOT NULL) AS execs,
+                      (SELECT published_at FROM chunks WHERE id = ?) AS published_at`,
+            )
+            .get(skillId, skillId) as { execs: number; published_at: number | null } | undefined;
+          if (
+            mature &&
+            mature.execs >= PUBLISH_MATURITY_EXECUTIONS &&
+            mature.published_at == null
+          ) {
+            onMaturedUnpublished(skillId);
+          }
+        } catch (err) {
+          log.debug(`maturity publish re-check failed: ${String(err)}`);
+        }
+      }
     } catch (err) {
       log.debug(`execution tracking hook failed: ${String(err)}`);
     }

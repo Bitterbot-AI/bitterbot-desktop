@@ -5739,12 +5739,22 @@ export class MemoryIndexManager implements MemorySearchManager {
         });
     }
 
-    // Create execution tracking hook for after_tool_call integration
+    // Create execution tracking hook for after_tool_call integration.
+    // The matured-unpublished callback closes audit F5: crystallization-time
+    // publish always fails the ≥3-execution maturity gate, so the moment a
+    // skill CROSSES the gate (an execution being recorded) must re-attempt.
+    // publishCrystalSkill re-runs the full gate chain and no-ops when the
+    // orchestrator bridge is absent, so this is safe to over-call.
     if (this.executionTracker) {
       this.executionTrackingHook = createExecutionTrackingHook(
         this.executionTracker,
         this.db,
         this.hormonalManager,
+        (skillCrystalId) => {
+          this.skillNetworkBridge?.publishCrystalSkill(skillCrystalId).catch((err) => {
+            log.debug(`maturity publish re-attempt failed: ${String(err)}`);
+          });
+        },
       );
     }
   }
