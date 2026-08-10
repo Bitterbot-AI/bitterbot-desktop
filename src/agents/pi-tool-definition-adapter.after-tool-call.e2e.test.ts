@@ -2,9 +2,20 @@ import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { toToolDefinitions } from "./pi-tool-definition-adapter.js";
 
+// Audit 2026-08-09 F2: after_tool_call was firing TWICE per embedded-runner
+// tool call — once here in the adapter and once in the embedded-subscribe
+// tool-end handler (pi-embedded-subscribe.handlers.tools.ts), which share the
+// global hook runner. That double-recorded every skill_execution (5 of 10
+// live rows were sub-1s duplicate pairs, one per pair with NULL duration
+// because the adapter passed no durationMs) and double-dosed the hormonal
+// reward/error signal on every tool call. The adapter is used ONLY inside the
+// embedded runner (tool-split.ts → compact.ts), whose tool-end handler always
+// fires after_tool_call with the full event. So the adapter must NOT fire it.
+// The subscribe handler is the single owner.
+
 const hookMocks = vi.hoisted(() => ({
   runner: {
-    hasHooks: vi.fn(() => false),
+    hasHooks: vi.fn(() => true),
     runAfterToolCall: vi.fn(async () => {}),
   },
   isToolWrappedWithBeforeToolCallHook: vi.fn(() => false),
@@ -25,9 +36,10 @@ vi.mock("./pi-tools.before-tool-call.js", () => ({
   runBeforeToolCallHook: hookMocks.runBeforeToolCallHook,
 }));
 
-describe("pi tool definition adapter after_tool_call", () => {
+describe("pi tool definition adapter does NOT own after_tool_call (F2)", () => {
   beforeEach(() => {
     hookMocks.runner.hasHooks.mockReset();
+    hookMocks.runner.hasHooks.mockReturnValue(true); // hooks present but adapter must still not fire
     hookMocks.runner.runAfterToolCall.mockReset();
     hookMocks.runner.runAfterToolCall.mockResolvedValue(undefined);
     hookMocks.isToolWrappedWithBeforeToolCallHook.mockReset();
@@ -41,12 +53,7 @@ describe("pi tool definition adapter after_tool_call", () => {
     }));
   });
 
-  it("dispatches after_tool_call once on successful adapter execution", async () => {
-    hookMocks.runner.hasHooks.mockImplementation((name: string) => name === "after_tool_call");
-    hookMocks.runBeforeToolCallHook.mockResolvedValue({
-      blocked: false,
-      params: { mode: "safe" },
-    });
+  it("does NOT dispatch after_tool_call on successful execution (subscribe handler owns it)", async () => {
     const tool = {
       name: "read",
       label: "Read",
@@ -59,51 +66,10 @@ describe("pi tool definition adapter after_tool_call", () => {
     const result = await defs[0].execute("call-ok", { path: "/tmp/file" }, undefined, undefined);
 
     expect(result.details).toMatchObject({ ok: true });
-    expect(hookMocks.runner.runAfterToolCall).toHaveBeenCalledTimes(1);
-    expect(hookMocks.runner.runAfterToolCall).toHaveBeenCalledWith(
-      {
-        toolName: "read",
-        params: { mode: "safe" },
-        result,
-      },
-      { toolName: "read" },
-    );
+    expect(hookMocks.runner.runAfterToolCall).not.toHaveBeenCalled();
   });
 
-  it("uses wrapped-tool adjusted params for after_tool_call payload", async () => {
-    hookMocks.runner.hasHooks.mockImplementation((name: string) => name === "after_tool_call");
-    hookMocks.isToolWrappedWithBeforeToolCallHook.mockReturnValue(true);
-    hookMocks.consumeAdjustedParamsForToolCall.mockReturnValue({ mode: "safe" });
-    const tool = {
-      name: "read",
-      label: "Read",
-      description: "reads",
-      parameters: {},
-      execute: vi.fn(async () => ({ content: [], details: { ok: true } })),
-    } satisfies AgentTool<unknown, unknown>;
-
-    const defs = toToolDefinitions([tool]);
-    const result = await defs[0].execute(
-      "call-ok-wrapped",
-      { path: "/tmp/file" },
-      undefined,
-      undefined,
-    );
-
-    expect(result.details).toMatchObject({ ok: true });
-    expect(hookMocks.runBeforeToolCallHook).not.toHaveBeenCalled();
-    expect(hookMocks.runner.runAfterToolCall).toHaveBeenCalledWith(
-      {
-        toolName: "read",
-        params: { mode: "safe" },
-        result,
-      },
-      { toolName: "read" },
-    );
-  });
-
-  it("dispatches after_tool_call once on adapter error with normalized tool name", async () => {
-    hookMocks.runner.hasHooks.mockImplementation((name: string) => name === "after_tool_call");
+  it("does NOT dispatch after_tool_call on error (subscribe handler sees the errorResult)", async () => {
     const tool = {
       name: "bash",
       label: "Bash",
@@ -117,25 +83,13 @@ describe("pi tool definition adapter after_tool_call", () => {
     const defs = toToolDefinitions([tool]);
     const result = await defs[0].execute("call-err", { cmd: "ls" }, undefined, undefined);
 
-    expect(result.details).toMatchObject({
-      status: "error",
-      tool: "exec",
-      error: "boom",
-    });
-    expect(hookMocks.runner.runAfterToolCall).toHaveBeenCalledTimes(1);
-    expect(hookMocks.runner.runAfterToolCall).toHaveBeenCalledWith(
-      {
-        toolName: "exec",
-        params: { cmd: "ls" },
-        error: "boom",
-      },
-      { toolName: "exec" },
-    );
+    expect(result.details).toMatchObject({ status: "error", tool: "exec", error: "boom" });
+    expect(hookMocks.runner.runAfterToolCall).not.toHaveBeenCalled();
   });
 
-  it("does not break execution when after_tool_call hook throws", async () => {
-    hookMocks.runner.hasHooks.mockImplementation((name: string) => name === "after_tool_call");
-    hookMocks.runner.runAfterToolCall.mockRejectedValue(new Error("hook failed"));
+  it("still consumes adjusted params for a before-hook-wrapped tool (no leak)", async () => {
+    hookMocks.isToolWrappedWithBeforeToolCallHook.mockReturnValue(true);
+    hookMocks.consumeAdjustedParamsForToolCall.mockReturnValue({ mode: "safe" });
     const tool = {
       name: "read",
       label: "Read",
@@ -145,9 +99,16 @@ describe("pi tool definition adapter after_tool_call", () => {
     } satisfies AgentTool<unknown, unknown>;
 
     const defs = toToolDefinitions([tool]);
-    const result = await defs[0].execute("call-ok2", { path: "/tmp/file" }, undefined, undefined);
+    const result = await defs[0].execute(
+      "call-wrapped",
+      { path: "/tmp/file" },
+      undefined,
+      undefined,
+    );
 
     expect(result.details).toMatchObject({ ok: true });
-    expect(hookMocks.runner.runAfterToolCall).toHaveBeenCalledTimes(1);
+    // consumed exactly once so the per-call adjusted-params map does not leak
+    expect(hookMocks.consumeAdjustedParamsForToolCall).toHaveBeenCalledWith("call-wrapped");
+    expect(hookMocks.runner.runAfterToolCall).not.toHaveBeenCalled();
   });
 });

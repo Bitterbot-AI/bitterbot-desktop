@@ -6,7 +6,6 @@ import type {
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ClientToolDefinition } from "./pi-embedded-runner/run/params.js";
 import { logDebug, logError } from "../logger.js";
-import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { isPlainObject } from "../utils.js";
 import {
   consumeAdjustedParamsForToolCall,
@@ -109,27 +108,16 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
             executeParams = hookOutcome.params;
           }
           const result = await tool.execute(toolCallId, executeParams, signal, onUpdate);
-          const afterParams = beforeHookWrapped
-            ? (consumeAdjustedParamsForToolCall(toolCallId) ?? executeParams)
-            : executeParams;
-
-          // Call after_tool_call hook
-          const hookRunner = getGlobalHookRunner();
-          if (hookRunner?.hasHooks("after_tool_call")) {
-            try {
-              await hookRunner.runAfterToolCall(
-                {
-                  toolName: name,
-                  params: isPlainObject(afterParams) ? afterParams : {},
-                  result,
-                },
-                { toolName: name },
-              );
-            } catch (hookErr) {
-              logDebug(
-                `after_tool_call hook failed: tool=${normalizedName} error=${String(hookErr)}`,
-              );
-            }
+          // NOTE: after_tool_call is intentionally NOT fired here. This adapter
+          // is used only inside the embedded runner (tool-split.ts →
+          // compact.ts), whose tool-end handler
+          // (pi-embedded-subscribe.handlers.tools.ts) already fires
+          // after_tool_call with the full event (durationMs, sanitized result).
+          // Firing it here too double-recorded every skill_execution and
+          // double-dosed the hormonal reward/error signal on every tool call
+          // (audit 2026-08-09, F2). The subscribe handler is the single owner.
+          if (beforeHookWrapped) {
+            consumeAdjustedParamsForToolCall(toolCallId);
           }
 
           return result;
@@ -159,25 +147,11 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
             error: described.message,
           });
 
-          // Call after_tool_call hook for errors too
-          const hookRunner = getGlobalHookRunner();
-          if (hookRunner?.hasHooks("after_tool_call")) {
-            try {
-              await hookRunner.runAfterToolCall(
-                {
-                  toolName: normalizedName,
-                  params: isPlainObject(params) ? params : {},
-                  error: described.message,
-                },
-                { toolName: normalizedName },
-              );
-            } catch (hookErr) {
-              logDebug(
-                `after_tool_call hook failed: tool=${normalizedName} error=${String(hookErr)}`,
-              );
-            }
-          }
-
+          // after_tool_call NOT fired here either (see success-path note): the
+          // adapter returns errorResult rather than throwing, so the embedded
+          // runner's tool-end handler still fires after_tool_call with
+          // isToolError detected from this result. Single owner = subscribe
+          // handler (audit 2026-08-09, F2).
           return errorResult;
         }
       },
