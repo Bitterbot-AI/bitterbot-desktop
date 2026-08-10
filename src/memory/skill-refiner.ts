@@ -11,6 +11,7 @@ import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { SkillNetworkBridge } from "./skill-network-bridge.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { cosineSimilarity, parseEmbedding } from "./internal.js";
+import { skillCategoryFromContent } from "./skill-category.js";
 import { SkillVerifier } from "./skill-verifier.js";
 
 const log = createSubsystemLogger("memory/skill-refiner");
@@ -312,7 +313,9 @@ export class SkillRefiner {
       let skillVersion = 1;
       const originalRow = this.db
         .prepare(
-          `SELECT stable_skill_id, skill_version, skill_category, skill_tags FROM chunks WHERE id = ?`,
+          `SELECT stable_skill_id, skill_version, skill_category, skill_tags,
+                  substr(text, 1, 2000) AS text, path
+           FROM chunks WHERE id = ?`,
         )
         .get(originalId) as
         | {
@@ -320,6 +323,8 @@ export class SkillRefiner {
             skill_version: number | null;
             skill_category: string | null;
             skill_tags: string | null;
+            text: string | null;
+            path: string | null;
           }
         | undefined;
 
@@ -383,7 +388,11 @@ export class SkillRefiner {
           stableSkillId,
           skillVersion,
           originalId,
-          originalRow?.skill_category ?? null,
+          originalRow?.skill_category ??
+            skillCategoryFromContent(
+              mutation.content,
+              skillCategoryFromContent(originalRow?.text, originalRow?.path?.split("/").pop()),
+            ),
           originalRow?.skill_tags ?? "[]",
           provenanceDag,
         );

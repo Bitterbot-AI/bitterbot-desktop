@@ -780,6 +780,9 @@ describe("SkillNetworkBridge", () => {
       expect(row.lifecycle).toBe("generated");
       expect(String(row.text)).toContain("Test skill content from peer");
       expect(String(row.path)).toBe("peer/docker-deploy");
+      // Audit F12: ingest must set the canonical skill key so the crystal is
+      // visible to skills.metrics / skill_lifecycle grouping.
+      expect(row.skill_category).toBe("docker-deploy");
 
       // Verify governance has peerOrigin
       const gov = JSON.parse(String(row.governance_json));

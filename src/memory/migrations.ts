@@ -25,6 +25,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { ensureColumn } from "./memory-schema.js";
+import { backfillSkillCategories } from "./skill-category.js";
 
 const log = createSubsystemLogger("memory/migrations");
 
@@ -2017,6 +2018,25 @@ const MIGRATIONS: Migration[] = [
         `);
         db.exec(`DROP TABLE circle_sandbox_enrollments;`);
       }
+    },
+  },
+  {
+    version: 57,
+    description:
+      "Audit 2026-08-09 F12 (remaining half): backfill skill_category on " +
+      "peer/dream skill crystals. The peer-ingest inserts (skill-network-" +
+      "bridge, mem-store) never set skill_category and the dream refiner " +
+      "copied its original's NULL, so every non-bootstrap crystal was " +
+      "invisible to skills.metrics / skill_lifecycle grouping (584 rows on " +
+      "the live node). Derives the canonical key from each crystal's " +
+      "frontmatter name (stripping the forage response-<hex>- prefix), then " +
+      "inherits down parent_id chains to a fixpoint, then falls back to " +
+      "stable_skill_id / path basename. The creation paths now set the key " +
+      "at insert time; this heals rows created before that fix. Only fills " +
+      "NULLs — never rewrites an existing category.",
+    up: (db: DatabaseSync) => {
+      const { updated, unresolved } = backfillSkillCategories(db);
+      log.info(`v57 skill_category backfill: updated=${updated} unresolved=${unresolved}`);
     },
   },
 ];

@@ -2245,11 +2245,14 @@ describe("MemStore", () => {
 
     // Verify it's stored correctly
     const row = db.prepare("SELECT * FROM chunks WHERE id = ?").get(result.crystalId!) as
-      | { source: string; semantic_type: string; text: string }
+      | { source: string; semantic_type: string; text: string; skill_category: string | null }
       | undefined;
     expect(row!.source).toBe("skills");
     expect(row!.semantic_type).toBe("skill");
     expect(row!.text).toContain("Imported Skill");
+    // Audit F12: import must set the canonical skill key so the crystal is
+    // visible to skills.metrics / skill_lifecycle grouping.
+    expect(row!.skill_category).toBe("efficient-thing");
   });
 
   it("rejects duplicate P2P imports", () => {

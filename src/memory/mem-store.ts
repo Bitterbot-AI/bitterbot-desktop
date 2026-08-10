@@ -13,6 +13,7 @@ import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { rowToCrystal } from "./crystal.js";
 import { ensureColumn } from "./memory-schema.js";
+import { skillCategoryFromContent } from "./skill-category.js";
 
 const log = createSubsystemLogger("memory/mem-store");
 
@@ -170,10 +171,19 @@ export class MemStore {
     try {
       this.db
         .prepare(
-          `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, importance_score, model, embedding, updated_at, lifecycle_state, lifecycle, semantic_type, governance_json, created_at)
-           VALUES (?, ?, 'skills', 0, 0, ?, ?, 0.5, 'peer', '[]', ?, 'active', 'generated', 'skill', ?, ?)`,
+          `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, importance_score, model, embedding, updated_at, lifecycle_state, lifecycle, semantic_type, governance_json, created_at, skill_category)
+           VALUES (?, ?, 'skills', 0, 0, ?, ?, 0.5, 'peer', '[]', ?, 'active', 'generated', 'skill', ?, ?, ?)`,
         )
-        .run(id, `peer/${envelope.name}`, content, envelope.content_hash, now, governance, now);
+        .run(
+          id,
+          `peer/${envelope.name}`,
+          content,
+          envelope.content_hash,
+          now,
+          governance,
+          now,
+          skillCategoryFromContent(content, envelope.name),
+        );
 
       log.debug("crystal imported from peer", { id, peer: peerPubkey, name: envelope.name });
 

@@ -18,6 +18,7 @@ import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { SkillVerifier } from "./skill-verifier.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { scanSkillForInjection } from "../security/skill-injection-scanner.js";
+import { skillCategoryFromContent } from "./skill-category.js";
 import { SkillVersionResolver } from "./skill-version-resolver.js";
 
 const log = createSubsystemLogger("memory/skill-network-bridge");
@@ -638,13 +639,13 @@ export class SkillNetworkBridge {
             importance_score, model, embedding, updated_at,
             lifecycle_state, lifecycle, semantic_type, governance_json,
             created_at, provenance_dag, is_verified, verified_by,
-            lineage_hash, peer_origin
+            lineage_hash, peer_origin, skill_category
           ) VALUES (
             ?, ?, 'skills', 0, 0, ?, ?,
             0.5, 'peer', '[]', ?,
             'active', 'generated', 'skill', ?,
             ?, ?, ?, ?,
-            ?, ?
+            ?, ?, ?
           )`,
         )
         .run(
@@ -660,6 +661,7 @@ export class SkillNetworkBridge {
           verifiedBy,
           lineageHash,
           envelope.author_pubkey,
+          skillCategoryFromContent(content, envelope.name),
         );
 
       // Plan 8, Phase 1: Store peer wallet address for revenue sharing
