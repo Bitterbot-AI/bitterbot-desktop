@@ -133,7 +133,11 @@ The entire search-prediction-error curiosity signal was designed and never wired
 
 ## Fix status (updated 2026-08-09)
 
-**Landed with tests** (commits 34f78cd, 8c5e4ff, fd59b1a): F2, F3, F4, F6, F8, F16. The A1 baseline confirmed every finding against live data first.
+**Landed with tests** (commits 34f78cd, 8c5e4ff, fd59b1a): F2, F3, F4, F6, F8, F16. The A1 baseline confirmed every finding against live data first; after deploy, F3 verified live (4 disk skills now categorized, `skill_category` non-NULL for the first time).
+
+**F12 only PARTIALLY fixed (live-verified 2026-08-09):** F3's bootstrap fix categorizes the 4 on-disk skills, but the 521 pre-existing skill crystals (193 `model=dream`, 328 `model=peer`) still have NULL `skill_category` — they are created by the crystallizer / received-skill path (`skill-crystallizer.ts:197`, `skill-refiner.ts:355`, the P2P ingest path), not the bootstrap. `skills.metrics` now returns rows for disk skills but stays empty for those 521. **Remaining F12 work:** (a) have the crystallizer set `skill_category` on new crystals, (b) backfill the existing 521 NULL categories. Flagged here rather than silently over-claimed.
+
+**F4 verified structurally** (binding test: `candidatesFor('message')` now returns the interceptors); `intervention_records` will grow on the next confident-claim message turn (Group B6, needs live activity — not visible in a cold A1 snapshot).
 
 **Deferred — need a design decision, not a quick fix:**
 
