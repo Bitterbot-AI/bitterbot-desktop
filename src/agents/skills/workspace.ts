@@ -82,7 +82,7 @@ function filterSkillEntries(
         if (capabilityGate.notifyBlocked) {
           try {
             capabilityGate.notifyBlocked(
-              `Skill "${entry.skill.name}" excluded from prompt: tier=${verdict.tier} clips capabilities [${verdict.blockedAxes.join(", ")}]. Run "skills.quarantine.list" or update grants to admit.`,
+              `Skill "${entry.skill.name}" excluded from prompt: tier=${verdict.tier} clips capabilities [${verdict.blockedAxes.join(", ")}]. Run "skills.incoming.list" or update grants to admit.`,
             );
           } catch (err) {
             skillsLogger.debug(`notifyBlocked threw: ${String(err)}`);

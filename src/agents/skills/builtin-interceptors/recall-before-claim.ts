@@ -9,6 +9,7 @@
  */
 
 import type { CandidateAction, PreActionInterceptor, StepContext } from "../interceptor.js";
+import { MESSAGE_TOOL_NAMES } from "./message-tools.js";
 
 const MEMORY_LIKE_TOOLS = new Set([
   "memory_search",
@@ -34,15 +35,7 @@ const NON_ASSERTION_RX =
 const NEGATION_RX =
   /\b(hallucinated|made up|making it up|doesn'?t exist|does not exist|never (existed|happened)|fabricated|invented|not real|isn'?t real|that'?s fake|no such|didn'?t happen)\b/i;
 
-const MESSAGE_TOOLS = [
-  "message",
-  "send_message",
-  "discord_send",
-  "telegram_send",
-  "whatsapp_send",
-  "slack_send",
-  "webchat_reply",
-];
+const MESSAGE_TOOLS = MESSAGE_TOOL_NAMES;
 
 export const recallBeforeClaim: PreActionInterceptor = {
   id: "recall-before-claim:default",

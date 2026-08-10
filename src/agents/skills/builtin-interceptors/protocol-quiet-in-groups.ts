@@ -8,15 +8,10 @@
  */
 
 import type { CandidateAction, PreActionInterceptor, StepContext } from "../interceptor.js";
+import { MESSAGE_TOOL_NAMES } from "./message-tools.js";
 
 const GROUP_CHANNELS = new Set(["discord", "telegram", "whatsapp", "slack", "googlechat", "irc"]);
-const MESSAGE_TOOLS = [
-  "send_message",
-  "discord_send",
-  "telegram_send",
-  "whatsapp_send",
-  "slack_send",
-];
+const MESSAGE_TOOLS = MESSAGE_TOOL_NAMES;
 
 const MIN_TURNS_BETWEEN_SPEAKS = 5;
 const MENTION_LOOKBACK = 3;

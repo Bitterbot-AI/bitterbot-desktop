@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type { StepContext } from "../interceptor.js";
 import { __testing as ctxTesting } from "../interceptor-context.js";
 import { calibrateClaimConfidence } from "./calibrate-claim-confidence.js";
+import { MESSAGE_TOOL_NAMES } from "./message-tools.js";
 import { protocolQuietInGroups } from "./protocol-quiet-in-groups.js";
 import { recallBeforeClaim } from "./recall-before-claim.js";
 import { routeByQueryShape } from "./route-by-query-shape.js";
@@ -21,6 +22,29 @@ function mkCtx(over: Partial<StepContext> = {}): StepContext {
     ...over,
   } as StepContext;
 }
+
+// Audit 2026-08-09 F4: the message interceptors bound to phantom tool names
+// (send_message, discord_send, ...) that are not real registered tools, so
+// they could never activate and intervention_records stayed empty forever.
+// Guard: every message interceptor must bind to the REAL tool names, and
+// never to the phantom ones.
+describe("message interceptor tool bindings (F4 regression)", () => {
+  const messageInterceptors = [recallBeforeClaim, protocolQuietInGroups, calibrateClaimConfidence];
+  const PHANTOM = ["send_message", "discord_send", "telegram_send", "whatsapp_send", "slack_send"];
+
+  it("shared MESSAGE_TOOL_NAMES contains the real tools only", () => {
+    expect(MESSAGE_TOOL_NAMES).toContain("message");
+    expect(MESSAGE_TOOL_NAMES).toContain("sessions_send");
+    for (const phantom of PHANTOM) expect(MESSAGE_TOOL_NAMES).not.toContain(phantom);
+  });
+
+  it("every message interceptor binds the real 'message' tool, no phantoms", () => {
+    for (const ic of messageInterceptors) {
+      expect(ic.tools).toContain("message");
+      for (const phantom of PHANTOM) expect(ic.tools).not.toContain(phantom);
+    }
+  });
+});
 
 describe("recall-before-claim", () => {
   it("fires on a confident factual assertion with no recent memory tool", () => {
@@ -136,11 +160,11 @@ describe("protocol-quiet-in-groups", () => {
         { role: "assistant", preview: "yes here is one" },
         { role: "user", preview: "ok thanks" },
       ],
-      toolHistory: [{ tool: "discord_send", success: true, tsDelta: 8000 }],
+      toolHistory: [{ tool: "message", success: true, tsDelta: 8000 }],
       turnNumber: 12,
     });
     const should = protocolQuietInGroups.shouldActivate(ctx, {
-      toolName: "discord_send",
+      toolName: "message",
       params: { content: "and another thing" },
     });
     expect(should).toBe(true);

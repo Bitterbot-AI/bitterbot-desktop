@@ -287,7 +287,7 @@ export async function ingestSkill(params: {
       : `trust=${trustLevel}`;
   const notification =
     `Skill "${skillName}" from peer ${envelope.author_peer_id} held in quarantine ` +
-    `(${reason}). Run "skills.quarantine.list" to review.`;
+    `(${reason}). Run "skills.incoming.list" to review.`;
   if (params.notifyQuarantine) {
     try {
       params.notifyQuarantine(notification);

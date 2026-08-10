@@ -11,6 +11,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { CONFIG_DIR } from "../utils.js";
 
 const log = createSubsystemLogger("memory:seed-migration");
 
@@ -147,7 +148,13 @@ function markDone(db: DatabaseSync): void {
 
 // ── Skill Bootstrap ──
 
-const SKILL_BOOTSTRAP_KEY = "skill_bootstrap_done";
+// Bumped to _v2 (audit 2026-08-09, F3): the v1 bootstrap read
+// <workspaceDir>/skills (which does not exist — skills live under
+// CONFIG_DIR/skills, see crystallize.ts) so it inserted 0 crystals and then
+// latched done=true FOREVER, leaving all skill crystals with skill_category
+// NULL and skills.metrics permanently empty. A new key forces exactly one
+// re-run on already-deployed nodes without a manual latch clear.
+const SKILL_BOOTSTRAP_KEY = "skill_bootstrap_done_v2";
 
 /**
  * Bootstrap skill crystals from the `skills/` directory at project root.
@@ -159,8 +166,10 @@ const SKILL_BOOTSTRAP_KEY = "skill_bootstrap_done";
 export async function runSkillBootstrap(params: {
   db: DatabaseSync;
   workspaceDir: string;
+  /** Skills root override (tests). Defaults to CONFIG_DIR. */
+  configDir?: string;
 }): Promise<void> {
-  const { db, workspaceDir } = params;
+  const { db, workspaceDir, configDir } = params;
 
   // Check if already bootstrapped
   try {
@@ -174,11 +183,19 @@ export async function runSkillBootstrap(params: {
     return;
   }
 
-  const skillsDir = path.join(workspaceDir, "skills");
+  // Skills live under CONFIG_DIR/skills (matches crystallize.ts and
+  // skill-storage.ts LIVE_SUBDIR), NOT workspaceDir/skills. `quarantine` is a
+  // sibling holding pen for un-adopted peer skills, not a skill folder — skip
+  // it (and any staging/archive siblings) so it never becomes a crystal.
+  const NON_SKILL_DIRS = new Set(["quarantine", "staging", "archive"]);
+  const skillsDir = path.join(configDir ?? CONFIG_DIR, "skills");
+  void workspaceDir; // retained for signature/back-compat; skills are config-dir scoped
   let entries: string[];
   try {
     const dirEntries = await fs.readdir(skillsDir, { withFileTypes: true });
-    entries = dirEntries.filter((e) => e.isDirectory()).map((e) => e.name);
+    entries = dirEntries
+      .filter((e) => e.isDirectory() && !NON_SKILL_DIRS.has(e.name))
+      .map((e) => e.name);
   } catch {
     // No skills/ directory — mark done and return
     markBootstrapDone(db);

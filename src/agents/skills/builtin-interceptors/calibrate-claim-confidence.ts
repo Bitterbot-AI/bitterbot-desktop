@@ -9,6 +9,7 @@
  */
 
 import type { CandidateAction, PreActionInterceptor, StepContext } from "../interceptor.js";
+import { MESSAGE_TOOL_NAMES } from "./message-tools.js";
 
 const CONFIDENT_RX =
   /\b(definitely|certainly|absolutely|clearly|obviously|undoubtedly|surely|always|never|guaranteed|100%)\b/i;
@@ -27,14 +28,7 @@ const HEDGE_MAP: Record<string, string> = {
   "100%": "very likely",
 };
 
-const MESSAGE_TOOLS = [
-  "send_message",
-  "discord_send",
-  "telegram_send",
-  "whatsapp_send",
-  "slack_send",
-  "webchat_reply",
-];
+const MESSAGE_TOOLS = MESSAGE_TOOL_NAMES;
 
 function hedge(text: string): string {
   return text.replace(
