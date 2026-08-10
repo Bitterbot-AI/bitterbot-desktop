@@ -371,7 +371,7 @@ async function runDoctor(
 
   // ── Artifact liveness (loops that run but whose output never appears —
   //    the wired-but-dead defect class from the 2026-08-09 audit) ──
-  runLivenessChecks({ config: cfg });
+  await runLivenessChecks({ config: cfg });
 
   // ── Long-horizon task spine (tasks.sqlite, event journal, cron) ──
   runTaskSpineChecks({ config: cfg, isGatewayRunning: healthOk });

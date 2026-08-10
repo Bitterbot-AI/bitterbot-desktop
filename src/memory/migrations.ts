@@ -2039,6 +2039,83 @@ const MIGRATIONS: Migration[] = [
       log.info(`v57 skill_category backfill: updated=${updated} unresolved=${unresolved}`);
     },
   },
+  {
+    version: 58,
+    description:
+      "PLAN-40 Phase 0: the dream-utility substrate. dream_utility is the " +
+      "honest funnel — one row per artifact any dream lane produces, with a " +
+      "set-once first_consumed_at stamped ONLY where content provably enters " +
+      "a model prompt or a skill executes (the evaluation found the engine's " +
+      "entire lifetime output had zero consumption, partly because nothing " +
+      "could measure it). dream_briefs holds Phase-3 anticipatory briefs " +
+      "OUTSIDE the chunks/retrieval surface (adversarial pass: briefs as " +
+      "chunks leak cross-session synthesis into group prompts via recall). " +
+      "chunks.hygiene_done is the one-shot rewrite guard (bounded-rewriting " +
+      "rule as schema). skill_executions.tool_name/recorded_by give Lane 1 " +
+      "the provenance the adversarial pass proved missing. canonical_facts " +
+      "staleness-ask columns give the hygiene lane its 3-asks-then-" +
+      "unconfirmed terminal state. mutation_queue is DROPPED: it has " +
+      "writers and no reader anywhere (wired-but-dead, evaluation E9) — " +
+      "the one destructive change, safe because no code can observe it. " +
+      "Existing origin='dream' insight chunks get backfilled funnel rows " +
+      "(lane='legacy') so pre-plan artifacts are measurable too.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS dream_utility (
+          id                TEXT PRIMARY KEY,
+          lane              TEXT NOT NULL,
+          artifact_kind     TEXT NOT NULL,
+          artifact_id       TEXT NOT NULL,
+          produced_at       INTEGER NOT NULL,
+          first_consumed_at INTEGER,
+          consumed_kind     TEXT,
+          cycle_id          TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_dream_utility_artifact
+          ON dream_utility (artifact_id);
+        CREATE INDEX IF NOT EXISTS idx_dream_utility_lane
+          ON dream_utility (lane, produced_at);
+      `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS dream_briefs (
+          id            TEXT PRIMARY KEY,
+          context_kind  TEXT NOT NULL,
+          context_ref   TEXT,
+          question      TEXT NOT NULL,
+          answer_sketch TEXT NOT NULL,
+          evidence_json TEXT NOT NULL DEFAULT '[]',
+          status        TEXT NOT NULL DEFAULT 'open',
+          created_at    INTEGER NOT NULL,
+          surfaced_at   INTEGER,
+          referenced_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_dream_briefs_status
+          ON dream_briefs (status, created_at);
+      `);
+      addColumnIfMissing(db, "chunks", "hygiene_done", "INTEGER NOT NULL DEFAULT 0");
+      addColumnIfMissing(db, "skill_executions", "tool_name", "TEXT");
+      addColumnIfMissing(db, "skill_executions", "recorded_by", "TEXT");
+      addColumnIfMissing(
+        db,
+        "canonical_facts",
+        "staleness_asked_count",
+        "INTEGER NOT NULL DEFAULT 0",
+      );
+      addColumnIfMissing(db, "canonical_facts", "last_staleness_ask_at", "INTEGER");
+      // Writers-only queue: queueForRetry + slow-update enqueue exist, no
+      // reader ever shipped. Dropping is observable by nothing.
+      db.exec(`DROP TABLE IF EXISTS mutation_queue`);
+      // Backfill funnel rows for pre-plan promoted insight chunks so the
+      // Utility surfaces can report on them (they are 'legacy', not a lane).
+      db.exec(`
+        INSERT OR IGNORE INTO dream_utility
+          (id, lane, artifact_kind, artifact_id, produced_at, cycle_id)
+        SELECT 'legacy_' || id, 'legacy', 'insight_chunk', id, created_at, NULL
+          FROM chunks
+         WHERE origin = 'dream' AND COALESCE(semantic_type, '') = 'insight'
+      `);
+    },
+  },
 ];
 
 /**

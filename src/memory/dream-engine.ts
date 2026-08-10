@@ -208,6 +208,14 @@ export class DreamEngine {
   private readonly localModelIsLocal: boolean;
   private state: DreamState = "DORMANT";
   private lastModeUsed: DreamMode | null = null;
+  /**
+   * PLAN-40: the TRUE remaining LLM budget for the running cycle, refreshed
+   * before each mode and before the promotion verifier. In-mode loops and
+   * the verifier compare against this — never against the full per-cycle
+   * max (adversarial F9: mode-local counters vs the full max allowed ~2x
+   * overshoot).
+   */
+  private cycleLlmRemaining = 0;
 
   constructor(
     db: DatabaseSync,
@@ -811,6 +819,14 @@ export class DreamEngine {
           continue;
         }
 
+        // PLAN-40 Phase 0 (adversarial F9): the budget is HARD. In-mode
+        // multi-call loops used to compare a mode-LOCAL counter against the
+        // FULL cycle budget, so a mode entered at 7/8 could spend its own
+        // internal max on top. This field carries the true remaining budget
+        // into the mode; the verifier pass below draws from the same
+        // arithmetic.
+        this.cycleLlmRemaining = Math.max(0, this.config.maxLlmCallsPerCycle - totalLlmCalls);
+
         const { insights, llmCalls, chunksAnalyzed } = await this.runMode(mode, cycleId);
         allInsights.push(...insights);
         totalLlmCalls += llmCalls;
@@ -867,6 +883,10 @@ export class DreamEngine {
 
         if (promotable.length > 0) {
           livePromotionRan = true;
+          // PLAN-40 (F9): the verifier draws from the same remaining-budget
+          // arithmetic as the modes — verification can no longer overshoot
+          // the cycle cap.
+          this.cycleLlmRemaining = Math.max(0, this.config.maxLlmCallsPerCycle - totalLlmCalls);
           try {
             await this.promoteEligibleInsights(promotable, cycleId);
           } catch (err) {
@@ -1747,7 +1767,10 @@ export class DreamEngine {
     // Phase 7: Process up to 5 skills per cycle with strategy-based mutation
     const maxPerCycle = Math.min(seeds.length, 5);
     for (const seed of seeds.slice(0, maxPerCycle)) {
-      if (llmCalls >= this.config.maxLlmCallsPerCycle) {
+      // PLAN-40: compare against the REMAINING cycle budget, not the full
+      // per-cycle max (adversarial F9 — the old comparison let a late-slot
+      // mode overshoot the cycle by its own internal cap).
+      if (llmCalls >= this.cycleLlmRemaining) {
         break;
       }
 
@@ -2104,12 +2127,15 @@ export class DreamEngine {
       return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
 
-    // Query curiosity targets for unresolved gaps
+    // Query curiosity targets for unresolved gaps. PLAN-40 Phase 0
+    // (adversarial F12): filter explored targets — the picker previously
+    // re-selected the same explored top-priority targets forever.
     const targets = this.db
       .prepare(
         `SELECT id, type, description, priority, region_id, metadata
          FROM curiosity_targets
          WHERE resolved_at IS NULL AND expires_at > ?
+           AND json_extract(COALESCE(metadata, '{}'), '$.explored') IS NULL
          ORDER BY priority DESC
          LIMIT 3`,
       )
@@ -2587,7 +2613,8 @@ export class DreamEngine {
     let llmCalls = 0;
 
     for (const candidate of candidates) {
-      if (llmCalls >= this.config.maxLlmCallsPerCycle) {
+      // PLAN-40: remaining cycle budget, not the full per-cycle max (F9).
+      if (llmCalls >= this.cycleLlmRemaining) {
         break;
       }
 
@@ -3345,9 +3372,16 @@ export class DreamEngine {
 
   private countCuriosityTargets(): number {
     try {
+      // PLAN-40 Phase 0 (adversarial F12): count only UNEXPLORED targets.
+      // Both this trigger and the exploration picker previously ignored the
+      // explored stamp, so the same top-priority targets re-armed the
+      // auto-trigger every cycle — exploration monopolized 243 of 266 cycles
+      // re-chewing already-explored targets.
       const row = this.db
         .prepare(
-          `SELECT COUNT(*) as c FROM curiosity_targets WHERE resolved_at IS NULL AND expires_at > ?`,
+          `SELECT COUNT(*) as c FROM curiosity_targets
+            WHERE resolved_at IS NULL AND expires_at > ?
+              AND json_extract(COALESCE(metadata, '{}'), '$.explored') IS NULL`,
         )
         .get(Date.now()) as { c: number };
       return row?.c ?? 0;
@@ -3413,9 +3447,10 @@ export class DreamEngine {
         rej.capReached++;
         continue;
       }
-      // Budget: the cycle already spent mode calls; reserve room for at most
-      // MAX_PROMOTIONS_PER_CYCLE verification calls within maxLlmCallsPerCycle.
-      if (llmCallsUsed >= MAX_PROMOTIONS_PER_CYCLE) {
+      // Budget: at most MAX_PROMOTIONS_PER_CYCLE verification calls AND
+      // never beyond the cycle's true remaining budget (PLAN-40 F9 — the
+      // verifier used to run after the loop unmetered).
+      if (llmCallsUsed >= Math.min(MAX_PROMOTIONS_PER_CYCLE, this.cycleLlmRemaining)) {
         rej.capReached++;
         break;
       }

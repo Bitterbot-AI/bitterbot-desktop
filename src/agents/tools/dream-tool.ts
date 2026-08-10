@@ -23,7 +23,12 @@ function resolveDreamToolContext(options: { config?: BitterbotConfig; agentSessi
   if (!cfg) {
     return null;
   }
-  if (!cfg.memory?.dream?.enabled) {
+  // PLAN-40 Phase 0 (adversarial F18): the dream ENGINE defaults on, but
+  // this raw truthy read made the tool — the sole dream_insights reader —
+  // require an explicit `memory.dream.enabled: true` nobody sets, leaving
+  // consumption structurally impossible while the engine burned cycles.
+  // Honor the merged default: enabled unless explicitly disabled.
+  if (cfg.memory?.dream?.enabled === false) {
     return null;
   }
   const agentId = resolveSessionAgentId({

@@ -35,6 +35,7 @@ import {
 } from "./discovery-agent.js";
 import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
 import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
+import { DEFAULT_DREAM_CONFIG } from "./dream-types.js";
 import {
   createEmbeddingProvider,
   type EmbeddingProvider,
@@ -232,6 +233,12 @@ export class MemoryIndexManager implements MemorySearchManager {
   private syncing: Promise<void> | null = null;
   private consolidationTimer: NodeJS.Timeout | null = null;
   private dreamTimer: NodeJS.Timeout | null = null;
+  /**
+   * PLAN-40: wall-clock timestamp of the next scheduled dream fire under the
+   * adaptive controller, so status surfaces report the real ETA instead of a
+   * hardcoded interval (adversarial F16). Null under fixed-interval mode.
+   */
+  nextDreamFireAt: number | null = null;
   private dreamInitialTimer: NodeJS.Timeout | null = null;
   private digestTimer: NodeJS.Timeout | null = null;
   private trendingSweepTimer: NodeJS.Timeout | null = null;
@@ -745,14 +752,38 @@ export class MemoryIndexManager implements MemorySearchManager {
         queryLen: text.length,
         sampleRate: this.retrievalTraceRate,
       });
-      return {
-        facts: result.facts.length > 0 ? formatProactiveFacts(result.facts) : undefined,
-        embedding,
-      };
+      // PLAN-40 funnel: collect dream-origin chunk ids that survive the
+      // render (post dream-cap). The consumption stamp happens in the
+      // CALLER (resolveEndocrineState) and only for full prompt mode —
+      // minimal-mode assembly discards this block after selection, and a
+      // selection-time stamp would re-create the vanity-metric disease.
+      const includedDreamChunkIds: string[] = [];
+      const facts =
+        result.facts.length > 0
+          ? formatProactiveFacts(result.facts, { includedDreamChunkIds })
+          : undefined;
+      return { facts, embedding, renderedDreamChunkIds: includedDreamChunkIds };
     } catch (err) {
       log.debug(`proactive recall failed: ${String(err)}`);
       return { facts: undefined, embedding };
     }
+  }
+
+  /**
+   * PLAN-40 funnel: set-once consumption stamp for dream artifacts that
+   * provably entered a model prompt. Safe to call with unknown ids (no-op).
+   */
+  markDreamArtifactsConsumed(artifactIds: readonly string[], kind: "retrieved"): void {
+    if (artifactIds.length === 0) {
+      return;
+    }
+    void import("./dream-utility.js")
+      .then(({ markDreamConsumptionMany }) => {
+        markDreamConsumptionMany(this.db, artifactIds, kind);
+      })
+      .catch(() => {
+        /* funnel unavailable — non-critical */
+      });
   }
 
   /**
@@ -2532,9 +2563,15 @@ export class MemoryIndexManager implements MemorySearchManager {
     // pass a sanitized config (without functions) to the DreamEngine.
     const builtLlmCall =
       dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? "openai/gpt-4o-mini");
+    // PLAN-40 Phase 0 (adversarial F17, documented activation): the merged
+    // synthesisModel default now applies. NOTE: the default names the same
+    // model as the generator default, so this restores a separate CALL lane,
+    // not true model independence — configure a different
+    // memory.dream.synthesisModel for that.
+    const synthesisModelSpec = dreamCfg?.synthesisModel ?? DEFAULT_DREAM_CONFIG.synthesisModel;
     const builtSynthesisLlmCall =
       dreamCfg?.synthesisLlmCall ??
-      (dreamCfg?.synthesisModel ? this.buildLlmCallFn(dreamCfg.synthesisModel) : null);
+      (synthesisModelSpec ? this.buildLlmCallFn(synthesisModelSpec) : null);
     // PLAN-34 Phase 2c: the local-tier call was previously destructured out
     // and DISCARDED (wired-but-dead). It now powers local-tier modes and —
     // critically — the depersonalization rewrite that gates all autonomous
@@ -2707,7 +2744,13 @@ export class MemoryIndexManager implements MemorySearchManager {
       // PLAN-11 Gap 5: adaptive interval. When adaptiveInterval.enabled, we
       // self-reschedule after each cycle using the smoothed marketplace signal
       // + hysteresis + cooldown. Otherwise behave as a fixed setInterval.
-      const adaptiveCfg = dreamCfg?.adaptiveInterval;
+      // PLAN-40 Phase 0 (evaluation E6): read the MERGED config — the raw
+      // user-config read left the reviewed-and-shipped adaptive default
+      // (enabled: true) wired-but-dead in production for every node without
+      // an explicit memory.dream key. Documented activation: cadence now
+      // ranges 30-240 min; synthesisModel's default similarly activates in
+      // the engine, restoring the claim-verifier's model independence.
+      const adaptiveCfg = dreamCfg?.adaptiveInterval ?? DEFAULT_DREAM_CONFIG.adaptiveInterval;
       if (adaptiveCfg?.enabled) {
         void import("./dream-adaptive-interval.js").then(({ AdaptiveIntervalController }) => {
           this.adaptiveIntervalController = new AdaptiveIntervalController({
@@ -2741,19 +2784,44 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!this.adaptiveIntervalController || !this.marketplaceIntelligence) {
       return;
     }
-    const minutes = this.adaptiveIntervalController.evaluate(this.marketplaceIntelligence);
-    const ms = minutes * 60 * 1000;
-    this.dreamTimer = setTimeout(() => {
-      this.dreamTimer = null;
-      void this.dream()
-        .catch((err) => {
-          log.warn(`dream cycle failed: ${String(err)}`);
-        })
-        .finally(() => {
-          // Re-evaluate and reschedule after each cycle completes.
-          this.scheduleAdaptiveDreamFire();
-        });
-    }, ms);
+    // PLAN-40 Phase 0 (adversarial F15): evaluate() ran bare inside a
+    // self-rescheduling chain — one thrown exception (e.g. transient
+    // SQLITE_BUSY in the activity query) permanently killed dream scheduling
+    // until process restart. A failed evaluation now falls back to the base
+    // interval and the chain ALWAYS reschedules.
+    let minutes: number;
+    try {
+      minutes = this.adaptiveIntervalController.evaluate(this.marketplaceIntelligence);
+    } catch (err) {
+      log.warn(`adaptive dream interval evaluate failed; using base interval: ${String(err)}`);
+      minutes = this.cfg.memory?.dream?.intervalMinutes ?? DEFAULT_DREAM_CONFIG.intervalMinutes;
+    }
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      minutes = DEFAULT_DREAM_CONFIG.intervalMinutes;
+    }
+    // Expose the actual next-fire time so status surfaces (dream.status ETA)
+    // report the adaptive truth instead of a hardcoded interval.
+    this.nextDreamFireAt = Date.now() + minutes * 60 * 1000;
+    this.dreamTimer = setTimeout(
+      () => {
+        this.dreamTimer = null;
+        void this.dream()
+          .catch((err) => {
+            log.warn(`dream cycle failed: ${String(err)}`);
+          })
+          .finally(() => {
+            // Re-evaluate and reschedule after each cycle completes. The
+            // try/catch above guarantees this chain survives any single
+            // failure.
+            try {
+              this.scheduleAdaptiveDreamFire();
+            } catch (err) {
+              log.warn(`adaptive dream reschedule failed: ${String(err)}`);
+            }
+          });
+      },
+      minutes * 60 * 1000,
+    );
     if ((this.dreamTimer as NodeJS.Timeout).unref) {
       (this.dreamTimer as NodeJS.Timeout).unref();
     }

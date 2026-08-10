@@ -118,6 +118,8 @@ export async function runCliAgent(params: {
     userMessage: params.prompt,
     // Scopes the recall cooldown to this conversation (see recallForUserTurn).
     sessionKey: params.sessionKey,
+    // PLAN-40 funnel: CLI turns are owner-driven full prompts.
+    promptMode: "full",
   }).catch(() => undefined);
 
   // PLAN-33: canonical facts resolve independently of endocrine state.

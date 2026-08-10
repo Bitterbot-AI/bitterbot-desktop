@@ -97,6 +97,7 @@ canvas { display: block; margin: 0 auto; }
   </div>
   <div class="tabs">
     <button class="tab active" data-tab="status">Status</button>
+    <button class="tab" data-tab="utility">Utility</button>
     <button class="tab" data-tab="history">History</button>
     <button class="tab" data-tab="analytics">Analytics</button>
     <button class="tab" data-tab="emotional">Emotional</button>
@@ -112,6 +113,13 @@ canvas { display: block; margin: 0 auto; }
     <div class="stats-grid" id="status-stats"></div>
     <div class="card" id="status-last"></div>
     <div class="card"><h3 style="margin-bottom:12px">Hormonal State</h3><div id="hormone-display"></div></div>
+  </div>
+
+  <!-- UTILITY TAB (PLAN-40: the funnel is the engine's only score) -->
+  <div class="panel" id="panel-utility">
+    <div class="stats-grid" id="utility-stats"></div>
+    <div class="card"><h3 style="margin-bottom:12px">Consumed-artifact funnel (28d)</h3><div id="utility-funnel"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Held modes — wake counters</h3><div id="utility-holds"></div></div>
   </div>
 
   <!-- HISTORY TAB -->
@@ -199,7 +207,7 @@ const WS_URL = ${JSON.stringify(gatewayWsUrl)};
 const GW_TOKEN = ${JSON.stringify(gatewayToken ?? "")};
 let ws, rpcId = 0, soundEnabled = false, audioCtx = null;
 const pending = new Map();
-const MODE_COLORS = {replay:'var(--blue)',mutation:'var(--purple)',extrapolation:'var(--green)',compression:'var(--orange)',simulation:'var(--pink)',exploration:'var(--indigo)',research:'var(--teal)'};
+const MODE_COLORS = {replay:'var(--blue)',mutation:'var(--purple)',extrapolation:'var(--green)',compression:'var(--orange)',simulation:'var(--pink)',exploration:'var(--indigo)',research:'var(--teal)',canonical_promotion:'var(--green)',relationship_mining:'var(--blue)',relationship_reconsolidation:'var(--teal)',interceptor_harvest:'var(--orange)',harness_evolve:'var(--purple)'};
 const MODE_CSS = {replay:'badge-replay',mutation:'badge-mutation',extrapolation:'badge-extrapolation',compression:'badge-compression',simulation:'badge-simulation',exploration:'badge-exploration',research:'badge-research'};
 let historyPage = 0, lastInsights = [], lastHormones = null;
 
@@ -262,6 +270,7 @@ function activeTab() { return document.querySelector('.tab.active')?.dataset?.ta
 function loadActiveTab() {
   const tab = activeTab();
   if (tab === 'status') loadStatus();
+  else if (tab === 'utility') loadUtility();
   else if (tab === 'history') loadHistory();
   else if (tab === 'analytics') loadAnalytics();
   else if (tab === 'emotional') loadEmotional();
@@ -541,6 +550,36 @@ async function loadHistory() {
 }
 
 // ANALYTICS
+// UTILITY (PLAN-40): produced vs consumed per lane + hold wake counters.
+// Data comes from dream.utility, which reads the SAME shared query module
+// as the doctor — never reimplement the funnel math here.
+async function loadUtility() {
+  try {
+    const u = await rpc('dream.utility', { windowDays: 28 });
+    const lanes = u.funnel || [];
+    const totProd = lanes.reduce((s,l) => s + (l.produced||0), 0);
+    const totCons = lanes.reduce((s,l) => s + (l.consumed||0), 0);
+    const rate = totProd > 0 ? Math.round(totCons/totProd*100) + '%' : '—';
+    document.getElementById('utility-stats').innerHTML =
+      '<div class="stat-card"><div class="label">Artifacts produced (28d)</div><div class="value">'+totProd+'</div></div>' +
+      '<div class="stat-card"><div class="label">Ever consumed</div><div class="value">'+totCons+'</div></div>' +
+      '<div class="stat-card"><div class="label">Consumed rate</div><div class="value">'+rate+'</div></div>';
+    document.getElementById('utility-funnel').innerHTML = lanes.length ? lanes.map(l => {
+      const pct = l.produced > 0 ? Math.round((l.consumed||0)/l.produced*100) : 0;
+      const kinds = Object.entries(l.byKind||{}).map(([k,v]) => k+': '+v).join(', ');
+      return '<div class="mode-bar"><span class="name">'+l.lane+'</span>' +
+        '<div style="flex:1"><div class="fill" style="width:'+pct+'%;background:var(--green)"></div></div>' +
+        '<span class="pct">'+(l.consumed||0)+'/'+l.produced+(kinds?' ('+kinds+')':'')+'</span></div>';
+    }).join('') : '<div class="empty">No lane artifacts yet — lanes land with PLAN-40 Phases 1-3</div>';
+    document.getElementById('utility-holds').innerHTML = (u.holds||[]).map(h => {
+      const pct = Math.min(100, Math.round(h.current/h.wakeAt*100));
+      return '<div class="mode-bar"><span class="name" style="min-width:260px">'+h.hold+'</span>' +
+        '<div style="flex:1"><div class="fill" style="width:'+pct+'%;background:var(--orange)"></div></div>' +
+        '<span class="pct">'+h.current+'/'+h.wakeAt+'</span></div>';
+    }).join('') || '<div class="empty">No holds</div>';
+  } catch(e) { console.warn('utility error', e); }
+}
+
 async function loadAnalytics() {
   try {
     const a = await rpc('dream.analytics', { days: 30 });

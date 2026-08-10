@@ -101,6 +101,25 @@ export function createMemorySearchTool(options: {
         const status = manager.status();
         const decorated = decorateCitations(rawResults, includeCitations);
         const results = decorated;
+        // PLAN-40 funnel: the tool's return IS model input, so dream-origin
+        // hits here are genuine consumption (unlike manager.search() calls
+        // from the CLI or deep-recall candidate sweeps, which must never
+        // stamp — adversarial F2).
+        try {
+          const dreamIds = rawResults
+            .map((r) => r.crystal)
+            .filter((c) => c?.origin === "dream" && c.id)
+            .map((c) => c!.id);
+          if (dreamIds.length > 0) {
+            (
+              manager as unknown as {
+                markDreamArtifactsConsumed?(ids: readonly string[], kind: "retrieved"): void;
+              }
+            ).markDreamArtifactsConsumed?.(dreamIds, "retrieved");
+          }
+        } catch {
+          /* funnel unavailable — non-critical */
+        }
         const canonical = resolveCanonicalLookup(cfg, manager, query ?? "");
         return jsonResult({
           // PLAN-33 Phase 4: ledger-first — authoritative exact-key hits before

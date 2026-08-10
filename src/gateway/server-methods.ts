@@ -109,6 +109,7 @@ const READ_METHODS = new Set([
   "dream.analytics",
   "dream.journal",
   "dream.marketplaceStatus",
+  "dream.utility",
   "marketplace.search",
   "marketplace.trending",
   "marketplace.recommendations",

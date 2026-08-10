@@ -399,9 +399,9 @@ export function renderMarkdown(report: DigestReport): string {
     if (report.dreams.avgDurationMs != null) {
       lines.push(`- Avg duration: ${(report.dreams.avgDurationMs / 1000).toFixed(1)}s`);
     }
-    if (report.dreams.latestDqs != null) {
-      lines.push(`- Latest DQS: ${report.dreams.latestDqs.toFixed(3)}`);
-    }
+    // PLAN-40: DQS dropped from the digest — it reported ~0.9 regardless of
+    // whether anything produced was ever consumed. The dream-utility funnel
+    // is the honest replacement (dashboard Utility tab / doctor).
     const modes = Object.entries(report.dreams.modesUsed);
     if (modes.length > 0) {
       modes.sort((a, b) => b[1] - a[1]);

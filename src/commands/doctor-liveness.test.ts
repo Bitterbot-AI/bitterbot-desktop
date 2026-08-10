@@ -7,7 +7,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { inspectArtifactLiveness } from "./doctor-liveness.js";
+import { inspectArtifactLiveness, inspectDreamUtility } from "./doctor-liveness.js";
 
 const NOW = 1_750_000_000_000;
 const DAY = 86_400_000;
@@ -189,6 +189,61 @@ describe("inspectArtifactLiveness", () => {
     expect(hit).toBeTruthy();
     expect(hit).toContain("exploration (6 runs)");
     expect(hit).not.toContain("mutation");
+    db.close();
+  });
+});
+
+describe("inspectDreamUtility (PLAN-40 funnel via the shared module)", () => {
+  function utilityDb(): DatabaseSync {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`
+      CREATE TABLE dream_utility (
+        id TEXT PRIMARY KEY, lane TEXT NOT NULL, artifact_kind TEXT NOT NULL,
+        artifact_id TEXT NOT NULL, produced_at INTEGER NOT NULL,
+        first_consumed_at INTEGER, consumed_kind TEXT, cycle_id TEXT
+      );
+      CREATE TABLE skill_executions (id TEXT PRIMARY KEY, completed_at INTEGER);
+      CREATE TABLE intervention_records (id TEXT PRIMARY KEY, outcome_tag TEXT);
+      CREATE TABLE relationships (id TEXT PRIMARY KEY, valid_until INTEGER);
+    `);
+    return db;
+  }
+
+  it("warns when lanes produce but nothing is ever consumed", async () => {
+    const db = utilityDb();
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO dream_utility (id, lane, artifact_kind, artifact_id, produced_at)
+       VALUES ('u1', 'hygiene', 'merged_chunk', 'a1', ?)`,
+    ).run(now);
+    const results = await inspectDreamUtility(db);
+    expect(
+      results.some((r) => r.level === "warn" && /NOT ONE was ever consumed/.test(r.message)),
+    ).toBe(true);
+    db.close();
+  });
+
+  it("reports ok with per-lane detail when consumption exists, and shows hold counters", async () => {
+    const db = utilityDb();
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO dream_utility (id, lane, artifact_kind, artifact_id, produced_at, first_consumed_at, consumed_kind)
+       VALUES ('u1', 'distillation', 'workflow_note', 'a1', ?, ?, 'retrieved')`,
+    ).run(now, now + 1);
+    const results = await inspectDreamUtility(db);
+    expect(results.some((r) => r.level === "ok" && /distillation 1\/1/.test(r.message))).toBe(true);
+    expect(results.filter((r) => /Hold wake counter/.test(r.message)).length).toBe(3);
+    db.close();
+  });
+
+  it("legacy-lane artifacts are excluded from the produced/consumed verdict", async () => {
+    const db = utilityDb();
+    db.prepare(
+      `INSERT INTO dream_utility (id, lane, artifact_kind, artifact_id, produced_at)
+       VALUES ('u1', 'legacy', 'insight_chunk', 'a1', ?)`,
+    ).run(Date.now());
+    const results = await inspectDreamUtility(db);
+    expect(results.some((r) => /no lane artifacts/.test(r.message))).toBe(true);
     db.close();
   });
 });

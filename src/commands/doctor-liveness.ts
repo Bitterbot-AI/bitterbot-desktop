@@ -340,7 +340,55 @@ export function inspectArtifactLiveness(db: DatabaseSync, now: number = Date.now
   return results;
 }
 
-export function runLivenessChecks(params: { config: BitterbotConfig }): void {
+/**
+ * PLAN-40: the dream-utility funnel + hold wake counters, via the SAME
+ * shared query module the dream.utility RPC uses (one implementation).
+ * Exported for tests.
+ */
+export async function inspectDreamUtility(db: DatabaseSync): Promise<CheckResult[]> {
+  const results: CheckResult[] = [];
+  try {
+    const { getDreamUtilityFunnel, getDreamHoldCounters } =
+      await import("../memory/dream-utility.js");
+    const funnel = getDreamUtilityFunnel(db, { windowDays: 28 });
+    const lanes = funnel.filter((f) => f.lane !== "legacy");
+    const produced = lanes.reduce((s, l) => s + l.produced, 0);
+    const consumed = lanes.reduce((s, l) => s + l.consumed, 0);
+    if (produced === 0) {
+      results.push(info("Dream utility funnel: no lane artifacts in the last 28d."));
+    } else if (consumed === 0) {
+      results.push(
+        warn(
+          `Dream lanes produced ${produced} artifact(s) in 28d and NOT ONE was ever consumed ` +
+            `(retrieved/executed/surfaced) — the engine is spending compute on unread output ` +
+            `again. Per-lane: ${lanes.map((l) => `${l.lane} 0/${l.produced}`).join(", ")}.`,
+        ),
+      );
+    } else {
+      results.push(
+        ok(
+          `Dream utility (28d): ${consumed}/${produced} artifacts consumed — ` +
+            lanes.map((l) => `${l.lane} ${l.consumed}/${l.produced}`).join(", ") +
+            ".",
+        ),
+      );
+    }
+    for (const h of getDreamHoldCounters(db)) {
+      if (h.current < 0) continue;
+      results.push(
+        info(
+          `Hold wake counter — ${h.hold}: ${h.current}/${h.wakeAt}` +
+            (h.current >= h.wakeAt ? " — WAKE THRESHOLD REACHED, re-enable the mode." : "."),
+        ),
+      );
+    }
+  } catch (err) {
+    results.push(info(`Could not read dream utility funnel: ${String(err)}`));
+  }
+  return results;
+}
+
+export async function runLivenessChecks(params: { config: BitterbotConfig }): Promise<void> {
   const results: CheckResult[] = [];
   const dbPath = resolveDoctorMemoryDbPath(params.config);
   if (dbPath && fs.existsSync(dbPath)) {
@@ -348,6 +396,7 @@ export function runLivenessChecks(params: { config: BitterbotConfig }): void {
     try {
       db = new DatabaseSync(dbPath, { open: true, readOnly: true });
       results.push(...inspectArtifactLiveness(db));
+      results.push(...(await inspectDreamUtility(db)));
     } catch (err) {
       results.push(info(`Could not open memory DB for liveness checks: ${String(err)}`));
     } finally {

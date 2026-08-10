@@ -49,6 +49,13 @@ export async function resolveEndocrineState(params: {
    * fresh conversation is not suppressed by the previous session's window.
    */
   sessionKey?: string;
+  /**
+   * PLAN-40 funnel: the caller's prompt mode. Dream-artifact consumption is
+   * stamped ONLY when "full" — minimal-mode assembly discards the proactive
+   * block after selection, and compaction/status callers omit this entirely,
+   * so neither ever stamps (adversarial F3: no stamps for discarded facts).
+   */
+  promptMode?: "full" | "minimal";
 }): Promise<EndocrineStateForPrompt | undefined> {
   try {
     const { MemoryIndexManager } = await import("../memory/manager.js");
@@ -162,7 +169,12 @@ export async function resolveEndocrineState(params: {
         recallForUserTurn(
           text: string,
           opts?: { scopeKey?: string },
-        ): Promise<{ facts: string | undefined; embedding: number[] | null }>;
+        ): Promise<{
+          facts: string | undefined;
+          embedding: number[] | null;
+          renderedDreamChunkIds?: string[];
+        }>;
+        markDreamArtifactsConsumed?(ids: readonly string[], kind: "retrieved"): void;
       };
       if (params.userMessage && typeof recallManager.recallForUserTurn === "function") {
         const recall = await recallManager.recallForUserTurn(params.userMessage, {
@@ -170,6 +182,18 @@ export async function resolveEndocrineState(params: {
         });
         proactiveMemories = recall.facts;
         userMessageEmbedding = recall.embedding;
+        // PLAN-40 funnel: these dream facts WILL render — buildEndocrine-
+        // StateSection includes proactiveMemories only on the full-mode
+        // branch, so the stamp is gated on the caller's declared mode.
+        if (
+          params.promptMode === "full" &&
+          proactiveMemories &&
+          recall.renderedDreamChunkIds &&
+          recall.renderedDreamChunkIds.length > 0 &&
+          typeof recallManager.markDreamArtifactsConsumed === "function"
+        ) {
+          recallManager.markDreamArtifactsConsumed(recall.renderedDreamChunkIds, "retrieved");
+        }
       } else {
         // No live message (status/compaction) — identity-only recall.
         const { proactiveRecall, formatProactiveFacts } =

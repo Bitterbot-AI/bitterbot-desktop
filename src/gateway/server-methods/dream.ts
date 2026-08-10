@@ -227,7 +227,13 @@ export const dreamHandlers: GatewayRequestHandlers = {
       const intervalMs = (dreamCfg?.intervalMinutes ?? 120) * 60 * 1000;
       const lastCycle = status?.lastCycle as { completedAt?: number } | undefined;
       const lastCycleAt = lastCycle?.completedAt ?? null;
-      const nextDreamEta = lastCycleAt ? lastCycleAt + intervalMs : null;
+      // PLAN-40 (adversarial F16): under the adaptive scheduler the real
+      // next-fire time lives on the manager; the interval-derived guess is
+      // only the fixed-mode fallback. Without this, the dashboard lied the
+      // moment adaptive cadence (30-240min) went live.
+      const adaptiveNextFire = (manager as unknown as { nextDreamFireAt?: number | null })
+        .nextDreamFireAt;
+      const nextDreamEta = adaptiveNextFire ?? (lastCycleAt ? lastCycleAt + intervalMs : null);
       respond(true, {
         ...status,
         nextDreamEta,
@@ -673,6 +679,30 @@ export const dreamHandlers: GatewayRequestHandlers = {
       const summary = marketplace.getEconomicSummary();
       const listings = marketplace.getListableSkills();
       respond(true, { enabled: true, summary, listings });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // PLAN-40 Phase 0: the utility funnel — the engine's only honest score.
+  // Reads the SAME shared query module the doctor's dream-utility section
+  // uses; the dashboard must never grow a second implementation (the
+  // Analytics tab's divergent insight counts are the cautionary precedent).
+  "dream.utility": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as { db: import("node:sqlite").DatabaseSync }).db;
+      const { getDreamUtilityFunnel, getDreamHoldCounters } =
+        await import("../../memory/dream-utility.js");
+      const windowDays =
+        typeof params?.windowDays === "number" && params.windowDays > 0
+          ? Math.min(params.windowDays, 365)
+          : 28;
+      respond(true, {
+        windowDays,
+        funnel: getDreamUtilityFunnel(db, { windowDays }),
+        holds: getDreamHoldCounters(db),
+      });
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }

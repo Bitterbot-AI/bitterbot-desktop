@@ -1603,7 +1603,7 @@ describe("End-to-End P2P Skill Propagation", () => {
 
     const dream = new DreamEngine(
       dbA,
-      { llmCall: llm, minChunksForDream: 5 },
+      { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
       noopSynthesize,
       noopEmbedBatch,
     );

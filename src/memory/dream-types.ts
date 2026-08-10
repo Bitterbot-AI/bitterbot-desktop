@@ -21,7 +21,8 @@ export type DreamMode =
   | "relationship_reconsolidation" // PLAN-23 SABM: adjudicate flagged belief contradictions, close losers post-labile-window
   | "harness_evolve" // PLAN-25: mine harness-level failures → propose + validate + promote HarnessPolicy edits
   | "relationship_mining" // PLAN-28 A2: offline LLM mining of typed triples from fact chunks → populate the graph
-  | "canonical_promotion"; // PLAN-33 Phase 3: offline promotion of stable key-value facts into the canonical ledger
+  | "canonical_promotion" // PLAN-33 Phase 3: offline promotion of stable key-value facts into the canonical ledger
+  | "hygiene"; // PLAN-40 Lane 2: embedding backfill + near-duplicate merge + canonical staleness questions
 
 export type DreamModeConfig = {
   enabled: boolean;
@@ -33,21 +34,38 @@ export type DreamModeConfig = {
 export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   replay: { enabled: true, weight: 0.18, maxChunks: 20, requiresLlm: false },
   compression: { enabled: true, weight: 0.18, maxChunks: 30, requiresLlm: false },
-  mutation: { enabled: true, weight: 0.14, maxChunks: 10, requiresLlm: true },
+  // PLAN-40 Phase 0: mutation disabled — the 2026-08-10 utility evaluation
+  // found its lifetime output was 206 paraphrases of ONE skill (1 category,
+  // 3 lineages), zero reads, zero executions: exactly the no-success-signal
+  // distillation the literature warns against. Lane 1 (verified-success
+  // distillation) is the principled replacement. The mode body is deleted
+  // when Lane 1 lands; its auto-trigger is gated on this flag, so the flip
+  // alone silences it.
+  mutation: { enabled: false, weight: 0.14, maxChunks: 10, requiresLlm: true },
   simulation: { enabled: true, weight: 0.14, maxChunks: 10, requiresLlm: true },
   extrapolation: { enabled: true, weight: 0.09, maxChunks: 15, requiresLlm: true },
   exploration: { enabled: true, weight: 0.09, maxChunks: 10, requiresLlm: true },
   // PLAN-34 Phase 0: research mode disabled by default — it is unfueled
   // (skill_executions bootstrap deadlock) and its promotion path writes
   // directly to live chunk text with no staging gate (dream-engine value
-  // audit 2026-07-10). Re-enable per the PLAN-34 §9 Phase-5 exit criterion
-  // (organic skill_executions accumulating + a gated promotion path).
+  // audit 2026-07-10). PLAN-40 retires it permanently: Lane 1 is the gated
+  // replacement for "improve skills from execution data".
   research: { enabled: false, weight: 0.09, maxChunks: 5, requiresLlm: true },
-  interceptor_harvest: { enabled: true, weight: 0.09, maxChunks: 25, requiresLlm: true },
-  relationship_reconsolidation: { enabled: true, weight: 0.09, maxChunks: 25, requiresLlm: true },
-  harness_evolve: { enabled: true, weight: 0.05, maxChunks: 24, requiresLlm: true },
+  // PLAN-40 HOLDS: these three are well-built but structurally unfueled
+  // (evaluation E5: 0/25 held-out executions, 0/10 outcome-tagged records,
+  // 12/100 relationships). Leaving them enabled burned softmax slots on
+  // guaranteed no-ops (adversarial F10). The doctor's dream-utility section
+  // shows each hold's live counter vs its wake threshold; re-enable when
+  // the counter crosses it.
+  interceptor_harvest: { enabled: false, weight: 0.09, maxChunks: 25, requiresLlm: true },
+  relationship_reconsolidation: { enabled: false, weight: 0.09, maxChunks: 25, requiresLlm: true },
+  harness_evolve: { enabled: false, weight: 0.05, maxChunks: 24, requiresLlm: true },
   relationship_mining: { enabled: true, weight: 0.09, maxChunks: 30, requiresLlm: true },
   canonical_promotion: { enabled: true, weight: 0.07, maxChunks: 30, requiresLlm: true },
+  // PLAN-40 Lane 2. requiresLlm false: the backfill + staleness halves run
+  // without any model; the merge half draws from the cycle's remaining LLM
+  // budget when one is available and silently skips otherwise.
+  hygiene: { enabled: true, weight: 0.15, maxChunks: 200, requiresLlm: false },
 };
 
 export type DreamCluster = {

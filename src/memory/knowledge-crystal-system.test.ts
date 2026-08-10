@@ -654,7 +654,7 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5 },
+        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -705,7 +705,7 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5 },
+        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -805,7 +805,7 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5 },
+        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -851,7 +851,7 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5 },
+        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -966,7 +966,7 @@ describe("Dream Engine", () => {
       // must NOT bypass the containment default.
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5 },
+        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -1098,7 +1098,12 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5, maxInsights: 4 },
+        {
+          llmCall: llm,
+          minChunksForDream: 5,
+          maxInsights: 4,
+          modes: { mutation: { enabled: true } },
+        },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -2525,7 +2530,7 @@ describe("Integration: Cross-system feedback loops", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5 },
+        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -2704,7 +2709,7 @@ describe("Integration: Cross-system feedback loops", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5 },
+        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -2756,7 +2761,7 @@ describe("Integration: Cross-system feedback loops", () => {
 
       const dream1 = new DreamEngine(
         db,
-        { llmCall: llm1, minChunksForDream: 5 },
+        { llmCall: llm1, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -2801,7 +2806,7 @@ describe("Integration: Cross-system feedback loops", () => {
 
       const dream2 = new DreamEngine(
         db,
-        { llmCall: llm2, minChunksForDream: 5 },
+        { llmCall: llm2, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -3249,7 +3254,7 @@ describe("Full E2E Pipeline: ingest → consolidate → dream → curiosity", ()
     const llm = mockLlmCall(llmResponses);
     const engine = new DreamEngine(
       db,
-      { llmCall: llm, minChunksForDream: 5 },
+      { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
       noopSynthesize,
       noopEmbedBatch,
     );

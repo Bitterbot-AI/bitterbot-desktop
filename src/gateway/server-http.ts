@@ -505,7 +505,12 @@ export function createGatewayHttpServer(opts: {
       if (await handleSlackHttpRequest(req, res)) {
         return;
       }
-      // Dream dashboard — auth-protected, serves self-contained HTML
+      // Dream dashboard — token-protected off-loopback; LOOPBACK REQUESTS
+      // ARE WAIVED and the page embeds the gateway token so its WS connect
+      // works. PLAN-40 posture note: this hands the shared token to any
+      // local process (single-user desktop assumption). The derived
+      // read-scoped dashboard token replaces this embedding in PLAN-40
+      // Phase 2 (with the D1 review surface) — tracked, not accidental.
       if (requestPath === "/dreams" && req.method === "GET") {
         const token = getBearerToken(req);
         const authResult = await authorizeGatewayConnect({

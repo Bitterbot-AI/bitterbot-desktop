@@ -587,6 +587,14 @@ export interface FormatProactiveFactsOptions {
    * surface fence tags in the user transcript.
    */
   wrapInMemoryFence?: boolean;
+  /**
+   * PLAN-40 funnel: out-param collecting the chunk ids of dream-origin facts
+   * that actually made it into the rendered block (post dream-cap). The
+   * CALLER stamps consumption only when the rendered block provably enters a
+   * full-mode prompt — never here (formatting can be discarded by minimal
+   * prompt assembly after the fact).
+   */
+  includedDreamChunkIds?: string[];
 }
 
 export const MEMORY_FENCE_OPEN_TAG = "<memory-context>";
@@ -641,6 +649,9 @@ export function formatProactiveFacts(
       dreamShown++;
       anyDream = true;
       lines.push(`- (dream hypothesis) ${f.text}`);
+      if (f.chunkId && options.includedDreamChunkIds) {
+        options.includedDreamChunkIds.push(f.chunkId);
+      }
       continue;
     }
     const prefix = f.confidence < 0.4 ? "(uncertain) " : "";

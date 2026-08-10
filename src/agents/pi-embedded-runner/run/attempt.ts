@@ -459,6 +459,9 @@ export async function runEmbeddedAttempt(
       // Scopes the recall cooldown to this conversation so a fresh session in
       // a warm process is not suppressed by the previous session's window.
       sessionKey: params.sessionKey ?? params.sessionId,
+      // PLAN-40 funnel: dream-fact consumption stamps only in full mode
+      // (minimal assembly drops the proactive block after selection).
+      promptMode,
     }).catch(() => undefined);
 
     // PLAN-33: canonical facts resolve independently of endocrine state so a

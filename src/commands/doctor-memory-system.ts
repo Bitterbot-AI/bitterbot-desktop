@@ -460,19 +460,12 @@ function checkDreamEngine(
       // modes_used column may predate this check
     }
 
-    // Latest DQS from dream_outcomes
-    if (tableExists(db, "dream_outcomes")) {
-      try {
-        const dqsRow = db
-          .prepare(`SELECT dqs FROM dream_outcomes ORDER BY timestamp DESC LIMIT 1`)
-          .get() as { dqs: number } | undefined;
-        if (dqsRow) {
-          results.push(info(`Latest Dream Quality Score (DQS): ${dqsRow.dqs.toFixed(3)}`));
-        }
-      } catch {
-        // table may exist but be empty
-      }
-    }
+    // PLAN-40: DQS is retired as a quality claim — the 2026-08-10 utility
+    // evaluation showed it reported ~0.9 every cycle while the engine's
+    // entire lifetime output went unconsumed (it measures plumbing, not
+    // utility). The dream-utility funnel (consumed-artifact rate, shown in
+    // the Artifact-liveness section and the dashboard's Utility tab) is the
+    // engine's score now. dream_outcomes remains as historical telemetry.
   } catch (err) {
     // warn, not error: an unexpected throw here means the CHECK failed, not
     // that the node is broken — a genuinely corrupt DB already errors in

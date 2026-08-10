@@ -1,5 +1,21 @@
 # Dream Engine — Offline Processing & Insight Generation
 
+> **PLAN-40 retarget in progress (2026-08-10).** The utility evaluation
+> (docs/reviews/dream-engine-utility-2026-08-10.md) found the engine's
+> lifetime cognitive output had never been consumed by anything downstream.
+> Phase 0 landed: `mutation` is **disabled by default** (its lifetime output
+> was 206 paraphrases of one skill, zero reads/executions; the
+> verified-success distillation lane replaces it), the three fuel-starved
+> modes (`interceptor_harvest`, `harness_evolve`,
+> `relationship_reconsolidation`) are **held disabled** with doctor-visible
+> wake thresholds (10 outcome-tagged records / 25 completed executions /
+> 100 relationships), `mutation_queue` was dropped (it never had a reader),
+> exploration only fires on **unexplored** curiosity targets, the per-cycle
+> LLM budget is now hard (verifier calls included), and every artifact the
+> engine produces gets a **`dream_utility` funnel row** whose set-once
+> consumption stamp is written only where content provably enters a model
+> prompt. Consumed-artifact rate — not DQS — is the engine's score.
+
 The Dream Engine processes memories during idle periods, generating new insights through 7 specialized modes: replaying important memories, compressing redundant knowledge, mutating skills, extrapolating future patterns, simulating cross-domain recombinations, exploring curiosity-driven knowledge gaps, and researching empirical prompt optimizations. Each mode is assigned a compute tier (none, local LLM, or cloud LLM) to balance cost against insight quality.
 
 The engine uses three complementary signals for intelligent mode selection: **curiosity-driven GCCRF analysis** (prediction error, learning progress, novelty, empowerment, strategic alignment), **FSHO oscillator dynamics** (a Kuramoto synchronization model with empirical self-validation), and **marketplace demand** (Plan 8). Dream cycles are triggered on a timer, but can also fire immediately in response to emotional spikes.
@@ -74,7 +90,16 @@ Each mode serves a different purpose and has a default weight controlling how of
 | `exploration`   | 0.10   | `local`      | Gap-filling from curiosity targets                                  |
 | `research`      | 0.10   | `cloud`      | Empirical prompt optimization using skill execution data            |
 
-**`research` is disabled by default** (PLAN-34 Phase 0): the mode has no organic fuel — skill-execution telemetry only records against existing skill crystals, which only mint from existing execution rows — and its promotion path wrote directly to live chunk text with no staging gate. It returns behind the PLAN-34 §9 exit criterion (organic `skill_executions` accumulating plus a gated promotion path).
+**`research` is disabled by default** (PLAN-34 Phase 0): the mode has no organic fuel — skill-execution telemetry only records against existing skill crystals, which only mint from existing execution rows — and its promotion path wrote directly to live chunk text with no staging gate. PLAN-40 retires it permanently: the verified-success distillation lane is the gated replacement.
+
+**Disabled by default since PLAN-40 Phase 0 (2026-08-10):** `mutation`
+(paraphrase treadmill with no success signal — see the utility evaluation),
+and the three structurally-unfueled holds `interceptor_harvest`,
+`harness_evolve`, and `relationship_reconsolidation`. Holds re-enable when
+their wake counters (shown in `bitterbot doctor`'s dream-utility section)
+cross threshold: ≥10 outcome-tagged intervention records, ≥25 completed
+skill executions, ≥100 active relationships respectively. All remain
+individually re-enablable via `memory.dream.modes.<mode>.enabled`.
 
 ### Mode Selection — Three-Signal Architecture
 
