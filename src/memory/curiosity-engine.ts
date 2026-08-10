@@ -84,6 +84,24 @@ type QueryRow = {
   timestamp: number;
 };
 
+/**
+ * Deterministic region id from a region label (audit 2026-08-09, F8). Regions
+ * MUST keep a stable identity across rebuildRegions cycles — random UUIDs
+ * every rebuild orphaned all curiosity_progress rows and made
+ * learning_progress impossible to accumulate. Same label -> same UUIDv4-shaped
+ * id, forever.
+ */
+export function deriveStableRegionId(label: string): string {
+  const h = crypto.createHash("sha256").update(`region:${label}`).digest("hex");
+  return [
+    h.slice(0, 8),
+    h.slice(8, 12),
+    "4" + h.slice(13, 16),
+    ((parseInt(h.slice(16, 17), 16) & 0x3) | 0x8).toString(16) + h.slice(17, 20),
+    h.slice(20, 32),
+  ].join("-");
+}
+
 export class CuriosityEngine {
   private db: DatabaseSync;
   private readonly config: {
@@ -1114,26 +1132,59 @@ export class CuriosityEngine {
       }
     }
 
-    // Update DB: clear old regions and insert new (in a transaction)
+    // Update DB: clear old regions and insert new (in a transaction).
+    // Region IDs are STABLE (deterministic from the label), not random, so a
+    // region that persists across rebuilds keeps its identity — otherwise
+    // every rebuild orphaned all curiosity_progress rows (keyed by region_id)
+    // and learning_progress could never accumulate (audit 2026-08-09, F8).
     const now = Date.now();
+    // Snapshot the prior regions by stable id so we can carry created_at
+    // forward and compute learning_progress = the reduction in prediction
+    // error for a region that persisted (the GCCRF learning-progress signal,
+    // which was hardcoded to 0 and never computed anywhere).
+    const priorById = new Map<string, { createdAt: number; predictionError: number }>();
+    try {
+      const priorRows = this.db
+        .prepare(`SELECT id, prediction_error, created_at FROM curiosity_regions`)
+        .all() as Array<{ id: string; prediction_error: number; created_at: number }>;
+      for (const r of priorRows) {
+        priorById.set(r.id, { createdAt: r.created_at, predictionError: r.prediction_error });
+      }
+    } catch {
+      // fresh DB — no priors
+    }
+    const regionId = deriveStableRegionId;
     try {
       this.db.exec("BEGIN");
       this.db.exec(`DELETE FROM curiosity_regions`);
       const stmt = this.db.prepare(
-        `INSERT INTO curiosity_regions
+        `INSERT OR REPLACE INTO curiosity_regions
          (id, label, centroid, chunk_count, total_accesses, mean_importance,
           prediction_error, learning_progress, created_at, last_updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
 
+      const seen = new Set<string>();
       for (let i = 0; i < newRegions.length; i++) {
         const region = newRegions[i]!;
-        // Derive a semantic label from the region's chunk content
-        const label = this.extractRegionLabel(region.chunkIds) || `region_${i}`;
+        // Derive a semantic label from the region's chunk content. Fall back
+        // to a content-hash tag (NOT positional region_N, which would reshuffle
+        // identity every rebuild) so unlabeled regions still get a stable id.
+        let label = this.extractRegionLabel(region.chunkIds);
+        if (!label) {
+          label = `region_${crypto.createHash("sha256").update(region.chunkIds.toSorted().join(",")).digest("hex").slice(0, 8)}`;
+        }
+        let id = regionId(label);
+        // Guard against two clusters resolving to the same label this cycle.
+        while (seen.has(id)) {
+          label = `${label}~${i}`;
+          id = regionId(label);
+        }
+        seen.add(id);
         // Compute prediction error as mean distance of chunks from centroid
         const errors: number[] = [];
-        for (const id of region.chunkIds) {
-          const emb = embeddings.get(id);
+        for (const cid of region.chunkIds) {
+          const emb = embeddings.get(cid);
           if (emb) {
             errors.push(1 - cosineSimilarity(emb, region.centroid));
           }
@@ -1141,16 +1192,23 @@ export class CuriosityEngine {
         const predictionError =
           errors.length > 0 ? errors.reduce((a, b) => a + b, 0) / errors.length : 0;
 
+        // Learning progress = how much surprise fell since this region was last
+        // seen. Positive means the agent is learning this region; 0 for new
+        // regions or where error rose.
+        const prior = priorById.get(id);
+        const learningProgress = prior ? Math.max(0, prior.predictionError - predictionError) : 0;
+        const createdAt = prior?.createdAt ?? now;
+
         stmt.run(
-          crypto.randomUUID(),
+          id,
           label,
           JSON.stringify(region.centroid),
           region.chunkIds.length,
           region.totalAccesses,
           region.meanImportance,
           predictionError,
-          0, // learning progress computed separately
-          now,
+          learningProgress,
+          createdAt,
           now,
         );
       }

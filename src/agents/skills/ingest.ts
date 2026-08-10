@@ -322,12 +322,29 @@ async function emitQuarantineSystemEvent(message: string): Promise<void> {
   }
 }
 
+/**
+ * Read the author pubkey from a quarantined skill's envelope so a manual
+ * accept/reject can feed graduated trust. Best-effort; returns null on any
+ * read/parse failure.
+ */
+async function readQuarantineAuthorPubkey(incomingDir: string): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(path.join(incomingDir, ".envelope.json"), "utf-8");
+    const parsed = JSON.parse(raw) as { author_pubkey?: unknown };
+    return typeof parsed.author_pubkey === "string" ? parsed.author_pubkey : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function acceptIncomingSkill(params: {
   skillName: string;
   config: BitterbotConfig;
   workspaceDir?: string;
+  /** Live reputation manager so a manual accept credits the peer (F6). */
+  reputationManager?: { recordIngestionResult(peerPubkey: string, accepted: boolean): void };
 }): Promise<IngestResult> {
-  const { skillName, config, workspaceDir } = params;
+  const { skillName, config, workspaceDir, reputationManager } = params;
   const quarantineDir =
     config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
   const incomingDir = path.join(quarantineDir, skillName);
@@ -335,6 +352,8 @@ export async function acceptIncomingSkill(params: {
 
   try {
     const content = await fs.readFile(skillPath, "utf-8");
+    // Read the author pubkey BEFORE we delete the quarantine dir.
+    const authorPubkey = await readQuarantineAuthorPubkey(incomingDir);
     const targetDir = path.join(CONFIG_DIR, "skills", skillName);
     await fs.mkdir(targetDir, { recursive: true });
     await fs.writeFile(path.join(targetDir, "SKILL.md"), content, "utf-8");
@@ -354,6 +373,14 @@ export async function acceptIncomingSkill(params: {
       changedPath: path.join(targetDir, "SKILL.md"),
     });
 
+    // Credit the peer so graduated trust can eventually auto-accept them.
+    // Without this the manual-review flow was a trust dead end: every peer
+    // skill went to quarantine, an accept recorded nothing, skills_accepted
+    // stayed 0 forever, and no peer could ever leave review (audit F6).
+    if (authorPubkey && reputationManager) {
+      reputationManager.recordIngestionResult(authorPubkey, true);
+    }
+
     log.info(`Accepted incoming skill: ${skillName}`);
     return { ok: true, action: "accepted", skillName, skillPath: path.join(targetDir, "SKILL.md") };
   } catch (err) {
@@ -364,15 +391,21 @@ export async function acceptIncomingSkill(params: {
 export async function rejectIncomingSkill(params: {
   skillName: string;
   config: BitterbotConfig;
+  /** Live reputation manager so a manual reject debits the peer (F6). */
+  reputationManager?: { recordIngestionResult(peerPubkey: string, accepted: boolean): void };
 }): Promise<IngestResult> {
-  const { skillName, config } = params;
+  const { skillName, config, reputationManager } = params;
   const quarantineDir =
     config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
   const incomingDir = path.join(quarantineDir, skillName);
 
   try {
+    const authorPubkey = await readQuarantineAuthorPubkey(incomingDir);
     await fs.rm(incomingDir, { recursive: true, force: true });
     bumpSkillsSnapshotVersion({ reason: "manual", changedPath: incomingDir });
+    if (authorPubkey && reputationManager) {
+      reputationManager.recordIngestionResult(authorPubkey, false);
+    }
     log.info(`Rejected incoming skill: ${skillName}`);
     return { ok: true, action: "rejected", skillName };
   } catch (err) {

@@ -109,6 +109,28 @@ function collectSkillBins(entries: SkillEntry[]): string[] {
   return [...bins].toSorted();
 }
 
+/**
+ * Resolve the live peer-reputation manager off the memory manager so a manual
+ * skills.incoming.accept/reject credits the peer (audit 2026-08-09, F6).
+ * Best-effort: returns undefined when memory/P2P is disabled.
+ */
+async function resolveReputationManager(
+  cfg: BitterbotConfig,
+): Promise<{ recordIngestionResult(peerPubkey: string, accepted: boolean): void } | undefined> {
+  try {
+    const { getMemorySearchManager } = await import("../../memory/index.js");
+    const agentId = resolveDefaultAgentId(cfg);
+    const { manager } = await getMemorySearchManager({ cfg, agentId });
+    const repManager = (manager as unknown as { peerReputationManager?: unknown } | null)
+      ?.peerReputationManager as
+      | { recordIngestionResult(peerPubkey: string, accepted: boolean): void }
+      | undefined;
+    return repManager ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const skillsHandlers: GatewayRequestHandlers = {
   "skills.status": ({ params, respond }) => {
     if (!validateSkillsStatusParams(params)) {
@@ -451,7 +473,13 @@ export const skillsHandlers: GatewayRequestHandlers = {
     }
     const cfg = loadConfig();
     const workspaceDir = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
-    const result = await acceptIncomingSkill({ skillName, config: cfg, workspaceDir });
+    const reputationManager = await resolveReputationManager(cfg);
+    const result = await acceptIncomingSkill({
+      skillName,
+      config: cfg,
+      workspaceDir,
+      reputationManager,
+    });
     respond(
       result.ok,
       result,
@@ -465,7 +493,8 @@ export const skillsHandlers: GatewayRequestHandlers = {
       return;
     }
     const cfg = loadConfig();
-    const result = await rejectIncomingSkill({ skillName, config: cfg });
+    const reputationManager = await resolveReputationManager(cfg);
+    const result = await rejectIncomingSkill({ skillName, config: cfg, reputationManager });
     respond(
       result.ok,
       result,

@@ -2235,11 +2235,14 @@ export class MemoryIndexManager implements MemorySearchManager {
           this.peerReputationManager.detectAnomalies();
           // 7b. Update peer quality scores from execution outcomes
           try {
+            // Column is peer_pubkey, not pubkey — the wrong name threw
+            // "no such column", was swallowed by the catch below, and
+            // updatePeerQuality never ran (audit 2026-08-09, F6 sub-bug).
             const peers = this.db
-              .prepare(`SELECT DISTINCT pubkey FROM peer_reputation WHERE skills_accepted > 0`)
-              .all() as Array<{ pubkey: string }>;
+              .prepare(`SELECT DISTINCT peer_pubkey FROM peer_reputation WHERE skills_accepted > 0`)
+              .all() as Array<{ peer_pubkey: string }>;
             for (const peer of peers) {
-              this.peerReputationManager.updatePeerQuality(peer.pubkey);
+              this.peerReputationManager.updatePeerQuality(peer.peer_pubkey);
             }
           } catch (err) {
             log.debug(`peer quality update failed: ${String(err)}`);
