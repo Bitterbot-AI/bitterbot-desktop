@@ -198,7 +198,12 @@ describe("gateway lock", () => {
     const lock = await acquireGatewayLock({
       env,
       allowInTests: true,
-      timeoutMs: 30,
+      // Generous timeout: this acquire SHOULD succeed via stale takeover, and
+      // a healthy takeover completes in one or two loop iterations regardless
+      // of the ceiling. 30ms flaked on CI when the 2026-08 runner image
+      // slowed cold fs I/O enough that a single iteration (open EEXIST →
+      // read payload → mocked /proc throw → stat → rm) could exhaust it.
+      timeoutMs: 2000,
       pollIntervalMs: 2,
       staleMs: 1,
       platform: "linux",
