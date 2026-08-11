@@ -35,16 +35,19 @@ describe("inspectDreamModeLiveness", () => {
 
   it("warns for enabled modes never selected across many cycles", () => {
     const db = dreamDb();
-    // 45 cycles, only replay/compression ever run — harness_evolve,
-    // relationship_mining etc. are enabled by default and never appear.
+    // 45 cycles, only replay/compression ever run — relationship_mining and
+    // the PLAN-40 lanes are enabled by default and never appear.
     for (let i = 0; i < 45; i++) insertCycle(db, i, ["replay", "compression"]);
     const results = inspectDreamModeLiveness(db, EMPTY_CFG);
     const liveness = results.find((r) => r.level === "warn");
     expect(liveness).toBeTruthy();
-    expect(liveness?.message).toContain("harness_evolve");
     expect(liveness?.message).toContain("relationship_mining");
-    // Disabled-by-default modes must NOT be flagged.
+    expect(liveness?.message).toContain("hygiene");
+    // Disabled-by-default modes (PLAN-34 research; PLAN-40 mutation + holds)
+    // must NOT be flagged.
     expect(liveness?.message).not.toContain("research");
+    expect(liveness?.message).not.toContain("mutation");
+    expect(liveness?.message).not.toContain("harness_evolve");
     db.close();
   });
 
@@ -64,7 +67,15 @@ describe("inspectDreamModeLiveness", () => {
         "canonical_promotion",
       ]);
     const cfg = {
-      memory: { dream: { modes: { harness_evolve: { enabled: false } } } },
+      memory: {
+        dream: {
+          modes: {
+            hygiene: { enabled: false },
+            distillation: { enabled: false },
+            anticipation: { enabled: false },
+          },
+        },
+      },
     } as unknown as BitterbotConfig;
     const results = inspectDreamModeLiveness(db, cfg);
     expect(results.some((r) => r.level === "ok")).toBe(true);
@@ -77,15 +88,14 @@ describe("inspectDreamModeLiveness", () => {
       insertCycle(db, i, [
         "replay",
         "compression",
-        "mutation",
         "simulation",
         "extrapolation",
         "exploration",
-        "interceptor_harvest",
-        "relationship_reconsolidation",
-        "harness_evolve",
         "relationship_mining",
         "canonical_promotion",
+        "hygiene",
+        "distillation",
+        "anticipation",
       ]);
     const results = inspectDreamModeLiveness(db, EMPTY_CFG);
     expect(results).toHaveLength(1);
