@@ -104,6 +104,18 @@ export type MemoryConfig = {
      */
     enabled?: boolean;
   };
+  /**
+   * Daily health sweep: runs doctor's read-only inspectors on a schedule and
+   * warns about anything NEW since the previous run. Free (SQL only, no model
+   * calls). Exists because every silent failure found on 2026-08-11 had a
+   * correct check already written — nobody had run doctor.
+   */
+  healthSweep?: {
+    /** Enable the daily sweep (default: true). */
+    enabled?: boolean;
+    /** Local clock time in 24h "HH:MM" format. Default: "08:00". */
+    time?: string;
+  };
   /** PLAN-11 Gap 6: daily digest of autonomous skill-pipeline activity. */
   digest?: {
     /** Enable the daily digest (default: true). */

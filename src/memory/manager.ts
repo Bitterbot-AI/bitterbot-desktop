@@ -242,6 +242,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   nextDreamFireAt: number | null = null;
   private dreamInitialTimer: NodeJS.Timeout | null = null;
   private digestTimer: NodeJS.Timeout | null = null;
+  private healthSweepTimer: NodeJS.Timeout | null = null;
   private trendingSweepTimer: NodeJS.Timeout | null = null;
   private marketplaceIntelligence: MarketplaceIntelligence | null = null;
   private marketabilityPredictor:
@@ -551,6 +552,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.ensureDreamEngine();
     step("ensureDreamEngine");
     this.ensureDigestInterval();
+    this.ensureHealthSweepInterval();
     this.ensureTrendingSweepInterval();
     this.ensureCuriosityEngine();
     step("ensureCuriosityEngine");
@@ -2918,6 +2920,59 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (this.digestTimer.unref) {
       this.digestTimer.unref();
     }
+  }
+
+  /**
+   * Daily health sweep — runs doctor's READ-ONLY inspectors on a schedule and
+   * warns about anything NEW since the last run.
+   *
+   * The checks that would have caught this session's three silent failures
+   * (dead vector index, unconsumed dream lanes, never-scheduled modes) all
+   * already existed and were correct; they simply never ran. Same wall-clock
+   * self-rescheduling shape as the digest. Free by construction: no model
+   * calls, no agent turns — only SQL against the memory DB.
+   */
+  private ensureHealthSweepInterval(): void {
+    const sweepCfg = this.cfg.memory?.healthSweep;
+    if (sweepCfg?.enabled === false || this.healthSweepTimer) {
+      return;
+    }
+    const time = sweepCfg?.time ?? "08:00";
+    void import("./skill-pipeline-digest.js")
+      .then(({ msUntilLocalTime }) => {
+        this.scheduleHealthSweepFire(msUntilLocalTime(time));
+      })
+      .catch((err) => {
+        log.debug(`health sweep schedule failed: ${String(err)}`);
+      });
+  }
+
+  private scheduleHealthSweepFire(msUntilNext: number): void {
+    this.healthSweepTimer = setTimeout(() => {
+      this.healthSweepTimer = null;
+      void this.runHealthSweep()
+        .catch((err) => {
+          log.warn(`health sweep failed: ${String(err)}`);
+        })
+        .finally(() => {
+          // Always reschedule — a sweep that dies must not take the alarm
+          // with it (the adaptive-dream-scheduler lesson).
+          try {
+            this.ensureHealthSweepInterval();
+          } catch (err) {
+            log.debug(`health sweep reschedule failed: ${String(err)}`);
+          }
+        });
+    }, msUntilNext);
+    if (this.healthSweepTimer.unref) {
+      this.healthSweepTimer.unref();
+    }
+  }
+
+  /** Run the health sweep now. Exposed for the doctor/RPC surfaces. */
+  async runHealthSweep(): Promise<import("./health-sweep.js").SweepResult> {
+    const { runHealthSweep } = await import("./health-sweep.js");
+    return runHealthSweep({ db: this.db, cfg: this.cfg });
   }
 
   /**

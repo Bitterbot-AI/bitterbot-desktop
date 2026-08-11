@@ -912,9 +912,10 @@ class MemoryManagerEmbeddingOps {
           `INSERT INTO chunks (id, path, source, start_line, end_line, hash, model, text, embedding,
              updated_at, emotional_valence, origin, memory_type,
              semantic_type, lifecycle, created_at, governance_json,
-             hormonal_dopamine, hormonal_cortisol, hormonal_oxytocin)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             hormonal_dopamine, hormonal_cortisol, hormonal_oxytocin, skill_category)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
+             skill_category=COALESCE(excluded.skill_category, chunks.skill_category),
              hash=excluded.hash,
              model=excluded.model,
              text=excluded.text,
@@ -954,6 +955,13 @@ class MemoryManagerEmbeddingOps {
           hormonal.dopamine,
           hormonal.cortisol,
           hormonal.oxytocin,
+          // Audit F12, remaining path (2026-08-11): SKILL.md files indexed from
+          // disk land as source='skills' chunks that the health sweep counts as
+          // skill crystals — 487 of them had no skill_category, so they were
+          // invisible to skills.metrics and skill_lifecycle exactly like the
+          // crystal-creation paths fixed in v57. The containing folder IS the
+          // canonical skill key (same rule the bootstrap uses).
+          options.source === "skills" ? skillCategoryFromPath(entry.path) : null,
         );
       // Extract user preferences from session content
       if (options.source === "sessions" && this.userModelManager) {
@@ -1172,6 +1180,21 @@ function deriveValenceFromHormonal(h: HormonalInfluence): number | null {
     return null;
   }
   return Math.max(-1, Math.min(1, raw));
+}
+
+/**
+ * Derive the canonical skill key from an indexed SKILL.md path: the containing
+ * folder name, matching `runSkillBootstrap`'s rule so a folder indexed from
+ * disk and the same folder bootstrapped as a crystal group together.
+ */
+function skillCategoryFromPath(filePath: string): string | null {
+  const parts = filePath.split(/[/\\]/).filter(Boolean);
+  // .../<skillFolder>/SKILL.md  ->  <skillFolder>
+  const folder = parts.length >= 2 ? parts[parts.length - 2] : undefined;
+  if (!folder || folder === "." || folder === ".." || folder === "skills") {
+    return null;
+  }
+  return folder;
 }
 
 export const memoryManagerEmbeddingOps = MemoryManagerEmbeddingOps.prototype;

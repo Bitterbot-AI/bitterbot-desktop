@@ -160,6 +160,25 @@ mode (e.g. `harness_evolve`, `relationship_mining`) that has never been
 selected across 40+ completed cycles is wired-but-never-scheduled, and its
 maintenance work is not happening.
 
+## Daily health sweep
+
+Doctor's read-only inspectors also run on a schedule inside the gateway
+(default 08:00 local, `memory.healthSweep.{enabled,time}`), persist their
+findings to `health_sweeps`, and **diff against the previous run** so a NEW
+problem logs at warn level instead of waiting to be discovered. Persistent
+issues stay quiet — finding identity ignores changing numbers, so "3,003
+crystals" and "2,781 crystals" are the same finding — and a resolved issue
+is reported too.
+
+This exists because writing checks was never the gap. On 2026-08-11 three
+separate silent failures were found in one session, and in every case the
+check that would have caught them was already written and correct: vector
+index coverage, dream-mode liveness, artifact liveness. Nobody had run
+`bitterbot doctor` recently enough, so vector search stayed dead for weeks
+and an embedding backlog silently rebuilt to 3,003 crystals. The sweep is
+free by construction — SQL only, no model round-trips or agent-turn probes,
+which stay in the interactive command.
+
 ## Artifact liveness
 
 Born from the 2026-08-09 wired-but-dead audit: loops that run on schedule,

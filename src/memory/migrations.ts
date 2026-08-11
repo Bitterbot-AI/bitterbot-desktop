@@ -2118,6 +2118,31 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 59,
+    description:
+      "Daily health sweep (2026-08-11): health_sweeps stores each scheduled " +
+      "run's read-only doctor findings so the NEXT run can diff against it and " +
+      "warn about what is new. Motivation: three silent failures surfaced in a " +
+      "single session and in every case the check already existed and was " +
+      "correct (vector-index coverage, dream-mode liveness, artifact liveness) " +
+      "— nobody had run doctor, so vector search stayed dead for weeks and an " +
+      "embedding backlog silently rebuilt. Writing checks was never the gap; " +
+      "running them was. History capped at 30 rows; the diff needs only the " +
+      "previous row.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS health_sweeps (
+          id             TEXT PRIMARY KEY,
+          swept_at       INTEGER NOT NULL,
+          findings_json  TEXT NOT NULL,
+          new_count      INTEGER NOT NULL DEFAULT 0,
+          resolved_count INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_health_sweeps_at ON health_sweeps (swept_at DESC);
+      `);
+    },
+  },
 ];
 
 /**
