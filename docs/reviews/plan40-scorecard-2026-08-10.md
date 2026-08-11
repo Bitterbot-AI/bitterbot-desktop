@@ -155,6 +155,42 @@ Either invest in producer hygiene (stop-list + type validation at the single
 rebuild and a seeded identity preference, or retire the KG population paths
 and let the canonical ledger carry identity. Victor's call.
 
+**KNOWLEDGE GRAPH REPAIRED AND VERIFIED LIVE (2026-08-11, commit b445d06).**
+Victor chose fix over retire. Both ends were rebuilt and the result was
+verified on the live node, not asserted:
+
+|                            | before                                                                 | after                                                       |
+| -------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
+| entities                   | 63 (60 typed `person`, incl. `are`, `water`, `explo`, timezone halves) | **4, zero junk** (bitterbot, donna, prime, victor m. gil)   |
+| relationships              | 73, none usable                                                        | **2**, incl. `donna -[spouse_of]-> victor m. gil` (w 0.85)  |
+| family edges               | **0** (structurally impossible)                                        | **1 — the first this graph has ever held**                  |
+| graph recall contributions | **0 in the node's lifetime**                                           | **contributes** (retrievalHealth `graph: 0` after the turn) |
+| "Who is my wife?"          | nothing surfaced                                                       | **"Donna."**                                                |
+
+Producer: new `kg-entity-admission.ts` is the single gate — defensive
+masking of timezone/URL/path spans before matching, a real ~150-word
+blocklist, truncated-fragment rejection, type-vocabulary enforcement, and
+**type-pair constrained relations** (Graphiti `edge_type_map` pattern) so
+`prefers`-between-two-people and `located_at`-to-a-person are no longer
+expressible. `person` is no longer the catch-all; the agent's own output is
+never extracted from. Consumer: `resolveUserName()` falls back to the
+canonical ledger (which already held `identity.user.name`), recall accepts
+social/work/place relations, first-person questions resolve to the user,
+and second-person conjugation reads "You work on Circles".
+
+74 tests, each seeded from a real junk entity that existed in the live
+graph. Approach cross-checked against 2025-26 practice: our failure is
+textbook OpenIE over-extraction (KGGen measures 29.8% vs 66.1% for
+schema-constrained), and every anti-pattern we had — `person` as default,
+a 7-word stop list, regex as extractor rather than rejector — is named in
+that literature.
+
+**Not yet built (research-backed upgrade path):** LLM or GLiNER extraction
+to replace regex candidate generation; N-mention staging before promotion;
+verbatim evidence-span verification; entity resolution (alias table +
+embedding blocking + LLM adjudication). Current design is deliberately
+precision-first, so expect misses — omission is the cheaper error.
+
 **Open observations (for the phase adversarial pass / next session):**
 
 1. Two of the four merge summaries show no member rows with parent links —
