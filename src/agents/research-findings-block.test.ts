@@ -7,6 +7,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 let findingsQueue: Array<{ finding: string; sourceUrl: string | null }> = [];
+let briefQueue: Array<{ question: string; answer: string }> = [];
 let managerAvailable = true;
 
 vi.mock("../memory/manager.js", () => ({
@@ -15,6 +16,7 @@ vi.mock("../memory/manager.js", () => ({
       managerAvailable
         ? {
             consumeResearchFindings: (limit: number) => findingsQueue.splice(0, limit),
+            consumeDreamBrief: () => briefQueue.shift() ?? null,
           }
         : null,
   },
@@ -102,5 +104,93 @@ describe("resolveResearchFindingsBlock — liveUserTurn gate (Phase 2 adv. fix)"
     });
     expect(block).toContain("looked into X");
     expect(findingsQueue).toHaveLength(0);
+  });
+});
+
+/**
+ * PLAN-40 Lane 3 owner gate. Briefs are cross-session synthesis of the
+ * OWNER's private context; `first_party` trust is a token denylist and a
+ * stranger's DM classifies first_party, so identity must decide.
+ *
+ * The negative case below is the one the phase adversarial pass found
+ * unproven: the previous gate matched `/:dm:([^:]+)$/` against a session key
+ * shape this product never mints, so it always resolved to "owner" and a
+ * stranger's DM would have drained the owner's brief.
+ */
+describe("resolveBriefOwnerTurn — Lane 3 owner gate", () => {
+  const cases: Array<{
+    name: string;
+    input: { liveUserTurn: boolean; senderIsOwner?: boolean; messageProvider?: string | null };
+    expected: boolean;
+  }> = [
+    {
+      name: "stranger DM on a real channel, no owner allowlist configured → refused",
+      input: { liveUserTurn: true, senderIsOwner: false, messageProvider: "whatsapp" },
+      expected: false,
+    },
+    {
+      name: "stranger DM with sender identity absent entirely → refused (fails closed)",
+      input: { liveUserTurn: true, messageProvider: "telegram" },
+      expected: false,
+    },
+    {
+      name: "owner-matched sender on a real channel → allowed",
+      input: { liveUserTurn: true, senderIsOwner: true, messageProvider: "whatsapp" },
+      expected: true,
+    },
+    {
+      name: "Control UI / webchat turn → allowed (no third party in the transcript)",
+      input: { liveUserTurn: true, senderIsOwner: false, messageProvider: "webchat" },
+      expected: true,
+    },
+    {
+      name: "local CLI drive with no channel → allowed",
+      input: { liveUserTurn: true, messageProvider: null },
+      expected: true,
+    },
+    {
+      name: "not a live user turn (heartbeat/cron/subagent) → refused regardless of owner",
+      input: { liveUserTurn: false, senderIsOwner: true, messageProvider: "webchat" },
+      expected: false,
+    },
+  ];
+
+  for (const c of cases) {
+    it(c.name, async () => {
+      const { resolveBriefOwnerTurn } = await import("./research-findings-block.js");
+      expect(resolveBriefOwnerTurn(c.input)).toBe(c.expected);
+    });
+  }
+});
+
+describe("resolveResearchFindingsBlock — brief drain follows ownerTurn", () => {
+  it("leaves the brief queued when ownerTurn is false", async () => {
+    managerAvailable = true;
+    findingsQueue = [];
+    briefQueue = [{ question: "q", answer: "private cross-session sketch" }];
+    const { resolveResearchFindingsBlock } = await import("./research-findings-block.js");
+    const block = await resolveResearchFindingsBlock({
+      agentId: "test",
+      promptMode: "full",
+      liveUserTurn: true,
+      ownerTurn: false,
+    });
+    expect(block).toBeUndefined();
+    expect(briefQueue).toHaveLength(1); // not drained, not leaked
+  });
+
+  it("drains the brief when ownerTurn is true", async () => {
+    managerAvailable = true;
+    findingsQueue = [];
+    briefQueue = [{ question: "q", answer: "private cross-session sketch" }];
+    const { resolveResearchFindingsBlock } = await import("./research-findings-block.js");
+    const block = await resolveResearchFindingsBlock({
+      agentId: "test",
+      promptMode: "full",
+      liveUserTurn: true,
+      ownerTurn: true,
+    });
+    expect(block).toContain("private cross-session sketch");
+    expect(briefQueue).toHaveLength(0);
   });
 });

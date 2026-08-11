@@ -11,8 +11,46 @@
 
 import type { BitterbotConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 
 const log = createSubsystemLogger("research-findings-block");
+
+/**
+ * PLAN-40 Lane 3 owner gate — the single definition both drain sites use.
+ *
+ * A brief is cross-session synthesis of the owner's private context, so it may
+ * only reach the owner. `first_party` trust is NOT sufficient: it is a token
+ * denylist, and a stranger's DM classifies first_party (adversarial F5-r2).
+ *
+ * The first implementation matched `/:dm:([^:]+)$/` against the session key,
+ * but no session key in this product ever contains `:dm:` (DM keys use
+ * `direct:`, and under the default `session.dmScope="main"` a DM from ANYONE
+ * collapses to the owner's main key). The peer branch was therefore dead code
+ * and the gate silently degraded to exactly the first_party check it was
+ * written to replace — a stranger's DM would have drained the owner's brief.
+ *
+ * Identity, not key shape, decides. Two accepted proofs of owner:
+ *   - `senderIsOwner`: a real sender matched the configured owner allowlist
+ *     (computed in command-auth.ts; false when no allowlist is configured, so
+ *     an unconfigured node fails CLOSED for channel traffic).
+ *   - No external channel carried the turn (empty provider, or the internal
+ *     webchat/Control-UI provider): there is no third party in the transcript.
+ *     Every real messaging channel sets `Provider` on inbound context.
+ */
+export function resolveBriefOwnerTurn(params: {
+  liveUserTurn: boolean;
+  senderIsOwner?: boolean;
+  messageProvider?: string | null;
+}): boolean {
+  if (!params.liveUserTurn) {
+    return false;
+  }
+  if (params.senderIsOwner === true) {
+    return true;
+  }
+  const provider = params.messageProvider?.trim().toLowerCase() ?? "";
+  return provider === "" || provider === INTERNAL_MESSAGE_CHANNEL;
+}
 
 export async function resolveResearchFindingsBlock(params: {
   config?: BitterbotConfig;

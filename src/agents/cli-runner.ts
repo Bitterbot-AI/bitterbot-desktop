@@ -52,6 +52,14 @@ export async function runCliAgent(params: {
   ownerNumbers?: string[];
   cliSessionId?: string;
   images?: ImageContent[];
+  /**
+   * Messaging channel that carried this turn, when any. Empty/absent means a
+   * local drive (terminal/Control UI). Feeds the Lane 3 owner gate: a CLI
+   * BACKEND does not imply a local operator — a channel session can be routed
+   * to a CLI provider, and that transcript must not receive briefs.
+   */
+  messageProvider?: string | null;
+  senderIsOwner?: boolean;
 }): Promise<EmbeddedPiRunResult> {
   const started = Date.now();
   const workspaceResolution = resolveRunWorkspaceDir({
@@ -137,16 +145,19 @@ export async function runCliAgent(params: {
   const cliLiveUserTurn =
     Boolean(params.prompt) &&
     classifySessionKeyTrust(params.sessionKey ?? params.sessionId ?? "") === "first_party";
-  const { resolveResearchFindingsBlock } = await import("./research-findings-block.js");
+  const { resolveResearchFindingsBlock, resolveBriefOwnerTurn } =
+    await import("./research-findings-block.js");
   const researchFindings = await resolveResearchFindingsBlock({
     config: params.config,
     agentId: sessionAgentId,
     promptMode: "full",
     liveUserTurn: cliLiveUserTurn,
-    // PLAN-40 Lane 3: CLI sessions have no channel peer — the person at the
-    // terminal is the owner; the same heartbeat guard attempt.ts applies is
-    // folded into cliLiveUserTurn's prompt requirement.
-    ownerTurn: cliLiveUserTurn && !/:dm:|:group:/.test(params.sessionKey ?? ""),
+    // PLAN-40 Lane 3: same owner gate the embedded runner uses.
+    ownerTurn: resolveBriefOwnerTurn({
+      liveUserTurn: cliLiveUserTurn,
+      senderIsOwner: params.senderIsOwner,
+      messageProvider: params.messageProvider,
+    }),
   }).catch(() => undefined);
 
   const systemPrompt = buildSystemPrompt({

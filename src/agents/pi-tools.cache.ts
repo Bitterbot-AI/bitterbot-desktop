@@ -5,6 +5,7 @@
 
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { ToolCache } from "./tool-cache.js";
+import { carryToolMarkers } from "./pi-tools.types.js";
 
 /**
  * Wrap a tool with cache-checking behavior.
@@ -19,7 +20,7 @@ export function wrapToolWithCache(tool: AnyAgentTool, cache: ToolCache): AnyAgen
   if (!execute) {
     return tool;
   }
-  return {
+  return carryToolMarkers(tool, {
     ...tool,
     execute: async (toolCallId, params, signal?, onUpdate?) => {
       const args = (params && typeof params === "object" ? params : {}) as Record<string, unknown>;
@@ -35,7 +36,7 @@ export function wrapToolWithCache(tool: AnyAgentTool, cache: ToolCache): AnyAgen
       cache.set(tool.name, args, result);
       return result;
     },
-  };
+  });
 }
 
 /**

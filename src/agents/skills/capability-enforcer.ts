@@ -34,6 +34,7 @@
 import type { AnyAgentTool } from "../tools/common.js";
 import type { CapabilityAxis } from "./capability-grants.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { carryToolMarkers } from "../pi-tools.types.js";
 import { type EffectiveCapabilityProfile, profileAllows } from "./capability-profile.js";
 
 const log = createSubsystemLogger("skills/capability-enforcer");
@@ -242,7 +243,7 @@ export function wrapToolWithCapabilityEnforcer(
   if (!execute) return tool;
   const toolName = tool.name || "tool";
 
-  const wrapped: AnyAgentTool = {
+  const wrapped: AnyAgentTool = carryToolMarkers(tool, {
     ...tool,
     execute: async (toolCallId, params, signal, onUpdate) => {
       const denial = evaluateToolCall(toolName, params, ctx);
@@ -271,7 +272,7 @@ export function wrapToolWithCapabilityEnforcer(
       }
       return await execute(toolCallId, params, signal, onUpdate);
     },
-  };
+  });
   Object.defineProperty(wrapped, ENFORCER_WRAPPED, {
     value: true,
     enumerable: false,

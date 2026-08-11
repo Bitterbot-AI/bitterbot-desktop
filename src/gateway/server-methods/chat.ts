@@ -541,23 +541,6 @@ export const chatHandlers: GatewayRequestHandlers = {
     }
     const inboundMessage = sanitizedMessageResult.message;
 
-    // PLAN-20: record the user turn in the session-context tracker so
-    // interceptors (recall-before-claim, protocol-quiet-in-groups,
-    // calibrate-claim-confidence) see real recent-turn previews, and
-    // attempt outcome backfill for any pending intervention records
-    // matched to the next-turn user reaction (thanks/wrong/cancel/etc).
-    void import("../../agents/skills/session-context-tracker.js")
-      .then((m) => m.recordTurn(p.sessionKey, "user", inboundMessage))
-      .catch(() => {
-        /* tracker is best-effort */
-      });
-    void import("../../agents/skills/outcome-backfill.js")
-      .then(({ backfillFromUserMessage }) => {
-        backfillFromUserMessage(p.sessionKey, inboundMessage);
-      })
-      .catch(() => {
-        /* best-effort */
-      });
     const stopCommand = isChatStopCommandText(inboundMessage);
     const normalizedAttachments = normalizeRpcAttachmentsToChatAttachments(p.attachments);
     const rawMessage = inboundMessage.trim();
@@ -586,6 +569,32 @@ export const chatHandlers: GatewayRequestHandlers = {
     }
     const rawSessionKey = p.sessionKey;
     const { cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(rawSessionKey);
+
+    // PLAN-20: record the user turn in the session-context tracker so
+    // interceptors (recall-before-claim, protocol-quiet-in-groups,
+    // calibrate-claim-confidence) see real recent-turn previews, and
+    // attempt outcome backfill for any pending intervention records
+    // matched to the next-turn user reaction (thanks/wrong/cancel/etc).
+    //
+    // Both must key by the SAME string the interceptor runner sees. That is
+    // the canonical key, lowercased (resolveSessionKey lowercases an explicit
+    // ctx.SessionKey) — NOT the raw RPC param. Keying by the raw param meant a
+    // client sending "main" wrote turns under "main" while records landed
+    // under "agent:main:main", so no record was ever matched and outcome_tag
+    // stayed NULL for every intervention.
+    const interceptorSessionKey = sessionKey.toLowerCase();
+    void import("../../agents/skills/session-context-tracker.js")
+      .then((m) => m.recordTurn(interceptorSessionKey, "user", inboundMessage))
+      .catch(() => {
+        /* tracker is best-effort */
+      });
+    void import("../../agents/skills/outcome-backfill.js")
+      .then(({ backfillFromUserMessage }) => {
+        backfillFromUserMessage(interceptorSessionKey, inboundMessage);
+      })
+      .catch(() => {
+        /* best-effort */
+      });
     const timeoutMs = resolveAgentTimeoutMs({
       cfg,
       overrideMs: p.timeoutMs,

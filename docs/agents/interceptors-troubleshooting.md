@@ -77,10 +77,27 @@ This means total `shouldActivate + intervene` time for ALL evaluated interceptor
 
 ## "Outcome tags are always NULL"
 
-The backfill runs from `server-methods/chat.ts` after every `chat.send` user turn. If you're not using the `chat.send` RPC (e.g. raw Discord adapter is bypassing it), backfill won't trigger. Either:
+The backfill runs from `server-methods/chat.ts` and `server-methods/agent.ts` after every user turn. If your inbound path uses neither RPC (e.g. a raw adapter calling the runner directly), backfill won't trigger. Either:
 
-- Route inbound messages through `chat.send`.
+- Route inbound messages through `chat.send` / `agent`.
 - Call `backfillFromUserMessage(sessionKey, text)` manually from your inbound handler.
+
+**The session key must match on both sides.** Backfill matches pending records with
+`WHERE session_key = ?`, so the key it is called with has to be the same string the
+interceptor runner stamped onto the record. That is the CANONICAL key, lowercased
+(`agent:<agentId>:<key>`) — not the raw key a client sent. Check with:
+
+```sql
+SELECT DISTINCT session_key FROM intervention_records;
+```
+
+If you see `__anon__`, the runner never received a session key: the tool reached
+`toToolDefinitions` without the before-tool-call marker, so the adapter re-ran the hook
+with no context. That marker is a non-enumerable symbol, and any wrapper rebuilding the
+tool with `{ ...tool }` drops it — use `carryToolMarkers` (`pi-tools.types.ts`) in every
+new tool wrapper. Records written under `__anon__` can never be backfilled and, because
+`interceptor_harvest` wakes only at >=10 tagged records, the harvest mode stays asleep
+forever.
 
 ## "The harvest mode never produces candidates"
 

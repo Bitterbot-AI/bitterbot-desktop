@@ -482,20 +482,15 @@ export async function runEmbeddedAttempt(
       Boolean(params.prompt) &&
       !params.isHeartbeat &&
       classifySessionKeyTrust(params.sessionKey ?? params.sessionId ?? "") === "first_party";
-    const { resolveResearchFindingsBlock } = await import("../../research-findings-block.js");
-    // PLAN-40 Lane 3 owner gate: a brief may only drain to the OWNER.
-    // first_party alone is insufficient (a stranger's DM classifies
-    // first_party under the token-denylist classifier). Owner = a session
-    // with no channel peer (CLI/web/main) or a DM whose peer number is in
-    // ownerNumbers.
-    const sessionKeyForOwner = params.sessionKey ?? params.sessionId ?? "";
-    const dmPeer = /:dm:([^:]+)$/.exec(sessionKeyForOwner)?.[1];
-    const ownerTurn =
-      liveUserTurn &&
-      (dmPeer === undefined ||
-        (params.ownerNumbers ?? []).some(
-          (n) => n.replace(/\D/g, "") === dmPeer.replace(/\D/g, ""),
-        ));
+    const { resolveResearchFindingsBlock, resolveBriefOwnerTurn } =
+      await import("../../research-findings-block.js");
+    // PLAN-40 Lane 3 owner gate — see resolveBriefOwnerTurn for why identity,
+    // not session-key shape, decides.
+    const ownerTurn = resolveBriefOwnerTurn({
+      liveUserTurn,
+      senderIsOwner: params.senderIsOwner,
+      messageProvider: params.messageProvider,
+    });
     const researchFindings = await resolveResearchFindingsBlock({
       config: params.config,
       agentId: sessionAgentId,

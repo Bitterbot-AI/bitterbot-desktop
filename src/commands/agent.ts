@@ -155,6 +155,8 @@ function runAgentAttempt(params: {
       cliSessionId,
       images: params.isFallbackRetry ? undefined : params.opts.images,
       streamParams: params.opts.streamParams,
+      // Lane 3 owner gate input: the channel this session belongs to, if any.
+      messageProvider: params.sessionEntry?.channel,
     });
   }
 

@@ -1,5 +1,6 @@
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import { bindAbortRelay } from "../utils/fetch-timeout.js";
+import { carryToolMarkers } from "./pi-tools.types.js";
 
 function throwAbortError(): never {
   const err = new Error("Aborted");
@@ -54,7 +55,7 @@ export function wrapToolWithAbortSignal(
   if (!execute) {
     return tool;
   }
-  return {
+  return carryToolMarkers(tool, {
     ...tool,
     execute: async (toolCallId, params, signal, onUpdate) => {
       const combined = combineAbortSignals(signal, abortSignal);
@@ -63,5 +64,5 @@ export function wrapToolWithAbortSignal(
       }
       return await execute(toolCallId, params, combined, onUpdate);
     },
-  };
+  });
 }

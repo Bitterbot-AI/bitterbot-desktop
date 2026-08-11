@@ -453,6 +453,28 @@ export const agentHandlers: GatewayRequestHandlers = {
       registerAgentRunContext(idem, { sessionKey: canonicalSessionKey });
     }
 
+    // PLAN-20: same turn recording + outcome backfill the chat.send path does.
+    // This method serves the CLI (`bitterbot agent --to ...`), which is how
+    // live drives are done, and it had neither call — so a CLI-driven turn
+    // could fire interceptors but could never tag their outcome, leaving
+    // interceptor_harvest (gated on >=10 tagged records) permanently asleep.
+    if (resolvedSessionKey) {
+      const interceptorSessionKey = resolvedSessionKey.toLowerCase();
+      const turnText = request.message;
+      void import("../../agents/skills/session-context-tracker.js")
+        .then((m) => m.recordTurn(interceptorSessionKey, "user", turnText))
+        .catch(() => {
+          /* tracker is best-effort */
+        });
+      void import("../../agents/skills/outcome-backfill.js")
+        .then(({ backfillFromUserMessage }) => {
+          backfillFromUserMessage(interceptorSessionKey, turnText);
+        })
+        .catch(() => {
+          /* best-effort */
+        });
+    }
+
     const runId = idem;
     const connId = typeof client?.connId === "string" ? client.connId : undefined;
     const wantsToolEvents = hasGatewayClientCap(
