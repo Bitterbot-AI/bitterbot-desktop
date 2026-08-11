@@ -759,3 +759,11 @@ export const dreamHandlers: GatewayRequestHandlers = {
     }
   },
 };
+
+/**
+ * memory.retrievalHealth caches its heavy scan in module state for 30s. That is
+ * correct in production (the dashboard polls it every ~10s) but leaks across
+ * unit tests, where the first case's payload was served to every later case.
+ * Exposed so tests can reset between cases.
+ */
+export const __testing = { retrievalHealthCache };

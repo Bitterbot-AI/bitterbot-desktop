@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getMemorySearchManager } from "../../memory/index.js";
-import { dreamHandlers } from "./dream.js";
+import { __testing, dreamHandlers } from "./dream.js";
 
 // PLAN-28 B4: the memory.retrievalHealth handler is a thin pass-through over the
 // manager's retrievalHealth(); mock the manager singleton so we test the wiring
@@ -22,6 +22,10 @@ function capture() {
 
 beforeEach(() => {
   vi.mocked(getMemorySearchManager).mockReset();
+  // The handler memoizes its payload for 30s in module state; without this the
+  // first case's result is served to every later case (which is what made the
+  // available=false and error-mapping cases fail).
+  __testing.retrievalHealthCache.clear();
 });
 
 describe("memory.retrievalHealth handler (PLAN-28 B4)", () => {

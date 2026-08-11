@@ -373,16 +373,24 @@ describe("agents.files.list", () => {
     mocks.loadConfigReturn = {};
   });
 
-  it("includes BOOTSTRAP.md when onboarding has not completed", async () => {
+  // BOOTSTRAP.md is no longer part of the workspace file set: the biological
+  // identity model replaced it with GENOME.md (immutable core) + MEMORY.md
+  // (emergent identity). These two tests previously asserted the old
+  // onboarding-conditional BOOTSTRAP.md behavior and had been failing since
+  // that change; they now assert the contract that actually holds.
+  it("lists the identity-model bootstrap files and never BOOTSTRAP.md", async () => {
     const { respond, promise } = makeCall("agents.files.list", { agentId: "main" });
     await promise;
 
     const [, result] = respond.mock.calls[0] ?? [];
     const files = (result as { files: Array<{ name: string }> }).files;
-    expect(files.some((file) => file.name === "BOOTSTRAP.md")).toBe(true);
+    const names = files.map((file) => file.name);
+    expect(names).toContain("GENOME.md");
+    expect(names).toContain("PROTOCOLS.md");
+    expect(names).not.toContain("BOOTSTRAP.md");
   });
 
-  it("hides BOOTSTRAP.md when workspace onboarding is complete", async () => {
+  it("lists the same files regardless of onboarding state", async () => {
     mocks.fsReadFile.mockImplementation(async (filePath: string | URL | number) => {
       if (String(filePath).endsWith("workspace-state.json")) {
         return JSON.stringify({
@@ -400,7 +408,7 @@ describe("agents.files.list", () => {
     expect(files.some((file) => file.name === "BOOTSTRAP.md")).toBe(false);
   });
 
-  it("falls back to showing BOOTSTRAP.md when workspace state cannot be read", async () => {
+  it("still answers when workspace state cannot be read", async () => {
     mocks.fsReadFile.mockImplementation(async (filePath: string | URL | number) => {
       if (String(filePath).endsWith("workspace-state.json")) {
         throw createErrnoError("EACCES");
@@ -413,6 +421,6 @@ describe("agents.files.list", () => {
 
     const [, result] = respond.mock.calls[0] ?? [];
     const files = (result as { files: Array<{ name: string }> }).files;
-    expect(files.some((file) => file.name === "BOOTSTRAP.md")).toBe(true);
+    expect(files.map((file) => file.name)).toContain("GENOME.md");
   });
 });
