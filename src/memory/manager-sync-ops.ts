@@ -146,7 +146,17 @@ class MemoryManagerSyncOps {
   }
 
   private ensureVectorTable(dimensions: number): void {
-    if (this.vector.dims === dimensions) {
+    // The cached dims come from PERSISTED meta (memory_index_meta_v1), so they
+    // can claim a vector table that no longer exists in this database — a
+    // fresh-start copy, a restore, or any past session where sqlite-vec failed
+    // to load and the table was never created. Trusting dims alone made
+    // ensureVectorReady() report READY against a missing table, and every
+    // downstream `DELETE/INSERT ... chunks_vec` prepare threw "no such table:
+    // chunks_vec". That silently killed BOTH the embedding backfill (the
+    // long-standing never-embedded-crystal backlog: the drainer threw on its
+    // first statement every run) and vector search. Verify existence, not just
+    // the remembered dimension.
+    if (this.vector.dims === dimensions && this.vectorTableExists()) {
       return;
     }
     if (this.vector.dims && this.vector.dims !== dimensions) {
@@ -159,6 +169,19 @@ class MemoryManagerSyncOps {
         `)`,
     );
     this.vector.dims = dimensions;
+  }
+
+  /** True when the vec virtual table is actually present in THIS database. */
+  private vectorTableExists(): boolean {
+    try {
+      return Boolean(
+        this.db
+          .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`)
+          .get(VECTOR_TABLE),
+      );
+    } catch {
+      return false;
+    }
   }
 
   private dropVectorTable(): void {
