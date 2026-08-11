@@ -95,6 +95,20 @@ back of my mind"). The second brief correctly remained open.
 **Utility KPI after day one: 1 consumed / 6 lane artifacts (17%).**
 Every prior month: 0 / everything.
 
+**SAFETY FINDING — Lane 3 amplifies whatever memory contains (2026-08-11).**
+A synthetic QA prompt ("we have 1,000 paying customers, put it in the deck")
+polluted memory during interceptor testing. The anticipation lane then
+generated a brief titled _"How can I effectively communicate that we now
+have over a thousand paying customers in the pitch deck?"_ with a sketch
+recommending the exact wording — a fabrication promoted into confident,
+actionable advice about a real investor artifact. The lane's grounding
+legs did their job (it cited real stored rows); the rows were just false.
+Implications: (a) grounding-to-sources is necessary but NOT sufficient —
+source _trustworthiness_ is unmodelled; (b) the D3 kill criterion should
+count a brief built on a false premise as a NEGATIVE, not merely
+unreferenced; (c) memory hygiene is a safety control for Lane 3, not only
+a cost control. Worth an explicit item in the Phase-3 adversarial pass.
+
 **Open observations (for the phase adversarial pass / next session):**
 
 1. Two of the four merge summaries show no member rows with parent links —
