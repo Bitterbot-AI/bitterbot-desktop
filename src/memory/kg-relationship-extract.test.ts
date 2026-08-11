@@ -8,6 +8,7 @@ import {
   FAMILY_RELATION_LABEL,
   relationTypeForText,
   typeEntityName,
+  typeEntityInContext,
 } from "./kg-relationship-extract.js";
 
 describe("relationTypeForText", () => {
@@ -153,17 +154,35 @@ describe("typeEntityName", () => {
     expect(typeEntityName("Acme Corp")).toBe("organization");
     expect(typeEntityName("Globex Inc")).toBe("organization");
   });
-  it("falls back to person for the long tail", () => {
-    expect(typeEntityName("Victor")).toBe("person");
-    expect(typeEntityName("Alice Smith")).toBe("person");
+  it("falls back to concept, NOT person, for the dictionary long tail", () => {
+    // Contract change 2026-08-11: defaulting unknown capitalized tokens to
+    // `person` produced 60 "people" including `water`, `are`, and `america`.
+    // Bare dictionary typing now answers "I don't know" with `concept`;
+    // typeEntityInContext promotes genuine people using the relation verb.
+    expect(typeEntityName("Victor")).toBe("concept");
+    expect(typeEntityName("Alice Smith")).toBe("concept");
+    expect(typeEntityName("Toronto")).toBe("location");
+    expect(typeEntityName("Docker")).toBe("tool");
+  });
+
+  it("uses relation context to recover real people", () => {
+    expect(typeEntityInContext("Alice", "manages", "source")).toBe("person");
+    expect(typeEntityInContext("Bob", "manages", "target")).toBe("person");
+    expect(typeEntityInContext("Victor", "works_on", "source")).toBe("person");
+    expect(typeEntityInContext("Circles", "works_on", "target")).toBe("project");
+    expect(typeEntityInContext("Toronto", "located_at", "target")).toBe("location");
+    // Dictionary always wins over context.
+    expect(typeEntityInContext("Docker", "manages", "target")).toBe("tool");
   });
 });
 
 describe("extractTypedEntities", () => {
   it("returns typed entities in mention order, deduped", () => {
     const ents = extractTypedEntities("Victor uses Docker and Docker again");
+    // Bare NER has no relation context, so the unknown name types as concept;
+    // the edge builder re-types it in context (see extractTypedRelationshipFromFact).
     expect(ents).toEqual([
-      { name: "Victor", type: "person" },
+      { name: "Victor", type: "concept" },
       { name: "Docker", type: "tool" },
     ]);
   });

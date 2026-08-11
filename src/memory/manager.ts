@@ -62,6 +62,7 @@ import {
 } from "./hybrid.js";
 import { isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
 import { backfillTypedRelationships } from "./kg-backfill.js";
+import * as kgAdmission from "./kg-entity-admission.js";
 import * as kgExtract from "./kg-relationship-extract.js";
 import { KnowledgeGraphManager } from "./knowledge-graph.js";
 import { memoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
@@ -885,6 +886,20 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
   }
 
+  /**
+   * The user's own name — the seed value the whole identity/family layer
+   * depends on.
+   *
+   * 2026-08-11: this returned undefined on a node that demonstrably KNEW the
+   * answer, because it only consulted `user_preferences` rows with
+   * category='identity' (of which there were zero) while the canonical ledger
+   * held `identity.user.name = "Victor M. Gil"`. That one gap disabled the
+   * kinship recall branch, the family-edge backfill (`if (!userName) return
+   * 0`), and the go-forward identity extractor simultaneously — so the only
+   * relation types graph recall accepts could never be written, and graph
+   * recall never fired once in the node's lifetime. The ledger is the
+   * higher-trust store anyway (PLAN-33), so consult it as the fallback.
+   */
   private resolveUserName(): string | undefined {
     try {
       const profile = this.userModelManager?.getUserProfile();
@@ -892,10 +907,24 @@ export class MemoryIndexManager implements MemorySearchManager {
         (p) => p.category === "identity" && /\bname\b/i.test(p.key) && typeof p.value === "string",
       );
       const value = namePref?.value?.toString().trim();
-      return value && value.length > 0 ? value : undefined;
+      if (value && value.length > 0) {
+        return value;
+      }
     } catch {
-      return undefined;
+      /* fall through to the ledger */
     }
+    try {
+      for (const key of ["identity.user.name", "identity.user_name", "user.name"]) {
+        const fact = this.canonicalFactsStore?.get(key);
+        const v = fact?.value?.toString().trim();
+        if (v && v.length > 0) {
+          return v;
+        }
+      }
+    } catch {
+      /* ledger unavailable */
+    }
+    return undefined;
   }
 
   // ── Emotional Dream Triggering (Plan 6, Phase 4) ──
@@ -3785,7 +3814,12 @@ export class MemoryIndexManager implements MemorySearchManager {
               // edges. Conservative: the extractor requires a typed relation verb
               // and two distinct dictionary-typed entities, and refuses the
               // related_to fan-out, so a wrong edge stays rarer than no edge.
-              if (populateRelationships) {
+              // Never learn the social graph from the agent's OWN output
+              // (dream reports, handover briefs, working-memory dumps). That
+              // is how "cognitive processes and analysis" became an entity
+              // that "summarizes" the word "explore" — the graph training on
+              // its own noise (2026-08-11 trace).
+              if (populateRelationships && !kgAdmission.looksMachineGenerated(fact.text)) {
                 const typedEdge = kgExtract.extractTypedRelationshipFromFact(fact.text);
                 if (typedEdge) {
                   kgEntities.push({ name: typedEdge.sourceName, type: typedEdge.sourceType });

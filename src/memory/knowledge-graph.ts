@@ -18,6 +18,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { isAdmissibleEntity, isAdmissibleRelation } from "./kg-entity-admission.js";
 import { buildRelationshipTemporalWhereClause } from "./temporal-filter.js";
 
 const log = createSubsystemLogger("memory/knowledge-graph");
@@ -655,19 +656,47 @@ export class KnowledgeGraphManager {
   ): { entitiesUpserted: number; relationshipsUpserted: number } {
     let entitiesUpserted = 0;
     let relationshipsUpserted = 0;
+    let skipped = 0;
 
     try {
       this.db.exec("BEGIN");
 
+      // ADMISSION CONTROL (2026-08-11). Every write funnels through here, so
+      // this is the one place that can guarantee the graph stays sane. Prior
+      // to this gate five callers each had their own (or no) validation, and
+      // the graph filled with `are`/`could`/`water` typed as people. Rejected
+      // candidates are dropped silently-but-countably: a skipped edge is a
+      // non-event, a wrong edge is a lasting lie.
+      const admissibleNames = new Set<string>();
       for (const e of entities) {
+        if (!isAdmissibleEntity(e.name, e.type)) {
+          skipped++;
+          continue;
+        }
         this.upsertEntity(e);
+        admissibleNames.add(e.name.trim().toLowerCase());
         entitiesUpserted++;
       }
 
       for (const r of relationships) {
+        // An edge is only as good as its endpoints: refuse it when either end
+        // failed admission, otherwise upsertRelationship would re-create the
+        // junk entity we just refused.
+        if (
+          !isAdmissibleEntity(r.sourceName, r.sourceType) ||
+          !isAdmissibleEntity(r.targetName, r.targetType) ||
+          // Type-pair constraint: `prefers` needs a concept-ish object,
+          // `located_at` needs a place. This is what makes the junk classes
+          // structurally inexpressible instead of merely filtered.
+          !isAdmissibleRelation(r.sourceType, r.relationType, r.targetType)
+        ) {
+          skipped++;
+          continue;
+        }
         this.upsertRelationship(r, evidenceChunkIds);
         relationshipsUpserted++;
       }
+      void admissibleNames;
 
       this.db.exec("COMMIT");
     } catch (err) {
@@ -678,8 +707,8 @@ export class KnowledgeGraphManager {
       return { entitiesUpserted: 0, relationshipsUpserted: 0 };
     }
 
-    if (entitiesUpserted + relationshipsUpserted > 0) {
-      log.debug("knowledge graph ingest", { entitiesUpserted, relationshipsUpserted });
+    if (entitiesUpserted + relationshipsUpserted > 0 || skipped > 0) {
+      log.debug("knowledge graph ingest", { entitiesUpserted, relationshipsUpserted, skipped });
     }
 
     return { entitiesUpserted, relationshipsUpserted };

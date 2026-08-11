@@ -15,6 +15,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { KnowledgeGraphManager } from "./knowledge-graph.js";
+import { looksMachineGenerated } from "./kg-entity-admission.js";
 import { extractTypedRelationshipFromFact } from "./kg-relationship-extract.js";
 
 /**
@@ -39,6 +40,11 @@ export function backfillTypedRelationships(
     )
     .all(limit) as Array<{ id: string; text: string }>;
   for (const row of rows) {
+    // Same rule as the hot path: the agent's own generated text must never
+    // shape the graph (2026-08-11).
+    if (looksMachineGenerated(row.text)) {
+      continue;
+    }
     const edge = extractTypedRelationshipFromFact(row.text);
     if (!edge) {
       continue;

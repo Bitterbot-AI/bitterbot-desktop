@@ -12,12 +12,21 @@
  */
 
 import type { EntityType, ExtractedRelationship, RelationType } from "./knowledge-graph.js";
+import {
+  dropTruncatedFragments,
+  isAdmissibleEntityName,
+  maskNonEntitySpans,
+} from "./kg-entity-admission.js";
 
 /** Map fact text to a relation type. Falls back to `related_to`. */
 export function relationTypeForText(text: string): RelationType {
   if (/\b(?:manages|leads?|reports? to|supervis)/i.test(text)) return "manages";
   if (/\b(?:works? on|working on|contributes? to)\b/i.test(text)) return "works_on";
-  if (/\b(?:prefers?|likes?|favou?rite|enjoys?)\b/i.test(text)) return "prefers";
+  // NOTE: bare "like(s)" is deliberately EXCLUDED — it matched ordinary
+  // English ("a graph like this", "sounds like") and produced 39% of all live
+  // edges as bogus `prefers` relations. A preference needs an explicit
+  // preference verb.
+  if (/\b(?:prefers?|favou?rites?|enjoys?)\b/i.test(text)) return "prefers";
   if (/\b(?:knows|met|colleague|friend)\b/i.test(text)) return "knows";
   if (/\b(?:located (?:at|in)|based in|hosted (?:at|on)|runs on|lives in)\b/i.test(text))
     return "located_at";
@@ -128,12 +137,18 @@ export function extractIdentityRelationship(
   };
 }
 
-/** Capitalized-word person-name heuristic, shared with the manager's NER pass. */
-const STOP_WORDS = new Set(["The", "This", "That", "When", "What", "How", "Why"]);
-
+/**
+ * Capitalized-run name heuristic, shared with the manager's NER pass.
+ *
+ * Hardened 2026-08-11: non-entity spans (timezones, URLs, paths, ISO dates)
+ * are masked BEFORE matching — "America/Toronto" used to yield two `person`
+ * entities — candidates pass full admission control, and truncated fragments
+ * (`explo` beside `explore`) are dropped.
+ */
 export function extractPersonNames(text: string): string[] {
-  const matches = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) ?? [];
-  return matches.filter((n) => n.length > 2 && !STOP_WORDS.has(n));
+  const masked = maskNonEntitySpans(text);
+  const matches = masked.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) ?? [];
+  return dropTruncatedFragments(matches.filter((n) => isAdmissibleEntityName(n)));
 }
 
 /**
@@ -149,9 +164,12 @@ export function extractRelationshipFromFact(text: string): ExtractedRelationship
   const relationType = relationTypeForText(text);
   return {
     sourceName: distinct[0],
-    sourceType: "person",
+    // Type from the relation context rather than assuming `person`
+    // (2026-08-11): this path produced "america (person) -[located_at]->
+    // toronto (person)" from an IANA timezone string.
+    sourceType: typeEntityInContext(distinct[0]!, relationType, "source"),
     targetName: distinct[1],
-    targetType: "person",
+    targetType: typeEntityInContext(distinct[1]!, relationType, "target"),
     relationType,
     // related_to is the low-confidence fallback; typed relations are stronger.
     weight: relationType === "related_to" ? 0.3 : 0.5,
@@ -176,13 +194,65 @@ const ORG_RX = /^(?:Google|Microsoft|Amazon|Apple|Meta|Nvidia|IBM|Oracle|Intel|S
 // Corporate suffixes that mark the *trailing* token of an organization name.
 const ORG_SUFFIX_RX = /\b(?:Inc|Incorporated|LLC|Corp|Corporation|Ltd|Limited|GmbH|PLC|Co)\b\.?$/;
 
-/** Type a single capitalized entity name via the curated dictionaries. */
+// Places the extractor should never call people. Deliberately small: the
+// point is not world coverage, it is refusing to type a city as a human.
+const LOCATION_RX =
+  /^(?:Toronto|Montreal|Vancouver|Ottawa|Calgary|Miami|Boston|Chicago|Seattle|Austin|Denver|Portland|Atlanta|Detroit|Phoenix|Dallas|Houston|London|Paris|Berlin|Madrid|Lisbon|Dublin|Amsterdam|Zurich|Geneva|Vienna|Prague|Warsaw|Rome|Milan|Athens|Istanbul|Tokyo|Osaka|Kyoto|Seoul|Beijing|Shanghai|Singapore|Sydney|Melbourne|Auckland|Mumbai|Delhi|Bangalore|Toronto|America|Americas|Canada|Mexico|Brazil|Argentina|England|Scotland|Ireland|France|Germany|Spain|Portugal|Italy|Greece|Turkey|Japan|China|India|Australia|Africa|Europe|Asia|California|Florida|Texas|Ontario|Quebec|Alberta|Manitoba)$/i;
+
+/**
+ * Type a single capitalized entity name via the curated dictionaries.
+ *
+ * Hardened 2026-08-11: `person` is no longer the catch-all. Defaulting the
+ * long tail to `person` is what produced 60 "people" named `are`, `water`,
+ * and `america`. An unknown capitalized token is far more often a concept or
+ * a proper noun of unknown kind, and mislabeling it `person` is the error
+ * that makes the agent sound deranged when it surfaces the fact.
+ */
 export function typeEntityName(name: string): EntityType {
   if (SERVICE_RX.test(name)) return "service";
   if (TOOL_RX.test(name)) return "tool";
   if (ORG_RX.test(name) || ORG_SUFFIX_RX.test(name)) return "organization";
-  // Long tail: same fallback as the existing person-pair extractor.
-  return "person";
+  if (LOCATION_RX.test(name)) return "location";
+  // Single capitalized token with no dictionary hit: could be a personal name,
+  // but we cannot tell. `concept` is the honest, harmless default; genuine
+  // people arrive through the kinship/identity extractor (weight 0.85) which
+  // types them explicitly.
+  return "concept";
+}
+
+/**
+ * Type an entity using the relation it participates in, which carries far more
+ * signal than the bare token. "Alice manages Bob" makes both endpoints people;
+ * "Bitterbot uses Docker" makes the object a tool; "Victor is based in Toronto"
+ * makes the object a location. Dictionary hits always win; this only decides
+ * the otherwise-unknown long tail, which previously defaulted to `person` and
+ * produced 60 "people" including `water` and `america`.
+ */
+export function typeEntityInContext(
+  name: string,
+  relationType: RelationType,
+  position: "source" | "target",
+): EntityType {
+  const dictionaryType = typeEntityName(name);
+  if (dictionaryType !== "concept") {
+    return dictionaryType;
+  }
+  if (relationType === "manages" || relationType === "knows") {
+    return "person";
+  }
+  if (relationType === "works_on") {
+    return position === "source" ? "person" : "project";
+  }
+  if (relationType === "located_at") {
+    return position === "source" ? "person" : "location";
+  }
+  if (relationType === "uses") {
+    return position === "source" ? "person" : "tool";
+  }
+  if (relationType === "prefers") {
+    return position === "source" ? "person" : "concept";
+  }
+  return "concept";
 }
 
 export interface TypedEntity {
@@ -232,9 +302,9 @@ export function extractTypedRelationshipFromFact(text: string): ExtractedRelatio
   const [source, target] = entities;
   return {
     sourceName: source!.name,
-    sourceType: source!.type,
+    sourceType: typeEntityInContext(source!.name, relationType, "source"),
     targetName: target!.name,
-    targetType: target!.type,
+    targetType: typeEntityInContext(target!.name, relationType, "target"),
     relationType,
     // Deterministic typed edge: confident, but below explicit identity edges.
     weight: 0.5,
