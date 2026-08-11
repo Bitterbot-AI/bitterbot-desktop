@@ -50,7 +50,7 @@ _(filled at deploy — see Live Results below)_
 | D2 hygiene      | precision@5 on 20 replayed real queries + injected-context tokens, before/after             | no precision AND no token win → 1b merge disables (1a backfill stays)                 | ARMED — first real merges begin next cycles; the 206-pile collapse is the first token-reduction event                               |
 | D3 anticipation | briefs surfaced → referenced (v1 proxy: Victor's 👍 on the review surface)                  | 0 referenced within 10 selected cycles after first surfacing → disable                | ARMED                                                                                                                               |
 | D4 replay       | retrieval rate of boosted vs matched unboosted cohort over 28d funnel data                  | no lift → boost factor → 0 (orphan rescue only)                                       | SCHEDULED (needs 28d of funnel data)                                                                                                |
-| D5 mining       | mined triples land + PLAN-27 recall traverses one                                           | (observation, pre-PLAN-40)                                                            | cursor clamp deployed 2026-08-10                                                                                                    |
+| D5 mining       | mined triples land + PLAN-27 recall traverses one                                           | (observation, pre-PLAN-40)                                                            | **FAILED BOTH HALVES (2026-08-11)** — see correction below                                                                          |
 
 ## Utility KPI
 
@@ -108,6 +108,52 @@ source _trustworthiness_ is unmodelled; (b) the D3 kill criterion should
 count a brief built on a false premise as a NEGATIVE, not merely
 unreferenced; (c) memory hygiene is a safety control for Lane 3, not only
 a cost control. Worth an explicit item in the Phase-3 adversarial pass.
+
+**CORRECTION — D5 failed both halves; my earlier "a triple landed" claim was
+wrong (2026-08-11).** I attributed a new edge to the revived mining lane
+because it appeared right after a mining cycle. Verified since: there are
+**zero relationships at mining's 0.4 weight signature and none below 0.5**
+— A2 mining has never written a single edge, before or after the cursor
+clamp. The edge I saw came from the always-on A1 hot-path extractor, which
+happened to fire in the same window. The clamp fixed a real stranding bug,
+but it did not make the lane productive.
+
+**KNOWLEDGE GRAPH — full stack traced 2026-08-11, verdict: fix-or-retire.**
+The consumer cannot fire and the producer emits junk; they fail
+independently and also form a closed circle:
+
+- _Consumer:_ graph-anchored recall passes candidates through a
+  `FAMILY_RELATIONS` allowlist (`spouse_of|parent_of|child_of|sibling_of`)
+  that is **disjoint from every relation type the graph contains**
+  (`summarizes|prefers|manages|uses|works_on|knows|located_at`). 73 of 73
+  live edges are discarded unconditionally — even when entity resolution
+  succeeds (verified: "what is Bitterbot?", "tell me about Toronto" both
+  resolve, both yield nothing).
+- _Root cause behind that:_ `resolveUserName()` returns undefined because
+  **zero `identity`-category user preferences exist**. That one missing
+  value simultaneously kills the kinship query branch, aborts the
+  family-edge backfill (`if (!userName) return 0`), and disables the
+  go-forward identity extractor — so the only edge types the consumer
+  accepts can never be written in the first place.
+- _Producer:_ `extractPersonNames` accepts any capitalized run with a
+  7-word stop list and `length > 2`; `typeEntityName` defaults everything
+  to `person`. Hence 60 of 63 entities typed `person`, including `are`,
+  `could`, `which`, `water`, and truncated fragments (`explo`, `iden`,
+  `investiga`). "America/Toronto" splits into two `person` entities.
+  `\blikes?\b` maps ordinary English "like" to `prefers` — 39% of edges.
+- _Collateral:_ A1 attaches evidence via a bulk 60-second-window query, so
+  every edge cites ~50 unrelated chunks — which corrupts the
+  `evidenceChunkIds → labile_until` join SABM reconsolidation depends on.
+- _Irony:_ A2 mining is the ONLY path with proper type/relation
+  validation, and it is the one that has never written a row.
+
+Recommendation: do **not** widen the recall allowlist while the producer is
+untrustworthy — surfacing these edges would inject "america is a person who
+prefers wired" into prompts, the same amplification failure Lane 3 showed.
+Either invest in producer hygiene (stop-list + type validation at the single
+`upsertEntity` choke point + skip machine-generated crystals) plus a graph
+rebuild and a seeded identity preference, or retire the KG population paths
+and let the canonical ledger carry identity. Victor's call.
 
 **Open observations (for the phase adversarial pass / next session):**
 
