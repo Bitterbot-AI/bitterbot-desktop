@@ -35,6 +35,19 @@ export type CirclesConfig = {
     /** Serve a mailbox for peers from this node (relay operators). Default: false. */
     serve?: boolean;
   };
+  /**
+   * Outbound dial policy for PEER-SUPPLIED URLs (a2a + mailbox targets from
+   * invites, rosters, rendezvous blobs). By default the node refuses to dial
+   * private, loopback, link-local, and reserved addresses — a hostile peer
+   * must not be able to aim this node's HTTP client at its own gateway or
+   * LAN (SSRF). Set `allowPrivate: true` ONLY on a trusted LAN where peers
+   * legitimately advertise private addresses; scheme/credential checks still
+   * apply. DNS rebinding is not covered by this syntactic guard (follow-up:
+   * resolver pinning at the fetch layer).
+   */
+  dial?: {
+    allowPrivate?: boolean;
+  };
   /** Weekly briefing (C3). Default: enabled when circles are enabled. */
   briefing?: {
     enabled?: boolean;

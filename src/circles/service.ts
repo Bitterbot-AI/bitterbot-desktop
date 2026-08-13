@@ -67,6 +67,7 @@ import {
 } from "./canvas.js";
 import { getCircleTopicBus } from "./circle-topic-transport.js";
 import { circleTopicId, publishCircleFrame, type CircleTopicBus } from "./circle-topic.js";
+import { publicDialUrlError } from "./dial-guard.js";
 import { DEFAULT_ANSWER_POSTURE, isDisclosureAllowed, pendingAsks } from "./disclosure.js";
 import {
   MAILBOX_MAX_AGE_SECONDS,
@@ -212,7 +213,16 @@ async function circleRpc(
   a2aUrl: string,
   method: string,
   params: Record<string, unknown>,
+  dialOpts?: { allowPrivate?: boolean },
 ): Promise<{ ok: boolean; result?: Record<string, unknown>; error?: string; refused?: boolean }> {
+  // SSRF boundary (PLAN-36 s4 follow-up (b)): every URL reaching this
+  // function was supplied by a peer. Refuse private/reserved targets before
+  // any bytes leave the node. NOT marked `refused` -- a blocked a2a URL
+  // should still fall back to a (valid) mailbox rendezvous.
+  const guardErr = publicDialUrlError(a2aUrl, dialOpts);
+  if (guardErr) {
+    return { ok: false, error: `refused dial: ${guardErr}` };
+  }
   try {
     const res = await fetchImpl(a2aUrl.replace(/\/$/, "") + "/a2a", {
       method: "POST",
@@ -251,6 +261,7 @@ export class CirclesService {
   private readonly key: KeyPair;
   private readonly boxKeys: BoxKeyPair;
   private practiceKeysLazy: KeyPair | undefined;
+  private readonly dialOpts: { allowPrivate?: boolean };
   private readonly topicBusDep: CircleTopicBus | null | undefined;
   private readonly draftLlm: DraftLlmCall | undefined;
   readonly store: CirclesStore;
@@ -262,6 +273,7 @@ export class CirclesService {
     this.key = deps.keyPair ?? keyPairFromPrivateKeyPem(loadOrCreateDeviceIdentity().privateKeyPem);
     this.boxKeys = deps.boxKeys ?? loadOrCreateBoxKeys();
     this.practiceKeysLazy = deps.practiceKeys;
+    this.dialOpts = deps.config.circles?.dial?.allowPrivate === true ? { allowPrivate: true } : {};
     this.topicBusDep = deps.topicBus;
     this.draftLlm = deps.draftLlm;
     this.store = new CirclesStore(this.db);
@@ -445,11 +457,13 @@ export class CirclesService {
 
     // Fast path: a direct dial when the inviter published a reachable URL.
     if (invite.inviterA2aUrl) {
-      const rpc = await circleRpc(this.fetchImpl, invite.inviterA2aUrl, "circle/join", {
-        inviteId: invite.inviteId,
-        secret: invite.secret,
-        join: joinEnvelope,
-      });
+      const rpc = await circleRpc(
+        this.fetchImpl,
+        invite.inviterA2aUrl,
+        "circle/join",
+        { inviteId: invite.inviteId, secret: invite.secret, join: joinEnvelope },
+        this.dialOpts,
+      );
       if (rpc.ok && rpc.result) {
         const members = this.importJoinResult(invite, rpc.result);
         log.info(`joined circle ${invite.circleId} (${members} members, direct)`);
@@ -617,11 +631,13 @@ export class CirclesService {
       privateKey: this.key.privateKey,
       extra: blobDigest(pending.inviterPubkey, blob),
     });
-    const rpc = await circleRpc(this.fetchImpl, pending.inviterMailboxUrl, "mailbox/post", {
-      to: pending.inviterPubkey,
-      blob,
-      proof,
-    });
+    const rpc = await circleRpc(
+      this.fetchImpl,
+      pending.inviterMailboxUrl,
+      "mailbox/post",
+      { to: pending.inviterPubkey, blob, proof },
+      this.dialOpts,
+    );
     return rpc.ok;
   }
 
@@ -682,11 +698,13 @@ export class CirclesService {
       privateKey: this.key.privateKey,
       extra: blobDigest(member.memberPubkey, blob),
     });
-    const rpc = await circleRpc(this.fetchImpl, member.mailboxUrl, "mailbox/post", {
-      to: member.memberPubkey,
-      blob,
-      proof,
-    });
+    const rpc = await circleRpc(
+      this.fetchImpl,
+      member.mailboxUrl,
+      "mailbox/post",
+      { to: member.memberPubkey, blob, proof },
+      this.dialOpts,
+    );
     return rpc.ok;
   }
 
@@ -697,7 +715,13 @@ export class CirclesService {
     envelope: CircleEnvelope,
   ): Promise<boolean> {
     if (member.a2aUrl) {
-      const rpc = await circleRpc(this.fetchImpl, member.a2aUrl, method, { envelope });
+      const rpc = await circleRpc(
+        this.fetchImpl,
+        member.a2aUrl,
+        method,
+        { envelope },
+        this.dialOpts,
+      );
       if (rpc.ok) return true;
       log.debug(`direct ${method} to ${member.memberPubkey.slice(0, 24)}… failed: ${rpc.error}`);
     }
@@ -932,7 +956,13 @@ export class CirclesService {
       privateKey: this.key.privateKey,
       extra: "0",
     });
-    const rpc = await circleRpc(this.fetchImpl, url, "mailbox/poll", { proof, since: 0 });
+    const rpc = await circleRpc(
+      this.fetchImpl,
+      url,
+      "mailbox/poll",
+      { proof, since: 0 },
+      this.dialOpts,
+    );
     if (!rpc.ok || !rpc.result) {
       return { received: 0, dispatched: 0 };
     }
@@ -1007,7 +1037,13 @@ export class CirclesService {
         privateKey: this.key.privateKey,
         extra: ackIds.join(","),
       });
-      await circleRpc(this.fetchImpl, url, "mailbox/ack", { proof: ackProof, blobIds: ackIds });
+      await circleRpc(
+        this.fetchImpl,
+        url,
+        "mailbox/ack",
+        { proof: ackProof, blobIds: ackIds },
+        this.dialOpts,
+      );
     }
     return { received: blobs.length, dispatched };
   }
@@ -1023,7 +1059,8 @@ export class CirclesService {
     const toPubkey = joinEnv.author_pubkey;
     const boxPubkey = typeof body.box_pubkey === "string" ? body.box_pubkey : "";
     const mailboxUrl =
-      typeof body.mailbox_url === "string" && /^https?:\/\//.test(body.mailbox_url)
+      typeof body.mailbox_url === "string" &&
+      publicDialUrlError(body.mailbox_url, this.dialOpts) === null
         ? body.mailbox_url
         : "";
     if (!boxPubkey || !mailboxUrl) {
@@ -1054,7 +1091,13 @@ export class CirclesService {
       privateKey: this.key.privateKey,
       extra: blobDigest(toPubkey, blob),
     });
-    await circleRpc(this.fetchImpl, mailboxUrl, "mailbox/post", { to: toPubkey, blob, proof });
+    await circleRpc(
+      this.fetchImpl,
+      mailboxUrl,
+      "mailbox/post",
+      { to: toPubkey, blob, proof },
+      this.dialOpts,
+    );
   }
 
   /**
@@ -2322,9 +2365,13 @@ export class CirclesService {
         continue;
       }
       const ask = makeCircleEnvelope("presence", circleId, { since: 0 }, this.key);
-      const rpc = await circleRpc(this.fetchImpl, member.a2aUrl, "circle/events.since", {
-        envelope: ask,
-      });
+      const rpc = await circleRpc(
+        this.fetchImpl,
+        member.a2aUrl,
+        "circle/events.since",
+        { envelope: ask },
+        this.dialOpts,
+      );
       if (!rpc.ok || !rpc.result) {
         continue;
       }

@@ -348,7 +348,13 @@ encryption) and bumps only on member _add_. Until rotation lands, a removed
 member can still read gossip-topic frames (which are unencrypted for any
 mesh node anyway), and members who ignore the notice keep delivering to the
 evictee — **the hard read-exclusion guarantee still requires rotation
-(PLAN-36 §5.6)**.
+(PLAN-36 §5.6)**. Outbound dials are SSRF-guarded (2026-08-13): every
+peer-supplied a2a/mailbox URL passes `publicDialUrlError()` at the
+`circleRpc` boundary — non-http(s) schemes, credentialed URLs, loopback,
+RFC1918/CGNAT/link-local ranges, IPv4-mapped IPv6, and `.local`-class
+hostnames are refused before any bytes leave the node
+(`circles.dial.allowPrivate: true` opts out on trusted LANs; DNS rebinding
+still needs resolver pinning and is a known follow-up).
 
 ## Gateway RPC surface
 
