@@ -2143,6 +2143,28 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 60,
+    description:
+      "Mailbox anti-wedge hardening (2026-08-13, PLAN-36 §4 follow-up (a)): " +
+      "mailbox_post_log persists the per-sender post-rate window so a host " +
+      "restart no longer resets the limiter (it was an in-memory Map). The " +
+      "handler pairs this with a per-(sender,recipient) sub-quota and " +
+      "largest-sender eviction at the recipient ceiling, closing the live " +
+      "DoS where attacker-minted throwaway keypairs pre-filled an offline " +
+      "recipient's RECIPIENT_QUOTA and wedged their delivery.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS mailbox_post_log (
+          sender_pubkey TEXT    NOT NULL,
+          ts            INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mailbox_post_log_sender
+          ON mailbox_post_log (sender_pubkey, ts);
+        CREATE INDEX IF NOT EXISTS idx_mailbox_post_log_ts ON mailbox_post_log (ts);
+      `);
+    },
+  },
 ];
 
 /**

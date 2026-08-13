@@ -5,11 +5,12 @@ import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { runMigrations } from "../../memory/migrations.js";
 import {
   MAILBOX_TTL_MS,
+  POST_LIMIT,
   RECIPIENT_QUOTA,
+  SENDER_RECIPIENT_QUOTA,
   blobDigest,
   buildMailboxProof,
   handleMailboxMethod,
-  resetMailboxRateLimits,
   sweepExpiredMailboxBlobs,
 } from "./mailbox.js";
 
@@ -37,7 +38,8 @@ describe("mailbox host verbs", () => {
   let recipient: KeyPair;
 
   beforeEach(() => {
-    resetMailboxRateLimits();
+    // The post-rate window lives in the database (mailbox_post_log), so a
+    // fresh in-memory db per test is a full limiter reset.
     db = openDb();
     sender = generateKeyPair();
     recipient = generateKeyPair();
@@ -145,17 +147,105 @@ describe("mailbox host verbs", () => {
     if (ack.ok) expect((ack.result as { deleted: number }).deleted).toBe(1);
   });
 
-  it("enforces the recipient quota", () => {
+  it("evicts the largest sender's oldest blob at the ceiling instead of wedging", () => {
+    // An attacker (one sender key — or many; the hog query finds the largest)
+    // pre-fills the recipient's entire quota. The old behavior refused all new
+    // mail, wedging delivery. Now the legitimate post lands and only the
+    // stuffer's own oldest blob is cycled out.
     const seed = db.prepare(
       `INSERT INTO mailbox_blobs (blob_id, recipient_pubkey, sender_pubkey, blob_json, created_at, expires_at)
-       VALUES (?, ?, 'ed25519:seed', '{}', ?, ?)`,
+       VALUES (?, ?, 'ed25519:attacker', '{}', ?, ?)`,
     );
     for (let i = 0; i < RECIPIENT_QUOTA; i++) {
-      seed.run(`seed-${i}`, pubkeyId(recipient), NOW, NOW + MAILBOX_TTL_MS);
+      seed.run(`seed-${i}`, pubkeyId(recipient), NOW + i, NOW + MAILBOX_TTL_MS);
     }
-    const full = post();
-    expect(full.ok).toBe(false);
-    if (!full.ok) expect(full.error.message).toMatch(/full/);
+    const delivered = post();
+    expect(delivered.ok).toBe(true);
+    // Storage stays bounded at the ceiling.
+    const total = (
+      db
+        .prepare(`SELECT COUNT(*) AS n FROM mailbox_blobs WHERE recipient_pubkey = ?`)
+        .get(pubkeyId(recipient)) as { n: number }
+    ).n;
+    expect(total).toBe(RECIPIENT_QUOTA);
+    // The evicted blob is the attacker's oldest, not anyone else's mail.
+    const oldest = db.prepare(`SELECT blob_id FROM mailbox_blobs WHERE blob_id = 'seed-0'`).get();
+    expect(oldest).toBeUndefined();
+    // The recipient actually receives the legitimate message.
+    const mine = poll();
+    expect(mine.ok).toBe(true);
+    if (mine.ok) {
+      const senders = (mine.result as { blobs: Array<{ senderPubkey: string }> }).blobs.map(
+        (b) => b.senderPubkey,
+      );
+      expect(senders).toContain(pubkeyId(sender));
+    }
+  });
+
+  it("refuses a sender who is over their per-recipient sub-quota", () => {
+    const seed = db.prepare(
+      `INSERT INTO mailbox_blobs (blob_id, recipient_pubkey, sender_pubkey, blob_json, created_at, expires_at)
+       VALUES (?, ?, ?, '{}', ?, ?)`,
+    );
+    for (let i = 0; i < SENDER_RECIPIENT_QUOTA; i++) {
+      seed.run(`mine-${i}`, pubkeyId(recipient), pubkeyId(sender), NOW, NOW + MAILBOX_TTL_MS);
+    }
+    const refused = post();
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/sender quota/);
+    // A different sender is unaffected — the box is nowhere near the ceiling.
+    const other = generateKeyPair();
+    const to = pubkeyId(recipient);
+    const blob = `{"sealed":"other"}`;
+    const proof = buildMailboxProof({
+      verb: "post",
+      pubkey: pubkeyId(other),
+      privateKey: other.privateKey,
+      extra: blobDigest(to, blob),
+      now: NOW,
+    });
+    expect(handleMailboxMethod("mailbox/post", { to, blob, proof }, db, NOW).ok).toBe(true);
+  });
+
+  it("rate-limits posts through a window persisted in the database", () => {
+    // Distinct recipients per post: the rate window is per-SENDER, and a
+    // single recipient would trip the per-recipient sub-quota (50) first.
+    const postTo = (i: number, now = NOW) => {
+      const to = pubkeyId(generateKeyPair());
+      const blob = `{"sealed":"blob-${i}"}`;
+      const proof = buildMailboxProof({
+        verb: "post",
+        pubkey: pubkeyId(sender),
+        privateKey: sender.privateKey,
+        extra: blobDigest(to, blob),
+        now,
+      });
+      return handleMailboxMethod("mailbox/post", { to, blob, proof }, db, now);
+    };
+    for (let i = 0; i < POST_LIMIT.max; i++) {
+      expect(postTo(i).ok).toBe(true);
+    }
+    // The 61st verified post inside the window is refused…
+    const over = postTo(POST_LIMIT.max);
+    expect(over.ok).toBe(false);
+    if (!over.ok) expect(over.error.message).toMatch(/rate limited/);
+    // …and the window state is rows in mailbox_post_log, not process memory —
+    // a host restart (new process, same db file) keeps refusing.
+    const logged = (
+      db
+        .prepare(`SELECT COUNT(*) AS n FROM mailbox_post_log WHERE sender_pubkey = ?`)
+        .get(pubkeyId(sender)) as { n: number }
+    ).n;
+    expect(logged).toBe(POST_LIMIT.max);
+    // Once the window slides past, posting resumes.
+    const later = NOW + POST_LIMIT.windowMs + 1;
+    expect(post(`{"sealed":"after-window"}`, later).ok).toBe(true);
+    // The sweep prunes stale window rows so the log stays bounded.
+    sweepExpiredMailboxBlobs(db, later + POST_LIMIT.windowMs + 1);
+    const remaining = (
+      db.prepare(`SELECT COUNT(*) AS n FROM mailbox_post_log`).get() as { n: number }
+    ).n;
+    expect(remaining).toBe(0);
   });
 
   it("sweeps expired blobs", () => {

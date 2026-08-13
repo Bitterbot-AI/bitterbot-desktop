@@ -3,12 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import { generateKeyPair, pubkeyId, type KeyPair } from "../commerce/envelope.js";
 import { handleCircleMethod, resetCircleRateLimits } from "../gateway/a2a/circles.js";
-import {
-  blobDigest,
-  buildMailboxProof,
-  handleMailboxMethod,
-  resetMailboxRateLimits,
-} from "../gateway/a2a/mailbox.js";
+import { blobDigest, buildMailboxProof, handleMailboxMethod } from "../gateway/a2a/mailbox.js";
 import { DEFAULT_MEMBER_SCOPES } from "../memory/circles-store.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
@@ -92,7 +87,6 @@ describe("CirclesService end-to-end (two nodes)", () => {
 
   beforeEach(() => {
     resetCircleRateLimits();
-    resetMailboxRateLimits();
     anaDb = openDb();
     bobDb = openDb();
     anaKey = generateKeyPair();
@@ -1408,7 +1402,6 @@ describe("CirclesService mailbox-mediated join (§4)", () => {
 
   beforeEach(() => {
     resetCircleRateLimits();
-    resetMailboxRateLimits();
     anaDb = openDb();
     bobDb = openDb();
     anaKey = generateKeyPair();

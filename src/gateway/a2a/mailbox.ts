@@ -28,8 +28,17 @@ export const MAILBOX_PROOF_DOMAIN = "circle-mailbox/v1";
 export const MAILBOX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const MAILBOX_PROOF_SKEW_MS = 300_000;
 export const MAX_BLOB_BYTES = 65_536;
-/** Per-recipient stored-blob quota (count) — a full mailbox refuses more. */
+/** Per-recipient stored-blob ceiling (count) — bounds host storage per box. */
 export const RECIPIENT_QUOTA = 500;
+/**
+ * Per-(sender,recipient) stored-blob sub-quota. Without it, one sender —
+ * or one attacker minting throwaway keypairs — could pre-fill an offline
+ * recipient's entire RECIPIENT_QUOTA and wedge delivery (PLAN-36 §4
+ * follow-up (a)). A full box also EVICTS the largest sender's oldest blob
+ * rather than refusing new mail, so quota-stuffing only cycles the
+ * stuffer's own blobs and can never block a legitimate sender.
+ */
+export const SENDER_RECIPIENT_QUOTA = 50;
 
 export type MailboxError = { code: number; message: string };
 export type MailboxOutcome<T> = { ok: true; result: T } | { ok: false; error: MailboxError };
@@ -95,23 +104,22 @@ export function blobDigest(recipient: string, blobJson: string): string {
   return crypto.createHash("sha256").update(`${recipient}\n${blobJson}`, "utf8").digest("hex");
 }
 
-// Per-sender sliding-window rate limit (in-memory).
-const POST_LIMIT = { windowMs: 300_000, max: 60 };
-const postBuckets = new Map<string, number[]>();
+// Per-sender sliding-window post rate limit, persisted in mailbox_post_log so
+// a host restart no longer resets the window (PLAN-36 §4 follow-up (a): the
+// old in-memory Map was wiped on every boot). Counts proof-verified attempts,
+// so unsigned traffic can never grow the table.
+export const POST_LIMIT = { windowMs: 300_000, max: 60 };
 
-/** Exported for tests. */
-export function resetMailboxRateLimits(): void {
-  postBuckets.clear();
-}
-
-function postRateLimited(sender: string, now: number): boolean {
-  const hits = (postBuckets.get(sender) ?? []).filter((t) => now - t < POST_LIMIT.windowMs);
-  if (hits.length >= POST_LIMIT.max) {
-    postBuckets.set(sender, hits);
+function postRateLimited(db: DatabaseSync, sender: string, now: number): boolean {
+  const n = (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM mailbox_post_log WHERE sender_pubkey = ? AND ts > ?`)
+      .get(sender, now - POST_LIMIT.windowMs) as { n: number }
+  ).n;
+  if (n >= POST_LIMIT.max) {
     return true;
   }
-  hits.push(now);
-  postBuckets.set(sender, hits);
+  db.prepare(`INSERT INTO mailbox_post_log (sender_pubkey, ts) VALUES (?, ?)`).run(sender, now);
   return false;
 }
 
@@ -141,8 +149,18 @@ export function handleMailboxPost(
   ) {
     return err(A2aErrorCodes.UNAUTHORIZED, "invalid sender proof");
   }
-  if (postRateLimited(proof.pubkey, now)) {
+  if (postRateLimited(db, proof.pubkey, now)) {
     return err(A2aErrorCodes.INVALID_REQUEST, "rate limited; slow down");
+  }
+  const senderHeld = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM mailbox_blobs WHERE recipient_pubkey = ? AND sender_pubkey = ?`,
+      )
+      .get(to, proof.pubkey) as { n: number }
+  ).n;
+  if (senderHeld >= SENDER_RECIPIENT_QUOTA) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "sender quota for this recipient reached");
   }
   const count = (
     db.prepare(`SELECT COUNT(*) AS n FROM mailbox_blobs WHERE recipient_pubkey = ?`).get(to) as {
@@ -150,7 +168,28 @@ export function handleMailboxPost(
     }
   ).n;
   if (count >= RECIPIENT_QUOTA) {
-    return err(A2aErrorCodes.INVALID_REQUEST, "recipient mailbox is full");
+    // Anti-wedge: at the ceiling, evict the largest sender's oldest blob and
+    // deliver anyway. Refusing here is what let attacker-minted keypairs
+    // pre-fill an offline recipient's box and block real mail; eviction means
+    // stuffing the box only ever cycles the stuffer's own blobs. (In the
+    // implausible worst case of a box full of distinct single-blob senders,
+    // the deterministic tie-break evicts one of them — still better than
+    // wedging delivery for everyone.)
+    const hog = db
+      .prepare(
+        `SELECT sender_pubkey AS s, COUNT(*) AS n FROM mailbox_blobs
+          WHERE recipient_pubkey = ?
+          GROUP BY sender_pubkey ORDER BY n DESC, s LIMIT 1`,
+      )
+      .get(to) as { s: string } | undefined;
+    if (hog) {
+      db.prepare(
+        `DELETE FROM mailbox_blobs WHERE blob_id = (
+           SELECT blob_id FROM mailbox_blobs
+            WHERE recipient_pubkey = ? AND sender_pubkey = ?
+            ORDER BY created_at ASC, blob_id LIMIT 1)`,
+      ).run(to, hog.s);
+    }
   }
   const blobId = crypto.randomUUID();
   const expiresAt = now + MAILBOX_TTL_MS;
@@ -247,6 +286,9 @@ export function handleMailboxAck(
 
 /** TTL sweep — run from the maintenance tick on serving nodes. */
 export function sweepExpiredMailboxBlobs(db: DatabaseSync, now: number = Date.now()): number {
+  // Rate-window rows outside the sliding window are dead weight; prune them
+  // alongside the blob sweep so the log stays bounded by recent traffic.
+  db.prepare(`DELETE FROM mailbox_post_log WHERE ts <= ?`).run(now - POST_LIMIT.windowMs);
   const res = db.prepare(`DELETE FROM mailbox_blobs WHERE expires_at <= ?`).run(now);
   const n = Number(res.changes);
   if (n > 0) {

@@ -37,7 +37,7 @@ export type MailboxHostHandle = {
   close: () => Promise<void>;
 };
 
-/** Ensure the single table this host needs (no full memory schema required). */
+/** Ensure the tables this host needs (no full memory schema required). */
 export function ensureMailboxSchema(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS mailbox_blobs (
@@ -53,6 +53,19 @@ export function ensureMailboxSchema(db: DatabaseSync): void {
     `CREATE INDEX IF NOT EXISTS idx_mailbox_blobs_recipient ` +
       `ON mailbox_blobs(recipient_pubkey, created_at)`,
   );
+  // Persisted per-sender post-rate window (mirrors migration v60 on gateway
+  // nodes) — without it a host restart resets the limiter.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mailbox_post_log (
+      sender_pubkey TEXT    NOT NULL,
+      ts            INTEGER NOT NULL
+    )
+  `);
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_mailbox_post_log_sender ` +
+      `ON mailbox_post_log(sender_pubkey, ts)`,
+  );
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mailbox_post_log_ts ON mailbox_post_log(ts)`);
 }
 
 function readBody(req: IncomingMessage): Promise<string | null> {

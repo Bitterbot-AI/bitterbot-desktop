@@ -298,9 +298,14 @@ HKDF-SHA256 + AES-256-GCM): **the mailbox host stores ciphertext it cannot
 read**. It does see metadata (sender pubkey, recipient pubkey, size,
 timestamps); the honest claim is "no server that can read your messages or
 own your graph", and a mailbox is still a server. Hosts require sender-signed
-proofs to accept mail, rate-limit per sender (60 posts / 5 min, in-memory),
-cap each recipient at 500 stored blobs of at most 64 KiB, and expire blobs
-after 30 days.
+proofs to accept mail, rate-limit per sender (60 posts / 5 min, persisted in
+`mailbox_post_log` so a host restart does not reset the window), cap each
+sender at 50 stored blobs per recipient and each recipient at 500 stored
+blobs of at most 64 KiB, and expire blobs after 30 days. At the 500-blob
+ceiling the host does not refuse new mail (that would let attacker-minted
+throwaway keys pre-fill a box and wedge delivery to an offline node); it
+evicts the largest sender's oldest blob, so quota-stuffing only ever cycles
+the stuffer's own blobs.
 
 Two ways to host: a full node sets `circles.mailbox.serve: true`, or run the
 standalone gateway-free host (`src/gateway/a2a/mailbox-host.ts`, see

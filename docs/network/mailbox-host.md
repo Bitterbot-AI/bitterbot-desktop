@@ -22,7 +22,10 @@ mailbox verbs.
   `GET /` as a health check. Every other method is refused.
 - Auth is per-verb Ed25519 proofs (sender proof to post; recipient proof to
   poll/ack) — no bearer token, by design. Blobs are ≤64 KiB, quota 500 per
-  recipient, 30-day TTL, swept hourly.
+  recipient with a 50-per-sender sub-quota, 30-day TTL, swept hourly. A box
+  at the 500 ceiling evicts the largest sender's oldest blob rather than
+  refusing mail (anti-wedge), and the 60/5-min per-sender post window is
+  persisted (`mailbox_post_log`) so restarts do not reset it.
 - It holds **no** memory engines, agent, or gateway — it boots in milliseconds.
 
 ## Deploy
