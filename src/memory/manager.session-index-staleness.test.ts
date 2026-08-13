@@ -173,3 +173,52 @@ describe("session indexing staleness backstop", () => {
     expect(after.pendingSince).toBeUndefined();
   });
 });
+
+/**
+ * The backstop must also hold when the user goes quiet. The delta batch only
+ * runs on a new transcript write, so without this the very case that matters —
+ * state a preference, then stop typing — would leave the content pending
+ * forever despite the deadline.
+ */
+describe("staleness is re-checked without further session activity", () => {
+  it("lets the periodic sync claim content held past the deadline", async () => {
+    const { mgr, sessionFile } = await boot();
+    await appendTurn(sessionFile, "I always use ripgrep instead of grep here.");
+
+    mgr.sessionPendingFiles.add(sessionFile);
+    await mgr.processSessionDeltaBatch();
+    expect(mgr.sessionsDirtyFiles.has(sessionFile)).toBe(false);
+
+    const state = mgr.sessionDeltas.get(sessionFile)!;
+    state.pendingSince = Date.now() - 11 * 60_000;
+    // Past the manager's first sync, so the "catch up historical sessions"
+    // branch does not answer for us.
+    (mgr as unknown as { sessionInitialSyncDone: boolean }).sessionInitialSyncDone = true;
+
+    // No new turn, no new delta batch — only the periodic sync's own check.
+    const should = (
+      mgr as unknown as {
+        shouldSyncSessions: (p?: { reason?: string }) => boolean;
+      }
+    ).shouldSyncSessions({ reason: "interval" });
+
+    expect(should, "the periodic sync must pick up stale pending content").toBe(true);
+    expect(mgr.sessionsDirtyFiles.has(sessionFile)).toBe(true);
+  });
+
+  it("stays quiet when nothing has been waiting too long", async () => {
+    const { mgr, sessionFile } = await boot();
+    await appendTurn(sessionFile, "a fresh turn");
+    mgr.sessionPendingFiles.add(sessionFile);
+    await mgr.processSessionDeltaBatch();
+    (mgr as unknown as { sessionInitialSyncDone: boolean }).sessionInitialSyncDone = true;
+
+    const should = (
+      mgr as unknown as {
+        shouldSyncSessions: (p?: { reason?: string }) => boolean;
+      }
+    ).shouldSyncSessions({ reason: "interval" });
+
+    expect(should, "recent content must not force a sync").toBe(false);
+  });
+});

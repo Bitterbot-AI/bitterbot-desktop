@@ -689,7 +689,33 @@ class MemoryManagerSyncOps {
     if (reason === "session-start" || reason === "watch") {
       return false;
     }
-    return this.sessionsDirty && this.sessionsDirtyFiles.size > 0;
+    if (this.sessionsDirty && this.sessionsDirtyFiles.size > 0) {
+      return true;
+    }
+    // The staleness backstop is otherwise only evaluated when a NEW transcript
+    // write schedules a delta batch — so a user who says something and then
+    // goes quiet would leave it pending forever, which is precisely the case
+    // that matters (a stated preference, then silence). The periodic sync
+    // re-checks it here so the deadline holds without further activity.
+    return this.hasStaleSessionContent();
+  }
+
+  /** True when some session has held unindexed content past the deadline. */
+  private hasStaleSessionContent(now: number = Date.now()): boolean {
+    for (const [sessionFile, state] of this.sessionDeltas) {
+      if (state.pendingBytes <= 0 || state.pendingSince === undefined) {
+        continue;
+      }
+      if (now - state.pendingSince >= SESSION_MAX_PENDING_MS) {
+        this.sessionsDirtyFiles.add(sessionFile);
+        this.sessionsDirty = true;
+        state.pendingBytes = 0;
+        state.pendingMessages = 0;
+        state.pendingSince = undefined;
+        return true;
+      }
+    }
+    return false;
   }
 
   private async syncMemoryFiles(params: {
