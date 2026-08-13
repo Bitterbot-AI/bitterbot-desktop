@@ -38,7 +38,7 @@ import {
 import { redeemInvite } from "../../circles/invites.js";
 import { canonicalJson, type JsonValue } from "../../commerce/sku.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { CirclesStore, KNOWN_SCOPES } from "../../memory/circles-store.js";
+import { CirclesStore, KNOWN_SCOPES, MAX_CIRCLE_MEMBERS } from "../../memory/circles-store.js";
 import { wrapExternalContent } from "../../security/external-content.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { A2aErrorCodes } from "./types.js";
@@ -301,6 +301,15 @@ export function handleCircleJoin(
     return err(A2aErrorCodes.UNAUTHORIZED, "not authorized");
   }
   const existing = store.getMember(env.circle_id, env.author_pubkey);
+  // Roster cap (MAX_CIRCLE_MEMBERS): checked BEFORE redeeming so a refused
+  // join does not burn an invite use. Re-pairs of an already-active member
+  // pass — the cap gates growth, not repair.
+  if (
+    existing?.status !== "active" &&
+    store.activeMemberCount(env.circle_id) >= MAX_CIRCLE_MEMBERS
+  ) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "circle is at its member cap");
+  }
   const outcome = redeemInvite(db, {
     inviteId: params.inviteId,
     secret: params.secret,

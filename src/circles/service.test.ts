@@ -4,7 +4,7 @@ import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import { generateKeyPair, pubkeyId, type KeyPair } from "../commerce/envelope.js";
 import { handleCircleMethod, resetCircleRateLimits } from "../gateway/a2a/circles.js";
 import { blobDigest, buildMailboxProof, handleMailboxMethod } from "../gateway/a2a/mailbox.js";
-import { DEFAULT_MEMBER_SCOPES } from "../memory/circles-store.js";
+import { DEFAULT_MEMBER_SCOPES, MAX_CIRCLE_MEMBERS } from "../memory/circles-store.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
 import { generateBoxKeyPair, sealToBox } from "./box-crypto.js";
@@ -123,6 +123,20 @@ describe("CirclesService end-to-end (two nodes)", () => {
     // Both count exactly one connection (the friend-node count).
     expect(ana.connectionCount()).toBe(1);
     expect(bob.connectionCount()).toBe(1);
+  });
+
+  it("refuses to mint invites for a circle at the member cap", () => {
+    const invite = ana.createInviteCode({ name: "Tahoe Crew" });
+    let filler = 0;
+    while (ana.store.activeMemberCount(invite.circleId) < MAX_CIRCLE_MEMBERS) {
+      ana.store.addMember({
+        circleId: invite.circleId,
+        memberPubkey: `ed25519:${String(filler++).padStart(64, "0")}`,
+      });
+    }
+    expect(() => ana.createInviteCode({ circleId: invite.circleId })).toThrow(/invites refused/);
+    // A different (un-full) circle still mints fine.
+    expect(ana.createInviteCode({ name: "Another" }).circleId).not.toBe(invite.circleId);
   });
 
   it("carries a conversation both ways and computes reciprocity", async () => {

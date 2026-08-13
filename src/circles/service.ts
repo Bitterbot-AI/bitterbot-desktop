@@ -32,6 +32,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   CirclesStore,
   DEFAULT_MEMBER_SCOPES,
+  MAX_CIRCLE_MEMBERS,
   type Circle,
   type CircleMember,
 } from "../memory/circles-store.js";
@@ -371,6 +372,15 @@ export class CirclesService {
     }
     if (circle.status !== "active") {
       throw new Error(`circle ${circleId} is ${circle.status}; invites refused`);
+    }
+    // Roster cap: refuse to mint growth the join handler would refuse anyway
+    // (MAX_CIRCLE_MEMBERS) — better a clear error at mint time than a peer's
+    // failed redeem later. Over-cap circles imported from a peer's signed
+    // roster keep working; they just cannot mint new invites.
+    if (this.store.activeMemberCount(circleId) >= MAX_CIRCLE_MEMBERS) {
+      throw new Error(
+        `circle ${circleId} already has ${MAX_CIRCLE_MEMBERS} active members; invites refused`,
+      );
     }
     const invite = createInvite(this.db, {
       circleId,

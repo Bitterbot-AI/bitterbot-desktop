@@ -4,7 +4,11 @@ import type { JsonValue } from "../../commerce/sku.js";
 import { makeCircleEnvelope } from "../../circles/envelope.js";
 import { createInvite, parseInviteCode } from "../../circles/invites.js";
 import { generateKeyPair, pubkeyId, type KeyPair } from "../../commerce/envelope.js";
-import { CirclesStore, DEFAULT_MEMBER_SCOPES } from "../../memory/circles-store.js";
+import {
+  CirclesStore,
+  DEFAULT_MEMBER_SCOPES,
+  MAX_CIRCLE_MEMBERS,
+} from "../../memory/circles-store.js";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { runMigrations } from "../../memory/migrations.js";
 import { computeEventHash, handleCircleMethod, resetCircleRateLimits } from "./circles.js";
@@ -86,6 +90,85 @@ describe("circle A2A verbs", () => {
     expect(member?.scopes).toEqual(DEFAULT_MEMBER_SCOPES);
     // Key epoch bumped by the membership change.
     expect(store.getCircle(circleId)?.keyEpoch).toBeGreaterThan(0);
+  });
+
+  it("refuses circle/join at the member cap without burning the invite use", () => {
+    // Fill the roster to the cap with synthetic members.
+    let filler = 0;
+    while (store.activeMemberCount(circleId) < MAX_CIRCLE_MEMBERS) {
+      store.addMember({
+        circleId,
+        memberPubkey: `ed25519:${String(filler++).padStart(64, "0")}`,
+        now: NOW,
+      });
+    }
+    const invite = createInvite(db, {
+      circleId,
+      circleName: "Tahoe Crew",
+      circleKind: "connection",
+      inviterKey: ana,
+      inviterA2aUrl: "https://ana.example.com",
+      scopes: DEFAULT_MEMBER_SCOPES,
+      now: NOW,
+    });
+    const parsed = parseInviteCode(invite.code, NOW + 1000);
+    if (!parsed.ok) throw new Error("invite parse failed");
+    const join = makeCircleEnvelope("join", circleId, { display_name: "Bob" }, bob, NOW_S);
+    const refused = handleCircleMethod(
+      "circle/join",
+      { inviteId: invite.inviteId, secret: parsed.invite.secret, join },
+      db,
+      NOW + 1000,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/member cap/);
+    expect(store.getMember(circleId, pubkeyId(bob))).toBeNull();
+    // The refusal happened BEFORE redemption — the invite use is intact.
+    const uses = (
+      db.prepare(`SELECT uses FROM circle_invites WHERE invite_id = ?`).get(invite.inviteId) as {
+        uses: number;
+      }
+    ).uses;
+    expect(uses).toBe(0);
+  });
+
+  it("allows a re-pair of an active member even at the cap (cap gates growth, not repair)", () => {
+    joinBob();
+    let filler = 0;
+    while (store.activeMemberCount(circleId) < MAX_CIRCLE_MEMBERS) {
+      store.addMember({
+        circleId,
+        memberPubkey: `ed25519:${String(filler++).padStart(64, "0")}`,
+        now: NOW,
+      });
+    }
+    // Bob (already active) redeems a fresh invite to re-pair.
+    const invite = createInvite(db, {
+      circleId,
+      circleName: "Tahoe Crew",
+      circleKind: "connection",
+      inviterKey: ana,
+      inviterA2aUrl: "https://ana.example.com",
+      scopes: DEFAULT_MEMBER_SCOPES,
+      now: NOW + 2000,
+    });
+    const parsed = parseInviteCode(invite.code, NOW + 3000);
+    if (!parsed.ok) throw new Error("invite parse failed");
+    const join = makeCircleEnvelope(
+      "join",
+      circleId,
+      { display_name: "Bob's agent (new box)" },
+      bob,
+      NOW_S + 3,
+    );
+    const outcome = handleCircleMethod(
+      "circle/join",
+      { inviteId: invite.inviteId, secret: parsed.invite.secret, join },
+      db,
+      NOW + 3000,
+    );
+    expect(outcome.ok).toBe(true);
+    expect(store.activeMemberCount(circleId)).toBe(MAX_CIRCLE_MEMBERS);
   });
 
   it("circle/join refuses a bad secret and a mismatched circle", () => {

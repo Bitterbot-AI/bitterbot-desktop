@@ -331,7 +331,11 @@ membership under deny-by-default scope checks (a joining member is currently
 granted the full v1 scope set). Every verb requires a signed `circle/v1`
 envelope from an active member holding that verb's scope (the two structural
 exceptions: `circle/join` authenticates by invite secret, and `mailbox/*`
-uses standalone signature proofs), per-member rate limits are **persisted**
+uses standalone signature proofs), rosters are **capped at 15 active
+members** (enforced 2026-08-13 at invite mint and `circle/join` — checked
+before the invite use is burned; re-pairs pass; a peer's signed over-cap
+roster still imports rather than being mutilated, it just cannot grow),
+per-member rate limits are **persisted**
 so a restart cannot reset an attacker's budget, and missing-circle vs.
 no-scope return identical errors (no circle-id oracle). Ledger forks freeze
 the circle. Agent-authored content carries an explicit `agent_authored`

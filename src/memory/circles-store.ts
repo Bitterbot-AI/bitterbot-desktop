@@ -35,6 +35,18 @@ import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 
 /**
+ * Hard roster ceiling (2026-08-13). "Circles cap at ~15" was prose in two
+ * comments with no enforcement anywhere — a join handler would happily add
+ * member 50. Enforced on the GROWTH paths only: invite minting
+ * (CirclesService.createInviteCode) and circle/join (handleCircleJoin,
+ * checked before the invite use is burned). `importCircle` deliberately does
+ * NOT clamp: a signed roster arriving in a welcome is imported as-is (never
+ * mutilate signed state), so an over-cap circle from an older build keeps
+ * working — it just cannot grow further.
+ */
+export const MAX_CIRCLE_MEMBERS = 15;
+
+/**
  * An action-class scope a member may hold. A free string so third-party and
  * future-domain skills can define their own scopes (sections 11-12) without a
  * type change; the known first-party scopes are documented in KNOWN_SCOPES.
@@ -277,6 +289,17 @@ export class CirclesStore {
       | CircleRow
       | undefined;
     return row ? rowToCircle(row) : null;
+  }
+
+  /** Count of ACTIVE members (cheap roster-cap check). */
+  activeMemberCount(circleId: string): number {
+    return (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM circle_members WHERE circle_id = ? AND status = 'active'`,
+        )
+        .get(circleId) as { n: number }
+    ).n;
   }
 
   /** Active members of a circle. */
