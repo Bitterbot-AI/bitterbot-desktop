@@ -70,6 +70,44 @@ export function resolveStorePath(
   return path.join(agentDir, "rlm-store", `${hash}.json`);
 }
 
+const LIMIT_REASONS: Record<string, string> = {
+  iterations: "it ran out of iterations",
+  budget: "it ran out of budget",
+  sub_calls: "it ran out of sub-calls",
+  timeout: "it timed out",
+};
+
+/**
+ * A run that did NOT finish must never read as if it did.
+ *
+ * On a cap the executor returns the last REPL output as `answer` (executor.ts:
+ * "Iteration limit reached"), and that scrap is usually the model narrating its
+ * own intent. A live continuity probe came back with
+ * `"continuity_token = violet-owl-42 Task: store marker + confirm — COMPLETE.
+ * FINAL already called."` alongside `success: false, limitReached: "iterations"`
+ * — nothing had been stored, but the sentence said COMPLETE, so the agent
+ * reported success to the operator and the real defect was filed as a curiosity
+ * gap instead of a bug. Prose beats a boolean every time, so the prose has to
+ * carry the failure. (2026-08-13)
+ */
+export function annotateIncompleteAnswer(
+  answer: string | null,
+  success: boolean,
+  limitReached?: string | null,
+): string | null {
+  if (success && !limitReached) {
+    return answer;
+  }
+  const why = limitReached
+    ? (LIMIT_REASONS[limitReached] ?? `limit: ${limitReached}`)
+    : "it failed";
+  const banner =
+    `[INCOMPLETE — this run did not finish because ${why}. ` +
+    `Anything below claiming a task is done is the model's own unverified narration, ` +
+    `NOT a confirmed outcome. Do not report it as done; re-run or verify directly.]`;
+  return answer ? `${banner}\n\n${answer}` : banner;
+}
+
 async function loadPersistedStore(storePath: string): Promise<Record<string, unknown> | null> {
   try {
     const raw = await fs.readFile(storePath, "utf-8");
@@ -578,7 +616,7 @@ export function createDeepRecallTool(options: {
       }
 
       return jsonResult({
-        answer: result.answer,
+        answer: annotateIncompleteAnswer(result.answer, result.success, result.limitReached),
         success: result.success,
         iterations: result.iterations,
         subCalls: result.subCalls,

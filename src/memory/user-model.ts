@@ -49,6 +49,48 @@ export type UserModelConfig = {
 };
 
 // Preference extraction patterns
+/**
+ * Machine protocol chatter that must never be stored as a user preference.
+ * The heartbeat poll repeats its own instructions every cycle; treating those
+ * restatements as directives is how 65% of the profile became heartbeat echo.
+ */
+const PROTOCOL_SCAFFOLDING = /\b(heartbeat(?:\.md|_ok)?|HEARTBEAT_OK)\b/i;
+
+export function isProtocolScaffolding(text: string): boolean {
+  return PROTOCOL_SCAFFOLDING.test(text);
+}
+
+/** Content words of a directive, for near-duplicate comparison. */
+function significantTokens(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 3),
+  );
+}
+
+/**
+ * Jaccard overlap of content words. Cheap, dependency-free, and enough to catch
+ * the failure mode that matters: the same instruction restated in slightly
+ * different words on every poll, each phrasing minting a new row because the
+ * storage key is derived from the wording.
+ */
+export function directiveSimilarity(a: string, b: string): number {
+  const left = significantTokens(a);
+  const right = significantTokens(b);
+  if (left.size === 0 || right.size === 0) return 0;
+  let shared = 0;
+  for (const token of left) {
+    if (right.has(token)) shared++;
+  }
+  return shared / (left.size + right.size - shared);
+}
+
+/** At or above this overlap, treat a new directive as a restatement. */
+const DIRECTIVE_DUPLICATE_THRESHOLD = 0.6;
+
 const PREFERENCE_PATTERNS: Array<{
   category: UserPreference["category"];
   key: string;
@@ -307,6 +349,11 @@ export class UserModelManager {
   /**
    * Route an LLM-extracted directive fact into user_preferences.
    * Uses heuristic keyword matching to classify category and derive a key.
+   *
+   * Two guards protect this store, because it feeds the profile injected into
+   * proactive recall: machine protocol scaffolding never becomes a preference,
+   * and a paraphrase of something already stored corroborates that row instead
+   * of minting a new one.
    */
   upsertFromDirective(fact: {
     text: string;
@@ -318,6 +365,16 @@ export class UserModelManager {
     }
     const text = fact.text.trim();
     if (!text || text.length < 5) {
+      return null;
+    }
+
+    // Operational scaffolding is not a user preference. The heartbeat poll
+    // restates the same instructions every cycle, the extractor dutifully
+    // turned each restatement into a "directive", and because the key is
+    // derived from the wording, every paraphrase minted a NEW row: 162 of 251
+    // stored preferences were heartbeat echoes, all competing for space in the
+    // profile that feeds proactive recall. (2026-08-13)
+    if (isProtocolScaffolding(text)) {
       return null;
     }
 
@@ -395,14 +452,48 @@ export class UserModelManager {
       .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
     const key = words.slice(0, 5).join("_") || `directive_${now}`;
 
-    // Upsert: boost confidence for existing, insert for new
-    const existing = this.db
+    // Upsert: boost confidence for existing, insert for new.
+    //
+    // Exact key first, then a near-duplicate sweep of the same category. The
+    // key is derived from the first five content words, so "directive to read
+    // X if it exists" and "directive to read X when present" are different
+    // keys for the same instruction — without the second lookup each rephrasing
+    // becomes another row forever.
+    let existing = this.db
       .prepare(
         `SELECT id, value, confidence, evidence_ids FROM user_preferences WHERE category = ? AND key = ?`,
       )
       .get(category, key) as
       | { id: string; value: string; confidence: number; evidence_ids: string }
       | undefined;
+
+    if (!existing) {
+      const siblings = this.db
+        .prepare(
+          `SELECT id, value, confidence, evidence_ids FROM user_preferences WHERE category = ?`,
+        )
+        .all(category) as Array<{
+        id: string;
+        value: string;
+        confidence: number;
+        evidence_ids: string;
+      }>;
+      let best: (typeof siblings)[number] | undefined;
+      let bestScore = 0;
+      for (const sibling of siblings) {
+        const score = directiveSimilarity(text, sibling.value ?? "");
+        if (score > bestScore) {
+          bestScore = score;
+          best = sibling;
+        }
+      }
+      if (best && bestScore >= DIRECTIVE_DUPLICATE_THRESHOLD) {
+        log.debug(
+          `directive restatement (overlap ${bestScore.toFixed(2)}) — corroborating existing preference instead of adding a row`,
+        );
+        existing = best;
+      }
+    }
 
     if (existing) {
       let evidenceIds: string[] = [];
