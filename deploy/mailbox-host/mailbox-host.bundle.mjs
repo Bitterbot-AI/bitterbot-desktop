@@ -1,5 +1,3 @@
-// PLAN-36 Phase 1: standalone circles mailbox host, bundled for deploy.
-// Built from scripts/mailbox-host.ts — do not edit; rebuild with deploy/mailbox-host/build.sh.
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -4442,6 +4440,7 @@ var MAILBOX_TTL_MS = 30 * 24 * 60 * 60 * 1e3;
 var MAILBOX_PROOF_SKEW_MS = 3e5;
 var MAX_BLOB_BYTES = 65536;
 var RECIPIENT_QUOTA = 500;
+var SENDER_RECIPIENT_QUOTA = 50;
 function err(code, message) {
   return { ok: false, error: { code, message } };
 }
@@ -4484,15 +4483,14 @@ ${blobJson}`,
     .digest("hex");
 }
 var POST_LIMIT = { windowMs: 3e5, max: 60 };
-var postBuckets = /* @__PURE__ */ new Map();
-function postRateLimited(sender, now) {
-  const hits = (postBuckets.get(sender) ?? []).filter((t) => now - t < POST_LIMIT.windowMs);
-  if (hits.length >= POST_LIMIT.max) {
-    postBuckets.set(sender, hits);
+function postRateLimited(db, sender, now) {
+  const n = db
+    .prepare(`SELECT COUNT(*) AS n FROM mailbox_post_log WHERE sender_pubkey = ? AND ts > ?`)
+    .get(sender, now - POST_LIMIT.windowMs).n;
+  if (n >= POST_LIMIT.max) {
     return true;
   }
-  hits.push(now);
-  postBuckets.set(sender, hits);
+  db.prepare(`INSERT INTO mailbox_post_log (sender_pubkey, ts) VALUES (?, ?)`).run(sender, now);
   return false;
 }
 function handleMailboxPost(params, db, now = Date.now()) {
@@ -4515,14 +4513,36 @@ function handleMailboxPost(params, db, now = Date.now()) {
   ) {
     return err(A2aErrorCodes.UNAUTHORIZED, "invalid sender proof");
   }
-  if (postRateLimited(proof.pubkey, now)) {
+  if (postRateLimited(db, proof.pubkey, now)) {
     return err(A2aErrorCodes.INVALID_REQUEST, "rate limited; slow down");
+  }
+  const senderHeld = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM mailbox_blobs WHERE recipient_pubkey = ? AND sender_pubkey = ?`,
+    )
+    .get(to, proof.pubkey).n;
+  if (senderHeld >= SENDER_RECIPIENT_QUOTA) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "sender quota for this recipient reached");
   }
   const count = db
     .prepare(`SELECT COUNT(*) AS n FROM mailbox_blobs WHERE recipient_pubkey = ?`)
     .get(to).n;
   if (count >= RECIPIENT_QUOTA) {
-    return err(A2aErrorCodes.INVALID_REQUEST, "recipient mailbox is full");
+    const hog = db
+      .prepare(
+        `SELECT sender_pubkey AS s, COUNT(*) AS n FROM mailbox_blobs
+          WHERE recipient_pubkey = ?
+          GROUP BY sender_pubkey ORDER BY n DESC, s LIMIT 1`,
+      )
+      .get(to);
+    if (hog) {
+      db.prepare(
+        `DELETE FROM mailbox_blobs WHERE blob_id = (
+           SELECT blob_id FROM mailbox_blobs
+            WHERE recipient_pubkey = ? AND sender_pubkey = ?
+            ORDER BY created_at ASC, blob_id LIMIT 1)`,
+      ).run(to, hog.s);
+    }
   }
   const blobId = crypto.randomUUID();
   const expiresAt = now + MAILBOX_TTL_MS;
@@ -4600,6 +4620,7 @@ function handleMailboxAck(params, db, now = Date.now()) {
   return { ok: true, result: { deleted } };
 }
 function sweepExpiredMailboxBlobs(db, now = Date.now()) {
+  db.prepare(`DELETE FROM mailbox_post_log WHERE ts <= ?`).run(now - POST_LIMIT.windowMs);
   const res = db.prepare(`DELETE FROM mailbox_blobs WHERE expires_at <= ?`).run(now);
   const n = Number(res.changes);
   if (n > 0) {
@@ -4639,6 +4660,16 @@ function ensureMailboxSchema(db) {
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_mailbox_blobs_recipient ON mailbox_blobs(recipient_pubkey, created_at)`,
   );
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mailbox_post_log (
+      sender_pubkey TEXT    NOT NULL,
+      ts            INTEGER NOT NULL
+    )
+  `);
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_mailbox_post_log_sender ON mailbox_post_log(sender_pubkey, ts)`,
+  );
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mailbox_post_log_ts ON mailbox_post_log(ts)`);
 }
 function readBody(req) {
   return new Promise((resolve) => {
