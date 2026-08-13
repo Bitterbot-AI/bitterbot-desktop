@@ -121,3 +121,48 @@ describe("runHealthSweep", () => {
     expect(second.newFindings).toHaveLength(0);
   });
 });
+
+/**
+ * The bell. A finding that only reaches a log file has not been reported —
+ * that IS the failure this module was written to fix, so the sweep must push
+ * new findings onto the same surfacing queue the staleness questions use.
+ */
+describe("runHealthSweep — surfacing new findings", () => {
+  const cfg = {} as BitterbotConfig;
+
+  const queuedRows = () =>
+    db
+      .prepare(`SELECT target_id, finding FROM research_findings WHERE target_id LIKE 'health:%'`)
+      .all() as Array<{ target_id: string; finding: string }>;
+
+  it("records without enqueuing; only a full sweep rings the bell, and it stays capped", async () => {
+    // recordSweep is the persistence half — it must never enqueue on its own.
+    recordSweep(db, [], 1_000);
+    recordSweep(db, [f("Subsystems", "warn one"), f("Economy", "error one", "error")], 2_000);
+    expect(queuedRows()).toHaveLength(0);
+
+    await runHealthSweep({ db, cfg, now: 3_000 });
+    const queued = queuedRows();
+    expect(queued.length).toBeLessThanOrEqual(3);
+    for (const row of queued) {
+      expect(row.finding.startsWith("Health check (")).toBe(true);
+      expect(row.target_id.startsWith("health:")).toBe(true);
+    }
+  });
+
+  it("does not re-queue a finding that is not new", async () => {
+    await runHealthSweep({ db, cfg, now: 1_000 });
+    const afterFirst = (
+      db
+        .prepare(`SELECT COUNT(*) AS c FROM research_findings WHERE target_id LIKE 'health:%'`)
+        .get() as { c: number }
+    ).c;
+    await runHealthSweep({ db, cfg, now: 2_000 });
+    const afterSecond = (
+      db
+        .prepare(`SELECT COUNT(*) AS c FROM research_findings WHERE target_id LIKE 'health:%'`)
+        .get() as { c: number }
+    ).c;
+    expect(afterSecond).toBe(afterFirst);
+  });
+});

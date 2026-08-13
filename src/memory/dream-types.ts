@@ -213,6 +213,20 @@ export type DreamEngineConfig = {
   localLlmCall?: (prompt: string) => Promise<string>;
   /** Per-mode configuration overrides. */
   modes?: Partial<Record<DreamMode, Partial<DreamModeConfig>>>;
+  /**
+   * PLAN-40 Lane 2 (1b) near-duplicate merge, gated SEPARATELY from the
+   * hygiene lane as a whole so the two harmless halves (1a embedding backfill,
+   * 1c staleness questions) keep running when the merge is off.
+   *
+   * Default OFF as of the 2026-08-12 phase adversarial pass, which found the
+   * merge was adding a summary chunk per cycle while removing nothing:
+   * re-indexing resurrected demoted members (8 of 14 summaries lost every
+   * member), and index deletes were individually swallowed so half-applied
+   * merges committed (all 18 surviving members were still in chunks_fts).
+   * Net effect on the index was more duplication, not less. Re-enable once a
+   * clean D2 before/after replay confirms the fixes hold.
+   */
+  hygieneMerge?: { enabled?: boolean };
   /** Tiered compute routing configuration. */
   modelTiers?: ModelTierConfig;
   /** Disable FSHO oscillator for mode selection (fall back to uniform weights). Used for ablation testing. */
@@ -253,9 +267,12 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "autoResearch"
     | "localModelIsLocal"
     | "insightPromotion"
+    | "hygieneMerge"
   >
-> & { modes: Record<DreamMode, DreamModeConfig> } = {
+> & { modes: Record<DreamMode, DreamModeConfig>; hygieneMerge: { enabled: boolean } } = {
   enabled: true,
+  // PLAN-40 Lane 2 (1b): OFF until a clean D2 replay confirms the merge fixes.
+  hygieneMerge: { enabled: false },
   intervalMinutes: 120,
   initialDelayMinutes: 5,
   adaptiveInterval: {

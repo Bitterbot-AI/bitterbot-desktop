@@ -1434,15 +1434,20 @@ export class DreamEngine {
     try {
       const { runHygiene } = await import("./dream-modes/hygiene.js");
       const llmCall = this.getLlmCallForMode("hygiene");
+      // The merge half is gated separately from the lane (default OFF) — see
+      // DreamConfig.hygieneMerge. The backfill and staleness halves always run.
+      const mergeEnabled = this.config.hygieneMerge?.enabled === true;
       const result = await runHygiene({
         db: this.db,
         llmCall,
         ops: this.hygieneOps,
         llmBudget: this.cycleLlmRemaining,
         cycleId,
+        mergeEnabled,
       });
       log.debug(
         `hygiene cycle ${cycleId}: backfilled=${result.backfilled} merged=${result.merged} ` +
+          `(merge ${mergeEnabled ? "on" : "OFF"}) ` +
           `staleAsks=${result.staleAsks} unconfirmed=${result.factsMarkedUnconfirmed}`,
       );
       return { insights: [], llmCalls: result.llmCalls, chunksAnalyzed: result.chunksProcessed };
@@ -2090,14 +2095,27 @@ export class DreamEngine {
       // Archive or consolidate source chunks based on compression confidence.
       // High-confidence compressions (>= 0.7): archive sources (not searchable).
       // Lower-confidence: consolidate sources (still searchable as fallback).
+      //
+      // P1-F2 (2026-08-12): never touch a hygiene merge summary. Compression
+      // repoints parent_id at a `dream_insights` id, and that table is pruned
+      // to the newest 200 — so a merged cluster ended up `archived` (in no
+      // retrieval lifecycle list) behind a parent id that no longer existed:
+      // its members' content reachable from nowhere, its rollback pointer
+      // dangling. A summary already IS the compressed form of its cluster;
+      // compressing it again is the E8 anti-pattern PLAN-40 forbids.
       const insightId = insights[insights.length - 1]!.id;
+      const targetIds = cluster.chunkIds.filter((chunkId) => !this.isHygieneProcessed(chunkId));
+      const skipped = cluster.chunkIds.length - targetIds.length;
+      if (skipped > 0) {
+        log.debug(`compression: skipped ${skipped} hygiene-consolidated chunk(s)`);
+      }
       if (result.confidence >= 0.7) {
         const archiveStmt = this.db.prepare(
           `UPDATE chunks SET lifecycle = 'archived', lifecycle_state = 'archived',
                   parent_id = ?, version = COALESCE(version, 1) + 1
            WHERE id = ?`,
         );
-        for (const chunkId of cluster.chunkIds) {
+        for (const chunkId of targetIds) {
           archiveStmt.run(insightId, chunkId);
         }
       } else {
@@ -2106,7 +2124,7 @@ export class DreamEngine {
                   parent_id = ?, version = COALESCE(version, 1) + 1
            WHERE id = ?`,
         );
-        for (const chunkId of cluster.chunkIds) {
+        for (const chunkId of targetIds) {
           consolidateStmt.run(insightId, chunkId);
         }
       }
@@ -2114,6 +2132,24 @@ export class DreamEngine {
 
     this.markChunksDreamed(seeds.map((s) => s.id));
     return { insights, llmCalls: 0, chunksAnalyzed: seeds.length };
+  }
+
+  /**
+   * Has PLAN-40 Lane 2 already consolidated this chunk? True for BOTH a merge
+   * summary and its demoted members — the `hygiene_done` stamp covers both, and
+   * both must be left alone: re-archiving a member would repoint its parent_id
+   * away from its summary and break the merge lineage, which is the same E8
+   * failure as archiving the summary itself.
+   */
+  private isHygieneProcessed(chunkId: string): boolean {
+    try {
+      const row = this.db
+        .prepare(`SELECT COALESCE(hygiene_done, 0) AS done FROM chunks WHERE id = ?`)
+        .get(chunkId) as { done: number } | undefined;
+      return (row?.done ?? 0) === 1;
+    } catch {
+      return false;
+    }
   }
 
   // ── Mode 5: Simulation ──

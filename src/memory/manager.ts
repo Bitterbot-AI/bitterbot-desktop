@@ -167,6 +167,11 @@ const INDEX_CACHE = new Map<string, MemoryIndexManager>();
  */
 const INDEX_INFLIGHT = new Map<string, Promise<MemoryIndexManager>>();
 
+/** A sweep older than this means the daily window was missed (reboot/redeploy). */
+const HEALTH_SWEEP_STALE_MS = 20 * 60 * 60_000;
+/** Delay before the catch-up sweep, so it never competes with the boot path. */
+const HEALTH_SWEEP_CATCHUP_DELAY_MS = 3 * 60_000;
+
 export class MemoryIndexManager implements MemorySearchManager {
   // oxlint-disable-next-line typescript/no-explicit-any
   [key: string]: any;
@@ -243,6 +248,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private dreamInitialTimer: NodeJS.Timeout | null = null;
   private digestTimer: NodeJS.Timeout | null = null;
   private healthSweepTimer: NodeJS.Timeout | null = null;
+  private healthSweepCatchUpDone = false;
   private trendingSweepTimer: NodeJS.Timeout | null = null;
   private marketplaceIntelligence: MarketplaceIntelligence | null = null;
   private marketabilityPredictor:
@@ -2945,6 +2951,51 @@ export class MemoryIndexManager implements MemorySearchManager {
       .catch((err) => {
         log.debug(`health sweep schedule failed: ${String(err)}`);
       });
+    this.catchUpMissedHealthSweep();
+  }
+
+  /**
+   * Catch up a missed window. The timer only ever schedules the NEXT wall-clock
+   * time from process start, so a node that is down at 08:00 — a reboot, a
+   * Windows update, a redeploy — silently skips that day entirely and nothing
+   * says so. The first real-world week of this feature produced zero sweeps for
+   * exactly that reason.
+   *
+   * Runs once shortly after boot if the last recorded sweep is older than the
+   * interval (or none exists), deliberately delayed so it never competes with
+   * the boot path it is meant to inspect.
+   */
+  private catchUpMissedHealthSweep(): void {
+    if (this.healthSweepCatchUpDone) {
+      return;
+    }
+    this.healthSweepCatchUpDone = true;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const last = this.db.prepare(`SELECT MAX(swept_at) AS at FROM health_sweeps`).get() as
+            | { at: number | null }
+            | undefined;
+          const lastAt = last?.at ?? 0;
+          if (Date.now() - lastAt < HEALTH_SWEEP_STALE_MS) {
+            return;
+          }
+          log.info(
+            lastAt === 0
+              ? "health sweep: no sweep on record — running a catch-up now"
+              : `health sweep: last sweep was ${Math.round(
+                  (Date.now() - lastAt) / 3_600_000,
+                )}h ago — running a catch-up now`,
+          );
+          await this.runHealthSweep();
+        } catch (err) {
+          log.debug(`health sweep catch-up failed: ${String(err)}`);
+        }
+      })();
+    }, HEALTH_SWEEP_CATCHUP_DELAY_MS);
+    if (timer.unref) {
+      timer.unref();
+    }
   }
 
   private scheduleHealthSweepFire(msUntilNext: number): void {
@@ -5493,6 +5544,21 @@ export class MemoryIndexManager implements MemorySearchManager {
       /* embed failure → summary still written, model 'pending' for backfill */
     }
     const model = embedding.length > 0 ? this.provider.model : "pending";
+
+    // P1-F4 (2026-08-12): the plan's ordering rule was implemented as ordering
+    // only, never as a PRECONDITION. An embed failure was swallowed above and
+    // the merge carried on, deleting every member's vector row in exchange for
+    // a summary that had none — pure vector-retrieval loss. If the vector index
+    // is live, refuse the merge outright unless the summary is embeddable.
+    const vectorReady = await this.probeVectorAvailability().catch(() => false);
+    if (vectorReady && embedding.length === 0) {
+      log.warn(
+        "hygiene merge refused: summary embedding unavailable, so demoting members " +
+          "would delete their vector rows with nothing to replace them",
+      );
+      return null;
+    }
+
     try {
       this.db.exec("BEGIN");
       this.db
@@ -5514,27 +5580,28 @@ export class MemoryIndexManager implements MemorySearchManager {
           now,
           now,
         );
-      if (embedding.length > 0) {
-        try {
-          this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(id);
-          this.db
-            .prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`)
-            .run(id, Buffer.from(new Float32Array(embedding).buffer));
-        } catch {
-          /* vec table absent — summary still keyword-searchable */
-        }
+      // P1-F3 (2026-08-12): every index mutation below used to be individually
+      // try/catch-swallowed INSIDE the transaction, so a failure never reached
+      // the outer catch and a half-applied merge COMMITTED. Live result: all 18
+      // demoted members were still in chunks_fts next to their summary, doubly
+      // keyword-retrievable, with no log line saying why. These now throw and
+      // roll the whole merge back — the all-or-nothing contract the docblock
+      // above always claimed. Absent indexes are handled by not entering the
+      // branch, which is a different thing from swallowing a live failure.
+      const ftsReady = this.fts.enabled && this.fts.available;
+      if (vectorReady && embedding.length > 0) {
+        this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(id);
+        this.db
+          .prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`)
+          .run(id, Buffer.from(new Float32Array(embedding).buffer));
       }
-      if (this.fts.enabled && this.fts.available) {
-        try {
-          this.db
-            .prepare(
-              `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)
-               VALUES (?, ?, ?, ?, ?, 0, 0)`,
-            )
-            .run(params.text, id, `hygiene/merge/${id}`, source, model);
-        } catch {
-          /* fts absent */
-        }
+      if (ftsReady) {
+        this.db
+          .prepare(
+            `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)
+             VALUES (?, ?, ?, ?, ?, 0, 0)`,
+          )
+          .run(params.text, id, `hygiene/merge/${id}`, source, model);
       }
       const demote = this.db.prepare(
         `UPDATE chunks SET lifecycle = 'consolidated', parent_id = ?, hygiene_done = 1,
@@ -5542,17 +5609,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       );
       for (const memberId of params.memberIds) {
         demote.run(id, now, memberId);
-        try {
+        if (vectorReady) {
           this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(memberId);
-        } catch {
-          /* vec absent */
         }
-        if (this.fts.enabled && this.fts.available) {
-          try {
-            this.db.prepare(`DELETE FROM ${FTS_TABLE} WHERE id = ?`).run(memberId);
-          } catch {
-            /* fts absent */
-          }
+        if (ftsReady) {
+          this.db.prepare(`DELETE FROM ${FTS_TABLE} WHERE id = ?`).run(memberId);
         }
       }
       this.db.exec("COMMIT");
@@ -5563,7 +5624,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       } catch {
         /* ignore */
       }
-      log.debug(`hygiene merge write failed (rolled back): ${String(err)}`);
+      // warn, not debug: a rolled-back merge means an index mutation failed,
+      // and the whole reason F3 went unnoticed for a week is that this class of
+      // failure was invisible.
+      log.warn(`hygiene merge write failed (rolled back): ${String(err)}`);
       return null;
     }
   }

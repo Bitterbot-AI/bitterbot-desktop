@@ -131,6 +131,12 @@ export async function runHygiene(params: {
   llmBudget: number;
   cycleId: string;
   now?: number;
+  /**
+   * PLAN-40 Lane 2 (1b) gate — default OFF (see DreamConfig.hygieneMerge).
+   * The merge is the only destructive half of this lane; 1a and 1c run
+   * regardless so turning the merge off costs nothing but the merge.
+   */
+  mergeEnabled?: boolean;
 }): Promise<HygieneResult> {
   const { db, llmCall, ops, cycleId } = params;
   const now = params.now ?? Date.now();
@@ -148,8 +154,8 @@ export async function runHygiene(params: {
     log.debug(`hygiene backfill failed: ${String(err)}`);
   }
 
-  // ── 1b. Near-duplicate merge (bounded LLM) ──
-  if (llmCall && params.llmBudget > 0) {
+  // ── 1b. Near-duplicate merge (bounded LLM, gated) ──
+  if (params.mergeEnabled === true && llmCall && params.llmBudget > 0) {
     try {
       const rows = db
         .prepare(

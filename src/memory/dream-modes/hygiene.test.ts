@@ -97,6 +97,7 @@ describe("runHygiene merge flow", () => {
       llmBudget: 8,
       cycleId: "c1",
       now: NOW,
+      mergeEnabled: true,
     });
     expect(result.merged).toBe(1);
     expect(writes).toHaveLength(1);
@@ -118,6 +119,7 @@ describe("runHygiene merge flow", () => {
       ops: noopOps(writes),
       llmBudget: 0,
       cycleId: "c1",
+      mergeEnabled: true,
     });
     const r2 = await runHygiene({
       db,
@@ -125,9 +127,67 @@ describe("runHygiene merge flow", () => {
       ops: noopOps(writes),
       llmBudget: 8,
       cycleId: "c2",
+      mergeEnabled: true,
     });
     expect(r1.merged + r2.merged).toBe(0);
     expect(writes).toHaveLength(0);
+  });
+
+  /**
+   * PLAN-40 phase adversarial pass (2026-08-12): the merge was adding a
+   * summary per cycle and removing nothing, so it is gated OFF by default
+   * (DreamConfig.hygieneMerge) until a clean D2 replay confirms the fixes.
+   * The gate must silence ONLY the merge — the backfill and staleness halves
+   * are non-destructive and must keep running.
+   */
+  it("does not merge when the gate is absent or off", async () => {
+    insertChunk("f1", "victor lives in miami", [1, 0, 0]);
+    insertChunk("f2", "victor is based in miami florida", [0.999, 0.01, 0]);
+    const writes: Array<{ text: string; memberIds: string[] }> = [];
+    const byDefault = await runHygiene({
+      db,
+      llmCall: async () => "merged",
+      ops: noopOps(writes),
+      llmBudget: 8,
+      cycleId: "c1",
+      now: NOW,
+    });
+    const explicitlyOff = await runHygiene({
+      db,
+      llmCall: async () => "merged",
+      ops: noopOps(writes),
+      llmBudget: 8,
+      cycleId: "c2",
+      now: NOW,
+      mergeEnabled: false,
+    });
+    expect(byDefault.merged + explicitlyOff.merged).toBe(0);
+    expect(byDefault.llmCalls + explicitlyOff.llmCalls).toBe(0);
+    expect(writes).toHaveLength(0);
+  });
+
+  it("still runs the non-destructive halves while the merge gate is off", async () => {
+    insertChunk("f1", "victor lives in miami", [1, 0, 0]);
+    insertChunk("f2", "victor is based in miami florida", [0.999, 0.01, 0]);
+    const writes: Array<{ text: string; memberIds: string[] }> = [];
+    const ops = noopOps(writes);
+    let backfillCalls = 0;
+    const result = await runHygiene({
+      db,
+      llmCall: async () => "merged",
+      ops: {
+        ...ops,
+        backfillEmbeddings: async (limit: number) => {
+          backfillCalls++;
+          return ops.backfillEmbeddings(limit);
+        },
+      },
+      llmBudget: 8,
+      cycleId: "c1",
+      now: NOW,
+    });
+    expect(backfillCalls).toBe(1);
+    expect(result.merged).toBe(0);
   });
 });
 

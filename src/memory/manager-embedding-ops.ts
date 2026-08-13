@@ -849,6 +849,43 @@ class MemoryManagerEmbeddingOps {
         log.debug(`memory index: FTS cleanup failed for ${entry.path}: ${String(err)}`);
       }
     }
+    // PLAN-40 P1-F1 (2026-08-12): re-indexing must not resurrect chunks the
+    // hygiene merge demoted. This path deletes every row for the file and
+    // re-inserts it as a fresh `generated` chunk with parent_id NULL,
+    // hygiene_done 0 and brand-new vec/FTS rows — which silently undid the
+    // merge. Live evidence: 8 of 14 merge summaries had lost every member, and
+    // one demoted chunk was back in full retrieval 14 hours later. Since ids
+    // are content-derived, an unchanged chunk returns with the SAME id, so the
+    // demotion is captured here and re-applied below (and its index rows are
+    // NOT rewritten). A chunk whose text actually changed gets a new id, is
+    // absent from this map, and is correctly indexed fresh.
+    const demotedBefore = new Map<
+      string,
+      { lifecycle: string; lifecycle_state: string | null; parent_id: string | null }
+    >();
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT id, lifecycle, lifecycle_state, parent_id FROM chunks
+            WHERE path = ? AND source = ?
+              AND (COALESCE(lifecycle, '') = 'consolidated' OR COALESCE(hygiene_done, 0) = 1)`,
+        )
+        .all(entry.path, options.source) as Array<{
+        id: string;
+        lifecycle: string;
+        lifecycle_state: string | null;
+        parent_id: string | null;
+      }>;
+      for (const row of rows) {
+        demotedBefore.set(row.id, {
+          lifecycle: row.lifecycle,
+          lifecycle_state: row.lifecycle_state,
+          parent_id: row.parent_id,
+        });
+      }
+    } catch (err) {
+      log.debug(`memory index: demotion capture failed for ${entry.path}: ${String(err)}`);
+    }
     this.db
       .prepare(`DELETE FROM chunks WHERE path = ? AND source = ?`)
       .run(entry.path, options.source);
@@ -969,6 +1006,25 @@ class MemoryManagerEmbeddingOps {
           this.userModelManager.extractPreferences(chunk.text, id);
         } catch (err) {
           log.debug(`memory index: preference extraction failed for ${id}: ${String(err)}`);
+        }
+      }
+      // P1-F1: restore the demotion this re-index would otherwise have erased,
+      // and leave the chunk OUT of both indexes — re-indexing it is exactly
+      // what put merged-away duplicates back in front of retrieval.
+      const demoted = demotedBefore.get(id);
+      if (demoted) {
+        try {
+          this.db
+            .prepare(
+              `UPDATE chunks SET lifecycle = ?, lifecycle_state = ?, parent_id = ?, hygiene_done = 1
+                WHERE id = ?`,
+            )
+            .run(demoted.lifecycle, demoted.lifecycle_state, demoted.parent_id, id);
+          continue;
+        } catch (err) {
+          // Fall through and index normally: a chunk that is searchable twice
+          // is a worse outcome than one that is not searchable at all.
+          log.debug(`memory index: demotion restore failed for ${id}: ${String(err)}`);
         }
       }
       if (vectorReady && embedding.length > 0) {

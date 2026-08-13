@@ -1190,6 +1190,22 @@ class MemoryManagerSyncOps {
         await this.syncSkillFiles({ needsFullReindex: true, progress: params.progress });
         this.skillsDirty = false;
       }
+
+      // A full reindex rebuilds from FILES only, so every chunk no file
+      // produces — fact crystals, scratch notes, dream insights, hygiene merge
+      // summaries — was silently destroyed by an API-key rotation or a model
+      // change. Carry across whatever the rebuild did not reproduce.
+      try {
+        const { carryOverNonFileChunks } = await import("./reindex-carryover.js");
+        carryOverNonFileChunks({
+          from: originalDb,
+          to: this.db,
+          ftsTable: this.fts.enabled && this.fts.available ? FTS_TABLE : null,
+        });
+      } catch (err) {
+        log.warn(`reindex carry-over unavailable: ${String(err)}`);
+      }
+
       this.lastSyncedAt = Date.now();
 
       nextMeta = {
@@ -1237,6 +1253,12 @@ class MemoryManagerSyncOps {
   }): Promise<void> {
     // Perf: for test runs, skip atomic temp-db swapping. The index is isolated
     // under the per-test HOME anyway, and this cuts substantial fs+sqlite churn.
+    //
+    // This path wipes the SAME database it rebuilds into, so the non-file
+    // chunks have to be snapshotted BEFORE the reset or there is nothing left
+    // to carry across (see reindex-carryover.ts).
+    const { readChunkSnapshot, carryOverNonFileChunks } = await import("./reindex-carryover.js");
+    const snapshot = readChunkSnapshot(this.db);
     this.resetIndex();
 
     const shouldSyncMemory = this.sources.has("memory");
@@ -1266,6 +1288,17 @@ class MemoryManagerSyncOps {
       await this.syncSkillFiles({ needsFullReindex: true, progress: params.progress });
       this.skillsDirty = false;
     }
+
+    try {
+      carryOverNonFileChunks({
+        snapshot,
+        to: this.db,
+        ftsTable: this.fts.enabled && this.fts.available ? FTS_TABLE : null,
+      });
+    } catch (err) {
+      log.warn(`reindex carry-over failed: ${String(err)}`);
+    }
+
     this.lastSyncedAt = Date.now();
 
     const nextMeta: MemoryIndexMeta = {

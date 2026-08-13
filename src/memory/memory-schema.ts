@@ -87,11 +87,20 @@ export function ensureMemoryIndexSchema(params: {
       const before = (
         params.db.prepare(`SELECT count(*) AS c FROM ${params.ftsTable}`).get() as { c: number }
       ).c;
+      // ...but NOT chunks that were deliberately removed from the search
+      // surface. The PLAN-40 hygiene merge demotes near-duplicates by deleting
+      // their FTS/vec rows — that deletion IS the merge. This backfill has no
+      // way to tell "never indexed" from "deliberately de-indexed", so without
+      // the lifecycle fence it resurrected every demoted member on the next
+      // ensureSchema (boot, sync, or db swap), which is why all 18 demoted
+      // members were found sitting in chunks_fts beside their summary. The
+      // merge could not have worked on any node, ever. (2026-08-12)
       params.db.exec(
         `INSERT INTO ${params.ftsTable} (text, id, path, source, model, start_line, end_line)
          SELECT c.text, c.id, c.path, c.source, c.model, c.start_line, c.end_line
          FROM chunks c
-         WHERE c.id NOT IN (SELECT id FROM ${params.ftsTable})`,
+         WHERE c.id NOT IN (SELECT id FROM ${params.ftsTable})
+           AND COALESCE(c.lifecycle, 'generated') NOT IN ('consolidated', 'archived')`,
       );
       const after = (
         params.db.prepare(`SELECT count(*) AS c FROM ${params.ftsTable}`).get() as { c: number }

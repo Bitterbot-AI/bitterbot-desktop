@@ -388,6 +388,64 @@ export async function inspectDreamUtility(db: DatabaseSync): Promise<CheckResult
   return results;
 }
 
+/**
+ * Is the daily health sweep actually running, and what did it last find?
+ *
+ * The sweep exists because correct checks that never run are worthless. That
+ * argument applies to the sweep itself: for its first week it produced ZERO
+ * rows, because the timer only schedules the next wall-clock window from
+ * process start and the machine was down at 08:00. A watchdog with no watcher
+ * is the same bug one level up, so its own liveness is a doctor check.
+ * Exported for tests.
+ */
+export function inspectHealthSweep(db: DatabaseSync, now: number = Date.now()): CheckResult[] {
+  const results: CheckResult[] = [];
+  if (!tableExists(db, "health_sweeps")) {
+    return results;
+  }
+  try {
+    const last = one<{ at: number | null; new_count: number | null; total: number }>(
+      db,
+      `SELECT (SELECT MAX(swept_at) FROM health_sweeps) AS at,
+              (SELECT new_count FROM health_sweeps ORDER BY swept_at DESC LIMIT 1) AS new_count,
+              COUNT(*) AS total
+         FROM health_sweeps`,
+    );
+    if (!last.at) {
+      results.push(
+        warn(
+          "Daily health sweep has NEVER run — the scheduled self-check that is " +
+            "supposed to catch silent failures is itself silent.",
+        ),
+      );
+      return results;
+    }
+    const hoursAgo = Math.round((now - last.at) / 3_600_000);
+    if (hoursAgo > 36) {
+      results.push(
+        warn(
+          `Daily health sweep last ran ${hoursAgo}h ago (${last.total} on record) — ` +
+            "it should run daily; the window is being missed.",
+        ),
+      );
+    } else if ((last.new_count ?? 0) > 0) {
+      results.push(
+        warn(
+          `Last health sweep (${hoursAgo}h ago) found ${last.new_count} NEW issue(s). ` +
+            "They were queued for surfacing; see the sections above for detail.",
+        ),
+      );
+    } else {
+      results.push(
+        ok(`Daily health sweep ran ${hoursAgo}h ago, no new issues (${last.total} on record).`),
+      );
+    }
+  } catch (err) {
+    results.push(info(`Could not read health sweep history: ${String(err)}`));
+  }
+  return results;
+}
+
 export async function runLivenessChecks(params: { config: BitterbotConfig }): Promise<void> {
   const results: CheckResult[] = [];
   const dbPath = resolveDoctorMemoryDbPath(params.config);
@@ -397,6 +455,7 @@ export async function runLivenessChecks(params: { config: BitterbotConfig }): Pr
       db = new DatabaseSync(dbPath, { open: true, readOnly: true });
       results.push(...inspectArtifactLiveness(db));
       results.push(...(await inspectDreamUtility(db)));
+      results.push(...inspectHealthSweep(db));
     } catch (err) {
       results.push(info(`Could not open memory DB for liveness checks: ${String(err)}`));
     } finally {

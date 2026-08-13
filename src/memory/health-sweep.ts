@@ -25,6 +25,9 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/health-sweep");
 
+/** Max NEW findings pushed into the surfacing queue per sweep. */
+const MAX_SURFACED_FINDINGS = 3;
+
 export type SweepFinding = {
   /** Stable identity for diffing: section + normalized message shape. */
   key: string;
@@ -145,9 +148,54 @@ export function recordSweep(
 }
 
 /**
+ * Enqueue NEW findings into the PLAN-34 surfacing queue so they reach a human
+ * in conversation, the same path the canonical staleness questions use.
+ *
+ * Without this the sweep only logged at `warn` — which is precisely the failure
+ * it was built to fix. The checks were always correct and always silent; a
+ * finding that lands in a log file nobody opens has not been reported. The
+ * queue is owner-gated at the drain and capped here, so this cannot become a
+ * firehose: at most MAX_SURFACED_FINDINGS lines per sweep, errors first.
+ */
+function surfaceNewFindings(db: DatabaseSync, findings: SweepFinding[], now: number): number {
+  if (findings.length === 0) return 0;
+  try {
+    const exists = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='research_findings'`)
+      .get();
+    if (!exists) return 0;
+  } catch {
+    return 0;
+  }
+  // Errors before warnings — a broken subsystem outranks a soft signal.
+  const ranked = findings.toSorted((a, b) => {
+    if (a.level === b.level) return 0;
+    return a.level === "error" ? -1 : 1;
+  });
+  let queued = 0;
+  for (const finding of ranked.slice(0, MAX_SURFACED_FINDINGS)) {
+    try {
+      db.prepare(
+        `INSERT INTO research_findings (id, target_id, finding, relevance, created_at)
+         VALUES (?, ?, ?, 1.0, ?)`,
+      ).run(
+        crypto.randomUUID(),
+        `health:${finding.key}`,
+        `Health check (${finding.section}): ${finding.message.slice(0, 400)}`,
+        now,
+      );
+      queued++;
+    } catch (err) {
+      log.debug(`health sweep surfacing failed for ${finding.key}: ${String(err)}`);
+    }
+  }
+  return queued;
+}
+
+/**
  * Full sweep: collect, persist, diff, and SPEAK UP about anything new. New
- * problems log at warn (that is the entire point of this module); resolutions
- * log at info so a fix is visible too.
+ * problems log at warn AND enqueue for surfacing (a log line alone is not a
+ * report); resolutions log at info so a fix is visible too.
  */
 export async function runHealthSweep(params: {
   db: DatabaseSync;
@@ -159,6 +207,10 @@ export async function runHealthSweep(params: {
   if (result.newFindings.length > 0) {
     for (const f of result.newFindings) {
       log.warn(`health sweep — NEW ${f.level}: [${f.section}] ${f.message}`);
+    }
+    const queued = surfaceNewFindings(params.db, result.newFindings, params.now ?? Date.now());
+    if (queued > 0) {
+      log.info(`health sweep: queued ${queued} new finding(s) for surfacing`);
     }
   }
   if (result.resolvedFindings.length > 0) {
