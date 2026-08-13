@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { FirstRun } from "./components/first-run/FirstRun";
 import { AppShell } from "./components/layout/AppShell";
 import { Toaster } from "./components/ui/sonner";
+import { initDeepLinkJoin } from "./lib/deep-link";
 import {
   readStoredGatewayToken,
   readStoredGatewayUrl,
@@ -25,6 +26,13 @@ export function App() {
     const url = readStoredGatewayUrl();
     connect(url);
   }, [connect, hasCredentials]);
+
+  // bitterbot:// deep links (Tauri shell only; no-op in the browser).
+  // Registered at app boot so a cold-start link (the app was LAUNCHED by
+  // the guest page's "Open in Bitterbot") is picked up too.
+  useEffect(() => {
+    void initDeepLinkJoin();
+  }, []);
 
   const handleFirstRunComplete = useCallback(() => {
     setHasCredentials(true);

@@ -12,9 +12,13 @@ server — so this host never receives the invite secret. The page decodes the
 fragment **client-side** to show the invitee who's asking (inviter name, circle,
 key fingerprint, expiry), then offers three paths:
 
-- **Open in Bitterbot** — `bitterbot://join#<code>` deep link (needs the app's
-  URL-scheme registration; a follow-up).
-- **Copy invite code** — paste into the app's People tab (the reliable path today).
+- **Open in Bitterbot** — `bitterbot://join#<code>` deep link. The Tauri
+  shell registers the scheme (2026-08-13: tauri-plugin-deep-link +
+  single-instance; `desktop/renderer/src/lib/deep-link.ts` routes it to the
+  invite panel's verified prefill — never an auto-join). Works from the
+  first desktop build that ships it; browser-only Control UI users use copy.
+- **Copy invite code** — paste into the app's People tab (the path that
+  always works, app or browser).
 - **Get Bitterbot** — install.
 
 The page **verifies the invite envelope's Ed25519 signature in-browser**

@@ -101,10 +101,34 @@ fn main() {
     env_logger::init();
 
     tauri::Builder::default()
+        // Single-instance MUST be the first plugin: on Windows/Linux a
+        // bitterbot:// link launches a second process, and this plugin
+        // forwards its argv (the deep link, via the "deep-link" feature) to
+        // the running instance instead. The callback just surfaces the window;
+        // the deep-link plugin re-emits the URL to the renderer.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            // 0. bitterbot:// deep links (the guest-JOIN page's "Open in
+            // Bitterbot" CTA). The bundle manifest registers the scheme on
+            // install for macOS/Windows; Linux AppImages and dev builds need
+            // runtime registration.
+            #[cfg(any(windows, target_os = "linux"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(e) = app.deep_link().register_all() {
+                    log::warn!("deep-link runtime registration failed: {e}");
+                }
+            }
+
             // 1. Gateway child process lifecycle.
             match spawn_gateway() {
                 Ok(child) => {

@@ -48,6 +48,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["bitterbot"]
+      }
+    },
     "shell": {
       "open": true
     },

@@ -344,6 +344,9 @@ export interface CirclesState {
   noticeLevel: "info" | "error";
   /** §3.2.8: a chat item's card chip focuses its card on the canvas. */
   focusCardId: string | null;
+  /** Invite code delivered by a bitterbot://join deep link, awaiting the
+   * invite panel's verified prefill (never auto-joined). */
+  pendingJoinCode: string | null;
 
   /** Cheap list-only sync (status + list + selection) — safe for the
    * app-wide background loop: no pane loads, no markRead, no notices. */
@@ -447,4 +450,5 @@ export interface CirclesState {
   setPetname: (memberPubkey: string, petname: string) => Promise<boolean>;
   setSelfName: (name: string) => Promise<boolean>;
   setNotice: (notice: string | null) => void;
+  setPendingJoinCode: (code: string | null) => void;
 }

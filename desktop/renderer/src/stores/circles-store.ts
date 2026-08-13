@@ -70,10 +70,16 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
   loading: true,
   notice: null,
   noticeLevel: "info",
+  pendingJoinCode: null,
 
   // setNotice is the INFO channel (tips, confirmations); error sites set the
   // level explicitly so a failure can never wear the friendly blue.
   setNotice: (notice) => set({ notice, noticeLevel: "info" }),
+
+  // A bitterbot://join deep link stashes its invite code here (lib/deep-link).
+  // CirclesView consumes it by opening the invite panel PREFILLED — the
+  // trust preview + explicit Join tap still gate the actual redeem.
+  setPendingJoinCode: (code) => set({ pendingJoinCode: code }),
 
   // The CHEAP half (status + list + selection): what the app-wide background
   // sync runs. It never fires per-circle pane loads for a circle nobody is

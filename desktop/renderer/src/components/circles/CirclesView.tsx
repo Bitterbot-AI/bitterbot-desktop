@@ -31,6 +31,19 @@ export function CirclesView() {
     setNotice,
   } = useCirclesStore();
   const [showInvite, setShowInvite] = useState(false);
+  const [inviteJoinCode, setInviteJoinCode] = useState<string | null>(null);
+  const pendingJoinCode = useCirclesStore((s) => s.pendingJoinCode);
+  const setPendingJoinCode = useCirclesStore((s) => s.setPendingJoinCode);
+
+  // A bitterbot://join deep link stashed a code (lib/deep-link): open the
+  // invite panel PREFILLED with it. The panel runs the same inviteInfo trust
+  // preview as paste-to-join — the deep link never redeems by itself.
+  useEffect(() => {
+    if (!pendingJoinCode) return;
+    setInviteJoinCode(pendingJoinCode);
+    setPendingJoinCode(null);
+    setShowInvite(true);
+  }, [pendingJoinCode, setPendingJoinCode]);
 
   // Mount: refresh immediately (CirclesGlobalSync keeps the list warm
   // app-wide on its own 45s cadence).
@@ -132,7 +145,15 @@ export function CirclesView() {
         )}
       </div>
 
-      {showInvite && <InvitePanel onClose={() => setShowInvite(false)} />}
+      {showInvite && (
+        <InvitePanel
+          initialJoinCode={inviteJoinCode ?? undefined}
+          onClose={() => {
+            setShowInvite(false);
+            setInviteJoinCode(null);
+          }}
+        />
+      )}
     </div>
   );
 }

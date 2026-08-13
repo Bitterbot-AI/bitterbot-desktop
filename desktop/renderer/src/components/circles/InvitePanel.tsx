@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { memberName, useCirclesStore } from "../../stores/circles-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { InviteTrustPrompt, type InvitePreview } from "./InviteTrustPrompt";
@@ -22,10 +22,14 @@ export function InvitePanel({
   onClose,
   circleId,
   circleName,
+  initialJoinCode,
 }: {
   onClose: () => void;
   circleId?: string;
   circleName?: string;
+  /** Deep-link prefill (bitterbot://join#…): fills the join field and runs
+   * the trust preview automatically. Joining still needs the explicit tap. */
+  initialJoinCode?: string;
 }) {
   const request = useGatewayStore((s) => s.request);
   const refresh = useCirclesStore((s) => s.refresh);
@@ -153,16 +157,30 @@ export function InvitePanel({
   // in-message Join path. Only the explicit Join tap redeems. Direct request
   // (not the store helper): a bad code must error INSIDE the modal, not into
   // the notice bar the overlay is covering.
-  const previewJoin = useCallback(async () => {
-    const code = joinCode.trim();
-    if (!code) return;
-    try {
-      const info = await request<Omit<InvitePreview, "code">>("circles.inviteInfo", { code });
-      setJoinPreview({ code, ...info });
-    } catch (err) {
-      setLocal(String(err));
-    }
-  }, [joinCode, request]);
+  const previewJoin = useCallback(
+    async (codeArg?: string) => {
+      const code = (codeArg ?? joinCode).trim();
+      if (!code) return;
+      try {
+        const info = await request<Omit<InvitePreview, "code">>("circles.inviteInfo", { code });
+        setJoinPreview({ code, ...info });
+      } catch (err) {
+        setLocal(String(err));
+      }
+    },
+    [joinCode, request],
+  );
+
+  // Deep-link prefill: land in the join field with the trust preview already
+  // running — the human still reads the signer card and taps Join themselves.
+  useEffect(() => {
+    if (!initialJoinCode) return;
+    setJoinCode(initialJoinCode);
+    void previewJoin(initialJoinCode);
+    // Run once per panel open for the prefilled code; previewJoin's identity
+    // changes with joinCode edits and must not re-trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialJoinCode]);
 
   const join = useCallback(async () => {
     if (!joinPreview || joining) return;
