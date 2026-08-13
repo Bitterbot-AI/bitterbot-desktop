@@ -11,9 +11,13 @@
       to the server, so this host never receives the secret. All decoding happens
       client-side, below, for the invitee only.
 
-      This page is a friendly PREVIEW: it decodes the invite to show who's asking.
-      The real trust gate is in the app — Bitterbot verifies the invite's Ed25519
-      signature before it dials anyone (see src/circles/invites.ts parseInviteCode).
+      This page decodes the invite to show who's asking AND verifies the
+      invite envelope's Ed25519 signature in-browser (WebCrypto, same
+      circle/v1 domain-prefixed JCS preimage as src/circles/envelope.ts). A
+      bad signature is a hard failure; a browser without Ed25519 WebCrypto
+      falls back to an honest "couldn't check here" row. Either way the app
+      remains the real trust gate — Bitterbot re-verifies before it dials
+      anyone (see src/circles/invites.ts parseInviteCode).
       Self-contained: no external requests, no analytics, no fonts.
     -->
     <style>
@@ -193,6 +197,76 @@
         );
       }
 
+      /* __VERIFY_LIB_START__ (pure helpers, cross-checked by
+         src/circles/guest-page-verify.test.ts against the Node implementation
+         — keep this block dependency-free and DOM-free) */
+
+      // Mirror of canonicalJson (src/commerce/sku.ts): JCS-style sorted-key
+      // JSON. Must byte-match the Node signer or every signature "fails".
+      function canonicalJson(value) {
+        if (
+          value === null ||
+          typeof value === "number" ||
+          typeof value === "boolean" ||
+          typeof value === "string"
+        ) {
+          return JSON.stringify(value);
+        }
+        if (Array.isArray(value)) {
+          return "[" + value.map(canonicalJson).join(",") + "]";
+        }
+        const keys = Object.keys(value).sort();
+        return (
+          "{" +
+          keys.map((k) => JSON.stringify(k) + ":" + canonicalJson(value[k])).join(",") +
+          "}"
+        );
+      }
+
+      function hexToBytes(hex) {
+        const out = new Uint8Array(hex.length / 2);
+        for (let i = 0; i < out.length; i += 1) {
+          out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+        }
+        return out;
+      }
+
+      // -> "valid" | "invalid" | "unsupported". Malformed key/signature is
+      // "invalid" (an attacker controls those fields); only a missing
+      // Ed25519 WebCrypto implementation is "unsupported".
+      async function verifyInviteSignature(env, subtle) {
+        try {
+          const m = /^ed25519:([0-9a-f]{64})$/.exec(env.author_pubkey || "");
+          if (!m || typeof env.signature !== "string" || !/^[0-9a-f]{128}$/.test(env.signature)) {
+            return "invalid";
+          }
+          const unsigned = {};
+          for (const k of Object.keys(env)) {
+            if (k !== "signature") unsigned[k] = env[k];
+          }
+          const preimage = new TextEncoder().encode("circle/v1\n" + canonicalJson(unsigned));
+          let key;
+          try {
+            key = await subtle.importKey("raw", hexToBytes(m[1]), { name: "Ed25519" }, false, [
+              "verify",
+            ]);
+          } catch {
+            return "unsupported";
+          }
+          const ok = await subtle.verify(
+            { name: "Ed25519" },
+            key,
+            hexToBytes(env.signature),
+            preimage,
+          );
+          return ok ? "valid" : "invalid";
+        } catch {
+          return "unsupported";
+        }
+      }
+
+      /* __VERIFY_LIB_END__ */
+
       function fingerprint(authorPubkey) {
         const m = /^ed25519:([0-9a-f]{64})$/.exec(authorPubkey || "");
         if (!m) return "unknown";
@@ -252,6 +326,7 @@
           <div class="row"><span class="k">Circle</span><span class="v">${esc(circle)}</span></div>
           <div class="row"><span class="k">From</span><span class="v">${esc(inviter)}</span></div>
           <div class="row"><span class="k">Their key</span><span class="v fp">${esc(fingerprint(env.author_pubkey))}</span></div>
+          <div class="row"><span class="k">Signature</span><span class="v" id="sigstate">Checking…</span></div>
           <div class="row"><span class="k">Invite valid</span><span class="v">${esc(fmtExpiry(body.expires_at))}</span></div>
 
           <div class="actions">
@@ -277,6 +352,27 @@
             });
           });
         }
+
+        // Verify the envelope signature. A failure is a HARD stop — an
+        // altered/forged invite must not offer copy or deep-link actions.
+        // No Ed25519 WebCrypto (older browsers) degrades to an honest
+        // "couldn't check here" row; the app re-verifies regardless.
+        verifyInviteSignature(env, (crypto.subtle || {})).then((state) => {
+          const el = document.getElementById("sigstate");
+          if (state === "valid") {
+            if (el) {
+              el.textContent = "✓ Verified — signed by the key above";
+              el.style.color = "var(--accent)";
+            }
+          } else if (state === "invalid") {
+            renderError(
+              "The invite's signature is invalid — the link was altered in transit or forged. " +
+                "Ask your friend to send a fresh invite link.",
+            );
+          } else if (el) {
+            el.textContent = "Couldn't check in this browser — Bitterbot verifies before connecting";
+          }
+        });
       }
 
       window.addEventListener("hashchange", render);

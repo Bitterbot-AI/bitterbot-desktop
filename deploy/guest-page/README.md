@@ -17,10 +17,15 @@ key fingerprint, expiry), then offers three paths:
 - **Copy invite code** — paste into the app's People tab (the reliable path today).
 - **Get Bitterbot** — install.
 
-The page is a friendly **preview only**. The real trust gate is the app, which
-verifies the invite's Ed25519 signature before it dials anyone
-(`src/circles/invites.ts` `parseInviteCode`). The page is fully self-contained:
-no external requests, fonts, or analytics.
+The page **verifies the invite envelope's Ed25519 signature in-browser**
+(WebCrypto, same `circle/v1` JCS preimage as `src/circles/envelope.ts`; the
+inline port is cross-checked against the Node implementation by
+`src/circles/guest-page-verify.test.ts`). An invalid signature is a hard
+failure — no copy/deep-link actions render. Browsers without Ed25519
+WebCrypto get an honest "couldn't check in this browser" row instead. The
+app is still the real trust gate: Bitterbot re-verifies before it dials
+anyone (`src/circles/invites.ts` `parseInviteCode`). The page is fully
+self-contained: no external requests, fonts, or analytics.
 
 ## Hosting
 
