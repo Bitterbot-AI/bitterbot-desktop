@@ -219,3 +219,76 @@ Severity is "what it costs if left alone", not effort.
    and nothing reads `health_sweeps` (no doctor section, no RPC, no digest
    inclusion). The premise of the feature was that nobody reads the thing that
    already logs correctly. Give it a surface.
+
+---
+
+## Follow-up: what was fixed (2026-08-12)
+
+Acted on the backlog above. Committed in `7ae5db7`, deployed and live-verified.
+
+### Two findings the pass itself did not have
+
+**The self-healing FTS backfill was resurrecting every demoted member.**
+`ensureMemoryIndexSchema` re-inserted an FTS row for any chunk missing one, with
+no lifecycle filter. Deleting a member's FTS row IS the merge, so the next
+`ensureSchema` — boot, sync, or db swap — put it straight back. This is the real
+reason all 18 demoted members were sitting in `chunks_fts`, and it means the
+merge could never have worked on any node, ever. P1-F3's swallowed catches were
+a second, smaller cause. Now fenced to non-demoted lifecycles.
+
+**A full reindex destroys every chunk no file produces.** Confirmed with a
+probe: insert a scratch note, run one forced sync, row count 1 → 0.
+`runSafeReindex` rebuilds into a fresh database by walking memory/session/skill
+files and swaps it in, so extracted fact crystals, scratch notes, handover
+crystals, dream insights and merge summaries were all deleted. The triggers are
+ordinary: `force`, an embedding model or provider change, a chunking-settings
+change, and an **API key rotation** (`providerKey` is part of the meta
+comparison) — which silently wiped the agent's crystallized memory while leaving
+file-derived chunks intact, so the index still looked healthy afterwards. New
+`reindex-carryover.ts` preserves anything the rebuild did not reproduce and
+re-applies demotions the rebuild cleared.
+
+This is more severe than P1-F1 and was found only because P1-F1's fix did not
+take on the first try. It is worth stating plainly: three independent mechanisms
+were undoing the merge, and the two biggest were outside the merge code.
+
+### Fixed
+
+- P1-F1 — demotion captured before the per-file delete and re-applied after; a
+  restored member is not re-indexed. Genuinely changed content still indexes fresh.
+- P1-F3 — index mutations inside the merge transaction now throw and roll the
+  whole merge back instead of being individually swallowed; failures log at warn.
+- P1-F4 — with a live vector index, a summary that cannot be embedded refuses
+  the merge outright rather than deleting members' vectors for nothing.
+- P1-F2 — compression no longer archives hygiene-consolidated chunks (summary or
+  member), so no more `archived` rows behind a pruned `dream_insights` parent.
+- **Merge gated off**: `memory.dream.hygieneMerge.enabled`, default OFF. 1a
+  embedding backfill and 1c staleness questions keep running. Re-enable only
+  after a clean D2 replay.
+- **Health sweep given a bell and a catch-up**: new findings enqueue into the
+  surfacing queue (capped at 3, errors first) instead of only logging at warn; a
+  missed daily window is caught up shortly after boot; doctor reports the
+  sweep's own liveness. Its first week produced zero sweeps because the machine
+  was down at 08:00 — the watchdog had the bug it exists to catch.
+- Lanes 1 and 3 disabled in config (`modes.distillation`, `modes.anticipation`)
+  pending P2-F1 and the Lane 3 grounding legs.
+
+### Live verification after deploy
+
+- Merge gate holding: newest merge summary predates the restart; none since.
+- `demoted_in_fts` 18 → 0, and still 0 after a re-index cycle (previously the
+  drift backfill restored them within one `ensureSchema`).
+- The 18 already-demoted members were de-indexed to complete merges that had
+  been half-applied; their summaries remain indexed and searchable.
+- Health sweep catch-up fired ~3 minutes after boot, recorded 5 findings, and
+  queued 3 for surfacing.
+- Residue purge: 30 chunks + 5 canonical facts + 17 workspace files + the source
+  transcript. `%paying customer%` now returns 0 chunks, 0 FTS rows, 0 canonical
+  facts, and stays 0 after re-indexing. The fabricated figure was redacted in
+  the origin session transcript so extraction cannot re-derive it.
+
+### Still open from the backlog
+
+P1-F5 (hygiene funnel rows structurally unconsumable), P1-F6 (rollback script
+does not exist), P1-F7 (`staleness_asked_count` never reset), P1-F8/F9/F10/F11,
+all of Lane 1 (P2-F1 first), and Lane 3's P3-F3/F4/F5/F6/F7/F8.
