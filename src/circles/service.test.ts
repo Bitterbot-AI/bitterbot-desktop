@@ -1301,9 +1301,13 @@ describe("CirclesService end-to-end (two nodes)", () => {
       async unsubscribe() {},
     };
     const fetchImpl = meshFetch({ ana: anaDb, bob: bobDb });
+    // The mesh path is behind the circles.meshTopic kill switch (default OFF
+    // until frames are encrypted) — this test opts in explicitly.
+    const meshConfig = makeConfig("Ana's agent", "ana");
+    meshConfig.circles = { ...meshConfig.circles, meshTopic: { enabled: true } };
     const anaBus = new CirclesService({
       db: anaDb,
-      config: makeConfig("Ana's agent", "ana"),
+      config: meshConfig,
       fetchImpl,
       keyPair: anaKey,
       topicBus,
@@ -1322,6 +1326,39 @@ describe("CirclesService end-to-end (two nodes)", () => {
     // And the node subscribes the (non-practice) circle's topic to receive.
     await anaBus.ensureCircleSubscriptions();
     expect(subscribed).toContain(published[0]?.topic);
+  });
+
+  it("keeps the mesh topic dark by default even with a bus available (kill switch)", async () => {
+    // Default config (no meshTopic block): a wired bus must never see a
+    // publish or subscribe — plaintext frames stay off the mesh until
+    // per-circle encryption lands. Direct delivery is unaffected.
+    const published: string[] = [];
+    const subscribed: string[] = [];
+    const topicBus = {
+      async publish(topic: string) {
+        published.push(topic);
+      },
+      async subscribe(topic: string) {
+        subscribed.push(topic);
+      },
+      async unsubscribe() {},
+    };
+    const fetchImpl = meshFetch({ ana: anaDb, bob: bobDb });
+    const anaDark = new CirclesService({
+      db: anaDb,
+      config: makeConfig("Ana's agent", "ana"),
+      fetchImpl,
+      keyPair: anaKey,
+      topicBus,
+    });
+    const invite = anaDark.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+
+    const report = await anaDark.sendMessage({ circleId: invite.circleId, text: "dial only" });
+    expect(report.delivered).toEqual([pubkeyId(bobKey)]);
+    await anaDark.ensureCircleSubscriptions();
+    expect(published).toEqual([]);
+    expect(subscribed).toEqual([]);
   });
 
   it("keeps the shared tab identical on both nodes (append -> fan-out -> fold)", async () => {

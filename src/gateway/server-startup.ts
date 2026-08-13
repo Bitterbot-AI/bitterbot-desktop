@@ -358,9 +358,11 @@ export async function startGatewaySidecars(params: {
       // PLAN-36 Phase 4: circle messages over the mesh. Wire inbound per-circle
       // topic frames into the circles DB; the send side + subscriptions are
       // driven by the circles service (fast scheduler ensures subscriptions).
-      // No-op unless circles are enabled; degrades cleanly if the orchestrator
-      // build lacks the topic primitive (subscribe/publish just error at debug).
-      if (params.cfg.circles?.enabled === true) {
+      // Requires the circles.meshTopic kill switch (default OFF — frames are
+      // signed but not encrypted; see types.circles.ts) on top of circles
+      // being enabled; degrades cleanly if the orchestrator build lacks the
+      // topic primitive (subscribe/publish just error at debug).
+      if (params.cfg.circles?.enabled === true && params.cfg.circles?.meshTopic?.enabled === true) {
         void (async () => {
           try {
             const [

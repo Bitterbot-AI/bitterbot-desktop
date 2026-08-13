@@ -48,6 +48,18 @@ export type CirclesConfig = {
   dial?: {
     allowPrivate?: boolean;
   };
+  /**
+   * PLAN-36 Phase 4: publish/subscribe circle frames over the libp2p gossip
+   * mesh, ADDITIVE to the direct-dial + mailbox paths (delivery status never
+   * depends on it). Default: OFF (2026-08-13) — mesh frames are signed but
+   * NOT encrypted (the blinded topic id hides only the circle id; see
+   * circle-topic.ts), so until the per-circle shared-key work lands, riding
+   * the mesh broadcasts circle plaintext to any subscribed mesh node. Flip
+   * on explicitly only if that trade is acceptable.
+   */
+  meshTopic?: {
+    enabled?: boolean;
+  };
   /** Weekly briefing (C3). Default: enabled when circles are enabled. */
   briefing?: {
     enabled?: boolean;

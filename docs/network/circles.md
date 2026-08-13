@@ -270,10 +270,14 @@ Sends publish to the per-circle **gossip topic** first (additively; topic
 id = `sha256(circleId:keyEpoch)`, signed frames over the P2P swarm), then
 try a **direct dial** to each member's A2A URL, then fall back to the
 **relay mailbox** (presence beats skip the mailbox fallback; stale presence
-is noise). Both gossip halves are wired in-repo (the TS transport starts at
-gateway boot, the Rust handlers exist in the orchestrator), but the path
-carries no traffic until the fleet runs the new orchestrator binary; see
-`docs/network/circle-gossip.md` for the full transport picture. Inbound,
+is noise). The gossip path is behind the **`circles.meshTopic.enabled` kill
+switch, default OFF since 2026-08-13**: topic frames are signed but NOT
+encrypted (the blinded topic id hides only the circle id), so the mesh path
+stays dark until per-circle shared-key encryption lands — delivery never
+depended on it. Both gossip halves are wired in-repo (the TS transport
+starts at gateway boot when the switch is on, the Rust handlers exist in
+the orchestrator); see `docs/network/circle-gossip.md` for the full
+transport picture. Inbound,
 everything converges on the same
 auth/scan/dedupe path regardless of how it arrived. The fast scheduler
 drains the mailbox on a ~15s loop, so delivery feels near-real-time when

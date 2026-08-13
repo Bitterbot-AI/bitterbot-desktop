@@ -282,6 +282,12 @@ export class CirclesService {
   /** The mesh topic bus: injected value wins (incl. explicit null), else the
    *  process singleton set by startCircleTopicTransport. */
   private topicBus(): CircleTopicBus | null {
+    // Kill switch (default OFF): mesh frames are signed but not encrypted, so
+    // the additive gossip path stays dark until per-circle shared-key
+    // encryption lands. Direct-dial + mailbox delivery are unaffected.
+    if (this.config.circles?.meshTopic?.enabled !== true) {
+      return null;
+    }
     return this.topicBusDep !== undefined ? this.topicBusDep : getCircleTopicBus();
   }
 
