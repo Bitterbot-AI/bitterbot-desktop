@@ -18,13 +18,15 @@ replaces the feed"
 stance: the product now has a Discord-like chat surface, and the briefing is
 a background digest, not the centerpiece.
 
-> **Status (2026-07-25).** PLAN-36's chat half has LANDED and is the app you
+> **Status (2026-08-13).** PLAN-36's chat half has LANDED and is the app you
 > see today: the 3-pane Circles view, replies/reactions/pins/unread, the
 > group canvas with Decision Cards and study-guide Co-Canvas, the summon-only
-> agent, target-bound invites, petnames, and member removal. The social-graph
-> half (consented friend-of-friend intros, PeerMap) is Phase 6 and has **no
-> code yet**. The per-circle gossip transport is built but not deployed
-> (blocked on shipping the new orchestrator binary). See
+> agent, target-bound invites, petnames, and member removal. The guest-JOIN
+> page and default mailbox host are DEPLOYED and serving (see "Built and
+> deployed" below). The social-graph half (consented friend-of-friend
+> intros, PeerMap) is Phase 6 and has **no code yet**. The per-circle gossip
+> transport is built but held dark behind `circles.meshTopic.enabled`
+> (default off) until frames are encrypted. See
 > `docs/plans/PLAN-36-CIRCLES-SOCIAL-GRAPH.md` and
 > `docs/network/circle-gossip.md`.
 
@@ -34,7 +36,7 @@ pending-outbound, pending-join, petnames, read-state, scheduler,
 circle-topic + circle-topic-transport), `src/gateway/a2a/circles.ts`
 (the friend branch), `src/gateway/a2a/mailbox.ts` +
 `src/gateway/a2a/mailbox-host.ts` (store-and-forward), `src/memory/circles-store.ts`,
-`src/gateway/server-methods/circles.ts` (39 RPCs),
+`src/gateway/server-methods/circles.ts` (50 RPCs),
 `src/agents/tools/circles-tool.ts` (the agent's read/queue surface), and the
 renderer at `desktop/renderer/src/components/circles/`.
 Design docs: `docs/plans/PLAN-31-CIRCLES.md` (v1),
@@ -406,14 +408,40 @@ surface until 2026-07-25.
   `circles.outbound.reject`
 - **Briefing**: `circles.briefing`
 
+## Built and deployed (status corrected 2026-08-13)
+
+A stale version of this section cost two review passes real findings —
+keep it honest. Live in production: the **guest-JOIN page**
+(`https://join.bitterbot.ai/i/`, `deploy/guest-page/`, serving since
+2026-07-15; now with in-browser Ed25519 invite verification) and the
+**default mailbox host** (`https://mailbox.bitterbot.ai`,
+`deploy/mailbox-host/`, Terraform'd). In-repo since 2026-08-13: the
+**`bitterbot://` deep link** (Tauri shell registers the scheme;
+`bitterbot://join#<code>` opens the invite panel prefilled and runs the
+trust preview — ships with the next desktop build), the **SSRF dial
+guard**, the **mailbox anti-wedge quotas**, and the **15-member cap**.
+
 ## Not built yet
 
-The browser guest-JOIN page (nodeless invitees; required before any public
-launch), the PLAN-36 Phase 2 loop measurement gate, chat-channel delivery of
-the briefing (Telegram/Discord), the consented friend-of-friend graph and
-PeerMap (Phase 6, no code), libp2p request-response transport with
-device↔PeerId binding (Phase 5), shared-key confidentiality for the gossip
-topic, the hosted-node on-ramp, live guest chat, and everything money:
-settlement, pooling, and mandates are gated behind counsel sign-off and the
-constitutional wallet rule. (Circle-scoped polls and share artifacts moved
-_out_ of this list: they shipped as Decision Cards and the Co-Canvas.)
+The PARTICIPATING nodeless guest (guest tokens, escrowed votes/acks and
+briefing reads, §6b compliance pack — the PLAN-36 §4 v4 launch GATE; the
+live page is the canned floor), the PLAN-36 Phase 2 loop measurement gate
+(no funnel instrumentation exists, and the click denominator needs a
+privacy decision: the guest page deliberately has no analytics and the
+code rides the URL fragment), the `circles.ask` ANSWER leg (granted asks
+currently wait forever: no `kind:"answer"` composer path, no thread UI, no
+agent answer action — surface or disable before advertising ask),
+per-circle briefings (the compiled briefing is one node-wide digest; the
+schema, cadence gate, and digest side-effect are all global),
+message-history sync for late joiners (no `circle/messages.since` verb; a
+fresh device has no chat history and `events.since` is a single capped
+sweep), Phase 4 channels, chat-channel delivery of the briefing
+(Telegram/Discord), the consented friend-of-friend graph and PeerMap
+(Phase 6, no code), libp2p request-response transport with device↔PeerId
+binding (Phase 5), shared-key confidentiality for the gossip topic (the
+topic path is dark by default behind `circles.meshTopic.enabled` until
+this lands), the hosted-node on-ramp, live guest chat, and everything
+money: settlement, pooling, and mandates are gated behind counsel
+sign-off and the constitutional wallet rule. (Circle-scoped polls and
+share artifacts moved _out_ of this list: they shipped as Decision Cards
+and the Co-Canvas.)
