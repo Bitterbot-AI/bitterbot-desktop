@@ -55,6 +55,13 @@ const VECTOR_TABLE = "chunks_vec";
 const FTS_TABLE = "chunks_fts";
 const EMBEDDING_CACHE_TABLE = "embedding_cache";
 const SESSION_DIRTY_DEBOUNCE_MS = 5000;
+/**
+ * Longest a session may hold unindexed content before it is indexed regardless
+ * of the byte/message thresholds. Anything the user says is invisible to
+ * extraction (preferences, canonical facts, recall) until its session is
+ * indexed, so this bounds "the agent has not heard me yet".
+ */
+const SESSION_MAX_PENDING_MS = 10 * 60_000;
 const SESSION_DELTA_READ_CHUNK_BYTES = 64 * 1024;
 const VECTOR_LOAD_TIMEOUT_MS = 30_000;
 const IGNORED_MEMORY_WATCH_DIR_NAMES = new Set([
@@ -466,15 +473,45 @@ class MemoryManagerSyncOps {
         messagesThreshold <= 0
           ? delta.pendingMessages > 0
           : delta.pendingMessages >= messagesThreshold;
-      if (!bytesHit && !messagesHit) {
+      // Staleness backstop. The byte/message thresholds exist to stop a chatty
+      // session re-indexing on every keystroke, but they were the ONLY trigger:
+      // at the defaults (100,000 bytes / 50 messages) a normal conversation can
+      // run for hours without ever crossing one, and until it does, nothing the
+      // user said is visible to extraction. Measured 2026-08-13: a 59 KB session
+      // sat unindexed for over four hours while the operator stated two explicit
+      // standing preferences, neither of which reached user_preferences — and
+      // the regex preference extractor, which only ever sees session text, had
+      // produced ZERO rows in its entire lifetime. Thresholds may delay
+      // indexing; they must not defer it indefinitely.
+      const pendingAge = delta.pendingSince ? Date.now() - delta.pendingSince : 0;
+      const staleHit = delta.pendingBytes > 0 && pendingAge >= SESSION_MAX_PENDING_MS;
+      if (!bytesHit && !messagesHit && !staleHit) {
         continue;
+      }
+      if (staleHit && !bytesHit && !messagesHit) {
+        log.debug(
+          `session ${String(sessionFile)}: indexing ${delta.pendingBytes}B held for ${Math.round(
+            pendingAge / 60_000,
+          )}m (below threshold, staleness backstop)`,
+        );
       }
       this.sessionsDirtyFiles.add(sessionFile);
       this.sessionsDirty = true;
-      delta.pendingBytes =
-        bytesThreshold > 0 ? Math.max(0, delta.pendingBytes - bytesThreshold) : 0;
-      delta.pendingMessages =
-        messagesThreshold > 0 ? Math.max(0, delta.pendingMessages - messagesThreshold) : 0;
+      // Consume the pending counters on the STATE, not on the returned copy.
+      // The previous code decremented the copy, so the counters never actually
+      // reset: once a file crossed a threshold it stayed "over" forever and
+      // re-marked itself dirty on every batch. Without this the staleness
+      // backstop would fire on every pass instead of once.
+      const state = this.sessionDeltas.get(sessionFile);
+      if (state) {
+        state.pendingBytes =
+          staleHit || bytesThreshold <= 0 ? 0 : Math.max(0, state.pendingBytes - bytesThreshold);
+        state.pendingMessages =
+          staleHit || messagesThreshold <= 0
+            ? 0
+            : Math.max(0, state.pendingMessages - messagesThreshold);
+        state.pendingSince = state.pendingBytes > 0 ? Date.now() : undefined;
+      }
       shouldSync = true;
     }
     if (shouldSync) {
@@ -489,6 +526,7 @@ class MemoryManagerSyncOps {
     deltaMessages: number;
     pendingBytes: number;
     pendingMessages: number;
+    pendingSince?: number;
   } | null> {
     const thresholds = this.settings.sync.sessions;
     if (!thresholds) {
@@ -508,11 +546,15 @@ class MemoryManagerSyncOps {
     }
     const deltaBytes = Math.max(0, size - state.lastSize);
     if (deltaBytes === 0 && size === state.lastSize) {
+      // Unchanged file, but content may still be pending from an earlier append
+      // that never crossed a threshold — carry pendingSince so the staleness
+      // backstop can still fire on a later pass.
       return {
         deltaBytes: thresholds.deltaBytes,
         deltaMessages: thresholds.deltaMessages,
         pendingBytes: state.pendingBytes,
         pendingMessages: state.pendingMessages,
+        pendingSince: state.pendingSince,
       };
     }
     if (size < state.lastSize) {
@@ -534,12 +576,18 @@ class MemoryManagerSyncOps {
       }
       state.lastSize = size;
     }
+    if (state.pendingBytes > 0 && state.pendingSince === undefined) {
+      state.pendingSince = Date.now();
+    } else if (state.pendingBytes === 0) {
+      state.pendingSince = undefined;
+    }
     this.sessionDeltas.set(sessionFile, state);
     return {
       deltaBytes: thresholds.deltaBytes,
       deltaMessages: thresholds.deltaMessages,
       pendingBytes: state.pendingBytes,
       pendingMessages: state.pendingMessages,
+      pendingSince: state.pendingSince,
     };
   }
 

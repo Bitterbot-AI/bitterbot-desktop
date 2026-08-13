@@ -233,7 +233,13 @@ export class MemoryIndexManager implements MemorySearchManager {
   private sessionPendingFiles = new Set<string>();
   private sessionDeltas = new Map<
     string,
-    { lastSize: number; pendingBytes: number; pendingMessages: number }
+    {
+      lastSize: number;
+      pendingBytes: number;
+      pendingMessages: number;
+      /** When unindexed content first appeared, for the staleness backstop. */
+      pendingSince?: number;
+    }
   >();
   private sessionWarm = new Set<string>();
   private syncing: Promise<void> | null = null;
