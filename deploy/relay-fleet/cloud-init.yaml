@@ -58,6 +58,74 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
+  - path: /usr/local/sbin/bitterbot-orchestrator-update.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # Converge onto the newest orchestrator-v* RELEASE binary (checksummed,
+      # atomic, restart-only-on-change). Kept in-repo at
+      # deploy/relay-fleet/scripts/update-orchestrator.sh — edit THERE and
+      # mirror here; the live fleet runs this copy via the daily timer.
+      set -euo pipefail
+      REPO="Bitterbot-AI/bitterbot-desktop"
+      BIN=/usr/local/bin/bitterbot-orchestrator
+      ASSET=bitterbot-orchestrator-linux-x64
+      TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=30" |
+        jq -r '[.[] | select(.tag_name | startswith("orchestrator-v")) | .tag_name][0]')
+      if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+        echo "no orchestrator release found" >&2
+        exit 1
+      fi
+      BASE="https://github.com/$REPO/releases/download/$TAG"
+      TMP=$(mktemp -d)
+      trap 'rm -rf "$TMP"' EXIT
+      curl -fsSL -o "$TMP/$ASSET" "$BASE/$ASSET"
+      curl -fsSL -o "$TMP/checksums.txt" "$BASE/checksums.txt"
+      EXPECTED=$(awk -v a="$ASSET" '$2 == a || $2 == "*" a { print $1 }' "$TMP/checksums.txt")
+      if [ -z "$EXPECTED" ]; then
+        echo "no checksum for $ASSET in $TAG" >&2
+        exit 1
+      fi
+      ACTUAL=$(sha256sum "$TMP/$ASSET" | awk '{ print $1 }')
+      if [ "$ACTUAL" != "$EXPECTED" ]; then
+        echo "checksum mismatch for $TAG" >&2
+        exit 1
+      fi
+      if [ -f "$BIN" ] && [ "$(sha256sum "$BIN" | awk '{ print $1 }')" = "$EXPECTED" ]; then
+        echo "already at $TAG"
+        exit 0
+      fi
+      install -m 755 "$TMP/$ASSET" "$BIN.new"
+      mv -f "$BIN.new" "$BIN"
+      systemctl restart bitterbot-orchestrator
+      echo "updated to $TAG"
+
+  - path: /etc/systemd/system/bitterbot-orchestrator-update.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Update bitterbot-orchestrator to the newest release binary
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/bitterbot-orchestrator-update.sh
+
+  - path: /etc/systemd/system/bitterbot-orchestrator-update.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Daily orchestrator release convergence (Stage 3 fleet updater)
+
+      [Timer]
+      OnCalendar=daily
+      RandomizedDelaySec=3600
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
   - path: /usr/local/sbin/bitterbot-relay-bootstrap.sh
     permissions: "0755"
     content: |
@@ -153,10 +221,13 @@ write_files:
       ufw allow 9101/udp comment "future libp2p QUIC"
       ufw --force enable
 
-      # 9. Start the orchestrator service.
+      # 9. Start the orchestrator service + the daily release-convergence
+      #    timer (Stage 3 fleet updater: the fleet previously had NO update
+      #    path and ran its first-boot build forever).
       systemctl daemon-reload
       systemctl enable bitterbot-orchestrator
       systemctl restart bitterbot-orchestrator
+      systemctl enable --now bitterbot-orchestrator-update.timer
 
       # 10. Persist peer ID via journal extraction. The orchestrator logs
       #     "Local peer ID: 12D3KooW..." once at startup

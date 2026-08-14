@@ -25,9 +25,11 @@ a background digest, not the centerpiece.
 > page and default mailbox host are DEPLOYED and serving (see "Built and
 > deployed" below). The social-graph half (consented friend-of-friend
 > intros, PeerMap) is Phase 6 and has **no code yet**. The per-circle gossip
-> transport is built but held dark behind `circles.meshTopic.enabled`
-> (default off) until frames are encrypted. See
-> `docs/plans/PLAN-36-CIRCLES-SOCIAL-GRAPH.md` and
+> transport is built, frames are sender-key ENCRYPTED (2026-08-14), relays
+> carry circle topics from orchestrator v0.2.1, and a daily fleet updater
+> converges the relay droplets onto release binaries — the path stays behind
+> `circles.meshTopic.enabled` (default off) until the fleet has converged.
+> See `docs/plans/PLAN-36-CIRCLES-SOCIAL-GRAPH.md` and
 > `docs/network/circle-gossip.md`.
 
 **Key source files:** `src/circles/` (envelope, invites, service, tab,

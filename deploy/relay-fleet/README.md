@@ -26,6 +26,20 @@ This fleet provides:
   slots on
 - A stable dnsaddr seed (`_dnsaddr.p2p.bitterbot.ai`) so adding/removing
   relays doesn't require a client release
+- **Circle-topic carriage** (orchestrator ≥ 0.2.1, Stage 3 of the circles
+  transport plan): relays auto-subscribe to `bitterbot/circle/*/v1` topics
+  they observe peers announce (bounded at 1024, 24h idle sweep), purely to
+  forward — frames are sender-key encrypted, so carriage exposes no content.
+  Without this, gossipsub would only route a circle topic between directly
+  connected subscribers, and two NAT'd members meshed through a relay could
+  never exchange a frame.
+- **A daily release-convergence updater**
+  (`bitterbot-orchestrator-update.timer` → `scripts/update-orchestrator.sh`):
+  fetches the newest `orchestrator-v*` release binary, verifies its
+  checksum, installs atomically, restarts only on change. Before 2026-08-14
+  the fleet had NO update path — droplets ran their first-boot build
+  forever, which is how the circle-topic primitive stayed undeployed for a
+  month.
 
 ## Prerequisites
 

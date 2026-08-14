@@ -48,6 +48,14 @@ fn is_circle_topic(topic: &str) -> bool {
     topic.starts_with("bitterbot/circle/") && topic.ends_with("/v1")
 }
 
+/// Stage 3 (circles transport): relay-side circle-topic carriage bounds.
+/// A relay subscribes to circle topics it observes peers announce so gossip
+/// can route between NAT'd members meshed only through the relay. Bounded so
+/// a subscription flood cannot balloon relay state, and idle-swept so dead
+/// circles age out.
+const MAX_CARRIED_CIRCLE_TOPICS: usize = 1024;
+const CARRIED_CIRCLE_TOPIC_IDLE: Duration = Duration::from_secs(24 * 60 * 60);
+
 /// Maximum payload size for gossipsub messages (256KB).
 const MAX_GOSSIPSUB_MSG_SIZE: usize = 256 * 1024;
 
@@ -668,6 +676,10 @@ pub struct SwarmHandle {
     latency_window_ms: std::collections::VecDeque<u64>,
     /// Bootnode registry — only flushes to disk if enabled.
     bootnode_registry: SharedBootnodeRegistry,
+    /// Stage 3: circle topics this RELAY carries purely to forward (topic ->
+    /// last observed activity). Only populated in RelayMode::Server; frames
+    /// are sender-key encrypted so carriage exposes no content.
+    carried_circle_topics: std::collections::HashMap<gossipsub::TopicHash, std::time::Instant>,
 }
 
 const LATENCY_WINDOW: usize = 256;
@@ -926,6 +938,72 @@ impl SwarmHandle {
             .or_insert(0) += 1;
     }
 
+    /// Stage 3: start carrying a circle topic this relay observed a peer
+    /// announce. Bounded: at the cap, the least-recently-active carried topic
+    /// is evicted first.
+    fn note_carried_circle_topic(&mut self, topic: &gossipsub::TopicHash) {
+        let now = std::time::Instant::now();
+        if let Some(seen) = self.carried_circle_topics.get_mut(topic) {
+            *seen = now;
+            return;
+        }
+        if self.carried_circle_topics.len() >= MAX_CARRIED_CIRCLE_TOPICS {
+            if let Some(oldest) = self
+                .carried_circle_topics
+                .iter()
+                .min_by_key(|(_, seen)| **seen)
+                .map(|(t, _)| t.clone())
+            {
+                let _ = self
+                    .swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .unsubscribe(&gossipsub::IdentTopic::new(oldest.as_str().to_string()));
+                self.carried_circle_topics.remove(&oldest);
+            }
+        }
+        match self
+            .swarm
+            .behaviour_mut()
+            .gossipsub
+            .subscribe(&gossipsub::IdentTopic::new(topic.as_str().to_string()))
+        {
+            Ok(_) => {
+                self.carried_circle_topics.insert(topic.clone(), now);
+                info!(
+                    "relay carrying circle topic {} ({} carried)",
+                    topic,
+                    self.carried_circle_topics.len()
+                );
+            }
+            Err(e) => debug!("relay circle-topic subscribe failed for {}: {:?}", topic, e),
+        }
+    }
+
+    /// Stage 3: drop carried circle topics with no observed activity (no
+    /// subscription announcements, no messages) for CARRIED_CIRCLE_TOPIC_IDLE.
+    fn sweep_carried_circle_topics(&mut self) {
+        if self.carried_circle_topics.is_empty() {
+            return;
+        }
+        let now = std::time::Instant::now();
+        let idle: Vec<gossipsub::TopicHash> = self
+            .carried_circle_topics
+            .iter()
+            .filter(|(_, seen)| now.duration_since(**seen) >= CARRIED_CIRCLE_TOPIC_IDLE)
+            .map(|(t, _)| t.clone())
+            .collect();
+        for t in idle {
+            let _ = self
+                .swarm
+                .behaviour_mut()
+                .gossipsub
+                .unsubscribe(&gossipsub::IdentTopic::new(t.as_str().to_string()));
+            self.carried_circle_topics.remove(&t);
+            debug!("relay stopped carrying idle circle topic {}", t);
+        }
+    }
+
     pub async fn run_event_loop(
         &mut self,
         mut ipc_rx: mpsc::UnboundedReceiver<IpcCommand>,
@@ -1119,6 +1197,7 @@ impl SwarmHandle {
                 _ = bootstrap_interval.tick() => {
                     info!("Triggering periodic Kademlia bootstrap");
                     let _ = self.swarm.behaviour_mut().kademlia.bootstrap();
+                    self.sweep_carried_circle_topics();
                 }
                 _ = census_interval.tick(), if is_management => {
                     self.run_management_census();
@@ -1222,6 +1301,12 @@ impl SwarmHandle {
                         Err(e) => warn!("Failed to deserialize census snapshot: {}", e),
                     }
                 } else if is_circle_topic(&topic_str) {
+                    // Stage 3: message activity keeps a relay's carriage fresh.
+                    if self.relay_mode == RelayMode::Server {
+                        if let Some(seen) = self.carried_circle_topics.get_mut(&message.topic) {
+                            *seen = std::time::Instant::now();
+                        }
+                    }
                     // PLAN-36 Phase 4: a frame on a per-circle topic we're
                     // subscribed to. Forward opaque bytes to the gateway as a
                     // topic_message event; the circle envelope inside carries its
@@ -1246,6 +1331,16 @@ impl SwarmHandle {
                 topic,
             }) => {
                 debug!("Peer {} subscribed to {}", peer_id, topic);
+                // Stage 3: gossipsub only forwards a topic between peers that
+                // are themselves subscribed, and a headless relay has no
+                // gateway to drive subscribe_topic over IPC — so without
+                // carriage, two NAT'd members meshed only through this relay
+                // could never exchange a circle frame. When a peer announces
+                // a circle topic (IdentTopic: hashes are the readable names),
+                // a relay subscribes too, purely to forward.
+                if self.relay_mode == RelayMode::Server && is_circle_topic(topic.as_str()) {
+                    self.note_carried_circle_topic(&topic);
+                }
             }
             BitterbotBehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed {
                 peer_id,
@@ -3035,6 +3130,7 @@ pub async fn build_swarm(
         current_minute_leaves: 0,
         latency_window_ms: std::collections::VecDeque::with_capacity(LATENCY_WINDOW),
         bootnode_registry,
+        carried_circle_topics: std::collections::HashMap::new(),
     };
 
     info!(
