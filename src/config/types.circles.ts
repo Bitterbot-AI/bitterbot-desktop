@@ -67,10 +67,13 @@ export type CirclesConfig = {
    * (`/bitterbot/circle-rpc/1`). When a member's SIGNED join/presence
    * envelope carried a PeerId, deliveries and syncs dial them over the mesh
    * FIRST, falling back to HTTP direct dial and mailbox on transport
-   * failure. Default: ON — the request rides the noise-encrypted libp2p
+   * failure. Default: OFF (2026-08-14) pending the mesh-ingress rate
+   * limiter — the inbound P2P request path has no per-peer limit before
+   * dispatch yet (adversarial pass CRIT-2), so an unauthenticated peer can
+   * flood the handler. The dial itself rides the noise-encrypted libp2p
    * connection (point-to-point, not broadcast), so it is confidentiality-
-   * equivalent to the HTTPS dial it replaces, and a daemon without the
-   * verbs latches off after one cheap probe. `enabled: false` opts out.
+   * equivalent to the HTTPS dial it replaces; set `enabled: true` to turn
+   * it on once the rate-limit batch lands.
    */
   p2pDial?: {
     enabled?: boolean;

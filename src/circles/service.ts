@@ -291,11 +291,16 @@ export class CirclesService {
 
   /** The mesh topic bus: injected value wins (incl. explicit null), else the
    *  process singleton set by startCircleTopicTransport. */
-  /** Stage 4 kill switch: circles.p2pDial.enabled !== false (default ON —
-   * request-response rides the noise-encrypted libp2p connection, so it is
-   * confidentiality-equivalent to the HTTPS dial it replaces). */
+  /**
+   * Stage 4 kill switch: `circles.p2pDial.enabled === true`. Default OFF
+   * (2026-08-14) pending the mesh-ingress rate limiter — the P2P request
+   * path currently has no per-peer limit before dispatch (security pass
+   * CRIT-2), so an unauthenticated peer can flood the handler. The dial is
+   * confidentiality-equivalent to HTTPS once enabled (noise-encrypted
+   * point-to-point); flip on after the rate-limit batch lands.
+   */
   private p2pDialEnabled(): boolean {
-    return this.config.circles?.p2pDial?.enabled !== false;
+    return this.config.circles?.p2pDial?.enabled === true;
   }
 
   private topicBus(): CircleTopicBus | null {

@@ -136,6 +136,12 @@ export function sealToBox(recipientPubB64: string, plaintext: string): SealedBlo
 export function openBox(ours: BoxKeyPair, blob: SealedBlob): string | null {
   try {
     if (blob?.v !== 1) return null;
+    // Pin the GCM parameters: a 96-bit IV and a full 128-bit tag. Without the
+    // length checks, Node's setAuthTag accepts a 4-byte tag and validates it,
+    // downgrading forgery resistance to 2^32 (security pass M1).
+    const iv = Buffer.from(blob.iv, "base64");
+    const tag = Buffer.from(blob.tag, "base64");
+    if (iv.length !== 12 || tag.length !== 16) return null;
     const epk = publicKeyFromRawB64(blob.epk);
     const shared = crypto.diffieHellman({ privateKey: ours.privateKey, publicKey: epk });
     const key = deriveKey(
@@ -143,8 +149,8 @@ export function openBox(ours: BoxKeyPair, blob: SealedBlob): string | null {
       Buffer.from(blob.epk, "base64"),
       Buffer.from(ours.publicKeyB64, "base64"),
     );
-    const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(blob.iv, "base64"));
-    decipher.setAuthTag(Buffer.from(blob.tag, "base64"));
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
+    decipher.setAuthTag(tag);
     const pt = Buffer.concat([decipher.update(Buffer.from(blob.ct, "base64")), decipher.final()]);
     return pt.toString("utf8");
   } catch {

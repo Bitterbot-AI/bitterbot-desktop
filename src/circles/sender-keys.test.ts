@@ -139,4 +139,30 @@ describe("frame encryption", () => {
     expect(parseEncryptedTopicFrame('{"method":"circle/message"}')).toBeNull();
     expect(parseEncryptedTopicFrame("not json")).toBeNull();
   });
+
+  it("rejects a truncated GCM tag or non-96-bit IV at parse (no auth downgrade)", () => {
+    const senderDb = openDb();
+    const key = getOrCreateOwnSenderKey(senderDb, CIRCLE);
+    const wire = encryptTopicFrame({
+      topicId: TOPIC,
+      frameJson: "{}",
+      senderPubkey: SENDER,
+      key,
+    });
+    const good = parseEncryptedTopicFrame(wire)!;
+    expect(good).not.toBeNull();
+    // A 4-byte tag would decrypt+validate under Node's default (2^32 forgery
+    // work); parse must refuse it (security pass M1).
+    const shortTag = JSON.stringify({
+      ...good,
+      tag: Buffer.from(good.tag, "base64").subarray(0, 4).toString("base64"),
+    });
+    expect(parseEncryptedTopicFrame(shortTag)).toBeNull();
+    // A non-96-bit IV pushes GCM onto the GHASH-J0 path — also refused.
+    const longIv = JSON.stringify({
+      ...good,
+      iv: Buffer.alloc(16).toString("base64"),
+    });
+    expect(parseEncryptedTopicFrame(longIv)).toBeNull();
+  });
 });

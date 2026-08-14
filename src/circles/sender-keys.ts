@@ -216,10 +216,18 @@ export function parseEncryptedTopicFrame(frameJson: string): EncryptedTopicFrame
     if (
       v?.enc === 1 &&
       typeof v.s === "string" &&
+      v.s.length <= 80 &&
       typeof v.k === "string" &&
+      v.k.length <= 64 &&
       typeof v.iv === "string" &&
       typeof v.ct === "string" &&
-      typeof v.tag === "string"
+      typeof v.tag === "string" &&
+      // Pin the GCM parameters: a 96-bit IV (the fast, unique-by-random path
+      // the nonce argument relies on) and a full 128-bit tag. Node's
+      // setAuthTag otherwise accepts a 4-byte tag and validates it,
+      // downgrading forgery resistance from 2^128 to 2^32 (security pass M1).
+      Buffer.from(v.iv, "base64").length === 12 &&
+      Buffer.from(v.tag, "base64").length === 16
     ) {
       return v;
     }
@@ -252,6 +260,7 @@ export function decryptTopicFrame(
       "aes-256-gcm",
       Buffer.from(row.key_b64, "base64"),
       Buffer.from(args.wrapper.iv, "base64"),
+      { authTagLength: 16 },
     );
     decipher.setAAD(Buffer.from(args.topicId, "utf8"));
     decipher.setAuthTag(Buffer.from(args.wrapper.tag, "base64"));

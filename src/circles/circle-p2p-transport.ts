@@ -58,8 +58,13 @@ export function setCircleP2pForTests(p2p: ActiveP2p | null, latched = false): vo
 }
 
 function isCapabilityError(err: unknown): boolean {
-  const msg = String(err);
-  return msg.includes("unknown message type") || msg.includes("circle_request timed out");
+  // ONLY an explicit "unknown message type" answer proves the daemon lacks
+  // the verb. A timeout must NOT latch: the enqueue rejects with
+  // "IPC command circle_request timed out" whenever the daemon is merely
+  // BUSY (e.g. a peer flooding inbound requests), and latching on that would
+  // let any peer permanently disable this node's outbound P2P dialing
+  // (security pass CRIT-1). A timeout is a transient transport failure.
+  return String(err).includes("unknown message type");
 }
 
 export type P2pRpcOutcome =
@@ -87,13 +92,18 @@ export async function dialCircleRpc(
       ok?: boolean;
       result?: Record<string, unknown>;
       error?: string;
+      refused?: boolean;
     };
     if (body.ok) {
       return { ok: true, result: body.result };
     }
-    // The peer processed the request and refused it — definitive, like an
-    // HTTP-level JSON-RPC error (bad secret, no scope, rate limited).
-    return { ok: false, refused: true, error: body.error ?? "rpc error" };
+    // Only an APPLICATION refusal (handleCircleMethod answered ok:false —
+    // bad secret, no scope, rate limited) is definitive; the responder marks
+    // those with `refused: true`. A shim-level error the responder generated
+    // itself ("node not ready", "malformed request") carries no refused flag
+    // and must fall back to HTTP/mailbox, or a peer mid-startup would strand
+    // delivery and permanently break joins (security pass HIGH-6).
+    return { ok: false, refused: body.refused === true, error: body.error ?? "rpc error" };
   } catch (err) {
     if (isCapabilityError(err)) {
       latchedOff = true;
@@ -160,19 +170,27 @@ export function startCircleP2pTransport(deps: {
         await respond({ ok: false, error: "method not allowed" });
         return;
       }
-      const db = await deps.resolveCirclesDb();
-      if (!db) {
-        await respond({ ok: false, error: "node not ready" });
-        return;
-      }
       try {
+        // resolveCirclesDb can reject (DB busy/locked) — keep it INSIDE the
+        // try so a rejection becomes a soft shim error, never an unhandled
+        // rejection that crashes the gateway from this fire-and-forget
+        // callback (security pass HIGH-3).
+        const db = await deps.resolveCirclesDb();
+        if (!db) {
+          // Shim error (NOT refused): the requester must fall back, not treat
+          // a still-booting node as a definitive rejection (HIGH-6).
+          await respond({ ok: false, error: "node not ready" });
+          return;
+        }
         const { handleCircleMethod } = await import("../gateway/a2a/circles.js");
         const boxKeys = deps.boxKeys ?? loadOrCreateBoxKeys();
         const outcome = handleCircleMethod(method, params, db, Date.now(), { boxKeys });
         await respond(
           outcome.ok
             ? { ok: true, result: outcome.result }
-            : { ok: false, error: outcome.error.message },
+            : // An application refusal IS definitive — tag it so the dialer
+              // does not pointlessly re-deliver over HTTP to be refused again.
+              { ok: false, refused: true, error: outcome.error.message },
         );
       } catch (err) {
         await respond({ ok: false, error: `dispatch failed: ${String(err)}` });

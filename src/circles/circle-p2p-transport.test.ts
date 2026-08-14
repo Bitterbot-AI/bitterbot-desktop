@@ -177,6 +177,78 @@ describe("circle p2p rpc transport", () => {
     bobT.stop();
   });
 
+  it("does NOT latch on a busy-daemon enqueue timeout (only on unknown-verb)", async () => {
+    // A flooded daemon rejects the enqueue with the IPC timeout string; that
+    // must stay a transient failure, never disable P2P for the process
+    // (security pass CRIT-1).
+    const bridge: CircleRpcBridge = {
+      circleRequest: async () => {
+        throw new Error("IPC command circle_request timed out");
+      },
+      circleRespond: async () => {},
+      onCircleRequest: () => () => {},
+      getIdentity: async () => ({ pubkey: "", peerId: ANA_PEER, nodeTier: "edge" }),
+    };
+    const t = startCircleP2pTransport({
+      bridge,
+      resolveCirclesDb: async () => undefined,
+      boxKeys: generateBoxKeyPair(),
+    });
+    const out = await dialCircleRpc(BOB_PEER, "circle/message", {});
+    expect(out.ok).toBe(false);
+    expect(circleP2pAvailable()).toBe(true); // NOT latched
+    t.stop();
+  });
+
+  it("treats a responder shim error as a soft failure, not a refusal (HIGH-6)", async () => {
+    // Bob's node is up on the mesh but its circles DB has not loaded yet, so
+    // it answers "node not ready". The dialer must NOT see that as a
+    // definitive refusal (which would skip HTTP + mailbox and strand
+    // delivery); refused must be false so the caller falls back.
+    const mesh = new FakeMesh();
+    const bobT = startCircleP2pTransport({
+      bridge: mesh.bridgeFor(BOB_PEER),
+      resolveCirclesDb: async () => undefined, // still booting
+      boxKeys: generateBoxKeyPair(),
+    });
+    const anaT = startCircleP2pTransport({
+      bridge: mesh.bridgeFor(ANA_PEER),
+      resolveCirclesDb: async () => undefined,
+      boxKeys: generateBoxKeyPair(),
+    });
+    const out = await dialCircleRpc(BOB_PEER, "circle/message", {});
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.refused).toBeFalsy();
+      expect(out.error).toMatch(/not ready/);
+    }
+    anaT.stop();
+    bobT.stop();
+  });
+
+  it("survives a rejecting resolveCirclesDb without an unhandled rejection (HIGH-3)", async () => {
+    // resolveCirclesDb rejecting (DB busy) must be caught inside the callback
+    // and answered as a shim error, never escape as an unhandled rejection.
+    const mesh = new FakeMesh();
+    const bobT = startCircleP2pTransport({
+      bridge: mesh.bridgeFor(BOB_PEER),
+      resolveCirclesDb: async () => {
+        throw new Error("SQLITE_BUSY: database is locked");
+      },
+      boxKeys: generateBoxKeyPair(),
+    });
+    const anaT = startCircleP2pTransport({
+      bridge: mesh.bridgeFor(ANA_PEER),
+      resolveCirclesDb: async () => undefined,
+      boxKeys: generateBoxKeyPair(),
+    });
+    const out = await dialCircleRpc(BOB_PEER, "circle/message", {});
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.refused).toBeFalsy(); // shim error, falls back
+    anaT.stop();
+    bobT.stop();
+  });
+
   it("fails soft on unreachable peers without latching", async () => {
     const mesh = new FakeMesh();
     const anaT = startCircleP2pTransport({
