@@ -2203,6 +2203,20 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 62,
+    description:
+      "Circles P2P transport Stage 4 (2026-08-14): circle_members.peer_id — " +
+      "the device-key↔libp2p-PeerId binding (PLAN-35 B-1). A member's " +
+      "PeerId arrives inside their Ed25519-SIGNED join/presence envelope " +
+      "body, so the claim is bound to the circle identity by the same " +
+      "signature chain as everything else; it lets circleRpc dial the " +
+      "member point-to-point over the mesh (request-response) before " +
+      "falling back to HTTP dial and mailbox.",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "circle_members", "peer_id", "TEXT");
+    },
+  },
 ];
 
 /**

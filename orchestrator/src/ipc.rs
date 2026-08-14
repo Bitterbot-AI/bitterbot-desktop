@@ -148,6 +148,21 @@ pub enum IpcCommand {
         data_b64: String,
         respond: tokio::sync::oneshot::Sender<serde_json::Value>,
     },
+    /// Stage 4: point-to-point circle RPC. Two-phase — the response arrives
+    /// later as a `circle_response` event keyed by the returned request_id.
+    CircleRequest {
+        id: String,
+        peer_id: String,
+        data_b64: String,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
+    /// Answer an inbound `circle_request` event's held response channel.
+    CircleRespond {
+        id: String,
+        request_id: u64,
+        data_b64: String,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
     // Management node commands
     GetNetworkCensus {
         id: String,
@@ -633,6 +648,43 @@ async fn handle_client_line(
                 return write_ipc_error(writer, &msg.id, "missing topic/data_b64").await;
             }
             IpcCommand::PublishTopic { id: msg.id, topic, data_b64, respond: resp_tx }
+        }
+        "circle_request" => {
+            let peer_id = msg
+                .payload
+                .get("peer_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let data_b64 = msg
+                .payload
+                .get("data_b64")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if peer_id.is_empty() || data_b64.is_empty() {
+                warn!("circle_request missing peer_id/data_b64");
+                return write_ipc_error(writer, &msg.id, "missing peer_id/data_b64").await;
+            }
+            IpcCommand::CircleRequest { id: msg.id, peer_id, data_b64, respond: resp_tx }
+        }
+        "circle_respond" => {
+            let request_id = msg.payload.get("request_id").and_then(|v| v.as_u64());
+            let data_b64 = msg
+                .payload
+                .get("data_b64")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            match request_id {
+                Some(request_id) if !data_b64.is_empty() => {
+                    IpcCommand::CircleRespond { id: msg.id, request_id, data_b64, respond: resp_tx }
+                }
+                _ => {
+                    warn!("circle_respond missing request_id/data_b64");
+                    return write_ipc_error(writer, &msg.id, "missing request_id/data_b64").await;
+                }
+            }
         }
         other => {
             // Answer, never drop: an older gateway probing a newer daemon (or

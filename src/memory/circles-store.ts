@@ -85,6 +85,9 @@ export type CircleMember = {
   boxPubkey: string | null;
   /** The member's mailbox host URL (where WE deposit mail for THEM). */
   mailboxUrl: string | null;
+  /** libp2p PeerId claimed in the member's SIGNED join/presence envelope
+   * (PLAN-35 B-1 binding) — the mesh dial target for circle RPC. */
+  peerId: string | null;
   role: "creator" | "member";
   scopes: CircleScope[];
   /**
@@ -131,6 +134,7 @@ type MemberRow = {
   a2a_url: string | null;
   box_pubkey: string | null;
   mailbox_url: string | null;
+  peer_id: string | null;
   role: string;
   scopes_json: string;
   status: string;
@@ -166,6 +170,7 @@ function rowToMember(r: MemberRow): CircleMember {
     a2aUrl: r.a2a_url,
     boxPubkey: r.box_pubkey ?? null,
     mailboxUrl: r.mailbox_url ?? null,
+    peerId: r.peer_id ?? null,
     role: r.role as CircleMember["role"],
     scopes,
     status: r.status as CircleMember["status"],
@@ -232,6 +237,7 @@ export class CirclesStore {
     a2aUrl?: string;
     boxPubkey?: string;
     mailboxUrl?: string;
+    peerId?: string;
     scopes?: CircleScope[];
     now?: number;
   }): void {
@@ -240,14 +246,15 @@ export class CirclesStore {
       .prepare(
         `INSERT INTO circle_members
            (circle_id, member_pubkey, display_name, pinned_wallet, a2a_url, box_pubkey,
-            mailbox_url, role, scopes_json, status, joined_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'member', ?, 'active', ?, ?)
+            mailbox_url, peer_id, role, scopes_json, status, joined_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'member', ?, 'active', ?, ?)
          ON CONFLICT(circle_id, member_pubkey) DO UPDATE SET
            display_name = excluded.display_name,
            pinned_wallet = excluded.pinned_wallet,
            a2a_url = excluded.a2a_url,
            box_pubkey = COALESCE(excluded.box_pubkey, circle_members.box_pubkey),
            mailbox_url = COALESCE(excluded.mailbox_url, circle_members.mailbox_url),
+           peer_id = COALESCE(excluded.peer_id, circle_members.peer_id),
            scopes_json = excluded.scopes_json,
            status = 'active',
            updated_at = excluded.updated_at`,
@@ -260,11 +267,22 @@ export class CirclesStore {
         args.a2aUrl ?? null,
         args.boxPubkey ?? null,
         args.mailboxUrl ?? null,
+        args.peerId ?? null,
         JSON.stringify(args.scopes ?? DEFAULT_MEMBER_SCOPES),
         now,
         now,
       );
     this.bumpKeyEpoch(args.circleId, now);
+  }
+
+  /** Update a member's mesh dial target from a SIGNED presence/join body. */
+  setMemberPeerId(circleId: string, memberPubkey: string, peerId: string): void {
+    this.db
+      .prepare(
+        `UPDATE circle_members SET peer_id = ?, updated_at = ?
+          WHERE circle_id = ? AND member_pubkey = ?`,
+      )
+      .run(peerId, Date.now(), circleId, memberPubkey);
   }
 
   /**

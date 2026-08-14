@@ -27,8 +27,11 @@ a background digest, not the centerpiece.
 > intros, PeerMap) is Phase 6 and has **no code yet**. The per-circle gossip
 > transport is built, frames are sender-key ENCRYPTED (2026-08-14), relays
 > carry circle topics from orchestrator v0.2.1, and a daily fleet updater
-> converges the relay droplets onto release binaries — the path stays behind
-> `circles.meshTopic.enabled` (default off) until the fleet has converged.
+> converges the relay droplets onto release binaries — the broadcast path
+> stays behind `circles.meshTopic.enabled` (default off) until the fleet has
+> converged. Point-to-point circle RPC over the mesh (orchestrator v0.2.2,
+> `circles.p2pDial`, default ON) dials members by their signed PeerId ahead
+> of HTTP.
 > See `docs/plans/PLAN-36-CIRCLES-SOCIAL-GRAPH.md` and
 > `docs/network/circle-gossip.md`.
 
@@ -270,11 +273,17 @@ ever auto-disclosed.
 
 ## How a message actually travels
 
-Sends publish to the per-circle **gossip topic** first (additively; topic
-id = `sha256(circleId:keyEpoch)`, signed frames over the P2P swarm), then
-try a **direct dial** to each member's A2A URL, then fall back to the
-**relay mailbox** (presence beats skip the mailbox fallback; stale presence
-is noise). The gossip path is behind the **`circles.meshTopic.enabled` kill
+Delivery order per member (Stage 4, 2026-08-14): a **P2P mesh dial** over
+libp2p request-response when the member's SIGNED join/presence envelope
+carried a PeerId (`/bitterbot/circle-rpc/1`, noise-encrypted
+point-to-point, counts toward the delivery report; kill switch
+`circles.p2pDial.enabled`), then a **direct HTTP dial** to their A2A URL,
+then the **relay mailbox** (presence beats skip the mailbox fallback; stale
+presence is noise). `circle/join` tries the inviter's PeerId from the
+invite first too — two nodes can pair with no public URL on either side.
+Independently, sends also publish to the per-circle **gossip topic**
+(additively; topic id = `sha256(circleId:keyEpoch)`, sender-key-encrypted
+frames over the P2P swarm). The gossip path is behind the **`circles.meshTopic.enabled` kill
 switch, default OFF since 2026-08-13**: topic frames are signed but NOT
 encrypted (the blinded topic id hides only the circle id), so the mesh path
 stays dark until per-circle shared-key encryption lands — delivery never

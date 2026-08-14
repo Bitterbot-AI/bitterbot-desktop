@@ -133,8 +133,12 @@ rotation above, not from the topic name.
 - **Mailbox** (shipped, PLAN-36 Phase 1) — offline / asymmetric backstop.
 - **Gossip topic** (this) — NAT-to-NAT live delivery without a public URL, once
   the Rust slice + shared key land. Supersedes the interim broker for messages.
-- **libp2p request-response** (PLAN-35 Track B) — the point-to-point alternative
-  if gossip's broadcast/efficiency cost proves too high; more Rust.
+- **libp2p request-response** (PLAN-35 Track B — BUILT 2026-08-14, Stage 4):
+  `/bitterbot/circle-rpc/1` + `circle-p2p-transport.ts`. Point-to-point,
+  noise-encrypted, carries request/response verbs (join, events.since,
+  receipted deliveries) the broadcast topic cannot. Delivery order is now
+  P2P dial → HTTP dial → mailbox; the topic remains the additive broadcast
+  side-channel.
 
 ## Two-node verification (to run once the Rust slice lands)
 

@@ -171,6 +171,58 @@ describe("circle A2A verbs", () => {
     expect(store.activeMemberCount(circleId)).toBe(MAX_CIRCLE_MEMBERS);
   });
 
+  it("stores the signed PeerId binding from join and refreshes it on presence (Stage 4)", () => {
+    const peerA = "12D3KooWJoinJoinJoinJoinJoinJoinJoinJoinJoin";
+    const peerB = "12D3KooWBeatBeatBeatBeatBeatBeatBeatBeatBeat";
+    const invite = createInvite(db, {
+      circleId,
+      circleName: "Tahoe Crew",
+      circleKind: "connection",
+      inviterKey: ana,
+      inviterA2aUrl: "https://ana.example.com",
+      scopes: DEFAULT_MEMBER_SCOPES,
+      now: NOW,
+    });
+    const parsed = parseInviteCode(invite.code, NOW + 1000);
+    if (!parsed.ok) throw new Error("invite parse failed");
+    const join = makeCircleEnvelope(
+      "join",
+      circleId,
+      { display_name: "Bob", peer_id: peerA },
+      bob,
+      NOW_S,
+    );
+    const joined = handleCircleMethod(
+      "circle/join",
+      { inviteId: invite.inviteId, secret: parsed.invite.secret, join },
+      db,
+      NOW + 1000,
+    );
+    expect(joined.ok).toBe(true);
+    expect(store.getMember(circleId, pubkeyId(bob))?.peerId).toBe(peerA);
+
+    // A later presence beat (signed) moves the dial target; a malformed
+    // claim is ignored rather than stored.
+    const beat = makeCircleEnvelope(
+      "presence",
+      circleId,
+      { status: "online", peer_id: peerB },
+      bob,
+      NOW_S + 2,
+    );
+    expect(handleCircleMethod("circle/presence", { envelope: beat }, db, NOW + 2000).ok).toBe(true);
+    expect(store.getMember(circleId, pubkeyId(bob))?.peerId).toBe(peerB);
+    const junk = makeCircleEnvelope(
+      "presence",
+      circleId,
+      { status: "online", peer_id: "not a peer id 0OIl" },
+      bob,
+      NOW_S + 4,
+    );
+    expect(handleCircleMethod("circle/presence", { envelope: junk }, db, NOW + 4000).ok).toBe(true);
+    expect(store.getMember(circleId, pubkeyId(bob))?.peerId).toBe(peerB);
+  });
+
   it("circle/join refuses a bad secret and a mismatched circle", () => {
     const invite = createInvite(db, {
       circleId,

@@ -390,6 +390,37 @@ export async function startGatewaySidecars(params: {
           }
         })();
       }
+      // Stage 4: point-to-point circle RPC over libp2p request-response.
+      // Wired whenever circles run — unlike the broadcast topic path it is
+      // per-connection noise-encrypted, so it needs no meshTopic gate;
+      // circles.p2pDial.enabled=false turns off outbound dialing (inbound
+      // dispatch stays: answering members over the mesh costs nothing and
+      // every verb re-checks membership auth).
+      if (params.cfg.circles?.enabled === true) {
+        void (async () => {
+          try {
+            const [{ startCircleP2pTransport }, { MemoryIndexManager }, { resolveDefaultAgentId }] =
+              await Promise.all([
+                import("../circles/circle-p2p-transport.js"),
+                import("../memory/manager.js"),
+                import("../agents/agent-scope.js"),
+              ]);
+            startCircleP2pTransport({
+              bridge: orchestratorBridge,
+              resolveCirclesDb: async () => {
+                const mgr = await MemoryIndexManager.get({
+                  cfg: params.cfg,
+                  agentId: resolveDefaultAgentId(params.cfg),
+                  purpose: "status",
+                });
+                return mgr?.getCirclesDb();
+              },
+            });
+          } catch (err) {
+            params.log.warn(`circle p2p transport failed to start: ${String(err)}`);
+          }
+        })();
+      }
       // Phase 2 wallet discoverability: advertise our receiving address to the
       // mesh so peers can pay us by peerId without an out-of-band exchange.
       // Best-effort and gated on CDP credentials being present — nodes without

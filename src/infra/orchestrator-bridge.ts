@@ -177,6 +177,15 @@ export class OrchestratorBridge {
     }) => void
   > = [];
   /** PLAN-36 Phase 4: inbound frames on subscribed per-circle gossip topics. */
+  /** Stage 4: inbound circle-RPC requests awaiting a gateway answer. */
+  private circleRequestCallbacks: Array<
+    (event: { request_id: number; from_peer_id: string; data_b64: string }) => void
+  > = [];
+  /** Stage 4: outbound circle-RPC awaiting their circle_response event. */
+  private circleResponseWaiters = new Map<
+    string,
+    { resolve: (dataB64: string) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }
+  >();
   private topicMessageCallbacks: Array<
     (event: { topic: string; from_peer_id: string; data_b64: string }) => void
   > = [];
@@ -688,6 +697,50 @@ export class OrchestratorBridge {
     };
   }
 
+  /**
+   * Stage 4: point-to-point circle RPC. Two-phase under the hood (the daemon
+   * answers the enqueue immediately; the network outcome arrives as a
+   * circle_response event) but presented as one promise. The enqueue uses the
+   * short topic-verb timeout so a pre-0.2.2 daemon costs ~2s, not 10s — and
+   * an explicit "unknown message type" answer rejects instantly.
+   */
+  async circleRequest(peerId: string, dataB64: string, timeoutMs = 15_000): Promise<string> {
+    const enq = (await this.sendCommand(
+      "circle_request",
+      { peer_id: peerId, data_b64: dataB64 },
+      TOPIC_VERB_TIMEOUT_MS,
+    )) as { ok?: boolean; request_id?: string; error?: string };
+    if (!enq?.ok || typeof enq.request_id !== "string") {
+      throw new Error(`circle_request refused: ${enq?.error ?? "no request id"}`);
+    }
+    return new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.circleResponseWaiters.delete(enq.request_id as string);
+        reject(new Error("circle rpc timed out"));
+      }, timeoutMs);
+      this.circleResponseWaiters.set(enq.request_id as string, { resolve, reject, timer });
+    });
+  }
+
+  /** Stage 4: answer an inbound circle-RPC request (see onCircleRequest). */
+  async circleRespond(requestId: number, dataB64: string): Promise<void> {
+    await this.sendCommand(
+      "circle_respond",
+      { request_id: requestId, data_b64: dataB64 },
+      TOPIC_VERB_TIMEOUT_MS,
+    );
+  }
+
+  /** Stage 4: subscribe to inbound circle-RPC requests from peers. */
+  onCircleRequest(
+    callback: (event: { request_id: number; from_peer_id: string; data_b64: string }) => void,
+  ): () => void {
+    this.circleRequestCallbacks.push(callback);
+    return () => {
+      this.circleRequestCallbacks = this.circleRequestCallbacks.filter((cb) => cb !== callback);
+    };
+  }
+
   private async connectIpc(): Promise<void> {
     // Clean up any existing socket before creating a new one
     if (this.socket) {
@@ -892,6 +945,42 @@ export class OrchestratorBridge {
             cb(payload);
           } catch (err) {
             log.warn(`query_received callback error: ${String(err)}`);
+          }
+        }
+        return;
+      }
+
+      if (msg.type === "circle_request") {
+        const payload = msg.payload as {
+          request_id: number;
+          from_peer_id: string;
+          data_b64: string;
+        };
+        for (const cb of this.circleRequestCallbacks) {
+          try {
+            cb(payload);
+          } catch (err) {
+            log.warn(`circle_request callback error: ${String(err)}`);
+          }
+        }
+        return;
+      }
+
+      if (msg.type === "circle_response") {
+        const payload = msg.payload as {
+          request_id: string;
+          ok: boolean;
+          data_b64?: string;
+          error?: string;
+        };
+        const waiter = this.circleResponseWaiters.get(payload.request_id);
+        if (waiter) {
+          this.circleResponseWaiters.delete(payload.request_id);
+          clearTimeout(waiter.timer);
+          if (payload.ok && typeof payload.data_b64 === "string") {
+            waiter.resolve(payload.data_b64);
+          } else {
+            waiter.reject(new Error(payload.error ?? "circle rpc failed"));
           }
         }
         return;

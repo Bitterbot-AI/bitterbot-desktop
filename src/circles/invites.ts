@@ -81,6 +81,8 @@ export type CreateInviteArgs = {
    * be present or the invitee would have no way to reach back.
    */
   inviterA2aUrl?: string;
+  /** Stage 4: the inviter's libp2p PeerId — invitees try a mesh join first. */
+  inviterPeerId?: string;
   /** Where the invitee drops a sealed join request when direct dial is out (§4). */
   inviterMailboxUrl?: string;
   /** The inviter's X25519 box pubkey, so the invitee can seal that request. */
@@ -141,6 +143,7 @@ export function createInvite(db: DatabaseSync, args: CreateInviteArgs): CreatedI
       circle_kind: args.circleKind,
       inviter_name: args.inviterName ?? null,
       inviter_a2a_url: args.inviterA2aUrl ?? null,
+      inviter_peer_id: args.inviterPeerId ?? null,
       // §4 mailbox rendezvous: lets the invitee reach back when the inviter has
       // no reachable a2a URL (or is offline at join time).
       inviter_mailbox_url: args.inviterMailboxUrl ?? null,
@@ -173,6 +176,8 @@ export type ParsedInvite = {
   inviterMailboxUrl: string;
   /** The inviter's box pubkey, to seal the mailbox join request (§4). */
   inviterBoxPubkey: string;
+  /** Stage 4: the inviter's libp2p PeerId ("" when absent) — mesh join hint. */
+  inviterPeerId: string;
   scopes: CircleScope[];
   expiresAt: number;
 };
@@ -234,6 +239,11 @@ export function parseInviteCode(
     typeof v === "string" && /^https?:\/\//.test(v) ? v : "";
   const inviterA2aUrl = httpUrl(body.inviter_a2a_url);
   const inviterMailboxUrl = httpUrl(body.inviter_mailbox_url);
+  const inviterPeerId =
+    typeof body.inviter_peer_id === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{40,70}$/.test(body.inviter_peer_id)
+      ? body.inviter_peer_id
+      : "";
   const inviterBoxPubkey =
     typeof body.inviter_box_pubkey === "string" && body.inviter_box_pubkey.length <= 64
       ? body.inviter_box_pubkey
@@ -257,6 +267,7 @@ export function parseInviteCode(
       circleName: typeof body.circle_name === "string" ? body.circle_name : "circle",
       circleKind: typeof body.circle_kind === "string" ? body.circle_kind : "connection",
       inviterPubkey: env.author_pubkey,
+      inviterPeerId,
       // Attacker-authored display text rendered in the join confirm (review #3):
       // clamp to 64 chars and strip control characters so a crafted name cannot
       // visually forge a fingerprint line or multi-line "trusted" claims.

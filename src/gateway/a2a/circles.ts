@@ -54,6 +54,14 @@ function err<T>(code: number, message: string): CircleOutcome<T> {
   return { ok: false, error: { code, message } };
 }
 
+/** A plausible libp2p PeerId (base58btc, no 0OIl). Peer-claimed — treated as
+ * a dial HINT bound to the member's signed envelope, never as authentication:
+ * inbound trust always comes from the envelope signature, whatever transport
+ * carried it. */
+function validPeerId(v: unknown): string | undefined {
+  return typeof v === "string" && /^[1-9A-HJ-NP-Za-km-z]{40,70}$/.test(v) ? v : undefined;
+}
+
 /** Depth/count bounds for the recursive event-body scan (DoS guard). */
 const SCAN_MAX_DEPTH = 4;
 const SCAN_MAX_STRINGS = 128;
@@ -346,6 +354,7 @@ export function handleCircleJoin(
     typeof body.mailbox_url === "string" && /^https?:\/\//.test(body.mailbox_url)
       ? body.mailbox_url
       : undefined;
+  const peerId = validPeerId(body.peer_id);
   store.addMember({
     circleId: env.circle_id,
     memberPubkey: env.author_pubkey,
@@ -353,6 +362,7 @@ export function handleCircleJoin(
     a2aUrl,
     boxPubkey,
     mailboxUrl,
+    peerId,
     scopes: outcome.record.scopes,
     now,
   });
@@ -495,6 +505,13 @@ export function handleCirclePresence(
     { a2aUrl, boxPubkey, mailboxUrl, displayName },
     now,
   );
+  // Stage 4: the beat also refreshes the member's mesh dial target (peer_id
+  // is signed-envelope-bound like everything above; it is a dial hint, never
+  // authentication).
+  const beatPeerId = validPeerId(body.peer_id);
+  if (beatPeerId) {
+    auth.store.setMemberPeerId(auth.envelope.circle_id, auth.envelope.author_pubkey, beatPeerId);
+  }
   return { ok: true, result: { seenAt: now } };
 }
 

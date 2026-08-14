@@ -12,7 +12,7 @@ use libp2p::{
     gossipsub::{self, MessageAuthenticity, ValidationMode},
     identify,
     kad::{self, store::MemoryStore},
-    noise, relay, tcp, yamux, Multiaddr, PeerId, SwarmBuilder,
+    noise, relay, request_response, tcp, yamux, Multiaddr, PeerId, StreamProtocol, SwarmBuilder,
     swarm::behaviour::toggle::Toggle,
 };
 use serde::{Deserialize, Serialize};
@@ -55,6 +55,25 @@ fn is_circle_topic(topic: &str) -> bool {
 /// circles age out.
 const MAX_CARRIED_CIRCLE_TOPICS: usize = 1024;
 const CARRIED_CIRCLE_TOPIC_IDLE: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Stage 4 (circles transport): point-to-point circle RPC over libp2p
+/// request-response — the carrier that lets join/sync verbs skip HTTP when a
+/// member's PeerId is known. Payloads are opaque base64 (the gateway's signed
+/// circle envelopes; membership auth happens there, not here).
+const CIRCLE_RPC_PROTOCOL: &str = "/bitterbot/circle-rpc/1";
+/// How long an inbound request's response channel is held while the gateway
+/// computes an answer before it is dropped (requester sees a failure).
+const CIRCLE_RPC_INBOUND_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CircleRpcRequest {
+    pub data_b64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CircleRpcResponse {
+    pub data_b64: String,
+}
 
 /// Maximum payload size for gossipsub messages (256KB).
 const MAX_GOSSIPSUB_MSG_SIZE: usize = 256 * 1024;
@@ -634,6 +653,8 @@ pub struct BitterbotBehaviour {
     pub relay_client: Toggle<relay::client::Behaviour>,
     pub relay_server: Toggle<relay::Behaviour>,
     pub dcutr: Toggle<dcutr::Behaviour>,
+    /// Stage 4: point-to-point circle RPC (join/sync verbs over the mesh).
+    pub circle_rpc: request_response::cbor::Behaviour<CircleRpcRequest, CircleRpcResponse>,
 }
 
 pub struct SwarmHandle {
@@ -680,6 +701,16 @@ pub struct SwarmHandle {
     /// last observed activity). Only populated in RelayMode::Server; frames
     /// are sender-key encrypted so carriage exposes no content.
     carried_circle_topics: std::collections::HashMap<gossipsub::TopicHash, std::time::Instant>,
+    /// Stage 4: inbound circle-RPC response channels held while the gateway
+    /// computes an answer, keyed by a local counter surfaced over IPC.
+    inbound_circle_rpc: std::collections::HashMap<
+        u64,
+        (
+            request_response::ResponseChannel<CircleRpcResponse>,
+            std::time::Instant,
+        ),
+    >,
+    next_inbound_circle_rpc_id: u64,
 }
 
 const LATENCY_WINDOW: usize = 256;
@@ -1193,6 +1224,12 @@ impl SwarmHandle {
                 }
                 _ = prune_interval.tick() => {
                     self.security.prune();
+                    // Stage 4: drop inbound circle-RPC channels the gateway
+                    // never answered (requester sees a failure, not a hang).
+                    let now = std::time::Instant::now();
+                    self.inbound_circle_rpc.retain(|_, (_, held)| {
+                        now.duration_since(*held) < CIRCLE_RPC_INBOUND_TTL
+                    });
                 }
                 _ = bootstrap_interval.tick() => {
                     info!("Triggering periodic Kademlia bootstrap");
@@ -1326,6 +1363,59 @@ impl SwarmHandle {
                     }));
                 }
             }
+            BitterbotBehaviourEvent::CircleRpc(request_response::Event::Message {
+                peer,
+                message,
+            }) => match message {
+                request_response::Message::Request { request, channel, .. } => {
+                    // Hold the channel; the gateway answers over IPC
+                    // (circle_respond). Held channels are TTL-swept so an
+                    // unresponsive gateway cannot leak them.
+                    let rid = self.next_inbound_circle_rpc_id;
+                    self.next_inbound_circle_rpc_id = self.next_inbound_circle_rpc_id.wrapping_add(1);
+                    self.inbound_circle_rpc
+                        .insert(rid, (channel, std::time::Instant::now()));
+                    self.emit_ipc_event(serde_json::json!({
+                        "type": "circle_request",
+                        "payload": {
+                            "request_id": rid,
+                            "from_peer_id": peer.to_string(),
+                            "data_b64": request.data_b64,
+                        }
+                    }));
+                }
+                request_response::Message::Response { request_id, response } => {
+                    self.emit_ipc_event(serde_json::json!({
+                        "type": "circle_response",
+                        "payload": {
+                            "request_id": request_id.to_string(),
+                            "ok": true,
+                            "data_b64": response.data_b64,
+                        }
+                    }));
+                }
+            },
+            BitterbotBehaviourEvent::CircleRpc(request_response::Event::OutboundFailure {
+                request_id,
+                error,
+                ..
+            }) => {
+                self.emit_ipc_event(serde_json::json!({
+                    "type": "circle_response",
+                    "payload": {
+                        "request_id": request_id.to_string(),
+                        "ok": false,
+                        "error": format!("{:?}", error),
+                    }
+                }));
+            }
+            BitterbotBehaviourEvent::CircleRpc(request_response::Event::InboundFailure {
+                error,
+                ..
+            }) => {
+                debug!("circle-rpc inbound failure: {:?}", error);
+            }
+            BitterbotBehaviourEvent::CircleRpc(request_response::Event::ResponseSent { .. }) => {}
             BitterbotBehaviourEvent::Gossipsub(gossipsub::Event::Subscribed {
                 peer_id,
                 topic,
@@ -2184,6 +2274,53 @@ impl SwarmHandle {
                     }
                 }
             }
+            IpcCommand::CircleRequest { id, peer_id, data_b64, respond } => {
+                // Two-phase by design: the IPC reader is sequential, so we
+                // answer immediately with the outbound request id and deliver
+                // the network outcome later as a circle_response EVENT — a
+                // 20s in-flight request must never stall the whole bridge.
+                match peer_id.parse::<PeerId>() {
+                    Ok(peer) => {
+                        let rid = self
+                            .swarm
+                            .behaviour_mut()
+                            .circle_rpc
+                            .send_request(&peer, CircleRpcRequest { data_b64 });
+                        let _ = respond.send(serde_json::json!({
+                            "type": "response", "id": id,
+                            "payload": { "ok": true, "request_id": rid.to_string() }
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = respond.send(serde_json::json!({
+                            "type": "response", "id": id,
+                            "payload": { "ok": false, "error": format!("invalid peer id: {}", e) }
+                        }));
+                    }
+                }
+            }
+            IpcCommand::CircleRespond { id, request_id, data_b64, respond } => {
+                match self.inbound_circle_rpc.remove(&request_id) {
+                    Some((channel, _)) => {
+                        let ok = self
+                            .swarm
+                            .behaviour_mut()
+                            .circle_rpc
+                            .send_response(channel, CircleRpcResponse { data_b64 })
+                            .is_ok();
+                        let _ = respond.send(serde_json::json!({
+                            "type": "response", "id": id,
+                            "payload": { "ok": ok }
+                        }));
+                    }
+                    None => {
+                        let _ = respond.send(serde_json::json!({
+                            "type": "response", "id": id,
+                            "payload": { "ok": false, "error": "unknown or expired request_id" }
+                        }));
+                    }
+                }
+            }
             IpcCommand::GetNetworkCensus { id, respond } => {
                 if self.node_tier != "management" {
                     let _ = respond.send(serde_json::json!({
@@ -2756,6 +2893,17 @@ fn parse_relay_servers(relay_servers: &[String]) -> Vec<(Multiaddr, PeerId)> {
     result
 }
 
+fn new_circle_rpc_behaviour() -> request_response::cbor::Behaviour<CircleRpcRequest, CircleRpcResponse>
+{
+    request_response::cbor::Behaviour::new(
+        [(
+            StreamProtocol::new(CIRCLE_RPC_PROTOCOL),
+            request_response::ProtocolSupport::Full,
+        )],
+        request_response::Config::default().with_request_timeout(Duration::from_secs(20)),
+    )
+}
+
 pub async fn build_swarm(
     keypair: &SigningKey,
     listen_addr: &str,
@@ -2948,6 +3096,7 @@ pub async fn build_swarm(
                         relay_client: Toggle::from(Some(relay_client_behaviour)),
                         relay_server: Toggle::from(None),
                         dcutr: Toggle::from(Some(dcutr::Behaviour::new(key.public().to_peer_id()))),
+                        circle_rpc: new_circle_rpc_behaviour(),
                     })
                 })?
                 .with_swarm_config(|cfg: libp2p::swarm::Config| {
@@ -2984,6 +3133,7 @@ pub async fn build_swarm(
                             relay_server_config,
                         ))),
                         dcutr: Toggle::from(None),
+                        circle_rpc: new_circle_rpc_behaviour(),
                     })
                 })?
                 .with_swarm_config(|cfg: libp2p::swarm::Config| {
@@ -3016,6 +3166,7 @@ pub async fn build_swarm(
                         relay_client: Toggle::from(None),
                         relay_server: Toggle::from(None),
                         dcutr: Toggle::from(None),
+                        circle_rpc: new_circle_rpc_behaviour(),
                     })
                 })?
                 .with_swarm_config(|cfg: libp2p::swarm::Config| {
@@ -3131,6 +3282,8 @@ pub async fn build_swarm(
         latency_window_ms: std::collections::VecDeque::with_capacity(LATENCY_WINDOW),
         bootnode_registry,
         carried_circle_topics: std::collections::HashMap::new(),
+        inbound_circle_rpc: std::collections::HashMap::new(),
+        next_inbound_circle_rpc_id: 0,
     };
 
     info!(

@@ -62,6 +62,19 @@ export type CirclesConfig = {
   meshTopic?: {
     enabled?: boolean;
   };
+  /**
+   * Stage 4: point-to-point circle RPC over libp2p request-response
+   * (`/bitterbot/circle-rpc/1`). When a member's SIGNED join/presence
+   * envelope carried a PeerId, deliveries and syncs dial them over the mesh
+   * FIRST, falling back to HTTP direct dial and mailbox on transport
+   * failure. Default: ON — the request rides the noise-encrypted libp2p
+   * connection (point-to-point, not broadcast), so it is confidentiality-
+   * equivalent to the HTTPS dial it replaces, and a daemon without the
+   * verbs latches off after one cheap probe. `enabled: false` opts out.
+   */
+  p2pDial?: {
+    enabled?: boolean;
+  };
   /** Weekly briefing (C3). Default: enabled when circles are enabled. */
   briefing?: {
     enabled?: boolean;

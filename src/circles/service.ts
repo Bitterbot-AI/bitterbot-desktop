@@ -66,6 +66,7 @@ import {
   type CanvasCard,
   type CanvasState,
 } from "./canvas.js";
+import { circleP2pAvailable, dialCircleRpc, getLocalPeerId } from "./circle-p2p-transport.js";
 import { getCircleTopicBus } from "./circle-topic-transport.js";
 import { circleTopicId, type CircleTopicBus } from "./circle-topic.js";
 import { publicDialUrlError } from "./dial-guard.js";
@@ -290,6 +291,13 @@ export class CirclesService {
 
   /** The mesh topic bus: injected value wins (incl. explicit null), else the
    *  process singleton set by startCircleTopicTransport. */
+  /** Stage 4 kill switch: circles.p2pDial.enabled !== false (default ON —
+   * request-response rides the noise-encrypted libp2p connection, so it is
+   * confidentiality-equivalent to the HTTPS dial it replaces). */
+  private p2pDialEnabled(): boolean {
+    return this.config.circles?.p2pDial?.enabled !== false;
+  }
+
   private topicBus(): CircleTopicBus | null {
     // Kill switch (default OFF): mesh frames are signed but not encrypted, so
     // the additive gossip path stays dark until per-circle shared-key
@@ -397,6 +405,7 @@ export class CirclesService {
       inviterKey: this.key,
       inviterName: this.displayName,
       inviterA2aUrl: this.a2aPublicUrl,
+      inviterPeerId: getLocalPeerId() ?? undefined,
       inviterMailboxUrl: hasMailboxRendezvous ? this.myMailboxUrl : undefined,
       inviterBoxPubkey: hasMailboxRendezvous ? this.boxKeys.publicKeyB64 : undefined,
       scopes: DEFAULT_MEMBER_SCOPES,
@@ -479,6 +488,33 @@ export class CirclesService {
     }
     const joinEnvelope = this.buildJoinEnvelope(invite.circleId);
 
+    // Stage 4 fastest path: a mesh join when the invite carries the
+    // inviter's PeerId — no public URL needed on either side. A transport
+    // failure falls through to the HTTP dial and mailbox rendezvous below; a
+    // REFUSAL (bad secret, full circle) is definitive and stops here.
+    if (invite.inviterPeerId && this.p2pDialEnabled() && circleP2pAvailable()) {
+      const p2p = await dialCircleRpc(invite.inviterPeerId, "circle/join", {
+        inviteId: invite.inviteId,
+        secret: invite.secret,
+        join: joinEnvelope,
+      });
+      if (!p2p.ok) {
+        if (p2p.refused) {
+          throw new Error(`join refused: ${p2p.error}`);
+        }
+        log.debug(`p2p join for ${invite.circleId} failed: ${p2p.error} — trying HTTP`);
+      } else if (p2p.result) {
+        const members = this.importJoinResult(invite, p2p.result);
+        log.info(`joined circle ${invite.circleId} (${members} members, p2p)`);
+        return {
+          circleId: invite.circleId,
+          circleName: invite.circleName,
+          inviterName: invite.inviterName,
+          members,
+          status: "connected" as const,
+        };
+      }
+    }
     // Fast path: a direct dial when the inviter published a reachable URL.
     if (invite.inviterA2aUrl) {
       const rpc = await circleRpc(
@@ -552,6 +588,9 @@ export class CirclesService {
         a2a_url: this.a2aPublicUrl ?? null,
         box_pubkey: this.boxKeys.publicKeyB64,
         mailbox_url: this.myMailboxUrl ?? null,
+        // Stage 4 (PLAN-35 B-1): our libp2p PeerId, bound to the circle
+        // identity by this envelope's signature — the peer's mesh dial hint.
+        peer_id: getLocalPeerId(),
       },
       this.key,
     );
@@ -732,12 +771,29 @@ export class CirclesService {
     return rpc.ok;
   }
 
-  /** Deliver one envelope to one member: direct dial first, mailbox fallback. */
+  /**
+   * Deliver one envelope to one member. Order (Stage 4): P2P mesh dial when
+   * a signed PeerId is known → HTTP direct dial → mailbox. The P2P leg is a
+   * REAL delivery when it succeeds (the peer's handler processed the verb and
+   * answered), so it counts toward the delivery report; on any transport
+   * failure the proven HTTP legs run exactly as before.
+   */
   private async deliverToMember(
     member: CircleMember,
     method: string,
     envelope: CircleEnvelope,
   ): Promise<boolean> {
+    if (member.peerId && this.p2pDialEnabled() && circleP2pAvailable()) {
+      const p2p = await dialCircleRpc(member.peerId, method, { envelope });
+      if (p2p.ok) return true;
+      // A REFUSAL is definitive (the peer answered): do not re-deliver the
+      // same envelope over HTTP just to be refused again.
+      if (p2p.refused) {
+        log.debug(`p2p ${method} to ${member.memberPubkey.slice(0, 24)}… refused: ${p2p.error}`);
+        return false;
+      }
+      log.debug(`p2p ${method} to ${member.memberPubkey.slice(0, 24)}… failed: ${p2p.error}`);
+    }
     if (member.a2aUrl) {
       const rpc = await circleRpc(
         this.fetchImpl,
@@ -1011,6 +1067,8 @@ export class CirclesService {
           // Roster posture (mockup pin 3): what our agent can do in this
           // circle, so friends' rosters answer "who and what can hear this".
           agent_posture: this.selfAgentPosture(),
+          // Stage 4: mesh dial hint, signed like everything else on the beat.
+          peer_id: getLocalPeerId(),
         },
         this.key,
       );
@@ -2454,17 +2512,25 @@ export class CirclesService {
     const { handleCircleMethod } = await import("../gateway/a2a/circles.js");
     let applied = 0;
     for (const member of this.peerMembers(circleId)) {
-      if (!member.a2aUrl) {
+      const canP2p = Boolean(member.peerId && this.p2pDialEnabled() && circleP2pAvailable());
+      if (!member.a2aUrl && !canP2p) {
         continue;
       }
       const ask = makeCircleEnvelope("presence", circleId, { since: 0 }, this.key);
-      const rpc = await circleRpc(
-        this.fetchImpl,
-        member.a2aUrl,
-        "circle/events.since",
-        { envelope: ask },
-        this.dialOpts,
-      );
+      // Stage 4: mesh dial first; transport failures (not refusals) fall back
+      // to the HTTP dial when the member advertises one.
+      let rpc: Awaited<ReturnType<typeof dialCircleRpc>> = canP2p
+        ? await dialCircleRpc(member.peerId as string, "circle/events.since", { envelope: ask })
+        : { ok: false, error: "p2p unavailable" };
+      if (!rpc.ok && !rpc.refused && member.a2aUrl) {
+        rpc = (await circleRpc(
+          this.fetchImpl,
+          member.a2aUrl,
+          "circle/events.since",
+          { envelope: ask },
+          this.dialOpts,
+        )) as Awaited<ReturnType<typeof dialCircleRpc>>;
+      }
       if (!rpc.ok || !rpc.result) {
         continue;
       }
