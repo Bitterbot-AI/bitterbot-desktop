@@ -46,6 +46,18 @@ export function setCircleTopicBusForTests(bus: CircleTopicBus | null): void {
  * into the circles DB. Call once at gateway startup when the orchestrator
  * bridge is available. Returns a handle whose stop() unwires it.
  */
+/**
+ * An error that proves the running daemon cannot serve topic verbs: a
+ * pre-0.2.0 orchestrator never answers them at all (the bridge's short topic
+ * timeout fires), and a future daemon that dropped a verb answers "unknown
+ * message type". Either way, retrying every send/scheduler-cycle would cost
+ * the timeout each time — latch the bus off instead.
+ */
+function isTopicCapabilityError(err: unknown): boolean {
+  const msg = String(err);
+  return msg.includes("timed out") || msg.includes("unknown message type");
+}
+
 export function startCircleTopicTransport(deps: {
   bridge: CircleTopicBridge;
   /**
@@ -54,7 +66,36 @@ export function startCircleTopicTransport(deps: {
    */
   resolveCirclesDb: () => Promise<DatabaseSync | undefined>;
 }): { stop: () => void } {
-  const bus = bridgeCircleTopicBus(deps.bridge);
+  const raw = bridgeCircleTopicBus(deps.bridge);
+  // Capability latch: the first verb the daemon provably cannot serve
+  // disables the mesh bus for this process (HTTP dial + mailbox delivery are
+  // unaffected — the mesh is additive). Without this, a gateway with
+  // circles.meshTopic.enabled pointed at an old daemon stalls on every
+  // publish and on every circle's subscribe each scheduler cycle.
+  let latchedOff = false;
+  const guard = async (op: () => Promise<void>): Promise<void> => {
+    if (latchedOff) return;
+    try {
+      await op();
+    } catch (err) {
+      if (isTopicCapabilityError(err)) {
+        latchedOff = true;
+        if (activeBus === bus) activeBus = null;
+        log.warn(
+          "orchestrator daemon does not serve circle topic verbs " +
+            "(pre-0.2.0 build?) — mesh path disabled for this run; " +
+            `direct dial + mailbox delivery unaffected (${String(err)})`,
+        );
+        return;
+      }
+      throw err;
+    }
+  };
+  const bus: CircleTopicBus = {
+    publish: (topic, frameJson) => guard(() => raw.publish(topic, frameJson)),
+    subscribe: (topic) => guard(() => raw.subscribe(topic)),
+    unsubscribe: (topic) => guard(() => raw.unsubscribe(topic)),
+  };
   activeBus = bus;
   const unsub = onBridgeCircleFrame(deps.bridge, (frameJson, topic) => {
     void (async () => {

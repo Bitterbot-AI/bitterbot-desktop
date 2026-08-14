@@ -22,6 +22,14 @@ const RECONNECT_DELAY_MS = 3000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 /** Default IPC command timeout for background/non-interactive commands. */
 const DEFAULT_IPC_TIMEOUT_MS = 10_000;
+/**
+ * Circle topic verbs (subscribe/unsubscribe/publish_topic) answer immediately
+ * on a 0.2.0+ daemon — and on a pre-0.2.0 daemon they are unknown verbs that
+ * NEVER answer (older builds dropped unknown messages without a response).
+ * Keep their wait short so version skew costs ~2s once; the circle-topic
+ * transport latches the mesh bus off on that failure instead of retrying.
+ */
+const TOPIC_VERB_TIMEOUT_MS = 2_000;
 /** Tighter timeout for get_stats: it backs the UI-polled skills.network RPC. */
 const STATS_IPC_TIMEOUT_MS = 2_500;
 
@@ -306,16 +314,16 @@ export class OrchestratorBridge {
   // permits bitterbot/circle/*/v1 here; a circle rides its blinded topic so
   // messages reach members over the mesh without a public a2a URL.
   async subscribeCircleTopic(topic: string): Promise<unknown> {
-    return this.sendCommand("subscribe_topic", { topic });
+    return this.sendCommand("subscribe_topic", { topic }, TOPIC_VERB_TIMEOUT_MS);
   }
 
   async unsubscribeCircleTopic(topic: string): Promise<unknown> {
-    return this.sendCommand("unsubscribe_topic", { topic });
+    return this.sendCommand("unsubscribe_topic", { topic }, TOPIC_VERB_TIMEOUT_MS);
   }
 
   /** Publish opaque frame bytes (base64) to a circle topic. */
   async publishCircleTopic(topic: string, dataB64: string): Promise<unknown> {
-    return this.sendCommand("publish_topic", { topic, data_b64: dataB64 });
+    return this.sendCommand("publish_topic", { topic, data_b64: dataB64 }, TOPIC_VERB_TIMEOUT_MS);
   }
 
   async getPeers(): Promise<unknown> {

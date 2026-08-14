@@ -327,6 +327,26 @@ pub async fn start_ipc_listener(
     Ok((handle, cmd_rx))
 }
 
+/// Write an error response for a request that cannot be dispatched (unknown
+/// verb, malformed payload). Pre-0.2.0 builds silently dropped these, so the
+/// gateway bridge waited its full request timeout (10s) on every version-skew
+/// call — every request that carries an id MUST get an answer. Returns false
+/// only when the connection itself is broken.
+async fn write_ipc_error<W>(writer: &mut W, id: &str, error: &str) -> bool
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::AsyncWriteExt;
+    let line = format!(
+        "{}\n",
+        serde_json::json!({
+            "type": "response", "id": id,
+            "payload": { "ok": false, "error": error }
+        })
+    );
+    writer.write_all(line.as_bytes()).await.is_ok()
+}
+
 /// Handle a single JSON-line command from a client. Returns false if the
 /// connection should be closed.
 async fn handle_client_line(
@@ -353,7 +373,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid publish_skill payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid publish_skill payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::PublishSkill {
@@ -379,7 +404,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid compute_eigentrust payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid compute_eigentrust payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::ComputeEigenTrust {
@@ -393,7 +423,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid sign_as_management payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid sign_as_management payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::SignAsManagement {
@@ -407,7 +442,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid publish_weather payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid publish_weather payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::PublishWeather {
@@ -421,7 +461,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid publish_bounty payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid publish_bounty payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::PublishBounty {
@@ -435,7 +480,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid publish_telemetry payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid publish_telemetry payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::PublishTelemetry {
@@ -449,7 +499,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid publish_query payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid publish_query payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::PublishQuery {
@@ -498,7 +553,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid computer_mouse_move payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid computer_mouse_move payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::ComputerMouseMove { id: msg.id, payload, respond: resp_tx }
@@ -513,7 +573,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid computer_type payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid computer_type payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::ComputerType { id: msg.id, payload, respond: resp_tx }
@@ -523,7 +588,12 @@ async fn handle_client_line(
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Invalid computer_key payload: {}", e);
-                    return true;
+                    return write_ipc_error(
+                        writer,
+                        &msg.id,
+                        &format!("invalid computer_key payload: {}", e),
+                    )
+                    .await;
                 }
             };
             IpcCommand::ComputerKey { id: msg.id, payload, respond: resp_tx }
@@ -537,7 +607,7 @@ async fn handle_client_line(
                 .to_string();
             if topic.is_empty() {
                 warn!("{} missing topic", msg.msg_type);
-                return true;
+                return write_ipc_error(writer, &msg.id, "missing topic").await;
             }
             if msg.msg_type == "subscribe_topic" {
                 IpcCommand::SubscribeTopic { id: msg.id, topic, respond: resp_tx }
@@ -560,13 +630,17 @@ async fn handle_client_line(
                 .to_string();
             if topic.is_empty() || data_b64.is_empty() {
                 warn!("publish_topic missing topic/data_b64");
-                return true;
+                return write_ipc_error(writer, &msg.id, "missing topic/data_b64").await;
             }
             IpcCommand::PublishTopic { id: msg.id, topic, data_b64, respond: resp_tx }
         }
         other => {
+            // Answer, never drop: an older gateway probing a newer daemon (or
+            // vice versa) must learn "unknown verb" in one round-trip, not by
+            // burning its 10s request timeout.
             warn!("Unknown IPC message type: {}", other);
-            return true;
+            let err = format!("unknown message type: {}", other);
+            return write_ipc_error(writer, &msg.id, &err).await;
         }
     };
 

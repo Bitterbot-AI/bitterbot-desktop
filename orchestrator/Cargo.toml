@@ -1,6 +1,6 @@
 [package]
 name = "bitterbot-orchestrator"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "P2P orchestrator daemon for Bitterbot skill propagation network"
 

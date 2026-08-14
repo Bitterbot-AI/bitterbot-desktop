@@ -68,6 +68,24 @@ clean no-op falling back to direct-dial + mailbox.
 node for the primitive to exist (like the mailbox host, an infra step); then
 shared-key confidentiality (§2).
 
+**Version-skew hardening (2026-08-14, Stage 1 of the transport plan):**
+pre-0.2.0 daemons dropped unknown IPC verbs _without a response_, so a
+gateway with `circles.meshTopic.enabled` pointed at an old daemon stalled the
+full 10s IPC timeout on every publish and on every circle's subscribe each
+scheduler cycle. Three fixes, all shipped together: (1) the daemon now
+answers every request that carries an id — unknown verbs and malformed
+payloads get an `{ ok: false, error }` response (`orchestrator/src/ipc.rs`,
+`write_ipc_error`); (2) the bridge gives topic verbs a short 2s timeout
+(`TOPIC_VERB_TIMEOUT_MS`, `src/infra/orchestrator-bridge.ts`); (3) the
+transport glue latches the mesh bus OFF for the process on the first
+capability failure (timeout or explicit unknown-verb answer), so version
+skew costs ~2s once, never per-send
+(`src/circles/circle-topic-transport.ts`). Delivery is unaffected either
+way — the mesh is additive; HTTP dial + mailbox carry the report.
+Orchestrator version bumped to **0.2.0**; the `orchestrator-v0.2.0` release
+tag is what makes `scripts/fetch-orchestrator.mjs` serve a topic-capable
+prebuilt to every node.
+
 Guard rails the security review must cover: rate-limit inbound topic frames
 per-peer (reuse the circle rate buckets); cap subscribed topics per node;
 gossipsub already signs+scores messages, but the per-frame circle envelope auth
