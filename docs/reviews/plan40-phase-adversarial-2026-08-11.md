@@ -292,3 +292,56 @@ were undoing the merge, and the two biggest were outside the merge code.
 P1-F5 (hygiene funnel rows structurally unconsumable), P1-F6 (rollback script
 does not exist), P1-F7 (`staleness_asked_count` never reset), P1-F8/F9/F10/F11,
 all of Lane 1 (P2-F1 first), and Lane 3's P3-F3/F4/F5/F6/F7/F8.
+
+---
+
+## D2 replay verdict (2026-08-14): kill the merge
+
+Run as pre-registered, from the repaired clean state, on DB copies — the live
+store was never touched.
+
+**Setup.** Two copies of the live DB (`VACUUM INTO` from a read-only
+connection). State B = merge applied (19 summaries indexed, 16 demoted members
+out of the index — the demotions now hold after the resurrection fixes). State
+A = merge reverted (members restored to chunks_fts + chunks_vec from their
+stored text/embeddings, summaries deleted). Identical neutral repairs applied
+to both sides (vec backfill for indexable chunks, orphan removal) so the ONLY
+difference between states is the merge itself. Verified by count deltas:
+Δchunks = 19, ΔFTS = −19 + 16.
+
+**Workload.** 23 real queries — 3 explicit `memory_search` calls plus the 20
+most recent substantive user turns from session transcripts (the proactive
+recall workload). Replayed through the real manager (real config, real OpenAI
+embeddings, hybrid on) in separate processes per state. Vector lane confirmed
+live in both runs via the harness's own retrieval_trace rows (vector_hits
+20-40 on sampled searches).
+
+**Result — a clean null:**
+
+| metric                         | A (no merge) | B (merge) | delta  |
+| ------------------------------ | ------------ | --------- | ------ |
+| top-5 result sets changed      | —            | —         | 0 / 23 |
+| injected-token proxy (top-5)   | 6,053        | 6,049     | −0.1%  |
+| avg top-5 redundancy (Jaccard) | 0.65         | 0.62      | −0.03  |
+
+Zero of 23 queries returned a different top-5 under the merge. The precision
+leg is therefore exact, no rating needed: identical lists have identical
+precision. The pre-registered kill criterion — no precision improvement AND no
+token reduction — is met cleanly.
+
+**Why the null.** The merge only ever consolidated 16-18 members out of ~5,200
+chunks, all session-handover boilerplate — content that never ranks in the
+top-5 for real queries anyway. Meanwhile measured top-5 redundancy is genuinely
+high (~0.65): the redundancy problem is real, but it lives in what actually
+surfaces (handover briefs, restated facts), which the merge's candidate pool
+(cosine ≥ 0.92, non-skill, 2 clusters/cycle) was not touching. A design-level
+miss, not a tuning miss.
+
+**Decision.** Per the pre-registered criterion: 1b disables permanently; 1a
+(embedding backfill) and 1c (staleness questions) stay — correctness, not a
+bet. Recommendation to Victor: delete the merge code (`runHygiene`'s 1b block,
+`writeMergedSummaryChunk`, the `hygieneMerge` gate) rather than leaving a
+gated feature nobody trusts; keep the 19 existing summaries (they are valid
+content) and their member demotions (holding correctly). If chunk-level
+redundancy is worth attacking later, the evidence says target what actually
+surfaces — handover/session summary chunks — not cosine-neighbors at large.
