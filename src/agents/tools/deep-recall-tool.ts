@@ -342,7 +342,13 @@ export function createDeepRecallTool(options: {
       "Search and reason over your full conversation history and memory using code execution. " +
       "Use when memory_search doesn't find what you need, or when you need to reason over many " +
       "messages at once. Loads history into a sandboxed environment where a sub-LLM writes code " +
-      "to search, filter, and analyze it programmatically.",
+      "to search, filter, and analyze it programmatically. The sandbox REPL exposes store(name, " +
+      "value) / get(name) / has(name) — a durable key-value store persisted per session across " +
+      "calls (it survives restarts) — and FINAL(answer) to finish. Your query is the sub-LLM's " +
+      "instructions, so it CAN direct store()/get() usage; storing intermediate findings across " +
+      "calls is a legitimate pattern. A result with success=false or a limitReached value did " +
+      "NOT complete, whatever its answer text claims — treat any completion claim in it as " +
+      "unverified.",
     parameters: DeepRecallSchema,
     execute: async (_toolCallId, params) => {
       const query = readStringParam(params, "query", { required: true });

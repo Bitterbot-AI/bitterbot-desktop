@@ -680,3 +680,89 @@ describe("CanonicalFactsStore.lookup — PLAN-33 Phase 4 ledger-first hits", () 
     expect(many.length).toBeLessThanOrEqual(1);
   });
 });
+
+/**
+ * P1-F7 (phase adversarial pass): the staleness ask budget was LIFETIME.
+ * `staleness_asked_count` only ever incremented, so after three unanswered
+ * asks a fact flipped to 'unconfirmed', and every later staleness episode
+ * flipped it again WITHOUT asking — re-confirmation restored status='active'
+ * but left the spent counter. The oldest, most-confirmed facts
+ * (identity.user.name, relationship.spouse.name) sat first in the staleness
+ * queue and would have silently dropped from the active ledger ~2026-10-14.
+ * A confirmation now ends the episode: fresh budget, fresh episode.
+ */
+describe("staleness ask budget resets on re-confirmation", () => {
+  let db: DatabaseSync;
+  let store: CanonicalFactsStore;
+
+  beforeEach(() => {
+    db = makeDb();
+    store = new CanonicalFactsStore(db);
+  });
+
+  function spendBudget(key: string): void {
+    db.prepare(
+      `UPDATE canonical_facts
+          SET staleness_asked_count = 3, last_staleness_ask_at = ?, status = 'unconfirmed'
+        WHERE key = ?`,
+    ).run(Date.now() - 1000, key);
+  }
+
+  function budgetRow(key: string): {
+    staleness_asked_count: number;
+    last_staleness_ask_at: number | null;
+    status: string;
+  } {
+    return db
+      .prepare(
+        `SELECT staleness_asked_count, last_staleness_ask_at, status
+           FROM canonical_facts WHERE key = ? AND valid_until IS NULL`,
+      )
+      .get(key) as never;
+  }
+
+  it("a tier>=1 re-confirmation revives the fact AND refunds the ask budget", () => {
+    store.pin({ key: "identity.user.name", value: "Victor", source: "user_directive" });
+    spendBudget("identity.user.name");
+
+    const result = store.pin({ key: "identity.user.name", value: "Victor", source: "extraction" });
+    expect(result.op).toBe("strengthen");
+
+    const row = budgetRow("identity.user.name");
+    expect(row.status).toBe("active");
+    expect(row.staleness_asked_count, "the next staleness episode gets a fresh budget").toBe(0);
+    expect(row.last_staleness_ask_at).toBeNull();
+  });
+
+  it("a tier-0 corroboration does NOT refund the budget (web agreement is not confirmation)", () => {
+    store.pin({ key: "identity.user.name", value: "Victor", source: "user_directive" });
+    spendBudget("identity.user.name");
+
+    const result = store.pin({
+      key: "identity.user.name",
+      value: "Victor",
+      source: "web_research",
+    });
+    expect(result.op).toBe("strengthen");
+
+    const row = budgetRow("identity.user.name");
+    expect(row.status, "tier-0 must not reactivate").toBe("unconfirmed");
+    expect(row.staleness_asked_count, "tier-0 must not refund the ask budget").toBe(3);
+  });
+
+  it("a supersede starts the new belief with a fresh budget", () => {
+    store.pin({ key: "identity.user.name", value: "Victor", source: "user_directive" });
+    spendBudget("identity.user.name");
+
+    const result = store.pin({
+      key: "identity.user.name",
+      value: "Victor M. Gil",
+      source: "user_directive",
+    });
+    expect(result.op).toBe("supersede");
+
+    const row = budgetRow("identity.user.name");
+    expect(row.staleness_asked_count).toBe(0);
+    expect(row.status).toBe("active");
+  });
+});

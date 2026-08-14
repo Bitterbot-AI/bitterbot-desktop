@@ -520,6 +520,17 @@ export class CanonicalFactsStore {
       }
       // Re-confirmation from tier >= 1 — the signal the crystal store
       // structurally ignores.
+      //
+      // The staleness ask budget resets here (P1-F7, 2026-08-14). It was a
+      // LIFETIME budget: `staleness_asked_count` only ever incremented, so
+      // after three asks a fact flipped to 'unconfirmed' and every future
+      // staleness episode flipped it again WITHOUT asking — this update set
+      // status back to 'active' but left the spent counter, so the oldest,
+      // most-often-confirmed facts (identity.user.name,
+      // relationship.spouse.name — first in the staleness queue) would have
+      // been silently dropped from the active ledger around 2026-10-14.
+      // A confirmation ends the staleness episode; the next one gets a fresh
+      // three asks.
       const newConfidence = Math.min(1, Math.max(current.confidence, confidence) + 0.05);
       this.db
         .prepare(
@@ -529,7 +540,9 @@ export class CanonicalFactsStore {
                   last_confirmed_at = ?,
                   statement = ?,
                   evidence_chunk_ids = ?,
-                  status = 'active'
+                  status = 'active',
+                  staleness_asked_count = 0,
+                  last_staleness_ask_at = NULL
             WHERE id = ?`,
         )
         .run(
