@@ -1,16 +1,21 @@
 /**
- * PLAN-40 Lane 2: memory hygiene. Covers clustering (same-type, threshold,
- * one-shot exclusion), merge flow through the ops callback with funnel
- * production rows, the skill-crystal exclusion, staleness ask ordering
- * (enqueue-then-stamp) and the 3-ask 'unconfirmed' terminal state, and
- * budget/ops-absent no-op paths.
+ * PLAN-40 Lane 2: memory hygiene. Covers the backfill delegation, staleness
+ * ask ordering (enqueue-then-stamp), the 3-ask 'unconfirmed' terminal state,
+ * and the ops-absent no-op path.
+ *
+ * The 1b near-duplicate merge and its tests were deleted 2026-08-14 after the
+ * merge failed its pre-registered D2 gate (0/23 top-5 changes — see
+ * docs/reviews/plan40-phase-adversarial-2026-08-11.md). Demotion-preservation
+ * coverage for the summaries it left behind lives in
+ * manager.merge-survives-reindex.test.ts and
+ * manager.reindex-preserves-crystals.test.ts.
  */
 
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, beforeEach } from "vitest";
 import { ensureMemoryIndexSchema } from "../memory-schema.js";
 import { runMigrations } from "../migrations.js";
-import { findMergeClusters, runHygiene, type HygieneOps } from "./hygiene.js";
+import { runHygiene, type HygieneOps } from "./hygiene.js";
 
 const NOW = 1_750_000_000_000;
 const DAY = 86_400_000;
@@ -28,166 +33,54 @@ beforeEach(() => {
   runMigrations(db);
 });
 
-function insertChunk(
-  id: string,
-  text: string,
-  embedding: number[],
-  opts: { semanticType?: string; memoryType?: string; hygieneDone?: number; origin?: string } = {},
-): void {
-  db.prepare(
-    `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
-       importance_score, semantic_type, memory_type, origin, hygiene_done,
-       lifecycle, lifecycle_state, created_at, updated_at)
-     VALUES (?, 'mem', 'memory', 0, 0, ?, ?, 'm', ?, 0.6, ?, ?, ?, ?, 'generated', 'active', ?, ?)`,
-  ).run(
-    id,
-    text,
-    `h-${id}`,
-    JSON.stringify(embedding),
-    opts.semanticType ?? "fact",
-    opts.memoryType ?? null,
-    opts.origin ?? null,
-    opts.hygieneDone ?? 0,
-    NOW,
-    NOW,
-  );
-}
-
-const noopOps = (writes: Array<{ text: string; memberIds: string[] }>): HygieneOps => ({
-  backfillEmbeddings: async () => ({ embedded: 0, remaining: 0 }),
-  writeMergedSummary: async (p) => {
-    writes.push({ text: p.text, memberIds: p.memberIds });
-    return `merged_${writes.length}`;
-  },
+const opsWith = (
+  backfill?: () => Promise<{ embedded: number; remaining: number }>,
+): HygieneOps => ({
+  backfillEmbeddings: backfill ?? (async () => ({ embedded: 0, remaining: 0 })),
 });
 
-describe("findMergeClusters", () => {
-  it("clusters same-type near-duplicates and never mixes semantic types", () => {
-    const a = { id: "a", semantic_type: "fact", embedding: [1, 0, 0] };
-    const b = { id: "b", semantic_type: "fact", embedding: [0.999, 0.01, 0] };
-    const c = { id: "c", semantic_type: "preference", embedding: [1, 0, 0] };
-    const d = { id: "d", semantic_type: "fact", embedding: [0, 1, 0] };
-    const clusters = findMergeClusters([a, b, c, d], 5);
-    expect(clusters).toHaveLength(1);
-    expect(clusters[0]!.memberIds.toSorted()).toEqual(["a", "b"]);
-  });
-
-  it("respects the max-cluster budget", () => {
-    const mk = (id: string, v: number[]) => ({ id, semantic_type: "fact", embedding: v });
-    const clusters = findMergeClusters(
-      [mk("a1", [1, 0, 0]), mk("a2", [1, 0.001, 0]), mk("b1", [0, 1, 0]), mk("b2", [0, 1, 0.001])],
-      1,
-    );
-    expect(clusters).toHaveLength(1);
-  });
-});
-
-describe("runHygiene merge flow", () => {
-  it("merges near-duplicates via ops, records funnel rows, and skips skill/hygiene_done/dream rows", async () => {
-    insertChunk("f1", "victor lives in miami", [1, 0, 0]);
-    insertChunk("f2", "victor is based in miami florida", [0.999, 0.01, 0]);
-    insertChunk("s1", "skill dupe", [1, 0, 0], { semanticType: "skill", memoryType: "skill" });
-    insertChunk("h1", "already merged", [1, 0, 0], { hygieneDone: 1 });
-    insertChunk("d1", "dream dupe", [1, 0, 0], { origin: "dream" });
-    const writes: Array<{ text: string; memberIds: string[] }> = [];
+describe("runHygiene backfill", () => {
+  it("delegates to the manager's drainer and reports the count", async () => {
+    let calledWith = -1;
     const result = await runHygiene({
       db,
-      llmCall: async () => "Victor lives in Miami, Florida.",
-      ops: noopOps(writes),
-      llmBudget: 8,
-      cycleId: "c1",
-      now: NOW,
-      mergeEnabled: true,
-    });
-    expect(result.merged).toBe(1);
-    expect(writes).toHaveLength(1);
-    expect(writes[0]!.memberIds.toSorted()).toEqual(["f1", "f2"]);
-    const funnel = db
-      .prepare(`SELECT lane, artifact_kind FROM dream_utility WHERE artifact_id = 'merged_1'`)
-      .get() as { lane: string; artifact_kind: string };
-    expect(funnel.lane).toBe("hygiene");
-    expect(funnel.artifact_kind).toBe("merged_chunk");
-  });
-
-  it("does nothing with zero LLM budget or a null llmCall", async () => {
-    insertChunk("f1", "a", [1, 0, 0]);
-    insertChunk("f2", "a2", [1, 0.001, 0]);
-    const writes: Array<{ text: string; memberIds: string[] }> = [];
-    const r1 = await runHygiene({
-      db,
-      llmCall: async () => "x",
-      ops: noopOps(writes),
-      llmBudget: 0,
-      cycleId: "c1",
-      mergeEnabled: true,
-    });
-    const r2 = await runHygiene({
-      db,
-      llmCall: null,
-      ops: noopOps(writes),
-      llmBudget: 8,
-      cycleId: "c2",
-      mergeEnabled: true,
-    });
-    expect(r1.merged + r2.merged).toBe(0);
-    expect(writes).toHaveLength(0);
-  });
-
-  /**
-   * PLAN-40 phase adversarial pass (2026-08-12): the merge was adding a
-   * summary per cycle and removing nothing, so it is gated OFF by default
-   * (DreamConfig.hygieneMerge) until a clean D2 replay confirms the fixes.
-   * The gate must silence ONLY the merge — the backfill and staleness halves
-   * are non-destructive and must keep running.
-   */
-  it("does not merge when the gate is absent or off", async () => {
-    insertChunk("f1", "victor lives in miami", [1, 0, 0]);
-    insertChunk("f2", "victor is based in miami florida", [0.999, 0.01, 0]);
-    const writes: Array<{ text: string; memberIds: string[] }> = [];
-    const byDefault = await runHygiene({
-      db,
-      llmCall: async () => "merged",
-      ops: noopOps(writes),
-      llmBudget: 8,
-      cycleId: "c1",
-      now: NOW,
-    });
-    const explicitlyOff = await runHygiene({
-      db,
-      llmCall: async () => "merged",
-      ops: noopOps(writes),
-      llmBudget: 8,
-      cycleId: "c2",
-      now: NOW,
-      mergeEnabled: false,
-    });
-    expect(byDefault.merged + explicitlyOff.merged).toBe(0);
-    expect(byDefault.llmCalls + explicitlyOff.llmCalls).toBe(0);
-    expect(writes).toHaveLength(0);
-  });
-
-  it("still runs the non-destructive halves while the merge gate is off", async () => {
-    insertChunk("f1", "victor lives in miami", [1, 0, 0]);
-    insertChunk("f2", "victor is based in miami florida", [0.999, 0.01, 0]);
-    const writes: Array<{ text: string; memberIds: string[] }> = [];
-    const ops = noopOps(writes);
-    let backfillCalls = 0;
-    const result = await runHygiene({
-      db,
-      llmCall: async () => "merged",
       ops: {
-        ...ops,
         backfillEmbeddings: async (limit: number) => {
-          backfillCalls++;
-          return ops.backfillEmbeddings(limit);
+          calledWith = limit;
+          return { embedded: 7, remaining: 3 };
         },
       },
-      llmBudget: 8,
       cycleId: "c1",
       now: NOW,
     });
-    expect(backfillCalls).toBe(1);
-    expect(result.merged).toBe(0);
+    expect(calledWith).toBeGreaterThan(0);
+    expect(result.backfilled).toBe(7);
+    expect(result.chunksProcessed).toBe(7);
+  });
+
+  it("is a no-op without ops", async () => {
+    const result = await runHygiene({ db, ops: null, cycleId: "c1", now: NOW });
+    expect(result.backfilled).toBe(0);
+    expect(result.staleAsks).toBe(0);
+  });
+
+  it("survives a throwing drainer and still runs staleness", async () => {
+    db.prepare(
+      `INSERT INTO canonical_facts (id, key, value, statement, category, confidence,
+         mention_count, first_seen_at, last_confirmed_at, valid_from, source, status,
+         staleness_asked_count)
+       VALUES ('cf1', 'k1', 'v', 's', 'general', 0.8, 1, ?, ?, ?, 'extraction', 'active', 0)`,
+    ).run(NOW - 100 * DAY, NOW - 100 * DAY, NOW - 100 * DAY);
+    const result = await runHygiene({
+      db,
+      ops: opsWith(async () => {
+        throw new Error("drainer down");
+      }),
+      cycleId: "c1",
+      now: NOW,
+    });
+    expect(result.backfilled).toBe(0);
+    expect(result.staleAsks).toBe(1);
   });
 });
 
@@ -211,17 +104,7 @@ describe("runHygiene canonical staleness", () => {
 
   it("enqueues a still-true question and stamps AFTER enqueue", async () => {
     insertFact("cf1", NOW - 100 * DAY);
-    const result = await runHygiene({
-      db,
-      llmCall: null,
-      ops: {
-        backfillEmbeddings: async () => ({ embedded: 0, remaining: 0 }),
-        writeMergedSummary: async () => null,
-      },
-      llmBudget: 0,
-      cycleId: "c1",
-      now: NOW,
-    });
+    const result = await runHygiene({ db, ops: opsWith(), cycleId: "c1", now: NOW });
     expect(result.staleAsks).toBe(1);
     const q = db.prepare(`SELECT finding, target_id FROM research_findings`).get() as {
       finding: string;
@@ -243,33 +126,13 @@ describe("runHygiene canonical staleness", () => {
     db.prepare(`UPDATE canonical_facts SET last_staleness_ask_at = ? WHERE id='cf1'`).run(
       NOW - 5 * DAY,
     );
-    const result = await runHygiene({
-      db,
-      llmCall: null,
-      ops: {
-        backfillEmbeddings: async () => ({ embedded: 0, remaining: 0 }),
-        writeMergedSummary: async () => null,
-      },
-      llmBudget: 0,
-      cycleId: "c1",
-      now: NOW,
-    });
+    const result = await runHygiene({ db, ops: opsWith(), cycleId: "c1", now: NOW });
     expect(result.staleAsks).toBe(0);
   });
 
   it("transitions to 'unconfirmed' after 3 asks instead of asking forever", async () => {
     insertFact("cf1", NOW - 200 * DAY, 3);
-    const result = await runHygiene({
-      db,
-      llmCall: null,
-      ops: {
-        backfillEmbeddings: async () => ({ embedded: 0, remaining: 0 }),
-        writeMergedSummary: async () => null,
-      },
-      llmBudget: 0,
-      cycleId: "c1",
-      now: NOW,
-    });
+    const result = await runHygiene({ db, ops: opsWith(), cycleId: "c1", now: NOW });
     expect(result.factsMarkedUnconfirmed).toBe(1);
     expect(result.staleAsks).toBe(0);
     const status = (

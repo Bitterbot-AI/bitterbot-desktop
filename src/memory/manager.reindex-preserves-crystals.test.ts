@@ -50,11 +50,6 @@ vi.mock("./embeddings.js", () => ({
 type ReindexManager = MemoryIndexManager & {
   sync: (o?: unknown) => Promise<unknown>;
   ingestScratchNote: (text: string, importance: number) => void;
-  writeMergedSummaryChunk: (p: {
-    text: string;
-    memberIds: string[];
-    semanticType: string;
-  }) => Promise<string | null>;
   db: DatabaseSync;
 };
 
@@ -136,18 +131,43 @@ describe("full reindex preserves self-authored chunks", () => {
     ).map((r) => r.id);
     expect(members.length).toBeGreaterThan(0);
 
-    const summaryId = await mgr.writeMergedSummaryChunk({
-      text: "MERGE_KEEPSAKE canonical merged note.",
-      memberIds: members,
-      semanticType: "fact",
-    });
-    expect(summaryId).not.toBeNull();
+    // The merge writer was deleted 2026-08-14 (failed its D2 gate); write the
+    // exact rows it used to produce.
+    const summaryId = "hygiene_merge_keepsake";
+    const now = Date.now();
+    mgr.db
+      .prepare(
+        `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+           importance_score, lifecycle, semantic_type, hygiene_done, access_count, created_at, updated_at)
+         VALUES (?, ?, 'memory', 0, 0, ?, 'h-keep', 'test-model', '[]', 0.6, 'activated', 'fact', 1, 0, ?, ?)`,
+      )
+      .run(
+        summaryId,
+        `hygiene/merge/${summaryId}`,
+        "MERGE_KEEPSAKE canonical merged note.",
+        now,
+        now,
+      );
+    mgr.db
+      .prepare(
+        `INSERT INTO chunks_fts (text, id, path, source, model, start_line, end_line)
+         VALUES (?, ?, ?, 'memory', 'test-model', 0, 0)`,
+      )
+      .run("MERGE_KEEPSAKE canonical merged note.", summaryId, `hygiene/merge/${summaryId}`);
+    for (const memberId of members) {
+      mgr.db
+        .prepare(
+          `UPDATE chunks SET lifecycle='consolidated', parent_id=?, hygiene_done=1 WHERE id=?`,
+        )
+        .run(summaryId, memberId);
+      mgr.db.prepare(`DELETE FROM chunks_fts WHERE id=?`).run(memberId);
+    }
 
     await mgr.sync({ force: true });
 
     expect(countLike(mgr.db, "MERGE_KEEPSAKE"), "the summary must survive a rebuild").toBe(1);
     const inFts = (
-      mgr.db.prepare(`SELECT COUNT(*) AS c FROM chunks_fts WHERE id = ?`).get(summaryId!) as {
+      mgr.db.prepare(`SELECT COUNT(*) AS c FROM chunks_fts WHERE id = ?`).get(summaryId) as {
         c: number;
       }
     ).c;

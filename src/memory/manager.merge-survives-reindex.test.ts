@@ -2,16 +2,21 @@ import type { DatabaseSync } from "node:sqlite";
 /**
  * PLAN-40 Lane 2, P1-F1 regression (phase adversarial pass, 2026-08-12).
  *
- * The hygiene merge's whole value is that it REMOVES the near-duplicates it
- * replaces from the retrieval surface. Re-indexing deleted every chunk row for
- * a file and re-inserted it as a fresh `generated` chunk with parent_id NULL,
- * hygiene_done 0 and brand-new FTS/vec rows — silently undoing the merge. In
- * the live DB 8 of 14 merge summaries had lost every member this way, and one
- * demoted chunk was back in full retrieval 14 hours after being merged away.
+ * Demotion state must survive re-indexing. Re-indexing deleted every chunk row
+ * for a file and re-inserted it as a fresh `generated` chunk with parent_id
+ * NULL, hygiene_done 0 and brand-new FTS/vec rows — silently erasing
+ * demotions. In the live DB 8 of 14 merge summaries had lost every member this
+ * way, and one demoted chunk was back in full retrieval 14 hours after being
+ * merged away.
  *
  * Chunk ids are content-derived, so an unchanged chunk comes back with the same
  * id: the demotion must be carried across the delete/re-insert. A chunk whose
  * text genuinely changed gets a new id and must be indexed fresh.
+ *
+ * The merge itself was deleted 2026-08-14 (failed its D2 gate), but its ~19
+ * summaries and their demoted members are live data, and OTHER writers still
+ * produce `consolidated` chunks (compression). The fixture below writes the
+ * exact rows the merge used to write.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -47,13 +52,39 @@ vi.mock("./embeddings.js", () => ({
 
 type MergeManager = MemoryIndexManager & {
   sync: (o?: unknown) => Promise<unknown>;
-  writeMergedSummaryChunk: (p: {
-    text: string;
-    memberIds: string[];
-    semanticType: string;
-  }) => Promise<string | null>;
   db: DatabaseSync;
 };
+
+/**
+ * Reproduce the rows the (now deleted) hygiene merge wrote: a summary chunk
+ * (hygiene_done=1, indexed) and its members demoted out of the search surface
+ * (lifecycle='consolidated', parent_id=summary, hygiene_done=1, FTS rows
+ * removed). This is exactly the on-disk shape the ~19 live summaries have.
+ */
+function applyMergeFixture(db: DatabaseSync, summaryText: string, memberIds: string[]): string {
+  const id = `hygiene_merge_${Math.random().toString(36).slice(2, 10)}`;
+  const now = Date.now();
+  db.exec("BEGIN");
+  db.prepare(
+    `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+       importance_score, lifecycle, semantic_type, hygiene_done, access_count, created_at, updated_at)
+     VALUES (?, ?, 'memory', 0, 0, ?, ?, 'test-model', '[]', 0.6, 'activated', 'fact', 1, 0, ?, ?)`,
+  ).run(id, `hygiene/merge/${id}`, summaryText, `h-${id}`, now, now);
+  db.prepare(
+    `INSERT INTO chunks_fts (text, id, path, source, model, start_line, end_line)
+     VALUES (?, ?, ?, 'memory', 'test-model', 0, 0)`,
+  ).run(summaryText, id, `hygiene/merge/${id}`);
+  const demote = db.prepare(
+    `UPDATE chunks SET lifecycle = 'consolidated', parent_id = ?, hygiene_done = 1, updated_at = ?
+      WHERE id = ?`,
+  );
+  for (const memberId of memberIds) {
+    demote.run(id, now, memberId);
+    db.prepare(`DELETE FROM chunks_fts WHERE id = ?`).run(memberId);
+  }
+  db.exec("COMMIT");
+  return id;
+}
 
 let cleanup: Array<() => Promise<void>> = [];
 
@@ -113,12 +144,7 @@ describe("hygiene merge survives re-indexing", () => {
     expect(members.length).toBeGreaterThan(0);
     const memberIds = members.map((m) => m.id);
 
-    const summaryId = await mgr.writeMergedSummaryChunk({
-      text: "Victor lives in Miami, Florida.",
-      memberIds,
-      semanticType: "fact",
-    });
-    expect(summaryId).not.toBeNull();
+    const summaryId = applyMergeFixture(mgr.db, "Victor lives in Miami, Florida.", memberIds);
 
     // Demoted: consolidated, parented to the summary, and out of the index.
     for (const id of memberIds) {
@@ -155,12 +181,12 @@ describe("hygiene merge survives re-indexing", () => {
     const before = mgr.db.prepare(`SELECT id FROM chunks WHERE source = 'memory'`).all() as Array<{
       id: string;
     }>;
-    const summaryId = await mgr.writeMergedSummaryChunk({
-      text: "Merged.",
-      memberIds: before.map((r) => r.id),
-      semanticType: "fact",
-    });
-    expect(summaryId).not.toBeNull();
+    const summaryId = applyMergeFixture(
+      mgr.db,
+      "Merged.",
+      before.map((r) => r.id),
+    );
+    void summaryId;
 
     // Rewrite the file with different text: new content, new id, new chunk.
     await fs.writeFile(

@@ -2712,7 +2712,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     });
 
     // PLAN-40 Lane 2: hygiene ops — the existing pending-embedding drainer
-    // (cursorless, self-consuming predicate) + the transactional merge write.
+    // (cursorless, self-consuming predicate).
     this.dreamEngine.setHygieneOps({
       // Mixin method (manager-embedding-ops) — not on the class type, same
       // cast the CLI uses.
@@ -2724,7 +2724,6 @@ export class MemoryIndexManager implements MemorySearchManager {
             }): Promise<{ embedded: number; remaining: number }>;
           }
         ).backfillPendingEmbeddings({ limit }),
-      writeMergedSummary: (p) => this.writeMergedSummaryChunk(p),
     });
 
     // PLAN-34 Phase 4 (§6.3): promoted extrapolation predictions route into
@@ -5524,119 +5523,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     return id;
   }
 
-  /**
-   * PLAN-40 Lane 2: transactional near-duplicate merge write. Inserts the
-   * summary chunk (embedded, vec+FTS indexed), demotes members
-   * (lifecycle='consolidated', parent_id=summary id, hygiene_done=1) and
-   * DELETES their vec/FTS index rows — lifecycle marking alone removes
-   * nothing from retrieval (adversarial F1/E11); the index deletion IS the
-   * mechanism. All-or-nothing: any failure rolls the whole merge back
-   * (mark-before-durable-write was the F3-bootstrap disease, F4/F13).
-   * Recovery: member text remains in chunks; a re-index script can restore.
-   */
-  async writeMergedSummaryChunk(params: {
-    text: string;
-    memberIds: string[];
-    semanticType: string;
-  }): Promise<string | null> {
-    const id = `hygiene_merge_${crypto.randomUUID()}`;
-    const now = Date.now();
-    const hash = crypto.createHash("sha256").update(params.text).digest("hex");
-    const source = this.sources.has("memory") ? "memory" : ([...this.sources][0] ?? "memory");
-    let embedding: number[] = [];
-    try {
-      embedding = ((await this.embedQueryWithTimeout(params.text)) as number[]) ?? [];
-    } catch {
-      /* embed failure → summary still written, model 'pending' for backfill */
-    }
-    const model = embedding.length > 0 ? this.provider.model : "pending";
-
-    // P1-F4 (2026-08-12): the plan's ordering rule was implemented as ordering
-    // only, never as a PRECONDITION. An embed failure was swallowed above and
-    // the merge carried on, deleting every member's vector row in exchange for
-    // a summary that had none — pure vector-retrieval loss. If the vector index
-    // is live, refuse the merge outright unless the summary is embeddable.
-    const vectorReady = await this.probeVectorAvailability().catch(() => false);
-    if (vectorReady && embedding.length === 0) {
-      log.warn(
-        "hygiene merge refused: summary embedding unavailable, so demoting members " +
-          "would delete their vector rows with nothing to replace them",
-      );
-      return null;
-    }
-
-    try {
-      this.db.exec("BEGIN");
-      this.db
-        .prepare(
-          `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
-             importance_score, lifecycle, semantic_type, hygiene_done,
-             access_count, created_at, updated_at)
-           VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, 0.6, 'activated', ?, 1, 0, ?, ?)`,
-        )
-        .run(
-          id,
-          `hygiene/merge/${id}`,
-          source,
-          params.text,
-          hash,
-          model,
-          JSON.stringify(embedding),
-          params.semanticType,
-          now,
-          now,
-        );
-      // P1-F3 (2026-08-12): every index mutation below used to be individually
-      // try/catch-swallowed INSIDE the transaction, so a failure never reached
-      // the outer catch and a half-applied merge COMMITTED. Live result: all 18
-      // demoted members were still in chunks_fts next to their summary, doubly
-      // keyword-retrievable, with no log line saying why. These now throw and
-      // roll the whole merge back — the all-or-nothing contract the docblock
-      // above always claimed. Absent indexes are handled by not entering the
-      // branch, which is a different thing from swallowing a live failure.
-      const ftsReady = this.fts.enabled && this.fts.available;
-      if (vectorReady && embedding.length > 0) {
-        this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(id);
-        this.db
-          .prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`)
-          .run(id, Buffer.from(new Float32Array(embedding).buffer));
-      }
-      if (ftsReady) {
-        this.db
-          .prepare(
-            `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)
-             VALUES (?, ?, ?, ?, ?, 0, 0)`,
-          )
-          .run(params.text, id, `hygiene/merge/${id}`, source, model);
-      }
-      const demote = this.db.prepare(
-        `UPDATE chunks SET lifecycle = 'consolidated', parent_id = ?, hygiene_done = 1,
-                updated_at = ? WHERE id = ?`,
-      );
-      for (const memberId of params.memberIds) {
-        demote.run(id, now, memberId);
-        if (vectorReady) {
-          this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(memberId);
-        }
-        if (ftsReady) {
-          this.db.prepare(`DELETE FROM ${FTS_TABLE} WHERE id = ?`).run(memberId);
-        }
-      }
-      this.db.exec("COMMIT");
-      return id;
-    } catch (err) {
-      try {
-        this.db.exec("ROLLBACK");
-      } catch {
-        /* ignore */
-      }
-      // warn, not debug: a rolled-back merge means an index mutation failed,
-      // and the whole reason F3 went unnoticed for a week is that this class of
-      // failure was invisible.
-      log.warn(`hygiene merge write failed (rolled back): ${String(err)}`);
-      return null;
-    }
-  }
+  // PLAN-40 Lane 2's near-duplicate merge writer (writeMergedSummaryChunk)
+  // lived here until 2026-08-14, when the merge failed its pre-registered D2
+  // gate (0/23 top-5 changes, −0.1% tokens) and was deleted. The 19 summaries
+  // it produced and their demoted members remain valid live data; the
+  // machinery that keeps demotions holding (reindex carry-over, the FTS drift
+  // fence, compression's hygiene_done skip) is still active and must stay.
 
   /**
    * PLAN-34 Phase 2b: drain unsurfaced idle-research findings for prompt

@@ -92,16 +92,26 @@ Each mode serves a different purpose and has a default weight controlling how of
 
 **`research` is disabled by default** (PLAN-34 Phase 0): the mode has no organic fuel — skill-execution telemetry only records against existing skill crystals, which only mint from existing execution rows — and its promotion path wrote directly to live chunk text with no staging gate. PLAN-40 retires it permanently: the verified-success distillation lane is the gated replacement.
 
-**`hygiene` (PLAN-40 Lane 2, enabled, reserved slot):** the evidence-backed
-consolidation lane. Each cycle it (a) drains the never-embedded crystal
-backlog (200/cycle, no LLM, cursorless), (b) merges up to 2 clusters of
-near-duplicate NON-skill memories (cosine ≥ 0.92) into single summary
-chunks — members are demoted transactionally with their vector/FTS index
-rows deleted, and are never re-merged (`hygiene_done`), and (c) enqueues up
-to 2 "still true?" questions for canonical facts unconfirmed for 90+ days
-(3 asks max, then the fact transitions to `unconfirmed`). One selection
-slot per cycle is reserved for utility lanes round-robin so softmax
-competition can never starve them.
+**`hygiene` (PLAN-40 Lane 2, enabled, reserved slot):** each cycle it
+(a) drains the never-embedded crystal backlog (200/cycle, no LLM,
+cursorless) and (b) enqueues up to 2 "still true?" questions for canonical
+facts unconfirmed for 90+ days (3 asks max, then the fact transitions to
+`unconfirmed`; a tier ≥ 1 re-confirmation resets the budget for the next
+staleness episode). One selection slot per cycle is reserved for utility
+lanes round-robin so softmax competition can never starve them.
+
+The lane's third operation — a near-duplicate merge that consolidated
+cosine ≥ 0.92 clusters into LLM summaries and demoted the members out of
+the search indexes — was **deleted 2026-08-14** after failing its
+pre-registered D2 gate: across 23 real replayed queries on state copies
+differing only by the merge, 0 top-5 changes and −0.1% injected tokens
+(`docs/reviews/plan40-phase-adversarial-2026-08-11.md`). Its ~19 summaries
+and their demoted members remain valid live data; the machinery that keeps
+demotions holding across re-indexing (re-index carry-over, the FTS drift
+fence's lifecycle filter, compression's `hygiene_done` skip) is still
+active. Measured top-5 redundancy (~0.65) lives in handover/session
+summaries the merge never targeted — future redundancy work should start
+there.
 
 **`distillation` (PLAN-40 Lane 1, enabled, reserved slot):** verified-success
 distillation — the AWM/Voyager shape. Skills with ≥3 completed executions

@@ -1433,21 +1433,13 @@ export class DreamEngine {
   ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
     try {
       const { runHygiene } = await import("./dream-modes/hygiene.js");
-      const llmCall = this.getLlmCallForMode("hygiene");
-      // The merge half is gated separately from the lane (default OFF) — see
-      // DreamConfig.hygieneMerge. The backfill and staleness halves always run.
-      const mergeEnabled = this.config.hygieneMerge?.enabled === true;
       const result = await runHygiene({
         db: this.db,
-        llmCall,
         ops: this.hygieneOps,
-        llmBudget: this.cycleLlmRemaining,
         cycleId,
-        mergeEnabled,
       });
       log.debug(
-        `hygiene cycle ${cycleId}: backfilled=${result.backfilled} merged=${result.merged} ` +
-          `(merge ${mergeEnabled ? "on" : "OFF"}) ` +
+        `hygiene cycle ${cycleId}: backfilled=${result.backfilled} ` +
           `staleAsks=${result.staleAsks} unconfirmed=${result.factsMarkedUnconfirmed}`,
       );
       return { insights: [], llmCalls: result.llmCalls, chunksAnalyzed: result.chunksProcessed };

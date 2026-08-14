@@ -345,3 +345,12 @@ gated feature nobody trusts; keep the 19 existing summaries (they are valid
 content) and their member demotions (holding correctly). If chunk-level
 redundancy is worth attacking later, the evidence says target what actually
 surfaces — handover/session summary chunks — not cosine-neighbors at large.
+
+**Executed 2026-08-14:** the merge code was deleted per the verdict —
+`runHygiene`'s 1b block and `findMergeClusters` (hygiene.ts), the
+`writeMergedSummary` op and `writeMergedSummaryChunk` writer (manager.ts),
+and the `hygieneMerge` config gate (dream-types.ts). 1a and 1c remain as the
+lane. The 19 live summaries and their demoted members were kept, and the
+demotion-preserving machinery (re-index carry-over, FTS drift fence lifecycle
+filter, compression's hygiene_done skip) stays active with its regression
+tests now fixtured on direct SQL instead of the deleted writer.
