@@ -67,7 +67,7 @@ import {
   type CanvasState,
 } from "./canvas.js";
 import { getCircleTopicBus } from "./circle-topic-transport.js";
-import { circleTopicId, publishCircleFrame, type CircleTopicBus } from "./circle-topic.js";
+import { circleTopicId, type CircleTopicBus } from "./circle-topic.js";
 import { publicDialUrlError } from "./dial-guard.js";
 import { DEFAULT_ANSWER_POSTURE, isDisclosureAllowed, pendingAsks } from "./disclosure.js";
 import {
@@ -120,6 +120,14 @@ import {
   type SandboxParticipation,
   type SandboxSession,
 } from "./sandbox.js";
+import {
+  buildSenderKeyBody,
+  deliveredMembers,
+  encryptTopicFrame,
+  getOrCreateOwnSenderKey,
+  markDelivered,
+  rotateOwnSenderKey,
+} from "./sender-keys.js";
 import { listStudyState, recordStudyResult, type StudySectionState } from "./study.js";
 import {
   buildChainedEventBody,
@@ -760,10 +768,27 @@ export class CirclesService {
     // receiver's envelope-id dedupe collapses any overlap. (Delivery status
     // still reflects direct/mailbox; the topic reach is a bonus.)
     const bus = this.topicBus();
-    if (bus) {
+    // sender_key envelopes never ride the topic: their sealed payload is for
+    // specific members (chicken-and-egg: recipients don't have the key yet),
+    // and the reliable dial/mailbox legs below are the distribution channel.
+    if (bus && envelope.type !== "sender_key") {
       try {
         const epoch = this.store.getCircle(circleId)?.keyEpoch ?? 0;
-        await publishCircleFrame(bus, circleId, epoch, method, envelope);
+        const topicId = circleTopicId(circleId, epoch);
+        // Stage 2: mesh frames are ENCRYPTED with this node's sender key
+        // (AES-256-GCM, topic id as AAD). Members decrypt with the key we
+        // distributed over dial/mailbox; anyone else on the topic sees
+        // ciphertext. The HTTP legs below stay plaintext-in-TLS as before.
+        const frameJson = JSON.stringify({ method, envelope });
+        await bus.publish(
+          topicId,
+          encryptTopicFrame({
+            topicId,
+            frameJson,
+            senderPubkey: this.pubkey,
+            key: getOrCreateOwnSenderKey(this.db, circleId),
+          }),
+        );
       } catch (err) {
         log.debug(`topic publish for ${circleId} failed: ${String(err)}`);
       }
@@ -796,6 +821,45 @@ export class CirclesService {
       } catch (err) {
         log.debug(`topic subscribe for ${c.circleId} failed: ${String(err)}`);
       }
+    }
+  }
+
+  /**
+   * Stage 2: make sure every boxed member of every active circle holds this
+   * node's CURRENT sender key. Called by the fast scheduler each cycle;
+   * cheap when converged (one indexed read per circle). Delivery rides the
+   * reliable dial/mailbox legs and is retried until each member is marked
+   * delivered — a member added later, or a key rotated after a removal,
+   * converges on subsequent cycles.
+   */
+  async ensureSenderKeyDistribution(): Promise<void> {
+    for (const c of this.listCircles()) {
+      if (c.kind === PRACTICE_KIND || c.status !== "active") continue;
+      const key = getOrCreateOwnSenderKey(this.db, c.circleId);
+      const done = deliveredMembers(this.db, c.circleId, key.keyId);
+      const recipients = this.peerMembers(c.circleId).filter(
+        (m): m is CircleMember & { boxPubkey: string } =>
+          typeof m.boxPubkey === "string" && m.boxPubkey.length > 0 && !done.has(m.memberPubkey),
+      );
+      if (recipients.length === 0) continue;
+      const body = buildSenderKeyBody(
+        key,
+        recipients.map((m) => ({ memberPubkey: m.memberPubkey, boxPubkey: m.boxPubkey })),
+      );
+      if (Object.keys(body.sealed).length === 0) continue;
+      const envelope = makeCircleEnvelope(
+        "sender_key",
+        c.circleId,
+        body as unknown as Record<string, JsonValue>,
+        this.key,
+      );
+      const delivered: string[] = [];
+      await runBounded(recipients, FANOUT_CONCURRENCY, async (member) => {
+        if (await this.deliverToMember(member, "circle/sender_key", envelope)) {
+          delivered.push(member.memberPubkey);
+        }
+      });
+      markDelivered(this.db, c.circleId, key.keyId, delivered);
     }
   }
 
@@ -1033,7 +1097,15 @@ export class CirclesService {
         ackIds.push(item.blobId);
         continue;
       }
-      const outcome = handleCircleMethod(method, { envelope: inner.envelope }, this.db);
+      const outcome = handleCircleMethod(
+        method,
+        { envelope: inner.envelope },
+        this.db,
+        Date.now(),
+        {
+          boxKeys: this.boxKeys,
+        },
+      );
       if (outcome.ok) {
         dispatched += 1;
         ackIds.push(item.blobId);
@@ -1479,6 +1551,11 @@ export class CirclesService {
       throw new Error("no such active member in this circle");
     }
     this.store.removeMember(args.circleId, args.memberPubkey);
+    // Stage 2: rotate this node's sender key so the evictee cannot read our
+    // FUTURE mesh frames (their copy of the old key still opens old ones).
+    // The scheduler's distribution sweep hands the fresh key to the
+    // remaining members on its next cycle.
+    rotateOwnSenderKey(this.db, args.circleId);
     log.warn(
       `member ${args.memberPubkey.slice(0, 24)}… removed from circle ${args.circleId} (node-local)`,
     );

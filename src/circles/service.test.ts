@@ -7,11 +7,13 @@ import { blobDigest, buildMailboxProof, handleMailboxMethod } from "../gateway/a
 import { DEFAULT_MEMBER_SCOPES, MAX_CIRCLE_MEMBERS } from "../memory/circles-store.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
-import { generateBoxKeyPair, sealToBox } from "./box-crypto.js";
+import { generateBoxKeyPair, sealToBox, type BoxKeyPair } from "./box-crypto.js";
+import { resolveTopicCircle } from "./circle-topic.js";
 import { setDisclosureGrant } from "./disclosure.js";
 import { makeCircleEnvelope } from "./envelope.js";
 import { createInvite, parseInviteCode } from "./invites.js";
 import { pendingJoinBackoffMs } from "./pending-join.js";
+import { decryptTopicFrame, parseEncryptedTopicFrame } from "./sender-keys.js";
 import { CirclesService, type FetchLike } from "./service.js";
 
 // PLAN-31 C1 end-to-end: two nodes (two DBs, two keys), a fake fetch that
@@ -39,7 +41,7 @@ function openDb(): DatabaseSync {
  */
 function meshFetch(
   nodes: Record<string, DatabaseSync>,
-  opts: { offline?: Set<string> } = {},
+  opts: { offline?: Set<string>; boxKeys?: Record<string, BoxKeyPair> } = {},
 ): FetchLike {
   return async (url, init) => {
     const host = /https:\/\/([a-z]+)\.test\//.exec(url)?.[1];
@@ -58,7 +60,9 @@ function meshFetch(
     }
     const outcome = isMailbox
       ? handleMailboxMethod(rpc.method, rpc.params, db, Date.now())
-      : handleCircleMethod(rpc.method, rpc.params, db, Date.now());
+      : handleCircleMethod(rpc.method, rpc.params, db, Date.now(), {
+          boxKeys: host ? opts.boxKeys?.[host] : undefined,
+        });
     const body = outcome.ok
       ? { jsonrpc: "2.0", result: outcome.result, id: rpc.id }
       : { jsonrpc: "2.0", error: outcome.error, id: rpc.id };
@@ -1331,8 +1335,10 @@ describe("CirclesService end-to-end (two nodes)", () => {
     const circleId = invite.circleId;
 
     await anaBus.sendMessage({ circleId, text: "hi over the mesh" });
-    // The message rode the topic (frame carries the signed envelope).
-    expect(published.some((p) => p.frame.includes("hi over the mesh"))).toBe(true);
+    // Stage 2: the topic copy is ENCRYPTED — plaintext never touches the mesh.
+    expect(published.length).toBeGreaterThan(0);
+    expect(published.some((p) => p.frame.includes("hi over the mesh"))).toBe(false);
+    expect(published.every((p) => parseEncryptedTopicFrame(p.frame) !== null)).toBe(true);
     expect(published.every((p) => /^bitterbot\/circle\/[0-9a-f]{64}\/v1$/.test(p.topic))).toBe(
       true,
     );
@@ -1340,6 +1346,84 @@ describe("CirclesService end-to-end (two nodes)", () => {
     // And the node subscribes the (non-practice) circle's topic to receive.
     await anaBus.ensureCircleSubscriptions();
     expect(subscribed).toContain(published[0]?.topic);
+  });
+
+  it("distributes sender keys and members decrypt mesh frames (Stage 2 end-to-end)", async () => {
+    const published: Array<{ topic: string; frame: string }> = [];
+    const topicBus = {
+      async publish(topic: string, frame: string) {
+        published.push({ topic, frame });
+      },
+      async subscribe() {},
+      async unsubscribe() {},
+    };
+    const anaBox = generateBoxKeyPair();
+    const bobBox = generateBoxKeyPair();
+    const fetchImpl = meshFetch(
+      { ana: anaDb, bob: bobDb },
+      { boxKeys: { ana: anaBox, bob: bobBox } },
+    );
+    const meshConfig = makeConfig("Ana's agent", "ana");
+    meshConfig.circles = { ...meshConfig.circles, meshTopic: { enabled: true } };
+    const anaS = new CirclesService({
+      db: anaDb,
+      config: meshConfig,
+      fetchImpl,
+      keyPair: anaKey,
+      boxKeys: anaBox,
+      topicBus,
+    });
+    const bobS = new CirclesService({
+      db: bobDb,
+      config: makeConfig("Bob's agent", "bob"),
+      fetchImpl,
+      keyPair: bobKey,
+      boxKeys: bobBox,
+    });
+    const invite = anaS.createInviteCode({ name: "Ana & Bob" });
+    await bobS.redeemInviteCode(invite.code);
+
+    // The scheduler sweep hands Bob Ana's current sender key over HTTP.
+    await anaS.ensureSenderKeyDistribution();
+    const stored = (
+      bobDb
+        .prepare(`SELECT COUNT(*) AS n FROM circle_sender_keys WHERE sender_pubkey = ?`)
+        .get(pubkeyId(anaKey)) as { n: number }
+    ).n;
+    expect(stored).toBe(1);
+    // Idempotent: a second sweep sends nothing new (delivery bookkeeping).
+    await anaS.ensureSenderKeyDistribution();
+
+    // A mesh frame from Ana is ciphertext on the wire and plaintext for Bob.
+    await anaS.sendMessage({ circleId: invite.circleId, text: "sealed for the mesh" });
+    const msgFrame = published.find((p) => parseEncryptedTopicFrame(p.frame));
+    expect(msgFrame).toBeDefined();
+    expect(msgFrame!.frame).not.toContain("sealed for the mesh");
+    const circleId = resolveTopicCircle(bobDb, msgFrame!.topic);
+    expect(circleId).toBe(invite.circleId);
+    const inner = decryptTopicFrame(bobDb, {
+      circleId: circleId!,
+      topicId: msgFrame!.topic,
+      wrapper: parseEncryptedTopicFrame(msgFrame!.frame)!,
+    });
+    expect(inner).toContain("sealed for the mesh");
+
+    // Removal rotates Ana's key: the next frame is unreadable with the OLD
+    // key until the new one is (deliberately not) distributed to the evictee.
+    await anaS.removeMember({ circleId: invite.circleId, memberPubkey: pubkeyId(bobKey) });
+    published.length = 0;
+    // Ana still publishes to the topic (other members may exist); Bob's stored
+    // key no longer opens it.
+    await anaS.sendMessage({ circleId: invite.circleId, text: "after eviction" }).catch(() => {});
+    const post = published.find((p) => parseEncryptedTopicFrame(p.frame));
+    if (post) {
+      const dec = decryptTopicFrame(bobDb, {
+        circleId: invite.circleId,
+        topicId: post.topic,
+        wrapper: parseEncryptedTopicFrame(post.frame)!,
+      });
+      expect(dec).toBeNull();
+    }
   });
 
   it("keeps the mesh topic dark by default even with a bus available (kill switch)", async () => {

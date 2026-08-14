@@ -67,6 +67,23 @@ export interface CircleTopicFrame {
 }
 
 /** Publish a signed circle verb onto the circle's blinded topic. */
+/**
+ * Map a blinded topic id back to the local circle it belongs to (a receiver
+ * knows its own circles + epochs, so it can recompute every topic name — the
+ * blinding only defeats OUTSIDE enumeration). Null for unknown topics.
+ */
+export function resolveTopicCircle(db: DatabaseSync, topic: string): string | null {
+  const rows = db
+    .prepare(`SELECT circle_id, key_epoch FROM circles WHERE status = 'active'`)
+    .all() as unknown as Array<{ circle_id: string; key_epoch: number }>;
+  for (const r of rows) {
+    if (circleTopicId(r.circle_id, r.key_epoch) === topic) {
+      return r.circle_id;
+    }
+  }
+  return null;
+}
+
 export async function publishCircleFrame(
   bus: CircleTopicBus,
   circleId: string,

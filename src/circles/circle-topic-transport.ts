@@ -23,9 +23,11 @@ import {
   bridgeCircleTopicBus,
   onBridgeCircleFrame,
   receiveCircleFrame,
+  resolveTopicCircle,
   type CircleTopicBridge,
   type CircleTopicBus,
 } from "./circle-topic.js";
+import { decryptTopicFrame, parseEncryptedTopicFrame } from "./sender-keys.js";
 
 const log = createSubsystemLogger("circles/topic-transport");
 
@@ -101,7 +103,25 @@ export function startCircleTopicTransport(deps: {
     void (async () => {
       const db = await deps.resolveCirclesDb();
       if (!db) return; // manager not ready — drop; gossip re-gossips / mailbox backstops
-      const res = receiveCircleFrame(frameJson, db);
+      // Stage 2: encrypted frames (the norm from 0.2.0+ senders) decrypt with
+      // the sender key that member distributed over dial/mailbox. No key yet
+      // (or tampered) → drop at debug; the HTTP copy of the same envelope
+      // delivers, and the key converges via the scheduler's distribution
+      // sweep. Legacy plaintext frames still dispatch (fleet transition).
+      let inner = frameJson;
+      const wrapper = parseEncryptedTopicFrame(frameJson);
+      if (wrapper) {
+        const circleId = resolveTopicCircle(db, topic);
+        const dec = circleId ? decryptTopicFrame(db, { circleId, topicId: topic, wrapper }) : null;
+        if (!dec) {
+          log.debug(
+            `encrypted frame on ${topic} from ${wrapper.s.slice(0, 24)}… undecryptable (no sender key yet?) — dropped; HTTP copy delivers`,
+          );
+          return;
+        }
+        inner = dec;
+      }
+      const res = receiveCircleFrame(inner, db);
       if (!res.ok) log.debug(`inbound circle frame on ${topic} rejected: ${res.error}`);
     })();
   });

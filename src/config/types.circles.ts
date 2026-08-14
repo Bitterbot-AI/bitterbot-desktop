@@ -51,11 +51,13 @@ export type CirclesConfig = {
   /**
    * PLAN-36 Phase 4: publish/subscribe circle frames over the libp2p gossip
    * mesh, ADDITIVE to the direct-dial + mailbox paths (delivery status never
-   * depends on it). Default: OFF (2026-08-13) — mesh frames are signed but
-   * NOT encrypted (the blinded topic id hides only the circle id; see
-   * circle-topic.ts), so until the per-circle shared-key work lands, riding
-   * the mesh broadcasts circle plaintext to any subscribed mesh node. Flip
-   * on explicitly only if that trade is acceptable.
+   * depends on it). Frames are ENCRYPTED with per-member sender keys since
+   * 2026-08-14 (sender-keys.ts; distributed sealed over dial/mailbox,
+   * rotated on removal). Default remains OFF while the fleet catches up:
+   * the topic path is only useful once peers run an orchestrator >= 0.2.0
+   * (pre-0.2.0 daemons lack the primitive — the transport latches off
+   * cleanly, ~2s once) and the relays carry circle topics (transport plan
+   * Stage 3). Flipping it on early is safe but a no-op for NAT'd pairs.
    */
   meshTopic?: {
     enabled?: boolean;

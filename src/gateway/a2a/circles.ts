@@ -30,12 +30,14 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { detectAgentSummon, queueAgentDraft } from "../../circles/agent-drafts.js";
+import { loadOrCreateBoxKeys, type BoxKeyPair } from "../../circles/box-crypto.js";
 import {
   MAILBOX_MAX_AGE_SECONDS,
   validateCircleEnvelope,
   type CircleEnvelope,
 } from "../../circles/envelope.js";
 import { redeemInvite } from "../../circles/invites.js";
+import { ingestSenderKeyBody } from "../../circles/sender-keys.js";
 import { canonicalJson, type JsonValue } from "../../commerce/sku.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CirclesStore, KNOWN_SCOPES, MAX_CIRCLE_MEMBERS } from "../../memory/circles-store.js";
@@ -178,7 +180,12 @@ export function authorizeCircleEnvelope(
   db: DatabaseSync,
   rawEnvelope: unknown,
   requiredScope: string,
-  opts: { now?: number; maxSkewSeconds?: number; rateClass?: keyof typeof RATE_LIMITS } = {},
+  opts: {
+    now?: number;
+    maxSkewSeconds?: number;
+    rateClass?: keyof typeof RATE_LIMITS;
+    expectedType?: CircleEnvelope["type"];
+  } = {},
 ): CircleAuthResult {
   const now = opts.now ?? Date.now();
   const env = rawEnvelope as CircleEnvelope;
@@ -191,6 +198,7 @@ export function authorizeCircleEnvelope(
   const validation = validateCircleEnvelope(env, {
     now: Math.floor(now / 1000),
     maxSkewSeconds: opts.maxSkewSeconds,
+    expectedType: opts.expectedType,
   });
   if (!validation.ok) {
     return {
@@ -967,11 +975,47 @@ function safeJsonRecord(json: string): Record<string, JsonValue> {
 // Dispatcher (the forage handleForageMethod pattern).
 // ---------------------------------------------------------------------------
 
+// circle/sender_key — Stage 2 mesh confidentiality: a member distributes
+// their gossip-frame sending key, sealed to each member's box key. Stored so
+// this node can decrypt that member's future topic frames. The body's sealed
+// blobs are opaque X25519 boxes — nothing here is injection-scannable prose,
+// and only an entry sealed to OUR box key can be opened (a hostile member
+// cannot plant a key for someone else's slot: unopenable entries are ignored).
+export function handleCircleSenderKey(
+  params: { envelope?: unknown },
+  db: DatabaseSync,
+  now: number = Date.now(),
+  boxKeys?: BoxKeyPair,
+): CircleOutcome<{ stored: boolean }> {
+  const auth = authorizeCircleEnvelope(db, params.envelope, KNOWN_SCOPES.messageSend, {
+    now,
+    rateClass: "message",
+    expectedType: "sender_key",
+  });
+  if (!auth.ok) {
+    return { ok: false, error: auth.error };
+  }
+  let keys: BoxKeyPair;
+  try {
+    keys = boxKeys ?? loadOrCreateBoxKeys();
+  } catch (e) {
+    return err(A2aErrorCodes.INTERNAL_ERROR, `box keys unavailable: ${String(e)}`);
+  }
+  const stored = ingestSenderKeyBody(db, {
+    circleId: auth.envelope.circle_id,
+    senderPubkey: auth.envelope.author_pubkey,
+    boxKeys: keys,
+    body: auth.envelope.body as { key_id?: unknown; sealed?: unknown },
+  });
+  return { ok: true, result: { stored } };
+}
+
 export function handleCircleMethod(
   method: string,
   params: unknown,
   db: DatabaseSync,
   now: number = Date.now(),
+  opts?: { boxKeys?: BoxKeyPair },
 ): CircleOutcome<unknown> {
   const p = (params ?? {}) as Record<string, unknown>;
   switch (method) {
@@ -991,6 +1035,8 @@ export function handleCircleMethod(
       return handleCircleEventAppend(p, db, now);
     case "circle/events.since":
       return handleCircleEventsSince(p, db, now);
+    case "circle/sender_key":
+      return handleCircleSenderKey(p, db, now, opts?.boxKeys);
     default:
       return err(A2aErrorCodes.METHOD_NOT_FOUND, `Unknown circle method: ${method}`);
   }

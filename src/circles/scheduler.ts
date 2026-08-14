@@ -36,6 +36,8 @@ export type SchedulableCirclesService = {
   heartbeat(): Promise<unknown>;
   /** PLAN-36 Phase 4: keep mesh-topic subscriptions current (optional). */
   ensureCircleSubscriptions?(): Promise<void>;
+  /** Stage 2: converge sender-key distribution (new members, rotations). */
+  ensureSenderKeyDistribution?(): Promise<void>;
   /** PLAN-36 §4: re-post pending mailbox joins until their welcome lands (optional). */
   repostPendingJoins?(): Promise<number>;
   /** PLAN-36 Phase B: generate queued @agent drafts on the quarantined path (optional). */
@@ -124,6 +126,8 @@ export function startCirclesScheduler(deps: CirclesSchedulerDeps): CirclesSchedu
       }
       // Keep mesh-topic subscriptions current (new circles, epoch bumps).
       await service.ensureCircleSubscriptions?.();
+      // Stage 2: converge sender-key distribution (new members, rotations).
+      await service.ensureSenderKeyDistribution?.();
       // Re-post any join awaiting an offline inviter, THEN drain (so a welcome
       // that crossed with our re-post is imported in the same cycle).
       await service.repostPendingJoins?.();

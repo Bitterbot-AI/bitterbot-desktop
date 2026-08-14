@@ -2165,6 +2165,44 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 61,
+    description:
+      "Circles P2P transport Stage 2 (2026-08-14): per-circle SENDER KEYS — " +
+      "the confidentiality layer for gossip-topic frames. Each member " +
+      "encrypts mesh frames with their own symmetric key and distributes it " +
+      "sealed to every member's X25519 box key over the reliable HTTP paths " +
+      "(sender-keys, not one group key: rosters are node-local and removal " +
+      "is per-node consent, so there is no key authority to agree with). " +
+      "circle_own_sender_keys holds this node's sending keys per circle " +
+      "(rotated when this node removes a member; delivered_json tracks which " +
+      "members have been sent the current key). circle_sender_keys holds " +
+      "keys RECEIVED from peers, keyed (circle, sender, key_id) so retired " +
+      "keys still decrypt in-flight frames.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS circle_own_sender_keys (
+          circle_id      TEXT    NOT NULL,
+          key_id         TEXT    NOT NULL,
+          key_b64        TEXT    NOT NULL,
+          created_at     INTEGER NOT NULL,
+          retired_at     INTEGER,
+          delivered_json TEXT    NOT NULL DEFAULT '[]',
+          PRIMARY KEY (circle_id, key_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_circle_own_sender_keys_current
+          ON circle_own_sender_keys (circle_id, retired_at, created_at);
+        CREATE TABLE IF NOT EXISTS circle_sender_keys (
+          circle_id     TEXT    NOT NULL,
+          sender_pubkey TEXT    NOT NULL,
+          key_id        TEXT    NOT NULL,
+          key_b64       TEXT    NOT NULL,
+          created_at    INTEGER NOT NULL,
+          PRIMARY KEY (circle_id, sender_pubkey, key_id)
+        );
+      `);
+    },
+  },
 ];
 
 /**

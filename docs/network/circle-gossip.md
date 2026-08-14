@@ -91,22 +91,40 @@ per-peer (reuse the circle rate buckets); cap subscribed topics per node;
 gossipsub already signs+scores messages, but the per-frame circle envelope auth
 is what actually gates membership.
 
-### 2. Confidentiality — the shared circle key (consume `key_epoch` for real)
+### 2. Confidentiality — SENDER KEYS (BUILT 2026-08-14, Stage 2)
 
 A gossip topic is readable by anyone who subscribes, and the blinded name only
-_hides_ the id (anyone who learns `circleId+keyEpoch` can recompute it). Frames
-here are **signed and authentic but not confidential** over the shared mesh.
-Real privacy needs a **per-circle shared symmetric key**:
+_hides_ the id (anyone who learns `circleId+keyEpoch` can recompute it).
+Frames used to be signed-but-plaintext; they are now **encrypted with
+per-member sender keys** (`src/circles/sender-keys.ts`, migration v61):
 
-- established at join (e.g. sender-keys / a group-key wrapped to each member's
-  X25519 box key in the join/roster response),
-- **rotated on every membership change**, keyed by `key_epoch` — closing the
-  post-compromise gap the store docstring already promises but never delivered,
-- frames encrypted with the current epoch's key before `publishCircleTopic`.
+- **Sender keys, not one group key.** A circle has no authority — rosters are
+  node-local, any member mints invites, removal is per-node consent — so a
+  single group key would need a key agreement no one can run. Instead each
+  member encrypts mesh frames with their OWN AES-256-GCM key and distributes
+  it sealed to every member's X25519 box key over the reliable dial/mailbox
+  legs (`circle/sender_key` envelopes, scope `message.send`; never over the
+  topic itself). The scheduler's `ensureSenderKeyDistribution` sweep retries
+  until every boxed member holds the current key, and hands new members every
+  sender's key the same way.
+- **Rotation on removal**: a node that removes a member rotates its sending
+  key (`rotateOwnSenderKey`) — the evictee cannot read that node's future
+  frames. Other members rotate when they process the removal on their own
+  roster (informed consent, same as removal itself). Old keys are retired,
+  not deleted, so in-flight frames still decrypt.
+- **Frame binding**: the blinded topic id is the GCM AAD, so a frame lifted
+  from one topic cannot be replayed onto another. Wrapper carries only
+  `{enc, sender, keyId, iv, ct, tag}` — key lookup metadata, no content.
+- **Transition**: receivers accept legacy plaintext frames from pre-Stage-2
+  senders (that is the status quo, not a regression — the flag is off
+  fleet-wide); an undecryptable frame is dropped at debug and the HTTP copy
+  of the same envelope delivers. The gossip TOPIC name stays keyed by
+  `key_epoch` exactly as before — naming and encryption are deliberately
+  orthogonal, so no topic-desync risk is introduced (§5.5 F2/F3 stands).
 
-Until that lands, the topic path is fine for non-sensitive presence/typing
-ephemera and for a spike, but message _bodies_ should stay on the
-sealed-mailbox / direct path.
+What `key_epoch` still does NOT give you: topic-name rotation on removal
+(unchanged, §5.5). The read-exclusion guarantee now comes from the sender-key
+rotation above, not from the topic name.
 
 ## Where it fits
 

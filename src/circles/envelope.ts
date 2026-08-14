@@ -46,7 +46,8 @@ export type CircleEnvelopeType =
   | "answer" // consented answer to an ask
   | "event" // typed shared-state event append (the tab, C2; domain-agnostic)
   | "poll" // group decision
-  | "vote"; // poll response
+  | "vote" // poll response
+  | "sender_key"; // sender-key distribution (mesh confidentiality, Stage 2)
 
 export interface CircleEnvelope {
   protocol: string;

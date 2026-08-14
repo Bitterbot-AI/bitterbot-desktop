@@ -354,11 +354,14 @@ automatically. The redundant `suspendMember` primitive was deleted the same
 day (removal is already reversible via re-pair; legacy `suspended` rows
 stay default-denied). Channel-key rotation on membership change remains
 unbuilt: `key_epoch` blinds the gossip topic id (topic naming, not
-encryption) and bumps only on member _add_. Until rotation lands, a removed
-member can still read gossip-topic frames (which are unencrypted for any
-mesh node anyway), and members who ignore the notice keep delivering to the
-evictee — **the hard read-exclusion guarantee still requires rotation
-(PLAN-36 §5.6)**. Outbound dials are SSRF-guarded (2026-08-13): every
+encryption) and bumps only on member _add_. Mesh-frame READ exclusion now
+comes from **sender-key encryption** (2026-08-14, `sender-keys.ts`): each
+member encrypts topic frames with their own key, distributed sealed per
+member over dial/mailbox and **rotated when that member processes a
+removal** — so an evictee stops reading a member's mesh frames as soon as
+that member removes them. Members who ignore the notice keep delivering to
+the evictee over HTTP, unchanged — removal remains per-node informed
+consent, never global revocation. Outbound dials are SSRF-guarded (2026-08-13): every
 peer-supplied a2a/mailbox URL passes `publicDialUrlError()` at the
 `circleRpc` boundary — non-http(s) schemes, credentialed URLs, loopback,
 RFC1918/CGNAT/link-local ranges, IPv4-mapped IPv6, and `.local`-class
