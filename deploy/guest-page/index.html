@@ -217,9 +217,7 @@
         }
         const keys = Object.keys(value).sort();
         return (
-          "{" +
-          keys.map((k) => JSON.stringify(k) + ":" + canonicalJson(value[k])).join(",") +
-          "}"
+          "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalJson(value[k])).join(",") + "}"
         );
       }
 
@@ -357,7 +355,7 @@
         // altered/forged invite must not offer copy or deep-link actions.
         // No Ed25519 WebCrypto (older browsers) degrades to an honest
         // "couldn't check here" row; the app re-verifies regardless.
-        verifyInviteSignature(env, (crypto.subtle || {})).then((state) => {
+        verifyInviteSignature(env, crypto.subtle || {}).then((state) => {
           const el = document.getElementById("sigstate");
           if (state === "valid") {
             if (el) {
@@ -370,7 +368,8 @@
                 "Ask your friend to send a fresh invite link.",
             );
           } else if (el) {
-            el.textContent = "Couldn't check in this browser — Bitterbot verifies before connecting";
+            el.textContent =
+              "Couldn't check in this browser — Bitterbot verifies before connecting";
           }
         });
       }
