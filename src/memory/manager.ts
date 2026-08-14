@@ -6468,6 +6468,19 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.skillsUnsubscribe();
       this.skillsUnsubscribe = null;
     }
+    // Drain any in-flight sync before closing the DB. The delta batch,
+    // interval, and watch paths all launch `void this.sync(...)`
+    // fire-and-forget; closing the handle underneath a running sync produces
+    // spurious errors and — on Windows — leaves the sqlite file handles open,
+    // making the store directory undeletable (CI: EBUSY on unlink in the
+    // session-staleness suite, whose claim path always fires such a sync).
+    if (this.syncing) {
+      try {
+        await this.syncing;
+      } catch {
+        // The launching call site already logs sync failures.
+      }
+    }
     this.db.close();
     INDEX_CACHE.delete(this.cacheKey);
   }

@@ -105,7 +105,9 @@ async function boot() {
   const mgr = manager as unknown as SessionManagerUnderTest;
   cleanup.push(async () => {
     await manager?.close();
-    await fs.rm(root, { recursive: true, force: true });
+    // Windows: retry the temp-dir delete — even with close() draining the
+    // in-flight sync, AV/indexer services can hold sqlite files briefly.
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
   return { mgr, sessionFile };
 }
