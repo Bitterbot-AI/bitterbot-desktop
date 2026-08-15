@@ -86,10 +86,28 @@ Orchestrator version bumped to **0.2.0**; the `orchestrator-v0.2.0` release
 tag is what makes `scripts/fetch-orchestrator.mjs` serve a topic-capable
 prebuilt to every node.
 
-Guard rails the security review must cover: rate-limit inbound topic frames
-per-peer (reuse the circle rate buckets); cap subscribed topics per node;
-gossipsub already signs+scores messages, but the per-frame circle envelope auth
-is what actually gates membership.
+**Hardening from the Stage 2-4 security pass (2026-08-15, orchestrator 0.2.3):**
+
+- **Per-peer rate limit** on both mesh ingress paths BEFORE any gateway work —
+  the topic-message arm and the circle-RPC request arm both go through
+  `SecurityValidator::check_circle_rate` keyed on the connection peer, so an
+  unauthenticated flooder is bounded before the gateway decodes a frame or
+  runs a handler (the TS `rateLimited` sits behind the membership check and
+  therefore never fires for a non-member — CRIT-2 / H1).
+- **Verb allowlist on the topic path**: `receiveCircleFrame` dispatches only
+  fire-and-forget verbs (message/ask/answer/event/presence/sender_key).
+  Request/response verbs (join, roster, events.since) are refused on the
+  broadcast topic — they ride the P2P/HTTP legs (H2).
+- **`circle/join` checks circle existence BEFORE the rate-limit write**, so a
+  bogus circle_id can't amplify into DB writes on an attacker-chosen bucket.
+- **Relay carriage** is per-peer quota'd (16 topics/peer) with eviction that
+  protects topics that have carried real traffic, so a junk-subscription flood
+  can't evict live circles (C3); `is_circle_topic` requires the exact
+  `bitterbot/circle/<64-hex>/v1` shape, killing the unbounded-topic relay OOM
+  (C4/C5); `unsubscribe_topic` is gated like subscribe/publish (C7); the IPC
+  socket is chmod 0600 (C7).
+- **Circle-RPC held channels** are capped (256) and swept every 5s against the
+  30s TTL (HIGH-4).
 
 ### 2. Confidentiality — SENDER KEYS (BUILT 2026-08-14, Stage 2)
 

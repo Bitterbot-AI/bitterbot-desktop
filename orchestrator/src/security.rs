@@ -10,6 +10,13 @@ const MAX_SKILL_SIZE_BYTES: usize = 256 * 1024; // 256KB
 const MAX_SKILLS_PER_MINUTE_PER_PEER: usize = 10;
 const MAX_TELEMETRY_PER_MINUTE_PER_PEER: usize = 5;
 const MAX_QUERIES_PER_MINUTE_PER_PEER: usize = 3;
+/// Per-peer ceiling on circle traffic (topic frames + circle-RPC requests)
+/// BEFORE it reaches the gateway. Circles fan out at the fast-scheduler
+/// cadence and event batches arrive in bursts, so this is generous — it is a
+/// flood backstop, not a fairness knob. Any UNKNOWN peer hitting the mesh is
+/// bounded here regardless of circle membership (which the daemon cannot
+/// check — that is the gateway's job); security pass CRIT-2 / H1.
+const MAX_CIRCLE_MSGS_PER_MINUTE_PER_PEER: usize = 240;
 const RATE_WINDOW_SECS: u64 = 60;
 const DEDUP_CACHE_CAP: usize = 10_000;
 /// Timestamp tolerance: reject messages older than 5 min or more than 1 min in the future.
@@ -23,6 +30,8 @@ pub struct SecurityValidator {
     telemetry_rate_limits: HashMap<String, Vec<Instant>>,
     /// Per-peer rate limiting for queries
     query_rate_limits: HashMap<String, Vec<Instant>>,
+    /// Per-peer rate limiting for circle traffic (topic frames + circle RPC)
+    circle_rate_limits: HashMap<String, Vec<Instant>>,
     /// Content-hash dedup LRU cache
     seen_hashes: LruCache<String, ()>,
     /// Genesis trust list: base64 Ed25519 pubkeys of authorized management nodes.
@@ -35,6 +44,7 @@ impl SecurityValidator {
             rate_limits: HashMap::new(),
             telemetry_rate_limits: HashMap::new(),
             query_rate_limits: HashMap::new(),
+            circle_rate_limits: HashMap::new(),
             seen_hashes: LruCache::new(NonZeroUsize::new(DEDUP_CACHE_CAP).unwrap()),
             genesis_trust_list,
         }
@@ -129,6 +139,13 @@ impl SecurityValidator {
         Self::generic_rate_check(&mut self.query_rate_limits, peer_id, MAX_QUERIES_PER_MINUTE_PER_PEER)
     }
 
+    /// Check per-peer circle-traffic rate limit (topic frames + circle RPC).
+    /// Returns true if allowed. Bounds an unauthenticated peer's mesh cost
+    /// before the gateway ever runs a handler (security pass CRIT-2 / H1).
+    pub fn check_circle_rate(&mut self, peer_id: &str) -> bool {
+        Self::generic_rate_check(&mut self.circle_rate_limits, peer_id, MAX_CIRCLE_MSGS_PER_MINUTE_PER_PEER)
+    }
+
     fn generic_rate_check(
         limits: &mut HashMap<String, Vec<Instant>>,
         peer_id: &str,
@@ -183,7 +200,12 @@ impl SecurityValidator {
     pub fn prune(&mut self) {
         let now = Instant::now();
         let prune_window = RATE_WINDOW_SECS * 2;
-        for limits in [&mut self.rate_limits, &mut self.telemetry_rate_limits, &mut self.query_rate_limits] {
+        for limits in [
+            &mut self.rate_limits,
+            &mut self.telemetry_rate_limits,
+            &mut self.query_rate_limits,
+            &mut self.circle_rate_limits,
+        ] {
             limits.retain(|_, timestamps| {
                 timestamps.retain(|ts| now.duration_since(*ts).as_secs() < prune_window);
                 !timestamps.is_empty()

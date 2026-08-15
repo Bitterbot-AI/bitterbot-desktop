@@ -308,13 +308,18 @@ export function handleCircleJoin(
   if (!validation.ok) {
     return err(A2aErrorCodes.UNAUTHORIZED, `invalid join envelope: ${validation.error}`);
   }
-  if (rateLimited(db, env.author_pubkey, "join", now)) {
-    return err(A2aErrorCodes.INVALID_REQUEST, "rate limited; slow down");
-  }
+  // Existence check BEFORE the rate-limit write: rateLimited does a SELECT+
+  // INSERT keyed on the attacker-chosen author pubkey, so checking it first on
+  // a bogus circle_id let an unauthenticated peer amplify into DB writes with
+  // a fresh keypair per request (security pass CRIT-2 / H2). A join for an
+  // unknown circle is refused with no write.
   const store = new CirclesStore(db);
   const circle = store.getCircle(env.circle_id);
   if (!circle || circle.status !== "active") {
     return err(A2aErrorCodes.UNAUTHORIZED, "not authorized");
+  }
+  if (rateLimited(db, env.author_pubkey, "join", now)) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "rate limited; slow down");
   }
   const existing = store.getMember(env.circle_id, env.author_pubkey);
   // Roster cap (MAX_CIRCLE_MEMBERS): checked BEFORE redeeming so a refused

@@ -240,6 +240,16 @@ pub async fn start_ipc_listener(
 
     #[cfg(unix)]
     let listener = UnixListener::bind(ipc_path)?;
+    #[cfg(unix)]
+    {
+        // Restrict the control socket to the owning user (security pass C7):
+        // any local process that can reach it can subscribe/publish topics and
+        // answer circle RPCs. 0600 keeps it to the daemon's own uid.
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(ipc_path, std::fs::Permissions::from_mode(0o600)) {
+            warn!("could not chmod IPC socket to 0600: {}", e);
+        }
+    }
     #[cfg(windows)]
     let listener = TcpListener::bind("127.0.0.1:19002").await?;
     // TODO: Replace Windows TCP with named pipe once tokio named_pipe ServerOptions

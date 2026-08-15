@@ -44,8 +44,21 @@ pub const QUERIES_TOPIC: &str = "bitterbot/queries/v1";
 /// (`bitterbot/circle/<sha256(id:epoch)>/v1`) minted TS-side; here we only gate
 /// the namespace so the dynamic primitive can't touch the builtin topics or
 /// become a subscribe-anything lever.
+/// Exact circle-topic shape: `bitterbot/circle/<64 lowercase hex>/v1` (84
+/// chars). The producer (`circleTopicId`) always emits exactly this. The old
+/// prefix/suffix-only check accepted arbitrary-length strings, enabling a
+/// ~250 KB topic that OOM'd a 1 GB relay and degenerate forms like
+/// `bitterbot/circle/v1` (security pass C4/C5). Fixed length + charset kills
+/// both.
 fn is_circle_topic(topic: &str) -> bool {
-    topic.starts_with("bitterbot/circle/") && topic.ends_with("/v1")
+    topic.len() == 84
+        && topic.starts_with("bitterbot/circle/")
+        && topic.ends_with("/v1")
+        // lowercase hex only — exactly what circleTopicId (sha256 .digest hex)
+        // emits; uppercase/other forms are not legitimate topics.
+        && topic.as_bytes()[17..81]
+            .iter()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b))
 }
 
 /// Stage 3 (circles transport): relay-side circle-topic carriage bounds.
@@ -55,6 +68,23 @@ fn is_circle_topic(topic: &str) -> bool {
 /// circles age out.
 const MAX_CARRIED_CIRCLE_TOPICS: usize = 1024;
 const CARRIED_CIRCLE_TOPIC_IDLE: Duration = Duration::from_secs(24 * 60 * 60);
+/// Per-peer carriage quota: a single peer may cause a relay to carry at most
+/// this many circle topics, so one flooder cannot fill (and LRU-evict every
+/// real circle out of) the global carriage set (security pass C3).
+const MAX_CARRIED_TOPICS_PER_PEER: usize = 16;
+
+/// A circle topic a relay carries to forward. `peer` is the announcer (for the
+/// per-peer quota); `has_traffic` marks a topic that has forwarded ≥1 real
+/// frame, which the eviction policy protects so a junk-subscription flood
+/// cannot evict a proven-live circle (security pass C3).
+struct CarriedTopic {
+    last_seen: std::time::Instant,
+    peer: String,
+    has_traffic: bool,
+}
+/// Hard cap on inbound circle-RPC channels held awaiting a gateway answer —
+/// bounds memory under a request flood (security pass HIGH-4).
+const MAX_INBOUND_CIRCLE_RPC: usize = 256;
 
 /// Stage 4 (circles transport): point-to-point circle RPC over libp2p
 /// request-response — the carrier that lets join/sync verbs skip HTTP when a
@@ -697,10 +727,11 @@ pub struct SwarmHandle {
     latency_window_ms: std::collections::VecDeque<u64>,
     /// Bootnode registry — only flushes to disk if enabled.
     bootnode_registry: SharedBootnodeRegistry,
-    /// Stage 3: circle topics this RELAY carries purely to forward (topic ->
-    /// last observed activity). Only populated in RelayMode::Server; frames
-    /// are sender-key encrypted so carriage exposes no content.
-    carried_circle_topics: std::collections::HashMap<gossipsub::TopicHash, std::time::Instant>,
+    /// Stage 3: circle topics this RELAY carries purely to forward. Only
+    /// populated in RelayMode::Server; frames are sender-key encrypted so
+    /// carriage exposes no content. Tracks the announcing peer (per-peer
+    /// quota) and whether real traffic has crossed it (eviction protection).
+    carried_circle_topics: std::collections::HashMap<gossipsub::TopicHash, CarriedTopic>,
     /// Stage 4: inbound circle-RPC response channels held while the gateway
     /// computes an answer, keyed by a local counter surfaced over IPC.
     inbound_circle_rpc: std::collections::HashMap<
@@ -972,25 +1003,40 @@ impl SwarmHandle {
     /// Stage 3: start carrying a circle topic this relay observed a peer
     /// announce. Bounded: at the cap, the least-recently-active carried topic
     /// is evicted first.
-    fn note_carried_circle_topic(&mut self, topic: &gossipsub::TopicHash) {
+    fn note_carried_circle_topic(&mut self, topic: &gossipsub::TopicHash, announcer: &str) {
         let now = std::time::Instant::now();
-        if let Some(seen) = self.carried_circle_topics.get_mut(topic) {
-            *seen = now;
+        if let Some(entry) = self.carried_circle_topics.get_mut(topic) {
+            entry.last_seen = now;
+            return;
+        }
+        // Per-peer quota: one peer cannot cause a relay to carry more than its
+        // share, so a flooder can never fill (and evict every real circle out
+        // of) the global set (C3).
+        let by_peer = self
+            .carried_circle_topics
+            .values()
+            .filter(|e| e.peer == announcer)
+            .count();
+        if by_peer >= MAX_CARRIED_TOPICS_PER_PEER {
+            debug!("peer {} at carriage quota; not carrying {}", announcer, topic);
             return;
         }
         if self.carried_circle_topics.len() >= MAX_CARRIED_CIRCLE_TOPICS {
-            if let Some(oldest) = self
+            // Evict the least-recently-seen topic that has NOT carried traffic;
+            // proven-live circles (has_traffic) are protected. If everything is
+            // live, fall back to plain LRU.
+            let victim = self
                 .carried_circle_topics
                 .iter()
-                .min_by_key(|(_, seen)| **seen)
-                .map(|(t, _)| t.clone())
-            {
+                .min_by_key(|(_, e)| (e.has_traffic, e.last_seen))
+                .map(|(t, _)| t.clone());
+            if let Some(v) = victim {
                 let _ = self
                     .swarm
                     .behaviour_mut()
                     .gossipsub
-                    .unsubscribe(&gossipsub::IdentTopic::new(oldest.as_str().to_string()));
-                self.carried_circle_topics.remove(&oldest);
+                    .unsubscribe(&gossipsub::IdentTopic::new(v.as_str().to_string()));
+                self.carried_circle_topics.remove(&v);
             }
         }
         match self
@@ -1000,7 +1046,10 @@ impl SwarmHandle {
             .subscribe(&gossipsub::IdentTopic::new(topic.as_str().to_string()))
         {
             Ok(_) => {
-                self.carried_circle_topics.insert(topic.clone(), now);
+                self.carried_circle_topics.insert(
+                    topic.clone(),
+                    CarriedTopic { last_seen: now, peer: announcer.to_string(), has_traffic: false },
+                );
                 info!(
                     "relay carrying circle topic {} ({} carried)",
                     topic,
@@ -1021,7 +1070,7 @@ impl SwarmHandle {
         let idle: Vec<gossipsub::TopicHash> = self
             .carried_circle_topics
             .iter()
-            .filter(|(_, seen)| now.duration_since(**seen) >= CARRIED_CIRCLE_TOPIC_IDLE)
+            .filter(|(_, e)| now.duration_since(e.last_seen) >= CARRIED_CIRCLE_TOPIC_IDLE)
             .map(|(t, _)| t.clone())
             .collect();
         for t in idle {
@@ -1042,6 +1091,10 @@ impl SwarmHandle {
         let start = std::time::Instant::now();
         let mut prune_interval = tokio::time::interval(Duration::from_secs(120));
         prune_interval.tick().await; // skip immediate first tick
+        // Held circle-RPC channels are swept fast (5s) against the 30s TTL so a
+        // flood cannot outrun the sweep (security pass HIGH-4).
+        let mut circle_rpc_sweep = tokio::time::interval(Duration::from_secs(5));
+        circle_rpc_sweep.tick().await;
         let mut bootstrap_interval = tokio::time::interval(Duration::from_secs(300));
         bootstrap_interval.tick().await; // skip immediate first tick
 
@@ -1224,8 +1277,10 @@ impl SwarmHandle {
                 }
                 _ = prune_interval.tick() => {
                     self.security.prune();
-                    // Stage 4: drop inbound circle-RPC channels the gateway
-                    // never answered (requester sees a failure, not a hang).
+                }
+                _ = circle_rpc_sweep.tick() => {
+                    // Drop inbound circle-RPC channels the gateway never
+                    // answered (requester sees a failure, not a hang).
                     let now = std::time::Instant::now();
                     self.inbound_circle_rpc.retain(|_, (_, held)| {
                         now.duration_since(*held) < CIRCLE_RPC_INBOUND_TTL
@@ -1338,29 +1393,42 @@ impl SwarmHandle {
                         Err(e) => warn!("Failed to deserialize census snapshot: {}", e),
                     }
                 } else if is_circle_topic(&topic_str) {
-                    // Stage 3: message activity keeps a relay's carriage fresh.
-                    if self.relay_mode == RelayMode::Server {
-                        if let Some(seen) = self.carried_circle_topics.get_mut(&message.topic) {
-                            *seen = std::time::Instant::now();
-                        }
-                    }
-                    // PLAN-36 Phase 4: a frame on a per-circle topic we're
-                    // subscribed to. Forward opaque bytes to the gateway as a
-                    // topic_message event; the circle envelope inside carries its
-                    // own membership auth (verified by handleCircleMethod), so we
-                    // do not (and cannot, once encrypted) inspect it here.
                     let from = match &message.source {
                         Some(p) => p.to_string(),
                         None => String::new(),
                     };
-                    self.emit_ipc_event(serde_json::json!({
-                        "type": "topic_message",
-                        "payload": {
-                            "topic": topic_str,
-                            "from_peer_id": from,
-                            "data_b64": base64::engine::general_purpose::STANDARD.encode(&message.data),
+                    // Per-peer rate limit BEFORE any forwarding/DB work: an
+                    // unauthenticated mesh peer that knows a carried topic id
+                    // could otherwise flood undecryptable frames and burn the
+                    // gateway's per-frame decode + circle scan (security pass
+                    // CRIT-2 / H1). Keyed on the propagation source so a relay
+                    // bounds each forwarder independently.
+                    if !self.security.check_circle_rate(&propagation_source.to_string()) {
+                        debug!("circle topic frame from {} rate-limited", propagation_source);
+                    } else {
+                        // Stage 3: real traffic refreshes a carried topic AND
+                        // marks it live so eviction protects it (C3).
+                        if self.relay_mode == RelayMode::Server {
+                            if let Some(entry) = self.carried_circle_topics.get_mut(&message.topic) {
+                                entry.last_seen = std::time::Instant::now();
+                                entry.has_traffic = true;
+                            }
                         }
-                    }));
+                        // PLAN-36 Phase 4: a frame on a per-circle topic we're
+                        // subscribed to. Forward opaque bytes to the gateway as
+                        // a topic_message event; the circle envelope inside
+                        // carries its own membership auth (verified by
+                        // handleCircleMethod), so we do not (and cannot, once
+                        // encrypted) inspect it here.
+                        self.emit_ipc_event(serde_json::json!({
+                            "type": "topic_message",
+                            "payload": {
+                                "topic": topic_str,
+                                "from_peer_id": from,
+                                "data_b64": base64::engine::general_purpose::STANDARD.encode(&message.data),
+                            }
+                        }));
+                    }
                 }
             }
             BitterbotBehaviourEvent::CircleRpc(request_response::Event::Message {
@@ -1368,21 +1436,33 @@ impl SwarmHandle {
                 message,
             }) => match message {
                 request_response::Message::Request { request, channel, .. } => {
-                    // Hold the channel; the gateway answers over IPC
-                    // (circle_respond). Held channels are TTL-swept so an
-                    // unresponsive gateway cannot leak them.
-                    let rid = self.next_inbound_circle_rpc_id;
-                    self.next_inbound_circle_rpc_id = self.next_inbound_circle_rpc_id.wrapping_add(1);
-                    self.inbound_circle_rpc
-                        .insert(rid, (channel, std::time::Instant::now()));
-                    self.emit_ipc_event(serde_json::json!({
-                        "type": "circle_request",
-                        "payload": {
-                            "request_id": rid,
-                            "from_peer_id": peer.to_string(),
-                            "data_b64": request.data_b64,
-                        }
-                    }));
+                    // Per-peer rate limit + a hard cap on outstanding held
+                    // channels: an unauthenticated peer can open this protocol
+                    // and flood requests, each pinning a ResponseChannel and a
+                    // gateway dispatch (security pass CRIT-2 / HIGH-4). Drop
+                    // (let the channel close) past either bound.
+                    if !self.security.check_circle_rate(&peer.to_string())
+                        || self.inbound_circle_rpc.len() >= MAX_INBOUND_CIRCLE_RPC
+                    {
+                        debug!("circle rpc request from {} dropped (rate/cap)", peer);
+                    } else {
+                        // Hold the channel; the gateway answers over IPC
+                        // (circle_respond). Held channels are TTL-swept so an
+                        // unresponsive gateway cannot leak them.
+                        let rid = self.next_inbound_circle_rpc_id;
+                        self.next_inbound_circle_rpc_id =
+                            self.next_inbound_circle_rpc_id.wrapping_add(1);
+                        self.inbound_circle_rpc
+                            .insert(rid, (channel, std::time::Instant::now()));
+                        self.emit_ipc_event(serde_json::json!({
+                            "type": "circle_request",
+                            "payload": {
+                                "request_id": rid,
+                                "from_peer_id": peer.to_string(),
+                                "data_b64": request.data_b64,
+                            }
+                        }));
+                    }
                 }
                 request_response::Message::Response { request_id, response } => {
                     self.emit_ipc_event(serde_json::json!({
@@ -1429,7 +1509,7 @@ impl SwarmHandle {
                 // a circle topic (IdentTopic: hashes are the readable names),
                 // a relay subscribes too, purely to forward.
                 if self.relay_mode == RelayMode::Server && is_circle_topic(topic.as_str()) {
-                    self.note_carried_circle_topic(&topic);
+                    self.note_carried_circle_topic(&topic, &peer_id.to_string());
                 }
             }
             BitterbotBehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed {
@@ -2233,12 +2313,22 @@ impl SwarmHandle {
                 }
             }
             IpcCommand::UnsubscribeTopic { id, topic, respond } => {
-                let t = gossipsub::IdentTopic::new(topic.clone());
-                let ok = self.swarm.behaviour_mut().gossipsub.unsubscribe(&t).unwrap_or(false);
-                let _ = respond.send(serde_json::json!({
-                    "type": "response", "id": id,
-                    "payload": { "ok": ok, "topic": topic }
-                }));
+                // Same gate as subscribe/publish: without it, the IPC verb can
+                // detach the node from the compile-time core topics
+                // (skills/census/queries), silently partitioning it (C7).
+                if !is_circle_topic(&topic) {
+                    let _ = respond.send(serde_json::json!({
+                        "type": "response", "id": id,
+                        "payload": { "ok": false, "error": "only bitterbot/circle/*/v1 topics allowed" }
+                    }));
+                } else {
+                    let t = gossipsub::IdentTopic::new(topic.clone());
+                    let ok = self.swarm.behaviour_mut().gossipsub.unsubscribe(&t).unwrap_or(false);
+                    let _ = respond.send(serde_json::json!({
+                        "type": "response", "id": id,
+                        "payload": { "ok": ok, "topic": topic }
+                    }));
+                }
             }
             IpcCommand::PublishTopic { id, topic, data_b64, respond } => {
                 if !is_circle_topic(&topic) {
@@ -3297,6 +3387,22 @@ pub async fn build_swarm(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_circle_topic_requires_exact_shape() {
+        let hex = "a".repeat(64);
+        assert!(is_circle_topic(&format!("bitterbot/circle/{hex}/v1")));
+        // Wrong length / charset / degenerate forms are all refused now (C4/C5).
+        assert!(!is_circle_topic("bitterbot/circle/v1"));
+        assert!(!is_circle_topic("bitterbot/circle//v1"));
+        assert!(!is_circle_topic(&format!("bitterbot/circle/{}/v1", "a".repeat(63))));
+        assert!(!is_circle_topic(&format!("bitterbot/circle/{}/v1", "a".repeat(65))));
+        assert!(!is_circle_topic(&format!("bitterbot/circle/{}/v1", "g".repeat(64)))); // non-hex
+        assert!(!is_circle_topic(&format!("bitterbot/circle/{}/v1", "A".repeat(64)))); // uppercase
+        assert!(!is_circle_topic(&format!("bitterbot/circle/{}/v2", hex)));
+        // A ~250KB monster (the old OOM vector) is rejected by the length gate.
+        assert!(!is_circle_topic(&format!("bitterbot/circle/{}/v1", "a".repeat(250_000))));
+    }
 
     #[test]
     fn classify_address_categorizes_common_multiaddrs() {

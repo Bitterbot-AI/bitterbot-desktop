@@ -196,4 +196,23 @@ describe("circle messaging over a gossip topic (prototype)", () => {
     expect(res.ok).toBe(false);
     expect(bob.messages(circleId).filter((m) => m.direction === "in")).toHaveLength(0);
   });
+
+  it("refuses request/response verbs on the topic path (security pass H2)", async () => {
+    const invite = ana.createInviteCode({ name: "Ana & Bob" });
+    await bob.redeemInviteCode(invite.code);
+    const circleId = invite.circleId;
+    // join / roster / events.since must never dispatch off the broadcast topic
+    // even from a real member — they belong on the P2P/HTTP legs.
+    for (const method of ["circle/join", "circle/roster", "circle/events.since"]) {
+      const env = makeCircleEnvelope("presence", circleId, {}, anaKey);
+      const res = receiveCircleFrame(JSON.stringify({ method, envelope: env }), bobDb);
+      expect(res.ok, method).toBe(false);
+      if (!res.ok) expect(res.error).toMatch(/not allowed on the topic path/);
+    }
+    // A fire-and-forget verb still works.
+    const msg = makeCircleEnvelope("message", circleId, { text: "hi" }, anaKey);
+    expect(
+      receiveCircleFrame(JSON.stringify({ method: "circle/message", envelope: msg }), bobDb).ok,
+    ).toBe(true);
+  });
 });

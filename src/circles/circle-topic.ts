@@ -151,6 +151,16 @@ export type ReceiveResult = { ok: true; result: unknown } | { ok: false; error: 
  * HTTP dial would be. The self-published copy is dropped by the envelope-id
  * dedupe already in that path.
  */
+/** Verbs the broadcast topic path may dispatch — fire-and-forget only. */
+const TOPIC_DISPATCHABLE = new Set([
+  "circle/message",
+  "circle/ask",
+  "circle/answer",
+  "circle/event.append",
+  "circle/presence",
+  "circle/sender_key",
+]);
+
 export function receiveCircleFrame(
   frameJson: string,
   db: DatabaseSync,
@@ -164,6 +174,14 @@ export function receiveCircleFrame(
   }
   if (typeof frame?.method !== "string" || !frame.method.startsWith("circle/") || !frame.envelope) {
     return { ok: false, error: "not a circle frame" };
+  }
+  // The broadcast gossip topic carries only fire-and-forget verbs. Request/
+  // response verbs (join, roster, events.since) belong on the point-to-point
+  // P2P/HTTP legs — accepting them here would let anyone who learns a topic id
+  // drive membership/sync writes with an attacker-chosen rate bucket (security
+  // pass H2). Their absence also means the sender never gets the reply anyway.
+  if (!TOPIC_DISPATCHABLE.has(frame.method)) {
+    return { ok: false, error: `verb ${frame.method} not allowed on the topic path` };
   }
   const outcome = handleCircleMethod(frame.method, { envelope: frame.envelope }, db, now);
   return outcome.ok
