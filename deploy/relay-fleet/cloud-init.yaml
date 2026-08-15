@@ -22,6 +22,7 @@ packages:
   - git
   - ufw
   - jq
+  - minisign # verify signed release checksums before install (security pass C1)
   - unattended-upgrades
 
 write_files:
@@ -58,47 +59,10 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
-  - path: /usr/local/sbin/bitterbot-orchestrator-update.sh
-    permissions: "0755"
-    content: |
-      #!/bin/bash
-      # Converge onto the newest orchestrator-v* RELEASE binary (checksummed,
-      # atomic, restart-only-on-change). Kept in-repo at
-      # deploy/relay-fleet/scripts/update-orchestrator.sh — edit THERE and
-      # mirror here; the live fleet runs this copy via the daily timer.
-      set -euo pipefail
-      REPO="Bitterbot-AI/bitterbot-desktop"
-      BIN=/usr/local/bin/bitterbot-orchestrator
-      ASSET=bitterbot-orchestrator-linux-x64
-      TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=30" |
-        jq -r '[.[] | select(.tag_name | startswith("orchestrator-v")) | .tag_name][0]')
-      if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
-        echo "no orchestrator release found" >&2
-        exit 1
-      fi
-      BASE="https://github.com/$REPO/releases/download/$TAG"
-      TMP=$(mktemp -d)
-      trap 'rm -rf "$TMP"' EXIT
-      curl -fsSL -o "$TMP/$ASSET" "$BASE/$ASSET"
-      curl -fsSL -o "$TMP/checksums.txt" "$BASE/checksums.txt"
-      EXPECTED=$(awk -v a="$ASSET" '$2 == a || $2 == "*" a { print $1 }' "$TMP/checksums.txt")
-      if [ -z "$EXPECTED" ]; then
-        echo "no checksum for $ASSET in $TAG" >&2
-        exit 1
-      fi
-      ACTUAL=$(sha256sum "$TMP/$ASSET" | awk '{ print $1 }')
-      if [ "$ACTUAL" != "$EXPECTED" ]; then
-        echo "checksum mismatch for $TAG" >&2
-        exit 1
-      fi
-      if [ -f "$BIN" ] && [ "$(sha256sum "$BIN" | awk '{ print $1 }')" = "$EXPECTED" ]; then
-        echo "already at $TAG"
-        exit 0
-      fi
-      install -m 755 "$TMP/$ASSET" "$BIN.new"
-      mv -f "$BIN.new" "$BIN"
-      systemctl restart bitterbot-orchestrator
-      echo "updated to $TAG"
+  # NOTE: the updater script is NOT inlined here — it is installed at first
+  # boot from the checked-in source (deploy/relay-fleet/scripts/
+  # update-orchestrator.sh) in the cloned repo, so there is a single source of
+  # truth and no inline/script drift (security pass C12). See bootstrap step 6.
 
   - path: /etc/systemd/system/bitterbot-orchestrator-update.service
     permissions: "0644"
@@ -111,16 +75,29 @@ write_files:
       [Service]
       Type=oneshot
       ExecStart=/usr/local/sbin/bitterbot-orchestrator-update.sh
+      # Runs as root: it writes /usr/local/bin and restarts the service. Keep
+      # the compatible hardening (it must still see the host systemd + /run
+      # lock, so ProtectSystem stays 'full' not 'strict', and no PrivateTmp).
+      NoNewPrivileges=true
+      ProtectHome=true
+      ProtectSystem=full
+      ProtectKernelTunables=true
+      ProtectControlGroups=true
+      RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+      SystemCallFilter=@system-service
 
   - path: /etc/systemd/system/bitterbot-orchestrator-update.timer
     permissions: "0644"
     content: |
       [Unit]
-      Description=Daily orchestrator release convergence (Stage 3 fleet updater)
+      Description=Daily orchestrator release convergence (fleet updater)
 
       [Timer]
-      OnCalendar=daily
-      RandomizedDelaySec=3600
+      # Region-staggered so a bad release cannot take all relays down in the
+      # same window (security pass C6): cloud-init rewrites OnCalendar per
+      # region at boot (see bootstrap). Default here is a safe fallback.
+      OnCalendar=*-*-* 04:00:00
+      RandomizedDelaySec=1800
       Persistent=true
 
       [Install]
@@ -163,22 +140,33 @@ write_files:
         ln -sf /usr/local/cargo/bin/rustc /usr/local/bin/rustc
       fi
 
-      # 4. Clone the repo (idempotent).
-      mkdir -p /opt/bitterbot
+      # 4. Clone the repo (idempotent) — for the updater script + systemd units
+      #    only. Cloning executes no code (unlike the build below).
+      mkdir -p /opt/bitterbot /var/lib/bitterbot
       if [ ! -d /opt/bitterbot/src ]; then
         git clone --depth=1 --branch="${git_branch}" "${git_repo_url}" /opt/bitterbot/src
       fi
       cd /opt/bitterbot/src
 
-      # 5. Build the orchestrator. -j 2 keeps memory usage in check on a
-      #    1 vCPU / 1 GB box. Release build takes ~10-15 min from cold cache.
-      cd orchestrator
-      RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
-        cargo build --release -j 2
+      # 5. Install the updater from the single checked-in source (no drift).
+      install -m 755 deploy/relay-fleet/scripts/update-orchestrator.sh \
+        /usr/local/sbin/bitterbot-orchestrator-update.sh
 
-      # 6. Install binary, ownership, dirs.
-      install -m 755 target/release/bitterbot-orchestrator /usr/local/bin/
-      mkdir -p /var/lib/bitterbot
+      # 6. Get the binary. PREFER the signed-release updater (verifies a
+      #    minisign signature + checksum before install — security pass C1/C13).
+      #    Fall back to a from-source build ONLY if the updater cannot run yet
+      #    (signing public key still a placeholder, or no signed release
+      #    published). Once the key is live, fresh droplets never build `main`.
+      if /usr/local/sbin/bitterbot-orchestrator-update.sh --install-only; then
+        echo "==> installed signed release binary via updater"
+      else
+        echo "==> WARN: signed-release updater unavailable; falling back to source build" >&2
+        cd orchestrator
+        RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
+          cargo build --release -j 2 --locked
+        install -m 755 target/release/bitterbot-orchestrator /usr/local/bin/
+        cd /opt/bitterbot/src
+      fi
       chown -R bitterbot:bitterbot /var/lib/bitterbot
 
       # 7. Genesis trust list: bootstrap with this node's own pubkey so
@@ -222,8 +210,14 @@ write_files:
       ufw --force enable
 
       # 9. Start the orchestrator service + the daily release-convergence
-      #    timer (Stage 3 fleet updater: the fleet previously had NO update
-      #    path and ran its first-boot build forever).
+      #    timer. Stagger the update hour per host (stable, derived from the
+      #    hostname) so a bad release cannot take every relay down in the same
+      #    window (security pass C6) — the canary auto-revert is the primary
+      #    safety net; the stagger is defense in depth.
+      HOUR=$(( ( $(hostname | cksum | cut -d' ' -f1) % 6 ) + 2 ))
+      mkdir -p /etc/systemd/system/bitterbot-orchestrator-update.timer.d
+      printf '[Timer]\nOnCalendar=\nOnCalendar=*-*-* %02d:00:00\n' "$HOUR" \
+        > /etc/systemd/system/bitterbot-orchestrator-update.timer.d/stagger.conf
       systemctl daemon-reload
       systemctl enable bitterbot-orchestrator
       systemctl restart bitterbot-orchestrator

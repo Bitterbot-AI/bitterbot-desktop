@@ -59,12 +59,14 @@ jobs:
             asset: bitterbot-orchestrator-win32-x64.exe
 
     steps:
-      - uses: actions/checkout@v4
+      # Third-party actions are SHA-pinned (security pass C1): a moved tag can
+      # no longer swap the action out from under a signed-release build.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.tag || github.ref }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
         with:
           targets: ${{ matrix.rust-target }}
 
@@ -74,7 +76,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: orchestrator
           shared-key: ${{ matrix.target }}
@@ -93,7 +95,7 @@ jobs:
           ls -lh staging/
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.asset }}
           path: staging/${{ matrix.asset }}
@@ -105,26 +107,22 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Approval gate (security pass tag-push vector): publishing runs in a
+    # protected Environment whose required reviewer must approve before the
+    # job proceeds. A malicious pushed tag builds but CANNOT be signed or
+    # published without that approval. Configure once in repo Settings →
+    # Environments → "release" (required reviewers = the maintainer).
+    environment: release
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.tag || github.ref }}
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
-
-      - name: Flatten and checksum
-        working-directory: .
-        run: |
-          mkdir -p release
-          find artifacts -type f -name 'bitterbot-orchestrator-*' -exec cp {} release/ \;
-          ls -lh release/
-          cd release
-          sha256sum bitterbot-orchestrator-* > checksums.txt
-          cat checksums.txt
 
       - name: Extract version for notes
         id: meta
@@ -135,18 +133,58 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Flatten, checksum, and SIGN
+        working-directory: .
+        env:
+          # minisign secret key (unencrypted, `minisign -G -W`). Stored as a
+          # repo secret; only reachable inside this approval-gated job.
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::MINISIGN_SECRET_KEY secret is not set — refusing to publish an unsigned release" >&2
+            exit 1
+          fi
+          sudo apt-get update && sudo apt-get install -y minisign
+          mkdir -p release
+          find artifacts -type f -name 'bitterbot-orchestrator-*' -exec cp {} release/ \;
+          cd release
+          sha256sum bitterbot-orchestrator-* > checksums.txt
+          cat checksums.txt
+          # Sign checksums.txt; the signed trusted comment names the tag, which
+          # the relay updater asserts to prevent cross-release replay.
+          printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/relay.key"
+          minisign -S -s "$RUNNER_TEMP/relay.key" -m checksums.txt \
+            -t "${{ steps.meta.outputs.tag }} checksums" \
+            -c "bitterbot orchestrator release"
+          rm -f "$RUNNER_TEMP/relay.key"
+          # Optional self-verify: if the public key is also provided as a
+          # secret, confirm the pair matches before publishing (catches a
+          # mismatched keypair early). Not required — the relay-side verify
+          # against the embedded key is the real gate.
+          PUB='${{ secrets.MINISIGN_PUBLIC_KEY }}'
+          if [ -n "$PUB" ]; then
+            minisign -V -P "$PUB" -m checksums.txt || {
+              echo "::error::self-verify failed — MINISIGN_PUBLIC_KEY does not match the signing key" >&2
+              exit 1; }
+          fi
+          ls -lh
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: Orchestrator ${{ steps.meta.outputs.version }}
           files: |
             release/bitterbot-orchestrator-*
             release/checksums.txt
+            release/checksums.txt.minisig
           fail_on_unmatched_files: true
           generate_release_notes: false
           body: |
             Prebuilt `bitterbot-orchestrator` v${{ steps.meta.outputs.version }} binaries.
 
             Downloaded automatically by `pnpm install` via `scripts/fetch-orchestrator.mjs`.
-            Manual verification: `sha256sum -c checksums.txt`.
+            `checksums.txt` is minisign-signed (`checksums.txt.minisig`); the
+            relay fleet verifies it against an embedded public key before
+            installing. Manual verification:
+            `minisign -Vm checksums.txt -P <fleet pubkey>` then `sha256sum -c checksums.txt`.

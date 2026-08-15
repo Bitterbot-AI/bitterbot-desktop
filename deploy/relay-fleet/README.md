@@ -35,11 +35,15 @@ This fleet provides:
   never exchange a frame.
 - **A daily release-convergence updater**
   (`bitterbot-orchestrator-update.timer` → `scripts/update-orchestrator.sh`):
-  fetches the newest `orchestrator-v*` release binary, verifies its
-  checksum, installs atomically, restarts only on change. Before 2026-08-14
-  the fleet had NO update path — droplets ran their first-boot build
-  forever, which is how the circle-topic primitive stayed undeployed for a
-  month.
+  fetches the newest **signed** `orchestrator-v*` release, verifies a
+  minisign signature over `checksums.txt` against an embedded public key
+  (bound to the release tag), then the binary's sha256, refuses downgrades
+  by semver floor, installs atomically, restarts, and **auto-reverts on a
+  failed health canary**. Timers are staggered per host so a bad release
+  cannot take all relays down together. **Signing must be activated once —
+  see `SIGNING.md`** (until then the updater fails closed). Before
+  2026-08-14 the fleet had NO update path; before 2026-08-15 the updater had
+  no signature verification (security pass C1).
 
 ## Prerequisites
 
