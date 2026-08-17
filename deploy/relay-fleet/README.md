@@ -28,11 +28,18 @@ This fleet provides:
   relays doesn't require a client release
 - **Circle-topic carriage** (orchestrator ≥ 0.2.1, Stage 3 of the circles
   transport plan): relays auto-subscribe to `bitterbot/circle/*/v1` topics
-  they observe peers announce (bounded at 1024, 24h idle sweep), purely to
-  forward — frames are sender-key encrypted, so carriage exposes no content.
-  Without this, gossipsub would only route a circle topic between directly
-  connected subscribers, and two NAT'd members meshed through a relay could
-  never exchange a frame.
+  they observe peers announce (per-peer quota 16, global cap 1024 with
+  live-traffic-protected eviction, 24h idle sweep — orchestrator 0.2.3),
+  purely to forward. Without this, gossipsub would only route a circle topic
+  between directly connected subscribers, and two NAT'd members meshed
+  through a relay could never exchange a frame.
+  - **Confidentiality caveat:** frame _content_ is sender-key encrypted, so a
+    relay cannot read messages. It does see **metadata** — the topic id, the
+    sender pubkey (cleartext in the frame wrapper), and message timing/size —
+    from which an operator could reconstruct a per-circle participant graph.
+    Carriage hides content, not the social graph. (This is why the relay logs
+    carried topics at debug, not info, and never logs peer↔circle mappings by
+    default.)
 - **A daily release-convergence updater**
   (`bitterbot-orchestrator-update.timer` → `scripts/update-orchestrator.sh`):
   fetches the newest **signed** `orchestrator-v*` release, verifies a

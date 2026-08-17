@@ -1050,9 +1050,11 @@ impl SwarmHandle {
                     topic.clone(),
                     CarriedTopic { last_seen: now, peer: announcer.to_string(), has_traffic: false },
                 );
-                info!(
-                    "relay carrying circle topic {} ({} carried)",
-                    topic,
+                // debug, not info, and only a short topic prefix — a relay's
+                // logs must not become a durable peer↔circle map (C9).
+                debug!(
+                    "relay carrying circle topic {}… ({} carried)",
+                    &topic.to_string().chars().take(28).collect::<String>(),
                     self.carried_circle_topics.len()
                 );
             }

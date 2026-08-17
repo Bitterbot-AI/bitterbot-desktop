@@ -21,11 +21,14 @@
  *     Unsubscribe,Publish}Topic + a `topic_message` IPC event, wired to
  *     `gossipsub.subscribe/unsubscribe/publish`.
  *  2. CONFIDENTIALITY. A gossip topic is broadcast to whoever subscribes, and
- *     the blinded name only *hides* the circle id — it is not encryption. Real
- *     privacy needs a per-circle SHARED symmetric key (established at join,
- *     rotated on membership change — this is what finally CONSUMES `key_epoch`).
- *     Until then, frames are signed+authentic but not confidential over the
- *     shared mesh; this prototype proves transport, not privacy.
+ *     the blinded name only *hides* the circle id — it is not encryption.
+ *     Frame CONTENT is now confidential: each member encrypts with a per-member
+ *     sender key (`sender-keys.ts`, Stage 2), so a mesh observer sees only
+ *     ciphertext. METADATA is not hidden — the topic id, the sender pubkey (in
+ *     the wrapper), and message timing/size are visible to every subscriber and
+ *     relay; a relay operator can reconstruct a per-circle participant graph
+ *     from that alone. Full unlinkability would need a rotating per-circle
+ *     secret (still unbuilt).
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -35,14 +38,17 @@ import { handleCircleMethod } from "../gateway/a2a/circles.js";
 
 /**
  * Blinded gossip topic for a circle. Hashing `circleId:keyEpoch` keeps the raw
- * circle id off the wire so the mesh can't enumerate circles by name, and ties
- * the topic to the current membership epoch — a removed member's stale
- * subscription lands on the wrong (old-epoch) topic once key_epoch bumps. (This
- * gives the currently wired-but-dead `key_epoch` its first real consumer.)
+ * circle id off the wire so the mesh can't enumerate circles by name.
  *
- * LIMIT: this hides the id from casual enumeration but is not unlinkability —
- * anyone who learns `circleId+keyEpoch` can recompute it. Full unlinkability
- * needs a rotating per-circle secret (see the module header).
+ * NOTE on `key_epoch`: it is bumped only on member ADD (`addMember`), NOT on
+ * removal — so the topic does NOT re-home when a member leaves, and an
+ * evictee's subscription keeps landing on the live topic. Read-exclusion for a
+ * removed member comes from sender-key ROTATION (`sender-keys.ts`), not from
+ * the topic name. (Do not restate the old claim that removal re-homes the
+ * topic; it does not.)
+ *
+ * LIMIT: hashing hides the id from casual enumeration but is not unlinkability —
+ * anyone who learns `circleId+keyEpoch` can recompute it.
  */
 export function circleTopicId(circleId: string, keyEpoch: number): string {
   const h = crypto.createHash("sha256").update(`${circleId}:${keyEpoch}`).digest("hex");
@@ -110,8 +116,8 @@ export interface CircleTopicBridge {
 
 /**
  * Adapt the bridge to the CircleTopicBus the app layer codes against. Frames
- * cross the IPC/gossip boundary as base64 (future-proof for encrypted binary
- * frames once the shared circle key lands).
+ * cross the IPC/gossip boundary as base64 (the frames are sender-key encrypted
+ * ciphertext, Stage 2).
  */
 export function bridgeCircleTopicBus(bridge: CircleTopicBridge): CircleTopicBus {
   return {

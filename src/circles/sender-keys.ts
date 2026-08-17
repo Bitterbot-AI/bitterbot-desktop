@@ -14,11 +14,19 @@
  * authority or consensus; sender keys need neither. Each node governs its own
  * key exactly as it governs its own roster:
  *  - a member who processes a removal ROTATES their sender key and
- *    redistributes to the remaining members, so the evictee cannot read that
- *    member's future mesh frames;
+ *    redistributes to the remaining members, so the evictee cannot read THAT
+ *    member's future mesh frames.
  *  - a new member is sent each existing member's CURRENT key (no rotation on
  *    add — a joiner is deliberately given current context, same as chat
  *    history semantics).
+ *
+ * HONEST LIMIT of removal read-exclusion: it is PER-NODE and only as complete
+ * as the removal propagates. `removeMember` rotates only the removing node's
+ * key; another member's key rotates only once THAT member also removes the
+ * evictee on their own node (removal is informed consent, not global
+ * revocation — PLAN-31 §5.5). So immediately after one node evicts, the
+ * evictee can still read the OTHER members' frames until each of them acts.
+ * There is no mechanism that forces the others to rotate.
  *
  * The gossip TOPIC name stays keyed by key_epoch exactly as before (naming,
  * not encryption) — this layer is deliberately orthogonal, so it introduces
@@ -30,8 +38,12 @@
  * Receivers accept BOTH encrypted and legacy plaintext frames during the
  * fleet transition (the mesh is additive and default-off; plaintext
  * acceptance is the status quo, not a regression). Sender-key material lives
- * in the local sqlite next to the box private key on disk — same custody
- * posture as the rest of the node's secrets.
+ * as base64 in the circles sqlite (`circle_own_sender_keys` /
+ * `circle_sender_keys`). NOTE: that DB is NOT chmod'd 0600 the way
+ * `identity/box.json` is — it lands at the process umask (typically 0644). So
+ * the custody is the DB file's, which today is WEAKER than the box key's, not
+ * equal. Tightening the DB perms (or wrapping key_b64 under the box key) is a
+ * tracked follow-up (security pass M6).
  */
 
 import type { DatabaseSync } from "node:sqlite";

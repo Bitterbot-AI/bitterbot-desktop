@@ -304,9 +304,11 @@ export class CirclesService {
   }
 
   private topicBus(): CircleTopicBus | null {
-    // Kill switch (default OFF): mesh frames are signed but not encrypted, so
-    // the additive gossip path stays dark until per-circle shared-key
-    // encryption lands. Direct-dial + mailbox delivery are unaffected.
+    // Kill switch (default OFF): the additive gossip path stays dark until the
+    // fleet runs orchestrator >= 0.2.3 (the per-peer mesh rate limiter is
+    // daemon-side — security pass CRIT-2). Frames themselves ARE encrypted
+    // (sender keys, Stage 2); direct-dial + mailbox delivery are unaffected
+    // whether this is on or off.
     if (this.config.circles?.meshTopic?.enabled !== true) {
       return null;
     }
