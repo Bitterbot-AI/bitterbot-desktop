@@ -1,14 +1,17 @@
-import { Power, RotateCw } from "lucide-react";
+import { Play, Power, RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 
 // Lifecycle controls for the local node. Restart self-heals (SIGUSR1
-// in-process restart); Shut down is a deliberate one-way SIGTERM — the UI
-// cannot bring the gateway back, so it is confirmed with that warning.
-// Both go through operator.admin RPCs the local Control UI already holds.
+// in-process restart); Shut down is a deliberate SIGTERM. Start posts to the
+// Vite dev server's /__gateway/start endpoint — the only process still alive
+// when the gateway is down — which spawns `pnpm start gateway` detached. In
+// builds without that endpoint (packaged Tauri app), Start surfaces terminal
+// guidance instead of silently failing.
+// Restart/shutdown go through operator.admin RPCs the local Control UI holds.
 
-type Phase = "idle" | "restarting" | "stopped";
+type Phase = "idle" | "restarting" | "stopped" | "starting";
 
 export function GatewayControls() {
   const request = useGatewayStore((s) => s.request);
@@ -33,15 +36,47 @@ export function GatewayControls() {
     }
   }, [phase, status]);
 
+  // "Starting…"/"stopped" end the moment the socket is back — the reconnect
+  // loop (≤15s backoff) picks the gateway up on its own once it's listening.
+  useEffect(() => {
+    if (status === "connected" && (phase === "starting" || phase === "stopped")) {
+      setPhase("idle");
+    }
+  }, [phase, status]);
+
   // Version skew: an older gateway won't have these methods. Advertised in the
   // hello frame, so hide the controls rather than showing buttons that 404.
   const methods = hello?.features?.methods;
   const supported = methods ? methods.includes("system.restart") : true;
   if (!supported) return null;
 
-  // A dropped socket is the EXPECTED outcome of both ops (the gateway goes
-  // away right after acking), so never surface disconnect/timeout as an error.
+  // A dropped socket is the EXPECTED outcome of restart/shutdown (the gateway
+  // goes away right after acking), so never surface disconnect/timeout errors.
   const isExpectedDrop = (message: string) => /disconnect|closed|timeout/i.test(message);
+
+  const doStart = async () => {
+    setError(null);
+    setPhase("starting");
+    try {
+      const res = await fetch("/__gateway/start", {
+        method: "POST",
+        headers: { "x-bitterbot-token": import.meta.env.VITE_GATEWAY_TOKEN ?? "" },
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        throw new Error(body?.error ?? `start endpoint returned ${res.status}`);
+      }
+      // Success: stay in "starting" until the reconnect loop lands ("connected"
+      // resets the phase above). Boot can take a while — the banner says so.
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(
+        `Could not start the gateway from here (${message}). ` +
+          "Run `pnpm start gateway` in a terminal instead.",
+      );
+      setPhase("idle");
+    }
+  };
 
   const doRestart = async () => {
     if (!confirm("Restart the gateway? It briefly disconnects and comes back on its own.")) return;
@@ -61,8 +96,8 @@ export function GatewayControls() {
   const doShutdown = async () => {
     if (
       !confirm(
-        "Shut down the gateway?\n\nThis stops the node. The Control UI cannot restart it — " +
-          "you'll relaunch it from a terminal (pnpm start gateway) or by reopening the app.",
+        "Shut down the gateway?\n\nThis stops the node. Bring it back with the Start gateway " +
+          "button, or from a terminal (pnpm start gateway).",
       )
     )
       return;
@@ -79,25 +114,46 @@ export function GatewayControls() {
     }
   };
 
+  const connected = status === "connected";
+  const startDisabled = connected || phase === "starting" || phase === "restarting";
+  const adminDisabled = phase !== "idle" || !connected;
+
   return (
     <div className="mt-4 pt-3 border-t border-border/20">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="text-xs text-muted-foreground">
           {phase === "restarting"
             ? "Restarting… the connection will drop and reconnect."
-            : phase === "stopped"
-              ? "Node stopped. Relaunch from a terminal or by reopening the app."
-              : "Restart bounces the node; shut down stops it (one-way from here)."}
+            : phase === "starting"
+              ? "Starting… waiting for the gateway to come up. First boot can take a while."
+              : phase === "stopped"
+                ? "Node stopped. Use Start gateway to relaunch it."
+                : connected
+                  ? "Restart bounces the node; shut down stops it."
+                  : "Gateway is not connected. Start it from here."}
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => void doStart()}
+            disabled={startDisabled}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs",
+              "bg-green-500/10 hover:bg-green-500/20 text-green-300 border border-green-500/25 transition-colors",
+              startDisabled && "opacity-50",
+            )}
+          >
+            <Play className={cn("w-3.5 h-3.5", phase === "starting" && "animate-pulse")} />
+            Start gateway
+          </button>
+          <button
+            type="button"
             onClick={() => void doRestart()}
-            disabled={phase !== "idle" || status !== "connected"}
+            disabled={adminDisabled}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs",
               "bg-muted/40 hover:bg-muted/60 text-foreground border border-border/30 transition-colors",
-              (phase !== "idle" || status !== "connected") && "opacity-50",
+              adminDisabled && "opacity-50",
             )}
           >
             <RotateCw className={cn("w-3.5 h-3.5", phase === "restarting" && "animate-spin")} />
@@ -106,11 +162,11 @@ export function GatewayControls() {
           <button
             type="button"
             onClick={() => void doShutdown()}
-            disabled={phase !== "idle" || status !== "connected"}
+            disabled={adminDisabled}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs",
               "bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/25 transition-colors",
-              (phase !== "idle" || status !== "connected") && "opacity-50",
+              adminDisabled && "opacity-50",
             )}
           >
             <Power className="w-3.5 h-3.5" />

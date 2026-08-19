@@ -8,7 +8,7 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
-    include: ["renderer/**/*.test.{ts,tsx}"],
+    include: ["renderer/**/*.test.{ts,tsx}", "*.test.ts"],
     exclude: ["node_modules", "dist-renderer"],
     setupFiles: [path.join(here, "test", "setup.ts")],
   },

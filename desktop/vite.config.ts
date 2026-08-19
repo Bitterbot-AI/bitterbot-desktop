@@ -2,7 +2,8 @@ import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+import { createGatewayStartHandler } from "./gateway-launcher";
 
 /**
  * Resolve the gateway auth token with the following precedence:
@@ -41,6 +42,32 @@ function resolveClientName(): string {
   return process.env.VITE_GATEWAY_CLIENT_NAME?.trim() || "bitterbot-control-ui";
 }
 
+/**
+ * Dev-server-only endpoint (POST /__gateway/start) so the Overview tab's
+ * "Start gateway" button can launch the gateway when only the UI is running.
+ * The dev server is the sole surviving process once the gateway stops, so it
+ * is the only place this can live until PLAN-39 (gateway-served UI) exists.
+ * Absent from production/Tauri builds (`apply: "serve"`); the button falls
+ * back to terminal guidance there.
+ */
+function gatewayLauncherPlugin(gatewayUrl: string): Plugin {
+  return {
+    name: "bitterbot-gateway-launcher",
+    apply: "serve",
+    configureServer(server) {
+      const handler = createGatewayStartHandler({
+        resolveToken: resolveGatewayToken,
+        gatewayUrl,
+        repoRoot: path.resolve(__dirname, ".."),
+        logPath: path.join(os.homedir(), ".bitterbot", "logs", "gateway-ui-launch.log"),
+      });
+      server.middlewares.use("/__gateway/start", (req, res) => {
+        void handler(req, res);
+      });
+    },
+  };
+}
+
 export default defineConfig(() => {
   const token = resolveGatewayToken();
   const url = resolveGatewayUrl();
@@ -56,7 +83,7 @@ export default defineConfig(() => {
   }
 
   return {
-    plugins: [react()],
+    plugins: [react(), gatewayLauncherPlugin(url)],
     root: "renderer",
     envDir: __dirname,
     base: "./",
