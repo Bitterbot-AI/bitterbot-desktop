@@ -43,22 +43,46 @@ const registryCache = new Map<string, PluginRegistry>();
 
 const defaultLogger = () => createSubsystemLogger("plugins");
 
+/** mtime in ms, or null when the path does not exist / cannot be stat'd. */
+const mtimeMsOrNull = (file: string): number | null => {
+  try {
+    return fs.statSync(file).mtimeMs;
+  } catch {
+    return null;
+  }
+};
+
 const resolvePluginSdkAliasFile = (params: {
   srcFile: string;
   distFile: string;
+  /** Directory to start walking up from. Defaults to this module's dir; tests inject a fixture root. */
+  fromDir?: string;
+  /** Overrides the source-first test behaviour so the resolver itself is testable. */
+  forceTestMode?: boolean;
 }): string | null => {
   try {
     const modulePath = fileURLToPath(import.meta.url);
-    const isProduction = process.env.NODE_ENV === "production";
-    const isTest = process.env.VITEST || process.env.NODE_ENV === "test";
-    let cursor = path.dirname(modulePath);
+    const isTest =
+      params.forceTestMode ?? Boolean(process.env.VITEST || process.env.NODE_ENV === "test");
+    let cursor = params.fromDir ?? path.dirname(modulePath);
     for (let i = 0; i < 6; i += 1) {
       const srcCandidate = path.join(cursor, "src", "plugin-sdk", params.srcFile);
       const distCandidate = path.join(cursor, "dist", "plugin-sdk", params.distFile);
-      const orderedCandidates = isProduction
-        ? isTest
-          ? [distCandidate, srcCandidate]
-          : [distCandidate]
+      // Prefer the prebuilt bundle. Aliasing to the TypeScript source makes jiti
+      // walk the SDK's ~1400-module import graph on every gateway boot, which is
+      // I/O-bound and costs minutes on 9p/DrvFS and network filesystems.
+      // Measured 2026-08-24 (WSL2 + 9p, loading extensions/telegram/index.ts):
+      // src alias >591s and still running, dist alias 144s. The gateway's
+      // load-plugins step was the boot bottleneck at a 25.6-minute median.
+      // A source file that is strictly newer than the built one still wins, so
+      // editing the SDK keeps working without a rebuild. Tests stay source-first
+      // so they always exercise the working tree.
+      const srcMtime = mtimeMsOrNull(srcCandidate);
+      const distMtime = mtimeMsOrNull(distCandidate);
+      const preferDist =
+        !isTest && distMtime !== null && (srcMtime === null || distMtime >= srcMtime);
+      const orderedCandidates = preferDist
+        ? [distCandidate, srcCandidate]
         : [srcCandidate, distCandidate];
       for (const candidate of orderedCandidates) {
         if (fs.existsSync(candidate)) {
@@ -82,6 +106,10 @@ const resolvePluginSdkAlias = (): string | null =>
 
 const resolvePluginSdkAccountIdAlias = (): string | null => {
   return resolvePluginSdkAliasFile({ srcFile: "account-id.ts", distFile: "account-id.js" });
+};
+
+export const __testing = {
+  resolvePluginSdkAliasFile,
 };
 
 function buildCacheKey(params: {
