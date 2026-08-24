@@ -27,6 +27,7 @@ import {
 } from "../config/config.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
+import { recordBootDurationMs } from "../infra/boot-duration.js";
 import { confirmBootHealthy } from "../infra/boot-verify.js";
 import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
@@ -619,6 +620,11 @@ export async function startGatewayServer(
     context: requestContext,
   });
   bootStep("pre-listen-log");
+  // Record how long this boot actually took so a restart can advertise an honest
+  // `restartExpectedMs` instead of the old hardcoded 1.5s. Boot time spans two
+  // orders of magnitude across filesystems, so the previous boot is the only
+  // sane predictor. Best-effort: never throws.
+  recordBootDurationMs(Date.now() - __bootStart);
   logGatewayStartup({
     cfg: cfgAtStart,
     bindHost,

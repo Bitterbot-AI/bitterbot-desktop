@@ -1,5 +1,6 @@
 import type { startGatewayServer } from "../../gateway/server.js";
 import type { defaultRuntime } from "../../runtime.js";
+import { readLastBootDurationMs } from "../../infra/boot-duration.js";
 import { acquireGatewayLock } from "../../infra/gateway-lock.js";
 import { restartGatewayProcessWithFreshPid } from "../../infra/process-respawn.js";
 import {
@@ -75,7 +76,11 @@ export async function runGatewayLoop(params: {
 
         await server?.close({
           reason: isRestart ? "gateway restarting" : "gateway stopping",
-          restartExpectedMs: isRestart ? 1500 : null,
+          // Honest estimate from the previous boot rather than a constant: measured
+          // boot on a WSL2 + 9p node was 290s (1537s before the plugin-sdk alias
+          // fix), so the old hardcoded 1500 promised a 1.5s outage before a
+          // multi-minute one and clients gave up or showed a bare error.
+          restartExpectedMs: isRestart ? readLastBootDurationMs() : null,
         });
       } catch (err) {
         gatewayLog.error(`shutdown error: ${String(err)}`);
