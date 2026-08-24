@@ -549,6 +549,31 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        // The three keys below are read by `src/circles/service.ts` (dial:286,
+        // p2pDial:303, meshTopic:312) and documented in `docs/network/circles.md`,
+        // but were never declared here. Because this object is `.strict()`, setting
+        // any of them made config validation fail and the gateway refuse to boot,
+        // and `bitterbot doctor` then "repaired" the file by deleting the key.
+        // That made the documented kill switch for a default-ON network feature
+        // unusable. See docs/reviews/v1-release-audit-2026-08-21.md.
+        dial: z
+          .object({
+            allowPrivate: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+        meshTopic: z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+        p2pDial: z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
         briefing: z
           .object({
             enabled: z.boolean().optional(),

@@ -41,6 +41,48 @@ describe("circles config schema", () => {
     }
   });
 
+  // Regression: these three keys are read by src/circles/service.ts (dial:286,
+  // p2pDial:303, meshTopic:312) and documented in docs/network/circles.md as kill
+  // switches, but were missing from the strict schema. Setting the documented
+  // switch for a default-ON network feature made the gateway refuse to boot, and
+  // `doctor` then deleted the key. Found by the 2026-08-21 V1 release audit.
+  it("accepts the transport kill switches that the code and docs both use", () => {
+    const result = BitterbotSchema.safeParse({
+      circles: {
+        enabled: true,
+        dial: { allowPrivate: true },
+        meshTopic: { enabled: false },
+        p2pDial: { enabled: false },
+      },
+    });
+    expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
+  });
+
+  it("accepts each transport kill switch on its own", () => {
+    for (const good of [
+      { circles: { p2pDial: { enabled: false } } },
+      { circles: { p2pDial: { enabled: true } } },
+      { circles: { meshTopic: { enabled: true } } },
+      { circles: { dial: { allowPrivate: false } } },
+    ]) {
+      const result = BitterbotSchema.safeParse(good);
+      expect(result.success, JSON.stringify(good)).toBe(true);
+    }
+  });
+
+  it("keeps the transport kill switches strict and typed", () => {
+    for (const bad of [
+      { circles: { p2pDial: { enable: false } } }, // typo
+      { circles: { p2pDial: { enabled: "false" } } }, // wrong type
+      { circles: { meshTopic: { topic: "x" } } }, // unknown key
+      { circles: { dial: { allowPrivate: "yes" } } }, // wrong type
+      { circles: { dial: { allowPublic: true } } }, // unknown key
+    ]) {
+      const result = BitterbotSchema.safeParse(bad);
+      expect(result.success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
   it("rejects wrong types on the switches", () => {
     expect(BitterbotSchema.safeParse({ circles: { enabled: "yes" } }).success).toBe(false);
     expect(BitterbotSchema.safeParse({ circles: { mailbox: { serve: "true" } } }).success).toBe(
