@@ -34,11 +34,45 @@ const EXT_BY_MIME: Record<string, string> = {
   "text/markdown": ".md",
 };
 
+// Web asset types. Without these a static server hands browsers
+// `application/octet-stream` for ES modules and stylesheets, which they refuse to
+// execute or apply. Added for PLAN-39 (gateway-served Control UI); this also fixes
+// canvas-host, which has been serving its JS as octet-stream.
+const WEB_MIME_BY_EXT: Record<string, string> = {
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".cjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".map": "application/json; charset=utf-8",
+  ".wasm": "application/wasm",
+  ".webmanifest": "application/manifest+json",
+};
+
 const MIME_BY_EXT: Record<string, string> = {
   ...Object.fromEntries(Object.entries(EXT_BY_MIME).map(([mime, ext]) => [ext, mime])),
+  ...WEB_MIME_BY_EXT,
   // Additional extension aliases
   ".jpeg": "image/jpeg",
 };
+
+/**
+ * Synchronous extension-only MIME lookup.
+ *
+ * Static asset serving knows the type from the path and must not pay for content
+ * sniffing on every request; {@link detectMime} is for uploads of unknown origin.
+ */
+export function mimeFromExtension(filePath?: string | null): string | undefined {
+  const ext = getFileExtension(filePath);
+  return ext ? MIME_BY_EXT[ext] : undefined;
+}
 
 const AUDIO_FILE_EXTENSIONS = new Set([
   ".aac",

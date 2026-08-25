@@ -28,6 +28,7 @@ import {
   type ResolvedGatewayAuth,
 } from "./auth.js";
 import { handleAvatarRequest } from "./avatar-http.js";
+import { handleControlUiRequest } from "./control-ui-http.js";
 import { renderDreamDashboardPage } from "./dream-dashboard-page.js";
 import { applyHookMappings } from "./hooks-mapping.js";
 import {
@@ -700,6 +701,28 @@ export function createGatewayHttpServer(opts: {
         handleAvatarRequest(req, res, {
           basePath: avatarBasePath,
           resolveAvatar: (agentId) => resolveAgentAvatar(configSnapshot, agentId),
+        })
+      ) {
+        return;
+      }
+
+      // PLAN-39 Phase 2: the built Control UI, mounted LAST so every route above
+      // still wins. Returns false when serving is disabled, nothing is staged, or
+      // the file does not exist, so the 404 below stays the single fallthrough.
+      if (
+        await handleControlUiRequest(req, res, {
+          enabled: configSnapshot.gateway?.controlUi?.enabled,
+          configuredRoot: configSnapshot.gateway?.controlUi?.root,
+          basePath: configSnapshot.gateway?.controlUi?.basePath,
+          isAuthorized: (request) => {
+            // Same trust the existing dashboard pages encode: a valid bearer
+            // token, or a direct loopback request.
+            if (isLocalDirectRequest(request, trustedProxies)) {
+              return true;
+            }
+            const token = getBearerToken(request);
+            return Boolean(token) && token === resolvedAuth?.token;
+          },
         })
       ) {
         return;
