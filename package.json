@@ -140,7 +140,8 @@
     "test:watch": "vitest",
     "tsgo:test": "tsgo -p tsconfig.test.json",
     "tui": "node scripts/run-node.mjs tui",
-    "tui:dev": "BITTERBOT_PROFILE=dev node scripts/run-node.mjs --dev tui"
+    "tui:dev": "BITTERBOT_PROFILE=dev node scripts/run-node.mjs --dev tui",
+    "ui:build": "node scripts/ui-build.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "0.14.1",
