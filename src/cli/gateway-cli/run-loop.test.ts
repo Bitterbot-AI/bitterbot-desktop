@@ -40,6 +40,14 @@ vi.mock("../../logging/subsystem.js", () => ({
   createSubsystemLogger: () => gatewayLog,
 }));
 
+// The restart hint is read from the previously recorded boot duration rather than
+// a constant, so pin a known value and assert the wiring instead of a magic number.
+const RECORDED_BOOT_MS = 42_000;
+vi.mock("../../infra/boot-duration.js", () => ({
+  readLastBootDurationMs: () => RECORDED_BOOT_MS,
+  DEFAULT_RESTART_HINT_MS: 15_000,
+}));
+
 function removeNewSignalListeners(
   signal: NodeJS.Signals,
   existing: Set<(...args: unknown[]) => void>,
@@ -119,7 +127,7 @@ describe("runGatewayLoop", () => {
       expect(gatewayLog.warn).toHaveBeenCalledWith(DRAIN_TIMEOUT_LOG);
       expect(closeFirst).toHaveBeenCalledWith({
         reason: "gateway restarting",
-        restartExpectedMs: 1500,
+        restartExpectedMs: RECORDED_BOOT_MS,
       });
       expect(markGatewaySigusr1RestartHandled).toHaveBeenCalledTimes(1);
       expect(resetAllLanes).toHaveBeenCalledTimes(1);
@@ -129,7 +137,7 @@ describe("runGatewayLoop", () => {
       await expect(loopPromise).rejects.toThrow("stop-loop");
       expect(closeSecond).toHaveBeenCalledWith({
         reason: "gateway restarting",
-        restartExpectedMs: 1500,
+        restartExpectedMs: RECORDED_BOOT_MS,
       });
       expect(markGatewaySigusr1RestartHandled).toHaveBeenCalledTimes(2);
       expect(resetAllLanes).toHaveBeenCalledTimes(2);
