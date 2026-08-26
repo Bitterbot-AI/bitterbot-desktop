@@ -157,6 +157,9 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        // DEPRECATED, accepted-but-ignored (PLAN-39 Phase 4): the restarter this
+        // gated is deleted. Kept so configs that set it keep validating — the
+        // strict schema rejecting a removed key would refuse to boot (024c7fa).
         uiRestart: z
           .object({
             enabled: z.boolean().optional(),

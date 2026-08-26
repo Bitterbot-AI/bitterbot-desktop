@@ -260,20 +260,10 @@ export async function runBootWatchdog(params: {
       ok: result.ok,
     });
     log(`rollback ${result.ok ? "performed" : "FAILED"}: ${result.detail}`);
-    // A performed rollback changed the code under any running Control UI just
-    // like an update did — bounce it the same way (this process is already
-    // detached, so run the sequence inline; guarded like the spawn sites).
-    if (result.ok) {
-      try {
-        const { loadConfig } = await import("../config/config.js");
-        if (loadConfig().update?.uiRestart?.enabled !== false) {
-          const { runUiRestart } = await import("./ui-restart.js");
-          await runUiRestart({ root: params.root, reason: "rollback" });
-        }
-      } catch (err) {
-        log(`ui restart after rollback failed: ${String(err)}`);
-      }
-    }
+    // No UI process to bounce (PLAN-39 Phase 4): the gateway serves the
+    // Control UI from dist/control-ui per request. The rollback's rebuild
+    // restages those assets via `pnpm build` (which runs ui:build), so the
+    // next browser reload gets the rolled-back UI with nothing else to do.
     // The beacon stays armed either way: a successful rollback clears it when
     // the restored gateway binds; a failed one leaves doctor's error live.
     return;

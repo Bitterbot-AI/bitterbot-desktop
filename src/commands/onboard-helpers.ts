@@ -207,16 +207,15 @@ export function formatControlUiSshHint(params: {
   const basePath = normalizeControlUiBasePath(params.basePath);
   const uiPath = basePath ? `${basePath}/` : "/";
   const localUrl = `http://localhost:${params.port}${uiPath}`;
-  const authedUrl = params.token
-    ? `${localUrl}#token=${encodeURIComponent(params.token)}`
-    : undefined;
+  // No #token= fragment (PLAN-39 Phase 4): the renderer never read it, and over
+  // an SSH tunnel the browser reaches the gateway's loopback, so the same-origin
+  // token handoff works exactly as it does locally.
   const sshTarget = resolveSshTargetHint();
   return [
     "No GUI detected. Open from your computer:",
     `ssh -N -L ${params.port}:127.0.0.1:${params.port} ${sshTarget}`,
     "Then open:",
     localUrl,
-    authedUrl,
     "Docs:",
     "https://docs.bitterbot.ai/gateway/remote",
     "https://docs.bitterbot.ai/web/control-ui",

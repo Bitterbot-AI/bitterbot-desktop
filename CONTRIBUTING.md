@@ -32,7 +32,7 @@ pnpm gateway:watch
 cd desktop && pnpm dev
 ```
 
-Open `http://localhost:5173` for the Control UI. It connects to the gateway on port 19001 automatically.
+Open `http://localhost:5173` for the Control UI dev server (hot reload; it connects to the gateway on 19001 automatically). In production the gateway serves the built UI itself at `http://127.0.0.1:19001/` — `pnpm ui:build` stages it.
 
 > **Note:** `pnpm gateway:watch` auto-rebuilds on TS changes (use this for dev). `pnpm start gateway` is one-shot with no file watching (production). The orchestrator (P2P sidecar) is spawned automatically by the gateway.
 

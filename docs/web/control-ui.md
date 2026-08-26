@@ -10,7 +10,7 @@ title: "Control UI"
 
 The Control UI is a small **Vite + Lit** single-page app served by the Gateway:
 
-- default: `http://localhost:5173` (Vite Control UI)
+- default: `http://127.0.0.1:19001` (served by the gateway; Vite on 5173 is the dev workflow)
 - optional prefix: set `gateway.controlUi.basePath` (e.g. `/bitterbot`)
 
 It speaks **directly to the Gateway WebSocket** on the same port.
@@ -19,7 +19,7 @@ It speaks **directly to the Gateway WebSocket** on the same port.
 
 If the Gateway is running on the same computer, open:
 
-- [http://localhost:5173](http://localhost:5173) (requires `cd desktop && pnpm dev`)
+- [http://127.0.0.1:19001](http://127.0.0.1:19001) (served by the gateway)
 
 If the page fails to load, start the Gateway first: `bitterbot gateway`.
 
@@ -194,35 +194,22 @@ Then point the UI at your Gateway WS URL (e.g. `ws://127.0.0.1:19001`).
 
 ## Connecting to a remote Gateway
 
-The Control UI is static files; the WebSocket target is configurable and can be
-different from the HTTP origin. This is useful when you want the Control UI
-locally but the Gateway runs elsewhere.
+The Control UI is static files; the WebSocket target is derived from the page's
+own origin, so when the gateway serves the UI (the default) there is nothing to
+configure — local or over an SSH tunnel/Tailscale Serve, the UI always talks to
+the gateway that served it.
 
-1. Start the UI: `cd desktop && pnpm dev`
-2. Open a URL like:
+To point a UI at a _different_ gateway, use the first-run screen: open the UI,
+choose "Connect to a remote gateway", and enter the `ws(s)://` URL and token.
+The values are stored in the browser's localStorage; clearing site data resets
+them.
 
-```text
-http://localhost:5173/?gatewayUrl=ws://<gateway-host>:19001
-```
+> A previous revision documented a `?gatewayUrl=` URL parameter. It was never
+> implemented and has been removed from these docs; the first-run screen and
+> the same-origin token handoff replace it.
 
-Optional one-time auth (if needed):
-
-```text
-http://localhost:5173/?gatewayUrl=wss://<gateway-host>:19001&token=<gateway-token>
-```
-
-Notes:
-
-- `gatewayUrl` is stored in localStorage after load and removed from the URL.
-- `token` is stored in localStorage; `password` is kept in memory only.
-- When `gatewayUrl` is set, the UI does not fall back to config or environment credentials.
-  Provide `token` (or `password`) explicitly. Missing explicit credentials is an error.
-- Use `wss://` when the Gateway is behind TLS (Tailscale Serve, HTTPS proxy, etc.).
-- `gatewayUrl` is only accepted in a top-level window (not embedded) to prevent clickjacking.
-- For cross-origin dev setups (e.g. `cd desktop && pnpm dev` to a remote Gateway), add the UI
-  origin to `gateway.controlUi.allowedOrigins`.
-
-Example:
+For cross-origin dev setups (`pnpm dev:all`, Vite on 5173, gateway on 19001),
+add the dev origin to `gateway.controlUi.allowedOrigins`:
 
 ```json5
 {

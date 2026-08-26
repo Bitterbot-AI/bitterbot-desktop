@@ -25,7 +25,6 @@ import { isSystemdUserServiceAvailable } from "../daemon/systemd.js";
 import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
 import { formatDocsLink } from "../terminal/links.js";
 import { setupOnboardingShellCompletion } from "./onboarding.completion.js";
-import { writeControlUiEnv } from "./onboarding.control-ui-env.js";
 
 type FinalizeOnboardingOptions = {
   flow: WizardFlow;
@@ -223,11 +222,9 @@ export async function finalizeOnboardingWizard(
     "Optional apps",
   );
 
-  // The Control UI is the `desktop/` React SPA served by Vite on port 5173.
-  // The gateway (port 19001) is the WebSocket API backend — not user-facing.
-  // `pnpm dev:all` starts both in one terminal.
-  const CONTROL_UI_PORT = 5173;
-  const controlUiUrl = `http://localhost:${CONTROL_UI_PORT}/`;
+  // Since PLAN-39 Phase 4 the gateway serves the Control UI itself, so the UI
+  // and the API share one origin and one process. Vite on 5173 is dev-only.
+  const controlUiUrl = `http://127.0.0.1:${settings.port}/`;
   const gatewayWsUrl = `ws://127.0.0.1:${settings.port}`;
 
   // Resolve the Bitterbot repo root once. Only when it's present (and has a
@@ -245,31 +242,9 @@ export async function finalizeOnboardingWizard(
   const devAllAvailable = await hasScript(repoRoot, "dev:all");
   const stackCommand = startAllAvailable ? "start:all" : devAllAvailable ? "dev:all" : null;
 
-  // Write `<repoRoot>/desktop/.env` so the Control UI boots with the gateway
-  // token + URL pre-wired. Without this, the UI loads but shows "Disconnected"
-  // until the user hand-copies the token from `~/.bitterbot/bitterbot.json`.
-  // The README claimed this was auto-generated for months; now it actually is.
-  if (repoRoot && !opts.skipUi) {
-    const envResult = await writeControlUiEnv({ settings, moduleUrl: import.meta.url });
-    if (envResult.ok) {
-      await prompter.note(
-        envResult.created
-          ? `Wrote ${envResult.path} (gateway URL + token).`
-          : `Updated ${envResult.path} (refreshed gateway URL + token, preserved other lines).`,
-        "Control UI config",
-      );
-    } else if (envResult.reason === "write-failed") {
-      await prompter.note(
-        [
-          `Couldn't write desktop/.env: ${envResult.detail ?? "unknown error"}`,
-          "Control UI will show 'Disconnected' until you copy the gateway token",
-          "from ~/.bitterbot/bitterbot.json into desktop/.env by hand.",
-        ].join("\n"),
-        "Control UI config",
-      );
-    }
-    // reason === "no-repo" / "no-desktop-dir": silent — this isn't a dev clone.
-  }
+  // No desktop/.env any more (PLAN-39 Phase 4): the served UI derives the
+  // gateway URL from its own origin and fetches the token from the same-origin
+  // handoff endpoint, so there is nothing to pre-wire.
 
   const gatewayProbe = await probeGatewayReachable({
     url: gatewayWsUrl,
@@ -284,7 +259,7 @@ export async function finalizeOnboardingWizard(
       gatewayProbe.ok ? "Gateway: reachable" : "Gateway: starting up",
       "",
       "The Control UI is the Bitterbot interface — chat, dreams, skills, marketplace.",
-      "The gateway is the backend API. The wizard keeps both running for you.",
+      "The gateway serves it directly: one process, one port.",
     ].join("\n"),
     "Control UI",
   );
@@ -294,14 +269,46 @@ export async function finalizeOnboardingWizard(
 
   if (opts.skipUi) {
     await prompter.note("Skipping Control UI startup.", "Control UI");
+  } else if (repoRoot && stackCommand && installDaemon) {
+    // A service manager owns the gateway, and the gateway serves the Control UI
+    // itself (PLAN-39 Phase 4) — so there is NOTHING left to spawn. Spawning
+    // start:all here would exit 0 within a second ("nothing to start") and trip
+    // the early-exit failure detector for a perfectly healthy setup. Just wait
+    // for the service's gateway and open the UI it serves.
+    const probe = await waitForGatewayReachable({
+      url: gatewayWsUrl,
+      token: settings.authMode === "token" ? settings.gatewayToken : undefined,
+      password: settings.authMode === "password" ? nextConfig.gateway?.auth?.password : undefined,
+      deadlineMs: 90_000,
+      pollMs: 1000,
+    });
+    spawnedStack = true;
+    if (probe.ok) {
+      const browserSupport = await detectBrowserOpenSupport();
+      if (browserSupport.ok) {
+        controlUiOpened = await openUrl(controlUiUrl);
+      }
+      await prompter.note(
+        controlUiOpened
+          ? `Opened ${controlUiUrl} in your browser.`
+          : `Gateway is up. Open this URL when ready: ${controlUiUrl}`,
+        "Control UI",
+      );
+    } else {
+      await prompter.note(
+        [
+          "The gateway service hadn't finished booting when the 90-second wait",
+          `window expired. Give it another minute, then open: ${controlUiUrl}`,
+        ].join("\n"),
+        "Still starting",
+      );
+    }
   } else if (repoRoot && stackCommand) {
-    // Bring the whole stack up automatically so the wizard finishes with the
-    // gateway + Control UI already running — nothing for the user to type.
-    // `start:all` is idempotent (skips whatever is already listening), so this
-    // is safe even right after installing a gateway service. If the primary
-    // launcher fails to spawn, silently retry with watch-mode `dev:all` as a
-    // hidden backup (only when we're responsible for the gateway ourselves).
-    const startGateway = !installDaemon;
+    // Bring the gateway up automatically so the wizard finishes with it (and
+    // the Control UI it serves) already running — nothing for the user to
+    // type. `start:all` is idempotent (skips an already-listening gateway). If
+    // the primary launcher fails to spawn, silently retry with watch-mode
+    // `dev:all` as a hidden backup.
     let outcome = await spawnStackHardened({
       command: stackCommand,
       repoRoot,
@@ -309,9 +316,8 @@ export async function finalizeOnboardingWizard(
       settings,
       nextConfig,
       prompter,
-      startGateway,
     });
-    if (!outcome.spawned && stackCommand !== "dev:all" && devAllAvailable && startGateway) {
+    if (!outcome.spawned && stackCommand !== "dev:all" && devAllAvailable) {
       outcome = await spawnStackHardened({
         command: "dev:all",
         repoRoot,
@@ -319,7 +325,6 @@ export async function finalizeOnboardingWizard(
         settings,
         nextConfig,
         prompter,
-        startGateway,
       });
     }
     spawnedStack = outcome.spawned;
@@ -543,14 +548,8 @@ async function spawnStackHardened(params: {
   settings: GatewayWizardSettings;
   nextConfig: BitterbotConfig;
   prompter: WizardPrompter;
-  /**
-   * When false, the launcher must NOT start a gateway — one is already managed
-   * elsewhere (a systemd/launchd service the wizard just installed). Prevents
-   * racing a second gateway into an EADDRINUSE crash while the service boots.
-   */
-  startGateway: boolean;
 }): Promise<SpawnOutcome> {
-  const { command, repoRoot, gatewayWsUrl, settings, nextConfig, prompter, startGateway } = params;
+  const { command, repoRoot, gatewayWsUrl, settings, nextConfig, prompter } = params;
   const { spawn } = await import("node:child_process");
   const fs = await import("node:fs");
   const fsp = await import("node:fs/promises");
@@ -568,11 +567,6 @@ async function spawnStackHardened(params: {
     ...process.env,
     BITTERBOT_GATEWAY_PORT: String(settings.port),
   };
-  if (!startGateway) {
-    // start:all honors this by starting only the Control UI.
-    childEnv.BITTERBOT_START_ALL_NO_GATEWAY = "1";
-  }
-
   let child: ReturnType<typeof spawn>;
   try {
     child = spawn("pnpm", [command], {

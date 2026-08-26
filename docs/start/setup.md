@@ -100,7 +100,7 @@ pnpm gateway:watch
 cd desktop && pnpm dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) for the Bitterbot dashboard. The gateway runs on port 19001.
+Open [http://127.0.0.1:19001](http://127.0.0.1:19001) for the Bitterbot dashboard — the gateway serves it directly.
 
 ### 2) Verify
 

@@ -87,7 +87,7 @@ pnpm gateway:watch
 cd desktop && pnpm dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser to chat, view dreams, manage skills, and monitor the agent. The Control UI connects to the gateway on port 19001 automatically.
+Open [http://127.0.0.1:19001](http://127.0.0.1:19001) in your browser to chat, view dreams, manage skills, and monitor the agent. The gateway serves the Control UI directly — one process, one port.
 
 ## Optional extras
 

@@ -8,7 +8,7 @@ Browser-based dashboard for the Bitterbot gateway. Built with Vite + React.
 pnpm dev
 ```
 
-Opens on [http://localhost:5173](http://localhost:5173). Connects to the gateway on `ws://127.0.0.1:19001` automatically.
+Dev server opens on [http://localhost:5173](http://localhost:5173) with hot reload and connects to the gateway on `ws://127.0.0.1:19001`. In production the gateway serves the built UI itself at `http://127.0.0.1:19001/`; `pnpm ui:build` builds and stages it.
 
 **The gateway does not have to be running first.** If it's down, the Overview
 tab shows a **Start gateway** button that launches it (the dev server exposes

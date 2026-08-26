@@ -50,7 +50,7 @@ Run the onboarding wizard. It walks you through model auth (API keys), memory em
 pnpm bitterbot onboard
 ```
 
-Open [http://localhost:5173](http://localhost:5173) to reach the Bitterbot Control UI where you chat, view dreams, manage skills, and monitor the agent. The gateway (backend API on port 19001) and the P2P orchestrator start automatically.
+Open [http://127.0.0.1:19001](http://127.0.0.1:19001) to reach the Bitterbot Control UI where you chat, view dreams, manage skills, and monitor the agent. The gateway serves the UI itself, and the P2P orchestrator starts automatically — one process, one port.
 
 > **Start it yourself later** (or if you skipped the wizard's auto-start):
 >
@@ -88,10 +88,10 @@ Then run `pnpm bitterbot configure` to set gateway port/bind/auth, channels, and
 
 </details>
 
-| Service    | URL                     | Purpose                       |
-| ---------- | ----------------------- | ----------------------------- |
-| Gateway    | `ws://127.0.0.1:19001`  | WebSocket API for all clients |
-| Control UI | `http://localhost:5173` | Browser-based dashboard       |
+| Service    | URL                      | Purpose                                         |
+| ---------- | ------------------------ | ----------------------------------------------- |
+| Gateway    | `ws://127.0.0.1:19001`   | WebSocket API for all clients                   |
+| Control UI | `http://127.0.0.1:19001` | Browser-based dashboard (served by the gateway) |
 
 You can also talk to your agent from the terminal:
 
@@ -357,7 +357,7 @@ Before it dreams, it executes. Bitterbot works today as a full-featured personal
 | Port      | Service                                | Configurable via                           |
 | --------- | -------------------------------------- | ------------------------------------------ |
 | **19001** | Gateway (HTTP + WebSocket)             | `BITTERBOT_GATEWAY_PORT` or `gateway.port` |
-| **5173**  | Control UI                             | Default Vite port                          |
+| **5173**  | Vite dev server (development only)     | `pnpm dev:all`; production UI is on 19001  |
 | **9100**  | P2P network (libp2p TCP)               | `p2p.listenAddrs`                          |
 | **9847**  | P2P orchestrator dashboard (localhost) | `p2p.httpAddr`                             |
 

@@ -16,7 +16,7 @@ Bitterbot is a four-layer system: a **biological brain** that learns and dreams,
                                         ▼
                 ┌─────────────────────────────────────────┐
                 │              Control UI (Vite)           │
-                │          http://localhost:5173            │
+                │         http://127.0.0.1:19001            │
                 └──────────────────┬──────────────────────┘
                                    │ WebSocket
                                    ▼
@@ -212,7 +212,7 @@ A single long-lived Node.js process that:
 
 ### Control UI
 
-The Bitterbot dashboard runs on port **5173**:
+The Bitterbot dashboard is served by the gateway on port **19001**:
 
 ```bash
 # Terminal 1 — Gateway
@@ -222,7 +222,7 @@ pnpm gateway:watch
 cd desktop && pnpm dev
 ```
 
-Open `http://localhost:5173` for the full dashboard: chat, dreams, skills, workspace, P2P network, config.
+Open `http://127.0.0.1:19001` for the full dashboard: chat, dreams, skills, workspace, P2P network, config. (Developers editing the UI use the Vite dev server on 5173 via `pnpm dev:all`.)
 
 ### Supported Channels
 

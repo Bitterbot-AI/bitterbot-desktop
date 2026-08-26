@@ -10,7 +10,7 @@ title: "Web"
 
 The Gateway serves a small **browser Control UI** (Vite + Lit) from the same port as the Gateway WebSocket:
 
-- default: `http://localhost:5173` (Vite Control UI)
+- default: `http://127.0.0.1:19001` (Control UI, served by the gateway; Vite on 5173 is the dev workflow)
 - optional prefix: set `gateway.controlUi.basePath` (e.g. `/bitterbot`)
 
 Capabilities live in [Control UI](/web/control-ui).

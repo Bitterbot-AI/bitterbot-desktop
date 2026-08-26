@@ -84,12 +84,11 @@ export type BitterbotConfig = {
       enabled?: boolean;
     };
     /**
-     * Restart the Control UI (vite dev server) after a code change — a
-     * successful update.run or an auto-rollback. The dev server cannot pick
-     * up an applied update on its own (deps swapped under its cache, env
-     * baked at server start, watchers blind on WSL /mnt/*), so a detached
-     * restarter bounces it: only if it was running, and only when the
-     * listener is identifiably this checkout's vite. Default: enabled.
+     * DEPRECATED (PLAN-39 Phase 4): the Control-UI restarter it gated is gone —
+     * the gateway serves the UI from dist/control-ui per request, so an update
+     * needs no UI process bounce. The key is still accepted so existing configs
+     * that set it keep validating (a strict schema rejecting a removed key
+     * refuses to boot: the circles kill-switch bug, 024c7fa). Ignored.
      */
     uiRestart?: {
       enabled?: boolean;
