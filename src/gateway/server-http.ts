@@ -29,6 +29,8 @@ import {
 } from "./auth.js";
 import { handleAvatarRequest } from "./avatar-http.js";
 import { handleControlUiRequest } from "./control-ui-http.js";
+import { handleSessionTokenRequest, SESSION_TOKEN_PATH } from "./control-ui-session-token.js";
+import { normalizeControlUiBasePath } from "./control-ui-shared.js";
 import { renderDreamDashboardPage } from "./dream-dashboard-page.js";
 import { applyHookMappings } from "./hooks-mapping.js";
 import {
@@ -704,6 +706,26 @@ export function createGatewayHttpServer(opts: {
         })
       ) {
         return;
+      }
+
+      // PLAN-39 Phase 3: same-origin token handoff, so the renderer no longer
+      // needs the token baked into its bundle. Must sit ABOVE the static handler
+      // so the path is never mistaken for an asset.
+      {
+        const controlUiBase = normalizeControlUiBasePath(
+          configSnapshot.gateway?.controlUi?.basePath,
+        );
+        if (requestPath === `${controlUiBase}${SESSION_TOKEN_PATH}`) {
+          if (
+            handleSessionTokenRequest(req, res, {
+              token: resolvedAuth?.token,
+              allowedHosts: configSnapshot.gateway?.controlUi?.allowedHosts,
+              isLocalDirect: (request) => isLocalDirectRequest(request, trustedProxies),
+            })
+          ) {
+            return;
+          }
+        }
       }
 
       // PLAN-39 Phase 2: the built Control UI, mounted LAST so every route above

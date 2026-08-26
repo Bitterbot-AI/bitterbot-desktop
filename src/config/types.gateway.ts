@@ -57,6 +57,12 @@ export type GatewayControlUiConfig = {
   root?: string;
   /** Allowed browser origins for Control UI/WebChat websocket connections. */
   allowedOrigins?: string[];
+  /**
+   * Extra hostnames the same-origin token handoff endpoint will answer for, such
+   * as a Tailscale Serve name. Loopback names are always allowed. This is the
+   * DNS-rebinding control described in control-ui-session-token.ts.
+   */
+  allowedHosts?: string[];
   /** Allow token-only auth over insecure HTTP (default: false). */
   allowInsecureAuth?: boolean;
   /** DANGEROUS: Disable device identity checks for the Control UI (default: false). */

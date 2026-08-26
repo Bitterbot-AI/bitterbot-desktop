@@ -344,6 +344,10 @@ export const BitterbotSchema = z
             basePath: z.string().optional(),
             root: z.string().optional(),
             allowedOrigins: z.array(z.string()).optional(),
+            // Extra hostnames the same-origin token handoff will answer for
+            // (a Tailscale Serve name, say). Loopback names are always allowed.
+            // This is a DNS-rebinding control: see control-ui-session-token.ts.
+            allowedHosts: z.array(z.string()).optional(),
             allowInsecureAuth: z.boolean().optional(),
             dangerouslyDisableDeviceAuth: z.boolean().optional(),
           })
