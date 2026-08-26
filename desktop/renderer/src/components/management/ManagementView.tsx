@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { resolveGatewayHttpOrigin } from "../../lib/gateway-origin";
 import { useGatewayStore } from "../../stores/gateway-store";
 
 /**
@@ -10,16 +11,13 @@ export function ManagementView() {
   const hello = useGatewayStore((s) => s.hello);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Build the management dashboard URL from the gateway connection
-  const gatewayToken = (import.meta.env.VITE_GATEWAY_TOKEN ?? "local-dev-token").trim();
-
-  // Derive HTTP URL from the gateway WS URL
-  const wsUrl =
-    (window as any).__BITTERBOT_GATEWAY_URL__ ??
-    import.meta.env.VITE_GATEWAY_URL ??
-    "ws://localhost:19001";
-  const httpUrl = wsUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:");
-  const dashboardUrl = `${httpUrl}/management?token=${encodeURIComponent(gatewayToken)}`;
+  // No token in the query string: /management is served by the gateway itself and
+  // waives auth for loopback callers, so a same-origin iframe already carries the
+  // trust the page was loaded with. The old `?token=` was ignored server-side
+  // anyway, making it a pure leak into history and referrers.
+  // `__BITTERBOT_GATEWAY_URL__` was read here and set by nothing; the shared
+  // helper replaces both it and the hardcoded fallback.
+  const dashboardUrl = `${resolveGatewayHttpOrigin()}/management`;
 
   useEffect(() => {
     // Refresh iframe when gateway reconnects

@@ -74,51 +74,31 @@ export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
 type EventListener = (evt: GatewayEventFrame) => void;
 
-// localStorage keys used by the FirstRun flow. A runtime-entered token
-// takes precedence over the build-time VITE_GATEWAY_TOKEN env var so
-// users who skip the CLI wizard can still get connected via the UI.
-const LS_TOKEN_KEY = "bitterbot-gateway-token";
-const LS_URL_KEY = "bitterbot-gateway-url";
+import {
+  LS_TOKEN_KEY,
+  LS_URL_KEY,
+  readStoredGatewayToken as readStoredToken,
+  resolveGatewayWsUrl,
+} from "../lib/gateway-origin";
 
+// Credential resolution lives in lib/gateway-origin.ts. The build-time
+// VITE_GATEWAY_TOKEN define is gone (PLAN-39 Phase 3 / PLAN-37 item 13): baking
+// the gateway credential into the bundle made the artifact machine-specific and
+// would publish the token to anyone who fetched the JS once the gateway serves it.
 /**
- * Read the gateway token in priority order:
- *   1. localStorage (runtime-persisted from FirstRun)
- *   2. VITE_GATEWAY_TOKEN env var (build-time, set by desktop/.env)
- * Returns null if neither is set — the UI uses this to decide
- * whether to render <FirstRun> or <AppShell> on boot.
+ * A token the user previously entered. Null means we have nothing stored; the
+ * caller should try the same-origin handoff and then FirstRun.
  */
 export function readStoredGatewayToken(): string | null {
-  try {
-    const stored = localStorage.getItem(LS_TOKEN_KEY);
-    if (stored && stored.trim().length > 0) return stored.trim();
-  } catch {
-    // localStorage can be unavailable in non-browser contexts or
-    // private-mode browsers with restrictive storage. Fall through.
-  }
-  const envToken = import.meta.env.VITE_GATEWAY_TOKEN;
-  if (typeof envToken === "string" && envToken.trim().length > 0) {
-    return envToken.trim();
-  }
-  return null;
+  return readStoredToken();
 }
 
+/** The gateway WS URL: stored override, dev env var, or derived from the page origin. */
 export function readStoredGatewayUrl(): string {
-  try {
-    const stored = localStorage.getItem(LS_URL_KEY);
-    if (stored && stored.trim().length > 0) return stored.trim();
-  } catch {}
-  return import.meta.env.VITE_GATEWAY_URL ?? "ws://127.0.0.1:19001";
+  return resolveGatewayWsUrl();
 }
 
-export function persistGatewayCredentials(params: { url: string; token: string }): void {
-  try {
-    localStorage.setItem(LS_URL_KEY, params.url);
-    localStorage.setItem(LS_TOKEN_KEY, params.token);
-  } catch {
-    // Non-fatal. If localStorage is blocked the user will have to
-    // re-enter next session, which is fine.
-  }
-}
+export { persistGatewayCredentials } from "../lib/gateway-origin";
 
 export function clearStoredGatewayCredentials(): void {
   try {
@@ -173,7 +153,9 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
 
     set({ status: "connecting", error: null });
 
-    const token = tokenOverride?.trim() || readStoredGatewayToken() || "local-dev-token";
+    // No "local-dev-token" fallback: no server ever accepted it, so connecting with
+    // it only produced a confusing auth failure instead of prompting for a token.
+    const token = tokenOverride?.trim() || readStoredGatewayToken() || "";
 
     const client = new GatewayClient({
       url,

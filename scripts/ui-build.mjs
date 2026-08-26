@@ -6,14 +6,10 @@
  * already expect (src/cli/update-cli/progress.ts:24-26), which have been emitted
  * by nothing since the original design was abandoned.
  *
- * Both expensive steps are content-hash gated, because this runs inside
- * `update.run` where every second is time the node is not serving:
- *   1. `pnpm --dir desktop install` is skipped when the desktop lockfile is
- *      unchanged and desktop/node_modules exists. A frozen-lockfile install that
- *      changes nothing still costs real time, badly so on network filesystems.
- *   2. `vite build` is skipped when no renderer source file has changed since the
- *      last successful build.
- * Pass --force to run both regardless.
+ * The build is content-hash gated, because this runs inside `update.run` where
+ * every second is time the node is not serving:
+ * `vite build` is skipped when no renderer source file has changed since the last
+ * successful build. Pass --force to rebuild regardless.
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -83,23 +79,17 @@ function writeStamp(name, value) {
 }
 
 // 1. Desktop dependencies.
-const lockfile = ["pnpm-lock.yaml", "package-lock.json"]
-  .map((f) => path.join(desktopDir, f))
-  .find((f) => fs.existsSync(f));
-const lockHash = lockfile
-  ? createHash("sha256").update(fs.readFileSync(lockfile)).digest("hex")
-  : "no-lockfile";
-const depsFresh =
-  !force &&
-  fs.existsSync(path.join(desktopDir, "node_modules")) &&
-  readStamp("ui-deps.hash") === lockHash;
-
-if (depsFresh) {
-  log("desktop dependencies unchanged, skipping install");
-} else {
-  log("installing desktop dependencies");
-  run("pnpm", ["--dir", "desktop", "install", "--frozen-lockfile"], repoRoot);
-  writeStamp("ui-deps.hash", lockHash);
+// `desktop` is a pnpm WORKSPACE member (pnpm-workspace.yaml) with no lockfile of
+// its own, so the root `pnpm install` already provides its node_modules. Running
+// `pnpm --dir desktop install` here would trigger a workspace-wide reconcile that
+// asks to delete the modules directory, which is why it is not done: verify and
+// point at the right command instead.
+if (!fs.existsSync(path.join(desktopDir, "node_modules"))) {
+  console.error(
+    "[ui:build] desktop/node_modules is missing. Run `pnpm install` at the repo root\n" +
+      "           (desktop is a workspace member; do not install it separately).",
+  );
+  process.exit(1);
 }
 
 // 2. Renderer build.
@@ -111,7 +101,7 @@ if (buildFresh) {
   log("renderer sources unchanged, skipping vite build");
 } else {
   log("building renderer");
-  run("pnpm", ["--dir", "desktop", "build"], repoRoot);
+  run("pnpm", ["--filter", "bitterbot-control-ui", "build"], repoRoot);
   writeStamp("ui-src.hash", srcHash);
 }
 

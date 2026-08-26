@@ -1,5 +1,6 @@
 import { Play, Power, RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { readStoredGatewayToken } from "../../lib/gateway-origin";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 
@@ -58,9 +59,13 @@ export function GatewayControls() {
     setError(null);
     setPhase("starting");
     try {
+      // Same-origin call to the dev server's own middleware. It used to send the
+      // baked VITE_GATEWAY_TOKEN, which no longer exists; a stored token is sent
+      // when we have one, and the middleware accepts a loopback caller regardless.
+      const storedToken = readStoredGatewayToken();
       const res = await fetch("/__gateway/start", {
         method: "POST",
-        headers: { "x-bitterbot-token": import.meta.env.VITE_GATEWAY_TOKEN ?? "" },
+        headers: storedToken ? { "x-bitterbot-token": storedToken } : {},
       });
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {

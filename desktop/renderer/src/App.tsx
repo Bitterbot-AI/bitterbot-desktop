@@ -3,6 +3,7 @@ import { FirstRun } from "./components/first-run/FirstRun";
 import { AppShell } from "./components/layout/AppShell";
 import { Toaster } from "./components/ui/sonner";
 import { initDeepLinkJoin } from "./lib/deep-link";
+import { fetchSessionToken, persistGatewayCredentials } from "./lib/gateway-origin";
 import {
   readStoredGatewayToken,
   readStoredGatewayUrl,
@@ -12,17 +13,36 @@ import {
 export function App() {
   const connect = useGatewayStore((s) => s.connect);
 
-  // Decide at boot whether we already have a token (either persisted
-  // to localStorage from a prior FirstRun or baked in via
-  // VITE_GATEWAY_TOKEN at build time). If not, render <FirstRun>
-  // instead of the main shell so we don't flash a "Disconnected"
-  // badge and confuse a new user.
-  const [hasCredentials, setHasCredentials] = useState<boolean>(
-    () => readStoredGatewayToken() !== null,
+  // Decide at boot whether we already have a token. A stored one (from a prior
+  // FirstRun) wins; otherwise ask the gateway that served this page via the
+  // same-origin handoff endpoint, which replaces the old build-time
+  // VITE_GATEWAY_TOKEN define. Only when both come up empty do we render
+  // <FirstRun>, so we never flash a "Disconnected" badge at a new user.
+  // `undefined` means "still deciding" and renders nothing.
+  const [hasCredentials, setHasCredentials] = useState<boolean | undefined>(() =>
+    readStoredGatewayToken() !== null ? true : undefined,
   );
 
   useEffect(() => {
-    if (!hasCredentials) return;
+    if (hasCredentials !== undefined) return;
+    let cancelled = false;
+    void (async () => {
+      const token = await fetchSessionToken();
+      if (cancelled) return;
+      if (token) {
+        persistGatewayCredentials({ url: readStoredGatewayUrl(), token });
+        setHasCredentials(true);
+      } else {
+        setHasCredentials(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasCredentials]);
+
+  useEffect(() => {
+    if (hasCredentials !== true) return;
     const url = readStoredGatewayUrl();
     connect(url);
   }, [connect, hasCredentials]);
@@ -37,6 +57,12 @@ export function App() {
   const handleFirstRunComplete = useCallback(() => {
     setHasCredentials(true);
   }, []);
+
+  // Still asking the gateway for a token: render nothing rather than flashing
+  // FirstRun at a user who is about to be connected automatically.
+  if (hasCredentials === undefined) {
+    return null;
+  }
 
   if (!hasCredentials) {
     return (

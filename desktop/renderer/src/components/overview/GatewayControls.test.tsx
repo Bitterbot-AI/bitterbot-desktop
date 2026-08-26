@@ -57,14 +57,33 @@ describe("GatewayControls", () => {
     render(<GatewayControls />);
     await userEvent.setup().click(screen.getByText("Start gateway"));
 
+    // The baked VITE_GATEWAY_TOKEN is gone (PLAN-39 Phase 3), so the header is
+    // sent only when a token has actually been stored. The call itself is
+    // same-origin to the dev server's own middleware.
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/__gateway/start",
+      expect.objectContaining({ method: "POST" }),
+    );
+    await waitFor(() => expect(screen.getByText(/Starting…/)).toBeTruthy());
+  });
+
+  it("sends a stored token when the user has one", async () => {
+    // Start is only enabled while disconnected/connecting.
+    storeStatus = "connecting";
+    localStorage.setItem("bitterbot-gateway-token", "stored-abc");
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, state: "started", pid: 123 }),
+    });
+    render(<GatewayControls />);
+    await userEvent.setup().click(screen.getByText("Start gateway"));
     expect(fetchMock).toHaveBeenCalledWith(
       "/__gateway/start",
       expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({ "x-bitterbot-token": expect.any(String) }),
+        headers: expect.objectContaining({ "x-bitterbot-token": "stored-abc" }),
       }),
     );
-    await waitFor(() => expect(screen.getByText(/Starting…/)).toBeTruthy());
+    localStorage.clear();
   });
 
   it("falls back to terminal guidance when the endpoint is unavailable", async () => {

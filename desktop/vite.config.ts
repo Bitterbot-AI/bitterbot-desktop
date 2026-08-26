@@ -5,35 +5,6 @@ import path from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import { createGatewayStartHandler } from "./gateway-launcher";
 
-/**
- * Resolve the gateway auth token with the following precedence:
- *   1. VITE_GATEWAY_TOKEN env var (CI, Docker, explicit override)
- *   2. ~/.bitterbot/bitterbot.json → gateway.auth.token (local dev)
- *   3. empty string (first-run, before `bitterbot onboard` creates the config)
- *
- * This eliminates the manual copy-paste of the token from the gateway
- * config into desktop/.env.
- */
-function resolveGatewayToken(): string {
-  const envToken = process.env.VITE_GATEWAY_TOKEN?.trim();
-  if (envToken) return envToken;
-
-  const configPath =
-    process.env.BITTERBOT_CONFIG_PATH?.trim() ||
-    path.join(os.homedir(), ".bitterbot", "bitterbot.json");
-
-  try {
-    if (!fs.existsSync(configPath)) return "";
-    const raw = fs.readFileSync(configPath, "utf-8");
-    const config = JSON.parse(raw) as {
-      gateway?: { auth?: { token?: string } };
-    };
-    return config.gateway?.auth?.token?.trim() ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function resolveGatewayUrl(): string {
   return process.env.VITE_GATEWAY_URL?.trim() || "ws://localhost:19001";
 }
@@ -69,18 +40,15 @@ function gatewayLauncherPlugin(gatewayUrl: string): Plugin {
 }
 
 export default defineConfig(() => {
-  const token = resolveGatewayToken();
   const url = resolveGatewayUrl();
   const clientName = resolveClientName();
 
-  if (!token) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      "\n⚠  No gateway token found.\n" +
-        "   Run `pnpm bitterbot onboard` first, or set VITE_GATEWAY_TOKEN.\n" +
-        "   The Control UI will load but gateway requests will fail until the token is available.\n",
-    );
-  }
+  // The gateway token is deliberately NOT built into the bundle any more
+  // (PLAN-39 Phase 3 / PLAN-37 item 13). It made the artifact machine-specific
+  // and, once the gateway serves this bundle over HTTP, would hand the gateway
+  // credential to anyone who fetched the JS. The renderer now asks the gateway
+  // it was served from via the same-origin handoff endpoint, falling back to the
+  // FirstRun paste flow. See renderer/src/lib/gateway-origin.ts.
 
   return {
     plugins: [react(), gatewayLauncherPlugin(url)],
@@ -113,7 +81,6 @@ export default defineConfig(() => {
     // This replaces the need for a desktop/.env file.
     define: {
       "import.meta.env.VITE_GATEWAY_URL": JSON.stringify(url),
-      "import.meta.env.VITE_GATEWAY_TOKEN": JSON.stringify(token),
       "import.meta.env.VITE_GATEWAY_CLIENT_NAME": JSON.stringify(clientName),
     },
   };
