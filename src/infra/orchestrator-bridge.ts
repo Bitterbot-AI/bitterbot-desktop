@@ -5,6 +5,7 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync, unlinkSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { createInterface } from "node:readline";
 import type { P2pConfig } from "../config/types.p2p.js";
@@ -19,6 +20,14 @@ const DEFAULT_IPC_PATH =
     ? "\\\\.\\pipe\\bitterbot-orchestrator"
     : "/tmp/bitterbot-orchestrator.sock";
 const RECONNECT_DELAY_MS = 3000;
+/**
+ * Budget for the freshly spawned orchestrator to bind its IPC socket before the
+ * gateway boots on without it. Cold boots (first start after an OS restart)
+ * routinely need several seconds; the old fixed 1s sleep + single attempt made
+ * one ECONNREFUSED fatal to the whole gateway (2026-08-26 post-reboot crash).
+ */
+const INITIAL_CONNECT_BUDGET_MS = 20_000;
+const INITIAL_CONNECT_RETRY_MS = 750;
 const MAX_RECONNECT_ATTEMPTS = 10;
 /** Default IPC command timeout for background/non-interactive commands. */
 const DEFAULT_IPC_TIMEOUT_MS = 10_000;
@@ -193,7 +202,9 @@ export class OrchestratorBridge {
   private resolvedBootstrapPeers: string[] | null = null;
 
   constructor(private readonly config: P2pConfig) {
-    this.ipcPath = DEFAULT_IPC_PATH;
+    // Env override exists for tests and for running multiple nodes on one
+    // machine without their orchestrators fighting over a single socket path.
+    this.ipcPath = process.env.BITTERBOT_ORCHESTRATOR_IPC_PATH?.trim() || DEFAULT_IPC_PATH;
   }
 
   async start(): Promise<void> {
@@ -221,6 +232,16 @@ export class OrchestratorBridge {
     }
     this.resolvedBinaryPath = binary;
     const args = this.buildArgs();
+
+    // A stale socket file (a previous boot's, surviving an OS restart in /tmp
+    // on some setups, or a crashed daemon's) makes the fresh child fail to bind
+    // and exit, after which every connect is refused. Unlink it ONLY when
+    // nothing answers on it — a live orchestrator owning the socket must be
+    // left alone (the child will fail to bind against it and we connect to the
+    // running one, which is today's takeover-free behavior).
+    if (process.platform !== "win32") {
+      await this.cleanStaleIpcSocket();
+    }
 
     log.info(`Starting orchestrator: ${binary} ${args.join(" ")}`);
 
@@ -265,14 +286,80 @@ export class OrchestratorBridge {
       }
     });
 
-    // Wait briefly for the socket to become available, then connect
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    if (!this.process) {
-      // 'error' fired during the wait — surface a clean rejection.
-      throw new Error(this.lastError ?? "Orchestrator failed to start");
+    // Wait for the child to bind its IPC socket, retrying with a budget. The
+    // old shape (fixed 1s sleep, single connect) made a slow cold boot fatal:
+    // the lone ECONNREFUSED escaped as an uncaught exception and killed the
+    // gateway (2026-08-26). IPC unavailability must degrade the P2P surface,
+    // never the node: if the budget runs out with the child still alive, boot
+    // on and let the standing reconnect loop attach when the socket appears.
+    const deadline = Date.now() + INITIAL_CONNECT_BUDGET_MS;
+    let attempts = 0;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, INITIAL_CONNECT_RETRY_MS));
+      if (!this.process) {
+        // 'error'/'exit' fired — the binary is unusable or died before binding.
+        throw new Error(this.lastError ?? "Orchestrator failed to start");
+      }
+      // connectIpc's error handler arms the shared reconnect timer on every
+      // failure; while this loop owns the retrying, keep that timer clear so
+      // two paths never dial the socket concurrently.
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      attempts += 1;
+      try {
+        await this.connectIpc();
+        this.everConnected = true;
+        this.reconnectAttempts = 0;
+        return;
+      } catch (err) {
+        if (Date.now() >= deadline) {
+          this.lastError = `IPC not reachable after ${attempts} attempts: ${String(err)}`;
+          log.warn(
+            `Orchestrator IPC not up after ${Math.round(INITIAL_CONNECT_BUDGET_MS / 1000)}s — ` +
+              "continuing without P2P; the reconnect loop will attach when the socket appears.",
+          );
+          // Hand off to the background loop with a fresh attempt budget (the
+          // failed dials above each consumed one via connectIpc's handler).
+          this.reconnectAttempts = 0;
+          this.scheduleReconnect();
+          return;
+        }
+      }
     }
-    await this.connectIpc();
-    this.everConnected = true;
+  }
+
+  /**
+   * Remove the IPC socket file iff it is stale: present on disk but with
+   * nothing accepting connections behind it. Best-effort — a probe error other
+   * than "connection refused" leaves the file untouched.
+   */
+  private async cleanStaleIpcSocket(): Promise<void> {
+    if (!existsSync(this.ipcPath)) {
+      return;
+    }
+    const alive = await new Promise<boolean>((resolve) => {
+      const probe = createConnection({ path: this.ipcPath });
+      const done = (value: boolean) => {
+        probe.removeAllListeners();
+        probe.destroy();
+        resolve(value);
+      };
+      probe.setTimeout(500);
+      probe.once("connect", () => done(true));
+      probe.once("timeout", () => done(true)); // slow but alive: leave it alone
+      probe.once("error", (err) => done((err as NodeJS.ErrnoException).code !== "ECONNREFUSED"));
+    });
+    if (alive) {
+      return;
+    }
+    try {
+      unlinkSync(this.ipcPath);
+      log.warn(`Removed stale orchestrator IPC socket at ${this.ipcPath} (nothing listening)`);
+    } catch (err) {
+      log.warn(`Could not remove stale IPC socket ${this.ipcPath}: ${String(err)}`);
+    }
   }
 
   /** Current health snapshot, safe to call from doctor / health endpoints. */
@@ -742,9 +829,14 @@ export class OrchestratorBridge {
   }
 
   private async connectIpc(): Promise<void> {
-    // Clean up any existing socket before creating a new one
+    // Clean up any existing socket before creating a new one. Keep a swallow
+    // error listener on it: if its connect is still in flight, the abort (or a
+    // late ECONNREFUSED/ENOENT) emits AFTER removeAllListeners, and an 'error'
+    // with no listener is an uncaughtException — which is exactly how one
+    // refused dial killed the whole gateway on 2026-08-26.
     if (this.socket) {
       this.socket.removeAllListeners();
+      this.socket.on("error", () => {});
       this.socket.destroy();
       this.socket = null;
     }
@@ -785,6 +877,13 @@ export class OrchestratorBridge {
       const rl = createInterface({ input: socket });
       rl.on("line", (line) => {
         this.handleMessage(line);
+      });
+      // Readline RE-EMITS the input stream's 'error' on the Interface, and an
+      // 'error' event with no listener is an uncaughtException. This is the
+      // 2026-08-26 crash: the socket's own handler logged the ECONNREFUSED,
+      // then readline's re-emission of the same error killed the gateway.
+      rl.on("error", () => {
+        // Already logged and recovered by the socket's 'error' handler above.
       });
     });
   }
