@@ -343,13 +343,20 @@ export class OrchestratorBridge {
       const probe = createConnection({ path: this.ipcPath });
       const done = (value: boolean) => {
         probe.removeAllListeners();
+        probe.once("error", () => {}); // a late abort error must not go listener-less
         probe.destroy();
         resolve(value);
       };
       probe.setTimeout(500);
       probe.once("connect", () => done(true));
       probe.once("timeout", () => done(true)); // slow but alive: leave it alone
-      probe.once("error", (err) => done((err as NodeJS.ErrnoException).code !== "ECONNREFUSED"));
+      // Alive ONLY on a successful connect. The refused-connection error code is
+      // platform-dependent (Linux says ECONNREFUSED, macOS says ENOTSOCK for a
+      // plain file at the path — which is how CI caught this), and an
+      // allowlist here wrongly preserved the stale file on macOS. Any probe
+      // error means nothing usable answers; the unlink below is best-effort,
+      // so an EACCES-style case degrades to a logged warning, not a crash.
+      probe.once("error", () => done(false));
     });
     if (alive) {
       return;
