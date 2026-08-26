@@ -30,7 +30,12 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 const REPO = "Bitterbot-AI/bitterbot-desktop";
-const INSTALL_DIR = join(homedir(), ".bitterbot", "bin");
+// Overridable for container builds: the Docker image fetches into the
+// repo-relative path the resolver probes, because ~/.bitterbot inside a
+// container is either the wrong HOME (root at build time) or shadowed by the
+// compose volume mount at runtime.
+const INSTALL_DIR =
+  process.env.BITTERBOT_ORCHESTRATOR_INSTALL_DIR?.trim() || join(homedir(), ".bitterbot", "bin");
 
 // Resolve the Cargo.toml relative to this script, not cwd — pnpm
 // postinstall can run from nested workspace packages.

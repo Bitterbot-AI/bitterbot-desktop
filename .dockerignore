@@ -54,3 +54,7 @@ vendor/
 !vendor/a2ui/renderers/
 !vendor/a2ui/renderers/lit/
 !vendor/a2ui/renderers/lit/**
+
+# The renderer's public assets are needed for the Control UI build; the global
+# image-extension excludes above would silently drop them from the context.
+!desktop/renderer/public/**

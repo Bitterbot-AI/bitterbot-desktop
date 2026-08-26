@@ -15,7 +15,7 @@ services:
     command:
       [
         "node",
-        "dist/index.js",
+        "bitterbot.mjs",
         "gateway",
         "--bind",
         "${BITTERBOT_GATEWAY_BIND:-lan}",
@@ -36,4 +36,4 @@ services:
     stdin_open: true
     tty: true
     init: true
-    entrypoint: ["node", "dist/index.js"]
+    entrypoint: ["node", "bitterbot.mjs"]
