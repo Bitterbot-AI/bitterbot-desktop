@@ -2064,10 +2064,10 @@ See [Plugins](/tools/plugin).
 
 <Accordion title="Control UI auth flow">
 
-The Control UI (`cd desktop && pnpm dev`) connects to the gateway over WebSocket at `ws://127.0.0.1:19001`. These settings control how the gateway handles that connection.
+The Control UI is served by the gateway itself at `http://127.0.0.1:19001/` and connects back over WebSocket to the same origin. These settings control how the gateway handles that connection.
 
 **Shared token auth (normal path):**
-The Control UI authenticates using `gateway.auth.token` — the same shared token the CLI uses. The `VITE_GATEWAY_TOKEN` in `desktop/.env` must match the token in `~/.bitterbot/bitterbot.json`. The onboarding wizard generates this token automatically.
+The Control UI authenticates using `gateway.auth.token` — the same shared token the CLI uses. The UI obtains it automatically from the gateway's same-origin loopback handoff endpoint (`/auth/session-token`); for a remote gateway, the first-run screen accepts the token manually. The onboarding wizard generates the token automatically; nothing is baked into the UI build.
 
 **Device auth is NOT required for the Control UI.** Device identity (Ed25519 keypair pairing) is only used by non-browser clients: the CLI, iOS/Android apps, and remote gateways. The Control UI authenticates purely with the shared token.
 
@@ -2076,14 +2076,15 @@ The Control UI authenticates using `gateway.auth.token` — the same shared toke
 - `enabled` (default `true`): controls whether the gateway accepts Control UI WebSocket connections.
 - `basePath`: optional prefix path for the gateway's built-in dashboard endpoint.
 - `allowedOrigins`: browser origins allowed to open WebSocket connections. When unset, the gateway allows loopback origins and origins matching the request Host header (including `http://localhost:5173`) automatically.
+- `allowedHosts`: extra hostnames the token handoff endpoint answers for (for example a Tailscale Serve name). Loopback names are always allowed; anything else is refused to block DNS-rebinding.
 - `allowInsecureAuth` (default `false`): allow shared-token auth over plain HTTP from non-loopback origins. Not recommended.
 - `dangerouslyDisableDeviceAuth` (default `false`): break-glass flag that strips device identity checks. Not needed for normal browser access — only use for emergency recovery.
 
 **If the Control UI cannot connect**, check:
 
-1. The `VITE_GATEWAY_TOKEN` in `desktop/.env` matches `gateway.auth.token` in `~/.bitterbot/bitterbot.json`.
+1. You opened the UI at `http://127.0.0.1:19001/` on the gateway machine (or through an SSH tunnel to it) — the automatic token handoff only answers loopback requests.
 2. The gateway is running: `bitterbot gateway status`.
-3. Both the gateway and Control UI processes are running (two terminals).
+3. For a remote gateway, the first-run screen has the right `ws://` URL and the token from `~/.bitterbot/bitterbot.json → gateway.auth.token`.
 
 </Accordion>
 

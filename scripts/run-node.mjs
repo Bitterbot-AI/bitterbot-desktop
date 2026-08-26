@@ -276,6 +276,29 @@ export async function runNodeMain(params = {}) {
     }
   }
 
+  // Same reasoning for the Control UI: since PLAN-39 the gateway serves it
+  // from dist/control-ui, and on a fresh checkout that directory does not
+  // exist — every doc then points the new user at a 404. Stage it when it is
+  // genuinely absent (ui-build content-hash-skips the vite build when the
+  // renderer is unchanged). An EXISTING staging is deliberately left alone,
+  // matching the entry-bundle rule above: `pnpm build` rolls the UI forward.
+  if (statMtime(path.join(deps.distRoot, "control-ui", "index.html"), deps.fs) == null) {
+    logRunner("Staging Control UI (dist/control-ui missing).", deps);
+    const ui = deps.spawn(deps.execPath, ["scripts/ui-build.mjs"], {
+      cwd: deps.cwd,
+      env: deps.env,
+      stdio: "inherit",
+    });
+    const uiRes = await new Promise((resolve) => {
+      ui.on("exit", (exitCode, exitSignal) => resolve({ exitCode, exitSignal }));
+    });
+    // A UI staging failure must not stop the gateway: the node is fully
+    // functional headless, and doctor reports the missing UI. Log and go on.
+    if (uiRes.exitSignal || (uiRes.exitCode !== 0 && uiRes.exitCode !== null)) {
+      logRunner("Control UI staging failed — gateway will run without a served UI.", deps);
+    }
+  }
+
   writeBuildStamp(deps);
   return await runBitterbot(deps);
 }

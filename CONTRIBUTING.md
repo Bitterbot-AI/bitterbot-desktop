@@ -36,7 +36,7 @@ Open `http://localhost:5173` for the Control UI dev server (hot reload; it conne
 
 > **Note:** `pnpm gateway:watch` auto-rebuilds on TS changes (use this for dev). `pnpm start gateway` is one-shot with no file watching (production). The orchestrator (P2P sidecar) is spawned automatically by the gateway.
 
-**Control UI auth:** the onboarding wizard (`pnpm bitterbot onboard`) auto-generates `desktop/.env` with the gateway token. If you skipped the wizard, copy `desktop/.env.example` to `desktop/.env` and paste your token from `~/.bitterbot/bitterbot.json → gateway.auth.token`.
+**Control UI auth:** in production the gateway serves the UI and hands over the token same-origin — nothing to configure. In the dev flow (`pnpm dev:all`, Vite on 5173) the UI asks the gateway for the token the same way; if that fails, use the first-run screen and paste the token from `~/.bitterbot/bitterbot.json → gateway.auth.token`. `VITE_GATEWAY_TOKEN` no longer exists — the token is never baked into a build.
 
 ## Project Structure
 

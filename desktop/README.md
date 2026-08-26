@@ -26,13 +26,12 @@ pnpm dev:all            # starts both gateway + this UI in one terminal
 
 ## Auth Setup
 
-The onboarding wizard (`pnpm bitterbot onboard`) auto-generates `desktop/.env` with your gateway token and URL. If you skipped the wizard or need to set it up manually:
-
-```bash
-cp .env.example .env
-```
-
-Then paste your gateway token from `~/.bitterbot/bitterbot.json` (`gateway.auth.token`) into `VITE_GATEWAY_TOKEN`.
+Nothing to set up: the UI asks the gateway it connects to for the token over a
+same-origin loopback endpoint, and falls back to the first-run screen (paste the
+token from `~/.bitterbot/bitterbot.json → gateway.auth.token`) for remote
+gateways. The old `VITE_GATEWAY_TOKEN` define is gone — the token is never baked
+into a build. `desktop/.env` remains only as an optional dev override for
+`VITE_GATEWAY_URL` when your dev gateway is not on `ws://localhost:19001`.
 
 ## Build
 

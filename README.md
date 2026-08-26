@@ -55,10 +55,10 @@ Open [http://127.0.0.1:19001](http://127.0.0.1:19001) to reach the Bitterbot Con
 > **Start it yourself later** (or if you skipped the wizard's auto-start):
 >
 > ```bash
-> pnpm start:all              # gateway + Control UI, production; skips whatever is already up
+> pnpm start:all              # starts the gateway (which serves the Control UI); skips if already up
 > ```
 >
-> `start:all` builds `dist/entry.js` on first run if it's missing, so no separate `pnpm build` step is required.
+> `start:all` builds `dist/entry.js` and stages the Control UI on first run if they're missing, so no separate `pnpm build` step is required.
 >
 > **Developing on the source?** Use watch mode instead:
 >
@@ -71,7 +71,7 @@ Open [http://127.0.0.1:19001](http://127.0.0.1:19001) to reach the Bitterbot Con
 >
 > The **orchestrator** (P2P sidecar) is spawned automatically by the gateway, so you do not need to start it separately.
 
-The Control UI's connection to the gateway is wired up automatically: the onboarding wizard writes `desktop/.env` for you with the gateway token and URL. If you skipped the wizard or need to regenerate it, copy `desktop/.env.example` to `desktop/.env` and paste the token from `~/.bitterbot/bitterbot.json → gateway.auth.token`.
+The Control UI needs no wiring: the gateway serves it and hands it the auth token over a same-origin loopback endpoint, so opening `http://127.0.0.1:19001/` on the machine that runs the gateway just works. From another machine, open the same URL through an SSH tunnel (`ssh -N -L 19001:127.0.0.1:19001 user@host`), or use the first-run screen to point the UI at a remote gateway with its token from `~/.bitterbot/bitterbot.json → gateway.auth.token`. (`desktop/.env` is only a development-mode override for `pnpm dev:all`.)
 
 <details>
 <summary><strong>Manual setup without the wizard</strong></summary>
@@ -427,7 +427,7 @@ The doctor command walks ~30 subsystem checks: runtime (Node/pnpm/platform), wor
 
 Common fast fixes:
 
-- **Control UI shows "Disconnected"**: verify `desktop/.env` exists and `VITE_GATEWAY_TOKEN` matches `~/.bitterbot/bitterbot.json → gateway.auth.token`. If you ran `pnpm bitterbot onboard`, this should have been auto-generated.
+- **Control UI shows "Disconnected"** (or the first-run screen unexpectedly): make sure you opened the UI on `http://127.0.0.1:19001/` on the gateway machine (or through an SSH tunnel to it) — the token handoff only works over loopback. For a remote gateway, enter its `ws://` URL and the token from `~/.bitterbot/bitterbot.json → gateway.auth.token` on the first-run screen.
 - **"Orchestrator binary NOT FOUND"**: either re-run `pnpm install` to trigger the postinstall downloader or `cargo build --release --manifest-path orchestrator/Cargo.toml` to build it locally.
 - **Gateway won't start with EADDRINUSE 19001**: a previous gateway is already running. Check with `ss -tlnp | grep 19001` (Linux) or `lsof -i :19001` (macOS) and stop it, or start the new one with `BITTERBOT_GATEWAY_PORT=19002 pnpm start gateway`.
 - **`missing dist/entry.(m)js (build output)`**: the gateway bundle hasn't been built. `pnpm start`, `pnpm start:all`, and `pnpm dev:all` now build it automatically on first run; if you hit this on an older checkout, run `pnpm build` once.

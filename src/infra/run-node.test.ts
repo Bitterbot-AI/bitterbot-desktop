@@ -114,9 +114,13 @@ describe("run-node script", () => {
         });
 
         expect(exitCode).toBe(0);
-        // Entry bundle is built first, THEN the gateway launches.
+        // Entry bundle is built first, then the Control UI is staged (a fresh
+        // checkout has no dist/control-ui, and since PLAN-39 the gateway serves
+        // the UI itself — without this step every doc points a new user at a
+        // 404), THEN the gateway launches.
         expect(nodeCalls).toEqual([
           [process.execPath, "scripts/build-gateway-entry.mjs"],
+          [process.execPath, "scripts/ui-build.mjs"],
           [process.execPath, "bitterbot.mjs", "--version"],
         ]);
       });
