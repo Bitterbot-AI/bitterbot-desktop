@@ -1,7 +1,3 @@
-# syntax=docker/dockerfile:1.7
-# The syntax line enables `COPY --parents` (manifest copies that keep their
-# directory layout), so the workspace-member list below cannot drift.
-#
 # This file could not build from the initial commit until 2026-08-26: it copied
 # a `ui/` dir and `patches/` that never existed, ran an undefined `pnpm
 # ui:build`, and installed Bun for nothing (V1 audit blocker 4). It is verified
@@ -25,7 +21,19 @@ RUN if [ -n "$BITTERBOT_DOCKER_APT_PACKAGES" ]; then \
 # desktop/ and extensions/* are pnpm workspace members: without their
 # package.json files, `--frozen-lockfile` fails against the workspace lockfile.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY --parents desktop/package.json extensions/*/package.json ./
+COPY desktop/package.json ./desktop/
+# One line per extension, deliberately: `COPY --parents` needs a newer BuildKit
+# than CI's classic builder (and many self-hosters' Docker) provides. If a new
+# extension gains a package.json and is missed here, --frozen-lockfile fails
+# and the CI docker job catches it.
+COPY extensions/discord/package.json ./extensions/discord/
+COPY extensions/google-antigravity-auth/package.json ./extensions/google-antigravity-auth/
+COPY extensions/google-gemini-cli-auth/package.json ./extensions/google-gemini-cli-auth/
+COPY extensions/signal/package.json ./extensions/signal/
+COPY extensions/slack/package.json ./extensions/slack/
+COPY extensions/telegram/package.json ./extensions/telegram/
+COPY extensions/twitch/package.json ./extensions/twitch/
+COPY extensions/whatsapp/package.json ./extensions/whatsapp/
 COPY scripts ./scripts
 
 # postinstall fetches the orchestrator binary. Point it INSIDE the image at the
