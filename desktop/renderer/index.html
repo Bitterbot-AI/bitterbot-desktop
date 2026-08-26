@@ -16,19 +16,34 @@
       Anything that needs to display remote bytes must proxy them through the
       loopback gateway, which is already allowed here.
     -->
+    <!--
+      Fonts are self-hosted (public/fonts, SIL OFL 1.1, license alongside).
+      The old cdn.jsdelivr.net stylesheet URLs had returned 404 since the day
+      they were added — the UI silently ran on system-font fallback while
+      making two dead requests plus a preconnect per load — and a CDN font is
+      an availability + privacy dependency this UI does not need. With them
+      gone, the CSP drops jsdelivr entirely and the UI is fully offline-capable.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; frame-src 'self' http://localhost:* http://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:* https://www.google.com https://*.googleapis.com"
+      content="default-src 'self'; connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; frame-src 'self' http://localhost:* http://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:* https://www.google.com https://*.googleapis.com"
     />
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-sans/style.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-mono/style.css"
-    />
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("/fonts/Geist-Variable.woff2") format("woff2-variations");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("/fonts/GeistMono-Variable.woff2") format("woff2-variations");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
     <title>Bitterbot</title>
   </head>
   <body class="bitterbot-theme">
