@@ -64,6 +64,33 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: pnpm test:gateway
 
+  docker:
+    # Verifies V1 audit blocker 4: this Dockerfile could not build from the
+    # initial commit until 2026-08-26 and had zero CI coverage, which is how it
+    # stayed broken. The smoke test proves the built image actually boots the
+    # gateway and serves the Control UI, not merely that the layers assemble.
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t bitterbot:ci .
+
+      - name: Smoke test — gateway boots and serves the Control UI
+        run: |
+          docker run -d --name bb -p 19001:19001             -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token             bitterbot:ci             node bitterbot.mjs gateway --allow-unconfigured --bind lan
+          code=000
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}'               -H "Authorization: Bearer ci-smoke-token"               http://127.0.0.1:19001/ || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          echo "GET / -> $code"
+          docker logs bb 2>&1 | tail -30
+          [ "$code" = "200" ]
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
