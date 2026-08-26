@@ -55,6 +55,15 @@ jobs:
       - name: Unit tests
         run: pnpm test:fast
 
+      # The gateway suite (src/gateway/**, 635 tests) is EXCLUDED from the unit
+      # config, and until 2026-08-26 no workflow ran it at all — every gateway
+      # test, including the Control-UI serving and token-handoff ones, guarded
+      # nothing. Ubuntu-only to start: the suite has never run on macOS or
+      # Windows runners, so broadening is a deliberate follow-up, not a default.
+      - name: Gateway tests
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm test:gateway
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
