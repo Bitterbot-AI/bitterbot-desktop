@@ -15,9 +15,9 @@ Native Linux companion apps are planned. Contributions are welcome if you want t
 
 ## Beginner quick path (VPS)
 
-1. Install Node 22+
-2. `npm i -g bitterbot@latest`
-3. `bitterbot onboard --install-daemon`
+1. Install Node 22+ and pnpm
+2. `git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop && bash scripts/setup-deps.sh && pnpm install`
+3. `pnpm bitterbot onboard --install-daemon`
 4. From your laptop: `ssh -N -L 19001:127.0.0.1:19001 <user>@<host>`
 5. Open `http://127.0.0.1:19001/` and paste your token
 

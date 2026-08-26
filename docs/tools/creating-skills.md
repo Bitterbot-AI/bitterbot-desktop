@@ -64,4 +64,4 @@ The skills file watcher (enabled by default) bumps the snapshot version when it 
 
 ## Shared Skills
 
-You can also browse and contribute skills on [GitHub](https://github.com/bitterbot/bitterbot).
+You can also browse and contribute skills on [GitHub](https://github.com/Bitterbot-AI/bitterbot-desktop).

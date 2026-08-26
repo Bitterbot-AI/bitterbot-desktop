@@ -36,12 +36,12 @@
     "links": [
       {
         "label": "GitHub",
-        "href": "https://github.com/bitterbot/bitterbot",
+        "href": "https://github.com/Bitterbot-AI/bitterbot-desktop",
         "icon": "github"
       },
       {
         "label": "Releases",
-        "href": "https://github.com/bitterbot/bitterbot/releases",
+        "href": "https://github.com/Bitterbot-AI/bitterbot-desktop/releases",
         "icon": "package"
       }
     ]

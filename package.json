@@ -21,13 +21,13 @@
   ],
   "homepage": "https://about.bitterbot.ai",
   "bugs": {
-    "url": "https://github.com/bitterbot/bitterbot/issues"
+    "url": "https://github.com/Bitterbot-AI/bitterbot-desktop/issues"
   },
   "license": "MIT",
   "author": "Victor Michael Gil <victor@bitterbot.net>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bitterbot/bitterbot.git"
+    "url": "https://github.com/Bitterbot-AI/bitterbot-desktop.git"
   },
   "bin": {
     "bitterbot": "bitterbot.mjs"

@@ -68,8 +68,8 @@ node bitterbot.mjs gateway --port 19001 --verbose
 
 ## Stable workflow
 
-1. Install Bitterbot via npm: `npm install -g bitterbot@latest`
-2. Run the onboarding wizard: `bitterbot onboard --install-daemon`
+1. Install from source (there is no npm package yet): `git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop && bash scripts/setup-deps.sh && pnpm install`
+2. Run the onboarding wizard: `pnpm bitterbot onboard --install-daemon`
 3. Link surfaces (example: WhatsApp):
 
 ```bash

@@ -17,7 +17,7 @@ title: "Tests"
 
 ## Model latency bench (local keys)
 
-Script: [`scripts/bench-model.ts`](https://github.com/bitterbot/bitterbot/blob/main/scripts/bench-model.ts)
+Script: [`scripts/bench-model.ts`](https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/scripts/bench-model.ts)
 
 Usage:
 

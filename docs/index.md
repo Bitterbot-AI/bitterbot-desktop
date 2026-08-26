@@ -95,14 +95,23 @@ The Gateway is the single source of truth for sessions, routing, and channel con
 ## Quick start
 
 <Steps>
-  <Step title="Install Bitterbot">
+  <Step title="Install Bitterbot (from source)">
     ```bash
-    npm install -g bitterbot@latest
+    git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git
+    cd bitterbot-desktop
+    bash scripts/setup-deps.sh   # Chromium, ffmpeg, ripgrep, ...
+    pnpm install
     ```
+
+    <Note>
+    There is no npm package or hosted installer yet — installing from source is
+    the supported path today. Requires Node 22+ and pnpm.
+    </Note>
+
   </Step>
-  <Step title="Onboard and install the service">
+  <Step title="Onboard (and optionally install the service)">
     ```bash
-    bitterbot onboard --install-daemon
+    pnpm bitterbot onboard --install-daemon
     ```
   </Step>
   <Step title="Pair WhatsApp and start the Gateway">

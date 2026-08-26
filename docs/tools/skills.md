@@ -59,7 +59,7 @@ tool surface those skills teach.
 
 ## Finding skills
 
-Browse community skills on [GitHub](https://github.com/bitterbot/bitterbot). Skills propagate automatically via the P2P network — nodes share proven skills with peers based on execution success and trust scores.
+Browse community skills on [GitHub](https://github.com/Bitterbot-AI/bitterbot-desktop). Skills propagate automatically via the P2P network — nodes share proven skills with peers based on execution success and trust scores.
 
 Install a skill into your workspace:
 
@@ -494,6 +494,6 @@ See [Skills config](/tools/skills-config) for the full configuration schema.
 
 ## Looking for more skills?
 
-Browse skills on [GitHub](https://github.com/bitterbot/bitterbot).
+Browse skills on [GitHub](https://github.com/Bitterbot-AI/bitterbot-desktop).
 
 ---

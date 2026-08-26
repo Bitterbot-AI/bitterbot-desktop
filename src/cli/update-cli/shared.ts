@@ -37,7 +37,9 @@ export type UpdateWizardOptions = {
   timeout?: string;
 };
 
-const BITTERBOT_REPO_URL = "https://github.com/bitterbot/bitterbot.git";
+// The real public repo. The old bitterbot/bitterbot URL 404s, so `bitterbot
+// update` cloning from it could never succeed (V1 audit P0 item 29).
+const BITTERBOT_REPO_URL = "https://github.com/Bitterbot-AI/bitterbot-desktop.git";
 const MAX_LOG_CHARS = 8000;
 
 export const DEFAULT_PACKAGE_NAME = "bitterbot";

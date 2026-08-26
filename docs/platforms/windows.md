@@ -142,8 +142,8 @@ systemctl --user status
 Follow the Linux Getting Started flow inside WSL:
 
 ```bash
-git clone https://github.com/bitterbot/bitterbot.git
-cd bitterbot
+git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git
+cd bitterbot-desktop
 pnpm install
 pnpm build # auto-installs UI deps on first run
 pnpm build

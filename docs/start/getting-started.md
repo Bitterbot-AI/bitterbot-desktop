@@ -28,28 +28,24 @@ Check your Node version with `node --version` if you are unsure.
 ## Quick setup (CLI)
 
 <Steps>
-  <Step title="Install Bitterbot (recommended)">
-    <Tabs>
-      <Tab title="macOS/Linux">
-        ```bash
-        curl -fsSL https://bitterbot.ai/install.sh | bash
-        ```
-      </Tab>
-      <Tab title="Windows (PowerShell)">
-        ```powershell
-        iwr -useb https://bitterbot.ai/install.ps1 | iex
-        ```
-      </Tab>
-    </Tabs>
+  <Step title="Install Bitterbot (from source)">
+    ```bash
+    git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git
+    cd bitterbot-desktop
+    bash scripts/setup-deps.sh   # Chromium, ffmpeg, ripgrep, ...
+    pnpm install
+    ```
 
     <Note>
-    Other install methods and requirements: [Install](/install).
+    There is no npm package or hosted installer yet — installing from source is
+    the supported path today. On Windows, use WSL2 and keep the checkout on the
+    Linux filesystem (`~`), not `/mnt/c` — boot is dramatically faster there.
     </Note>
 
   </Step>
   <Step title="Run the onboarding wizard">
     ```bash
-    bitterbot onboard --install-daemon
+    pnpm bitterbot onboard --install-daemon
     ```
 
     The wizard configures auth, gateway settings, and optional channels.
