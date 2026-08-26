@@ -236,3 +236,10 @@ benchmarks/longmemeval/results/contrastive_*
 
 # Internal planning docs stay local (removed from tracking 2026-07-29)
 docs/plans/
+
+# Internal security/release audits: agreed 2026-08-25 these stay out of the
+# public repo until the findings they enumerate are fixed. A `git add -A -- docs`
+# swept them into b1514e2 once; the ignore makes that class of mistake inert.
+docs/reviews/v1-release-audit-2026-08-21.md
+docs/reviews/v1-release-audit-2026-08-21-verification.md
+docs/reviews/circles-p2p-security-remediation-2026-08-14.md
