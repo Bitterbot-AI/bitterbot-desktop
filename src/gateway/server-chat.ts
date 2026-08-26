@@ -419,13 +419,17 @@ export function createAgentEventHandler({
     }
     agentRunSeq.set(evt.runId, evt.seq);
     if (isToolEvent) {
-      // Always broadcast tool events to registered WS recipients with
-      // tool-events capability, regardless of verboseLevel. The verbose
-      // setting only controls whether tool details are sent as channel
-      // messages to messaging surfaces (Telegram, Discord, etc.).
+      // Always DELIVER tool events to registered WS recipients with the
+      // tool-events capability, regardless of verboseLevel — but their
+      // CONTENTS follow the same rule as everywhere else: result and
+      // partialResult ride along only at verbose=full. This used to send
+      // agentPayload (unstripped) while the stripped toolPayload sat unused,
+      // leaking full tool output (exec results, file reads) to WS clients at
+      // every verbose level; the test pinning the stripped behavior existed
+      // since the initial commit but never ran in CI.
       const recipients = toolEventRecipients.get(evt.runId);
       if (recipients && recipients.size > 0) {
-        broadcastToConnIds("agent", agentPayload, recipients);
+        broadcastToConnIds("agent", toolPayload, recipients);
       }
     } else {
       broadcast("agent", agentPayload);
