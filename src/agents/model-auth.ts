@@ -221,6 +221,21 @@ export async function resolveApiKeyForProvider(params: {
     }
   }
 
+  // Zero profiles = nothing was ever configured (fresh install), not a
+  // per-agent wiring problem — point at onboarding, not at auth-store
+  // internals. Keep the "No API key found for provider" prefix in BOTH
+  // messages: the memory auto chain (embeddings.ts) and the Control UI
+  // match on it.
+  if (Object.keys(store.profiles).length === 0) {
+    throw new Error(
+      [
+        `No API key found for provider "${provider}".`,
+        "No AI provider is configured yet, so the agent can't answer.",
+        `Run ${formatCliCommand("bitterbot onboard")} to set one up, or add a key in the Control UI under Models & Keys.`,
+      ].join(" "),
+    );
+  }
+
   const authStorePath = resolveAuthStorePathForDisplay(params.agentDir);
   const resolvedAgentDir = path.dirname(authStorePath);
   throw new Error(

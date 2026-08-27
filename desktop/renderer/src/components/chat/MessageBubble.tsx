@@ -7,6 +7,7 @@ import {
   CheckCircle,
   CheckCircle2,
   AlertTriangle,
+  KeyRound,
   Trophy,
 } from "lucide-react";
 import { memo, useCallback } from "react";
@@ -23,6 +24,16 @@ interface MessageBubbleProps {
 }
 
 const COMPLETE_CHIP_NAMES = new Set(["complete", "task_complete", "task-complete"]);
+
+/**
+ * The gateway's missing-credential errors all carry this prefix (model-auth
+ * keeps it stable for machine matching). When an assistant turn fails with
+ * it, the bubble grows a Models & Keys deep link so a fresh install's very
+ * first message ends at the fix, not at an error string.
+ */
+export function isNoApiKeyError(content: string): boolean {
+  return content.includes("No API key found for provider");
+}
 
 /**
  * May this image URL be rendered inline? Only loopback and data URLs, which
@@ -117,6 +128,7 @@ export const MessageBubble = memo(function MessageBubble({
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
   const setToolPanelOpen = useUIStore((s) => s.setToolPanelOpen);
+  const setActiveTab = useUIStore((s) => s.setActiveTab);
 
   const handleChipClick = useCallback(
     (toolCallId?: string) => {
@@ -217,6 +229,16 @@ export const MessageBubble = memo(function MessageBubble({
               <div className="prose prose-sm max-w-none chat-markdown">
                 <Markdown>{message.content}</Markdown>
               </div>
+            )}
+            {isAssistant && isNoApiKeyError(message.content) && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("models")}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-background/60 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                Open Models &amp; Keys
+              </button>
             )}
           </div>
         )}
