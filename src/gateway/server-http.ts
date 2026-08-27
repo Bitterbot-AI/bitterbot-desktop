@@ -537,7 +537,15 @@ export function createGatewayHttpServer(opts: {
         )}${SESSION_TOKEN_PATH}`;
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(renderDreamDashboardPage(wsUrl, sessionTokenPath));
+        res.end(
+          renderDreamDashboardPage(wsUrl, sessionTokenPath, {
+            // PLAN-41 p0-14: money tabs only when their backend is on.
+            showEarnings: configSnapshot.a2a?.marketplace?.enabled === true,
+            showForage:
+              configSnapshot.a2a?.enabled === true ||
+              configSnapshot.forage?.nightShift?.enabled === true,
+          }),
+        );
         return;
       }
       // Management dashboard — auth-protected, serves self-contained HTML

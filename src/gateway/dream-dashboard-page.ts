@@ -6,7 +6,12 @@
 export function renderDreamDashboardPage(
   gatewayWsUrl: string,
   sessionTokenPath = "/auth/session-token",
+  opts: { showEarnings?: boolean; showForage?: boolean } = {},
 ): string {
+  // PLAN-41 p0-14: money-adjacent tabs render only when their backend is
+  // actually on — an Earnings tab over a disabled marketplace is theater.
+  const showEarnings = opts.showEarnings === true;
+  const showForage = opts.showForage === true;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -106,8 +111,8 @@ canvas { display: block; margin: 0 auto; }
     <button class="tab" data-tab="emotional">Emotional</button>
     <button class="tab" data-tab="curiosity">Curiosity</button>
     <button class="tab" data-tab="retrieval">Retrieval</button>
-    <button class="tab" data-tab="earnings">Earnings</button>
-    <button class="tab" data-tab="forage">Forage</button>
+    ${showEarnings ? '<button class="tab" data-tab="earnings">Earnings</button>' : ""}
+    ${showForage ? '<button class="tab" data-tab="forage">Forage</button>' : ""}
     <button class="tab" data-tab="live">Live</button>
   </div>
 
@@ -115,15 +120,14 @@ canvas { display: block; margin: 0 auto; }
   <div class="panel active" id="panel-status">
     <div class="stats-grid" id="status-stats"></div>
     <div class="card" id="status-last"></div>
-    <div class="card"><h3 style="margin-bottom:12px">Hormonal State</h3><div id="hormone-display"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Mood &amp; drive</h3><div id="hormone-display"></div></div>
   </div>
 
-  <!-- UTILITY TAB (PLAN-40: the funnel is the engine's only score) -->
+  <!-- UTILITY TAB: the consumed-artifact funnel is the engine's score -->
   <div class="panel" id="panel-utility">
     <div class="stats-grid" id="utility-stats"></div>
     <div class="card"><h3 style="margin-bottom:12px">Consumed-artifact funnel (28d)</h3><div id="utility-funnel"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Held modes — wake counters</h3><div id="utility-holds"></div></div>
-    <div class="card"><h3 style="margin-bottom:12px">Review queue — rate lane outputs (D1 pilot)</h3><div id="utility-review"></div></div>
   </div>
 
   <!-- HISTORY TAB -->
@@ -148,45 +152,53 @@ canvas { display: block; margin: 0 auto; }
     <div class="card" id="emo-briefing"></div>
   </div>
 
-  <!-- CURIOSITY TAB (GCCRF) -->
+  <!-- CURIOSITY TAB -->
   <div class="panel" id="panel-curiosity">
     <div class="stats-grid" id="curiosity-stats"></div>
-    <div class="card"><h3 style="margin-bottom:12px">Alpha Schedule (Developmental Annealing)</h3>
+    <div class="card"><h3 style="margin-bottom:12px">Curiosity maturity</h3>
       <div id="alpha-bar" style="margin-bottom:8px"></div>
       <div style="font-size:.75rem;color:var(--muted)">Young agent (α&lt;-1): curious about common things &nbsp;→&nbsp; Mature agent (α→0): curious about frontiers</div>
     </div>
-    <div class="card"><h3 style="margin-bottom:12px">GCCRF Components</h3><div id="gccrf-components"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Curiosity signals</h3><div id="gccrf-components"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Region Learning Progress</h3><div id="region-progress"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Reward History</h3><div class="bar-chart" id="reward-chart" style="height:100px"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Top Exploration Targets</h3><div id="exploration-targets"></div></div>
   </div>
 
-  <!-- RETRIEVAL TAB (PLAN-28 B4) -->
+  <!-- RETRIEVAL TAB -->
   <div class="panel" id="panel-retrieval">
     <div class="stats-grid" id="retrieval-stats"></div>
     <div class="card" id="deadwire-card"></div>
     <div class="card"><h3 style="margin-bottom:12px">Per-layer contribution (retrievals since each layer last fired)</h3><div id="layer-counters"></div></div>
-    <div class="card"><h3 style="margin-bottom:12px">Knowledge Graph &amp; Beliefs (SABM)</h3><div id="graph-stats"></div></div>
-    <div class="card"><h3 style="margin-bottom:12px">Closed-loop cognition (PLAN-34)</h3><div id="cognition-stats"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Knowledge graph &amp; beliefs</h3><div id="graph-stats"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Research loop</h3><div id="cognition-stats"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Research findings</h3><div id="research-findings"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Research egress log</h3><div id="egress-log"></div></div>
-    <div class="card"><h3 style="margin-bottom:12px">Canonical memory ledger (PLAN-33)</h3><div id="canonical-pane"></div></div>
+    <div class="card"><h3 style="margin-bottom:12px">Pinned-facts ledger</h3><div id="canonical-pane"></div></div>
   </div>
 
-  <!-- EARNINGS TAB -->
-  <div class="panel" id="panel-earnings">
+  <!-- EARNINGS TAB (rendered only when a2a.marketplace is enabled) -->
+  ${
+    showEarnings
+      ? `<div class="panel" id="panel-earnings">
     <div class="stats-grid" id="earnings-stats"></div>
     <div class="card"><h3 style="margin-bottom:12px">Earnings Trend (7 days)</h3><div class="bar-chart" id="earnings-chart" style="height:100px"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Top Earning Skills</h3><div id="top-earners"></div></div>
     <div class="card"><h3 style="margin-bottom:12px">Marketplace Listings</h3><div id="listings-table"></div></div>
-  </div>
+  </div>`
+      : ""
+  }
 
-  <!-- FORAGE TAB (PLAN-29 Phase 3b) -->
-  <div class="panel" id="panel-forage">
+  <!-- FORAGE TAB (rendered only when forage/a2a is enabled) -->
+  ${
+    showForage
+      ? `<div class="panel" id="panel-forage">
     <div class="stats-grid" id="forage-stats"></div>
     <div class="card"><h3 style="margin-bottom:12px">The Tape</h3><div id="forage-tape"><div class="empty">No bounty activity yet</div></div></div>
     <div class="card" id="forage-honesty" style="font-size:.75rem;color:var(--muted)"></div>
-  </div>
+  </div>`
+      : ""
+  }
 
   <!-- LIVE TAB -->
   <div class="panel" id="panel-live">
@@ -382,7 +394,7 @@ async function loadRetrieval() {
       '<span>Flagged contradictions: <strong>'+(g.flaggedContradictions ?? 0)+'</strong></span>' +
       '</div>';
 
-    // PLAN-34 Phase 6: closed-loop cognition counters.
+    // Research-loop counters.
     const cog = h.cognition;
     const cogEl = document.getElementById('cognition-stats');
     if (cogEl) {
@@ -410,7 +422,7 @@ async function loadRetrieval() {
       }
     }
 
-    // PLAN-34 Phase 6 (§8): research-findings history. Read-only view —
+    // Research-findings history. Read-only view —
     // rows still pending their one-time "while you were away" surfacing are
     // flagged, already-voiced ones show when they surfaced.
     const rf = (cog && cog.recentFindings) || [];
@@ -424,7 +436,7 @@ async function loadRetrieval() {
           '</div></div>').join('')
       : '<div class="empty">No autonomous research findings yet</div>';
 
-    // PLAN-34 Phase 6 (§8): egress audit. All-time per-seam totals lead so
+    // Egress audit. All-time per-seam totals lead so
     // the truncated recent list can never understate the network footprint.
     const eg = (cog && cog.egress) || { totalsBySeam: {}, recent: [] };
     const seamTotals = Object.entries(eg.totalsBySeam || {})
@@ -441,7 +453,7 @@ async function loadRetrieval() {
             '</div>').join('')
         : '<div class="empty">No research egress recorded</div>');
 
-    // PLAN-33 Phase 4 pane (landed via PLAN-34 §8): canonical ledger contents.
+    // Pinned-facts ledger contents.
     const can = h.canonical;
     const canEl = document.getElementById('canonical-pane');
     if (!can) {
@@ -565,7 +577,7 @@ async function loadHistory() {
 }
 
 // ANALYTICS
-// UTILITY (PLAN-40): produced vs consumed per lane + hold wake counters.
+// UTILITY: produced vs consumed per lane + hold wake counters.
 // Data comes from dream.utility, which reads the SAME shared query module
 // as the doctor — never reimplement the funnel math here.
 async function loadUtility() {
@@ -585,7 +597,7 @@ async function loadUtility() {
       return '<div class="mode-bar"><span class="name">'+l.lane+'</span>' +
         '<div style="flex:1"><div class="fill" style="width:'+pct+'%;background:var(--green)"></div></div>' +
         '<span class="pct">'+(l.consumed||0)+'/'+l.produced+(kinds?' ('+kinds+')':'')+'</span></div>';
-    }).join('') : '<div class="empty">No lane artifacts yet — lanes land with PLAN-40 Phases 1-3</div>';
+    }).join('') : '<div class="empty">No lane artifacts yet</div>';
     document.getElementById('utility-holds').innerHTML = (u.holds||[]).map(h => {
       const pct = Math.min(100, Math.round(h.current/h.wakeAt*100));
       return '<div class="mode-bar"><span class="name" style="min-width:260px">'+h.hold+'</span>' +
@@ -593,23 +605,6 @@ async function loadUtility() {
         '<span class="pct">'+h.current+'/'+h.wakeAt+'</span></div>';
     }).join('') || '<div class="empty">No holds</div>';
   } catch(e) { console.warn('utility error', e); }
-  try {
-    const r = await rpc('dream.utility.review');
-    const items = r.items || [];
-    document.getElementById('utility-review').innerHTML = items.length ? items.map(it => {
-      const rated = it.rating === 1 ? ' &#128077;' : it.rating === -1 ? ' &#128078;' : '';
-      const content = (it.content || '(content unavailable)').slice(0, 260);
-      return '<div class="insight-item"><div>'+content.replace(/</g,'&lt;')+'</div>' +
-        '<div class="meta">'+it.lane+' &middot; '+it.artifact_kind+' &middot; '+new Date(it.produced_at).toLocaleString()+rated+
-        (it.rating == null ? ' &middot; <a href="#" onclick="rateArtifact(\\''+it.artifact_id+'\\',1);return false">&#128077;</a> <a href="#" onclick="rateArtifact(\\''+it.artifact_id+'\\',-1);return false">&#128078;</a>' : '') +
-        '</div></div>';
-    }).join('') : '<div class="empty">No lane outputs to review yet</div>';
-  } catch(e) { console.warn('review error', e); }
-}
-
-async function rateArtifact(artifactId, rating) {
-  try { await rpc('dream.utility.rate', { artifactId, rating }); loadUtility(); }
-  catch(e) { console.warn('rate error', e); }
 }
 
 async function loadAnalytics() {
@@ -715,12 +710,12 @@ function drawRadar(e) {
   axes.forEach(a => { const px=cx+Math.cos(a.angle)*r*a.val, py=cy+Math.sin(a.angle)*r*a.val; ctx.beginPath(); ctx.arc(px,py,4,0,Math.PI*2); ctx.fill(); });
 }
 
-// CURIOSITY (GCCRF)
+// CURIOSITY
 async function loadCuriosity() {
   try {
     const c = await rpc('dream.curiosityReward');
     if (!c?.enabled) {
-      document.getElementById('curiosity-stats').innerHTML = '<div class="empty">GCCRF not initialized yet</div>';
+      document.getElementById('curiosity-stats').innerHTML = '<div class="empty">Curiosity engine not initialized yet</div>';
       return;
     }
 
@@ -743,7 +738,7 @@ async function loadCuriosity() {
       '</div>' +
       '<span style="font-size:.8rem;color:var(--muted)">\\u03B1='+((c.config?.alphaEnd)??0).toFixed(1)+'</span></div>';
 
-    // GCCRF Components (from normalizer means)
+    // Curiosity signal components (from normalizer means)
     const comps = c.components || {};
     const compNames = [
       {key:'eta',label:'Prediction Error (\\u03B7)',color:'var(--blue)',desc:'How surprising is this?'},

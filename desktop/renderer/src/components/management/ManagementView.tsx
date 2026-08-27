@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
 import { resolveGatewayHttpOrigin } from "../../lib/gateway-origin";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { DashboardFrame } from "../ui/dashboard-frame";
 
 /**
  * ManagementView: embeds the server-rendered management dashboard in an iframe.
@@ -9,7 +9,6 @@ import { useGatewayStore } from "../../stores/gateway-store";
  */
 export function ManagementView() {
   const hello = useGatewayStore((s) => s.hello);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // No token in the query string: /management is served by the gateway itself and
   // waives auth for loopback callers, so a same-origin iframe already carries the
@@ -18,13 +17,6 @@ export function ManagementView() {
   // `__BITTERBOT_GATEWAY_URL__` was read here and set by nothing; the shared
   // helper replaces both it and the hardcoded fallback.
   const dashboardUrl = `${resolveGatewayHttpOrigin()}/management`;
-
-  useEffect(() => {
-    // Refresh iframe when gateway reconnects
-    if (hello && iframeRef.current) {
-      iframeRef.current.src = dashboardUrl;
-    }
-  }, [hello, dashboardUrl]);
 
   return (
     <div className="flex flex-col h-full">
@@ -44,12 +36,7 @@ export function ManagementView() {
           Open in new tab
         </a>
       </div>
-      <iframe
-        ref={iframeRef}
-        src={dashboardUrl}
-        className="flex-1 w-full border-0"
-        title="Management Dashboard"
-      />
+      <DashboardFrame path="/management" title="Management Dashboard" reloadKey={hello ? 1 : 0} />
     </div>
   );
 }
