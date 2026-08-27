@@ -188,6 +188,26 @@ export function UpdateCard() {
         )}
       </div>
 
+      {/* What an update brings, BEFORE install (sota-bar rec 2) */}
+      {!updating &&
+        info?.installKind === "git" &&
+        (behind ?? 0) > 0 &&
+        (info.pendingCommits?.length ?? 0) > 0 && (
+          <div className="mb-3 rounded-lg bg-muted/20 border border-border/10 p-3">
+            <p className="text-xs font-medium text-foreground mb-1.5">What&apos;s new upstream</p>
+            <ul className="space-y-0.5">
+              {info.pendingCommits!.slice(0, 8).map((subject, i) => (
+                <li key={i} className="text-xs text-muted-foreground truncate">
+                  • {subject}
+                </li>
+              ))}
+              {(behind ?? 0) > 8 && (
+                <li className="text-xs text-muted-foreground/60">…and {(behind ?? 0) - 8} more</li>
+              )}
+            </ul>
+          </div>
+        )}
+
       {updating ? (
         <p className="text-sm text-purple-300">
           Updating… the node fetches the latest code, verifies it builds (the dev channel preflights

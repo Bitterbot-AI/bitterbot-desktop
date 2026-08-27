@@ -18,6 +18,8 @@ export type UpdateInfo = {
   checkedAt: number;
   /** False when the staleness numbers come from a failed `git fetch`. */
   fetchOk?: boolean | null;
+  /** Subjects of the commits an update would bring (git installs, capped). */
+  pendingCommits?: string[];
   /** Only populated by update.check (the event omits it). */
   dirty?: boolean | null;
 };
@@ -92,6 +94,7 @@ export type UpdateCheckResponse = {
       behind: number | null;
       dirty: boolean | null;
       fetchOk: boolean | null;
+      pendingCommits?: string[];
     };
   };
   registryLatest: string | null;
@@ -111,6 +114,7 @@ export function parseCheckResponse(resp: UpdateCheckResponse): UpdateInfo {
     checkedAt: resp.checkedAt,
     fetchOk: resp.check.git?.fetchOk ?? null,
     dirty: resp.check.git?.dirty ?? null,
+    pendingCommits: resp.check.git?.pendingCommits ?? [],
   };
 }
 

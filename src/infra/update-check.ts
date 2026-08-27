@@ -18,6 +18,8 @@ export type GitUpdateStatus = {
   ahead: number | null;
   behind: number | null;
   fetchOk: boolean | null;
+  /** Subjects of HEAD..upstream (capped) — the pending "release notes". */
+  pendingCommits?: string[];
   error?: string;
 };
 
@@ -106,6 +108,7 @@ export async function checkGitUpdateStatus(params: {
     ahead: null,
     behind: null,
     fetchOk: null,
+    pendingCommits: [],
   };
 
   const branchRes = await runCommandWithTimeout(
@@ -168,6 +171,19 @@ export async function checkGitUpdateStatus(params: {
   };
   const parsed = counts && counts.code === 0 ? parseCounts(counts.stdout) : null;
 
+  // PLAN-41 (sota-bar rec 2): the pending commits ARE the release notes for a
+  // git install — surface their subjects so the UI can show what an update
+  // brings BEFORE it is installed. Capped; empty when up to date.
+  const pendingCommits =
+    upstream && (parsed?.behind ?? 0) > 0
+      ? await runCommandWithTimeout(
+          ["git", "-C", root, "log", "--pretty=%s", "-n", "15", `HEAD..${upstream}`],
+          { timeoutMs },
+        )
+          .then((r) => (r.code === 0 ? r.stdout.split("\n").filter(Boolean) : []))
+          .catch(() => [])
+      : [];
+
   return {
     root,
     sha,
@@ -178,6 +194,7 @@ export async function checkGitUpdateStatus(params: {
     ahead: parsed?.ahead ?? null,
     behind: parsed?.behind ?? null,
     fetchOk,
+    pendingCommits,
   };
 }
 
