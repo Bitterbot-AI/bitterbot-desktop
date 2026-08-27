@@ -90,7 +90,8 @@ export const walletHandlers: GatewayRequestHandlers = {
       }
 
       respond(true, {
-        enabled: walletConfig?.enabled !== false,
+        // V1 default flip (PLAN-41 D-D): the wallet is opt-in.
+        enabled: walletConfig?.enabled === true,
         network: walletConfig?.network ?? "base-sepolia",
         sessionSpendCapUsd: walletConfig?.sessionSpendCapUsd ?? 50,
         perTransactionCapUsd: walletConfig?.perTransactionCapUsd ?? 25,

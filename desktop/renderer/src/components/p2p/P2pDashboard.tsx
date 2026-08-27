@@ -186,10 +186,6 @@ export function P2pDashboard() {
               <span className="text-muted-foreground">Skills Published</span>
               <span>{contributions?.skills_published ?? 0}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Skills Verified</span>
-              <span>{contributions?.skills_verified ?? 0}</span>
-            </div>
           </div>
         </div>
 

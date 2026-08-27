@@ -3,6 +3,7 @@ import { formatUptime, formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useOverviewStore } from "../../stores/overview-store";
+import { useUIStore } from "../../stores/ui-store";
 import { GatewayControls } from "./GatewayControls";
 import { UpdateCard } from "./UpdateCard";
 
@@ -32,24 +33,47 @@ function StatCard({
   );
 }
 
-function ChannelCard({ name, status }: { name: string; status: string }) {
-  const isConnected = status === "connected" || status === "running";
+function ChannelCard({ name, linked }: { name: string; linked: boolean }) {
   return (
     <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30">
       <span className="text-sm text-foreground capitalize">{name}</span>
       <span
         className={cn(
           "text-xs px-2 py-0.5 rounded-full",
-          isConnected ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground",
+          linked ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground",
         )}
       >
-        {status || "idle"}
+        {linked ? "linked" : "configured"}
       </span>
     </div>
   );
 }
 
+/**
+ * PLAN-41 p0-17 (overview-channels): status derives from the keys the health
+ * snapshot actually has (configured/linked, per channel or per account) —
+ * the old code read a `status` key that never existed.
+ */
+function summarizeChannels(
+  channels: Record<string, unknown>,
+): Array<{ name: string; configured: boolean; linked: boolean }> {
+  return Object.entries(channels).map(([name, data]) => {
+    const d = (data ?? {}) as {
+      configured?: boolean;
+      linked?: boolean;
+      accounts?: Record<string, { configured?: boolean; linked?: boolean } | undefined>;
+    };
+    const accounts = d.accounts ? Object.values(d.accounts) : [];
+    return {
+      name,
+      configured: d.configured === true || accounts.some((a) => a?.configured === true),
+      linked: d.linked === true || accounts.some((a) => a?.linked === true),
+    };
+  });
+}
+
 export function OverviewView() {
+  const setActiveTab = useUIStore((s) => s.setActiveTab);
   const status = useGatewayStore((s) => s.status);
   const request = useGatewayStore((s) => s.request);
   const hello = useGatewayStore((s) => s.hello);
@@ -84,6 +108,7 @@ export function OverviewView() {
   const uptime = statusData?.uptime ?? health?.uptime;
   const platform = statusData?.platform ?? "—";
   const channels = health?.channels ?? {};
+  const configuredChannels = summarizeChannels(channels).filter((c) => c.configured);
 
   return (
     <div className="h-full overflow-y-auto p-6 space-y-6">
@@ -112,7 +137,7 @@ export function OverviewView() {
         <StatCard label="Version" value={String(version)} accent />
         <StatCard label="Uptime" value={typeof uptime === "number" ? formatUptime(uptime) : "—"} />
         <StatCard label="Platform" value={String(platform)} />
-        <StatCard label="Channels" value={String(Object.keys(channels).length)} sub="registered" />
+        <StatCard label="Channels" value={String(configuredChannels.length)} sub="configured" />
       </div>
 
       {/* Version & updates */}
@@ -154,27 +179,30 @@ export function OverviewView() {
         <GatewayControls />
       </div>
 
-      {/* Channel Summary */}
-      {Object.keys(channels).length > 0 && (
-        <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
-          <h2 className="text-sm font-medium text-foreground mb-3">Channel Status</h2>
+      {/* Channel Summary — configured channels only; fresh installs get a CTA */}
+      <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
+        <h2 className="text-sm font-medium text-foreground mb-3">Channel Status</h2>
+        {configuredChannels.length > 0 ? (
           <div className="space-y-1">
-            {Object.entries(channels).map(([name, data]) => (
-              <ChannelCard
-                key={name}
-                name={name}
-                status={
-                  typeof data === "object" && data
-                    ? String(
-                        ((data as any).status ?? (data as any).configured) ? "configured" : "idle",
-                      )
-                    : "idle"
-                }
-              />
+            {configuredChannels.map((c) => (
+              <ChannelCard key={c.name} name={c.name} linked={c.linked} />
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center justify-between gap-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              No channels configured yet. Connect Telegram, WhatsApp, Discord, Slack or Signal so
+              people can talk to your agent.
+            </p>
+            <button
+              onClick={() => setActiveTab("channels")}
+              className="flex-shrink-0 px-3 py-1.5 text-xs rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-colors"
+            >
+              Set up channels
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -88,14 +88,12 @@ export function ActiveGuardsView() {
       if (res?.ok) {
         setStatus(res);
       } else {
-        setError("Gateway did not return guard status. Restart the gateway to load PLAN-20.");
+        setError("Gateway did not return guard status. Restart the gateway to enable it.");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(
-        msg.includes("unknown method")
-          ? "Gateway needs a restart to expose guards.status (PLAN-20)."
-          : msg,
+        msg.includes("unknown method") ? "Gateway needs a restart to expose guard status." : msg,
       );
     } finally {
       setLoading(false);
@@ -130,7 +128,8 @@ export function ActiveGuardsView() {
         <div>
           <h1 className="text-xl font-semibold">Active Guards</h1>
           <p className="text-sm text-muted-foreground">
-            Pre-action interceptors enforcing your skill behavior deterministically.
+            Safety rules that run before your agent acts — deterministic checks on tool use,
+            independent of model judgment.
           </p>
         </div>
         <button
@@ -159,7 +158,7 @@ export function ActiveGuardsView() {
         </h2>
         {(!status || status.registered.length === 0) && !loading && (
           <div className="p-4 rounded-lg border border-border/20 bg-card/60 text-sm text-muted-foreground">
-            No interceptors registered yet. Restart the gateway to pick up built-in interceptors.
+            No safety rules registered yet. Restart the gateway to pick up the built-in set.
           </div>
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

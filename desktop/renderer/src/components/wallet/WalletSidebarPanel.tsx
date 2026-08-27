@@ -1,5 +1,5 @@
 import { Wallet, ExternalLink, Copy, RefreshCw } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useUIStore, type TabId } from "../../stores/ui-store";
@@ -27,12 +27,22 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
   const setLoading = useWalletStore((s) => s.setLoading);
   const setError = useWalletStore((s) => s.setError);
   const setActiveTab = useUIStore((s) => s.setActiveTab);
+  // PLAN-41 p0-17: the panel renders only when the wallet is actually
+  // enabled AND configured — a fresh install gets no wallet chrome in the
+  // sidebar (WalletView stays reachable via Advanced).
+  const [walletReady, setWalletReady] = useState<boolean | null>(null);
 
   const refresh = useCallback(async () => {
     if (gwStatus !== "connected") return;
     setLoading(true);
     setError(null);
     try {
+      const cfg = await request<{ enabled?: boolean; configured?: boolean }>("wallet.getConfig");
+      const ready = cfg?.enabled === true && cfg?.configured !== false;
+      setWalletReady(ready);
+      if (!ready) {
+        return;
+      }
       const addrRes = await request<{ address: string; network: string }>("wallet.getAddress");
       setAddress(addrRes.address, addrRes.network);
 
@@ -60,6 +70,11 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Unconfigured or disabled wallet: no sidebar chrome at all.
+  if (walletReady !== true) {
+    return null;
+  }
 
   // Collapsed: just show wallet icon
   if (collapsed) {
