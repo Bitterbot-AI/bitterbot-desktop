@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
+import { describeError } from "../../lib/describe-error";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
@@ -168,7 +169,7 @@ export function NodesView() {
         refresh();
       } catch (err) {
         toast.error("Approve failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       }
     },
@@ -182,7 +183,7 @@ export function NodesView() {
         refresh();
       } catch (err) {
         toast.error("Reject failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       }
     },

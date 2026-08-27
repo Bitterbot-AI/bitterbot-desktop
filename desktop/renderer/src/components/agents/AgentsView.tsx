@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { describeError } from "../../lib/describe-error";
 import { cn } from "../../lib/utils";
 import { useAgentsStore, type AgentEntry, type AgentFile } from "../../stores/agents-store";
 import { useGatewayStore } from "../../stores/gateway-store";
@@ -111,12 +112,11 @@ function FilesSections({
       {genome.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-[#a855f7] uppercase tracking-wider px-1 mb-2">
-            Genome — Immutable Core
+            Core identity (read-mostly)
           </h4>
           <p className="text-badge text-muted-foreground px-1 mb-2">
-            Safety axioms, hormonal homeostasis baselines, phenotype constraints, and core values.
-            This is your agent's DNA — it constrains how the Phenotype can evolve but never changes
-            itself.
+            Safety rules, temperament baselines and core values. This file anchors who your agent is
+            — everything it learns is constrained by it, and nothing the agent does rewrites it.
           </p>
           <div className="space-y-2">
             {genome.map((file) => (
@@ -129,12 +129,11 @@ function FilesSections({
       {memory.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-[#00D4E6] uppercase tracking-wider px-1 mb-2">
-            Working Memory — Emergent Identity
+            Working memory (agent-maintained)
           </h4>
           <p className="text-badge text-muted-foreground px-1 mb-2">
-            Dream-synthesized every cycle: The Phenotype (self-concept), The Bond (user model), The
-            Niche (ecosystem role), Active Context, Crystal Pointers, Curiosity Gaps, Emerging
-            Skills.
+            Rewritten by the agent during its maintenance cycles: its self-notes, what it knows
+            about you, what it's working on, and open questions it wants to chase.
           </p>
           <div className="space-y-2">
             {memory.map((file) => (
@@ -147,7 +146,7 @@ function FilesSections({
       {protocols.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-foreground/70 uppercase tracking-wider px-1 mb-2">
-            Protocols — Operating Procedures
+            Operating procedures
           </h4>
           <p className="text-badge text-muted-foreground px-1 mb-2">
             Runtime behavior, memory conventions, safety rules, tools config. These govern what the
@@ -312,7 +311,7 @@ export function AgentsView() {
         loadFiles();
       } catch (err) {
         toast.error("Save failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       }
     },

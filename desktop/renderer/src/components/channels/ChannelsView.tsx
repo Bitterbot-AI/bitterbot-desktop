@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { describeError } from "../../lib/describe-error";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useChannelsStore } from "../../stores/channels-store";
@@ -265,7 +266,7 @@ export function ChannelsView() {
         refresh();
       } catch (err) {
         toast.error("Logout failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       }
     },

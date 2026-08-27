@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { describeError } from "../../lib/describe-error";
 import { formatRelativeTime, formatDateTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useCronStore, type CronJob } from "../../stores/cron-store";
@@ -176,7 +177,7 @@ export function CronView() {
         updateJob(id, { enabled });
       } catch (err) {
         toast.error("Toggle failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       }
     },
@@ -190,7 +191,7 @@ export function CronView() {
         refresh();
       } catch (err) {
         toast.error("Run failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       }
     },
@@ -212,7 +213,7 @@ export function CronView() {
         removeJob(id);
       } catch (err) {
         toast.error("Remove failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       }
     },
@@ -226,7 +227,7 @@ export function CronView() {
         addJob(res);
       } catch (err) {
         toast.error("Add failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       }
     },

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { describeError } from "../../lib/describe-error";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import {
@@ -515,7 +516,7 @@ function InstalledSkillsView() {
         updateSkill(key, { enabled });
       } catch (err) {
         toast.error("Update failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       }
     },
@@ -531,7 +532,7 @@ function InstalledSkillsView() {
         await request("skills.install", { name: skill.name, installId: option.id });
       } catch (err) {
         toast.error("Install failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       } finally {
         setInstalling(null);

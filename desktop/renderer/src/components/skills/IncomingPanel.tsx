@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { describeError } from "../../lib/describe-error";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useConfirm } from "../ui/confirm-dialog";
@@ -221,7 +222,7 @@ export function IncomingPanel({
         await request("skills.incoming.accept", { skillName: name });
       } catch (err) {
         toast.error("Accept failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       } finally {
         setBusy(null);
@@ -245,7 +246,7 @@ export function IncomingPanel({
         await request("skills.incoming.reject", { skillName: name });
       } catch (err) {
         toast.error("Reject failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       } finally {
         setBusy(null);
@@ -270,7 +271,7 @@ export function IncomingPanel({
         await request("skills.incoming.rejectByPeer", { authorPeerId: peer });
       } catch (err) {
         toast.error("Bulk reject failed", {
-          description: err instanceof Error ? err.message : "Unknown error",
+          description: describeError(err),
         });
       } finally {
         setBusy(null);

@@ -36,7 +36,7 @@ export function MessageList() {
             How can I help you today?
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Start a conversation with BitterBot — your AI development assistant.
+            Start a conversation with your Bitterbot agent.
           </p>
         </div>
       </div>
