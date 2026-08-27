@@ -5,11 +5,12 @@ import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 
 // Lifecycle controls for the local node. Restart self-heals (SIGUSR1
-// in-process restart); Shut down is a deliberate SIGTERM. Start posts to the
-// Vite dev server's /__gateway/start endpoint — the only process still alive
-// when the gateway is down — which spawns `pnpm start gateway` detached. In
-// builds without that endpoint (packaged Tauri app), Start surfaces terminal
-// guidance instead of silently failing.
+// in-process restart); Shut down is a deliberate SIGTERM.
+// Start is DEV-ONLY (PLAN-41 ui-start-dead): it posts to the Vite dev
+// server's /__gateway/start middleware — the only process still alive when
+// the gateway is down. On the production path the gateway serves this page
+// itself, so whenever the button could render, the endpoint behind it is
+// gone; production shows terminal guidance instead.
 // Restart/shutdown go through operator.admin RPCs the local Control UI holds.
 
 type Phase = "idle" | "restarting" | "stopped" | "starting";
@@ -101,8 +102,8 @@ export function GatewayControls() {
   const doShutdown = async () => {
     if (
       !confirm(
-        "Shut down the gateway?\n\nThis stops the node. Bring it back with the Start gateway " +
-          "button, or from a terminal (pnpm start gateway).",
+        "Shut down the gateway?\n\nThis stops the node. Bring it back from a terminal " +
+          "(pnpm start gateway).",
       )
     )
       return;
@@ -120,6 +121,8 @@ export function GatewayControls() {
   };
 
   const connected = status === "connected";
+  // Vite dev server origin only — see header comment.
+  const canStartFromHere = import.meta.env.DEV;
   const startDisabled = connected || phase === "starting" || phase === "restarting";
   const adminDisabled = phase !== "idle" || !connected;
 
@@ -132,25 +135,31 @@ export function GatewayControls() {
             : phase === "starting"
               ? "Starting… waiting for the gateway to come up. First boot can take a while."
               : phase === "stopped"
-                ? "Node stopped. Use Start gateway to relaunch it."
+                ? canStartFromHere
+                  ? "Node stopped. Use Start gateway to relaunch it."
+                  : "Node stopped. Relaunch from a terminal: pnpm start gateway — this page reconnects on its own."
                 : connected
                   ? "Restart bounces the node; shut down stops it."
-                  : "Gateway is not connected. Start it from here."}
+                  : canStartFromHere
+                    ? "Gateway is not connected. Start it from here."
+                    : "Gateway is not connected. Start it from a terminal: pnpm start gateway — this page reconnects on its own."}
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void doStart()}
-            disabled={startDisabled}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs",
-              "bg-green-500/10 hover:bg-green-500/20 text-green-300 border border-green-500/25 transition-colors",
-              startDisabled && "opacity-50",
-            )}
-          >
-            <Play className={cn("w-3.5 h-3.5", phase === "starting" && "animate-pulse")} />
-            Start gateway
-          </button>
+          {canStartFromHere && (
+            <button
+              type="button"
+              onClick={() => void doStart()}
+              disabled={startDisabled}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs",
+                "bg-green-500/10 hover:bg-green-500/20 text-green-300 border border-green-500/25 transition-colors",
+                startDisabled && "opacity-50",
+              )}
+            >
+              <Play className={cn("w-3.5 h-3.5", phase === "starting" && "animate-pulse")} />
+              Start gateway
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void doRestart()}
