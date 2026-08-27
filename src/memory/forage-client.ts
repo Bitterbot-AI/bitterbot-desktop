@@ -108,7 +108,8 @@ export async function nightShiftSweep(opts: {
     earnedUsdc: 0,
     errors: 0,
   };
-  if (cfg.enabled === false) return result;
+  // V1 default flip (PLAN-41 D-D): night-shift hunting is opt-in.
+  if (cfg.enabled !== true) return result;
   const maxHunts = cfg.maxConcurrentHunts ?? NIGHT_SHIFT_DEFAULTS.maxConcurrentHunts;
   const maxReward = cfg.maxRewardUsdc ?? NIGHT_SHIFT_DEFAULTS.maxRewardUsdc;
 

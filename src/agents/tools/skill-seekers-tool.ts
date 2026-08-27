@@ -62,11 +62,10 @@ function resolveSkillSeekersToolContext(options: {
   if (!cfg) {
     return null;
   }
-  // Adapter is auto-loaded by the memory manager. If the user hasn't disabled
-  // skill-seekers in config, the tool should be exposed — availability is
-  // checked at execute-time and surfaced as an error payload if the CLI/MCP
-  // isn't installed.
-  if (cfg.skills?.skillSeekers?.enabled === false) {
+  // V1 default flip (PLAN-41 D-D): skill-seekers is opt-in, and the tool
+  // follows the adapter's gate. Availability is still checked at execute-time
+  // and surfaced as an error payload if the CLI/MCP isn't installed.
+  if (cfg.skills?.skillSeekers?.enabled !== true) {
     return null;
   }
   const agentId = resolveSessionAgentId({

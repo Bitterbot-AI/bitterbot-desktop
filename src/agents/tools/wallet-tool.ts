@@ -71,9 +71,9 @@ type WalletToolOptions = {
 
 export function createWalletTool(opts?: WalletToolOptions): AnyAgentTool | undefined {
   const walletConfig: WalletConfig | undefined = opts?.config?.tools?.wallet;
-  // Wallet is on by default — user must explicitly set enabled=false to disable.
-  // Safe because wallet starts empty; user must fund it to transact.
-  if (walletConfig?.enabled === false) {
+  // V1 default flip (PLAN-41 D-D): the wallet tool is opt-in
+  // (tools.wallet.enabled=true) — money-adjacent surfaces don't self-enable.
+  if (walletConfig?.enabled !== true) {
     return undefined;
   }
 

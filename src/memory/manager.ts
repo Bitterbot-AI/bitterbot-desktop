@@ -2781,11 +2781,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.dreamEngine.setMarketplaceIntelligence(marketplaceIntelligence);
     this.marketplaceIntelligence = marketplaceIntelligence;
 
-    // PLAN-25: wire the harness-evolution context. On by default; the kill
-    // switch is agents.defaults.harnessEvolve.enabled. The baseline resolves the
-    // config-derived HarnessPolicy floor that evolved policies overlay.
+    // PLAN-25: wire the harness-evolution context. V1 default flip (PLAN-41
+    // D-D): opt-in via agents.defaults.harnessEvolve.enabled. The baseline
+    // resolves the config-derived HarnessPolicy floor that evolved policies
+    // overlay.
     this.dreamEngine.setHarnessEvolveContext({
-      enabled: this.cfg.agents?.defaults?.harnessEvolve?.enabled ?? true,
+      enabled: this.cfg.agents?.defaults?.harnessEvolve?.enabled ?? false,
       baseline: () => resolveHarnessPolicy(this.cfg),
     });
 
@@ -3092,9 +3093,8 @@ export class MemoryIndexManager implements MemorySearchManager {
     import("./skill-marketability-predictor.js").SkillMarketabilityPredictor | null
   > {
     const predictorCfg = this.cfg.skills?.marketability?.predictor;
-    // Default-on: only skip when explicitly disabled. When no LLM is configured,
-    // the predictor uses the heuristic fallback so no token spend occurs.
-    if (predictorCfg?.enabled === false) {
+    // V1 default flip (PLAN-41 D-D): opt-in via skills.marketability.predictor.
+    if (predictorCfg?.enabled !== true) {
       return null;
     }
     if (this.marketabilityPredictor) {
@@ -3130,9 +3130,9 @@ export class MemoryIndexManager implements MemorySearchManager {
    */
   private ensureTrendingSweepInterval(): void {
     const trendingCfg = this.cfg.skills?.skillSeekers?.trending;
-    // Default-on: only skip if explicitly disabled. Sources default to
-    // GitHub trending; users can override or disable entirely.
-    if (trendingCfg?.enabled === false || this.trendingSweepTimer) {
+    // V1 default flip (PLAN-41 D-D): opt-in — this sweep dials api.github.com
+    // on a schedule, which an unconfigured node must not do undisclosed.
+    if (trendingCfg?.enabled !== true || this.trendingSweepTimer) {
       return;
     }
     const intervalHours = trendingCfg?.intervalHours ?? 24;
@@ -3567,7 +3567,8 @@ export class MemoryIndexManager implements MemorySearchManager {
     // into every extraction unless explicitly disabled. Phase 4: rule selection
     // is conditioned on the current hormonal state (state-nearest rules, count
     // modulated by cortisol/dopamine) rather than dumping every rule.
-    const architectEnabled = this.cfg.memory?.architectEvolution?.enabled !== false;
+    // V1 default flip (PLAN-41 D-D): opt-in.
+    const architectEnabled = this.cfg.memory?.architectEvolution?.enabled === true;
     const learnedRules = architectEnabled ? selectRulesForState(this.db, hormonalBias) : [];
 
     // PLAN-34 M2 hotfix: structured ground-truth writes (canonical pins,
@@ -6062,9 +6063,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.experienceCollector.setCuriosityEngine(this.curiosityEngine);
     }
 
-    // Skill Seekers adapter (optional external skill generation)
+    // Skill Seekers adapter (optional external skill generation).
+    // V1 default flip (PLAN-41 D-D): opt-in via skills.skillSeekers.enabled.
     const ssConfig = this.cfg.skills?.skillSeekers;
-    if (ssConfig?.enabled !== false) {
+    if (ssConfig?.enabled === true) {
       Promise.all([import("./skill-seekers-adapter.js"), import("./skill-seekers-url-finder.js")])
         .then(([{ SkillSeekersAdapter }, { buildUrlFinder }]) => {
           this.skillSeekersAdapter = new SkillSeekersAdapter(this.db, ssConfig);

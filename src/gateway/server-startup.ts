@@ -432,7 +432,8 @@ export async function startGatewaySidecars(params: {
         (walletCfg?.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET) &&
         process.env.CDP_WALLET_SECRET,
       );
-      if (walletCfg?.enabled !== false && hasWalletCreds) {
+      // V1 default flip (PLAN-41 D-D): wallet surfaces are opt-in.
+      if (walletCfg?.enabled === true && hasWalletCreds) {
         const advertiseBridge = orchestratorBridge;
         const a2aEnabled = params.cfg.a2a?.enabled === true;
         // Advertise the A2A endpoint URL alongside the wallet so peers can

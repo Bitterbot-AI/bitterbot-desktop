@@ -95,7 +95,14 @@ const noopSynthesize = async () => ({ content: "", confidence: 0 });
 function makeEngine(db: DatabaseSync) {
   return new DreamEngine(
     db,
-    { llmCall: strategyLlm, localLlmCall: strategyLlm, minChunksForDream: 3 },
+    {
+      llmCall: strategyLlm,
+      localLlmCall: strategyLlm,
+      minChunksForDream: 3,
+      // V1 default flip (PLAN-41 D-D): autoResearch egress is opt-in, so the
+      // research-branch tests opt in; default-off has its own test below.
+      autoResearch: { enabled: true },
+    },
     noopSynthesize as never,
     fakeEmbedBatch,
   );
@@ -326,7 +333,12 @@ describe("egress safety (PLAN-34 Phase 2c)", () => {
         : JSON.stringify([{ content: "s", confidence: 0.8, keywords: [] }]);
     const engine = new DreamEngine(
       db,
-      { llmCall: leakyLlm, localLlmCall: leakyLlm, minChunksForDream: 3 },
+      {
+        llmCall: leakyLlm,
+        localLlmCall: leakyLlm,
+        minChunksForDream: 3,
+        autoResearch: { enabled: true },
+      },
       noopSynthesize as never,
       fakeEmbedBatch,
     );
@@ -352,7 +364,7 @@ describe("egress safety (PLAN-34 Phase 2c)", () => {
           llmCall: strategyLlm,
           localLlmCall: strategyLlm,
           minChunksForDream: 3,
-          autoResearch: { maxPerDay: 1 },
+          autoResearch: { enabled: true, maxPerDay: 1 },
         },
         noopSynthesize as never,
         fakeEmbedBatch,
@@ -371,6 +383,23 @@ describe("egress safety (PLAN-34 Phase 2c)", () => {
     insertTarget(db, { type: "knowledge_gap", description: "RELEVANT second gap" });
     await engine2.run({ modes: ["exploration"] });
     expect(adapter2.calls).toHaveLength(0); // cap survives the restart
+  });
+
+  it("autoResearch is OFF BY DEFAULT — research egress is opt-in (PLAN-41 D-D)", async () => {
+    const db = createTestDb();
+    seedChunks(db);
+    const engine = new DreamEngine(
+      db,
+      { llmCall: strategyLlm, localLlmCall: strategyLlm, minChunksForDream: 3 },
+      noopSynthesize as never,
+      fakeEmbedBatch,
+    );
+    const adapter = makeAdapter({ ok: true, envelopes: [envelopeWith("RELEVANT")] });
+    engine.setSkillSeekersAdapter(adapter);
+    insertTarget(db, { type: "knowledge_gap", description: "RELEVANT gap topic" });
+
+    await engine.run({ modes: ["exploration"] });
+    expect(adapter.calls).toHaveLength(0);
   });
 
   it("curiosity.autoResearch.enabled=false disables the research branch entirely", async () => {
@@ -432,7 +461,12 @@ describe("egress hardening (PLAN-34 Phase 2 adversarial fixes)", () => {
     };
     const engine = new DreamEngine(
       db,
-      { llmCall: throwingLocal, localLlmCall: throwingLocal, minChunksForDream: 3 },
+      {
+        llmCall: throwingLocal,
+        localLlmCall: throwingLocal,
+        minChunksForDream: 3,
+        autoResearch: { enabled: true },
+      },
       noopSynthesize as never,
       fakeEmbedBatch,
     );

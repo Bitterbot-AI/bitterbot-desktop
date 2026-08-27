@@ -25,8 +25,15 @@ describe("normalizePluginsConfig", () => {
 describe("resolveEnableState (bundled channel preload)", () => {
   it("registers bundled channel extensions by default so a fresh node can set them up from the UI", () => {
     const normalized = normalizePluginsConfig({});
-    for (const id of ["telegram", "whatsapp", "discord", "slack", "signal", "twitch"]) {
+    for (const id of ["telegram", "whatsapp", "discord", "slack", "signal"]) {
       expect(resolveEnableState(id, "bundled", normalized).enabled).toBe(true);
+    }
+  });
+
+  it("leaves experimental bundled plugins off by default (PLAN-41 D-D flip)", () => {
+    const normalized = normalizePluginsConfig({});
+    for (const id of ["twitch", "device-pair", "phone-control", "talk-voice"]) {
+      expect(resolveEnableState(id, "bundled", normalized).enabled).toBe(false);
     }
   });
 

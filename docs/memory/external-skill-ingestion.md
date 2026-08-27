@@ -90,7 +90,7 @@ Every generated skill:
 
 ### Zero-install (native only)
 
-If you only need docs + GitHub coverage, **there is nothing to install**. The native scraper is always available when `skills.skillSeekers.enabled` is not explicitly `false`. The only optional setup is:
+If you only need docs + GitHub coverage, **there is nothing to install**. The native scraper is available once you opt in with `skills.skillSeekers.enabled: true` (V1 default flip: the subsystem is off by default). The only other optional setup is:
 
 - `GITHUB_TOKEN` env var — increases GitHub API rate limits from 60 req/hour (unauthenticated) to 5000 req/hour. Recommended for heavy use.
 
@@ -148,7 +148,7 @@ Add to `~/.bitterbot/bitterbot.json`:
 | `enableMarketplaceDemand` | `true`     | When true, market-demand curiosity targets tag generated envelopes with `marketplace_opportunity` metadata for revenue attribution.                        |
 | `mcpEndpoint`             | `null`     | Optional HTTP MCP endpoint URL. When set and reachable, upstream prefers it over the local CLI.                                                            |
 
-If `skills.skillSeekers.enabled` is not explicitly `false`, the adapter activates automatically. The native scraper covers docs + GitHub unconditionally; the upstream probes only matter for URL types native can't handle.
+Setting `skills.skillSeekers.enabled: true` activates the adapter (V1 default flip: off by default; the scheduled GitHub-trending sweep additionally wants `skills.skillSeekers.trending.enabled: true`). The native scraper covers docs + GitHub unconditionally; the upstream probes only matter for URL types native can't handle.
 
 ---
 

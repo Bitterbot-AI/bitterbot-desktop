@@ -119,20 +119,24 @@ export async function createGatewayRuntimeState(params: {
     log: params.logPlugins,
   });
 
-  const a2aHandler = params.cfg.a2a?.enabled
-    ? createA2aHttpHandler({
-        getConfig: () => params.cfg,
-        getSkills: params.getSkills ?? (() => []),
-        getGatewayUrl: () =>
-          `http://${params.bindHost === "0.0.0.0" ? "127.0.0.1" : params.bindHost}:${params.port}`,
-        getSkillsVersion: params.getSkillsVersion ?? (() => 0),
-        // PLAN-36 Phase 0: push inbound circle messages to the UI (direct-dial
-        // path). The mailbox-drain path emits the same event from the fast
-        // scheduler in server-maintenance.
-        onCircleInbound: (info) =>
-          broadcast("circles", { source: "direct", ...info }, { dropIfSlow: true }),
-      })
-    : undefined;
+  // Mounted while EITHER a2a or circles is enabled: circle/mailbox verbs
+  // ride /a2a as circles' HTTP fallback transport (P2P dial -> HTTP ->
+  // mailbox). The handler gates each verb family on its own flag.
+  const a2aHandler =
+    (params.cfg.a2a?.enabled ?? false) || (params.cfg.circles?.enabled ?? false)
+      ? createA2aHttpHandler({
+          getConfig: () => params.cfg,
+          getSkills: params.getSkills ?? (() => []),
+          getGatewayUrl: () =>
+            `http://${params.bindHost === "0.0.0.0" ? "127.0.0.1" : params.bindHost}:${params.port}`,
+          getSkillsVersion: params.getSkillsVersion ?? (() => 0),
+          // PLAN-36 Phase 0: push inbound circle messages to the UI (direct-dial
+          // path). The mailbox-drain path emits the same event from the fast
+          // scheduler in server-maintenance.
+          onCircleInbound: (info) =>
+            broadcast("circles", { source: "direct", ...info }, { dropIfSlow: true }),
+        })
+      : undefined;
   const handleA2aRequest = a2aHandler?.handle;
 
   const bindHosts = await resolveGatewayListenHosts(params.bindHost);

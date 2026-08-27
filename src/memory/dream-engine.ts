@@ -249,7 +249,8 @@ export class DreamEngine {
     this.llmCallCloud = config?.llmCall ?? null;
     this.llmCallLocal = config?.localLlmCall ?? null;
     this.llmCallSynthesis = config?.synthesisLlmCall ?? null;
-    this.autoResearchEnabled = config?.autoResearch?.enabled !== false;
+    // V1 default flip (PLAN-41 D-D): research egress is opt-in.
+    this.autoResearchEnabled = config?.autoResearch?.enabled === true;
     this.autoResearchMaxPerDay =
       config?.autoResearch?.maxPerDay ?? AUTO_RESEARCH_DEFAULT_MAX_PER_DAY;
     this.insightPromotionEnabled = config?.insightPromotion?.enabled !== false;

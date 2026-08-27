@@ -101,7 +101,9 @@ function makeFetch(
   };
 }
 
-function sweep(db: DatabaseSync, fetch: FetchLike, now = NOW, config = {}) {
+// V1 default flip (PLAN-41 D-D): nightShift is opt-in, so the harness opts in
+// explicitly; the default-off behavior has its own test below.
+function sweep(db: DatabaseSync, fetch: FetchLike, now = NOW, config = { enabled: true }) {
   return nightShiftSweep({
     db,
     hunterPubkey: MY_WALLET,
@@ -171,7 +173,7 @@ describe("nightShiftSweep", () => {
     insertRemoteBounty(db, { id: "rb-3" });
     insertRemoteBounty(db, { id: "rb-rich", reward: 50 });
     const { fetch } = makeFetch();
-    const res = await sweep(db, fetch, NOW, { maxConcurrentHunts: 2 });
+    const res = await sweep(db, fetch, NOW, { enabled: true, maxConcurrentHunts: 2 });
     expect(res.claimed).toBe(2);
     const hunted = db.prepare(`SELECT bounty_id FROM forage_hunts`).all() as unknown as Array<{
       bounty_id: string;
@@ -193,6 +195,14 @@ describe("nightShiftSweep", () => {
     insertRemoteBounty(db);
     const { fetch, rpcCalls } = makeFetch();
     const res = await sweep(db, fetch, NOW, { enabled: false });
+    expect(res.claimed).toBe(0);
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("stays idle BY DEFAULT — night-shift hunting is opt-in (PLAN-41 D-D)", async () => {
+    insertRemoteBounty(db);
+    const { fetch, rpcCalls } = makeFetch();
+    const res = await sweep(db, fetch, NOW, {});
     expect(res.claimed).toBe(0);
     expect(rpcCalls).toHaveLength(0);
   });

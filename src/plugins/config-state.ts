@@ -14,9 +14,9 @@ export type NormalizedPluginsConfig = {
 };
 
 export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
-  "device-pair",
-  "phone-control",
-  "talk-voice",
+  // V1 default flip (PLAN-41 D-D): device-pair, phone-control, talk-voice and
+  // twitch left this set — experimental surfaces are opt-in via
+  // plugins.entries.<id>.enabled=true.
   // Bundled CHANNEL extensions register at boot so a fresh node can see and
   // set them up from the Control UI (channels.status / channels.configure).
   // Registration is cheap and safe: ChannelManager.startChannel skips every
@@ -30,7 +30,6 @@ export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
   "discord",
   "slack",
   "signal",
-  "twitch",
 ]);
 
 const normalizeList = (value: unknown): string[] => {

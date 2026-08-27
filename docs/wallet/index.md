@@ -39,12 +39,14 @@ There are several ways to add USDC to your agent's wallet:
 
 ## Configuration
 
-The wallet is enabled by default. No configuration needed for basic usage.
+The wallet tool is **opt-in** (V1 default flip): set `tools.wallet.enabled` to
+`true` to expose it to the agent. The wallet starts empty either way; fund it
+to transact.
 
 ```json5
 {
   wallet: {
-    enabled: true,
+    enabled: true, // required — the wallet tool is off by default
     // Optional: adjust spending limits
     sessionSpendCap: 50,
     perTransactionCap: 25,

@@ -181,8 +181,16 @@ export function createA2aHttpHandler(opts: {
       return false;
     }
 
+    // Circle and mailbox verbs ride /a2a as circles' HTTP fallback transport
+    // (delivery order: P2P dial -> HTTP direct dial -> mailbox, and the
+    // mailbox IS HTTP by design), so the endpoint must answer while EITHER
+    // surface is enabled. Each verb family is gated on its own flag below:
+    // a2a.enabled for the agent-native surface (message/send, tasks/*,
+    // forage/*), circles.* for circle/mailbox (adjudicated D-D, PLAN-41).
     const config = getConfig();
-    if (!config.a2a?.enabled) {
+    const a2aEnabled = config.a2a?.enabled === true;
+    const circlesEnabled = config.circles?.enabled === true;
+    if (!a2aEnabled && !circlesEnabled) {
       return false;
     }
 
@@ -241,6 +249,24 @@ export function createA2aHttpHandler(opts: {
     const isForageVerb = rpcRequest.method.startsWith("forage/");
     const isCircleVerb = rpcRequest.method.startsWith("circle/");
     const isMailboxVerb = rpcRequest.method.startsWith("mailbox/");
+
+    // With a2a off, only circles' transport verbs exist here. Everything
+    // else answers METHOD_NOT_FOUND — the same invisible-surface shape as
+    // the circles kill switch below — except notifications, which per
+    // JSON-RPC get their usual accept-and-discard 204.
+    if (!a2aEnabled && !isCircleVerb && !isMailboxVerb) {
+      if ((rpcRequest as { id?: unknown }).id === undefined) {
+        res.statusCode = 204;
+        res.end();
+        return true;
+      }
+      sendJson(res, 404, {
+        jsonrpc: "2.0",
+        error: { code: A2aErrorCodes.METHOD_NOT_FOUND, message: "Method not found" },
+        id: rpcRequest.id,
+      });
+      return true;
+    }
 
     // Authenticate — bearer token or local loopback. Forage verbs are
     // exempt BY DESIGN (PLAN-29): hunters are anonymous peers with no way
@@ -332,7 +358,7 @@ export function createA2aHttpHandler(opts: {
       if (
         rpcRequest.method === "forage/checkin" &&
         outcome.ok &&
-        config.forage?.audit?.enabled !== false
+        config.forage?.audit?.enabled === true
       ) {
         const claimId = (rpcRequest.params as { claimId?: string } | undefined)?.claimId;
         const auditDb = forageDb;

@@ -544,7 +544,8 @@ export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
   return {
     ...cfg,
     a2a: {
-      enabled: a2a.enabled ?? true,
+      // V1 default flip (PLAN-41 D-D): the agent-to-agent surface is opt-in.
+      enabled: a2a.enabled ?? false,
       ...(a2a.name !== undefined ? { name: a2a.name } : {}),
       ...(a2a.description !== undefined ? { description: a2a.description } : {}),
       ...(a2a.url !== undefined ? { url: a2a.url } : {}),
@@ -570,7 +571,7 @@ export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
         ...a2a.mesh,
       },
       marketplace: {
-        enabled: true,
+        enabled: false, // V1 default flip (PLAN-41 D-D): opt-in.
         ...a2a.marketplace,
         pricing: {
           basePriceUsdc: 0.01,

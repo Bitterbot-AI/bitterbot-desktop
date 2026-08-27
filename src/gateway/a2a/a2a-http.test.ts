@@ -501,6 +501,82 @@ describe("createA2aHttpHandler — browser Origin gate", () => {
   });
 });
 
+describe("createA2aHttpHandler — a2a/circles decoupling (adjudicated D-D)", () => {
+  function makeHandler2(cfg: unknown) {
+    return createA2aHttpHandler({
+      getConfig: () => cfg as never,
+      getSkills: () => [],
+      getGatewayUrl: () => "http://127.0.0.1:19001",
+      getSkillsVersion: () => 0,
+      taskDb: new DatabaseSync(":memory:"),
+    });
+  }
+  const post = (method: string, id: string | null = "1") =>
+    mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: { jsonrpc: "2.0", method, params: {}, ...(id === null ? {} : { id }) },
+      remoteAddr: "127.0.0.1",
+      headers: { host: "127.0.0.1:19001" },
+    });
+
+  it("serves circle/* while circles is enabled even with a2a disabled (HTTP fallback transport)", async () => {
+    const h = makeHandler2({ a2a: { enabled: false }, circles: { enabled: true } });
+    const res = mockRes();
+    const handled = await h.handle(post("circle/message"), res, baseAuthOpts());
+    expect(handled).toBe(true);
+    // 503 circles-unavailable in this harness (no memory manager) — the
+    // point is it reached the circle dispatcher instead of vanishing.
+    expect(res.statusCode).not.toBe(404);
+    h.close();
+  });
+
+  it("answers METHOD_NOT_FOUND for the agent-native surface when a2a is disabled", async () => {
+    const h = makeHandler2({ a2a: { enabled: false }, circles: { enabled: true } });
+    const res = mockRes();
+    await h.handle(post("message/send"), res, baseAuthOpts());
+    expect(res.statusCode).toBe(404);
+    expect(JSON.parse(res._body ?? "{}").error?.code).toBe(-32601);
+    h.close();
+  });
+
+  it("keeps forage/* off with a2a disabled", async () => {
+    const h = makeHandler2({ a2a: { enabled: false }, circles: { enabled: true } });
+    const res = mockRes();
+    await h.handle(post("forage/claim"), res, baseAuthOpts());
+    expect(res.statusCode).toBe(404);
+    h.close();
+  });
+
+  it("hides the agent card when a2a is disabled even with circles on", async () => {
+    const h = makeHandler2({ a2a: { enabled: false }, circles: { enabled: true } });
+    const res = mockRes();
+    const handled = await h.handle(
+      mockReq({ method: "GET", url: "/.well-known/agent.json" }),
+      res,
+      baseAuthOpts(),
+    );
+    expect(handled).toBe(false);
+    h.close();
+  });
+
+  it("stays fully invisible when both a2a and circles are disabled", async () => {
+    const h = makeHandler2({ a2a: { enabled: false }, circles: { enabled: false } });
+    const res = mockRes();
+    const handled = await h.handle(post("circle/message"), res, baseAuthOpts());
+    expect(handled).toBe(false);
+    h.close();
+  });
+
+  it("204-discards notifications to the disabled agent-native surface", async () => {
+    const h = makeHandler2({ a2a: { enabled: false }, circles: { enabled: true } });
+    const res = mockRes();
+    await h.handle(post("message/send", null), res, baseAuthOpts());
+    expect(res.statusCode).toBe(204);
+    h.close();
+  });
+});
+
 describe("circleInboundKind — the circles UI-event whitelist", () => {
   it("covers the content verbs AND the shared-state ledger", () => {
     expect(circleInboundKind("circle/message")).toBe("message");
