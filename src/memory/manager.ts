@@ -2610,13 +2610,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     // functions are not cloneable. We keep them as local variables and
     // pass a sanitized config (without functions) to the DreamEngine.
     const builtLlmCall =
-      dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? "openai/gpt-4o-mini");
+      dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? this.resolveCheapLlmSpec());
     // PLAN-40 Phase 0 (adversarial F17, documented activation): the merged
     // synthesisModel default now applies. NOTE: the default names the same
     // model as the generator default, so this restores a separate CALL lane,
     // not true model independence — configure a different
     // memory.dream.synthesisModel for that.
-    const synthesisModelSpec = dreamCfg?.synthesisModel ?? DEFAULT_DREAM_CONFIG.synthesisModel;
+    const synthesisModelSpec = dreamCfg?.synthesisModel ?? this.resolveCheapLlmSpec();
     const builtSynthesisLlmCall =
       dreamCfg?.synthesisLlmCall ??
       (synthesisModelSpec ? this.buildLlmCallFn(synthesisModelSpec) : null);
@@ -3101,7 +3101,8 @@ export class MemoryIndexManager implements MemorySearchManager {
       return this.marketabilityPredictor;
     }
     const { SkillMarketabilityPredictor } = await import("./skill-marketability-predictor.js");
-    const modelSpec = predictorCfg?.model ?? this.cfg.memory?.dream?.model ?? "openai/gpt-4o-mini";
+    const modelSpec =
+      predictorCfg?.model ?? this.cfg.memory?.dream?.model ?? this.resolveCheapLlmSpec();
     const llmCall = this.buildLlmCallFn(modelSpec);
     this.marketabilityPredictor = new SkillMarketabilityPredictor(
       this.db,
@@ -3212,6 +3213,17 @@ export class MemoryIndexManager implements MemorySearchManager {
    * Build a standalone LLM call function from a "provider/model" string.
    * Returns null if the model can't be resolved or auth is unavailable.
    */
+  /**
+   * PLAN-41 Phase 1 (p0-22): key-aware cheap-model default for the dream /
+   * discovery / predictor background lanes. The historical hardcoded
+   * "openai/gpt-4o-mini" default was a guaranteed failure on Anthropic-only
+   * installs — the most common key setup. Same cheap env gate as the SAGE
+   * planner above: deterministic, no auth-resolver walk.
+   */
+  private resolveCheapLlmSpec(): string {
+    return resolveCheapLlmSpec(process.env);
+  }
+
   private buildLlmCallFn(modelSpec: string): ((prompt: string) => Promise<string>) | null {
     const parts = modelSpec.split("/");
     if (parts.length < 2) {
@@ -3328,7 +3340,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (stats && stats.newInsights.length > 0) {
       try {
         if (!this.discoveryAgent) {
-          const llmCall = this.dreamLlmCall ?? this.buildLlmCallFn("openai/gpt-4o-mini");
+          const llmCall = this.dreamLlmCall ?? this.buildLlmCallFn(this.resolveCheapLlmSpec());
           this.discoveryAgent = new DiscoveryAgent(this.db, llmCall);
         }
         const discovery = await this.discoveryAgent.runCycle();
@@ -6168,7 +6180,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!this.discoveryAgent) {
       const dreamCfg = this.cfg.memory?.dream;
       const llmCall =
-        dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? "openai/gpt-4o-mini");
+        dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? this.resolveCheapLlmSpec());
       this.discoveryAgent = new DiscoveryAgent(this.db, llmCall);
     }
     return this.discoveryAgent.suggestSkills(config);
@@ -6472,3 +6484,16 @@ function applyPrototypeMixins(target: object, ...sources: object[]): void {
 }
 
 applyPrototypeMixins(MemoryIndexManager.prototype, memoryManagerSyncOps, memoryManagerEmbeddingOps);
+
+/**
+ * Key-aware cheap-model spec (PLAN-41 p0-22). Exported for tests and shared
+ * by every dream-adjacent background lane. Env-only by design: the full auth
+ * resolver chain can hit OAuth refresh / keychain calls and is not safe on
+ * these paths.
+ */
+export function resolveCheapLlmSpec(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.ANTHROPIC_API_KEY?.trim()) {
+    return "anthropic/claude-haiku-4-5";
+  }
+  return "openai/gpt-4o-mini";
+}

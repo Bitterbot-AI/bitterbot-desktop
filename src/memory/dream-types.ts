@@ -198,7 +198,7 @@ export type DreamEngineConfig = {
   minImportanceForDream?: number;
   /** Synthesis mode. Default: "both". */
   synthesisMode?: "heuristic" | "llm" | "both";
-  /** LLM model for synthesis. Default: "openai/gpt-4o-mini". */
+  /** LLM model for synthesis. Default: key-aware — Haiku on Anthropic-only installs, else "openai/gpt-4o-mini" (PLAN-41 p0-22). */
   model?: string;
   /** Maximum stored dream insights. Default: 200. */
   maxInsights?: number;

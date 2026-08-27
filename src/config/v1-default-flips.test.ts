@@ -57,3 +57,19 @@ describe("V1 default flips (PLAN-41 D-D)", () => {
     await expect(mgr.getMarketabilityPredictor()).resolves.toBeNull();
   });
 });
+
+describe("resolveCheapLlmSpec (PLAN-41 p0-22)", () => {
+  it("prefers Haiku when only an Anthropic key exists (the common install)", async () => {
+    const { resolveCheapLlmSpec } = await import("../memory/manager.js");
+    expect(resolveCheapLlmSpec({ ANTHROPIC_API_KEY: "sk-ant-x" })).toBe(
+      "anthropic/claude-haiku-4-5",
+    );
+  });
+
+  it("keeps gpt-4o-mini for OpenAI-keyed or keyless environments", async () => {
+    const { resolveCheapLlmSpec } = await import("../memory/manager.js");
+    expect(resolveCheapLlmSpec({ OPENAI_API_KEY: "sk-x" })).toBe("openai/gpt-4o-mini");
+    expect(resolveCheapLlmSpec({})).toBe("openai/gpt-4o-mini");
+    expect(resolveCheapLlmSpec({ ANTHROPIC_API_KEY: "  " })).toBe("openai/gpt-4o-mini");
+  });
+});

@@ -1924,7 +1924,7 @@ export class DreamEngine {
           }
         }
       } catch (err) {
-        log.debug(`mutation LLM call failed: ${String(err)}`);
+        log.warn(`mutation LLM call failed: ${String(err)}`);
       }
     }
 
@@ -1998,7 +1998,7 @@ export class DreamEngine {
       this.markChunksDreamed(seeds.map((s) => s.id));
       return { insights, llmCalls: 1, chunksAnalyzed: seeds.length };
     } catch (err) {
-      log.debug(`extrapolation LLM call failed: ${String(err)}`);
+      log.warn(`extrapolation LLM call failed: ${String(err)}`);
       return { insights: [], llmCalls: 1, chunksAnalyzed: seeds.length };
     }
   }
@@ -2246,7 +2246,7 @@ export class DreamEngine {
       this.markChunksDreamed(crossDomain.map((s) => s.id));
       return { insights, llmCalls: 1, chunksAnalyzed: crossDomain.length };
     } catch (err) {
-      log.debug(`simulation LLM call failed: ${String(err)}`);
+      log.warn(`simulation LLM call failed: ${String(err)}`);
       return { insights: [], llmCalls: 1, chunksAnalyzed: crossDomain.length };
     }
   }
@@ -2527,7 +2527,7 @@ export class DreamEngine {
 
       return { insights, llmCalls: 1, chunksAnalyzed: nearbyChunks.length };
     } catch (err) {
-      log.debug(`exploration LLM call failed: ${String(err)}`);
+      log.warn(`exploration LLM call failed: ${String(err)}`);
       return { insights: [], llmCalls: 1, chunksAnalyzed: nearbyChunks.length };
     }
   }
@@ -2871,7 +2871,7 @@ export class DreamEngine {
           poolEnrolled: pool.length,
         });
       } catch (err) {
-        log.debug(`research LLM call failed: ${String(err)}`);
+        log.warn(`research LLM call failed: ${String(err)}`);
       }
     }
 
