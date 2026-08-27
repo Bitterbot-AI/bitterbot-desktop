@@ -8,16 +8,16 @@
  *
  *   1. Understand what they're about to connect to
  *   2. Paste a gateway URL + token (with instructions to get them from
- *      `pnpm bitterbot onboard` or ~/.bitterbot/bitterbot.json)
+ *      `bitterbot dashboard` or ~/.bitterbot/bitterbot.json)
  *   3. Test the connection live — the store spins up a real GatewayClient
  *      with the user-entered credentials and reports back in ~1s
  *   4. On success, persist to localStorage and reload into AppShell
  *
  * This is a bridge, not a replacement for the CLI onboarding wizard.
  * Full agent setup (API keys, auth profiles, workspace, channels) still
- * requires `pnpm bitterbot onboard` in a terminal — FirstRun just
+ * requires the onboarding wizard in a terminal — FirstRun just
  * handles the final "now connect the browser UI to the running gateway"
- * mile when the wizard didn't generate desktop/.env for whatever reason.
+ * mile when the same-origin token handoff can't answer (non-local viewer).
  */
 
 import { useEffect, useState } from "react";
@@ -92,20 +92,20 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             Connect to your Bitterbot gateway
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            The Control UI needs a running Bitterbot gateway and an auth token to connect. If you
-            already ran <code className="px-1 py-0.5 bg-muted rounded">pnpm bitterbot onboard</code>
-            , the wizard should have saved your token to{" "}
-            <code className="px-1 py-0.5 bg-muted rounded">desktop/.env</code> automatically — if
-            you're seeing this screen, that file is missing or this browser doesn't have it cached.
+            The gateway serves this UI at{" "}
+            <code className="px-1 py-0.5 bg-muted rounded">http://127.0.0.1:19001</code> and hands a
+            local browser its token automatically. Seeing this screen usually means the gateway
+            isn&apos;t running yet, or you&apos;re viewing from a non-local address.
           </p>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Start the gateway in a terminal with{" "}
-            <code className="px-1 py-0.5 bg-muted rounded">pnpm start gateway</code>, then paste
-            your token below. You can find it at{" "}
+            Start it in a terminal with{" "}
+            <code className="px-1 py-0.5 bg-muted rounded">pnpm start gateway</code>. If you still
+            need to connect manually, get the URL and token from{" "}
+            <code className="px-1 py-0.5 bg-muted rounded">bitterbot dashboard</code> (or{" "}
             <code className="px-1 py-0.5 bg-muted rounded">
               ~/.bitterbot/bitterbot.json → gateway.auth.token
             </code>
-            .
+            ) and paste them below.
           </p>
         </header>
 

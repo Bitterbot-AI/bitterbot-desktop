@@ -5,6 +5,7 @@ import { useGatewayStore } from "../../stores/gateway-store";
 import { useOverviewStore } from "../../stores/overview-store";
 import { useUIStore } from "../../stores/ui-store";
 import { GatewayControls } from "./GatewayControls";
+import { GetStartedCard } from "./GetStartedCard";
 import { UpdateCard } from "./UpdateCard";
 
 function StatCard({
@@ -139,6 +140,9 @@ export function OverviewView() {
         <StatCard label="Platform" value={String(platform)} />
         <StatCard label="Channels" value={String(configuredChannels.length)} sub="configured" />
       </div>
+
+      {/* First-run checklist (self-dismisses when complete) */}
+      <GetStartedCard channelsConfigured={configuredChannels.length > 0} />
 
       {/* Version & updates */}
       <UpdateCard />
