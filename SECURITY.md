@@ -36,13 +36,16 @@ When patching a GHSA via `gh api`, include `X-GitHub-Api-Version: 2022-11-28` (o
 
 - Public Internet Exposure
 - Using Bitterbot in ways that the docs recommend not to
-- Prompt injection attacks
+- Prompt injection that only influences the model's OUTPUT (tone, content,
+  hallucinated claims). Injection that ESCAPES a containment boundary — runs
+  tools it shouldn't reach, exfiltrates secrets or memory, breaks out of the
+  sandbox or skill quarantine — IS in scope; please report it.
 
 ## Operational Guidance
 
 For threat model + hardening guidance (including `bitterbot security audit --deep` and `--fix`), see:
 
-- `docs/security/` in this repository
+- `docs/cli/security.md` in this repository
 
 ### Tool filesystem hardening
 
@@ -82,15 +85,17 @@ When running Bitterbot in Docker:
 Example secure Docker run:
 
 ```bash
+# Build the image locally first (no published image yet):
+docker build -t bitterbot:local .
 docker run --read-only --cap-drop=ALL \
-  -v.bitterbot-data:/app/data \
-  bitterbot/bitterbot:latest
+  -v bitterbot-data:/app/data \
+  bitterbot:local
 ```
 
 ## Security Scanning
 
-This project uses `detect-secrets` for automated secret detection in CI/CD.
-See `.detect-secrets.cfg` for configuration and `.secrets.baseline` for the baseline.
+This project uses `detect-secrets` as a pre-commit hook (it is not currently
+run in CI). See `.secrets.baseline` for the baseline.
 
 Run locally:
 
