@@ -27,13 +27,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
-import {
-  renderSection as renderDoctorSection,
-  type CheckResult,
-  ok,
-  warn,
-  info,
-} from "./doctor-check.js";
+import { renderSectionQuietIfAllInfo, type CheckResult, ok, warn, info } from "./doctor-check.js";
 
 const KNOWN_NETWORKS = new Set(["base", "base-sepolia"]);
 const DEFAULT_WALLET_STORE = path.join(os.homedir(), ".bitterbot", "wallet");
@@ -44,10 +38,13 @@ export async function runWalletChecks(params: { config: BitterbotConfig }): Prom
   const results: CheckResult[] = [];
 
   // ── Enabled? ──
-  if (!wallet || wallet.enabled === false) {
+  // Opt-in per the V1 default flips: the wallet tool mounts only on an
+  // explicit tools.wallet.enabled === true, so anything else is "off" here
+  // too — a wallet block holding only spend caps must not read as enabled.
+  if (wallet?.enabled !== true) {
     results.push(
       info(
-        "Wallet is disabled (tools.wallet.enabled = false). Agent can publish " +
+        "Wallet is not enabled (tools.wallet.enabled). Agent can publish " +
           "skills but cannot earn or pay for paywalled APIs.",
       ),
     );
@@ -177,5 +174,7 @@ export async function runWalletChecks(params: { config: BitterbotConfig }): Prom
 }
 
 function renderSection(results: CheckResult[]): void {
-  renderDoctorSection("Wallet (USDC on Base)", results);
+  // Quiet when posture-only (wallet not enabled): recorded, not printed
+  // (PLAN-41 p0-28).
+  renderSectionQuietIfAllInfo("Wallet (USDC on Base)", results);
 }

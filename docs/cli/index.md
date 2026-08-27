@@ -38,7 +38,6 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`node`](/cli/node)
 - [`approvals`](/cli/approvals)
 - [`sandbox`](/cli/sandbox)
-- [`tui`](/cli/tui)
 - [`browser`](/cli/browser)
 - [`cron`](/cli/cron)
 - [`dns`](/cli/dns)
@@ -51,7 +50,6 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`channels`](/cli/channels)
 - [`security`](/cli/security)
 - [`skills`](/cli/skills)
-- [`voicecall`](/cli/voicecall) (plugin; if installed)
 
 ## Global flags
 
@@ -235,10 +233,9 @@ bitterbot [--dev] [--profile <name>] <command>
   docs
   dns
     setup
-  tui
 ```
 
-Note: plugins can add additional top-level commands (for example `bitterbot voicecall`).
+Note: plugins can add additional top-level commands.
 
 ## Security
 
@@ -741,7 +738,6 @@ Subcommands:
 - `gateway health`
 - `gateway status`
 - `gateway probe`
-- `gateway discover`
 - `gateway install|uninstall|start|stop|restart`
 - `gateway run`
 
@@ -911,11 +907,9 @@ Subcommands:
 
 - `cron status [--json]`
 - `cron list [--all] [--json]` (table output by default; use `--json` for raw)
-- `cron add` (alias: `create`; requires `--name` and exactly one of `--at` | `--every` | `--cron`, and exactly one payload of `--system-event` | `--message`)
-- `cron edit <id>` (patch fields)
-- `cron rm <id>` (aliases: `remove`, `delete`)
-- `cron enable <id>`
-- `cron disable <id>`
+- `cron add` (requires `--name` and exactly one of `--at` | `--every` | `--cron`, and exactly one payload of `--system-event` | `--message`)
+- `cron edit <id>` (patch fields; `--enable` / `--disable` toggle the job)
+- `cron remove <id>`
 - `cron runs --id <id> [--limit <n>]`
 - `cron run <id> [--force]`
 
@@ -1028,21 +1022,3 @@ Actions:
 ### `docs [query...]`
 
 Search the live docs index.
-
-## TUI
-
-### `tui`
-
-Open the terminal UI connected to the Gateway.
-
-Options:
-
-- `--url <url>`
-- `--token <token>`
-- `--password <password>`
-- `--session <key>`
-- `--deliver`
-- `--thinking <level>`
-- `--message <text>`
-- `--timeout-ms <ms>` (defaults to `agents.defaults.timeoutSeconds`)
-- `--history-limit <n>`

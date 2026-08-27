@@ -12,8 +12,8 @@ Interactive prompt to set up credentials, devices, and agent defaults.
 Note: The **Model** section now includes a multi-select for the
 `agents.defaults.models` allowlist (what shows up in `/model` and the model picker).
 
-Tip: `bitterbot config` without a subcommand opens the same wizard. Use
-`bitterbot config get|set|unset` for non-interactive edits.
+Tip: use `bitterbot config get|set|unset` for non-interactive edits;
+`bitterbot config` without a subcommand prints that command's help.
 
 Related:
 

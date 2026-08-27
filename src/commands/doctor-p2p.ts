@@ -22,13 +22,7 @@ import {
   probeTcpReachable,
   type BinarySource,
 } from "../infra/orchestrator-binary.js";
-import {
-  renderSection as renderDoctorSection,
-  type CheckResult,
-  ok,
-  warn,
-  info,
-} from "./doctor-check.js";
+import { renderSectionQuietIfAllInfo, type CheckResult, ok, warn, info } from "./doctor-check.js";
 
 /**
  * Describe a resolved binary source in operator-facing language.
@@ -280,5 +274,7 @@ export async function runP2pNetworkChecks(params: {
 }
 
 function renderSection(results: CheckResult[]): void {
-  renderDoctorSection("P2P Network", results);
+  // Quiet when posture-only (e.g. "P2P is disabled ... local-only"):
+  // recorded, not printed (PLAN-41 p0-28).
+  renderSectionQuietIfAllInfo("P2P Network", results);
 }

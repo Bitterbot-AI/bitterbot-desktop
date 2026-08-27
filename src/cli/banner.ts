@@ -31,8 +31,10 @@ function splitGraphemes(value: string): string[] {
 const hasJsonFlag = (argv: string[]) =>
   argv.some((arg) => arg === "--json" || arg.startsWith("--json="));
 
+// `-v` is version only in first position — deeper it's a verbose flag
+// (PLAN-41 p0-28; keep in sync with hasHelpOrVersion in argv.ts).
 const hasVersionFlag = (argv: string[]) =>
-  argv.some((arg) => arg === "--version" || arg === "-V" || arg === "-v");
+  argv.some((arg) => arg === "--version" || arg === "-V") || argv[2] === "-v";
 
 export function formatCliBannerLine(version: string, options: BannerOptions = {}): string {
   const commit = options.commit ?? resolveCommitHash({ env: options.env });

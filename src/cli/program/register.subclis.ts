@@ -9,6 +9,12 @@ type SubCliRegistrar = (program: Command) => Promise<void> | void;
 type SubCliEntry = {
   name: string;
   description: string;
+  /**
+   * Developer/plumbing surface (PLAN-41 p0-28): still invocable, but kept
+   * out of the top-level --help so the first screen reads as the V1 happy
+   * path. Subcommand help (`bitterbot <name> --help`) is unaffected.
+   */
+  hidden?: boolean;
   register: SubCliRegistrar;
 };
 
@@ -35,6 +41,7 @@ const entries: SubCliEntry[] = [
   {
     name: "acp",
     description: "Agent Control Protocol tools",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../acp-cli.js");
       mod.registerAcpCli(program);
@@ -51,6 +58,7 @@ const entries: SubCliEntry[] = [
   {
     name: "daemon",
     description: "Gateway service (legacy alias)",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../daemon-cli.js");
       mod.registerDaemonCli(program);
@@ -67,6 +75,7 @@ const entries: SubCliEntry[] = [
   {
     name: "system",
     description: "System events, heartbeat, and presence",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../system-cli.js");
       mod.registerSystemCli(program);
@@ -83,6 +92,7 @@ const entries: SubCliEntry[] = [
   {
     name: "approvals",
     description: "Exec approvals",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../exec-approvals-cli.js");
       mod.registerExecApprovalsCli(program);
@@ -107,6 +117,7 @@ const entries: SubCliEntry[] = [
   {
     name: "node",
     description: "Node control",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../node-cli.js");
       mod.registerNodeCli(program);
@@ -115,6 +126,7 @@ const entries: SubCliEntry[] = [
   {
     name: "sandbox",
     description: "Sandbox tools",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../sandbox-cli.js");
       mod.registerSandboxCli(program);
@@ -123,6 +135,7 @@ const entries: SubCliEntry[] = [
   {
     name: "dns",
     description: "DNS helpers",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../dns-cli.js");
       mod.registerDnsCli(program);
@@ -147,6 +160,7 @@ const entries: SubCliEntry[] = [
   {
     name: "heartbeat",
     description: "Inspect heartbeat considerations",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../heartbeat-cli.js");
       mod.registerHeartbeatCli(program);
@@ -155,6 +169,7 @@ const entries: SubCliEntry[] = [
   {
     name: "webhooks",
     description: "Webhook helpers",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../webhooks-cli.js");
       mod.registerWebhooksCli(program);
@@ -194,6 +209,7 @@ const entries: SubCliEntry[] = [
   {
     name: "directory",
     description: "Directory commands",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../directory-cli.js");
       mod.registerDirectoryCli(program);
@@ -242,6 +258,7 @@ const entries: SubCliEntry[] = [
   {
     name: "checkpoints",
     description: "Inspect, fork, and replay session checkpoint graphs",
+    hidden: true,
     register: async (program) => {
       const mod = await import("../checkpoints-cli.js");
       mod.registerCheckpointsCli(program);
@@ -275,7 +292,9 @@ export async function registerSubCliByName(program: Command, name: string): Prom
 }
 
 function registerLazyCommand(program: Command, entry: SubCliEntry) {
-  const placeholder = program.command(entry.name).description(entry.description);
+  const placeholder = program
+    .command(entry.name, { hidden: entry.hidden === true })
+    .description(entry.description);
   placeholder.allowUnknownOption(true);
   placeholder.allowExcessArguments(true);
   placeholder.action(async (...actionArgs) => {

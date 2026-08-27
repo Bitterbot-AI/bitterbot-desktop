@@ -7,22 +7,17 @@ import { replaceCliName, resolveCliName } from "../cli-name.js";
 
 const CLI_NAME = resolveCliName();
 
+// Happy-path examples only (PLAN-41 p0-28): the first screen a new operator
+// reads should walk the V1 story — onboard, open the UI, check health —
+// not dev profiles or port surgery.
 const EXAMPLES = [
+  ["bitterbot onboard", "Guided setup: provider + key, network consent, gateway."],
+  ["bitterbot dashboard", "Open the Control UI in your browser."],
+  ["bitterbot doctor", "Walk subsystem checks and suggested repairs."],
+  ["bitterbot gateway", "Run the gateway (serves the Control UI) in this terminal."],
   [
     "bitterbot channels login --verbose",
     "Link personal WhatsApp Web and show QR + connection logs.",
-  ],
-  [
-    'bitterbot message send --target +15555550123 --message "Hi" --json',
-    "Send via your web session and print JSON result.",
-  ],
-  ["bitterbot gateway --port 19001", "Run the WebSocket Gateway locally."],
-  ["bitterbot --dev gateway", "Run a dev Gateway (isolated state/config) on ws://127.0.0.1:19001."],
-  ["bitterbot gateway --force", "Kill anything bound to the default gateway port, then start it."],
-  ["bitterbot gateway ...", "Gateway control via WebSocket."],
-  [
-    'bitterbot agent --to +15555550123 --message "Run summary" --deliver',
-    "Talk directly to the agent using the Gateway; optionally send the WhatsApp reply.",
   ],
   [
     'bitterbot message send --channel telegram --target @mychat --message "Hi"',
@@ -33,7 +28,9 @@ const EXAMPLES = [
 export function configureProgramHelp(program: Command, ctx: ProgramContext) {
   program
     .name(CLI_NAME)
-    .description("")
+    .description(
+      "Local-first AI agent with persistent memory, dream cycles, chat channels, and a P2P skills mesh.",
+    )
     .version(ctx.programVersion)
     .option(
       "--dev",
@@ -66,10 +63,12 @@ export function configureProgramHelp(program: Command, ctx: ProgramContext) {
     outputError: (str, write) => write(theme.error(str)),
   });
 
+  // `-v` is version only in first position — deeper it belongs to a
+  // subcommand's verbose flag (PLAN-41 p0-28; see hasHelpOrVersion).
   if (
     process.argv.includes("-V") ||
     process.argv.includes("--version") ||
-    process.argv.includes("-v")
+    process.argv[2] === "-v"
   ) {
     console.log(ctx.programVersion);
     process.exit(0);

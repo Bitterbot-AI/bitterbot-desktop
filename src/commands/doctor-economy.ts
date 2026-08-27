@@ -22,7 +22,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { isEarningCapable } from "../config/defaults.js";
-import { renderSection, type CheckResult, ok, warn, info } from "./doctor-check.js";
+import { renderSectionQuietIfAllInfo, type CheckResult, ok, warn, info } from "./doctor-check.js";
 import { resolveDoctorMemoryDbPath } from "./doctor-subsystems.js";
 
 const SECTION = "Economy (Forage / Marketplace / A2A)";
@@ -266,5 +266,7 @@ export function runEconomyChecks(params: {
     }
   }
 
-  renderSection(SECTION, results);
+  // Quiet when posture-only (fresh install: gate off, no ledgers):
+  // recorded, not printed (PLAN-41 p0-28).
+  renderSectionQuietIfAllInfo(SECTION, results);
 }

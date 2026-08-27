@@ -1,9 +1,13 @@
 const HELP_FLAGS = new Set(["-h", "--help"]);
-const VERSION_FLAGS = new Set(["-v", "-V", "--version"]);
+const VERSION_FLAGS = new Set(["-V", "--version"]);
 const FLAG_TERMINATOR = "--";
 
 export function hasHelpOrVersion(argv: string[]): boolean {
-  return argv.some((arg) => HELP_FLAGS.has(arg) || VERSION_FLAGS.has(arg));
+  // `-v` counts as a version request ONLY as the first token after the
+  // binary (`bitterbot -v`). Anywhere deeper it's some subcommand's verbose
+  // flag — `bitterbot skills list -v` used to print the version and exit
+  // (PLAN-41 p0-28).
+  return argv.some((arg) => HELP_FLAGS.has(arg) || VERSION_FLAGS.has(arg)) || argv[2] === "-v";
 }
 
 function isValueToken(arg: string | undefined): boolean {

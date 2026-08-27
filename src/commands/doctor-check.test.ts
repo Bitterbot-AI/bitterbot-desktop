@@ -4,8 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const noteMock = vi.fn();
 vi.mock("../terminal/note.js", () => ({ note: (...args: unknown[]) => noteMock(...args) }));
 
-const { renderSection, ok, warn, error, info, setDoctorJsonMode, isDoctorJsonMode } =
-  await import("./doctor-check.js");
+const {
+  renderSection,
+  renderSectionQuietIfAllInfo,
+  ok,
+  warn,
+  error,
+  info,
+  setDoctorJsonMode,
+  isDoctorJsonMode,
+} = await import("./doctor-check.js");
 const { resetDoctorOutcome, doctorFindings, doctorHasError, worstDoctorLevel } =
   await import("./doctor-outcome.js");
 
@@ -53,5 +61,22 @@ describe("doctor-check shared contract", () => {
     renderSection("Empty", []);
     expect(doctorFindings()).toEqual([]);
     expect(noteMock).not.toHaveBeenCalled();
+  });
+
+  it("quiet variant: an all-info section is recorded but not printed (p0-28)", () => {
+    renderSectionQuietIfAllInfo("Wallet (USDC on Base)", [info("Wallet is not enabled")]);
+    expect(noteMock).not.toHaveBeenCalled();
+    expect(doctorFindings()).toEqual([
+      { section: "Wallet (USDC on Base)", level: "info", message: "Wallet is not enabled" },
+    ]);
+  });
+
+  it("quiet variant: any actionable result prints the section in full", () => {
+    renderSectionQuietIfAllInfo("Wallet (USDC on Base)", [
+      info("Network: base-sepolia"),
+      warn("CDP credentials missing"),
+    ]);
+    expect(noteMock).toHaveBeenCalledTimes(1);
+    expect(doctorFindings()).toHaveLength(2);
   });
 });

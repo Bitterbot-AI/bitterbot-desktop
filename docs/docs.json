@@ -1130,10 +1130,8 @@
                   "cli/skills",
                   "cli/status",
                   "cli/system",
-                  "cli/tui",
                   "cli/uninstall",
-                  "cli/update",
-                  "cli/voicecall"
+                  "cli/update"
                 ]
               },
               {
@@ -1610,10 +1608,8 @@
                   "zh-CN/cli/skills",
                   "zh-CN/cli/status",
                   "zh-CN/cli/system",
-                  "zh-CN/cli/tui",
                   "zh-CN/cli/uninstall",
-                  "zh-CN/cli/update",
-                  "zh-CN/cli/voicecall"
+                  "zh-CN/cli/update"
                 ]
               },
               {

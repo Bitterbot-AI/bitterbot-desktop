@@ -76,3 +76,21 @@ export function renderSection(title: string, results: CheckResult[]): void {
     note(results.map(formatLevel).join("\n"), title);
   }
 }
+
+/**
+ * Posture-only sections stay off the console (PLAN-41 p0-28): when every
+ * result is info-level there is nothing to act on — typically "subsystem
+ * not configured / switched off". The findings are still recorded (--json,
+ * Repairs card), so nothing is lost; a fresh install's doctor just reads
+ * as checks instead of a seventeen-section tour of features the operator
+ * never turned on. Any ok/warn/error result prints the section in full.
+ */
+export function renderSectionQuietIfAllInfo(title: string, results: CheckResult[]): void {
+  if (results.length > 0 && results.every((r) => r.level === "info")) {
+    for (const r of results) {
+      recordFinding(title, r.level, r.message);
+    }
+    return;
+  }
+  renderSection(title, results);
+}

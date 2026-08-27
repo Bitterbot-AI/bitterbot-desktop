@@ -29,28 +29,43 @@ const shouldRegisterCorePrimaryOnly = (argv: string[]) => {
 
 const coreEntries: CoreCliEntry[] = [
   {
-    commands: [{ name: "setup", description: "Setup helpers" }],
+    commands: [
+      {
+        name: "setup",
+        description: "Initialize ~/.bitterbot/bitterbot.json and the agent workspace",
+      },
+    ],
     register: async ({ program }) => {
       const mod = await import("./register.setup.js");
       mod.registerSetupCommand(program);
     },
   },
   {
-    commands: [{ name: "onboard", description: "Onboarding helpers" }],
+    commands: [
+      {
+        name: "onboard",
+        description: "Interactive wizard to set up the gateway, workspace, and skills",
+      },
+    ],
     register: async ({ program }) => {
       const mod = await import("./register.onboard.js");
       mod.registerOnboardCommand(program);
     },
   },
   {
-    commands: [{ name: "configure", description: "Configure wizard" }],
+    commands: [
+      {
+        name: "configure",
+        description: "Interactive prompt to set up credentials, devices, and agent defaults",
+      },
+    ],
     register: async ({ program }) => {
       const mod = await import("./register.configure.js");
       mod.registerConfigureCommand(program);
     },
   },
   {
-    commands: [{ name: "config", description: "Config helpers" }],
+    commands: [{ name: "config", description: "Read and edit config values (get/set/unset)" }],
     register: async ({ program }) => {
       const mod = await import("../config-cli.js");
       mod.registerConfigCli(program);
@@ -80,7 +95,7 @@ const coreEntries: CoreCliEntry[] = [
     },
   },
   {
-    commands: [{ name: "memory", description: "Memory commands" }],
+    commands: [{ name: "memory", description: "Memory search tools" }],
     register: async ({ program }) => {
       const mod = await import("../memory-cli.js");
       mod.registerMemoryCli(program);
@@ -88,8 +103,11 @@ const coreEntries: CoreCliEntry[] = [
   },
   {
     commands: [
-      { name: "agent", description: "Agent commands" },
-      { name: "agents", description: "Manage isolated agents" },
+      {
+        name: "agent",
+        description: "Run an agent turn via the Gateway (use --local for embedded)",
+      },
+      { name: "agents", description: "Manage isolated agents (workspaces + auth + routing)" },
     ],
     register: async ({ program, ctx }) => {
       const mod = await import("./register.agent.js");

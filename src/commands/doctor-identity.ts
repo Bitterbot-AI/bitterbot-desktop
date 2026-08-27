@@ -29,13 +29,7 @@ import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { defaultP2pKeyDir } from "../infra/p2p-key-dir.js";
 import { resolveUserPath } from "../utils.js";
-import {
-  renderSection as renderDoctorSection,
-  type CheckResult,
-  ok,
-  warn,
-  info,
-} from "./doctor-check.js";
+import { renderSectionQuietIfAllInfo, type CheckResult, ok, warn, info } from "./doctor-check.js";
 
 /**
  * PLAN-41 Phase 1 (p0-7): the bridge now ALWAYS passes `--key-dir`,
@@ -181,5 +175,7 @@ export function runIdentityChecks(params: {
 }
 
 function renderSection(results: CheckResult[]): void {
-  renderDoctorSection("Identity (P2P node)", results);
+  // Quiet when posture-only (e.g. "P2P disabled — no mesh identity
+  // required" on a local-only node): recorded, not printed.
+  renderSectionQuietIfAllInfo("Identity (P2P node)", results);
 }

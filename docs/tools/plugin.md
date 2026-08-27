@@ -295,7 +295,7 @@ bitterbot plugins doctor
 
 `plugins update` only works for npm installs tracked under `plugins.installs`.
 
-Plugins may also register their own top‑level commands (example: `bitterbot voicecall`).
+Plugins may also register their own top‑level commands under their plugin id.
 
 ## Plugin API (overview)
 
@@ -609,7 +609,7 @@ export default function (api) {
 
 ## Naming conventions
 
-- Gateway methods: `pluginId.action` (example: `voicecall.status`)
+- Gateway methods: `pluginId.action` (example: `myplugin.status`)
 - Tools: `snake_case` (example: `voice_call`)
 - CLI commands: kebab or camel, but avoid clashing with core commands
 
@@ -639,7 +639,7 @@ This repo includes a voice‑call plugin (Twilio or log fallback):
 
 - Source: `extensions/voice-call`
 - Skill: `skills/voice-call`
-- CLI: `bitterbot voicecall start|status`
+- CLI: `bitterbot <plugin-id> <subcommand>` (when the plugin registers one)
 - Tool: `voice_call`
 - RPC: `voicecall.start`, `voicecall.status`
 - Config (twilio): `provider: "twilio"` + `twilio.accountSid/authToken/from` (optional `statusCallbackUrl`, `twimlUrl`)

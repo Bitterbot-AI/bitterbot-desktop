@@ -280,21 +280,19 @@ export async function runConfigUnset(opts: { path: string; runtime?: RuntimeEnv 
 export function registerConfigCli(program: Command) {
   const cmd = program
     .command("config")
-    .description("Config helpers (get/set/unset). Run without subcommand for the wizard.")
+    .description("Read and edit config values (get/set/unset)")
     .addHelpText(
       "after",
       () =>
-        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/config", "docs.bitterbot.ai/cli/config")}\n`,
+        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/config", "docs.bitterbot.ai/cli/config")}\n` +
+        `${theme.muted("Interactive setup:")} ${formatCliCommand("bitterbot configure")}\n`,
     )
-    .option(
-      "--section <section>",
-      "Configure wizard sections (repeatable). Use with no subcommand.",
-      (value: string, previous: string[]) => [...previous, value],
-      [] as string[],
-    )
-    .action(async (opts) => {
-      const { configureCommandFromSectionsArg } = await import("../commands/configure.js");
-      await configureCommandFromSectionsArg(opts.section, defaultRuntime);
+    .action(() => {
+      // Bare `config` prints help (PLAN-41 p0-28). The interactive wizard
+      // lives at `bitterbot configure`; this namespace is the
+      // non-interactive get/set surface, and silently opening the wizard
+      // here made the two look interchangeable when their flags are not.
+      cmd.help();
     });
 
   cmd

@@ -7,8 +7,8 @@ title: "config"
 
 # `bitterbot config`
 
-Config helpers: get/set/unset values by path. Run without a subcommand to open
-the configure wizard (same as `bitterbot configure`).
+Config helpers: get/set/unset values by path. Running it without a subcommand
+prints this command's help; for interactive setup use `bitterbot configure`.
 
 ## Examples
 
