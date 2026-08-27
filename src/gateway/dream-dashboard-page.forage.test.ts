@@ -6,7 +6,13 @@ import { renderDreamDashboardPage } from "./dream-dashboard-page.js";
 // wired into tab dispatch.
 
 describe("dream dashboard Forage tab", () => {
-  const page = renderDreamDashboardPage("ws://127.0.0.1:19001", "t");
+  const page = renderDreamDashboardPage("ws://127.0.0.1:19001");
+
+  it("embeds no gateway token — session-token handoff only (PLAN-41 mgmt-token-html)", () => {
+    expect(page).toContain("fetchSessionToken");
+    expect(page).toContain('let GW_TOKEN = ""');
+    expect(page).not.toMatch(/const GW_TOKEN = "[^"]+"/);
+  });
 
   it("renders the tab button and panel", () => {
     expect(page).toContain('data-tab="forage"');

@@ -90,7 +90,10 @@ const EYES_SVG = (() => {
   );
 })();
 
-export function renderMobileUiPage(gatewayWsUrl: string, gatewayToken?: string): string {
+export function renderMobileUiPage(
+  gatewayWsUrl: string,
+  sessionTokenPath = "/auth/session-token",
+): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -414,7 +417,18 @@ body::before {
 <script>
 const WS_URL = ${JSON.stringify(gatewayWsUrl)};
 const URL_PARAMS = new URLSearchParams(location.search);
-const TOKEN = URL_PARAMS.get("t") || ${JSON.stringify(gatewayToken ?? "")};
+const SESSION_TOKEN_PATH = ${JSON.stringify(sessionTokenPath)};
+// ?t= wins (phones reached over the tailnet can't fetch the loopback-gated
+// session token); otherwise ask the gateway we were served by.
+let TOKEN = URL_PARAMS.get("t") || "";
+async function fetchSessionToken() {
+  if (TOKEN) return TOKEN;
+  try {
+    const r = await fetch(SESSION_TOKEN_PATH, { cache: "no-store" });
+    if (r.ok) { const d = await r.json(); if (d && d.token) return d.token; }
+  } catch (e) { /* fall through: connect tokenless */ }
+  return "";
+}
 const SESSION_KEY = URL_PARAMS.get("s") || "mobile:default";
 const AVATAR_SRC = "/m/avatar.png";
 
@@ -875,7 +889,7 @@ document.getElementById("scroll").addEventListener("click", (e) => {
   input.focus();
 });
 
-connect();
+fetchSessionToken().then((t) => { TOKEN = t; connect(); });
 </script>
 </body>
 </html>`;

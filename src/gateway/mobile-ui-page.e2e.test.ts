@@ -25,16 +25,17 @@ describe("buildMobilePairingUrl", () => {
 });
 
 describe("renderMobileUiPage", () => {
-  it("inlines the gateway ws url and token into the page", () => {
-    const html = renderMobileUiPage("wss://gw.example:19001", "tok-123");
+  it("inlines the ws url and session-token path — NEVER the token (PLAN-41 mgmt-token-html)", () => {
+    const html = renderMobileUiPage("wss://gw.example:19001", "/auth/session-token");
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain('"wss://gw.example:19001"');
-    expect(html).toContain('"tok-123"');
+    expect(html).toContain('"/auth/session-token"');
+    expect(html).toContain("fetchSessionToken");
   });
 
-  it("renders without a token when none is given", () => {
+  it("keeps the ?t= override for tailnet phones and defaults TOKEN empty", () => {
     const html = renderMobileUiPage("wss://gw.example:19001");
     expect(html).toContain('"wss://gw.example:19001"');
-    expect(html).toMatch(/const TOKEN = URL_PARAMS\.get\("t"\) \|\| ""/);
+    expect(html).toMatch(/let TOKEN = URL_PARAMS\.get\("t"\) \|\| ""/);
   });
 });

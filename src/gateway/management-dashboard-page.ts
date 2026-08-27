@@ -4,7 +4,10 @@
  * Displays network census, anomaly alerts, economic overview, and peer topology.
  */
 
-export function renderManagementDashboardPage(gatewayWsUrl: string, gatewayToken?: string): string {
+export function renderManagementDashboardPage(
+  gatewayWsUrl: string,
+  sessionTokenPath = "/auth/session-token",
+): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -158,7 +161,18 @@ section.active { display: block; }
 
 <script>
 const WS_URL = ${JSON.stringify(gatewayWsUrl)};
-const GW_TOKEN = ${JSON.stringify(gatewayToken ?? "")};
+const SESSION_TOKEN_PATH = ${JSON.stringify(sessionTokenPath)};
+let GW_TOKEN = "";
+// PLAN-41 Phase 1 (mgmt-token-html): the token is no longer baked into the
+// page HTML. Fetch it same-origin from the session-token handoff, which has
+// identical trust semantics (loopback-direct + Host allowlist).
+async function fetchSessionToken() {
+  try {
+    const r = await fetch(SESSION_TOKEN_PATH, { cache: "no-store" });
+    if (r.ok) { const d = await r.json(); if (d && d.token) return d.token; }
+  } catch (e) { /* fall through: connect tokenless */ }
+  return "";
+}
 let ws = null;
 let reqId = 0;
 const pending = {};
@@ -306,7 +320,7 @@ async function poll() {
   } catch(e) { console.debug('poll error', e); }
 }
 
-connect();
+fetchSessionToken().then((t) => { GW_TOKEN = t; connect(); });
 setInterval(poll, 5000);
 setTimeout(poll, 1500);
 </script>

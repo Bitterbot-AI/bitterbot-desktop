@@ -3,7 +3,10 @@
  * Communicates with the gateway via WebSocket RPC.
  */
 
-export function renderDreamDashboardPage(gatewayWsUrl: string, gatewayToken?: string): string {
+export function renderDreamDashboardPage(
+  gatewayWsUrl: string,
+  sessionTokenPath = "/auth/session-token",
+): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -205,7 +208,18 @@ canvas { display: block; margin: 0 auto; }
 
 <script>
 const WS_URL = ${JSON.stringify(gatewayWsUrl)};
-const GW_TOKEN = ${JSON.stringify(gatewayToken ?? "")};
+const SESSION_TOKEN_PATH = ${JSON.stringify(sessionTokenPath)};
+let GW_TOKEN = "";
+// PLAN-41 Phase 1 (mgmt-token-html): the token is no longer baked into the
+// page HTML. Fetch it same-origin from the session-token handoff, which has
+// identical trust semantics (loopback-direct + Host allowlist).
+async function fetchSessionToken() {
+  try {
+    const r = await fetch(SESSION_TOKEN_PATH, { cache: "no-store" });
+    if (r.ok) { const d = await r.json(); if (d && d.token) return d.token; }
+  } catch (e) { /* fall through: connect tokenless */ }
+  return "";
+}
 let ws, rpcId = 0, soundEnabled = false, audioCtx = null;
 const pending = new Map();
 const MODE_COLORS = {replay:'var(--blue)',mutation:'var(--purple)',extrapolation:'var(--green)',compression:'var(--orange)',simulation:'var(--pink)',exploration:'var(--indigo)',research:'var(--teal)',canonical_promotion:'var(--green)',relationship_mining:'var(--blue)',relationship_reconsolidation:'var(--teal)',interceptor_harvest:'var(--orange)',harness_evolve:'var(--purple)'};
@@ -882,7 +896,7 @@ function startPolling() {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) loadActiveTab(); });
 
-connectWs();
+fetchSessionToken().then((t) => { GW_TOKEN = t; connectWs(); });
 startPolling();
 </script>
 </body>

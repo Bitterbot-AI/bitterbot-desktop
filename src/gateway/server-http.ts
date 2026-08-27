@@ -530,10 +530,14 @@ export function createGatewayHttpServer(opts: {
         const proto = opts.tlsOptions ? "wss" : "ws";
         const host = req.headers.host ?? "localhost";
         const wsUrl = `${proto}://${host}`;
-        const gatewayToken = resolvedAuth?.token ?? "";
+        // PLAN-41 Phase 1 (mgmt-token-html): no token in the HTML — the page
+        // fetches it from the session-token handoff (same trust semantics).
+        const sessionTokenPath = `${normalizeControlUiBasePath(
+          configSnapshot.gateway?.controlUi?.basePath,
+        )}${SESSION_TOKEN_PATH}`;
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(renderDreamDashboardPage(wsUrl, gatewayToken));
+        res.end(renderDreamDashboardPage(wsUrl, sessionTokenPath));
         return;
       }
       // Management dashboard — auth-protected, serves self-contained HTML
@@ -553,11 +557,13 @@ export function createGatewayHttpServer(opts: {
         const proto = opts.tlsOptions ? "wss" : "ws";
         const host = req.headers.host ?? "localhost";
         const wsUrl = `${proto}://${host}`;
-        const gatewayToken = resolvedAuth?.token ?? "";
+        const sessionTokenPath = `${normalizeControlUiBasePath(
+          configSnapshot.gateway?.controlUi?.basePath,
+        )}${SESSION_TOKEN_PATH}`;
         const { renderManagementDashboardPage } = await import("./management-dashboard-page.js");
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(renderManagementDashboardPage(wsUrl, gatewayToken));
+        res.end(renderManagementDashboardPage(wsUrl, sessionTokenPath));
         return;
       }
       // Mobile UI avatar — small static PNG, served unauthenticated.
@@ -592,11 +598,13 @@ export function createGatewayHttpServer(opts: {
         const proto = opts.tlsOptions ? "wss" : "ws";
         const host = req.headers.host ?? "localhost";
         const wsUrl = `${proto}://${host}`;
-        const gatewayToken = resolvedAuth?.token ?? "";
+        const sessionTokenPath = `${normalizeControlUiBasePath(
+          configSnapshot.gateway?.controlUi?.basePath,
+        )}${SESSION_TOKEN_PATH}`;
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.setHeader("Cache-Control", "no-store");
-        res.end(renderMobileUiPage(wsUrl, gatewayToken));
+        res.end(renderMobileUiPage(wsUrl, sessionTokenPath));
         return;
       }
       // Wallet funding page — auth-protected, serves self-contained HTML
