@@ -36,7 +36,11 @@ describe("resolveP2pKeyDir (PLAN-41 p0-7)", () => {
   });
 
   it("explicit p2p.keyDir wins", () => {
-    expect(resolveP2pKeyDir("/etc/bb-keys", "/home/u")).toBe("/etc/bb-keys");
+    // Platform-native absolute path: a POSIX literal like "/etc/bb-keys"
+    // gets drive-absolutized on Windows (D:\etc\bb-keys) and reds the CI
+    // matrix there.
+    const explicit = path.join(os.tmpdir(), "bb-explicit-keys");
+    expect(resolveP2pKeyDir(explicit, "/home/u")).toBe(explicit);
   });
 });
 
