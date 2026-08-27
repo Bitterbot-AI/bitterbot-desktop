@@ -371,7 +371,7 @@ export async function finalizeOnboardingWizard(
           : `Open this URL in your browser: ${controlUiUrl}`,
         "",
         gatewayProbe.ok
-          ? "The gateway is running. If the Control UI shows 'Disconnected', verify\n  desktop/.env has the correct VITE_GATEWAY_TOKEN."
+          ? "The gateway is running. If the Control UI shows 'Disconnected', reload\n  the page; it fetches its session token from the gateway it was served by."
           : "Start the gateway when ready:\n  pnpm start gateway",
       ].join("\n"),
       "Dashboard",

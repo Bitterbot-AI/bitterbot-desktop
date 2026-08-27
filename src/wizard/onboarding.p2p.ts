@@ -1,36 +1,34 @@
 /**
  * Onboarding wizard step: P2P network setup.
  *
- * Inserted after the gateway config step (so the gateway token is
- * available for `desktop/.env` generation) and before channel setup.
+ * Inserted after the gateway config step and before channel setup.
  * P2P is on by default via applyP2pDefaults; this step exists to:
  *
  *   1. Tell the user what it means without being preachy
- *   2. Offer an opt-out in advanced mode only (quickstart keeps the
- *      default-on behavior)
+ *   2. Ask for network consent in EVERY flow (PLAN-41 Phase 1, p0-10):
+ *      declining applies the Local-only preset — p2p, circles, a2a,
+ *      update.checkOnStart and models.liveDiscovery all explicitly off,
+ *      no new config key
  *   3. Probe orchestrator binary availability and surface the same
  *      4-path priority that OrchestratorBridge.resolveBinary uses
  *   4. Run a DNS bootstrap sanity check (advanced only — quick, ~1s)
- *   5. TCP-probe the first hardcoded fallback peer to catch firewall
- *      / egress issues before the user hits them at runtime
- *   6. Auto-generate `desktop/.env` with the gateway token so the
- *      Control UI connects on first `pnpm dev` without a copy-paste
- *      dance. This is the Tier 1 Control UI paper-cut fix, bundled
- *      here because it needs the same gateway token that just got
- *      minted.
+ *   5. TCP-probe the first hardcoded fallback peer (advanced only)
+ *
+ * The old step 6 (auto-generate `desktop/.env` with the gateway token)
+ * is GONE: nothing has read `VITE_GATEWAY_TOKEN` since PLAN-39 Phase 3
+ * — the gateway serves the Control UI and hands the token over via
+ * `/auth/session-token` — so writing the plaintext token to disk was a
+ * pure secret leak (PLAN-41 Phase 1, p0-19 residual).
  *
  * Deliberately NO node-tier prompt. All new nodes are edge tier.
  * Management tier is assigned manually by the network operator via
  * `p2p.nodeTier` + genesis trust list — never via this wizard.
  */
 
-import fs from "node:fs";
-import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
-import type { GatewayWizardSettings, WizardFlow } from "./onboarding.types.js";
+import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
-import { DEFAULT_GATEWAY_PORT, resolveGatewayPort } from "../config/config.js";
 import { resolveBootstrapDns } from "../infra/dns-bootstrap.js";
 import {
   parseMultiaddr,
@@ -41,11 +39,10 @@ import {
 export async function setupP2pForOnboarding(params: {
   config: BitterbotConfig;
   flow: WizardFlow;
-  settings: GatewayWizardSettings;
   prompter: WizardPrompter;
   runtime: RuntimeEnv;
 }): Promise<BitterbotConfig> {
-  const { config, flow, settings, prompter } = params;
+  const { config, flow, prompter } = params;
 
   // ── 1. Intro ──
   await prompter.note(
@@ -65,38 +62,44 @@ export async function setupP2pForOnboarding(params: {
       "weather — is assigned manually by the network's existing operators",
       "via genesis trust list, never via this wizard.",
       "",
-      flow === "advanced"
-        ? "If you want fully local operation, you can disable P2P next."
-        : "Disable later via `p2p.enabled = false` in your gateway config.",
+      "If you want fully local operation, decline next and everything",
+      "network-facing switches off in one gesture.",
     ].join("\n"),
     "P2P Network",
   );
 
-  // ── 2. Opt-out (advanced only) ──
+  // ── 2. Network consent (every flow — PLAN-41 Phase 1, p0-10) ──
   let nextConfig = config;
-  if (flow === "advanced") {
-    const joinNetwork = await prompter.confirm({
-      message: "Join the P2P skills marketplace? (you can leave anytime)",
-      initialValue: config.p2p?.enabled !== false,
-    });
-    if (!joinNetwork) {
-      nextConfig = {
-        ...config,
-        p2p: { ...config.p2p, enabled: false },
-      };
-      await prompter.note(
-        "P2P disabled. Your agent will run local-only. Re-enable later via `p2p.enabled = true` in the gateway config.",
-        "P2P disabled",
-      );
-      // When disabled we still generate desktop/.env for the Control UI
-      // because that's unrelated to P2P.
-      await maybeGenerateDesktopEnv({
-        settings,
-        gatewayPort: resolveGatewayPort(nextConfig),
-        prompter,
-      });
-      return nextConfig;
-    }
+  const joinNetwork = await prompter.confirm({
+    message: "Join the P2P network? (skills marketplace + circles; you can leave anytime)",
+    initialValue: config.p2p?.enabled !== false,
+  });
+  if (!joinNetwork) {
+    // Local-only preset: every ambient network surface off explicitly, so
+    // the config file documents the choice and each flag can be flipped
+    // back individually. Deliberately not a new config key.
+    nextConfig = {
+      ...config,
+      p2p: { ...config.p2p, enabled: false },
+      circles: { ...config.circles, enabled: false },
+      a2a: { ...config.a2a, enabled: false },
+      update: { ...config.update, checkOnStart: false },
+      models: {
+        ...config.models,
+        liveDiscovery: { ...config.models?.liveDiscovery, enabled: false },
+      },
+    };
+    await prompter.note(
+      [
+        "Local-only mode. Switched off: P2P mesh, circles, agent-to-agent",
+        "HTTP, boot-time update check, live model discovery.",
+        "Re-enable any of them later in Settings or the gateway config",
+        "(p2p.enabled, circles.enabled, a2a.enabled, update.checkOnStart,",
+        "models.liveDiscovery.enabled).",
+      ].join("\n"),
+      "Local-only",
+    );
+    return nextConfig;
   }
 
   // ── 3. Orchestrator binary probe ──
@@ -156,11 +159,11 @@ export async function setupP2pForOnboarding(params: {
     }
   }
 
-  // ── 5. Fallback peer TCP probe ──
+  // ── 5. Fallback peer TCP probe (advanced only — keep quickstart snappy) ──
   // applyP2pDefaults merges the hardcoded Railway fallback into
   // bootstrapPeers, so config.p2p?.bootstrapPeers is authoritative
   // once the config has been defaulted.
-  const peers = config.p2p?.bootstrapPeers ?? [];
+  const peers = flow === "advanced" ? (config.p2p?.bootstrapPeers ?? []) : [];
   if (peers.length > 0) {
     const first = peers[0];
     const parsed = parseMultiaddr(first);
@@ -185,91 +188,7 @@ export async function setupP2pForOnboarding(params: {
     }
   }
 
-  // ── 6. Auto-generate desktop/.env for the Control UI ──
-  await maybeGenerateDesktopEnv({
-    settings,
-    gatewayPort: resolveGatewayPort(nextConfig),
-    prompter,
-  });
-
   return nextConfig;
-}
-
-/**
- * Write `desktop/.env` with the gateway token and URL so the Vite
- * Control UI can connect on `pnpm dev` without a manual copy-paste.
- * Only runs in the monorepo layout — if `desktop/` isn't present
- * (e.g. installed from npm as a library), this is a no-op.
- *
- * Respects any existing `desktop/.env` — if the user already has one,
- * we leave it alone and just note it to avoid clobbering a hand-edited
- * config.
- */
-async function maybeGenerateDesktopEnv(params: {
-  settings: GatewayWizardSettings;
-  gatewayPort: number;
-  prompter: WizardPrompter;
-}): Promise<void> {
-  const { settings, gatewayPort, prompter } = params;
-
-  // Only do this in the monorepo layout (source clone). For library
-  // installs via npm there is no `desktop/` directory to populate.
-  const desktopDir = path.resolve(process.cwd(), "desktop");
-  if (!fs.existsSync(desktopDir)) {
-    return;
-  }
-
-  const envPath = path.join(desktopDir, ".env");
-  if (fs.existsSync(envPath)) {
-    // Don't clobber — the user (or a prior wizard run) may have
-    // customized this file. Surface a hint instead.
-    await prompter.note(
-      [
-        `${envPath} already exists — leaving it alone.`,
-        "If the Control UI fails to connect, verify VITE_GATEWAY_TOKEN matches",
-        "your current gateway auth token.",
-      ].join("\n"),
-      "Control UI env",
-    );
-    return;
-  }
-
-  const token = settings.gatewayToken;
-  const gatewayHost =
-    settings.bind === "loopback" || settings.bind === "auto"
-      ? "127.0.0.1"
-      : (settings.customBindHost ?? "127.0.0.1");
-  const port = gatewayPort || DEFAULT_GATEWAY_PORT;
-
-  const lines = [
-    "# Auto-generated by the Bitterbot onboarding wizard.",
-    "# Remove or edit this file to change the Control UI gateway target.",
-    `VITE_GATEWAY_URL=ws://${gatewayHost}:${port}`,
-  ];
-  if (token) {
-    lines.push(`VITE_GATEWAY_TOKEN=${token}`);
-  } else {
-    lines.push("# VITE_GATEWAY_TOKEN not set: your gateway uses password auth or no auth.");
-  }
-  lines.push("");
-
-  try {
-    fs.writeFileSync(envPath, lines.join("\n"), { mode: 0o600 });
-    await prompter.note(
-      [
-        `Wrote ${envPath}`,
-        token
-          ? "The Control UI will now connect to your gateway without manual configuration."
-          : "VITE_GATEWAY_TOKEN was not set (gateway uses password or no auth). Edit the file if needed.",
-      ].join("\n"),
-      "Control UI env",
-    );
-  } catch (err) {
-    await prompter.note(
-      `Could not write ${envPath}: ${err instanceof Error ? err.message : String(err)}`,
-      "Control UI env",
-    );
-  }
 }
 
 /** Small helper so we can time-box DNS probes and stay responsive. */
