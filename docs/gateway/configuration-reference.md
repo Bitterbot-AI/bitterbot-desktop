@@ -2150,7 +2150,7 @@ The P2P orchestrator runs as a Rust sidecar daemon using libp2p. It handles peer
   - `"server"`: serve as a relay for NAT'd peers (used by bootstrap nodes).
   - `"off"`: disable relay entirely.
 - `relayServers`: explicit relay server multiaddresses for client mode. If empty, bootstrap peers are used as relay candidates.
-- `keyDir`: directory for the Ed25519 keypair that determines the node's peer ID.
+- `keyDir`: directory for the Ed25519 keypair that determines the node's peer ID. Default: `~/.bitterbot/keys` (always passed to the orchestrator). Identities left in the legacy locations (`<repo>/keys`, `<repo>/desktop/keys`, `~/keys`) are moved there automatically on the next start; a management-tier node with no keypair anywhere refuses to boot rather than silently minting a fresh identity.
 - `httpAddr`: bind address for the orchestrator HTTP dashboard. Default: `"127.0.0.1:9847"` (loopback only).
 - `security.maxSkillSizeBytes`: reject skills larger than this. Default: 256KB.
 - `security.maxSkillsPerMinutePerPeer`: per-peer rate limit. Default: 10.

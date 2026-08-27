@@ -12,6 +12,11 @@ import type { P2pConfig } from "../config/types.p2p.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveBootstrapDns, mergeBootstrapPeers } from "./dns-bootstrap.js";
 import { formatBinaryNotFoundMessage, probeOrchestratorBinary } from "./orchestrator-binary.js";
+import {
+  assertManagementKeyPresent,
+  migrateLegacyP2pKeys,
+  resolveP2pKeyDir,
+} from "./p2p-key-dir.js";
 
 const log = createSubsystemLogger("p2p/orchestrator");
 
@@ -231,6 +236,20 @@ export class OrchestratorBridge {
       throw err;
     }
     this.resolvedBinaryPath = binary;
+
+    // PLAN-41 Phase 1 (p0-7): pin the identity to its stable home before
+    // spawn. Migration failure must not brick an edge node (worst case the
+    // orchestrator generates a fresh identity in the new dir, which is
+    // exactly the pre-migration behavior for a fresh checkout) — but a
+    // management node without its keypair must NOT boot.
+    const keyDir = resolveP2pKeyDir(this.config.keyDir);
+    try {
+      migrateLegacyP2pKeys({ targetDir: keyDir });
+    } catch (err) {
+      log.warn(`P2P key-dir migration failed (continuing): ${String(err)}`);
+    }
+    assertManagementKeyPresent({ targetDir: keyDir, nodeTier: this.config.nodeTier });
+
     const args = this.buildArgs();
 
     // A stale socket file (a previous boot's, surviving an OS restart in /tmp
@@ -1212,9 +1231,10 @@ export class OrchestratorBridge {
   private buildArgs(): string[] {
     const args: string[] = [];
     args.push("--ipc-path", this.ipcPath);
-    if (this.config.keyDir) {
-      args.push("--key-dir", this.config.keyDir);
-    }
+    // Always passed (PLAN-41 p0-7): without it the Rust side falls back to
+    // `./keys` relative to ITS cwd, which scatters identities across
+    // checkouts and service working directories.
+    args.push("--key-dir", resolveP2pKeyDir(this.config.keyDir));
     for (const addr of this.config.listenAddrs ?? []) {
       args.push("--listen-addr", addr);
     }

@@ -2,8 +2,19 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { P2pConfig } from "../config/types.p2p.js";
+
+// start() runs the p0-7 key-dir migration against the REAL filesystem
+// (process.cwd() is the repo, so an unmocked run would copy the developer's
+// actual node.key into this test's throwaway HOME). Identity handling has its
+// own suite (p2p-key-dir.test.ts); here it must be inert.
+vi.mock("./p2p-key-dir.js", () => ({
+  resolveP2pKeyDir: () => "/tmp/bb-test-keys-unused",
+  migrateLegacyP2pKeys: () => null,
+  assertManagementKeyPresent: () => {},
+}));
+
 import { OrchestratorBridge } from "./orchestrator-bridge.js";
 
 /**

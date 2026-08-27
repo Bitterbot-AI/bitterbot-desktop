@@ -27,6 +27,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import { defaultP2pKeyDir } from "../infra/p2p-key-dir.js";
 import { resolveUserPath } from "../utils.js";
 import {
   renderSection as renderDoctorSection,
@@ -37,18 +38,14 @@ import {
 } from "./doctor-check.js";
 
 /**
- * When `p2p.keyDir` is unset, the TS side passes no `--key-dir` and the Rust
- * orchestrator falls back to its own default: `./keys` RELATIVE TO ITS CWD
- * (orchestrator/src/main.rs). Doctor previously checked `~/.bitterbot/keys`,
- * a directory the orchestrator never touches, and reported a healthy node as
- * key-less. `<packageRoot>/keys` is where a repo-root `pnpm start gateway`
- * run puts them; daemon installs that set no WorkingDirectory may resolve
- * `./keys` elsewhere ($HOME under systemd, / under launchd) — the keypair
- * messages below therefore stay warn/info, and pinning `p2p.keyDir`
- * explicitly is the reliable setup.
+ * PLAN-41 Phase 1 (p0-7): the bridge now ALWAYS passes `--key-dir`,
+ * defaulting to `~/.bitterbot/keys`, and migrates the legacy
+ * checkout-relative locations (`<repo>/keys`, `<repo>/desktop/keys`,
+ * `~/keys`) on start — so doctor checks the same stable default the
+ * orchestrator actually uses.
  */
-function defaultKeyDir(packageRoot: string | null): string {
-  return path.join(packageRoot ?? process.cwd(), "keys");
+function defaultKeyDir(_packageRoot: string | null): string {
+  return defaultP2pKeyDir();
 }
 
 export function runIdentityChecks(params: {
