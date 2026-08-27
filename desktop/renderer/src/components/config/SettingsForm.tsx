@@ -267,7 +267,7 @@ export function SettingsForm({
                       {kind === "restart" && (
                         <span
                           title="Applying this change restarts the gateway"
-                          className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                          className="px-1.5 py-0.5 rounded text-2xs uppercase tracking-wide bg-amber-500/10 text-amber-400 border border-amber-500/20"
                         >
                           restart
                         </span>
@@ -276,7 +276,7 @@ export function SettingsForm({
                     {hint.help && (
                       <p className="text-xs text-muted-foreground mt-0.5">{hint.help}</p>
                     )}
-                    <p className="text-[10px] font-mono text-muted-foreground/50 mt-0.5">{path}</p>
+                    <p className="text-2xs font-mono text-muted-foreground/50 mt-0.5">{path}</p>
                   </div>
                   <div className="flex-shrink-0">
                     {isBool ? (
