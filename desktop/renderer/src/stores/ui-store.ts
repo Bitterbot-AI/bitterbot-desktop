@@ -1,28 +1,10 @@
 import { create } from "zustand";
+// PLAN-41 p0-13: the nav manifest is the single source of truth for TabId.
+// Re-exported here so the many existing `from "../stores/ui-store"` imports
+// keep working.
+import type { TabId } from "../nav-manifest";
 
-export type TabId =
-  | "chat"
-  | "overview"
-  | "channels"
-  | "instances"
-  | "sessions"
-  | "usage"
-  | "cron"
-  | "agents"
-  | "skills"
-  | "guards"
-  | "nodes"
-  | "people"
-  | "projects"
-  | "workspace"
-  | "wallet"
-  | "p2p"
-  | "dreams"
-  | "management"
-  | "models"
-  | "config"
-  | "debug"
-  | "logs";
+export type { TabId };
 
 export type Theme = "dark" | "light";
 

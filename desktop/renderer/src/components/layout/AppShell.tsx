@@ -8,18 +8,14 @@ import { CirclesGlobalSync } from "../circles/CirclesGlobalSync";
 import { CirclesView } from "../circles/CirclesView";
 import { ConfigView } from "../config/ConfigView";
 import { CronView } from "../cron/CronView";
-import { DebugView } from "../debug/DebugView";
 import { DreamsView } from "../dreams/DreamsView";
 import { ActiveGuardsView } from "../guards/ActiveGuardsView";
-import { InstancesView } from "../instances/InstancesView";
 import { LogsView } from "../logs/LogsView";
 import { ManagementView } from "../management/ManagementView";
 import { ModelsView } from "../models/ModelsView";
 import { NodesView } from "../nodes/NodesView";
 import { OverviewView } from "../overview/OverviewView";
 import { P2pDashboard } from "../p2p/P2pDashboard";
-import { ProjectsView } from "../projects/ProjectsView";
-import { SessionsView } from "../sessions/SessionsView";
 import { SkillsView } from "../skills/SkillsView";
 import { UsageView } from "../usage/UsageView";
 import { WalletView } from "../wallet/WalletView";
@@ -32,15 +28,12 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   chat: () => <ChatView />,
   overview: () => <OverviewView />,
   channels: () => <ChannelsView />,
-  instances: () => <InstancesView />,
-  sessions: () => <SessionsView />,
   usage: () => <UsageView />,
   cron: () => <CronView />,
   agents: () => <AgentsView />,
   skills: () => <SkillsView />,
   guards: () => <ActiveGuardsView />,
   nodes: () => <NodesView />,
-  projects: () => <ProjectsView />,
   workspace: () => <WorkspaceView />,
   wallet: () => <WalletView />,
   p2p: () => <P2pDashboard />,
@@ -49,7 +42,6 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   management: () => <ManagementView />,
   models: () => <ModelsView />,
   config: () => <ConfigView />,
-  debug: () => <DebugView />,
   logs: () => <LogsView />,
 };
 

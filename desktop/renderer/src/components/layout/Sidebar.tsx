@@ -1,35 +1,23 @@
-import type { LucideIcon } from "lucide-react";
 import {
-  Radio,
-  Bot,
-  Puzzle,
-  Globe,
-  Wallet,
-  Settings,
   MessageSquare,
   Plus,
   PanelLeftClose,
   PanelLeftOpen,
-  BrainCircuit,
-  Shield,
-  ShieldCheck,
-  Clock,
   X,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Trash2,
   Check,
   Sun,
   Moon,
-  Users,
-  Gauge,
-  KeyRound,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useIsManagementNode } from "../../hooks/useIsManagementNode";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import { NAV_MANIFEST, type NavGroup } from "../../nav-manifest";
 import { useChatStore } from "../../stores/chat-store";
 import { circlesAttention, useCirclesStore } from "../../stores/circles-store";
 import { useGatewayStore } from "../../stores/gateway-store";
@@ -44,51 +32,16 @@ interface SidebarSession {
   updatedAt?: number | null;
 }
 
-interface NavItem {
-  id: TabId;
-  label: string;
-  icon: LucideIcon;
-  group: "control" | "agent" | "settings";
-  /** If set, the item is only shown when this feature key is present. */
-  requireFeature?: string;
-}
-
-const NAV_ITEMS: NavItem[] = [
-  // Control
-  // The gateway dashboard: version/update card, uptime, connection, channels.
-  // (The view existed since the redesign but had NO nav entry — it was only
-  // reachable from the update banner. 2026-07-26 fix.)
-  { id: "overview", label: "Overview", icon: Gauge, group: "control" },
-  { id: "channels", label: "Channels", icon: Radio, group: "control" },
-  // PLAN-31 C2: the connection graph made visible (§4.4). The pane itself
-  // explains + stays inert while circles.enabled is off.
-  { id: "people", label: "Circles", icon: Users, group: "control" },
-  { id: "p2p", label: "P2P Network", icon: Globe, group: "control" },
-  {
-    id: "management",
-    label: "Management",
-    icon: Shield,
-    group: "control",
-    requireFeature: "management",
-  },
-  // Agent
-  { id: "agents", label: "Agents", icon: Bot, group: "agent" },
-  { id: "skills", label: "Skills", icon: Puzzle, group: "agent" },
-  { id: "guards", label: "Active Guards", icon: ShieldCheck, group: "agent" },
-  { id: "cron", label: "Cron", icon: Clock, group: "agent" },
-  { id: "dreams", label: "Dreams (beta)", icon: BrainCircuit, group: "agent" },
-  // Settings
-  { id: "models", label: "Models & Keys", icon: KeyRound, group: "settings" },
-  { id: "config", label: "Config", icon: Settings, group: "settings" },
-];
-
-const GROUP_LABELS: Record<string, string> = {
-  control: "CONTROL PANEL",
-  agent: "AGENT",
-  settings: "SETTINGS",
+// PLAN-41 p0-13: items and TabId both come from the nav manifest — this file
+// only decides presentation (grouping headers, collapse state, badges).
+const GROUP_LABELS: Record<NavGroup, string> = {
+  main: "CONTROL PANEL",
+  advanced: "ADVANCED",
 };
 
-const GROUPS = ["control", "agent", "settings"] as const;
+const GROUPS: readonly NavGroup[] = ["main", "advanced"];
+
+const ADVANCED_OPEN_KEY = "bitterbot-nav-advanced-open";
 
 // Social link SVGs from webapp
 function AboutIcon() {
@@ -180,6 +133,32 @@ export function Sidebar() {
   const request = useGatewayStore((s) => s.request);
 
   const isManagementNode = useIsManagementNode();
+  // Generalized feature gate (was a hardcoded `=== "management"` check):
+  // manifest items declare requireFeature, this list says what this gateway
+  // offers.
+  const availableFeatures = isManagementNode ? ["management"] : [];
+
+  // Advanced group fold state: persisted per browser; opens itself when the
+  // active tab lives inside it so the highlight is never invisible.
+  const [advancedOpen, setAdvancedOpenState] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(ADVANCED_OPEN_KEY);
+      if (stored !== null) {
+        return stored === "1";
+      }
+    } catch {
+      /* storage unavailable: default closed */
+    }
+    return NAV_MANIFEST.some((item) => item.group === "advanced" && item.id === activeTab);
+  });
+  const setAdvancedOpen = (open: boolean) => {
+    setAdvancedOpenState(open);
+    try {
+      localStorage.setItem(ADVANCED_OPEN_KEY, open ? "1" : "0");
+    } catch {
+      /* best-effort persistence */
+    }
+  };
 
   // Phase C: circles attention reaches the sidebar — kept fresh app-wide by
   // CirclesGlobalSync, so unread + pending approvals surface even while the
@@ -482,68 +461,102 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-4 scrollbar-none">
         {GROUPS.map((group) => {
-          const items = NAV_ITEMS.filter(
+          const items = NAV_MANIFEST.filter(
             (item) =>
               item.group === group &&
-              (!item.requireFeature || (item.requireFeature === "management" && isManagementNode)),
+              (!item.requireFeature || availableFeatures.includes(item.requireFeature)),
           );
+          if (items.length === 0) {
+            return null;
+          }
+          const isAdvanced = group === "advanced";
+          const groupHidden = isAdvanced && !advancedOpen;
+          // The circles row lives under Advanced: when the group is folded,
+          // its attention must still surface — as a dot on the group header.
+          const groupAttention = groupHidden && (attention.unread > 0 || attention.approvals > 0);
           return (
             <div key={group}>
-              {!isCollapsed && (
-                <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6]">
-                  {GROUP_LABELS[group]}
+              {!isCollapsed &&
+                (isAdvanced ? (
+                  <button
+                    onClick={() => setAdvancedOpen(!advancedOpen)}
+                    className="relative flex w-full items-center gap-1 px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6] hover:text-[#7be9f5] transition-colors"
+                  >
+                    {advancedOpen ? (
+                      <ChevronDown className="w-3 h-3" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3" />
+                    )}
+                    <span>{GROUP_LABELS[group]}</span>
+                    {groupAttention && (
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "ml-1 w-2 h-2 rounded-full",
+                          attention.approvals > 0 ? "bg-circle-consent" : "bg-red-500",
+                        )}
+                      />
+                    )}
+                  </button>
+                ) : (
+                  <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6]">
+                    {GROUP_LABELS[group]}
+                  </div>
+                ))}
+              {groupHidden && !isCollapsed ? null : (
+                <div className="space-y-0.5">
+                  {items.map((item) => {
+                    const Icon = item.icon;
+                    const isCircles = item.id === "people";
+                    const showAttention =
+                      isCircles && (attention.unread > 0 || attention.approvals > 0);
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id)}
+                        data-active={activeTab === item.id ? "true" : undefined}
+                        title={isCollapsed ? item.label : undefined}
+                        className={cn(
+                          "relative flex items-center rounded-md text-sm transition-all",
+                          "hover:bg-[rgba(139,92,246,0.05)] hover:text-[#d8b4fe]",
+                          activeTab === item.id
+                            ? "bg-[rgba(139,92,246,0.1)] text-[#c084fc] font-medium"
+                            : "text-[var(--sidebar-text-secondary)]",
+                          isCollapsed
+                            ? "w-8 h-8 justify-center mx-auto"
+                            : "w-full gap-2 px-3 py-1.5",
+                        )}
+                      >
+                        <Icon className="w-4 h-4 flex-shrink-0" />
+                        {!isCollapsed && <span>{item.label}</span>}
+                        {showAttention &&
+                          (isCollapsed ? (
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                "absolute top-0.5 right-0.5 w-2 h-2 rounded-full",
+                                attention.approvals > 0 ? "bg-circle-consent" : "bg-red-500",
+                              )}
+                            />
+                          ) : (
+                            <span className="ml-auto flex items-center gap-1">
+                              <AttentionBadge
+                                count={attention.approvals}
+                                tone="consent"
+                                title={approvalsTitle(attention.approvals)}
+                              />
+                              <AttentionBadge
+                                count={attention.unread}
+                                tone="unread"
+                                title={`${attention.unread} unread`}
+                              />
+                            </span>
+                          ))}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-              <div className="space-y-0.5">
-                {items.map((item) => {
-                  const Icon = item.icon;
-                  const isCircles = item.id === "people";
-                  const showAttention =
-                    isCircles && (attention.unread > 0 || attention.approvals > 0);
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveTab(item.id)}
-                      data-active={activeTab === item.id ? "true" : undefined}
-                      title={isCollapsed ? item.label : undefined}
-                      className={cn(
-                        "relative flex items-center rounded-md text-sm transition-all",
-                        "hover:bg-[rgba(139,92,246,0.05)] hover:text-[#d8b4fe]",
-                        activeTab === item.id
-                          ? "bg-[rgba(139,92,246,0.1)] text-[#c084fc] font-medium"
-                          : "text-[var(--sidebar-text-secondary)]",
-                        isCollapsed ? "w-8 h-8 justify-center mx-auto" : "w-full gap-2 px-3 py-1.5",
-                      )}
-                    >
-                      <Icon className="w-4 h-4 flex-shrink-0" />
-                      {!isCollapsed && <span>{item.label}</span>}
-                      {showAttention &&
-                        (isCollapsed ? (
-                          <span
-                            aria-hidden="true"
-                            className={cn(
-                              "absolute top-0.5 right-0.5 w-2 h-2 rounded-full",
-                              attention.approvals > 0 ? "bg-circle-consent" : "bg-red-500",
-                            )}
-                          />
-                        ) : (
-                          <span className="ml-auto flex items-center gap-1">
-                            <AttentionBadge
-                              count={attention.approvals}
-                              tone="consent"
-                              title={approvalsTitle(attention.approvals)}
-                            />
-                            <AttentionBadge
-                              count={attention.unread}
-                              tone="unread"
-                              title={`${attention.unread} unread`}
-                            />
-                          </span>
-                        ))}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
           );
         })}
