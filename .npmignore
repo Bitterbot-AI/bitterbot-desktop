@@ -1,0 +1,31 @@
+# npm pack containment (PLAN-41 npm-pack-leak).
+#
+# package.json "files" is the include list; this file subtracts the trees
+# that must NEVER ship in a tarball. npm ignores .gitignore once .npmignore
+# exists, so every internal path under an included directory needs a line
+# here — publishing once distributes it forever.
+#
+# scripts/release-check.ts (`pnpm release:check`, wired into CI) asserts
+# the result: no internal docs, no databases/secrets, size under ceiling.
+
+# Internal documentation — audits, plans, scratch diagnostics.
+docs/reviews
+docs/plans
+docs/debug
+docs/diagnostics
+docs/.i18n
+docs/zh-CN
+
+# Local state that must never ride along, wherever it appears.
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/*.db
+**/*.log
+**/.env
+**/*.pem
+**/node.key
+**/*.tsbuildinfo
+
+# Source maps double the dist payload and serve no one from npm.
+dist/**/*.map

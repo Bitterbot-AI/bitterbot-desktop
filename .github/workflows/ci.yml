@@ -52,6 +52,13 @@ jobs:
         if: runner.os != 'Windows'
         run: pnpm --filter bitterbot-control-ui build
 
+      # Pack-content gate (PLAN-41 npm-pack-leak): a dry-run `npm pack`
+      # must contain no internal docs, no databases/keys, and stay under
+      # the size ceiling. Runs after the build so dist/ is real.
+      - name: Pack-content gate (release:check)
+        if: runner.os != 'Windows'
+        run: pnpm release:check
+
       - name: Unit tests
         run: pnpm test:fast
 
