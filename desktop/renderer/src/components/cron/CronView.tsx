@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { formatRelativeTime, formatDateTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useCronStore, type CronJob } from "../../stores/cron-store";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { useConfirm } from "../ui/confirm-dialog";
 
 function CronJobCard({
   job,
@@ -13,7 +15,7 @@ function CronJobCard({
   job: CronJob;
   onToggle: (id: string, enabled: boolean) => void;
   onRun: (id: string) => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: string, label: string) => void;
 }) {
   return (
     <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
@@ -54,9 +56,7 @@ function CronJobCard({
             Run
           </button>
           <button
-            onClick={() => {
-              if (confirm(`Remove cron job "${job.label ?? job.id}"?`)) onRemove(job.id);
-            }}
+            onClick={() => onRemove(job.id, job.label ?? job.id)}
             className="px-2 py-1 text-xs rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
           >
             Remove
@@ -137,6 +137,7 @@ function AddCronForm({ onAdd }: { onAdd: (params: Record<string, unknown>) => vo
 }
 
 export function CronView() {
+  const [confirmDialog, confirmElement] = useConfirm();
   const gwStatus = useGatewayStore((s) => s.status);
   const request = useGatewayStore((s) => s.request);
   const jobs = useCronStore((s) => s.jobs);
@@ -174,7 +175,9 @@ export function CronView() {
         await request("cron.update", { id, patch: { enabled } });
         updateJob(id, { enabled });
       } catch (err) {
-        alert(`Toggle failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Toggle failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       }
     },
     [request, updateJob],
@@ -186,22 +189,34 @@ export function CronView() {
         await request("cron.run", { id, mode: "force" });
         refresh();
       } catch (err) {
-        alert(`Run failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Run failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       }
     },
     [request, refresh],
   );
 
   const handleRemove = useCallback(
-    async (id: string) => {
+    async (id: string, label: string) => {
+      if (
+        !(await confirmDialog({
+          title: `Remove cron job "${label}"?`,
+          actionLabel: "Remove",
+          destructive: true,
+        }))
+      )
+        return;
       try {
         await request("cron.remove", { id });
         removeJob(id);
       } catch (err) {
-        alert(`Remove failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Remove failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       }
     },
-    [request, removeJob],
+    [request, removeJob, confirmDialog],
   );
 
   const handleAdd = useCallback(
@@ -210,7 +225,9 @@ export function CronView() {
         const res = (await request("cron.add", params)) as CronJob;
         addJob(res);
       } catch (err) {
-        alert(`Add failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Add failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       }
     },
     [request, addJob],
@@ -258,6 +275,7 @@ export function CronView() {
           ))
         )}
       </div>
+      {confirmElement}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { readStoredGatewayToken } from "../../lib/gateway-origin";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { useConfirm } from "../ui/confirm-dialog";
 
 // Lifecycle controls for the local node. Restart self-heals (SIGUSR1
 // in-process restart); Shut down is a deliberate SIGTERM.
@@ -20,6 +21,7 @@ export function GatewayControls() {
   const status = useGatewayStore((s) => s.status);
   const hello = useGatewayStore((s) => s.hello);
   const [phase, setPhase] = useState<Phase>("idle");
+  const [confirmDialog, confirmElement] = useConfirm();
   const [error, setError] = useState<string | null>(null);
 
   // Clear the "Restarting…" banner only after a real disconnect→reconnect
@@ -85,7 +87,14 @@ export function GatewayControls() {
   };
 
   const doRestart = async () => {
-    if (!confirm("Restart the gateway? It briefly disconnects and comes back on its own.")) return;
+    if (
+      !(await confirmDialog({
+        title: "Restart the gateway?",
+        description: "It briefly disconnects and comes back on its own.",
+        actionLabel: "Restart",
+      }))
+    )
+      return;
     setError(null);
     setPhase("restarting");
     try {
@@ -101,10 +110,12 @@ export function GatewayControls() {
 
   const doShutdown = async () => {
     if (
-      !confirm(
-        "Shut down the gateway?\n\nThis stops the node. Bring it back from a terminal " +
-          "(pnpm start gateway).",
-      )
+      !(await confirmDialog({
+        title: "Shut down the gateway?",
+        description: "This stops the node. Bring it back from a terminal (pnpm start gateway).",
+        actionLabel: "Shut down",
+        destructive: true,
+      }))
     )
       return;
     setError(null);
@@ -189,6 +200,7 @@ export function GatewayControls() {
         </div>
       </div>
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {confirmElement}
     </div>
   );
 }

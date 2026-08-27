@@ -8,6 +8,7 @@
   },
   "rules": {
     "eslint-plugin-unicorn/prefer-array-find": "off",
+    "eslint/no-alert": "error",
     "eslint/no-await-in-loop": "off",
     "eslint/no-new": "off",
     "oxc/no-accumulating-spread": "off",
@@ -23,7 +24,8 @@
   "ignorePatterns": [
     "assets/",
     "benchmarks/",
-    "desktop/",
+    "desktop/dist-renderer/",
+    "desktop/src-tauri/",
     "dist/",
     "docs/_layouts/",
     "extensions/",
@@ -35,5 +37,20 @@
     "src/canvas-host/a2ui/a2ui.bundle.js",
     "Swabble/",
     "vendor/"
+  ],
+  "overrides": [
+    {
+      "files": ["desktop/**"],
+      "rules": {
+        "typescript/no-floating-promises": "off",
+        "eslint/no-unused-vars": "off",
+        "typescript/no-base-to-string": "off",
+        "typescript/no-misused-spread": "off",
+        "typescript/no-meaningless-void-operator": "off",
+        "typescript/no-unnecessary-boolean-literal-compare": "off",
+        "unicorn/no-array-sort": "off",
+        "unicorn/no-array-reverse": "off"
+      }
+    }
   ]
 }

@@ -18,6 +18,7 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
+import { useConfirm } from "../ui/confirm-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { KeyEntryModal } from "./KeyEntryModal";
 
@@ -27,6 +28,7 @@ import { KeyEntryModal } from "./KeyEntryModal";
  * delete keys - all live over models.* RPCs, no gateway restart.
  */
 export function ModelsView() {
+  const [confirmDialog, confirmElement] = useConfirm();
   const status = useGatewayStore((s) => s.status);
   const hello = useGatewayStore((s) => s.hello);
   const catalog = useModelsStore((s) => s.catalog);
@@ -94,7 +96,15 @@ export function ModelsView() {
   };
 
   const handleDelete = async (profileId: string) => {
-    if (!confirm(`Delete credential profile "${profileId}"? This cannot be undone.`)) return;
+    if (
+      !(await confirmDialog({
+        title: `Delete credential profile "${profileId}"?`,
+        description: "This cannot be undone.",
+        actionLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await deleteProfile(profileId);
       toast.success(`Deleted ${profileId}`);
@@ -114,6 +124,7 @@ export function ModelsView() {
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
+      {confirmElement}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold flex items-center gap-2">

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { useConfirm } from "../ui/confirm-dialog";
 
 type IncomingOrigin = "peer" | "external-scrape" | "local-dream" | "incomplete";
 
@@ -163,6 +165,7 @@ export function IncomingPanel({
 }: {
   onCountChange?: (count: number) => void;
 } = {}) {
+  const [confirmDialog, confirmElement] = useConfirm();
   const gwStatus = useGatewayStore((s) => s.status);
   const request = useGatewayStore((s) => s.request);
   const subscribe = useGatewayStore((s) => s.subscribe);
@@ -205,56 +208,75 @@ export function IncomingPanel({
   const accept = useCallback(
     async (name: string) => {
       if (
-        !confirm(
-          `Accept "${name}" into managed skills?\n\nThis copies it from quarantine. It will be installed but stay disabled until you toggle it on.`,
-        )
+        !(await confirmDialog({
+          title: `Accept "${name}" into managed skills?`,
+          description:
+            "This copies it from quarantine. It will be installed but stay disabled until you toggle it on.",
+          actionLabel: "Accept",
+        }))
       )
         return;
       setBusy(name);
       try {
         await request("skills.incoming.accept", { skillName: name });
       } catch (err) {
-        alert(`Accept failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Accept failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       } finally {
         setBusy(null);
       }
     },
-    [request],
+    [request, confirmDialog],
   );
 
   const reject = useCallback(
     async (name: string) => {
-      if (!confirm(`Reject "${name}" and remove from quarantine?`)) return;
+      if (
+        !(await confirmDialog({
+          title: `Reject "${name}" and remove from quarantine?`,
+          actionLabel: "Reject",
+          destructive: true,
+        }))
+      )
+        return;
       setBusy(name);
       try {
         await request("skills.incoming.reject", { skillName: name });
       } catch (err) {
-        alert(`Reject failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Reject failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       } finally {
         setBusy(null);
       }
     },
-    [request],
+    [request, confirmDialog],
   );
 
   const rejectByPeer = useCallback(
     async (peer: string) => {
       if (
-        !confirm(
-          `Reject every quarantined skill from peer ${shortPeer(peer)}?\n\nThis cannot be undone.`,
-        )
+        !(await confirmDialog({
+          title: `Reject every quarantined skill from peer ${shortPeer(peer)}?`,
+          description: "This cannot be undone.",
+          actionLabel: "Reject all",
+          destructive: true,
+        }))
       )
         return;
       setBusy(`peer:${peer}`);
       try {
         await request("skills.incoming.rejectByPeer", { authorPeerId: peer });
       } catch (err) {
-        alert(`Bulk reject failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Bulk reject failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       } finally {
         setBusy(null);
       }
     },
-    [request],
+    [request, confirmDialog],
   );
 
   return (
@@ -392,6 +414,7 @@ export function IncomingPanel({
           </div>
         );
       })}
+      {confirmElement}
     </div>
   );
 }

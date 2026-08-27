@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useChannelsStore } from "../../stores/channels-store";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { useConfirm } from "../ui/confirm-dialog";
 import { Switch } from "../ui/switch";
 import { CHANNEL_SETUP_DESCRIPTORS } from "./channel-setup-fields";
 import { ChannelSetupDrawer } from "./ChannelSetupDrawer";
@@ -47,7 +49,7 @@ function ChannelCard({
   canConfigure: boolean;
   togglingKey: string | null;
   onToggle: (channelId: string, accountId: string, enabled: boolean) => void;
-  onLogout: (channelId: string, accountId: string) => void;
+  onLogout: (channelId: string, accountId: string, channelLabel: string) => void;
   onSetup: (channelId: string, accountId?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -170,8 +172,7 @@ function ChannelCard({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm(`Logout ${channel.label} account "${account.accountId}"?`))
-                        onLogout(channel.channelId, account.accountId);
+                      onLogout(channel.channelId, account.accountId, channel.label);
                     }}
                     className="px-2 py-1 text-xs rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
                   >
@@ -188,6 +189,7 @@ function ChannelCard({
 }
 
 export function ChannelsView() {
+  const [confirmDialog, confirmElement] = useConfirm();
   const gwStatus = useGatewayStore((s) => s.status);
   const request = useGatewayStore((s) => s.request);
   const hello = useGatewayStore((s) => s.hello);
@@ -249,15 +251,25 @@ export function ChannelsView() {
   }, [refresh]);
 
   const handleLogout = useCallback(
-    async (channelId: string, accountId: string) => {
+    async (channelId: string, accountId: string, channelLabel: string) => {
+      if (
+        !(await confirmDialog({
+          title: `Logout ${channelLabel} account "${accountId}"?`,
+          actionLabel: "Logout",
+          destructive: true,
+        }))
+      )
+        return;
       try {
         await request("channels.logout", { channel: channelId, accountId });
         refresh();
       } catch (err) {
-        alert(`Logout failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Logout failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       }
     },
-    [request, refresh],
+    [request, refresh, confirmDialog],
   );
 
   const handleToggle = useCallback(
@@ -359,6 +371,7 @@ export function ChannelsView() {
           onSaved={() => refresh()}
         />
       )}
+      {confirmElement}
     </div>
   );
 }

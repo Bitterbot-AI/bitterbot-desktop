@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IncomingPanel } from "./IncomingPanel";
@@ -49,6 +49,9 @@ describe("IncomingPanel", () => {
     await waitFor(() => screen.getByText(/candidate-skill/i));
     const user = userEvent.setup();
     await user.click(screen.getAllByRole("button", { name: /accept/i })[0]!);
+    // PLAN-41 p0-16: the native confirm() became an in-app dialog — approve it.
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Accept" }));
     await waitFor(() => {
       const call = requestMock.mock.calls.find((c) => c[0] === "skills.incoming.accept");
       expect(call).toBeTruthy();

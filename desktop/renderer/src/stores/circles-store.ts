@@ -767,7 +767,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
       // already loaded instead of replacing: older pages fetched via
       // loadOlderMessages must survive the 20s poll. The fresh window wins on
       // id collisions (tombstones, delivery-status flips).
-      const window = [...(res.messages ?? [])].reverse();
+      const window = [...(res.messages ?? [])].toReversed();
       set((s) => {
         const prevMsgs = s.messagesByCircle[circleId] ?? [];
         const nextMsgs = mergeMessages(prevMsgs, window);
@@ -814,7 +814,7 @@ export const useCirclesStore = create<CirclesState>((set, get) => ({
         beforeId: oldest.messageId,
         limit: PAGE,
       });
-      const page = [...(res.messages ?? [])].reverse();
+      const page = [...(res.messages ?? [])].toReversed();
       let added = 0;
       set((st) => {
         const current = st.messagesByCircle[circleId] ?? [];

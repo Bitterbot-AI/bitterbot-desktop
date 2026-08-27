@@ -301,7 +301,7 @@ export function mergeMessages(
     const prev = byId.get(m.messageId);
     byId.set(m.messageId, prev && sameMessage(prev, m) ? prev : m);
   }
-  const merged = [...byId.values()].sort(
+  const merged = [...byId.values()].toSorted(
     (a, b) => a.createdAt - b.createdAt || (a.messageId < b.messageId ? -1 : 1),
   );
   if (merged.length === existing.length && merged.every((m, i) => m === existing[i])) {

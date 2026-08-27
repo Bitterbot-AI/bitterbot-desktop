@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import {
@@ -506,14 +507,16 @@ function InstalledSkillsView() {
   const handleToggle = useCallback(
     async (key: string, enabled: boolean) => {
       if (!key) {
-        alert("Update failed: skill is missing an identifier");
+        toast.error("Update failed", { description: "skill is missing an identifier" });
         return;
       }
       try {
         await request("skills.update", { skillKey: key, enabled });
         updateSkill(key, { enabled });
       } catch (err) {
-        alert(`Update failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Update failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       }
     },
     [request, updateSkill],
@@ -527,7 +530,9 @@ function InstalledSkillsView() {
       try {
         await request("skills.install", { name: skill.name, installId: option.id });
       } catch (err) {
-        alert(`Install failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Install failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       } finally {
         setInstalling(null);
       }

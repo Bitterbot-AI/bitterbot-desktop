@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { useAgentsStore, type AgentEntry, type AgentFile } from "../../stores/agents-store";
 import { useGatewayStore } from "../../stores/gateway-store";
@@ -310,7 +311,9 @@ export function AgentsView() {
         await request("agents.files.set", { agentId, name, content });
         loadFiles();
       } catch (err) {
-        alert(`Save failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        toast.error("Save failed", {
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
       }
     },
     [request, loadFiles],

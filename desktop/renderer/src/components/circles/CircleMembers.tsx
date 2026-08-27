@@ -315,7 +315,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
           </div>
           {Object.entries(tab.net)
             .filter(([, cents]) => cents !== 0)
-            .sort(([, a], [, b]) => b - a)
+            .toSorted(([, a], [, b]) => b - a)
             .map(([pubkey, cents]) => {
               const member = circle.members.find((m) => m.memberPubkey === pubkey);
               const who = member?.isSelf ? "You" : member ? memberName(member) : "former member";

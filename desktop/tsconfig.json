@@ -18,8 +18,7 @@
     "noUncheckedIndexedAccess": false,
     "paths": {
       "@/*": ["./renderer/src/*"]
-    },
-    "baseUrl": "."
+    }
   },
   "include": ["renderer/src/**/*.ts", "renderer/src/**/*.tsx", "env.d.ts"]
 }
