@@ -91,6 +91,29 @@ jobs:
           docker logs bb 2>&1 | tail -30
           [ "$code" = "200" ]
 
+  orchestrator-check:
+    # Cargo PRs were previously "green" because nothing in CI compiled the
+    # Rust tree — the only cargo touchpoint was the non-blocking audit. A
+    # plain `cargo check --locked` is the cheapest gate that catches API
+    # breaks from dependency bumps (e.g. sha2 0.10->0.11, base64 0.22->0.23).
+    name: Orchestrator (cargo check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            orchestrator/target
+          key: cargo-check-${{ runner.os }}-${{ hashFiles('orchestrator/Cargo.lock') }}
+          restore-keys: cargo-check-${{ runner.os }}-
+
+      - name: cargo check
+        run: cargo check --locked --manifest-path orchestrator/Cargo.toml
+
   audit:
     # PLAN-41 Phase 1 (p0-11): dependency-advisory visibility. Non-blocking by
     # design — continue-on-error keeps a fresh advisory from redding the build,

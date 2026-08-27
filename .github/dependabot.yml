@@ -2,19 +2,15 @@
 # deliberately quiet — grouped PRs so the queue stays reviewable.
 version: 2
 updates:
+  # NOTE: no /desktop npm entry — this is a pnpm workspace with a single root
+  # lockfile, so a member-directory bump can never satisfy --frozen-lockfile
+  # (first wave of /desktop PRs all failed exactly that way). The root entry
+  # covers workspace members' dependencies.
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    groups:
-      npm-minor-patch:
-        update-types: ["minor", "patch"]
-  - package-ecosystem: npm
-    directory: /desktop
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 3
     groups:
       npm-minor-patch:
         update-types: ["minor", "patch"]
