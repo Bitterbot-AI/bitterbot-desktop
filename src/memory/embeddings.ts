@@ -2,11 +2,14 @@ import type { Llama, LlamaEmbeddingContext, LlamaModel } from "node-llama-cpp";
 import fsSync from "node:fs";
 import type { BitterbotConfig } from "../config/config.js";
 import { formatErrorMessage } from "../infra/errors.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveUserPath } from "../utils.js";
 import { createGeminiEmbeddingProvider, type GeminiEmbeddingClient } from "./embeddings-gemini.js";
 import { createOpenAiEmbeddingProvider, type OpenAiEmbeddingClient } from "./embeddings-openai.js";
 import { createVoyageEmbeddingProvider, type VoyageEmbeddingClient } from "./embeddings-voyage.js";
 import { importNodeLlamaCpp } from "./node-llama.js";
+
+const log = createSubsystemLogger("memory/embeddings");
 
 function sanitizeAndNormalizeEmbedding(vec: number[]): number[] {
   const sanitized = vec.map((value) => (Number.isFinite(value) ? value : 0));
@@ -59,6 +62,11 @@ export type EmbeddingProviderOptions = {
   local?: {
     modelPath?: string;
     modelCacheDir?: string;
+    /**
+     * PLAN-41 D-F kill switch: allow the auto chain to download the bundled
+     * GGUF (~330MB, first use) when no remote key exists. Default true.
+     */
+    autoDownload?: boolean;
   };
 };
 
@@ -104,7 +112,31 @@ async function createLocalEmbeddingProvider(
       llama = await getLlama({ logLevel: LlamaLogLevel.error });
     }
     if (!embeddingModel) {
-      const resolved = await resolveModelFile(modelPath, modelCacheDir || undefined);
+      // Progress at each decile: the first keyless boot downloads ~330MB and
+      // silence there reads as a hang.
+      let lastDecile = -1;
+      const resolved = await resolveModelFile(modelPath, {
+        directory: modelCacheDir || undefined,
+        cli: false,
+        onProgress: ({
+          totalSize,
+          downloadedSize,
+        }: {
+          totalSize: number;
+          downloadedSize: number;
+        }) => {
+          if (!totalSize) {
+            return;
+          }
+          const decile = Math.floor((downloadedSize / totalSize) * 10);
+          if (decile > lastDecile) {
+            lastDecile = decile;
+            log.info(
+              `local embedding model download ${decile * 10}% (${Math.round(downloadedSize / 1e6)}/${Math.round(totalSize / 1e6)} MB)`,
+            );
+          }
+        },
+      });
       embeddingModel = await llama.loadModel({ modelPath: resolved });
     }
     if (!embeddingContext) {
@@ -132,6 +164,28 @@ async function createLocalEmbeddingProvider(
       return embeddings;
     },
   };
+}
+
+/**
+ * Both native pieces must load before the auto chain commits to a 330MB
+ * download: node-llama-cpp (runs the model) and sqlite-vec (stores the
+ * vectors). Either missing means local memory couldn't work anyway.
+ */
+async function probeLocalEmbeddingStack(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await importNodeLlamaCpp();
+  } catch (err) {
+    return { ok: false, error: formatLocalSetupError(err) };
+  }
+  try {
+    await import("sqlite-vec");
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Local embeddings unavailable: sqlite-vec failed to load (${formatErrorMessage(err)}).`,
+    };
+  }
+  return { ok: true };
 }
 
 export async function createEmbeddingProvider(
@@ -184,6 +238,28 @@ export async function createEmbeddingProvider(
           continue;
         }
         throw new Error(message, { cause: err });
+      }
+    }
+
+    // PLAN-41 D-F (keyless memory): every remote provider missed its key.
+    // Reach the bundled local model LAST — the GGUF auto-downloads on first
+    // embed — so an Anthropic-only install still gets working memory.
+    // Gated on a load probe (both native pieces must import) and the
+    // local.autoDownload kill switch.
+    if (localError === null && options.local?.autoDownload !== false) {
+      const probe = await probeLocalEmbeddingStack();
+      if (probe.ok) {
+        try {
+          const local = await createProvider("local");
+          log.info(
+            "no remote embedding key found — using the bundled local model (downloads on first use)",
+          );
+          return { ...local, requestedProvider };
+        } catch (err) {
+          localError = formatLocalSetupError(err);
+        }
+      } else {
+        localError = probe.error ?? null;
       }
     }
 

@@ -295,6 +295,8 @@ export type MemorySearchConfig = {
     modelPath?: string;
     /** Optional cache directory for local models. */
     modelCacheDir?: string;
+    /** Allow the auto chain to download the bundled GGUF when keyless (default true). */
+    autoDownload?: boolean;
   };
   /** Index storage configuration. */
   store?: {

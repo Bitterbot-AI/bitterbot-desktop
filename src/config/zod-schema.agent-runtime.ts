@@ -445,6 +445,7 @@ export const MemorySearchSchema = z
       .object({
         modelPath: z.string().optional(),
         modelCacheDir: z.string().optional(),
+        autoDownload: z.boolean().optional(),
       })
       .strict()
       .optional(),

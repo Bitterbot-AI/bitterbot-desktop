@@ -170,6 +170,67 @@ describe("embedding provider auto selection", () => {
     vi.unstubAllGlobals();
   });
 
+  it("keyless: falls back to the bundled local model LAST (PLAN-41 D-F)", async () => {
+    vi.mocked(authModule.resolveApiKeyForProvider).mockImplementation(async ({ provider }) => {
+      throw new Error(`No API key found for provider "${provider}".`);
+    });
+    importNodeLlamaCppMock.mockResolvedValue({
+      getLlama: vi.fn(),
+      resolveModelFile: vi.fn(),
+      LlamaLogLevel: { error: 0 },
+    });
+
+    const result = await createEmbeddingProvider({
+      config: {} as never,
+      provider: "auto",
+      model: "",
+      fallback: "none",
+    });
+
+    expect(result.provider.id).toBe("local");
+    expect(result.provider.model).toBe(DEFAULT_LOCAL_MODEL);
+  });
+
+  it("keyless with local.autoDownload=false: stays dead with the missing-key error (kill switch)", async () => {
+    vi.mocked(authModule.resolveApiKeyForProvider).mockImplementation(async ({ provider }) => {
+      throw new Error(`No API key found for provider "${provider}".`);
+    });
+    importNodeLlamaCppMock.mockResolvedValue({
+      getLlama: vi.fn(),
+      resolveModelFile: vi.fn(),
+      LlamaLogLevel: { error: 0 },
+    });
+
+    await expect(
+      createEmbeddingProvider({
+        config: {} as never,
+        provider: "auto",
+        model: "",
+        fallback: "none",
+        local: { autoDownload: false },
+      }),
+    ).rejects.toThrow(/No API key found/);
+  });
+
+  it("keyless with node-llama-cpp missing: reports the local setup failure", async () => {
+    vi.mocked(authModule.resolveApiKeyForProvider).mockImplementation(async ({ provider }) => {
+      throw new Error(`No API key found for provider "${provider}".`);
+    });
+    const missing = new Error("Cannot find module 'node-llama-cpp'") as Error & { code?: string };
+    missing.code = "ERR_MODULE_NOT_FOUND";
+    missing.message = "Cannot find package 'node-llama-cpp'";
+    importNodeLlamaCppMock.mockRejectedValue(missing);
+
+    await expect(
+      createEmbeddingProvider({
+        config: {} as never,
+        provider: "auto",
+        model: "",
+        fallback: "none",
+      }),
+    ).rejects.toThrow(/Local embeddings unavailable/);
+  });
+
   it("prefers openai when a key resolves", async () => {
     vi.mocked(authModule.resolveApiKeyForProvider).mockImplementation(async ({ provider }) => {
       if (provider === "openai") {
@@ -358,7 +419,10 @@ describe("local embedding normalization", () => {
     const magnitude = Math.sqrt(embedding.reduce((sum, x) => sum + x * x, 0));
 
     expect(magnitude).toBeCloseTo(1.0, 5);
-    expect(resolveModelFileMock).toHaveBeenCalledWith(DEFAULT_LOCAL_MODEL, undefined);
+    expect(resolveModelFileMock).toHaveBeenCalledWith(
+      DEFAULT_LOCAL_MODEL,
+      expect.objectContaining({ directory: undefined, cli: false }),
+    );
   });
 
   it("handles zero vector without division by zero", async () => {

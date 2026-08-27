@@ -30,6 +30,7 @@ export type ResolvedMemorySearchConfig = {
   local: {
     modelPath?: string;
     modelCacheDir?: string;
+    autoDownload?: boolean;
   };
   store: {
     driver: "sqlite";
@@ -194,6 +195,7 @@ function mergeConfig(
   const local = {
     modelPath: overrides?.local?.modelPath ?? defaults?.local?.modelPath,
     modelCacheDir: overrides?.local?.modelCacheDir ?? defaults?.local?.modelCacheDir,
+    autoDownload: overrides?.local?.autoDownload ?? defaults?.local?.autoDownload,
   };
   const sources = normalizeSources(overrides?.sources ?? defaults?.sources, sessionMemory, false);
   const rawPaths = [...(defaults?.extraPaths ?? []), ...(overrides?.extraPaths ?? [])]

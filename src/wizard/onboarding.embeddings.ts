@@ -11,9 +11,10 @@
  *   2. If not, asks whether to configure now (recommended)
  *   3. Lets the user pick OpenAI / Gemini / Voyage and paste a key
  *
- * Local embeddings (node-llama-cpp) are not set up here — they need a model
- * download and a system-dependent toolchain, so we leave that to `bitterbot
- * configure` / docs.
+ * PLAN-41 D-F: "Local (no API key)" is a first-class option — the bundled
+ * ~330MB GGUF downloads on first use, so keyless installs (the common
+ * Anthropic-only setup) get working memory. It's the DEFAULT selection when
+ * an Anthropic key is present and no embedding key is.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
@@ -127,17 +128,13 @@ export async function setupEmbeddingsForOnboarding(params: {
 
   await prompter.note(
     [
-      "Bitterbot's biological memory system runs on vector embeddings.",
+      "Bitterbot's memory system runs on vector embeddings.",
       "They turn MEMORY.md entries and past sessions into searchable recall,",
       "drive session extraction dedup, and cluster memories during dream cycles.",
       "",
-      "Without a key, the agent still works — but it forgets across conversations.",
-      "",
-      "Recommended: OpenAI (cheapest + highest quality via text-embedding-3-small).",
-      "Also supported: Gemini, Voyage AI.",
-      "",
-      "You can also set the key as an env var and skip this step:",
-      "  OPENAI_API_KEY, GEMINI_API_KEY, or VOYAGE_API_KEY",
+      "No API key needed: the Local option runs a small model on this machine",
+      "(~330MB download on first use). A remote key (OpenAI/Gemini/Voyage) skips",
+      "the download and embeds faster on weak hardware.",
     ].join("\n"),
     "Memory embeddings",
   );
@@ -163,15 +160,50 @@ export async function setupEmbeddingsForOnboarding(params: {
     return config;
   }
 
+  // Anthropic-only installs default to Local: they have no embedding key and
+  // usually no reason to mint one just for memory.
+  const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
   const provider = (await prompter.select({
     message: "Which embedding provider?",
-    options: Object.entries(PROVIDERS).map(([value, meta]) => ({
-      value,
-      label: meta.label,
-      hint: meta.hint,
-    })),
-    initialValue: "openai",
-  })) as EmbeddingProvider;
+    options: [
+      {
+        value: "local",
+        label: "Local (no API key)",
+        hint: "~330MB model, downloads on first use, runs on this machine",
+      },
+      ...Object.entries(PROVIDERS).map(([value, meta]) => ({
+        value,
+        label: meta.label,
+        hint: meta.hint,
+      })),
+    ],
+    initialValue: hasAnthropic ? "local" : "openai",
+  })) as EmbeddingProvider | "local";
+
+  if (provider === "local") {
+    await prompter.note(
+      [
+        "Local embeddings selected. The model downloads on first use (~330MB);",
+        "until then memory quietly waits. Kill switch:",
+        "  agents.defaults.memorySearch.local.autoDownload = false",
+        await vectorSearchStatusLine(),
+      ].join("\n"),
+      "Memory embeddings ready",
+    );
+    return {
+      ...config,
+      agents: {
+        ...config.agents,
+        defaults: {
+          ...config.agents?.defaults,
+          memorySearch: {
+            ...config.agents?.defaults?.memorySearch,
+            provider: "local",
+          },
+        },
+      },
+    };
+  }
 
   const meta = PROVIDERS[provider];
 
@@ -182,29 +214,32 @@ export async function setupEmbeddingsForOnboarding(params: {
 
   const key = String(keyInput ?? "").trim();
 
-  const nextMemorySearch = {
-    ...config.agents?.defaults?.memorySearch,
-    provider,
-    ...(key
-      ? {
-          remote: {
-            ...config.agents?.defaults?.memorySearch?.remote,
-            apiKey: key,
-          },
-        }
-      : {}),
-  };
-
+  // PLAN-41 D-F: a blank key no longer PINS the provider — a pinned remote
+  // provider with no key was guaranteed-dead memory. Unpinned, the auto
+  // chain picks up the env var when it appears and falls back to the local
+  // model meanwhile.
   if (!key) {
     await prompter.note(
       [
-        `No key entered. Set ${meta.envVars[0]} in the gateway environment before starting,`,
-        "or re-run `bitterbot onboard` to paste one.",
-        "Long-term memory search won't work until a key is available.",
+        `No key entered, so nothing was pinned. Set ${meta.envVars[0]} in the gateway`,
+        "environment and the auto chain will use it; until then memory runs on the",
+        "bundled local model (downloads on first use).",
       ].join("\n"),
       "Memory embeddings",
     );
-  } else {
+    return config;
+  }
+
+  const nextMemorySearch = {
+    ...config.agents?.defaults?.memorySearch,
+    provider,
+    remote: {
+      ...config.agents?.defaults?.memorySearch?.remote,
+      apiKey: key,
+    },
+  };
+
+  {
     await prompter.note(
       [
         `${meta.label} embeddings configured. Long-term memory is live.`,

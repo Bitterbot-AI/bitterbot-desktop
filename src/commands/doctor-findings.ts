@@ -54,6 +54,10 @@ export async function collectRepairFindings(opts?: {
       // Auto-rollback surfaced as a persistent card (sota-bar rec 2): the
       // boot watchdog's record is warn/error until the next clean update.
       noteBootHealth(now);
+      // PLAN-41 D-F: memory-offline surfaced here (the Repairs card is the
+      // banner). Building the index is cached on success; on failure the
+      // provider error explains exactly which key/dependency is missing.
+      await noteMemoryHealth(cfg);
       const report: RepairFindingsReport = {
         findings: [...doctorFindings()],
         worstLevel: worstFindingLevel(),
@@ -74,4 +78,29 @@ export async function collectRepairFindings(opts?: {
 export function resetRepairFindingsCache(): void {
   cached = null;
   inFlight = null;
+}
+
+async function noteMemoryHealth(cfg: import("../config/config.js").BitterbotConfig): Promise<void> {
+  const { renderSection, ok, error } = await import("./doctor-check.js");
+  try {
+    const { MemoryIndexManager } = await import("../memory/manager.js");
+    const { resolveDefaultAgentId } = await import("../agents/agent-scope.js");
+    const mgr = await MemoryIndexManager.get({
+      cfg,
+      agentId: resolveDefaultAgentId(cfg),
+      purpose: "status",
+    });
+    renderSection("Memory", [
+      mgr ? ok("Memory index available.") : error("Memory manager unavailable."),
+    ]);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    renderSection("Memory", [
+      error(
+        `Memory is OFFLINE — the agent cannot store or recall. ${detail}\n` +
+          "Fix: add a provider key in Models & Keys, or keep the keyless local model " +
+          "(memory embeddings local.autoDownload) enabled with its optional dependencies installed.",
+      ),
+    ]);
+  }
 }

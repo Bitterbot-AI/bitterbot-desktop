@@ -18,5 +18,14 @@ declare module "node-llama-cpp" {
   };
 
   export function getLlama(params: { logLevel: LlamaLogLevel }): Promise<Llama>;
-  export function resolveModelFile(modelPath: string, cacheDir?: string): Promise<string>;
+  export type ResolveModelFileOptions = {
+    directory?: string;
+    cli?: boolean;
+    onProgress?: (status: { totalSize: number; downloadedSize: number }) => void;
+  };
+
+  export function resolveModelFile(
+    modelPath: string,
+    optionsOrDirectory?: ResolveModelFileOptions | string,
+  ): Promise<string>;
 }
