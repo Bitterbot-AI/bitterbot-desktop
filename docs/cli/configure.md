@@ -29,5 +29,10 @@ Notes:
 
 ```bash
 bitterbot configure
-bitterbot configure --section models --section channels
+bitterbot configure --section model --section channels
+bitterbot configure --section wallet
+bitterbot configure --section memory
 ```
+
+Available sections: `workspace`, `model`, `memory`, `web`, `gateway`,
+`daemon`, `channels`, `skills`, `wallet`, `health`.

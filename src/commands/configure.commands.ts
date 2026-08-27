@@ -20,16 +20,19 @@ export async function configureCommandFromSectionsArg(
   runtime: RuntimeEnv = defaultRuntime,
 ): Promise<void> {
   const { sections, invalid } = parseConfigureWizardSections(rawSections);
-  if (sections.length === 0) {
-    await configureCommand(runtime);
-    return;
-  }
-
+  // Invalid names error out even when they're the ONLY thing passed —
+  // dropping them silently used to launch the full interactive wizard,
+  // which reads as "worked" while ignoring what the user asked for.
   if (invalid.length > 0) {
     runtime.error(
       `Invalid --section: ${invalid.join(", ")}. Expected one of: ${CONFIGURE_WIZARD_SECTIONS.join(", ")}.`,
     );
     runtime.exit(1);
+    return;
+  }
+
+  if (sections.length === 0) {
+    await configureCommand(runtime);
     return;
   }
 

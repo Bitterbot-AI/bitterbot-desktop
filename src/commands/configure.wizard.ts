@@ -12,6 +12,8 @@ import { defaultRuntime } from "../runtime.js";
 import { note } from "../terminal/note.js";
 import { resolveUserPath } from "../utils.js";
 import { createClackPrompter } from "../wizard/clack-prompter.js";
+import { setupEmbeddingsForOnboarding } from "../wizard/onboarding.embeddings.js";
+import { setupWalletForOnboarding } from "../wizard/onboarding.wallet.js";
 import { WizardCancelledError } from "../wizard/prompts.js";
 import { removeChannelConfigWizard } from "./configure.channels.js";
 import { maybeInstallDaemon } from "./configure.daemon.js";
@@ -427,6 +429,14 @@ export async function runConfigureWizard(
         nextConfig = await promptAuthConfig(nextConfig, runtime, prompter);
       }
 
+      if (selected.includes("memory")) {
+        nextConfig = await setupEmbeddingsForOnboarding({
+          config: nextConfig,
+          flow: "advanced",
+          prompter,
+        });
+      }
+
       if (selected.includes("web")) {
         nextConfig = await promptWebToolsConfig(nextConfig, runtime);
       }
@@ -456,6 +466,14 @@ export async function runConfigureWizard(
       if (selected.includes("skills")) {
         const wsDir = resolveUserPath(workspaceDir);
         nextConfig = await setupSkills(nextConfig, wsDir, runtime, prompter);
+      }
+
+      if (selected.includes("wallet")) {
+        nextConfig = await setupWalletForOnboarding({
+          config: nextConfig,
+          flow: "advanced",
+          prompter,
+        });
       }
 
       await persistConfig();
@@ -500,6 +518,15 @@ export async function runConfigureWizard(
           await persistConfig();
         }
 
+        if (choice === "memory") {
+          nextConfig = await setupEmbeddingsForOnboarding({
+            config: nextConfig,
+            flow: "advanced",
+            prompter,
+          });
+          await persistConfig();
+        }
+
         if (choice === "web") {
           nextConfig = await promptWebToolsConfig(nextConfig, runtime);
           await persistConfig();
@@ -533,6 +560,15 @@ export async function runConfigureWizard(
         if (choice === "skills") {
           const wsDir = resolveUserPath(workspaceDir);
           nextConfig = await setupSkills(nextConfig, wsDir, runtime, prompter);
+          await persistConfig();
+        }
+
+        if (choice === "wallet") {
+          nextConfig = await setupWalletForOnboarding({
+            config: nextConfig,
+            flow: "advanced",
+            prompter,
+          });
           await persistConfig();
         }
 

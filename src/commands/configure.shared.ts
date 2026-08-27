@@ -10,11 +10,13 @@ import { stylePromptHint, stylePromptMessage, stylePromptTitle } from "../termin
 export const CONFIGURE_WIZARD_SECTIONS = [
   "workspace",
   "model",
+  "memory",
   "web",
   "gateway",
   "daemon",
   "channels",
   "skills",
+  "wallet",
   "health",
 ] as const;
 
@@ -52,7 +54,12 @@ export const CONFIGURE_SECTION_OPTIONS: Array<{
 }> = [
   { value: "workspace", label: "Workspace", hint: "Set workspace + sessions" },
   { value: "model", label: "Model", hint: "Pick provider + credentials" },
-  { value: "web", label: "Web tools", hint: "Configure Brave search + fetch" },
+  {
+    value: "memory",
+    label: "Memory",
+    hint: "Embedding provider for long-term memory recall",
+  },
+  { value: "web", label: "Web tools", hint: "Configure web search + fetch" },
   { value: "gateway", label: "Gateway", hint: "Port, bind, auth, tailscale" },
   {
     value: "daemon",
@@ -65,6 +72,11 @@ export const CONFIGURE_SECTION_OPTIONS: Array<{
     hint: "Link WhatsApp/Telegram/etc and defaults",
   },
   { value: "skills", label: "Skills", hint: "Install/enable workspace skills" },
+  {
+    value: "wallet",
+    label: "Wallet",
+    hint: "USDC wallet: CDP credentials + spend caps",
+  },
   {
     value: "health",
     label: "Health check",
