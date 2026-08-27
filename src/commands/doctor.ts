@@ -40,6 +40,7 @@ import { runChannelsChecks } from "./doctor-channels.js";
 import { error, info, renderSection, setDoctorJsonMode, warn } from "./doctor-check.js";
 import { doctorShellCompletion } from "./doctor-completion.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
+import { runControlUiChecks } from "./doctor-control-ui.js";
 import { runEconomyChecks } from "./doctor-economy.js";
 import { maybeRepairGatewayDaemon } from "./doctor-gateway-daemon-flow.js";
 import { checkGatewayHealth } from "./doctor-gateway-health.js";
@@ -233,6 +234,7 @@ async function runDoctor(
   await noteMacLaunchctlGatewayEnvOverrides(cfg);
 
   await runSecurityChecks(cfg);
+  await runControlUiChecks(cfg);
 
   if (cfg.hooks?.gmail?.model?.trim()) {
     const hooksModelRef = resolveHooksGmailModel({

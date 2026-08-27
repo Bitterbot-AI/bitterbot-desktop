@@ -2,6 +2,7 @@ import { listChannelPlugins } from "../channels/plugins/index.js";
 
 const BASE_METHODS = [
   "health",
+  "doctor.findings",
   "logs.tail",
   "channels.status",
   "channels.logout",

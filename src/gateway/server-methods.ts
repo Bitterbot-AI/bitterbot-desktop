@@ -12,6 +12,7 @@ import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
 import { cronHandlers } from "./server-methods/cron.js";
 import { deviceHandlers } from "./server-methods/devices.js";
+import { doctorHandlers } from "./server-methods/doctor.js";
 import { dreamHandlers } from "./server-methods/dream.js";
 import { execApprovalsHandlers } from "./server-methods/exec-approvals.js";
 import { forageHandlers } from "./server-methods/forage.js";
@@ -65,6 +66,7 @@ const PAIRING_METHODS = new Set([
 const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
 const READ_METHODS = new Set([
   "health",
+  "doctor.findings",
   "logs.tail",
   "channels.status",
   "status",
@@ -299,6 +301,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...modelsHandlers,
   ...modelsAuthHandlers,
   ...configHandlers,
+  ...doctorHandlers,
   ...wizardHandlers,
   ...talkHandlers,
   ...ttsHandlers,

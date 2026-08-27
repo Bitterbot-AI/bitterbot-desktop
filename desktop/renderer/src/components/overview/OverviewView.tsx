@@ -6,6 +6,7 @@ import { useOverviewStore } from "../../stores/overview-store";
 import { useUIStore } from "../../stores/ui-store";
 import { GatewayControls } from "./GatewayControls";
 import { GetStartedCard } from "./GetStartedCard";
+import { RepairsCard } from "./RepairsCard";
 import { UpdateCard } from "./UpdateCard";
 
 function StatCard({
@@ -140,6 +141,9 @@ export function OverviewView() {
         <StatCard label="Platform" value={String(platform)} />
         <StatCard label="Channels" value={String(configuredChannels.length)} sub="configured" />
       </div>
+
+      {/* Doctor-fed repairs (renders only when something needs attention) */}
+      <RepairsCard />
 
       {/* First-run checklist (self-dismisses when complete) */}
       <GetStartedCard channelsConfigured={configuredChannels.length > 0} />

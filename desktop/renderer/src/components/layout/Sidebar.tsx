@@ -21,6 +21,7 @@ import { NAV_MANIFEST, type NavGroup } from "../../nav-manifest";
 import { useChatStore } from "../../stores/chat-store";
 import { circlesAttention, useCirclesStore } from "../../stores/circles-store";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { repairsAttention, useRepairsStore } from "../../stores/repairs-store";
 import { useUIStore, type TabId } from "../../stores/ui-store";
 import { approvalsTitle, AttentionBadge } from "../circles/AttentionBadge";
 import { WalletSidebarPanel } from "../wallet/WalletSidebarPanel";
@@ -166,6 +167,8 @@ export function Sidebar() {
   // the list array is a fresh reference every poll; the whole Sidebar must
   // re-render only when the two COUNTS change (d638276 review #10).
   const attention = useCirclesStore(useShallow((s) => circlesAttention(s.circles)));
+  // PLAN-41 Repairs: warn/error doctor findings badge the Overview row.
+  const repairsCount = useRepairsStore((s) => repairsAttention(s.findings));
 
   const [sessions, setSessions] = useState<SidebarSession[]>([]);
   const [showAllSessions, setShowAllSessions] = useState(false);
@@ -507,6 +510,7 @@ export function Sidebar() {
                 <div className="space-y-0.5">
                   {items.map((item) => {
                     const Icon = item.icon;
+                    const isOverview = item.id === "overview";
                     const isCircles = item.id === "people";
                     const showAttention =
                       isCircles && (attention.unread > 0 || attention.approvals > 0);
@@ -529,6 +533,19 @@ export function Sidebar() {
                       >
                         <Icon className="w-4 h-4 flex-shrink-0" />
                         {!isCollapsed && <span>{item.label}</span>}
+                        {isOverview && repairsCount > 0 && (
+                          <span
+                            title={`${repairsCount} doctor finding(s) need attention`}
+                            className={cn(
+                              "rounded-full bg-amber-500/20 text-amber-300 text-badge",
+                              isCollapsed
+                                ? "absolute top-0.5 right-0.5 w-2 h-2 p-0 bg-amber-400"
+                                : "ml-auto px-1.5 py-0.5",
+                            )}
+                          >
+                            {!isCollapsed && repairsCount}
+                          </span>
+                        )}
                         {showAttention &&
                           (isCollapsed ? (
                             <span
