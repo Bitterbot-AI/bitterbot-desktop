@@ -19,6 +19,10 @@
  * service on first wallet RPC. This step is about consent, credentials,
  * and config. If the operator already has CDP creds in env or config we
  * skip the credential prompts silently.
+ *
+ * QuickStart defers this step entirely (PLAN-41 D-M): a short note, no
+ * prompts, no config writes — the wallet stays opt-in until the operator
+ * enables it in the Control UI or via `bitterbot configure`.
  */
 
 import fs from "node:fs";
@@ -266,6 +270,24 @@ export async function setupWalletForOnboarding(params: {
 }): Promise<BitterbotConfig> {
   const { config, flow, prompter } = params;
 
+  // ── 0. QuickStart: defer entirely (PLAN-41 D-M) ──
+  // The wallet is opt-in by default (D-D flip: the tool mounts only on
+  // tools.wallet.enabled === true), and QuickStart must not silently opt a
+  // fresh install into a money surface — it used to write enabled:true
+  // here without ever asking. Config is returned untouched: the wallet
+  // stays off until the operator enables it deliberately.
+  if (flow === "quickstart") {
+    await prompter.note(
+      [
+        "Skipped — your agent runs fine without it (no earning from published",
+        "skills, no paying x402-paywalled APIs). Enable it when you're ready in",
+        "the Control UI Settings or via `bitterbot configure --section wallet`.",
+      ].join("\n"),
+      "USDC wallet",
+    );
+    return config;
+  }
+
   // ── 1. Intro ──
   await prompter.note(
     [
@@ -291,15 +313,13 @@ export async function setupWalletForOnboarding(params: {
   );
 
   // ── 2. Enable? ──
-  const currentlyEnabled = config.tools?.wallet?.enabled !== false;
-  const enableNow =
-    flow === "quickstart"
-      ? currentlyEnabled
-      : await prompter.confirm({
-          message:
-            "Enable the wallet now? (testnet by default; you can fund it with a few USDC anytime)",
-          initialValue: currentlyEnabled,
-        });
+  // Initial value mirrors the D-D flip: the wallet is off unless the config
+  // already opted in explicitly.
+  const currentlyEnabled = config.tools?.wallet?.enabled === true;
+  const enableNow = await prompter.confirm({
+    message: "Enable the wallet now? (testnet by default; you can fund it with a few USDC anytime)",
+    initialValue: currentlyEnabled,
+  });
 
   if (!enableNow) {
     await prompter.note(
@@ -327,12 +347,7 @@ export async function setupWalletForOnboarding(params: {
   let collected: CollectedCdpCreds | null = null;
   let credentialsSkipped = false;
 
-  if (flow === "quickstart" && (hasApiKey || hasWalletSecret)) {
-    // Quickstart only does credential setup if nothing is present. If
-    // even one is present we assume the operator is resuming a partial
-    // setup and don't surprise them with prompts.
-    // No-op.
-  } else if (hasApiKey && hasWalletSecret) {
+  if (hasApiKey && hasWalletSecret) {
     await prompter.note(
       [
         "CDP credentials already present (env or config) — reusing them.",
@@ -352,13 +367,13 @@ export async function setupWalletForOnboarding(params: {
     credentialsSkipped = collected === null;
   }
 
-  // ── 4. Spend caps (advanced only) ──
+  // ── 4. Spend caps ──
   const existingCaps = config.tools?.wallet ?? {};
   let perTxCap = existingCaps.perTransactionCapUsd ?? DEFAULT_PER_TX_CAP_USD;
   let dailyCap = existingCaps.dailySpendLimitUsd ?? DEFAULT_DAILY_CAP_USD;
   let sessionCap = existingCaps.sessionSpendCapUsd ?? DEFAULT_SESSION_CAP_USD;
 
-  if (flow === "advanced") {
+  {
     const tweakCaps = await prompter.confirm({
       message: "Tune spend caps now? (defaults: $25 per-tx, $50 daily, $50 per-session)",
       initialValue: false,

@@ -98,6 +98,22 @@ export async function setupWebSearchForOnboarding(params: {
     return config;
   }
 
+  // ── QuickStart: defer entirely (PLAN-41 D-M) ──
+  // No env key was detected above, so there's nothing to auto-configure.
+  // The finalize step shows the "not configured" pointer; one short note
+  // here keeps the step from vanishing silently.
+  if (flow === "quickstart") {
+    await prompter.note(
+      [
+        "Skipped for now — the agent works without it, it just can't look",
+        "things up online. Add a key later in the Control UI Settings or via",
+        "`bitterbot configure --section web` (Brave has a free tier).",
+      ].join("\n"),
+      "Web search",
+    );
+    return config;
+  }
+
   // ── Intro ──
   await prompter.note(
     [
@@ -116,14 +132,11 @@ export async function setupWebSearchForOnboarding(params: {
   );
 
   // ── Ask whether to configure now ──
-  const wantSearch =
-    flow === "quickstart"
-      ? true
-      : await prompter.confirm({
-          message:
-            "Set up a web search provider now? (highly recommended — the agent is much less useful without it)",
-          initialValue: true,
-        });
+  const wantSearch = await prompter.confirm({
+    message:
+      "Set up a web search provider now? (highly recommended — the agent is much less useful without it)",
+    initialValue: true,
+  });
 
   if (!wantSearch) {
     await prompter.note(

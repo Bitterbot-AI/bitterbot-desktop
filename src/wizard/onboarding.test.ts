@@ -62,6 +62,8 @@ const listChannelPlugins = vi.hoisted(() => vi.fn(() => []));
 const logConfigUpdated = vi.hoisted(() => vi.fn(() => {}));
 const setupInternalHooks = vi.hoisted(() => vi.fn(async (cfg) => cfg));
 
+const applyQuickstartHookDefaults = vi.hoisted(() => vi.fn((cfg) => cfg));
+
 const setupChannels = vi.hoisted(() => vi.fn(async (cfg) => cfg));
 const setupSkills = vi.hoisted(() => vi.fn(async (cfg) => cfg));
 const setupWebSearchForOnboarding = vi.hoisted(() => vi.fn(async (args) => args.config));
@@ -117,6 +119,8 @@ vi.mock("../commands/health.js", () => ({
 
 vi.mock("../commands/onboard-hooks.js", () => ({
   setupInternalHooks,
+  applyQuickstartHookDefaults,
+  QUICKSTART_DEFAULT_HOOKS: ["session-memory", "boot-md", "command-logger"],
 }));
 
 vi.mock("../config/config.js", () => ({
@@ -371,6 +375,50 @@ describe("runOnboardingWizard", () => {
 
   it("offers TUI hatch even without BOOTSTRAP.md", async () => {
     await runTuiHatchTest({ writeBootstrapFile: false, expectedMessage: undefined });
+  });
+
+  it("quickstart defers skills, hooks, channels, and the model pick (PLAN-41 D-M)", async () => {
+    setupSkills.mockClear();
+    setupChannels.mockClear();
+    setupInternalHooks.mockClear();
+    applyQuickstartHookDefaults.mockClear();
+    promptDefaultModel.mockClear();
+
+    // No skip flags and no pre-picked auth choice: this run exercises the
+    // full quickstart path, so every prompt the wizard still owns is real.
+    const select: WizardPrompter["select"] = vi.fn(async () => "quickstart");
+    const confirm: WizardPrompter["confirm"] = vi.fn(async () => true);
+    const multiselect: WizardPrompter["multiselect"] = vi.fn(async () => []);
+    const text: WizardPrompter["text"] = vi.fn(async () => "");
+    const prompter = createWizardPrompter({ select, confirm, multiselect, text });
+    const runtime = createRuntime({ throwsOnExit: true });
+
+    await runOnboardingWizard(
+      {
+        installDaemon: false,
+        skipHealth: true,
+        skipUi: true,
+      },
+      runtime,
+      prompter,
+    );
+
+    // The deferred steps never run their prompts in quickstart.
+    expect(setupSkills).not.toHaveBeenCalled();
+    expect(setupChannels).not.toHaveBeenCalled();
+    expect(setupInternalHooks).not.toHaveBeenCalled();
+    expect(promptDefaultModel).not.toHaveBeenCalled();
+    // ...but the zero-config hook defaults still land.
+    expect(applyQuickstartHookDefaults).toHaveBeenCalled();
+
+    // Prompt budget (plan §4 verification item 5): risk ack, flow select,
+    // auth choice + key (mocked out here), P2P consent — nothing else.
+    const interactivePromptCount =
+      (select as ReturnType<typeof vi.fn>).mock.calls.length +
+      (confirm as ReturnType<typeof vi.fn>).mock.calls.length +
+      (multiselect as ReturnType<typeof vi.fn>).mock.calls.length +
+      (text as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(interactivePromptCount).toBeLessThanOrEqual(6);
   });
 
   it("shows the web search hint at the end of onboarding", async () => {

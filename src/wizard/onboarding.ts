@@ -440,7 +440,9 @@ async function runOnboardingWizardInner(
     nextConfig = authResult.config;
   }
 
-  if (authChoiceFromPrompt && authChoice !== "custom-api-key") {
+  // QuickStart keeps the provider's default model (applyAuthChoice already
+  // set it) — the model picker is an advanced-flow prompt (PLAN-41 D-M).
+  if (authChoiceFromPrompt && authChoice !== "custom-api-key" && flow === "advanced") {
     const modelSelection = await promptDefaultModel({
       config: nextConfig,
       prompter,
@@ -505,21 +507,19 @@ async function runOnboardingWizardInner(
 
   if (opts.skipChannels ?? opts.skipProviders) {
     await prompter.note("Skipping channel setup.", "Channels");
+  } else if (flow === "quickstart") {
+    // PLAN-41 D-M: QuickStart defers channels to the Control UI.
+    await prompter.note(
+      [
+        "Chat with your agent in the Control UI right away.",
+        `Connect WhatsApp, Telegram, and other channels later there or via \`${formatCliCommand("bitterbot channels add")}\`.`,
+      ].join("\n"),
+      "Channels",
+    );
   } else {
-    const { listChannelPlugins } = await import("../channels/plugins/index.js");
     const { setupChannels } = await import("../commands/onboard-channels.js");
-    const quickstartAllowFromChannels =
-      flow === "quickstart"
-        ? listChannelPlugins()
-            .filter((plugin) => plugin.meta.quickstartAllowFrom)
-            .map((plugin) => plugin.id)
-        : [];
     nextConfig = await setupChannels(nextConfig, runtime, prompter, {
       allowSignalInstall: true,
-      forceAllowFromChannels: quickstartAllowFromChannels,
-      skipDmPolicyPrompt: flow === "quickstart",
-      skipConfirm: flow === "quickstart",
-      quickstartDefaults: flow === "quickstart",
     });
   }
 
@@ -532,6 +532,12 @@ async function runOnboardingWizardInner(
 
   if (opts.skipSkills) {
     await prompter.note("Skipping skills setup.", "Skills");
+  } else if (flow === "quickstart") {
+    // PLAN-41 D-M: QuickStart defers skill dependency setup to the Control UI.
+    await prompter.note(
+      `Bundled skills work out of the box. Install extras later in the Control UI or via \`${formatCliCommand("bitterbot configure --section skills")}\`.`,
+      "Skills",
+    );
   } else {
     const { setupSkills } = await import("../commands/onboard-skills.js");
     nextConfig = await setupSkills(nextConfig, workspaceDir, runtime, prompter);
@@ -552,9 +558,28 @@ async function runOnboardingWizardInner(
     nextConfig = await setupWalletForOnboarding({ config: nextConfig, flow, prompter });
   }
 
-  // Setup hooks (session memory on /new)
-  const { setupInternalHooks } = await import("../commands/onboard-hooks.js");
-  nextConfig = await setupInternalHooks(nextConfig, runtime, prompter);
+  // Setup hooks (session memory on /new). QuickStart skips the multiselect
+  // and enables the zero-config local built-ins silently (PLAN-41 D-M) —
+  // without session-memory the dream engine has nothing to work on.
+  if (flow === "quickstart") {
+    const { applyQuickstartHookDefaults, QUICKSTART_DEFAULT_HOOKS } =
+      await import("../commands/onboard-hooks.js");
+    const before = nextConfig;
+    nextConfig = applyQuickstartHookDefaults(nextConfig);
+    if (nextConfig !== before) {
+      await prompter.note(
+        [
+          `Enabled built-in hooks: ${QUICKSTART_DEFAULT_HOOKS.join(", ")}.`,
+          "They keep session memory, startup priming, and the command audit log",
+          `working out of the box. Manage them anytime: ${formatCliCommand("bitterbot hooks list")}`,
+        ].join("\n"),
+        "Hooks",
+      );
+    }
+  } else {
+    const { setupInternalHooks } = await import("../commands/onboard-hooks.js");
+    nextConfig = await setupInternalHooks(nextConfig, runtime, prompter);
+  }
 
   nextConfig = onboardHelpers.applyWizardMetadata(nextConfig, { command: "onboard", mode });
   await writeConfigFile(nextConfig);

@@ -435,34 +435,9 @@ export async function finalizeOnboardingWizard(
     }
   }
 
-  // Ask for a star while we still have their attention — the wizard is
-  // the one moment every new operator passes through at peak engagement
-  // (agent just came to life). Friendly, skippable, and offers to open
-  // the page for users whose browser is already supported. Non-interactive
-  // runs (opts.skipUi) skip entirely so CI/automation pipelines stay quiet.
-  if (!opts.skipUi) {
-    const repoUrl = "https://github.com/Bitterbot-AI/bitterbot-desktop";
-    const wantStar = await prompter.confirm({
-      message: `If Bitterbot earned its keep, a GitHub star goes a long way — stars are how other operators find the project. Open ${repoUrl} in your browser?`,
-      initialValue: true,
-    });
-    if (wantStar) {
-      const { detectBrowserOpenSupport, openUrl } = await import("../commands/onboard-helpers.js");
-      const browserSupport = await detectBrowserOpenSupport();
-      if (browserSupport.ok) {
-        const opened = await openUrl(repoUrl);
-        if (!opened) {
-          await prompter.note(`Couldn't open a browser here. Star manually: ${repoUrl}`, "Star");
-        }
-      } else {
-        await prompter.note(
-          `No browser available in this shell. Star manually: ${repoUrl}`,
-          "Star",
-        );
-      }
-    }
-  }
-
+  // The GitHub-star ask lives in the finish note (PLAN-41 D-M) — a line
+  // to read, not a prompt to answer. The wizard should end with "go", not
+  // with a favor.
   await prompter.note(
     [
       "Your agent is alive. A few good first moves:",
@@ -472,16 +447,17 @@ export async function finalizeOnboardingWizard(
       "  2. Tune your GENOME.md (workspace root) — set hormonal baselines,",
       "     core values, and immutable safety axioms. The Phenotype evolves",
       "     within these constraints.",
-      "  3. Fund the wallet with a small float you can afford to lose.",
-      "     `bitterbot wallet status` shows the address; send a few USDC on Base.",
-      "  4. Browse the marketplace once dreams have run a few cycles —",
+      "  3. Browse the marketplace once dreams have run a few cycles —",
       "     `bitterbot skills marketplace`.",
-      "  5. See what other operators are building: https://github.com/Bitterbot-AI/bitterbot-desktop/discussions",
+      "  4. See what other operators are building: https://github.com/Bitterbot-AI/bitterbot-desktop/discussions",
       "",
       "Bring the stack up yourself anytime: `pnpm start:all` (gateway + Control UI).",
       "Developing and want hot-reload? `pnpm dev:all` runs both in watch mode.",
       "",
       "When something feels off: `bitterbot doctor` walks ~25 subsystem checks.",
+      "",
+      "If Bitterbot earns its keep, a GitHub star helps other operators find it:",
+      "  https://github.com/Bitterbot-AI/bitterbot-desktop",
     ].join("\n"),
     "What now",
   );

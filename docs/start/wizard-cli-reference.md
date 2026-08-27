@@ -24,6 +24,12 @@ Local mode (default) walks you through:
 - Health check
 - Skills setup
 
+QuickStart keeps only the essentials interactive (risk acknowledgement,
+provider + key, P2P consent) — channels, skills, web search, and the wallet
+are deferred to the Control UI or `bitterbot configure`, and the built-in
+hooks (session-memory, boot-md, command-logger) are enabled automatically.
+The step-by-step below describes the Advanced flow.
+
 Remote mode configures this machine to connect to a gateway elsewhere.
 It does not install or modify anything on the remote host.
 
@@ -53,7 +59,8 @@ It does not install or modify anything on the remote host.
     - Disable auth only if you fully trust every local process.
     - Non-loopback binds still require auth.
   </Step>
-  <Step title="Channels">
+  <Step title="Channels (Advanced flow)">
+    - QuickStart skips this step — add channels later in the Control UI or via `bitterbot channels add`.
     - [WhatsApp](/channels/whatsapp): optional QR login
     - [Telegram](/channels/telegram): bot token
     - [Discord](/channels/discord): bot token
@@ -75,7 +82,8 @@ It does not install or modify anything on the remote host.
     - Starts gateway (if needed) and runs `bitterbot health`.
     - `bitterbot status --deep` adds gateway health probes to status output.
   </Step>
-  <Step title="Skills">
+  <Step title="Skills (Advanced flow)">
+    - QuickStart skips this step — bundled skills work out of the box; install extras later.
     - Reads available skills and checks requirements.
     - Lets you choose node manager: npm or pnpm (bun not recommended).
     - Installs optional dependencies (some use Homebrew on macOS).

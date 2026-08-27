@@ -126,6 +126,23 @@ export async function setupEmbeddingsForOnboarding(params: {
     return config;
   }
 
+  // PLAN-41 D-M: QuickStart asks nothing here. With no key configured the
+  // auto chain (D-F) reaches the bundled local model on its own — memory
+  // works out of the box, and a remote key added later just wins the chain.
+  if (flow === "quickstart") {
+    await prompter.note(
+      [
+        "Long-term memory works out of the box: with no embedding key, a small",
+        "local model handles it (~330MB download on first use).",
+        "Add a remote key later (faster on weak hardware) in the Control UI",
+        "Settings or via `bitterbot configure --section memory`.",
+        await vectorSearchStatusLine(),
+      ].join("\n"),
+      "Memory",
+    );
+    return config;
+  }
+
   await prompter.note(
     [
       "Bitterbot's memory system runs on vector embeddings.",
@@ -139,19 +156,17 @@ export async function setupEmbeddingsForOnboarding(params: {
     "Memory embeddings",
   );
 
-  const wantEmbeddings =
-    flow === "quickstart"
-      ? true
-      : await prompter.confirm({
-          message:
-            "Set up a memory embeddings provider now? (highly recommended — otherwise long-term memory won't work)",
-          initialValue: true,
-        });
+  const wantEmbeddings = await prompter.confirm({
+    message:
+      "Pick a memory embeddings provider now? (declining is fine — memory falls back to the bundled local model)",
+    initialValue: true,
+  });
 
   if (!wantEmbeddings) {
     await prompter.note(
       [
-        "Skipped. Set one up later via:",
+        "Skipped — memory runs on the bundled local model until a remote key",
+        "appears. Set one up later via:",
         "  bitterbot configure --section memory",
         "Or export OPENAI_API_KEY / GEMINI_API_KEY / VOYAGE_API_KEY.",
       ].join("\n"),

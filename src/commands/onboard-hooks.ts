@@ -5,6 +5,40 @@ import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent
 import { formatCliCommand } from "../cli/command-format.js";
 import { buildWorkspaceHookStatus } from "../hooks/hooks-status.js";
 
+/**
+ * QuickStart hook defaults (PLAN-41 D-M): no multiselect — silently enable
+ * the zero-config local built-ins so the core memory loop works out of the
+ * box. session-memory is what the dream engine feeds on; boot-md primes
+ * working memory at startup; command-logger keeps a local audit trail.
+ * All three are local-only (no network egress). bootstrap-extra-files is
+ * left off — it does nothing without operator-provided glob patterns.
+ *
+ * A config that already has hooks.internal.enabled set (either way) is a
+ * re-run of the wizard over an operator's explicit choice — leave it alone.
+ */
+export const QUICKSTART_DEFAULT_HOOKS = ["session-memory", "boot-md", "command-logger"] as const;
+
+export function applyQuickstartHookDefaults(cfg: BitterbotConfig): BitterbotConfig {
+  if (cfg.hooks?.internal?.enabled !== undefined) {
+    return cfg;
+  }
+  const entries = { ...cfg.hooks?.internal?.entries };
+  for (const name of QUICKSTART_DEFAULT_HOOKS) {
+    entries[name] = { ...entries[name], enabled: true };
+  }
+  return {
+    ...cfg,
+    hooks: {
+      ...cfg.hooks,
+      internal: {
+        ...cfg.hooks?.internal,
+        enabled: true,
+        entries,
+      },
+    },
+  };
+}
+
 export async function setupInternalHooks(
   cfg: BitterbotConfig,
   runtime: RuntimeEnv,

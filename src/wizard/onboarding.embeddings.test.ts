@@ -32,12 +32,31 @@ describe("setupEmbeddingsForOnboarding (PLAN-41 D-F)", () => {
     }
   };
 
-  it('offers "Local (no API key)" and pins provider local when chosen', async () => {
+  it("quickstart asks nothing and leaves the config unpinned (D-M)", async () => {
     clearEnv();
     const p = prompter("local");
     const out = await setupEmbeddingsForOnboarding({
       config: {},
       flow: "quickstart",
+      prompter: p,
+    });
+    expect(out).toEqual({});
+    const mocks = p as {
+      select: ReturnType<typeof vi.fn>;
+      confirm: ReturnType<typeof vi.fn>;
+      text: ReturnType<typeof vi.fn>;
+    };
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.text).not.toHaveBeenCalled();
+  });
+
+  it('offers "Local (no API key)" and pins provider local when chosen', async () => {
+    clearEnv();
+    const p = prompter("local");
+    const out = await setupEmbeddingsForOnboarding({
+      config: {},
+      flow: "advanced",
       prompter: p,
     });
     expect(out.agents?.defaults?.memorySearch?.provider).toBe("local");
@@ -50,7 +69,7 @@ describe("setupEmbeddingsForOnboarding (PLAN-41 D-F)", () => {
     saved.set("ANTHROPIC_API_KEY", process.env.ANTHROPIC_API_KEY);
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     const p = prompter("local");
-    await setupEmbeddingsForOnboarding({ config: {}, flow: "quickstart", prompter: p });
+    await setupEmbeddingsForOnboarding({ config: {}, flow: "advanced", prompter: p });
     const call = (p as { select: ReturnType<typeof vi.fn> }).select.mock.calls[0]![0];
     expect(call.initialValue).toBe("local");
   });
@@ -60,7 +79,7 @@ describe("setupEmbeddingsForOnboarding (PLAN-41 D-F)", () => {
     const p = prompter("openai", "");
     const out = await setupEmbeddingsForOnboarding({
       config: {},
-      flow: "quickstart",
+      flow: "advanced",
       prompter: p,
     });
     expect(out.agents?.defaults?.memorySearch?.provider).toBeUndefined();
@@ -71,7 +90,7 @@ describe("setupEmbeddingsForOnboarding (PLAN-41 D-F)", () => {
     const p = prompter("openai", "sk-test-123");
     const out = await setupEmbeddingsForOnboarding({
       config: {},
-      flow: "quickstart",
+      flow: "advanced",
       prompter: p,
     });
     expect(out.agents?.defaults?.memorySearch?.provider).toBe("openai");

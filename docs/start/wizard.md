@@ -46,15 +46,21 @@ The wizard starts with **QuickStart** (defaults) vs **Advanced** (full control).
 
 <Tabs>
   <Tab title="QuickStart (defaults)">
-    - Local gateway (loopback)
+    Five prompts: risk acknowledgement, setup flow, provider + API key, and
+    P2P network consent. Everything else takes a sane default:
+
+    - Local gateway (loopback), port **19001**, auth **Token** (auto‑generated), Tailscale **Off**
     - Workspace default (or existing workspace)
-    - Gateway port **19001**
-    - Gateway auth **Token** (auto‑generated, even on loopback)
-    - Tailscale exposure **Off**
-    - Telegram + WhatsApp DMs default to **allowlist** (you'll be prompted for your phone number)
+    - The provider's default model (no model picker)
+    - Long-term memory runs on the bundled local embedding model unless a remote key already exists
+    - Built-in hooks enabled automatically (session-memory, boot-md, command-logger)
+    - Channels, skills, web search, and the wallet are deferred — set them up
+      anytime in the Control UI or via `bitterbot configure`
+
   </Tab>
   <Tab title="Advanced (full control)">
-    - Exposes every step (mode, workspace, gateway, channels, daemon, skills).
+    - Exposes every step (mode, workspace, gateway, model picker, embeddings,
+      web search, channels, daemon, skills, wallet, hooks).
   </Tab>
 </Tabs>
 
@@ -63,13 +69,15 @@ The wizard starts with **QuickStart** (defaults) vs **Advanced** (full control).
 **Local mode (default)** walks you through these steps:
 
 1. **Model/Auth** — Anthropic API key (recommended), OpenAI, or Custom Provider
-   (OpenAI-compatible, Anthropic-compatible, or Unknown auto-detect). Pick a default model.
+   (OpenAI-compatible, Anthropic-compatible, or Unknown auto-detect). Advanced flow also picks a default model.
 2. **Workspace** — Location for agent files (default `~/.bitterbot/workspace`). Seeds bootstrap files.
 3. **Gateway** — Port, bind address, auth mode, Tailscale exposure.
-4. **Channels** — WhatsApp, Telegram, Discord, Google Chat, Mattermost, or Signal.
+4. **Channels** _(Advanced)_ — WhatsApp, Telegram, Discord, Google Chat, Mattermost, or Signal.
+   QuickStart defers this to the Control UI or `bitterbot channels add`.
 5. **Daemon** — Installs a LaunchAgent (macOS) or systemd user unit (Linux/WSL2).
 6. **Health check** — Starts the Gateway and verifies it's running.
-7. **Skills** — Installs recommended skills and optional dependencies.
+7. **Skills** _(Advanced)_ — Installs recommended skills and optional dependencies.
+   QuickStart keeps the bundled skills and defers extras.
 
 <Note>
 Re-running the wizard does **not** wipe anything unless you explicitly choose **Reset** (or pass `--reset`).
