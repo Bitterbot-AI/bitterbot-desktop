@@ -247,6 +247,106 @@ describe("createA2aHttpHandler — auth", () => {
     h.close();
   });
 
+  // p0-9 regression: the waiver used to be isPrivateOrLoopbackAddress, which
+  // granted tokenless agent execution to ANY RFC1918/CGNAT source the moment
+  // the gateway was bound beyond loopback (docker-compose defaults bind=lan).
+  // Only loopback-direct requests may skip the token now.
+  it("rejects an RFC1918 LAN source without a token (p0-9)", async () => {
+    const h = createA2aHttpHandler({
+      getConfig: () =>
+        ({
+          a2a: {
+            enabled: true,
+            authentication: { type: "bearer", bearerToken: "secret" },
+          },
+        }) as never,
+      getSkills: () => [],
+      getGatewayUrl: () => "http://example.com:19001",
+      getSkillsVersion: () => 0,
+      taskDb: new DatabaseSync(":memory:"),
+    });
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: {
+        jsonrpc: "2.0",
+        method: "message/send",
+        params: { message: { role: "user", parts: [{ type: "text", text: "x" }] } },
+        id: "1",
+      },
+      remoteAddr: "192.168.1.10",
+      headers: { host: "192.168.1.5:19001" },
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    expect(res.statusCode).toBe(401);
+    h.close();
+  });
+
+  it("rejects a CGNAT/tailnet source without a token (p0-9)", async () => {
+    const h = createA2aHttpHandler({
+      getConfig: () =>
+        ({
+          a2a: {
+            enabled: true,
+            authentication: { type: "bearer", bearerToken: "secret" },
+          },
+        }) as never,
+      getSkills: () => [],
+      getGatewayUrl: () => "http://example.com:19001",
+      getSkillsVersion: () => 0,
+      taskDb: new DatabaseSync(":memory:"),
+    });
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: {
+        jsonrpc: "2.0",
+        method: "message/send",
+        params: { message: { role: "user", parts: [{ type: "text", text: "x" }] } },
+        id: "1",
+      },
+      remoteAddr: "100.64.0.5",
+      headers: { host: "100.64.0.9:19001" },
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    expect(res.statusCode).toBe(401);
+    h.close();
+  });
+
+  it("still waives the token for loopback-direct requests with a local Host", async () => {
+    const h = createA2aHttpHandler({
+      getConfig: () =>
+        ({
+          a2a: {
+            enabled: true,
+            authentication: { type: "bearer", bearerToken: "secret" },
+          },
+        }) as never,
+      getSkills: () => [],
+      getGatewayUrl: () => "http://127.0.0.1:19001",
+      getSkillsVersion: () => 0,
+      taskDb: new DatabaseSync(":memory:"),
+    });
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: {
+        jsonrpc: "2.0",
+        method: "message/send",
+        params: { message: { role: "user", parts: [{ type: "text", text: "x" }] } },
+        id: "1",
+      },
+      remoteAddr: "127.0.0.1",
+      headers: { host: "127.0.0.1:19001" },
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    expect(res.statusCode).toBe(200);
+    h.close();
+  });
+
   // PLAN-29: forage/* verbs are exempt from bearer auth BY DESIGN — hunters
   // are anonymous peers gated on funding/caps/scanning, not identity. An
   // unauthenticated remote call must get past auth and reach the forage
@@ -309,6 +409,94 @@ describe("createA2aHttpHandler — auth", () => {
     const res = mockRes();
     await h.handle(req, res, baseAuthOpts());
     expect(res.statusCode).toBe(401);
+    h.close();
+  });
+});
+
+describe("createA2aHttpHandler — browser Origin gate", () => {
+  function makeBearerHandler() {
+    return createA2aHttpHandler({
+      getConfig: () =>
+        ({
+          a2a: {
+            enabled: true,
+            authentication: { type: "bearer", bearerToken: "secret" },
+          },
+        }) as never,
+      getSkills: () => [],
+      getGatewayUrl: () => "http://127.0.0.1:19001",
+      getSkillsVersion: () => 0,
+      taskDb: new DatabaseSync(":memory:"),
+    });
+  }
+  const sendBody = {
+    jsonrpc: "2.0",
+    method: "message/send",
+    params: { message: { role: "user", parts: [{ type: "text", text: "x" }] } },
+    id: "1",
+  };
+
+  it("403s a cross-site Origin even when the bearer token is valid", async () => {
+    const h = makeBearerHandler();
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: sendBody,
+      remoteAddr: "8.8.8.8",
+      headers: {
+        authorization: "Bearer secret",
+        host: "example.com:19001",
+        origin: "https://evil.example",
+      },
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    expect(res.statusCode).toBe(403);
+    h.close();
+  });
+
+  it("403s a cross-site Origin on the token-exempt forage/* verbs (CSRF shield)", async () => {
+    const h = makeBearerHandler();
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: { jsonrpc: "2.0", method: "forage/claim", params: {}, id: "1" },
+      remoteAddr: "127.0.0.1",
+      headers: { host: "127.0.0.1:19001", origin: "https://evil.example" },
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    expect(res.statusCode).toBe(403);
+    h.close();
+  });
+
+  it("allows a same-host Origin (the served Control UI calling its own gateway)", async () => {
+    const h = makeBearerHandler();
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: sendBody,
+      remoteAddr: "127.0.0.1",
+      headers: { host: "127.0.0.1:19001", origin: "http://127.0.0.1:19001" },
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    expect(res.statusCode).toBe(200);
+    h.close();
+  });
+
+  it("allows Origin-less requests (CLI agents, daemons, curl)", async () => {
+    const h = makeBearerHandler();
+    const req = mockReq({
+      method: "POST",
+      url: "/a2a",
+      body: sendBody,
+      remoteAddr: "8.8.8.8",
+      headers: { authorization: "Bearer secret", host: "example.com:19001" },
+    });
+    const res = mockRes();
+    await h.handle(req, res, baseAuthOpts());
+    expect(res.statusCode).toBe(200);
     h.close();
   });
 });

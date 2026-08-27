@@ -100,6 +100,34 @@ export async function runSecurityChecks(cfg: BitterbotConfig) {
     }
   }
 
+  // ===========================================
+  // A2A HTTP SURFACE EXPOSURE
+  // ===========================================
+  // POST /a2a executes agent tasks. Loopback callers are token-exempt by
+  // design; everything else must present a bearer token — so a non-loopback
+  // bind (docker-compose defaults to lan) or a tailnet mode puts the surface
+  // within reach of other machines and deserves a flag. authentication.type
+  // "none" on an exposed bind removes the token requirement entirely.
+  const tailscaleMode = cfg.gateway?.tailscale?.mode ?? "off";
+  const a2aEnabled = cfg.a2a?.enabled === true;
+  const a2aAuthType = cfg.a2a?.authentication?.type ?? "bearer";
+  if (a2aEnabled && (isExposed || tailscaleMode !== "off")) {
+    const reach = isExposed ? `bind ${bindDescriptor}` : `Tailscale mode "${tailscaleMode}"`;
+    if (a2aAuthType === "none") {
+      warnings.push(
+        `- CRITICAL: A2A endpoint (/a2a) is network-reachable (${reach}) with a2a.authentication.type="none".`,
+        `  Anyone who can reach the port can run agent tasks without a token.`,
+        `  Fix: ${formatCliCommand("bitterbot config set a2a.authentication.type bearer")}`,
+        `  Or disable: ${formatCliCommand("bitterbot config set a2a.enabled false")}`,
+      );
+    } else {
+      warnings.push(
+        `- WARNING: A2A endpoint (/a2a) is network-reachable (${reach}).`,
+        `  Non-loopback callers need the bearer token; keep it strong, or bind loopback / disable a2a.`,
+      );
+    }
+  }
+
   const warnDmPolicy = async (params: {
     label: string;
     provider: ChannelId;

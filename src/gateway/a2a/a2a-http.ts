@@ -8,11 +8,13 @@ import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type { AuthRateLimiter } from "../auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "../auth.js";
 import type { JsonRpcRequest, MessageSendParams } from "./types.js";
-import { authorizeGatewayConnect } from "../auth.js";
+import { safeEqualSecret } from "../../security/secret-equal.js";
+import { authorizeGatewayConnect, isLocalDirectRequest } from "../auth.js";
 import { sendJson, sendGatewayAuthFailure, readJsonBodyOrError } from "../http-common.js";
 import { getBearerToken } from "../http-utils.js";
 import { getHeader } from "../http-utils.js";
-import { resolveGatewayClientIp, isPrivateOrLoopbackAddress } from "../net.js";
+import { resolveGatewayClientIp } from "../net.js";
+import { checkBrowserOrigin } from "../origin-check.js";
 import { buildAgentCard } from "./agent-card.js";
 import { verifyA2aPayment, isPaymentRateLimited } from "./payment.js";
 import { handleA2aJsonRpc, isStreamingMethod } from "./server.js";
@@ -192,6 +194,29 @@ export function createA2aHttpHandler(opts: {
         id: null,
       });
       return true;
+    }
+
+    // Browsers attach an Origin header to cross-site POSTs; real A2A peers
+    // (CLI agents, daemons, curl) do not send one. An Origin naming anywhere
+    // other than this gateway means a browser is being used as a confused
+    // deputy (CSRF / DNS rebinding), so reject before reading the body. This
+    // also shields the deliberately token-exempt forage/circle/mailbox verbs,
+    // which would otherwise be reachable from any web page the operator
+    // happens to visit (audit p0-9).
+    const originHeader = getHeader(req, "origin");
+    if (originHeader !== undefined) {
+      const originCheck = checkBrowserOrigin({
+        requestHost: getHeader(req, "host"),
+        origin: originHeader,
+      });
+      if (!originCheck.ok) {
+        sendJson(res, 403, {
+          jsonrpc: "2.0",
+          error: { code: A2aErrorCodes.UNAUTHORIZED, message: "Forbidden" },
+          id: null,
+        });
+        return true;
+      }
     }
 
     // Parse JSON-RPC body BEFORE auth: forage/* verbs are served to
@@ -703,14 +728,13 @@ async function authorizeA2aRequest(
     return { ok: true };
   }
 
-  // Allow local loopback without token.
-  const clientIp = resolveGatewayClientIp({
-    remoteAddr: req.socket?.remoteAddress ?? "",
-    forwardedFor: getHeader(req, "x-forwarded-for"),
-    realIp: getHeader(req, "x-real-ip"),
-    trustedProxies: authOpts.trustedProxies,
-  });
-  if (clientIp && isPrivateOrLoopbackAddress(clientIp)) {
+  // Token-exempt path: genuinely local, direct requests only — loopback
+  // socket, local Host, no proxy headers (unless from a trusted proxy). The
+  // previous check waived auth for ALL RFC1918/CGNAT sources, which turned
+  // bind=lan (the docker-compose default) into tokenless agent execution for
+  // anyone on the LAN or tailnet (audit p0-9). Same gate as the HTTP control
+  // surfaces (server-http.ts).
+  if (isLocalDirectRequest(req, authOpts.trustedProxies)) {
     return { ok: true };
   }
 
@@ -721,7 +745,7 @@ async function authorizeA2aRequest(
 
   // Check A2A-specific bearer token first.
   const a2aToken = config.a2a?.authentication?.bearerToken;
-  if (a2aToken && token === a2aToken) {
+  if (a2aToken && safeEqualSecret(token, a2aToken)) {
     return { ok: true };
   }
 

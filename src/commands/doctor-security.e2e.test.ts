@@ -103,3 +103,58 @@ describe("runSecurityChecks gateway exposure", () => {
     expect(message).toContain('config set session.dmScope "per-channel-peer"');
   });
 });
+
+describe("runSecurityChecks A2A exposure", () => {
+  beforeEach(() => {
+    note.mockClear();
+    pluginRegistry.list = [];
+  });
+
+  const lastMessage = () => String(note.mock.calls.at(-1)?.[0] ?? "");
+
+  it("warns when a2a is enabled on a non-loopback bind", async () => {
+    process.env.BITTERBOT_GATEWAY_TOKEN = "token-123";
+    const cfg = {
+      gateway: { bind: "lan" },
+      a2a: { enabled: true, authentication: { type: "bearer" } },
+    } as BitterbotConfig;
+    await runSecurityChecks(cfg);
+    const message = lastMessage();
+    expect(message).toContain("A2A endpoint");
+    expect(message).toContain("network-reachable");
+    delete process.env.BITTERBOT_GATEWAY_TOKEN;
+  });
+
+  it("flags CRITICAL when exposed with a2a.authentication.type none", async () => {
+    process.env.BITTERBOT_GATEWAY_TOKEN = "token-123";
+    const cfg = {
+      gateway: { bind: "lan" },
+      a2a: { enabled: true, authentication: { type: "none" } },
+    } as BitterbotConfig;
+    await runSecurityChecks(cfg);
+    const message = lastMessage();
+    expect(message).toContain('a2a.authentication.type="none"');
+    expect(message).toContain("CRITICAL");
+    delete process.env.BITTERBOT_GATEWAY_TOKEN;
+  });
+
+  it("stays quiet about A2A on loopback with tailscale off", async () => {
+    const cfg = {
+      gateway: { bind: "loopback" },
+      a2a: { enabled: true, authentication: { type: "bearer" } },
+    } as BitterbotConfig;
+    await runSecurityChecks(cfg);
+    expect(lastMessage()).not.toContain("A2A endpoint");
+  });
+
+  it("warns when a2a rides a tailnet even on loopback bind", async () => {
+    const cfg = {
+      gateway: { bind: "loopback", tailscale: { mode: "serve" } },
+      a2a: { enabled: true, authentication: { type: "bearer" } },
+    } as BitterbotConfig;
+    await runSecurityChecks(cfg);
+    const message = lastMessage();
+    expect(message).toContain("A2A endpoint");
+    expect(message).toContain("Tailscale");
+  });
+});
