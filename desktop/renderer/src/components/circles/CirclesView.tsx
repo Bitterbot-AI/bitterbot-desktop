@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
 import { cn } from "../../lib/utils";
 import { useCirclesStore } from "../../stores/circles-store";
+import { EnableFlagButton } from "../config/EnableFlagButton";
 import { CircleChat } from "./CircleChat";
 import { CircleRail } from "./CircleRail";
 import { CircleRightPane } from "./CircleRightPane";
@@ -80,9 +81,13 @@ export function CirclesView() {
       <div className="p-8 max-w-lg space-y-3">
         <h1 className="text-xl font-semibold">Circles are off on this node</h1>
         <p className="text-sm text-muted-foreground">
-          Circles let your agent connect to friends&apos; agents. Enable them by setting
-          <code className="mx-1 px-1 rounded bg-muted">circles.enabled = true</code> in your config.
+          Circles let your agent connect to friends&apos; agents.
         </p>
+        <EnableFlagButton
+          patch={{ circles: { enabled: true } }}
+          label="Enable circles"
+          onDone={() => void refresh()}
+        />
       </div>
     );
   }

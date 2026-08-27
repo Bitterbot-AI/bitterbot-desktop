@@ -1,4 +1,32 @@
 export const FIELD_HELP: Record<string, string> = {
+  "p2p.enabled":
+    "Join the libp2p mesh (skill sharing, circles transport, census). Off = fully local node.",
+  "circles.enabled":
+    "Shared agent spaces with end-to-end signed membership. Serves circle verbs over P2P and HTTP.",
+  "circles.sandbox.enabled": "Collaborative canvas sandbox inside circles.",
+  "a2a.enabled":
+    "Serve the Agent Card and message/tasks verbs so other agents can hire this node. Off by default for V1; circle delivery does not need it.",
+  "a2a.marketplace.enabled": "List and price this node's skills for other agents to buy.",
+  "forage.nightShift.enabled":
+    "Autonomously claim and work monitoring bounties from the mesh while idle. Earns USDC; dials bounty posters.",
+  "forage.audit.enabled":
+    "Probabilistically re-verify accepted forage check-ins (outbound fetches).",
+  "skills.skillSeekers.enabled":
+    "Generate skills by scraping documentation sites on demand. Off by default: dials external sites.",
+  "skills.skillSeekers.trending.enabled":
+    "Scheduled GitHub-trending sweep feeding Skill Seekers. Dials api.github.com on an interval.",
+  "skills.marketability.predictor.enabled":
+    "LLM-scored marketplace pricing for crystallized skills (token spend when a model is configured).",
+  "agents.defaults.harnessEvolve.enabled":
+    "Let dream cycles propose harness-policy overlays (PLAN-25). Experimental.",
+  "memory.architectEvolution.enabled":
+    "Learn extraction rules from failures and inject them into future extractions (HORMA). Experimental.",
+  "memory.curiosity.autoResearch.enabled":
+    "Allow dream-cycle research to egress depersonalized queries for curiosity gaps. Requires a local depersonalization model; off by default.",
+  "tools.wallet.enabled":
+    "Expose the USDC wallet tool to the agent (x402 payments, transfers). Off by default; requires CDP credentials to transact.",
+  "models.liveDiscovery.enabled":
+    "Query configured providers' /models endpoints at catalog build so the picker reflects what they actually serve.",
   "meta.lastTouchedVersion": "Auto-set when Bitterbot writes the config.",
   "meta.lastTouchedAt": "ISO timestamp of the last config write (auto-set).",
   "update.channel": 'Update channel for git + npm installs ("stable", "beta", or "dev").',

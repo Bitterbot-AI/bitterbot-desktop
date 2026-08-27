@@ -1,4 +1,21 @@
 export const FIELD_LABELS: Record<string, string> = {
+  // PLAN-41 adjudicated D-D: every default-flipped flag must be reachable as
+  // a Settings toggle, not just via Raw JSON / dotted keys.
+  "p2p.enabled": "P2P Mesh Enabled",
+  "circles.enabled": "Circles Enabled",
+  "circles.sandbox.enabled": "Circles Canvas Sandbox",
+  "a2a.enabled": "Agent-to-Agent (A2A) Endpoint",
+  "a2a.marketplace.enabled": "A2A Skill Marketplace",
+  "forage.nightShift.enabled": "Forage Night Shift",
+  "forage.audit.enabled": "Forage Check-in Audits",
+  "skills.skillSeekers.enabled": "Skill Seekers Ingestion",
+  "skills.skillSeekers.trending.enabled": "Skill Seekers Trending Sweep",
+  "skills.marketability.predictor.enabled": "Skill Marketability Predictor",
+  "agents.defaults.harnessEvolve.enabled": "Harness Evolution",
+  "memory.architectEvolution.enabled": "Memory Architect Evolution",
+  "memory.curiosity.autoResearch.enabled": "Autonomous Research Egress",
+  "tools.wallet.enabled": "Wallet Tool",
+  "models.liveDiscovery.enabled": "Live Model Discovery",
   "meta.lastTouchedVersion": "Config Last Touched Version",
   "meta.lastTouchedAt": "Config Last Touched At",
   "update.channel": "Update Channel",

@@ -134,6 +134,19 @@ function matchRule(path: string): ReloadRule | null {
   return null;
 }
 
+/**
+ * PLAN-41 Phase 2 (p0-15): the resolved reload rules, ordered as matched,
+ * for the Settings form's restart-required chips. A path's fate is the
+ * FIRST rule whose prefix matches; no match falls through to
+ * restart-required (mirrors buildGatewayReloadPlan).
+ */
+export function listReloadRulesForUi(): Array<{
+  prefix: string;
+  kind: "restart" | "hot" | "none";
+}> {
+  return listReloadRules().map(({ prefix, kind }) => ({ prefix, kind }));
+}
+
 export function diffConfigPaths(prev: unknown, next: unknown, prefix = ""): string[] {
   if (prev === next) {
     return [];

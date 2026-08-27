@@ -16,6 +16,7 @@ import {
   type WalletTransaction,
   type WalletConfig,
 } from "../../stores/wallet-store";
+import { EnableFlagButton } from "../config/EnableFlagButton";
 
 function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text).catch(() => {});
@@ -265,13 +266,13 @@ export function WalletView() {
             </div>
           </div>
           {isDisabled ? (
-            <p className="text-sm text-muted-foreground pl-2">
-              Set{" "}
-              <code className="text-xs bg-muted/40 px-1 py-0.5 rounded">
-                tools.wallet.enabled: true
-              </code>{" "}
-              in your config and restart to enable wallet functionality.
-            </p>
+            <div className="pl-2">
+              <EnableFlagButton
+                patch={{ tools: { wallet: { enabled: true } } }}
+                label="Enable wallet"
+                onDone={() => void refresh()}
+              />
+            </div>
           ) : (
             <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-2 pl-2">
               <li>

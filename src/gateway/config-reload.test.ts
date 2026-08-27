@@ -7,6 +7,7 @@ import {
   buildGatewayReloadPlan,
   diffConfigPaths,
   resolveGatewayReloadSettings,
+  listReloadRulesForUi,
 } from "./config-reload.js";
 
 describe("diffConfigPaths", () => {
@@ -119,5 +120,22 @@ describe("resolveGatewayReloadSettings", () => {
     const settings = resolveGatewayReloadSettings({});
     expect(settings.mode).toBe("hybrid");
     expect(settings.debounceMs).toBe(300);
+  });
+});
+
+describe("listReloadRulesForUi (PLAN-41 p0-15)", () => {
+  it("publishes ordered prefix rules the Settings form can chip from", () => {
+    const rules = listReloadRulesForUi();
+    expect(rules.length).toBeGreaterThan(5);
+    for (const rule of rules) {
+      expect(typeof rule.prefix).toBe("string");
+      expect(["restart", "hot", "none"]).toContain(rule.kind);
+    }
+    // Order is the matching order: circles' none-rule must beat the
+    // fall-through, and gateway must be restart-kind.
+    const circles = rules.find((r) => r.prefix === "circles");
+    expect(circles?.kind).toBe("none");
+    const gateway = rules.find((r) => r.prefix === "gateway");
+    expect(gateway?.kind).toBe("restart");
   });
 });

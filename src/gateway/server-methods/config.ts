@@ -32,6 +32,7 @@ import {
   buildGatewayReloadPlan,
   diffConfigPaths,
   resolveGatewayReloadSettings,
+  listReloadRulesForUi,
 } from "../config-reload.js";
 import {
   ErrorCodes,
@@ -255,7 +256,9 @@ export const configHandlers: GatewayRequestHandlers = {
     if (!assertValidParams(params, validateConfigSchemaParams, "config.schema", respond)) {
       return;
     }
-    respond(true, loadSchemaWithPlugins(), undefined);
+    // reloadRules ride along so the Settings form can chip restart-required
+    // keys without duplicating the reload table (PLAN-41 p0-15).
+    respond(true, { ...loadSchemaWithPlugins(), reloadRules: listReloadRulesForUi() }, undefined);
   },
   "config.set": async ({ params, respond }) => {
     if (!assertValidParams(params, validateConfigSetParams, "config.set", respond)) {

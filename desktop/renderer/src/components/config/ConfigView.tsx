@@ -1,67 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { cn } from "../../lib/utils";
-import { useConfigStore, type ConfigSnapshot } from "../../stores/config-store";
+import { useConfigStore, type ConfigSchema, type ConfigSnapshot } from "../../stores/config-store";
 import { useGatewayStore } from "../../stores/gateway-store";
-
-function ConfigFormView({
-  snapshot,
-  onSave,
-  saving,
-}: {
-  snapshot: ConfigSnapshot;
-  onSave: (raw: string, baseHash: string) => void;
-  saving: boolean;
-}) {
-  const config = snapshot.config ?? {};
-  const sections = Object.keys(config);
-
-  return (
-    <div className="space-y-4">
-      {sections.length === 0 ? (
-        <div className="p-4 text-sm text-muted-foreground text-center">Empty configuration</div>
-      ) : (
-        sections.map((section) => {
-          const value = config[section];
-          const isObject = typeof value === "object" && value !== null && !Array.isArray(value);
-          return (
-            <div
-              key={section}
-              className="rounded-lg border border-border/10 bg-muted/20 overflow-hidden"
-            >
-              <div className="px-3 py-2 bg-muted/30 border-b border-border/10">
-                <span className="text-xs font-semibold text-foreground">{section}</span>
-              </div>
-              <div className="p-3">
-                {isObject ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(value as Record<string, unknown>).map(([key, val]) => (
-                      <div key={key} className="text-xs">
-                        <span className="text-muted-foreground">{key}: </span>
-                        <span className="text-foreground font-mono">
-                          {typeof val === "string" && val.startsWith("***")
-                            ? "••••••"
-                            : typeof val === "object"
-                              ? JSON.stringify(val).slice(0, 80)
-                              : String(val)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-xs text-foreground font-mono">
-                    {typeof value === "string" && value.startsWith("***")
-                      ? "••••••"
-                      : JSON.stringify(value)}
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
-}
+import { SettingsForm } from "./SettingsForm";
 
 function ConfigRawView({
   draft,
@@ -121,12 +62,14 @@ export function ConfigView() {
   const gwStatus = useGatewayStore((s) => s.status);
   const request = useGatewayStore((s) => s.request);
   const snapshot = useConfigStore((s) => s.snapshot);
+  const schema = useConfigStore((s) => s.schema);
   const rawMode = useConfigStore((s) => s.rawMode);
   const rawDraft = useConfigStore((s) => s.rawDraft);
   const loading = useConfigStore((s) => s.loading);
   const saving = useConfigStore((s) => s.saving);
   const error = useConfigStore((s) => s.error);
   const setSnapshot = useConfigStore((s) => s.setSnapshot);
+  const setSchema = useConfigStore((s) => s.setSchema);
   const setRawMode = useConfigStore((s) => s.setRawMode);
   const setRawDraft = useConfigStore((s) => s.setRawDraft);
   const setLoading = useConfigStore((s) => s.setLoading);
@@ -146,7 +89,16 @@ export function ConfigView() {
     } finally {
       setLoading(false);
     }
-  }, [gwStatus, request, setSnapshot, setRawDraft, setLoading, setError]);
+    // The schema (uiHints + reload rules) drives the form; fetched once per
+    // connect — it only changes when plugins/channels change (p0-15: this
+    // wires the store's previously-empty schema slot).
+    try {
+      const schemaRes = (await request("config.schema", {})) as ConfigSchema;
+      setSchema(schemaRes);
+    } catch {
+      /* form falls back to fewer rows; raw mode unaffected */
+    }
+  }, [gwStatus, request, setSnapshot, setRawDraft, setLoading, setError, setSchema]);
 
   useEffect(() => {
     refresh();
@@ -173,11 +125,32 @@ export function ConfigView() {
     [request, setSaving, setError, refresh],
   );
 
+  const handlePatch = useCallback(
+    async (patch: Record<string, unknown>): Promise<boolean> => {
+      setSaving(true);
+      try {
+        const res = (await request("config.patch", {
+          raw: JSON.stringify(patch),
+          baseHash: snapshot?.baseHash ?? "",
+        })) as { ok?: boolean };
+        setError(null);
+        await refresh();
+        return Boolean(res?.ok ?? true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Save failed");
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [request, snapshot?.baseHash, refresh, setSaving, setError],
+  );
+
   return (
     <div className="h-full overflow-y-auto p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Config</h1>
+          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {snapshot?.path ?? "Gateway configuration"}
           </p>
@@ -204,7 +177,7 @@ export function ConfigView() {
                   : "text-muted-foreground hover:bg-muted/30",
               )}
             >
-              Raw
+              Raw JSON
             </button>
           </div>
           <button
@@ -247,7 +220,7 @@ export function ConfigView() {
             baseHash={snapshot.baseHash ?? ""}
           />
         ) : (
-          <ConfigFormView snapshot={snapshot} onSave={handleSave} saving={saving} />
+          <SettingsForm snapshot={snapshot} schema={schema} saving={saving} onPatch={handlePatch} />
         ))}
     </div>
   );
