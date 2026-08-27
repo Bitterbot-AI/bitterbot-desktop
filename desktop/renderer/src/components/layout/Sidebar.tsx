@@ -111,7 +111,7 @@ function SocialLink({ href, icon, label, collapsed, isEmail }: SocialLinkProps) 
       target={isEmail ? undefined : "_blank"}
       rel={isEmail ? undefined : "noopener noreferrer"}
       className={cn(
-        "flex items-center rounded-lg hover:bg-[var(--sidebar-hover)] transition-colors text-[var(--sidebar-text-muted)] hover:text-purple-400",
+        "flex items-center rounded-lg hover:bg-[var(--sidebar-hover)] transition-colors text-[var(--sidebar-text-muted)] hover:text-brand",
         collapsed ? "w-8 h-8 justify-center" : "gap-3 px-2 py-2",
       )}
       title={label}
@@ -242,7 +242,7 @@ export function Sidebar() {
             <img src="/Bitterbot_logo.svg" alt="BitterBot" className="w-7 h-7" />
             <span className="text-lg font-bold tracking-tight">
               <span className="text-foreground">Bitter</span>
-              <span className="text-[#a855f7]">Bot</span>
+              <span className="text-brand">Bot</span>
             </span>
           </div>
           <button
@@ -270,7 +270,7 @@ export function Sidebar() {
           }}
           className={cn(
             "flex items-center rounded-lg transition-colors",
-            "bg-[rgba(139,92,246,0.1)] hover:bg-[rgba(139,92,246,0.15)] text-purple-400",
+            "bg-brand/10 hover:bg-brand/25 text-brand",
             isCollapsed ? "w-8 h-8 justify-center" : "w-full gap-2 px-3 py-2 text-sm font-medium",
           )}
         >
@@ -291,7 +291,7 @@ export function Sidebar() {
       >
         {!isCollapsed && (
           <div className="flex items-center justify-between mb-1">
-            <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6]">
+            <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-brand-cyan">
               CONVERSATIONS
             </div>
             {selectedSessions.size > 0 ? (
@@ -309,7 +309,7 @@ export function Sidebar() {
                     setSelectedSessions(new Set());
                     fetchSessions();
                   }}
-                  className="p-1 rounded text-red-400 hover:bg-red-500/10 transition-colors"
+                  className="p-1 rounded text-danger hover:bg-danger/20 transition-colors"
                   title="Delete selected"
                 >
                   <Trash2 className="w-3 h-3" />
@@ -329,7 +329,7 @@ export function Sidebar() {
                     // Enter selection mode with nothing selected
                     setSelectedSessions(new Set(["__selection_mode__"]));
                   }}
-                  className="px-1.5 py-0.5 text-badge text-muted-foreground hover:text-foreground rounded hover:bg-muted/30 transition-colors"
+                  className="px-1.5 py-0.5 text-badge text-muted-foreground hover:text-foreground rounded hover:bg-muted/40 transition-colors"
                 >
                   Select
                 </button>
@@ -348,9 +348,9 @@ export function Sidebar() {
               onClick={() => setActiveTab("chat")}
               className={cn(
                 "flex items-center rounded-md transition-all",
-                "hover:bg-[rgba(139,92,246,0.05)] hover:text-[#d8b4fe]",
+                "hover:bg-brand/15 hover:text-brand",
                 activeTab === "chat"
-                  ? "bg-[rgba(139,92,246,0.1)] text-[#c084fc] font-medium"
+                  ? "bg-brand/10 text-brand font-medium"
                   : "text-[var(--sidebar-text-secondary)]",
                 isCollapsed ? "w-8 h-8 justify-center" : "w-full gap-2 px-3 py-1.5 text-sm",
               )}
@@ -370,9 +370,9 @@ export function Sidebar() {
                     key={s.key}
                     className={cn(
                       "flex items-center rounded-md transition-all group",
-                      "hover:bg-[rgba(139,92,246,0.05)] hover:text-[#d8b4fe]",
+                      "hover:bg-brand/15 hover:text-brand",
                       isActive
-                        ? "bg-[rgba(139,92,246,0.1)] text-[#c084fc] font-medium"
+                        ? "bg-brand/10 text-brand font-medium"
                         : "text-[var(--sidebar-text-secondary)]",
                       isCollapsed ? "w-8 h-8 justify-center" : "w-full px-3 py-1.5 text-sm",
                     )}
@@ -392,8 +392,8 @@ export function Sidebar() {
                         className={cn(
                           "w-4 h-4 rounded border flex-shrink-0 mr-2 flex items-center justify-center transition-colors",
                           isSelected
-                            ? "bg-purple-500 border-purple-500 text-white"
-                            : "border-muted-foreground/40 hover:border-purple-400",
+                            ? "bg-brand border-brand text-white"
+                            : "border-muted-foreground/40 hover:border-brand",
                         )}
                       >
                         {isSelected && <Check className="w-3 h-3" />}
@@ -428,7 +428,7 @@ export function Sidebar() {
                             fetchSessions();
                           } catch {}
                         }}
-                        className="p-0.5 rounded text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-red-400 transition-colors flex-shrink-0"
+                        className="p-0.5 rounded text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-danger transition-colors flex-shrink-0"
                         title="Delete conversation"
                       >
                         <X className="w-3 h-3" />
@@ -483,7 +483,7 @@ export function Sidebar() {
                 (isAdvanced ? (
                   <button
                     onClick={() => setAdvancedOpen(!advancedOpen)}
-                    className="relative flex w-full items-center gap-1 px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6] hover:text-[#7be9f5] transition-colors"
+                    className="relative flex w-full items-center gap-1 px-2 py-1 text-badge font-semibold uppercase tracking-widest text-brand-cyan hover:text-brand-cyan/80 transition-colors"
                   >
                     {advancedOpen ? (
                       <ChevronDown className="w-3 h-3" />
@@ -496,13 +496,13 @@ export function Sidebar() {
                         aria-hidden="true"
                         className={cn(
                           "ml-1 w-2 h-2 rounded-full",
-                          attention.approvals > 0 ? "bg-circle-consent" : "bg-red-500",
+                          attention.approvals > 0 ? "bg-circle-consent" : "bg-danger",
                         )}
                       />
                     )}
                   </button>
                 ) : (
-                  <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6]">
+                  <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-brand-cyan">
                     {GROUP_LABELS[group]}
                   </div>
                 ))}
@@ -522,9 +522,9 @@ export function Sidebar() {
                         title={isCollapsed ? item.label : undefined}
                         className={cn(
                           "relative flex items-center rounded-md text-sm transition-all",
-                          "hover:bg-[rgba(139,92,246,0.05)] hover:text-[#d8b4fe]",
+                          "hover:bg-brand/15 hover:text-brand",
                           activeTab === item.id
-                            ? "bg-[rgba(139,92,246,0.1)] text-[#c084fc] font-medium"
+                            ? "bg-brand/10 text-brand font-medium"
                             : "text-[var(--sidebar-text-secondary)]",
                           isCollapsed
                             ? "w-8 h-8 justify-center mx-auto"
@@ -537,9 +537,9 @@ export function Sidebar() {
                           <span
                             title={`${repairsCount} doctor finding(s) need attention`}
                             className={cn(
-                              "rounded-full bg-amber-500/20 text-amber-300 text-badge",
+                              "rounded-full bg-warning/20 text-warning text-badge",
                               isCollapsed
-                                ? "absolute top-0.5 right-0.5 w-2 h-2 p-0 bg-amber-400"
+                                ? "absolute top-0.5 right-0.5 w-2 h-2 p-0 bg-warning"
                                 : "ml-auto px-1.5 py-0.5",
                             )}
                           >
@@ -552,7 +552,7 @@ export function Sidebar() {
                               aria-hidden="true"
                               className={cn(
                                 "absolute top-0.5 right-0.5 w-2 h-2 rounded-full",
-                                attention.approvals > 0 ? "bg-circle-consent" : "bg-red-500",
+                                attention.approvals > 0 ? "bg-circle-consent" : "bg-danger",
                               )}
                             />
                           ) : (

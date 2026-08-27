@@ -61,23 +61,23 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="flex flex-col h-full">
       {/* Search header */}
-      <div className="flex-shrink-0 flex items-center gap-1.5 px-2 py-2 border-b border-zinc-800/40">
-        <Search className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+      <div className="flex-shrink-0 flex items-center gap-1.5 px-2 py-2 border-b border-border/40">
+        <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
         <input
           ref={inputRef}
           type="text"
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
           placeholder="Search in files..."
-          className="flex-1 bg-transparent text-xs text-zinc-300 placeholder:text-zinc-600 border-none outline-none font-mono"
+          className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground border-none outline-none font-mono"
         />
         <button
           onClick={toggleCaseSensitive}
           className={cn(
             "w-5 h-5 flex items-center justify-center rounded transition-colors",
             caseSensitive
-              ? "bg-purple-500/20 text-purple-300"
-              : "text-zinc-500 hover:text-zinc-300",
+              ? "bg-brand/20 text-brand"
+              : "text-muted-foreground hover:text-foreground",
           )}
           title="Case sensitive"
         >
@@ -87,7 +87,7 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
           onClick={toggleRegex}
           className={cn(
             "w-5 h-5 flex items-center justify-center rounded transition-colors",
-            regex ? "bg-purple-500/20 text-purple-300" : "text-zinc-500 hover:text-zinc-300",
+            regex ? "bg-brand/20 text-brand" : "text-muted-foreground hover:text-foreground",
           )}
           title="Regex"
         >
@@ -95,7 +95,7 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
         </button>
         <button
           onClick={onClose}
-          className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors"
+          className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
           title="Close search"
         >
           <X className="w-3 h-3" />
@@ -104,7 +104,7 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
 
       {/* Summary */}
       {query.trim() && (
-        <div className="flex-shrink-0 px-3 py-1 text-badge text-zinc-500 border-b border-zinc-800/20">
+        <div className="flex-shrink-0 px-3 py-1 text-badge text-muted-foreground border-b border-border/20">
           {searchLoading ? (
             <span className="flex items-center gap-1">
               <Loader2 className="w-3 h-3 animate-spin" /> Searching...
@@ -123,22 +123,26 @@ export function ContentSearchPanel({ onClose }: { onClose: () => void }) {
           return (
             <div key={filePath}>
               {/* File header */}
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-900/40 sticky top-0">
-                <Icon className="w-3 h-3 text-blue-400/60 flex-shrink-0" />
-                <span className="text-2xs font-mono text-zinc-400 truncate">{filePath}</span>
-                <span className="ml-auto text-badge text-zinc-600">{results.length}</span>
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-card/40 sticky top-0">
+                <Icon className="w-3 h-3 text-info/60 flex-shrink-0" />
+                <span className="text-2xs font-mono text-muted-foreground truncate">
+                  {filePath}
+                </span>
+                <span className="ml-auto text-badge text-muted-foreground">{results.length}</span>
               </div>
               {/* Line results */}
               {results.map((r, i) => (
                 <button
                   key={`${r.line}-${i}`}
                   onClick={() => openFile(filePath)}
-                  className="w-full flex items-center gap-2 px-3 py-[3px] text-left hover:bg-[rgba(139,92,246,0.06)] transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-[3px] text-left hover:bg-brand/15 transition-colors"
                 >
-                  <span className="text-badge text-zinc-600 w-8 text-right flex-shrink-0 font-mono">
+                  <span className="text-badge text-muted-foreground w-8 text-right flex-shrink-0 font-mono">
                     {r.line}
                   </span>
-                  <span className="text-2xs text-zinc-400 font-mono truncate">{r.content}</span>
+                  <span className="text-2xs text-muted-foreground font-mono truncate">
+                    {r.content}
+                  </span>
                 </button>
               ))}
             </div>

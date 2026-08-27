@@ -44,12 +44,12 @@ export function AskToolView({ toolCall }: ToolViewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b bg-gradient-to-r from-blue-500/10 to-blue-600/5 border-blue-500/20">
-        <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
-          <MessageCircleQuestion className="w-4 h-4 text-blue-400" />
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b bg-gradient-to-r from-info/10 to-info/5 border-info/20">
+        <div className="w-8 h-8 rounded-lg bg-info/15 flex items-center justify-center">
+          <MessageCircleQuestion className="w-4 h-4 text-info" />
         </div>
         <div className="flex-1">
-          <h3 className="text-sm font-semibold text-blue-300">
+          <h3 className="text-sm font-semibold text-info">
             {isDone ? "Question Answered" : "Waiting for Input"}
           </h3>
         </div>
@@ -57,10 +57,10 @@ export function AskToolView({ toolCall }: ToolViewProps) {
           className={cn(
             "flex items-center gap-1 text-badge uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full",
             isRunning
-              ? "bg-amber-500/10 text-amber-400"
+              ? "bg-warning/10 text-warning"
               : isDone
-                ? "bg-emerald-500/10 text-emerald-400"
-                : "bg-red-500/10 text-red-400",
+                ? "bg-success/10 text-success"
+                : "bg-danger/10 text-danger",
           )}
         >
           {isRunning ? (
@@ -84,11 +84,11 @@ export function AskToolView({ toolCall }: ToolViewProps) {
         {/* Question */}
         {question && (
           <div className="space-y-1.5">
-            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-muted-foreground uppercase tracking-wider font-semibold">
               Question
             </span>
-            <div className="rounded-lg bg-zinc-900/50 border border-zinc-800/30 p-3">
-              <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+            <div className="rounded-lg bg-card/50 border border-border/30 p-3">
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
                 {question}
               </p>
             </div>
@@ -98,7 +98,7 @@ export function AskToolView({ toolCall }: ToolViewProps) {
         {/* Attachments */}
         {attachments.length > 0 && (
           <div className="space-y-1.5">
-            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-muted-foreground uppercase tracking-wider font-semibold">
               Attachments
             </span>
             <div className="space-y-1.5">
@@ -107,12 +107,14 @@ export function AskToolView({ toolCall }: ToolViewProps) {
                 return (
                   <div
                     key={i}
-                    className="flex items-center gap-2 rounded-lg bg-zinc-900/50 border border-zinc-800/30 px-3 py-2"
+                    className="flex items-center gap-2 rounded-lg bg-card/50 border border-border/30 px-3 py-2"
                   >
-                    <FileText className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                    <FileText className="w-4 h-4 text-info flex-shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm text-zinc-300 font-medium truncate">{fileName}</div>
-                      <div className="text-badge text-zinc-500 font-mono truncate">{filePath}</div>
+                      <div className="text-sm text-foreground font-medium truncate">{fileName}</div>
+                      <div className="text-badge text-muted-foreground font-mono truncate">
+                        {filePath}
+                      </div>
                     </div>
                   </div>
                 );
@@ -124,8 +126,8 @@ export function AskToolView({ toolCall }: ToolViewProps) {
         {/* Waiting animation */}
         {isRunning && !question && (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <MessageCircleQuestion className="w-10 h-10 text-blue-400/60 animate-pulse" />
-            <p className="mt-3 text-sm text-zinc-400">
+            <MessageCircleQuestion className="w-10 h-10 text-info/60 animate-pulse" />
+            <p className="mt-3 text-sm text-muted-foreground">
               Waiting for the agent to formulate a question...
             </p>
           </div>
@@ -134,11 +136,11 @@ export function AskToolView({ toolCall }: ToolViewProps) {
         {/* Response (from result) */}
         {isDone && toolCall.result && (
           <div className="space-y-1.5">
-            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-muted-foreground uppercase tracking-wider font-semibold">
               Response
             </span>
-            <div className="rounded-lg bg-zinc-900/50 border border-emerald-800/30 p-3">
-              <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+            <div className="rounded-lg bg-card/50 border border-success/30 p-3">
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
                 {toolCall.result}
               </p>
             </div>
@@ -148,7 +150,7 @@ export function AskToolView({ toolCall }: ToolViewProps) {
 
       {/* Footer */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-border/20 flex-shrink-0">
-        <span className="text-badge font-medium px-2 py-0.5 rounded-full border bg-blue-500/10 text-blue-400 border-blue-500/20">
+        <span className="text-badge font-medium px-2 py-0.5 rounded-full border bg-info/10 text-info border-info/20">
           User Interaction
         </span>
         {toolCall.timestamp && (

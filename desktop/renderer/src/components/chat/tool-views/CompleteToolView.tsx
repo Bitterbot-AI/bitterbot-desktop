@@ -59,26 +59,24 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         className={cn(
           "flex items-center gap-2.5 px-4 py-3 border-b",
           isError
-            ? "bg-gradient-to-r from-red-500/10 to-red-600/5 border-red-500/20"
-            : "bg-gradient-to-r from-emerald-500/10 to-emerald-600/5 border-emerald-500/20",
+            ? "bg-gradient-to-r from-danger/10 to-danger/5 border-danger/20"
+            : "bg-gradient-to-r from-success/10 to-success/5 border-success/20",
         )}
       >
         <div
           className={cn(
             "w-8 h-8 rounded-lg flex items-center justify-center",
-            isError ? "bg-red-500/15" : "bg-emerald-500/15",
+            isError ? "bg-danger/15" : "bg-success/15",
           )}
         >
           {isError ? (
-            <AlertTriangle className="w-4 h-4 text-red-400" />
+            <AlertTriangle className="w-4 h-4 text-danger" />
           ) : (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <CheckCircle2 className="w-4 h-4 text-success" />
           )}
         </div>
         <div className="flex-1">
-          <h3
-            className={cn("text-sm font-semibold", isError ? "text-red-300" : "text-emerald-300")}
-          >
+          <h3 className={cn("text-sm font-semibold", isError ? "text-danger" : "text-success")}>
             {isError ? "Task Failed" : "Task Complete"}
           </h3>
         </div>
@@ -86,10 +84,10 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
           className={cn(
             "text-badge uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full",
             isRunning
-              ? "bg-amber-500/10 text-amber-400"
+              ? "bg-warning/10 text-warning"
               : isError
-                ? "bg-red-500/10 text-red-400"
-                : "bg-emerald-500/10 text-emerald-400",
+                ? "bg-danger/10 text-danger"
+                : "bg-success/10 text-success",
           )}
         >
           {isRunning ? "In Progress" : isError ? "Error" : "Complete"}
@@ -102,12 +100,12 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         {isRunning && (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
               Completing tasks...
             </div>
-            <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-1000"
+                className="h-full rounded-full bg-gradient-to-r from-success to-success transition-all duration-1000"
                 style={{ width: "85%" }}
               />
             </div>
@@ -117,11 +115,11 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         {/* Summary */}
         {summary && (
           <div className="space-y-1.5">
-            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-muted-foreground uppercase tracking-wider font-semibold">
               Summary
             </span>
-            <div className="rounded-lg bg-zinc-900/50 border border-zinc-800/30 p-3">
-              <div className="prose prose-sm prose-invert max-w-none text-zinc-300">
+            <div className="rounded-lg bg-card/50 border border-border/30 p-3">
+              <div className="prose prose-sm prose-invert max-w-none text-foreground">
                 <Markdown>{summary}</Markdown>
               </div>
             </div>
@@ -131,14 +129,14 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         {/* Tasks Completed */}
         {tasksCompleted.length > 0 && (
           <div className="space-y-1.5">
-            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-muted-foreground uppercase tracking-wider font-semibold">
               Tasks Completed
             </span>
-            <div className="rounded-lg bg-zinc-900/50 border border-zinc-800/30 p-3 space-y-2">
+            <div className="rounded-lg bg-card/50 border border-border/30 p-3 space-y-2">
               {tasksCompleted.map((task, i) => (
                 <div key={i} className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-zinc-300">{task}</span>
+                  <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-foreground">{task}</span>
                 </div>
               ))}
             </div>
@@ -148,7 +146,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         {/* Attachments */}
         {attachments.length > 0 && (
           <div className="space-y-1.5">
-            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-muted-foreground uppercase tracking-wider font-semibold">
               Attachments
             </span>
             <div className="space-y-1.5">
@@ -157,12 +155,14 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
                 return (
                   <div
                     key={i}
-                    className="flex items-center gap-2 rounded-lg bg-zinc-900/50 border border-zinc-800/30 px-3 py-2"
+                    className="flex items-center gap-2 rounded-lg bg-card/50 border border-border/30 px-3 py-2"
                   >
-                    <FileText className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                    <FileText className="w-4 h-4 text-info flex-shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm text-zinc-300 font-medium truncate">{fileName}</div>
-                      <div className="text-badge text-zinc-500 font-mono truncate">{filePath}</div>
+                      <div className="text-sm text-foreground font-medium truncate">{fileName}</div>
+                      <div className="text-badge text-muted-foreground font-mono truncate">
+                        {filePath}
+                      </div>
                     </div>
                   </div>
                 );
@@ -175,10 +175,10 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
         {!hasContent && !isRunning && (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <div className="relative">
-              <Trophy className="w-12 h-12 text-amber-400/80" />
-              <Sparkles className="w-5 h-5 text-amber-300 absolute -top-1 -right-1 animate-pulse" />
+              <Trophy className="w-12 h-12 text-warning/80" />
+              <Sparkles className="w-5 h-5 text-warning absolute -top-1 -right-1 animate-pulse" />
             </div>
-            <p className="mt-3 text-sm text-zinc-400">All tasks completed!</p>
+            <p className="mt-3 text-sm text-muted-foreground">All tasks completed!</p>
           </div>
         )}
       </div>
@@ -189,8 +189,8 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
           className={cn(
             "text-badge font-medium px-2 py-0.5 rounded-full border",
             isError
-              ? "bg-red-500/10 text-red-400 border-red-500/20"
-              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+              ? "bg-danger/10 text-danger border-danger/20"
+              : "bg-success/10 text-success border-success/20",
           )}
         >
           Task Completion

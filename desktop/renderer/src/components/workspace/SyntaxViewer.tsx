@@ -70,9 +70,9 @@ export function SyntaxViewer({
 
   if (html && !tooLarge) {
     return (
-      <div className="flex flex-1 overflow-auto bg-zinc-950/60">
+      <div className="flex flex-1 overflow-auto bg-card/60">
         {/* Line numbers */}
-        <div className="flex-shrink-0 py-3 pl-2 pr-1 select-none text-right font-mono text-2xs leading-[1.45] text-zinc-600">
+        <div className="flex-shrink-0 py-3 pl-2 pr-1 select-none text-right font-mono text-2xs leading-[1.45] text-muted-foreground">
           {lines.map((_, i) => (
             <div key={i}>{i + 1}</div>
           ))}
@@ -88,13 +88,13 @@ export function SyntaxViewer({
 
   // Fallback: plain text with line numbers
   return (
-    <div className="flex flex-1 overflow-auto bg-zinc-950/60">
-      <div className="flex-shrink-0 py-3 pl-2 pr-1 select-none text-right font-mono text-2xs leading-[1.45] text-zinc-600">
+    <div className="flex flex-1 overflow-auto bg-card/60">
+      <div className="flex-shrink-0 py-3 pl-2 pr-1 select-none text-right font-mono text-2xs leading-[1.45] text-muted-foreground">
         {lines.map((_, i) => (
           <div key={i}>{i + 1}</div>
         ))}
       </div>
-      <pre className="flex-1 py-3 pr-3 font-mono text-2xs leading-[1.45] text-zinc-300 whitespace-pre overflow-x-auto">
+      <pre className="flex-1 py-3 pr-3 font-mono text-2xs leading-[1.45] text-foreground whitespace-pre overflow-x-auto">
         {code}
       </pre>
     </div>

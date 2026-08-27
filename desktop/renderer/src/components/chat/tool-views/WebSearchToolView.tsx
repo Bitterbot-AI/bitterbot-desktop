@@ -103,16 +103,16 @@ function parseSearchResults(output: string): SearchData {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  Wiki: "bg-blue-500/15 text-blue-400",
-  GitHub: "bg-zinc-500/15 text-zinc-300",
-  "Q&A": "bg-orange-500/15 text-orange-400",
-  Docs: "bg-green-500/15 text-green-400",
-  Blog: "bg-pink-500/15 text-pink-400",
-  Reddit: "bg-orange-500/15 text-orange-300",
-  Video: "bg-red-500/15 text-red-400",
-  Paper: "bg-violet-500/15 text-violet-400",
-  Package: "bg-emerald-500/15 text-emerald-400",
-  Website: "bg-zinc-500/10 text-zinc-400",
+  Wiki: "bg-info/15 text-info",
+  GitHub: "bg-muted/15 text-foreground",
+  "Q&A": "bg-warning/15 text-warning",
+  Docs: "bg-success/15 text-success",
+  Blog: "bg-brand/15 text-brand",
+  Reddit: "bg-warning/15 text-warning",
+  Video: "bg-danger/15 text-danger",
+  Paper: "bg-brand/15 text-brand",
+  Package: "bg-success/15 text-success",
+  Website: "bg-muted/10 text-muted-foreground",
 };
 
 export function WebSearchToolView({ toolCall }: ToolViewProps) {
@@ -152,9 +152,9 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
     <div className="flex flex-col h-full">
       {/* Query bar */}
       {query && (
-        <div className="flex items-center gap-2 px-3 py-2.5 bg-zinc-800/40 border-b border-zinc-800/30">
-          <Search className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-          <span className="text-sm text-zinc-200 font-medium">{query}</span>
+        <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/40 border-b border-border/30">
+          <Search className="w-3.5 h-3.5 text-info flex-shrink-0" />
+          <span className="text-sm text-foreground font-medium">{query}</span>
         </div>
       )}
 
@@ -162,22 +162,22 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
       <div className="flex-1 overflow-auto">
         {isRunning && !output ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
-            <Search className="w-6 h-6 text-cyan-400 animate-pulse" />
-            <span className="text-sm text-zinc-400">Searching the web...</span>
-            {query && <span className="text-xs text-zinc-500 font-mono">"{query}"</span>}
+            <Search className="w-6 h-6 text-info animate-pulse" />
+            <span className="text-sm text-muted-foreground">Searching the web...</span>
+            {query && <span className="text-xs text-muted-foreground font-mono">"{query}"</span>}
           </div>
         ) : searchResults.length > 0 ? (
           <div className="p-3 space-y-3">
             {/* Result count header */}
             <div className="flex items-center gap-2">
-              <span className="text-2xs text-zinc-500 font-medium">
+              <span className="text-2xs text-muted-foreground font-medium">
                 {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
               </span>
             </div>
 
             {/* Answer box */}
             {answer && (
-              <div className="p-3 rounded-lg bg-cyan-500/5 border border-cyan-500/15 text-sm text-zinc-300 leading-relaxed">
+              <div className="p-3 rounded-lg bg-info/5 border border-info/15 text-sm text-foreground leading-relaxed">
                 {answer}
               </div>
             )}
@@ -185,7 +185,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
             {/* Image grid */}
             {images.length > 0 && (
               <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-badge text-zinc-500 font-medium uppercase tracking-wider">
+                <div className="flex items-center gap-1.5 text-badge text-muted-foreground font-medium uppercase tracking-wider">
                   <Image className="w-3 h-3" />
                   Images
                 </div>
@@ -193,7 +193,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
                   {visibleImages.map((img, i) => (
                     <div
                       key={i}
-                      className="aspect-video rounded-md overflow-hidden bg-zinc-800/50 border border-zinc-700/30"
+                      className="aspect-video rounded-md overflow-hidden bg-muted/50 border border-border/30"
                     >
                       <img
                         src={img.url}
@@ -210,7 +210,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
                 {images.length > 6 && !showAllImages && (
                   <button
                     onClick={() => setShowAllImages(true)}
-                    className="text-2xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                    className="text-2xs text-info hover:text-info transition-colors"
                   >
                     View {images.length - 6} more images
                   </button>
@@ -226,7 +226,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
               return (
                 <div
                   key={i}
-                  className="p-2.5 rounded-lg bg-zinc-900/40 border border-zinc-800/30 hover:border-zinc-700/50 transition-colors"
+                  className="p-2.5 rounded-lg bg-card/40 border border-border/30 hover:border-border/50 transition-colors"
                 >
                   <div className="flex items-start gap-2.5">
                     {/* Favicon */}
@@ -244,7 +244,7 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
                     <div className="flex-1 min-w-0">
                       {/* Title + type badge */}
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-blue-400 truncate flex-1">
+                        <span className="text-sm font-medium text-info truncate flex-1">
                           {result.title || "Untitled"}
                         </span>
                         <span
@@ -260,8 +260,8 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
                       {/* URL */}
                       {result.url && (
                         <div className="flex items-center gap-1 mt-0.5">
-                          <Globe className="w-2.5 h-2.5 text-zinc-500 flex-shrink-0" />
-                          <span className="text-badge text-zinc-500 truncate font-mono">
+                          <Globe className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0" />
+                          <span className="text-badge text-muted-foreground truncate font-mono">
                             {extractDomain(result.url)}
                           </span>
                         </div>
@@ -271,14 +271,14 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
                       {result.snippet && (
                         <p
                           className={cn(
-                            "text-xs text-zinc-400 mt-1.5 leading-relaxed cursor-pointer",
+                            "text-xs text-muted-foreground mt-1.5 leading-relaxed cursor-pointer",
                             !isExpanded && "line-clamp-2",
                           )}
                           onClick={() => toggleSnippet(i)}
                         >
                           {result.snippet}
                           {!isExpanded && result.snippet.length > 150 && (
-                            <span className="text-zinc-500 ml-1 inline-flex items-center">
+                            <span className="text-muted-foreground ml-1 inline-flex items-center">
                               <ChevronDown className="w-3 h-3" />
                             </span>
                           )}
@@ -291,11 +291,11 @@ export function WebSearchToolView({ toolCall }: ToolViewProps) {
             })}
           </div>
         ) : output ? (
-          <pre className="p-3 font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words">
+          <pre className="p-3 font-mono text-xs text-foreground whitespace-pre-wrap break-words">
             {output}
           </pre>
         ) : (
-          <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             No results
           </div>
         )}

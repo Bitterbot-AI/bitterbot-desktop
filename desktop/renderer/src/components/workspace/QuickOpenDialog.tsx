@@ -43,7 +43,7 @@ export function QuickOpenDialog({
             const Icon = getFileIcon(fileName);
             return (
               <CommandItem key={filePath} value={filePath} onSelect={() => handleSelect(filePath)}>
-                <Icon className="w-4 h-4 text-blue-400/60 flex-shrink-0" />
+                <Icon className="w-4 h-4 text-info/60 flex-shrink-0" />
                 <span className="font-mono text-xs truncate">{filePath}</span>
               </CommandItem>
             );

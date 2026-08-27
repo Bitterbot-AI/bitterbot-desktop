@@ -92,10 +92,10 @@ export function ChatInput() {
       <div
         className={cn(
           "relative flex items-end gap-2 rounded-xl border transition-all",
-          "bg-[rgba(139,92,246,0.05)] border-[rgba(139,92,246,0.2)]",
+          "bg-brand/5 border-brand/20",
           "backdrop-blur-xl",
           "shadow-[0_8px_32px_rgba(139,92,246,0.1),inset_0_1px_0_rgba(255,255,255,0.1)]",
-          "focus-within:border-[#a855f7] focus-within:shadow-[0_8px_32px_rgba(139,92,246,0.2)]",
+          "focus-within:border-brand focus-within:shadow-[0_8px_32px_rgba(139,92,246,0.2)]",
         )}
         data-slot="chat-input-wrapper"
       >
@@ -126,7 +126,7 @@ export function ChatInput() {
               onClick={handleAbort}
               className={cn(
                 "w-8 h-8 rounded-lg flex items-center justify-center",
-                "bg-red-500/80 hover:bg-red-500 text-white",
+                "bg-danger/80 hover:bg-danger/90 text-white",
                 "transition-all",
               )}
               title="Stop generating"

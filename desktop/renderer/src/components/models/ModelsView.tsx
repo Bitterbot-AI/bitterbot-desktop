@@ -148,7 +148,7 @@ export function ModelsView() {
             <PopoverTrigger asChild>
               <button
                 disabled={!setDefaultSupported || settingDefault || status !== "connected"}
-                className="h-8 px-3 text-sm rounded-md border border-border bg-muted/40 hover:bg-muted inline-flex items-center gap-2 disabled:opacity-60"
+                className="h-8 px-3 text-sm rounded-md border border-border bg-muted/40 hover:bg-muted/90 inline-flex items-center gap-2 disabled:opacity-60"
               >
                 {settingDefault ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -292,7 +292,7 @@ function ProviderRow({
           <p className="text-xs text-muted-foreground">
             Active source: <span className="font-mono">{status.winningSource}</span>
             {shadowedEnv && (
-              <span className="text-amber-400">
+              <span className="text-warning">
                 {" "}
                 - a stored profile is shadowing {status.envSource}; delete the profile to fall back.
               </span>
@@ -315,7 +315,7 @@ function ProviderRow({
                 </div>
                 <button
                   onClick={() => onDelete(profile.profileId)}
-                  className="text-muted-foreground hover:text-red-400 transition-colors p-1"
+                  className="text-muted-foreground hover:text-danger transition-colors p-1"
                   title={`Delete ${profile.profileId}`}
                 >
                   <Trash2 className="h-3 w-3" />

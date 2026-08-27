@@ -30,7 +30,7 @@ export function SessionSelector() {
           autoFocus
           className={cn(
             "h-6 px-2 text-xs rounded border bg-transparent",
-            "border-purple-500/30 focus:border-purple-500 focus:outline-none",
+            "border-brand/30 focus:border-brand focus:outline-none",
             "w-32",
           )}
         />
@@ -46,8 +46,8 @@ export function SessionSelector() {
       }}
       className={cn(
         "h-6 px-2 text-xs rounded-md",
-        "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-        "border border-purple-500/20",
+        "bg-brand/10 text-brand hover:bg-brand/30",
+        "border border-brand/20",
         "transition-colors truncate max-w-[150px]",
       )}
       title={`Session: ${sessionKey}`}

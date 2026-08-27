@@ -46,13 +46,13 @@ export function RepairsCard() {
   return (
     <div
       data-testid="repairs-card"
-      className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4"
+      className="rounded-xl border border-warning/20 bg-warning/5 p-4"
     >
       <div className="flex items-center justify-between mb-3">
         <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <Wrench className="w-4 h-4 text-amber-400" />
+          <Wrench className="w-4 h-4 text-warning" />
           Repairs
-          <span className="px-1.5 py-0.5 rounded-full text-2xs bg-amber-500/15 text-amber-300">
+          <span className="px-1.5 py-0.5 rounded-full text-2xs bg-warning/15 text-warning">
             {repairsAttention(findings)}
           </span>
         </h2>
@@ -71,16 +71,14 @@ export function RepairsCard() {
             <ShieldAlert
               className={cn(
                 "w-3.5 h-3.5 mt-0.5 flex-shrink-0",
-                f.level === "error" ? "text-red-400" : "text-amber-400",
+                f.level === "error" ? "text-danger" : "text-warning",
               )}
             />
             <div className="min-w-0">
               <span
                 className={cn(
                   "mr-2 px-1.5 py-0.5 rounded text-2xs uppercase tracking-wide",
-                  f.level === "error"
-                    ? "bg-red-500/10 text-red-400"
-                    : "bg-amber-500/10 text-amber-300",
+                  f.level === "error" ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning",
                 )}
               >
                 {f.section}

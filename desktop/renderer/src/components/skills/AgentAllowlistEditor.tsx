@@ -137,7 +137,7 @@ export function AgentAllowlistEditor({
               className={cn(
                 "flex-1 px-3 py-2 text-xs rounded-md border transition-colors text-left",
                 mode === "all"
-                  ? "bg-purple-500/15 border-purple-500/30 text-foreground"
+                  ? "bg-brand/15 border-brand/30 text-foreground"
                   : "border-border/30 text-muted-foreground hover:text-foreground",
               )}
             >
@@ -149,7 +149,7 @@ export function AgentAllowlistEditor({
               className={cn(
                 "flex-1 px-3 py-2 text-xs rounded-md border transition-colors text-left",
                 mode === "allowlist"
-                  ? "bg-purple-500/15 border-purple-500/30 text-foreground"
+                  ? "bg-brand/15 border-brand/30 text-foreground"
                   : "border-border/30 text-muted-foreground hover:text-foreground",
               )}
             >
@@ -170,7 +170,7 @@ export function AgentAllowlistEditor({
               placeholder="Filter skills…"
               className={cn(
                 "flex-1 h-8 px-3 text-xs rounded-md border bg-transparent",
-                "border-border/30 focus:border-purple-500 focus:outline-none",
+                "border-border/30 focus:border-brand focus:outline-none",
               )}
             />
             <button
@@ -236,7 +236,7 @@ export function AgentAllowlistEditor({
         </div>
 
         {error && (
-          <div className="px-5 py-2 text-xs text-red-300 border-t border-border/10">{error}</div>
+          <div className="px-5 py-2 text-xs text-danger border-t border-border/10">{error}</div>
         )}
 
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/20">
@@ -252,7 +252,7 @@ export function AgentAllowlistEditor({
             disabled={busy}
             className={cn(
               "px-3 py-1.5 text-xs rounded-md border transition-colors",
-              "bg-purple-500/15 text-purple-200 border-purple-500/30 hover:bg-purple-500/25",
+              "bg-brand/15 text-brand border-brand/30 hover:bg-brand/35",
               busy && "opacity-50 cursor-not-allowed",
             )}
           >

@@ -408,7 +408,7 @@ export function CircleCanvas({
                   <button
                     type="button"
                     aria-label="Card actions"
-                    className="rounded p-1 text-muted-foreground hover:bg-muted"
+                    className="rounded p-1 text-muted-foreground hover:bg-muted/90"
                   >
                     <MoreHorizontal className="h-3.5 w-3.5" />
                   </button>

@@ -18,7 +18,7 @@ export function MessageList() {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="flex items-center gap-2 text-muted-foreground">
-          <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" />
+          <span className="w-2 h-2 rounded-full bg-brand animate-bounce" />
           <span>Loading chat history...</span>
         </div>
       </div>
@@ -32,7 +32,7 @@ export function MessageList() {
           <div className="flex justify-center mb-4">
             <img src="/bitterbot_avatar.png" alt="BitterBot" className="w-20 h-20 object-contain" />
           </div>
-          <h2 className="text-4xl font-bold bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent">
+          <h2 className="text-4xl font-bold bg-gradient-to-r from-foreground via-brand/60 to-brand bg-clip-text text-transparent">
             How can I help you today?
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">

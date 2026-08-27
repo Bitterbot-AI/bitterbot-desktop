@@ -70,13 +70,13 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Browser chrome */}
-      <div className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900/80 border-b border-zinc-700/50">
+      <div className="flex items-center gap-1.5 px-3 py-2 bg-card/80 border-b border-border/50">
         <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
-          <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
-          <span className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+          <span className="w-2.5 h-2.5 rounded-full bg-danger/80" />
+          <span className="w-2.5 h-2.5 rounded-full bg-warning/80" />
+          <span className="w-2.5 h-2.5 rounded-full bg-success/80" />
         </div>
-        <div className="flex items-center gap-1 ml-2 text-zinc-500">
+        <div className="flex items-center gap-1 ml-2 text-muted-foreground">
           <ArrowLeft className="w-3 h-3" />
           <ArrowRight className="w-3 h-3" />
           <RotateCw className={cn("w-3 h-3", isRunning && "animate-spin")} />
@@ -84,20 +84,22 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
       </div>
 
       {/* URL bar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 border-b border-zinc-700/30">
-        <Globe className="w-3 h-3 text-zinc-500 flex-shrink-0" />
-        <div className="flex-1 text-2xs font-mono text-zinc-400 truncate">
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border/30">
+        <Globe className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+        <div className="flex-1 text-2xs font-mono text-muted-foreground truncate">
           {url ?? "about:blank"}
         </div>
-        {url && <span className="text-3xs text-zinc-600 flex-shrink-0">{extractDomain(url)}</span>}
+        {url && (
+          <span className="text-3xs text-muted-foreground flex-shrink-0">{extractDomain(url)}</span>
+        )}
       </div>
 
       {/* Progress bar */}
       {(isRunning || progress < 100) && progress > 0 && (
-        <div className="h-0.5 bg-zinc-800/50 overflow-hidden">
+        <div className="h-0.5 bg-muted/50 overflow-hidden">
           <div
             className={cn(
-              "h-full bg-blue-400 transition-all",
+              "h-full bg-info transition-all",
               isRunning ? "duration-200" : "duration-300",
             )}
             style={{ width: `${progress}%` }}
@@ -112,10 +114,10 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
             className={cn(
               "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-badge font-medium shadow-lg backdrop-blur-sm",
               isRunning
-                ? "bg-blue-500/15 text-blue-400 border border-blue-500/20"
+                ? "bg-info/15 text-info border border-info/20"
                 : isError
-                  ? "bg-red-500/15 text-red-400 border border-red-500/20"
-                  : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
+                  ? "bg-danger/15 text-danger border border-danger/20"
+                  : "bg-success/15 text-success border border-success/20",
             )}
           >
             {isRunning ? (
@@ -131,7 +133,7 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
       )}
 
       {/* Content area */}
-      <div className="flex-1 overflow-auto bg-zinc-950/60 relative">
+      <div className="flex-1 overflow-auto bg-card/60 relative">
         {screenshotSrc && !imgError ? (
           <img
             src={screenshotSrc}
@@ -141,36 +143,36 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
           />
         ) : screenshotSrc && imgError ? (
           /* Image load error fallback */
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-500">
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
             <AlertTriangle className="w-6 h-6" />
             <span className="text-sm">Screenshot failed to load</span>
           </div>
         ) : textOutput ? (
-          <pre className="p-3 font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words">
+          <pre className="p-3 font-mono text-xs text-foreground whitespace-pre-wrap break-words">
             {textOutput}
           </pre>
         ) : isRunning ? (
           /* Loading skeleton */
           <div className="p-4 space-y-3 animate-pulse">
-            <div className="h-4 bg-zinc-800/50 rounded w-3/4" />
-            <div className="h-3 bg-zinc-800/40 rounded w-full" />
-            <div className="h-3 bg-zinc-800/40 rounded w-5/6" />
-            <div className="h-3 bg-zinc-800/40 rounded w-2/3" />
-            <div className="h-20 bg-zinc-800/30 rounded mt-4" />
-            <div className="h-3 bg-zinc-800/40 rounded w-full" />
-            <div className="h-3 bg-zinc-800/40 rounded w-4/5" />
+            <div className="h-4 bg-muted/50 rounded w-3/4" />
+            <div className="h-3 bg-muted/40 rounded w-full" />
+            <div className="h-3 bg-muted/40 rounded w-5/6" />
+            <div className="h-3 bg-muted/40 rounded w-2/3" />
+            <div className="h-20 bg-muted/30 rounded mt-4" />
+            <div className="h-3 bg-muted/40 rounded w-full" />
+            <div className="h-3 bg-muted/40 rounded w-4/5" />
           </div>
         ) : isCompleted ? (
           /* No-screenshot completion fallback */
           <div className="flex flex-col items-center justify-center h-full gap-3">
-            <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-emerald-400" />
+            <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-success" />
             </div>
-            <span className="text-sm text-zinc-300 font-medium">Browser action completed</span>
-            {url && <span className="text-xs text-zinc-500 font-mono">{url}</span>}
+            <span className="text-sm text-foreground font-medium">Browser action completed</span>
+            {url && <span className="text-xs text-muted-foreground font-mono">{url}</span>}
           </div>
         ) : (
-          <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             No browser content
           </div>
         )}

@@ -69,8 +69,8 @@ export function P2pDashboard() {
         <span
           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
             connected
-              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-              : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+              ? "bg-success/15 text-success dark:bg-success/15 dark:text-success"
+              : "bg-danger/15 text-danger dark:bg-danger/15 dark:text-danger"
           }`}
         >
           {connected ? "Connected" : "Disconnected"}
@@ -78,7 +78,7 @@ export function P2pDashboard() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/5 backdrop-blur-sm p-4 text-sm text-red-400">
+        <div className="rounded-xl border border-danger/20 bg-danger/5 backdrop-blur-sm p-4 text-sm text-danger">
           {error}
         </div>
       )}

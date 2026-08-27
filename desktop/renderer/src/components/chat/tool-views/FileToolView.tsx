@@ -26,42 +26,42 @@ function getFileOp(name: string): {
     return {
       label: "Create File",
       Icon: FilePlus,
-      color: "border-emerald-500/20",
-      iconColor: "text-emerald-400",
+      color: "border-success/20",
+      iconColor: "text-success",
     };
   if (lower.includes("edit") || lower.includes("replace"))
     return {
       label: "Edit File",
       Icon: FileEdit,
-      color: "border-blue-500/20",
-      iconColor: "text-blue-400",
+      color: "border-info/20",
+      iconColor: "text-info",
     };
   if (lower.includes("read"))
     return {
       label: "Read File",
       Icon: FileSearch,
-      color: "border-blue-500/20",
-      iconColor: "text-blue-400",
+      color: "border-info/20",
+      iconColor: "text-info",
     };
   if (lower.includes("delete"))
     return {
       label: "Delete File",
       Icon: FileX,
-      color: "border-red-500/20",
-      iconColor: "text-red-400",
+      color: "border-danger/20",
+      iconColor: "text-danger",
     };
   if (lower.includes("list") || lower.includes("directory"))
     return {
       label: "List Directory",
       Icon: FolderOpen,
-      color: "border-blue-500/20",
-      iconColor: "text-blue-400",
+      color: "border-info/20",
+      iconColor: "text-info",
     };
   return {
     label: "File Operation",
     Icon: FileCode,
-    color: "border-blue-500/20",
-    iconColor: "text-blue-400",
+    color: "border-info/20",
+    iconColor: "text-info",
   };
 }
 
@@ -136,25 +136,27 @@ export function FileToolView({ toolCall }: ToolViewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* File header */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/60 border-b border-zinc-800/50">
+      <div className="flex items-center gap-2 px-3 py-2 bg-card/60 border-b border-border/50">
         <Icon className={cn("w-3.5 h-3.5", iconColor)} />
-        <span className="text-xs font-medium text-zinc-300">{label}</span>
-        {langDisplay && <span className="text-badge text-zinc-500 ml-auto">{langDisplay}</span>}
+        <span className="text-xs font-medium text-foreground">{label}</span>
+        {langDisplay && (
+          <span className="text-badge text-muted-foreground ml-auto">{langDisplay}</span>
+        )}
         {/* Copy button */}
         {output && (
           <button
             onClick={handleCopy}
-            className="ml-1 p-1 rounded hover:bg-zinc-700/50 transition-colors text-zinc-500 hover:text-zinc-300"
+            className="ml-1 p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
             title="Copy content"
           >
-            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+            {copied ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
           </button>
         )}
       </div>
 
       {/* File path */}
       {filePath && (
-        <div className="px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/30 font-mono text-2xs text-zinc-400 truncate">
+        <div className="px-3 py-1.5 bg-card/40 border-b border-border/30 font-mono text-2xs text-muted-foreground truncate">
           {filePath}
         </div>
       )}
@@ -162,10 +164,10 @@ export function FileToolView({ toolCall }: ToolViewProps) {
       {/* Content area */}
       {isDelete && !output ? (
         /* Delete file view */
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-zinc-400">
-          <FileX className="w-10 h-10 text-red-400/60" />
-          <span className="text-sm font-medium text-red-400">File Deleted</span>
-          {filePath && <span className="text-xs text-zinc-500 font-mono">{filePath}</span>}
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+          <FileX className="w-10 h-10 text-danger/60" />
+          <span className="text-sm font-medium text-danger">File Deleted</span>
+          {filePath && <span className="text-xs text-muted-foreground font-mono">{filePath}</span>}
         </div>
       ) : output && language !== "text" ? (
         /* Syntax-highlighted view */
@@ -177,13 +179,13 @@ export function FileToolView({ toolCall }: ToolViewProps) {
         />
       ) : (
         /* Plain text fallback */
-        <pre className="flex-1 overflow-auto p-3 bg-zinc-950/60 font-mono text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap break-words">
+        <pre className="flex-1 overflow-auto p-3 bg-card/60 font-mono text-xs text-foreground leading-relaxed whitespace-pre-wrap break-words">
           {output ? (
             output
           ) : isRunning ? (
-            <span className="text-zinc-500 animate-pulse">Processing file...</span>
+            <span className="text-muted-foreground animate-pulse">Processing file...</span>
           ) : (
-            <span className="text-zinc-600">No content</span>
+            <span className="text-muted-foreground">No content</span>
           )}
         </pre>
       )}

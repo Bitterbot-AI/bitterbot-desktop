@@ -432,7 +432,7 @@ export function CircleMessageList({
                     onClick={() => onDelete(m, isSelf)}
                     aria-label={isSelf ? "Delete message" : "Hide message for me"}
                     title={isSelf ? "Delete for everyone" : "Hide on this device"}
-                    className="text-muted-foreground hover:text-red-400 p-1 rounded"
+                    className="text-muted-foreground hover:text-danger p-1 rounded"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -447,7 +447,7 @@ export function CircleMessageList({
                       onClick={() => toggle(e)}
                       aria-label={`React ${e}`}
                       className={cn(
-                        "text-base leading-none p-1 rounded hover:bg-muted",
+                        "text-base leading-none p-1 rounded hover:bg-muted/90",
                         myEmojis.has(e) && "bg-circle-you-soft",
                       )}
                     >

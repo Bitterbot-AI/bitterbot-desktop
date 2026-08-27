@@ -51,23 +51,20 @@ function TreeNode({
         onClick={() => (isDir ? onToggleDir(node.path) : onOpenFile(node.path))}
         className={cn(
           "w-full flex items-center gap-1 py-[3px] px-2 text-left text-xs font-mono",
-          "hover:bg-[rgba(139,92,246,0.06)] transition-colors",
-          isActive && "bg-[rgba(139,92,246,0.12)] text-purple-300",
-          !isActive && "text-zinc-400",
+          "hover:bg-brand/15 transition-colors",
+          isActive && "bg-brand/10 text-brand",
+          !isActive && "text-muted-foreground",
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
-        {Chevron && <Chevron className="w-3 h-3 flex-shrink-0 text-zinc-500" />}
+        {Chevron && <Chevron className="w-3 h-3 flex-shrink-0 text-muted-foreground" />}
         {!Chevron && <span className="w-3 flex-shrink-0" />}
         <FileIcon
-          className={cn(
-            "w-3.5 h-3.5 flex-shrink-0",
-            isDir ? "text-amber-400/70" : "text-blue-400/60",
-          )}
+          className={cn("w-3.5 h-3.5 flex-shrink-0", isDir ? "text-warning/70" : "text-info/60")}
         />
         <span className="truncate">{node.name}</span>
         {!isDir && node.size !== undefined && (
-          <span className="ml-auto text-badge text-zinc-600 flex-shrink-0">
+          <span className="ml-auto text-badge text-muted-foreground flex-shrink-0">
             {formatSize(node.size)}
           </span>
         )}
@@ -105,7 +102,7 @@ function FileContent() {
   if (fileLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-sm text-zinc-500 animate-pulse">Loading file...</div>
+        <div className="text-sm text-muted-foreground animate-pulse">Loading file...</div>
       </div>
     );
   }
@@ -113,7 +110,7 @@ function FileContent() {
   if (fileError) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-sm text-red-400">{fileError}</div>
+        <div className="text-sm text-danger">{fileError}</div>
       </div>
     );
   }
@@ -121,10 +118,10 @@ function FileContent() {
   if (!tab) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-2 text-zinc-500">
+        <div className="text-center space-y-2 text-muted-foreground">
           <FileCode className="w-10 h-10 mx-auto opacity-30" />
           <p className="text-sm">Select a file to view</p>
-          <p className="text-xs text-zinc-600">
+          <p className="text-xs text-muted-foreground">
             Click any file in the tree or press Ctrl+P to quick open
           </p>
         </div>
@@ -154,9 +151,13 @@ function FileContent() {
   return (
     <div className="flex-1 flex flex-col min-w-0">
       {/* File header bar */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/50 bg-zinc-900/40">
-        <span className="text-badge text-zinc-500 flex-shrink-0 font-mono">{tab.language}</span>
-        <span className="text-badge text-zinc-600 flex-shrink-0">{formatSize(tab.size)}</span>
+      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border/50 bg-card/40">
+        <span className="text-badge text-muted-foreground flex-shrink-0 font-mono">
+          {tab.language}
+        </span>
+        <span className="text-badge text-muted-foreground flex-shrink-0">
+          {formatSize(tab.size)}
+        </span>
 
         <div className="ml-auto flex items-center gap-1">
           <button
@@ -164,8 +165,8 @@ function FileContent() {
             className={cn(
               "w-6 h-6 flex items-center justify-center rounded transition-colors",
               tab.editing
-                ? "bg-purple-500/20 text-purple-300"
-                : "hover:bg-zinc-700/50 text-zinc-500 hover:text-zinc-300",
+                ? "bg-brand/20 text-brand"
+                : "hover:bg-muted/60 text-muted-foreground hover:text-foreground",
             )}
             title={tab.editing ? "View mode" : "Edit mode"}
           >
@@ -173,7 +174,7 @@ function FileContent() {
           </button>
           <button
             onClick={handleCopy}
-            className="w-6 h-6 flex items-center justify-center rounded hover:bg-zinc-700/50 text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
             title="Copy content"
           >
             <Copy className="w-3 h-3" />
@@ -304,7 +305,7 @@ export function WorkspaceView() {
   if (!isConnected) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-sm text-zinc-500">Connecting to gateway...</p>
+        <p className="text-sm text-muted-foreground">Connecting to gateway...</p>
       </div>
     );
   }
@@ -315,10 +316,12 @@ export function WorkspaceView() {
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 border-b border-border/30">
-        <FolderOpen className="w-4 h-4 text-purple-400" />
+        <FolderOpen className="w-4 h-4 text-brand" />
         <h2 className="text-sm font-semibold text-foreground">Workspace</h2>
         {root && (
-          <span className="text-badge text-zinc-500 font-mono truncate max-w-[400px]">{root}</span>
+          <span className="text-badge text-muted-foreground font-mono truncate max-w-[400px]">
+            {root}
+          </span>
         )}
         <div className="ml-auto flex items-center gap-1">
           <button
@@ -340,7 +343,7 @@ export function WorkspaceView() {
       {/* Main content: tree + viewer */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left pane: file tree or search */}
-        <div className="w-[260px] flex-shrink-0 border-r border-zinc-800/40 flex flex-col bg-zinc-900/20">
+        <div className="w-[260px] flex-shrink-0 border-r border-border/40 flex flex-col bg-card/20">
           {showSearch ? (
             <ContentSearchPanel onClose={() => setShowSearch(false)} />
           ) : (
@@ -348,13 +351,13 @@ export function WorkspaceView() {
               <TreeFilterInput value={treeFilter} onChange={setTreeFilter} />
               <div className="flex-1 overflow-y-auto scrollbar-none">
                 {treeLoading && tree.length === 0 ? (
-                  <div className="p-4 text-xs text-zinc-500 animate-pulse">
+                  <div className="p-4 text-xs text-muted-foreground animate-pulse">
                     Loading workspace...
                   </div>
                 ) : treeError ? (
-                  <div className="p-4 text-xs text-red-400">{treeError}</div>
+                  <div className="p-4 text-xs text-danger">{treeError}</div>
                 ) : filteredTree.length === 0 ? (
-                  <div className="p-4 text-xs text-zinc-600">
+                  <div className="p-4 text-xs text-muted-foreground">
                     {treeFilter ? "No matching files" : "Workspace is empty"}
                   </div>
                 ) : (

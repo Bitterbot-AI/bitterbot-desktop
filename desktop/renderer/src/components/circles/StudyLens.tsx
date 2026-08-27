@@ -102,7 +102,7 @@ export function StudyLens({
                     className={
                       answered === "correct"
                         ? "ml-2 text-2xs font-medium text-circle-you"
-                        : "ml-2 text-2xs font-medium text-amber-600 dark:text-amber-500"
+                        : "ml-2 text-2xs font-medium text-warning dark:text-warning"
                     }
                   >
                     {answered === "correct" ? "✓ recorded" : "✗ scheduled for review"}

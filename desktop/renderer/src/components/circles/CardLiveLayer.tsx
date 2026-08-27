@@ -47,8 +47,8 @@ function StatusPill({
   const tones: Record<string, string> = {
     quiet: "border text-muted-foreground",
     live: "border-circle-agent/50 bg-circle-agent-soft/50 text-circle-agent",
-    waiting: "border-amber-600/50 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-    done: "border-emerald-600/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+    waiting: "border-warning/50 bg-warning/10 text-warning dark:text-warning",
+    done: "border-success/50 bg-success/10 text-success dark:text-success",
   };
   return (
     <span
@@ -190,7 +190,7 @@ export function CardLiveLayer({
             <div key={m.eventHash} className="flex gap-2 text-sm">
               <div
                 className={`w-0.5 shrink-0 self-stretch rounded ${
-                  m.kind === "option.add" ? "bg-emerald-500" : "bg-circle-agent"
+                  m.kind === "option.add" ? "bg-success" : "bg-circle-agent"
                 }`}
               />
               <div className="min-w-0">
@@ -199,7 +199,7 @@ export function CardLiveLayer({
                   {m.agentAuthored && <span className="text-circle-agent">&apos;s agent</span>}
                 </div>
                 {m.kind === "option.add" ? (
-                  <div className="font-medium text-emerald-600">+ {m.label}</div>
+                  <div className="font-medium text-success">+ {m.label}</div>
                 ) : m.kind === "vote" ? (
                   <div className="text-muted-foreground">
                     voted{" "}
@@ -316,7 +316,7 @@ function OptionsTally({
               {voters.length > 0 ? voters.map(who).join(" · ") : ""}
             </span>
             {mine ? (
-              <span className="shrink-0 text-2xs font-medium text-emerald-600">
+              <span className="shrink-0 text-2xs font-medium text-success">
                 <Check className="inline h-3 w-3" /> you
               </span>
             ) : (
@@ -325,7 +325,7 @@ function OptionsTally({
                   type="button"
                   disabled={busy}
                   onClick={() => onVote?.(o.optionId)}
-                  className="shrink-0 rounded border border-emerald-600 px-2 py-0.5 text-2xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                  className="shrink-0 rounded border border-success px-2 py-0.5 text-2xs font-medium text-success dark:text-success hover:bg-success/20"
                 >
                   Vote
                 </button>

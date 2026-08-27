@@ -25,7 +25,7 @@ function StatCard({
       className={cn(
         "rounded-xl border p-4",
         "bg-card/60 backdrop-blur-sm",
-        accent ? "border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.1)]" : "border-border/20",
+        accent ? "border-brand/30 shadow-[0_0_15px_rgba(168,85,247,0.1)]" : "border-border/20",
       )}
     >
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
@@ -42,7 +42,7 @@ function ChannelCard({ name, linked }: { name: string; linked: boolean }) {
       <span
         className={cn(
           "text-xs px-2 py-0.5 rounded-full",
-          linked ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground",
+          linked ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
         )}
       >
         {linked ? "linked" : "configured"}
@@ -125,8 +125,8 @@ export function OverviewView() {
           disabled={loading}
           className={cn(
             "px-3 py-1.5 text-xs rounded-lg",
-            "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-            "border border-purple-500/20 transition-colors",
+            "bg-brand/10 text-brand hover:bg-brand/30",
+            "border border-brand/20 transition-colors",
             loading && "opacity-50",
           )}
         >
@@ -157,7 +157,7 @@ export function OverviewView() {
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <span className="text-muted-foreground">Status: </span>
-            <span className={cn(status === "connected" ? "text-green-400" : "text-yellow-400")}>
+            <span className={cn(status === "connected" ? "text-success" : "text-warning")}>
               {status}
             </span>
           </div>
@@ -204,7 +204,7 @@ export function OverviewView() {
             </p>
             <button
               onClick={() => setActiveTab("channels")}
-              className="flex-shrink-0 px-3 py-1.5 text-xs rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-colors"
+              className="flex-shrink-0 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand/90 transition-colors"
             >
               Set up channels
             </button>

@@ -151,19 +151,19 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
           </div>
 
           {errorMsg ? (
-            <div className="px-3 py-2 rounded-md border border-red-500/30 bg-red-500/10 text-sm text-red-400">
+            <div className="px-3 py-2 rounded-md border border-danger/30 bg-danger/10 text-sm text-danger">
               {errorMsg}
             </div>
           ) : null}
 
           {phase === "testing" ? (
-            <div className="px-3 py-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 text-sm text-yellow-400">
+            <div className="px-3 py-2 rounded-md border border-warning/30 bg-warning/10 text-sm text-warning">
               Testing connection…
             </div>
           ) : null}
 
           {phase === "success" ? (
-            <div className="px-3 py-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-sm text-emerald-400">
+            <div className="px-3 py-2 rounded-md border border-success/30 bg-success/10 text-sm text-success">
               Connected. Loading Control UI…
             </div>
           ) : null}
@@ -173,7 +173,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
               <button
                 type="button"
                 onClick={handleReset}
-                className="px-4 py-2 rounded-md border border-border bg-muted text-sm font-medium hover:bg-muted/80"
+                className="px-4 py-2 rounded-md border border-border bg-muted text-sm font-medium hover:bg-muted/90"
               >
                 Try again
               </button>

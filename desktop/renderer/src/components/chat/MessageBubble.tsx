@@ -170,7 +170,7 @@ export const MessageBubble = memo(function MessageBubble({
             <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
               Reasoning
             </summary>
-            <div className="mt-1 text-xs text-muted-foreground/80 italic pl-3 border-l-2 border-purple-500/20">
+            <div className="mt-1 text-xs text-muted-foreground/80 italic pl-3 border-l-2 border-brand/20">
               {message.thinking}
             </div>
           </details>
@@ -269,10 +269,10 @@ export const MessageBubble = memo(function MessageBubble({
                     "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-2xs font-medium",
                     "border transition-all cursor-pointer hover:scale-[1.02]",
                     isError
-                      ? "bg-red-500/5 border-red-500/20 text-red-400 hover:bg-red-500/10"
+                      ? "bg-danger/5 border-danger/20 text-danger hover:bg-danger/20"
                       : isComplete
-                        ? "bg-gradient-to-r from-emerald-500/10 to-emerald-600/5 border-emerald-500/30 text-emerald-400 hover:from-emerald-500/15 hover:to-emerald-600/10"
-                        : "bg-purple-500/5 border-purple-500/20 text-purple-400 hover:bg-purple-500/10",
+                        ? "bg-gradient-to-r from-success/10 to-success/5 border-success/30 text-success hover:from-success/15 hover:to-success/10"
+                        : "bg-brand/5 border-brand/20 text-brand hover:bg-brand/20",
                   )}
                 >
                   <Icon className="w-3 h-3 flex-shrink-0" />
@@ -286,11 +286,11 @@ export const MessageBubble = memo(function MessageBubble({
                     </>
                   )}
                   {isError ? (
-                    <AlertTriangle className="w-2.5 h-2.5 text-red-400 flex-shrink-0" />
+                    <AlertTriangle className="w-2.5 h-2.5 text-danger flex-shrink-0" />
                   ) : isComplete ? (
-                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 flex-shrink-0" />
+                    <CheckCircle2 className="w-2.5 h-2.5 text-success flex-shrink-0" />
                   ) : tc.result !== undefined ? (
-                    <CheckCircle className="w-2.5 h-2.5 text-emerald-400 flex-shrink-0" />
+                    <CheckCircle className="w-2.5 h-2.5 text-success flex-shrink-0" />
                   ) : null}
                 </button>
               );

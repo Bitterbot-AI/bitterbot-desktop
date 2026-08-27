@@ -23,7 +23,7 @@ function AgentFilePanel({
         <div className="flex items-center gap-2">
           <span className="text-xs font-mono text-foreground">{file.name}</span>
           {file.missing && (
-            <span className="text-badge px-1 py-0.5 rounded bg-yellow-500/10 text-yellow-400">
+            <span className="text-badge px-1 py-0.5 rounded bg-warning/10 text-warning">
               missing
             </span>
           )}
@@ -41,7 +41,7 @@ function AgentFilePanel({
                   onSave(agentId, file.name, draft);
                   setEditing(false);
                 }}
-                className="px-2 py-0.5 text-xs rounded bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
+                className="px-2 py-0.5 text-xs rounded bg-brand/20 text-brand hover:bg-brand/40"
               >
                 Save
               </button>
@@ -50,7 +50,7 @@ function AgentFilePanel({
                   setDraft(file.content ?? "");
                   setEditing(false);
                 }}
-                className="px-2 py-0.5 text-xs rounded bg-muted text-muted-foreground hover:bg-muted/80"
+                className="px-2 py-0.5 text-xs rounded bg-muted text-muted-foreground hover:bg-muted/90"
               >
                 Cancel
               </button>
@@ -61,7 +61,7 @@ function AgentFilePanel({
                 setDraft(file.content ?? "");
                 setEditing(true);
               }}
-              className="px-2 py-0.5 text-xs rounded bg-muted text-muted-foreground hover:bg-muted/80"
+              className="px-2 py-0.5 text-xs rounded bg-muted text-muted-foreground hover:bg-muted/90"
             >
               Edit
             </button>
@@ -111,7 +111,7 @@ function FilesSections({
     <div className="space-y-5">
       {genome.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold text-[#a855f7] uppercase tracking-wider px-1 mb-2">
+          <h4 className="text-xs font-semibold text-brand uppercase tracking-wider px-1 mb-2">
             Core identity (read-mostly)
           </h4>
           <p className="text-badge text-muted-foreground px-1 mb-2">
@@ -128,7 +128,7 @@ function FilesSections({
 
       {memory.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold text-[#00D4E6] uppercase tracking-wider px-1 mb-2">
+          <h4 className="text-xs font-semibold text-brand-cyan uppercase tracking-wider px-1 mb-2">
             Working memory (agent-maintained)
           </h4>
           <p className="text-badge text-muted-foreground px-1 mb-2">
@@ -197,9 +197,7 @@ function AgentDetail({
             <p className="text-xs text-muted-foreground font-mono">{agent.id}</p>
           </div>
           {agent.isDefault && (
-            <span className="text-xs px-2 py-0.5 rounded bg-purple-500/10 text-purple-300">
-              default
-            </span>
+            <span className="text-xs px-2 py-0.5 rounded bg-brand/10 text-brand">default</span>
           )}
         </div>
         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -325,7 +323,7 @@ export function AgentsView() {
       {/* Agent list sidebar */}
       <div className="w-48 border-r border-border/20 overflow-y-auto flex-shrink-0">
         <div className="p-3">
-          <h2 className="text-xs font-semibold text-[#00D4E6] uppercase tracking-wider mb-2">
+          <h2 className="text-xs font-semibold text-brand-cyan uppercase tracking-wider mb-2">
             Agents
           </h2>
           {loading ? (
@@ -339,17 +337,15 @@ export function AgentsView() {
                   className={cn(
                     "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
                     agent.id === selectedAgentId
-                      ? "bg-purple-500/20 text-purple-300"
-                      : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                      ? "bg-brand/20 text-brand"
+                      : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
                   )}
                 >
                   <div className="flex items-center gap-1.5">
                     {agent.avatar && <span className="text-sm">{agent.avatar}</span>}
                     <span className="truncate">{agent.name ?? agent.id}</span>
                   </div>
-                  {agent.isDefault && (
-                    <span className="text-badge text-purple-400/60">default</span>
-                  )}
+                  {agent.isDefault && <span className="text-badge text-brand/60">default</span>}
                 </button>
               ))}
             </div>

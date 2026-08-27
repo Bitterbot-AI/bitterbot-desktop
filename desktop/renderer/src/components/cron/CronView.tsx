@@ -25,7 +25,7 @@ function CronJobCard({
           onClick={() => onToggle(job.id, !job.enabled)}
           className={cn(
             "mt-0.5 w-9 h-5 rounded-full transition-colors relative flex-shrink-0",
-            job.enabled ? "bg-purple-500" : "bg-muted",
+            job.enabled ? "bg-brand" : "bg-muted",
           )}
         >
           <span
@@ -52,13 +52,13 @@ function CronJobCard({
         <div className="flex items-center gap-1">
           <button
             onClick={() => onRun(job.id)}
-            className="px-2 py-1 text-xs rounded bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border border-purple-500/20"
+            className="px-2 py-1 text-xs rounded bg-brand/10 text-brand hover:bg-brand/30 border border-brand/20"
           >
             Run
           </button>
           <button
             onClick={() => onRemove(job.id, job.label ?? job.id)}
-            className="px-2 py-1 text-xs rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+            className="px-2 py-1 text-xs rounded bg-danger/10 text-danger hover:bg-danger/30 border border-danger/20"
           >
             Remove
           </button>
@@ -98,7 +98,7 @@ function AddCronForm({ onAdd }: { onAdd: (params: Record<string, unknown>) => vo
           placeholder="Label (optional)"
           className={cn(
             "h-8 px-3 text-sm rounded-lg border bg-transparent",
-            "border-border/30 focus:border-purple-500 focus:outline-none",
+            "border-border/30 focus:border-brand focus:outline-none",
           )}
         />
         <input
@@ -107,7 +107,7 @@ function AddCronForm({ onAdd }: { onAdd: (params: Record<string, unknown>) => vo
           placeholder="Cron schedule"
           className={cn(
             "h-8 px-3 text-sm font-mono rounded-lg border bg-transparent",
-            "border-border/30 focus:border-purple-500 focus:outline-none",
+            "border-border/30 focus:border-brand focus:outline-none",
           )}
         />
       </div>
@@ -118,7 +118,7 @@ function AddCronForm({ onAdd }: { onAdd: (params: Record<string, unknown>) => vo
         rows={2}
         className={cn(
           "w-full px-3 py-2 text-sm rounded-lg border bg-transparent resize-none",
-          "border-border/30 focus:border-purple-500 focus:outline-none",
+          "border-border/30 focus:border-brand focus:outline-none",
         )}
       />
       <button
@@ -126,7 +126,7 @@ function AddCronForm({ onAdd }: { onAdd: (params: Record<string, unknown>) => vo
         disabled={!text.trim()}
         className={cn(
           "px-4 py-1.5 text-xs rounded-lg font-medium",
-          "bg-purple-500 text-white hover:bg-purple-600",
+          "bg-brand text-white hover:bg-brand/90",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           "transition-colors",
         )}
@@ -248,8 +248,8 @@ export function CronView() {
           disabled={loading}
           className={cn(
             "px-3 py-1.5 text-xs rounded-lg",
-            "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-            "border border-purple-500/20 transition-colors",
+            "bg-brand/10 text-brand hover:bg-brand/30",
+            "border border-brand/20 transition-colors",
             loading && "opacity-50",
           )}
         >

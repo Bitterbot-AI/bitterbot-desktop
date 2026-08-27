@@ -115,7 +115,7 @@ export function GetStartedCard({ channelsConfigured }: { channelsConfigured: boo
   return (
     <div
       data-testid="get-started-card"
-      className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4"
+      className="rounded-xl border border-brand/20 bg-brand/5 p-4"
     >
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-medium text-foreground">Get started</h2>
@@ -134,7 +134,7 @@ export function GetStartedCard({ channelsConfigured }: { channelsConfigured: boo
               className={cn(
                 "w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0",
                 step.done
-                  ? "bg-green-500/20 border-green-500/40 text-green-400"
+                  ? "bg-success/20 border-success/40 text-success"
                   : "border-muted-foreground/30",
               )}
             >
@@ -151,7 +151,7 @@ export function GetStartedCard({ channelsConfigured }: { channelsConfigured: boo
             {!step.done && (
               <button
                 onClick={() => setActiveTab(step.tab)}
-                className="px-2 py-1 text-xs rounded bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border border-purple-500/20 transition-colors"
+                className="px-2 py-1 text-xs rounded bg-brand/10 text-brand hover:bg-brand/30 border border-brand/20 transition-colors"
               >
                 {step.cta}
               </button>

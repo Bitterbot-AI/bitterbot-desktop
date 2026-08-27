@@ -153,8 +153,8 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                 <span
                   className={cn(
                     "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-card",
-                    st === "on" && "bg-green-500",
-                    st === "idle" && "bg-amber-500",
+                    st === "on" && "bg-success",
+                    st === "idle" && "bg-warning",
                     st === "off" && "bg-muted-foreground",
                   )}
                 />
@@ -170,7 +170,7 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                   {m.nameCollision && (
                     <span
                       title="Another member you know also goes by this name — check who this is before trusting them."
-                      className="text-amber-600 dark:text-amber-500 shrink-0"
+                      className="text-warning dark:text-warning shrink-0"
                     >
                       <AlertTriangle className="w-3.5 h-3.5" aria-label="shared name" />
                     </span>
@@ -326,8 +326,8 @@ export function CircleMembers({ circle }: { circle: Circle }) {
                     className={cn(
                       "shrink-0 tabular-nums",
                       cents > 0
-                        ? "text-emerald-700 dark:text-emerald-400"
-                        : "text-amber-700 dark:text-amber-400",
+                        ? "text-success dark:text-success"
+                        : "text-warning dark:text-warning",
                     )}
                   >
                     {cents > 0

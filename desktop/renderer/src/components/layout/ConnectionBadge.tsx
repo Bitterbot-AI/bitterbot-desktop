@@ -7,18 +7,18 @@ export function ConnectionBadge() {
   const statusConfig = {
     disconnected: {
       label: "Disconnected",
-      dotClass: "bg-red-500",
-      textClass: "text-red-400",
+      dotClass: "bg-danger",
+      textClass: "text-danger",
     },
     connecting: {
       label: "Connecting...",
-      dotClass: "bg-yellow-500 animate-pulse",
-      textClass: "text-yellow-400",
+      dotClass: "bg-warning animate-pulse",
+      textClass: "text-warning",
     },
     connected: {
       label: "Connected to Bitterbot Gateway",
-      dotClass: "bg-emerald-500",
-      textClass: "text-emerald-400",
+      dotClass: "bg-success",
+      textClass: "text-success",
     },
   }[status];
 

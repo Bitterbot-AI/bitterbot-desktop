@@ -27,7 +27,7 @@ function DailyChart({ daily }: { daily: UsageResult["aggregates"]["daily"] }) {
           return (
             <div key={day.date} className="flex-1 flex flex-col items-center group relative">
               <div
-                className="w-full bg-purple-500/40 hover:bg-purple-500/60 rounded-t transition-colors"
+                className="w-full bg-brand/40 hover:bg-brand/70 rounded-t transition-colors"
                 style={{ height: `${height}%` }}
                 title={`${day.date}: ${formatTokens(day.tokens)} tokens, ${formatCost(day.cost)}`}
               />
@@ -61,9 +61,7 @@ function ModelBreakdown({ byModel }: { byModel: UsageResult["aggregates"]["byMod
               <span className="text-muted-foreground">
                 {formatTokens(entry.totals.totalTokens)}
               </span>
-              <span className="text-purple-300 font-medium">
-                {formatCost(entry.totals.totalCost)}
-              </span>
+              <span className="text-brand font-medium">{formatCost(entry.totals.totalCost)}</span>
             </div>
           </div>
         ))}
@@ -84,7 +82,7 @@ function SessionList({ sessions }: { sessions: UsageResult["sessions"] }) {
         {sessions.map((session, i) => (
           <div
             key={session.key ?? i}
-            className="flex items-center justify-between px-4 py-2 border-b border-border/5 last:border-0 hover:bg-muted/20"
+            className="flex items-center justify-between px-4 py-2 border-b border-border/5 last:border-0 hover:bg-muted/30"
           >
             <div className="min-w-0 flex-1">
               <span className="text-xs text-foreground truncate block">
@@ -100,7 +98,7 @@ function SessionList({ sessions }: { sessions: UsageResult["sessions"] }) {
                   <span className="text-muted-foreground">
                     {formatTokens(session.usage.totalTokens)}
                   </span>
-                  <span className="text-purple-300">{formatCost(session.usage.totalCost)}</span>
+                  <span className="text-brand">{formatCost(session.usage.totalCost)}</span>
                 </>
               )}
             </div>
@@ -165,9 +163,7 @@ export function UsageView() {
                 onClick={() => setDays(d)}
                 className={cn(
                   "px-2.5 py-1 text-xs transition-colors",
-                  days === d
-                    ? "bg-purple-500/20 text-purple-300"
-                    : "text-muted-foreground hover:bg-muted/30",
+                  days === d ? "bg-brand/20 text-brand" : "text-muted-foreground hover:bg-muted/40",
                 )}
               >
                 {d}d
@@ -179,8 +175,8 @@ export function UsageView() {
             disabled={loading}
             className={cn(
               "px-3 py-1.5 text-xs rounded-lg",
-              "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-              "border border-purple-500/20 transition-colors",
+              "bg-brand/10 text-brand hover:bg-brand/30",
+              "border border-brand/20 transition-colors",
               loading && "opacity-50",
             )}
           >

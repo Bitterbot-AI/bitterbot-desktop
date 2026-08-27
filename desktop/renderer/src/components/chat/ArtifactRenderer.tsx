@@ -54,7 +54,7 @@ export function ArtifactRenderer({ artifactId, canvasBaseUrl, className }: Artif
     <div className={cn("relative w-full h-full bg-black/90 rounded-lg overflow-hidden", className)}>
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/60">
-          <div className="flex items-center gap-2 text-zinc-400">
+          <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span className="text-sm">Loading artifact...</span>
           </div>
@@ -62,9 +62,9 @@ export function ArtifactRenderer({ artifactId, canvasBaseUrl, className }: Artif
       )}
 
       {error && (
-        <div className="absolute top-2 left-2 right-2 z-20 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
-          <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-          <span className="text-xs text-red-400 truncate">{error}</span>
+        <div className="absolute top-2 left-2 right-2 z-20 flex items-center gap-2 px-3 py-2 rounded-lg bg-danger/10 border border-danger/20">
+          <AlertTriangle className="w-3.5 h-3.5 text-danger flex-shrink-0" />
+          <span className="text-xs text-danger truncate">{error}</span>
         </div>
       )}
 

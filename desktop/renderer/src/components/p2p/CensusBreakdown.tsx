@@ -46,7 +46,7 @@ export function CensusBreakdown({
         <DistributionPanel
           title="By node tier"
           rows={byTier}
-          color="text-purple-400"
+          color="text-brand"
           source={source}
           generatedAt={generatedAt}
         />
@@ -55,7 +55,7 @@ export function CensusBreakdown({
         <DistributionPanel
           title="By address type"
           rows={byAddressType}
-          color="text-cyan-400"
+          color="text-info"
           source={source}
           generatedAt={generatedAt}
         />

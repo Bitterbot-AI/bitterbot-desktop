@@ -19,14 +19,14 @@ export function FileBreadcrumb({
   const dirSegments = segments.slice(0, -1);
 
   return (
-    <Breadcrumb className="px-3 py-1.5 border-b border-zinc-800/30 bg-zinc-900/20">
+    <Breadcrumb className="px-3 py-1.5 border-b border-border/30 bg-card/20">
       <BreadcrumbList className="text-2xs gap-1 flex-nowrap">
         {dirSegments.map((seg, i) => {
           const dirPath = segments.slice(0, i + 1).join("/");
           return (
             <BreadcrumbItem key={dirPath} className="gap-1">
               <BreadcrumbLink
-                className="cursor-pointer text-zinc-500 hover:text-zinc-300 transition-colors font-mono"
+                className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors font-mono"
                 onClick={() => onNavigateDir(dirPath)}
               >
                 {seg}
@@ -36,7 +36,7 @@ export function FileBreadcrumb({
           );
         })}
         <BreadcrumbItem>
-          <BreadcrumbPage className="text-zinc-300 font-mono text-2xs">{fileName}</BreadcrumbPage>
+          <BreadcrumbPage className="text-foreground font-mono text-2xs">{fileName}</BreadcrumbPage>
         </BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>

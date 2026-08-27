@@ -20,11 +20,11 @@ export type InterventionFiredEvent = {
 };
 
 const TYPE_COLORS: Record<InterventionFiredEvent["intervention"]["type"], string> = {
-  modify: "bg-amber-500/10 text-amber-200 border-amber-500/30",
-  inject: "bg-blue-500/10 text-blue-200 border-blue-500/30",
-  require_prereq: "bg-purple-500/10 text-purple-200 border-purple-500/30",
-  block: "bg-red-500/10 text-red-200 border-red-500/30",
-  noop: "bg-slate-500/10 text-slate-300 border-slate-500/30",
+  modify: "bg-warning/10 text-warning border-warning/30",
+  inject: "bg-info/10 text-info border-info/30",
+  require_prereq: "bg-brand/10 text-brand border-brand/30",
+  block: "bg-danger/10 text-danger border-danger/30",
+  noop: "bg-muted/10 text-foreground border-border/30",
 };
 
 const TYPE_LABEL: Record<InterventionFiredEvent["intervention"]["type"], string> = {
@@ -76,12 +76,12 @@ export function InterventionEventCard({ event }: { event: InterventionFiredEvent
         <div className="text-muted-foreground/80">{event.intervention.reason}</div>
       )}
       {event.intervention.type === "require_prereq" && event.intervention.tool && (
-        <div className="text-purple-300/80">
+        <div className="text-brand/80">
           → requires <span className="font-mono">{event.intervention.tool}</span>
         </div>
       )}
       {event.intervention.type === "block" && event.intervention.userVisibleMessage && (
-        <div className="text-red-300/90 italic">{event.intervention.userVisibleMessage}</div>
+        <div className="text-danger/90 italic">{event.intervention.userVisibleMessage}</div>
       )}
     </div>
   );

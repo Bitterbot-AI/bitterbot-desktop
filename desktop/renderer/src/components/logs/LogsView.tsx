@@ -24,8 +24,8 @@ function LogLine({ text, levelFilter }: { text: string; levelFilter: Set<string>
     <div
       className={cn(
         "px-4 py-0.5 font-mono text-xs leading-5 whitespace-pre-wrap break-all",
-        level === "error" && "text-red-400",
-        level === "warn" && "text-yellow-400",
+        level === "error" && "text-danger",
+        level === "warn" && "text-warning",
         level === "debug" && "text-muted-foreground/60",
         level === "info" && "text-foreground/80",
       )}
@@ -115,7 +115,7 @@ export function LogsView() {
           placeholder="Filter…"
           className={cn(
             "h-7 px-2 text-xs rounded border bg-transparent flex-1 max-w-xs",
-            "border-border/30 focus:border-purple-500 focus:outline-none",
+            "border-border/30 focus:border-brand focus:outline-none",
           )}
         />
         <div className="flex items-center gap-1">
@@ -127,12 +127,12 @@ export function LogsView() {
                 "px-2 py-0.5 text-xs rounded transition-colors",
                 levelFilter.has(level)
                   ? level === "error"
-                    ? "bg-red-500/20 text-red-400"
+                    ? "bg-danger/20 text-danger"
                     : level === "warn"
-                      ? "bg-yellow-500/20 text-yellow-400"
+                      ? "bg-warning/20 text-warning"
                       : level === "debug"
                         ? "bg-muted text-muted-foreground"
-                        : "bg-purple-500/20 text-purple-300"
+                        : "bg-brand/20 text-brand"
                   : "bg-muted/20 text-muted-foreground/40",
               )}
             >
@@ -151,7 +151,7 @@ export function LogsView() {
         </label>
         <button
           onClick={clear}
-          className="px-2 py-0.5 text-xs rounded bg-muted/30 text-muted-foreground hover:bg-muted/50 transition-colors"
+          className="px-2 py-0.5 text-xs rounded bg-muted/30 text-muted-foreground hover:bg-muted/60 transition-colors"
         >
           Clear
         </button>

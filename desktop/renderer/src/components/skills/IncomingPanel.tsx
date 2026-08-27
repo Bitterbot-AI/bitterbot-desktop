@@ -43,10 +43,10 @@ function sourceLine(item: IncomingSkill): string {
 }
 
 const ORIGIN_BADGE: Record<IncomingOrigin, { label: string; cls: string } | null> = {
-  peer: { label: "from peer", cls: "bg-blue-500/10 text-blue-300 border-blue-500/20" },
+  peer: { label: "from peer", cls: "bg-info/10 text-info border-info/20" },
   "external-scrape": { label: "local harvest", cls: "bg-muted text-muted-foreground" },
-  "local-dream": { label: "local · dream", cls: "bg-purple-500/10 text-purple-300" },
-  incomplete: { label: "incomplete", cls: "bg-amber-500/10 text-amber-300 border-amber-500/20" },
+  "local-dream": { label: "local · dream", cls: "bg-brand/10 text-brand" },
+  incomplete: { label: "incomplete", cls: "bg-warning/10 text-warning border-warning/20" },
 };
 
 type IncomingListResult = { skills?: IncomingSkill[] };
@@ -67,11 +67,11 @@ function shortPeer(peer?: string): string {
 }
 
 function severityClass(severity?: string): string {
-  if (severity === "critical") return "bg-red-500/15 text-red-300 border-red-500/30";
-  if (severity === "high") return "bg-orange-500/15 text-orange-300 border-orange-500/30";
-  if (severity === "medium") return "bg-amber-500/15 text-amber-300 border-amber-500/30";
-  if (severity === "low") return "bg-yellow-500/10 text-yellow-300 border-yellow-500/20";
-  return "bg-zinc-500/10 text-zinc-300 border-zinc-500/20";
+  if (severity === "critical") return "bg-danger/15 text-danger border-danger/30";
+  if (severity === "high") return "bg-warning/15 text-warning border-warning/30";
+  if (severity === "medium") return "bg-warning/15 text-warning border-warning/30";
+  if (severity === "low") return "bg-warning/10 text-warning border-warning/20";
+  return "bg-muted/10 text-foreground border-border/20";
 }
 
 function ImportFromAgentskills() {
@@ -136,7 +136,7 @@ function ImportFromAgentskills() {
           }}
           className={cn(
             "flex-1 h-8 px-3 text-sm rounded-md border bg-transparent text-foreground",
-            "border-border/30 focus:border-purple-500 focus:outline-none",
+            "border-border/30 focus:border-brand focus:outline-none",
             busy && "opacity-50",
           )}
         />
@@ -145,7 +145,7 @@ function ImportFromAgentskills() {
           disabled={busy || !input.trim() || gwStatus !== "connected"}
           className={cn(
             "px-3 py-1.5 text-xs rounded-md border transition-colors",
-            "bg-purple-500/10 text-purple-300 border-purple-500/20 hover:bg-purple-500/20",
+            "bg-brand/10 text-brand border-brand/20 hover:bg-brand/30",
             (busy || !input.trim()) && "opacity-50 cursor-not-allowed",
           )}
         >
@@ -153,7 +153,7 @@ function ImportFromAgentskills() {
         </button>
       </div>
       {message && (
-        <div className={cn("text-xs", message.kind === "ok" ? "text-green-300" : "text-red-300")}>
+        <div className={cn("text-xs", message.kind === "ok" ? "text-success" : "text-danger")}>
           {message.text}
         </div>
       )}
@@ -284,7 +284,7 @@ export function IncomingPanel({
     <div className="space-y-4">
       <ImportFromAgentskills />
       {error && (
-        <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
+        <div className="p-4 rounded-lg border border-danger/30 bg-danger/10 text-danger text-sm">
           {error}
         </div>
       )}
@@ -323,17 +323,17 @@ export function IncomingPanel({
                 </span>
               )}
               {item.category && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300">
+                <span className="text-xs px-1.5 py-0.5 rounded bg-brand/10 text-brand">
                   {item.category}
                 </span>
               )}
               {sigOk && (
-                <span className="text-xs px-1.5 py-0.5 rounded border bg-green-500/10 text-green-300 border-green-500/20">
+                <span className="text-xs px-1.5 py-0.5 rounded border bg-success/10 text-success border-success/20">
                   signature ok
                 </span>
               )}
               {sigBad && (
-                <span className="text-xs px-1.5 py-0.5 rounded border bg-red-500/10 text-red-300 border-red-500/20">
+                <span className="text-xs px-1.5 py-0.5 rounded border bg-danger/10 text-danger border-danger/20">
                   signature failed
                 </span>
               )}
@@ -380,7 +380,7 @@ export function IncomingPanel({
                 disabled={itemBusy}
                 className={cn(
                   "px-3 py-1.5 text-xs rounded-md border transition-colors",
-                  "bg-green-500/10 text-green-300 border-green-500/20 hover:bg-green-500/20",
+                  "bg-success/10 text-success border-success/20 hover:bg-success/30",
                   itemBusy && "opacity-50 cursor-not-allowed",
                 )}
               >
@@ -391,7 +391,7 @@ export function IncomingPanel({
                 disabled={itemBusy}
                 className={cn(
                   "px-3 py-1.5 text-xs rounded-md border transition-colors",
-                  "bg-red-500/10 text-red-300 border-red-500/20 hover:bg-red-500/20",
+                  "bg-danger/10 text-danger border-danger/20 hover:bg-danger/30",
                   itemBusy && "opacity-50 cursor-not-allowed",
                 )}
               >
@@ -404,7 +404,7 @@ export function IncomingPanel({
                   title={`Reject all queued skills from ${shortPeer(peer)}`}
                   className={cn(
                     "px-3 py-1.5 text-xs rounded-md border transition-colors",
-                    "bg-zinc-500/10 text-zinc-300 border-zinc-500/20 hover:bg-zinc-500/20",
+                    "bg-muted/10 text-foreground border-border/20 hover:bg-muted/30",
                     peerBusy && "opacity-50 cursor-not-allowed",
                   )}
                 >

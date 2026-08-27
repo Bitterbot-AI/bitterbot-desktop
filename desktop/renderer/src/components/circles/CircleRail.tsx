@@ -300,7 +300,7 @@ function MenuItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-left",
+        "flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/90 text-left",
         destructive ? "text-destructive" : "text-foreground",
       )}
     >

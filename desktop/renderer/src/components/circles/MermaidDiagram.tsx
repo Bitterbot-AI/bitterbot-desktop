@@ -115,7 +115,7 @@ export function MermaidDiagram({ code }: { code: string }) {
         <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-2 font-mono text-muted-foreground">
           {code.slice(0, 4000)}
         </pre>
-        <p className="mt-1 text-red-400/80">
+        <p className="mt-1 text-danger/80">
           {oversized
             ? "diagram source too large to render"
             : `diagram failed to render: ${(error ?? "").split("\n")[0]}`}

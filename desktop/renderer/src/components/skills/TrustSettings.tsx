@@ -122,7 +122,7 @@ export function TrustSettings({ onClose }: { onClose: () => void }) {
           ) : (
             <>
               <section className="space-y-3">
-                <h3 className="text-xs font-semibold text-[#00D4E6] uppercase tracking-wider">
+                <h3 className="text-xs font-semibold text-brand-cyan uppercase tracking-wider">
                   P2P ingest
                 </h3>
                 <Row label="Ingest policy" hint="What happens to skills received from peers.">
@@ -184,7 +184,7 @@ export function TrustSettings({ onClose }: { onClose: () => void }) {
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-xs font-semibold text-[#00D4E6] uppercase tracking-wider">
+                <h3 className="text-xs font-semibold text-brand-cyan uppercase tracking-wider">
                   agentskills.io bridge
                 </h3>
                 <Row
@@ -225,7 +225,7 @@ export function TrustSettings({ onClose }: { onClose: () => void }) {
         </div>
 
         {error && (
-          <div className="px-5 py-2 text-xs text-red-300 border-t border-border/10">{error}</div>
+          <div className="px-5 py-2 text-xs text-danger border-t border-border/10">{error}</div>
         )}
 
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/20">
@@ -241,7 +241,7 @@ export function TrustSettings({ onClose }: { onClose: () => void }) {
             disabled={busy || !hydrated}
             className={cn(
               "px-3 py-1.5 text-xs rounded-md border transition-colors",
-              "bg-purple-500/15 text-purple-200 border-purple-500/30 hover:bg-purple-500/25",
+              "bg-brand/15 text-brand border-brand/30 hover:bg-brand/35",
               (busy || !hydrated) && "opacity-50 cursor-not-allowed",
             )}
           >
@@ -255,11 +255,11 @@ export function TrustSettings({ onClose }: { onClose: () => void }) {
 
 const selectCls = cn(
   "h-8 px-2 text-xs rounded-md border bg-transparent text-foreground",
-  "border-border/30 focus:border-purple-500 focus:outline-none",
+  "border-border/30 focus:border-brand focus:outline-none",
 );
 const inputCls = cn(
   "h-8 w-32 px-2 text-xs rounded-md border bg-transparent text-foreground",
-  "border-border/30 focus:border-purple-500 focus:outline-none",
+  "border-border/30 focus:border-brand focus:outline-none",
 );
 
 function Row({

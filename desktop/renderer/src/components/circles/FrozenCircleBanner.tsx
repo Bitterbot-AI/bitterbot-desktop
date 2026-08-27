@@ -48,9 +48,9 @@ export function FrozenCircleBanner({ circle }: { circle: Circle }) {
   };
 
   return (
-    <div className="mx-3 mb-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
+    <div className="mx-3 mb-2 rounded-lg border border-warning/50 bg-warning/10 p-3 space-y-2">
       <div className="flex items-center gap-2">
-        <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0" />
+        <ShieldAlert className="w-4 h-4 text-warning dark:text-warning shrink-0" />
         <span className="text-sm font-semibold">This circle is frozen</span>
       </div>
       <p className="text-xs text-muted-foreground">
@@ -85,7 +85,7 @@ export function FrozenCircleBanner({ circle }: { circle: Circle }) {
             type="button"
             onClick={() => void doUnfreeze()}
             disabled={busy}
-            className="text-xs font-medium px-3 py-1 rounded bg-amber-600 text-white disabled:opacity-50"
+            className="text-xs font-medium px-3 py-1 rounded bg-warning text-warning-foreground disabled:opacity-50"
           >
             Yes, unfreeze
           </button>
@@ -95,7 +95,7 @@ export function FrozenCircleBanner({ circle }: { circle: Circle }) {
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="text-xs font-medium px-3 py-1 rounded border border-amber-600/60 text-amber-700 dark:text-amber-500"
+            className="text-xs font-medium px-3 py-1 rounded border border-warning/60 text-warning dark:text-warning"
           >
             Review &amp; unfreeze…
           </button>

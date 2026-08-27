@@ -47,7 +47,7 @@ export function ArtifactChip({ artifactId }: ArtifactChipProps) {
       className={cn(
         "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-2xs font-medium",
         "border transition-all cursor-pointer hover:scale-[1.02]",
-        "bg-blue-500/5 border-blue-500/20 text-blue-400 hover:bg-blue-500/10",
+        "bg-info/5 border-info/20 text-info hover:bg-info/20",
       )}
     >
       <Icon className="w-3 h-3 flex-shrink-0" />

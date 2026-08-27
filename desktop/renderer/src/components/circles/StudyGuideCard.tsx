@@ -193,13 +193,13 @@ export function StudyGuideCard({
               key={slot}
               className={cn(
                 "rounded-md border px-2.5 py-2",
-                isGap ? "border-dashed border-amber-500/50" : "border-border",
+                isGap ? "border-dashed border-warning/50" : "border-border",
               )}
             >
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium flex-1 min-w-0 truncate">{section}</span>
                 {isGap && (
-                  <span className="text-badge font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-500 shrink-0">
+                  <span className="text-badge font-semibold uppercase tracking-wide text-warning dark:text-warning shrink-0">
                     gap
                   </span>
                 )}

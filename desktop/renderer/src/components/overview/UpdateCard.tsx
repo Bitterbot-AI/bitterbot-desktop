@@ -163,9 +163,9 @@ export function UpdateCard() {
               className={cn(
                 "text-xs px-2 py-0.5 rounded-full",
                 behind === 0
-                  ? "bg-green-500/10 text-green-400"
+                  ? "bg-success/10 text-success"
                   : info.staleness.stale
-                    ? "bg-amber-500/15 text-amber-400"
+                    ? "bg-warning/15 text-warning"
                     : "bg-muted/40 text-muted-foreground",
               )}
             >
@@ -182,7 +182,7 @@ export function UpdateCard() {
           </span>
         )}
         {info?.dirty && (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-warning/15 text-warning">
             uncommitted changes
           </span>
         )}
@@ -209,28 +209,28 @@ export function UpdateCard() {
         )}
 
       {updating ? (
-        <p className="text-sm text-purple-300">
+        <p className="text-sm text-brand">
           Updating… the node fetches the latest code, verifies it builds (the dev channel preflights
           in a throwaway worktree), then applies it and restarts. This can take a while; the
           connection will drop when it restarts.
         </p>
       ) : outcome?.restarting ? (
-        <p className="text-sm text-green-400">
+        <p className="text-sm text-success">
           Update applied. The node is rebuilding and restarting; this page will reconnect on its
           own.
         </p>
       ) : outcome?.status === "interrupted" ? (
-        <p className="text-sm text-amber-400">
+        <p className="text-sm text-warning">
           The connection dropped while updating. If the node is restarting, this page will reconnect
           and show its new version; otherwise re-check for updates.
         </p>
       ) : outcome && outcome.status !== "ok" ? (
-        <p className="text-sm text-amber-400">
+        <p className="text-sm text-warning">
           Update {outcome.status}: {describeSkipReason(outcome.reason)}.
         </p>
       ) : null}
 
-      {error && <p className="text-sm text-red-400 mb-2">{error}</p>}
+      {error && <p className="text-sm text-danger mb-2">{error}</p>}
 
       {!updating && (
         <div className="flex items-center gap-2 mt-1">
@@ -240,7 +240,7 @@ export function UpdateCard() {
             disabled={checking || connectionStatus !== "connected"}
             className={cn(
               "px-3 py-1.5 rounded-lg text-xs",
-              "bg-muted/40 hover:bg-muted/60 text-foreground",
+              "bg-muted/40 hover:bg-muted/70 text-foreground",
               "border border-border/30 transition-colors",
               (checking || connectionStatus !== "connected") && "opacity-50",
             )}
@@ -254,8 +254,8 @@ export function UpdateCard() {
               disabled={connectionStatus !== "connected" || upToDate}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs",
-                "bg-purple-500/10 hover:bg-purple-500/20 text-purple-300",
-                "border border-purple-500/20 transition-colors",
+                "bg-brand/10 hover:bg-brand/30 text-brand",
+                "border border-brand/20 transition-colors",
                 (connectionStatus !== "connected" || upToDate) && "opacity-50",
               )}
             >
@@ -267,14 +267,14 @@ export function UpdateCard() {
               <button
                 type="button"
                 onClick={() => void runUpdate()}
-                className="px-2 py-1 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25"
+                className="px-2 py-1 rounded bg-warning/15 text-warning border border-warning/30 hover:bg-warning/35"
               >
                 Confirm update
               </button>
               <button
                 type="button"
                 onClick={() => setConfirming(false)}
-                className="px-2 py-1 rounded bg-muted/40 text-foreground border border-border/30 hover:bg-muted/60"
+                className="px-2 py-1 rounded bg-muted/40 text-foreground border border-border/30 hover:bg-muted/70"
               >
                 Cancel
               </button>

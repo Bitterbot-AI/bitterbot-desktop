@@ -93,7 +93,7 @@ export function ArtifactPanel({ onClose }: ArtifactPanelProps) {
     <div className="flex flex-col h-full">
       {/* Title bar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/20 flex-shrink-0">
-        <Code className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+        <Code className="w-3.5 h-3.5 text-brand flex-shrink-0" />
         <span className="text-xs font-medium text-foreground truncate flex-1">
           {artifact.title}
         </span>

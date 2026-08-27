@@ -95,30 +95,30 @@ type StateAppearance = {
 };
 
 const STATE_APPEARANCE: Record<SkillState, StateAppearance> = {
-  ready: { label: "Ready", className: "bg-green-500/10 text-green-300 border-green-500/20" },
+  ready: { label: "Ready", className: "bg-success/10 text-success border-success/20" },
   "disabled-by-user": {
     label: "Disabled",
-    className: "bg-zinc-500/10 text-zinc-300 border-zinc-500/20",
+    className: "bg-muted/10 text-foreground border-border/20",
   },
   "missing-os": {
     label: "Incompatible OS",
-    className: "bg-red-500/10 text-red-300 border-red-500/20",
+    className: "bg-danger/10 text-danger border-danger/20",
   },
   "missing-bin": {
     label: "Needs install",
-    className: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+    className: "bg-warning/10 text-warning border-warning/20",
   },
   "missing-env": {
     label: "Needs API key",
-    className: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+    className: "bg-warning/10 text-warning border-warning/20",
   },
   "missing-config": {
     label: "Needs config",
-    className: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+    className: "bg-warning/10 text-warning border-warning/20",
   },
   "blocked-by-allowlist": {
     label: "Allowlisted off",
-    className: "bg-zinc-500/10 text-zinc-300 border-zinc-500/20",
+    className: "bg-muted/10 text-foreground border-border/20",
   },
 };
 
@@ -171,9 +171,7 @@ function MetricsLine({ metrics }: { metrics: SkillMetrics | undefined }) {
       <span>
         {metrics.totalExecutions} run{metrics.totalExecutions === 1 ? "" : "s"} ·{" "}
         <span
-          className={cn(
-            pct >= 80 ? "text-green-300" : pct >= 50 ? "text-amber-300" : "text-red-300",
-          )}
+          className={cn(pct >= 80 ? "text-success" : pct >= 50 ? "text-warning" : "text-danger")}
         >
           {pct}% success
         </span>
@@ -217,7 +215,7 @@ function SkillCard({
         }
         className={cn(
           "mt-0.5 w-9 h-5 rounded-full transition-colors relative flex-shrink-0",
-          skill.enabled && !isHardDisabled ? "bg-purple-500" : "bg-muted",
+          skill.enabled && !isHardDisabled ? "bg-brand" : "bg-muted",
           isHardDisabled && "opacity-40 cursor-not-allowed",
         )}
       >
@@ -235,31 +233,31 @@ function SkillCard({
           {skill.platformLabel && skill.state !== "missing-os" && (
             <span
               title={`Declared platform support: ${skill.platformLabel}`}
-              className="text-xs px-1.5 py-0.5 rounded border bg-blue-500/10 text-blue-300 border-blue-500/20"
+              className="text-xs px-1.5 py-0.5 rounded border bg-info/10 text-info border-info/20"
             >
               {skill.platformLabel}
             </span>
           )}
           {skill.hasApiKey && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/10 text-green-400">
+            <span className="text-xs px-1.5 py-0.5 rounded bg-success/10 text-success">
               API key set
             </span>
           )}
           {skill.category && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300">
+            <span className="text-xs px-1.5 py-0.5 rounded bg-brand/10 text-brand">
               {skill.category}
             </span>
           )}
           {skill.tier === "executable" && (
             <span
               title={`Executable tier — ships with ${skill.interceptorCount ?? "0"} deterministic interceptor${(skill.interceptorCount ?? 0) === 1 ? "" : "s"}`}
-              className="text-badge px-1.5 py-0.5 rounded border border-cyan-400/40 bg-cyan-400/10 text-cyan-200 uppercase tracking-wider"
+              className="text-badge px-1.5 py-0.5 rounded border border-info/40 bg-info/10 text-info uppercase tracking-wider"
             >
               executable
             </span>
           )}
           {skill.tier === "data" && (
-            <span className="text-badge px-1.5 py-0.5 rounded border border-slate-400/40 bg-slate-400/10 text-slate-300 uppercase tracking-wider">
+            <span className="text-badge px-1.5 py-0.5 rounded border border-border/40 bg-muted/10 text-foreground uppercase tracking-wider">
               data
             </span>
           )}
@@ -292,7 +290,7 @@ function SkillCard({
                 href={skill.origin.upstreamUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-purple-300 hover:underline"
+                className="text-brand hover:underline"
               >
                 upstream
               </a>
@@ -305,7 +303,7 @@ function SkillCard({
             disabled={installing}
             className={cn(
               "mt-2 px-2 py-1 text-xs rounded-md border transition-colors",
-              "bg-amber-500/10 text-amber-300 border-amber-500/20 hover:bg-amber-500/20",
+              "bg-warning/10 text-warning border-warning/20 hover:bg-warning/30",
               installing && "opacity-50 cursor-not-allowed",
             )}
           >
@@ -376,7 +374,7 @@ export function SkillsView() {
           </button>
           <button
             onClick={() => setShowEditor(true)}
-            className="px-3 py-1.5 text-xs rounded-md border bg-purple-500/10 text-purple-300 border-purple-500/20 hover:bg-purple-500/20 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-md border bg-brand/10 text-brand border-brand/20 hover:bg-brand/30 transition-colors"
           >
             + New skill
           </button>
@@ -388,7 +386,7 @@ export function SkillsView() {
           className={cn(
             "px-3 py-1.5 text-sm rounded-md transition-colors",
             viewMode === "installed"
-              ? "bg-purple-500/15 text-foreground"
+              ? "bg-brand/15 text-foreground"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -399,13 +397,13 @@ export function SkillsView() {
           className={cn(
             "px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1.5",
             viewMode === "incoming"
-              ? "bg-purple-500/15 text-foreground"
+              ? "bg-brand/15 text-foreground"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
           Incoming
           {incomingCount > 0 && (
-            <span className="text-badge px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300">
+            <span className="text-badge px-1.5 py-0.5 rounded-full bg-warning/20 text-warning">
               {incomingCount}
             </span>
           )}
@@ -599,7 +597,7 @@ function InstalledSkillsView() {
               onChange={(e) => setAgentId(e.target.value)}
               className={cn(
                 "h-8 px-2 text-xs rounded-lg border bg-transparent text-foreground",
-                "border-border/30 focus:border-purple-500 focus:outline-none",
+                "border-border/30 focus:border-brand focus:outline-none",
               )}
               title="View skills for this agent"
             >
@@ -632,8 +630,8 @@ function InstalledSkillsView() {
             disabled={loading}
             className={cn(
               "px-3 py-1.5 text-xs rounded-lg",
-              "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-              "border border-purple-500/20 transition-colors",
+              "bg-brand/10 text-brand hover:bg-brand/30",
+              "border border-brand/20 transition-colors",
               loading && "opacity-50",
             )}
           >
@@ -652,7 +650,7 @@ function InstalledSkillsView() {
               className={cn(
                 "px-3 py-1.5 text-xs rounded-t-md border-b-2 transition-colors",
                 active
-                  ? "border-purple-500 text-foreground"
+                  ? "border-brand text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
@@ -670,7 +668,7 @@ function InstalledSkillsView() {
         placeholder="Filter skills…"
         className={cn(
           "w-full h-8 px-3 text-sm rounded-lg border bg-transparent",
-          "border-border/30 focus:border-purple-500 focus:outline-none",
+          "border-border/30 focus:border-brand focus:outline-none",
         )}
       />
 
@@ -681,7 +679,7 @@ function InstalledSkillsView() {
       ) : (
         groups.map(([category, categorySkills]) => (
           <div key={category} className="space-y-2">
-            <h3 className="text-xs font-semibold text-[#00D4E6] uppercase tracking-wider px-1">
+            <h3 className="text-xs font-semibold text-brand-cyan uppercase tracking-wider px-1">
               {category}
             </h3>
             <div className="space-y-1">

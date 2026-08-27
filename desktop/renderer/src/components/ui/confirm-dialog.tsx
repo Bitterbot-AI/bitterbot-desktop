@@ -64,7 +64,7 @@ export function useConfirm(): [(opts: ConfirmOptions) => Promise<boolean>, JSX.E
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={() => settle(true)}
-            className={opts?.destructive ? "bg-red-600 text-white hover:bg-red-700" : undefined}
+            className={opts?.destructive ? "bg-danger text-white hover:bg-danger/90" : undefined}
           >
             {opts?.actionLabel ?? "Confirm"}
           </AlertDialogAction>

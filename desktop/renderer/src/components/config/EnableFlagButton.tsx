@@ -46,12 +46,12 @@ export function EnableFlagButton({
         disabled={busy}
         className={cn(
           "px-3 py-1.5 text-sm rounded-lg font-medium transition-colors",
-          "bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50",
+          "bg-brand text-white hover:bg-brand/90 disabled:opacity-50",
         )}
       >
         {busy ? "Enabling…" : label}
       </button>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   );
 }

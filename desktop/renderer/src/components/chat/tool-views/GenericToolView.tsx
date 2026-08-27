@@ -34,19 +34,19 @@ export function GenericToolView({ toolCall }: ToolViewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/60 border-b border-zinc-800/50">
-        <Wrench className="w-3.5 h-3.5 text-purple-400" />
-        <span className="text-xs font-medium text-zinc-300 font-mono">{toolCall.name}</span>
+      <div className="flex items-center gap-2 px-3 py-2 bg-card/60 border-b border-border/50">
+        <Wrench className="w-3.5 h-3.5 text-brand" />
+        <span className="text-xs font-medium text-foreground font-mono">{toolCall.name}</span>
       </div>
 
       <div className="flex-1 overflow-auto p-3 space-y-3">
         {/* Arguments as key-value table */}
         {hasArgs && (
           <div className="space-y-1.5">
-            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-muted-foreground uppercase tracking-wider font-semibold">
               Parameters
             </span>
-            <div className="rounded-lg bg-zinc-900/40 border border-zinc-800/30 overflow-hidden">
+            <div className="rounded-lg bg-card/40 border border-border/30 overflow-hidden">
               <table className="w-full text-xs">
                 <tbody>
                   {Object.entries(args!).map(([key, value]) => (
@@ -61,22 +61,22 @@ export function GenericToolView({ toolCall }: ToolViewProps) {
         {/* Output */}
         {formattedOutput ? (
           <div className="space-y-1.5">
-            <span className="text-badge text-zinc-500 uppercase tracking-wider font-semibold">
+            <span className="text-badge text-muted-foreground uppercase tracking-wider font-semibold">
               Output
             </span>
             {formattedOutput.isJson ? (
-              <div className="rounded-lg border border-zinc-800/30 overflow-hidden">
+              <div className="rounded-lg border border-border/30 overflow-hidden">
                 <JsonOutput json={formattedOutput.json} />
               </div>
             ) : (
-              <pre className="text-xs font-mono bg-zinc-900/40 rounded-lg p-2.5 overflow-x-auto border border-zinc-800/30 text-zinc-300 whitespace-pre-wrap break-words">
+              <pre className="text-xs font-mono bg-card/40 rounded-lg p-2.5 overflow-x-auto border border-border/30 text-foreground whitespace-pre-wrap break-words">
                 {formattedOutput.json}
               </pre>
             )}
           </div>
         ) : isRunning ? (
-          <div className="flex items-center gap-2 text-zinc-500 py-4">
-            <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" />
+          <div className="flex items-center gap-2 text-muted-foreground py-4">
+            <span className="w-2 h-2 rounded-full bg-brand animate-bounce" />
             <span className="text-sm">Executing...</span>
           </div>
         ) : null}
@@ -100,16 +100,16 @@ function ArgRow({ name, value }: { name: string; value: unknown }) {
   const shown = !expanded && isLong ? displayValue.slice(0, VALUE_TRUNCATE_LENGTH) : displayValue;
 
   return (
-    <tr className="border-b border-zinc-800/20 last:border-0">
-      <td className="px-2.5 py-1.5 text-zinc-500 font-mono whitespace-nowrap align-top w-[120px]">
+    <tr className="border-b border-border/20 last:border-0">
+      <td className="px-2.5 py-1.5 text-muted-foreground font-mono whitespace-nowrap align-top w-[120px]">
         {name}
       </td>
-      <td className="px-2.5 py-1.5 text-zinc-300 font-mono break-all">
+      <td className="px-2.5 py-1.5 text-foreground font-mono break-all">
         <span className="whitespace-pre-wrap">{shown}</span>
         {isLong && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="ml-1 inline-flex items-center gap-0.5 text-badge text-purple-400 hover:text-purple-300 transition-colors"
+            className="ml-1 inline-flex items-center gap-0.5 text-badge text-brand hover:text-brand transition-colors"
           >
             {expanded ? (
               <>

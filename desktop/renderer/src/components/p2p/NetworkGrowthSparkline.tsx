@@ -77,7 +77,7 @@ export function NetworkGrowthSparkline({ rows, width = 360, height = 80 }: Spark
       </div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-auto text-purple-400"
+        className="w-full h-auto text-brand"
         preserveAspectRatio="none"
       >
         <path d={path} fill="none" stroke="currentColor" strokeWidth="1.5" />
@@ -87,7 +87,7 @@ export function NetworkGrowthSparkline({ rows, width = 360, height = 80 }: Spark
         <span className="text-muted-foreground/60">
           {minV.toLocaleString()} → {maxV.toLocaleString()} peers
         </span>
-        <span className="text-purple-300 font-medium">{lastPoint.v.toLocaleString()}</span>
+        <span className="text-brand font-medium">{lastPoint.v.toLocaleString()}</span>
       </div>
       <div className="mt-1 flex items-baseline justify-between text-badge text-muted-foreground/60">
         <span>{firstSnapshot.toLocaleString()}</span>

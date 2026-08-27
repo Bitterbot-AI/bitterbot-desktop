@@ -14,7 +14,7 @@ function NodeCard({ node }: { node: NodeEntry }) {
         <div
           className={cn(
             "w-2 h-2 rounded-full mt-1.5 flex-shrink-0",
-            node.connected ? "bg-green-400" : "bg-muted-foreground/30",
+            node.connected ? "bg-success" : "bg-muted-foreground/30",
           )}
         />
         <div className="flex-1 min-w-0">
@@ -23,7 +23,7 @@ function NodeCard({ node }: { node: NodeEntry }) {
               {node.displayName ?? node.nodeId}
             </span>
             {node.connected && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/10 text-green-400">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-success/10 text-success">
                 connected
               </span>
             )}
@@ -45,7 +45,7 @@ function NodeCard({ node }: { node: NodeEntry }) {
               {node.commands.slice(0, 10).map((cmd) => (
                 <span
                   key={cmd}
-                  className="text-badge px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 font-mono"
+                  className="text-badge px-1.5 py-0.5 rounded bg-brand/10 text-brand font-mono"
                 >
                   {cmd}
                 </span>
@@ -85,7 +85,7 @@ function PairRequestCard({
   onReject: (requestId: string) => void;
 }) {
   return (
-    <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 backdrop-blur-sm p-4">
+    <div className="rounded-xl border border-warning/30 bg-warning/5 backdrop-blur-sm p-4">
       <div className="flex items-center justify-between">
         <div>
           <span className="text-sm font-medium text-foreground">
@@ -101,13 +101,13 @@ function PairRequestCard({
         <div className="flex gap-2">
           <button
             onClick={() => onApprove(req.requestId)}
-            className="px-3 py-1.5 text-xs rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/20"
+            className="px-3 py-1.5 text-xs rounded-lg bg-success/10 text-success hover:bg-success/30 border border-success/20"
           >
             Approve
           </button>
           <button
             onClick={() => onReject(req.requestId)}
-            className="px-3 py-1.5 text-xs rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+            className="px-3 py-1.5 text-xs rounded-lg bg-danger/10 text-danger hover:bg-danger/30 border border-danger/20"
           >
             Reject
           </button>
@@ -206,8 +206,8 @@ export function NodesView() {
           disabled={loading}
           className={cn(
             "px-3 py-1.5 text-xs rounded-lg",
-            "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-            "border border-purple-500/20 transition-colors",
+            "bg-brand/10 text-brand hover:bg-brand/30",
+            "border border-brand/20 transition-colors",
             loading && "opacity-50",
           )}
         >
@@ -218,7 +218,7 @@ export function NodesView() {
       {/* Pending pair requests */}
       {pairRequests.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider px-1">
+          <h3 className="text-xs font-semibold text-warning uppercase tracking-wider px-1">
             Pending Pair Requests
           </h3>
           {pairRequests.map((req) => (

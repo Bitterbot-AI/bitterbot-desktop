@@ -69,16 +69,16 @@ function TransactionRow({ tx, network }: { tx: WalletTransaction; network: strin
   const displayType = isX402 ? "x402 Payment" : tx.type;
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-border/5 last:border-0 hover:bg-muted/20">
+    <div className="flex items-center justify-between px-4 py-3 border-b border-border/5 last:border-0 hover:bg-muted/30">
       <div className="flex items-center gap-3 min-w-0">
         <div
           className={cn(
             "w-8 h-8 rounded-full flex items-center justify-center",
             isX402
-              ? "bg-blue-500/10 text-blue-400"
+              ? "bg-info/10 text-info"
               : isOutgoing
-                ? "bg-orange-500/10 text-orange-400"
-                : "bg-emerald-500/10 text-emerald-400",
+                ? "bg-warning/10 text-warning"
+                : "bg-success/10 text-success",
           )}
         >
           {isOutgoing ? (
@@ -93,16 +93,14 @@ function TransactionRow({ tx, network }: { tx: WalletTransaction; network: strin
             href={`${explorerBase}${tx.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-2xs text-muted-foreground/60 hover:text-purple-400 font-mono"
+            className="text-2xs text-muted-foreground/60 hover:text-brand font-mono"
           >
             {truncateHash(tx.txHash)}
           </a>
         </div>
       </div>
       <div className="text-right flex-shrink-0">
-        <span
-          className={cn("text-sm font-medium", isOutgoing ? "text-orange-400" : "text-emerald-400")}
-        >
+        <span className={cn("text-sm font-medium", isOutgoing ? "text-warning" : "text-success")}>
           {isOutgoing ? "-" : "+"}
           {tx.amount} {tx.token}
         </span>
@@ -251,8 +249,8 @@ export function WalletView() {
         </div>
         <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-6 space-y-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
-              <KeyRound className="w-5 h-5 text-amber-400" />
+            <div className="w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center">
+              <KeyRound className="w-5 h-5 text-warning" />
             </div>
             <div>
               <h2 className="text-lg font-semibold text-foreground">
@@ -281,7 +279,7 @@ export function WalletView() {
                   href="https://portal.cdp.coinbase.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-purple-400 hover:underline"
+                  className="text-brand hover:underline"
                 >
                   portal.cdp.coinbase.com
                 </a>{" "}
@@ -300,8 +298,8 @@ export function WalletView() {
             onClick={refresh}
             className={cn(
               "px-4 py-2 text-sm rounded-lg mt-2",
-              "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-              "border border-purple-500/20 transition-colors",
+              "bg-brand/10 text-brand hover:bg-brand/30",
+              "border border-brand/20 transition-colors",
             )}
           >
             Retry Connection
@@ -322,9 +320,7 @@ export function WalletView() {
               <span
                 className={cn(
                   "text-xs font-medium px-2 py-0.5 rounded-full",
-                  network === "base"
-                    ? "bg-emerald-500/15 text-emerald-400"
-                    : "bg-amber-500/15 text-amber-400",
+                  network === "base" ? "bg-success/15 text-success" : "bg-warning/15 text-warning",
                 )}
               >
                 {network === "base" ? "Base Mainnet" : "Base Sepolia"}
@@ -338,8 +334,8 @@ export function WalletView() {
           disabled={loading}
           className={cn(
             "px-3 py-1.5 text-xs rounded-lg",
-            "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-            "border border-purple-500/20 transition-colors",
+            "bg-brand/10 text-brand hover:bg-brand/30",
+            "border border-brand/20 transition-colors",
             loading && "opacity-50",
           )}
         >
@@ -352,8 +348,8 @@ export function WalletView() {
         <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center">
-                <Wallet className="w-5 h-5 text-purple-400" />
+              <div className="w-10 h-10 rounded-full bg-brand/10 flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-brand" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Wallet Address</p>
@@ -363,7 +359,7 @@ export function WalletView() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCopyAddress}
-                className="p-2 rounded-lg hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
+                className="p-2 rounded-lg hover:bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
                 title="Copy address"
               >
                 <Copy className="w-4 h-4" />
@@ -372,14 +368,14 @@ export function WalletView() {
                 href={`${explorerBase}${address}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2 rounded-lg hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
+                className="p-2 rounded-lg hover:bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
                 title="View on BaseScan"
               >
                 <ExternalLink className="w-4 h-4" />
               </a>
             </div>
           </div>
-          {copied && <p className="text-xs text-emerald-400 mt-2">Address copied!</p>}
+          {copied && <p className="text-xs text-success mt-2">Address copied!</p>}
         </div>
       )}
 
@@ -400,19 +396,19 @@ export function WalletView() {
               label="Session Cap"
               value={`$${walletConfig.sessionSpendCapUsd}`}
               sub="per session limit"
-              icon={<Shield className="w-3.5 h-3.5 text-amber-400" />}
+              icon={<Shield className="w-3.5 h-3.5 text-warning" />}
             />
             <StatCard
               label="Per-TX Cap"
               value={`$${walletConfig.perTransactionCapUsd}`}
               sub="per transaction limit"
-              icon={<Shield className="w-3.5 h-3.5 text-amber-400" />}
+              icon={<Shield className="w-3.5 h-3.5 text-warning" />}
             />
             <StatCard
               label="Daily Limit"
               value={`$${walletConfig.dailySpendLimitUsd}`}
               sub="24-hour rolling cap"
-              icon={<Shield className="w-3.5 h-3.5 text-amber-400" />}
+              icon={<Shield className="w-3.5 h-3.5 text-warning" />}
             />
             <StatCard
               label="x402"
@@ -420,7 +416,7 @@ export function WalletView() {
                 walletConfig.x402Enabled ? `$${walletConfig.x402MaxPerRequestUsd}/req` : "Disabled"
               }
               sub={walletConfig.x402Enabled ? "micropayment protocol" : "enable in config"}
-              icon={<Shield className="w-3.5 h-3.5 text-blue-400" />}
+              icon={<Shield className="w-3.5 h-3.5 text-info" />}
             />
           </>
         )}
@@ -432,8 +428,8 @@ export function WalletView() {
           onClick={handleFundWallet}
           className={cn(
             "flex items-center gap-2 px-4 py-2 text-sm rounded-lg",
-            "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20",
-            "border border-emerald-500/20 transition-colors",
+            "bg-success/10 text-success hover:bg-success/30",
+            "border border-success/20 transition-colors",
           )}
         >
           <Fuel className="w-4 h-4" />

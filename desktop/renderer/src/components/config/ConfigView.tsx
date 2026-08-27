@@ -29,7 +29,7 @@ function ConfigRawView({
           disabled={saving}
           className={cn(
             "px-3 py-1.5 text-xs rounded-lg font-medium",
-            "bg-purple-500 text-white hover:bg-purple-600",
+            "bg-brand text-white hover:bg-brand/90",
             "disabled:opacity-50 transition-colors",
           )}
         >
@@ -37,7 +37,7 @@ function ConfigRawView({
         </button>
         <button
           onClick={onRevert}
-          className="px-3 py-1.5 text-xs rounded-lg bg-muted/30 text-muted-foreground hover:bg-muted/50 border border-border/20"
+          className="px-3 py-1.5 text-xs rounded-lg bg-muted/30 text-muted-foreground hover:bg-muted/60 border border-border/20"
         >
           Revert
         </button>
@@ -49,7 +49,7 @@ function ConfigRawView({
         className={cn(
           "w-full min-h-[400px] p-4 text-xs font-mono rounded-xl border",
           "bg-black/20 text-foreground/90",
-          "border-border/20 focus:border-purple-500/50 focus:outline-none",
+          "border-border/20 focus:border-brand/50 focus:outline-none",
           "resize-y",
         )}
         spellCheck={false}
@@ -161,9 +161,7 @@ export function ConfigView() {
               onClick={() => setRawMode(false)}
               className={cn(
                 "px-3 py-1 text-xs transition-colors",
-                !rawMode
-                  ? "bg-purple-500/20 text-purple-300"
-                  : "text-muted-foreground hover:bg-muted/30",
+                !rawMode ? "bg-brand/20 text-brand" : "text-muted-foreground hover:bg-muted/40",
               )}
             >
               Form
@@ -172,9 +170,7 @@ export function ConfigView() {
               onClick={() => setRawMode(true)}
               className={cn(
                 "px-3 py-1 text-xs transition-colors",
-                rawMode
-                  ? "bg-purple-500/20 text-purple-300"
-                  : "text-muted-foreground hover:bg-muted/30",
+                rawMode ? "bg-brand/20 text-brand" : "text-muted-foreground hover:bg-muted/40",
               )}
             >
               Raw JSON
@@ -185,8 +181,8 @@ export function ConfigView() {
             disabled={loading}
             className={cn(
               "px-3 py-1.5 text-xs rounded-lg",
-              "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-              "border border-purple-500/20 transition-colors",
+              "bg-brand/10 text-brand hover:bg-brand/30",
+              "border border-brand/20 transition-colors",
               loading && "opacity-50",
             )}
           >
@@ -196,13 +192,13 @@ export function ConfigView() {
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+        <div className="p-3 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm">
           {error}
         </div>
       )}
 
       {!snapshot?.valid && snapshot?.exists && (
-        <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm">
+        <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-warning text-sm">
           Config file exists but is invalid. Use Raw mode to fix it.
         </div>
       )}

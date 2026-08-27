@@ -20,15 +20,15 @@ export function StreamingBubble({ text }: StreamingBubbleProps) {
           ) : (
             <div className="flex items-center gap-1 py-1">
               <span
-                className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce"
+                className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce"
                 style={{ animationDelay: "0ms" }}
               />
               <span
-                className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce"
+                className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce"
                 style={{ animationDelay: "150ms" }}
               />
               <span
-                className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce"
+                className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce"
                 style={{ animationDelay: "300ms" }}
               />
             </div>

@@ -123,13 +123,13 @@ export function QrPairingDialog({
               <Loader2 className="h-4 w-4 animate-spin" /> Waiting for scan…
             </div>
           )}
-          {phase === "linked" && <p className="text-sm text-emerald-400">{message}</p>}
+          {phase === "linked" && <p className="text-sm text-success">{message}</p>}
           {phase === "error" && (
             <div className="space-y-2 text-center">
-              <p className="text-sm text-red-400">{message}</p>
+              <p className="text-sm text-danger">{message}</p>
               <button
                 onClick={() => void runFlow()}
-                className="text-xs px-2 py-1 rounded border border-border hover:bg-muted"
+                className="text-xs px-2 py-1 rounded border border-border hover:bg-muted/90"
               >
                 Try again
               </button>

@@ -13,26 +13,26 @@ import { useCoworkStore, type CoworkTask, type TaskStatus } from "../../stores/c
 function getStatusIcon(status: TaskStatus) {
   switch (status) {
     case "pending":
-      return <Circle className="w-3.5 h-3.5 text-zinc-500" />;
+      return <Circle className="w-3.5 h-3.5 text-muted-foreground" />;
     case "running":
-      return <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />;
+      return <Loader2 className="w-3.5 h-3.5 text-info animate-spin" />;
     case "completed":
-      return <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />;
+      return <CheckCircle className="w-3.5 h-3.5 text-success" />;
     case "error":
-      return <AlertTriangle className="w-3.5 h-3.5 text-red-400" />;
+      return <AlertTriangle className="w-3.5 h-3.5 text-danger" />;
   }
 }
 
 function getStatusColor(status: TaskStatus) {
   switch (status) {
     case "pending":
-      return "text-zinc-500";
+      return "text-muted-foreground";
     case "running":
-      return "text-blue-400";
+      return "text-info";
     case "completed":
-      return "text-emerald-400";
+      return "text-success";
     case "error":
-      return "text-red-400";
+      return "text-danger";
   }
 }
 
@@ -49,7 +49,7 @@ function TaskNode({ task, depth = 0 }: { task: CoworkTask; depth?: number }) {
       <div
         className={cn(
           "flex items-start gap-2 px-3 py-1.5 hover:bg-accent/50 transition-colors rounded-md cursor-default",
-          task.status === "running" && "bg-blue-500/5",
+          task.status === "running" && "bg-info/5",
         )}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
       >
@@ -81,7 +81,7 @@ function TaskNode({ task, depth = 0 }: { task: CoworkTask; depth?: number }) {
           )}
 
           {task.error && (
-            <p className="text-badge text-red-400/80 mt-0.5 line-clamp-2">{task.error}</p>
+            <p className="text-badge text-danger/80 mt-0.5 line-clamp-2">{task.error}</p>
           )}
         </div>
 

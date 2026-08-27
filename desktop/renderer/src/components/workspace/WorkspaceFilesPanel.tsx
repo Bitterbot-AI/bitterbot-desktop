@@ -45,23 +45,23 @@ function MiniTreeNode({
         onClick={() => (isDir ? onToggle(node.path) : onOpen(node.path))}
         className={cn(
           "w-full flex items-center gap-1 py-[2px] px-1 text-left text-2xs font-mono",
-          "hover:bg-[rgba(139,92,246,0.06)] transition-colors",
-          isActive && "bg-[rgba(139,92,246,0.12)] text-purple-300",
-          !isActive && "text-zinc-400",
+          "hover:bg-brand/15 transition-colors",
+          isActive && "bg-brand/10 text-brand",
+          !isActive && "text-muted-foreground",
         )}
         style={{ paddingLeft: `${depth * 14 + 4}px` }}
       >
         {isDir ? (
           isExpanded ? (
-            <ChevronDown className="w-2.5 h-2.5 text-zinc-500 flex-shrink-0" />
+            <ChevronDown className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0" />
           ) : (
-            <ChevronRight className="w-2.5 h-2.5 text-zinc-500 flex-shrink-0" />
+            <ChevronRight className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0" />
           )
         ) : (
           <span className="w-2.5 flex-shrink-0" />
         )}
         <NodeIcon
-          className={cn("w-3 h-3 flex-shrink-0", isDir ? "text-amber-400/70" : "text-blue-400/60")}
+          className={cn("w-3 h-3 flex-shrink-0", isDir ? "text-warning/70" : "text-info/60")}
         />
         <span className="truncate">{node.name}</span>
       </button>
@@ -162,7 +162,7 @@ export function WorkspaceFilesPanel() {
   if (!isConnected) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-xs text-zinc-500">Not connected</p>
+        <p className="text-xs text-muted-foreground">Not connected</p>
       </div>
     );
   }
@@ -184,8 +184,8 @@ export function WorkspaceFilesPanel() {
           {activeTab ? (
             <>
               {/* Compact file header */}
-              <div className="flex-shrink-0 flex items-center gap-2 px-2 py-1 border-b border-zinc-800/40 bg-zinc-900/40">
-                <span className="text-badge font-mono text-zinc-500 truncate flex-1">
+              <div className="flex-shrink-0 flex items-center gap-2 px-2 py-1 border-b border-border/40 bg-card/40">
+                <span className="text-badge font-mono text-muted-foreground truncate flex-1">
                   {activeTab.path}
                 </span>
                 <button
@@ -193,8 +193,8 @@ export function WorkspaceFilesPanel() {
                   className={cn(
                     "w-5 h-5 flex items-center justify-center rounded transition-colors",
                     activeTab.editing
-                      ? "bg-purple-500/20 text-purple-300"
-                      : "text-zinc-500 hover:text-zinc-300",
+                      ? "bg-brand/20 text-brand"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                   title={activeTab.editing ? "View mode" : "Edit mode"}
                 >
@@ -206,7 +206,7 @@ export function WorkspaceFilesPanel() {
                 </button>
                 <button
                   onClick={() => navigator.clipboard.writeText(activeTab.content).catch(() => {})}
-                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-zinc-700/50 text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
                   title="Copy"
                 >
                   <Copy className="w-2.5 h-2.5" />
@@ -233,20 +233,20 @@ export function WorkspaceFilesPanel() {
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center">
-              <div className="text-xs text-zinc-500">Select a tab</div>
+              <div className="text-xs text-muted-foreground">Select a tab</div>
             </div>
           )}
         </>
       ) : (
         <>
           {/* Tree header */}
-          <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-zinc-800/40">
-            <FolderOpen className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-xs font-medium text-zinc-300">Workspace Files</span>
+          <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border/40">
+            <FolderOpen className="w-3.5 h-3.5 text-brand" />
+            <span className="text-xs font-medium text-foreground">Workspace Files</span>
             <button
               onClick={() => loadTree()}
               disabled={treeLoading}
-              className="ml-auto w-5 h-5 flex items-center justify-center rounded hover:bg-zinc-700/50 text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="ml-auto w-5 h-5 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
               title="Refresh"
             >
               <RefreshCw className={cn("w-3 h-3", treeLoading && "animate-spin")} />
@@ -258,9 +258,9 @@ export function WorkspaceFilesPanel() {
           {/* File tree */}
           <div className="flex-1 overflow-y-auto scrollbar-none py-1">
             {treeLoading && tree.length === 0 ? (
-              <div className="p-3 text-xs text-zinc-500 animate-pulse">Loading...</div>
+              <div className="p-3 text-xs text-muted-foreground animate-pulse">Loading...</div>
             ) : filteredTree.length === 0 ? (
-              <div className="p-3 text-xs text-zinc-600">
+              <div className="p-3 text-xs text-muted-foreground">
                 {treeFilter ? "No matching files" : "Workspace is empty"}
               </div>
             ) : (

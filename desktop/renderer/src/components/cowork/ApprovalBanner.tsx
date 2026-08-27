@@ -24,18 +24,18 @@ export function ApprovalBanner({ message, onApprove, onDeny, onDismiss }: Approv
   if (dismissed) return null;
 
   return (
-    <div className="mx-2 mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+    <div className="mx-2 mt-2 rounded-lg border border-warning/20 bg-warning/5 p-3">
       <div className="flex items-start gap-2">
-        <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+        <ShieldCheck className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-amber-200 font-medium">Approval Required</p>
-          <p className="text-2xs text-amber-200/70 mt-0.5 line-clamp-3">{message}</p>
+          <p className="text-xs text-warning font-medium">Approval Required</p>
+          <p className="text-2xs text-warning/70 mt-0.5 line-clamp-3">{message}</p>
           <div className="flex items-center gap-2 mt-2">
             <button
               onClick={onApprove}
               className={cn(
                 "px-3 py-1 rounded-md text-2xs font-medium transition-colors",
-                "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/20",
+                "bg-success/20 text-success hover:bg-success/40 border border-success/20",
               )}
             >
               Approve
@@ -44,7 +44,7 @@ export function ApprovalBanner({ message, onApprove, onDeny, onDismiss }: Approv
               onClick={onDeny}
               className={cn(
                 "px-3 py-1 rounded-md text-2xs font-medium transition-colors",
-                "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20",
+                "bg-danger/10 text-danger hover:bg-danger/30 border border-danger/20",
               )}
             >
               Deny

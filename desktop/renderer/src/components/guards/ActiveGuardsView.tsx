@@ -68,9 +68,9 @@ function valueScore(s: InterceptorSummary): number {
 
 function valueLabel(score: number, fires: number): { label: string; tone: string } {
   if (fires === 0) return { label: "no data yet", tone: "text-muted-foreground/60" };
-  if (score >= 0.8) return { label: "strong", tone: "text-emerald-400" };
-  if (score >= 0.5) return { label: "useful", tone: "text-amber-300" };
-  return { label: "weak", tone: "text-red-400" };
+  if (score >= 0.8) return { label: "strong", tone: "text-success" };
+  if (score >= 0.5) return { label: "useful", tone: "text-warning" };
+  return { label: "weak", tone: "text-danger" };
 }
 
 export function ActiveGuardsView() {
@@ -137,8 +137,8 @@ export function ActiveGuardsView() {
           disabled={loading}
           className={cn(
             "ml-auto px-3 py-1.5 text-xs rounded-lg",
-            "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-            "border border-purple-500/20 transition-colors",
+            "bg-brand/10 text-brand hover:bg-brand/30",
+            "border border-brand/20 transition-colors",
             loading && "opacity-50",
           )}
         >
@@ -147,13 +147,13 @@ export function ActiveGuardsView() {
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 text-xs">
+        <div className="p-3 rounded-lg border border-danger/30 bg-danger/10 text-danger text-xs">
           {error}
         </div>
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[#00D4E6]">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-brand-cyan">
           Registered Interceptors ({status?.registered.length ?? 0})
         </h2>
         {(!status || status.registered.length === 0) && !loading && (
@@ -180,8 +180,8 @@ export function ActiveGuardsView() {
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <Stat label="fires" value={totalFires} />
-                  <Stat label="success" value={totalSuccess} tone="text-emerald-400" />
-                  <Stat label="failure" value={totalFailure} tone="text-red-400" />
+                  <Stat label="success" value={totalSuccess} tone="text-success" />
+                  <Stat label="failure" value={totalFailure} tone="text-danger" />
                 </div>
                 <div className="text-badge text-muted-foreground space-y-0.5">
                   {summaries.map((s) => (
@@ -215,7 +215,7 @@ export function ActiveGuardsView() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[#00D4E6]">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-brand-cyan">
           Live Feed ({liveFeed.length})
         </h2>
         {liveFeed.length === 0 ? (
@@ -234,7 +234,7 @@ export function ActiveGuardsView() {
 
       {status?.candidates && status.candidates.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[#00D4E6]">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-brand-cyan">
             Dream-Harvested Candidates ({status.candidates.length})
           </h2>
           <p className="text-xs text-muted-foreground">
@@ -265,7 +265,7 @@ export function ActiveGuardsView() {
 
       {status?.strikes && status.strikes.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[#00D4E6]">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-brand-cyan">
             Auto-Disable Strikes ({status.strikes.length})
           </h2>
           <p className="text-xs text-muted-foreground">
@@ -278,9 +278,7 @@ export function ActiveGuardsView() {
                 key={s.interceptorId}
                 className={cn(
                   "rounded-lg border px-3 py-2 text-xs space-y-1",
-                  s.disabled
-                    ? "border-red-500/40 bg-red-500/10"
-                    : "border-amber-500/40 bg-amber-500/10",
+                  s.disabled ? "border-danger/40 bg-danger/10" : "border-warning/40 bg-warning/10",
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -289,7 +287,7 @@ export function ActiveGuardsView() {
                     {s.strikes} {s.strikes === 1 ? "strike" : "strikes"}
                   </span>
                   {s.disabled && (
-                    <span className="text-badge uppercase tracking-wider text-red-300">
+                    <span className="text-badge uppercase tracking-wider text-danger">
                       disabled
                     </span>
                   )}
@@ -312,8 +310,8 @@ export function ActiveGuardsView() {
                   }}
                   className={cn(
                     "px-2 py-1 text-badge rounded-md border",
-                    "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-                    "border-purple-500/30",
+                    "bg-brand/10 text-brand hover:bg-brand/30",
+                    "border-brand/30",
                   )}
                 >
                   Clear strikes & re-enable
@@ -325,7 +323,7 @@ export function ActiveGuardsView() {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[#00D4E6]">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-brand-cyan">
           Recent Persisted Records ({status?.recent.length ?? 0})
         </h2>
         <div className="space-y-2">
@@ -353,10 +351,10 @@ function CandidateCard({
   // Render the first ~25 lines of the SKILL.md as a preview.
   const preview = candidate.body.split("\n").slice(0, 25).join("\n");
   return (
-    <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 space-y-2">
+    <div className="rounded-xl border border-brand/30 bg-brand/5 p-3 space-y-2">
       <div className="flex items-center gap-2">
         <div className="font-semibold">{candidate.skill}</div>
-        <span className="text-badge uppercase tracking-wider text-purple-300 ml-auto">
+        <span className="text-badge uppercase tracking-wider text-brand ml-auto">
           staged {stagedAt}
         </span>
       </div>
@@ -367,7 +365,7 @@ function CandidateCard({
       <div className="flex items-center gap-2 text-xs">
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="px-2 py-1 text-2xs rounded-md border bg-card border-border/30 hover:bg-muted"
+          className="px-2 py-1 text-2xs rounded-md border bg-card border-border/30 hover:bg-muted/90"
         >
           {expanded ? "Hide" : "Show full SKILL.md"}
         </button>
@@ -383,8 +381,8 @@ function CandidateCard({
           }}
           className={cn(
             "ml-auto px-3 py-1.5 text-xs rounded-md",
-            "bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25",
-            "border border-cyan-400/30",
+            "bg-info/15 text-info hover:bg-info/35",
+            "border border-info/30",
             busy && "opacity-50",
           )}
         >

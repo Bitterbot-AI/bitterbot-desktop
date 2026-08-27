@@ -85,8 +85,8 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
           title="Wallet"
           className={cn(
             "w-8 h-8 flex items-center justify-center rounded-md transition-colors",
-            "text-[var(--sidebar-text-muted)] hover:text-emerald-400 hover:bg-[var(--sidebar-hover)]",
-            address && "text-emerald-400",
+            "text-[var(--sidebar-text-muted)] hover:text-success hover:bg-[var(--sidebar-hover)]",
+            address && "text-success",
           )}
         >
           <Wallet className="w-4 h-4" />
@@ -116,16 +116,14 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
       {/* Section header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-[#00D4E6]">
+          <div className="px-2 py-1 text-badge font-semibold uppercase tracking-widest text-brand-cyan">
             WALLET
           </div>
           {network && (
             <span
               className={cn(
                 "text-3xs font-medium px-1.5 py-0.5 rounded-full",
-                network === "base"
-                  ? "bg-emerald-500/15 text-emerald-400"
-                  : "bg-amber-500/15 text-amber-400",
+                network === "base" ? "bg-success/15 text-success" : "bg-warning/15 text-warning",
               )}
             >
               {network === "base" ? "MAINNET" : "TESTNET"}
@@ -151,7 +149,7 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
       {error ? (
         <div className="flex items-center justify-between px-2 py-1">
           <span className="text-2xs text-[var(--sidebar-text-muted)]">USDC</span>
-          <span className="text-xs font-medium tabular-nums text-emerald-400">$0.00</span>
+          <span className="text-xs font-medium tabular-nums text-success">$0.00</span>
         </div>
       ) : (
         <>
@@ -184,7 +182,7 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
                   className={cn(
                     "text-xs font-medium tabular-nums",
                     parseFloat(bal.balance) > 0
-                      ? "text-emerald-400"
+                      ? "text-success"
                       : "text-[var(--sidebar-text-secondary)]",
                   )}
                 >
@@ -195,7 +193,7 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
             {balances.length === 0 && !loading && (
               <div className="flex items-center justify-between px-2 py-1 rounded-md">
                 <span className="text-2xs text-[var(--sidebar-text-muted)]">USDC</span>
-                <span className="text-xs font-medium tabular-nums text-emerald-400">$0.00</span>
+                <span className="text-xs font-medium tabular-nums text-success">$0.00</span>
               </div>
             )}
             {loading && (
@@ -205,7 +203,7 @@ export function WalletSidebarPanel({ collapsed }: { collapsed: boolean }) {
 
           {/* "Open wallet" affordance — the whole panel is clickable, this
               just makes the affordance visible. */}
-          <div className="flex items-center gap-1 mt-2 px-2 py-1 text-badge text-purple-400">
+          <div className="flex items-center gap-1 mt-2 px-2 py-1 text-badge text-brand">
             <span>Open wallet</span>
             <ExternalLink className="w-2.5 h-2.5" />
           </div>

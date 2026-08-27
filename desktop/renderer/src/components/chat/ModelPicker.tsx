@@ -98,7 +98,7 @@ export function ModelPicker() {
       >
         <Check className={cn("h-3.5 w-3.5 mr-2", isCurrent ? "opacity-100" : "opacity-0")} />
         <span className="truncate">{entry.name || entry.id}</span>
-        {entry.isDefault && <span className="ml-2 text-2xs text-emerald-400/90">recommended</span>}
+        {entry.isDefault && <span className="ml-2 text-2xs text-success/90">recommended</span>}
         <span className="ml-auto flex items-center gap-2 pl-2 text-2xs text-muted-foreground">
           {opts?.showProvider && <span className="truncate max-w-[90px]">{entry.provider}</span>}
           {entry.reasoning && <span>reasoning</span>}
@@ -125,8 +125,8 @@ export function ModelPicker() {
             "h-6 px-2 text-xs rounded-md inline-flex items-center gap-1",
             "border transition-colors truncate max-w-[240px]",
             current?.overridden
-              ? "bg-amber-500/10 text-amber-300 border-amber-500/20 hover:bg-amber-500/20"
-              : "bg-muted/40 text-muted-foreground border-border hover:bg-muted",
+              ? "bg-warning/10 text-warning border-warning/20 hover:bg-warning/30"
+              : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/90",
             (saving || status !== "connected") && "opacity-60",
           )}
           title={

@@ -66,16 +66,16 @@ function ChannelCard({
       )}
     >
       <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         <div
           className={cn(
             "w-2 h-2 rounded-full flex-shrink-0",
             isConnected
-              ? "bg-green-400"
+              ? "bg-success"
               : primaryAccount?.configured
-                ? "bg-yellow-400"
+                ? "bg-warning"
                 : "bg-muted-foreground/30",
           )}
         />
@@ -94,9 +94,9 @@ function ChannelCard({
             className={cn(
               "text-xs px-2 py-0.5 rounded-full",
               isConnected
-                ? "bg-green-500/10 text-green-400"
+                ? "bg-success/10 text-success"
                 : primaryAccount?.configured
-                  ? "bg-yellow-500/10 text-yellow-400"
+                  ? "bg-warning/10 text-warning"
                   : "bg-muted text-muted-foreground",
             )}
           >
@@ -120,7 +120,7 @@ function ChannelCard({
                 e.stopPropagation();
                 onSetup(channel.channelId, primaryAccount?.accountId);
               }}
-              className="px-2 py-1 text-xs rounded bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border border-purple-500/20"
+              className="px-2 py-1 text-xs rounded bg-brand/10 text-brand hover:bg-brand/30 border border-brand/20"
             >
               {primaryAccount?.configured ? "Edit setup" : "Set up"}
             </button>
@@ -134,7 +134,7 @@ function ChannelCard({
                     {account.accountId}
                   </span>
                   {account.enabled === false && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-danger/10 text-danger">
                       disabled
                     </span>
                   )}
@@ -175,7 +175,7 @@ function ChannelCard({
                       e.stopPropagation();
                       onLogout(channel.channelId, account.accountId, channel.label);
                     }}
-                    className="px-2 py-1 text-xs rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+                    className="px-2 py-1 text-xs rounded bg-danger/10 text-danger hover:bg-danger/30 border border-danger/20"
                   >
                     Logout
                   </button>
@@ -305,8 +305,8 @@ export function ChannelsView() {
             disabled={loading}
             className={cn(
               "px-3 py-1.5 text-xs rounded-lg",
-              "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20",
-              "border border-purple-500/20 transition-colors",
+              "bg-brand/10 text-brand hover:bg-brand/30",
+              "border border-brand/20 transition-colors",
               loading && "opacity-50",
             )}
           >
@@ -317,7 +317,7 @@ export function ChannelsView() {
             disabled={loading}
             className={cn(
               "px-3 py-1.5 text-xs rounded-lg",
-              "bg-muted/30 text-muted-foreground hover:bg-muted/50",
+              "bg-muted/30 text-muted-foreground hover:bg-muted/60",
               "border border-border/20 transition-colors",
               loading && "opacity-50",
             )}
@@ -328,7 +328,7 @@ export function ChannelsView() {
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+        <div className="p-3 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm">
           {error}
         </div>
       )}

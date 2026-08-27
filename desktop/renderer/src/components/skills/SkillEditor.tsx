@@ -2,6 +2,7 @@ import Editor, { type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { useUIStore } from "../../stores/ui-store";
 
 const TEMPLATES: Record<string, { label: string; content: string }> = {
   basic: {
@@ -294,7 +295,13 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
 
   const validation = useMemo<ValidationResult>(() => validate(content), [content]);
 
+  const appTheme = useUIStore((s) => s.theme);
+  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
+
   const onEditorMount: OnMount = useCallback((editor, monaco) => {
+    monacoRef.current = monaco;
+    // Monaco follows the app theme (PLAN-41 D-G) — a hardcoded dark editor
+    // was a black hole on the light theme.
     monaco.editor.defineTheme("bitterbot-dark", {
       base: "vs-dark",
       inherit: true,
@@ -303,7 +310,8 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
         "editor.background": "#0c0c0e",
       },
     });
-    monaco.editor.setTheme("bitterbot-dark");
+    const dark = document.documentElement.classList.contains("dark");
+    monaco.editor.setTheme(dark ? "bitterbot-dark" : "vs");
     editor.updateOptions({
       fontSize: 12,
       lineNumbers: "on",
@@ -315,6 +323,10 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
       renderLineHighlight: "none",
     });
   }, []);
+
+  useEffect(() => {
+    monacoRef.current?.editor.setTheme(appTheme === "dark" ? "bitterbot-dark" : "vs");
+  }, [appTheme]);
 
   const submit = useCallback(async () => {
     const trimmedName = name.trim();
@@ -439,7 +451,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
           <h2 className="text-lg font-semibold text-foreground">Create skill</h2>
           <div className="flex items-center gap-3 text-2xs text-muted-foreground">
             {name && draftStatus === "restored" && (
-              <span className="text-amber-300">Draft restored</span>
+              <span className="text-warning">Draft restored</span>
             )}
             {name && draftStatus === "saved" && <span>Draft saved</span>}
             <button
@@ -463,7 +475,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
                 disabled={busy}
                 className={cn(
                   "w-full h-8 px-3 text-sm rounded-md border bg-transparent text-foreground",
-                  "border-border/30 focus:border-purple-500 focus:outline-none",
+                  "border-border/30 focus:border-brand focus:outline-none",
                 )}
               />
             </label>
@@ -475,7 +487,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
                 disabled={busy}
                 className={cn(
                   "w-full h-8 px-2 text-sm rounded-md border bg-transparent text-foreground",
-                  "border-border/30 focus:border-purple-500 focus:outline-none",
+                  "border-border/30 focus:border-brand focus:outline-none",
                 )}
               >
                 <option value="managed">Managed (~/.bitterbot/skills)</option>
@@ -495,7 +507,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
                     className={cn(
                       "px-2 py-0.5 text-2xs rounded border transition-colors",
                       key === templateKey
-                        ? "bg-purple-500/15 border-purple-500/30 text-foreground"
+                        ? "bg-brand/15 border-brand/30 text-foreground"
                         : "border-border/30 text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -509,8 +521,8 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
             <span className="text-xs text-muted-foreground">SKILL.md content</span>
             <div
               className={cn(
-                "rounded-md border bg-[#0c0c0e] overflow-hidden",
-                "border-border/30 focus-within:border-purple-500",
+                "rounded-md border bg-card dark:bg-[#0c0c0e] overflow-hidden",
+                "border-border/30 focus-within:border-brand",
               )}
               style={{ height: "min(58vh, 480px)" }}
             >
@@ -524,9 +536,9 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
               />
             </div>
           </div>
-          {!validation.ok && <div className="text-xs text-amber-300">{validation.message}</div>}
+          {!validation.ok && <div className="text-xs text-warning">{validation.message}</div>}
           {validation.ok && validation.warnings.length > 0 && (
-            <ul className="text-2xs text-amber-300/80 list-disc list-inside space-y-0.5">
+            <ul className="text-2xs text-warning/80 list-disc list-inside space-y-0.5">
               {validation.warnings.map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
@@ -579,7 +591,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
               <div className="text-2xs text-muted-foreground flex items-center justify-between">
                 <span>
                   Validator:{" "}
-                  <span className={validateResult.ok ? "text-green-300" : "text-red-300"}>
+                  <span className={validateResult.ok ? "text-success" : "text-danger"}>
                     {validateResult.ok ? "passed" : "failed"}
                   </span>
                   {validateResult.injectionScan && (
@@ -588,12 +600,12 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
                       <span
                         className={
                           validateResult.injectionScan.severity === "ok"
-                            ? "text-green-300"
+                            ? "text-success"
                             : validateResult.injectionScan.severity === "low"
-                              ? "text-yellow-300"
+                              ? "text-warning"
                               : validateResult.injectionScan.severity === "medium"
-                                ? "text-amber-300"
-                                : "text-red-300"
+                                ? "text-warning"
+                                : "text-danger"
                         }
                       >
                         {validateResult.injectionScan.severity}
@@ -617,9 +629,9 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
                       key={i}
                       className={cn(
                         d.severity === "error"
-                          ? "text-red-300"
+                          ? "text-danger"
                           : d.severity === "warn"
-                            ? "text-amber-300"
+                            ? "text-warning"
                             : "text-muted-foreground",
                       )}
                     >
@@ -637,7 +649,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
             <div
               className={cn(
                 "text-2xs",
-                publishMessage.kind === "ok" ? "text-green-300" : "text-red-300",
+                publishMessage.kind === "ok" ? "text-success" : "text-danger",
               )}
             >
               Publish: {publishMessage.text}
@@ -647,14 +659,14 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
             <div
               className={cn(
                 "text-2xs",
-                uploadMessage.kind === "ok" ? "text-green-300" : "text-red-300",
+                uploadMessage.kind === "ok" ? "text-success" : "text-danger",
               )}
             >
               Upload: {uploadMessage.text}
             </div>
           )}
 
-          {error && <div className="text-xs text-red-300">{error}</div>}
+          {error && <div className="text-xs text-danger">{error}</div>}
           <p className="text-2xs text-muted-foreground">
             Skills you create stay disabled until you toggle them on. Drafts are auto-saved per name
             to localStorage; saving the skill clears the draft.
@@ -673,7 +685,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
             disabled={busy || !validation.ok || !name.trim()}
             className={cn(
               "px-3 py-1.5 text-xs rounded-md border transition-colors",
-              "bg-purple-500/15 text-purple-200 border-purple-500/30 hover:bg-purple-500/25",
+              "bg-brand/15 text-brand border-brand/30 hover:bg-brand/35",
               (busy || !validation.ok || !name.trim()) && "opacity-50 cursor-not-allowed",
             )}
           >

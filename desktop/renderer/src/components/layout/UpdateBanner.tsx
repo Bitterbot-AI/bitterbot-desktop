@@ -115,14 +115,14 @@ export function UpdateBanner() {
       : `This node is ${behind ?? "many"} commits behind the latest code.`;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-amber-500/10 border-b border-amber-500/25 text-sm">
-      <span className="text-amber-300 flex-1 min-w-0 truncate">
+    <div className="flex items-center gap-3 px-4 py-2 bg-warning/10 border-b border-warning/25 text-sm">
+      <span className="text-warning flex-1 min-w-0 truncate">
         {label} Out-of-date nodes drift from the fleet.
       </span>
       <button
         type="button"
         onClick={() => setActiveTab("overview")}
-        className="px-2.5 py-1 rounded-lg text-xs bg-amber-500/15 text-amber-200 border border-amber-500/30 hover:bg-amber-500/25 transition-colors whitespace-nowrap"
+        className="px-2.5 py-1 rounded-lg text-xs bg-warning/15 text-warning border border-warning/30 hover:bg-warning/35 transition-colors whitespace-nowrap"
       >
         Update from Overview
       </button>

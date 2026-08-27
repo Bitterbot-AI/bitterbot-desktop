@@ -164,10 +164,10 @@ export function KeyEntryModal({ open, onOpenChange, provider, onSaved }: KeyEntr
             <div
               className={`flex items-start gap-2 text-sm rounded-md border p-2 ${
                 probe.ok
-                  ? "border-emerald-500/30 text-emerald-400"
+                  ? "border-success/30 text-success"
                   : probe.unsupported
-                    ? "border-amber-500/30 text-amber-400"
-                    : "border-red-500/30 text-red-400"
+                    ? "border-warning/30 text-warning"
+                    : "border-danger/30 text-danger"
               }`}
             >
               {probe.ok ? (

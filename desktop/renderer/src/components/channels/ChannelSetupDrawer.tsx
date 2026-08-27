@@ -190,9 +190,7 @@ export function ChannelSetupDrawer({
               {probe && (
                 <div
                   className={`flex items-start gap-2 text-sm rounded-md border p-2 ${
-                    probe.ok
-                      ? "border-emerald-500/30 text-emerald-400"
-                      : "border-red-500/30 text-red-400"
+                    probe.ok ? "border-success/30 text-success" : "border-danger/30 text-danger"
                   }`}
                 >
                   {probe.ok ? (

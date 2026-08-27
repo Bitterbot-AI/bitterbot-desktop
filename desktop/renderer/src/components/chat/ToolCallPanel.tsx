@@ -36,16 +36,16 @@ function getToolMeta(name: string): { icon: typeof Terminal; color: string; grad
   if (lower === "complete" || lower.includes("task_complete") || lower.includes("task-complete"))
     return {
       icon: CheckCircle,
-      color: "text-emerald-400",
-      gradient: "from-emerald-500/20 to-emerald-600/10",
+      color: "text-success",
+      gradient: "from-success/20 to-success/10",
     };
   if (lower === "ask" || lower.includes("ask_user") || lower.includes("ask-user"))
-    return { icon: Wrench, color: "text-blue-400", gradient: "from-blue-500/20 to-blue-600/10" };
+    return { icon: Wrench, color: "text-info", gradient: "from-info/20 to-info/10" };
   if (lower === "plan")
     return {
       icon: ListTree,
-      color: "text-indigo-400",
-      gradient: "from-indigo-500/20 to-indigo-600/10",
+      color: "text-brand",
+      gradient: "from-brand/20 to-brand/10",
     };
   if (
     lower.includes("command") ||
@@ -55,14 +55,14 @@ function getToolMeta(name: string): { icon: typeof Terminal; color: string; grad
   )
     return {
       icon: Terminal,
-      color: "text-purple-400",
-      gradient: "from-purple-500/20 to-purple-600/10",
+      color: "text-brand",
+      gradient: "from-brand/20 to-brand/10",
     };
   if (lower.includes("str-replace") || lower.includes("str_replace"))
     return {
       icon: FileEdit,
-      color: "text-amber-400",
-      gradient: "from-amber-500/20 to-amber-600/10",
+      color: "text-warning",
+      gradient: "from-warning/20 to-warning/10",
     };
   if (
     lower.includes("file") ||
@@ -70,9 +70,9 @@ function getToolMeta(name: string): { icon: typeof Terminal; color: string; grad
     lower.includes("read") ||
     lower.includes("edit")
   )
-    return { icon: FileCode, color: "text-blue-400", gradient: "from-blue-500/20 to-blue-600/10" };
+    return { icon: FileCode, color: "text-info", gradient: "from-info/20 to-info/10" };
   if (lower.includes("search") || lower.includes("find") || lower.includes("grep"))
-    return { icon: Search, color: "text-cyan-400", gradient: "from-cyan-500/20 to-cyan-600/10" };
+    return { icon: Search, color: "text-info", gradient: "from-info/20 to-info/10" };
   if (
     lower.includes("browser") ||
     lower.includes("web") ||
@@ -81,11 +81,11 @@ function getToolMeta(name: string): { icon: typeof Terminal; color: string; grad
     lower.includes("fetch") ||
     lower.includes("screenshot")
   )
-    return { icon: Globe, color: "text-green-400", gradient: "from-green-500/20 to-green-600/10" };
+    return { icon: Globe, color: "text-success", gradient: "from-success/20 to-success/10" };
   return {
     icon: Wrench,
-    color: "text-purple-400",
-    gradient: "from-purple-500/20 to-purple-600/10",
+    color: "text-brand",
+    gradient: "from-brand/20 to-brand/10",
   };
 }
 
@@ -341,15 +341,15 @@ export function ToolCallPanel() {
                     step={1}
                     value={displayIndex}
                     onChange={(e) => navigateTo(Number(e.target.value))}
-                    className="w-full h-1.5 rounded-full bg-zinc-700/50 appearance-none cursor-pointer
+                    className="w-full h-1.5 rounded-full bg-muted/50 appearance-none cursor-pointer
                       [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
-                      [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-400
-                      [&::-webkit-slider-thumb]:hover:bg-purple-300 [&::-webkit-slider-thumb]:transition-colors"
+                      [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand
+                      [&::-webkit-slider-thumb]:hover:bg-brand/90 [&::-webkit-slider-thumb]:transition-colors"
                   />
                 </div>
 
                 <div className="flex items-center gap-1 text-badge text-muted-foreground">
-                  <CheckCircle className="w-3 h-3 text-emerald-400/70" />
+                  <CheckCircle className="w-3 h-3 text-success/70" />
                   <span>{completedCount}</span>
                 </div>
               </div>
@@ -379,7 +379,7 @@ function TabButton({
       className={cn(
         "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
         active
-          ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+          ? "bg-brand/10 text-brand border border-brand/20"
           : "text-muted-foreground hover:text-foreground hover:bg-accent",
       )}
     >
@@ -402,16 +402,16 @@ function StatusButton({
   if (navMode === "live") {
     if (isRunning) {
       return (
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-badge font-medium text-emerald-400">Live</span>
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success/10 border border-success/20">
+          <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+          <span className="text-badge font-medium text-success">Live</span>
         </div>
       );
     }
     return (
-      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-500/10 border border-zinc-500/20">
-        <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-        <span className="text-badge font-medium text-zinc-400">Latest</span>
+      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted/10 border border-border/20">
+        <span className="w-1.5 h-1.5 rounded-full bg-muted" />
+        <span className="text-badge font-medium text-muted-foreground">Latest</span>
       </div>
     );
   }
@@ -422,19 +422,17 @@ function StatusButton({
       className={cn(
         "flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-colors cursor-pointer",
         isRunning
-          ? "bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20"
-          : "bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20",
+          ? "bg-success/10 border border-success/20 hover:bg-success/30"
+          : "bg-info/10 border border-info/20 hover:bg-info/30",
       )}
     >
       <span
         className={cn(
           "w-1.5 h-1.5 rounded-full",
-          isRunning ? "bg-emerald-400 animate-pulse" : "bg-blue-400",
+          isRunning ? "bg-success animate-pulse" : "bg-info",
         )}
       />
-      <span
-        className={cn("text-badge font-medium", isRunning ? "text-emerald-400" : "text-blue-400")}
-      >
+      <span className={cn("text-badge font-medium", isRunning ? "text-success" : "text-info")}>
         {isRunning ? "Jump to Live" : "Jump to Latest"}
       </span>
     </button>
@@ -518,8 +516,8 @@ function getToolFooterBadges(toolCall: ActiveToolCall): Array<{ label: string; c
         label: `Exit ${code}`,
         color:
           code === 0
-            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-            : "bg-red-500/10 text-red-400 border-red-500/20",
+            ? "bg-success/10 text-success border-success/20"
+            : "bg-danger/10 text-danger border-danger/20",
       });
     }
   }
@@ -532,7 +530,7 @@ function getToolFooterBadges(toolCall: ActiveToolCall): Array<{ label: string; c
       if (ext) {
         const lang = getLanguageFromExtension(ext);
         if (lang !== "text") {
-          badges.push({ label: lang, color: "bg-blue-500/10 text-blue-400 border-blue-500/20" });
+          badges.push({ label: lang, color: "bg-info/10 text-info border-info/20" });
         }
       }
     }
@@ -552,7 +550,7 @@ function getToolFooterBadges(toolCall: ActiveToolCall): Array<{ label: string; c
       if (items) {
         badges.push({
           label: `${items.length} results`,
-          color: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+          color: "bg-info/10 text-info border-info/20",
         });
       }
     } catch {
@@ -591,14 +589,14 @@ function ToolHeader({ toolCall }: { toolCall: ActiveToolCall }) {
         className={cn(
           "flex items-center gap-1 text-badge uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full flex-shrink-0",
           toolCall.status === "running"
-            ? "bg-emerald-500/10 text-emerald-400"
+            ? "bg-success/10 text-success"
             : toolCall.status === "error"
-              ? "bg-red-500/10 text-red-400"
-              : "bg-purple-500/10 text-purple-400",
+              ? "bg-danger/10 text-danger"
+              : "bg-brand/10 text-brand",
         )}
       >
         {toolCall.status === "running" && (
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
         )}
         {toolCall.status === "completed" && <CheckCircle className="w-2.5 h-2.5" />}
         {toolCall.status === "error" && <AlertTriangle className="w-2.5 h-2.5" />}

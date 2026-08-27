@@ -163,7 +163,7 @@ export function GatewayControls() {
               disabled={startDisabled}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs",
-                "bg-green-500/10 hover:bg-green-500/20 text-green-300 border border-green-500/25 transition-colors",
+                "bg-success/10 hover:bg-success/30 text-success border border-success/25 transition-colors",
                 startDisabled && "opacity-50",
               )}
             >
@@ -177,7 +177,7 @@ export function GatewayControls() {
             disabled={adminDisabled}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs",
-              "bg-muted/40 hover:bg-muted/60 text-foreground border border-border/30 transition-colors",
+              "bg-muted/40 hover:bg-muted/70 text-foreground border border-border/30 transition-colors",
               adminDisabled && "opacity-50",
             )}
           >
@@ -190,7 +190,7 @@ export function GatewayControls() {
             disabled={adminDisabled}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs",
-              "bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/25 transition-colors",
+              "bg-danger/10 hover:bg-danger/30 text-danger border border-danger/25 transition-colors",
               adminDisabled && "opacity-50",
             )}
           >
@@ -199,7 +199,7 @@ export function GatewayControls() {
           </button>
         </div>
       </div>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       {confirmElement}
     </div>
   );

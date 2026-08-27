@@ -75,14 +75,14 @@ export function CommandToolView({ toolCall }: ToolViewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Terminal header */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/80 border-b border-zinc-700/50">
+      <div className="flex items-center gap-2 px-3 py-2 bg-card/80 border-b border-border/50">
         <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
-          <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
-          <span className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+          <span className="w-2.5 h-2.5 rounded-full bg-danger/80" />
+          <span className="w-2.5 h-2.5 rounded-full bg-warning/80" />
+          <span className="w-2.5 h-2.5 rounded-full bg-success/80" />
         </div>
         {sessionName && (
-          <span className="text-badge text-zinc-500 font-mono ml-2">{sessionName}</span>
+          <span className="text-badge text-muted-foreground font-mono ml-2">{sessionName}</span>
         )}
         <div className="ml-auto flex items-center gap-2">
           {/* Exit code badge */}
@@ -91,30 +91,30 @@ export function CommandToolView({ toolCall }: ToolViewProps) {
               className={cn(
                 "text-badge font-semibold px-1.5 py-0.5 rounded border",
                 exitCode === 0
-                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                  : "bg-red-500/10 text-red-400 border-red-500/20",
+                  ? "bg-success/10 text-success border-success/20"
+                  : "bg-danger/10 text-danger border-danger/20",
               )}
             >
               Exit {exitCode}
             </span>
           )}
-          <span className="text-badge text-zinc-500 font-mono">bash</span>
+          <span className="text-badge text-muted-foreground font-mono">bash</span>
         </div>
       </div>
 
       {/* Command line */}
       {command && (
-        <div className="px-3 py-2 bg-zinc-900/60 border-b border-zinc-800/50 font-mono text-xs">
-          <span className="text-green-400/80">$</span>{" "}
-          <span className="text-zinc-200">{command}</span>
+        <div className="px-3 py-2 bg-card/60 border-b border-border/50 font-mono text-xs">
+          <span className="text-success/80">$</span>{" "}
+          <span className="text-foreground">{command}</span>
         </div>
       )}
 
       {/* Non-blocking info box */}
       {nonBlocking && (
-        <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-          <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-          <span className="text-xs text-blue-300">
+        <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-info/10 border border-info/20">
+          <Info className="w-3.5 h-3.5 text-info flex-shrink-0" />
+          <span className="text-xs text-info">
             Command sent to tmux session{" "}
             <span className="font-mono font-semibold">{nonBlocking.sessionName}</span>
           </span>
@@ -124,17 +124,17 @@ export function CommandToolView({ toolCall }: ToolViewProps) {
       {/* Output area */}
       <pre
         ref={outputRef}
-        className="flex-1 overflow-auto p-3 bg-zinc-950/80 font-mono text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap break-all"
+        className="flex-1 overflow-auto p-3 bg-card/80 font-mono text-xs text-foreground leading-relaxed whitespace-pre-wrap break-all"
       >
         {visibleOutput ? (
           visibleOutput
         ) : isRunning ? (
-          <span className="text-zinc-500 animate-pulse">Executing...</span>
+          <span className="text-muted-foreground animate-pulse">Executing...</span>
         ) : (
-          <span className="text-zinc-600">No output</span>
+          <span className="text-muted-foreground">No output</span>
         )}
         {isRunning && processedOutput && (
-          <span className="inline-block w-1.5 h-3.5 bg-green-400/80 ml-0.5 animate-pulse" />
+          <span className="inline-block w-1.5 h-3.5 bg-success/80 ml-0.5 animate-pulse" />
         )}
       </pre>
 
@@ -142,7 +142,7 @@ export function CommandToolView({ toolCall }: ToolViewProps) {
       {totalLines > MAX_COLLAPSED_LINES && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center justify-center gap-1.5 px-3 py-1.5 border-t border-zinc-800/50 bg-zinc-900/40 text-2xs text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800/40 transition-colors"
+          className="flex items-center justify-center gap-1.5 px-3 py-1.5 border-t border-border/50 bg-card/40 text-2xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
         >
           {expanded ? (
             <>
