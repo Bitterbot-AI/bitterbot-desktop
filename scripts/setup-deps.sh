@@ -70,18 +70,12 @@ install_if_missing "tmux"      "tmux"       "tmux (terminal multiplexer)"
 
 echo ""
 
-# ── Playwright + Chromium (for browser automation) ──
-
-echo "── Playwright + Chromium ──"
-
-if npx playwright --version &>/dev/null 2>&1; then
-  echo "   ✅ Playwright $(npx playwright --version) installed"
-else
-  echo "   📦 Installing Playwright + Chromium..."
-  npx playwright install --with-deps chromium
-fi
-
-echo ""
+# Chromium for browser automation is provisioned AFTER `pnpm install`
+# (see the next-steps below) via the repo's pinned Playwright:
+#   pnpm exec playwright install --with-deps chromium
+# The old pre-install `npx playwright` probe is gone: with no node_modules
+# yet, npx would fetch an UNPINNED playwright from npm and could hang on a
+# hidden "Ok to proceed?" prompt (PLAN-41 p0-5).
 
 # ── Python + pip (optional, for Skill Seekers integration) ──
 
@@ -112,4 +106,5 @@ fi
 echo ""
 echo "✅ Done! Next steps:"
 echo "   1. pnpm install"
-echo "   2. pnpm bitterbot onboard   (builds automatically, then walks you through setup)"
+echo "   2. pnpm exec playwright install --with-deps chromium   (browser automation)"
+echo "   3. pnpm bitterbot onboard   (builds automatically, then walks you through setup)"

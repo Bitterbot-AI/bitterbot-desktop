@@ -38,10 +38,17 @@ Most AI agents are stateless wrappers around an LLM API. Close the terminal, and
 
 **Runtime: Node ≥ 22** · **Package manager: pnpm**
 
+No pnpm yet? It ships with Node via corepack:
+
+```bash
+corepack enable pnpm || npm install -g pnpm
+```
+
 ```bash
 git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop
-bash scripts/setup-deps.sh    # installs Chromium, ffmpeg, ripgrep, etc.
+bash scripts/setup-deps.sh    # system deps: ffmpeg, ripgrep, jq, etc.
 pnpm install
+pnpm exec playwright install --with-deps chromium   # browser automation
 ```
 
 Run the onboarding wizard. It walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, then **starts the gateway + Control UI for you and opens the browser**. When it finishes, Bitterbot is already running; there's nothing else to type.

@@ -20,6 +20,7 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
 ## Prereqs
 
 - Node 22 or newer
+- pnpm — ships with Node via corepack: `corepack enable pnpm || npm install -g pnpm`
 
 <Tip>
 Check your Node version with `node --version` if you are unsure.
@@ -29,11 +30,15 @@ Check your Node version with `node --version` if you are unsure.
 
 <Steps>
   <Step title="Install Bitterbot (from source)">
+    No pnpm yet? It ships with Node via corepack:
+    `corepack enable pnpm || npm install -g pnpm`
+
     ```bash
     git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git
     cd bitterbot-desktop
-    bash scripts/setup-deps.sh   # Chromium, ffmpeg, ripgrep, ...
+    bash scripts/setup-deps.sh   # system deps: ffmpeg, ripgrep, ...
     pnpm install
+    pnpm exec playwright install --with-deps chromium   # browser automation
     ```
 
     <Note>
