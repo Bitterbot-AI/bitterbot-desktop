@@ -8,6 +8,11 @@
   },
   "ignorePatterns": [
     "assets/",
+    // release-please rewrites these in its release PRs and its output
+    // does not match oxfmt style — formatting churn on every release
+    // otherwise (first hit: the v1.0.0 PR redded Lint on main).
+    "CHANGELOG.md",
+    "desktop/src-tauri/tauri.conf.json",
     "benchmarks/longmemeval/data/",
     "dist/",
     "docs/_layouts/",

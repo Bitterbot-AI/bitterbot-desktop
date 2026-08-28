@@ -56,12 +56,15 @@ describe("computeUpdateStaleness", () => {
     }
   });
 
+  // Fixture note: "newer" versions must keep major < 2000 — the D-A CalVer
+  // guard deliberately sorts date-shaped majors (>= 2000) BEFORE any real
+  // SemVer, so 9999.0.0 would read as an OLD CalVer, not a future release.
   it("package installs go stale on a newer registry version", () => {
     const base: UpdateCheckResult = {
       root: "/opt/bitterbot",
       installKind: "package",
       packageManager: "npm",
-      registry: { latestVersion: "9999.0.0" },
+      registry: { latestVersion: "999.0.0" },
     };
     expect(computeUpdateStaleness(base)).toMatchObject({
       stale: true,
@@ -81,7 +84,7 @@ describe("computeUpdateStaleness", () => {
       root: "/opt/bitterbot",
       installKind: "package",
       packageManager: "npm",
-      registry: { latestVersion: "9999.0.0" },
+      registry: { latestVersion: "999.0.0" },
     };
     // Channel tag matches the running version: latest being newer is irrelevant.
     expect(computeUpdateStaleness(base, undefined, { channelVersion: VERSION })).toMatchObject({
@@ -91,7 +94,7 @@ describe("computeUpdateStaleness", () => {
     // Channel tag is ahead: stale even if registry latest were missing.
     expect(
       computeUpdateStaleness({ ...base, registry: undefined }, undefined, {
-        channelVersion: "9999.0.0",
+        channelVersion: "999.0.0",
       }),
     ).toMatchObject({ stale: true, reason: "package-version" });
   });
