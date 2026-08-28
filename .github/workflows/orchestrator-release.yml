@@ -21,6 +21,8 @@ concurrency:
 
 permissions:
   contents: write # required by softprops/action-gh-release to publish
+  id-token: write # build-provenance attestation (Sigstore)
+  attestations: write
 
 jobs:
   build:
@@ -169,6 +171,15 @@ jobs:
           fi
           ls -lh
 
+      # Provenance attestation for every binary (PLAN-41): zero secrets,
+      # verify with `gh attestation verify <file> --repo Bitterbot-AI/bitterbot-desktop`.
+      # minisign stays the updater-path signer; attestations are the
+      # supply-chain audit trail (Sigstore underneath).
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/bitterbot-orchestrator-*
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
@@ -179,7 +190,10 @@ jobs:
             release/checksums.txt
             release/checksums.txt.minisig
           fail_on_unmatched_files: true
-          generate_release_notes: false
+          # Generated notes carry the commit-range changelog; the body
+          # below keeps the verification instructions (PLAN-41: no more
+          # hardcoded "Automated release" note).
+          generate_release_notes: true
           body: |
             Prebuilt `bitterbot-orchestrator` v${{ steps.meta.outputs.version }} binaries.
 

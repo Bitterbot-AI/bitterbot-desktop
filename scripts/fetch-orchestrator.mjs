@@ -21,7 +21,7 @@
  * git tag to trigger the CI workflow).
  */
 
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { chmod, mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -42,6 +42,16 @@ const INSTALL_DIR =
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
 const CARGO_MANIFEST = join(REPO_ROOT, "orchestrator", "Cargo.toml");
+
+/**
+ * Pinned minisign public key for orchestrator releases (PLAN-41 D-B).
+ * The base64 payload from the SECOND line of the fleet's minisign .pub
+ * file. EMPTY until Victor runs the signing runbook and mints the
+ * keypair — while empty, signature verification is skipped with a note
+ * (pre-signing era) and the SHA-256 check remains the only gate. Once
+ * pinned, a release that carries a bad checksums.txt.minisig is REFUSED.
+ */
+const MINISIGN_PUBKEY_B64 = "";
 
 const LOG_PREFIX = "[orchestrator-fetch]";
 const log = (msg) => console.log(`${LOG_PREFIX} ${msg}`);
@@ -96,6 +106,68 @@ async function fetchToFile(url, destPath) {
     throw new Error("empty response body");
   }
   await pipeline(res.body, createWriteStream(destPath));
+}
+
+/**
+ * Verify a minisign signature over `message` with a minisign public key.
+ * Pure node:crypto — minisign is Ed25519 underneath:
+ *   pubkey payload  = "Ed" | key_id(8) | ed25519_pub(32)
+ *   .minisig        = untrusted-comment line
+ *                     base64( alg(2) | key_id(8) | signature(64) )
+ *                     trusted-comment line
+ *                     base64( global_sig(64) )  — over sig || trusted_comment
+ * alg "ED" (current default) signs Blake2b-512(message); legacy "Ed"
+ * signs the raw message. Throws with a reason on any mismatch.
+ */
+function verifyMinisign({ pubkeyB64, message, minisig }) {
+  const pub = Buffer.from(pubkeyB64, "base64");
+  if (pub.length !== 42 || pub.toString("latin1", 0, 2) !== "Ed") {
+    throw new Error("pinned public key is not a minisign Ed25519 key");
+  }
+  const keyId = pub.subarray(2, 10);
+  const rawPub = pub.subarray(10, 42);
+  // Raw Ed25519 key -> SPKI DER so node:crypto accepts it.
+  const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), rawPub]);
+  const publicKey = createPublicKey({ key: spki, format: "der", type: "spki" });
+
+  const lines = minisig.split("\n").filter((l) => l.length > 0);
+  const sigLine = lines.find(
+    (l, i) => i > 0 && !l.startsWith("untrusted comment:") && !l.startsWith("trusted comment:"),
+  );
+  const trustedIdx = lines.findIndex((l) => l.startsWith("trusted comment:"));
+  if (!sigLine || trustedIdx < 0 || !lines[trustedIdx + 1]) {
+    throw new Error("malformed .minisig file");
+  }
+  const trustedComment = lines[trustedIdx].slice("trusted comment:".length).trim();
+  const sigBlob = Buffer.from(sigLine, "base64");
+  const globalSig = Buffer.from(lines[trustedIdx + 1], "base64");
+  if (sigBlob.length !== 74 || globalSig.length !== 64) {
+    throw new Error("malformed minisign signature payload");
+  }
+  const alg = sigBlob.toString("latin1", 0, 2);
+  if (!sigBlob.subarray(2, 10).equals(keyId)) {
+    throw new Error("signature key id does not match the pinned public key");
+  }
+  const signature = sigBlob.subarray(10, 74);
+
+  const signed =
+    alg === "ED"
+      ? createHash("blake2b512").update(message).digest()
+      : alg === "Ed"
+        ? Buffer.from(message)
+        : null;
+  if (!signed) {
+    throw new Error(`unknown minisign signature algorithm "${alg}"`);
+  }
+  if (!cryptoVerify(null, signed, publicKey, signature)) {
+    throw new Error("checksums signature is INVALID");
+  }
+  // Global signature binds the trusted comment (release tag) to the sig.
+  const globalMsg = Buffer.concat([signature, Buffer.from(trustedComment, "utf8")]);
+  if (!cryptoVerify(null, globalMsg, publicKey, globalSig)) {
+    throw new Error("trusted-comment (global) signature is INVALID");
+  }
+  return { trustedComment };
 }
 
 async function sha256File(path) {
@@ -182,9 +254,10 @@ async function main() {
   // Fetch checksums first — small, fast, establishes that the release
   // actually exists and we're looking at the right asset.
   let expectedHash;
+  let checksumsBody;
   try {
-    const body = await fetchJsonOrText(checksumUrl);
-    expectedHash = parseChecksums(body, assetName);
+    checksumsBody = await fetchJsonOrText(checksumUrl);
+    expectedHash = parseChecksums(checksumsBody, assetName);
     if (!expectedHash) {
       warn(`${checksumUrl} does not contain an entry for ${assetName}`);
       return;
@@ -196,6 +269,44 @@ async function main() {
         `Gateway will prompt for a local cargo build on first start if needed.`,
     );
     return;
+  }
+
+  // Signature gate BEFORE trusting checksums (PLAN-41 D-B). Three regimes:
+  // no pinned key yet -> note and continue; key pinned but release unsigned
+  // -> warn and continue (pre-signing releases stay installable); key
+  // pinned + signature present -> verify or REFUSE.
+  if (!MINISIGN_PUBKEY_B64) {
+    log("checksums signature not verified (no minisign pubkey pinned yet — D-B runbook pending)");
+  } else {
+    let minisig = null;
+    try {
+      minisig = await fetchJsonOrText(`${checksumUrl}.minisig`);
+    } catch {
+      warn(
+        `orchestrator-v${version} has no checksums.txt.minisig (pre-signing release); ` +
+          "proceeding on SHA-256 only",
+      );
+    }
+    if (minisig) {
+      try {
+        const { trustedComment } = verifyMinisign({
+          pubkeyB64: MINISIGN_PUBKEY_B64,
+          message: checksumsBody,
+          minisig,
+        });
+        if (!trustedComment.includes(`orchestrator-v${version}`)) {
+          warn(
+            `checksums signature is for "${trustedComment}", not orchestrator-v${version} ` +
+              "(cross-release replay?) — refusing to install",
+          );
+          return;
+        }
+        log("checksums signature verified (minisign)");
+      } catch (err) {
+        warn(`checksums signature verification FAILED: ${err.message} — refusing to install`);
+        return;
+      }
+    }
   }
 
   // If we already have the exact binary, skip the download.

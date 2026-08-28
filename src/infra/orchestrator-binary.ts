@@ -102,7 +102,8 @@ export function formatBinaryNotFoundMessage(candidates: BinaryCandidate[]): stri
     "",
     "Fix options:",
     "  - Build locally:   cargo build --release --manifest-path orchestrator/Cargo.toml",
-    "  - Download prebuilt: reinstall with `pnpm install` to run the postinstall fetcher",
+    "  - Download prebuilt: `pnpm install` fetches one ONLY when a release exists for",
+    "    the version in orchestrator/Cargo.toml — if none is published yet, build locally",
     "  - Explicit override: set p2p.orchestratorBinary in your gateway config",
   ];
   return lines.join("\n");

@@ -118,13 +118,14 @@ export async function setupP2pForOnboarding(params: {
     await prompter.note(
       [
         "The orchestrator binary was not found in any expected location.",
-        "This is normal on fresh clones before `pnpm install` has run the postinstall",
-        "downloader, or before a cargo build. The gateway will give you a clear error",
-        "with remediation steps if you start it without a binary.",
+        "The `pnpm install` downloader can only fetch a prebuilt when a release",
+        "exists for the version pinned in orchestrator/Cargo.toml — if none is",
+        "published yet, that path cannot work. The gateway will give you a clear",
+        "error with remediation steps if you start it without a binary.",
         "",
         "Options:",
-        "  - Wait for `pnpm install` postinstall to download the prebuilt (next install)",
         "  - Build locally:  cargo build --release --manifest-path orchestrator/Cargo.toml",
+        "  - Or re-run `pnpm install` once a prebuilt release for this version is published",
       ].join("\n"),
       "Orchestrator binary missing",
     );

@@ -151,7 +151,8 @@ export async function runP2pNetworkChecks(params: {
       warn(
         "Orchestrator binary NOT FOUND — node cannot join the P2P network.\n" +
           `  Build locally:   cargo build --release --manifest-path orchestrator/Cargo.toml\n` +
-          `  Or download:     reinstall with \`pnpm install\` to run the postinstall fetcher`,
+          "  Or download:     `pnpm install` fetches a prebuilt ONLY when a release exists\n" +
+          "                   for the version in orchestrator/Cargo.toml (none may be published yet)",
       ),
     );
     // Still run the rest of the checks so the operator gets the full picture.
