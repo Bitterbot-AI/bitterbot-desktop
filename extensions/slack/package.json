@@ -1,6 +1,6 @@
 {
   "name": "@bitterbot/slack",
-  "version": "2026.2.15",
+  "version": "1.0.0",
   "private": true,
   "description": "Bitterbot Slack channel plugin",
   "type": "module",
