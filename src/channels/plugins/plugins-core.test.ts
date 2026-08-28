@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from "vites
 import type { DiscordProbe } from "../../discord/probe.js";
 import type { DiscordTokenResolution } from "../../discord/token.js";
 import type { IMessageProbe } from "../../imessage/probe.js";
-import type { LineProbeResult } from "../../line/types.js";
 import type { PluginRegistry } from "../../plugins/registry.js";
 import type { SignalProbe } from "../../signal/probe.js";
 import type { SlackProbe } from "../../slack/probe.js";
@@ -191,10 +190,6 @@ describe("BaseProbeResult assignability", () => {
 
   it("IMessageProbe satisfies BaseProbeResult", () => {
     expectTypeOf<IMessageProbe>().toMatchTypeOf<BaseProbeResult>();
-  });
-
-  it("LineProbeResult satisfies BaseProbeResult", () => {
-    expectTypeOf<LineProbeResult>().toMatchTypeOf<BaseProbeResult>();
   });
 });
 

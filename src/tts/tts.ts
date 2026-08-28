@@ -22,9 +22,9 @@ import type {
 } from "../config/types.tts.js";
 import { normalizeChannelId } from "../channels/plugins/index.js";
 import { logVerbose } from "../globals.js";
-import { stripMarkdown } from "../line/markdown-to-line.js";
 import { isVoiceCompatibleAudio } from "../media/audio.js";
 import { CONFIG_DIR, resolveUserPath } from "../utils.js";
+import { stripMarkdown } from "../utils/strip-markdown.js";
 import {
   edgeTTS,
   elevenLabsTTS,
