@@ -7,7 +7,6 @@
     "sortScripts": true,
   },
   "ignorePatterns": [
-    "apps/",
     "assets/",
     "benchmarks/longmemeval/data/",
     "dist/",

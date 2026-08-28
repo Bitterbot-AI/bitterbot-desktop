@@ -232,6 +232,10 @@ benchmarks/arc-agi-3/results/
 
 # PLAN-24 Phase 2 contrastive run scratch + timestamped artifacts
 benchmarks/longmemeval/.work-contrastive/
+# Per-run benchmark artifacts (PLAN-41 p0-24): two historic run dirs and
+# the bio work tree were tracked at ~57MB; runs are reproducible, not source.
+benchmarks/longmemeval/.bench-runs-bio/
+benchmarks/longmemeval/.work-bio/
 benchmarks/longmemeval/results/contrastive_*
 
 # Internal planning docs stay local (removed from tracking 2026-07-29)
