@@ -340,10 +340,6 @@
       "destination": "/web/dashboard"
     },
     {
-      "source": "/device-models",
-      "destination": "/reference/device-models"
-    },
-    {
       "source": "/discord",
       "destination": "/channels/discord"
     },
@@ -1136,7 +1132,7 @@
               },
               {
                 "group": "RPC and API",
-                "pages": ["reference/rpc", "reference/device-models"]
+                "pages": ["reference/rpc"]
               },
               {
                 "group": "Templates",
@@ -1614,7 +1610,7 @@
               },
               {
                 "group": "RPC \u4e0e API",
-                "pages": ["zh-CN/reference/rpc", "zh-CN/reference/device-models"]
+                "pages": ["zh-CN/reference/rpc"]
               },
               {
                 "group": "\u6a21\u677f",
