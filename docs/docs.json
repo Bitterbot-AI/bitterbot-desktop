@@ -261,7 +261,7 @@
     },
     {
       "source": "/RELEASING",
-      "destination": "/reference/RELEASING"
+      "destination": "/reference/RELEASE-PROCEDURE"
     },
     {
       "source": "/agent",
@@ -1169,7 +1169,7 @@
               },
               {
                 "group": "Release notes",
-                "pages": ["reference/RELEASING", "reference/test"]
+                "pages": ["reference/RELEASE-PROCEDURE", "reference/test"]
               },
               {
                 "group": "Experiments",
@@ -1647,7 +1647,7 @@
               },
               {
                 "group": "\u53d1\u5e03\u8bf4\u660e",
-                "pages": ["zh-CN/reference/RELEASING", "zh-CN/reference/test"]
+                "pages": ["zh-CN/reference/RELEASE-PROCEDURE", "zh-CN/reference/test"]
               },
               {
                 "group": "\u5b9e\u9a8c\u6027\u529f\u80fd",

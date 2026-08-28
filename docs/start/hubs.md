@@ -129,5 +129,5 @@ Use these hubs to discover every page, including deep dives and reference docs t
 ## Testing + release
 
 - [Testing](/reference/test)
-- [Release checklist](/reference/RELEASING)
+- [Release checklist](/reference/RELEASE-PROCEDURE)
 - [Device models](/reference/device-models)

@@ -1,5 +1,11 @@
 # Bitterbot Desktop — Tauri Shell
 
+> **EXPERIMENTAL — not part of the V1 release** (PLAN-41 D-I). The V1
+> desktop story is the Control UI served by the gateway at
+> `http://127.0.0.1:19001/`. This shell targets a later release;
+> `desktop-release.yml` is manual-dispatch only and carries known latent
+> failures documented in its header.
+
 The Bitterbot desktop app uses [Tauri 2](https://v2.tauri.app/) to wrap the Control UI (Vite + React) in a native system-webview window and manage the gateway as a supervised child process. The result is one click → one window → the agent is running.
 
 ## Architecture
