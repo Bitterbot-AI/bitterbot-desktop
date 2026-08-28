@@ -257,7 +257,7 @@ Spending is governed by per-transaction caps, per-request caps, and session spen
 
 ## Related
 
-- [Wallet Tool Reference](/tools/wallet) — Agent-facing wallet capabilities
+- [Wallet](/wallet) — Agent-facing wallet capabilities
 - [x402 Protocol](https://www.x402.org/) — HTTP-native micropayment standard
 - [Stripe Crypto Onramp Docs](https://docs.stripe.com/crypto/onramp) — Stripe's official documentation
 - [Coinbase AgentKit](https://docs.cdp.coinbase.com/agentkit/docs/welcome) — Wallet infrastructure

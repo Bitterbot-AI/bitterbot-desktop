@@ -9,8 +9,6 @@ title: "Security"
 
 ## Quick check: `bitterbot security audit`
 
-See also: [Formal Verification (Security Models)](/security/formal-verification/)
-
 Run this regularly (especially after changing config or exposing network surfaces):
 
 ```bash

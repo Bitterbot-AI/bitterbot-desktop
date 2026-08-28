@@ -240,28 +240,7 @@ WhatsApp runs through the gateway's web channel (Baileys Web). It starts automat
 
 ```json5
 {
-  channels: {
-    googlechat: {
-      enabled: true,
-      serviceAccountFile: "/path/to/service-account.json",
-      audienceType: "app-url", // app-url | project-number
-      audience: "https://gateway.example.com/googlechat",
-      webhookPath: "/googlechat",
-      botUser: "users/1234567890",
-      dm: {
-        enabled: true,
-        policy: "pairing",
-        allowFrom: ["users/1234567890"],
-      },
-      groupPolicy: "allowlist",
-      groups: {
-        "spaces/AAAA": { allow: true, requireMention: true },
-      },
-      actions: { reactions: true },
-      typingIndicator: "message",
-      mediaMaxMb: 20,
-    },
-  },
+  channels: {},
 }
 ```
 
@@ -338,29 +317,6 @@ WhatsApp runs through the gateway's web channel (Baileys Web). It starts automat
 | pins         | enabled | Pin/unpin/list         |
 | memberInfo   | enabled | Member info            |
 | emojiList    | enabled | Custom emoji list      |
-
-### Mattermost
-
-Mattermost ships as a plugin: `bitterbot plugins install @bitterbot/mattermost`.
-
-```json5
-{
-  channels: {
-    mattermost: {
-      enabled: true,
-      botToken: "mm-token",
-      baseUrl: "https://chat.example.com",
-      dmPolicy: "pairing",
-      chatmode: "oncall", // oncall | onmessage | onchar
-      oncharPrefixes: [">", "!"],
-      textChunkLimit: 4000,
-      chunkMode: "length",
-    },
-  },
-}
-```
-
-Chat modes: `oncall` (respond on @-mention, default), `onmessage` (every message), `onchar` (messages starting with trigger prefix).
 
 ### Signal
 
@@ -483,7 +439,7 @@ Group messages default to **require mention** (metadata mention or regex pattern
 
 Resolution: per-DM override → provider default → no limit (all retained).
 
-Supported: `telegram`, `whatsapp`, `discord`, `slack`, `signal`, `imessage`, `msteams`.
+Supported: `telegram`, `whatsapp`, `discord`, `slack`, `signal`, `imessage`.
 
 #### Self-chat mode
 

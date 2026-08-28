@@ -96,8 +96,6 @@ Only set what you actually enable. The wizard prompts for these, but you can ski
 | `DISCORD_BOT_TOKEN`             | Discord bot token                |
 | `SLACK_BOT_TOKEN`               | Slack bot token (`xoxb-…`)       |
 | `SLACK_APP_TOKEN`               | Slack app-level token (`xapp-…`) |
-| `MATTERMOST_BOT_TOKEN`          | Mattermost                       |
-| `MATTERMOST_URL`                | Mattermost base URL              |
 | `ZALO_BOT_TOKEN`                | Zalo                             |
 | `BITTERBOT_TWITCH_ACCESS_TOKEN` | Twitch (`oauth:…`)               |
 

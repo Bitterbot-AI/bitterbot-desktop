@@ -9,7 +9,7 @@ title: "message"
 # `bitterbot message`
 
 Single outbound command for sending messages and channel actions
-(Discord/Google Chat/Slack/Mattermost (plugin)/Telegram/WhatsApp/Signal/MS Teams).
+(WhatsApp/Telegram/Discord/Slack/Signal).
 
 ## Usage
 
@@ -21,7 +21,7 @@ Channel selection:
 
 - `--channel` required if more than one channel is configured.
 - If exactly one channel is configured, it becomes the default.
-- Values: `whatsapp|telegram|discord|googlechat|slack|mattermost|signal|msteams` (Mattermost requires plugin)
+- Values: `whatsapp|telegram|discord|slack|signal|imessage`
 
 Target formats (`--target`):
 
@@ -30,7 +30,6 @@ Target formats (`--target`):
 - Discord: `channel:<id>` or `user:<id>` (or `<@id>` mention; raw numeric ids are treated as channels)
 - Google Chat: `spaces/<spaceId>` or `users/<userId>`
 - Slack: `channel:<id>` or `user:<id>` (raw channel id is accepted)
-- Mattermost (plugin): `channel:<id>`, `user:<id>`, or `@username` (bare ids are treated as channels)
 - Signal: `+E.164`, `group:<id>`, `signal:+E.164`, `signal:group:<id>`, or `username:<name>`/`u:<name>`
 - MS Teams: conversation id (`19:...@thread.tacv2`) or `conversation:<id>` or `user:<aad-object-id>`
 
@@ -54,7 +53,7 @@ Name lookup:
 ### Core
 
 - `send`
-  - Channels: WhatsApp/Telegram/Discord/Google Chat/Slack/Mattermost (plugin)/Signal/MS Teams
+  - Channels: WhatsApp/Telegram/Discord/Slack/Signal
   - Required: `--target`, plus `--message` or `--media`
   - Optional: `--media`, `--reply-to`, `--thread-id`, `--gif-playback`
   - Telegram only: `--buttons` (requires `channels.telegram.capabilities.inlineButtons` to allow it)
@@ -213,17 +212,8 @@ bitterbot message poll --channel telegram \
 Send a Teams proactive message:
 
 ```
-bitterbot message send --channel msteams \
-  --target conversation:19:abc@thread.tacv2 --message "hi"
-```
-
 Create a Teams poll:
 
-```
-bitterbot message poll --channel msteams \
-  --target conversation:19:abc@thread.tacv2 \
-  --poll-question "Lunch?" \
-  --poll-option Pizza --poll-option Sushi
 ```
 
 React in Slack:

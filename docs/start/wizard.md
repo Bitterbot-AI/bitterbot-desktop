@@ -72,7 +72,7 @@ The wizard starts with **QuickStart** (defaults) vs **Advanced** (full control).
    (OpenAI-compatible, Anthropic-compatible, or Unknown auto-detect). Advanced flow also picks a default model.
 2. **Workspace** — Location for agent files (default `~/.bitterbot/workspace`). Seeds bootstrap files.
 3. **Gateway** — Port, bind address, auth mode, Tailscale exposure.
-4. **Channels** _(Advanced)_ — WhatsApp, Telegram, Discord, Google Chat, Mattermost, or Signal.
+4. **Channels** _(Advanced)_ — WhatsApp, Telegram, Discord, Slack, or Signal.
    QuickStart defers this to the Control UI or `bitterbot channels add`.
 5. **Daemon** — Installs a LaunchAgent (macOS) or systemd user unit (Linux/WSL2).
 6. **Health check** — Starts the Gateway and verifies it's running.

@@ -82,10 +82,7 @@ When validation fails:
     - [Discord](/channels/discord) — `channels.discord`
     - [Slack](/channels/slack) — `channels.slack`
     - [Signal](/channels/signal) — `channels.signal`
-    - [iMessage](/channels/imessage) — `channels.imessage`
-    - [Google Chat](/channels/googlechat) — `channels.googlechat`
-    - [Mattermost](/channels/mattermost) — `channels.mattermost`
-    - [MS Teams](/channels/msteams) — `channels.msteams`
+    - iMessage (via the bundled BlueBubbles skill) — `channels.imessage`
 
     All channels share the same DM policy pattern:
 

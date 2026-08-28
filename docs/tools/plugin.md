@@ -40,9 +40,7 @@ See [Voice Call](/plugins/voice-call) for a concrete example plugin.
 
 ## Available plugins (official)
 
-- Microsoft Teams is plugin-only as of 2026.1.15; install `@bitterbot/msteams` if you use Teams.
 - Memory tools are built-in (memory_search, dream_search, curiosity_state, etc.)
-- [Microsoft Teams](/channels/msteams) — `@bitterbot/msteams`
 - Google Antigravity OAuth (provider auth) — bundled as `google-antigravity-auth` (disabled by default)
 - Gemini CLI OAuth (provider auth) — bundled as `google-gemini-cli-auth` (disabled by default)
 - Qwen OAuth (provider auth) — bundled as `qwen-portal-auth` (disabled by default)

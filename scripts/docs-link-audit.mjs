@@ -430,11 +430,59 @@ function ignoreKey(file, url) {
 
 // ─── Main ───────────────────────────────────────────────────────────
 
+/**
+ * Validate docs.json navigation (PLAN-41 p0-26): every page entry must be a
+ * tracked doc file, and every redirect destination must resolve to a nav
+ * page, a tracked file, or another redirect. Returns the number of failures
+ * (0 = clean). CI was green for months while 48 nav entries pointed at
+ * pages that did not exist — this closes that gap.
+ */
+function auditDocsJsonNav(tracked) {
+  let failures = 0;
+  let json;
+  try {
+    json = JSON.parse(readFileSync(DOCS_JSON, "utf8"));
+  } catch (err) {
+    console.error(`[link-audit] docs.json unreadable: ${String(err)}`);
+    return 1;
+  }
+  const pages = [];
+  const walk = (node) => {
+    if (typeof node === "string") pages.push(node);
+    else if (Array.isArray(node)) node.forEach(walk);
+    else if (node && typeof node === "object") {
+      for (const k of ["pages", "groups", "tabs", "languages"]) {
+        if (node[k]) walk(node[k]);
+      }
+    }
+  };
+  walk(json.navigation);
+  const exists = (p) => tracked.has(`docs/${p}.md`) || tracked.has(`docs/${p}.mdx`);
+  for (const p of pages) {
+    if (!exists(p)) {
+      console.error(`[link-audit] docs.json nav names a missing page: ${p}`);
+      failures++;
+    }
+  }
+  const navSet = new Set(pages.map((p) => `/${p}`));
+  const sources = new Set((json.redirects ?? []).map((r) => r.source));
+  for (const r of json.redirects ?? []) {
+    const dest = r.destination;
+    const bare = dest.replace(/^\//, "");
+    if (!navSet.has(dest) && !exists(bare) && !sources.has(dest)) {
+      console.error(`[link-audit] docs.json redirect to nowhere: ${r.source} -> ${dest}`);
+      failures++;
+    }
+  }
+  return failures;
+}
+
 async function main() {
   const docs = listTrackedDocs();
   const tracked = loadTrackedFiles();
   const redirects = loadRedirects();
   const ignore = loadIgnoreList();
+  const navFailures = auditDocsJsonNav(tracked);
   if (VERBOSE) {
     console.log(
       `Auditing ${docs.length} doc files (${tracked.size} tracked total). ` +
@@ -506,7 +554,7 @@ async function main() {
   }
 
   console.log("");
-  if (broken > 0) {
+  if (broken + navFailures > 0) {
     console.log(`[link-audit] FAIL — ${broken} broken link(s) out of ${total}:`);
     for (const f of failures) {
       console.log(`  ${f.file}:${f.line}  ${f.url}  →  ${f.err}`);

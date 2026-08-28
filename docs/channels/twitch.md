@@ -5,7 +5,10 @@ read_when:
 title: "Twitch"
 ---
 
-# Twitch (plugin)
+# Twitch
+
+> Twitch ships **disabled**. Nothing connects until you add a `channels.twitch` block (or use the Control UI) with `enabled: true` and credentials.
+> (plugin)
 
 Twitch chat support via IRC connection. Bitterbot connects as a Twitch user (bot account) to receive and send messages in channels.
 

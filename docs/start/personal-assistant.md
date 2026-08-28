@@ -8,7 +8,7 @@ title: "Personal Assistant Setup"
 
 # Building a personal assistant with Bitterbot
 
-Bitterbot is a WhatsApp + Telegram + Discord + iMessage gateway for **Pi** agents. Plugins add Mattermost. This guide is the "personal assistant" setup: one dedicated WhatsApp number that behaves like your always-on agent.
+Bitterbot's agent can live on WhatsApp, Telegram, Discord, Slack, and Signal. This guide is the "personal assistant" setup: one dedicated WhatsApp number that behaves like your always-on agent.
 
 ## ⚠️ Safety first
 
@@ -16,7 +16,7 @@ You’re putting an agent in a position to:
 
 - run commands on your machine (depending on your Pi tool setup)
 - read/write files in your workspace
-- send messages back out via WhatsApp/Telegram/Discord/Mattermost (plugin)
+- send messages back out via WhatsApp/Telegram/Discord/Slack/Signal
 
 Start conservative:
 

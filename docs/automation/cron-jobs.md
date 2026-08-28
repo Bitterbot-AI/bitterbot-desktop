@@ -215,7 +215,7 @@ Resolution priority:
 Isolated jobs can deliver output to a channel via the top-level `delivery` config:
 
 - `delivery.mode`: `announce` (deliver a summary) or `none`.
-- `delivery.channel`: `whatsapp` / `telegram` / `discord` / `slack` / `mattermost` (plugin) / `signal` / `last`.
+- `delivery.channel`: `whatsapp` / `telegram` / `discord` / `slack` / `signal` / `last`.
 - `delivery.to`: channel-specific recipient target.
 
 Delivery config is only valid for isolated jobs (`sessionTarget: "isolated"`).
@@ -225,7 +225,7 @@ If `delivery.channel` or `delivery.to` is omitted, cron can fall back to the mai
 
 Target format reminders:
 
-- Slack/Discord/Mattermost (plugin) targets should use explicit prefixes (e.g. `channel:<id>`, `user:<id>`) to avoid ambiguity.
+- Slack/Discord targets should use explicit prefixes (e.g. `channel:<id>`, `user:<id>`) to avoid ambiguity.
 - Telegram topics should use the `:topic:` form (see below).
 
 #### Telegram delivery targets (topics / forum threads)

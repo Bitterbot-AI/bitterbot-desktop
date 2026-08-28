@@ -1,7 +1,7 @@
 ---
 summary: "CLI reference for `bitterbot channels` (accounts, status, login/logout, logs)"
 read_when:
-  - You want to add/remove channel accounts (WhatsApp/Telegram/Discord/Google Chat/Slack/Mattermost (plugin)/Signal)
+  - You want to add/remove channel accounts (WhatsApp/Telegram/Discord/Slack/Signal)
   - You want to check channel status or tail channel logs
 title: "channels"
 ---
