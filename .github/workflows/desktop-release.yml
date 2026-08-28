@@ -1,15 +1,26 @@
 name: Desktop Release
 
-# Tag-triggered Tauri 2 cross-platform build + publish of the Bitterbot
-# desktop shell (desktop/src-tauri). Bump desktop/src-tauri/tauri.conf.json
-# version, commit, and push a `desktop-v<version>` tag.
+# EXPERIMENTAL — NOT part of the V1 release surface (PLAN-41 D-I: the
+# Tauri app ships later; the Control UI served by the gateway is the V1
+# desktop story). This workflow has NEVER run and carries known latent
+# failures for whoever revives it:
+#
+#   1. `gh release create --json` is not a supported flag — the publish
+#      step fails as written.
+#   2. desktop/src-tauri/icons/ does not exist — the Tauri build fails
+#      before bundling.
+#   3. The updater public key in tauri.conf.json is a placeholder — any
+#      produced bundle would ship an unusable auto-updater.
+#   4. `gh release create --latest` would steal /releases/latest from the
+#      orchestrator releases — do NOT restore it; releases here must use
+#      `--latest=false`.
+#
+# Manual dispatch only: the desktop-v* tag trigger is removed so a stray
+# tag cannot fire a known-broken pipeline.
 #
 # See research/TAURI-PRODUCTION-PLAN.md for the full design rationale.
 
 on:
-  push:
-    tags:
-      - "desktop-v*"
   workflow_dispatch:
     inputs:
       tag:
