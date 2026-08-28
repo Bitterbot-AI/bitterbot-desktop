@@ -134,10 +134,12 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
+      # No `cache: pnpm` here: this job never runs `pnpm install`, so on a
+      # lockfile change the post-job cache save finds no store and reds the
+      # job with "Path Validation Error" despite both audits passing.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
       - name: pnpm audit (workspace lockfile covers root + desktop)
         run: pnpm audit --prod || true

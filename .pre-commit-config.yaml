@@ -87,5 +87,3 @@ repos:
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
-
-
