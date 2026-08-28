@@ -42,6 +42,13 @@ function gatewayLauncherPlugin(gatewayUrl: string): Plugin {
 export default defineConfig(() => {
   const url = resolveGatewayUrl();
   const clientName = resolveClientName();
+  // Single version source (PLAN-41 D-A): the sidebar footer shows the ROOT
+  // package version; release-please bumps it and this define carries it in.
+  const appVersion = (
+    JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8")) as {
+      version: string;
+    }
+  ).version;
 
   // The gateway token is deliberately NOT built into the bundle any more
   // (PLAN-39 Phase 3 / PLAN-37 item 13). It made the artifact machine-specific
@@ -82,6 +89,7 @@ export default defineConfig(() => {
     define: {
       "import.meta.env.VITE_GATEWAY_URL": JSON.stringify(url),
       "import.meta.env.VITE_GATEWAY_CLIENT_NAME": JSON.stringify(clientName),
+      "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion),
     },
   };
 });

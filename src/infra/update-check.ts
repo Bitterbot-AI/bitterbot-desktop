@@ -364,6 +364,14 @@ export function compareSemverStrings(a: string | null, b: string | null): number
   if (!pa || !pb) {
     return null;
   }
+  // CalVer-to-SemVer guard (PLAN-41 D-A, mirrors compareBitterbotVersions):
+  // a date-shaped major (>= 2000) is OLDER than any real SemVer major, so
+  // 2026.2.15 installs see 1.0.0 as the upgrade it is.
+  const aIsCalver = pa.major >= 2000;
+  const bIsCalver = pb.major >= 2000;
+  if (aIsCalver !== bIsCalver) {
+    return aIsCalver ? -1 : 1;
+  }
   if (pa.major !== pb.major) {
     return pa.major < pb.major ? -1 : 1;
   }

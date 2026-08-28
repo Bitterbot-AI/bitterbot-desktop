@@ -24,6 +24,15 @@ export function parseBitterbotVersion(raw: string | null | undefined): Bitterbot
   };
 }
 
+/**
+ * PLAN-41 D-A: the project moves from CalVer (2026.x.y) to SemVer (1.0.0).
+ * Numerically 2026 > 1, so without a guard every CalVer install would
+ * consider itself newer than any SemVer release and refuse to update.
+ * A major at or above this floor is a date, not a version — it sorts
+ * BEFORE any real SemVer major.
+ */
+export const CALVER_MAJOR_FLOOR = 2000;
+
 export function compareBitterbotVersions(
   a: string | null | undefined,
   b: string | null | undefined,
@@ -32,6 +41,11 @@ export function compareBitterbotVersions(
   const parsedB = parseBitterbotVersion(b);
   if (!parsedA || !parsedB) {
     return null;
+  }
+  const aIsCalver = parsedA.major >= CALVER_MAJOR_FLOOR;
+  const bIsCalver = parsedB.major >= CALVER_MAJOR_FLOOR;
+  if (aIsCalver !== bIsCalver) {
+    return aIsCalver ? -1 : 1;
   }
   if (parsedA.major !== parsedB.major) {
     return parsedA.major < parsedB.major ? -1 : 1;

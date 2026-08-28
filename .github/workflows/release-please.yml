@@ -1,0 +1,34 @@
+# PLAN-41 D-A: SemVer version cut via release-please (manifest mode).
+#
+# On every push to main this maintains a release PR that accumulates
+# conventional-commit history into a changelog and version bump; merging
+# that PR creates the GitHub release + tag. The initial cut to 1.0.0 is
+# forced by a "Release-As: 1.0.0" commit footer.
+#
+# Operator prerequisite (one-time, repo settings): Settings → Actions →
+# General → "Allow GitHub Actions to create and approve pull requests".
+#
+# Downstream release jobs must chain off this job's `release_created`
+# output — the default GITHUB_TOKEN does not fire tag-push workflows, and
+# we keep the zero-PAT posture on purpose.
+
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

@@ -44,3 +44,17 @@ describe("resolveNpmChannelTag", () => {
     expect(resolved).toEqual({ tag: "beta", version: "1.0.2-beta.1" });
   });
 });
+
+describe("compareSemverStrings (PLAN-41 D-A CalVer guard)", async () => {
+  const { compareSemverStrings } = await import("./update-check.js");
+
+  it("a CalVer-era version is OLDER than any SemVer release", () => {
+    expect(compareSemverStrings("2026.2.15", "1.0.0")).toBe(-1);
+    expect(compareSemverStrings("1.0.0", "2026.2.15")).toBe(1);
+  });
+
+  it("plain SemVer still orders normally", () => {
+    expect(compareSemverStrings("1.0.0", "1.1.0")).toBe(-1);
+    expect(compareSemverStrings("2.0.0", "2.0.0")).toBe(0);
+  });
+});

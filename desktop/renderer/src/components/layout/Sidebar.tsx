@@ -26,6 +26,9 @@ import { useUIStore, type TabId } from "../../stores/ui-store";
 import { approvalsTitle, AttentionBadge } from "../circles/AttentionBadge";
 import { WalletSidebarPanel } from "../wallet/WalletSidebarPanel";
 
+// Injected at build time from the root package.json (vite define, D-A).
+const APP_VERSION: string = import.meta.env.VITE_APP_VERSION ?? "dev";
+
 interface SidebarSession {
   key: string;
   label?: string;
@@ -667,11 +670,11 @@ export function Sidebar() {
                 <Moon className="w-3.5 h-3.5" />
               )}
             </button>
-            <span title="Bitterbot Desktop v2026.2.15">v2</span>
+            <span title={`Bitterbot Desktop v${APP_VERSION}`}>v{APP_VERSION.split(".")[0]}</span>
           </>
         ) : (
           <>
-            <span>Bitterbot Desktop v2026.2.15</span>
+            <span>Bitterbot Desktop v{APP_VERSION}</span>
             <button
               onClick={toggleTheme}
               className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--sidebar-hover)] text-[var(--sidebar-text-muted)] hover:text-[var(--sidebar-text-primary)] transition-colors"
