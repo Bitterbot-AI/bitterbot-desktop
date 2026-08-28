@@ -51,6 +51,9 @@ pnpm install
 pnpm exec playwright install --with-deps chromium   # browser automation
 ```
 
+> **Windows:** use WSL2, and clone into the Linux filesystem (`~/bitterbot-desktop`),
+> not `/mnt/c/...` — the 9p mount makes boots dramatically slower (43x measured).
+
 Run the onboarding wizard. It walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, then **starts the gateway + Control UI for you and opens the browser**. When it finishes, Bitterbot is already running; there's nothing else to type.
 
 ```bash
@@ -261,11 +264,11 @@ When context gets too massive, Bitterbot uses [Deep Recall](docs/memory/deep-rec
 
 ### Executable Skills (Pre-Action Interceptors)
 
-Most agent skills are markdown. The LLM may or may not follow them. Bitterbot skills can ship with deterministic pre-action interceptors that fire on every step, read the agent's live hormonal + GCCRF state, and rewrite, inject context into, require prerequisites for, or block any tool call before it executes. Citation rate jumps from "sometimes" to "always". Group-chat etiquette becomes enforceable. Relationship questions route to the right memory tool. When the agent feels uncertain, its absolutes get hedged automatically.
+Most agent skills are markdown. The LLM may or may not follow them. Bitterbot skills can ship with deterministic pre-action interceptors that fire on every step, read the agent's live hormonal + GCCRF state, and rewrite, inject context into, require prerequisites for, or block any tool call before it executes. A rule enforced by an interceptor fires on every matching tool call by construction — it is a code path, not a prompt the model may ignore (the interceptor and its trigger are inspectable in the skill's source). Group-chat etiquette becomes enforceable. Relationship questions route to the right memory tool. When the agent feels uncertain, its absolutes get hedged automatically.
 
 The dream engine's `interceptor_harvest` mode watches what fails and drafts new interceptors overnight; one click in the **Active Guards** UI promotes them. Records are Ed25519-signed and the marketplace can advertise empirical activation/outcome stats, so a buyer pays for measurable competence, not prose.
 
-No other agent framework reads neuromodulatory state to decide whether to enforce a rule. Inspired by [HASP (arXiv:2605.17734)](https://arxiv.org/abs/2605.17734), extended with the biology only Bitterbot has. See [docs/agents/interceptors.md](docs/agents/interceptors.md).
+The mechanism: interceptors receive the agent's live hormonal + GCCRF state as input, so a rule can be conditional on measured internal state (e.g. hedge absolutes when certainty is low) rather than on prompt adherence. Inspired by [HASP (arXiv:2605.17734)](https://arxiv.org/abs/2605.17734), extended with the biology only Bitterbot has. See [docs/agents/interceptors.md](docs/agents/interceptors.md).
 
 ---
 
@@ -273,7 +276,14 @@ No other agent framework reads neuromodulatory state to decide whether to enforc
 
 Your agent isn't just a cost center. It learns, and then it earns.
 
-- **Agent Wallet**: Your agent has its own USDC wallet on Base (sponsored gas, zero ETH needed). It pays for paywalled APIs automatically via the **x402 micropayment protocol**, sends USDC to other agents or services, and makes purchases on your behalf.
+> **Off by default.** The whole money layer is opt-in: the wallet, x402
+> payments, and agent-to-agent HTTP each require an explicit toggle
+> (Settings → flags, or `bitterbot configure --section wallet`), and the
+> wallet starts on testnet. Until you opt in, your agent can still learn
+> and publish skills — it just can't spend or be paid. It is also
+> experimental — see [LIMITATIONS.md](LIMITATIONS.md).
+
+- **Agent Wallet**: Once enabled, your agent has its own USDC wallet on Base (sponsored gas, zero ETH needed). It pays for paywalled APIs automatically via the **x402 micropayment protocol**, sends USDC to other agents or services, and makes purchases on your behalf — inside spend caps the wallet service enforces per transaction, per day, and per session.
 - **P2P Skills Marketplace**: When your agent masters a complex workflow, the Dream Engine crystallizes it into a tradeable skill and publishes it to a decentralized network via Gossipsub. **EigenTrust reputation** scoring ensures skill quality. Dynamic pricing based on execution success rate, demand signals, peer reputation, and scarcity. Revenue is split 70/20/10 (publisher/author/contributors).
 - **Bounties**: Management nodes post bounties with USDC rewards for capabilities the network lacks. Agents that fulfill bounties earn both dopamine boosts and real payouts, after passing a quality gate (3+ executions, >70% success rate).
 - **Autonomous Earning**: External agents discover your node via the **A2A protocol**, purchase skills via **x402** (the standard 75M+ agents already speak), and USDC flows into your wallet. A 48-hour dispute window protects buyers before revenue shares are released.

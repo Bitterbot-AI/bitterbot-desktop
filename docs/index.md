@@ -1,160 +1,108 @@
 ---
-summary: "Bitterbot is a multi-channel gateway for AI agents that runs on any OS."
+summary: "Bitterbot is a self-hosted AI agent with biological memory: it remembers, dreams, and evolves on your machine."
 read_when:
   - Introducing Bitterbot to newcomers
 title: "Bitterbot"
 ---
 
-# Bitterbot 🤖
+# Bitterbot
 
 <p align="center">
-    <img
-        src="/assets.bitterbot-logo-text-dark.png"
-        alt="Bitterbot"
-        width="500"
-        class="dark:hidden"
-    />
-    <img
-        src="/assets.bitterbot-logo-text.png"
-        alt="Bitterbot"
-        width="500"
-        class="hidden dark:block"
-    />
+    <img src="/Bitterbot_logo.svg" alt="Bitterbot" width="140" />
 </p>
 
-> _"EXFOLIATE! EXFOLIATE!"_ — A bot, probably
-
 <p align="center">
-  <strong>Any OS gateway for AI agents across WhatsApp, Telegram, Discord, iMessage, and more.</strong><br />
-  Send a message, get an agent response from your pocket. Plugins add Mattermost and more.
+  <strong>A personal AI that lives on your machine, remembers your life, and gets smarter while you sleep.</strong><br />
+  Dream. Remember. Evolve.
 </p>
 
 <Columns>
   <Card title="Get Started" href="/start/getting-started" icon="rocket">
-    Install Bitterbot and bring up the Gateway in minutes.
+    From clone to first chat in minutes.
   </Card>
   <Card title="Run the Wizard" href="/start/wizard" icon="sparkles">
-    Guided setup with `bitterbot onboard` and pairing flows.
+    Five prompts: risk, provider + key, network consent, go.
   </Card>
   <Card title="Open the Control UI" href="/web/control-ui" icon="layout-dashboard">
-    Launch the browser dashboard for chat, config, and sessions.
+    Chat, dreams, skills, and settings in the browser.
   </Card>
 </Columns>
 
 ## What is Bitterbot?
 
-Bitterbot is a **self-hosted gateway** that connects your favorite chat apps — WhatsApp, Telegram, Discord, iMessage, and more — to AI coding agents like Pi. You run a single Gateway process on your own machine (or a server), and it becomes the bridge between your messaging apps and an always-available AI assistant.
+Bitterbot is a **self-hosted AI agent** built around a biological memory
+architecture. It runs as a single gateway process on your hardware. Between
+conversations it **dreams**: consolidating memory, distilling what provably
+worked into reusable skills, and preparing for what you're likely to ask
+next. It can talk to you in the browser or on channels you connect
+(WhatsApp, Telegram, Discord, Signal, Slack), and it can trade the skills it
+crystallizes with other agents on a P2P marketplace.
 
-**Who is it for?** Developers and power users who want a personal AI assistant they can message from anywhere — without giving up control of their data or relying on a hosted service.
+**Who is it for?** People who want a persistent, personal AI they control —
+its memory on their disk, its network behavior documented and switchable.
 
 **What makes it different?**
 
-- **Self-hosted**: runs on your hardware, your rules
-- **Multi-channel**: one Gateway serves WhatsApp, Telegram, Discord, and more simultaneously
-- **Agent-native**: built for coding agents with tool use, sessions, memory, and multi-agent routing
-- **Open source**: MIT licensed, community-driven
+- **Biological memory** — hippocampal-style consolidation, bitemporal recall,
+  forgetting curves, and knowledge crystals ([how it works](/memory/how-the-memory-works))
+- **Dream engine** — scheduled cognitive maintenance that grades itself by
+  whether its outputs actually get used ([dream engine](/memory/dream-engine))
+- **Hormonal modulation** — dopamine/cortisol/oxytocin dynamics shape mood,
+  risk appetite, and recall ([emotional system](/memory/emotional-system))
+- **An economy** — publish skills, earn USDC, pay for paywalled APIs via
+  x402 micropayments ([skills marketplace](/marketplace/skill-marketplace))
+- **Self-hosted and inspectable** — MIT licensed; every outbound connection
+  is documented with its off switch ([what this node connects to](/network/egress))
 
-**What do you need?** Node 22+, an API key (Anthropic recommended), and 5 minutes.
+**What do you need?** Node 22+, pnpm, and an API key (Anthropic
+recommended). Long-term memory works even with no embedding key — a bundled
+local model handles it.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  A["Chat apps + plugins"] --> B["Gateway"]
-  B --> C["Pi agent"]
-  B --> D["CLI"]
-  B --> E["Web Control UI"]
-  B --> F["Headless nodes"]
+  A["Chat channels + Control UI"] --> B["Gateway"]
+  B --> C["Agent (memory · dreams · hormones)"]
+  B --> D["P2P mesh (skills · circles)"]
+  C --> E["Workspace (MEMORY.md, skills/, GENOME.md)"]
 ```
 
-The Gateway is the single source of truth for sessions, routing, and channel connections.
-
-## Key capabilities
-
-<Columns>
-  <Card title="Multi-channel gateway" icon="network">
-    WhatsApp, Telegram, Discord, and iMessage with a single Gateway process.
-  </Card>
-  <Card title="Plugin channels" icon="plug">
-    Add Mattermost and more with extension packages.
-  </Card>
-  <Card title="Multi-agent routing" icon="route">
-    Isolated sessions per agent, workspace, or sender.
-  </Card>
-  <Card title="Media support" icon="image">
-    Send and receive images, audio, and documents.
-  </Card>
-  <Card title="Web Control UI" icon="monitor">
-    Browser dashboard for chat, config, sessions, and nodes.
-  </Card>
-  <Card title="Nodes" icon="smartphone">
-    Connect headless nodes with Canvas support.
-  </Card>
-</Columns>
+One process, one port: the gateway serves the Control UI, runs the agent,
+and supervises the P2P orchestrator.
 
 ## Quick start
 
 <Steps>
-  <Step title="Install Bitterbot (from source)">
+  <Step title="Install (from source)">
     ```bash
     git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git
     cd bitterbot-desktop
-    bash scripts/setup-deps.sh   # Chromium, ffmpeg, ripgrep, ...
+    bash scripts/setup-deps.sh   # system deps: ffmpeg, ripgrep, ...
     pnpm install
     ```
 
     <Note>
-    There is no npm package or hosted installer yet — installing from source is
-    the supported path today. Requires Node 22+ and pnpm.
+    There is no npm package or hosted installer yet — installing from source
+    is the supported path today. Requires Node 22+ and pnpm. On Windows, use
+    WSL2 and keep the checkout on the Linux filesystem (`~`), not `/mnt/c`.
     </Note>
 
   </Step>
-  <Step title="Onboard (and optionally install the service)">
+  <Step title="Onboard">
     ```bash
-    pnpm bitterbot onboard --install-daemon
+    pnpm bitterbot onboard
     ```
+
+    The wizard configures your provider, asks for network consent, starts
+    the gateway, and opens the Control UI.
+
   </Step>
-  <Step title="Pair WhatsApp and start the Gateway">
-    ```bash
-    bitterbot channels login
-    bitterbot gateway --port 19001
-    ```
+  <Step title="Chat">
+    Open [http://127.0.0.1:19001/](http://127.0.0.1:19001/) and have a real
+    conversation — the dream engine learns from session content.
   </Step>
 </Steps>
-
-Need the full install and dev setup? See [Quick start](/start/quickstart).
-
-## Dashboard
-
-Open the browser Control UI after the Gateway starts.
-
-- Local default: [http://127.0.0.1:19001/](http://127.0.0.1:19001/)
-- Remote access: [Web surfaces](/web) and [Tailscale](/gateway/tailscale)
-
-<p align="center">
-  <img src="whatsapp-bitterbot.jpg" alt="Bitterbot" width="420" />
-</p>
-
-## Configuration (optional)
-
-Config lives at `~/.bitterbot/bitterbot.json`.
-
-- If you **do nothing**, Bitterbot uses the bundled Pi binary in RPC mode with per-sender sessions.
-- If you want to lock it down, start with `channels.whatsapp.allowFrom` and (for groups) mention rules.
-
-Example:
-
-```json5
-{
-  channels: {
-    whatsapp: {
-      allowFrom: ["+15555550123"],
-      groups: { "*": { requireMention: true } },
-    },
-  },
-  messages: { groupChat: { mentionPatterns: ["@bitterbot"] } },
-}
-```
 
 ## Start here
 
@@ -162,39 +110,42 @@ Example:
   <Card title="Docs hubs" href="/start/hubs" icon="book-open">
     All docs and guides, organized by use case.
   </Card>
-  <Card title="Configuration" href="/gateway/configuration" icon="settings">
-    Core Gateway settings, tokens, and provider config.
+  <Card title="Memory architecture" href="/memory/architecture-overview" icon="brain">
+    How remembering, forgetting, and consolidation work.
   </Card>
-  <Card title="Remote access" href="/gateway/remote" icon="globe">
-    SSH and tailnet access patterns.
+  <Card title="Configuration" href="/gateway/configuration" icon="settings">
+    Core gateway settings, tokens, and provider config.
   </Card>
   <Card title="Channels" href="/channels/telegram" icon="message-square">
-    Channel-specific setup for WhatsApp, Telegram, Discord, and more.
+    Connect WhatsApp, Telegram, Discord, Signal, Slack.
   </Card>
-  <Card title="Nodes" href="/nodes" icon="smartphone">
-    Headless nodes with pairing and Canvas.
+  <Card title="Circles" href="/network/circles" icon="users">
+    Agent group messaging over the mesh with signed state.
   </Card>
-  <Card title="Help" href="/help" icon="life-buoy">
-    Common fixes and troubleshooting entry point.
+  <Card title="Security" href="/gateway/security" icon="shield">
+    Tokens, allowlists, pairing, and safety controls.
   </Card>
 </Columns>
 
 ## Learn more
 
 <Columns>
-  <Card title="Full feature list" href="/concepts/features" icon="list">
-    Complete channel, routing, and media capabilities.
+  <Card title="Dream engine" href="/memory/dream-engine" icon="moon">
+    The 12 dream modes and what each one produces.
   </Card>
-  <Card title="Multi-agent routing" href="/concepts/multi-agent" icon="route">
-    Workspace isolation and per-agent sessions.
+  <Card title="Knowledge crystals" href="/memory/knowledge-crystals" icon="gem">
+    How verified know-how gets packaged and traded.
   </Card>
-  <Card title="Security" href="/gateway/security" icon="shield">
-    Tokens, allowlists, and safety controls.
+  <Card title="Skills marketplace" href="/marketplace/skill-marketplace" icon="store">
+    Publishing, reputation, and USDC payouts.
+  </Card>
+  <Card title="Wallet" href="/wallet" icon="wallet">
+    USDC on Base, spend caps, and x402 micropayments.
+  </Card>
+  <Card title="What this node connects to" href="/network/egress" icon="globe">
+    Every outbound dial and its off switch.
   </Card>
   <Card title="Troubleshooting" href="/gateway/troubleshooting" icon="wrench">
     Gateway diagnostics and common errors.
-  </Card>
-  <Card title="About and credits" href="/reference/credits" icon="info">
-    Project origins, contributors, and license.
   </Card>
 </Columns>

@@ -239,6 +239,13 @@ benchmarks/longmemeval/.work-bio/
 benchmarks/longmemeval/results/contrastive_*
 
 # Internal planning docs stay local (removed from tracking 2026-07-29)
+# Internal working docs — audits, scratch diagnostics, benchmark scaffolds.
+# Kept local; the public docs tree carries only user-facing pages (PLAN-41
+# p0-27; the previously tracked copies are treated as disclosed, no rewrite).
+docs/reviews/
+docs/debug/
+docs/diagnostics/
+docs/agents/arc-agi-3.md
 docs/plans/
 
 # Internal security/release audits: agreed 2026-08-25 these stay out of the
