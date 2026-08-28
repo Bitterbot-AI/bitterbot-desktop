@@ -20,10 +20,10 @@ const STEP_LABELS: Record<string, string> = {
   "preflight worktree": "Preparing preflight worktree",
   "preflight cleanup": "Cleaning preflight worktree",
   "deps install": "Installing dependencies",
-  build: "Building",
-  "ui:build": "Building UI assets",
-  "ui:build (post-doctor repair)": "Restoring missing UI assets",
-  "ui assets verify": "Validating UI assets",
+  // The UI build rides inside the monolithic `pnpm build` step since
+  // PLAN-39, and doctor's Control UI section verifies the staged assets —
+  // the runner never emits separate ui:build / verify steps (plan39-r2).
+  build: "Building (incl. Control UI assets)",
   "bitterbot doctor entry": "Checking doctor entrypoint",
   "bitterbot doctor": "Running doctor checks",
   "git rev-parse HEAD (after)": "Verifying update",

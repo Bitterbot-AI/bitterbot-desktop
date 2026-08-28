@@ -324,7 +324,14 @@ export async function fetchNpmTagVersion(params: {
       Math.max(250, timeoutMs),
     );
     if (!res.ok) {
-      return { tag, version: null, error: `HTTP ${res.status}` };
+      // 404 on the tag = the package (or channel) has never been published —
+      // a durable state worth naming, not a transient lookup failure (D-J:
+      // status/update must say "no npm releases yet", not a silent unknown).
+      return {
+        tag,
+        version: null,
+        error: res.status === 404 ? "not-published" : `HTTP ${res.status}`,
+      };
     }
     const json = (await res.json()) as { version?: unknown };
     const version = typeof json?.version === "string" ? json.version : null;

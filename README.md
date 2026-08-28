@@ -388,9 +388,18 @@ Bitterbot connects to real messaging surfaces. Inbound DMs are treated as **untr
 - **Memory governance**: Sensitivity tagging, TTL enforcement, audit trails, anti-catastrophic forgetting safeguards.
 - **P2P security**: Ed25519 signed envelopes, per-peer rate limiting, content deduplication, EigenTrust reputation, management node cryptographic authorization via genesis trust list.
 
+**What this node connects to:** every default outbound connection — the P2P
+bootstrap, the update check, the orchestrator download, the circles mailbox —
+is documented with its payload and off switch in
+[docs/network/egress.md](docs/network/egress.md). The claim is grep-verifiable:
+every dial is in source, each has a switch.
+
 Run `bitterbot doctor` to surface risky configurations. [Security guide →](docs/gateway/security/)
 
 To report a vulnerability, email **[security@bitterbot.net](mailto:security@bitterbot.net)**.
+
+The precise limits of what this software guarantees are published in
+[LIMITATIONS.md](LIMITATIONS.md).
 
 ---
 
@@ -446,6 +455,10 @@ If the doctor can't figure it out, open an issue with the full doctor output att
 ---
 
 ## Heritage & Attribution
+
+Provenance, third-party attribution, and the economic-layer disclaimer live
+in [ATTRIBUTION.md](ATTRIBUTION.md) (moved out of LICENSE so the license
+detects as plain MIT).
 
 Bitterbot uses [OpenClaw](https://github.com/nicepkg/openclaw) (MIT License) as scaffolding for its channel surface (WhatsApp/Telegram/Discord/Signal/Slack message routing) and the base embedded agent runner, originally built by [Mario Zechner](https://mariozechner.at/) as [pi-mono](https://github.com/badlogic/pi-mono). The Dream Engine's Research mode was inspired by [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch) loop. Deep Recall implements the [Recursive Language Model](https://arxiv.org/abs/2512.24601) pattern via [hampton-io/RLM](https://github.com/hampton-io/RLM) (MIT License).
 

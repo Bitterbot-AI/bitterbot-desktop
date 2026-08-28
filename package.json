@@ -34,9 +34,12 @@
   },
   "files": [
     "LICENSE",
+    "ATTRIBUTION.md",
     "bitterbot.mjs",
     "README-header.png",
     "README.md",
+    "CHANGELOG.md",
+    "LIMITATIONS.md",
     "dist/",
     "docs/agents/",
     "docs/automation/",

@@ -58,3 +58,19 @@ describe("compareSemverStrings (PLAN-41 D-A CalVer guard)", async () => {
     expect(compareSemverStrings("2.0.0", "2.0.0")).toBe(0);
   });
 });
+
+describe("fetchNpmTagVersion not-published mapping (D-J)", () => {
+  it("maps a 404 to the durable not-published error", async () => {
+    const { fetchNpmTagVersion } = await import("./update-check.js");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 404 }) as unknown as Response);
+    try {
+      const res = await fetchNpmTagVersion({ tag: "latest" });
+      expect(res.error).toBe("not-published");
+      expect(res.version).toBeNull();
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+});

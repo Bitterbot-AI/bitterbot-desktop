@@ -85,7 +85,9 @@ export function formatUpdateOneLiner(update: UpdateCheckResult): string {
       return;
     }
     if (update.registry?.error) {
-      parts.push("npm latest unknown");
+      parts.push(
+        update.registry.error === "not-published" ? "npm: no releases yet" : "npm latest unknown",
+      );
     }
   };
 

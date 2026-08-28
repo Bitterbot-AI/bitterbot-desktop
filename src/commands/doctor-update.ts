@@ -51,7 +51,7 @@ export async function maybeOfferUpdateBeforeDoctor(params: {
     if (!shouldUpdate) {
       return { updated: false };
     }
-    note("Running update (fetch/rebase/build/ui:build/doctor)…", "Update");
+    note("Running update (fetch/rebase/build/doctor)…", "Update");
     const result = await runGatewayUpdate({
       cwd: params.root,
       argv1: process.argv[1],
