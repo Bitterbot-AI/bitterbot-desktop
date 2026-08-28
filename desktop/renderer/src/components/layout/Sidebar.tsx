@@ -11,6 +11,7 @@ import {
   Check,
   Sun,
   Moon,
+  LifeBuoy,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -592,6 +593,12 @@ export function Sidebar() {
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-2">
             <SocialLink
+              href="https://github.com/Bitterbot-AI/bitterbot-desktop/tree/main/docs"
+              icon={<LifeBuoy className="w-3.5 h-3.5" />}
+              label="Help & Docs"
+              collapsed
+            />
+            <SocialLink
               href="https://about.bitterbot.ai"
               icon={<AboutIcon />}
               label="About BitterBot"
@@ -619,6 +626,12 @@ export function Sidebar() {
           </div>
         ) : (
           <div className="flex flex-col gap-1">
+            <SocialLink
+              href="https://github.com/Bitterbot-AI/bitterbot-desktop/tree/main/docs"
+              icon={<LifeBuoy className="w-3.5 h-3.5" />}
+              label="Help & Docs"
+              collapsed={false}
+            />
             <SocialLink
               href="https://about.bitterbot.ai"
               icon={<AboutIcon />}

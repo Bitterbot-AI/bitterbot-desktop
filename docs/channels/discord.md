@@ -7,6 +7,11 @@ title: "Discord"
 
 # Discord (Bot API)
 
+> **Easiest path: the Control UI.** Open the **Channels** tab at
+> `http://127.0.0.1:19001/`, pick this channel, and follow the guided setup
+> (QR login and credential fields included). The CLI flow below does the
+> same thing from the terminal.
+
 Status: ready for DMs and guild channels via the official Discord gateway.
 
 <CardGroup cols={3}>

@@ -8,6 +8,11 @@ title: "Signal"
 
 # Signal (signal-cli)
 
+> **Easiest path: the Control UI.** Open the **Channels** tab at
+> `http://127.0.0.1:19001/`, pick this channel, and follow the guided setup
+> (QR login and credential fields included). The CLI flow below does the
+> same thing from the terminal.
+
 Status: external CLI integration. Gateway talks to `signal-cli` over HTTP JSON-RPC + SSE.
 
 ## Prerequisites

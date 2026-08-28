@@ -7,6 +7,11 @@ title: "Slack"
 
 # Slack
 
+> **Easiest path: the Control UI.** Open the **Channels** tab at
+> `http://127.0.0.1:19001/`, pick this channel, and follow the guided setup
+> (QR login and credential fields included). The CLI flow below does the
+> same thing from the terminal.
+
 Status: production-ready for DMs + channels via Slack app integrations. Default mode is Socket Mode; HTTP Events API mode is also supported.
 
 <CardGroup cols={3}>

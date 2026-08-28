@@ -61,13 +61,16 @@ Check your Node version with `node --version` if you are unsure.
     If you installed the service, it should already be running:
 
     ```bash
-    bitterbot gateway status
+    pnpm bitterbot gateway status
     ```
+
+    (All `bitterbot` commands run as `pnpm bitterbot …` from the repo; run
+    `pnpm link --global` once if you want a bare `bitterbot` on your PATH.)
 
   </Step>
   <Step title="Open the Control UI">
     ```bash
-    bitterbot dashboard
+    pnpm bitterbot dashboard
     ```
   </Step>
 </Steps>
@@ -78,17 +81,13 @@ If the Control UI loads, your Gateway is ready for use.
 
 ## Run the Control UI
 
-Bitterbot requires two processes: the gateway (backend) and the Control UI (frontend).
+The gateway serves the Control UI itself — one process, one port:
 
 ```bash
-# Terminal 1 — Gateway
-pnpm gateway:watch
-
-# Terminal 2 — Control UI
-cd desktop && pnpm dev
+pnpm start gateway
 ```
 
-Open [http://127.0.0.1:19001](http://127.0.0.1:19001) in your browser to chat, view dreams, manage skills, and monitor the agent. The gateway serves the Control UI directly — one process, one port.
+Open [http://127.0.0.1:19001](http://127.0.0.1:19001) in your browser to chat, view dreams, manage skills, and monitor the agent. (Developing the UI itself? `pnpm dev:all` runs the gateway plus a hot-reload Vite server on 5173 — dev only.)
 
 ## Optional extras
 

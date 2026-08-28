@@ -1039,6 +1039,7 @@
               {
                 "group": "More reference",
                 "pages": [
+                  "reference/LAUNCH-RUNBOOK",
                   "cli/config",
                   "cli/devices",
                   "cli/node",
