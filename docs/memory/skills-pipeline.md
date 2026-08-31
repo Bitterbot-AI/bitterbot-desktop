@@ -364,6 +364,24 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   auto-promoted — promotion belongs to the validation gate (accept only on
   measured improvement). Repeated protocol garbage or the turn cap force
   `no_action`, which is a valid outcome, not a failure.
+- Validation gate (PLAN-42 Phase 4) — the ONLY path from staged proposal
+  to live skill, and the answer to "how do we know a generated skill is
+  good": always comparative, always strict. `validate-records.ts` (default
+  mode) scores candidate vs incumbent over HELD-OUT reconstructed traces
+  (the 20% run-id partition the maintainer never sees) via one batched LLM
+  call + deterministic paired bootstrap; accept iff `ci95Low > 0` with
+  > = 5 trials. `validate-tasks.ts` + `task-corpus.ts` (stronger mode,
+  > enable via `skills.evolution.validationMode: "tasks"` after reviewing
+  > the corpus) replays the frozen `skill-wiki/task-corpus.jsonl` benchmark
+  > under both arms with deterministic checkers (seed corpus + curation
+  > guide in `benchmarks/skill-evolution/`). `validation-gate.ts` settles
+  > every staged evolution proposal: measured improvement -> promote (with
+  > PURPOSE.md + `.evolution-meta.json` enriched with mode/scores/corpus
+  > version/model tag, snapshot bumped); measured non-improvement -> discard
+  > candidate + record verdict; insufficient data -> HOLD staged and retry;
+  > net-new creates respect `maxActiveEvolved` (default 5). Rejected content
+  > is dedup-hashed: an identical (name, content) proposal can never be
+  > re-staged (OSS-implementation lesson).
 - Dream-engine hook `maybeRunSkillEvolutionPass` (curator pattern):
   cadence-gated at `skills.evolution.cadenceHours` (default 24h) via the
   persisted sampler-state timestamp + an in-memory attempt throttle; runs

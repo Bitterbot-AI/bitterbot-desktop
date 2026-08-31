@@ -1,0 +1,139 @@
+/**
+ * PLAN-42 Phase 4: the replayable task corpus — the node's local benchmark.
+ *
+ * "How do we know a generated skill is good?" is answered comparatively:
+ * candidate skill set vs incumbent, same frozen corpus, paired scoring,
+ * strict improvement only. The corpus is the benchmark artifact:
+ *
+ *   skill-wiki/task-corpus.jsonl — one task per line:
+ *     {"id": "...", "prompt": "...", "checker": {"kind": "contains"|"regex"|"exact", "value": "..."}, "timeoutMs"?: n, "tags"?: [...]}
+ *
+ * Deterministic checkers only — a task belongs in the corpus precisely
+ * because its outcome is checkable without a judge. The corpus version is
+ * the SHA-1 of the file, recorded with every verdict so scores are only
+ * ever compared within one corpus version. A seed corpus ships in
+ * benchmarks/skill-evolution/ for Victor's review (D-D); nodes grow their
+ * own from real traces with verifiable outcomes.
+ */
+
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+
+const log = createSubsystemLogger("skill-evolution/task-corpus");
+
+export const CORPUS_FILENAME = "task-corpus.jsonl";
+export const MAX_CORPUS_TASKS = 30;
+export const DEFAULT_TASK_TIMEOUT_MS = 120_000;
+
+export interface TaskChecker {
+  kind: "contains" | "regex" | "exact";
+  value: string;
+}
+
+export interface CorpusTask {
+  id: string;
+  prompt: string;
+  checker: TaskChecker;
+  timeoutMs?: number;
+  tags?: string[];
+}
+
+export interface TaskCorpus {
+  tasks: CorpusTask[];
+  /** SHA-1 of the corpus file; verdicts are comparable only within one version. */
+  version: string;
+}
+
+export function corpusPath(opts: ImpactTrailOptions = {}): string {
+  return path.join(resolveWikiDir(opts), CORPUS_FILENAME);
+}
+
+function parseChecker(value: unknown): TaskChecker | null {
+  const c = value as Record<string, unknown>;
+  if (
+    (c?.kind === "contains" || c?.kind === "regex" || c?.kind === "exact") &&
+    typeof c.value === "string" &&
+    c.value.length > 0
+  ) {
+    if (c.kind === "regex") {
+      try {
+        // Validate the pattern up front so a bad corpus line cannot throw
+        // at scoring time.
+        new RegExp(c.value, "i");
+      } catch {
+        return null;
+      }
+    }
+    return { kind: c.kind, value: c.value };
+  }
+  return null;
+}
+
+/** Load the node's corpus. Malformed lines are skipped with a log, never fatal. */
+export async function loadTaskCorpus(opts: ImpactTrailOptions = {}): Promise<TaskCorpus | null> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(corpusPath(opts), "utf-8");
+  } catch {
+    return null;
+  }
+  const tasks: CorpusTask[] = [];
+  const seen = new Set<string>();
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) {
+      continue;
+    }
+    try {
+      const entry = JSON.parse(trimmed) as Record<string, unknown>;
+      const id = typeof entry.id === "string" ? entry.id.trim() : "";
+      const prompt = typeof entry.prompt === "string" ? entry.prompt : "";
+      const checker = parseChecker(entry.checker);
+      if (!id || !prompt || !checker || seen.has(id)) {
+        log.debug(`skipping malformed/duplicate corpus line: ${trimmed.slice(0, 80)}`);
+        continue;
+      }
+      seen.add(id);
+      tasks.push({
+        id,
+        prompt,
+        checker,
+        ...(typeof entry.timeoutMs === "number" && entry.timeoutMs > 0
+          ? { timeoutMs: entry.timeoutMs }
+          : {}),
+        ...(Array.isArray(entry.tags)
+          ? { tags: entry.tags.filter((t) => typeof t === "string") }
+          : {}),
+      });
+      if (tasks.length >= MAX_CORPUS_TASKS) {
+        break;
+      }
+    } catch {
+      log.debug(`skipping unparseable corpus line: ${trimmed.slice(0, 80)}`);
+    }
+  }
+  if (tasks.length === 0) {
+    return null;
+  }
+  return { tasks, version: createHash("sha1").update(raw).digest("hex").slice(0, 12) };
+}
+
+/** Deterministic binary scoring of an answer against a task's checker. */
+export function scoreTaskAnswer(task: CorpusTask, answer: string): 0 | 1 {
+  const a = answer ?? "";
+  switch (task.checker.kind) {
+    case "exact":
+      return a.trim() === task.checker.value.trim() ? 1 : 0;
+    case "contains":
+      return a.toLowerCase().includes(task.checker.value.toLowerCase()) ? 1 : 0;
+    case "regex":
+      try {
+        return new RegExp(task.checker.value, "i").test(a) ? 1 : 0;
+      } catch {
+        return 0;
+      }
+  }
+}

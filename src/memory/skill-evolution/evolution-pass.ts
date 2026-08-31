@@ -27,6 +27,7 @@ import { type LlmCallFn, type MaintenanceResult, runWikiMaintenance } from "./ma
 import { type ApplyProposalResult, applyProposal } from "./proposal-apply.js";
 import { type ProposerRunResult, runSkillProposer } from "./proposer.js";
 import { readSamplerCursor, sampleIteration, writeSamplerCursor } from "./sampler.js";
+import { runValidationGate, type ValidationGateOutcome } from "./validation-gate.js";
 
 const log = createSubsystemLogger("skill-evolution/pass");
 
@@ -42,6 +43,10 @@ export interface EvolutionPassDeps {
   maxProposerTurns?: number;
   /** Set false to run maintenance only (tests / staged rollouts). */
   runProposer?: boolean;
+  /** Validation gate settings (Phase 4). Gate runs whenever a proposal staged. */
+  validationMode?: "records" | "tasks";
+  maxActiveEvolved?: number;
+  modelTag?: string;
   storeOpts?: WikiStoreOptions;
 }
 
@@ -52,6 +57,7 @@ export interface EvolutionPassResult {
   maintenance?: MaintenanceResult;
   proposer?: ProposerRunResult;
   proposalOutcome?: ApplyProposalResult;
+  validation?: ValidationGateOutcome[];
   cursorBefore?: number;
   cursorAfter?: number;
 }
@@ -148,6 +154,23 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     });
   }
 
+  // Phase 4: settle EVERY staged evolution proposal (this iteration's and
+  // any held from earlier iterations) through the validation gate. Strict
+  // F7: only measured improvement promotes; the wiki is untouched either
+  // way.
+  let validation: ValidationGateOutcome[] | undefined;
+  if (deps.runProposer !== false) {
+    validation = await runValidationGate({
+      journal: deps.journal,
+      llmCall: deps.llmCall,
+      ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),
+      ...(deps.validationMode ? { mode: deps.validationMode } : {}),
+      ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
+      ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),
+      iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
+    });
+  }
+
   log.info(
     `evolution iteration: ${sample.samples.length} traces (${sample.stats.failsSelected}f/${sample.stats.passesSelected}p) -> ` +
       `${maintenance.apply?.created.length ?? 0} patterns created, ${maintenance.apply?.updated.length ?? 0} updated, ` +
@@ -162,6 +185,7 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     maintenance,
     ...(proposer ? { proposer } : {}),
     ...(proposalOutcome ? { proposalOutcome } : {}),
+    ...(validation ? { validation } : {}),
     cursorBefore,
     cursorAfter: sample.nextCursorSeq,
   };

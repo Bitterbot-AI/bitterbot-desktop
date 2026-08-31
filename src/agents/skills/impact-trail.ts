@@ -73,6 +73,8 @@ export interface ImpactEntry {
   iteration?: string;
   /** Model the mutation was validated under, when applicable. */
   model?: string;
+  /** SHA-1 of the proposed content — rejection dedup key. */
+  contentHash?: string;
   /** Override timestamp (test determinism). */
   timestamp?: number;
 }
@@ -196,6 +198,7 @@ export async function appendImpactEntry(
       ...(entry.iteration ? { iteration: entry.iteration } : {}),
       ...(entry.detail ? { detail: entry.detail } : {}),
       ...(entry.diff ? { diffChars: entry.diff.length } : {}),
+      ...(entry.contentHash ? { contentHash: entry.contentHash } : {}),
     };
     await fs.appendFile(jsonlPath, `${JSON.stringify(record)}\n`, "utf-8");
     return true;

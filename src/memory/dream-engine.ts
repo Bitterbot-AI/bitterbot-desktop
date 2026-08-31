@@ -3051,6 +3051,9 @@ export class DreamEngine {
       cycleId,
       ...(cfg?.wikiMaxPatterns ? { maxPatterns: cfg.wikiMaxPatterns } : {}),
       ...(cfg?.maxProposerTurns ? { maxProposerTurns: cfg.maxProposerTurns } : {}),
+      ...(cfg?.validationMode ? { validationMode: cfg.validationMode } : {}),
+      ...(cfg?.maxActiveEvolved ? { maxActiveEvolved: cfg.maxActiveEvolved } : {}),
+      modelTag: this.config.model,
     });
     if (result.ran) {
       const apply = result.maintenance?.apply;

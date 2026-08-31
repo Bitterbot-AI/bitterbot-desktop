@@ -5,10 +5,15 @@
  * the staging dir; the Phase 4 promotion path carries them to live.
  */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { SkillProposal } from "./proposer.js";
-import { appendImpactEntry, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
+import {
+  appendImpactEntry,
+  type ImpactTrailOptions,
+  readProvenance,
+} from "../../agents/skills/impact-trail.js";
 import { skillManage } from "../../agents/skills/skill-manage.js";
 import {
   readLive,
@@ -21,9 +26,35 @@ import { applyPatchOps, type ParseIssue } from "./wiki-store.js";
 const log = createSubsystemLogger("skill-evolution/proposal-apply");
 
 export interface ApplyProposalResult {
-  outcome: "staged" | "no-action" | "gate-failed" | "invalid";
+  outcome: "staged" | "no-action" | "gate-failed" | "invalid" | "duplicate-of-rejected";
   detail?: string;
   stagedName?: string;
+  contentHash?: string;
+}
+
+export function hashProposalContent(content: string): string {
+  return createHash("sha1").update(content).digest("hex").slice(0, 16);
+}
+
+/**
+ * OSS-implementation lesson: a proposer that cannot see its own rejections
+ * will re-propose them forever. The impact trail records a contentHash for
+ * every staged/rejected proposal; an identical (name, content) pair that
+ * was previously rejected is refused without burning a validation run.
+ */
+async function isDuplicateOfRejected(
+  skillName: string,
+  contentHash: string,
+  trailOpts: ImpactTrailOptions,
+): Promise<boolean> {
+  const trail = await readProvenance(trailOpts);
+  return trail.some(
+    (e) =>
+      e.source === "evolution" &&
+      e.skillName === skillName &&
+      e.contentHash === contentHash &&
+      (e.verdict === "rejected" || e.verdict === "gate-failed"),
+  );
 }
 
 /**
@@ -114,6 +145,23 @@ export async function applyProposal(
     manageAction = "edit";
   }
 
+  const contentHash = hashProposalContent(content);
+  if (await isDuplicateOfRejected(proposal.name, contentHash, trailOpts)) {
+    await appendImpactEntry(
+      {
+        source: "evolution",
+        action: proposal.action,
+        skillName: proposal.name,
+        verdict: "gate-failed",
+        detail: "identical content was previously rejected; not re-proposing",
+        contentHash,
+        ...(deps.iteration ? { iteration: deps.iteration } : {}),
+      },
+      trailOpts,
+    );
+    return { outcome: "duplicate-of-rejected", contentHash };
+  }
+
   const manage = await skillManage(
     { storageRoots: roots },
     {
@@ -133,11 +181,12 @@ export async function applyProposal(
         verdict: "gate-failed",
         detail: manage.detail ?? manage.gateSummary ?? "staging gate refused",
         diff: content,
+        contentHash,
         ...(deps.iteration ? { iteration: deps.iteration } : {}),
       },
       trailOpts,
     );
-    return { outcome: "gate-failed", detail: manage.detail ?? "gate refused" };
+    return { outcome: "gate-failed", detail: manage.detail ?? "gate refused", contentHash };
   }
 
   // Provenance rides in the staging dir; the Phase 4 promotion path carries
@@ -163,10 +212,11 @@ export async function applyProposal(
       verdict: "staged",
       detail: "passed staging gate; awaiting validation gate",
       diff: content,
+      contentHash,
       ...(deps.iteration ? { iteration: deps.iteration } : {}),
     },
     trailOpts,
   );
   log.info(`proposal staged: ${proposal.action} ${proposal.name}`);
-  return { outcome: "staged", stagedName: proposal.name };
+  return { outcome: "staged", stagedName: proposal.name, contentHash };
 }
