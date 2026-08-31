@@ -115,9 +115,14 @@ export async function reconstructTrace(
   runId: string,
   opts: { skipMarathonRuns?: boolean } = {},
 ): Promise<ReconstructedTrace | null> {
+  if (opts.skipMarathonRuns && journal.countForRun(runId) > MAX_RECONSTRUCT_EVENTS) {
+    // Marathon interactive session: skip WITHOUT inflating a single blob —
+    // the count uses the run index only.
+    return null;
+  }
   const events = await pageRunEvents(journal, runId, {
-    maxEvents: opts.skipMarathonRuns ? MAX_RECONSTRUCT_EVENTS : RUN_EVENT_LIMIT,
-    enforceCap: opts.skipMarathonRuns === true,
+    maxEvents: RUN_EVENT_LIMIT,
+    enforceCap: false,
   });
   if (events === null || events.length === 0) {
     return null;
@@ -321,14 +326,14 @@ export async function listRunsSince(
   // Page through the journal without holding a long read inside one call.
   for (let page = 0; page < 200; page++) {
     await tick();
-    const events = journal.query({ sinceSeq: cursor, limit: 500 });
+    const events = journal.queryMeta({ sinceSeq: cursor, limit: 500 });
     if (events.length === 0) {
       break;
     }
     for (const evt of events) {
       seen.set(evt.runId, evt.seq);
     }
-    cursor = (events[events.length - 1] as JournalEvent).seq;
+    cursor = (events[events.length - 1] as { seq: number }).seq;
     if (seen.size >= maxRuns * 3) {
       // Enough candidates to satisfy maxRuns even after filtering.
       break;

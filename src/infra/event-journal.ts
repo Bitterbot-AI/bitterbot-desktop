@@ -195,6 +195,65 @@ export class EventJournal {
     return row?.s ?? 0;
   }
 
+  /**
+   * PLAN-42: event count for one run via the run index — the cheap marathon
+   * check that avoids inflating a single blob for runs that will be skipped.
+   */
+  countForRun(runId: string): number {
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS c FROM event_log WHERE run_id = ?`)
+      .get(runId) as { c: number };
+    return row.c;
+  }
+
+  /**
+   * PLAN-42: metadata-only variant of query() — same filters, but the
+   * data_blob is neither selected nor gunzipped. query() inflates every
+   * row's blob synchronously (assistant events carry cumulative text, so a
+   * few hundred rows can decompress to 100MB+); run enumeration must never
+   * pay that.
+   */
+  queryMeta(opts: QueryOptions): Array<Omit<JournalEvent, "data">> {
+    const filters: string[] = [];
+    const args: Array<string | number> = [];
+    if (opts.runId) {
+      filters.push("run_id = ?");
+      args.push(opts.runId);
+    }
+    if (opts.taskId) {
+      filters.push("task_id = ?");
+      args.push(opts.taskId);
+    }
+    if (typeof opts.sinceSeq === "number") {
+      filters.push("seq > ?");
+      args.push(opts.sinceSeq);
+    }
+    if (opts.streams && opts.streams.length > 0) {
+      const placeholders = opts.streams.map(() => "?").join(",");
+      filters.push(`stream IN (${placeholders})`);
+      for (const s of opts.streams) args.push(s);
+    }
+    const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+    const limit = Math.max(1, Math.min(opts.limit ?? 1000, 10_000));
+    const rows = this.db
+      .prepare(
+        `SELECT seq, run_id, task_id, ts, stream, run_seq, session_key
+         FROM event_log ${where}
+         ORDER BY seq ASC
+         LIMIT ?`,
+      )
+      .all(...args, limit) as unknown as Array<Omit<RawEventRow, "data_blob">>;
+    return rows.map((row) => ({
+      seq: row.seq,
+      runId: row.run_id,
+      taskId: row.task_id,
+      ts: row.ts,
+      stream: row.stream as AgentEventStream,
+      runSeq: row.run_seq,
+      sessionKey: row.session_key,
+    }));
+  }
+
   /** Count events for a given task. */
   countForTask(taskId: string): number {
     const row = this.db

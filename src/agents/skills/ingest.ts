@@ -21,6 +21,77 @@ import { bumpSkillsSnapshotVersion } from "./refresh.js";
 
 const log = createSubsystemLogger("skills/ingest");
 
+/**
+ * Atomic write for quarantine artifacts. Gossip re-broadcasts the same skill
+ * repeatedly and two deliveries can ingest the same name concurrently; plain
+ * writeFile interleaves the two writers and the loser's tail survives past
+ * the winner's EOF ("...false\n}se\n}") — 28 of 31 quarantine envelopes on
+ * the pilot node were corrupted this way and rendered as "Incomplete
+ * download". rename() is atomic, so concurrent writers now leave exactly one
+ * intact winner.
+ */
+async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+  const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    await fs.writeFile(tmp, content, "utf-8");
+    await fs.rename(tmp, filePath);
+  } catch (err) {
+    try {
+      await fs.unlink(tmp);
+    } catch {
+      // ignore
+    }
+    throw err;
+  }
+}
+
+/**
+ * Parse an envelope JSON, salvaging legacy files corrupted by the concurrent
+ * write bug above: their content is one valid JSON object with garbage
+ * appended, so cutting at the first balanced close brace recovers it.
+ */
+export function parseEnvelopeJson(raw: string): SkillEnvelope | undefined {
+  try {
+    return JSON.parse(raw) as SkillEnvelope;
+  } catch {
+    // Salvage: cut at the first top-level balanced brace.
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = inString;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) {
+        continue;
+      }
+      if (ch === "{") {
+        depth += 1;
+      } else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            return JSON.parse(raw.slice(0, i + 1)) as SkillEnvelope;
+          } catch {
+            return undefined;
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+}
+
 export type SkillEnvelope = {
   version: number;
   skill_md: string; // base64
@@ -256,7 +327,7 @@ export async function ingestSkill(params: {
   // UI would render as "received from unknown peer"). An envelope with no
   // SKILL.md yet is a recognizably-incomplete entry, not a phantom peer.
   const envelopePath = path.join(incomingDir, ".envelope.json");
-  await fs.writeFile(
+  await atomicWriteFile(
     envelopePath,
     JSON.stringify(
       {
@@ -268,10 +339,9 @@ export async function ingestSkill(params: {
       null,
       2,
     ),
-    "utf-8",
   );
   const skillPath = path.join(incomingDir, "SKILL.md");
-  await fs.writeFile(skillPath, skillContent, "utf-8");
+  await atomicWriteFile(skillPath, skillContent);
 
   // Reputation: a force-quarantine on a previously-trusted peer is the loud
   // signal we want to feed back into trust. Counts as a rejected ingestion.
@@ -330,8 +400,8 @@ async function emitQuarantineSystemEvent(message: string): Promise<void> {
 async function readQuarantineAuthorPubkey(incomingDir: string): Promise<string | null> {
   try {
     const raw = await fs.readFile(path.join(incomingDir, ".envelope.json"), "utf-8");
-    const parsed = JSON.parse(raw) as { author_pubkey?: unknown };
-    return typeof parsed.author_pubkey === "string" ? parsed.author_pubkey : null;
+    const parsed = parseEnvelopeJson(raw) as { author_pubkey?: unknown } | undefined;
+    return typeof parsed?.author_pubkey === "string" ? parsed.author_pubkey : null;
   } catch {
     return null;
   }
@@ -546,7 +616,7 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<Incom
       let envelopeMeta: Record<string, unknown> | undefined;
       try {
         const raw = await fs.readFile(envelopePath, "utf-8");
-        envelope = JSON.parse(raw);
+        envelope = parseEnvelopeJson(raw);
         envelopeMeta = envelope as unknown as Record<string, unknown>;
       } catch {}
       let description: string | undefined;
