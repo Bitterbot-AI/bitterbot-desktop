@@ -650,6 +650,8 @@ export const BitterbotSchema = z
             validationMode: z.union([z.literal("records"), z.literal("tasks")]).optional(),
             judgeModel: z.string().optional(),
             wikiMaxPatterns: z.number().int().positive().optional(),
+            propagate: z.boolean().optional(),
+            maturityDays: z.number().positive().optional(),
           })
           .strict()
           .optional(),

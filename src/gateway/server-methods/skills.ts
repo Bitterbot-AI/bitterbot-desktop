@@ -1287,4 +1287,33 @@ export const skillsHandlers: GatewayRequestHandlers = {
       );
     }
   },
+
+  // PLAN-42 Phase 5: one read-only snapshot of the evolution flywheel —
+  // wiki size, sampler cursor, staged/held proposals, validated evolved
+  // skills, P2P eligibility, corpus presence — plus the effective config.
+  "skills.evolution.status": async ({ respond }) => {
+    try {
+      const { collectEvolutionStatus } = await import("../../memory/skill-evolution/status.js");
+      const status = await collectEvolutionStatus();
+      const cfg = loadConfig();
+      const evo = cfg.skills?.evolution ?? {};
+      respond(true, {
+        config: {
+          enabled: evo.enabled !== false,
+          cadenceHours: evo.cadenceHours ?? 24,
+          validationMode: evo.validationMode ?? "records",
+          propagate: evo.propagate !== false,
+          maturityDays: evo.maturityDays ?? 3,
+          maxActiveEvolved: evo.maxActiveEvolved ?? 5,
+        },
+        ...status,
+      });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.status threw: ${String(err)}`),
+      );
+    }
+  },
 };

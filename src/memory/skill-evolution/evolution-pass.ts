@@ -24,10 +24,16 @@ import type { WikiStoreOptions } from "./wiki-store.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { recordDreamArtifact } from "../dream-utility.js";
 import { type LlmCallFn, type MaintenanceResult, runWikiMaintenance } from "./maintainer.js";
+import {
+  publishEligibleEvolvedSkills,
+  type PublishSweepResult,
+  type SkillPublisher,
+} from "./p2p-publish.js";
 import { type ApplyProposalResult, applyProposal } from "./proposal-apply.js";
 import { type ProposerRunResult, runSkillProposer } from "./proposer.js";
 import { readSamplerCursor, sampleIteration, writeSamplerCursor } from "./sampler.js";
 import { runValidationGate, type ValidationGateOutcome } from "./validation-gate.js";
+import { runWikiLint, type WikiLintResult } from "./wiki-lint.js";
 
 const log = createSubsystemLogger("skill-evolution/pass");
 
@@ -47,6 +53,10 @@ export interface EvolutionPassDeps {
   validationMode?: "records" | "tasks";
   maxActiveEvolved?: number;
   modelTag?: string;
+  /** P2P propagation (Phase 5). Publisher = the orchestrator bridge or a fake. */
+  propagate?: boolean;
+  maturityDays?: number;
+  publisher?: SkillPublisher | null;
   storeOpts?: WikiStoreOptions;
 }
 
@@ -58,6 +68,8 @@ export interface EvolutionPassResult {
   proposer?: ProposerRunResult;
   proposalOutcome?: ApplyProposalResult;
   validation?: ValidationGateOutcome[];
+  lint?: WikiLintResult;
+  publish?: PublishSweepResult;
   cursorBefore?: number;
   cursorAfter?: number;
 }
@@ -88,14 +100,18 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
 
   if (sample.samples.length === 0) {
     // Nothing to learn this window. Advance past the examined (excluded /
-    // held-out / unknown) runs so they are not rescanned forever.
+    // held-out / unknown) runs so they are not rescanned forever. Held
+    // proposals, lint, and matured publishes still get their sweep —
+    // eligibility ripens with time, not with new traces.
     if (sample.nextCursorSeq > cursorBefore) {
       await writeSamplerCursor(sample.nextCursorSeq, storeOpts);
     }
+    const housekeeping = deps.runProposer !== false ? await runHousekeeping(deps, storeOpts) : {};
     return {
       ran: false,
       reason: "no-new-traces",
       samplerStats: sample.stats,
+      ...housekeeping,
       cursorBefore,
       cursorAfter: Math.max(cursorBefore, sample.nextCursorSeq),
     };
@@ -154,22 +170,10 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     });
   }
 
-  // Phase 4: settle EVERY staged evolution proposal (this iteration's and
-  // any held from earlier iterations) through the validation gate. Strict
-  // F7: only measured improvement promotes; the wiki is untouched either
-  // way.
-  let validation: ValidationGateOutcome[] | undefined;
-  if (deps.runProposer !== false) {
-    validation = await runValidationGate({
-      journal: deps.journal,
-      llmCall: deps.llmCall,
-      ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),
-      ...(deps.validationMode ? { mode: deps.validationMode } : {}),
-      ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
-      ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),
-      iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
-    });
-  }
+  // Phase 4+5: settle EVERY staged evolution proposal (this iteration's
+  // and any held from earlier iterations) through the validation gate,
+  // then lint the wiki and publish matured validated skills.
+  const housekeeping = deps.runProposer !== false ? await runHousekeeping(deps, storeOpts) : {};
 
   log.info(
     `evolution iteration: ${sample.samples.length} traces (${sample.stats.failsSelected}f/${sample.stats.passesSelected}p) -> ` +
@@ -185,8 +189,45 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     maintenance,
     ...(proposer ? { proposer } : {}),
     ...(proposalOutcome ? { proposalOutcome } : {}),
-    ...(validation ? { validation } : {}),
+    ...housekeeping,
     cursorBefore,
     cursorAfter: sample.nextCursorSeq,
   };
+}
+
+/**
+ * Validation gate (settles held + new proposals), wiki lint, and the P2P
+ * publish sweep. Runs on every iteration attempt — held proposals and
+ * publish eligibility ripen with time even when no new traces arrive.
+ */
+async function runHousekeeping(
+  deps: EvolutionPassDeps,
+  storeOpts: WikiStoreOptions,
+): Promise<{
+  validation?: ValidationGateOutcome[];
+  lint?: WikiLintResult;
+  publish?: PublishSweepResult;
+}> {
+  const validation = await runValidationGate({
+    journal: deps.journal,
+    llmCall: deps.llmCall,
+    ...(storeOpts.configDir ? { storeOpts } : {}),
+    ...(deps.validationMode ? { mode: deps.validationMode } : {}),
+    ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
+    ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),
+    iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
+  });
+  const lint = await runWikiLint({
+    ...storeOpts,
+    ...(deps.maxPatterns ? { maxPatterns: deps.maxPatterns } : {}),
+  });
+  let publish: PublishSweepResult | undefined;
+  if (deps.propagate !== false) {
+    publish = await publishEligibleEvolvedSkills({
+      publisher: deps.publisher ?? null,
+      ...(storeOpts.configDir ? { storeOpts } : {}),
+      ...(deps.maturityDays !== undefined ? { maturityDays: deps.maturityDays } : {}),
+    });
+  }
+  return { validation, ...(lint ? { lint } : {}), ...(publish ? { publish } : {}) };
 }

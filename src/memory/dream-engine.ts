@@ -3031,12 +3031,17 @@ export class DreamEngine {
     if (now - this.lastEvolutionAttemptAt < cadenceMs) {
       return;
     }
-    const [{ readSamplerState }, { runEvolutionIteration }, { getActiveEventJournal }] =
-      await Promise.all([
-        import("./skill-evolution/sampler.js"),
-        import("./skill-evolution/evolution-pass.js"),
-        import("../infra/event-journal.js"),
-      ]);
+    const [
+      { readSamplerState },
+      { runEvolutionIteration },
+      { getActiveEventJournal },
+      { getActiveOrchestratorBridge },
+    ] = await Promise.all([
+      import("./skill-evolution/sampler.js"),
+      import("./skill-evolution/evolution-pass.js"),
+      import("../infra/event-journal.js"),
+      import("../infra/orchestrator-bridge.js"),
+    ]);
     const state = await readSamplerState();
     if (now - state.updatedAt < cadenceMs) {
       return;
@@ -3053,6 +3058,9 @@ export class DreamEngine {
       ...(cfg?.maxProposerTurns ? { maxProposerTurns: cfg.maxProposerTurns } : {}),
       ...(cfg?.validationMode ? { validationMode: cfg.validationMode } : {}),
       ...(cfg?.maxActiveEvolved ? { maxActiveEvolved: cfg.maxActiveEvolved } : {}),
+      ...(cfg?.propagate !== undefined ? { propagate: cfg.propagate } : {}),
+      ...(cfg?.maturityDays !== undefined ? { maturityDays: cfg.maturityDays } : {}),
+      publisher: getActiveOrchestratorBridge(),
       modelTag: this.config.model,
     });
     if (result.ran) {

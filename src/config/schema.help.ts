@@ -13,6 +13,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Probabilistically re-verify accepted forage check-ins (outbound fetches).",
   "skills.evolution.enabled":
     "Learn from execution traces: consolidate recurring failures/successes into a local knowledge wiki and propose gated skill improvements (PLAN-42). On by default; uses background LLM calls when a model is available, no-ops otherwise.",
+  "skills.evolution.propagate":
+    "Publish validation-gated, matured evolved skills to the P2P network with their evidence attached. On by default; requires P2P to be running.",
   "skills.skillSeekers.enabled":
     "Generate skills by scraping documentation sites on demand. Off by default: dials external sites.",
   "skills.skillSeekers.trending.enabled":

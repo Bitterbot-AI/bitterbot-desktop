@@ -99,6 +99,13 @@ export type SkillsEvolutionConfig = {
   judgeModel?: string;
   /** Wiki pattern-page count that triggers the lint/archive pass. Default: 100. */
   wikiMaxPatterns?: number;
+  /**
+   * Publish validated + matured evolved skills to the P2P network with
+   * their validation evidence (the flywheel's outbound leg). Default: true.
+   */
+  propagate?: boolean;
+  /** Days a validated skill must survive locally before P2P publish. Default: 3. */
+  maturityDays?: number;
 };
 
 export type SkillsConfig = {

@@ -382,6 +382,19 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   > net-new creates respect `maxActiveEvolved` (default 5). Rejected content
   > is dedup-hashed: an identical (name, content) proposal can never be
   > re-staged (OSS-implementation lesson).
+- Phase 5 ops: `wiki-lint.ts` (deterministic hygiene each iteration —
+  exact-duplicate and over-cap pages archived to `patterns/archive/`
+  (never deleted), orphans flagged into logs.md for the next maintainer
+  call; the growth-bounding pass the paper admits it lacks).
+  `p2p-publish.ts` — the flywheel's outbound leg: only VALIDATED evolved
+  skills that survived `maturityDays` (default 3) locally publish to the
+  P2P network, carrying a machine-readable provenance trailer (validation
+  verdict, scores, corpus version, model) so receivers can re-gate
+  locally; publish-once per validated version; kill switch
+  `skills.evolution.propagate`. `status.ts` + the `skills.evolution.status`
+  gateway RPC — one read-only snapshot (wiki size, sampler cursor,
+  staged/held proposals, evolved live skills with verdicts, P2P
+  eligibility, corpus presence).
 - Dream-engine hook `maybeRunSkillEvolutionPass` (curator pattern):
   cadence-gated at `skills.evolution.cadenceHours` (default 24h) via the
   persisted sampler-state timestamp + an in-memory attempt throttle; runs

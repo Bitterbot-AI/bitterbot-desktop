@@ -60,6 +60,7 @@ const BASE_METHODS = [
   "skills.manage",
   "skills.promote",
   "skills.rollback",
+  "skills.evolution.status",
   "skills.incoming.list",
   "skills.incoming.accept",
   "skills.incoming.reject",
