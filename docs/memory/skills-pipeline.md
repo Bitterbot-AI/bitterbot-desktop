@@ -306,6 +306,31 @@ Recording paths as of Phase 0:
 | `guards.promote_candidate` (dream-harvest candidates) | **now runs the gate before promote** (previously raw staged→live copy) | accepted / gate-failed / rejected        |
 | `skills.create` (in-app editor)                       | deliberately ungated (human edits are the operator's prerogative)      | ungated-human-edit                       |
 
+### Trace pipeline (PLAN-42 Phase 1)
+
+`src/memory/skill-evolution/` reads the event journal (read-only) and turns
+runs into evolution fuel:
+
+- `traces.ts` — `reconstructTrace(journal, runId)` rebuilds the ordered
+  trajectory (assistant streaks, paired tool calls/results, terminal
+  lifecycle outcome); `formatTraceLog` caps each log at 15k chars
+  (head+tail preserved, middle elided). **Redaction happens here** — the
+  journal is unredacted, so every text block passes
+  `redactSensitiveText(mode: "tools")` before it can reach a prompt.
+- `labeler.ts` — pass/fail/unknown cascade: lifecycle error → terminal tool
+  error → error density → `complete()` self-report → clean end; ambiguous
+  traces go to an optional LLM judge (verdict-line parse, failures degrade
+  to the heuristic). Length-based reward heuristics are banned (PLAN-40).
+- `sampler.ts` — one iteration's stratified budget (≤8 traces: ≤5 fail +
+  ≤3 pass, per the paper), monotonic seq cursor persisted at
+  `skill-wiki/.sampler-state.json`, deterministic 20% run-id held-out
+  partition reserved for the validation gate, exclusion of evolution/probe
+  sessions (anti self-distillation).
+
+Go/no-go recurrence analysis (2026-08-31, live journal): 822 tool-bearing
+complete runs; recurring failure clusters exist (55-run exec cluster,
+38-run web_fetch cluster, 5-run wallet cluster) — the maintainer has fuel.
+
 Phase 0 also unified all staging paths on
 `resolveStorageRoots()` (`skill-storage.ts`) — `guards.promote_candidate`,
 `guards.status`, and `interceptor_harvest` previously built
