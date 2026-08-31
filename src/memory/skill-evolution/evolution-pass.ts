@@ -37,6 +37,15 @@ import { runWikiLint, type WikiLintResult } from "./wiki-lint.js";
 
 const log = createSubsystemLogger("skill-evolution/pass");
 
+/**
+ * The loop learns from the RECENT past forward (the paper trains on current
+ * rollouts). A cursor at 0 (fresh install) or pointing into stale history
+ * fast-forwards to this window instead of replaying months of old runs at
+ * 40 runs/iteration — live finding from the first soak day: iteration 2
+ * was consolidating May incidents while today's failures sat 35k seqs ahead.
+ */
+export const RECENT_WINDOW_DAYS = 14;
+
 export interface EvolutionPassDeps {
   journal: EventJournal | null;
   llmCall: LlmCallFn | null;
@@ -92,7 +101,21 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     return { ran: false, reason: "no-llm" };
   }
   const storeOpts = deps.storeOpts ?? {};
-  const cursorBefore = await readSamplerCursor(storeOpts);
+  let cursorBefore = await readSamplerCursor(storeOpts);
+  try {
+    const windowFloor = deps.journal.firstSeqSince(
+      Date.now() - RECENT_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+    );
+    if (windowFloor > 0 && cursorBefore < windowFloor - 1) {
+      log.info(
+        `fast-forwarding sampler cursor past stale history: ${cursorBefore} -> ${windowFloor - 1} (recent window ${RECENT_WINDOW_DAYS}d)`,
+      );
+      cursorBefore = windowFloor - 1;
+      await writeSamplerCursor(cursorBefore, storeOpts);
+    }
+  } catch {
+    // Older journal without the ts index path — proceed from the stored cursor.
+  }
   const sample = await sampleIteration(deps.journal, {
     cursorSeq: cursorBefore,
     judgeCall: deps.judgeCall ?? deps.llmCall,

@@ -182,6 +182,19 @@ export class EventJournal {
     return row?.s ?? 0;
   }
 
+  /**
+   * PLAN-42: first seq at or after a wall-clock timestamp (idx_event_log_ts).
+   * Lets the skill-evolution sampler fast-forward past stale history instead
+   * of replaying months of old runs from seq 0. Returns 0 when no event is
+   * that recent.
+   */
+  firstSeqSince(ts: number): number {
+    const row = this.db.prepare(`SELECT MIN(seq) AS s FROM event_log WHERE ts >= ?`).get(ts) as
+      | { s: number | null }
+      | undefined;
+    return row?.s ?? 0;
+  }
+
   /** Count events for a given task. */
   countForTask(taskId: string): number {
     const row = this.db

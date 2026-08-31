@@ -146,6 +146,38 @@ describe("runEvolutionIteration", () => {
     expect(await readIndex({ configDir: tmpDir })).toBe("");
   });
 
+  it("fast-forwards a stale cursor past old history (learn from the recent past forward)", async () => {
+    const journal = makeFixtureJournal();
+    const [staleId, freshId] = trainRunIds(2, "ff") as [string, string];
+    // A run from 30 days ago must never be sampled on a fresh cursor...
+    appendFixtureRun(journal, {
+      runId: staleId,
+      steps: [{ kind: "tool", name: "exec", result: "old boom", isError: true }],
+      terminal: "error",
+      tsBase: Date.now() - 30 * 24 * 60 * 60 * 1000,
+    });
+    // ...while a recent run is.
+    appendFixtureRun(journal, {
+      runId: freshId,
+      steps: [{ kind: "tool", name: "exec", result: "new boom", isError: true }],
+      terminal: "error",
+    });
+    const result = await runEvolutionIteration({
+      journal,
+      llmCall: async (prompt) =>
+        prompt.includes("Skill Proposer Agent")
+          ? JSON.stringify({ tool: "finish", proposal: { action: "no_action" } })
+          : "```json\n" + MAINTAINER_JSON + "\n```",
+      storeOpts: { configDir: tmpDir },
+    });
+    expect(result.ran).toBe(true);
+    // Only the fresh failure was sampled; the stale run was skipped
+    // entirely because the cursor jumped past it before sampling.
+    expect(result.samplerStats?.failsSelected).toBe(1);
+    expect(result.samplerStats?.runsExamined).toBe(1);
+    expect(result.cursorBefore).toBeGreaterThan(0);
+  });
+
   it("never throws even when everything is broken", async () => {
     const journal = seedJournal();
     const result = await runEvolutionIteration({
