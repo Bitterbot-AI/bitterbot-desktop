@@ -3,6 +3,8 @@
  * synthesis, and configuration.
  */
 
+import type { SkillsEvolutionConfig } from "../config/types.skills.js";
+
 export type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" | "AWAKENING";
 
 /** @deprecated Use DreamMode instead */
@@ -248,6 +250,12 @@ export type DreamEngineConfig = {
    * minIntervalMs default 24h.
    */
   skillCurator?: { enabled?: boolean; minIntervalMs?: number };
+  /**
+   * PLAN-42: WikiSkill evolution pass, cadence-gated after dream cycles
+   * (curator pattern; own LLM budget lane). The manager maps
+   * skills.evolution here. Default ON; kill switch skills.evolution.enabled.
+   */
+  skillEvolution?: SkillsEvolutionConfig;
 };
 
 export const DEFAULT_DREAM_CONFIG: Required<
@@ -262,6 +270,7 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "localModelIsLocal"
     | "insightPromotion"
     | "skillCurator"
+    | "skillEvolution"
   >
 > & { modes: Record<DreamMode, DreamModeConfig> } = {
   enabled: true,

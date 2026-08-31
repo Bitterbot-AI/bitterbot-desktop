@@ -331,6 +331,34 @@ Go/no-go recurrence analysis (2026-08-31, live journal): 822 tool-bearing
 complete runs; recurring failure clusters exist (55-run exec cluster,
 38-run web_fetch cluster, 5-run wallet cluster) — the maintainer has fuel.
 
+### Wiki layer + Maintainer (PLAN-42 Phase 2)
+
+- `wiki-store.ts` — `skill-wiki/{index.md, logs.md, patterns/*.md}` beside
+  the impact trail. Maintainer output is **whitelist-parsed** into a closed
+  shape (`create_patterns` / `update_patterns` patch-ops / required
+  `update_index` + `append_log`); invalid names, traversal attempts,
+  malformed ops, oversized pages, duplicate creates, and
+  injection-critical content are dropped and reported, never written. The
+  wiki never rolls back and nothing deletes; a pattern cap
+  (`skills.evolution.wikiMaxPatterns`, default 100) bounds growth until
+  the lint pass lands.
+- `maintainer.ts` — the paper's Appendix E.2 prompt (deep trace analysis,
+  10-30-line pattern pages documenting root cause + exact commands + fix,
+  both failure AND success patterns, PROBLEM+ROOT CAUSE+FIX index
+  entries); ONE cheap-model call per iteration.
+- `evolution-pass.ts` — orchestrates one iteration (sample → maintain;
+  the Phase 3 proposer slots in after). Degradation contract: no LLM or
+  no journal → clean no-op; no new traces → zero LLM spend; unparseable
+  maintainer output → nothing written and the cursor holds so the window
+  retries.
+- Dream-engine hook `maybeRunSkillEvolutionPass` (curator pattern):
+  cadence-gated at `skills.evolution.cadenceHours` (default 24h) via the
+  persisted sampler-state timestamp + an in-memory attempt throttle; runs
+  OUTSIDE the per-cycle LLM budget (own lane); records created/updated
+  patterns in `dream_utility` (lane `evolution`). Runtime agents never see
+  the wiki (fidelity F2): `skill-wiki/` is not a skill root and pattern
+  pages are not `SKILL.md`-shaped.
+
 Phase 0 also unified all staging paths on
 `resolveStorageRoots()` (`skill-storage.ts`) — `guards.promote_candidate`,
 `guards.status`, and `interceptor_harvest` previously built

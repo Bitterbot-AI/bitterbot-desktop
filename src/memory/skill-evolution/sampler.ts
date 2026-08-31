@@ -63,16 +63,29 @@ function samplerStatePath(opts: SamplerStateOptions): string {
   return path.join(resolveWikiDir(opts), SAMPLER_STATE_FILENAME);
 }
 
-export async function readSamplerCursor(opts: SamplerStateOptions = {}): Promise<number> {
+export async function readSamplerState(
+  opts: SamplerStateOptions = {},
+): Promise<{ cursorSeq: number; updatedAt: number }> {
   try {
     const raw = await fs.readFile(samplerStatePath(opts), "utf-8");
-    const parsed = JSON.parse(raw) as { cursorSeq?: unknown };
-    return typeof parsed.cursorSeq === "number" && Number.isFinite(parsed.cursorSeq)
-      ? parsed.cursorSeq
-      : 0;
+    const parsed = JSON.parse(raw) as { cursorSeq?: unknown; updatedAt?: unknown };
+    return {
+      cursorSeq:
+        typeof parsed.cursorSeq === "number" && Number.isFinite(parsed.cursorSeq)
+          ? parsed.cursorSeq
+          : 0,
+      updatedAt:
+        typeof parsed.updatedAt === "number" && Number.isFinite(parsed.updatedAt)
+          ? parsed.updatedAt
+          : 0,
+    };
   } catch {
-    return 0;
+    return { cursorSeq: 0, updatedAt: 0 };
   }
+}
+
+export async function readSamplerCursor(opts: SamplerStateOptions = {}): Promise<number> {
+  return (await readSamplerState(opts)).cursorSeq;
 }
 
 export async function writeSamplerCursor(

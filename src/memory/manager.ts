@@ -2659,6 +2659,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         : {}),
       // PLAN-34 Phase 4: dream-insight promotion kill switch.
       ...(dreamCfg?.insightPromotion ? { insightPromotion: dreamCfg.insightPromotion } : {}),
+      // PLAN-42: WikiSkill evolution pass rides skills.evolution (default
+      // ON; plain data, structuredClone-safe).
+      ...(this.cfg.skills?.evolution ? { skillEvolution: this.cfg.skills.evolution } : {}),
     };
 
     // PLAN-33: the canonical_promotion dream mode writes into the ledger, so

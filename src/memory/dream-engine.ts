@@ -130,10 +130,14 @@ export type GCCRFModeInfluence = {
 export class DreamEngine {
   private db: DatabaseSync;
   private readonly config: Required<
-    Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers" | "skillCurator">
+    Omit<
+      DreamEngineConfig,
+      "llmCall" | "localLlmCall" | "modes" | "modelTiers" | "skillCurator" | "skillEvolution"
+    >
   > & {
     modes: Record<DreamMode, DreamModeConfig>;
     skillCurator?: DreamEngineConfig["skillCurator"];
+    skillEvolution?: DreamEngineConfig["skillEvolution"];
   };
   private readonly synthesize: SynthesizeFn;
   private readonly embedBatch: EmbedBatchFn;
@@ -245,10 +249,14 @@ export class DreamEngine {
       ...config,
       modes: resolvedModes,
     } as Required<
-      Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers" | "skillCurator">
+      Omit<
+        DreamEngineConfig,
+        "llmCall" | "localLlmCall" | "modes" | "modelTiers" | "skillCurator" | "skillEvolution"
+      >
     > & {
       modes: Record<DreamMode, DreamModeConfig>;
       skillCurator?: DreamEngineConfig["skillCurator"];
+      skillEvolution?: DreamEngineConfig["skillEvolution"];
     };
     this.synthesize = synthesize;
     this.embedBatch = embedBatch;
@@ -988,6 +996,16 @@ export class DreamEngine {
         await this.maybeRunCuratorPass();
       } catch (err) {
         log.debug(`skill curator pass failed: ${String(err)}`);
+      }
+
+      // PLAN-42 — WikiSkill evolution pass. Cadence-gated (default 24h),
+      // its own LLM budget lane (does not draw down cycleLlmRemaining),
+      // degrades to a clean no-op without a journal or LLM. Kill switch:
+      // skills.evolution.enabled.
+      try {
+        await this.maybeRunSkillEvolutionPass(cycleId);
+      } catch (err) {
+        log.debug(`skill evolution pass failed: ${String(err)}`);
       }
 
       log.debug("dream cycle complete", {
@@ -2988,6 +3006,60 @@ export class DreamEngine {
         `skill curator pass: ${transitions} transition(s), ${judged} borderline(s) judged` +
           (result.reportPath ? ` (report: ${result.reportPath})` : ""),
       );
+    }
+  }
+
+  /** In-memory attempt throttle for the evolution pass (see below). */
+  private lastEvolutionAttemptAt = 0;
+
+  /**
+   * PLAN-42 — WikiSkill evolution pass (Phase 2: Wiki Maintainer).
+   * Cadence-gated at skills.evolution.cadenceHours (default 24h) using the
+   * persisted sampler-state timestamp (survives restarts) plus an in-memory
+   * attempt throttle (bounds retries when the maintainer output keeps
+   * failing to parse). Runs OUTSIDE the per-cycle LLM budget: this is its
+   * own lane, mirroring the curator. Degrades to a no-op with no journal or
+   * no LLM (keyless installs) — D-A requires on-by-default to be harmless.
+   */
+  private async maybeRunSkillEvolutionPass(cycleId: string): Promise<void> {
+    const cfg = this.config.skillEvolution;
+    if (cfg?.enabled === false) {
+      return;
+    }
+    const cadenceMs = Math.max(1, cfg?.cadenceHours ?? 24) * 60 * 60 * 1000;
+    const now = Date.now();
+    if (now - this.lastEvolutionAttemptAt < cadenceMs) {
+      return;
+    }
+    const [{ readSamplerState }, { runEvolutionIteration }, { getActiveEventJournal }] =
+      await Promise.all([
+        import("./skill-evolution/sampler.js"),
+        import("./skill-evolution/evolution-pass.js"),
+        import("../infra/event-journal.js"),
+      ]);
+    const state = await readSamplerState();
+    if (now - state.updatedAt < cadenceMs) {
+      return;
+    }
+    this.lastEvolutionAttemptAt = now;
+    const journal = getActiveEventJournal();
+    const llmCall = this.getLlmCallForMode("research");
+    const result = await runEvolutionIteration({
+      journal,
+      llmCall,
+      db: this.db,
+      cycleId,
+      ...(cfg?.wikiMaxPatterns ? { maxPatterns: cfg.wikiMaxPatterns } : {}),
+    });
+    if (result.ran) {
+      const apply = result.maintenance?.apply;
+      log.info(
+        `skill evolution pass: ${result.samplerStats?.failsSelected ?? 0}f/${result.samplerStats?.passesSelected ?? 0}p traces -> ` +
+          `${apply?.created.length ?? 0} pattern(s) created, ${apply?.updated.length ?? 0} updated` +
+          (result.reason ? ` (${result.reason})` : ""),
+      );
+    } else if (result.reason && result.reason !== "no-new-traces") {
+      log.debug(`skill evolution pass skipped: ${result.reason}`);
     }
   }
 
