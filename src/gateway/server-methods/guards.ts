@@ -23,11 +23,20 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveAgentConfig, resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { appendImpactEntry } from "../../agents/skills/impact-trail.js";
 import { ensureInterceptorsAutoBoot } from "../../agents/skills/interceptor-autoboot.js";
 import { getInterceptorRegistry } from "../../agents/skills/interceptor-registry.js";
+import { formatGateSummary, runSkillGate } from "../../agents/skills/skill-gate.js";
+import { promoteStaged } from "../../agents/skills/skill-promote.js";
+import {
+  liveSkillPath,
+  readLive,
+  readStaged,
+  resolveStorageRoots,
+  updateStagingGateStatus,
+} from "../../agents/skills/skill-storage.js";
 import { loadConfig } from "../../config/io.js";
 import { resolveStateDir } from "../../config/paths.js";
-import { CONFIG_DIR } from "../../utils.js";
 import { resolveUserPath } from "../../utils.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
@@ -228,14 +237,14 @@ export const guardsHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      const stagingDir = path.join(resolveStateDir(process.env, os.homedir), "skills-staging");
-      const stagedDir = path.join(stagingDir, skill);
-      const stagedMd = path.join(stagedDir, "SKILL.md");
-      const liveRoot = path.join(CONFIG_DIR, "skills");
-      const liveDir = path.join(liveRoot, skill);
-      const liveMd = path.join(liveDir, "SKILL.md");
-
-      if (!fs.existsSync(stagedMd)) {
+      // PLAN-42 Phase 0: promotion goes through the behavioural gate and the
+      // shared storage module (which archives the previous live version)
+      // instead of a raw staged→live copy. resolveStorageRoots() is the one
+      // source of truth for staging paths — no more parallel resolveStateDir
+      // construction that can drift from CONFIG_DIR.
+      const roots = resolveStorageRoots();
+      const staged = await readStaged(roots, skill);
+      if (!staged) {
         respond(
           false,
           undefined,
@@ -243,16 +252,68 @@ export const guardsHandlers: GatewayRequestHandlers = {
         );
         return;
       }
-      await fsp.mkdir(liveDir, { recursive: true });
-      const body = await fsp.readFile(stagedMd, "utf8");
-      await fsp.writeFile(liveMd, body, "utf8");
-      // Move .staging-meta.json into the archive if present.
-      const stagedMeta = path.join(stagedDir, ".staging-meta.json");
-      if (fs.existsSync(stagedMeta)) {
-        await fsp.rm(stagedMeta, { force: true });
+      // Dream-harvest candidates are staged without a gate pass; run it now.
+      if (staged.meta.gateStatus !== "passed") {
+        const liveContent = await readLive(roots, skill);
+        const gate = runSkillGate({
+          skillName: skill,
+          stagedContent: staged.content,
+          liveContent,
+        });
+        await updateStagingGateStatus(
+          roots,
+          skill,
+          gate.outcome === "fail" ? "failed" : "passed",
+          gate.outcome === "fail"
+            ? gate.issues.find((i) => i.severity === "block")?.detail
+            : undefined,
+        );
+        if (gate.outcome === "fail") {
+          await appendImpactEntry({
+            source: "guards",
+            action: "promote",
+            skillName: skill,
+            verdict: "gate-failed",
+            detail: formatGateSummary(gate),
+          });
+          respond(
+            false,
+            undefined,
+            errorShape(
+              ErrorCodes.INVALID_REQUEST,
+              `staging gate refused "${skill}": ${formatGateSummary(gate)}`,
+            ),
+          );
+          return;
+        }
       }
-      await fsp.rm(stagedDir, { recursive: true, force: true });
-      respond(true, { ok: true, promotedSkill: skill, livePath: liveMd });
+      const result = await promoteStaged(
+        { storageRoots: roots },
+        { name: skill, reason: "guards.promote_candidate", author: "operator" },
+      );
+      if (!result.ok) {
+        await appendImpactEntry({
+          source: "guards",
+          action: "promote",
+          skillName: skill,
+          verdict: "rejected",
+          detail: result.detail ?? result.error ?? "promote failed",
+        });
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.UNAVAILABLE, result.detail ?? result.error ?? "promote failed"),
+        );
+        return;
+      }
+      await appendImpactEntry({
+        source: "guards",
+        action: "promote",
+        skillName: skill,
+        verdict: "accepted",
+        detail: `archived previous v${result.previousArchived?.version ?? "none"}`,
+      });
+      respond(true, { ok: true, promotedSkill: skill, livePath: liveSkillPath(roots, skill) });
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
@@ -300,7 +361,9 @@ interface StagedCandidate {
 }
 
 async function listStagedHarvestCandidates(): Promise<StagedCandidate[]> {
-  const stagingDir = path.join(resolveStateDir(process.env, os.homedir), "skills-staging");
+  // PLAN-42 Phase 0: staging paths come from the shared storage module so
+  // this listing can never drift from where promote/gate actually look.
+  const stagingDir = resolveStorageRoots().stagingRoot;
   if (!fs.existsSync(stagingDir)) return [];
   let entries: string[];
   try {

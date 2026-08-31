@@ -6,14 +6,15 @@
  * BitterbotSkillMetadata schema, and optionally publishes to the P2P network.
  */
 
-import fs from "node:fs/promises";
-import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { OrchestratorBridge } from "../../infra/orchestrator-bridge.js";
 import type { CrystallizationCandidate } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { CONFIG_DIR } from "../../utils.js";
+import { appendImpactEntry } from "./impact-trail.js";
 import { bumpSkillsSnapshotVersion } from "./refresh.js";
+import { skillManage } from "./skill-manage.js";
+import { promoteStaged } from "./skill-promote.js";
+import { liveSkillPath, resolveStorageRoots } from "./skill-storage.js";
 
 const log = createSubsystemLogger("skills/crystallize");
 
@@ -35,8 +36,10 @@ export async function crystallizeSkill(params: {
   config: BitterbotConfig;
   bridge?: OrchestratorBridge;
   workspaceDir?: string;
+  /** Storage root override — tests only. Defaults to CONFIG_DIR. */
+  configDir?: string;
 }): Promise<CrystallizationResult> {
-  const { candidate, config, bridge, workspaceDir } = params;
+  const { candidate, config, bridge, workspaceDir, configDir } = params;
 
   // 1. Evaluate reward threshold
   if (candidate.rewardScore < SUCCESS_THRESHOLD) {
@@ -55,11 +58,66 @@ export async function crystallizeSkill(params: {
     return { ok: false, error: "generated SKILL.md failed validation" };
   }
 
-  // 4. Write to skills directory
-  const skillsDir = path.join(CONFIG_DIR, "skills", skillName);
-  await fs.mkdir(skillsDir, { recursive: true });
-  const skillPath = path.join(skillsDir, "SKILL.md");
-  await fs.writeFile(skillPath, skillMd, "utf-8");
+  // 4. Stage + behavioural gate + promote (PLAN-42 Phase 0). Crystallize is
+  //    agent-originated content, so it goes through the same SICA staging
+  //    gate as every other agent mutation instead of writing straight to
+  //    live; the promote step archives any previous live version.
+  const roots = resolveStorageRoots(configDir ? { configDir } : {});
+  const trailOpts = configDir ? { configDir } : {};
+  const manage = await skillManage(
+    { storageRoots: roots },
+    {
+      action: "create",
+      name: skillName,
+      content: skillMd,
+      reason: `crystallized from session (reward ${candidate.rewardScore})`,
+      author: "agent",
+      overwriteLive: true,
+    },
+  );
+  if (!manage.ok) {
+    const detail = manage.detail ?? manage.error ?? "unknown gate failure";
+    await appendImpactEntry(
+      {
+        source: "crystallize",
+        action: "create",
+        skillName,
+        verdict: "gate-failed",
+        detail,
+      },
+      trailOpts,
+    );
+    return { ok: false, error: `staging gate refused crystallized skill: ${detail}` };
+  }
+  const promoted = await promoteStaged(
+    { storageRoots: roots },
+    { name: skillName, reason: "crystallize promote", author: "agent" },
+  );
+  if (!promoted.ok) {
+    const detail = promoted.detail ?? promoted.error ?? "promote failed";
+    await appendImpactEntry(
+      {
+        source: "crystallize",
+        action: "promote",
+        skillName,
+        verdict: "rejected",
+        detail,
+      },
+      trailOpts,
+    );
+    return { ok: false, error: `promotion failed for crystallized skill: ${detail}` };
+  }
+  const skillPath = liveSkillPath(roots, skillName);
+  await appendImpactEntry(
+    {
+      source: "crystallize",
+      action: "create",
+      skillName,
+      verdict: "accepted",
+      detail: `reward ${candidate.rewardScore}; archived previous v${promoted.previousArchived?.version ?? "none"}`,
+    },
+    trailOpts,
+  );
 
   // 5. Bump skills snapshot version
   bumpSkillsSnapshotVersion({

@@ -73,6 +73,34 @@ export type SkillsAgentskillsConfig = {
 
 import type { SkillSeekersConfig } from "./types.skill-seekers.js";
 
+/**
+ * PLAN-42: WikiSkill-style skill evolution — consolidates execution traces
+ * into a persistent wiki (CONFIG_DIR/skill-wiki/) and proposes gated skill
+ * improvements. ON BY DEFAULT; the loop no-ops cleanly when no usable
+ * background model is available and never touches the runtime prompt path.
+ */
+export type SkillsEvolutionConfig = {
+  /** Master kill switch for the evolution loop. Default: true. */
+  enabled?: boolean;
+  /** Minimum hours between evolution iterations. Default: 24. */
+  cadenceHours?: number;
+  /** Max ReAct turns for the Skill Proposer agent. Default: 24. */
+  maxProposerTurns?: number;
+  /** Cap on concurrently-active evolved skills. Default: 5. */
+  maxActiveEvolved?: number;
+  /**
+   * Validation gate mode. "records": LLM-scored paired comparison over
+   * reconstructed held-out trajectories (bootstrap ci95Low > 0). "tasks":
+   * hermetic rollouts over the replayable task corpus. Default: "records"
+   * until a corpus exists on the node, then "tasks".
+   */
+  validationMode?: "records" | "tasks";
+  /** Model spec "provider/model" for maintainer/labeler calls. Default: cheap-model resolution. */
+  judgeModel?: string;
+  /** Wiki pattern-page count that triggers the lint/archive pass. Default: 100. */
+  wikiMaxPatterns?: number;
+};
+
 export type SkillsConfig = {
   /** Optional bundled-skill allowlist (only affects bundled skills). */
   allowBundled?: string[];
@@ -85,6 +113,8 @@ export type SkillsConfig = {
   agentskills?: SkillsAgentskillsConfig;
   /** External skill generation via Skill Seekers. */
   skillSeekers?: SkillSeekersConfig;
+  /** PLAN-42: WikiSkill evolution loop (on by default). */
+  evolution?: SkillsEvolutionConfig;
   /** PLAN-11 Gap 4: LLM-based marketability prediction (opt-in). */
   marketability?: {
     predictor?: {

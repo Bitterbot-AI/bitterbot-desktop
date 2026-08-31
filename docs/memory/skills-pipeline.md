@@ -283,6 +283,41 @@ The `SkillNetworkBridge.publishCrystalSkill()` generates this format automatical
 
 ---
 
+## Skill Impact Trail (PLAN-42 Phase 0)
+
+Every skill mutation attempt — successful or not — is recorded in an
+append-only trail under `~/.bitterbot/skill-wiki/`:
+
+- `skill-impact.md` — human-readable markdown entries (timestamp, source,
+  action, skill, verdict, detail, optional diff)
+- `.provenance.jsonl` — machine-readable mirror, one JSON object per line
+
+The trail is written **programmatically by the harness** after each gate
+decision, never by an LLM, so its verdicts are trustworthy. Files roll aside
+(never truncate) at a size cap. Module: `src/agents/skills/impact-trail.ts`.
+
+Recording paths as of Phase 0:
+
+| Path                                                  | Gate                                                                   | Trail verdicts                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------- |
+| `skill_manage` tool / `skills.manage` RPC             | SICA staging gate                                                      | via `skills.promote` (accepted/rejected) |
+| `skills.promote` / `skills.rollback` RPCs             | promote enforces `gateStatus=passed`                                   | accepted / rejected / rolled-back        |
+| Crystallize (`crystallizeSkill`)                      | **now staged + gated + promoted** (previously wrote straight to live)  | accepted / gate-failed / rejected        |
+| `guards.promote_candidate` (dream-harvest candidates) | **now runs the gate before promote** (previously raw staged→live copy) | accepted / gate-failed / rejected        |
+| `skills.create` (in-app editor)                       | deliberately ungated (human edits are the operator's prerogative)      | ungated-human-edit                       |
+
+Phase 0 also unified all staging paths on
+`resolveStorageRoots()` (`skill-storage.ts`) — `guards.promote_candidate`,
+`guards.status`, and `interceptor_harvest` previously built
+`resolveStateDir()/skills-staging` in parallel — and schematized the
+curator kill switch (`memory.dream.skillCurator.enabled`, previously an
+untyped cast). The `skills.manage/promote/rollback` RPCs are now advertised
+in `server-methods-list.ts`. The `skills.evolution.*` config namespace
+(master switch `skills.evolution.enabled`, default **true**) is in place for
+the evolution loop phases. Plan: `docs/plans/PLAN-42-WIKISKILL-SKILL-EVOLUTION.md`.
+
+---
+
 ## P2P Skill Network
 
 ### SkillNetworkBridge

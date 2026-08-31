@@ -241,6 +241,13 @@ export type DreamEngineConfig = {
    * memory.dream.insightPromotion.enabled.
    */
   insightPromotion?: { enabled?: boolean };
+  /**
+   * PLAN-15 Phase 1c A-MAC skill curator, run during dream cycles. Was
+   * previously read through an untyped cast (PLAN-42 Phase 0 schematized
+   * it). enabled default true; kill switch memory.dream.skillCurator.enabled.
+   * minIntervalMs default 24h.
+   */
+  skillCurator?: { enabled?: boolean; minIntervalMs?: number };
 };
 
 export const DEFAULT_DREAM_CONFIG: Required<
@@ -254,6 +261,7 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "autoResearch"
     | "localModelIsLocal"
     | "insightPromotion"
+    | "skillCurator"
   >
 > & { modes: Record<DreamMode, DreamModeConfig> } = {
   enabled: true,

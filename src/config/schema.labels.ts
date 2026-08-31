@@ -8,6 +8,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "a2a.marketplace.enabled": "A2A Skill Marketplace",
   "forage.nightShift.enabled": "Forage Night Shift",
   "forage.audit.enabled": "Forage Check-in Audits",
+  "skills.evolution.enabled": "Skill Evolution (Wiki)",
   "skills.skillSeekers.enabled": "Skill Seekers Ingestion",
   "skills.skillSeekers.trending.enabled": "Skill Seekers Trending Sweep",
   "skills.marketability.predictor.enabled": "Skill Marketability Predictor",

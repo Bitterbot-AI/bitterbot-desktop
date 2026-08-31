@@ -641,6 +641,18 @@ export const BitterbotSchema = z
               .strict(),
           )
           .optional(),
+        evolution: z
+          .object({
+            enabled: z.boolean().optional(),
+            cadenceHours: z.number().positive().optional(),
+            maxProposerTurns: z.number().int().positive().optional(),
+            maxActiveEvolved: z.number().int().min(0).optional(),
+            validationMode: z.union([z.literal("records"), z.literal("tasks")]).optional(),
+            judgeModel: z.string().optional(),
+            wikiMaxPatterns: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
         skillSeekers: z
           .object({
             enabled: z.boolean().optional(),

@@ -18,10 +18,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import type { DreamInsight, EmbedBatchFn, SynthesizeFn } from "../dream-types.js";
-import { resolveStateDir } from "../../config/paths.js";
+import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
   renderSkillMd,
@@ -180,9 +179,9 @@ export async function runInterceptorHarvest(args: HarvestArgs): Promise<HarvestR
   // human-readable summary so the Active Guards UI can render it.
   const insights: DreamInsight[] = [];
   let llmCalls = 0;
-  const stagingDir =
-    args.stagingDirOverride ??
-    path.join(resolveStateDir(process.env, os.homedir), "skills-staging");
+  // PLAN-42 Phase 0: staging path comes from the shared skill-storage module
+  // (was a parallel resolveStateDir construction that could drift).
+  const stagingDir = args.stagingDirOverride ?? resolveStorageRoots().stagingRoot;
 
   for (const cluster of top) {
     let candidateSpec: CandidateSpec | null = null;

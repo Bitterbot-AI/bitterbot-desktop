@@ -21,6 +21,7 @@ import { buildWorkspaceSkillStatus } from "../../agents/skills-status.js";
 import { loadWorkspaceSkillEntries, type SkillEntry } from "../../agents/skills.js";
 import { importAgentskillsSkill } from "../../agents/skills/agentskills-ingest.js";
 import { crystallizeSkill } from "../../agents/skills/crystallize.js";
+import { appendImpactEntry } from "../../agents/skills/impact-trail.js";
 import {
   acceptIncomingSkill,
   listIncomingSkills,
@@ -457,6 +458,16 @@ export const skillsHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, `write failed: ${String(err)}`));
       return;
     }
+    // PLAN-42 Phase 0 (D-C): the editor stays direct-write by design — human
+    // edits are the operator's prerogative — but every ungated write is
+    // recorded in the impact trail so the skill set's history stays complete.
+    await appendImpactEntry({
+      source: "editor",
+      action: p.overwrite ? "overwrite" : "create",
+      skillName: sanitizedName,
+      verdict: "ungated-human-edit",
+      detail: `target=${target} via skills.create`,
+    });
     bumpSkillsSnapshotVersion({ reason: "manual", changedPath: skillPath });
     respond(true, { ok: true, skillName: sanitizedName, skillPath, target }, undefined);
   },
@@ -1184,6 +1195,15 @@ export const skillsHandlers: GatewayRequestHandlers = {
       if (result.ok) {
         bumpSkillsSnapshotVersion({ reason: "manual" });
       }
+      await appendImpactEntry({
+        source: "skill-manage",
+        action: "promote",
+        skillName: p.name,
+        verdict: result.ok ? "accepted" : "rejected",
+        detail: result.ok
+          ? `kind=${result.kind}; archived previous v${result.previousArchived?.version ?? "none"}${p.forceGate ? "; forceGate=true" : ""}`
+          : (result.detail ?? result.error ?? "promote failed"),
+      });
       respond(
         result.ok,
         payload,
@@ -1242,6 +1262,15 @@ export const skillsHandlers: GatewayRequestHandlers = {
       };
       if (result.ok) {
         bumpSkillsSnapshotVersion({ reason: "manual" });
+      }
+      if (result.ok) {
+        await appendImpactEntry({
+          source: "skill-manage",
+          action: "rollback",
+          skillName: p.name,
+          verdict: "rolled-back",
+          detail: `restored v${p.version}; pre-rollback snapshot v${result.previousArchived?.version ?? "none"}`,
+        });
       }
       respond(
         result.ok,

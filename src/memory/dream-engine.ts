@@ -130,8 +130,11 @@ export type GCCRFModeInfluence = {
 export class DreamEngine {
   private db: DatabaseSync;
   private readonly config: Required<
-    Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers">
-  > & { modes: Record<DreamMode, DreamModeConfig> };
+    Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers" | "skillCurator">
+  > & {
+    modes: Record<DreamMode, DreamModeConfig>;
+    skillCurator?: DreamEngineConfig["skillCurator"];
+  };
   private readonly synthesize: SynthesizeFn;
   private readonly embedBatch: EmbedBatchFn;
   private readonly llmCallCloud: ((prompt: string) => Promise<string>) | null;
@@ -241,8 +244,11 @@ export class DreamEngine {
       ...DEFAULT_DREAM_CONFIG,
       ...config,
       modes: resolvedModes,
-    } as Required<Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers">> & {
+    } as Required<
+      Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers" | "skillCurator">
+    > & {
       modes: Record<DreamMode, DreamModeConfig>;
+      skillCurator?: DreamEngineConfig["skillCurator"];
     };
     this.synthesize = synthesize;
     this.embedBatch = embedBatch;
@@ -2954,9 +2960,7 @@ export class DreamEngine {
    * would buy nothing here.
    */
   private async maybeRunCuratorPass(): Promise<void> {
-    const curatorCfg = (
-      this.config as { skillCurator?: { enabled?: boolean; minIntervalMs?: number } }
-    ).skillCurator;
+    const curatorCfg = this.config.skillCurator;
     if (curatorCfg?.enabled === false) {
       return;
     }
