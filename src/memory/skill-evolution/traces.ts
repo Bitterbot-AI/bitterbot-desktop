@@ -24,7 +24,7 @@
 import type { EventJournal, JournalEvent } from "../../infra/event-journal.js";
 import type { ReconstructedTrace, TraceStep } from "./types.js";
 import { redactSensitiveText } from "../../logging/redact.js";
-import { makeYieldEvery } from "../event-loop.js";
+import { makeYieldEvery, yieldToEventLoop } from "../event-loop.js";
 
 /** Paper Appendix C: per-log character cap before prompt injection. */
 export const TRACE_LOG_MAX_CHARS = 15_000;
@@ -32,8 +32,54 @@ export const TRACE_LOG_MAX_CHARS = 15_000;
 /** Cap on individual embedded blocks so one giant tool result cannot eat the log. */
 const STEP_TEXT_MAX_CHARS = 4_000;
 
-/** Journal rows fetched per run reconstruction (10k is the journal's hard cap). */
+/** Total journal rows considered per run reconstruction. */
 const RUN_EVENT_LIMIT = 10_000;
+
+/**
+ * Rows gunzipped per journal.query() call. query() decompresses its whole
+ * result set SYNCHRONOUSLY, so the page size is the stall ceiling — the
+ * live soak caught a 112s event-loop stall from a single 10k-row query
+ * over a marathon session's giant tool outputs. Small pages + yields keep
+ * each sync burst bounded.
+ */
+const RUN_EVENT_PAGE = 256;
+
+/**
+ * Runs with more events than this are marathon interactive sessions, not
+ * learnable task executions — reconstructing them costs seconds of sync
+ * gunzip for a trace the 15k-char formatter would elide to head+tail
+ * anyway. The sampler skips them.
+ */
+export const MAX_RECONSTRUCT_EVENTS = 3_000;
+
+/**
+ * Page through one run's events with a yield between pages. Returns null
+ * when the run exceeds maxEvents (marathon guard) and `enforceCap` is set.
+ */
+async function pageRunEvents(
+  journal: EventJournal,
+  runId: string,
+  opts: { maxEvents: number; enforceCap: boolean },
+): Promise<JournalEvent[] | null> {
+  const events: JournalEvent[] = [];
+  let sinceSeq = 0;
+  for (;;) {
+    const page = journal.query({ runId, sinceSeq, limit: RUN_EVENT_PAGE });
+    if (page.length === 0) {
+      break;
+    }
+    events.push(...page);
+    sinceSeq = (page[page.length - 1] as JournalEvent).seq;
+    if (events.length >= opts.maxEvents) {
+      if (opts.enforceCap) {
+        return null;
+      }
+      break;
+    }
+    await yieldToEventLoop();
+  }
+  return events;
+}
 
 function redact(text: string): string {
   return redactSensitiveText(text, { mode: "tools" });
@@ -67,9 +113,13 @@ function asString(v: unknown): string {
 export async function reconstructTrace(
   journal: EventJournal,
   runId: string,
+  opts: { skipMarathonRuns?: boolean } = {},
 ): Promise<ReconstructedTrace | null> {
-  const events = journal.query({ runId, limit: RUN_EVENT_LIMIT });
-  if (events.length === 0) {
+  const events = await pageRunEvents(journal, runId, {
+    maxEvents: opts.skipMarathonRuns ? MAX_RECONSTRUCT_EVENTS : RUN_EVENT_LIMIT,
+    enforceCap: opts.skipMarathonRuns === true,
+  });
+  if (events === null || events.length === 0) {
     return null;
   }
   const tick = makeYieldEvery(64);
@@ -269,9 +319,9 @@ export async function listRunsSince(
   let cursor = opts.sinceSeq;
   const tick = makeYieldEvery(4);
   // Page through the journal without holding a long read inside one call.
-  for (let page = 0; page < 50; page++) {
+  for (let page = 0; page < 200; page++) {
     await tick();
-    const events = journal.query({ sinceSeq: cursor, limit: 2_000 });
+    const events = journal.query({ sinceSeq: cursor, limit: 500 });
     if (events.length === 0) {
       break;
     }

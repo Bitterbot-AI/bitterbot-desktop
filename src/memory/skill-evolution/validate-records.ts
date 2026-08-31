@@ -60,7 +60,7 @@ export async function collectHeldOutTraces(
   const traces: ReconstructedTrace[] = [];
   // Most recent first: recent behavior is the distribution we validate for.
   for (const run of heldOut.toReversed()) {
-    const trace = await reconstructTrace(journal, run.runId);
+    const trace = await reconstructTrace(journal, run.runId, { skipMarathonRuns: true });
     if (!trace || !trace.isComplete || trace.toolCallCount === 0) {
       continue;
     }

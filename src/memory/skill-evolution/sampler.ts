@@ -149,8 +149,12 @@ export async function sampleIteration(
       nextCursorSeq = Math.max(nextCursorSeq, run.lastSeq);
       continue;
     }
-    const trace = await reconstructTrace(journal, run.runId);
+    const trace = await reconstructTrace(journal, run.runId, { skipMarathonRuns: true });
     if (!trace) {
+      // Missing or marathon-sized run (interactive session, not a learnable
+      // task execution): skip without holding the cursor back.
+      stats.runsExcluded += 1;
+      nextCursorSeq = Math.max(nextCursorSeq, run.lastSeq);
       continue;
     }
     if (!trace.isComplete) {
