@@ -132,6 +132,8 @@ export interface MaintenanceResult {
   apply?: ApplyResult;
   parseIssueCount: number;
   promptChars: number;
+  /** Head+tail of the raw model output on parse failure (diagnostics). */
+  rawSample?: string;
 }
 
 /**
@@ -150,7 +152,17 @@ export async function runWikiMaintenance(deps: {
   const raw = await deps.llmCall(prompt);
   const { output, issues } = parseMaintainerOutput(raw);
   if (!output) {
-    return { applied: false, parseIssueCount: issues.length, promptChars: prompt.length };
+    // Keep enough of the raw output to diagnose truncation vs formatting.
+    const rawSample =
+      raw.length > 700
+        ? `${raw.slice(0, 400)} ... [${raw.length} chars] ... ${raw.slice(-200)}`
+        : raw;
+    return {
+      applied: false,
+      parseIssueCount: issues.length,
+      promptChars: prompt.length,
+      rawSample,
+    };
   }
   const apply = await applyMaintainerOutput(output, storeOpts);
   return {

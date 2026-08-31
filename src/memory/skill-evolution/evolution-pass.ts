@@ -126,7 +126,12 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
   if (!maintenance.applied) {
     // Unparseable output: write nothing, keep the cursor so the same window
     // is retried next iteration (bounded by the cadence gate).
-    log.warn("wiki maintainer output unparseable; iteration will retry next cadence window");
+    log.warn(
+      `wiki maintainer output unparseable; iteration will retry next cadence window` +
+        (maintenance.rawSample
+          ? ` (raw: ${maintenance.rawSample.replace(/\s+/g, " ").slice(0, 300)})`
+          : ""),
+    );
     return {
       ran: true,
       reason: "maintainer-parse-failed",

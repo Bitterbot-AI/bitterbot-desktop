@@ -214,6 +214,12 @@ export type DreamEngineConfig = {
   synthesisModel?: string;
   /** Optional local LLM call function for local-tier modes. */
   localLlmCall?: (prompt: string) => Promise<string>;
+  /**
+   * PLAN-42: dedicated call lane for the skill-evolution maintainer /
+   * proposer / validator (higher output budget than the dream lane's
+   * default; honors skills.evolution.judgeModel).
+   */
+  evolutionLlmCall?: (prompt: string) => Promise<string>;
   /** Per-mode configuration overrides. */
   modes?: Partial<Record<DreamMode, Partial<DreamModeConfig>>>;
   /** Tiered compute routing configuration. */
@@ -264,6 +270,7 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "llmCall"
     | "synthesisLlmCall"
     | "localLlmCall"
+    | "evolutionLlmCall"
     | "modes"
     | "modelTiers"
     | "autoResearch"

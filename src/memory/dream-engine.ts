@@ -132,7 +132,13 @@ export class DreamEngine {
   private readonly config: Required<
     Omit<
       DreamEngineConfig,
-      "llmCall" | "localLlmCall" | "modes" | "modelTiers" | "skillCurator" | "skillEvolution"
+      | "llmCall"
+      | "localLlmCall"
+      | "evolutionLlmCall"
+      | "modes"
+      | "modelTiers"
+      | "skillCurator"
+      | "skillEvolution"
     >
   > & {
     modes: Record<DreamMode, DreamModeConfig>;
@@ -142,6 +148,8 @@ export class DreamEngine {
   private readonly synthesize: SynthesizeFn;
   private readonly embedBatch: EmbedBatchFn;
   private readonly llmCallCloud: ((prompt: string) => Promise<string>) | null;
+  /** PLAN-42: dedicated evolution lane (8k output budget). */
+  private readonly llmCallEvolution: ((prompt: string) => Promise<string>) | null;
   private readonly llmCallLocal: ((prompt: string) => Promise<string>) | null;
   /** PLAN-34 Phase 4: distinct model for the insight verifier (not the generating call). */
   private readonly llmCallSynthesis: ((prompt: string) => Promise<string>) | null;
@@ -251,7 +259,13 @@ export class DreamEngine {
     } as Required<
       Omit<
         DreamEngineConfig,
-        "llmCall" | "localLlmCall" | "modes" | "modelTiers" | "skillCurator" | "skillEvolution"
+        | "llmCall"
+        | "localLlmCall"
+        | "evolutionLlmCall"
+        | "modes"
+        | "modelTiers"
+        | "skillCurator"
+        | "skillEvolution"
       >
     > & {
       modes: Record<DreamMode, DreamModeConfig>;
@@ -261,6 +275,7 @@ export class DreamEngine {
     this.synthesize = synthesize;
     this.embedBatch = embedBatch;
     this.llmCallCloud = config?.llmCall ?? null;
+    this.llmCallEvolution = config?.evolutionLlmCall ?? null;
     this.llmCallLocal = config?.localLlmCall ?? null;
     this.llmCallSynthesis = config?.synthesisLlmCall ?? null;
     // V1 default flip (PLAN-41 D-D): research egress is opt-in.
@@ -3048,7 +3063,7 @@ export class DreamEngine {
     }
     this.lastEvolutionAttemptAt = now;
     const journal = getActiveEventJournal();
-    const llmCall = this.getLlmCallForMode("research");
+    const llmCall = this.llmCallEvolution ?? this.getLlmCallForMode("research");
     const result = await runEvolutionIteration({
       journal,
       llmCall,

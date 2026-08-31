@@ -2662,6 +2662,16 @@ export class MemoryIndexManager implements MemorySearchManager {
       // PLAN-42: WikiSkill evolution pass rides skills.evolution (default
       // ON; plain data, structuredClone-safe).
       ...(this.cfg.skills?.evolution ? { skillEvolution: this.cfg.skills.evolution } : {}),
+      // PLAN-42 live fix: the maintainer/proposer emit large JSON (full
+      // index + pattern pages / full SKILL.md); the default 2048-token cap
+      // truncated them mid-object on the first live iteration. Dedicated
+      // call lane with an 8k output budget, honoring judgeModel.
+      ...(() => {
+        const spec =
+          this.cfg.skills?.evolution?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
+        const call = spec ? this.buildLlmCallFn(spec, { maxTokens: 8192 }) : null;
+        return call ? { evolutionLlmCall: call } : {};
+      })(),
     };
 
     // PLAN-33: the canonical_promotion dream mode writes into the ledger, so
@@ -3227,7 +3237,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     return resolveCheapLlmSpec(process.env);
   }
 
-  private buildLlmCallFn(modelSpec: string): ((prompt: string) => Promise<string>) | null {
+  private buildLlmCallFn(
+    modelSpec: string,
+    opts?: { maxTokens?: number },
+  ): ((prompt: string) => Promise<string>) | null {
     const parts = modelSpec.split("/");
     if (parts.length < 2) {
       return null;
@@ -3262,7 +3275,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           },
           {
             apiKey: ctx.apiKey,
-            maxTokens: 2048,
+            maxTokens: opts?.maxTokens ?? 2048,
             // No sampling params: current Anthropic models 400 on temperature,
             // and completeSimple embeds that error instead of throwing.
           },
