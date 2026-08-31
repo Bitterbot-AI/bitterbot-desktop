@@ -72,6 +72,12 @@ describe("runEvolutionIteration", () => {
       journal,
       llmCall: async (prompt) => {
         prompts.push(prompt);
+        if (prompt.includes("Skill Proposer Agent")) {
+          return JSON.stringify({
+            tool: "finish",
+            proposal: { action: "no_action", reason: "not enough evidence yet" },
+          });
+        }
         return "```json\n" + MAINTAINER_JSON + "\n```";
       },
       storeOpts: { configDir: tmpDir },
@@ -90,6 +96,10 @@ describe("runEvolutionIteration", () => {
     expect(maintainerPrompt).toBeDefined();
     expect(maintainerPrompt).toContain("labeled FAIL");
     expect(maintainerPrompt).toContain("labeled PASS");
+    // The proposer ran after maintenance in the same iteration (paper order)
+    // and its no_action was honored.
+    expect(result.proposer?.proposal.action).toBe("no_action");
+    expect(result.proposalOutcome?.outcome).toBe("no-action");
   });
 
   it("no-ops cleanly without an LLM (keyless installs) or journal", async () => {

@@ -24,6 +24,8 @@ import type { WikiStoreOptions } from "./wiki-store.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { recordDreamArtifact } from "../dream-utility.js";
 import { type LlmCallFn, type MaintenanceResult, runWikiMaintenance } from "./maintainer.js";
+import { type ApplyProposalResult, applyProposal } from "./proposal-apply.js";
+import { type ProposerRunResult, runSkillProposer } from "./proposer.js";
 import { readSamplerCursor, sampleIteration, writeSamplerCursor } from "./sampler.js";
 
 const log = createSubsystemLogger("skill-evolution/pass");
@@ -37,6 +39,9 @@ export interface EvolutionPassDeps {
   db?: DatabaseSync;
   cycleId?: string;
   maxPatterns?: number;
+  maxProposerTurns?: number;
+  /** Set false to run maintenance only (tests / staged rollouts). */
+  runProposer?: boolean;
   storeOpts?: WikiStoreOptions;
 }
 
@@ -45,6 +50,8 @@ export interface EvolutionPassResult {
   reason?: "no-journal" | "no-llm" | "no-new-traces" | "maintainer-parse-failed";
   samplerStats?: SamplerStats;
   maintenance?: MaintenanceResult;
+  proposer?: ProposerRunResult;
+  proposalOutcome?: ApplyProposalResult;
   cursorBefore?: number;
   cursorAfter?: number;
 }
@@ -121,15 +128,40 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     }
   }
 
+  // Phase 3: the Skill Proposer runs AFTER maintenance in the same
+  // iteration (paper component order), reading the just-updated wiki. Its
+  // proposal is staged through the SICA gate but never promoted here.
+  let proposer: ProposerRunResult | undefined;
+  let proposalOutcome: ApplyProposalResult | undefined;
+  if (deps.runProposer !== false) {
+    proposer = await runSkillProposer({
+      llmCall: deps.llmCall,
+      samples: sample.samples,
+      ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),
+      ...(deps.maxProposerTurns ? { maxTurns: deps.maxProposerTurns } : {}),
+      ...(deps.db ? { db: deps.db } : {}),
+      journal: deps.journal,
+    });
+    proposalOutcome = await applyProposal(proposer.proposal, {
+      ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),
+      iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
+    });
+  }
+
   log.info(
     `evolution iteration: ${sample.samples.length} traces (${sample.stats.failsSelected}f/${sample.stats.passesSelected}p) -> ` +
       `${maintenance.apply?.created.length ?? 0} patterns created, ${maintenance.apply?.updated.length ?? 0} updated, ` +
-      `${maintenance.apply?.dropped.length ?? 0} dropped`,
+      `${maintenance.apply?.dropped.length ?? 0} dropped` +
+      (proposer
+        ? `; proposal: ${proposer.proposal.action} (${proposalOutcome?.outcome ?? "?"}, ${proposer.turns} turns)`
+        : ""),
   );
   return {
     ran: true,
     samplerStats: sample.stats,
     maintenance,
+    ...(proposer ? { proposer } : {}),
+    ...(proposalOutcome ? { proposalOutcome } : {}),
     cursorBefore,
     cursorAfter: sample.nextCursorSeq,
   };

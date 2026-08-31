@@ -351,6 +351,19 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   no journal → clean no-op; no new traces → zero LLM spend; unparseable
   maintainer output → nothing written and the cursor holds so the window
   retries.
+- `proposer.ts` + `proposal-apply.ts` (PLAN-42 Phase 3) — the Skill
+  Proposer: a ReAct loop with exactly the paper's two tools. `read_file`
+  resolves ONLY through an allowlisted resolver (wiki files, this
+  iteration's traces, live SKILL.md/PURPOSE.md — traversal and absolute
+  paths structurally impossible); `finish` submits ONE atomic proposal
+  (create XOR patch XOR no_action). Initial context = wiki index +
+  skill-impact history + iteration outcome summary; pattern pages and
+  traces are fetched on demand, and each pattern read stamps its
+  `dream_utility` consumption. Proposals are STAGED through the SICA gate
+  with PURPOSE.md + `.evolution-meta.json` provenance but are NEVER
+  auto-promoted — promotion belongs to the validation gate (accept only on
+  measured improvement). Repeated protocol garbage or the turn cap force
+  `no_action`, which is a valid outcome, not a failure.
 - Dream-engine hook `maybeRunSkillEvolutionPass` (curator pattern):
   cadence-gated at `skills.evolution.cadenceHours` (default 24h) via the
   persisted sampler-state timestamp + an in-memory attempt throttle; runs

@@ -3050,6 +3050,7 @@ export class DreamEngine {
       db: this.db,
       cycleId,
       ...(cfg?.wikiMaxPatterns ? { maxPatterns: cfg.wikiMaxPatterns } : {}),
+      ...(cfg?.maxProposerTurns ? { maxProposerTurns: cfg.maxProposerTurns } : {}),
     });
     if (result.ran) {
       const apply = result.maintenance?.apply;

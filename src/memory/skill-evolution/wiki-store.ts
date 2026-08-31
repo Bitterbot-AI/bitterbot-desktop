@@ -306,7 +306,17 @@ export interface ApplyResult {
   logAppended: boolean;
 }
 
-function applyPatchOps(source: string, edits: WikiPatchOp[], dropped: ParseIssue[], name: string) {
+/**
+ * Apply paper-style patch ops to a text body. Shared by the wiki writer and
+ * the Skill Proposer's patch path. Missing targets are recorded in
+ * `dropped`, never guessed at.
+ */
+export function applyPatchOps(
+  source: string,
+  edits: WikiPatchOp[],
+  dropped: ParseIssue[],
+  name: string,
+) {
   let next = source;
   for (const edit of edits) {
     if (edit.op === "append") {

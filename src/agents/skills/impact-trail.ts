@@ -52,7 +52,9 @@ export type ImpactVerdict =
   | "gate-failed"
   | "ungated-human-edit"
   | "rolled-back"
-  | "no-action";
+  | "no-action"
+  /** Proposal passed the staging gate and awaits the validation gate. */
+  | "staged";
 
 export interface ImpactEntry {
   /** Which subsystem produced the mutation attempt. */
