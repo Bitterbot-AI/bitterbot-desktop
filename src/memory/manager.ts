@@ -2672,6 +2672,16 @@ export class MemoryIndexManager implements MemorySearchManager {
         const call = spec ? this.buildLlmCallFn(spec, { maxTokens: 8192 }) : null;
         return call ? { evolutionLlmCall: call } : {};
       })(),
+      // PLAN-42: dedicated proposer lane — a stronger model holds the strict
+      // ReAct JSON protocol better than the cheap maintainer lane. Only when
+      // proposerModel/judgeModel is configured; else the proposer uses the
+      // evolution lane.
+      ...(() => {
+        const evo = this.cfg.skills?.evolution;
+        const spec = evo?.proposerModel ?? evo?.judgeModel;
+        const call = spec ? this.buildLlmCallFn(spec, { maxTokens: 8192 }) : null;
+        return call ? { evolutionProposerLlmCall: call } : {};
+      })(),
     };
 
     // PLAN-33: the canonical_promotion dream mode writes into the ledger, so

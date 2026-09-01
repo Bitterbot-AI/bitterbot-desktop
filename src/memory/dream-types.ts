@@ -216,10 +216,16 @@ export type DreamEngineConfig = {
   localLlmCall?: (prompt: string) => Promise<string>;
   /**
    * PLAN-42: dedicated call lane for the skill-evolution maintainer /
-   * proposer / validator (higher output budget than the dream lane's
-   * default; honors skills.evolution.judgeModel).
+   * validator (higher output budget than the dream lane's default; honors
+   * skills.evolution.judgeModel).
    */
   evolutionLlmCall?: (prompt: string) => Promise<string>;
+  /**
+   * PLAN-42: dedicated Skill Proposer lane (stronger model for the strict
+   * ReAct protocol; honors skills.evolution.proposerModel). Falls back to
+   * evolutionLlmCall when unset.
+   */
+  evolutionProposerLlmCall?: (prompt: string) => Promise<string>;
   /** Per-mode configuration overrides. */
   modes?: Partial<Record<DreamMode, Partial<DreamModeConfig>>>;
   /** Tiered compute routing configuration. */
@@ -271,6 +277,7 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "synthesisLlmCall"
     | "localLlmCall"
     | "evolutionLlmCall"
+    | "evolutionProposerLlmCall"
     | "modes"
     | "modelTiers"
     | "autoResearch"

@@ -34,9 +34,15 @@ observed during agent execution -- both successes and failures. You must perform
 ANALYSIS of execution logs to identify root causes, not just surface-level symptoms.
 
 ## Wiki Structure
+- schema.md -- The wiki's own conventions (you read it below and MAY refine it)
 - index.md -- Concise catalog of known patterns (one line per pattern)
 - logs.md -- Chronological evolution log (iterations, findings)
 - patterns/ -- One page per pattern with detailed evidence and analysis
+
+Follow the conventions in schema.md. If you discover a convention worth
+codifying (or the current one is causing problems), improve schema.md via
+the optional "update_schema" output field -- sparingly, and never more than
+a small refinement per iteration.
 
 ## Your Output (Incremental Edit Mode)
 Return a JSON object with these keys:
@@ -44,6 +50,7 @@ Return a JSON object with these keys:
 - "update_patterns": list of {"name": "existing-pattern", "edits": [...]} -- patch existing patterns
 - "update_index": full updated content of index.md (always provide the complete index)
 - "append_log": brief summary of this iteration's findings and actions
+- "update_schema": (optional) full updated content of schema.md, only when refining a convention
 
 "update_index" and "append_log" are REQUIRED. Always provide them, even if there are no
 new patterns. For "update_index", always provide the complete updated index content
@@ -82,6 +89,14 @@ When execution logs are provided, you MUST:
 3. Do NOT create duplicate patterns -- update existing ones with new evidence.
 4. Be concise. Pattern pages should be 10-30 lines, not essays.
 5. Only create patterns for meaningful, generalizable observations.
+6. AVOID DRIFT (critical): a pattern page is durable knowledge, not a
+   snapshot. Document the ROOT CAUSE and the FIX -- which stay true -- not
+   volatile specifics that will be stale next week (exact counts, dates,
+   timestamps, commit hashes, one-off metrics). If a specific value is
+   genuinely load-bearing evidence, date-stamp it explicitly (e.g.
+   "as of 2026-08: ...") so a later reader knows it may have moved. Prefer
+   "traffic spiked ~50x over baseline after a launch event" over "18,623
+   views"; prefer "the endpoint 404s intermittently" over "404 on Aug 24".
 
 ### Index Description Quality (CRITICAL)
 The index.md entries are the MOST IMPORTANT part of the wiki because they determine
@@ -94,7 +109,8 @@ The description must be specific enough that a reader can judge relevance withou
 reading the full page. Include the problem, root cause, AND solution.`;
 
 export function buildMaintainerPrompt(ctx: WikiContext, samples: LabeledTrace[]): string {
-  const wikiSection: string[] = ["## Current Wiki", "", "### index.md", ctx.index || "(empty)", ""];
+  const wikiSection: string[] = ["## Current Wiki", "", "### schema.md", ctx.schema, ""];
+  wikiSection.push("### index.md", ctx.index || "(empty)", "");
   wikiSection.push("### logs.md (tail)", ctx.logTail || "(empty)", "");
   for (const pattern of ctx.patterns) {
     wikiSection.push(`### patterns/${pattern.name}.md`, pattern.content, "");

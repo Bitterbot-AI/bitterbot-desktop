@@ -21,6 +21,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
+  archivePattern,
   DEFAULT_MAX_PATTERNS,
   listPatternNames,
   logsPath,
@@ -32,8 +33,6 @@ import {
 
 const log = createSubsystemLogger("skill-evolution/wiki-lint");
 
-export const ARCHIVE_SUBDIR_NAME = "archive";
-
 export interface WikiLintResult {
   archivedDuplicates: string[];
   archivedOverflow: string[];
@@ -41,25 +40,7 @@ export interface WikiLintResult {
   patternCountAfter: number;
 }
 
-function archiveDir(opts: WikiStoreOptions): string {
-  return path.join(patternsDir(opts), ARCHIVE_SUBDIR_NAME);
-}
-
-async function archivePattern(name: string, opts: WikiStoreOptions): Promise<void> {
-  const dir = archiveDir(opts);
-  await fs.mkdir(dir, { recursive: true });
-  const src = path.join(patternsDir(opts), `${name}.md`);
-  let dest = path.join(dir, `${name}.md`);
-  try {
-    await fs.access(dest);
-    dest = path.join(dir, `${name}.${Date.now()}.md`);
-  } catch {
-    // dest free
-  }
-  await fs.rename(src, dest);
-}
-
-/** Run the lint pass. Archive-only; never deletes, never edits the index. */
+/** Run the mechanical lint pass. Archive-only; never deletes, never edits the index. */
 export async function runWikiLint(
   opts: WikiStoreOptions & { maxPatterns?: number } = {},
 ): Promise<WikiLintResult> {

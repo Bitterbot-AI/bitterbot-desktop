@@ -150,6 +150,8 @@ export class DreamEngine {
   private readonly llmCallCloud: ((prompt: string) => Promise<string>) | null;
   /** PLAN-42: dedicated evolution lane (8k output budget). */
   private readonly llmCallEvolution: ((prompt: string) => Promise<string>) | null;
+  /** PLAN-42: dedicated proposer lane (stronger model, optional). */
+  private readonly llmCallEvolutionProposer: ((prompt: string) => Promise<string>) | null;
   private readonly llmCallLocal: ((prompt: string) => Promise<string>) | null;
   /** PLAN-34 Phase 4: distinct model for the insight verifier (not the generating call). */
   private readonly llmCallSynthesis: ((prompt: string) => Promise<string>) | null;
@@ -276,6 +278,7 @@ export class DreamEngine {
     this.embedBatch = embedBatch;
     this.llmCallCloud = config?.llmCall ?? null;
     this.llmCallEvolution = config?.evolutionLlmCall ?? null;
+    this.llmCallEvolutionProposer = config?.evolutionProposerLlmCall ?? null;
     this.llmCallLocal = config?.localLlmCall ?? null;
     this.llmCallSynthesis = config?.synthesisLlmCall ?? null;
     // V1 default flip (PLAN-41 D-D): research egress is opt-in.
@@ -3064,15 +3067,25 @@ export class DreamEngine {
     this.lastEvolutionAttemptAt = now;
     const journal = getActiveEventJournal();
     const llmCall = this.llmCallEvolution ?? this.getLlmCallForMode("research");
+    // Tasks-mode real rollouts (opt-in) execute one agent turn per corpus
+    // task via the gateway's own `agent` RPC (self-loopback). Only built
+    // when validationMode === "tasks" so the default path never self-calls.
+    const agentTurn =
+      cfg?.validationMode === "tasks" ? await this.buildEvolutionAgentTurn() : undefined;
     const result = await runEvolutionIteration({
       journal,
       llmCall,
       db: this.db,
       cycleId,
+      ...(this.llmCallEvolutionProposer ? { proposerLlmCall: this.llmCallEvolutionProposer } : {}),
+      ...(agentTurn ? { agentTurn } : {}),
       ...(cfg?.wikiMaxPatterns ? { maxPatterns: cfg.wikiMaxPatterns } : {}),
       ...(cfg?.maxProposerTurns ? { maxProposerTurns: cfg.maxProposerTurns } : {}),
       ...(cfg?.validationMode ? { validationMode: cfg.validationMode } : {}),
       ...(cfg?.maxActiveEvolved ? { maxActiveEvolved: cfg.maxActiveEvolved } : {}),
+      ...(cfg?.semanticLintCadenceDays !== undefined
+        ? { semanticLintCadenceDays: cfg.semanticLintCadenceDays }
+        : {}),
       ...(cfg?.propagate !== undefined ? { propagate: cfg.propagate } : {}),
       ...(cfg?.maturityDays !== undefined ? { maturityDays: cfg.maturityDays } : {}),
       publisher: getActiveOrchestratorBridge(),
@@ -3091,6 +3104,51 @@ export class DreamEngine {
       );
     } else if (result.reason) {
       log.debug(`skill evolution pass skipped: ${result.reason}`);
+    }
+  }
+
+  /**
+   * PLAN-42 tasks mode: build the real-rollout executor. Runs one agent turn
+   * per corpus task via the gateway's own `agent` RPC (self-loopback on the
+   * running node). The session key carries "skill-evolve" so the sampler
+   * excludes these validation rollouts from future learning. Returns
+   * undefined if the gateway client cannot be assembled.
+   */
+  private async buildEvolutionAgentTurn(): Promise<
+    ((prompt: string, opts?: { timeoutMs?: number }) => Promise<string>) | undefined
+  > {
+    try {
+      const [
+        { callGateway },
+        { INTERNAL_MESSAGE_CHANNEL },
+        { resolveDefaultAgentId },
+        { loadConfig },
+        { makeGatewayAgentTurn },
+      ] = await Promise.all([
+        import("../gateway/call.js"),
+        import("../utils/message-channel.js"),
+        import("../agents/agent-scope.js"),
+        import("../config/io.js"),
+        import("./skill-evolution/task-runner.js"),
+      ]);
+      const agentId = resolveDefaultAgentId(loadConfig());
+      return makeGatewayAgentTurn({
+        callGateway: (a) =>
+          callGateway({
+            method: a.method,
+            params: a.params,
+            ...(a.expectFinal !== undefined ? { expectFinal: a.expectFinal } : {}),
+            ...(a.timeoutMs !== undefined ? { timeoutMs: a.timeoutMs } : {}),
+          }),
+        agentId,
+        channel: INTERNAL_MESSAGE_CHANNEL,
+        makeSessionKey: () =>
+          `agent:${agentId}:skill-evolve-val-${globalThis.crypto.randomUUID().slice(0, 8)}`,
+        makeIdempotencyKey: () => globalThis.crypto.randomUUID(),
+      });
+    } catch (err) {
+      log.debug(`could not build evolution agent-turn executor: ${String(err)}`);
+      return undefined;
     }
   }
 

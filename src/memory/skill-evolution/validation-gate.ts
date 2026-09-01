@@ -33,6 +33,7 @@ import {
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { hashProposalContent } from "./proposal-apply.js";
 import { loadTaskCorpus } from "./task-corpus.js";
+import { type AgentTurnFn, makeInjectedSkillRunner } from "./task-runner.js";
 import { validateAgainstRecords } from "./validate-records.js";
 import { type TaskRunnerFn, validateAgainstTasks } from "./validate-tasks.js";
 
@@ -62,7 +63,13 @@ export interface ValidationGateDeps {
   llmCall: LlmCallFn | null;
   storeOpts?: ImpactTrailOptions;
   mode?: "records" | "tasks";
-  /** Required for tasks mode; the canary adapter or a test fake. */
+  /**
+   * Tasks-mode executor: runs one real agent turn. The gate builds the
+   * paired candidate/incumbent runner per-skill from this (full-injection).
+   * Tests may instead inject a pre-built `runTask` directly.
+   */
+  agentTurn?: AgentTurnFn;
+  /** Pre-built paired runner — test override; bypasses agentTurn. */
   runTask?: TaskRunnerFn;
   maxActiveEvolved?: number;
   /** Model tag recorded into the promoted skill's provenance. */
@@ -197,12 +204,19 @@ async function settleOne(
   let verdictDetail = "";
   let validationRecord: EvolutionMeta["validation"];
 
-  if (mode === "tasks" && deps.runTask) {
+  // Build the paired runner: a test may inject runTask directly; otherwise
+  // it is composed per-skill from agentTurn with full skill injection.
+  const runTask: TaskRunnerFn | undefined =
+    deps.runTask ??
+    (deps.agentTurn
+      ? makeInjectedSkillRunner(deps.agentTurn, staged.content, incumbent)
+      : undefined);
+  if (mode === "tasks" && runTask) {
     const corpus = await loadTaskCorpus(trailOpts);
     if (!corpus) {
       verdictDetail = "tasks mode but no corpus on this node; falling back to records";
     } else {
-      const verdict = await validateAgainstTasks({ corpus, runTask: deps.runTask });
+      const verdict = await validateAgainstTasks({ corpus, runTask });
       verdictAccepted = verdict.accepted;
       verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, corpus ${verdict.corpusVersion})`;
       validationRecord = {

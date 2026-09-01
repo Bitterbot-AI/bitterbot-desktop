@@ -649,7 +649,9 @@ export const BitterbotSchema = z
             maxActiveEvolved: z.number().int().min(0).optional(),
             validationMode: z.union([z.literal("records"), z.literal("tasks")]).optional(),
             judgeModel: z.string().optional(),
+            proposerModel: z.string().optional(),
             wikiMaxPatterns: z.number().int().positive().optional(),
+            semanticLintCadenceDays: z.number().positive().optional(),
             propagate: z.boolean().optional(),
             maturityDays: z.number().positive().optional(),
           })

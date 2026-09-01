@@ -19,6 +19,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { EventJournal } from "../../infra/event-journal.js";
+import type { AgentTurnFn } from "./task-runner.js";
 import type { SamplerStats } from "./types.js";
 import type { WikiStoreOptions } from "./wiki-store.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -34,6 +35,11 @@ import { type ProposerRunResult, runSkillProposer } from "./proposer.js";
 import { readSamplerCursor, sampleIteration, writeSamplerCursor } from "./sampler.js";
 import { runValidationGate, type ValidationGateOutcome } from "./validation-gate.js";
 import { runWikiLint, type WikiLintResult } from "./wiki-lint.js";
+import {
+  readSemanticLintState,
+  runSemanticLint,
+  type SemanticLintResult,
+} from "./wiki-semantic-lint.js";
 
 const log = createSubsystemLogger("skill-evolution/pass");
 
@@ -66,6 +72,12 @@ export interface EvolutionPassDeps {
   propagate?: boolean;
   maturityDays?: number;
   publisher?: SkillPublisher | null;
+  /** Tasks-mode real-rollout executor (validation gate builds the paired runner). */
+  agentTurn?: AgentTurnFn;
+  /** Dedicated proposer model lane (stronger than the maintainer/cheap lane). */
+  proposerLlmCall?: LlmCallFn;
+  /** Min days between semantic (LLM) wiki lint passes. Default 7; 0 disables. */
+  semanticLintCadenceDays?: number;
   storeOpts?: WikiStoreOptions;
 }
 
@@ -78,6 +90,7 @@ export interface EvolutionPassResult {
   proposalOutcome?: ApplyProposalResult;
   validation?: ValidationGateOutcome[];
   lint?: WikiLintResult;
+  semanticLint?: SemanticLintResult;
   publish?: PublishSweepResult;
   cursorBefore?: number;
   cursorAfter?: number;
@@ -185,7 +198,7 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
   let proposalOutcome: ApplyProposalResult | undefined;
   if (deps.runProposer !== false) {
     proposer = await runSkillProposer({
-      llmCall: deps.llmCall,
+      llmCall: deps.proposerLlmCall ?? deps.llmCall,
       samples: sample.samples,
       ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),
       ...(deps.maxProposerTurns ? { maxTurns: deps.maxProposerTurns } : {}),
@@ -234,6 +247,7 @@ async function runHousekeeping(
 ): Promise<{
   validation?: ValidationGateOutcome[];
   lint?: WikiLintResult;
+  semanticLint?: SemanticLintResult;
   publish?: PublishSweepResult;
 }> {
   const validation = await runValidationGate({
@@ -241,6 +255,7 @@ async function runHousekeeping(
     llmCall: deps.llmCall,
     ...(storeOpts.configDir ? { storeOpts } : {}),
     ...(deps.validationMode ? { mode: deps.validationMode } : {}),
+    ...(deps.agentTurn ? { agentTurn: deps.agentTurn } : {}),
     ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
     ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),
     iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
@@ -249,6 +264,17 @@ async function runHousekeeping(
     ...storeOpts,
     ...(deps.maxPatterns ? { maxPatterns: deps.maxPatterns } : {}),
   });
+  // Semantic lint (Karpathy's real lint) is slow and LLM-backed — cadence
+  // gated far below the per-iteration mechanical lint.
+  let semanticLint: SemanticLintResult | undefined;
+  const cadenceDays = deps.semanticLintCadenceDays ?? 7;
+  if (cadenceDays > 0 && deps.llmCall) {
+    const now = Date.now();
+    const state = await readSemanticLintState(storeOpts);
+    if (now - state.lastRunAt >= cadenceDays * 24 * 60 * 60 * 1000) {
+      semanticLint = await runSemanticLint({ llmCall: deps.llmCall, storeOpts, now });
+    }
+  }
   let publish: PublishSweepResult | undefined;
   if (deps.propagate !== false) {
     publish = await publishEligibleEvolvedSkills({
@@ -257,5 +283,10 @@ async function runHousekeeping(
       ...(deps.maturityDays !== undefined ? { maturityDays: deps.maturityDays } : {}),
     });
   }
-  return { validation, ...(lint ? { lint } : {}), ...(publish ? { publish } : {}) };
+  return {
+    validation,
+    ...(lint ? { lint } : {}),
+    ...(semanticLint ? { semanticLint } : {}),
+    ...(publish ? { publish } : {}),
+  };
 }

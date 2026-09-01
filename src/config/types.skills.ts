@@ -104,8 +104,16 @@ export type SkillsEvolutionConfig = {
   validationMode?: "records" | "tasks";
   /** Model spec "provider/model" for maintainer/labeler calls. Default: cheap-model resolution. */
   judgeModel?: string;
+  /**
+   * Model spec for the Skill Proposer ReAct agent. The proposer must hold a
+   * strict JSON tool protocol over many turns; a stronger model than the
+   * cheap maintainer lane pays off. Default: judgeModel, else cheap-model.
+   */
+  proposerModel?: string;
   /** Wiki pattern-page count that triggers the lint/archive pass. Default: 100. */
   wikiMaxPatterns?: number;
+  /** Minimum days between semantic (LLM) wiki lint passes. Default: 7. */
+  semanticLintCadenceDays?: number;
   /**
    * Publish validated + matured evolved skills to the P2P network with
    * their validation evidence (the flywheel's outbound leg). Default: true.

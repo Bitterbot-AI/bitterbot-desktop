@@ -30,7 +30,35 @@ const log = createSubsystemLogger("skill-evolution/wiki");
 
 export const INDEX_FILENAME = "index.md";
 export const LOGS_FILENAME = "logs.md";
+export const SCHEMA_FILENAME = "schema.md";
 export const PATTERNS_SUBDIR = "patterns";
+
+/**
+ * Karpathy's Layer 3: the wiki's own conventions, as a document the
+ * Maintainer reads and MAY evolve — not rules hardcoded in a prompt. Seeded
+ * on first maintenance; the Maintainer can refine it via `update_schema`.
+ */
+export const DEFAULT_SCHEMA = `# Wiki Schema
+
+This document defines how this skill-evolution wiki is structured and
+maintained. You (the Wiki Maintainer) read it each iteration and may refine
+it via "update_schema" as conventions prove out.
+
+## Layout
+- index.md — one line per pattern: [name](patterns/name.md): PROBLEM + ROOT CAUSE + FIX.
+- logs.md — append-only chronological log, one entry per iteration and lint pass.
+- schema.md — this file.
+- patterns/<name>.md — one page per failure mode or success strategy.
+- patterns/archive/ — retired pages (lint moves them here; never deleted).
+
+## Pattern page conventions
+- 10-30 lines. Document root cause + concrete fix, not snapshots.
+- Keep volatile specifics (counts, dates, hashes) out of prose, or date-stamp them.
+- Cite trace evidence for claims. Update existing pages; do not duplicate.
+
+## Naming
+- Pattern names: lowercase-kebab, describe the PROBLEM (e.g. exec-timeout-loop).
+`;
 
 /** Paper: pattern pages are 10-30 lines, not essays. Hard char cap. */
 export const MAX_PATTERN_CONTENT_CHARS = 8_000;
@@ -59,6 +87,15 @@ export function indexPath(opts: WikiStoreOptions = {}): string {
 
 export function logsPath(opts: WikiStoreOptions = {}): string {
   return path.join(resolveWikiDir(opts), LOGS_FILENAME);
+}
+
+export function schemaPath(opts: WikiStoreOptions = {}): string {
+  return path.join(resolveWikiDir(opts), SCHEMA_FILENAME);
+}
+
+/** Read the wiki schema, falling back to the default (not yet seeded on disk). */
+export async function readSchema(opts: WikiStoreOptions = {}): Promise<string> {
+  return (await readOrNull(schemaPath(opts))) ?? DEFAULT_SCHEMA;
 }
 
 export function isValidPatternName(name: string): boolean {
@@ -115,6 +152,7 @@ export interface WikiPattern {
 export interface WikiContext {
   index: string;
   logTail: string;
+  schema: string;
   /** Full pattern pages within the context budget. */
   patterns: WikiPattern[];
   /** Names of patterns elided from the context (budget overflow). */
@@ -148,9 +186,48 @@ export async function readIndex(opts: WikiStoreOptions = {}): Promise<string> {
   return (await readOrNull(indexPath(opts))) ?? "";
 }
 
+export const PATTERN_ARCHIVE_SUBDIR = "archive";
+
+/**
+ * Retire a pattern page to patterns/archive/ (never deleted — the wiki is
+ * append-durable). Returns false when the page does not exist. Shared by the
+ * mechanical and semantic lint passes.
+ */
+export async function archivePattern(name: string, opts: WikiStoreOptions = {}): Promise<boolean> {
+  if (!isValidPatternName(name)) {
+    return false;
+  }
+  const src = patternPath(name, opts);
+  if ((await readOrNull(src)) === null) {
+    return false;
+  }
+  const dir = path.join(patternsDir(opts), PATTERN_ARCHIVE_SUBDIR);
+  await fs.mkdir(dir, { recursive: true });
+  let dest = path.join(dir, `${name}.md`);
+  try {
+    await fs.access(dest);
+    dest = path.join(dir, `${name}.${Date.now()}.md`);
+  } catch {
+    // dest free
+  }
+  await fs.rename(src, dest);
+  return true;
+}
+
+/** Append a freeform entry to logs.md (lint passes, out-of-band notes). */
+export async function appendWikiLog(entry: string, opts: WikiStoreOptions = {}): Promise<void> {
+  await fs.mkdir(resolveWikiDir(opts), { recursive: true });
+  await fs.appendFile(
+    logsPath(opts),
+    `\n## ${new Date().toISOString()}\n\n${entry.trim()}\n`,
+    "utf-8",
+  );
+}
+
 /** Assemble the Maintainer's full-wiki view under a context budget. */
 export async function readWikiContext(opts: WikiStoreOptions = {}): Promise<WikiContext> {
   const index = await readIndex(opts);
+  const schema = await readSchema(opts);
   const logs = (await readOrNull(logsPath(opts))) ?? "";
   const logTail = logs.length > CONTEXT_LOG_TAIL_CHARS ? logs.slice(-CONTEXT_LOG_TAIL_CHARS) : logs;
   const names = await listPatternNames(opts);
@@ -169,7 +246,7 @@ export async function readWikiContext(opts: WikiStoreOptions = {}): Promise<Wiki
       elidedPatternNames.push(name);
     }
   }
-  return { index, logTail, patterns, elidedPatternNames, patternCount: names.length };
+  return { index, schema, logTail, patterns, elidedPatternNames, patternCount: names.length };
 }
 
 // ── Write side (whitelist-parsed maintainer output) ─────────────────────────
@@ -184,6 +261,8 @@ export interface MaintainerOutput {
   updatePatterns: Array<{ name: string; edits: WikiPatchOp[] }>;
   updateIndex: string;
   appendLog: string;
+  /** Optional full rewrite of schema.md (Karpathy Layer 3, evolvable). */
+  updateSchema?: string;
 }
 
 export interface ParseIssue {
@@ -292,6 +371,9 @@ export function parseMaintainerOutput(raw: string): {
       updatePatterns,
       updateIndex: updateIndex.slice(0, MAX_INDEX_CHARS),
       appendLog: appendLog.slice(0, MAX_LOG_ENTRY_CHARS),
+      ...(typeof obj.update_schema === "string" && obj.update_schema.trim()
+        ? { updateSchema: obj.update_schema.slice(0, MAX_INDEX_CHARS) }
+        : {}),
     },
     issues,
   };
@@ -304,6 +386,7 @@ export interface ApplyResult {
   dropped: ParseIssue[];
   indexUpdated: boolean;
   logAppended: boolean;
+  schemaUpdated: boolean;
 }
 
 /**
@@ -357,9 +440,17 @@ export async function applyMaintainerOutput(
     dropped: [],
     indexUpdated: false,
     logAppended: false,
+    schemaUpdated: false,
   };
   const maxPatterns = opts.maxPatterns ?? DEFAULT_MAX_PATTERNS;
   await fs.mkdir(patternsDir(opts), { recursive: true });
+
+  // Seed schema.md on first run so the Maintainer always sees it on disk.
+  try {
+    await fs.access(schemaPath(opts));
+  } catch {
+    await atomicWrite(schemaPath(opts), DEFAULT_SCHEMA);
+  }
 
   let patternCount = (await listPatternNames(opts)).length;
   for (const create of output.createPatterns) {
@@ -419,6 +510,19 @@ export async function applyMaintainerOutput(
   } else {
     await atomicWrite(indexPath(opts), output.updateIndex);
     result.indexUpdated = true;
+  }
+
+  if (output.updateSchema) {
+    const schemaScan = scanSkillForInjection(output.updateSchema);
+    if (schemaScan.severity === "critical") {
+      result.dropped.push({
+        where: "schema",
+        detail: `injection scan critical: ${schemaScan.reason}`,
+      });
+    } else {
+      await atomicWrite(schemaPath(opts), output.updateSchema);
+      result.schemaUpdated = true;
+    }
   }
 
   const logEntry = `\n## ${new Date().toISOString()}\n\n${output.appendLog.trim()}\n`;
