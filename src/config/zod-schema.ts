@@ -731,6 +731,8 @@ export const BitterbotSchema = z
             quarantineTtlDays: z.number().int().nonnegative().optional(),
             // PLAN-29 Phase 0.3: load-time capability gate kill switch.
             loadTimeCapabilityGate: z.boolean().optional(),
+            // PLAN-42: auto-reject legacy unvalidated dream crystals.
+            rejectLegacyCrystals: z.boolean().optional(),
           })
           .strict()
           .optional(),

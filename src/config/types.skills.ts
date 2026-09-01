@@ -45,6 +45,13 @@ export type SkillsP2pConfig = {
    */
   quarantineTtlDays?: number;
   /**
+   * PLAN-42: auto-reject unvalidated machine-generated crystals from the
+   * legacy auto-publish pipeline instead of quarantining them for review.
+   * Skills carrying wiki-evolution validation evidence still quarantine
+   * normally. Default: true.
+   */
+  rejectLegacyCrystals?: boolean;
+  /**
    * PLAN-29 Phase 0.3: load-time capability gate for P2P-ingested skills.
    * When true (default), workspace skill snapshots exclude P2P skills whose
    * declared capabilities exceed their publisher's trust tier plus operator

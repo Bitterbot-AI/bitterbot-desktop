@@ -143,17 +143,16 @@ export async function crystallizeSkill(params: {
     }
   }
 
-  // 7. If P2P enabled and no upstream gate, publish to network
-  let published = false;
+  // 7. PLAN-42 quality doctrine: crystallization no longer publishes to the
+  //    P2P network directly. Nothing propagates unvalidated — a crystallized
+  //    skill reaches the mesh only after it passes the evolution validation
+  //    gate and matures (p2p-publish.ts sweep). The direct publish here was
+  //    the sender side of the junk-crystal clutter peers quarantine.
+  const published = false;
   if (config.p2p?.enabled && bridge && !publishSkipped) {
-    try {
-      const base64Md = Buffer.from(skillMd, "utf-8").toString("base64");
-      await bridge.publishSkill(base64Md, skillName);
-      published = true;
-      log.info(`Published skill to P2P network: ${skillName}`);
-    } catch (err) {
-      log.warn(`Failed to publish skill to P2P: ${String(err)}`);
-    }
+    publishSkipped =
+      "direct crystal publish retired (PLAN-42): skills propagate only after validation + maturity";
+    log.info(`Withholding P2P publish for ${skillName}: ${publishSkipped}`);
   }
 
   return { ok: true, skillPath, skillName, published, publishSkipped };

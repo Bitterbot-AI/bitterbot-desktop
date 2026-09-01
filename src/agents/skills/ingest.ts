@@ -205,6 +205,27 @@ export async function ingestSkill(params: {
     return { ok: false, action: "rejected", reason: "duplicate content hash" };
   }
 
+  // 3b. PLAN-42 quality doctrine: unvalidated machine-generated crystals from
+  // the legacy auto-publish pipeline (UUID-named "Dream-generated skill
+  // crystal" envelopes) are rejected at the door instead of cluttering the
+  // review queue — 28 of them sat in this node's quarantine as junk. A
+  // wiki-evolution provenance trailer marks a skill that passed a validation
+  // gate somewhere; those still quarantine for local review. Kill switch:
+  // skills.p2p.rejectLegacyCrystals=false restores the old behavior.
+  if (!isLocalOrigin && p2pConfig?.rejectLegacyCrystals !== false) {
+    const md = Buffer.from(envelope.skill_md, "base64").toString("utf-8");
+    const looksLikeLegacyCrystal =
+      /^description:\s*Dream-generated skill crystal\s*$/m.test(md) || /\bcrystal_id:/.test(md);
+    const hasValidationEvidence = md.includes("wiki-evolution-provenance");
+    if (looksLikeLegacyCrystal && !hasValidationEvidence) {
+      log.info(
+        `Rejected legacy unvalidated dream crystal "${envelope.name}" from ${envelope.author_peer_id}`,
+      );
+      params.reputationManager?.recordIngestionResult(envelope.author_pubkey, false);
+      return { ok: false, action: "rejected", reason: "legacy unvalidated dream crystal" };
+    }
+  }
+
   // 4. Rate limiting
   const maxPerHour = p2pConfig?.maxIngestedPerHour ?? 20;
   if (!checkRateLimit(envelope.author_peer_id, maxPerHour)) {
