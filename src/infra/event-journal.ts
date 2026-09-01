@@ -254,6 +254,35 @@ export class EventJournal {
     }));
   }
 
+  /**
+   * PLAN-42: fetch specific rows by journal seq, inflating only those blobs.
+   * The reconstructor picks the rows it needs from a queryMeta pass (tool +
+   * lifecycle events + the last assistant event of each streak) so a
+   * marathon run's cumulative assistant text is never decompressed.
+   */
+  getBySeqs(seqs: readonly number[]): JournalEvent[] {
+    const out: JournalEvent[] = [];
+    for (let i = 0; i < seqs.length; i += 100) {
+      const chunk = seqs.slice(i, i + 100);
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = this.db
+        .prepare(
+          `SELECT seq, run_id, task_id, ts, stream, run_seq, session_key, data_blob
+           FROM event_log WHERE seq IN (${placeholders})
+           ORDER BY seq ASC`,
+        )
+        .all(...chunk) as unknown as RawEventRow[];
+      for (const row of rows) {
+        try {
+          out.push(rowToEvent(row));
+        } catch {
+          // torn row — skip
+        }
+      }
+    }
+    return out;
+  }
+
   /** Count events for a given task. */
   countForTask(taskId: string): number {
     const row = this.db

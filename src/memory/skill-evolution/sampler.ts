@@ -25,7 +25,12 @@ import { resolveWikiDir } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { hashBucket } from "../skill-execution-selection.js";
 import { type JudgeCallFn, labelTrace } from "./labeler.js";
-import { formatTraceLog, listRunsSince, reconstructTrace } from "./traces.js";
+import {
+  formatTraceLog,
+  listRunsSince,
+  MAX_RECONSTRUCT_EVENTS,
+  reconstructTrace,
+} from "./traces.js";
 
 const log = createSubsystemLogger("skill-evolution/sampler");
 
@@ -149,10 +154,16 @@ export async function sampleIteration(
       nextCursorSeq = Math.max(nextCursorSeq, run.lastSeq);
       continue;
     }
+    // Metadata pre-filters (zero blob inflation): tool-less runs have
+    // nothing to learn from; marathon runs are interactive sessions, not
+    // task executions. Neither is worth reconstructing.
+    if (run.toolEvents === 0 || run.totalEvents > MAX_RECONSTRUCT_EVENTS) {
+      stats.runsExcluded += 1;
+      nextCursorSeq = Math.max(nextCursorSeq, run.lastSeq);
+      continue;
+    }
     const trace = await reconstructTrace(journal, run.runId, { skipMarathonRuns: true });
     if (!trace) {
-      // Missing or marathon-sized run (interactive session, not a learnable
-      // task execution): skip without holding the cursor back.
       stats.runsExcluded += 1;
       nextCursorSeq = Math.max(nextCursorSeq, run.lastSeq);
       continue;

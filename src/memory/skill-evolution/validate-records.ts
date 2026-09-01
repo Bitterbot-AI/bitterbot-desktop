@@ -26,7 +26,12 @@ import type { ReconstructedTrace } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { bootstrapMeanCi, MIN_PAIRED_TRIALS } from "./bootstrap-ci.js";
 import { isRunHeldOut } from "./sampler.js";
-import { formatTraceLog, listRunsSince, reconstructTrace } from "./traces.js";
+import {
+  formatTraceLog,
+  listRunsSince,
+  MAX_RECONSTRUCT_EVENTS,
+  reconstructTrace,
+} from "./traces.js";
 
 const log = createSubsystemLogger("skill-evolution/validate-records");
 
@@ -56,7 +61,9 @@ export async function collectHeldOutTraces(
   // Scan the whole journal for held-out runs; cheap relative to LLM spend
   // and only runs when a proposal actually reached the gate.
   const runs = await listRunsSince(journal, { sinceSeq: 0, maxRuns: 400 });
-  const heldOut = runs.filter((r) => isRunHeldOut(r.runId));
+  const heldOut = runs.filter(
+    (r) => isRunHeldOut(r.runId) && r.toolEvents > 0 && r.totalEvents <= MAX_RECONSTRUCT_EVENTS,
+  );
   const traces: ReconstructedTrace[] = [];
   // Most recent first: recent behavior is the distribution we validate for.
   for (const run of heldOut.toReversed()) {

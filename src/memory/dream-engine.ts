@@ -3085,7 +3085,11 @@ export class DreamEngine {
           `${apply?.created.length ?? 0} pattern(s) created, ${apply?.updated.length ?? 0} updated` +
           (result.reason ? ` (${result.reason})` : ""),
       );
-    } else if (result.reason && result.reason !== "no-new-traces") {
+    } else if (result.reason === "no-new-traces") {
+      log.info(
+        `skill evolution pass: no new traces (cursor ${result.cursorBefore ?? "?"} -> ${result.cursorAfter ?? "?"}; examined ${result.samplerStats?.runsExamined ?? 0})`,
+      );
+    } else if (result.reason) {
       log.debug(`skill evolution pass skipped: ${result.reason}`);
     }
   }

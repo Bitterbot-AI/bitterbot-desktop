@@ -36,50 +36,11 @@ const STEP_TEXT_MAX_CHARS = 4_000;
 const RUN_EVENT_LIMIT = 10_000;
 
 /**
- * Rows gunzipped per journal.query() call. query() decompresses its whole
- * result set SYNCHRONOUSLY, so the page size is the stall ceiling — the
- * live soak caught a 112s event-loop stall from a single 10k-row query
- * over a marathon session's giant tool outputs. Small pages + yields keep
- * each sync burst bounded.
- */
-const RUN_EVENT_PAGE = 256;
-
-/**
  * Runs with more events than this are marathon interactive sessions, not
- * learnable task executions — reconstructing them costs seconds of sync
- * gunzip for a trace the 15k-char formatter would elide to head+tail
- * anyway. The sampler skips them.
+ * learnable task executions; the sampler and validator skip them (the
+ * 15k-char formatter would elide them to head+tail anyway).
  */
 export const MAX_RECONSTRUCT_EVENTS = 3_000;
-
-/**
- * Page through one run's events with a yield between pages. Returns null
- * when the run exceeds maxEvents (marathon guard) and `enforceCap` is set.
- */
-async function pageRunEvents(
-  journal: EventJournal,
-  runId: string,
-  opts: { maxEvents: number; enforceCap: boolean },
-): Promise<JournalEvent[] | null> {
-  const events: JournalEvent[] = [];
-  let sinceSeq = 0;
-  for (;;) {
-    const page = journal.query({ runId, sinceSeq, limit: RUN_EVENT_PAGE });
-    if (page.length === 0) {
-      break;
-    }
-    events.push(...page);
-    sinceSeq = (page[page.length - 1] as JournalEvent).seq;
-    if (events.length >= opts.maxEvents) {
-      if (opts.enforceCap) {
-        return null;
-      }
-      break;
-    }
-    await yieldToEventLoop();
-  }
-  return events;
-}
 
 function redact(text: string): string {
   return redactSensitiveText(text, { mode: "tools" });
@@ -109,22 +70,48 @@ function asString(v: unknown): string {
 /**
  * Reconstruct one run's trajectory from its journal events. Returns null when
  * the run has no events. Async purely for event-loop yielding.
+ *
+ * Inflation is SELECTIVE: a zero-cost queryMeta pass identifies exactly the
+ * rows the trajectory needs — tool + lifecycle events plus the LAST
+ * assistant event of each consecutive streak (assistant events carry
+ * cumulative text, so earlier streak members are strictly redundant) — and
+ * only those blobs are decompressed via getBySeqs. This is what keeps a
+ * chatty run from inflating 100MB of cumulative text on the gateway's
+ * event loop.
  */
 export async function reconstructTrace(
   journal: EventJournal,
   runId: string,
   opts: { skipMarathonRuns?: boolean } = {},
 ): Promise<ReconstructedTrace | null> {
-  if (opts.skipMarathonRuns && journal.countForRun(runId) > MAX_RECONSTRUCT_EVENTS) {
-    // Marathon interactive session: skip WITHOUT inflating a single blob —
-    // the count uses the run index only.
+  const meta = journal.queryMeta({ runId, limit: RUN_EVENT_LIMIT });
+  if (meta.length === 0) {
     return null;
   }
-  const events = await pageRunEvents(journal, runId, {
-    maxEvents: RUN_EVENT_LIMIT,
-    enforceCap: false,
-  });
-  if (events === null || events.length === 0) {
+  if (opts.skipMarathonRuns && meta.length > MAX_RECONSTRUCT_EVENTS) {
+    // Marathon interactive session: skip without inflating a single blob.
+    return null;
+  }
+  // Select the seqs worth inflating.
+  const wantedSeqs: number[] = [];
+  for (let i = 0; i < meta.length; i++) {
+    const m = meta[i]!;
+    if (m.stream === "assistant") {
+      const next = meta[i + 1];
+      if (!next || next.stream !== "assistant") {
+        wantedSeqs.push(m.seq); // last of its streak
+      }
+    } else if (m.stream === "tool" || m.stream === "lifecycle") {
+      wantedSeqs.push(m.seq);
+    }
+  }
+  await yieldToEventLoop();
+  const events: JournalEvent[] = [];
+  for (let i = 0; i < wantedSeqs.length; i += 200) {
+    events.push(...journal.getBySeqs(wantedSeqs.slice(i, i + 200)));
+    await yieldToEventLoop();
+  }
+  if (events.length === 0) {
     return null;
   }
   const tick = makeYieldEvery(64);
@@ -235,7 +222,9 @@ export async function reconstructTrace(
     toolErrorCount += 1;
   }
 
-  const last = events[events.length - 1] as JournalEvent;
+  // Identity + cursor bookkeeping come from the run's TRUE last journal
+  // event (meta view), not the last inflated one.
+  const last = meta[meta.length - 1]!;
   return {
     runId,
     taskId: last.taskId,
@@ -312,35 +301,73 @@ export function formatTraceLog(
 }
 
 /**
- * List distinct run ids with events after `sinceSeq`, oldest-first, along
- * with each run's max seq. Yields between batches. Read-only.
+ * Enumerate runs with events after `sinceSeq`, oldest-first, from METADATA
+ * ONLY (zero blob inflation). Per-run counters let callers pre-filter
+ * tool-less and marathon runs before any reconstruction; `maxRuns` counts
+ * only TOOL-BEARING runs so heartbeat noise cannot starve the window.
  */
+export interface RunSummary {
+  runId: string;
+  lastSeq: number;
+  totalEvents: number;
+  toolEvents: number;
+  hasTerminal: boolean;
+}
+
 export async function listRunsSince(
   journal: EventJournal,
   opts: { sinceSeq: number; maxRuns?: number },
-): Promise<Array<{ runId: string; lastSeq: number }>> {
+): Promise<RunSummary[]> {
   const maxRuns = opts.maxRuns ?? 40;
-  const seen = new Map<string, number>();
+  const seen = new Map<string, RunSummary>();
   let cursor = opts.sinceSeq;
   const tick = makeYieldEvery(4);
-  // Page through the journal without holding a long read inside one call.
-  for (let page = 0; page < 200; page++) {
+  for (let page = 0; page < 400; page++) {
     await tick();
-    const events = journal.queryMeta({ sinceSeq: cursor, limit: 500 });
+    const events = journal.queryMeta({ sinceSeq: cursor, limit: 1_000 });
     if (events.length === 0) {
       break;
     }
     for (const evt of events) {
-      seen.set(evt.runId, evt.seq);
+      let summary = seen.get(evt.runId);
+      if (!summary) {
+        summary = {
+          runId: evt.runId,
+          lastSeq: evt.seq,
+          totalEvents: 0,
+          toolEvents: 0,
+          hasTerminal: false,
+        };
+        seen.set(evt.runId, summary);
+      }
+      summary.lastSeq = evt.seq;
+      summary.totalEvents += 1;
+      if (evt.stream === "tool") {
+        summary.toolEvents += 1;
+      }
+      if (evt.stream === "lifecycle") {
+        summary.hasTerminal = true;
+      }
     }
     cursor = (events[events.length - 1] as { seq: number }).seq;
-    if (seen.size >= maxRuns * 3) {
-      // Enough candidates to satisfy maxRuns even after filtering.
+    const toolBearing = [...seen.values()].filter((r) => r.toolEvents > 0).length;
+    if (toolBearing >= maxRuns * 2) {
       break;
     }
   }
-  return Array.from(seen.entries())
-    .map(([runId, lastSeq]) => ({ runId, lastSeq }))
-    .toSorted((a, b) => a.lastSeq - b.lastSeq)
-    .slice(0, maxRuns);
+  // Cap at maxRuns TOOL-BEARING runs; tool-less runs before the cutoff stay
+  // included so callers can advance their cursor past the noise.
+  const sorted = Array.from(seen.values()).toSorted((a, b) => a.lastSeq - b.lastSeq);
+  const out: RunSummary[] = [];
+  let toolBearingKept = 0;
+  for (const run of sorted) {
+    if (run.toolEvents > 0) {
+      if (toolBearingKept >= maxRuns) {
+        break;
+      }
+      toolBearingKept += 1;
+    }
+    out.push(run);
+  }
+  return out;
 }
