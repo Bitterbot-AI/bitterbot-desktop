@@ -174,11 +174,19 @@ export type MessageSendParams = {
     blocking?: boolean;
   };
   metadata?: Record<string, unknown>;
+  /**
+   * PLAN-43 Phase 1: exact-ID metered skill invocation. When set, the task
+   * executes THIS listed skill (never fuzzy-matched from text) and the
+   * payment gate prices the call at the skill's listed price.
+   */
+  skillId?: string;
 };
 
 export type TaskGetParams = {
   id: string;
   historyLength?: number;
+  /** PLAN-43 Phase 1 (R1): required for untrusted callers; returned by the create response. */
+  accessToken?: string;
 };
 
 export type TaskListParams = {
@@ -190,6 +198,8 @@ export type TaskListParams = {
 
 export type TaskCancelParams = {
   id: string;
+  /** PLAN-43 Phase 1 (R1): required for untrusted callers. */
+  accessToken?: string;
 };
 
 // ---------------------------------------------------------------------------

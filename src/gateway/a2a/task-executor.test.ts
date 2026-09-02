@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MessageSendParams } from "./types.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import {
+  composeSkillInvocationMessage,
   extractTaskText,
   prepareInboundA2aText,
   prepareOutboundA2aText,
@@ -102,6 +103,24 @@ describe("prepareOutboundA2aText", () => {
     );
     expect(out).toContain("withheld");
     expect(out).not.toContain("rm -rf");
+  });
+});
+
+describe("composeSkillInvocationMessage", () => {
+  it("frames the node's own skill OUTSIDE the external envelope, caller text inside", () => {
+    const out = composeSkillInvocationMessage(
+      { name: "Summarizer", text: "# Summarizer\nAlways answer in three bullets." },
+      prepareInboundA2aText("summarize the plan"),
+    );
+    expect(out).toContain('executing the skill "Summarizer"');
+    expect(out.indexOf("SKILL DEFINITION")).toBeLessThan(out.indexOf("EXTERNAL"));
+    expect(out).toContain("three bullets");
+    expect(out).toContain("summarize the plan");
+  });
+
+  it("caps injected skill text", () => {
+    const out = composeSkillInvocationMessage({ name: "Big", text: "x".repeat(50_000) }, "caller");
+    expect(out.length).toBeLessThan(40_000);
   });
 });
 

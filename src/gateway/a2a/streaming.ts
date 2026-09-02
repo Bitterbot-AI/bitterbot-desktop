@@ -13,6 +13,13 @@ export function streamTaskEvents(params: {
   res: ServerResponse;
   taskId: string;
   taskManager: A2aTaskManager;
+  /**
+   * PLAN-43 Phase 1 (R1): sent as the first SSE event (`event: task`) so a
+   * stream buyer holds the task id + access token even if the stream drops
+   * — without it, a disconnected buyer could never tasks/get their own
+   * paid result.
+   */
+  intro?: Record<string, unknown>;
 }): void {
   const { res, taskId, taskManager } = params;
 
@@ -21,6 +28,13 @@ export function streamTaskEvents(params: {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders?.();
+
+  if (params.intro) {
+    res.write(`event: task
+data: ${JSON.stringify(params.intro)}
+
+`);
+  }
 
   // Buffer events while the socket is under backpressure.
   let paused = false;

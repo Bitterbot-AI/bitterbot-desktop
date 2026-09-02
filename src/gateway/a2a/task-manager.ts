@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type {
   A2aArtifact,
@@ -46,6 +46,9 @@ export class A2aTaskManager {
       id: taskId,
       contextId,
       metadata: params.metadata,
+      // PLAN-43 Phase 1 (R1): mint a per-task access token; task reads by
+      // untrusted callers require it. Returned ONLY in the create response.
+      accessToken: randomBytes(16).toString("hex"),
     });
 
     // Store the incoming user message.
@@ -113,6 +116,27 @@ export class A2aTaskManager {
       taskId,
       artifact,
     });
+  }
+
+  /**
+   * The task's access token (create-response only — never in task reads).
+   */
+  getAccessToken(taskId: string): string | null {
+    return this.store.getTask(taskId)?.access_token ?? null;
+  }
+
+  /**
+   * Timing-safe token check. Tasks without a stored token (pre-upgrade
+   * rows) fail closed for untrusted callers.
+   */
+  verifyAccessToken(taskId: string, token: string | undefined): boolean {
+    const stored = this.store.getTask(taskId)?.access_token;
+    if (!stored || !token) {
+      return false;
+    }
+    const a = Buffer.from(stored);
+    const b = Buffer.from(token);
+    return a.length === b.length && timingSafeEqual(a, b);
   }
 
   /**

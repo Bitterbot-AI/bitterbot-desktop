@@ -643,6 +643,28 @@ export class MarketplaceEconomics {
   }
 
   /**
+   * PLAN-43 Phase 1: fetch a sellable skill's content for exact-ID metered
+   * invocation. Returns null unless the crystal is BOTH explicitly for
+   * sale AND currently listable — a caller-supplied id must never become a
+   * read-any-crystal-by-id primitive.
+   */
+  getSellableSkill(skillCrystalId: string): { skillId: string; name: string; text: string } | null {
+    try {
+      const row = this.db
+        .prepare(`
+        SELECT c.id, ml.name, c.text
+        FROM chunks c
+        JOIN marketplace_listings ml ON ml.skill_crystal_id = c.id
+        WHERE c.id = ? AND COALESCE(c.for_sale, 0) = 1 AND ml.listable = 1
+      `)
+        .get(skillCrystalId) as { id: string; name: string; text: string } | undefined;
+      return row ? { skillId: row.id, name: row.name, text: row.text } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Get all listable skills for Agent Card generation.
    *
    * Rank order (PLAN-43 invariant I6/I10): validated skills first,

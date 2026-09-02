@@ -15,6 +15,15 @@ import { A2aErrorCodes } from "./types.js";
 type A2aServerContext = {
   taskManager: A2aTaskManager;
   config?: BitterbotConfig;
+  /**
+   * PLAN-43 Phase 1 (R1): true when the caller authenticated with a real
+   * credential (bearer token) or is a local direct request. Under
+   * a2a.authentication "none" everyone reaches dispatch, so task reads by
+   * untrusted callers require the per-task access token instead.
+   */
+  callerTrusted?: boolean;
+  /** PLAN-43 Phase 1: pre-resolved sellable skill for exact-ID invocation. */
+  skillInvocation?: { skillId: string; name: string; text: string };
 };
 
 /**
@@ -81,16 +90,41 @@ function handleMessageSend(request: JsonRpcRequest, ctx: A2aServerContext): Json
       taskText,
       config: ctx.config,
       taskManager: ctx.taskManager,
+      skillInvocation: ctx.skillInvocation,
     });
   }
 
-  return successResponse(request.id, ctx.taskManager.getTask(task.id));
+  // The access token rides ONLY on the create response (task reads never
+  // include it) — it is the creator's capability to poll tasks/get.
+  const created = ctx.taskManager.getTask(task.id);
+  const accessToken = ctx.taskManager.getAccessToken(task.id);
+  return successResponse(request.id, accessToken ? { ...created, accessToken } : created);
+}
+
+/**
+ * PLAN-43 Phase 1 (R1): task reads/cancels by untrusted callers require the
+ * per-task access token. NOT_FOUND (not UNAUTHORIZED) on a bad token, so an
+ * unauthorized probe cannot confirm a task id exists.
+ */
+function taskAccessDenied(
+  ctx: A2aServerContext,
+  taskId: string,
+  token: string | undefined,
+): boolean {
+  if (ctx.callerTrusted) {
+    return false;
+  }
+  return !ctx.taskManager.verifyAccessToken(taskId, token);
 }
 
 function handleTasksGet(request: JsonRpcRequest, ctx: A2aServerContext): JsonRpcResponse {
   const params = request.params as TaskGetParams | undefined;
   if (!params?.id) {
     return errorResponse(request.id, A2aErrorCodes.INVALID_PARAMS, "Missing task id");
+  }
+
+  if (taskAccessDenied(ctx, params.id, params.accessToken)) {
+    return errorResponse(request.id, A2aErrorCodes.TASK_NOT_FOUND, "Task not found");
   }
 
   const task = ctx.taskManager.getTask(params.id, params.historyLength);
@@ -102,6 +136,11 @@ function handleTasksGet(request: JsonRpcRequest, ctx: A2aServerContext): JsonRpc
 }
 
 function handleTasksList(request: JsonRpcRequest, ctx: A2aServerContext): JsonRpcResponse {
+  // Enumerating tasks is a trusted-caller surface only: an access token
+  // scopes ONE task, and there is no anonymous list capability.
+  if (!ctx.callerTrusted) {
+    return errorResponse(request.id, A2aErrorCodes.UNAUTHORIZED, "Authentication required");
+  }
   const params = (request.params ?? {}) as TaskListParams;
   const tasks = ctx.taskManager.listTasks({
     contextId: params.contextId,
@@ -117,6 +156,10 @@ function handleTasksCancel(request: JsonRpcRequest, ctx: A2aServerContext): Json
   const params = request.params as TaskCancelParams | undefined;
   if (!params?.id) {
     return errorResponse(request.id, A2aErrorCodes.INVALID_PARAMS, "Missing task id");
+  }
+
+  if (taskAccessDenied(ctx, params.id, params.accessToken)) {
+    return errorResponse(request.id, A2aErrorCodes.TASK_NOT_FOUND, "Task not found");
   }
 
   const task = ctx.taskManager.cancelTask(params.id);

@@ -190,6 +190,27 @@ describe("MarketplaceEconomics — PLAN-43 Phase 0 separation", () => {
     expect(chunk.for_sale).toBe(0);
   });
 
+  it("getSellableSkill serves only for-sale AND listable crystals (no read-by-id primitive)", () => {
+    const economics = new MarketplaceEconomics(db);
+    insertSkillChunk(db, "c-sell", "Sellable Skill", { forSale: true });
+    recordPassingExecutions(db, "c-sell");
+    insertSkillChunk(db, "c-free", "Free Skill", { shared: true });
+    recordPassingExecutions(db, "c-free");
+    economics.refreshListings(1.0);
+
+    const sellable = economics.getSellableSkill("c-sell");
+    expect(sellable).toMatchObject({ skillId: "c-sell", name: "Sellable Skill" });
+    expect(sellable!.text).toContain("test skill body");
+
+    // A free-propagated crystal has no paid listing: unreachable by id.
+    expect(economics.getSellableSkill("c-free")).toBeNull();
+    expect(economics.getSellableSkill("no-such-id")).toBeNull();
+
+    // Delisting revokes invocability immediately.
+    economics.setForSale("c-sell", false);
+    expect(economics.getSellableSkill("c-sell")).toBeNull();
+  });
+
   it("ranks by validation verdicts — canonical first, never by price (I6/I10)", () => {
     const validations = new Map<string, SkillValidationSummary>([
       [

@@ -777,6 +777,37 @@ this node driven by a REMOTE caller's input. That turn is hermetic:
   it returns to the caller; a critical payload is withheld.
 - `message/stream` passes the same x402 payment gate as `message/send`.
 
+## Metered Skill Invocation and Task Access (PLAN-43 Phase 1)
+
+- **Exact-ID invocation.** A `message/send` (or `message/stream`) request
+  may name a listed skill via `params.skillId` (or
+  `params.metadata.skillId`). The task then executes that skill's
+  definition against the caller's request, and the payment gate prices the
+  call at the skill's listed per-call price (never below
+  `payment.x402.minPayment`). An id that is not currently listed for sale
+  is refused with 404 before any payment is taken. There is no fuzzy
+  matching: a purchase is attributed to a skill only when the buyer named
+  its exact id.
+- **Per-task access tokens.** The `message/send` create response carries a
+  per-task `accessToken` (reusable across polls for that task's lifetime);
+  `message/stream` delivers the same fields in its first SSE event
+  (`event: task`), so a dropped stream never orphans a paid result. Under
+  `authentication.type: "none"`, `tasks/get` and `tasks/cancel` require
+  that token (`params.accessToken`) — without it, callers get
+  `TASK_NOT_FOUND`, so task ids cannot be probed and one buyer can never
+  read another buyer's paid result. `tasks/list` requires a real credential
+  (bearer token) or a local direct request. Task reads never include the
+  token; keep it from the create response.
+- The outbound client (`services/a2a-client.ts`) polls `tasks/get` with the
+  access token until the task reaches a final state, so buyers receive the
+  actual result rather than the initial "working" snapshot.
+- When `payment.enabled` is false the whole surface is free, including
+  named-skill invocation — enabling payments is what puts the meter on.
+  Known residual until Phase 2's quote flow: a listing price raised between
+  a 402 quote and the buyer's paid retry is rejected as underpayment after
+  the USDC settled; the client's price cap bounds the loss to the quoted
+  amount, and re-invoking after the price change works.
+
 ## Selling Is Opt-In Per Skill (PLAN-43 Phase 0)
 
 The paid listing pool is fully decoupled from free skill propagation:

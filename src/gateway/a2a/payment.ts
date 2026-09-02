@@ -51,25 +51,57 @@ export interface PaymentGateResult {
   };
 }
 
+/**
+ * PLAN-43 Phase 1: resolve the caller's skill selection — EXACT id only,
+ * from the explicit param or metadata. Fuzzy name-matching against the
+ * task text is banned by design (§3.4: slopsquat magnet; a purchase must
+ * never be attributed to a skill the buyer did not name).
+ */
+export function resolveRequestedSkillId(rpcParams?: {
+  skillId?: string;
+  metadata?: Record<string, unknown>;
+}): string | undefined {
+  const direct = rpcParams?.skillId;
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+  const meta = rpcParams?.metadata?.skillId;
+  return typeof meta === "string" && meta.trim() ? meta.trim() : undefined;
+}
+
 export async function verifyA2aPayment(
   req: IncomingMessage,
   config: BitterbotConfig,
   marketplace: MarketplaceEconomics | null,
-  rpcParams?: { skillId?: string; message?: { parts?: Array<{ type: string; text?: string }> } },
+  rpcParams?: {
+    skillId?: string;
+    metadata?: Record<string, unknown>;
+    message?: { parts?: Array<{ type: string; text?: string }> };
+  },
+  opts?: {
+    /**
+     * Per-call price of the requested skill (PLAN-43 Phase 1). The paid
+     * amount must cover it — verifying against minPayment alone would let
+     * a buyer purchase an expensive skill at the floor price.
+     */
+    requiredAmountUsdc?: number;
+  },
 ): Promise<PaymentGateResult> {
   // Check x402 payment headers — accept both custom and x402 v2 standard headers
   // x402 v2 spec: client sends PAYMENT-SIGNATURE header (Base64 JSON)
   const paymentHeader = getHeader(req, "x-payment") ?? getHeader(req, "payment-signature"); // x402 v2 standard header
   const paymentToken = getHeader(req, "x-payment-token");
 
+  const minPayment = config.a2a?.payment?.x402?.minPayment ?? 0.01;
+  const requiredAmount = Math.max(minPayment, opts?.requiredAmountUsdc ?? 0);
+
   if (!paymentHeader && !paymentToken) {
     // No payment attempted — return pricing info
-    const minPayment = config.a2a?.payment?.x402?.minPayment ?? 0.01;
     const listings = marketplace?.getListableSkills() ?? [];
     return {
       paid: false,
       pricing: {
-        priceUsdc: minPayment,
+        priceUsdc: requiredAmount,
         skills: listings.map((l) => ({ id: l.skillCrystalId, name: l.name, price: l.priceUsdc })),
       },
     };
@@ -95,35 +127,21 @@ export async function verifyA2aPayment(
     const verification = await verifyX402Payment({
       paymentToken: paymentToken ?? paymentHeader!,
       expectedRecipient: address,
-      minimumAmount: config.a2a?.payment?.x402?.minPayment ?? 0.01,
+      minimumAmount: requiredAmount,
       network: network as "base" | "base-sepolia",
       db: marketplace?.getDb?.(),
     });
 
     if (verification.valid) {
-      // Resolve skill ID from explicit param or by matching task text against listings
-      let resolvedSkillId = rpcParams?.skillId;
-      if (!resolvedSkillId && marketplace) {
-        const taskText =
-          rpcParams?.message?.parts
-            ?.filter((p) => p.type === "text")
-            .map((p) => p.text ?? "")
-            .join(" ")
-            .toLowerCase() ?? "";
-        if (taskText) {
-          const listings = marketplace.getListableSkills();
-          const match = listings.find(
-            (l) => taskText.includes(l.name.toLowerCase()) || taskText.includes(l.skillCrystalId),
-          );
-          resolvedSkillId = match?.skillCrystalId;
-        }
-      }
+      // PLAN-43 Phase 1: EXACT-id skill attribution only. The previous
+      // fallback fuzzy-matched the task text against listing names — the
+      // slopsquat vector §3.4 bans. No skillId means a generic task.
       return {
         paid: true,
         txHash: verification.txHash,
         amountUsdc: verification.amount,
         buyerPeerId: verification.senderAddress,
-        skillId: resolvedSkillId,
+        skillId: resolveRequestedSkillId(rpcParams),
       };
     }
 

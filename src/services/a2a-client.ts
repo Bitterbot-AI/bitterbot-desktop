@@ -201,6 +201,8 @@ export class A2aClient {
     agentUrl: string;
     message: string;
     walletService?: WalletService;
+    /** PLAN-43 Phase 1: exact-ID metered skill invocation on the seller. */
+    skillId?: string;
   }): Promise<A2aTaskResult> {
     const a2aUrl = `${params.agentUrl.replace(/\/+$/, "")}/a2a`;
 
@@ -213,6 +215,7 @@ export class A2aClient {
           role: "user",
           parts: [{ type: "text", text: params.message }],
         },
+        ...(params.skillId ? { skillId: params.skillId } : {}),
       },
       id: crypto.randomUUID(),
     };
@@ -334,12 +337,14 @@ export class A2aClient {
       }
 
       const result = (await response.json()) as {
-        result?: { id?: string; status?: { message?: { parts?: Array<{ text?: string }> } } };
+        result?: CreatedTaskShape;
       };
+      const settled = await this.awaitTaskResult(a2aUrl, result.result);
       return {
-        success: true,
+        success: settled.success,
+        ...(settled.error ? { error: settled.error } : {}),
         taskId: result.result?.id,
-        response: result.result?.status?.message?.parts?.[0]?.text,
+        response: settled.response,
         amountPaid: price,
         txHash: payment.txHash,
       };
@@ -350,12 +355,85 @@ export class A2aClient {
     }
 
     const result = (await response.json()) as {
-      result?: { id?: string; status?: { message?: { parts?: Array<{ text?: string }> } } };
+      result?: CreatedTaskShape;
     };
+    const settled = await this.awaitTaskResult(a2aUrl, result.result);
     return {
-      success: true,
+      success: settled.success,
+      ...(settled.error ? { error: settled.error } : {}),
       taskId: result.result?.id,
-      response: result.result?.status?.message?.parts?.[0]?.text,
+      response: settled.response,
     };
   }
+
+  /**
+   * PLAN-43 Phase 1: message/send returns the task in "working" state — the
+   * result does not exist yet (previously this client read the immediate
+   * response and buyers effectively never received their paid output).
+   * Poll tasks/get with the per-task access token until a final state.
+   */
+  private async awaitTaskResult(
+    a2aUrl: string,
+    created: CreatedTaskShape | undefined,
+  ): Promise<{ success: boolean; response?: string; error?: string }> {
+    const immediate = lastTextFromTask(created);
+    const state = created?.status?.state;
+    if (!created?.id || state === "completed") {
+      return { success: true, response: immediate };
+    }
+    if (state === "failed" || state === "canceled") {
+      return { success: false, error: immediate ?? `task ${state}` };
+    }
+    const deadline = Date.now() + this.config.taskTimeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      let task: CreatedTaskShape | undefined;
+      try {
+        const res = await fetch(a2aUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "tasks/get",
+            params: {
+              id: created.id,
+              ...(created.accessToken ? { accessToken: created.accessToken } : {}),
+            },
+            id: crypto.randomUUID(),
+          }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) {
+          continue;
+        }
+        task = ((await res.json()) as { result?: CreatedTaskShape }).result;
+      } catch {
+        continue;
+      }
+      const polledState = task?.status?.state;
+      if (polledState === "completed") {
+        return { success: true, response: lastTextFromTask(task) };
+      }
+      if (polledState === "failed" || polledState === "canceled") {
+        return { success: false, error: lastTextFromTask(task) ?? `task ${polledState}` };
+      }
+    }
+    return { success: false, error: "timed out waiting for task result" };
+  }
+}
+
+type CreatedTaskShape = {
+  id?: string;
+  accessToken?: string;
+  status?: { state?: string; message?: { parts?: Array<{ text?: string }> } };
+  artifacts?: Array<{ parts?: Array<{ text?: string }> }>;
+};
+
+function lastTextFromTask(task: CreatedTaskShape | undefined): string | undefined {
+  const artifactText = task?.artifacts
+    ?.flatMap((a) => a.parts ?? [])
+    .map((p) => p.text)
+    .filter((t): t is string => Boolean(t))
+    .at(-1);
+  return artifactText ?? task?.status?.message?.parts?.[0]?.text;
 }
