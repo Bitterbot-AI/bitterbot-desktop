@@ -11,8 +11,9 @@ import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxContext } from "./sandbox.js";
 import { logWarn } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
-import { isSubagentSessionKey } from "../routing/session-key.js";
+import { isA2aTaskSessionKey, isSubagentSessionKey } from "../routing/session-key.js";
 import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
+import { resolveA2aRemoteToolPolicy } from "./a2a-remote-policy.js";
 import { resolveAgentConfig } from "./agent-scope.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import {
@@ -252,6 +253,12 @@ export function createBitterbotCodingTools(options?: {
           getSubagentDepthFromSessionStore(options.sessionKey, { cfg: options.config }),
         )
       : undefined;
+  // PLAN-43 s3.2b: an inbound A2A task session executes a REMOTE caller's
+  // request; it gets the remote floor (default: no tools at all), which no
+  // other policy step can widen.
+  const a2aRemotePolicy = isA2aTaskSessionKey(options?.sessionKey)
+    ? resolveA2aRemoteToolPolicy(options?.config)
+    : undefined;
   const allowBackground = isToolAllowedByPolicies("process", [
     profilePolicyWithAlsoAllow,
     providerProfilePolicyWithAlsoAllow,
@@ -459,6 +466,7 @@ export function createBitterbotCodingTools(options?: {
       }),
       { policy: sandbox?.tools, label: "sandbox tools.allow" },
       { policy: subagentPolicy, label: "subagent tools.allow" },
+      { policy: a2aRemotePolicy, label: "a2a remote floor" },
     ],
   });
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.

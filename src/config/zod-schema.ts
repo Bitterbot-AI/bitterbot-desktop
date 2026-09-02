@@ -863,6 +863,22 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        // PLAN-43 s3.2b: hermetic remote-caller execution bounds
+        remoteExecution: z
+          .object({
+            tools: z
+              .object({
+                allow: z.array(z.string()).optional(),
+                deny: z.array(z.string()).optional(),
+              })
+              .strict()
+              .optional(),
+            maxInputChars: z.number().int().positive().optional(),
+            maxOutputChars: z.number().int().positive().optional(),
+            timeoutSeconds: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
         payment: z
           .object({
             enabled: z.boolean().optional(),

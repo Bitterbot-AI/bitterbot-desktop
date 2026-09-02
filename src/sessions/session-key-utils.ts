@@ -53,6 +53,16 @@ export function isSubagentSessionKey(sessionKey: string | undefined | null): boo
   return Boolean((parsed?.rest ?? "").toLowerCase().startsWith("subagent:"));
 }
 
+/**
+ * PLAN-43 §3.2b: sessions spawned to execute an inbound A2A task (a REMOTE
+ * caller's request) carry an `a2a-task:` remainder (task-executor.ts). Tool
+ * assembly uses this to apply the remote-caller floor.
+ */
+export function isA2aTaskSessionKey(sessionKey: string | undefined | null): boolean {
+  const parsed = parseAgentSessionKey(sessionKey);
+  return Boolean((parsed?.rest ?? "").toLowerCase().startsWith("a2a-task:"));
+}
+
 export function getSubagentDepth(sessionKey: string | undefined | null): number {
   const raw = (sessionKey ?? "").trim().toLowerCase();
   if (!raw) {

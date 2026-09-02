@@ -541,8 +541,41 @@ export function createA2aHttpHandler(opts: {
       }
     }
 
-    // Payment gate: if marketplace payments are enabled, verify x402 payment
-    if (config.a2a?.payment?.enabled && rpcRequest.method === "message/send") {
+    // PLAN-43 s3.2b: cap inbound message text BEFORE the payment gate, so
+    // an oversize request is refused rather than charged-then-refused.
+    if (rpcRequest.method === "message/send" || isStreamingMethod(rpcRequest)) {
+      const maxInputChars = Math.min(
+        config.a2a?.remoteExecution?.maxInputChars ?? 32_000,
+        1_000_000,
+      );
+      // Measure the exact text the executor would spawn with (part joins
+      // included), so per-part accounting can't be gamed with many parts.
+      let textChars = 0;
+      try {
+        textChars = extractTaskText(rpcRequest.params as MessageSendParams).length;
+      } catch {
+        textChars = 0; // malformed params fail later in the branch's own validation
+      }
+      if (textChars > maxInputChars) {
+        sendJson(res, 400, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.INVALID_PARAMS,
+            message: `Message text exceeds ${maxInputChars} characters`,
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+    }
+
+    // Payment gate: if marketplace payments are enabled, verify x402 payment.
+    // PLAN-43 s3.2b fix: message/stream spawns the SAME task executor as
+    // message/send and previously bypassed this gate entirely.
+    if (
+      config.a2a?.payment?.enabled &&
+      (rpcRequest.method === "message/send" || isStreamingMethod(rpcRequest))
+    ) {
       // Rate-limit payment verification attempts to prevent DoS via fake tokens
       // triggering expensive on-chain calls.
       const clientIp = resolveGatewayClientIp({

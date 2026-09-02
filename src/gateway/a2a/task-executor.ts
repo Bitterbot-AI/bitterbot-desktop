@@ -14,6 +14,7 @@ import crypto from "node:crypto";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import type { A2aTaskManager } from "./task-manager.js";
 import type { MessageSendParams } from "./types.js";
+import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { wrapExternalContent } from "../../security/external-content.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
@@ -21,8 +22,21 @@ import { callGateway } from "../call.js";
 
 const log = createSubsystemLogger("a2a/executor");
 
-/** Maximum time to wait for a sub-agent run to complete (10 minutes). */
-const DEFAULT_RUN_TIMEOUT_MS = 10 * 60 * 1000;
+/** PLAN-43 §3.2b defaults (mirrored in applyA2aDefaults). */
+export const DEFAULT_REMOTE_TIMEOUT_SECONDS = 600;
+export const DEFAULT_REMOTE_MAX_OUTPUT_CHARS = 64_000;
+
+/** Server-side wall clock for a remote task turn, seconds (min 30). */
+export function resolveRemoteTimeoutSeconds(config?: BitterbotConfig): number {
+  const raw = config?.a2a?.remoteExecution?.timeoutSeconds;
+  const seconds =
+    typeof raw === "number" && Number.isFinite(raw) && raw > 0
+      ? Math.floor(raw)
+      : DEFAULT_REMOTE_TIMEOUT_SECONDS;
+  // Upper clamp: beyond 24h the derived wait timer would overflow Node's
+  // 2^31-1 ms setTimeout ceiling and fire instantly.
+  return Math.min(Math.max(seconds, 30), 86_400);
+}
 
 /**
  * Extract plain text from A2A message parts.
@@ -76,6 +90,36 @@ export function prepareInboundA2aText(rawText: string, peerLabel?: string): stri
 }
 
 /**
+ * PLAN-43 §3.2b: guard the OUTBOUND result before it returns to the remote
+ * caller — cap its size and neutralize critical injection payloads (a
+ * compromised or prompt-injected turn must not become a worm vector to the
+ * buyer's agent).
+ */
+export function prepareOutboundA2aText(rawText: string, config?: BitterbotConfig): string {
+  const maxChars = (() => {
+    const raw = config?.a2a?.remoteExecution?.maxOutputChars;
+    const chars =
+      typeof raw === "number" && Number.isFinite(raw) && raw > 0
+        ? Math.floor(raw)
+        : DEFAULT_REMOTE_MAX_OUTPUT_CHARS;
+    return Math.min(chars, 1_000_000); // the cap must not be config-disabled
+  })();
+  let text = rawText;
+  if (text.length > maxChars) {
+    text = `${text.slice(0, maxChars)}\n[Result truncated at ${maxChars} characters.]`;
+  }
+  const scan = scanSkillForInjection(text);
+  if (scan.severity === "critical") {
+    log.warn(`A2A outbound result withheld by injection scan: ${scan.reason}`);
+    return (
+      "[The task ran, but its result was withheld: it tripped the critical " +
+      "prompt-injection scanner on the way out.]"
+    );
+  }
+  return text;
+}
+
+/**
  * Spawn a sub-agent session to execute an A2A task, then update the task
  * lifecycle when the session completes. This runs asynchronously — the caller
  * should NOT await it (the task is returned to the A2A client immediately in
@@ -87,8 +131,13 @@ export async function executeA2aTask(params: {
   config: BitterbotConfig;
   taskManager: A2aTaskManager;
 }): Promise<void> {
-  const { taskId, taskText, config: _config, taskManager } = params;
-  const childSessionKey = `agent:default:a2a-task:${crypto.randomUUID()}`;
+  const { taskId, taskText, config, taskManager } = params;
+  // Resolve the real default agent id — the literal "default" here was the
+  // same class of bug fixed for circles (see a2a-http.ts circles notes): it
+  // sent these sessions to a phantom workspace-default and skipped the
+  // default agent's config branch.
+  const agentId = resolveDefaultAgentId(config);
+  const childSessionKey = `agent:${agentId}:a2a-task:${crypto.randomUUID()}`;
   const idempotencyKey = crypto.randomUUID();
   // PLAN-31 Phase 0: scan + wrap the peer's text before it reaches the
   // agent loop. This is the ONLY path inbound A2A text takes to a spawned
@@ -108,7 +157,10 @@ export async function executeA2aTask(params: {
       // it just won't have depth metadata set.
     }
 
-    // 2. Spawn the sub-agent run.
+    // 2. Spawn the sub-agent run. PLAN-43 §3.2b: the run carries a REAL
+    // server-side wall clock (timeout: 0 previously meant ~unbounded — the
+    // 10-minute agent.wait below only ended the reporting, never the run).
+    const timeoutSeconds = resolveRemoteTimeoutSeconds(config);
     const response = await callGateway<{ runId: string }>({
       method: "agent",
       params: {
@@ -118,7 +170,7 @@ export async function executeA2aTask(params: {
         deliver: false,
         lane: "subagent",
         label: `a2a-task-${taskId.slice(0, 8)}`,
-        timeout: 0, // no timeout — we control it via agent.wait
+        timeout: timeoutSeconds,
       },
       timeoutMs: 15_000,
     });
@@ -131,8 +183,11 @@ export async function executeA2aTask(params: {
 
     log.info(`A2A task ${taskId} → session ${childSessionKey}, run ${runId}`);
 
-    // 3. Wait for the run to complete.
-    const runTimeoutMs = DEFAULT_RUN_TIMEOUT_MS;
+    // 3. Wait for the run to complete. The wait outlasts the run's own
+    // wall clock so the timeout path is the run aborting itself; if the
+    // wait still expires, abort the session explicitly rather than leaving
+    // a remote caller's turn running unobserved.
+    const runTimeoutMs = timeoutSeconds * 1000 + 30_000;
     const wait = await callGateway<{
       status?: string;
       endedAt?: number;
@@ -142,6 +197,17 @@ export async function executeA2aTask(params: {
       params: { runId, timeoutMs: runTimeoutMs },
       timeoutMs: runTimeoutMs + 15_000,
     });
+    if (wait?.status === "timeout") {
+      try {
+        await callGateway({
+          method: "chat.abort",
+          params: { sessionKey: childSessionKey, runId },
+          timeoutMs: 10_000,
+        });
+      } catch {
+        // Best-effort: the run's own wall clock is the backstop.
+      }
+    }
 
     // 4. Read the final assistant reply from the session history.
     let resultText = "Task completed.";
@@ -186,11 +252,13 @@ export async function executeA2aTask(params: {
 
     // 5. Update the A2A task based on run outcome.
     if (wait?.status === "error") {
-      const errorMsg = wait.error ?? "Sub-agent run failed";
-      log.warn(`A2A task ${taskId} failed: ${errorMsg}`);
+      // Do NOT echo the raw error to the remote caller: provider errors can
+      // carry prompt fragments and internal detail. Log locally, return a
+      // fixed string.
+      log.warn(`A2A task ${taskId} failed: ${wait.error ?? "Sub-agent run failed"}`);
       taskManager.updateStatus(taskId, "failed", {
         role: "agent",
-        parts: [{ type: "text", text: errorMsg }],
+        parts: [{ type: "text", text: "Task execution failed." }],
       });
     } else if (wait?.status === "timeout") {
       log.warn(`A2A task ${taskId} timed out`);
@@ -199,16 +267,18 @@ export async function executeA2aTask(params: {
         parts: [{ type: "text", text: "Task execution timed out" }],
       });
     } else {
-      // Success — add the result as an artifact and complete.
+      // Success — guard the outbound text (size cap + injection scan),
+      // then add the result as an artifact and complete.
+      const safeResult = prepareOutboundA2aText(resultText, config);
       taskManager.addArtifact(taskId, {
         name: "result",
         description: "Agent response",
-        parts: [{ type: "text", text: resultText }],
+        parts: [{ type: "text", text: safeResult }],
         index: 0,
       });
       taskManager.updateStatus(taskId, "completed", {
         role: "agent",
-        parts: [{ type: "text", text: resultText }],
+        parts: [{ type: "text", text: safeResult }],
       });
       log.info(`A2A task ${taskId} completed`);
     }
@@ -216,9 +286,11 @@ export async function executeA2aTask(params: {
     const errorMsg = err instanceof Error ? err.message : String(err);
     log.error(`A2A task ${taskId} execution error: ${errorMsg}`);
     try {
+      // Same rule as above: exception text (paths, config detail) stays in
+      // the local log and never returns to the remote caller.
       taskManager.updateStatus(taskId, "failed", {
         role: "agent",
-        parts: [{ type: "text", text: `Task execution failed: ${errorMsg}` }],
+        parts: [{ type: "text", text: "Task execution failed." }],
       });
     } catch {
       // If updating the task itself fails, there's nothing we can do.

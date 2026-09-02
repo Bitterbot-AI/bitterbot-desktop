@@ -11,6 +11,7 @@ import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import {
+  isA2aTaskSessionKey,
   isCronSessionKey,
   isSubagentSessionKey,
   normalizeAgentId,
@@ -436,8 +437,17 @@ export async function runEmbeddedAttempt(
       },
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
+    // PLAN-43 s3.2b: an inbound A2A task turn executes a REMOTE caller's
+    // request. It must be hermetic on the prompt side too: minimal mode,
+    // and NONE of the memory-derived blocks below (proactive recall is
+    // steered by the caller's own message text; canonical facts and session
+    // briefs are the node's private state — with zero tools the model can
+    // still be asked to repeat its own system prompt back out).
+    const remoteTaskTurn = isA2aTaskSessionKey(params.sessionKey);
     const promptMode =
-      isSubagentSessionKey(params.sessionKey) || isCronSessionKey(params.sessionKey)
+      remoteTaskTurn ||
+      isSubagentSessionKey(params.sessionKey) ||
+      isCronSessionKey(params.sessionKey)
         ? "minimal"
         : "full";
     const docsPath = await resolveBitterbotDocsPath({
@@ -448,29 +458,36 @@ export async function runEmbeddedAttempt(
     });
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
 
-    // Resolve endocrine state for personality modulation in system prompt
-    const endocrineState = await resolveEndocrineState({
-      config: params.config,
-      agentId: sessionAgentId,
-      workspaceDir: effectiveWorkspace,
-      // Drives involuntary proactive recall: surface what we already know about
-      // this message's topic into the system prompt before the model answers.
-      userMessage: params.prompt,
-      // Scopes the recall cooldown to this conversation so a fresh session in
-      // a warm process is not suppressed by the previous session's window.
-      sessionKey: params.sessionKey ?? params.sessionId,
-      // PLAN-40 funnel: dream-fact consumption stamps only in full mode
-      // (minimal assembly drops the proactive block after selection).
-      promptMode,
-    }).catch(() => undefined);
+    // Resolve endocrine state for personality modulation in system prompt.
+    // Skipped entirely for remote task turns: its proactive-recall block is
+    // keyed off the caller's message and its session brief is fail-open.
+    const endocrineState = remoteTaskTurn
+      ? undefined
+      : await resolveEndocrineState({
+          config: params.config,
+          agentId: sessionAgentId,
+          workspaceDir: effectiveWorkspace,
+          // Drives involuntary proactive recall: surface what we already know about
+          // this message's topic into the system prompt before the model answers.
+          userMessage: params.prompt,
+          // Scopes the recall cooldown to this conversation so a fresh session in
+          // a warm process is not suppressed by the previous session's window.
+          sessionKey: params.sessionKey ?? params.sessionId,
+          // PLAN-40 funnel: dream-fact consumption stamps only in full mode
+          // (minimal assembly drops the proactive block after selection).
+          promptMode,
+        }).catch(() => undefined);
 
     // PLAN-33: canonical facts resolve independently of endocrine state so a
-    // hormonal/recall failure can never drop the ground-truth block.
-    const canonicalFacts = await resolveCanonicalFactsBlock({
-      config: params.config,
-      agentId: sessionAgentId,
-      promptMode,
-    }).catch(() => undefined);
+    // hormonal/recall failure can never drop the ground-truth block. Never
+    // resolved for remote task turns (node-private ground truth).
+    const canonicalFacts = remoteTaskTurn
+      ? undefined
+      : await resolveCanonicalFactsBlock({
+          config: params.config,
+          agentId: sessionAgentId,
+          promptMode,
+        }).catch(() => undefined);
 
     // PLAN-34 Phase 2b: idle-research findings surface deterministically on
     // the next live turn — same independence contract as canonical facts.

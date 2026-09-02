@@ -3,6 +3,7 @@ import { parseAgentSessionKey, type ParsedAgentSessionKey } from "../sessions/se
 
 export {
   getSubagentDepth,
+  isA2aTaskSessionKey,
   isCronSessionKey,
   isAcpSessionKey,
   isSubagentSessionKey,

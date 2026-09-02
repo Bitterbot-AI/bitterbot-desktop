@@ -561,6 +561,15 @@ export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
         expose: a2a.skills?.allowlist ? "all" : "none",
         ...a2a.skills,
       },
+      // PLAN-43 s3.2b: remote-caller execution bounds. The tool floor
+      // itself is hardcoded in agents/a2a-remote-policy.ts; these are the
+      // resource caps and the operator's (floor-limited) tool grants.
+      remoteExecution: {
+        maxInputChars: 32_000,
+        maxOutputChars: 64_000,
+        timeoutSeconds: 600,
+        ...a2a.remoteExecution,
+      },
       payment: {
         enabled: isEarningCapable(cfg),
         ...a2a.payment,

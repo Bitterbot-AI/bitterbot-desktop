@@ -31,6 +31,26 @@ export type A2aConfig = {
     /** Explicit allowlist of skill names to expose (overrides expose setting). */
     allowlist?: string[];
   };
+  /**
+   * PLAN-43 §3.2b: hermetic execution of inbound (remote-caller) A2A tasks.
+   * A remote caller's turn defaults to a pure model turn: no tools, a real
+   * wall clock, capped input/output. `tools.allow` extends the toolset, but
+   * the hardcoded remote floor (wallet/shell/sessions/egress — see
+   * agents/a2a-remote-policy.ts) can never be granted back.
+   */
+  remoteExecution?: {
+    /** Tool grants for remote task turns. Default: allow nothing. */
+    tools?: {
+      allow?: string[];
+      deny?: string[];
+    };
+    /** Max chars of inbound message text; larger requests are refused before the payment gate. Default: 32000. */
+    maxInputChars?: number;
+    /** Max chars of result text returned to the caller (truncated beyond). Default: 64000. */
+    maxOutputChars?: number;
+    /** Server-side wall clock for the spawned turn, seconds. Default: 600. */
+    timeoutSeconds?: number;
+  };
   /** x402 payment gate configuration. */
   payment?: {
     /**

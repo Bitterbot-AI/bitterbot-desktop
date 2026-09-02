@@ -173,6 +173,13 @@ function buildConfigSnapshot(a2a: NonNullable<ReturnType<typeof loadConfig>["a2a
     minPaymentUsdc: a2a.payment?.x402?.minPayment,
     bearerAuth: (a2a.authentication?.type ?? "bearer") === "bearer",
     skillsExposed: a2a.skills?.expose ?? (a2a.skills?.allowlist ? "all" : "none"),
+    // PLAN-43 s3.2b: the hermetic bounds on inbound remote task turns.
+    remoteExecution: {
+      toolsAllowed: a2a.remoteExecution?.tools?.allow ?? [],
+      maxInputChars: a2a.remoteExecution?.maxInputChars ?? 32_000,
+      maxOutputChars: a2a.remoteExecution?.maxOutputChars ?? 64_000,
+      timeoutSeconds: a2a.remoteExecution?.timeoutSeconds ?? 600,
+    },
     erc8004Enabled: a2a.erc8004?.enabled === true,
   };
 }

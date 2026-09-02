@@ -754,6 +754,29 @@ If any check fails, the selling agent responds with 402 and a JSON-RPC error bod
 
 ---
 
+## Remote Execution Is Hermetic (PLAN-43 Phase 1)
+
+An inbound `message/send` or `message/stream` task executes an agent turn on
+this node driven by a REMOTE caller's input. That turn is hermetic:
+
+- It gets NO tools by default: it is a pure model turn over the prompt. The
+  operator can grant tools via `a2a.remoteExecution.tools.allow`, but a
+  hardcoded floor (wallet, shell/exec/process, session spawning and
+  steering, cron, node control, browser/computer use, outbound messaging,
+  web egress, memory/skill state) can never be granted back to a remote
+  caller, by config or otherwise. The Docker session sandbox
+  (`agents.defaults.sandbox`) remains available as a hard process boundary
+  on top.
+- It carries a real server-side wall clock (`timeoutSeconds`, default 600):
+  the run aborts at the deadline rather than surviving its reporting
+  window.
+- Inbound text is size-capped (`maxInputChars`) BEFORE the payment gate, so
+  an oversize request is refused rather than charged, then injection-scanned
+  and wrapped as untrusted external content.
+- The result is size-capped (`maxOutputChars`) and injection-scanned before
+  it returns to the caller; a critical payload is withheld.
+- `message/stream` passes the same x402 payment gate as `message/send`.
+
 ## Selling Is Opt-In Per Skill (PLAN-43 Phase 0)
 
 The paid listing pool is fully decoupled from free skill propagation:
@@ -795,6 +818,13 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
     "skills": {
       "expose": "none", // "all" | "none"; DEFAULT "none" (PLAN-43 Phase 0: advertising skills is opt-in)
       "allowlist": ["summarize-webpage"], // implies exposure of exactly these skills when "expose" is unset
+    },
+    "remoteExecution": {
+      // PLAN-43 Phase 1: hermetic execution of inbound task turns
+      "tools": { "allow": [], "deny": [] }, // default: a remote turn gets NO tools
+      "maxInputChars": 32000, // oversize requests are refused before the payment gate
+      "maxOutputChars": 64000, // results truncate beyond this
+      "timeoutSeconds": 600, // server-side wall clock on the spawned turn
     },
     "payment": {
       "enabled": false, // default derives from wallet readiness: on when full CDP creds present, off otherwise; explicit value wins
