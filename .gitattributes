@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# The canonical corpus is byte-pinned (SHA-256) against its embedded copy in
+# src/memory/skill-evolution/canonical-corpus.ts; a CRLF checkout on Windows
+# breaks the byte-identity test. Never rewrite its line endings.
+benchmarks/skill-evolution/*.jsonl text eol=lf
