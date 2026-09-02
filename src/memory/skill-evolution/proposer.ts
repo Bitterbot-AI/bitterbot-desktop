@@ -30,6 +30,7 @@ import type { LlmCallFn } from "./maintainer.js";
 import type { LabeledTrace } from "./types.js";
 import { impactTrailPath, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { liveSkillDir, readLive, resolveStorageRoots } from "../../agents/skills/skill-storage.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { markDreamConsumption } from "../dream-utility.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
 import {
@@ -40,6 +41,8 @@ import {
   readPattern,
   type WikiPatchOp,
 } from "./wiki-store.js";
+
+const log = createSubsystemLogger("skill-evolution/proposer");
 
 export const DEFAULT_MAX_PROPOSER_TURNS = 24;
 const READ_RESULT_MAX_CHARS = 8_000;
@@ -314,6 +317,12 @@ export async function runSkillProposer(deps: ProposerDeps): Promise<ProposerRunR
     const call = extractJsonObject(raw);
     if (!call) {
       protocolErrors += 1;
+      // Live finding 2026-09-02: three unparseable replies force no_action
+      // with no trace of WHAT the model said. Keep a sample in the log so
+      // format drift is diagnosable.
+      log.info(
+        `proposer protocol error ${protocolErrors}/3 on turn ${turn}: ${raw.replace(/\s+/g, " ").slice(0, 300)}`,
+      );
       if (protocolErrors >= 3) {
         return {
           proposal: { action: "no_action", reason: "proposer protocol errors" },

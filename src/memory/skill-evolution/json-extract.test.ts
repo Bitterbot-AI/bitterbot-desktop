@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractJsonObjectLenient } from "./json-extract.js";
+import { extractJsonObjectLenient, firstBalancedObject } from "./json-extract.js";
 
 describe("extractJsonObjectLenient", () => {
   it("parses bare, fenced, and prose-wrapped objects", () => {
@@ -12,6 +12,15 @@ describe("extractJsonObjectLenient", () => {
     const obj = { content: "# T\n\n```bash\necho hi\n```\n\nend", n: 2 };
     const raw = "```json\n" + JSON.stringify(obj) + "\n```";
     expect(extractJsonObjectLenient(raw)).toEqual(obj);
+  });
+
+  it("takes the FIRST balanced object when a reply carries several, or trailing prose", () => {
+    const raw =
+      'Thinking...\n{"tool":"read_file","path":"wiki/index.md"}\nThen I will {"tool":"finish"}';
+    expect(extractJsonObjectLenient(raw)).toEqual({ tool: "read_file", path: "wiki/index.md" });
+    expect(firstBalancedObject('x {"a":"}{","b":{"c":1}} y {"d":2}')).toBe(
+      '{"a":"}{","b":{"c":1}}',
+    );
   });
 
   it("returns null for arrays, scalars, and prose", () => {

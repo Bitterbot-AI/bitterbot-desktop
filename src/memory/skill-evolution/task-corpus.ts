@@ -84,6 +84,12 @@ function parseChecker(value: unknown): TaskChecker | null {
         return null;
       }
     }
+    if (c.kind === "final") {
+      // Drafting models sometimes put the line label inside the expected
+      // value ("FINAL: 42"); the checker compares the captured value only.
+      const stripped = c.value.replace(/^\s*FINAL:\s*/i, "").trim();
+      return stripped ? { kind: "final", value: stripped } : null;
+    }
     return { kind: c.kind, value: c.value };
   }
   return null;

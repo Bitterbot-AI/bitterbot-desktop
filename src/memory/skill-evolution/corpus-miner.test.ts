@@ -135,6 +135,24 @@ describe("mineCapabilityTasks", () => {
     expect(called).toBe(false);
   });
 
+  it("strips a FINAL: label a drafting model put inside the expected value", async () => {
+    const configDir = await tmpConfigDir();
+    const draft = JSON.stringify({
+      id: "labeled-value",
+      prompt: 'What is 2+2? Reply with exactly one line of the form "FINAL: <answer>".',
+      checker: { kind: "final", value: "FINAL: 4" },
+    });
+    await mineCapabilityTasks({
+      failingTraceTexts: ["trace"],
+      llmCall: async () => draft,
+      existingIds: new Set(),
+      storeOpts: { configDir },
+    });
+    const pending = await fs.readFile(pendingCorpusPath({ configDir }), "utf-8");
+    expect(pending).toContain('"value":"4"');
+    expect(pending).not.toContain("FINAL: 4");
+  });
+
   it("llm failure is skipped, never thrown", async () => {
     const configDir = await tmpConfigDir();
     const result = await mineCapabilityTasks({
