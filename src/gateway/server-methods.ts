@@ -169,6 +169,8 @@ const WRITE_METHODS = new Set([
   "workspace.write",
   "dream.trigger",
   "dream.utility.rate",
+  "marketplace.listForSale",
+  "marketplace.delist",
   "management.propagateBan",
   "circles.create",
   "circles.invite",

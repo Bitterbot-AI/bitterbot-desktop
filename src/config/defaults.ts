@@ -554,7 +554,11 @@ export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
         ...a2a.authentication,
       },
       skills: {
-        expose: "all",
+        // PLAN-43 Phase 0: advertising skills on the public agent card is
+        // opt-in (closes the auto-list-everything disclosure footgun). An
+        // explicit allowlist without `expose` implies exposure of exactly
+        // the allowlisted skills.
+        expose: a2a.skills?.allowlist ? "all" : "none",
         ...a2a.skills,
       },
       payment: {

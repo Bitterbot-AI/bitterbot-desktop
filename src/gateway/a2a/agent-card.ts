@@ -140,7 +140,9 @@ const CANONICAL_ERC8004_IDENTITY: Record<"base" | "base-sepolia", string> = {
 };
 
 function mapSkills(skills: SkillEntry[], a2a: A2aConfig): A2aSkill[] {
-  const expose = a2a.skills?.expose ?? "all";
+  // PLAN-43 Phase 0: default "none" — a node advertises no skills until
+  // the operator opts in (a2a.skills.expose = "all" or an allowlist).
+  const expose = a2a.skills?.expose ?? (a2a.skills?.allowlist ? "all" : "none");
   if (expose === "none") {
     return [];
   }

@@ -56,6 +56,10 @@ export class MemStore {
   private ensureSchema(): void {
     ensureColumn(this.db, "chunks", "publish_visibility", "TEXT");
     ensureColumn(this.db, "chunks", "published_at", "INTEGER");
+    // PLAN-43 Phase 0 (invariant I2): selling is an explicit per-skill
+    // opt-in, distinct from — and never inherited from — the free
+    // propagation pool (publish_visibility='shared').
+    ensureColumn(this.db, "chunks", "for_sale", "INTEGER DEFAULT 0");
   }
 
   /**

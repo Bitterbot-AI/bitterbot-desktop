@@ -96,6 +96,7 @@ import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
 import { SkillCrystallizer } from "./skill-crystallizer.js";
+import { readValidationSummaries } from "./skill-evolution/validation-summaries.js";
 import { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
@@ -6080,7 +6081,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     // Initialize marketplace economics
     const a2aCfg = this.cfg.a2a;
     if (a2aCfg?.marketplace?.enabled !== false) {
-      this.marketplaceEconomics = new MarketplaceEconomics(this.db, a2aCfg?.marketplace?.pricing);
+      this.marketplaceEconomics = new MarketplaceEconomics(this.db, a2aCfg?.marketplace?.pricing, {
+        // PLAN-43 Phase 0: listings rank by PLAN-42 validation verdicts,
+        // read off the live skill dirs at refresh time.
+        validationLookup: () => readValidationSummaries(),
+      });
     }
 
     // Plan 8, Phase 2: Initialize SkillMarketplace for search/browse/recommendations

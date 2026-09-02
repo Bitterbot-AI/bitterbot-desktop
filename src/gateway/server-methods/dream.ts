@@ -62,6 +62,10 @@ interface SkillMarketplaceView {
 interface MarketplaceEconomicsView {
   getEconomicSummary(): unknown;
   getListableSkills(): unknown[];
+  setForSale(
+    skillCrystalId: string,
+    forSale: boolean,
+  ): { ok: boolean; forSale?: boolean; reason?: string };
 }
 
 /** Properties of MemoryIndexManager that dream handlers access beyond MemorySearchManager. */
@@ -663,6 +667,54 @@ export const dreamHandlers: GatewayRequestHandlers = {
         return;
       }
       respond(true, marketplace.getSkillDetail(String(params.stableSkillId)));
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // PLAN-43 Phase 0: the explicit per-skill selling opt-in (invariant I2).
+  // Selling is opt-in per crystal and never inherited from the free
+  // 'shared' propagation pool. No money moves here — listing eligibility
+  // still passes the pricing gates, and the whole paid surface stays
+  // behind a2a.marketplace.enabled (default off).
+  "marketplace.listForSale": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const economics = (manager as unknown as DreamManagerView).getMarketplaceEconomics?.();
+      if (!economics) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.UNAVAILABLE, "marketplace not initialized"),
+        );
+        return;
+      }
+      const crystalId = typeof params.crystalId === "string" ? params.crystalId : "";
+      const result = economics.setForSale(crystalId, true);
+      respond(true, {
+        ...result,
+        ...(result.ok
+          ? { note: "priced and gated at the next consolidation refresh (~30 min)" }
+          : {}),
+      });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+  "marketplace.delist": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const economics = (manager as unknown as DreamManagerView).getMarketplaceEconomics?.();
+      if (!economics) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.UNAVAILABLE, "marketplace not initialized"),
+        );
+        return;
+      }
+      const crystalId = typeof params.crystalId === "string" ? params.crystalId : "";
+      respond(true, economics.setForSale(crystalId, false));
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }

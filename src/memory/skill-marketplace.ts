@@ -44,7 +44,10 @@ export class SkillMarketplace {
   }
 
   /**
-   * List a skill on the marketplace.
+   * List a skill in the FREE browse layer (search/trending). This is NOT
+   * the selling opt-in — that is `MarketplaceEconomics.setForSale`, and
+   * the two are deliberately decoupled (PLAN-43 invariant I2): making a
+   * skill browsable must never auto-enroll it into the paid pool.
    */
   listSkill(crystalId: string, description?: string): boolean {
     const row = this.db
@@ -63,7 +66,7 @@ export class SkillMarketplace {
   }
 
   /**
-   * Delist a skill from the marketplace.
+   * Remove a skill from the free browse layer (does not touch `for_sale`).
    */
   delistSkill(crystalId: string): boolean {
     const result = this.db

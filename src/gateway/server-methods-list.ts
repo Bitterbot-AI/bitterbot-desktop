@@ -165,6 +165,8 @@ const BASE_METHODS = [
   "marketplace.trending",
   "marketplace.recommendations",
   "marketplace.detail",
+  "marketplace.listForSale",
+  "marketplace.delist",
   // Management
   "management.census",
   "management.anomalies",

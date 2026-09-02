@@ -22,7 +22,11 @@ export type A2aConfig = {
   maxTasksPerMinute?: number;
   /** Control which skills are advertised in the Agent Card. */
   skills?: {
-    /** Which skills to expose. Default: "all". */
+    /**
+     * Which skills to expose. Default: "none" (PLAN-43 Phase 0: skill
+     * advertising is opt-in; setting an allowlist implies exposure of the
+     * allowlisted skills).
+     */
     expose?: "all" | "none";
     /** Explicit allowlist of skill names to expose (overrides expose setting). */
     allowlist?: string[];

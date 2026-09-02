@@ -31,8 +31,8 @@ import {
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { loadEffectiveCorpus } from "./canonical-corpus.js";
 import { hashProposalContent } from "./proposal-apply.js";
-import { loadTaskCorpus } from "./task-corpus.js";
 import { type AgentTurnFn, makeInjectedSkillRunner } from "./task-runner.js";
 import { validateAgainstRecords } from "./validate-records.js";
 import { type TaskRunnerFn, validateAgainstTasks } from "./validate-tasks.js";
@@ -212,9 +212,12 @@ async function settleOne(
       ? makeInjectedSkillRunner(deps.agentTurn, staged.content, incumbent)
       : undefined);
   if (mode === "tasks" && runTask) {
-    const corpus = await loadTaskCorpus(trailOpts);
+    // Canonical baseline + grown corpus (PLAN-42 §5.7 / PLAN-43 §3.6): a
+    // fresh node with no trace history still validates against the shipped
+    // canonical tasks instead of falling back to records.
+    const corpus = await loadEffectiveCorpus(trailOpts);
     if (!corpus) {
-      verdictDetail = "tasks mode but no corpus on this node; falling back to records";
+      verdictDetail = "tasks mode but no corpus available; falling back to records";
     } else {
       const verdict = await validateAgainstTasks({ corpus, runTask });
       verdictAccepted = verdict.accepted;

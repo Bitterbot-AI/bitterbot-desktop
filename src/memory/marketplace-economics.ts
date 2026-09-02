@@ -15,6 +15,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import {
+  normalizeSkillName,
+  type SkillValidationSummary,
+} from "./skill-evolution/validation-summaries.js";
 import { computeSkillPrice, type SkillPricingConfig } from "./skill-pricing.js";
 
 const log = createSubsystemLogger("memory/marketplace-economics");
@@ -32,6 +36,22 @@ export interface MarketplaceListing {
   };
   downloadCount: number;
   listedAt: number | null;
+  /** PLAN-42 validation verdict for this skill, when one exists (PLAN-43 Phase 0). */
+  validation?: {
+    verdict: string;
+    score?: number;
+    corpusVersion?: string;
+    canonical: boolean;
+  };
+}
+
+export interface MarketplaceEconomicsDeps {
+  /**
+   * Returns PLAN-42 validation summaries keyed by normalized skill name
+   * (skill-evolution/validation-summaries.ts). Listings rank by these
+   * verified outcomes, never by farmable counts (invariant I6/I10).
+   */
+  validationLookup?: () => Map<string, SkillValidationSummary>;
 }
 
 export interface PurchaseRecord {
@@ -73,6 +93,7 @@ export class MarketplaceEconomics {
   constructor(
     private readonly db: DatabaseSync,
     private readonly pricingConfig?: Partial<SkillPricingConfig>,
+    private readonly deps: MarketplaceEconomicsDeps = {},
   ) {
     this.ensureSchema();
   }
@@ -152,24 +173,60 @@ export class MarketplaceEconomics {
       );
       CREATE INDEX IF NOT EXISTS idx_x402_consumed_at ON x402_consumed_tx(consumed_at);
     `);
+
+    // PLAN-43 Phase 0: validation columns on pre-existing listing tables
+    // (the CREATE above only covers fresh databases).
+    this.addColumnIfMissing("marketplace_listings", "validation_verdict", "TEXT");
+    this.addColumnIfMissing("marketplace_listings", "validation_score", "REAL");
+    this.addColumnIfMissing("marketplace_listings", "validation_corpus_version", "TEXT");
+    this.addColumnIfMissing("marketplace_listings", "validation_canonical", "INTEGER DEFAULT 0");
+    // The opt-in flag normally lands via MemStore.ensureSchema; ensure it
+    // here too so this module is self-sufficient against any chunks table.
+    if (this.tableExists("chunks")) {
+      this.addColumnIfMissing("chunks", "for_sale", "INTEGER DEFAULT 0");
+    }
+  }
+
+  private tableExists(table: string): boolean {
+    const row = this.db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+      .get(table);
+    return row !== undefined;
+  }
+
+  private addColumnIfMissing(table: string, column: string, ddl: string): void {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    }
   }
 
   /**
-   * Refresh marketplace listings by scanning all published skill crystals.
-   * Called during consolidation (every 30 min) — not on every request.
+   * Refresh marketplace state during consolidation (every 30 min) — not on
+   * every request. Two decoupled outputs (PLAN-43 Phase 0, invariants
+   * I1/I2):
+   *
+   *  - PAID listings (`marketplace_listings`) come ONLY from crystals with
+   *    the explicit `for_sale = 1` opt-in — never from the free 'shared'
+   *    propagation pool.
+   *  - The FREE browse flag (`chunks.marketplace_listed`, feeding
+   *    SkillMarketplace search/trending/recommendations and the discovery
+   *    agent) keeps its pre-Phase-0 semantics: any shared OR for-sale
+   *    skill that passes the quality gates is browsable. Free
+   *    discoverability is never conditioned on the paid opt-in.
    *
    * All writes are wrapped in a single transaction to avoid blocking the
    * Node.js event loop during consolidation. (Gemini peer review: SQLite I/O choke fix)
    */
   refreshListings(reputationScore: number): number {
-    // Get all published skill/task_pattern crystals
     const skills = this.db
       .prepare(`
       SELECT c.id, c.text, c.semantic_type,
              COALESCE(c.download_count, 0) as download_count,
-             c.skill_category
+             c.skill_category,
+             COALESCE(c.for_sale, 0) as for_sale
       FROM chunks c
-      WHERE c.publish_visibility = 'shared'
+      WHERE (COALESCE(c.for_sale, 0) = 1 OR c.publish_visibility = 'shared')
         AND c.semantic_type IN ('skill', 'task_pattern')
         AND COALESCE(c.lifecycle_state, 'active') != 'archived'
     `)
@@ -179,7 +236,17 @@ export class MarketplaceEconomics {
       semantic_type: string;
       download_count: number;
       skill_category: string | null;
+      for_sale: number;
     }>;
+
+    let validations: Map<string, SkillValidationSummary> | null = null;
+    if (skills.some((s) => s.for_sale === 1) && this.deps.validationLookup) {
+      try {
+        validations = this.deps.validationLookup();
+      } catch (err) {
+        log.warn(`validation lookup failed; listings rank unvalidated: ${String(err)}`);
+      }
+    }
 
     let listedCount = 0;
     const now = Date.now();
@@ -210,13 +277,31 @@ export class MarketplaceEconomics {
         );
 
         const name = skill.text.split("\n")[0]?.slice(0, 100).trim() || skill.id.slice(0, 8);
+
+        // Browse flag first: same pre-Phase-0 gate (pricing.listable), for
+        // shared and for-sale skills alike — free discovery is independent
+        // of the paid opt-in.
+        try {
+          this.db
+            .prepare(`UPDATE chunks SET marketplace_listed = ? WHERE id = ?`)
+            .run(pricing.listable ? 1 : 0, skill.id);
+        } catch {
+          /* marketplace_listed column may not exist on older schemas */
+        }
+
+        // Paid listing only for the explicit opt-in.
+        if (skill.for_sale !== 1) {
+          continue;
+        }
+        const validation = validations?.get(normalizeSkillName(name)) ?? null;
         this.db
           .prepare(`
           INSERT INTO marketplace_listings
             (skill_crystal_id, name, description, price_usdc, listable, listing_block_reason,
              total_executions, success_rate, avg_reward_score, download_count, bounty_matches,
+             validation_verdict, validation_score, validation_corpus_version, validation_canonical,
              listed_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(skill_crystal_id) DO UPDATE SET
             price_usdc = excluded.price_usdc,
             listable = excluded.listable,
@@ -226,6 +311,10 @@ export class MarketplaceEconomics {
             avg_reward_score = excluded.avg_reward_score,
             download_count = excluded.download_count,
             bounty_matches = excluded.bounty_matches,
+            validation_verdict = excluded.validation_verdict,
+            validation_score = excluded.validation_score,
+            validation_corpus_version = excluded.validation_corpus_version,
+            validation_canonical = excluded.validation_canonical,
             listed_at = CASE WHEN excluded.listable = 1 AND marketplace_listings.listed_at IS NULL
                         THEN excluded.updated_at ELSE marketplace_listings.listed_at END,
             updated_at = excluded.updated_at
@@ -242,25 +331,41 @@ export class MarketplaceEconomics {
             metrics.avgRewardScore,
             skill.download_count,
             0,
+            validation?.verdict ?? null,
+            validation?.meanDelta ?? null,
+            validation?.corpusVersion ?? null,
+            validation?.canonical ? 1 : 0,
             pricing.listable ? now : null,
             now,
           );
-
-        // Mirror listability onto the chunk so the browse layer
-        // (SkillMarketplace search/trending/recommendations and the
-        // discovery agent) sees the same skills this engine prices.
-        try {
-          this.db
-            .prepare(`UPDATE chunks SET marketplace_listed = ? WHERE id = ?`)
-            .run(pricing.listable ? 1 : 0, skill.id);
-        } catch {
-          /* marketplace_listed column may not exist on older schemas */
-        }
 
         if (pricing.listable) {
           listedCount++;
         }
       }
+
+      // Sweep: any listing whose crystal is no longer opted in (for_sale
+      // cleared, crystal archived/deleted, or a row left over from the
+      // pre-Phase-0 era when the free 'shared' pool auto-fed this table)
+      // stops being listable NOW. Without this, a skill leaving the pool
+      // would keep its stale listable=1 row forever.
+      this.db
+        .prepare(`
+        UPDATE marketplace_listings
+           SET listable = 0, listing_block_reason = 'not-for-sale', updated_at = ?
+         WHERE listable = 1
+           AND skill_crystal_id NOT IN (
+             SELECT id FROM chunks
+              WHERE COALESCE(for_sale, 0) = 1
+                AND semantic_type IN ('skill', 'task_pattern')
+                AND COALESCE(lifecycle_state, 'active') != 'archived'
+           )
+      `)
+        .run(now);
+      // Deliberately NO sweep of chunks.marketplace_listed here: that flag
+      // is the FREE browse layer and must never be cleared for not paying
+      // in (invariant I1).
+
       this.db.exec("COMMIT");
     } catch (err) {
       try {
@@ -272,6 +377,58 @@ export class MarketplaceEconomics {
     }
 
     return listedCount;
+  }
+
+  /**
+   * PLAN-43 Phase 0: the explicit per-skill selling opt-in. Setting
+   * for_sale makes the crystal a listing CANDIDATE — it is priced and
+   * gated (execution count, success rate) at the next consolidation
+   * refresh. Clearing it delists immediately. Free propagation
+   * (publish_visibility) is untouched in both directions.
+   */
+  setForSale(
+    skillCrystalId: string,
+    forSale: boolean,
+  ): { ok: boolean; forSale?: boolean; reason?: string } {
+    const row = this.db
+      .prepare(`SELECT id, semantic_type, governance_json FROM chunks WHERE id = ?`)
+      .get(skillCrystalId) as
+      | { id: string; semantic_type: string | null; governance_json: string | null }
+      | undefined;
+    if (!row) {
+      return { ok: false, reason: "crystal not found" };
+    }
+    if (forSale && row.semantic_type !== "skill" && row.semantic_type !== "task_pattern") {
+      return { ok: false, reason: `not a skill crystal (semantic_type=${row.semantic_type})` };
+    }
+    // Peer-imported crystals cannot be listed in Phase 0: the provenance
+    // split / royalty wiring that would pay their upstream authors is
+    // Phase 1, and without it a sale would silently keep 100% (invariant
+    // I4) — and a peer crystal's author-controlled title could wear a
+    // local skill's validation verdict (§3.4 exact-ID rule).
+    if (forSale && row.governance_json?.includes('"peerOrigin"')) {
+      return {
+        ok: false,
+        reason: "peer-origin crystals cannot be listed until provenance-split wiring (Phase 1)",
+      };
+    }
+    this.db
+      .prepare(`UPDATE chunks SET for_sale = ? WHERE id = ?`)
+      .run(forSale ? 1 : 0, skillCrystalId);
+    if (!forSale) {
+      // Delist the PAID listing now rather than waiting up to 30 min for
+      // the next refresh. The free browse flag (marketplace_listed) is
+      // deliberately untouched — free discoverability never depends on the
+      // paid opt-in (invariant I1).
+      this.db
+        .prepare(`
+        UPDATE marketplace_listings
+           SET listable = 0, listing_block_reason = 'not-for-sale', updated_at = ?
+         WHERE skill_crystal_id = ?
+      `)
+        .run(Date.now(), skillCrystalId);
+    }
+    return { ok: true, forSale };
   }
 
   /**
@@ -487,13 +644,22 @@ export class MarketplaceEconomics {
 
   /**
    * Get all listable skills for Agent Card generation.
+   *
+   * Rank order (PLAN-43 invariant I6/I10): validated skills first,
+   * canonical-corpus verdicts ahead of grown-corpus ones, then by measured
+   * improvement — never by price, downloads, or any farmable count.
    */
   getListableSkills(): MarketplaceListing[] {
     const rows = this.db
       .prepare(`
       SELECT skill_crystal_id, name, description, price_usdc, listable,
-             total_executions, success_rate, avg_reward_score, download_count, listed_at
-      FROM marketplace_listings WHERE listable = 1 ORDER BY price_usdc DESC
+             total_executions, success_rate, avg_reward_score, download_count, listed_at,
+             validation_verdict, validation_score, validation_corpus_version, validation_canonical
+      FROM marketplace_listings WHERE listable = 1
+      ORDER BY (validation_verdict IS NOT NULL) DESC,
+               COALESCE(validation_canonical, 0) DESC,
+               COALESCE(validation_score, -1e9) DESC,
+               success_rate DESC
     `)
       .all() as Array<Record<string, unknown>>;
 
@@ -510,6 +676,18 @@ export class MarketplaceEconomics {
       },
       downloadCount: Number(r.download_count),
       listedAt: r.listed_at ? Number(r.listed_at) : null,
+      ...(r.validation_verdict
+        ? {
+            validation: {
+              verdict: String(r.validation_verdict as string),
+              ...(r.validation_score !== null ? { score: Number(r.validation_score) } : {}),
+              ...(r.validation_corpus_version
+                ? { corpusVersion: String(r.validation_corpus_version as string) }
+                : {}),
+              canonical: Number(r.validation_canonical) === 1,
+            },
+          }
+        : {}),
     }));
   }
 

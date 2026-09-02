@@ -20,7 +20,7 @@ function baseConfig(over: Partial<BitterbotConfig> = {}): BitterbotConfig {
 describe("buildAgentCard", () => {
   it("builds a minimally valid card with default fields", () => {
     const card = buildAgentCard({
-      config: baseConfig(),
+      config: baseConfig({ a2a: { enabled: true, skills: { expose: "all" } } }),
       skills: [makeSkill("Echo")],
       gatewayUrl: "http://127.0.0.1:19001",
     });
@@ -32,6 +32,24 @@ describe("buildAgentCard", () => {
     expect(card.skills).toHaveLength(1);
     expect(card.skills[0].id).toBe("Echo");
     expect(card.skills[0].name).toBe("Echo");
+  });
+
+  it("exposes NO skills by default (PLAN-43 Phase 0: advertising is opt-in)", () => {
+    const card = buildAgentCard({
+      config: baseConfig(),
+      skills: [makeSkill("Echo"), makeSkill("Search")],
+      gatewayUrl: "http://127.0.0.1:19001",
+    });
+    expect(card.skills).toEqual([]);
+  });
+
+  it("an allowlist alone implies exposure of the allowlisted skills", () => {
+    const card = buildAgentCard({
+      config: baseConfig({ a2a: { enabled: true, skills: { allowlist: ["Echo"] } } }),
+      skills: [makeSkill("Echo"), makeSkill("Search")],
+      gatewayUrl: "http://127.0.0.1:19001",
+    });
+    expect(card.skills.map((s) => s.name)).toEqual(["Echo"]);
   });
 
   it("respects skills.expose=none", () => {
@@ -147,7 +165,7 @@ describe("buildAgentCard", () => {
   it("attaches per-skill pricing from the marketplace", () => {
     const skillPrices = new Map<string, number>([["echo", 0.1]]);
     const card = buildAgentCard({
-      config: baseConfig({ a2a: { enabled: true } }),
+      config: baseConfig({ a2a: { enabled: true, skills: { expose: "all" } } }),
       skills: [makeSkill("Echo", "Echo skill", "echo")],
       gatewayUrl: "http://localhost:19001",
       skillPrices,

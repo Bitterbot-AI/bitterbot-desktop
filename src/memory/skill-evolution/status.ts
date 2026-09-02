@@ -8,9 +8,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { type ImpactTrailOptions, provenancePath } from "../../agents/skills/impact-trail.js";
 import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
+import { loadEffectiveCorpus } from "./canonical-corpus.js";
 import { listP2pEligibleEvolvedSkills } from "./p2p-publish.js";
 import { readSamplerState } from "./sampler.js";
-import { loadTaskCorpus } from "./task-corpus.js";
 import { listStagedEvolutionProposals, type EvolutionMeta } from "./validation-gate.js";
 import { listPatternNames, logsPath, readIndex } from "./wiki-store.js";
 
@@ -87,7 +87,9 @@ export async function collectEvolutionStatus(
   }
 
   const eligible = await listP2pEligibleEvolvedSkills(opts);
-  const corpus = await loadTaskCorpus(opts);
+  // Report the corpus the gate actually validates on (canonical baseline +
+  // grown corpus), so status never diverges from gate behavior.
+  const corpus = await loadEffectiveCorpus(opts);
   let impactEntries = 0;
   try {
     const raw = await fs.readFile(provenancePath(opts), "utf-8");

@@ -72,14 +72,12 @@ function parseChecker(value: unknown): TaskChecker | null {
   return null;
 }
 
-/** Load the node's corpus. Malformed lines are skipped with a log, never fatal. */
-export async function loadTaskCorpus(opts: ImpactTrailOptions = {}): Promise<TaskCorpus | null> {
-  let raw: string;
-  try {
-    raw = await fs.readFile(corpusPath(opts), "utf-8");
-  } catch {
-    return null;
-  }
+/**
+ * Parse corpus JSONL into tasks. Malformed/duplicate lines are skipped with
+ * a log, never fatal. Shared by the node's grown corpus and the embedded
+ * canonical corpus (canonical-corpus.ts).
+ */
+export function parseCorpusTasks(raw: string): CorpusTask[] {
   const tasks: CorpusTask[] = [];
   const seen = new Set<string>();
   for (const line of raw.split("\n")) {
@@ -115,6 +113,18 @@ export async function loadTaskCorpus(opts: ImpactTrailOptions = {}): Promise<Tas
       log.debug(`skipping unparseable corpus line: ${trimmed.slice(0, 80)}`);
     }
   }
+  return tasks;
+}
+
+/** Load the node's grown corpus. Absent or empty corpus returns null. */
+export async function loadTaskCorpus(opts: ImpactTrailOptions = {}): Promise<TaskCorpus | null> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(corpusPath(opts), "utf-8");
+  } catch {
+    return null;
+  }
+  const tasks = parseCorpusTasks(raw);
   if (tasks.length === 0) {
     return null;
   }

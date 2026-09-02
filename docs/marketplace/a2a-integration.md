@@ -754,6 +754,29 @@ If any check fails, the selling agent responds with 402 and a JSON-RPC error bod
 
 ---
 
+## Selling Is Opt-In Per Skill (PLAN-43 Phase 0)
+
+The paid listing pool is fully decoupled from free skill propagation:
+
+- A skill becomes a paid-listing candidate only when its crystal carries the
+  explicit `for_sale` flag. Free propagation (`publish_visibility: "shared"`)
+  never implies a paid listing, and vice versa; a skill can be both
+  free-propagated and for sale, but nothing auto-enrolls.
+- Opt in or out via the gateway RPCs `marketplace.listForSale` and
+  `marketplace.delist` (both take `{ "crystalId": "…" }`, and both require
+  the `operator.write` scope). Opting in makes the skill a candidate; it is
+  priced and quality-gated (minimum executions and success rate) at the next
+  consolidation refresh, roughly every 30 minutes. Delisting removes the
+  paid listing immediately, though an already-served agent card may be
+  cached by callers for up to 5 minutes (`Cache-Control: max-age=300`).
+  Peer-imported crystals cannot be listed until the provenance-split wiring
+  ships (Phase 1): a sale must never silently keep 100%.
+- Listings rank by PLAN-42 validation verdicts: canonical-corpus verdicts
+  first, then grown-corpus verdicts, then unvalidated skills. Never by
+  price, downloads, or other farmable counts.
+- The agent card advertises no skills unless the operator sets
+  `a2a.skills.expose: "all"` or an explicit allowlist.
+
 ## Configuration Reference
 
 The `a2a` block in `~/.bitterbot/config.jsonc`:
@@ -770,8 +793,8 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
       "bearerToken": "…", // optional; falls back to gateway auth token
     },
     "skills": {
-      "expose": "all", // "all" | "none"
-      "allowlist": ["summarize-webpage"], // narrows what's published in the agent card
+      "expose": "none", // "all" | "none"; DEFAULT "none" (PLAN-43 Phase 0: advertising skills is opt-in)
+      "allowlist": ["summarize-webpage"], // implies exposure of exactly these skills when "expose" is unset
     },
     "payment": {
       "enabled": false, // default derives from wallet readiness: on when full CDP creds present, off otherwise; explicit value wins

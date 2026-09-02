@@ -206,7 +206,13 @@ describe("collectEvolutionStatus", () => {
         expect.objectContaining({ name: "ready", verdict: "accepted", publishedAt: null }),
       ]);
       expect(status.p2pEligible).toEqual(["ready"]);
-      expect(status.corpus.present).toBe(false);
+      // PLAN-43 Phase 0: the canonical baseline ships with the release, so
+      // the effective corpus is present even with no grown corpus on disk.
+      expect(status.corpus).toMatchObject({
+        present: true,
+        version: expect.stringMatching(/^canonical-/),
+        taskCount: 12,
+      });
       expect(status.stagedProposals).toEqual([]);
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });

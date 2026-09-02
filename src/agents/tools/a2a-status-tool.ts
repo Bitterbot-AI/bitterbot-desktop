@@ -172,7 +172,7 @@ function buildConfigSnapshot(a2a: NonNullable<ReturnType<typeof loadConfig>["a2a
     paymentAddress: a2a.payment?.x402?.address,
     minPaymentUsdc: a2a.payment?.x402?.minPayment,
     bearerAuth: (a2a.authentication?.type ?? "bearer") === "bearer",
-    skillsExposed: a2a.skills?.expose ?? "all",
+    skillsExposed: a2a.skills?.expose ?? (a2a.skills?.allowlist ? "all" : "none"),
     erc8004Enabled: a2a.erc8004?.enabled === true,
   };
 }

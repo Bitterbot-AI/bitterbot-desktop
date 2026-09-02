@@ -98,3 +98,29 @@ describe("applyA2aDefaults payment gate", () => {
     expect(out.a2a?.payment?.x402?.minPayment).toBe(0.05);
   });
 });
+
+// PLAN-43 Phase 0: skill advertising on the public agent card is opt-in.
+// The defaulted config is what the gateway hands to buildAgentCard, so the
+// implication must be computed HERE — a card-side fallback never sees an
+// unset `expose` once defaults ran.
+describe("applyA2aDefaults skills.expose (PLAN-43 Phase 0)", () => {
+  it("defaults expose to none", () => {
+    const cfg = applyA2aDefaults({ a2a: { enabled: true } } as BitterbotConfig);
+    expect(cfg.a2a?.skills?.expose).toBe("none");
+  });
+
+  it("an allowlist without expose implies exposure", () => {
+    const cfg = applyA2aDefaults({
+      a2a: { enabled: true, skills: { allowlist: ["summarize-webpage"] } },
+    } as BitterbotConfig);
+    expect(cfg.a2a?.skills?.expose).toBe("all");
+    expect(cfg.a2a?.skills?.allowlist).toEqual(["summarize-webpage"]);
+  });
+
+  it("explicit expose always wins over the allowlist implication", () => {
+    const cfg = applyA2aDefaults({
+      a2a: { enabled: true, skills: { expose: "none", allowlist: ["x"] } },
+    } as BitterbotConfig);
+    expect(cfg.a2a?.skills?.expose).toBe("none");
+  });
+});
