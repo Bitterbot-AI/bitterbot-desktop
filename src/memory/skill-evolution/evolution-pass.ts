@@ -24,6 +24,8 @@ import type { SamplerStats } from "./types.js";
 import type { WikiStoreOptions } from "./wiki-store.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { recordDreamArtifact } from "../dream-utility.js";
+import { loadEffectiveCorpus } from "./canonical-corpus.js";
+import { mineCapabilityTasks } from "./corpus-miner.js";
 import { type LlmCallFn, type MaintenanceResult, runWikiMaintenance } from "./maintainer.js";
 import {
   publishEligibleEvolvedSkills,
@@ -66,6 +68,7 @@ export interface EvolutionPassDeps {
   runProposer?: boolean;
   /** Validation gate settings (Phase 4). Gate runs whenever a proposal staged. */
   validationMode?: "records" | "tasks";
+  trialsPerTask?: number;
   maxActiveEvolved?: number;
   modelTag?: string;
   /** P2P propagation (Phase 5). Publisher = the orchestrator bridge or a fake. */
@@ -211,6 +214,26 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     });
   }
 
+  // Corpus miner (2026-09-02 upgrade): draft capability-suite tasks from
+  // this window's FAILING traces into the pending-review file. Best-effort
+  // and draft-only — nothing enters the live corpus without human review.
+  try {
+    const failingTexts = sample.samples
+      .filter((s) => s.label.label === "fail")
+      .map((s) => s.formattedLog);
+    if (failingTexts.length > 0) {
+      const effective = await loadEffectiveCorpus(storeOpts);
+      await mineCapabilityTasks({
+        failingTraceTexts: failingTexts,
+        llmCall: deps.llmCall,
+        existingIds: new Set((effective?.tasks ?? []).map((t) => t.id)),
+        ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),
+      });
+    }
+  } catch (err) {
+    log.debug(`corpus miner skipped: ${String(err)}`);
+  }
+
   // Phase 4+5: settle EVERY staged evolution proposal (this iteration's
   // and any held from earlier iterations) through the validation gate,
   // then lint the wiki and publish matured validated skills.
@@ -255,6 +278,7 @@ async function runHousekeeping(
     llmCall: deps.llmCall,
     ...(storeOpts.configDir ? { storeOpts } : {}),
     ...(deps.validationMode ? { mode: deps.validationMode } : {}),
+    ...(typeof deps.trialsPerTask === "number" ? { trialsPerTask: deps.trialsPerTask } : {}),
     ...(deps.agentTurn ? { agentTurn: deps.agentTurn } : {}),
     ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
     ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),

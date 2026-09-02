@@ -11,8 +11,9 @@
  *   2. ONE batched LLM call: for each trial, judge whether the candidate
  *      skill text or the incumbent would more plausibly have led the agent
  *      to a better outcome on that trace. Scores in [0,1] per arm.
- *   3. Paired deltas -> deterministic bootstrap; ACCEPT iff ci95Low > 0
- *      with n >= MIN_PAIRED_TRIALS (strict gate, fidelity F7).
+ *   3. Paired deltas -> exact one-sided sign test; ACCEPT iff p < 0.05
+ *      with n >= MIN_PAIRED_TRIALS (strict gate, fidelity F7; the
+ *      bootstrap CI is reported as a diagnostic only).
  *
  * Honest limitation, stated on the tin: this is an LLM-judged counterfactual
  * over past traces, not a rollout. It catches harmful and useless skills
@@ -28,6 +29,10 @@ import { isA2aTaskSessionKey } from "../../sessions/session-key-utils.js";
 import { bootstrapMeanCi, MIN_PAIRED_TRIALS } from "./bootstrap-ci.js";
 import { DEFAULT_EXCLUDED_SESSION_PATTERNS } from "./sampler.js";
 import { isRunHeldOut } from "./sampler.js";
+import { exactSignTest } from "./sign-test.js";
+
+/** Judge score margin below which a pair is a tie (position-bias floor). */
+export const RECORDS_MIN_DISCORDANT_DELTA = 0.1;
 import {
   formatTraceLog,
   listRunsSince,
@@ -162,7 +167,8 @@ function parseScores(raw: string, expected: number): Array<{ a: number; b: numbe
 
 /**
  * Validate candidate skill content vs the incumbent over held-out traces.
- * Strict acceptance: ci95Low > 0 on the paired delta (b - a).
+ * Strict acceptance: exact sign test p < 0.05 on the paired delta (b - a),
+ * counting only pairs whose |delta| clears RECORDS_MIN_DISCORDANT_DELTA.
  */
 export async function validateAgainstRecords(params: {
   journal: EventJournal;
@@ -198,9 +204,17 @@ export async function validateAgainstRecords(params: {
   }
   const deltas = scores.map((s) => s.b - s.a);
   const ci = bootstrapMeanCi(deltas);
-  const accepted = ci.n >= MIN_PAIRED_TRIALS && ci.ci95Low > 0;
+  // Corpus/gate upgrade 2026-09-02: exact sign test is the gate (correct
+  // at small n, never degenerates); the bootstrap CI is reported only.
+  // A judge's position bias (B always scored a hair above A) must not
+  // count as evidence: a pair is discordant only above a minimum margin.
+  const sign = exactSignTest(
+    deltas.map((d) => (Math.abs(d) >= RECORDS_MIN_DISCORDANT_DELTA ? d : 0)),
+  );
+  const accepted = ci.n >= MIN_PAIRED_TRIALS && sign.pValue < 0.05;
   log.info(
     `records validation for "${params.candidateName}": n=${ci.n} meanDelta=${ci.meanDelta.toFixed(3)} ` +
+      `wins=${sign.wins} losses=${sign.losses} p=${sign.pValue.toFixed(4)} ` +
       `ci95=[${ci.ci95Low.toFixed(3)}, ${ci.ci95High.toFixed(3)}] -> ${accepted ? "ACCEPT" : "REJECT"}`,
   );
   return {

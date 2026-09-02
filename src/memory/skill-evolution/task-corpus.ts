@@ -29,7 +29,15 @@ export const MAX_CORPUS_TASKS = 30;
 export const DEFAULT_TASK_TIMEOUT_MS = 120_000;
 
 export interface TaskChecker {
-  kind: "contains" | "regex" | "exact";
+  /**
+   * "final" (preferred for new tasks): the answer must carry a line
+   * `FINAL: <value>`; the captured value (length-capped) is compared
+   * EXACTLY. Closes the documented `contains` false-pass modes — verbose
+   * output that happens to include the gold string, or an answer that
+   * enumerates every candidate value (xFinder arXiv:2405.11874,
+   * WebChoreArena arXiv:2506.01952).
+   */
+  kind: "contains" | "regex" | "exact" | "final";
   value: string;
 }
 
@@ -39,6 +47,15 @@ export interface CorpusTask {
   checker: TaskChecker;
   timeoutMs?: number;
   tags?: string[];
+  /**
+   * Which gate the task feeds (corpus/gate upgrade 2026-09-02):
+   * - "regression": near-ceiling tasks; the gate requires NO new failures
+   *   here, and they never count toward improvement (a task most models
+   *   pass carries ~no information — item response theory, metabench).
+   * - "capability" (default for grown tasks): tasks the incumbent
+   *   sometimes fails; the sign-test promotion signal lives here.
+   */
+  suite?: "regression" | "capability";
 }
 
 export interface TaskCorpus {
@@ -54,7 +71,7 @@ export function corpusPath(opts: ImpactTrailOptions = {}): string {
 function parseChecker(value: unknown): TaskChecker | null {
   const c = value as Record<string, unknown>;
   if (
-    (c?.kind === "contains" || c?.kind === "regex" || c?.kind === "exact") &&
+    (c?.kind === "contains" || c?.kind === "regex" || c?.kind === "exact" || c?.kind === "final") &&
     typeof c.value === "string" &&
     c.value.length > 0
   ) {
@@ -77,7 +94,8 @@ function parseChecker(value: unknown): TaskChecker | null {
  * a log, never fatal. Shared by the node's grown corpus and the embedded
  * canonical corpus (canonical-corpus.ts).
  */
-export function parseCorpusTasks(raw: string): CorpusTask[] {
+export function parseCorpusTasks(raw: string, opts: { maxTasks?: number } = {}): CorpusTask[] {
+  const maxTasks = opts.maxTasks ?? MAX_CORPUS_TASKS;
   const tasks: CorpusTask[] = [];
   const seen = new Set<string>();
   for (const line of raw.split("\n")) {
@@ -105,8 +123,11 @@ export function parseCorpusTasks(raw: string): CorpusTask[] {
         ...(Array.isArray(entry.tags)
           ? { tags: entry.tags.filter((t) => typeof t === "string") }
           : {}),
+        ...(entry.suite === "regression" || entry.suite === "capability"
+          ? { suite: entry.suite }
+          : {}),
       });
-      if (tasks.length >= MAX_CORPUS_TASKS) {
+      if (tasks.length >= maxTasks) {
         break;
       }
     } catch {
@@ -131,6 +152,9 @@ export async function loadTaskCorpus(opts: ImpactTrailOptions = {}): Promise<Tas
   return { tasks, version: createHash("sha1").update(raw).digest("hex").slice(0, 12) };
 }
 
+/** Longest FINAL-line value accepted before the checker refuses (anti-enumeration cap). */
+export const MAX_FINAL_ANSWER_CHARS = 400;
+
 /** Deterministic binary scoring of an answer against a task's checker. */
 export function scoreTaskAnswer(task: CorpusTask, answer: string): 0 | 1 {
   const a = answer ?? "";
@@ -145,5 +169,20 @@ export function scoreTaskAnswer(task: CorpusTask, answer: string): 0 | 1 {
       } catch {
         return 0;
       }
+    case "final": {
+      // Last `FINAL: <value>` line wins; missing line = fail; over-long
+      // captured value = fail (an enumeration cannot smuggle the gold
+      // string past an exact compare, and cannot pad the line either).
+      const matches = [...a.matchAll(/^[ 	]*FINAL:[ 	]*(.*)$/gim)];
+      const last = matches.at(-1)?.[1];
+      if (typeof last !== "string") {
+        return 0;
+      }
+      const value = last.trim();
+      if (value.length === 0 || value.length > MAX_FINAL_ANSWER_CHARS) {
+        return 0;
+      }
+      return value === task.checker.value.trim() ? 1 : 0;
+    }
   }
 }

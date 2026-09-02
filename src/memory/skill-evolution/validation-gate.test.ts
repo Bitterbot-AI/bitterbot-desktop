@@ -187,22 +187,23 @@ describe("task corpus + tasks validation", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("loads the shipped seed corpus and scores checkers deterministically", async () => {
-    const seed = await fs.readFile(
-      path.join(process.cwd(), "benchmarks/skill-evolution/seed-corpus.jsonl"),
+  it("loads the shipped canonical exemplar and scores hardened checkers deterministically", async () => {
+    const exemplar = await fs.readFile(
+      path.join(process.cwd(), "benchmarks/skill-evolution/canonical-corpus.jsonl"),
       "utf-8",
     );
     await fs.mkdir(path.dirname(corpusPath({ configDir: tmpDir })), { recursive: true });
-    await fs.writeFile(corpusPath({ configDir: tmpDir }), seed, "utf-8");
+    await fs.writeFile(corpusPath({ configDir: tmpDir }), exemplar, "utf-8");
     const corpus = await loadTaskCorpus({ configDir: tmpDir });
     expect(corpus).not.toBeNull();
     expect(corpus?.tasks.length).toBe(12);
     expect(corpus?.version).toHaveLength(12);
-    const arith = corpus?.tasks.find((t) => t.id === "arith-basic");
-    expect(scoreTaskAnswer(arith!, "The answer is 391.")).toBe(1);
-    expect(scoreTaskAnswer(arith!, "The answer is 390.")).toBe(0);
-    const sortTask = corpus?.tasks.find((t) => t.id === "sort-numbers");
-    expect(scoreTaskAnswer(sortTask!, "3, 7, 19, 42")).toBe(1);
+    const arith = corpus?.tasks.find((t) => t.id === "arith-basic")!;
+    const answer = arith.checker.value;
+    expect(scoreTaskAnswer(arith, `Working it out...\nFINAL: ${answer}`)).toBe(1);
+    // The hardened checker refuses a bare value or a wrong FINAL line.
+    expect(scoreTaskAnswer(arith, `The answer is ${answer}.`)).toBe(0);
+    expect(scoreTaskAnswer(arith, `FINAL: ${Number(answer) + 1}`)).toBe(0);
   });
 
   it("skips malformed lines and rejects invalid regex checkers", async () => {

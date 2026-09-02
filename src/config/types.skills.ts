@@ -97,11 +97,19 @@ export type SkillsEvolutionConfig = {
   maxActiveEvolved?: number;
   /**
    * Validation gate mode. "records": LLM-scored paired comparison over
-   * reconstructed held-out trajectories (bootstrap ci95Low > 0). "tasks":
-   * hermetic rollouts over the replayable task corpus. Default: "records"
-   * until a corpus exists on the node, then "tasks".
+   * reconstructed held-out trajectories. "tasks": real rollouts over the
+   * seeded canonical regression suite plus the node's grown capability
+   * suite. Both gate on an exact sign test (p < 0.05). Default: "records".
    */
   validationMode?: "records" | "tasks";
+  /**
+   * Tasks-mode trials per task per arm; per-task scores are fractional
+   * pass rates. Agent runs are nondeterministic, so repeated trials cut
+   * gate variance (~1/3 at K=3) and un-degenerate near-ceiling tasks.
+   * Minimum 2 (the regression rule tolerates one flaky trial only for
+   * K >= 2). Default: 3.
+   */
+  trialsPerTask?: number;
   /** Model spec "provider/model" for maintainer/labeler calls. Default: cheap-model resolution. */
   judgeModel?: string;
   /**

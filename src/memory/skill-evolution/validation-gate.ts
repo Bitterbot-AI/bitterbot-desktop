@@ -3,9 +3,10 @@
  * evolution proposal" to "live skill". Fidelity F3/F5/F7:
  *
  *   - Strict acceptance: the candidate must MEASURABLY beat the incumbent
- *     ("records" mode: paired LLM scoring over held-out traces with
- *     bootstrap ci95Low > 0; "tasks" mode: real rollouts over the frozen
- *     corpus, same statistic). Ties and unknowns REJECT.
+ *     ("records" mode: paired LLM scoring over held-out traces; "tasks"
+ *     mode: real rollouts over the seeded corpus) — exact one-sided sign
+ *     test on discordant paired deltas, p < 0.05. Measured non-improvement
+ *     REJECTS; underpowered evidence HOLDS.
  *   - Rejection discards the staged candidate (the skill set reverts to
  *     the incumbent by construction) — the wiki is untouched, and the
  *     verdict + scores land in skill-impact.md programmatically.
@@ -31,7 +32,7 @@ import {
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { loadEffectiveCorpus } from "./canonical-corpus.js";
+import { loadEffectiveCorpus, randomCanonicalSeed } from "./canonical-corpus.js";
 import { hashProposalContent } from "./proposal-apply.js";
 import { type AgentTurnFn, makeInjectedSkillRunner } from "./task-runner.js";
 import { validateAgainstRecords } from "./validate-records.js";
@@ -51,8 +52,15 @@ export interface EvolutionMeta {
     meanDelta?: number;
     ci95Low?: number;
     ci95High?: number;
+    /** Exact sign-test p-value — the gate statistic (2026-09-02 upgrade). */
+    pValue?: number;
+    wins?: number;
+    losses?: number;
     trials?: number;
+    trialsPerTask?: number;
     corpusVersion?: string;
+    /** Canonical-corpus seed the run was scored on (anti-memorization). */
+    corpusSeed?: number;
     validatedAt: number;
     model?: string;
   };
@@ -71,6 +79,8 @@ export interface ValidationGateDeps {
   agentTurn?: AgentTurnFn;
   /** Pre-built paired runner — test override; bypasses agentTurn. */
   runTask?: TaskRunnerFn;
+  /** Trials per task per arm in tasks mode (config skills.evolution.trialsPerTask). */
+  trialsPerTask?: number;
   maxActiveEvolved?: number;
   /** Model tag recorded into the promoted skill's provenance. */
   modelTag?: string;
@@ -214,22 +224,33 @@ async function settleOne(
   if (mode === "tasks" && runTask) {
     // Canonical baseline + grown corpus (PLAN-42 §5.7 / PLAN-43 §3.6): a
     // fresh node with no trace history still validates against the shipped
-    // canonical tasks instead of falling back to records.
-    const corpus = await loadEffectiveCorpus(trailOpts);
+    // canonical tasks instead of falling back to records. Fresh seed per
+    // validation: memorizing the public exemplar instances buys nothing.
+    const corpusSeed = randomCanonicalSeed();
+    const corpus = await loadEffectiveCorpus(trailOpts, corpusSeed);
     if (!corpus) {
       verdictDetail = "tasks mode but no corpus available; falling back to records";
     } else {
-      const verdict = await validateAgainstTasks({ corpus, runTask });
+      const verdict = await validateAgainstTasks({
+        corpus,
+        runTask,
+        ...(deps.trialsPerTask !== undefined ? { trialsPerTask: deps.trialsPerTask } : {}),
+      });
       verdictAccepted = verdict.accepted;
-      verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, corpus ${verdict.corpusVersion})`;
+      verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, K=${verdict.trialsPerTask ?? 1}, wins=${verdict.wins ?? 0}/losses=${verdict.losses ?? 0}, p=${verdict.pValue !== undefined ? verdict.pValue.toFixed(4) : "n/a"}, corpus ${verdict.corpusVersion})`;
       validationRecord = {
         mode: "tasks",
         verdict: verdict.reason,
         ...(verdict.meanDelta !== undefined ? { meanDelta: verdict.meanDelta } : {}),
         ...(verdict.ci95Low !== undefined ? { ci95Low: verdict.ci95Low } : {}),
         ...(verdict.ci95High !== undefined ? { ci95High: verdict.ci95High } : {}),
+        ...(verdict.pValue !== undefined ? { pValue: verdict.pValue } : {}),
+        ...(verdict.wins !== undefined ? { wins: verdict.wins } : {}),
+        ...(verdict.losses !== undefined ? { losses: verdict.losses } : {}),
         trials: verdict.trials,
+        ...(verdict.trialsPerTask !== undefined ? { trialsPerTask: verdict.trialsPerTask } : {}),
         corpusVersion: verdict.corpusVersion,
+        corpusSeed,
         validatedAt: Date.now(),
         ...(deps.modelTag ? { model: deps.modelTag } : {}),
       };
@@ -267,6 +288,11 @@ async function settleOne(
     const insufficient =
       validationRecord.verdict === "insufficient-trials" ||
       validationRecord.verdict === "insufficient-tasks" ||
+      // The corpus has no capability tasks yet: it cannot detect
+      // improvement, only regressions. HOLD and retry as the suite grows.
+      validationRecord.verdict === "no-capability-tasks" ||
+      validationRecord.verdict === "insufficient-capability-tasks" ||
+      validationRecord.verdict === "insufficient-evidence" ||
       validationRecord.verdict === "llm-failed" ||
       validationRecord.verdict === "scoring-parse-failed" ||
       validationRecord.verdict === "runner-failed";

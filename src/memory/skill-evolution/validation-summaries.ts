@@ -23,7 +23,13 @@ export interface SkillValidationSummary {
   ci95Low?: number;
   corpusVersion?: string;
   validatedAt: number;
-  /** True when the verdict was scored on a corpus containing the canonical baseline. */
+  /**
+   * True when the run included the canonical REGRESSION baseline (the
+   * candidate passed "no new failures" on seeded canonical tasks). The
+   * meanDelta/score comes from the node's own capability suite and is
+   * therefore seller-controlled — advisory only; cross-node rank must
+   * re-score (PLAN-43 §3.6, Phase 3).
+   */
   canonical: boolean;
 }
 

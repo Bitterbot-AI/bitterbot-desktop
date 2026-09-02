@@ -3082,6 +3082,7 @@ export class DreamEngine {
       ...(cfg?.wikiMaxPatterns ? { maxPatterns: cfg.wikiMaxPatterns } : {}),
       ...(cfg?.maxProposerTurns ? { maxProposerTurns: cfg.maxProposerTurns } : {}),
       ...(cfg?.validationMode ? { validationMode: cfg.validationMode } : {}),
+      ...(typeof cfg?.trialsPerTask === "number" ? { trialsPerTask: cfg.trialsPerTask } : {}),
       ...(cfg?.maxActiveEvolved ? { maxActiveEvolved: cfg.maxActiveEvolved } : {}),
       ...(cfg?.semanticLintCadenceDays !== undefined
         ? { semanticLintCadenceDays: cfg.semanticLintCadenceDays }
