@@ -36,6 +36,25 @@ describe("parseMaintainerOutput", () => {
     }
   });
 
+  it("survives markdown code fences INSIDE pattern content (live finding 2026-09-02)", () => {
+    const payload = {
+      create_patterns: [
+        {
+          name: "missing-file-graceful-fallback",
+          content: "# Missing File\n\n```bash\nls -la\n```\n\nThen clarify.",
+        },
+      ],
+      update_patterns: [],
+      update_index: "- missing-file-graceful-fallback",
+      append_log: "iteration: learned graceful fallback",
+    };
+    const fencedRaw = "Here you go:\n```json\n" + JSON.stringify(payload, null, 2) + "\n```\n";
+    const { output, issues } = parseMaintainerOutput(fencedRaw);
+    expect(issues).toEqual([]);
+    expect(output?.createPatterns.map((p) => p.name)).toEqual(["missing-file-graceful-fallback"]);
+    expect(output?.createPatterns[0]?.content).toContain("```bash");
+  });
+
   it("returns null when required fields are missing", () => {
     const { output } = parseMaintainerOutput(JSON.stringify({ create_patterns: [] }));
     expect(output).toBeNull();

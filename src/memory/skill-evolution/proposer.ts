@@ -31,6 +31,7 @@ import type { LabeledTrace } from "./types.js";
 import { impactTrailPath, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { liveSkillDir, readLive, resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { markDreamConsumption } from "../dream-utility.js";
+import { extractJsonObjectLenient } from "./json-extract.js";
 import {
   isValidPatternName,
   logsPath,
@@ -104,28 +105,7 @@ If no change is warranted: {"action": "no_action", "reason": "<why>"}
 6. no_action is a perfectly good outcome when the evidence is thin.`;
 
 function extractJsonObject(raw: string): Record<string, unknown> | null {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const text = (fenced ? fenced[1] : raw)?.trim() ?? "";
-  const tryParse = (s: string): Record<string, unknown> | null => {
-    try {
-      const parsed = JSON.parse(s) as unknown;
-      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : null;
-    } catch {
-      return null;
-    }
-  };
-  const direct = tryParse(text);
-  if (direct) {
-    return direct;
-  }
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) {
-    return tryParse(text.slice(start, end + 1));
-  }
-  return null;
+  return extractJsonObjectLenient(raw);
 }
 
 function capRead(text: string): string {

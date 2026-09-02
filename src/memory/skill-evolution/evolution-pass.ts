@@ -167,6 +167,9 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     // is retried next iteration (bounded by the cadence gate).
     log.warn(
       `wiki maintainer output unparseable; iteration will retry next cadence window` +
+        (maintenance.parseIssues?.length
+          ? ` (issues: ${maintenance.parseIssues.join("; ").slice(0, 300)})`
+          : "") +
         (maintenance.rawSample
           ? ` (raw: ${maintenance.rawSample.replace(/\s+/g, " ").slice(0, 300)})`
           : ""),

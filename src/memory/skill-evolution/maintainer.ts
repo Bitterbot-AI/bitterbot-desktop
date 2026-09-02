@@ -150,6 +150,8 @@ export interface MaintenanceResult {
   promptChars: number;
   /** Head+tail of the raw model output on parse failure (diagnostics). */
   rawSample?: string;
+  /** Why the parse failed (surfaced in the log so format drift is diagnosable). */
+  parseIssues?: string[];
 }
 
 /**
@@ -176,6 +178,7 @@ export async function runWikiMaintenance(deps: {
     return {
       applied: false,
       parseIssueCount: issues.length,
+      parseIssues: issues.map((i) => `${i.where}: ${i.detail}`),
       promptChars: prompt.length,
       rawSample,
     };

@@ -25,6 +25,7 @@ import path from "node:path";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
+import { extractJsonObjectLenient } from "./json-extract.js";
 
 const log = createSubsystemLogger("skill-evolution/wiki");
 
@@ -281,31 +282,12 @@ export function parseMaintainerOutput(raw: string): {
   issues: ParseIssue[];
 } {
   const issues: ParseIssue[] = [];
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonText = (fenced ? fenced[1] : raw)?.trim() ?? "";
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    // Fall back to the first {...} block in the text.
-    const start = jsonText.indexOf("{");
-    const end = jsonText.lastIndexOf("}");
-    if (start < 0 || end <= start) {
-      return { output: null, issues: [{ where: "root", detail: "no JSON object found" }] };
-    }
-    try {
-      parsed = JSON.parse(jsonText.slice(start, end + 1));
-    } catch (err) {
-      return {
-        output: null,
-        issues: [{ where: "root", detail: `JSON parse failed: ${String(err)}` }],
-      };
-    }
+  // Lenient extraction: inner code fences inside pattern content must not
+  // truncate the payload (live finding 2026-09-02).
+  const obj = extractJsonObjectLenient(raw);
+  if (!obj) {
+    return { output: null, issues: [{ where: "root", detail: "no parseable JSON object found" }] };
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return { output: null, issues: [{ where: "root", detail: "payload is not an object" }] };
-  }
-  const obj = parsed as Record<string, unknown>;
 
   const updateIndex = typeof obj.update_index === "string" ? obj.update_index : null;
   const appendLog = typeof obj.append_log === "string" ? obj.append_log : null;
