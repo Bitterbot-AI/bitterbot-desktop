@@ -104,3 +104,21 @@ describe("createExecutionTrackingHook maturity re-publish (audit F5)", () => {
     db.close();
   });
 });
+
+// PLAN-43 Phase 1 (R2): a remote A2A caller's turn must not move node
+// state — no execution records, no steering, no publish re-attempts.
+describe("createExecutionTrackingHook remote-task exclusion", () => {
+  it("records nothing for a2a-task sessions", () => {
+    const { db, published } = setup();
+    const hook = createExecutionTrackingHook(new SkillExecutionTracker(db), db, null, (id) =>
+      published.push(id),
+    );
+    hook(
+      { toolName: "web_search", params: {}, result: "ok", durationMs: 5 },
+      { toolName: "web_search", sessionKey: "agent:main:a2a-task:beef" },
+    );
+    const rows = db.prepare("SELECT COUNT(*) c FROM skill_executions").get() as { c: number };
+    expect(rows.c).toBe(0);
+    expect(published).toEqual([]);
+  });
+});

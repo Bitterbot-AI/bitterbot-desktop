@@ -14,6 +14,7 @@ import type { ExecutionOutcome } from "./crystal-types.js";
 import type { HormonalStateManager } from "./hormonal.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { isA2aTaskSessionKey } from "../sessions/session-key-utils.js";
 
 const log = createSubsystemLogger("memory/exec-hook");
 
@@ -117,6 +118,12 @@ export function createExecutionTrackingHook(
 ): (event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void {
   return (event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext): void => {
     try {
+      // PLAN-43 Phase 1 (R2): a remote A2A caller's turn must not move
+      // node state — no hormonal stimulation, no skill execution records,
+      // no steering rewards, no maturity-triggered publish re-attempts.
+      if (isA2aTaskSessionKey(ctx.sessionKey)) {
+        return;
+      }
       const reward = computeReward(event.result, event.error);
 
       // Hormonal events from tool outcomes — personality reacts in real-time

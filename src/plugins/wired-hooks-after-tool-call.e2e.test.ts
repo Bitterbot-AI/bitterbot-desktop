@@ -108,6 +108,11 @@ describe("after_tool_call hook wiring", () => {
     expect(event.error).toBeUndefined();
     expect(typeof event.durationMs).toBe("number");
     expect(context.toolName).toBe("read");
+    // PLAN-43 R2: hooks gate on the session key (the execution-tracking
+    // hook refuses a2a-task sessions). A regression back to
+    // sessionKey: undefined makes every key-based hook guard dead in
+    // production — this pin is what catches it.
+    expect(context.sessionKey).toBe("test-session");
   });
 
   it("includes error in after_tool_call event on tool failure", async () => {

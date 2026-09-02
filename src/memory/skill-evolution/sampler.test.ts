@@ -65,9 +65,10 @@ describe("sampleIteration", () => {
     expect(result.stats.runsHeldOut).toBe(4);
   });
 
-  it("excludes evolution/probe sessions and tool-less runs", async () => {
+  it("excludes evolution/probe/remote-a2a sessions and tool-less runs", async () => {
     const journal = makeFixtureJournal();
-    const [probeId, evolveId, toolless, genuine] = [...findRunIds(4, false, "ex")] as [
+    const [probeId, evolveId, toolless, a2aId, genuine] = [...findRunIds(5, false, "ex")] as [
+      string,
       string,
       string,
       string,
@@ -89,6 +90,14 @@ describe("sampleIteration", () => {
       runId: toolless,
       steps: [{ kind: "assistant", texts: ["just chatting"] }],
     });
+    // PLAN-43 R2: a remote caller's task run is prime tool-bearing fodder
+    // and must never reach the wiki/proposer.
+    appendFixtureRun(journal, {
+      runId: a2aId,
+      sessionKey: "agent:main:a2a-task:0f9e8d7c",
+      steps: failSteps(),
+      terminal: "error",
+    });
     appendFixtureRun(journal, {
       runId: genuine,
       sessionKey: "agent:main:main",
@@ -97,7 +106,7 @@ describe("sampleIteration", () => {
     });
     const result = await sampleIteration(journal, { cursorSeq: 0 });
     expect(result.samples.map((s) => s.trace.runId)).toEqual([genuine]);
-    expect(result.stats.runsExcluded).toBe(3);
+    expect(result.stats.runsExcluded).toBe(4);
   });
 
   it("advances the cursor monotonically so runs are never rescanned", async () => {

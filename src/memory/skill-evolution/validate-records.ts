@@ -24,7 +24,9 @@ import type { EventJournal } from "../../infra/event-journal.js";
 import type { LlmCallFn } from "./maintainer.js";
 import type { ReconstructedTrace } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { isA2aTaskSessionKey } from "../../sessions/session-key-utils.js";
 import { bootstrapMeanCi, MIN_PAIRED_TRIALS } from "./bootstrap-ci.js";
+import { DEFAULT_EXCLUDED_SESSION_PATTERNS } from "./sampler.js";
 import { isRunHeldOut } from "./sampler.js";
 import {
   formatTraceLog,
@@ -69,6 +71,16 @@ export async function collectHeldOutTraces(
   for (const run of heldOut.toReversed()) {
     const trace = await reconstructTrace(journal, run.runId, { skipMarathonRuns: true });
     if (!trace || !trace.isComplete || trace.toolCallCount === 0) {
+      continue;
+    }
+    // PLAN-43 R2: the validation prompt must never carry remote A2A caller
+    // content or evolution's own rollouts — same exclusions the sampler
+    // applies to maintainer/proposer fodder.
+    const key = trace.sessionKey ?? "";
+    if (
+      isA2aTaskSessionKey(key) ||
+      DEFAULT_EXCLUDED_SESSION_PATTERNS.some((pattern) => key.includes(pattern))
+    ) {
       continue;
     }
     traces.push(trace);

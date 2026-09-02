@@ -23,6 +23,7 @@ import type { EventJournal } from "../../infra/event-journal.js";
 import type { IterationSample, LabeledTrace, SamplerStats } from "./types.js";
 import { resolveWikiDir } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { isA2aTaskSessionKey } from "../../sessions/session-key-utils.js";
 import { hashBucket } from "../skill-execution-selection.js";
 import { type JudgeCallFn, labelTrace } from "./labeler.js";
 import {
@@ -184,6 +185,15 @@ export async function sampleIteration(
     }
     const key = trace.sessionKey ?? "";
     if (excluded.some((pattern) => key.includes(pattern))) {
+      stats.runsExcluded += 1;
+      continue;
+    }
+    // PLAN-43 Phase 1 (R2): inbound A2A task runs are driven by a REMOTE
+    // caller — prime tool-bearing sampler fodder, and exactly the traces
+    // evolution must never learn from (their text would flow into wiki
+    // pattern pages and the skill proposer). Key-shape check, not a
+    // substring, so a session merely mentioning "a2a-task" is unaffected.
+    if (isA2aTaskSessionKey(key)) {
       stats.runsExcluded += 1;
       continue;
     }

@@ -11,6 +11,7 @@ import path from "node:path";
 import type { MemorySearchManager } from "../../memory/types.js";
 import type { RLMScope } from "./types.js";
 import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
+import { isRemoteTaskTranscriptName } from "../../memory/session-files.js";
 
 type SessionTranscriptMessage = {
   role: string;
@@ -33,6 +34,12 @@ type SessionTranscript = {
  * pre-reset history is exactly what it exists to reach. Exported for tests.
  */
 export function isTranscriptFile(name: string): boolean {
+  // PLAN-43 R2: inbound A2A task transcripts (remote-caller turns, minted
+  // with the "a2a-" id prefix) are never offered to the RLM sandbox — the
+  // prime agent must not read remote-authored text as unlabeled history.
+  if (isRemoteTaskTranscriptName(name)) {
+    return false;
+  }
   return name.endsWith(".jsonl") || /\.jsonl\.reset\./.test(name);
 }
 

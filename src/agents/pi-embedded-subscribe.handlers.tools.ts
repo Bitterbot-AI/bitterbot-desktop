@@ -345,7 +345,10 @@ export async function handleToolExecutionEnd(
       .runAfterToolCall(hookEvent, {
         toolName,
         agentId: undefined,
-        sessionKey: undefined,
+        // PLAN-43 R2: hooks gate on the session key (the execution-tracking
+        // hook refuses a2a-task sessions); undefined here made every
+        // key-based hook guard dead in production.
+        sessionKey: ctx.params.sessionKey,
       })
       .catch((err) => {
         ctx.log.warn(`after_tool_call hook failed: tool=${toolName} error=${String(err)}`);

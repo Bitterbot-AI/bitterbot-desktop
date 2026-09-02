@@ -177,6 +177,9 @@ export async function executeA2aTask(params: {
   // default agent's config branch.
   const agentId = resolveDefaultAgentId(config);
   const childSessionKey = `agent:${agentId}:a2a-task:${crypto.randomUUID()}`;
+  // Self-describing transcript id (PLAN-43 R2): the transcript exclusion
+  // must survive sessions.json pruning, so the FILENAME carries the class.
+  const childSessionId = `a2a-${crypto.randomUUID()}`;
   const idempotencyKey = crypto.randomUUID();
   // PLAN-31 Phase 0: scan + wrap the peer's text before it reaches the
   // agent loop. This is the ONLY path inbound A2A text takes to a spawned
@@ -208,6 +211,7 @@ export async function executeA2aTask(params: {
       params: {
         message: safeText,
         sessionKey: childSessionKey,
+        sessionId: childSessionId,
         idempotencyKey,
         deliver: false,
         lane: "subagent",
