@@ -252,6 +252,20 @@ These hooks are not event-stream listeners; they let plugins synchronously adjus
 
 - **`tool_result_persist`**: transform tool results before they are written to the session transcript. Must be synchronous; return the updated tool result payload or `undefined` to keep it as-is. See [Agent Loop](/concepts/agent-loop).
 
+### Shell Command Guard (HOL Guard plugin)
+
+The bundled `hol-guard` extension uses the plugin `before_tool_call` hook to
+run [HOL Guard](https://github.com/hashgraph-online/hol-guard) on every
+`exec` command before it executes. Only a command HOL Guard rates as
+explicitly benign proceeds; review or risky results, malformed output, CLI
+failures, and timeouts block the call, and other tools are untouched. It is
+disabled by default. To use it, install the CLI (`pipx install hol-guard`,
+then `hol-guard init`) and enable the plugin with
+`plugins.entries.hol-guard.enabled: true`; `executable` and `timeoutMs` are
+configurable. Enabling the plugin without the CLI installed blocks every
+shell command with a message that says so. This is an additional layer:
+the remote-caller tool floor and the sandbox still apply underneath it.
+
 ### Future Events
 
 Planned event types:

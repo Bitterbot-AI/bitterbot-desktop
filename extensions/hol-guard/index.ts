@@ -1,6 +1,6 @@
+import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_EXECUTABLE = "hol-guard";
@@ -78,7 +78,17 @@ export function createHolGuardBeforeToolCallHandler(inspect: GuardInspector) {
         block: true,
         blockReason: "HOL Guard: command requires review before execution.",
       };
-    } catch {
+    } catch (err) {
+      // Fail closed either way, but tell the operator WHY: the most common
+      // cause is enabling the plugin without installing the CLI.
+      const code = (err as { code?: unknown } | null)?.code;
+      if (code === "ENOENT") {
+        return {
+          block: true,
+          blockReason:
+            "HOL Guard: CLI not found. Install it with `pipx install hol-guard` and run `hol-guard init`, or disable the hol-guard plugin.",
+        };
+      }
       return {
         block: true,
         blockReason: "HOL Guard: command inspection failed.",
@@ -90,7 +100,8 @@ export function createHolGuardBeforeToolCallHandler(inspect: GuardInspector) {
 const holGuardPlugin = {
   id: "hol-guard",
   name: "HOL Guard",
-  description: "Run HOL Guard before Bitterbot shell commands execute.",
+  description:
+    "Run HOL Guard before Bitterbot shell commands execute (requires `pipx install hol-guard`; fails closed when the CLI is missing).",
   configSchema: {
     type: "object",
     additionalProperties: false,

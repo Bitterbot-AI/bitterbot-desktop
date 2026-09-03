@@ -1,7 +1,7 @@
 {
   "id": "hol-guard",
   "name": "HOL Guard",
-  "description": "Run HOL Guard before Bitterbot shell commands execute.",
+  "description": "Run HOL Guard before Bitterbot shell commands execute (requires `pipx install hol-guard`; fails closed when the CLI is missing).",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
