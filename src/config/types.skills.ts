@@ -72,6 +72,8 @@ export type SkillsAgentskillsConfig = {
   transformThreshold?: number;
   /** Royalty split (basis points) retained for the upstream registry. Default: 0. */
   royaltyBps?: number;
+  /** Wallet the registry royalty pays to; unset = shares accrue in the queue, unpaid. */
+  royaltyWallet?: string;
   /** Maximum bytes for an imported SKILL.md or tarball. Default: 1 MB. */
   maxBytes?: number;
   /** API key for upload (uses agentskills.io's API). Read at upload time only. */

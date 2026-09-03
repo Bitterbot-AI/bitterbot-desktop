@@ -268,6 +268,8 @@ export type DreamEngineConfig = {
    * skills.evolution here. Default ON; kill switch skills.evolution.enabled.
    */
   skillEvolution?: SkillsEvolutionConfig;
+  /** PLAN-43 Phase 3: attestation exchange settings (a2a.attestation). */
+  a2aAttestation?: { enabled?: boolean; peers?: string[]; blockedAttesters?: string[] };
 };
 
 export const DEFAULT_DREAM_CONFIG: Required<
@@ -285,6 +287,7 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "insightPromotion"
     | "skillCurator"
     | "skillEvolution"
+    | "a2aAttestation"
   >
 > & { modes: Record<DreamMode, DreamModeConfig> } = {
   enabled: true,

@@ -78,6 +78,7 @@ import { truncateAtSentence } from "./proactive-recall.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
 import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
 import { ReconsolidationEngine } from "./reconsolidation.js";
+import { readRegistryProvenances } from "./registry-provenance.js";
 import {
   RetrievalObservability,
   TIME_WINDOW_LANE_MS,
@@ -96,6 +97,7 @@ import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
 import { SkillCrystallizer } from "./skill-crystallizer.js";
+import { makeAttesterWeight, resolveOwnAttesterPubkey } from "./skill-evolution/attester-weight.js";
 import { readValidationSummaries } from "./skill-evolution/validation-summaries.js";
 import { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { SkillMarketplace } from "./skill-marketplace.js";
@@ -2663,6 +2665,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       // PLAN-42: WikiSkill evolution pass rides skills.evolution (default
       // ON; plain data, structuredClone-safe).
       ...(this.cfg.skills?.evolution ? { skillEvolution: this.cfg.skills.evolution } : {}),
+      ...(this.cfg.a2a?.attestation ? { a2aAttestation: this.cfg.a2a.attestation } : {}),
       // PLAN-42 live fix: the maintainer/proposer emit large JSON (full
       // index + pattern pages / full SKILL.md); the default 2048-token cap
       // truncated them mid-object on the first live iteration. Dedicated
@@ -6085,15 +6088,38 @@ export class MemoryIndexManager implements MemorySearchManager {
         // PLAN-43 Phase 0: listings rank by PLAN-42 validation verdicts,
         // read off the live skill dirs at refresh time.
         validationLookup: () => readValidationSummaries(),
+        // PLAN-43 Phase 3 (I4): registry royalty on sales of imported skills.
+        registryRoyalty: {
+          royaltyBps: this.cfg.skills?.agentskills?.royaltyBps ?? 0,
+          lookup: () => readRegistryProvenances(),
+          registryId: "agentskills.io",
+          ...(this.cfg.skills?.agentskills?.royaltyWallet
+            ? { royaltyWallet: this.cfg.skills.agentskills.royaltyWallet }
+            : {}),
+        },
       });
     }
 
     // Plan 8, Phase 2: Initialize SkillMarketplace for search/browse/recommendations
     if (!this.skillMarketplace && this.executionTracker && this.peerReputationManager) {
+      const ownAttesterPubkey = resolveOwnAttesterPubkey();
       this.skillMarketplace = new SkillMarketplace(
         this.db,
         this.executionTracker,
         this.peerReputationManager,
+        {
+          // PLAN-43 Phase 3: verified-outcome aggregates on browse entries.
+          attesterWeight: makeAttesterWeight({
+            // Our own verdicts are trusted evidence (3c adversarial: without
+            // this the node's own -1 weighed 0.05 and strangers outvoted it).
+            ...(ownAttesterPubkey ? { ownAttesterPubkey } : {}),
+            trustedAttesters: this.cfg.a2a?.attestation?.trustedAttesters ?? [],
+            blockedAttesters: this.cfg.a2a?.attestation?.blockedAttesters ?? [],
+            ...(typeof this.cfg.a2a?.attestation?.unknownAttesterWeight === "number"
+              ? { unknownWeight: this.cfg.a2a.attestation.unknownAttesterWeight }
+              : {}),
+          }),
+        },
       );
     }
 

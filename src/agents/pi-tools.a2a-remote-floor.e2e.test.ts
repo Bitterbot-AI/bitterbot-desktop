@@ -19,6 +19,13 @@ describe("a2a remote floor (e2e through createBitterbotCodingTools)", () => {
     expect(tools.map((t) => t.name)).toEqual([]);
   });
 
+  it("a skill-evolution validation session gets the same floor (peer skill text executes there)", () => {
+    const tools = createBitterbotCodingTools({
+      sessionKey: "agent:main:skill-evolve-val-deadbeef",
+    });
+    expect(tools.map((t) => t.name)).toEqual([]);
+  });
+
   it("a normal session with the same config keeps its tools (the floor is scoped)", () => {
     const tools = createBitterbotCodingTools({ sessionKey: "agent:main:main" });
     expect(tools.length).toBeGreaterThan(0);

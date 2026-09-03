@@ -65,7 +65,8 @@ interface MarketplaceEconomicsView {
   setForSale(
     skillCrystalId: string,
     forSale: boolean,
-  ): { ok: boolean; forSale?: boolean; reason?: string };
+    opts?: { lineage?: string[] },
+  ): { ok: boolean; forSale?: boolean; reason?: string; flagged?: boolean };
 }
 
 /** Properties of MemoryIndexManager that dream handlers access beyond MemorySearchManager. */
@@ -690,7 +691,10 @@ export const dreamHandlers: GatewayRequestHandlers = {
         return;
       }
       const crystalId = typeof params.crystalId === "string" ? params.crystalId : "";
-      const result = economics.setForSale(crystalId, true);
+      const lineage = Array.isArray(params.lineage)
+        ? params.lineage.filter((x): x is string => typeof x === "string")
+        : undefined;
+      const result = economics.setForSale(crystalId, true, lineage ? { lineage } : {});
       respond(true, {
         ...result,
         ...(result.ok

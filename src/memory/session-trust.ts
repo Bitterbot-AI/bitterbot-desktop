@@ -72,6 +72,12 @@ export function classifySessionKeyTrust(sessionKey: string): SessionTrust {
     if (token.startsWith("a2a-") || token.startsWith("subagent-")) {
       return "untrusted";
     }
+    // PLAN-43 Phase 3 (3b adversarial): skill-evolution validation rollouts
+    // inject PEER-authored skill text into real turns. Their transcripts are
+    // not first-party state (no canonical pins, no directives).
+    if (token.startsWith("skill-evolve")) {
+      return "untrusted";
+    }
   }
   return "first_party";
 }

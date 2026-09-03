@@ -20,7 +20,10 @@ import { classifySessionKeyShape, normalizeAgentId } from "../../routing/session
 import { defaultRuntime } from "../../runtime.js";
 import { normalizeInputProvenance, type InputProvenance } from "../../sessions/input-provenance.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
-import { isA2aTaskSessionKey } from "../../sessions/session-key-utils.js";
+import {
+  isA2aTaskSessionKey,
+  isSkillEvolveValidationSessionKey,
+} from "../../sessions/session-key-utils.js";
 import { normalizeSessionDeliveryFields } from "../../utils/delivery-context.js";
 import {
   INTERNAL_MESSAGE_CHANNEL,
@@ -459,7 +462,11 @@ export const agentHandlers: GatewayRequestHandlers = {
     // live drives are done, and it had neither call — so a CLI-driven turn
     // could fire interceptors but could never tag their outcome, leaving
     // interceptor_harvest (gated on >=10 tagged records) permanently asleep.
-    if (resolvedSessionKey && !isA2aTaskSessionKey(resolvedSessionKey)) {
+    if (
+      resolvedSessionKey &&
+      !isA2aTaskSessionKey(resolvedSessionKey) &&
+      !isSkillEvolveValidationSessionKey(resolvedSessionKey)
+    ) {
       const interceptorSessionKey = resolvedSessionKey.toLowerCase();
       const turnText = request.message;
       void import("../../agents/skills/session-context-tracker.js")

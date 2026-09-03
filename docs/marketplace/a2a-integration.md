@@ -808,6 +808,110 @@ this node driven by a REMOTE caller's input. That turn is hermetic:
   the USDC settled; the client's price cap bounds the loss to the quoted
   amount, and re-invoking after the price change works.
 
+## Listing Integrity: Lineage and Royalty (PLAN-43 Phase 3)
+
+- **Lineage-laundering gate (seller-side, good-faith).** Opting a skill
+  into sale content-addresses it (SHA-256, exposed as `contentSha256` on
+  listings) and compares it against the local commons (peer-origin and
+  free-shared skills, any lifecycle). Evidence order: an exact or
+  normalized content-hash match (frontmatter, provenance trailers, case
+  and whitespace stripped) is decisive on its own; otherwise embedding
+  cosine against commons rows embedded by the same model. A copy or
+  near-duplicate (cosine 0.92 or higher) that does not cite the source
+  author's pubkey as lineage is refused and recorded in
+  `listing_refusals` (bounded per crystal). Citing a crystal id does not
+  count: the refusal discloses it and no payout can reach it. A candidate
+  whose embedding is not indexed yet is refused (fail closed) whenever the
+  commons has embeddings to compare against; an empty or unembedded
+  commons needs no comparison. Similarity between 0.80 and 0.92 is flagged
+  on the listing (`lineage_flagged`) but allowed. A match against this
+  node's own free-shared skill (no peer author) owes nobody lineage. The
+  gate re-runs on every listing refresh, pulling a listing that no longer
+  passes.
+- **Honest scope.** The gate runs on the seller's own node against the
+  seller's own database. It binds unmodified nodes and catches verbatim
+  and near-verbatim copies; a full paraphrase lands below the threshold.
+  The receiver-side attestations below are the enforcement that does not
+  depend on the seller.
+- **Citing lineage.** `marketplace.listForSale` accepts
+  `{ "crystalId": "...", "lineage": ["<author pubkey>", ...] }`. The cited
+  authors are merged into the crystal's provenance chain (a union: citing
+  can add an author, never erase recorded contributors), the chain is
+  restored if the gate refuses, and the author the gate actually
+  identified is stored on the listing (`lineage_author_pubkey`). The
+  revenue split pays the author share from that evidence, not from
+  whatever chain the seller supplied.
+- **Registry royalty (accrued, unpaid by default).** A sale of a skill
+  imported from a registry (agentskills.io, matched by the content hash in
+  its `.provenance.json`, then by frontmatter name) reserves
+  `skills.agentskills.royaltyBps` for the registry as a `registry_royalty`
+  share before the 70/20/10 publisher/author/contributor split. The share
+  is queued under the recipient `agentskills.io` and pays out only when
+  `skills.agentskills.royaltyWallet` is configured; until then it stays
+  queued: never silently kept, never silently dropped.
+
+## Receiver-Side Attestations (PLAN-43 Phase 3)
+
+Trust in a skill never rests on the seller's reported scores. In tasks
+mode, the evolution loop's housekeeping sweep re-scores peer-origin skills
+on THIS node's corpus: the seeded canonical regression suite plus the
+node's private capability suite, skill injected (candidate) vs the agent
+as-is (incumbent), under the same sign-test gate skills face for
+promotion. The verdict is signed with the node's device identity as an
+attestation keyed by the skill's content SHA-256 (`attest/v1`;
+protocol-prefixed canonical JSON, Ed25519, closed schema with every
+numeric field range-checked) and stored in `skill_attestations`.
+
+- **Only measurements are evidence.** A hold (no capability suite yet,
+  runner failure, too few tasks) is never signed, stored, or aggregated;
+  the sweep short-circuits entirely when the node has no capability
+  tasks. A skill is re-attested when the private suite or the canonical
+  corpus generation changes, and only current-generation verdicts count in
+  the aggregate.
+- **Bounded, fair, safe.** One skill per author per pass (a peer pushing
+  fresh edits daily cannot own the rollout budget), oldest unattested
+  first, at most one per pass by default. Peer text the injection scanner
+  rates medium or worse is never executed. Validation rollouts run in
+  sessions the trust classifier marks untrusted (no canonical pins, no
+  standing directives), excluded from transcript ingestion, and under the
+  same tool floor as remote A2A callers (no wallet, shell, sessions,
+  messaging, or egress tools). The attester key is loaded read-only: a
+  transient read failure disables attestation for the pass instead of
+  rotating the identity.
+- **Aggregation.** Reputation-weighted, weight-trimmed mean (the lowest
+  and highest 20% of attester weight are discarded once five or more
+  TRUSTED attesters have measured). Weights: own node and
+  `a2a.attestation.trustedAttesters` count 1, `blockedAttesters` count 0,
+  everyone else `unknownAttesterWeight` (default 0.05), and all unknown
+  attesters together may weigh at most 25% of the trusted weight present.
+  Minting identities is free, so two things, not the per-key weight, are
+  the defense: that cap bounds how far strangers can move a trusted
+  verdict, and unknown-only evidence never produces a score at all (a
+  skill nobody trusted has measured shows `score: null` with an
+  `unverified` count). The corpus-generation filter is a freshness
+  filter, not proof: `corpus_version` and `private_suite_sha256` are
+  claims a signer makes about itself. Any new failure scores -1
+  regardless of wins. Verdicts are recorded and surfaced (marketplace
+  entries carry `attestation` with the counted attesters, and
+  `sortBy: "attested"` ranks by it with a confirmed regression below
+  "not yet measured"); deactivating a skill on a regression verdict is an
+  operator decision, not automatic.
+- **Exchange.** `skill/attest.list { contentSha256 }` and
+  `skill/attest.submit { attestation }` are A2A verbs served from the
+  memory store (independent of the marketplace flag) without bearer auth
+  (records carry their own signatures; verdicts about a content hash are
+  public evidence, and `list` therefore reveals which skills a node holds
+  and the attesting model name). Submits are verified before storage,
+  accepted only for skills this node holds, refused for blocked attesters,
+  rate-limited per client, and capped (64 attesters per skill, 50k rows;
+  evidence older than 90 days is pruned). Housekeeping pushes this node's
+  attestations for its most recent peer skills to `a2a.attestation.peers`
+  and pulls theirs, verifying every record, reading at most 256 KB per
+  response, with a per-peer deadline. The exchange runs in any validation
+  mode; only re-scoring needs tasks mode. A peer's copy of this node's
+  own record never overwrites it. Peers may not be loopback or link-local
+  addresses.
+
 ## Selling Is Opt-In Per Skill (PLAN-43 Phase 0)
 
 The paid listing pool is fully decoupled from free skill propagation:
@@ -856,6 +960,14 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
       "maxInputChars": 32000, // oversize requests are refused before the payment gate
       "maxOutputChars": 64000, // results truncate beyond this
       "timeoutSeconds": 600, // server-side wall clock on the spawned turn
+    },
+    "attestation": {
+      // PLAN-43 Phase 3: receiver-side attestation exchange
+      "enabled": true, // serve skill/attest.* and sync with peers
+      "peers": ["https://peer.example"], // A2A base URLs to push/pull attestations with; default []
+      "trustedAttesters": ["ed25519:<hex>"], // device attester pubkeys weighing 1.0
+      "blockedAttesters": [], // ignored entirely
+      "unknownAttesterWeight": 0.05, // everyone else; their total is capped at 25% of trusted weight
     },
     "payment": {
       "enabled": false, // default derives from wallet readiness: on when full CDP creds present, off otherwise; explicit value wins

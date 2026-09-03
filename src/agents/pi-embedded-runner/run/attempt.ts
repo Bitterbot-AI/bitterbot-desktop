@@ -12,6 +12,7 @@ import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import {
   isA2aTaskSessionKey,
+  isSkillEvolveValidationSessionKey,
   isCronSessionKey,
   isSubagentSessionKey,
   normalizeAgentId,
@@ -443,7 +444,12 @@ export async function runEmbeddedAttempt(
     // steered by the caller's own message text; canonical facts and session
     // briefs are the node's private state — with zero tools the model can
     // still be asked to repeat its own system prompt back out).
-    const remoteTaskTurn = isA2aTaskSessionKey(params.sessionKey);
+    // PLAN-43 Phase 3: skill-evolution validation rollouts inject PEER
+    // skill text and get the same hermetic prompt (no recall steered by
+    // that text, no canonical facts or session brief handed to it).
+    const remoteTaskTurn =
+      isA2aTaskSessionKey(params.sessionKey) ||
+      isSkillEvolveValidationSessionKey(params.sessionKey);
     const promptMode =
       remoteTaskTurn ||
       isSubagentSessionKey(params.sessionKey) ||

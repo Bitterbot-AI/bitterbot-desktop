@@ -11,7 +11,11 @@ import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxContext } from "./sandbox.js";
 import { logWarn } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
-import { isA2aTaskSessionKey, isSubagentSessionKey } from "../routing/session-key.js";
+import {
+  isA2aTaskSessionKey,
+  isSkillEvolveValidationSessionKey,
+  isSubagentSessionKey,
+} from "../routing/session-key.js";
 import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
 import { resolveA2aRemoteToolPolicy } from "./a2a-remote-policy.js";
 import { resolveAgentConfig } from "./agent-scope.js";
@@ -255,10 +259,14 @@ export function createBitterbotCodingTools(options?: {
       : undefined;
   // PLAN-43 s3.2b: an inbound A2A task session executes a REMOTE caller's
   // request; it gets the remote floor (default: no tools at all), which no
-  // other policy step can widen.
-  const a2aRemotePolicy = isA2aTaskSessionKey(options?.sessionKey)
-    ? resolveA2aRemoteToolPolicy(options?.config)
-    : undefined;
+  // other policy step can widen. Phase 3 (3b adversarial): skill-evolution
+  // validation rollouts execute PEER-authored skill text and get the same
+  // floor — the corpus tasks are text tasks and need no tools.
+  const a2aRemotePolicy =
+    isA2aTaskSessionKey(options?.sessionKey) ||
+    isSkillEvolveValidationSessionKey(options?.sessionKey)
+      ? resolveA2aRemoteToolPolicy(options?.config)
+      : undefined;
   const allowBackground = isToolAllowedByPolicies("process", [
     profilePolicyWithAlsoAllow,
     providerProfilePolicyWithAlsoAllow,

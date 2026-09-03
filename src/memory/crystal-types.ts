@@ -180,6 +180,13 @@ export type DivergenceReport = {
 
 // ── Marketplace ──
 export type MarketplaceEntry = {
+  /** PLAN-43 Phase 3: receiver-side verified-outcome aggregate (null = no evidence). */
+  attestation?: {
+    score: number | null;
+    attesters: number;
+    regressions: number;
+    unverified: number;
+  };
   stableSkillId: string;
   name: string;
   description: string;
@@ -200,7 +207,7 @@ export type MarketplaceFilters = {
   minSuccessRate?: number;
   minAuthorReputation?: number;
   tags?: string[];
-  sortBy?: "relevance" | "trending" | "newest" | "top_rated";
+  sortBy?: "relevance" | "newest" | "trending" | "top_rated" | "attested";
 };
 
 // ── Mutation Strategies ──

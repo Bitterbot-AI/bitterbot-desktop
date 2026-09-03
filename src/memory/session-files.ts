@@ -3,7 +3,10 @@ import path from "node:path";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { redactSensitiveText } from "../logging/redact.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { isA2aTaskSessionKey } from "../sessions/session-key-utils.js";
+import {
+  isA2aTaskSessionKey,
+  isSkillEvolveValidationSessionKey,
+} from "../sessions/session-key-utils.js";
 import { hashText } from "./internal.js";
 
 const log = createSubsystemLogger("memory");
@@ -45,7 +48,11 @@ async function loadRemoteTaskSessionIds(dir: string): Promise<Set<string>> {
     const store = JSON.parse(raw) as Record<string, { sessionId?: string } | undefined>;
     for (const [sessionKey, entry] of Object.entries(store)) {
       const sessionId = entry?.sessionId;
-      if (typeof sessionId === "string" && sessionId && isA2aTaskSessionKey(sessionKey)) {
+      if (
+        typeof sessionId === "string" &&
+        sessionId &&
+        (isA2aTaskSessionKey(sessionKey) || isSkillEvolveValidationSessionKey(sessionKey))
+      ) {
         out.add(sessionId);
       }
     }

@@ -58,6 +58,24 @@ export function isSubagentSessionKey(sessionKey: string | undefined | null): boo
  * caller's request) carry an `a2a-task:` remainder (task-executor.ts). Tool
  * assembly uses this to apply the remote-caller floor.
  */
+/**
+ * PLAN-43 Phase 3 (3b adversarial): skill-evolution validation rollouts
+ * inject PEER-authored skill text into real agent turns. One marker so the
+ * trust classifier, transcript ingestion filter, and tool-policy floor all
+ * agree on which sessions those are.
+ */
+export const SKILL_EVOLVE_VALIDATION_MARKER = "skill-evolve-val-";
+
+export function makeSkillEvolveValidationSessionKey(agentId: string, nonce: string): string {
+  return `agent:${agentId}:${SKILL_EVOLVE_VALIDATION_MARKER}${nonce}`;
+}
+
+export function isSkillEvolveValidationSessionKey(sessionKey: string | undefined | null): boolean {
+  return (
+    typeof sessionKey === "string" && sessionKey.includes(`:${SKILL_EVOLVE_VALIDATION_MARKER}`)
+  );
+}
+
 export function isA2aTaskSessionKey(sessionKey: string | undefined | null): boolean {
   const parsed = parseAgentSessionKey(sessionKey);
   return Boolean((parsed?.rest ?? "").toLowerCase().startsWith("a2a-task:"));

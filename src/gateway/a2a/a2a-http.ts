@@ -249,6 +249,10 @@ export function createA2aHttpHandler(opts: {
     const isForageVerb = rpcRequest.method.startsWith("forage/");
     const isCircleVerb = rpcRequest.method.startsWith("circle/");
     const isMailboxVerb = rpcRequest.method.startsWith("mailbox/");
+    // PLAN-43 Phase 3: attestation exchange verbs carry their own Ed25519
+    // signatures (verified on submit) and serve public evidence.
+    const isAttestVerb =
+      rpcRequest.method.startsWith("skill/attest") && config.a2a?.attestation?.enabled !== false;
 
     // With a2a off, only circles' transport verbs exist here. Everything
     // else answers METHOD_NOT_FOUND — the same invisible-surface shape as
@@ -279,7 +283,7 @@ export function createA2aHttpHandler(opts: {
     // (default-deny, the friend branch), or an invite secret for circle/join.
     // Mailbox verbs carry per-verb Ed25519 proofs (sender for post,
     // recipient for poll/ack) — a mailbox host serves strangers by design.
-    if (!isForageVerb && !isCircleVerb && !isMailboxVerb) {
+    if (!isForageVerb && !isCircleVerb && !isMailboxVerb && !isAttestVerb) {
       const authOk = await authorizeA2aRequest(req, config, authOpts);
       if (!authOk.ok) {
         sendGatewayAuthFailure(res, authOk.result);
@@ -296,6 +300,58 @@ export function createA2aHttpHandler(opts: {
     if (isNotification) {
       res.statusCode = 204;
       res.end();
+      return true;
+    }
+
+    // PLAN-43 Phase 3: attestation exchange, served against the memory db.
+    if (isAttestVerb) {
+      const { handleAttestMethod } = await import("./attest.js");
+      let attestDb: import("node:sqlite").DatabaseSync | undefined;
+      let isBlockedAttester: ((pk: string) => boolean) | undefined;
+      try {
+        const { MemoryIndexManager } = await import("../../memory/manager.js");
+        const { resolveDefaultAgentId } = await import("../../agents/agent-scope.js");
+        const memManager = await MemoryIndexManager.get({
+          cfg: config,
+          agentId: resolveDefaultAgentId(config),
+          purpose: "status",
+        });
+        // Attestations live in the memory DB (the store the sweep and the
+        // marketplace aggregate use); independent of the marketplace flag.
+        attestDb = memManager?.getCirclesDb();
+        const blocked = new Set(config.a2a?.attestation?.blockedAttesters ?? []);
+        isBlockedAttester = (pk) => blocked.has(pk);
+      } catch {
+        /* memory manager unavailable */
+      }
+      if (!attestDb) {
+        sendJson(res, 503, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.INTERNAL_ERROR,
+            message: "Attestation store unavailable on this node",
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+      const clientIp = resolveGatewayClientIp({
+        remoteAddr: req.socket?.remoteAddress ?? "",
+        forwardedFor: getHeader(req, "x-forwarded-for"),
+        realIp: getHeader(req, "x-real-ip"),
+        trustedProxies: authOpts.trustedProxies,
+      });
+      const outcome = handleAttestMethod(rpcRequest.method as string, rpcRequest.params, attestDb, {
+        clientKey: clientIp ?? "unknown",
+        ...(isBlockedAttester ? { isBlockedAttester } : {}),
+      });
+      sendJson(
+        res,
+        200,
+        outcome.ok
+          ? { jsonrpc: "2.0", result: outcome.result, id: rpcRequest.id }
+          : { jsonrpc: "2.0", error: outcome.error, id: rpcRequest.id },
+      );
       return true;
     }
 

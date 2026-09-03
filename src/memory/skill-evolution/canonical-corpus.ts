@@ -267,7 +267,7 @@ export function randomCanonicalSeed(): number {
  * marketplace re-scoring: H(skill hash ‖ corpus version ‖ verifier nonce)).
  */
 export function deriveCanonicalSeed(...parts: string[]): number {
-  return createHash("sha256").update(parts.join(" ")).digest().readUInt32BE(0);
+  return createHash("sha256").update(parts.join("\u0000")).digest().readUInt32BE(0);
 }
 
 /** The seed-0 exemplar as JSONL — the human-reviewable, byte-pinned form. */

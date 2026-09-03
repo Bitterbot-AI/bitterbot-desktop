@@ -62,6 +62,37 @@ function generateIdentity(): DeviceIdentity {
   return { deviceId, publicKeyPem, privateKeyPem };
 }
 
+/**
+ * Load the device identity WITHOUT ever writing: returns null when the file
+ * is missing or unreadable. Attestation signing uses this so a transient
+ * read failure can never rotate the key that all prior attestations (and
+ * the circles identity) hang off.
+ */
+export function loadDeviceIdentity(
+  filePath: string = resolveDefaultIdentityPath(),
+): DeviceIdentity | null {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as StoredIdentity;
+    if (
+      parsed?.version === 1 &&
+      typeof parsed.publicKeyPem === "string" &&
+      typeof parsed.privateKeyPem === "string"
+    ) {
+      return {
+        deviceId: fingerprintPublicKey(parsed.publicKeyPem),
+        publicKeyPem: parsed.publicKeyPem,
+        privateKeyPem: parsed.privateKeyPem,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function loadOrCreateDeviceIdentity(
   filePath: string = resolveDefaultIdentityPath(),
 ): DeviceIdentity {

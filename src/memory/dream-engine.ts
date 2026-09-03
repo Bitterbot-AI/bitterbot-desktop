@@ -144,6 +144,7 @@ export class DreamEngine {
     modes: Record<DreamMode, DreamModeConfig>;
     skillCurator?: DreamEngineConfig["skillCurator"];
     skillEvolution?: DreamEngineConfig["skillEvolution"];
+    a2aAttestation?: DreamEngineConfig["a2aAttestation"];
   };
   private readonly synthesize: SynthesizeFn;
   private readonly embedBatch: EmbedBatchFn;
@@ -273,6 +274,7 @@ export class DreamEngine {
       modes: Record<DreamMode, DreamModeConfig>;
       skillCurator?: DreamEngineConfig["skillCurator"];
       skillEvolution?: DreamEngineConfig["skillEvolution"];
+      a2aAttestation?: DreamEngineConfig["a2aAttestation"];
     };
     this.synthesize = synthesize;
     this.embedBatch = embedBatch;
@@ -3072,6 +3074,32 @@ export class DreamEngine {
     // when validationMode === "tasks" so the default path never self-calls.
     const agentTurn =
       cfg?.validationMode === "tasks" ? await this.buildEvolutionAgentTurn() : undefined;
+    // PLAN-43 Phase 3: receiver-side attestations sign with the device
+    // identity; the P2P node pubkey rides along as a claim (no raw-sign
+    // bridge to the orchestrator yet).
+    let attestKeyPair: import("../commerce/envelope.js").KeyPair | undefined;
+    let nodePubkey: string | undefined;
+    // The exchange (push/pull) needs only the key; only the SWEEP needs
+    // tasks-mode rollouts. Loading the identity unconditionally keeps the
+    // exchange alive on records-mode nodes (3c adversarial F4).
+    if (this.config.a2aAttestation?.enabled !== false) {
+      try {
+        const [{ keyPairFromPrivateKeyPem }, { loadDeviceIdentity }] = await Promise.all([
+          import("../commerce/envelope.js"),
+          import("../infra/device-identity.js"),
+        ]);
+        // Load-only: a read failure must never rotate the attester identity.
+        const identity = loadDeviceIdentity();
+        if (identity) {
+          attestKeyPair = keyPairFromPrivateKeyPem(identity.privateKeyPem);
+        } else {
+          log.warn("attestation disabled this pass: device identity unreadable");
+        }
+        nodePubkey = (await getActiveOrchestratorBridge()?.getIdentity())?.pubkey;
+      } catch (err) {
+        log.debug(`attestation identity unavailable: ${String(err)}`);
+      }
+    }
     const result = await runEvolutionIteration({
       journal,
       llmCall,
@@ -3091,6 +3119,14 @@ export class DreamEngine {
       ...(cfg?.maturityDays !== undefined ? { maturityDays: cfg.maturityDays } : {}),
       publisher: getActiveOrchestratorBridge(),
       modelTag: this.config.model,
+      ...(attestKeyPair ? { attestKeyPair } : {}),
+      ...(nodePubkey ? { nodePubkey } : {}),
+      ...(this.config.a2aAttestation?.enabled !== false && this.config.a2aAttestation?.peers?.length
+        ? { attestationPeers: this.config.a2aAttestation.peers }
+        : {}),
+      ...(this.config.a2aAttestation?.blockedAttesters?.length
+        ? { blockedAttesters: this.config.a2aAttestation.blockedAttesters }
+        : {}),
     });
     if (result.ran) {
       const apply = result.maintenance?.apply;
@@ -3132,6 +3168,8 @@ export class DreamEngine {
         import("../config/io.js"),
         import("./skill-evolution/task-runner.js"),
       ]);
+      const { makeSkillEvolveValidationSessionKey } =
+        await import("../sessions/session-key-utils.js");
       const agentId = resolveDefaultAgentId(loadConfig());
       return makeGatewayAgentTurn({
         callGateway: (a) =>
@@ -3144,7 +3182,7 @@ export class DreamEngine {
         agentId,
         channel: INTERNAL_MESSAGE_CHANNEL,
         makeSessionKey: () =>
-          `agent:${agentId}:skill-evolve-val-${globalThis.crypto.randomUUID().slice(0, 8)}`,
+          makeSkillEvolveValidationSessionKey(agentId, globalThis.crypto.randomUUID().slice(0, 8)),
         makeIdempotencyKey: () => globalThis.crypto.randomUUID(),
       });
     } catch (err) {

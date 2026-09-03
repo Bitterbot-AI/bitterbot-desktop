@@ -51,6 +51,23 @@ export type A2aConfig = {
     /** Server-side wall clock for the spawned turn, seconds. Default: 600. */
     timeoutSeconds?: number;
   };
+  /**
+   * PLAN-43 Phase 3: the attestation exchange (network validation layer).
+   * Serving `skill/attest.*` is on whenever A2A is; syncing happens only
+   * with the peers listed here (reachable A2A URLs).
+   */
+  attestation?: {
+    /** Serve and sync attestations. Default: true. */
+    enabled?: boolean;
+    /** Peer A2A base URLs to push/pull attestations with. Default: []. */
+    peers?: string[];
+    /** Attester pubkeys (ed25519:<hex>) whose verdicts weigh 1.0. */
+    trustedAttesters?: string[];
+    /** Attester pubkeys whose verdicts are ignored. */
+    blockedAttesters?: string[];
+    /** Weight for attesters not in either list (their total is also capped at 25% of trusted weight). Default: 0.05. */
+    unknownAttesterWeight?: number;
+  };
   /** x402 payment gate configuration. */
   payment?: {
     /**

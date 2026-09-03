@@ -22,8 +22,11 @@ import type { EventJournal } from "../../infra/event-journal.js";
 import type { AgentTurnFn } from "./task-runner.js";
 import type { SamplerStats } from "./types.js";
 import type { WikiStoreOptions } from "./wiki-store.js";
+import { pubkeyId, type KeyPair } from "../../commerce/envelope.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { syncAttestations } from "../../services/attestation-client.js";
 import { recordDreamArtifact } from "../dream-utility.js";
+import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
 import { loadEffectiveCorpus } from "./canonical-corpus.js";
 import { mineCapabilityTasks } from "./corpus-miner.js";
 import { type LlmCallFn, type MaintenanceResult, runWikiMaintenance } from "./maintainer.js";
@@ -69,6 +72,17 @@ export interface EvolutionPassDeps {
   /** Validation gate settings (Phase 4). Gate runs whenever a proposal staged. */
   validationMode?: "records" | "tasks";
   trialsPerTask?: number;
+  /**
+   * PLAN-43 Phase 3: signing key for receiver-side attestations of peer
+   * skills (device identity). When set together with `agentTurn`, the
+   * housekeeping sweep re-scores a bounded number of unattested peer-origin
+   * skills per pass and stores signed verdicts.
+   */
+  attestKeyPair?: KeyPair;
+  nodePubkey?: string;
+  /** Peer A2A URLs to exchange attestations with (a2a.attestation.peers). */
+  attestationPeers?: string[];
+  blockedAttesters?: string[];
   maxActiveEvolved?: number;
   modelTag?: string;
   /** P2P propagation (Phase 5). Publisher = the orchestrator bridge or a fake. */
@@ -275,6 +289,7 @@ async function runHousekeeping(
   lint?: WikiLintResult;
   semanticLint?: SemanticLintResult;
   publish?: PublishSweepResult;
+  attestation?: { attested: number; skipped: number; held: number };
 }> {
   const validation = await runValidationGate({
     journal: deps.journal,
@@ -287,6 +302,53 @@ async function runHousekeeping(
     ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),
     iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
   });
+  // PLAN-43 Phase 3: attest peer skills on our own corpus (tasks mode only:
+  // it needs the real-rollout executor). Best-effort, bounded per pass.
+  let attestation: { attested: number; skipped: number; held: number } | undefined;
+  if (deps.db && deps.agentTurn && deps.attestKeyPair) {
+    try {
+      attestation = await runAttestationSweep({
+        db: deps.db,
+        agentTurn: deps.agentTurn,
+        keyPair: deps.attestKeyPair,
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+        ...(typeof deps.trialsPerTask === "number" ? { trialsPerTask: deps.trialsPerTask } : {}),
+        ...(deps.modelTag ? { model: deps.modelTag } : {}),
+        ...(deps.nodePubkey ? { nodePubkey: deps.nodePubkey } : {}),
+      });
+    } catch (err) {
+      log.warn(`attestation sweep skipped: ${String(err)}`);
+    }
+    // Exchange: push ours, pull peers' for the peer skills we hold.
+    if (deps.attestationPeers?.length) {
+      try {
+        const shas = (
+          deps.db
+            .prepare(
+              `SELECT text FROM chunks
+                WHERE semantic_type IN ('skill', 'task_pattern')
+                  AND COALESCE(lifecycle_state, 'active') = 'active'
+                  AND governance_json LIKE '%"peerOrigin"%'
+                ORDER BY updated_at DESC LIMIT 20`,
+            )
+            .all() as Array<{ text: string }>
+        ).map((r) => skillContentSha256(r.text));
+        const blocked = new Set(deps.blockedAttesters ?? []);
+        const sync = await syncAttestations({
+          db: deps.db,
+          peers: deps.attestationPeers,
+          contentSha256s: shas,
+          ownAttesterPubkey: pubkeyId(deps.attestKeyPair),
+          isBlockedAttester: (pk) => blocked.has(pk),
+        });
+        log.info(
+          `attestation sync: pushed ${sync.pushed}, pulled ${sync.pulled}, peers failed ${sync.peersFailed}`,
+        );
+      } catch (err) {
+        log.debug(`attestation sync skipped: ${String(err)}`);
+      }
+    }
+  }
   const lint = await runWikiLint({
     ...storeOpts,
     ...(deps.maxPatterns ? { maxPatterns: deps.maxPatterns } : {}),
@@ -313,6 +375,7 @@ async function runHousekeeping(
   return {
     validation,
     ...(lint ? { lint } : {}),
+    ...(attestation ? { attestation } : {}),
     ...(semanticLint ? { semanticLint } : {}),
     ...(publish ? { publish } : {}),
   };

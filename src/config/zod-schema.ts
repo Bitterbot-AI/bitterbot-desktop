@@ -746,6 +746,10 @@ export const BitterbotSchema = z
             defaultTrust: z.enum(["auto", "review"]).optional(),
             transformThreshold: z.number().min(0).max(1).optional(),
             royaltyBps: z.number().int().nonnegative().optional(),
+            royaltyWallet: z
+              .string()
+              .regex(/^0x[a-fA-F0-9]{40}$/, "must be a 0x-prefixed 20-byte hex address")
+              .optional(),
             maxBytes: z.number().int().positive().optional(),
             apiKey: z.string().optional(),
           })
@@ -861,6 +865,40 @@ export const BitterbotSchema = z
           .object({
             expose: z.enum(["all", "none"]).optional(),
             allowlist: z.array(z.string()).optional(),
+          })
+          .strict()
+          .optional(),
+        // PLAN-43 Phase 3: attestation exchange
+        attestation: z
+          .object({
+            enabled: z.boolean().optional(),
+            peers: z
+              .array(
+                z
+                  .string()
+                  .url()
+                  .refine(
+                    (u) => {
+                      try {
+                        const h = new URL(u).hostname;
+                        return !(
+                          h === "localhost" ||
+                          h.startsWith("127.") ||
+                          h === "::1" ||
+                          h === "[::1]" ||
+                          h.startsWith("169.254.")
+                        );
+                      } catch {
+                        return false;
+                      }
+                    },
+                    { message: "attestation peers must not be loopback or link-local" },
+                  ),
+              )
+              .optional(),
+            trustedAttesters: z.array(z.string()).optional(),
+            blockedAttesters: z.array(z.string()).optional(),
+            unknownAttesterWeight: z.number().min(0).max(1).optional(),
           })
           .strict()
           .optional(),
