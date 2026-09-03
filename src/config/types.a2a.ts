@@ -117,6 +117,12 @@ export type A2aConfig = {
   marketplace?: {
     /** Enable automatic skill listing. Default: true when A2A is enabled. */
     enabled?: boolean;
+    /**
+     * PLAN-43 Phase 3 (§3.7) kill switch: when true, no paid listing is
+     * advertised or sellable (agent card, invoke, and listing RPCs all read
+     * empty) until cleared. Read live from config; no restart needed.
+     */
+    freezeListings?: boolean;
     /** Pricing configuration. */
     pricing?: {
       /** Base price in USDC. Default: 0.01 */

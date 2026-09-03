@@ -25,7 +25,9 @@ import type { WikiStoreOptions } from "./wiki-store.js";
 import { pubkeyId, type KeyPair } from "../../commerce/envelope.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { syncAttestations } from "../../services/attestation-client.js";
+import { CommerceReputationLedger } from "../commerce-reputation.js";
 import { recordDreamArtifact } from "../dream-utility.js";
+import { SellerBondLedger } from "../seller-bond-ledger.js";
 import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
 import { loadEffectiveCorpus } from "./canonical-corpus.js";
 import { mineCapabilityTasks } from "./corpus-miner.js";
@@ -305,19 +307,38 @@ async function runHousekeeping(
   // PLAN-43 Phase 3: attest peer skills on our own corpus (tasks mode only:
   // it needs the real-rollout executor). Best-effort, bounded per pass.
   let attestation: { attested: number; skipped: number; held: number } | undefined;
-  if (deps.db && deps.agentTurn && deps.attestKeyPair) {
+  // The SWEEP needs tasks-mode rollouts; the fraud pass and the exchange
+  // need only the db and the key, and run in every validation mode.
+  if (deps.db && deps.attestKeyPair) {
+    if (deps.agentTurn) {
+      try {
+        attestation = await runAttestationSweep({
+          db: deps.db,
+          agentTurn: deps.agentTurn,
+          keyPair: deps.attestKeyPair,
+          ...(storeOpts.configDir ? { storeOpts } : {}),
+          ...(typeof deps.trialsPerTask === "number" ? { trialsPerTask: deps.trialsPerTask } : {}),
+          ...(deps.modelTag ? { model: deps.modelTag } : {}),
+          ...(deps.nodePubkey ? { nodePubkey: deps.nodePubkey } : {}),
+        });
+      } catch (err) {
+        log.warn(`attestation sweep skipped: ${String(err)}`);
+      }
+    }
+    // §3.7: our own regression verdicts are validated fraud for the seller:
+    // slash posted bonds (ledger only) and commerce-quarantine the seller.
     try {
-      attestation = await runAttestationSweep({
-        db: deps.db,
-        agentTurn: deps.agentTurn,
-        keyPair: deps.attestKeyPair,
-        ...(storeOpts.configDir ? { storeOpts } : {}),
-        ...(typeof deps.trialsPerTask === "number" ? { trialsPerTask: deps.trialsPerTask } : {}),
-        ...(deps.modelTag ? { model: deps.modelTag } : {}),
-        ...(deps.nodePubkey ? { nodePubkey: deps.nodePubkey } : {}),
+      const fraud = new SellerBondLedger(deps.db).applyRegressionVerdicts({
+        ownAttesterPubkey: pubkeyId(deps.attestKeyPair),
+        commerce: new CommerceReputationLedger(deps.db),
       });
+      if (fraud.verdicts > 0) {
+        log.warn(
+          `fraud verdicts recorded: ${fraud.verdicts} (sellers slashed/quarantined: ${fraud.sellersSlashed.join(", ")})`,
+        );
+      }
     } catch (err) {
-      log.warn(`attestation sweep skipped: ${String(err)}`);
+      log.debug(`fraud verdict pass skipped: ${String(err)}`);
     }
     // Exchange: push ours, pull peers' for the peer skills we hold.
     if (deps.attestationPeers?.length) {

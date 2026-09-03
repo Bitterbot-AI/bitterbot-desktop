@@ -29,6 +29,17 @@ describe("a2a.attestation + registry royalty config", () => {
     }
   });
 
+  it("accepts the listings kill switch and rejects loopback attestation peers", () => {
+    const r = validateConfigObject({ a2a: { marketplace: { freezeListings: true } } });
+    expect(r.ok && r.config.a2a?.marketplace?.freezeListings).toBe(true);
+    expect(
+      validateConfigObject({ a2a: { attestation: { peers: ["http://127.0.0.1:19001"] } } }).ok,
+    ).toBe(false);
+    expect(
+      validateConfigObject({ a2a: { attestation: { peers: ["http://169.254.169.254"] } } }).ok,
+    ).toBe(false);
+  });
+
   it("rejects out-of-range weights and malformed wallets", () => {
     expect(validateConfigObject({ a2a: { attestation: { unknownAttesterWeight: 1.5 } } }).ok).toBe(
       false,

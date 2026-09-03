@@ -365,6 +365,22 @@ describe("MarketplaceEconomics — PLAN-43 Phase 0 separation", () => {
     );
   });
 
+  it("the freezeListings kill switch empties the advertised and sellable sets live (§3.7)", () => {
+    let frozen = false;
+    const economics = new MarketplaceEconomics(db, undefined, { freezeListings: () => frozen });
+    insertSkillChunk(db, "c-frz", "Frozen Skill", { forSale: true });
+    recordPassingExecutions(db, "c-frz");
+    economics.refreshListings(1.0);
+    expect(economics.getListableSkills()).toHaveLength(1);
+    expect(economics.getSellableSkill("c-frz")?.skillId).toBe("c-frz");
+    frozen = true;
+    expect(economics.isFrozen()).toBe(true);
+    expect(economics.getListableSkills()).toEqual([]);
+    expect(economics.getSellableSkill("c-frz")).toBeNull();
+    frozen = false;
+    expect(economics.getListableSkills()).toHaveLength(1);
+  });
+
   it("getSellableSkill serves only for-sale AND listable crystals (no read-by-id primitive)", () => {
     const economics = new MarketplaceEconomics(db);
     insertSkillChunk(db, "c-sell", "Sellable Skill", { forSale: true });

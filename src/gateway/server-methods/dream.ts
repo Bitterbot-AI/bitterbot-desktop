@@ -67,6 +67,7 @@ interface MarketplaceEconomicsView {
     forSale: boolean,
     opts?: { lineage?: string[] },
   ): { ok: boolean; forSale?: boolean; reason?: string; flagged?: boolean };
+  isFrozen?(): boolean;
 }
 
 /** Properties of MemoryIndexManager that dream handlers access beyond MemorySearchManager. */
@@ -705,6 +706,78 @@ export const dreamHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
   },
+  // PLAN-43 Phase 3 (§3.7): commerce standing of peers this node has called
+  // (answer rate / uptime / quarantine) plus the seller-bond ledger summary.
+  "marketplace.commerce": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      if (!db) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "memory db unavailable"));
+        return;
+      }
+      const [{ CommerceReputationLedger }, { SellerBondLedger }] = await Promise.all([
+        import("../../memory/commerce-reputation.js"),
+        import("../../memory/seller-bond-ledger.js"),
+      ]);
+      const limit =
+        typeof params.limit === "number" ? Math.min(200, Math.max(1, params.limit)) : 50;
+      respond(true, {
+        peers: new CommerceReputationLedger(db).listPeers(limit),
+        bonds: new SellerBondLedger(db).summary(),
+        frozen: loadConfig().a2a?.marketplace?.freezeListings === true,
+      });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "marketplace.bonds": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      if (!db) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "memory db unavailable"));
+        return;
+      }
+      const { SellerBondLedger } = await import("../../memory/seller-bond-ledger.js");
+      const ledger = new SellerBondLedger(db);
+      const seller = typeof params.sellerPubkey === "string" ? params.sellerPubkey : undefined;
+      respond(true, { bonds: ledger.list(seller), summary: ledger.summary() });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // Ledger entry only: no funds move (invariant I7). Operator action.
+  "marketplace.postBond": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      if (!db) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "memory db unavailable"));
+        return;
+      }
+      const seller = typeof params.sellerPubkey === "string" ? params.sellerPubkey.trim() : "";
+      const amount = typeof params.amountUsdc === "number" ? params.amountUsdc : NaN;
+      if (!seller || seller.length > 128 || !(amount > 0) || amount > 1_000_000) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "sellerPubkey and a positive amountUsdc are required",
+          ),
+        );
+        return;
+      }
+      const { SellerBondLedger } = await import("../../memory/seller-bond-ledger.js");
+      respond(true, { bond: new SellerBondLedger(db).postBond(seller, amount) });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
   "marketplace.delist": async ({ params, respond }) => {
     try {
       const manager = await getManager();

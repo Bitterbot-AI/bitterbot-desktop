@@ -250,6 +250,9 @@ export class SkillMarketplace {
     }
 
     const entry = this.rowToEntry(row);
+    if (entry.authorPeerId && this.reputationManager.isBanned(entry.authorPeerId)) {
+      return null;
+    }
 
     // Version history
     const versions = this.db
@@ -311,7 +314,11 @@ export class SkillMarketplace {
       }
     }
 
-    let entries = rows.map((r) => this.rowToEntry(r, reputationCache));
+    let entries = rows
+      .map((r) => this.rowToEntry(r, reputationCache))
+      // PLAN-43 Phase 3 (§3.7): a banned publisher's skills leave the
+      // browse layer with the ban (PeerReputationManager.banPeer / auto-ban).
+      .filter((e) => !(e.authorPeerId && this.reputationManager.isBanned(e.authorPeerId)));
 
     if (filters?.minSuccessRate != null) {
       entries = entries.filter((e) => e.successRate >= (filters.minSuccessRate ?? 0));

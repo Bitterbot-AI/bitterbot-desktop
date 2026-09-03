@@ -26,6 +26,8 @@ const A2aClientSchema = Type.Object({
   agentUrl: Type.Optional(Type.String()),
   /** libp2p peer ID — alternative to agentUrl; resolved via wallet_capability gossip */
   peerId: Type.Optional(Type.String()),
+  /** Seller/author pubkey (a marketplace entry's authorPeerId) so commerce standing joins fraud verdicts */
+  peerPubkey: Type.Optional(Type.String()),
   /** Message to send for execute action */
   message: Type.Optional(Type.String()),
   /** Maximum USDC to spend on this task (optional override) */
@@ -150,10 +152,12 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
         }
 
         const a2aClient = await getClient();
+        const peerPubkey = readStringParam(rawParams, "peerPubkey");
         const result = await a2aClient.executeTask({
           agentUrl,
           message,
           walletService,
+          ...(peerPubkey ? { peerPubkey } : {}),
         });
 
         if (result.success) {

@@ -944,6 +944,7 @@ export const BitterbotSchema = z
         marketplace: z
           .object({
             enabled: z.boolean().optional(),
+            freezeListings: z.boolean().optional(),
             pricing: z
               .object({
                 basePriceUsdc: z.number().nonnegative().optional(),

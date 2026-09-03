@@ -61,6 +61,11 @@ export interface MarketplaceEconomicsDeps {
    * maps a normalized skill name to its registry provenance
    * (registry-provenance.ts); `royaltyBps` is skills.agentskills.royaltyBps.
    */
+  /**
+   * PLAN-43 Phase 3 (§3.7) kill switch, read live: true = no paid listing
+   * is advertised or sellable (a2a.marketplace.freezeListings).
+   */
+  freezeListings?: () => boolean;
   registryRoyalty?: {
     royaltyBps: number;
     lookup: () => Map<string, { registry: string }>;
@@ -890,7 +895,19 @@ export class MarketplaceEconomics {
    * sale AND currently listable — a caller-supplied id must never become a
    * read-any-crystal-by-id primitive.
    */
+  /** True while the operator kill switch holds every paid listing off the wire. */
+  isFrozen(): boolean {
+    try {
+      return this.deps.freezeListings?.() === true;
+    } catch {
+      return false;
+    }
+  }
+
   getSellableSkill(skillCrystalId: string): { skillId: string; name: string; text: string } | null {
+    if (this.isFrozen()) {
+      return null;
+    }
     try {
       const row = this.db
         .prepare(`
@@ -914,6 +931,9 @@ export class MarketplaceEconomics {
    * improvement — never by price, downloads, or any farmable count.
    */
   getListableSkills(): MarketplaceListing[] {
+    if (this.isFrozen()) {
+      return [];
+    }
     const rows = this.db
       .prepare(`
       SELECT skill_crystal_id, name, description, price_usdc, listable,

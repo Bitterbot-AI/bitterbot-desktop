@@ -55,8 +55,9 @@ export function createA2aStatusTool(): AnyAgentTool {
     description:
       "Snapshot the A2A subsystem. Scope: summary (default — config + today's totals), " +
       "inbound (recent tasks + state breakdown), outbound (spend caps + recent purchases), " +
-      "earnings (sales + pending revenue payouts), peers (live ERC-8004 reputation for active " +
-      "buyers/sellers), all (everything). Optional peerLookup={erc8004TokenId,chain} fetches " +
+      "earnings (sales + pending revenue payouts), peers (commerce standing of peers this node " +
+      "has called: answer rate, uptime, quarantine; bond ledger; ERC-8004 identity when configured), " +
+      "all (everything). Optional peerLookup={erc8004TokenId,chain} fetches " +
       "reputation for a specific peer. ERC-8004 reads are TTL-cached (a2a.erc8004.cacheTtlMs).",
     parameters: A2aStatusSchema,
     execute: async (_toolCallId, args) => {
@@ -90,7 +91,9 @@ export function createA2aStatusTool(): AnyAgentTool {
       let tasksDb: DatabaseSync | null = null;
       try {
         tasksDb = openA2aTasksDb();
-        const marketplace = await loadMarketplace(cfg);
+        const loaded = await loadMarketplace(cfg);
+        const marketplace = loaded?.db ? { db: loaded.db } : null;
+        const memoryDb = loaded?.memoryDb ?? null;
 
         const result: Record<string, unknown> = {
           ok: true,
@@ -112,6 +115,13 @@ export function createA2aStatusTool(): AnyAgentTool {
 
         if (scope === "summary" || scope === "earnings" || scope === "all") {
           result.earnings = buildEarningsSnapshot(marketplace);
+        }
+
+        // PLAN-43 Phase 3 (§3.7): commerce standing of the peers THIS node
+        // has actually called (answer rate / uptime / quarantine) and the
+        // seller-bond ledger (no funds move; see seller-bond-ledger.ts).
+        if ((scope === "peers" || scope === "all") && memoryDb) {
+          result.commerce = await buildCommerceSnapshot(memoryDb, recentLimit);
         }
 
         // Identity (own reputation) is fetched on summary/all when configured —
@@ -347,11 +357,57 @@ function buildEarningsSnapshot(
   };
 }
 
+async function buildCommerceSnapshot(
+  db: DatabaseSync,
+  recentLimit: number,
+): Promise<Record<string, unknown>> {
+  const [{ CommerceReputationLedger }, { SellerBondLedger }] = await Promise.all([
+    import("../../memory/commerce-reputation.js"),
+    import("../../memory/seller-bond-ledger.js"),
+  ]);
+  const now = Date.now();
+  const ledger = new CommerceReputationLedger(db);
+  const quarantinedCount = ledger
+    .listPeers(200)
+    .filter((p) => p.quarantinedUntil !== null && p.quarantinedUntil > now).length;
+  const peers = ledger.listPeers(recentLimit).map((p) => ({
+    peer: p.peerKey,
+    peerPubkey: p.peerPubkey,
+    attempts: p.attempts,
+    answerRate: p.answerRate,
+    uptime: p.uptime,
+    avgLatencyMs: p.avgLatencyMs,
+    quarantined: p.quarantinedUntil !== null && p.quarantinedUntil > now,
+    quarantineReason:
+      p.quarantinedUntil !== null && p.quarantinedUntil > now ? p.quarantineReason : null,
+  }));
+  return { peers, quarantinedCount, bonds: new SellerBondLedger(db).summary() };
+}
+
 function buildHints(
   a2a: NonNullable<ReturnType<typeof loadConfig>["a2a"]>,
   result: Record<string, unknown>,
 ): string[] {
   const hints: string[] = [];
+  if (a2a.marketplace?.freezeListings === true) {
+    hints.push(
+      "Paid listings are FROZEN (a2a.marketplace.freezeListings): nothing is advertised or sellable until it is cleared.",
+    );
+  }
+  const commerce = result.commerce as
+    | { quarantinedCount?: number; bonds?: { fraudVerdicts?: number } }
+    | undefined;
+  const quarantined = commerce?.quarantinedCount ?? 0;
+  if ((commerce?.bonds?.fraudVerdicts ?? 0) > 0) {
+    hints.push(
+      `${commerce?.bonds?.fraudVerdicts} corroborated regression verdict(s) recorded against sellers (see marketplace.bonds).`,
+    );
+  }
+  if (quarantined > 0) {
+    hints.push(
+      `${quarantined} peer(s) are commerce-quarantined (stopped answering or attested fraud); outbound tasks to them are refused until the window passes.`,
+    );
+  }
   if (a2a.payment?.enabled !== true) {
     hints.push(
       "Payment gate is off — set a2a.payment.enabled to start charging (receiving address defaults to the local wallet).",
@@ -460,19 +516,32 @@ function openA2aTasksDb(): DatabaseSync {
 
 async function loadMarketplace(
   cfg: ReturnType<typeof loadConfig>,
-): Promise<{ db: DatabaseSync } | null> {
+): Promise<{ db: DatabaseSync | null; memoryDb: DatabaseSync | null } | null> {
   try {
-    const { MemoryIndexManager } = await import("../../memory/manager.js");
+    const [{ MemoryIndexManager }, { resolveDefaultAgentId }] = await Promise.all([
+      import("../../memory/manager.js"),
+      import("../agent-scope.js"),
+    ]);
     const memManager = await MemoryIndexManager.get({
       cfg,
-      agentId: "default",
+      agentId: resolveDefaultAgentId(cfg),
       purpose: "status",
     });
+    // The memory DB itself (marketplace, attestation, and commerce tables
+    // all live there), independent of the marketplace flag. Fallback to the
+    // economics handle for harnesses that expose only that.
+    const viaManager = (
+      memManager as { getCirclesDb?: () => DatabaseSync } | null
+    )?.getCirclesDb?.();
     const economics = memManager?.getMarketplaceEconomics?.();
-    if (!economics) return null;
-    const db = (economics as { getDb?: () => DatabaseSync | undefined }).getDb?.();
-    if (!db) return null;
-    return { db };
+    // Marketplace tables exist only when MarketplaceEconomics is
+    // constructed (a2a.marketplace.enabled); the commerce ledgers create
+    // their own tables in the memory DB, so they work without it.
+    const economicsDb =
+      (economics as { getDb?: () => DatabaseSync | undefined } | null)?.getDb?.() ?? null;
+    const memoryDb = viaManager ?? economicsDb;
+    if (!economicsDb && !memoryDb) return null;
+    return { db: economicsDb, memoryDb };
   } catch {
     return null;
   }

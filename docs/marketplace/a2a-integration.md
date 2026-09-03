@@ -912,6 +912,51 @@ numeric field range-checked) and stored in `skill_attestations`.
   own record never overwrites it. Peers may not be loopback or link-local
   addresses.
 
+## Commerce Standing, Freeze, and the Bond Ledger (PLAN-43 Phase 3)
+
+- **Commerce standing from real outcomes.** Every outbound A2A task this
+  node sends is recorded per peer endpoint (URL origin) in
+  `commerce_reputation`: answered, unreachable (network error or 5xx), or
+  failed, with latency. This node's own refusals (price cap, daily spend
+  cap, its own wallet) and HTTP 4xx answers (payment required, auth, rate
+  limit) are never scored against the peer. Answer rate and uptime are
+  therefore this node's own observations, never a peer's claim. A peer
+  under a 50% answer rate over five or more attempts since its last
+  quarantine is quarantined for 24 hours: the A2A client refuses to spend
+  on it until the window passes, and the counting window restarts so a
+  recovered peer earns its way back in a handful of calls. Honest scope:
+  this is an endpoint throttle protecting this node's spend, keyed by
+  origin, which a peer can evade with a new host or port at no cost; it
+  is not a network reputation. Quarantine is separate from the
+  skill-ingestion ban (a flaky seller keeps its free-skill standing; a
+  banned publisher keeps nothing: its skills leave browse, trending,
+  recommendations, and detail with the ban). The `a2a_status` tool
+  (`scope: "peers"` or `"all"`) and the `marketplace.commerce` RPC (read
+  scope) surface the standings and quarantine reasons.
+- **Listings kill switch.** `a2a.marketplace.freezeListings: true` empties
+  the sellable set immediately (invoke and listing RPCs read empty, and
+  prices leave the agent card at the next request; callers may hold a
+  cached card for up to five minutes). It is read from the live config
+  file; no restart is needed.
+- **Slashable seller bond, as a ledger.** `marketplace.postBond
+{ sellerPubkey, amountUsdc }` (operator write scope) records a stake at
+  risk; no funds move anywhere in this path (invariant I7). The trigger is
+  corroborated regression evidence, not a single failing task: this
+  node's own regression attestation on a peer-origin skill from that
+  seller, with either two or more failing tasks or a second attester's
+  regression verdict. The evolution housekeeping pass (any validation
+  mode) records the verdict once per (skill, seller), marks the seller's
+  posted bonds slashed with the evidence, and quarantines the seller by
+  pubkey for 30 days. That pubkey quarantine blocks the A2A client only
+  when it knows the seller's pubkey for an endpoint: pass `peerPubkey` (a
+  marketplace entry's `authorPeerId`) to the `a2a_client` tool, and the
+  endpoint remembers it; an endpoint dialed without a pubkey is not
+  joined to fraud verdicts. `marketplace.bonds` lists the ledger and the
+  verdict count (a verdict against a seller with no bond slashes nothing
+  but is still recorded and surfaced). Releasing a bond is a ledger
+  action too. Turning any of this into money movement is a separate,
+  flag-gated decision for payments counsel.
+
 ## Selling Is Opt-In Per Skill (PLAN-43 Phase 0)
 
 The paid listing pool is fully decoupled from free skill propagation:
@@ -978,6 +1023,7 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
     },
     "marketplace": {
       "enabled": true,
+      "freezeListings": false, // PLAN-43 Phase 3 kill switch: true = nothing advertised or sellable (live)
       "pricing": { "basePriceUsdc": 0.01 },
       "client": {
         // outbound spend caps

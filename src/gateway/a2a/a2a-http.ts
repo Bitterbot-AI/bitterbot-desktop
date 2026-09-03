@@ -119,7 +119,7 @@ export function createA2aHttpHandler(opts: {
   const db = openA2aTaskDb(opts.taskDb);
   const ownsDb = opts.taskDb === undefined;
   let taskManager: A2aTaskManager | null = null;
-  let cachedAgentCard: { json: string; version: number } | null = null;
+  let cachedAgentCard: { json: string; version: string } | null = null;
   let closed = false;
 
   function getTaskManager(config: BitterbotConfig): A2aTaskManager {
@@ -142,15 +142,21 @@ export function createA2aHttpHandler(opts: {
       if (!config.a2a?.enabled) {
         return false;
       }
-      const version = getSkillsVersion();
+      // PLAN-43 Phase 3 (§3.7): the freeze flag is part of the cache key so
+      // flipping it drops prices from the card at the next request.
+      const frozen = config.a2a?.marketplace?.freezeListings === true;
+      const version = `${getSkillsVersion()}:${frozen ? "frozen" : "open"}`;
       if (!cachedAgentCard || cachedAgentCard.version !== version) {
         // Load marketplace prices for the Agent Card
         let skillPrices: Map<string, number> | undefined;
         try {
-          const { MemoryIndexManager } = await import("../../memory/manager.js");
+          const [{ MemoryIndexManager }, { resolveDefaultAgentId }] = await Promise.all([
+            import("../../memory/manager.js"),
+            import("../../agents/agent-scope.js"),
+          ]);
           const memManager = await MemoryIndexManager.get({
             cfg: config,
-            agentId: "default",
+            agentId: resolveDefaultAgentId(config),
             purpose: "status",
           });
           const marketplace = memManager?.getMarketplaceEconomics?.();

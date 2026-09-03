@@ -101,4 +101,27 @@ describe("SkillMarketplace attestation surface", () => {
     expect(byId.get("bad")).toMatchObject({ score: -1, attesters: 1, regressions: 1 });
     expect(byId.get("none")?.score).toBeNull();
   });
+
+  it("a banned publisher's skills leave the browse layer with the ban (§3.7)", () => {
+    const db = new DatabaseSync(":memory:");
+    ensureMemoryIndexSchema({ db, embeddingCacheTable: "ec", ftsTable: "fts", ftsEnabled: false });
+    ensureColumn(db, "chunks", "publish_visibility", "TEXT");
+    db.exec(`CREATE TABLE IF NOT EXISTS peer_reputation (
+      peer_pubkey TEXT PRIMARY KEY, peer_id TEXT, skills_received INTEGER DEFAULT 0,
+      skills_accepted INTEGER DEFAULT 0, skills_rejected INTEGER DEFAULT 0, avg_skill_quality REAL DEFAULT 0,
+      reputation_score REAL DEFAULT 0.5, trust_level TEXT DEFAULT 'provisional', first_seen_at INTEGER,
+      last_seen_at INTEGER, is_banned INTEGER DEFAULT 0, eigentrust_score REAL DEFAULT 0, wallet_address TEXT)`);
+    const tracker = new SkillExecutionTracker(db);
+    const rep = new PeerReputationManager(db, tracker);
+    const marketplace = new SkillMarketplace(db, tracker, rep);
+    db.prepare(
+      `INSERT INTO chunks (id, stable_skill_id, path, source, start_line, end_line, hash, model, text, embedding, updated_at,
+         semantic_type, governance_json, importance_score)
+       VALUES ('peer-skill', 'peer-skill', 'skills/peer', 'skills', 0, 0, 'h', 'test', '# Peer docker skill', '[]', 1, 'skill', ?, 0.8)`,
+    ).run(JSON.stringify({ accessScope: "shared", sensitivity: "normal", peerOrigin: "pk-evil" }));
+    expect(marketplace.listSkill("peer-skill", "docker")).toBe(true);
+    expect(marketplace.search("docker").map((e) => e.stableSkillId)).toEqual(["peer-skill"]);
+    rep.banPeer("pk-evil");
+    expect(marketplace.search("docker")).toEqual([]);
+  });
 });

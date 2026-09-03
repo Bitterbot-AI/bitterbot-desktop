@@ -167,6 +167,9 @@ const BASE_METHODS = [
   "marketplace.detail",
   "marketplace.listForSale",
   "marketplace.delist",
+  "marketplace.commerce",
+  "marketplace.bonds",
+  "marketplace.postBond",
   // Management
   "management.census",
   "management.anomalies",

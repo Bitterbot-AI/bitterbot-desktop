@@ -5,7 +5,6 @@ import { appendFileSync, mkdirSync, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
-import type { BitterbotConfig } from "../config/config.js";
 import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
 import type { CuriosityState } from "./curiosity-types.js";
 import type { DreamStats, SynthesizeFn } from "./dream-types.js";
@@ -22,6 +21,7 @@ import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveHarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
+import { loadConfig, type BitterbotConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan, withSpanAttrs } from "../observability/otel.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
@@ -6088,6 +6088,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         // PLAN-43 Phase 0: listings rank by PLAN-42 validation verdicts,
         // read off the live skill dirs at refresh time.
         validationLookup: () => readValidationSummaries(),
+        // PLAN-43 Phase 3 (§3.7): kill switch read from the live config file.
+        freezeListings: () => loadConfig().a2a?.marketplace?.freezeListings === true,
         // PLAN-43 Phase 3 (I4): registry royalty on sales of imported skills.
         registryRoyalty: {
           royaltyBps: this.cfg.skills?.agentskills?.royaltyBps ?? 0,

@@ -13,6 +13,7 @@ import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { WalletService } from "./wallet-service.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { CommerceReputationLedger, type CommerceOutcome } from "../memory/commerce-reputation.js";
 
 const log = createSubsystemLogger("a2a-client");
 
@@ -78,9 +79,40 @@ export interface A2aTaskResult {
   error?: string;
 }
 
+/**
+ * What an outbound result says about the PEER. Our own refusals (price
+ * cap, daily cap, our wallet) and HTTP 4xx (auth/payment/rate-limit: the
+ * peer answered, we did not qualify) are NOT the peer's fault and are not
+ * recorded (3d adversarial: a spend cap must never quarantine honest
+ * sellers). Network errors and 5xx are "unreachable"; a delivered-but-
+ * failed task is "failed".
+ */
+export function classifyOutcome(result: A2aTaskResult): CommerceOutcome | null {
+  if (result.success) {
+    return "answered";
+  }
+  const err = result.error ?? "";
+  if (
+    /^(Price \$|Daily A2A spend limit|Payment failed|Payment required but pricing|Peer is commerce-quarantined)/.test(
+      err,
+    )
+  ) {
+    return null;
+  }
+  const http = /^A2A request failed( after payment)?: (\d{3})$/.exec(err);
+  if (http) {
+    return Number(http[2]) >= 500 ? "dial_failure" : null;
+  }
+  if (/^A2A request failed( after payment)?: /.test(err)) {
+    return "dial_failure";
+  }
+  return "failed";
+}
+
 export class A2aClient {
   private readonly config: A2aClientConfig;
   private readonly db?: DatabaseSync;
+  private commerceLedger?: CommerceReputationLedger;
 
   constructor(config?: Partial<A2aClientConfig>, db?: DatabaseSync) {
     this.config = {
@@ -202,6 +234,59 @@ export class A2aClient {
     message: string;
     walletService?: WalletService;
     /** PLAN-43 Phase 1: exact-ID metered skill invocation on the seller. */
+    skillId?: string;
+    /** Seller/author pubkey when known (marketplace entry): joins endpoint standing to fraud verdicts. */
+    peerPubkey?: string | null;
+  }): Promise<A2aTaskResult> {
+    // PLAN-43 Phase 3 (§3.7): commerce standing is built from what this
+    // node actually observed. A quarantined peer (stopped answering, or
+    // attested fraud) gets no more of this node's money until the window
+    // passes; every attempt is recorded as answered / unreachable / failed.
+    const ledger = this.commerce;
+    const quarantine = ledger?.quarantineFor(params.agentUrl, Date.now(), params.peerPubkey);
+    if (quarantine) {
+      return {
+        success: false,
+        error: `Peer is commerce-quarantined until ${new Date(quarantine.until).toISOString()} (${quarantine.reason})`,
+      };
+    }
+    const startedAt = Date.now();
+    let result: A2aTaskResult;
+    try {
+      result = await this.executeTaskUncounted(params);
+    } catch (err) {
+      // A malformed body from the peer must count against the peer, not
+      // escape the ledger as a raw exception.
+      result = { success: false, error: `A2A response unusable: ${String(err)}` };
+    }
+    const outcome = classifyOutcome(result);
+    if (ledger && outcome) {
+      try {
+        ledger.recordOutcome({
+          agentUrl: params.agentUrl,
+          ...(params.peerPubkey ? { peerPubkey: params.peerPubkey } : {}),
+          outcome,
+          latencyMs: Date.now() - startedAt,
+        });
+      } catch (err) {
+        log.debug(`commerce ledger write failed: ${String(err)}`);
+      }
+    }
+    return result;
+  }
+
+  private get commerce(): CommerceReputationLedger | undefined {
+    if (!this.db) {
+      return undefined;
+    }
+    this.commerceLedger ??= new CommerceReputationLedger(this.db);
+    return this.commerceLedger;
+  }
+
+  private async executeTaskUncounted(params: {
+    agentUrl: string;
+    message: string;
+    walletService?: WalletService;
     skillId?: string;
   }): Promise<A2aTaskResult> {
     const a2aUrl = `${params.agentUrl.replace(/\/+$/, "")}/a2a`;
