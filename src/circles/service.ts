@@ -374,6 +374,8 @@ export class CirclesService {
     ttlMs?: number;
     /** Bind redemption to one pubkey (send-to-connection path). */
     targetPubkey?: string;
+    /** PLAN-43 Phase 4: multi-use invites are a contributor-tier privilege (default 1). */
+    maxUses?: number;
   }): CreatedInvite & {
     circleId: string;
   } {
@@ -416,6 +418,9 @@ export class CirclesService {
       inviterMailboxUrl: hasMailboxRendezvous ? this.myMailboxUrl : undefined,
       inviterBoxPubkey: hasMailboxRendezvous ? this.boxKeys.publicKeyB64 : undefined,
       scopes: DEFAULT_MEMBER_SCOPES,
+      ...(typeof args.maxUses === "number" && args.maxUses >= 1
+        ? { maxUses: Math.min(10, Math.floor(args.maxUses)) }
+        : {}),
       ttlMs: args.ttlMs,
       targetPubkey: args.targetPubkey,
     });

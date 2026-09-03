@@ -180,6 +180,8 @@ export type DivergenceReport = {
 
 // ── Marketplace ──
 export type MarketplaceEntry = {
+  /** PLAN-43 Phase 4: the author's status on this node (verified signals only; never cash). */
+  contributor?: { tier: string; rank: number | null };
   /** PLAN-43 Phase 3: receiver-side verified-outcome aggregate (null = no evidence). */
   attestation?: {
     score: number | null;

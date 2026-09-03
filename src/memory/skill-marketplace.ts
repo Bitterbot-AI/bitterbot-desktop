@@ -40,13 +40,21 @@ export class SkillMarketplace {
   private readonly reputationManager: PeerReputationManager;
 
   private readonly attesterWeight?: (attesterPubkey: string) => number;
+  private readonly contributorStatus?: (
+    peerPubkey: string,
+  ) => { tier: string; rank: number | null } | null;
 
   constructor(
     db: DatabaseSync,
     executionTracker: SkillExecutionTracker,
     reputationManager: PeerReputationManager,
-    deps: { attesterWeight?: (attesterPubkey: string) => number } = {},
+    deps: {
+      attesterWeight?: (attesterPubkey: string) => number;
+      /** PLAN-43 Phase 4: author standing lookup (contributor-status.ts). */
+      contributorStatus?: (peerPubkey: string) => { tier: string; rank: number | null } | null;
+    } = {},
   ) {
+    this.contributorStatus = deps.contributorStatus;
     this.db = db;
     this.executionTracker = executionTracker;
     this.reputationManager = reputationManager;
@@ -370,6 +378,12 @@ export class SkillMarketplace {
       version: Number(row.skill_version ?? 1),
       authorPeerId: peerPubkey,
       authorReputation: rep?.reputationScore ?? 0.5,
+      ...(peerPubkey && this.contributorStatus
+        ? (() => {
+            const c = this.contributorStatus(peerPubkey);
+            return c ? { contributor: c } : {};
+          })()
+        : {}),
       successRate: metrics.successRate,
       downloadCount: Number(row.download_count ?? 0),
       tags,

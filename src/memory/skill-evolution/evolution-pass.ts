@@ -26,6 +26,7 @@ import { pubkeyId, type KeyPair } from "../../commerce/envelope.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { syncAttestations } from "../../services/attestation-client.js";
 import { CommerceReputationLedger } from "../commerce-reputation.js";
+import { ContributorStatusLedger } from "../contributor-status.js";
 import { recordDreamArtifact } from "../dream-utility.js";
 import { SellerBondLedger } from "../seller-bond-ledger.js";
 import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
@@ -336,6 +337,9 @@ async function runHousekeeping(
         log.warn(
           `fraud verdicts recorded: ${fraud.verdicts} (sellers slashed/quarantined: ${fraud.sellersSlashed.join(", ")})`,
         );
+        // A convicted seller must not keep contributor privileges until the
+        // next consolidation: re-derive standings now.
+        new ContributorStatusLedger(deps.db).recompute();
       }
     } catch (err) {
       log.debug(`fraud verdict pass skipped: ${String(err)}`);

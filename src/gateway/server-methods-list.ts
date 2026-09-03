@@ -169,6 +169,8 @@ const BASE_METHODS = [
   "marketplace.delist",
   "marketplace.commerce",
   "marketplace.bonds",
+  "marketplace.contributors",
+  "marketplace.contributorClearFlag",
   "marketplace.postBond",
   // Management
   "management.census",

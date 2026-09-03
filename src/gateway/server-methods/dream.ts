@@ -85,6 +85,10 @@ interface DreamManagerView {
   curiosityState?(): { targets?: CuriosityTarget[] } | null;
   getSkillMarketplace?(): SkillMarketplaceView | null;
   getMarketplaceEconomics?(): MarketplaceEconomicsView | null;
+  /** PLAN-43 Phase 4. */
+  getContributorStatus?():
+    | import("../../memory/contributor-status.js").ContributorStatusLedger
+    | undefined;
   /** PLAN-28 B4: retrieval-layer health (dead-wire counters + KG/SABM stats). */
   retrievalHealth?(): {
     layers: { total: number; sinceContribution: Record<string, number> };
@@ -727,6 +731,63 @@ export const dreamHandlers: GatewayRequestHandlers = {
         bonds: new SellerBondLedger(db).summary(),
         frozen: loadConfig().a2a?.marketplace?.freezeListings === true,
       });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // PLAN-43 Phase 4 (D-D): contributor standings — verified signals only,
+  // status privileges only, never cash.
+  "marketplace.contributors": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      if (!db) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "memory db unavailable"));
+        return;
+      }
+      const { ContributorStatusLedger, TIER_PRIVILEGES } =
+        await import("../../memory/contributor-status.js");
+      const ledger =
+        (manager as unknown as DreamManagerView).getContributorStatus?.() ??
+        new ContributorStatusLedger(db);
+      const limit =
+        typeof params.limit === "number" ? Math.min(500, Math.max(1, params.limit)) : 50;
+      // Recompute on demand is throttled: it is a full scan, and read
+      // scope must not be able to spin the event loop with it.
+      if (
+        (params.recompute === true || ledger.list(1).length === 0) &&
+        !ledger.recomputedRecently(60_000)
+      ) {
+        ledger.recompute({
+          trustedAttesters: new Set(loadConfig().a2a?.attestation?.trustedAttesters ?? []),
+        });
+      }
+      const pubkey = typeof params.peerPubkey === "string" ? params.peerPubkey : undefined;
+      respond(true, {
+        contributors: pubkey ? [ledger.get(pubkey)].filter(Boolean) : ledger.list(limit),
+        privileges: TIER_PRIVILEGES,
+      });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // Operator action (write scope): clear a sticky contributor flag.
+  "marketplace.contributorClearFlag": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      const pubkey = typeof params.peerPubkey === "string" ? params.peerPubkey.trim() : "";
+      if (!db || !pubkey) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "peerPubkey required"));
+        return;
+      }
+      const { ContributorStatusLedger } = await import("../../memory/contributor-status.js");
+      const ledger =
+        (manager as unknown as DreamManagerView).getContributorStatus?.() ??
+        new ContributorStatusLedger(db);
+      respond(true, { cleared: ledger.clearFlag(pubkey) });
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }

@@ -26,6 +26,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan, withSpanAttrs } from "../observability/otel.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
+import { ContributorStatusLedger } from "./contributor-status.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
 import { applyDirectiveResolutions, finalizeAnsweredDirectives } from "./directive-resolution.js";
 import {
@@ -290,6 +291,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private discoveryAgent: DiscoveryAgent | null = null;
   private marketplaceEconomics: MarketplaceEconomics | null = null;
   private skillMarketplace: SkillMarketplace | null = null;
+  private contributorStatus?: ContributorStatusLedger;
   managementNodeService: ManagementNodeService | null = null;
   private knowledgeGraph: KnowledgeGraphManager | null = null;
   private reconsolidationEngine: ReconsolidationEngine | null = null;
@@ -2364,6 +2366,14 @@ export class MemoryIndexManager implements MemorySearchManager {
         }
         // 10. GCCRF: batch-score pending chunks and persist state (via unified CuriosityEngine)
         await this.curiosityEngine?.scorePendingChunks();
+        // 10b. PLAN-43 Phase 4: recompute contributor standings from verified signals.
+        try {
+          this.contributorStatus?.recompute({
+            trustedAttesters: new Set(this.cfg.a2a?.attestation?.trustedAttesters ?? []),
+          });
+        } catch (err) {
+          log.debug(`contributor status recompute skipped: ${String(err)}`);
+        }
         // 11. Marketplace: refresh listings and prices
         if (this.marketplaceEconomics) {
           const repScore = this.getOwnReputationScore();
@@ -4718,6 +4728,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.db;
   }
 
+  /** PLAN-43 Phase 4: contributor standings (status, never cash). */
+  getContributorStatus(): ContributorStatusLedger | undefined {
+    return this.contributorStatus;
+  }
+
   /** Guards against overlapping dispatch runs across consolidation ticks. */
   private revenueDispatchInFlight = false;
 
@@ -6105,12 +6120,18 @@ export class MemoryIndexManager implements MemorySearchManager {
     // Plan 8, Phase 2: Initialize SkillMarketplace for search/browse/recommendations
     if (!this.skillMarketplace && this.executionTracker && this.peerReputationManager) {
       const ownAttesterPubkey = resolveOwnAttesterPubkey();
+      // PLAN-43 Phase 4: status-based contribution rewards (verified signals only).
+      this.contributorStatus = new ContributorStatusLedger(this.db);
       this.skillMarketplace = new SkillMarketplace(
         this.db,
         this.executionTracker,
         this.peerReputationManager,
         {
           // PLAN-43 Phase 3: verified-outcome aggregates on browse entries.
+          contributorStatus: (pk) => {
+            const s = this.contributorStatus?.get(pk);
+            return s ? { tier: s.tier, rank: s.rank } : null;
+          },
           attesterWeight: makeAttesterWeight({
             // Our own verdicts are trusted evidence (3c adversarial: without
             // this the node's own -1 weighed 0.05 and strangers outvoted it).

@@ -70,6 +70,7 @@ describe("SkillMarketplace attestation surface", () => {
     const rep = new PeerReputationManager(db, tracker);
     const marketplace = new SkillMarketplace(db, tracker, rep, {
       attesterWeight: makeAttesterWeight({ trustedAttesters: [pubkeyId(TRUSTED)] }),
+      contributorStatus: (pk) => (pk === "pk-core" ? { tier: "core", rank: 1 } : null),
     });
     const good = "# Good skill\nDeploy with docker.";
     const bad = "# Bad skill\nDeploy with docker badly.";
@@ -100,6 +101,12 @@ describe("SkillMarketplace attestation surface", () => {
     expect(byId.get("good")).toMatchObject({ attesters: 1, regressions: 0 });
     expect(byId.get("bad")).toMatchObject({ score: -1, attesters: 1, regressions: 1 });
     expect(byId.get("none")?.score).toBeNull();
+    // Phase 4: entries carry the author's standing when known.
+    db.prepare(`UPDATE chunks SET governance_json = ? WHERE id = 'good'`).run(
+      JSON.stringify({ accessScope: "shared", sensitivity: "normal", peerOrigin: "pk-core" }),
+    );
+    const withStanding = marketplace.search("docker").find((e) => e.stableSkillId === "good");
+    expect(withStanding?.contributor).toEqual({ tier: "core", rank: 1 });
   });
 
   it("a banned publisher's skills leave the browse layer with the ban (§3.7)", () => {

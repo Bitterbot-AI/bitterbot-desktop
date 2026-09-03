@@ -441,10 +441,20 @@ export const circlesHandlers: GatewayRequestHandlers = {
           );
           return;
         }
+        // PLAN-43 Phase 4 (D-D): proven contributors receive multi-use
+        // invites (they may bring others); everyone else gets one use.
+        let maxUses = 1;
+        try {
+          const { inviteMaxUsesFor } = await import("../../memory/contributor-status.js");
+          maxUses = inviteMaxUsesFor(svc.service.dbHandle, sendToPubkey);
+        } catch {
+          maxUses = 1;
+        }
         const invite = svc.service.createInviteCode({
           circleId: typeof params.circleId === "string" ? params.circleId : undefined,
           name: typeof params.name === "string" ? params.name : undefined,
           targetPubkey: sendToPubkey,
+          maxUses,
         });
         try {
           const circleName = svc.service.store.getCircle(invite.circleId)?.name ?? "a circle";

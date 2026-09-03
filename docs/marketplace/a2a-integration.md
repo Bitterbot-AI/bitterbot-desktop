@@ -957,6 +957,60 @@ numeric field range-checked) and stored in `skill_attestations`.
   action too. Turning any of this into money movement is a separate,
   flag-gated decision for payments counsel.
 
+## Contribution Status (PLAN-43 Phase 4)
+
+Free contribution is rewarded with standing, never with money (invariant
+I5; there is no tip, bounty, or payout on the commons). A contributor's
+standing on this node is recomputed at every consolidation pass from
+signals this node itself verified:
+
+- skills of theirs this node accepted and holds
+- real executions of those skills here, and how many succeeded
+- attestations with measured verdicts on those skills (accepted versus
+  regression) from this node and from `a2a.attestation.trustedAttesters`
+- lineage credits: paid listings here whose gate evidence names them as
+  the source author
+- penalties: corroborated regression verdicts and bans
+
+Downloads, stars, views, and any self-reported number never enter
+(invariant I6). Executions credited to a skill are capped at five per
+skill, and executions the tool hook attributed by tool-name match are
+not counted at all (a skill named after a built-in tool would otherwise
+inherit that tool's every call). Tiers are `newcomer`, `contributor`,
+`trusted_contributor`, `core`, and `flagged`. Every tier above
+`contributor` requires at least one measured accepted verdict; execution
+counts alone never climb past `contributor`. A contributor with more
+regression than accepted verdicts drops back to `newcomer`. A fraud
+verdict or ban flags them, and a flag is sticky: only the operator's
+`marketplace.contributorClearFlag` (write scope) removes it. Tiers unlock
+privileges, not cash:
+
+| Tier                | Ingestion trust floor | Publication-rate lift | Circle invite uses |
+| ------------------- | --------------------- | --------------------- | ------------------ |
+| newcomer / flagged  | none                  | 1x                    | 1                  |
+| contributor         | none                  | 2x                    | 3                  |
+| trusted_contributor | trusted               | 2x                    | 3                  |
+| core                | trusted               | 3x                    | 10                 |
+
+The trust floor lifts `untrusted` or `provisional` ingestion trust to
+`trusted`, never to `verified` (that stays earned through reputation or
+the operator's trust list), and an active publication-spike anomaly
+still caps a peer at `provisional`. Operators should know what
+`trusted` means downstream: the skill capability gate gives trusted
+authors a wider baseline (declared network hosts and filesystem access
+beyond the workspace) and, under `ingestPolicy: "auto"`, their skills
+skip the review quarantine. That is why the floor is reachable only
+through a measured verdict on this node's own corpus, never through
+counts. The rate lift multiplies the anomaly detector's threshold.
+Invite uses apply to target-bound circle invites created for that
+contributor; a ban drops them to one and revokes open invites already
+minted for that peer. Stale tiers are cleared at every recompute, so a
+peer whose skills are gone keeps nothing. Marketplace entries carry the
+author's `contributor` tier and rank; `marketplace.contributors` (read
+scope) lists standings and the privilege table, with `recompute: true`
+to refresh on demand (throttled to once a minute). A fraud verdict in
+the evolution pass re-derives standings immediately.
+
 ## Selling Is Opt-In Per Skill (PLAN-43 Phase 0)
 
 The paid listing pool is fully decoupled from free skill propagation:
