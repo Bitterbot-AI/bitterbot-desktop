@@ -1,0 +1,31 @@
+{
+  "id": "hol-guard",
+  "name": "HOL Guard",
+  "description": "Run HOL Guard before Bitterbot shell commands execute.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "executable": {
+        "type": "string",
+        "default": "hol-guard"
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 30000,
+        "default": 10000
+      }
+    }
+  },
+  "uiHints": {
+    "executable": {
+      "label": "HOL Guard executable",
+      "help": "Path or command name for the HOL Guard CLI."
+    },
+    "timeoutMs": {
+      "label": "Inspection timeout (ms)",
+      "help": "Maximum time to wait for HOL Guard before the command is blocked."
+    }
+  }
+}
