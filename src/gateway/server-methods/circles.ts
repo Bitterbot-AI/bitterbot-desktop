@@ -67,7 +67,12 @@ import crypto from "node:crypto";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { listDisclosureGrants, setDisclosureGrant } from "../../circles/disclosure.js";
-import { inviteLink, parseInviteCode, revokeInvite } from "../../circles/invites.js";
+import {
+  inviteLink,
+  parseInviteCode,
+  revokeInvite,
+  revokeInvitesForTarget,
+} from "../../circles/invites.js";
 import { computeNameFlags } from "../../circles/petnames.js";
 import { CirclesService } from "../../circles/service.js";
 import {
@@ -89,8 +94,25 @@ async function getCirclesDb(): Promise<DatabaseSync | null> {
   // memory DB, so this must not go through getMarketplaceEconomics().getDb()
   // (null when a2a.marketplace is off) — that was the B2 coupling, still live
   // on this RPC path.
-  return (manager as unknown as { getCirclesDb?: () => DatabaseSync }).getCirclesDb?.() ?? null;
+  // PLAN-43 Phase 4: a ban must revoke open circle invites minted for the
+  // peer. The memory engine cannot touch circle tables (R17), so the
+  // circles side subscribes here, once per manager instance.
+  const rep = (
+    manager as unknown as {
+      getPeerReputationManager?: () => { onBan(l: (pk: string) => void): void } | null;
+    }
+  ).getPeerReputationManager?.();
+  const db = (manager as unknown as { getCirclesDb?: () => DatabaseSync }).getCirclesDb?.() ?? null;
+  if (rep && db && !banHooked.has(manager as object)) {
+    banHooked.add(manager as object);
+    rep.onBan((pk) => {
+      revokeInvitesForTarget(db, pk);
+    });
+  }
+  return db;
 }
+
+const banHooked = new WeakSet<object>();
 
 async function getService(): Promise<
   { ok: true; service: CirclesService } | { ok: false; error: string }

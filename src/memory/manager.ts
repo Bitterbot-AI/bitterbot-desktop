@@ -4733,6 +4733,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.contributorStatus;
   }
 
+  /** PLAN-43 Phase 4: lets the circles side subscribe to bans (R17: memory never touches circle tables). */
+  getPeerReputationManager(): PeerReputationManager | null {
+    return this.peerReputationManager;
+  }
+
   /** Guards against overlapping dispatch runs across consolidation ticks. */
   private revenueDispatchInFlight = false;
 

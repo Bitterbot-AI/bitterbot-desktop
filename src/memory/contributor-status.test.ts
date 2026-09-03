@@ -5,6 +5,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
+import { revokeInvitesForTarget } from "../circles/invites.js";
 import { generateKeyPair, pubkeyId } from "../commerce/envelope.js";
 import {
   ContributorStatusLedger,
@@ -218,7 +219,9 @@ describe("ContributorStatusLedger", () => {
       `INSERT INTO peer_reputation (peer_pubkey, first_seen_at, last_seen_at, contributor_tier) VALUES ('pk-t', 1, 1, 'core')`,
     ).run();
     expect(inviteMaxUsesFor(d, "pk-t")).toBe(10);
-    new PeerReputationManager(d, new SkillExecutionTracker(d)).banPeer("pk-t");
+    const rep = new PeerReputationManager(d, new SkillExecutionTracker(d));
+    rep.onBan((pk) => revokeInvitesForTarget(d, pk));
+    rep.banPeer("pk-t");
     expect(inviteMaxUsesFor(d, "pk-t")).toBe(1);
     expect(
       (

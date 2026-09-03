@@ -24,6 +24,7 @@ export class PeerReputationManager {
   private readonly db: DatabaseSync;
   private readonly executionTracker: SkillExecutionTracker;
   private readonly trustList: string[];
+  private readonly banListeners: Array<(pubkey: string) => void> = [];
 
   constructor(db: DatabaseSync, executionTracker: SkillExecutionTracker, trustList: string[] = []) {
     this.db = db;
@@ -64,17 +65,22 @@ export class PeerReputationManager {
         )
         .run(pubkey, now, now);
     }
-    // PLAN-43 Phase 4: a ban reaches invites already minted for the peer.
-    try {
-      this.db
-        .prepare(
-          `UPDATE circle_invites SET status = 'revoked' WHERE target_pubkey = ? AND status = 'open'`,
-        )
-        .run(pubkey);
-    } catch {
-      /* circles tables absent on this store */
+    // PLAN-43 Phase 4: a ban reaches privileges held elsewhere (circle
+    // invites). R17: the memory engine never touches circle tables; the
+    // circles side registers a listener instead.
+    for (const listener of this.banListeners) {
+      try {
+        listener(pubkey);
+      } catch (err) {
+        log.debug(`ban listener failed: ${String(err)}`);
+      }
     }
     log.debug(`peer banned: ${pubkey}`);
+  }
+
+  /** Register a side effect for bans (e.g. the circles service revoking open invites). */
+  onBan(listener: (pubkey: string) => void): void {
+    this.banListeners.push(listener);
   }
 
   /**
