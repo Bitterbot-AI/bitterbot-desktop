@@ -7,6 +7,8 @@
  * written back to the journal — the raw layer is read-only to evolution.
  */
 
+import type { RunOrigin } from "./run-origin.js";
+
 export type TraceStepKind = "assistant" | "tool";
 
 export interface TraceToolStep {
@@ -28,9 +30,26 @@ export interface TraceAssistantStep {
 
 export type TraceStep = TraceToolStep | TraceAssistantStep;
 
+/**
+ * PLAN-44 Phase 0: the journaled user turn — WHAT the run was asked to do.
+ * Null for runs recorded before the `user` stream existed.
+ */
+export interface TraceTask {
+  /** Redacted, capped prompt text. */
+  text: string;
+  /** Original prompt length (before the journal-side cap). */
+  chars: number;
+  /** Trust class of the author, derived from the session key at read time. */
+  origin: RunOrigin;
+  isHeartbeat: boolean;
+  channel: string | null;
+}
+
 export interface ReconstructedTrace {
   runId: string;
   taskId: string | null;
+  /** PLAN-44 Phase 0: see TraceTask. */
+  task: TraceTask | null;
   sessionKey: string | null;
   startedAt: number | null;
   endedAt: number | null;
@@ -77,6 +96,20 @@ export interface SamplerStats {
   failsSelected: number;
   passesSelected: number;
   judgeCalls: number;
+  /** PLAN-44 Phase 0: heartbeat runs skipped (journaled flag). */
+  runsHeartbeat: number;
+  /** PLAN-44 Phase 0: third-party-origin runs skipped (circle, A2A, subagent, guest). */
+  runsUntrustedOrigin: number;
+  /** PLAN-44 Phase 0: in-flight runs re-examined from the pending list. */
+  pendingReexamined: number;
+  /** PLAN-44 Phase 0: runs carrying a journaled task header. */
+  runsWithTask: number;
+}
+
+/** PLAN-44 Phase 0: an in-flight run the sampler deferred instead of skipping past. */
+export interface PendingRun {
+  runId: string;
+  firstSeenAt: number;
 }
 
 export interface IterationSample {
@@ -84,4 +117,8 @@ export interface IterationSample {
   /** Advance the persistent cursor to this seq after a successful iteration. */
   nextCursorSeq: number;
   stats: SamplerStats;
+  /** PLAN-44 Phase 0: in-flight runs to re-examine next iteration. */
+  pending: PendingRun[];
+  /** PLAN-44 Phase 0: run ids examined this iteration (anti-rescan ring). */
+  processedRunIds: string[];
 }

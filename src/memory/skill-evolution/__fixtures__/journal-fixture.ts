@@ -34,6 +34,11 @@ export interface FixtureRunOptions {
   errorText?: string;
   completedExplicitly?: boolean;
   tsBase?: number;
+  /**
+   * PLAN-44 Phase 0: emit a `user` stream event (the task header) right
+   * after lifecycle start, like pi-embedded-runner/run.ts does.
+   */
+  task?: { text: string; isHeartbeat?: boolean; channel?: string };
 }
 
 let toolCallCounter = 0;
@@ -57,6 +62,14 @@ export function appendFixtureRun(journal: EventJournal, opts: FixtureRunOptions)
   };
 
   emit("lifecycle", { phase: "start", startedAt: ts });
+  if (opts.task) {
+    emit("user", {
+      text: opts.task.text,
+      chars: opts.task.text.length,
+      isHeartbeat: opts.task.isHeartbeat === true,
+      ...(opts.task.channel ? { channel: opts.task.channel } : {}),
+    });
+  }
   for (const step of opts.steps ?? []) {
     if (step.kind === "assistant") {
       // Streamed: cumulative text per event, like the production handler.

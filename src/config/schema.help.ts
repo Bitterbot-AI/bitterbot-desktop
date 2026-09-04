@@ -15,6 +15,26 @@ export const FIELD_HELP: Record<string, string> = {
     "Learn from execution traces: consolidate recurring failures/successes into a local knowledge wiki and propose gated skill improvements (PLAN-42). On by default; uses background LLM calls when a model is available, no-ops otherwise.",
   "skills.evolution.propagate":
     "Publish validation-gated, matured evolved skills to the P2P network with their evidence attached. On by default; requires P2P to be running.",
+  "skills.evolution.cadenceHours":
+    "Minimum hours between evolution iterations (one iteration = sample traces, consolidate the wiki, propose at most one skill change, settle the gate). Default 24; floor 1.",
+  "skills.evolution.validationMode":
+    "How a proposed skill is validated before promotion. 'records' scores held-out past traces with an LLM judge (cheap, advisory). 'tasks' runs real agent turns over the canonical regression suite plus reviewed capability tasks and gates on an exact sign test (the paper's design). Default 'records' until capability tasks are reviewed.",
+  "skills.evolution.trialsPerTask":
+    "Tasks-mode trials per task per arm; per-task scores are fractional pass rates. Minimum 2, maximum 10. Default 3.",
+  "skills.evolution.maxProposerTurns":
+    "ReAct turn cap for the Skill Proposer (read wiki, read traces, finish). Default 24.",
+  "skills.evolution.maxActiveEvolved":
+    "Cap on concurrently active evolved skills. Creates that pass the gate at cap are held. Default 5.",
+  "skills.evolution.judgeModel":
+    "Model spec 'provider/model' for the wiki maintainer, trace labeler, and records-mode judge. Default: the dream model, else the cheapest configured model.",
+  "skills.evolution.proposerModel":
+    "Model spec 'provider/model' for the Skill Proposer. It must hold a strict JSON tool protocol for many turns. Default: judgeModel if set, else the agent's primary model.",
+  "skills.evolution.wikiMaxPatterns":
+    "Wiki pattern-page count at which the lint pass archives least-recently-updated pages. Default 100.",
+  "skills.evolution.semanticLintCadenceDays":
+    "Days between LLM-backed wiki lint passes (contradictions, stale claims, near-duplicates). 0 disables. Default 7.",
+  "skills.evolution.maturityDays":
+    "Days a validated evolved skill must survive locally before P2P publish. Default 3.",
   "skills.skillSeekers.enabled":
     "Generate skills by scraping documentation sites on demand. Off by default: dials external sites.",
   "skills.skillSeekers.trending.enabled":

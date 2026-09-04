@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import type { RunEmbeddedPiAgentParams } from "./run/params.js";
 import type { EmbeddedPiAgentMeta, EmbeddedPiRunResult } from "./types.js";
+import { emitUserTurnEvent } from "../../infra/agent-events.js";
 import { enqueueCommandInLane } from "../../process/command-queue.js";
 import { isMarkdownCapableMessageChannel } from "../../utils/message-channel.js";
 import { resolveBitterbotAgentDir } from "../agent-paths.js";
@@ -197,6 +198,18 @@ export async function runEmbeddedPiAgent(
         );
       }
       const prevCwd = process.cwd();
+
+      // PLAN-44 Phase 0 (D-6): journal WHAT this run was asked, once per run
+      // (not per failover attempt). The skill-evolution trace pipeline reads
+      // it back as the trace's task header; origin/trust is derived from the
+      // session key at read time.
+      emitUserTurnEvent({
+        runId: params.runId,
+        text: params.prompt,
+        sessionKey: params.sessionKey ?? params.sessionId,
+        isHeartbeat: params.isHeartbeat,
+        channel: channelHint,
+      });
 
       const provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
       const modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;

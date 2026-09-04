@@ -33,6 +33,7 @@ import {
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { loadEffectiveCorpus, randomCanonicalSeed } from "./canonical-corpus.js";
+import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
 import { hashProposalContent } from "./proposal-apply.js";
 import { type AgentTurnFn, makeInjectedSkillRunner } from "./task-runner.js";
 import { validateAgainstRecords } from "./validate-records.js";
@@ -340,14 +341,10 @@ async function settleOne(
   }
   const liveDir = liveSkillDir(roots, name);
   const enrichedMeta: EvolutionMeta = { ...meta, validation: validationRecord };
-  await fs.writeFile(
-    path.join(liveDir, ".evolution-meta.json"),
-    JSON.stringify(enrichedMeta, null, 2),
-    "utf-8",
-  );
+  await atomicWriteJson(path.join(liveDir, ".evolution-meta.json"), enrichedMeta);
   if (purposeMd) {
     const stamped = `${purposeMd.replace(/\n+$/, "")}\n\n## Validation\n\n- ${new Date().toISOString()}: mode=${validationRecord.mode} verdict=${validationRecord.verdict}${validationRecord.ci95Low !== undefined ? ` ci95Low=${validationRecord.ci95Low.toFixed(3)}` : ""}${validationRecord.corpusVersion ? ` corpus=${validationRecord.corpusVersion}` : ""}${validationRecord.model ? ` model=${validationRecord.model}` : ""}\n`;
-    await fs.writeFile(path.join(liveDir, "PURPOSE.md"), stamped, "utf-8");
+    await atomicWriteFile(path.join(liveDir, "PURPOSE.md"), stamped);
   }
   await appendImpactEntry(
     {

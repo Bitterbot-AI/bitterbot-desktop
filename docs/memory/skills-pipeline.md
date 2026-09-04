@@ -317,6 +317,15 @@ runs into evolution fuel:
   (head+tail preserved, middle elided). **Redaction happens here** — the
   journal is unredacted, so every text block passes
   `redactSensitiveText(mode: "tools")` before it can reach a prompt.
+  **PLAN-44 Phase 0:** the journal now carries a `user` stream (the task
+  the run was asked to do; emitted once per run by the embedded runner and
+  the CLI-provider path, capped at 4k chars). The reconstructor reads it
+  into `trace.task` and prints it as the FIRST header lines of every log
+  (`task-origin: human via whatsapp` / `task: ...`); runs journaled before
+  the stream existed render `task: (not journaled ...)`. The task's trust
+  class (`run-origin.ts`: human / system / circle / a2a / subagent / guest /
+  unknown) is derived from the session key at read time, never trusted
+  from the row.
 - `labeler.ts` — pass/fail/unknown cascade: lifecycle error → terminal tool
   error → error density → `complete()` self-report → clean end; ambiguous
   traces go to an optional LLM judge (verdict-line parse, failures degrade
@@ -325,7 +334,14 @@ runs into evolution fuel:
   ≤3 pass, per the paper), monotonic seq cursor persisted at
   `skill-wiki/.sampler-state.json`, deterministic 20% run-id held-out
   partition reserved for the validation gate, exclusion of evolution/probe
-  sessions (anti self-distillation).
+  sessions (anti self-distillation). **PLAN-44 Phase 0:** heartbeat runs
+  and third-party-origin runs (circle, A2A, subagent, guest) are excluded
+  from the journaled task header (D-6). Cursor safety: the cursor never
+  passes the scan horizon nor the first event of a run the scan saw but
+  did not examine (interleaved runs were being skipped forever); in-flight
+  runs go to a bounded `pending` list (≤50, 3-day TTL) and are re-examined
+  next iteration; a ring of ≤200 examined run ids prevents double
+  sampling. State writes are atomic (`fs-atomic.ts`).
 
 Go/no-go recurrence analysis (2026-08-31, live journal): 822 tool-bearing
 complete runs; recurring failure clusters exist (55-run exec cluster,
@@ -350,7 +366,12 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   the Phase 3 proposer slots in after). Degradation contract: no LLM or
   no journal → clean no-op; no new traces → zero LLM spend; unparseable
   maintainer output → nothing written and the cursor holds so the window
-  retries.
+  retries; anything that throws → caught, logged at `warn`, reported as
+  reason `error`. **PLAN-44 Phase 0:** every attempt (no-op, parse-failed,
+  crashed) appends one JSON record to `skill-wiki/iterations.jsonl`
+  (`iteration-log.ts`: sampler stats, cursor range, maintainer
+  created/updated/dropped + parse issues, proposer turns/reads/protocol
+  errors, gate outcomes, lint, publishes; trimmed to the newest 500).
 - `proposer.ts` + `proposal-apply.ts` (PLAN-42 Phase 3) — the Skill
   Proposer: a ReAct loop with exactly the paper's two tools. `read_file`
   resolves ONLY through an allowlisted resolver (wiki files, this
@@ -392,9 +413,15 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   verdict, scores, corpus version, model) so receivers can re-gate
   locally; publish-once per validated version; kill switch
   `skills.evolution.propagate`. `status.ts` + the `skills.evolution.status`
-  gateway RPC — one read-only snapshot (wiki size, sampler cursor,
-  staged/held proposals, evolved live skills with verdicts, P2P
-  eligibility, corpus presence).
+  gateway RPC — one read-only snapshot (wiki size, sampler cursor +
+  pending/processed counts, the last 10 iteration records, staged/held
+  proposals, evolved live skills with verdicts, P2P eligibility, corpus
+  presence) plus the FULL effective `skills.evolution.*` config (every
+  field has help text + a label; defaults are declared on the zod schema).
+  **PLAN-44 Phase 0 (D-1):** when neither `proposerModel` nor `judgeModel`
+  is set, the Skill Proposer runs on the agent's primary model (the cheap
+  lane failed its own JSON protocol in 3 of 5 live iterations); the RPC
+  reports `proposerModelSource`.
 - Dream-engine hook `maybeRunSkillEvolutionPass` (curator pattern):
   cadence-gated at `skills.evolution.cadenceHours` (default 24h) via the
   persisted sampler-state timestamp + an in-memory attempt throttle; runs
@@ -411,7 +438,9 @@ curator kill switch (`memory.dream.skillCurator.enabled`, previously an
 untyped cast). The `skills.manage/promote/rollback` RPCs are now advertised
 in `server-methods-list.ts`. The `skills.evolution.*` config namespace
 (master switch `skills.evolution.enabled`, default **true**) is in place for
-the evolution loop phases. Plan: `docs/plans/PLAN-42-WIKISKILL-SKILL-EVOLUTION.md`.
+the evolution loop phases. Plans: `docs/plans/PLAN-42-WIKISKILL-SKILL-EVOLUTION.md`
+(mechanism) and `docs/plans/PLAN-44-WIKISKILL-PIPELINE-REPAIR.md` (repair, from
+the 2026-09-03 code-first audit in `docs/reviews/`).
 
 ---
 

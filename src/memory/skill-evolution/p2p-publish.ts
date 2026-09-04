@@ -31,6 +31,7 @@ import {
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { atomicWriteJson } from "./fs-atomic.js";
 
 const log = createSubsystemLogger("skill-evolution/p2p-publish");
 
@@ -156,7 +157,7 @@ export async function publishEligibleEvolvedSkills(deps: {
       );
       const metaPath = path.join(roots.liveRoot, skill.name, ".evolution-meta.json");
       const nextMeta = { ...skill.meta, published: { at: deps.now ?? Date.now() } };
-      await fs.writeFile(metaPath, JSON.stringify(nextMeta, null, 2), "utf-8");
+      await atomicWriteJson(metaPath, nextMeta);
       await appendImpactEntry(
         {
           source: "evolution",

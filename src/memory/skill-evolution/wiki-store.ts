@@ -25,6 +25,7 @@ import path from "node:path";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
+import { atomicWriteFile } from "./fs-atomic.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
 
 const log = createSubsystemLogger("skill-evolution/wiki");
@@ -120,19 +121,9 @@ function patternPath(name: string, opts: WikiStoreOptions): string {
   return path.join(patternsDir(opts), `${normalizePatternName(name)}.md`);
 }
 
+/** PLAN-44 Phase 0: shared primitive (fs-atomic.ts) so every state file is torn-write safe. */
 async function atomicWrite(filePath: string, content: string): Promise<void> {
-  const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  try {
-    await fs.writeFile(tmp, content, "utf-8");
-    await fs.rename(tmp, filePath);
-  } catch (err) {
-    try {
-      await fs.unlink(tmp);
-    } catch {
-      // ignore
-    }
-    throw err;
-  }
+  await atomicWriteFile(filePath, content);
 }
 
 async function readOrNull(filePath: string): Promise<string | null> {

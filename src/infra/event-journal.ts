@@ -13,6 +13,13 @@
  * deterministic replay/fork (LangGraph-parity); the journal powers
  * live observation (Claude-Code-parity `Monitor`).
  *
+ * Streams: `lifecycle` (start/end/error), `tool` (start/update/result),
+ * `assistant` (cumulative text), and — PLAN-44 Phase 0 — `user` (the task
+ * the run was asked to do, emitted once per run by the embedded runner and
+ * the CLI-provider path). The skill-evolution trace reconstructor reads
+ * `user` back as the trace's task header; rows written before the stream
+ * existed are rendered as "task: (not journaled)".
+ *
  * Default DB path: `~/.bitterbot/event-journal.sqlite`. Override with
  * `BITTERBOT_EVENT_JOURNAL_DB`. The journal is on by default so that
  * the Task primitive (Phase B) works out of the box; set

@@ -641,20 +641,28 @@ export const BitterbotSchema = z
               .strict(),
           )
           .optional(),
+        // PLAN-44 Phase 0: defaults are declared on the schema (describe) so
+        // every consumer (help, labels, status RPC, UI) reads one source.
         evolution: z
           .object({
-            enabled: z.boolean().optional(),
-            cadenceHours: z.number().positive().optional(),
-            maxProposerTurns: z.number().int().positive().optional(),
-            maxActiveEvolved: z.number().int().min(0).optional(),
-            validationMode: z.union([z.literal("records"), z.literal("tasks")]).optional(),
-            trialsPerTask: z.number().int().min(2).max(10).optional(),
-            judgeModel: z.string().optional(),
-            proposerModel: z.string().optional(),
-            wikiMaxPatterns: z.number().int().positive().optional(),
-            semanticLintCadenceDays: z.number().positive().optional(),
-            propagate: z.boolean().optional(),
-            maturityDays: z.number().positive().optional(),
+            enabled: z.boolean().optional().describe("Default: true"),
+            cadenceHours: z.number().positive().optional().describe("Default: 24"),
+            maxProposerTurns: z.number().int().positive().optional().describe("Default: 24"),
+            maxActiveEvolved: z.number().int().min(0).optional().describe("Default: 5"),
+            validationMode: z
+              .union([z.literal("records"), z.literal("tasks")])
+              .optional()
+              .describe("Default: records"),
+            trialsPerTask: z.number().int().min(2).max(10).optional().describe("Default: 3"),
+            judgeModel: z.string().optional().describe("Default: dream model, else cheap model"),
+            proposerModel: z
+              .string()
+              .optional()
+              .describe("Default: judgeModel, else the agent's primary model"),
+            wikiMaxPatterns: z.number().int().positive().optional().describe("Default: 100"),
+            semanticLintCadenceDays: z.number().positive().optional().describe("Default: 7"),
+            propagate: z.boolean().optional().describe("Default: true"),
+            maturityDays: z.number().positive().optional().describe("Default: 3"),
           })
           .strict()
           .optional(),

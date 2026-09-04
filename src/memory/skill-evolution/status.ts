@@ -9,6 +9,7 @@ import path from "node:path";
 import { type ImpactTrailOptions, provenancePath } from "../../agents/skills/impact-trail.js";
 import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { loadEffectiveCorpus } from "./canonical-corpus.js";
+import { type IterationRecord, readRecentIterations } from "./iteration-log.js";
 import { listP2pEligibleEvolvedSkills } from "./p2p-publish.js";
 import { readSamplerState } from "./sampler.js";
 import { listStagedEvolutionProposals, type EvolutionMeta } from "./validation-gate.js";
@@ -20,7 +21,9 @@ export interface EvolutionStatus {
     indexPresent: boolean;
     lastLogAt: number | null;
   };
-  sampler: { cursorSeq: number; updatedAt: number };
+  sampler: { cursorSeq: number; updatedAt: number; pending: number; processed: number };
+  /** PLAN-44 Phase 0: newest-last slice of skill-wiki/iterations.jsonl. */
+  recentIterations: IterationRecord[];
   stagedProposals: string[];
   evolvedLive: Array<{
     name: string;
@@ -51,7 +54,14 @@ export async function collectEvolutionStatus(
   } catch {
     lastLogAt = null;
   }
-  const sampler = await readSamplerState(opts);
+  const samplerState = await readSamplerState(opts);
+  const sampler = {
+    cursorSeq: samplerState.cursorSeq,
+    updatedAt: samplerState.updatedAt,
+    pending: samplerState.pending.length,
+    processed: samplerState.processed.length,
+  };
+  const recentIterations = await readRecentIterations(10, opts);
   const stagedProposals = await listStagedEvolutionProposals(roots);
 
   const evolvedLive: EvolutionStatus["evolvedLive"] = [];
@@ -101,6 +111,7 @@ export async function collectEvolutionStatus(
   return {
     wiki: { patternCount: patternNames.length, indexPresent, lastLogAt },
     sampler,
+    recentIterations,
     stagedProposals,
     evolvedLive: evolvedLive.toSorted((a, b) => a.name.localeCompare(b.name)),
     p2pEligible: eligible.map((e) => e.name),

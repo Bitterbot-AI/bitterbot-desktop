@@ -15,6 +15,12 @@
  *     still advance past excluded/held-out runs
  *   - maintainer output unparseable            -> nothing written, cursor
  *     NOT advanced (the window is retried next iteration)
+ *   - anything throws                          -> caught, logged at warn,
+ *     reported as reason "error"
+ *
+ * PLAN-44 Phase 0: EVERY attempt — no-op, parse-failed, crashed — appends
+ * one record to skill-wiki/iterations.jsonl so the loop is diagnosable
+ * from disk (audit: five live iterations left no machine-readable trace).
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -32,6 +38,9 @@ import { SellerBondLedger } from "../seller-bond-ledger.js";
 import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
 import { loadEffectiveCorpus } from "./canonical-corpus.js";
 import { mineCapabilityTasks } from "./corpus-miner.js";
+import { appendIterationRecord, buildIterationRecord } from "./iteration-log.js";
+
+export { buildIterationRecord } from "./iteration-log.js";
 import { type LlmCallFn, type MaintenanceResult, runWikiMaintenance } from "./maintainer.js";
 import {
   publishEligibleEvolvedSkills,
@@ -40,7 +49,12 @@ import {
 } from "./p2p-publish.js";
 import { type ApplyProposalResult, applyProposal } from "./proposal-apply.js";
 import { type ProposerRunResult, runSkillProposer } from "./proposer.js";
-import { readSamplerCursor, sampleIteration, writeSamplerCursor } from "./sampler.js";
+import {
+  readSamplerState,
+  sampleIteration,
+  writeSamplerCursor,
+  writeSamplerState,
+} from "./sampler.js";
 import { runValidationGate, type ValidationGateOutcome } from "./validation-gate.js";
 import { runWikiLint, type WikiLintResult } from "./wiki-lint.js";
 import {
@@ -103,7 +117,9 @@ export interface EvolutionPassDeps {
 
 export interface EvolutionPassResult {
   ran: boolean;
-  reason?: "no-journal" | "no-llm" | "no-new-traces" | "maintainer-parse-failed";
+  reason?: "no-journal" | "no-llm" | "no-new-traces" | "maintainer-parse-failed" | "error";
+  /** PLAN-44 Phase 0: set with reason "error". */
+  error?: string;
   samplerStats?: SamplerStats;
   maintenance?: MaintenanceResult;
   proposer?: ProposerRunResult;
@@ -112,18 +128,34 @@ export interface EvolutionPassResult {
   lint?: WikiLintResult;
   semanticLint?: SemanticLintResult;
   publish?: PublishSweepResult;
+  attestation?: { attested: number; skipped: number; held: number };
   cursorBefore?: number;
   cursorAfter?: number;
 }
 
-/** Run one evolution iteration. Never throws — evolution must not break dreams. */
+/**
+ * Run one evolution iteration. Never throws — evolution must not break
+ * dreams. Always appends an iteration record (best-effort).
+ */
 export async function runEvolutionIteration(deps: EvolutionPassDeps): Promise<EvolutionPassResult> {
+  const startedAt = Date.now();
+  let result: EvolutionPassResult;
   try {
-    return await runEvolutionIterationInner(deps);
+    result = await runEvolutionIterationInner(deps);
   } catch (err) {
-    log.warn(`evolution iteration failed: ${String(err)}`);
-    return { ran: false };
+    const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    log.warn(`evolution iteration failed: ${message}`);
+    result = { ran: false, reason: "error", error: message.slice(0, 2_000) };
   }
+  try {
+    await appendIterationRecord(
+      buildIterationRecord(result, { startedAt, cycleId: deps.cycleId ?? null }),
+      deps.storeOpts ?? {},
+    );
+  } catch (err) {
+    log.debug(`iteration record not written: ${String(err)}`);
+  }
+  return result;
 }
 
 async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<EvolutionPassResult> {
@@ -134,7 +166,8 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     return { ran: false, reason: "no-llm" };
   }
   const storeOpts = deps.storeOpts ?? {};
-  let cursorBefore = await readSamplerCursor(storeOpts);
+  const state = await readSamplerState(storeOpts);
+  let cursorBefore = state.cursorSeq;
   try {
     const windowFloor = deps.journal.firstSeqSince(
       Date.now() - RECENT_WINDOW_DAYS * 24 * 60 * 60 * 1000,
@@ -152,6 +185,8 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
   const sample = await sampleIteration(deps.journal, {
     cursorSeq: cursorBefore,
     judgeCall: deps.judgeCall ?? deps.llmCall,
+    pending: state.pending,
+    processedRunIds: state.processed,
   });
 
   if (sample.samples.length === 0) {
@@ -159,8 +194,19 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     // held-out / unknown) runs so they are not rescanned forever. Held
     // proposals, lint, and matured publishes still get their sweep —
     // eligibility ripens with time, not with new traces.
-    if (sample.nextCursorSeq > cursorBefore) {
-      await writeSamplerCursor(sample.nextCursorSeq, storeOpts);
+    if (
+      sample.nextCursorSeq > cursorBefore ||
+      sample.pending.length !== state.pending.length ||
+      sample.processedRunIds.length !== state.processed.length
+    ) {
+      await writeSamplerState(
+        {
+          cursorSeq: Math.max(cursorBefore, sample.nextCursorSeq),
+          pending: sample.pending,
+          processed: sample.processedRunIds,
+        },
+        storeOpts,
+      );
     }
     const housekeeping = deps.runProposer !== false ? await runHousekeeping(deps, storeOpts) : {};
     return {
@@ -180,8 +226,9 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
   });
 
   if (!maintenance.applied) {
-    // Unparseable output: write nothing, keep the cursor so the same window
-    // is retried next iteration (bounded by the cadence gate).
+    // Unparseable output: write nothing, keep the cursor AND the pending /
+    // processed state so the same window is retried next iteration
+    // (bounded by the cadence gate).
     log.warn(
       `wiki maintainer output unparseable; iteration will retry next cadence window` +
         (maintenance.parseIssues?.length
@@ -201,7 +248,14 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     };
   }
 
-  await writeSamplerCursor(sample.nextCursorSeq, storeOpts);
+  await writeSamplerState(
+    {
+      cursorSeq: sample.nextCursorSeq,
+      pending: sample.pending,
+      processed: sample.processedRunIds,
+    },
+    storeOpts,
+  );
 
   if (deps.db && maintenance.apply) {
     for (const name of [...maintenance.apply.created, ...maintenance.apply.updated]) {
@@ -260,11 +314,11 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
   const housekeeping = deps.runProposer !== false ? await runHousekeeping(deps, storeOpts) : {};
 
   log.info(
-    `evolution iteration: ${sample.samples.length} traces (${sample.stats.failsSelected}f/${sample.stats.passesSelected}p) -> ` +
+    `evolution iteration: ${sample.samples.length} traces (${sample.stats.failsSelected}f/${sample.stats.passesSelected}p, ${sample.stats.runsWithTask} with task) -> ` +
       `${maintenance.apply?.created.length ?? 0} patterns created, ${maintenance.apply?.updated.length ?? 0} updated, ` +
       `${maintenance.apply?.dropped.length ?? 0} dropped` +
       (proposer
-        ? `; proposal: ${proposer.proposal.action} (${proposalOutcome?.outcome ?? "?"}, ${proposer.turns} turns)`
+        ? `; proposal: ${proposer.proposal.action} (${proposalOutcome?.outcome ?? "?"}, ${proposer.turns} turns, ${proposer.protocolErrors} protocol errors)`
         : ""),
   );
   return {
@@ -342,7 +396,7 @@ async function runHousekeeping(
         new ContributorStatusLedger(deps.db).recompute();
       }
     } catch (err) {
-      log.debug(`fraud verdict pass skipped: ${String(err)}`);
+      log.warn(`fraud verdict pass skipped: ${String(err)}`);
     }
     // Exchange: push ours, pull peers' for the peer skills we hold.
     if (deps.attestationPeers?.length) {
@@ -370,7 +424,7 @@ async function runHousekeeping(
           `attestation sync: pushed ${sync.pushed}, pulled ${sync.pulled}, peers failed ${sync.peersFailed}`,
         );
       } catch (err) {
-        log.debug(`attestation sync skipped: ${String(err)}`);
+        log.warn(`attestation sync skipped: ${String(err)}`);
       }
     }
   }

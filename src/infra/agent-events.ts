@@ -1,6 +1,50 @@
 import type { VerboseLevel } from "../auto-reply/thinking.js";
 
-export type AgentEventStream = "lifecycle" | "tool" | "assistant" | "error" | (string & {});
+export type AgentEventStream =
+  | "lifecycle"
+  | "tool"
+  | "assistant"
+  | "error"
+  | "user"
+  | (string & {});
+
+/**
+ * PLAN-44 Phase 0 (D-6): cap on the journaled user-turn text. Matches the
+ * per-block cap the skill-evolution trace formatter applies to tool results,
+ * so the task never dominates a 15k-char trace log.
+ */
+export const USER_TURN_EVENT_MAX_CHARS = 4_000;
+
+/**
+ * Emit the `user` stream event that records WHAT a run was asked to do.
+ * Audit finding (2026-09-03): the journal carried assistant, tool, and
+ * lifecycle streams but never the prompt, so every downstream consumer
+ * (trace labeler, wiki maintainer, skill proposer) saw what the agent did
+ * and never what it was asked. One event per run; the trace reconstructor
+ * keeps the first. Origin/trust is derived from the session key at read
+ * time (src/memory/skill-evolution/run-origin.ts), never trusted from here.
+ */
+export function emitUserTurnEvent(params: {
+  runId: string;
+  text: string;
+  sessionKey?: string;
+  isHeartbeat?: boolean;
+  channel?: string;
+}) {
+  const text = params.text ?? "";
+  emitAgentEvent({
+    runId: params.runId,
+    stream: "user",
+    ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    data: {
+      text:
+        text.length > USER_TURN_EVENT_MAX_CHARS ? text.slice(0, USER_TURN_EVENT_MAX_CHARS) : text,
+      chars: text.length,
+      isHeartbeat: params.isHeartbeat === true,
+      ...(params.channel ? { channel: params.channel } : {}),
+    },
+  });
+}
 
 export type AgentEventPayload = {
   runId: string;

@@ -3,8 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { appendFixtureRun, makeFixtureJournal } from "./__fixtures__/journal-fixture.js";
-import { runEvolutionIteration } from "./evolution-pass.js";
-import { isRunHeldOut, readSamplerCursor } from "./sampler.js";
+import { buildIterationRecord, runEvolutionIteration } from "./evolution-pass.js";
+import { readRecentIterations } from "./iteration-log.js";
+import { isRunHeldOut, readSamplerCursor, readSamplerState } from "./sampler.js";
 import { readIndex, readPattern } from "./wiki-store.js";
 
 /** Non-held-out run ids for fixtures. */
@@ -178,7 +179,7 @@ describe("runEvolutionIteration", () => {
     expect(result.cursorBefore).toBeGreaterThan(0);
   });
 
-  it("never throws even when everything is broken", async () => {
+  it("never throws even when everything is broken, and says why (PLAN-44)", async () => {
     const journal = seedJournal();
     const result = await runEvolutionIteration({
       journal,
@@ -188,5 +189,78 @@ describe("runEvolutionIteration", () => {
       storeOpts: { configDir: tmpDir },
     });
     expect(result.ran).toBe(false);
+    expect(result.reason).toBe("error");
+    expect(result.error).toContain("provider exploded");
+    const records = await readRecentIterations(10, { configDir: tmpDir });
+    expect(records.at(-1)).toMatchObject({ ran: false, reason: "error" });
+    expect(records.at(-1)?.error).toContain("provider exploded");
+  });
+
+  // PLAN-44 Phase 0 — I12: every attempt leaves one telemetry record.
+  it("writes one iterations.jsonl record per attempt, including no-ops", async () => {
+    const journal = seedJournal();
+    const proposerReply = JSON.stringify({ tool: "finish", proposal: { action: "no_action" } });
+    await runEvolutionIteration({
+      journal,
+      llmCall: async (prompt) =>
+        prompt.includes("Skill Proposer Agent")
+          ? proposerReply
+          : "```json\n" + MAINTAINER_JSON + "\n```",
+      storeOpts: { configDir: tmpDir },
+      cycleId: "cycle-1",
+    });
+    await runEvolutionIteration({
+      journal,
+      llmCall: async () => "",
+      storeOpts: { configDir: tmpDir },
+      cycleId: "cycle-2",
+    });
+    const records = await readRecentIterations(10, { configDir: tmpDir });
+    expect(records).toHaveLength(2);
+    expect(records[0]).toMatchObject({
+      cycleId: "cycle-1",
+      ran: true,
+      maintainer: { applied: true, created: 1 },
+      proposer: { action: "no_action", protocolErrors: 0, outcome: "no-action" },
+    });
+    expect(records[0]?.sampler?.failsSelected).toBe(3);
+    expect(records[1]).toMatchObject({ cycleId: "cycle-2", ran: false, reason: "no-new-traces" });
+  });
+
+  it("persists the pending list and processed ring alongside the cursor", async () => {
+    const journal = seedJournal();
+    const [inflight] = trainRunIds(1, "inflight") as [string];
+    appendFixtureRun(journal, {
+      runId: inflight,
+      steps: [{ kind: "tool", name: "exec", result: "still going", isError: true }],
+      terminal: "none",
+    });
+    await runEvolutionIteration({
+      journal,
+      llmCall: async (prompt) =>
+        prompt.includes("Skill Proposer Agent")
+          ? JSON.stringify({ tool: "finish", proposal: { action: "no_action" } })
+          : "```json\n" + MAINTAINER_JSON + "\n```",
+      storeOpts: { configDir: tmpDir },
+    });
+    const state = await readSamplerState({ configDir: tmpDir });
+    expect(state.pending.map((p) => p.runId)).toEqual([inflight]);
+    expect(state.processed.length).toBe(5);
+  });
+});
+
+describe("buildIterationRecord", () => {
+  it("flattens a pass result without throwing on sparse input", () => {
+    const rec = buildIterationRecord(
+      { ran: false, reason: "no-llm" },
+      { startedAt: 1, cycleId: null },
+    );
+    expect(rec).toMatchObject({
+      ran: false,
+      reason: "no-llm",
+      sampler: null,
+      proposer: null,
+      published: 0,
+    });
   });
 });

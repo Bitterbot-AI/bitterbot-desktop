@@ -1297,14 +1297,27 @@ export const skillsHandlers: GatewayRequestHandlers = {
       const status = await collectEvolutionStatus();
       const cfg = loadConfig();
       const evo = cfg.skills?.evolution ?? {};
+      // PLAN-44 Phase 0: echo the FULL effective config (the audit found the
+      // RPC reported 6 of 12 fields). Defaults mirror src/config/zod-schema.ts.
       respond(true, {
         config: {
           enabled: evo.enabled !== false,
           cadenceHours: evo.cadenceHours ?? 24,
+          maxProposerTurns: evo.maxProposerTurns ?? 24,
+          maxActiveEvolved: evo.maxActiveEvolved ?? 5,
           validationMode: evo.validationMode ?? "records",
+          trialsPerTask: evo.trialsPerTask ?? 3,
+          judgeModel: evo.judgeModel ?? null,
+          proposerModel: evo.proposerModel ?? null,
+          proposerModelSource: evo.proposerModel
+            ? "config"
+            : evo.judgeModel
+              ? "judgeModel"
+              : "agent-primary",
+          wikiMaxPatterns: evo.wikiMaxPatterns ?? 100,
+          semanticLintCadenceDays: evo.semanticLintCadenceDays ?? 7,
           propagate: evo.propagate !== false,
           maturityDays: evo.maturityDays ?? 3,
-          maxActiveEvolved: evo.maxActiveEvolved ?? 5,
         },
         ...status,
       });

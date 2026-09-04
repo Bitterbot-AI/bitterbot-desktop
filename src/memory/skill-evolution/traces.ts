@@ -22,15 +22,19 @@
  */
 
 import type { EventJournal, JournalEvent } from "../../infra/event-journal.js";
-import type { ReconstructedTrace, TraceStep } from "./types.js";
+import type { ReconstructedTrace, TraceStep, TraceTask } from "./types.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { makeYieldEvery, yieldToEventLoop } from "../event-loop.js";
+import { classifyRunOrigin } from "./run-origin.js";
 
 /** Paper Appendix C: per-log character cap before prompt injection. */
 export const TRACE_LOG_MAX_CHARS = 15_000;
 
 /** Cap on individual embedded blocks so one giant tool result cannot eat the log. */
 const STEP_TEXT_MAX_CHARS = 4_000;
+
+/** PLAN-44 Phase 0 (D-6): cap on the task text carried in the trace header. */
+export const TASK_TEXT_MAX_CHARS = 4_000;
 
 /** Total journal rows considered per run reconstruction. */
 const RUN_EVENT_LIMIT = 10_000;
@@ -94,6 +98,7 @@ export async function reconstructTrace(
   }
   // Select the seqs worth inflating.
   const wantedSeqs: number[] = [];
+  let wantedUser = false;
   for (let i = 0; i < meta.length; i++) {
     const m = meta[i]!;
     if (m.stream === "assistant") {
@@ -103,6 +108,10 @@ export async function reconstructTrace(
       }
     } else if (m.stream === "tool" || m.stream === "lifecycle") {
       wantedSeqs.push(m.seq);
+    } else if (m.stream === "user" && !wantedUser) {
+      // PLAN-44 Phase 0: the task header. One per run; the first wins.
+      wantedSeqs.push(m.seq);
+      wantedUser = true;
     }
   }
   await yieldToEventLoop();
@@ -124,6 +133,7 @@ export async function reconstructTrace(
 
   let startedAt: number | null = null;
   let endedAt: number | null = null;
+  let task: TraceTask | null = null;
   let endedWithError = false;
   let errorText: string | null = null;
   let completedExplicitly = false;
@@ -141,6 +151,23 @@ export async function reconstructTrace(
   for (const evt of events) {
     await tick();
     switch (evt.stream) {
+      case "user": {
+        if (!task) {
+          const text = asString(evt.data.text);
+          const chars =
+            typeof evt.data.chars === "number" && Number.isFinite(evt.data.chars)
+              ? evt.data.chars
+              : text.length;
+          task = {
+            text: capText(redact(text), TASK_TEXT_MAX_CHARS),
+            chars,
+            origin: classifyRunOrigin(evt.sessionKey ?? meta[meta.length - 1]?.sessionKey),
+            isHeartbeat: evt.data.isHeartbeat === true,
+            channel: asString(evt.data.channel) || null,
+          };
+        }
+        break;
+      }
       case "assistant": {
         // Assistant events carry cumulative text; keep the latest of each
         // streak and flush when a non-assistant event interrupts.
@@ -228,6 +255,7 @@ export async function reconstructTrace(
   return {
     runId,
     taskId: last.taskId,
+    task,
     sessionKey: last.sessionKey,
     startedAt,
     endedAt,
@@ -252,9 +280,19 @@ export function formatTraceLog(
   opts: { maxChars?: number } = {},
 ): string {
   const maxChars = opts.maxChars ?? TRACE_LOG_MAX_CHARS;
+  // PLAN-44 Phase 0: the task is the FIRST thing a reader sees. Runs
+  // journaled before the `user` stream existed say so explicitly, so the
+  // maintainer/judge never mistake "unknown task" for "no task".
+  const taskLines = trace.task
+    ? [
+        `task-origin: ${trace.task.origin}${trace.task.channel ? ` via ${trace.task.channel}` : ""}${trace.task.isHeartbeat ? " (heartbeat)" : ""}`,
+        `task: ${trace.task.text || "(empty prompt)"}`,
+      ]
+    : ["task: (not journaled — run predates the user stream)"];
   const header = [
     `run: ${trace.runId}`,
-    trace.taskId ? `task: ${trace.taskId}` : null,
+    trace.taskId ? `long-horizon-task: ${trace.taskId}` : null,
+    ...taskLines,
     `outcome: ${trace.endedWithError ? `ERROR${trace.errorText ? ` (${trace.errorText})` : ""}` : trace.isComplete ? "ended" : "incomplete"}`,
     `tools: ${trace.toolCallCount} calls, ${trace.toolErrorCount} errors${trace.completedExplicitly ? "; agent called complete()" : ""}`,
     "",
@@ -308,18 +346,41 @@ export function formatTraceLog(
  */
 export interface RunSummary {
   runId: string;
+  /** First seq seen for this run WITHIN the scan window (after sinceSeq). */
+  firstSeq: number;
+  /** Last seq seen for this run WITHIN the scan window (never past the horizon). */
   lastSeq: number;
   totalEvents: number;
   toolEvents: number;
+  /**
+   * Two or more lifecycle events (start + end/error) were seen in the
+   * window. A single lifecycle event is a start with no terminal yet.
+   */
   hasTerminal: boolean;
 }
 
-export async function listRunsSince(
+/**
+ * PLAN-44 Phase 0: the scan's cursor-safety envelope. Audit finding: the
+ * sampler advanced its cursor to a run's TRUE last seq (from an unbounded
+ * per-run query) while the scan had stopped at a page horizon, so one run
+ * that ended past the horizon dragged the cursor over every run in between
+ * (98 interleaved runs in the live journal). Callers clamp to `horizonSeq`
+ * and never advance past the first event of a run they did not examine.
+ */
+export interface RunScan {
+  runs: RunSummary[];
+  /** Last journal seq the scan actually looked at. */
+  horizonSeq: number;
+  /** Smallest firstSeq among runs seen but cut by `maxRuns` (null if none). */
+  deferredMinFirstSeq: number | null;
+}
+
+export async function listRunsSinceDetailed(
   journal: EventJournal,
   opts: { sinceSeq: number; maxRuns?: number },
-): Promise<RunSummary[]> {
+): Promise<RunScan> {
   const maxRuns = opts.maxRuns ?? 40;
-  const seen = new Map<string, RunSummary>();
+  const seen = new Map<string, RunSummary & { lifecycleEvents: number }>();
   let cursor = opts.sinceSeq;
   const tick = makeYieldEvery(4);
   for (let page = 0; page < 400; page++) {
@@ -333,10 +394,12 @@ export async function listRunsSince(
       if (!summary) {
         summary = {
           runId: evt.runId,
+          firstSeq: evt.seq,
           lastSeq: evt.seq,
           totalEvents: 0,
           toolEvents: 0,
           hasTerminal: false,
+          lifecycleEvents: 0,
         };
         seen.set(evt.runId, summary);
       }
@@ -346,7 +409,8 @@ export async function listRunsSince(
         summary.toolEvents += 1;
       }
       if (evt.stream === "lifecycle") {
-        summary.hasTerminal = true;
+        summary.lifecycleEvents += 1;
+        summary.hasTerminal = summary.lifecycleEvents >= 2;
       }
     }
     cursor = (events[events.length - 1] as { seq: number }).seq;
@@ -359,15 +423,33 @@ export async function listRunsSince(
   // included so callers can advance their cursor past the noise.
   const sorted = Array.from(seen.values()).toSorted((a, b) => a.lastSeq - b.lastSeq);
   const out: RunSummary[] = [];
+  let deferredMinFirstSeq: number | null = null;
   let toolBearingKept = 0;
+  let cut = false;
   for (const run of sorted) {
+    const { lifecycleEvents: _ignored, ...summary } = run;
+    if (cut) {
+      deferredMinFirstSeq =
+        deferredMinFirstSeq === null ? run.firstSeq : Math.min(deferredMinFirstSeq, run.firstSeq);
+      continue;
+    }
     if (run.toolEvents > 0) {
       if (toolBearingKept >= maxRuns) {
-        break;
+        cut = true;
+        deferredMinFirstSeq = run.firstSeq;
+        continue;
       }
       toolBearingKept += 1;
     }
-    out.push(run);
+    out.push(summary);
   }
-  return out;
+  return { runs: out, horizonSeq: cursor, deferredMinFirstSeq };
+}
+
+/** Back-compat wrapper: the run list alone. Prefer listRunsSinceDetailed for cursor work. */
+export async function listRunsSince(
+  journal: EventJournal,
+  opts: { sinceSeq: number; maxRuns?: number },
+): Promise<RunSummary[]> {
+  return (await listRunsSinceDetailed(journal, opts)).runs;
 }

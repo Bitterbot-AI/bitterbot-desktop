@@ -6,7 +6,6 @@
  */
 
 import { createHash } from "node:crypto";
-import fs from "node:fs/promises";
 import path from "node:path";
 import type { SkillProposal } from "./proposer.js";
 import {
@@ -21,6 +20,7 @@ import {
   stagingSkillDir,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
 import { applyPatchOps, type ParseIssue } from "./wiki-store.js";
 
 const log = createSubsystemLogger("skill-evolution/proposal-apply");
@@ -193,17 +193,13 @@ export async function applyProposal(
   // it to the live dir alongside SKILL.md.
   const stagedDir = stagingSkillDir(roots, proposal.name);
   if (purposeMd.trim()) {
-    await fs.writeFile(path.join(stagedDir, "PURPOSE.md"), purposeMd, "utf-8");
+    await atomicWriteFile(path.join(stagedDir, "PURPOSE.md"), purposeMd);
   }
-  await fs.writeFile(
-    path.join(stagedDir, ".evolution-meta.json"),
-    JSON.stringify(
-      { origin: "wiki-evolution", stagedAt: Date.now(), iteration: deps.iteration ?? null },
-      null,
-      2,
-    ),
-    "utf-8",
-  );
+  await atomicWriteJson(path.join(stagedDir, ".evolution-meta.json"), {
+    origin: "wiki-evolution",
+    stagedAt: Date.now(),
+    iteration: deps.iteration ?? null,
+  });
   await appendImpactEntry(
     {
       source: "evolution",

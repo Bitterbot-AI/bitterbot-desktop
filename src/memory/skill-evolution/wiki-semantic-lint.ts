@@ -22,6 +22,7 @@ import path from "node:path";
 import type { LlmCallFn } from "./maintainer.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { atomicWriteJson } from "./fs-atomic.js";
 import {
   appendWikiLog,
   archivePattern,
@@ -75,8 +76,7 @@ export async function readSemanticLintState(
 }
 
 async function writeSemanticLintState(opts: ImpactTrailOptions, now: number): Promise<void> {
-  await fs.mkdir(resolveWikiDir(opts), { recursive: true });
-  await fs.writeFile(statePath(opts), JSON.stringify({ lastRunAt: now }, null, 2), "utf-8");
+  await atomicWriteJson(statePath(opts), { lastRunAt: now });
 }
 
 const LINT_PROMPT_HEADER = `You are linting a knowledge wiki of agent failure/success patterns for HEALTH.

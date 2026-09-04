@@ -26,7 +26,11 @@ import {
   updateSessionStore,
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
-import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
+import {
+  emitAgentEvent,
+  emitUserTurnEvent,
+  registerAgentRunContext,
+} from "../../infra/agent-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
   isMarkdownCapableMessageChannel,
@@ -178,6 +182,16 @@ export async function runAgentTurnWithFallback(params: {
                 phase: "start",
                 startedAt,
               },
+            });
+            // PLAN-44 Phase 0: CLI backends never pass through the embedded
+            // runner, so the task is journaled here (the embedded path emits
+            // it in pi-embedded-runner/run.ts).
+            emitUserTurnEvent({
+              runId,
+              text: params.commandBody,
+              sessionKey: params.sessionKey,
+              isHeartbeat: params.isHeartbeat,
+              channel: params.sessionCtx.Provider?.trim().toLowerCase() || undefined,
             });
             const cliSessionId = getCliSessionId(params.getActiveSessionEntry(), provider);
             return (async () => {

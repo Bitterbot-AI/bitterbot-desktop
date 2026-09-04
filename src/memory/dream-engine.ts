@@ -1025,7 +1025,11 @@ export class DreamEngine {
       try {
         await this.maybeRunSkillEvolutionPass(cycleId);
       } catch (err) {
-        log.debug(`skill evolution pass failed: ${String(err)}`);
+        // PLAN-44 Phase 0: a subsystem crash must be visible at the default
+        // log level; the audit found five live iterations undiagnosable.
+        log.warn(
+          `skill evolution pass failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+        );
       }
 
       log.debug("dream cycle complete", {

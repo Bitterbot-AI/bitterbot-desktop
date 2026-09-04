@@ -19,6 +19,7 @@ import type {
 } from "./types.js";
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
+import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
 import { resolveHarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { loadConfig, type BitterbotConfig } from "../config/config.js";
@@ -2687,12 +2688,15 @@ export class MemoryIndexManager implements MemorySearchManager {
         return call ? { evolutionLlmCall: call } : {};
       })(),
       // PLAN-42: dedicated proposer lane — a stronger model holds the strict
-      // ReAct JSON protocol better than the cheap maintainer lane. Only when
-      // proposerModel/judgeModel is configured; else the proposer uses the
-      // evolution lane.
+      // ReAct JSON protocol better than the cheap maintainer lane.
+      // PLAN-44 Phase 0 (D-1): when neither proposerModel nor judgeModel is
+      // configured, the proposer runs on the agent's PRIMARY model (the model
+      // that will execute the skill also proposes it — the paper's
+      // self-evolution reading). Live finding: on the cheap lane the proposer
+      // failed its own JSON protocol in 3 of 5 iterations.
       ...(() => {
         const evo = this.cfg.skills?.evolution;
-        const spec = evo?.proposerModel ?? evo?.judgeModel;
+        const spec = evo?.proposerModel ?? evo?.judgeModel ?? this.resolvePrimaryLlmSpec();
         const call = spec ? this.buildLlmCallFn(spec, { maxTokens: 8192 }) : null;
         return call ? { evolutionProposerLlmCall: call } : {};
       })(),
@@ -3259,6 +3263,21 @@ export class MemoryIndexManager implements MemorySearchManager {
    */
   private resolveCheapLlmSpec(): string {
     return resolveCheapLlmSpec(process.env);
+  }
+
+  /**
+   * PLAN-44 Phase 0 (D-1): the agent's primary model as a "provider/model"
+   * spec, for lanes that must match the runtime agent's capability (the
+   * skill proposer). Null when config resolution throws, so callers fall
+   * back to their previous default.
+   */
+  private resolvePrimaryLlmSpec(): string | null {
+    try {
+      const ref = resolveDefaultModelForAgent({ cfg: this.cfg, agentId: this.agentId });
+      return ref.provider && ref.model ? `${ref.provider}/${ref.model}` : null;
+    } catch {
+      return null;
+    }
   }
 
   private buildLlmCallFn(

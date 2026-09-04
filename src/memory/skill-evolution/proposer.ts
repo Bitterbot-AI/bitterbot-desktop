@@ -60,6 +60,8 @@ export interface ProposerRunResult {
   reads: string[];
   /** True when no_action was forced (turn cap / repeated protocol errors). */
   forced: boolean;
+  /** PLAN-44 Phase 0: unparseable / malformed replies seen (telemetry). */
+  protocolErrors: number;
 }
 
 const PROPOSER_RULES = `You are a Skill Proposer Agent for an LLM agent platform.
@@ -329,6 +331,7 @@ export async function runSkillProposer(deps: ProposerDeps): Promise<ProposerRunR
           turns: turn,
           reads,
           forced: true,
+          protocolErrors,
         };
       }
       transcript.push(
@@ -359,6 +362,7 @@ export async function runSkillProposer(deps: ProposerDeps): Promise<ProposerRunR
             turns: turn,
             reads,
             forced: true,
+            protocolErrors,
           };
         }
         transcript.push(
@@ -367,7 +371,7 @@ export async function runSkillProposer(deps: ProposerDeps): Promise<ProposerRunR
         );
         continue;
       }
-      return { proposal, turns: turn, reads, forced: false };
+      return { proposal, turns: turn, reads, forced: false, protocolErrors };
     }
     protocolErrors += 1;
     transcript.push(
@@ -383,5 +387,6 @@ export async function runSkillProposer(deps: ProposerDeps): Promise<ProposerRunR
     turns: maxTurns,
     reads,
     forced: true,
+    protocolErrors,
   };
 }
