@@ -460,7 +460,11 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   only for a trial dir the runner registered in-process). The session's
   system prompt keeps the skills index in minimal mode, and the candidate
   enters that index through the scratch workspace's `skills/` root, so the
-  gate measures the runtime's real selection problem. Peer skills
+  gate measures the runtime's real selection problem. Validation sessions
+  load NO bootstrap context (`bootstrap-files.ts`): the scratch workspace
+  has no GENOME/PROTOCOLS/MEMORY by design, so the prompt would otherwise
+  carry `[MISSING]` markers the model narrates instead of doing the task,
+  and on the peer flavor those files are the node's private state. Peer skills
   (attestation sweep) run on the `skill-evolve-val-peer-` flavor, which
   keeps the A2A no-tools floor. Both arms' trials are memoized in
   `skill-wiki/.trial-cache.sqlite` (`trial-cache.ts`, keyed by task prompt

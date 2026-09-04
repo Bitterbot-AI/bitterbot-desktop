@@ -1,5 +1,6 @@
 import type { BitterbotConfig } from "../config/config.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
+import { isSkillEvolveValidationSessionKey } from "../sessions/session-key-utils.js";
 import { applyBootstrapHookOverrides } from "./bootstrap-hooks.js";
 import {
   buildBootstrapContextFiles,
@@ -30,6 +31,17 @@ export async function resolveBootstrapFilesForRun(params: {
   agentId?: string;
 }): Promise<WorkspaceBootstrapFile[]> {
   const sessionKey = params.sessionKey ?? params.sessionId;
+  if (isSkillEvolveValidationSessionKey(sessionKey)) {
+    // PLAN-44 Phase 3: a skill-evolution validation rollout (own candidate
+    // or peer attestation) is hermetic. Its scratch workspace carries no
+    // bootstrap files by design, so loading them only yields a wall of
+    // "[MISSING] Expected at: ..." lines that the model then narrates
+    // ("my PROTOCOLS.md is missing") instead of doing the task; and where
+    // the workspace is real (peer sweep), GENOME/MEMORY/scratch are the
+    // node's private state, which PLAN-43 s3.2b already withholds from
+    // these sessions on every other channel. No files, no hook overrides.
+    return [];
+  }
   const bootstrapFiles = filterBootstrapFilesForSession(
     await loadWorkspaceBootstrapFiles(params.workspaceDir),
     sessionKey,

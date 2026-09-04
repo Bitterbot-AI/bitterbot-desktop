@@ -37,6 +37,36 @@ describe("resolveBootstrapContextForRun", () => {
   beforeEach(() => clearInternalHooks());
   afterEach(() => clearInternalHooks());
 
+  it("PLAN-44 Phase 3: skill-evolution validation sessions get no bootstrap context, not even [MISSING] markers or hook extras", async () => {
+    registerInternalHook("agent:bootstrap", (event) => {
+      const context = event.context as AgentBootstrapHookContext;
+      context.bootstrapFiles = [
+        ...context.bootstrapFiles,
+        {
+          name: "EXTRA.md",
+          path: path.join(context.workspaceDir, "EXTRA.md"),
+          content: "extra",
+          missing: false,
+        },
+      ];
+    });
+    // An empty scratch workspace: every bootstrap file is absent.
+    const workspaceDir = await makeTempWorkspace("bitterbot-bootstrap-val-");
+    const control = await resolveBootstrapContextForRun({
+      workspaceDir,
+      sessionKey: "agent:main:main",
+    });
+    expect(control.contextFiles.some((f) => f.content.startsWith("[MISSING]"))).toBe(true);
+    for (const sessionKey of [
+      "agent:main:skill-evolve-val-abc",
+      "agent:main:skill-evolve-val-peer-abc",
+    ]) {
+      const result = await resolveBootstrapContextForRun({ workspaceDir, sessionKey });
+      expect(result.bootstrapFiles).toEqual([]);
+      expect(result.contextFiles).toEqual([]);
+    }
+  });
+
   it("returns context files for hook-adjusted bootstrap files", async () => {
     registerInternalHook("agent:bootstrap", (event) => {
       const context = event.context as AgentBootstrapHookContext;
