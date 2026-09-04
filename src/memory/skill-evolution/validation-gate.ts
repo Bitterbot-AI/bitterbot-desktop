@@ -32,15 +32,17 @@ import {
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import {
-  CANONICAL_GENERATOR_VERSION,
-  deriveCanonicalSeed,
-  loadEffectiveCorpus,
-} from "./canonical-corpus.js";
+import { deriveCanonicalSeed, loadEffectiveCorpus } from "./canonical-corpus.js";
 import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
+import {
+  HOLD_BACKOFF_MS,
+  HOLD_BACKOFF_VERDICTS,
+  memoizeTrials,
+  sweepStaleTrials,
+} from "./gate-support.js";
 import { hashProposalContent } from "./proposal-apply.js";
-import { type AgentTurnFn, makeRuntimePathwayRunner, trialsRoot } from "./task-runner.js";
-import { promptHash, TrialCache } from "./trial-cache.js";
+import { type AgentTurnFn, makeRuntimePathwayRunner } from "./task-runner.js";
+import { TrialCache } from "./trial-cache.js";
 import { validateAgainstRecords } from "./validate-records.js";
 import { type TaskRunnerFn, validateAgainstTasks } from "./validate-tasks.js";
 import { countCapabilityTasks, resolveEffectiveValidationMode } from "./validation-mode.js";
@@ -209,84 +211,6 @@ export async function runValidationGate(
     }
   }
   return outcomes;
-}
-
-/**
- * PLAN-44 Phase 2: serve trials from the memo. Both arms are keyed by the
- * ARM's content hash (a create's incumbent is "none"), so a budget-
- * exhausted retry resumes instead of restarting (adversarial H2) and every
- * create on a model shares the no-skill incumbent. Only non-empty answers
- * are cached (adversarial H4: a provider hiccup must not freeze a 0 for 30
- * days). Read failures fall through to a real run.
- */
-function memoizeTrials(
-  runTask: TaskRunnerFn,
-  params: {
-    cache: TrialCache | null;
-    candidateHash: string;
-    incumbentHash: string;
-    modelTag: string;
-    onHit: (variant: "incumbent" | "candidate") => void;
-  },
-): TaskRunnerFn {
-  return async (task, variant, ctx) => {
-    const key = {
-      taskId: task.id,
-      promptHash: promptHash(task.prompt),
-      incumbentHash: variant === "candidate" ? params.candidateHash : params.incumbentHash,
-      modelTag: params.modelTag,
-      generatorVersion: CANONICAL_GENERATOR_VERSION,
-      trialIndex: ctx.trialIndex,
-    };
-    const hit = params.cache?.get(key);
-    if (hit) {
-      params.onHit(variant);
-      return { answer: hit.answer, skillRead: hit.skillRead };
-    }
-    const result = await runTask(task, variant, ctx);
-    const r = typeof result === "string" ? { answer: result } : result;
-    if (r.answer.trim().length > 0) {
-      params.cache?.put(key, {
-        score: 0, // the validator re-scores from the answer
-        answer: r.answer,
-        skillRead: typeof r.skillRead === "boolean" ? r.skillRead : null,
-      });
-    }
-    return result;
-  };
-}
-
-/** Hold verdicts that are retried only after HOLD_BACKOFF_MS unless content or corpus changed. */
-const HOLD_BACKOFF_MS = 24 * 60 * 60 * 1000;
-// budget-exhausted is deliberately NOT here: the memo makes its retry a
-// resume, so it runs again next pass.
-const HOLD_BACKOFF_VERDICTS = new Set([
-  "never-triggered",
-  "insufficient-evidence",
-  "insufficient-trials",
-]);
-
-/** Remove trial dirs left behind by a crash (older than a day). */
-async function sweepStaleTrials(trailOpts: ImpactTrailOptions): Promise<void> {
-  const root = trialsRoot(trailOpts);
-  let entries: string[];
-  try {
-    entries = await fs.readdir(root);
-  } catch {
-    return;
-  }
-  const cutoff = Date.now() - HOLD_BACKOFF_MS;
-  for (const name of entries) {
-    const p = path.join(root, name);
-    try {
-      const st = await fs.stat(p);
-      if (st.mtimeMs < cutoff) {
-        await fs.rm(p, { recursive: true, force: true });
-      }
-    } catch {
-      // ignore
-    }
-  }
 }
 
 async function settleOne(
