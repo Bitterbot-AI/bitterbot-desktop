@@ -28,7 +28,7 @@ export interface RunSummary {
    * blobs are tiny) — see `runHasTerminal`.
    */
   hasTerminal: boolean;
-  /** Journal seqs of this run's lifecycle rows in the window (first 8). */
+  /** Journal seqs of this run's lifecycle rows in the window (last 8). */
   lifecycleSeqs: number[];
 }
 
@@ -42,9 +42,9 @@ export function runHasTerminal(journal: EventJournal, run: RunSummary): boolean 
   if (run.lifecycleSeqs.length === 0) {
     return false;
   }
-  return journal
-    .getBySeqs(run.lifecycleSeqs)
-    .some((e) => e.data.phase === "end" || e.data.phase === "error");
+  // The terminal, if any, is the run's LAST lifecycle row: one blob.
+  const last = run.lifecycleSeqs.at(-1)!;
+  return journal.getBySeqs([last]).some((e) => e.data.phase === "end" || e.data.phase === "error");
 }
 
 /**
@@ -111,8 +111,9 @@ export async function listRunsSinceDetailed(
       if (evt.stream === "lifecycle") {
         summary.lifecycleEvents += 1;
         summary.hasTerminal = summary.lifecycleEvents >= 2;
-        if (summary.lifecycleSeqs.length < 8) {
-          summary.lifecycleSeqs.push(evt.seq);
+        summary.lifecycleSeqs.push(evt.seq);
+        if (summary.lifecycleSeqs.length > 8) {
+          summary.lifecycleSeqs.shift(); // keep the LAST 8 (the terminal is last)
         }
       }
     }

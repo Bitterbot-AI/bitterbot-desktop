@@ -44,6 +44,7 @@ export interface IterationRecord {
     protocolErrors: number;
     forced: boolean;
     outcome: string | null;
+    lane: string | null;
   } | null;
   validation: Array<{ skillName: string; outcome: string; detail?: string }>;
   lint: { archived: number; orphans: number } | null;
@@ -71,6 +72,7 @@ export interface IterationSource {
     reads: string[];
     protocolErrors: number;
     forced: boolean;
+    lane?: string;
   };
   proposalOutcome?: { outcome: string };
   validation?: Array<{ skillName: string; outcome: string; detail?: string }>;
@@ -111,6 +113,7 @@ export function buildIterationRecord(
           protocolErrors: result.proposer.protocolErrors,
           forced: result.proposer.forced,
           outcome: result.proposalOutcome?.outcome ?? null,
+          lane: result.proposer.lane ?? null,
         }
       : null,
     validation: (result.validation ?? []).map((v) => ({

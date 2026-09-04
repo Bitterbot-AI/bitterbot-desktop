@@ -47,14 +47,17 @@ import type {
   PendingRun,
   ReconstructedTrace,
   SamplerStats,
+  TraceToolStep,
 } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { isA2aTaskSessionKey } from "../../sessions/session-key-utils.js";
+import { makeYieldEvery } from "../event-loop.js";
 import { hashBucket } from "../skill-execution-selection.js";
 import { type JudgeCallFn, labelTrace } from "./labeler.js";
 import { classifyRunOrigin, isLearnableOrigin } from "./run-origin.js";
 import { PENDING_MAX, PROCESSED_RING_MAX } from "./sampler-state.js";
+import { classifyToolError } from "./signals.js";
 import {
   formatTraceLog,
   listRunsSinceDetailed,
@@ -129,11 +132,15 @@ export interface SampleIterationOptions {
   now?: number;
 }
 
-/** Tool-name sequence hash (errored calls marked): the trace's SHAPE. */
+/**
+ * Tool-name sequence hash with the CLASS of every error: the trace's SHAPE.
+ * Two runs of the same task that failed differently (exit code vs policy
+ * block) are different lessons (adversarial M-8).
+ */
 export function toolSequenceHash(trace: ReconstructedTrace): string {
   const seq = trace.steps
-    .filter((s) => s.kind === "tool")
-    .map((s) => (s.kind === "tool" ? `${s.name}${s.isError ? "!" : ""}` : ""))
+    .filter((s): s is TraceToolStep => s.kind === "tool")
+    .map((s) => (s.isError ? `${s.name}!${classifyToolError(s).cls}` : s.name))
     .join(">");
   return createHash("sha1").update(seq).digest("hex").slice(0, 12);
 }
@@ -356,7 +363,9 @@ export async function sampleIteration(
   // run this iteration did not examine.
   let bound = scan.deferredMinFirstSeq ?? Number.POSITIVE_INFINITY;
 
+  const tick = makeYieldEvery(16);
   for (const run of scan.runs) {
+    await tick(); // adversarial M-7: runHasTerminal is a sync sqlite read per tool-less run
     if (budgetFull()) {
       bound = Math.min(bound, run.firstSeq);
       continue;

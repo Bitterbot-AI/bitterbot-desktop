@@ -312,6 +312,7 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
         llmCall: deps.proposerLlmCall ?? deps.llmCall,
         ...proposerDeps,
       });
+      proposer.lane = deps.proposerLlmCall ? "dedicated" : "evolution";
     } catch (err) {
       if (!deps.proposerLlmCall) {
         throw err;
@@ -324,6 +325,7 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
         `proposer lane failed (${String(err).slice(0, 200)}); retrying on the evolution lane`,
       );
       proposer = await runSkillProposer({ llmCall: deps.llmCall, ...proposerDeps });
+      proposer.lane = "fallback";
     }
     proposalOutcome = await applyProposal(proposer.proposal, {
       ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),

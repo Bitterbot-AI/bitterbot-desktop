@@ -12,10 +12,12 @@
  *
  * Rules ordered by trustworthiness (signals from signals.ts):
  *
- *   1. lifecycle error                 → env-fail (the LLM call itself failed;
- *                                        every live instance was a provider error)
- *   2. terminal tool error, env class  → env-fail
- *   3. terminal tool error, agent class→ fail
+ *   1. lifecycle error                 → env-fail (provider) or fail (context
+ *                                        overflow / unknown tool: the agent's doing)
+ *   1b. retry storm on env errors      → fail (no backoff is the agent's failure)
+ *   2. terminal env error, no agent    → env-fail
+ *      errors before it
+ *   3. terminal tool error otherwise   → fail
  *   4. agent-error density > 50%       → fail
  *   5. every call errored, all env     → env-fail
  *   6. complete() + no agent errors    → pass
@@ -32,7 +34,7 @@
 
 import type { ReconstructedTrace, TraceLabelResult } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { extractTraceSignals, type TraceSignals } from "./signals.js";
+import { classifyLifecycleError, extractTraceSignals, type TraceSignals } from "./signals.js";
 import { formatTraceLog } from "./traces.js";
 
 const log = createSubsystemLogger("skill-evolution/labeler");
@@ -54,6 +56,15 @@ export function labelHeuristic(
     return { label: "unknown", confidence: 0, reason: "run has no terminal event", judged: false };
   }
   if (trace.endedWithError) {
+    const lc = classifyLifecycleError(trace.errorText);
+    if (lc.scope === "agent") {
+      return {
+        label: "fail",
+        confidence: 0.8,
+        reason: `lifecycle error caused by the agent (${lc.cls})${trace.errorText ? `: ${trace.errorText.slice(0, 80)}` : ""}`,
+        judged: false,
+      };
+    }
     return {
       label: "env-fail",
       confidence: 0.9,
@@ -61,10 +72,29 @@ export function labelHeuristic(
       judged: false,
     };
   }
+  // Adversarial M-3: hammering an environment error without backoff is the
+  // agent's failure even though every individual error is environmental.
+  if (
+    signals.repeated &&
+    signals.repeated.repeats >= 4 &&
+    signals.envErrorCount >= 4 &&
+    signals.agentErrorCount === 0 &&
+    !signals.recoveredAfterError &&
+    new Set(signals.errors.map((e) => e.cls)).size === 1
+  ) {
+    return {
+      label: "fail",
+      confidence: 0.6,
+      reason: `retry storm: ${signals.repeated.block.join(">")} x${signals.repeated.repeats} against an environment error without backoff`,
+      judged: false,
+    };
+  }
   const lastError = signals.errors.at(-1);
   const lastToolIndex = signals.toolSequence.length - 1;
   if (lastError && lastError.index === lastToolIndex) {
-    if (lastError.scope === "env") {
+    // Adversarial H-3: a terminal environment error only excuses a run that
+    // had no agent-side errors before it.
+    if (lastError.scope === "env" && signals.agentErrorCount === 0) {
       return {
         label: "env-fail",
         confidence: 0.8,
@@ -75,7 +105,10 @@ export function labelHeuristic(
     return {
       label: "fail",
       confidence: 0.75,
-      reason: `terminal tool call failed (${lastError.tool}:${lastError.cls})`,
+      reason:
+        lastError.scope === "env"
+          ? `terminal environment error after ${signals.agentErrorCount} agent error(s) (${lastError.tool}:${lastError.cls})`
+          : `terminal tool call failed (${lastError.tool}:${lastError.cls})`,
       judged: false,
     };
   }
@@ -190,6 +223,20 @@ export async function labelTrace(
     }
     if (verdict === "unknown") {
       return { label: "unknown", confidence: 0.5, reason: "judge: unknown", judged: true };
+    }
+    // Adversarial H-2: the judge's verdict space has no env-fail. A "fail"
+    // on a run whose only errors were environmental is an environment
+    // failure, not wiki material.
+    if (verdict === "fail") {
+      const signals = extractTraceSignals(trace);
+      if (signals.agentErrorCount === 0 && signals.envErrorCount > 0) {
+        return {
+          label: "env-fail",
+          confidence: 0.8,
+          reason: `judge said fail but every error was environmental (${signals.errors.map((e) => e.cls).join(",")})`,
+          judged: true,
+        };
+      }
     }
     return {
       label: verdict,

@@ -113,6 +113,43 @@ describe("labelHeuristic (PLAN-44 I3: environment is not the agent)", () => {
     expect(labelHeuristic(trace([tool("read")], { isComplete: false })).label).toBe("unknown");
   });
 
+  // Adversarial H-3 / H-4 / M-3.
+  it("does not excuse a run with agent errors because its LAST error was environmental (H-3)", () => {
+    const r = labelHeuristic(
+      trace([
+        tool("exec", "Command exited with code 1"),
+        tool("exec", "Command exited with code 1"),
+        tool("web_fetch", "getaddrinfo ENOTFOUND x.invalid"),
+      ]),
+    );
+    expect(r.label).toBe("fail");
+    expect(r.reason).toContain("terminal environment error after 2 agent error(s)");
+  });
+
+  it("labels agent-caused lifecycle errors (context overflow, unknown tool) as fail (H-4)", () => {
+    const r = labelHeuristic(
+      trace([tool("read")], {
+        endedWithError: true,
+        errorText: "⚠️ Context overflow — prompt too large for this model.",
+      }),
+    );
+    expect(r.label).toBe("fail");
+    expect(r.reason).toContain("context-overflow");
+  });
+
+  it("labels a retry storm against an environment error as fail (M-3)", () => {
+    const r = labelHeuristic(
+      trace([
+        tool("web_fetch", "Web fetch failed (429): slow down"),
+        tool("web_fetch", "Web fetch failed (429): slow down"),
+        tool("web_fetch", "Web fetch failed (429): slow down"),
+        tool("web_fetch", "Web fetch failed (429): slow down"),
+      ]),
+    );
+    expect(r.label).toBe("fail");
+    expect(r.reason).toContain("retry storm");
+  });
+
   it("treats recovery from an environment error as a weak pass", () => {
     const r = labelHeuristic(
       trace([tool("web_fetch", "fetch failed"), tool("web_fetch"), tool("read")]),
@@ -174,6 +211,14 @@ describe("labelTrace with a judge", () => {
       },
     });
     expect(thrown).toMatchObject({ label: "pass", judged: false });
+  });
+
+  it("turns a judge 'fail' into env-fail when every error was environmental (H-2)", async () => {
+    const r = await labelTrace(
+      trace([tool("web_fetch", "getaddrinfo ENOTFOUND x.invalid"), tool("exec")]),
+      { judgeCall: async () => "verdict: fail" },
+    );
+    expect(r).toMatchObject({ label: "env-fail", judged: true });
   });
 
   it("propagates a judge unknown as unknown", async () => {

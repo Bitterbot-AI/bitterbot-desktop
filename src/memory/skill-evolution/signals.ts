@@ -44,21 +44,24 @@ export interface TraceSignals {
   recoveredAfterError: boolean;
 }
 
-/** Ordered: first match wins. Environment classes before agent classes. */
+/** Ordered: first match wins. Environment classes before agent classes (generic tools). */
 const ENV_RULES: Array<[string, RegExp]> = [
   ["provider", /LLM error|api_error|\bConnection error\.?|overloaded_error|model is overloaded/i],
-  // Local services / config / tool bugs before the generic network classes:
-  // "Can't reach ... (timed out)" is a service outage, not a timeout.
-  [
-    "service-unavailable",
-    /Can't reach|cannot reach|not enabled\b|node required|invalid config|not configured|no api key|missing api key|is not a constructor|Cannot read properties of undefined/i,
-  ],
-  ["dns", /getaddrinfo|ENOTFOUND|EAI_AGAIN/i],
-  ["rate-limit", /\b429\b|rate.?limit|too many requests|quota exceeded|insufficient credits/i],
   // HTTP 5xx before "connection": "Web fetch failed (503)" is a server error.
   [
     "server",
     /(?:status(?:Code)?|code|HTTP|failed)\D{0,6}\b5\d\d\b|Internal server error|service unavailable|bad gateway|gateway time-?out/i,
+  ],
+  // Local services / config / tool bugs before the generic network classes:
+  // "Can't reach ... (timed out)" is a service outage, not a timeout.
+  [
+    "service-unavailable",
+    /Can't reach|cannot reach|not enabled\b|node required|invalid config|not configured|no api key|missing api key|missing_\w*api_key|\bunavailable\b|not available|not initialized|did not start within|is not a constructor|Cannot read properties of undefined/i,
+  ],
+  ["dns", /getaddrinfo|ENOTFOUND|EAI_AGAIN|Could not resolve host/i],
+  [
+    "rate-limit",
+    /HTTP 429|status(?:Code)?\D{0,4}429|\(429\)|429 Too Many|Too Many Requests|rate limit exceeded|rate-limited|quota exceeded|insufficient credits/i,
   ],
   // Bare "fetch failed" (Node's undici network error) is a connection
   // failure; "Web fetch failed (4xx)" is an HTTP status and stays agent-side.
@@ -76,7 +79,7 @@ const ENV_RULES: Array<[string, RegExp]> = [
 const AGENT_RULES: Array<[string, RegExp]> = [
   [
     "policy-block",
-    /Security Violation|Blocked: resolves|INTERCEPTOR:|blocked by policy|not allowed/i,
+    /Security Violation|Blocked: resolves|INTERCEPTOR:|blocked by policy|not allowed|are disabled\b/i,
   ],
   ["file-not-found", /ENOENT|no such file|not a git repository|does not exist/i],
   ["edit-mismatch", /Could not find the exact text|old_string not found/i],
@@ -88,6 +91,11 @@ const AGENT_RULES: Array<[string, RegExp]> = [
   ["exception", /Traceback|\bError:|throw err|Unhandled|TypeError|ReferenceError/i],
   ["timeout", /timed? ?out/i],
 ];
+
+/** Network errors a shell command can surface; env unless the target is loopback. */
+const SHELL_NETWORK_RE =
+  /curl: \((?:6|7|28|35|52|56)\)|Could not resolve host|Connection refused|Connection reset|SSL connection timeout|Connection timed out|Network is unreachable|getaddrinfo|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET/i;
+const LOOPBACK_RE = /\blocalhost\b|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|::1\b/;
 
 /**
  * Pull the human error string out of the tool-result envelope
@@ -119,19 +127,134 @@ export function extractErrorText(result: string): string {
   return raw;
 }
 
+/** Head + tail so the harness reason line at the end of long output survives (adversarial M-1). */
+function headTail(text: string, head = 1_500, tail = 500): string {
+  return text.length > head + tail ? `${text.slice(0, head)}\n${text.slice(-tail)}` : text;
+}
+
+function matchRules(rules: Array<[string, RegExp]>, text: string): string | null {
+  for (const [cls, re] of rules) {
+    if (re.test(text)) {
+      return cls;
+    }
+  }
+  return null;
+}
+
+/**
+ * Shell commands (adversarial H-1): the agent chose the command, so the
+ * error is agent-side by default. The harness appends its reason as the
+ * final paragraph ("Command exited with code N", "Command timed out",
+ * "Command aborted by signal"); the command's own output precedes it and
+ * must never be scanned with the environment rules (a script's own
+ * TypeError or a test summary containing "429" is not an outage). The one
+ * environment class a shell command can prove is a NETWORK failure toward
+ * a REMOTE host; the same failure toward loopback is the agent's own
+ * unstarted service.
+ */
+function classifyShell(full: string): ToolErrorClass {
+  const paragraphs = full.trim().split(/\n\s*\n/);
+  const reason = paragraphs.at(-1) ?? full;
+  const output = paragraphs.length > 1 ? paragraphs.slice(0, -1).join("\n") : "";
+  if (/no result recorded|run ended before/i.test(reason)) {
+    return { cls: "aborted", scope: "env" };
+  }
+  if (/Security Violation|blocked by policy|not allowed/i.test(reason)) {
+    return { cls: "policy-block", scope: "agent" };
+  }
+  if (/aborted by signal|SIGTERM|SIGKILL/i.test(reason)) {
+    return { cls: "aborted", scope: "env" };
+  }
+  if (/Command timed out|timed? ?out after/i.test(reason)) {
+    return { cls: "timeout", scope: "agent" };
+  }
+  const probe = headTail(output || reason);
+  if (SHELL_NETWORK_RE.test(probe)) {
+    return LOOPBACK_RE.test(probe)
+      ? { cls: "local-service", scope: "agent" }
+      : { cls: "network", scope: "env" };
+  }
+  if (LOOPBACK_RE.test(probe) && /HTTP\/\d|\b5\d\d\b|refused|ECONNREFUSED/i.test(probe)) {
+    // The agent's own server answered badly (or not at all).
+    return { cls: "local-service", scope: "agent" };
+  }
+  const fine = matchRules(
+    AGENT_RULES.filter(([cls]) => cls !== "exit-nonzero" && cls !== "timeout"),
+    probe,
+  );
+  if (fine) {
+    return { cls: fine, scope: "agent" };
+  }
+  if (/exited with code/i.test(reason)) {
+    return { cls: "exit-nonzero", scope: "agent" };
+  }
+  return { cls: matchRules(AGENT_RULES, reason) ?? "error", scope: "agent" };
+}
+
+/**
+ * web_fetch (adversarial M-5): the response body rides inside the error
+ * string, so a page can contain any signature it likes. Classify on the
+ * HTTP status when present and on the FIRST LINE otherwise; never on the
+ * body.
+ */
+function classifyWebFetch(full: string): ToolErrorClass {
+  const status = full.match(/Web fetch failed \((\d{3})\)/)?.[1];
+  if (status) {
+    const code = Number(status);
+    if (code === 429) {
+      return { cls: "rate-limit", scope: "env" };
+    }
+    if (code >= 500) {
+      return { cls: "server", scope: "env" };
+    }
+    return { cls: "http-client", scope: "agent" };
+  }
+  const firstLine = full.split("\n")[0] ?? full;
+  if (/Blocked: resolves|not allowed/i.test(firstLine)) {
+    return { cls: "policy-block", scope: "agent" };
+  }
+  const env = matchRules(ENV_RULES, firstLine);
+  if (env) {
+    return { cls: env, scope: "env" };
+  }
+  return { cls: matchRules(AGENT_RULES, firstLine) ?? "error", scope: "agent" };
+}
+
 export function classifyToolError(step: TraceToolStep): ToolErrorClass {
-  const text = extractErrorText(step.result).slice(0, 2_000);
-  for (const [cls, re] of ENV_RULES) {
-    if (re.test(text)) {
-      return { cls, scope: "env" };
-    }
+  const full = extractErrorText(step.result);
+  if (step.name === "exec" || step.name === "process") {
+    return classifyShell(full);
   }
-  for (const [cls, re] of AGENT_RULES) {
-    if (re.test(text)) {
-      return { cls, scope: "agent" };
-    }
+  if (step.name === "web_fetch") {
+    return classifyWebFetch(full);
   }
-  return { cls: "error", scope: "agent" };
+  const text = headTail(full);
+  const env = matchRules(ENV_RULES, text);
+  if (env) {
+    return { cls: env, scope: "env" };
+  }
+  return { cls: matchRules(AGENT_RULES, text) ?? "error", scope: "agent" };
+}
+
+/**
+ * PLAN-44 (adversarial H-4): a lifecycle error is the LLM call failing —
+ * a provider outage in every live instance — unless its text names
+ * something the agent did (context overflow from over-reading, calling a
+ * tool that does not exist in this sandbox).
+ */
+export function classifyLifecycleError(errorText: string | null): ToolErrorClass {
+  const text = errorText ?? "";
+  if (
+    /context overflow|prompt (?:is )?too (?:large|long)|request_too_large|too many tokens/i.test(
+      text,
+    )
+  ) {
+    return { cls: "context-overflow", scope: "agent" };
+  }
+  if (/unknown tool|not available in this sandbox|no such tool/i.test(text)) {
+    return { cls: "unknown-tool", scope: "agent" };
+  }
+  return { cls: "provider", scope: "env" };
 }
 
 function findRepeatedBlock(seq: string[]): { block: string[]; repeats: number } | null {
@@ -168,10 +291,14 @@ export function extractTraceSignals(trace: ReconstructedTrace): TraceSignals {
   const firstErrorIndex = errors.length > 0 ? errors[0]!.index : null;
   let recoveredAfterError = false;
   if (firstErrorIndex !== null) {
-    const erroredTools = new Set(errors.map((e) => e.tool));
-    for (let i = firstErrorIndex + 1; i < tools.length; i++) {
+    // A tool that errored EARLIER and succeeded LATER (adversarial L-4:
+    // a success before the tool's own error is not a recovery).
+    const erroredSoFar = new Set<string>();
+    for (let i = 0; i < tools.length; i++) {
       const t = tools[i]!;
-      if (!t.isError && erroredTools.has(t.name)) {
+      if (t.isError) {
+        erroredSoFar.add(t.name);
+      } else if (erroredSoFar.has(t.name)) {
         recoveredAfterError = true;
         break;
       }

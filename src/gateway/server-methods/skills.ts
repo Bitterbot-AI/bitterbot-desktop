@@ -1315,7 +1315,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
             : evo.judgeModel
               ? "judgeModel"
               : "agent-primary",
-          proposerModelEffective:
+          proposerModelConfigured:
             evo.proposerModel ??
             evo.judgeModel ??
             (() => {

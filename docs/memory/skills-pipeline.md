@@ -334,17 +334,26 @@ runs into evolution fuel:
   timeout), first-error position and recovery. Printed as a `## Signals`
   block under the task header of every trace log; the maintainer and judge
   are told to cite them and never invent mechanisms (arXiv 2605.29463).
-  Signatures come from the live journal's 136 tool errors.
+  Signatures come from the live journal's 136 tool errors. Classification
+  is tool-aware (adversarial pass): shell commands are the agent's choice,
+  so `exec`/`process` errors classify on the harness reason line
+  ("Command exited with code N") and scan the command's output only for
+  finer agent classes and for network errors (remote → `network` env,
+  loopback → `local-service` agent); `web_fetch` classifies on the HTTP
+  status or the first line, never the body; lifecycle errors are provider
+  failures unless the text names context overflow or an unknown tool.
 - `labeler.ts` — pass / fail / **env-fail** / unknown cascade (PLAN-44
   Phase 1): lifecycle error → env-fail (every live instance was a provider
   error); terminal tool error → env-fail or fail by error class; AGENT
   error density; all-env-errors → env-fail; `complete()` with no agent
   errors → pass; clean end → pass; recovered from env errors → weak pass.
   `env-fail` never takes a failure slot (5 of 8 live wiki pages were
-  outage narratives before this); human-origin env-fail traces still seed
-  the corpus miner. The judge verdict parse is line-anchored (an echoed
+  outage narratives before this); a judge "fail" on a run whose only
+  errors were environmental is env-fail; ≥4 identical env errors without
+  recovery is a retry-storm fail; human-origin env-fail traces still seed
+  the corpus miner (one reserved slot). The judge verdict parse is line-anchored (an echoed
   "verdict: pass|fail|unknown" is rejected). Calibrated against
-  `benchmarks/skill-evolution/labeled-traces.jsonl` (48 rows built from
+  `benchmarks/skill-evolution/labeled-traces.jsonl` (58 rows built from
   live run SHAPES with synthetic content; precision ≥ 0.85 / recall ≥ 0.75
   per class, and no env-fail row may ever label as fail —
   `labeler.fixture.test.ts`). Length-based reward heuristics are banned
@@ -460,7 +469,7 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   **PLAN-44 Phase 0 (D-1):** when neither `proposerModel` nor `judgeModel`
   is set, the Skill Proposer runs on the agent's primary model (the cheap
   lane failed its own JSON protocol in 3 of 5 live iterations); the RPC
-  reports `proposerModelSource` and `proposerModelEffective`. The `user`
+  reports `proposerModelSource` and `proposerModelConfigured`; each iteration record carries the proposer `lane`. The `user`
   journal stream is emitted once per run (retries dedupe) by the embedded
   runner, the CLI-provider path, and the gateway `agent` command's CLI
   branch, and is never broadcast to WebSocket clients.

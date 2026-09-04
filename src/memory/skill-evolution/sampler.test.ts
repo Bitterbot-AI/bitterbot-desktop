@@ -126,7 +126,7 @@ describe("sampleIteration", () => {
     const [ambiguous, confident] = findRunIds(2, false, "jj") as [string, string];
     // Clean end without complete(): weak pass -> judge consulted.
     appendFixtureRun(journal, { runId: ambiguous, steps: passSteps() });
-    // Lifecycle error: confident fail -> judge skipped.
+    // Terminal agent tool error: confident fail -> judge skipped.
     appendFixtureRun(journal, { runId: confident, steps: failSteps() });
     let calls = 0;
     const result = await sampleIteration(journal, {

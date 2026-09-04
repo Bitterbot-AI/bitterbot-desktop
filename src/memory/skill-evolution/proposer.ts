@@ -62,6 +62,8 @@ export interface ProposerRunResult {
   forced: boolean;
   /** PLAN-44 Phase 0: unparseable / malformed replies seen (telemetry). */
   protocolErrors: number;
+  /** PLAN-44: which LLM lane ran it ("dedicated" primary-model lane, "evolution", or "fallback"). */
+  lane?: "dedicated" | "evolution" | "fallback";
 }
 
 const PROPOSER_RULES = `You are a Skill Proposer Agent for an LLM agent platform.
