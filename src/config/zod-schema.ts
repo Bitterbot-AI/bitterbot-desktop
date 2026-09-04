@@ -663,6 +663,14 @@ export const BitterbotSchema = z
             semanticLintCadenceDays: z.number().positive().optional().describe("Default: 7"),
             propagate: z.boolean().optional().describe("Default: true"),
             maturityDays: z.number().positive().optional().describe("Default: 3"),
+            validationBudgetMinutes: z.number().positive().optional().describe("Default: 45"),
+            validationTools: z
+              .object({ alsoAllow: z.array(z.string()).optional() })
+              .strict()
+              .optional()
+              .describe(
+                "Extra tools for validation rollouts (never network/messaging/memory/skills/wallet)",
+              ),
           })
           .strict()
           .optional(),

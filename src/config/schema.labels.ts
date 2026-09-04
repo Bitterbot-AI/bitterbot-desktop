@@ -20,6 +20,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "skills.evolution.wikiMaxPatterns": "Skill Wiki Pattern Cap",
   "skills.evolution.semanticLintCadenceDays": "Skill Wiki Semantic Lint Cadence (days)",
   "skills.evolution.maturityDays": "Evolved Skill Maturity (days)",
+  "skills.evolution.validationBudgetMinutes": "Skill Validation Budget (minutes)",
   "skills.skillSeekers.enabled": "Skill Seekers Ingestion",
   "skills.skillSeekers.trending.enabled": "Skill Seekers Trending Sweep",
   "skills.marketability.predictor.enabled": "Skill Marketability Predictor",

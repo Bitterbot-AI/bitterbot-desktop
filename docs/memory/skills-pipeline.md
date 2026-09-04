@@ -433,24 +433,50 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   auto-promoted — promotion belongs to the validation gate (accept only on
   measured improvement). Repeated protocol garbage or the turn cap force
   `no_action`, which is a valid outcome, not a failure.
-- Validation gate (PLAN-42 Phase 4) — the ONLY path from staged proposal
-  to live skill, and the answer to "how do we know a generated skill is
-  good": always comparative, always strict. `validate-records.ts` (default
-  mode) scores candidate vs incumbent over HELD-OUT reconstructed traces
-  (the 20% run-id partition the maintainer never sees) via one batched LLM
-  call + deterministic paired bootstrap; accept iff `ci95Low > 0` with
-  > = 5 trials. `validate-tasks.ts` + `task-corpus.ts` (stronger mode,
-  > enable via `skills.evolution.validationMode: "tasks"` after reviewing
-  > the corpus) replays the frozen `skill-wiki/task-corpus.jsonl` benchmark
-  > under both arms with deterministic checkers (seed corpus + curation
-  > guide in `benchmarks/skill-evolution/`). `validation-gate.ts` settles
-  > every staged evolution proposal: measured improvement -> promote (with
-  > PURPOSE.md + `.evolution-meta.json` enriched with mode/scores/corpus
-  > version/model tag, snapshot bumped); measured non-improvement -> discard
-  > candidate + record verdict; insufficient data -> HOLD staged and retry;
-  > net-new creates respect `maxActiveEvolved` (default 5). Rejected content
-  > is dedup-hashed: an identical (name, content) proposal can never be
-  > re-staged (OSS-implementation lesson).
+- Validation gate (PLAN-42 Phase 4, rebuilt in PLAN-44 Phase 2) — the ONLY
+  path from staged proposal to live skill, and the answer to "how do we
+  know a generated skill is good": always comparative, always strict.
+  **Mode (D-2):** `validation-mode.ts` resolves the EFFECTIVE mode — an
+  explicit `skills.evolution.validationMode` wins; otherwise `tasks` once
+  the effective corpus carries ≥ 5 reviewed capability tasks, else
+  `records`. **Tasks mode** (`validate-tasks.ts`, `task-runner.ts`,
+  `task-corpus.ts`, `canonical-corpus.ts`): real agent turns over the
+  fresh-seeded canonical REGRESSION suite (15 templates, three of them
+  `safety`-tagged: embedded-instruction resistance, a phishing refusal, a
+  plain echo — one observed failure there rejects with no re-check) plus
+  the node's reviewed CAPABILITY suite. The candidate arm is the RUNTIME
+  PATHWAY (D-3): the prompt carries only an `<available_skills>` index
+  entry plus the runtime's "read at most one SKILL.md" rule; the body sits
+  in a per-trial scratch workspace and the journal records whether the
+  agent actually read it. Trigger precision is gated: candidate read rate
+  < 0.5 on capability tasks HOLDs (`never-triggered`), > 0.5 on regression
+  tasks REJECTs (`over-triggered`). Validation sessions
+  (`agent:<id>:skill-evolve-val-*`) run under a dedicated workspace-scoped
+  tool allow-list (D-4, `skill-validation-policy.ts`: read/write/edit/
+  apply_patch/exec/process, `tools.fs.workspaceOnly` forced) in that
+  scratch workspace (gateway `agent` RPC `workspaceDir`, honoured for
+  validation keys only). Incumbent-arm trials are memoized in
+  `skill-wiki/.trial-cache.sqlite` (`trial-cache.ts`, keyed by task prompt
+  / incumbent hash / model / generator version / trial index; the canonical
+  seed rotates daily per model so same-day proposals share instances);
+  candidate arms are never cached. A wall-clock budget
+  (`skills.evolution.validationBudgetMinutes`, default 45) HOLDs with
+  `budget-exhausted`. **Corpus review** (`corpus-review.ts`; RPCs
+  `skills.evolution.corpus.list|accept|reject`; CLI `bitterbot skills
+corpus list|accept|reject`) is the only writer of `task-corpus.jsonl`:
+  drafts are re-flagged at accept time (absolute paths, network verbs,
+  injection hits, error-string checkers) and rejected ids are never
+  redrafted. **Records mode** (`validate-records.ts`) is the opt-in
+  fallback: held-out traces scored in BOTH presentation orders with skill
+  bodies framed as untrusted data, exact sign test with a 0.1 discordance
+  floor. `validation-gate.ts` settles every staged evolution proposal:
+  measured improvement -> promote (PURPOSE.md + `.evolution-meta.json`
+  enriched with mode/scores/read rates/tokens/corpus version/model);
+  measured non-improvement or over-triggering -> discard + record verdict;
+  insufficient data, never-triggered, budget -> HOLD and retry; net-new
+  creates respect `maxActiveEvolved` (default 5). Rejected content is
+  dedup-hashed: an identical (name, content) proposal can never be
+  re-staged.
 - Phase 5 ops: `wiki-lint.ts` (deterministic hygiene each iteration —
   exact-duplicate and over-cap pages archived to `patterns/archive/`
   (never deleted), orphans flagged into logs.md for the next maintainer

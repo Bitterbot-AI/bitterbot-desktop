@@ -4,6 +4,7 @@ import { loadConfig } from "../config/config.js";
 import { defaultRuntime } from "../runtime.js";
 import { formatDocsLink } from "../terminal/links.js";
 import { theme } from "../terminal/theme.js";
+import { addGatewayClientOptions, callGatewayFromCli } from "./gateway-rpc.js";
 import { formatSkillInfo, formatSkillsCheck, formatSkillsList } from "./skills-cli.format.js";
 
 export type {
@@ -217,6 +218,124 @@ export function registerSkillsCli(program: Command) {
         defaultRuntime.exit(1);
       }
     });
+
+  // PLAN-44 Phase 2: review the corpus miner's drafts (the only way a
+  // capability task enters the live corpus). Goes through the gateway so
+  // the running node's files are the ones edited.
+  const corpus = skills
+    .command("corpus")
+    .description("Review mined capability-task drafts for skill-evolution validation");
+
+  addGatewayClientOptions(
+    corpus
+      .command("list")
+      .description("List pending drafts with review flags")
+      .option("--json", "Output as JSON", false),
+  ).action(async (opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.corpus.list", opts, {})) as {
+        drafts: Array<{
+          id: string;
+          prompt: string;
+          checker: { kind: string; value: string };
+          flags: string[];
+          acceptable: boolean;
+        }>;
+        liveCapabilityTasks: number;
+        tasksModeThreshold: number;
+      };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      defaultRuntime.log(
+        `live capability tasks: ${result.liveCapabilityTasks} (tasks mode at ${result.tasksModeThreshold})`,
+      );
+      if (result.drafts.length === 0) {
+        defaultRuntime.log(theme.muted("No pending drafts."));
+        return;
+      }
+      for (const d of result.drafts) {
+        const mark = d.acceptable ? "ok " : "!! ";
+        defaultRuntime.log(
+          `${mark}${d.id}${d.flags.length ? theme.muted(`  [${d.flags.join(", ")}]`) : ""}`,
+        );
+        defaultRuntime.log(`    ${d.prompt.replace(/\s+/g, " ").slice(0, 160)}`);
+        defaultRuntime.log(theme.muted(`    ${d.checker.kind}: ${d.checker.value.slice(0, 80)}`));
+      }
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
+  addGatewayClientOptions(
+    corpus
+      .command("accept")
+      .description("Promote reviewed drafts into the live capability suite")
+      .argument("<ids...>", "Draft ids as shown by 'skills corpus list'")
+      .option("--reviewed-by <name>", "Reviewer stamp", "operator")
+      .option("--json", "Output as JSON", false),
+  ).action(async (ids: string[], opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.corpus.accept", opts, {
+        ids,
+        reviewedBy: opts.reviewedBy,
+      })) as {
+        accepted: string[];
+        refused: Array<{ id: string; reason: string }>;
+        liveTaskCount: number;
+      };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      for (const id of result.accepted) {
+        defaultRuntime.log(`accepted: ${id}`);
+      }
+      for (const r of result.refused) {
+        defaultRuntime.error(`refused: ${r.id} (${r.reason})`);
+      }
+      defaultRuntime.log(`live corpus: ${result.liveTaskCount} task(s)`);
+      if (result.refused.length > 0 && result.accepted.length === 0) {
+        defaultRuntime.exit(1);
+      }
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
+  addGatewayClientOptions(
+    corpus
+      .command("reject")
+      .description("Drop drafts; the miner never redrafts a rejected id")
+      .argument("<ids...>", "Draft ids as shown by 'skills corpus list'")
+      .option("--reviewed-by <name>", "Reviewer stamp", "operator")
+      .option("--reason <text>", "Why (recorded)")
+      .option("--json", "Output as JSON", false),
+  ).action(async (ids: string[], opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.corpus.reject", opts, {
+        ids,
+        reviewedBy: opts.reviewedBy,
+        ...(opts.reason ? { reason: opts.reason } : {}),
+      })) as { rejected: string[]; missing: string[] };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      for (const id of result.rejected) {
+        defaultRuntime.log(`rejected: ${id}`);
+      }
+      for (const id of result.missing) {
+        defaultRuntime.error(`not pending: ${id}`);
+      }
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
 
   // Default action (no subcommand) - show list
   skills.action(async () => {

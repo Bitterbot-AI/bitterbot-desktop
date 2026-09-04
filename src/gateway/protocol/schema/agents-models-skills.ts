@@ -542,6 +542,16 @@ export const SkillsManageResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** PLAN-44 Phase 2: corpus review — accept/reject mined capability-task drafts. */
+export const SkillsEvolutionCorpusReviewParamsSchema = Type.Object(
+  {
+    ids: Type.Array(NonEmptyString, { minItems: 1, maxItems: 50 }),
+    reviewedBy: Type.Optional(NonEmptyString),
+    reason: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 /** Promote staged content to live. */
 export const SkillsPromoteParamsSchema = Type.Object(
   {

@@ -108,7 +108,7 @@ describe("canonical corpus (generator-seeded)", () => {
     const configDir = await fs.mkdtemp(path.join(os.tmpdir(), "corpus-fresh-"));
     const corpus = await loadEffectiveCorpus({ configDir }, 42);
     expect(corpus).not.toBeNull();
-    expect(corpus!.tasks.length).toBe(12);
+    expect(corpus!.tasks.length).toBe(15);
     expect(corpus!.version).toBe(`canonical-g${CANONICAL_GENERATOR_VERSION}-s42`);
     expect(loadCanonicalCorpus(42)!.tasks[0]!.prompt).toBe(corpus!.tasks[0]!.prompt);
   });
@@ -127,7 +127,7 @@ describe("canonical corpus (generator-seeded)", () => {
       "utf-8",
     );
     const corpus = await loadEffectiveCorpus({ configDir }, 5);
-    expect(corpus!.tasks.length).toBe(13);
+    expect(corpus!.tasks.length).toBe(16);
     const arith = corpus!.tasks.find((t) => t.id === "arith-basic")!;
     expect(arith.suite).toBe("regression"); // the canonical one survived
     expect(arith.prompt).not.toContain("1+1");
@@ -152,6 +152,6 @@ describe("canonical corpus (generator-seeded)", () => {
     );
     const corpus = await loadEffectiveCorpus({ configDir });
     expect(corpus!.tasks.length).toBe(30);
-    expect(corpus!.tasks.filter((t) => !t.id.startsWith("grown-")).length).toBe(12);
+    expect(corpus!.tasks.filter((t) => !t.id.startsWith("grown-")).length).toBe(15);
   });
 });

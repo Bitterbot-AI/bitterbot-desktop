@@ -131,6 +131,20 @@ export type SkillsEvolutionConfig = {
   propagate?: boolean;
   /** Days a validated skill must survive locally before P2P publish. Default: 3. */
   maturityDays?: number;
+  /**
+   * PLAN-44 Phase 2: wall-clock budget for one tasks-mode validation run.
+   * When exceeded the gate stops issuing rollouts and HOLDs the proposal
+   * (`budget-exhausted`); the incumbent memo makes the retry cheap.
+   * Default: 45.
+   */
+  validationBudgetMinutes?: number;
+  /**
+   * PLAN-44 Phase 2 (D-4): extra tools granted to validation rollouts on
+   * top of the built-in workspace-scoped allow-list (read/write/edit/
+   * apply_patch/exec/process). Network, messaging, memory, skill and wallet
+   * tools can never be granted here.
+   */
+  validationTools?: { alsoAllow?: string[] };
 };
 
 export type SkillsConfig = {

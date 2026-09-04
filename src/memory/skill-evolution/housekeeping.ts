@@ -48,6 +48,9 @@ export async function runHousekeeping(
     ...(deps.agentTurn ? { agentTurn: deps.agentTurn } : {}),
     ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
     ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),
+    ...(typeof deps.validationBudgetMinutes === "number"
+      ? { validationBudgetMinutes: deps.validationBudgetMinutes }
+      : {}),
     iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
   });
   // PLAN-43 Phase 3: attest peer skills on our own corpus (tasks mode only:

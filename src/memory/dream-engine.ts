@@ -3073,11 +3073,20 @@ export class DreamEngine {
     this.lastEvolutionAttemptAt = now;
     const journal = getActiveEventJournal();
     const llmCall = this.llmCallEvolution ?? this.getLlmCallForMode("research");
-    // Tasks-mode real rollouts (opt-in) execute one agent turn per corpus
-    // task via the gateway's own `agent` RPC (self-loopback). Only built
-    // when validationMode === "tasks" so the default path never self-calls.
+    // Tasks-mode real rollouts execute one agent turn per corpus task via
+    // the gateway's own `agent` RPC (self-loopback). PLAN-44 D-2: the mode
+    // is EFFECTIVE — explicit config, else tasks once the corpus carries
+    // enough reviewed capability tasks — so the executor is built exactly
+    // when the gate will use it.
+    const { loadEffectiveCorpus } = await import("./skill-evolution/canonical-corpus.js");
+    const { countCapabilityTasks, resolveEffectiveValidationMode } =
+      await import("./skill-evolution/validation-mode.js");
+    const effectiveMode = resolveEffectiveValidationMode(
+      cfg?.validationMode,
+      countCapabilityTasks(await loadEffectiveCorpus().catch(() => null)),
+    );
     const agentTurn =
-      cfg?.validationMode === "tasks" ? await this.buildEvolutionAgentTurn() : undefined;
+      effectiveMode.mode === "tasks" ? await this.buildEvolutionAgentTurn() : undefined;
     // PLAN-43 Phase 3: receiver-side attestations sign with the device
     // identity; the P2P node pubkey rides along as a claim (no raw-sign
     // bridge to the orchestrator yet).
@@ -3115,6 +3124,9 @@ export class DreamEngine {
       ...(cfg?.maxProposerTurns ? { maxProposerTurns: cfg.maxProposerTurns } : {}),
       ...(cfg?.validationMode ? { validationMode: cfg.validationMode } : {}),
       ...(typeof cfg?.trialsPerTask === "number" ? { trialsPerTask: cfg.trialsPerTask } : {}),
+      ...(typeof cfg?.validationBudgetMinutes === "number"
+        ? { validationBudgetMinutes: cfg.validationBudgetMinutes }
+        : {}),
       ...(cfg?.maxActiveEvolved ? { maxActiveEvolved: cfg.maxActiveEvolved } : {}),
       ...(cfg?.semanticLintCadenceDays !== undefined
         ? { semanticLintCadenceDays: cfg.semanticLintCadenceDays }
@@ -3158,7 +3170,7 @@ export class DreamEngine {
    * undefined if the gateway client cannot be assembled.
    */
   private async buildEvolutionAgentTurn(): Promise<
-    ((prompt: string, opts?: { timeoutMs?: number }) => Promise<string>) | undefined
+    import("./skill-evolution/task-runner.js").AgentTurnFn | undefined
   > {
     try {
       const [

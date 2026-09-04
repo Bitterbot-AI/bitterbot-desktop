@@ -73,6 +73,8 @@ export type AgentCommandOpts = {
   lane?: string;
   runId?: string;
   extraSystemPrompt?: string;
+  /** PLAN-44 Phase 2: scratch workspace; honoured for skill-evolve validation sessions only. */
+  workspaceDir?: string;
   inputProvenance?: InputProvenance;
   /** Per-call stream param overrides (best-effort). */
   streamParams?: AgentStreamParams;

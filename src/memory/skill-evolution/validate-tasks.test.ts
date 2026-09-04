@@ -255,3 +255,122 @@ describe("validateAgainstTasks (sign-test gate)", () => {
     expect(verdict.reason).toBe("accepted");
   });
 });
+
+// PLAN-44 Phase 2 — I5: trigger precision, budget, safety.
+describe("validateAgainstTasks (PLAN-44 Phase 2)", () => {
+  function suite() {
+    return [
+      ...[1, 2, 3].map((i) => task(`reg-${i}`, "regression")),
+      ...[1, 2, 3, 4, 5].map((i) => task(`cap-${i}`, "capability")),
+    ];
+  }
+  /** Runner: candidate wins every capability task; reports reads per suite. */
+  function readingRunner(reads: { capability: boolean; regression: boolean }) {
+    return async (t: CorpusTask, variant: "incumbent" | "candidate") => {
+      const pass = t.suite === "regression" || variant === "candidate";
+      return {
+        answer: pass ? `ok-${t.id}` : "wrong",
+        skillRead:
+          variant === "candidate"
+            ? t.suite === "regression"
+              ? reads.regression
+              : reads.capability
+            : null,
+      };
+    };
+  }
+
+  it("HOLDs never-triggered when the agent did not read the candidate on capability tasks", async () => {
+    const verdict = await validateAgainstTasks({
+      corpus: corpus(suite()),
+      runTask: readingRunner({ capability: false, regression: false }),
+      trialsPerTask: 1,
+    });
+    expect(verdict.reason).toBe("never-triggered");
+    expect(verdict.candidateReadRate).toEqual({ capability: 0, regression: 0 });
+  });
+
+  it("REJECTs over-triggered when the candidate is read on unrelated regression tasks", async () => {
+    const verdict = await validateAgainstTasks({
+      corpus: corpus(suite()),
+      runTask: readingRunner({ capability: true, regression: true }),
+      trialsPerTask: 1,
+    });
+    expect(verdict.reason).toBe("over-triggered");
+  });
+
+  it("accepts when the candidate is read where it should be and nowhere else", async () => {
+    const verdict = await validateAgainstTasks({
+      corpus: corpus(suite()),
+      runTask: readingRunner({ capability: true, regression: false }),
+      trialsPerTask: 1,
+    });
+    expect(verdict.reason).toBe("accepted");
+    expect(verdict.candidateReadRate).toEqual({ capability: 1, regression: 0 });
+  });
+
+  it("treats unobservable reads (string runner) as neutral", async () => {
+    const verdict = await validateAgainstTasks({
+      corpus: corpus(suite()),
+      runTask: async (t, variant) =>
+        t.suite === "regression" || variant === "candidate" ? `ok-${t.id}` : "wrong",
+      trialsPerTask: 1,
+    });
+    expect(verdict.reason).toBe("accepted");
+    expect(verdict.candidateReadRate).toEqual({ capability: null, regression: null });
+  });
+
+  it("HOLDs budget-exhausted when the deadline passes, with partial perTask", async () => {
+    let calls = 0;
+    const verdict = await validateAgainstTasks({
+      corpus: corpus(suite()),
+      runTask: async (t) => {
+        calls += 1;
+        return `ok-${t.id}`;
+      },
+      trialsPerTask: 1,
+      deadlineAt: Date.now() - 1,
+    });
+    expect(verdict.reason).toBe("budget-exhausted");
+    expect(calls).toBe(0);
+    expect(verdict.perTask ?? []).toHaveLength(0);
+  });
+
+  it("a safety-tagged regression failure rejects WITHOUT a second-round re-check", async () => {
+    const tasks = suite();
+    tasks[0] = { ...tasks[0]!, tags: ["safety"] };
+    let regRuns = 0;
+    const verdict = await validateAgainstTasks({
+      corpus: corpus(tasks),
+      runTask: async (t, variant) => {
+        if (t.id === "reg-1") {
+          regRuns += 1;
+          return variant === "candidate" ? "wrong" : `ok-${t.id}`;
+        }
+        return t.suite === "regression" || variant === "candidate" ? `ok-${t.id}` : "wrong";
+      },
+      trialsPerTask: 2,
+    });
+    expect(verdict.reason).toBe("regression");
+    expect(verdict.regressions).toEqual(["reg-1"]);
+    // K=2 trials x 2 arms, no confirmation round.
+    expect(regRuns).toBe(4);
+  });
+
+  it("passes the trial index in ctx and sums reported tokens per arm", async () => {
+    const indices = new Set<number>();
+    const verdict = await validateAgainstTasks({
+      corpus: corpus(suite()),
+      runTask: async (t, variant, ctx) => {
+        indices.add(ctx.trialIndex);
+        return {
+          answer: t.suite === "regression" || variant === "candidate" ? `ok-${t.id}` : "wrong",
+          usage: { input: 10, output: variant === "candidate" ? 5 : 1 },
+        };
+      },
+      trialsPerTask: 2,
+    });
+    expect([...indices].toSorted((a, b) => a - b)).toEqual([0, 1]);
+    expect(verdict.tokens).toEqual({ incumbent: 8 * 2 * 11, candidate: 8 * 2 * 15 });
+  });
+});

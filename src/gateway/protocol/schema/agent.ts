@@ -73,6 +73,12 @@ export const AgentParamsSchema = Type.Object(
     timeout: Type.Optional(Type.Integer({ minimum: 0 })),
     lane: Type.Optional(Type.String()),
     extraSystemPrompt: Type.Optional(Type.String()),
+    /**
+     * PLAN-44 Phase 2: scratch workspace for a skill-evolution VALIDATION
+     * session. Honoured only when sessionKey is a skill-evolve validation
+     * key; ignored (with a warning) for every other session.
+     */
+    workspaceDir: Type.Optional(Type.String()),
     inputProvenance: Type.Optional(
       Type.Object(
         {

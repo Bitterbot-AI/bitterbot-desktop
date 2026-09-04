@@ -50,6 +50,7 @@ import {
   validateSkillsInstallParams,
   validateSkillsManageParams,
   validateSkillsMetricsParams,
+  validateSkillsEvolutionCorpusReviewParams,
   validateSkillsPromoteParams,
   validateSkillsPublishParams,
   validateSkillsRollbackParams,
@@ -1292,12 +1293,98 @@ export const skillsHandlers: GatewayRequestHandlers = {
   // PLAN-42 Phase 5: one read-only snapshot of the evolution flywheel —
   // wiki size, sampler cursor, staged/held proposals, validated evolved
   // skills, P2P eligibility, corpus presence — plus the effective config.
+  // PLAN-44 Phase 2: the corpus review surface. Drafts the miner wrote to
+  // task-corpus-pending.jsonl become live capability tasks only here.
+  "skills.evolution.corpus.list": async ({ respond }) => {
+    try {
+      const { listPendingDrafts } = await import("../../memory/skill-evolution/corpus-review.js");
+      const { loadEffectiveCorpus } =
+        await import("../../memory/skill-evolution/canonical-corpus.js");
+      const { countCapabilityTasks, TASKS_MODE_MIN_CAPABILITY_TASKS } =
+        await import("../../memory/skill-evolution/validation-mode.js");
+      const drafts = await listPendingDrafts();
+      const corpus = await loadEffectiveCorpus();
+      respond(true, {
+        drafts,
+        liveCapabilityTasks: countCapabilityTasks(corpus),
+        tasksModeThreshold: TASKS_MODE_MIN_CAPABILITY_TASKS,
+      });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.corpus.list threw: ${String(err)}`),
+      );
+    }
+  },
+  "skills.evolution.corpus.accept": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionCorpusReviewParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.corpus.accept params: ${formatValidationErrors(validateSkillsEvolutionCorpusReviewParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const { acceptDrafts } = await import("../../memory/skill-evolution/corpus-review.js");
+      const p = params as { ids: string[]; reviewedBy?: string };
+      const result = await acceptDrafts(p.ids, { reviewedBy: p.reviewedBy ?? "operator" });
+      respond(true, result);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.corpus.accept threw: ${String(err)}`),
+      );
+    }
+  },
+  "skills.evolution.corpus.reject": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionCorpusReviewParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.corpus.reject params: ${formatValidationErrors(validateSkillsEvolutionCorpusReviewParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const { rejectDrafts } = await import("../../memory/skill-evolution/corpus-review.js");
+      const p = params as { ids: string[]; reviewedBy?: string; reason?: string };
+      const result = await rejectDrafts(p.ids, {
+        reviewedBy: p.reviewedBy ?? "operator",
+        ...(p.reason ? { reason: p.reason } : {}),
+      });
+      respond(true, result);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.corpus.reject threw: ${String(err)}`),
+      );
+    }
+  },
+
   "skills.evolution.status": async ({ respond }) => {
     try {
       const { collectEvolutionStatus } = await import("../../memory/skill-evolution/status.js");
+      const { loadEffectiveCorpus } =
+        await import("../../memory/skill-evolution/canonical-corpus.js");
+      const { countCapabilityTasks, resolveEffectiveValidationMode } =
+        await import("../../memory/skill-evolution/validation-mode.js");
+      const { listPendingDrafts } = await import("../../memory/skill-evolution/corpus-review.js");
       const status = await collectEvolutionStatus();
       const cfg = loadConfig();
       const evo = cfg.skills?.evolution ?? {};
+      const capabilityTasks = countCapabilityTasks(await loadEffectiveCorpus());
+      const effectiveMode = resolveEffectiveValidationMode(evo.validationMode, capabilityTasks);
+      const pendingDrafts = (await listPendingDrafts()).length;
       // PLAN-44 Phase 0: echo the FULL effective config (the audit found the
       // RPC reported 6 of 12 fields). Defaults mirror src/config/zod-schema.ts.
       respond(true, {
@@ -1307,6 +1394,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
           maxProposerTurns: evo.maxProposerTurns ?? 24,
           maxActiveEvolved: evo.maxActiveEvolved ?? 5,
           validationMode: evo.validationMode ?? "records",
+          validationModeEffective: effectiveMode.mode,
+          validationModeSource: effectiveMode.source,
+          validationBudgetMinutes: evo.validationBudgetMinutes ?? 45,
+          capabilityTasks,
+          pendingDrafts,
           trialsPerTask: evo.trialsPerTask ?? 3,
           judgeModel: evo.judgeModel ?? null,
           proposerModel: evo.proposerModel ?? null,

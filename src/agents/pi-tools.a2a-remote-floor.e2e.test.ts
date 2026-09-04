@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import "./test-helpers/fast-coding-tools.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { createBitterbotCodingTools } from "./pi-tools.js";
+import { SKILL_VALIDATION_TOOL_ALLOW } from "./skill-validation-policy.js";
 
 const A2A_SESSION_KEY = "agent:main:a2a-task:00000000-0000-0000-0000-000000000000";
 
@@ -19,11 +20,28 @@ describe("a2a remote floor (e2e through createBitterbotCodingTools)", () => {
     expect(tools.map((t) => t.name)).toEqual([]);
   });
 
-  it("a skill-evolution validation session gets the same floor (peer skill text executes there)", () => {
+  it("a skill-evolution validation session gets ONLY the workspace-scoped allow-list (PLAN-44 D-4)", () => {
     const tools = createBitterbotCodingTools({
       sessionKey: "agent:main:skill-evolve-val-deadbeef",
     });
-    expect(tools.map((t) => t.name)).toEqual([]);
+    const names = tools.map((t) => t.name);
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      expect(SKILL_VALIDATION_TOOL_ALLOW as readonly string[]).toContain(name);
+    }
+    expect(names).toContain("read");
+    expect(names).toContain("exec");
+    for (const forbidden of [
+      "web_fetch",
+      "web_search",
+      "message",
+      "skill_manage",
+      "wallet",
+      "circles",
+      "browser",
+    ]) {
+      expect(names).not.toContain(forbidden);
+    }
   });
 
   it("a normal session with the same config keeps its tools (the floor is scoped)", () => {

@@ -35,6 +35,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Days between LLM-backed wiki lint passes (contradictions, stale claims, near-duplicates). 0 disables. Default 7.",
   "skills.evolution.maturityDays":
     "Days a validated evolved skill must survive locally before P2P publish. Default 3.",
+  "skills.evolution.validationBudgetMinutes":
+    "Wall-clock budget for one tasks-mode validation run (real agent turns over the corpus). Past it the proposal is held and retried next iteration, reusing cached incumbent results. Default 45.",
   "skills.skillSeekers.enabled":
     "Generate skills by scraping documentation sites on demand. Off by default: dials external sites.",
   "skills.skillSeekers.trending.enabled":

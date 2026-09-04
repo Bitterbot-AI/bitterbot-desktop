@@ -50,6 +50,7 @@ import {
   wrapToolParamNormalization,
 } from "./pi-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
+import { resolveSkillValidationToolPolicy } from "./skill-validation-policy.js";
 import {
   type EnforcerContext,
   wrapToolsWithCapabilityEnforcer,
@@ -259,14 +260,20 @@ export function createBitterbotCodingTools(options?: {
       : undefined;
   // PLAN-43 s3.2b: an inbound A2A task session executes a REMOTE caller's
   // request; it gets the remote floor (default: no tools at all), which no
-  // other policy step can widen. Phase 3 (3b adversarial): skill-evolution
-  // validation rollouts execute PEER-authored skill text and get the same
-  // floor — the corpus tasks are text tasks and need no tools.
-  const a2aRemotePolicy =
-    isA2aTaskSessionKey(options?.sessionKey) ||
-    isSkillEvolveValidationSessionKey(options?.sessionKey)
-      ? resolveA2aRemoteToolPolicy(options?.config)
-      : undefined;
+  // other policy step can widen.
+  const a2aRemotePolicy = isA2aTaskSessionKey(options?.sessionKey)
+    ? resolveA2aRemoteToolPolicy(options?.config)
+    : undefined;
+  // PLAN-44 Phase 2 (D-4): skill-evolution validation rollouts execute
+  // candidate/peer skill text, so they get an explicit workspace-scoped
+  // ALLOW list (read/write/edit/exec) instead of the no-tools floor — the
+  // runtime pathway needs `read` to open SKILL.md and a fifth of the
+  // regression suite needs a shell. Nothing that reaches the network,
+  // other sessions, memory, skills or money survives this step.
+  const isSkillValidationSession = isSkillEvolveValidationSessionKey(options?.sessionKey);
+  const skillValidationPolicy = isSkillValidationSession
+    ? resolveSkillValidationToolPolicy(options?.config)
+    : undefined;
   const allowBackground = isToolAllowedByPolicies("process", [
     profilePolicyWithAlsoAllow,
     providerProfilePolicyWithAlsoAllow,
@@ -277,9 +284,15 @@ export function createBitterbotCodingTools(options?: {
     groupPolicy,
     sandbox?.tools,
     subagentPolicy,
+    skillValidationPolicy,
   ]);
   const execConfig = resolveExecConfig({ cfg: options?.config, agentId });
   const fsConfig = resolveFsConfig({ cfg: options?.config, agentId });
+  if (isSkillValidationSession) {
+    // Validation trials run in a scratch workspace; read/write/edit must
+    // not leave it (PLAN-44 D-4).
+    fsConfig.workspaceOnly = true;
+  }
   const sandboxRoot = sandbox?.workspaceDir;
   const sandboxFsBridge = sandbox?.fsBridge;
   const allowWorkspaceWrites = sandbox?.workspaceAccess !== "ro";
@@ -441,6 +454,7 @@ export function createBitterbotCodingTools(options?: {
         groupPolicy,
         sandbox?.tools,
         subagentPolicy,
+        skillValidationPolicy,
       ]),
       currentChannelId: options?.currentChannelId,
       currentThreadTs: options?.currentThreadTs,
@@ -475,6 +489,7 @@ export function createBitterbotCodingTools(options?: {
       { policy: sandbox?.tools, label: "sandbox tools.allow" },
       { policy: subagentPolicy, label: "subagent tools.allow" },
       { policy: a2aRemotePolicy, label: "a2a remote floor" },
+      { policy: skillValidationPolicy, label: "skill-evolve validation tools.allow" },
     ],
   });
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.

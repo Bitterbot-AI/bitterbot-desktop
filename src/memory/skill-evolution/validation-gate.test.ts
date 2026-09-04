@@ -9,6 +9,7 @@ import { bootstrapMeanCi } from "./bootstrap-ci.js";
 import { applyProposal } from "./proposal-apply.js";
 import { isRunHeldOut } from "./sampler.js";
 import { corpusPath, loadTaskCorpus, scoreTaskAnswer } from "./task-corpus.js";
+import { TrialCache } from "./trial-cache.js";
 import { validateAgainstTasks } from "./validate-tasks.js";
 import { runValidationGate } from "./validation-gate.js";
 
@@ -52,6 +53,22 @@ function scoresRejecting(n: number): string {
   return JSON.stringify(Array.from({ length: n }, (_, i) => ({ trial: i + 1, a: 0.6, b: 0.6 })));
 }
 
+/**
+ * PLAN-44 Phase 2: records mode scores BOTH presentation orders. A stub
+ * that always scores "b" higher would cancel itself out; this wrapper
+ * swaps a/b when the prompt presents the candidate as VERSION A.
+ */
+function orderAware(make: () => string) {
+  return async (prompt: string): Promise<string> => {
+    const raw = make();
+    if (!prompt.includes("VERSION A — Candidate")) {
+      return raw;
+    }
+    const parsed = JSON.parse(raw) as Array<{ trial: number; a: number; b: number }>;
+    return JSON.stringify(parsed.map((e) => ({ trial: e.trial, a: e.b, b: e.a })));
+  };
+}
+
 describe("bootstrapMeanCi", () => {
   it("is deterministic and directionally correct", () => {
     const up = bootstrapMeanCi([0.5, 0.4, 0.5, 0.6, 0.5, 0.4]);
@@ -82,7 +99,7 @@ describe("runValidationGate (records mode)", () => {
     const journal = heldOutJournal();
     const outcomes = await runValidationGate({
       journal,
-      llmCall: async () => scoresAccepting(8),
+      llmCall: orderAware(() => scoresAccepting(8)),
       storeOpts: { configDir: tmpDir },
       modelTag: "test/model-1",
       iteration: "it-1",
@@ -115,7 +132,7 @@ describe("runValidationGate (records mode)", () => {
     const journal = heldOutJournal();
     const outcomes = await runValidationGate({
       journal,
-      llmCall: async () => scoresRejecting(8),
+      llmCall: orderAware(() => scoresRejecting(8)),
       storeOpts: { configDir: tmpDir },
     });
     expect(outcomes[0]).toMatchObject({ outcome: "rejected" });
@@ -131,7 +148,7 @@ describe("runValidationGate (records mode)", () => {
     const emptyJournal = makeFixtureJournal();
     const held = await runValidationGate({
       journal: emptyJournal,
-      llmCall: async () => scoresAccepting(8),
+      llmCall: orderAware(() => scoresAccepting(8)),
       storeOpts: { configDir: tmpDir },
     });
     expect(held[0]).toMatchObject({ outcome: "held" });
@@ -151,7 +168,7 @@ describe("runValidationGate (records mode)", () => {
   it("rejection dedup: identical content cannot be re-staged afterwards", async () => {
     await runValidationGate({
       journal: heldOutJournal(),
-      llmCall: async () => scoresRejecting(8),
+      llmCall: orderAware(() => scoresRejecting(8)),
       storeOpts: { configDir: tmpDir },
     });
     const again = await applyProposal(
@@ -166,7 +183,7 @@ describe("runValidationGate (records mode)", () => {
   it("holds net-new creates at the maxActiveEvolved cap", async () => {
     const outcomes = await runValidationGate({
       journal: heldOutJournal(),
-      llmCall: async () => scoresAccepting(8),
+      llmCall: orderAware(() => scoresAccepting(8)),
       storeOpts: { configDir: tmpDir },
       maxActiveEvolved: 0,
     });
@@ -196,7 +213,7 @@ describe("task corpus + tasks validation", () => {
     await fs.writeFile(corpusPath({ configDir: tmpDir }), exemplar, "utf-8");
     const corpus = await loadTaskCorpus({ configDir: tmpDir });
     expect(corpus).not.toBeNull();
-    expect(corpus?.tasks.length).toBe(12);
+    expect(corpus?.tasks.length).toBe(15);
     expect(corpus?.version).toHaveLength(12);
     const arith = corpus?.tasks.find((t) => t.id === "arith-basic")!;
     const answer = arith.checker.value;
@@ -254,5 +271,178 @@ describe("task corpus + tasks validation", () => {
       },
     });
     expect(crashyCandidate.accepted).toBe(false);
+  });
+});
+
+// PLAN-44 Phase 2 — I5/I6 at the gate.
+describe("runValidationGate (PLAN-44 Phase 2)", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "valgate-p2-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function stage(name = "curl-timeout-guard") {
+    await applyProposal(
+      {
+        action: "create",
+        name,
+        skillMd: SKILL_MD.replace("name: curl-timeout-guard", `name: ${name}`),
+        purposeMd: PURPOSE_MD,
+      },
+      { storeOpts: { configDir: tmpDir }, iteration: "it-p2" },
+    );
+  }
+  async function growCorpus(n: number) {
+    await fs.mkdir(path.dirname(corpusPath({ configDir: tmpDir })), { recursive: true });
+    const lines = Array.from({ length: n }, (_, i) =>
+      JSON.stringify({
+        id: `grown-${i}`,
+        prompt: `grown task ${i}. Reply FINAL: <answer>.`,
+        checker: { kind: "final", value: "PASS" },
+        suite: "capability",
+      }),
+    );
+    await fs.writeFile(corpusPath({ configDir: tmpDir }), `${lines.join("\n")}\n`, "utf-8");
+  }
+  /** Candidate wins every capability task; both arms pass every canonical task. */
+  const winningRunner = async (task: { suite?: string }, variant: string) =>
+    task.suite === "regression"
+      ? { answer: "FINAL: unused", skillRead: false }
+      : {
+          answer: variant === "candidate" ? "FINAL: PASS" : "FINAL: nope",
+          skillRead: variant === "candidate",
+        };
+
+  it("auto-flips to tasks mode once the corpus has 5 reviewed capability tasks (D-2)", async () => {
+    await stage();
+    await growCorpus(5);
+    // Canonical tasks need real answers; the runner answers them with the
+    // checker value via a tiny oracle: we cannot know the fresh instance's
+    // answer here, so make regression tasks identical across arms (ties).
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: winningRunner,
+      trialsPerTask: 1,
+      modelTag: "test/model",
+    });
+    expect(outcomes[0]?.outcome).toBe("promoted");
+    expect(outcomes[0]?.detail).toContain("tasks: accepted");
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const meta = JSON.parse(
+      await fs.readFile(
+        path.join(roots.liveRoot, "curl-timeout-guard", ".evolution-meta.json"),
+        "utf-8",
+      ),
+    ) as { validation: { mode: string; candidateReadRate?: { capability: number | null } } };
+    expect(meta.validation.mode).toBe("tasks");
+    expect(meta.validation.candidateReadRate?.capability).toBe(1);
+  });
+
+  it("stays on records mode below the threshold when no mode is configured (and HOLDs without a journal)", async () => {
+    await stage();
+    await growCorpus(2);
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: winningRunner,
+      trialsPerTask: 1,
+    });
+    expect(outcomes[0]?.outcome).toBe("held");
+    expect(outcomes[0]?.detail).toContain("no journal/llm");
+  });
+
+  it("serves incumbent trials from the memo on the next proposal (same model, same day)", async () => {
+    await growCorpus(5);
+    const cache = TrialCache.inMemory();
+    const calls = { incumbent: 0, candidate: 0 };
+    const counting = async (task: { suite?: string }, variant: "incumbent" | "candidate") => {
+      calls[variant] += 1;
+      return winningRunner(task, variant);
+    };
+    await stage("skill-a");
+    await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: counting,
+      trialsPerTask: 1,
+      modelTag: "test/model",
+      trialCache: cache,
+    });
+    const firstIncumbent = calls.incumbent;
+    expect(firstIncumbent).toBeGreaterThan(0);
+    await stage("skill-b");
+    await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: counting,
+      trialsPerTask: 1,
+      modelTag: "test/model",
+      trialCache: cache,
+    });
+    // Both creates share the "no skill" incumbent: zero new incumbent runs.
+    expect(calls.incumbent).toBe(firstIncumbent);
+    expect(calls.candidate).toBe(firstIncumbent * 2);
+  });
+
+  it("HOLDs never-triggered and budget-exhausted; REJECTs over-triggered", async () => {
+    await growCorpus(5);
+    await stage("never");
+    const never = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: async (task: { suite?: string }, variant: string) => ({
+        answer:
+          task.suite === "regression"
+            ? "FINAL: x"
+            : variant === "candidate"
+              ? "FINAL: PASS"
+              : "FINAL: nope",
+        skillRead: false,
+      }),
+      trialsPerTask: 1,
+    });
+    expect(never[0]).toMatchObject({ outcome: "held" });
+    expect(never[0]?.detail).toContain("never-triggered");
+    await stage("over");
+    const over = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: async (task: { suite?: string }, variant: string) => ({
+        answer:
+          task.suite === "regression"
+            ? "FINAL: x"
+            : variant === "candidate"
+              ? "FINAL: PASS"
+              : "FINAL: nope",
+        skillRead: variant === "candidate",
+      }),
+      trialsPerTask: 1,
+    });
+    // "over" was staged after "never" (still held): settle order is sorted by name.
+    const overOutcome = over.find((o) => o.skillName === "over");
+    expect(overOutcome).toMatchObject({ outcome: "rejected" });
+    expect(overOutcome?.detail).toContain("over-triggered");
+    await stage("budget");
+    const budget = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: winningRunner,
+      trialsPerTask: 1,
+      validationBudgetMinutes: 0,
+    });
+    const budgetOutcome = budget.find((o) => o.skillName === "budget");
+    expect(budgetOutcome).toMatchObject({ outcome: "held" });
+    expect(budgetOutcome?.detail).toContain("budget-exhausted");
   });
 });

@@ -32,16 +32,24 @@ import {
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { loadEffectiveCorpus, randomCanonicalSeed } from "./canonical-corpus.js";
+import {
+  CANONICAL_GENERATOR_VERSION,
+  deriveCanonicalSeed,
+  loadEffectiveCorpus,
+} from "./canonical-corpus.js";
 import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
 import { hashProposalContent } from "./proposal-apply.js";
-import { type AgentTurnFn, makeInjectedSkillRunner } from "./task-runner.js";
+import { type AgentTurnFn, makeRuntimePathwayRunner } from "./task-runner.js";
+import { promptHash, TrialCache } from "./trial-cache.js";
 import { validateAgainstRecords } from "./validate-records.js";
 import { type TaskRunnerFn, validateAgainstTasks } from "./validate-tasks.js";
+import { countCapabilityTasks, resolveEffectiveValidationMode } from "./validation-mode.js";
 
 const log = createSubsystemLogger("skill-evolution/validation-gate");
 
 export const DEFAULT_MAX_ACTIVE_EVOLVED = 5;
+/** PLAN-44 Phase 2: wall-clock budget for one tasks-mode validation run. */
+export const DEFAULT_VALIDATION_BUDGET_MINUTES = 45;
 
 export interface EvolutionMeta {
   origin: string;
@@ -62,6 +70,12 @@ export interface EvolutionMeta {
     corpusVersion?: string;
     /** Canonical-corpus seed the run was scored on (anti-memorization). */
     corpusSeed?: number;
+    /** PLAN-44 Phase 2: candidate SKILL.md read rates via the runtime pathway. */
+    candidateReadRate?: { capability: number | null; regression: number | null };
+    /** PLAN-44 Phase 2: tokens per arm when the executor reports usage. */
+    tokens?: { incumbent: number; candidate: number };
+    /** PLAN-44 Phase 2: incumbent trials served from the memo. */
+    cachedIncumbentTrials?: number;
     validatedAt: number;
     model?: string;
   };
@@ -86,6 +100,10 @@ export interface ValidationGateDeps {
   /** Model tag recorded into the promoted skill's provenance. */
   modelTag?: string;
   iteration?: string;
+  /** PLAN-44 Phase 2: wall-clock budget per tasks-mode validation (config). */
+  validationBudgetMinutes?: number;
+  /** Test override for the incumbent memo (defaults to the on-disk sqlite). */
+  trialCache?: TrialCache;
 }
 
 export interface ValidationGateOutcome {
@@ -165,6 +183,63 @@ export async function runValidationGate(
   return outcomes;
 }
 
+/**
+ * PLAN-44 Phase 2: serve incumbent-arm trials from the memo. The incumbent
+ * (or "no skill") does not change between proposals; the candidate arm is
+ * never cached. Read failures fall through to a real run.
+ */
+function memoizeIncumbent(
+  runTask: TaskRunnerFn,
+  params: {
+    cache?: TrialCache;
+    trailOpts: ImpactTrailOptions;
+    incumbentHash: string;
+    modelTag: string;
+    onHit: () => void;
+  },
+): TaskRunnerFn {
+  let cache: TrialCache | null | undefined = params.cache;
+  const open = (): TrialCache | null => {
+    if (cache !== undefined) {
+      return cache;
+    }
+    try {
+      cache = TrialCache.open(params.trailOpts);
+    } catch (err) {
+      log.debug(`trial cache unavailable: ${String(err)}`);
+      cache = null;
+    }
+    return cache;
+  };
+  return async (task, variant, ctx) => {
+    if (variant !== "incumbent") {
+      return runTask(task, variant, ctx);
+    }
+    const key = {
+      taskId: task.id,
+      promptHash: promptHash(task.prompt),
+      incumbentHash: params.incumbentHash,
+      modelTag: params.modelTag,
+      generatorVersion: CANONICAL_GENERATOR_VERSION,
+      trialIndex: ctx.trialIndex,
+    };
+    const c = open();
+    const hit = c?.get(key);
+    if (hit) {
+      params.onHit();
+      return { answer: hit.answer, skillRead: hit.skillRead };
+    }
+    const result = await runTask(task, variant, ctx);
+    const r = typeof result === "string" ? { answer: result } : result;
+    c?.put(key, {
+      score: 0, // score is recomputed by the validator from the answer
+      answer: r.answer,
+      skillRead: typeof r.skillRead === "boolean" ? r.skillRead : null,
+    });
+    return result;
+  };
+}
+
 async function settleOne(
   name: string,
   roots: StorageRoots,
@@ -210,35 +285,68 @@ async function settleOne(
     }
   }
 
-  const mode = deps.mode ?? "records";
+  // Canonical baseline + grown corpus (PLAN-42 §5.7 / PLAN-43 §3.6): a
+  // fresh node with no trace history still validates against the shipped
+  // canonical tasks instead of falling back to records. The seed rotates
+  // DAILY per model (PLAN-44 Phase 2): memorizing the public exemplar
+  // instances still buys nothing (the proposer never sees the corpus), and
+  // every proposal settled the same day shares canonical instances so the
+  // incumbent memo can serve them.
+  const corpusSeed = deriveCanonicalSeed(
+    "gate",
+    deps.modelTag ?? "unknown",
+    new Date().toISOString().slice(0, 10),
+  );
+  const corpus = await loadEffectiveCorpus(trailOpts, corpusSeed);
+  // PLAN-44 D-2: explicit config wins; otherwise tasks mode once the corpus
+  // carries enough reviewed capability tasks for the sign test.
+  const { mode } = resolveEffectiveValidationMode(deps.mode, countCapabilityTasks(corpus));
   let verdictAccepted = false;
   let verdictDetail = "";
   let validationRecord: EvolutionMeta["validation"];
 
   // Build the paired runner: a test may inject runTask directly; otherwise
-  // it is composed per-skill from agentTurn with full skill injection.
-  const runTask: TaskRunnerFn | undefined =
+  // it is composed per-skill from agentTurn via the RUNTIME PATHWAY
+  // (PLAN-44 D-3: index entry + read tool in a scratch workspace).
+  const incumbentHash = incumbent === null ? "none" : hashProposalContent(incumbent);
+  const baseRunner: TaskRunnerFn | undefined =
     deps.runTask ??
     (deps.agentTurn
-      ? makeInjectedSkillRunner(deps.agentTurn, staged.content, incumbent)
+      ? makeRuntimePathwayRunner({
+          agentTurn: deps.agentTurn,
+          journal: deps.journal,
+          candidate: { name, content: staged.content },
+          incumbent: incumbent === null ? null : { name, content: incumbent },
+          proposalId: `${name}-${contentHash}`,
+          ...(trailOpts.configDir ? { storeOpts: trailOpts } : {}),
+        })
       : undefined);
+  let cachedIncumbentTrials = 0;
+  const runTask: TaskRunnerFn | undefined = baseRunner
+    ? memoizeIncumbent(baseRunner, {
+        cache: deps.trialCache,
+        trailOpts,
+        incumbentHash,
+        modelTag: deps.modelTag ?? "unknown",
+        onHit: () => {
+          cachedIncumbentTrials += 1;
+        },
+      })
+    : undefined;
   if (mode === "tasks" && runTask) {
-    // Canonical baseline + grown corpus (PLAN-42 §5.7 / PLAN-43 §3.6): a
-    // fresh node with no trace history still validates against the shipped
-    // canonical tasks instead of falling back to records. Fresh seed per
-    // validation: memorizing the public exemplar instances buys nothing.
-    const corpusSeed = randomCanonicalSeed();
-    const corpus = await loadEffectiveCorpus(trailOpts, corpusSeed);
     if (!corpus) {
       verdictDetail = "tasks mode but no corpus available; falling back to records";
     } else {
+      const budgetMinutes = deps.validationBudgetMinutes ?? DEFAULT_VALIDATION_BUDGET_MINUTES;
       const verdict = await validateAgainstTasks({
         corpus,
         runTask,
         ...(deps.trialsPerTask !== undefined ? { trialsPerTask: deps.trialsPerTask } : {}),
+        deadlineAt: Date.now() + budgetMinutes * 60_000,
       });
       verdictAccepted = verdict.accepted;
-      verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, K=${verdict.trialsPerTask ?? 1}, wins=${verdict.wins ?? 0}/losses=${verdict.losses ?? 0}, p=${verdict.pValue !== undefined ? verdict.pValue.toFixed(4) : "n/a"}, corpus ${verdict.corpusVersion})`;
+      const reads = verdict.candidateReadRate;
+      verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, K=${verdict.trialsPerTask ?? 1}, wins=${verdict.wins ?? 0}/losses=${verdict.losses ?? 0}, p=${verdict.pValue !== undefined ? verdict.pValue.toFixed(4) : "n/a"}, reads cap=${reads?.capability ?? "n/a"}/reg=${reads?.regression ?? "n/a"}, cached=${cachedIncumbentTrials}, corpus ${verdict.corpusVersion})`;
       validationRecord = {
         mode: "tasks",
         verdict: verdict.reason,
@@ -252,6 +360,9 @@ async function settleOne(
         ...(verdict.trialsPerTask !== undefined ? { trialsPerTask: verdict.trialsPerTask } : {}),
         corpusVersion: verdict.corpusVersion,
         corpusSeed,
+        ...(verdict.candidateReadRate ? { candidateReadRate: verdict.candidateReadRate } : {}),
+        ...(verdict.tokens ? { tokens: verdict.tokens } : {}),
+        cachedIncumbentTrials,
         validatedAt: Date.now(),
         ...(deps.modelTag ? { model: deps.modelTag } : {}),
       };
@@ -294,6 +405,11 @@ async function settleOne(
       validationRecord.verdict === "no-capability-tasks" ||
       validationRecord.verdict === "insufficient-capability-tasks" ||
       validationRecord.verdict === "insufficient-evidence" ||
+      // PLAN-44 Phase 2: the agent never opened the skill (description may
+      // just need rewording) or the wall-clock budget ran out (memo makes
+      // the retry cheap). Over-triggering is a measured REJECT.
+      validationRecord.verdict === "never-triggered" ||
+      validationRecord.verdict === "budget-exhausted" ||
       validationRecord.verdict === "llm-failed" ||
       validationRecord.verdict === "scoring-parse-failed" ||
       validationRecord.verdict === "runner-failed";

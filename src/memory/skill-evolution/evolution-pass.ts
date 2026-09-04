@@ -37,6 +37,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { recordDreamArtifact } from "../dream-utility.js";
 import { loadEffectiveCorpus } from "./canonical-corpus.js";
 import { mineCapabilityTasks } from "./corpus-miner.js";
+import { reviewedDraftIds } from "./corpus-review.js";
 import { runHousekeeping } from "./housekeeping.js";
 import { appendIterationRecord, buildIterationRecord } from "./iteration-log.js";
 
@@ -103,6 +104,8 @@ export interface EvolutionPassDeps {
   proposerLlmCall?: LlmCallFn;
   /** Min days between semantic (LLM) wiki lint passes. Default 7; 0 disables. */
   semanticLintCadenceDays?: number;
+  /** PLAN-44 Phase 2: wall-clock budget per tasks-mode validation run. */
+  validationBudgetMinutes?: number;
   storeOpts?: WikiStoreOptions;
 }
 
@@ -345,10 +348,12 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     ];
     if (failingTexts.length > 0) {
       const effective = await loadEffectiveCorpus(storeOpts);
+      // Reviewed ids (accepted OR rejected) are never redrafted (Phase 2).
+      const reviewed = await reviewedDraftIds(storeOpts);
       await mineCapabilityTasks({
         failingTraceTexts: failingTexts,
         llmCall: deps.llmCall,
-        existingIds: new Set((effective?.tasks ?? []).map((t) => t.id)),
+        existingIds: new Set([...(effective?.tasks ?? []).map((t) => t.id), ...reviewed]),
         ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),
       });
     }

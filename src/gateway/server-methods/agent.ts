@@ -194,6 +194,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       groupSpace?: string;
       lane?: string;
       extraSystemPrompt?: string;
+      workspaceDir?: string;
       idempotencyKey: string;
       timeout?: number;
       label?: string;
@@ -595,6 +596,7 @@ export const agentHandlers: GatewayRequestHandlers = {
         runId,
         lane: request.lane,
         extraSystemPrompt: preTurn.extraSystemPrompt,
+        ...(request.workspaceDir ? { workspaceDir: request.workspaceDir } : {}),
         inputProvenance,
       },
       defaultRuntime,

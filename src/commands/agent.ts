@@ -60,6 +60,7 @@ import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import { applyVerboseOverride } from "../sessions/level-overrides.js";
 import { applyModelOverrideToSessionEntry } from "../sessions/model-overrides.js";
 import { resolveSendPolicy } from "../sessions/send-policy.js";
+import { isSkillEvolveValidationSessionKey } from "../sessions/session-key-utils.js";
 import { resolveMessageChannel } from "../utils/message-channel.js";
 import { deliverAgentCommandResult } from "./agent/delivery.js";
 import { resolveAgentRunContext } from "./agent/run-context.js";
@@ -250,7 +251,14 @@ export async function agentCommand(
   }
   const agentCfg = cfg.agents?.defaults;
   const sessionAgentId = agentIdOverride ?? resolveAgentIdFromSessionKey(opts.sessionKey?.trim());
-  const workspaceDirRaw = resolveAgentWorkspaceDir(cfg, sessionAgentId);
+  // PLAN-44 Phase 2 (D-4): a validation session runs in a per-trial
+  // scratch workspace. Any other session ignores the override — a gateway
+  // client must not be able to point an ordinary run at an arbitrary dir.
+  const workspaceOverride =
+    opts.workspaceDir && isSkillEvolveValidationSessionKey(opts.sessionKey)
+      ? opts.workspaceDir
+      : undefined;
+  const workspaceDirRaw = workspaceOverride ?? resolveAgentWorkspaceDir(cfg, sessionAgentId);
   const agentDir = resolveAgentDir(cfg, sessionAgentId);
   const workspace = await ensureAgentWorkspace({
     dir: workspaceDirRaw,
