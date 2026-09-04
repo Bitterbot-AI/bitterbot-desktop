@@ -64,6 +64,7 @@ const BASE_METHODS = [
   "skills.evolution.corpus.list",
   "skills.evolution.corpus.accept",
   "skills.evolution.corpus.reject",
+  "skills.evolution.probe",
   "skills.incoming.list",
   "skills.incoming.accept",
   "skills.incoming.reject",

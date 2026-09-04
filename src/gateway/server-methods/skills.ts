@@ -1371,6 +1371,96 @@ export const skillsHandlers: GatewayRequestHandlers = {
     }
   },
 
+  // PLAN-44 Phase 2: in-process probe of the runtime-pathway validation arm
+  // (one candidate skill, one task, both arms). The workspace registry only
+  // honours scratch dirs registered by THIS process, so an operator cannot
+  // exercise the arm from outside; this RPC is the supported way.
+  "skills.evolution.probe": async ({ params, respond }) => {
+    try {
+      const p = (params ?? {}) as { skillMd?: string; taskPrompt?: string; expected?: string };
+      const [
+        { makeGatewayAgentTurn, makeRuntimePathwayRunner },
+        { callGateway },
+        { INTERNAL_MESSAGE_CHANNEL },
+        { resolveDefaultAgentId },
+        { makeSkillEvolveValidationSessionKey },
+        { getActiveEventJournal },
+        { scoreTaskAnswer },
+      ] = await Promise.all([
+        import("../../memory/skill-evolution/task-runner.js"),
+        import("../call.js"),
+        import("../../utils/message-channel.js"),
+        import("../../agents/agent-scope.js"),
+        import("../../sessions/session-key-utils.js"),
+        import("../../infra/event-journal.js"),
+        import("../../memory/skill-evolution/task-corpus.js"),
+      ]);
+      const cfg = loadConfig();
+      const agentId = resolveDefaultAgentId(cfg);
+      const skillMd =
+        p.skillMd ??
+        `---
+name: probe-token-guard
+description: Apply whenever a task mentions the violet-owl protocol; it defines how to report the protocol token.
+---
+## When to Apply
+Any task that mentions the violet-owl protocol.
+## Instructions
+The violet-owl protocol token is VIOLET-OWL-77. Report it on the FINAL line exactly as VIOLET-OWL-77.
+`;
+      const name = skillMd.match(/^name:\s*(.+)$/m)?.[1]?.trim() ?? "probe-skill";
+      const task = {
+        id: "probe-task",
+        prompt:
+          p.taskPrompt ??
+          'Using the violet-owl protocol, report the protocol token. Reply with exactly one line of the form "FINAL: <answer>".',
+        checker: { kind: "final" as const, value: p.expected ?? "VIOLET-OWL-77" },
+        suite: "capability" as const,
+      };
+      const agentTurn = makeGatewayAgentTurn({
+        callGateway: (a) =>
+          callGateway({
+            method: a.method,
+            params: a.params,
+            ...(a.expectFinal !== undefined ? { expectFinal: a.expectFinal } : {}),
+            ...(a.timeoutMs !== undefined ? { timeoutMs: a.timeoutMs } : {}),
+          }),
+        agentId,
+        channel: INTERNAL_MESSAGE_CHANNEL,
+        makeSessionKey: () =>
+          makeSkillEvolveValidationSessionKey(agentId, globalThis.crypto.randomUUID().slice(0, 8)),
+        makeIdempotencyKey: () => globalThis.crypto.randomUUID(),
+      });
+      const runner = makeRuntimePathwayRunner({
+        agentTurn,
+        journal: getActiveEventJournal(),
+        candidate: { name, content: skillMd },
+        incumbent: null,
+        proposalId: `probe-${Date.now()}`,
+      });
+      const out: Record<string, unknown> = {};
+      for (const variant of ["candidate", "incumbent"] as const) {
+        const t0 = Date.now();
+        const r = await runner(task, variant, { trialIndex: 0 });
+        const rr = typeof r === "string" ? { answer: r } : r;
+        out[variant] = {
+          ms: Date.now() - t0,
+          score: scoreTaskAnswer(task, rr.answer),
+          skillRead: rr.skillRead ?? null,
+          usage: rr.usage ?? null,
+          answer: rr.answer.slice(0, 300),
+        };
+      }
+      respond(true, { task: task.id, skill: name, ...out });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.probe threw: ${String(err)}`),
+      );
+    }
+  },
+
   "skills.evolution.status": async ({ respond }) => {
     try {
       const { collectEvolutionStatus } = await import("../../memory/skill-evolution/status.js");
