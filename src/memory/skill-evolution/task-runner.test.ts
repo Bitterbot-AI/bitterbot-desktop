@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeFixtureJournal } from "./__fixtures__/journal-fixture.js";
 import {
   composeRuntimePathwayPrompt,
+  consumeTrialWorkspace,
   detectSkillRead,
   makeGatewayAgentTurn,
   makeRuntimePathwayRunner,
@@ -86,6 +87,7 @@ describe("makeRuntimePathwayRunner", () => {
       incumbent: null,
       proposalId: "curl-timeout-guard-abc",
       storeOpts: { configDir: tmpDir },
+      indexInPrompt: true,
     });
     const candidate = await runner(TASK, "candidate", { trialIndex: 0 });
     const incumbent = await runner(TASK, "incumbent", { trialIndex: 0 });
@@ -144,6 +146,15 @@ describe("makeRuntimePathwayRunner", () => {
     expect(typeof r === "string" ? null : r.skillRead).toBe(true);
     expect(detectSkillRead(journal, "run-noread", location)).toBe(false);
     expect(detectSkillRead(journal, "run-missing", location)).toBeNull();
+    // A run that answered with no tool call at all did NOT read the skill.
+    journal.append({
+      runId: "run-notools",
+      seq: 1,
+      stream: "assistant",
+      ts: 3,
+      data: { text: "FINAL: 42" },
+    });
+    expect(detectSkillRead(journal, "run-notools", location)).toBe(false);
   });
 });
 
@@ -179,5 +190,82 @@ describe("makeGatewayAgentTurn", () => {
       makeIdempotencyKey: () => "i",
     });
     await expect(bad("p")).rejects.toThrow(/status "error"/);
+  });
+});
+
+describe("runtime pathway: system-prompt index, workspace registry, read detection", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "runtime-pathway2-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("by default sends ONLY the task (the session's system prompt carries the real index) and registers the scratch workspace", async () => {
+    let seenPrompt = "";
+    let registeredDuringTurn = false;
+    const runner = makeRuntimePathwayRunner({
+      agentTurn: async (prompt, opts) => {
+        seenPrompt = prompt;
+        registeredDuringTurn = consumeTrialWorkspace(opts?.workspaceDir);
+        return "FINAL: hi";
+      },
+      candidate: { name: "curl-timeout-guard", content: SKILL },
+      incumbent: null,
+      proposalId: "p2",
+      storeOpts: { configDir: tmpDir },
+    });
+    await runner(TASK, "candidate", { trialIndex: 0 });
+    expect(seenPrompt).toBe(TASK.prompt);
+    expect(registeredDuringTurn).toBe(true);
+    // A dir nobody registered is refused (adversarial H1).
+    expect(consumeTrialWorkspace("/")).toBe(false);
+    expect(consumeTrialWorkspace(path.join(tmpDir, "nope"))).toBe(false);
+  });
+
+  it("detects reads by relative path and by exec command (adversarial H6)", () => {
+    const journal = makeFixtureJournal();
+    const ws = path.join(tmpDir, "ws");
+    const location = path.join(ws, "skills", "curl-timeout-guard", "SKILL.md");
+    journal.append({
+      runId: "rel",
+      seq: 1,
+      stream: "tool",
+      ts: 1,
+      data: {
+        phase: "start",
+        name: "read",
+        toolCallId: "c1",
+        args: { path: "skills/curl-timeout-guard/SKILL.md" },
+      },
+    });
+    journal.append({
+      runId: "exec",
+      seq: 1,
+      stream: "tool",
+      ts: 2,
+      data: {
+        phase: "start",
+        name: "exec",
+        toolCallId: "c2",
+        args: { command: `cat ${location}` },
+      },
+    });
+    journal.append({
+      runId: "other",
+      seq: 1,
+      stream: "tool",
+      ts: 3,
+      data: {
+        phase: "start",
+        name: "read",
+        toolCallId: "c3",
+        args: { path: "skills/curl-timeout-guard/SKILL.md.bak" },
+      },
+    });
+    expect(detectSkillRead(journal, "rel", location, ws)).toBe(true);
+    expect(detectSkillRead(journal, "exec", location, ws)).toBe(true);
+    expect(detectSkillRead(journal, "other", location, ws)).toBe(false);
   });
 });

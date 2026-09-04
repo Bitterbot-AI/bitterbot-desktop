@@ -3087,6 +3087,10 @@ export class DreamEngine {
     );
     const agentTurn =
       effectiveMode.mode === "tasks" ? await this.buildEvolutionAgentTurn() : undefined;
+    const peerAgentTurn =
+      effectiveMode.mode === "tasks"
+        ? await this.buildEvolutionAgentTurn({ peer: true })
+        : undefined;
     // PLAN-43 Phase 3: receiver-side attestations sign with the device
     // identity; the P2P node pubkey rides along as a claim (no raw-sign
     // bridge to the orchestrator yet).
@@ -3120,6 +3124,7 @@ export class DreamEngine {
       cycleId,
       ...(this.llmCallEvolutionProposer ? { proposerLlmCall: this.llmCallEvolutionProposer } : {}),
       ...(agentTurn ? { agentTurn } : {}),
+      ...(peerAgentTurn ? { peerAgentTurn } : {}),
       ...(cfg?.wikiMaxPatterns ? { maxPatterns: cfg.wikiMaxPatterns } : {}),
       ...(cfg?.maxProposerTurns ? { maxProposerTurns: cfg.maxProposerTurns } : {}),
       ...(cfg?.validationMode ? { validationMode: cfg.validationMode } : {}),
@@ -3169,9 +3174,9 @@ export class DreamEngine {
    * excludes these validation rollouts from future learning. Returns
    * undefined if the gateway client cannot be assembled.
    */
-  private async buildEvolutionAgentTurn(): Promise<
-    import("./skill-evolution/task-runner.js").AgentTurnFn | undefined
-  > {
+  private async buildEvolutionAgentTurn(
+    opts: { peer?: boolean } = {},
+  ): Promise<import("./skill-evolution/task-runner.js").AgentTurnFn | undefined> {
     try {
       const [
         { callGateway },
@@ -3200,7 +3205,11 @@ export class DreamEngine {
         agentId,
         channel: INTERNAL_MESSAGE_CHANNEL,
         makeSessionKey: () =>
-          makeSkillEvolveValidationSessionKey(agentId, globalThis.crypto.randomUUID().slice(0, 8)),
+          makeSkillEvolveValidationSessionKey(
+            agentId,
+            globalThis.crypto.randomUUID().slice(0, 8),
+            opts.peer ? { peer: true } : {},
+          ),
         makeIdempotencyKey: () => globalThis.crypto.randomUUID(),
       });
     } catch (err) {

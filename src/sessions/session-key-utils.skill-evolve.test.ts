@@ -33,3 +33,19 @@ describe("skill-evolve validation session keys", () => {
     }
   });
 });
+
+describe("peer validation flavor (PLAN-44 Phase 2)", () => {
+  it("is a validation key AND a peer key; the plain flavor is not peer", async () => {
+    const {
+      isSkillEvolvePeerValidationSessionKey,
+      makeSkillEvolveValidationSessionKey,
+      isSkillEvolveValidationSessionKey,
+    } = await import("./session-key-utils.js");
+    const peer = makeSkillEvolveValidationSessionKey("main", "abc", { peer: true });
+    const plain = makeSkillEvolveValidationSessionKey("main", "abc");
+    expect(peer).toBe("agent:main:skill-evolve-val-peer-abc");
+    expect(isSkillEvolveValidationSessionKey(peer)).toBe(true);
+    expect(isSkillEvolvePeerValidationSessionKey(peer)).toBe(true);
+    expect(isSkillEvolvePeerValidationSessionKey(plain)).toBe(false);
+  });
+});

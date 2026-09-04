@@ -1,5 +1,6 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import crypto from "node:crypto";
+import path from "node:path";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import {
   type ExecAsk,
@@ -86,6 +87,10 @@ export type ExecToolDefaults = {
   cwd?: string;
   /** Sanitizer rule IDs to skip globally for this agent's exec calls. */
   commandRulesAllow?: string[];
+  /** PLAN-44: run with a minimal environment (PATH/HOME/LANG/TERM only), never the gateway's secrets. */
+  scrubEnv?: boolean;
+  /** PLAN-44: ignore a `workdir` outside `cwd`; the command runs inside `cwd`. */
+  confineWorkdir?: boolean;
 };
 
 export type { BashSandboxConfig } from "./bash-tools.shared.js";
@@ -290,7 +295,15 @@ export function createExecTool(
       }
 
       const sandbox = host === "sandbox" ? defaults?.sandbox : undefined;
-      const rawWorkdir = params.workdir?.trim() || defaults?.cwd || process.cwd();
+      let rawWorkdir = params.workdir?.trim() || defaults?.cwd || process.cwd();
+      if (defaults?.confineWorkdir && defaults.cwd) {
+        const root = path.resolve(defaults.cwd);
+        const requested = path.resolve(root, rawWorkdir);
+        if (requested !== root && !requested.startsWith(`${root}${path.sep}`)) {
+          warnings.push(`workdir ${rawWorkdir} is outside the confined workspace; using ${root}`);
+          rawWorkdir = root;
+        }
+      }
       let workdir = rawWorkdir;
       let containerWorkdir = sandbox?.containerWorkdir;
       if (sandbox) {
@@ -305,7 +318,15 @@ export function createExecTool(
         workdir = resolveWorkdir(rawWorkdir, warnings);
       }
 
-      const baseEnv = coerceEnv(process.env);
+      const baseEnv = defaults?.scrubEnv
+        ? coerceEnv({
+            PATH: process.env.PATH,
+            HOME: process.env.HOME,
+            LANG: process.env.LANG,
+            TERM: process.env.TERM,
+            TMPDIR: process.env.TMPDIR,
+          })
+        : coerceEnv(process.env);
 
       // Logic: Sandbox gets raw env. Host (gateway/node) must pass validation.
       // We validate BEFORE merging to prevent any dangerous vars from entering the stream.

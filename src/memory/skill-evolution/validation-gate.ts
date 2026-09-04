@@ -39,7 +39,7 @@ import {
 } from "./canonical-corpus.js";
 import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
 import { hashProposalContent } from "./proposal-apply.js";
-import { type AgentTurnFn, makeRuntimePathwayRunner } from "./task-runner.js";
+import { type AgentTurnFn, makeRuntimePathwayRunner, trialsRoot } from "./task-runner.js";
 import { promptHash, TrialCache } from "./trial-cache.js";
 import { validateAgainstRecords } from "./validate-records.js";
 import { type TaskRunnerFn, validateAgainstTasks } from "./validate-tasks.js";
@@ -55,6 +55,14 @@ export interface EvolutionMeta {
   origin: string;
   stagedAt?: number;
   iteration?: string | null;
+  /** PLAN-44 Phase 2: last hold verdict on the staged proposal (24h backoff). */
+  lastValidation?: {
+    at: number;
+    verdict: string;
+    contentHash: string;
+    corpusPrefix: string;
+    modelTag: string;
+  };
   validation?: {
     mode: "records" | "tasks";
     verdict: string;
@@ -172,72 +180,113 @@ export async function runValidationGate(
   const roots = resolveStorageRoots(storeOpts.configDir ? { configDir: storeOpts.configDir } : {});
   const outcomes: ValidationGateOutcome[] = [];
   const staged = await listStagedEvolutionProposals(roots);
-  for (const name of staged) {
+  if (staged.length > 0) {
+    await sweepStaleTrials(trailOpts);
+  }
+  // One memo handle per gate run, closed when the run ends (adversarial L2).
+  let cache: TrialCache | null = deps.trialCache ?? null;
+  if (!cache && staged.length > 0) {
     try {
-      outcomes.push(await settleOne(name, roots, deps, trailOpts));
+      cache = TrialCache.open(trailOpts);
     } catch (err) {
-      log.warn(`validation gate error for ${name}: ${String(err)}`);
-      outcomes.push({ skillName: name, outcome: "error", detail: String(err) });
+      log.debug(`trial cache unavailable: ${String(err)}`);
+    }
+  }
+  try {
+    for (const name of staged) {
+      try {
+        outcomes.push(
+          await settleOne(name, roots, { ...deps, trialCache: cache ?? undefined }, trailOpts),
+        );
+      } catch (err) {
+        log.warn(`validation gate error for ${name}: ${String(err)}`);
+        outcomes.push({ skillName: name, outcome: "error", detail: String(err) });
+      }
+    }
+  } finally {
+    if (!deps.trialCache) {
+      cache?.close();
     }
   }
   return outcomes;
 }
 
 /**
- * PLAN-44 Phase 2: serve incumbent-arm trials from the memo. The incumbent
- * (or "no skill") does not change between proposals; the candidate arm is
- * never cached. Read failures fall through to a real run.
+ * PLAN-44 Phase 2: serve trials from the memo. Both arms are keyed by the
+ * ARM's content hash (a create's incumbent is "none"), so a budget-
+ * exhausted retry resumes instead of restarting (adversarial H2) and every
+ * create on a model shares the no-skill incumbent. Only non-empty answers
+ * are cached (adversarial H4: a provider hiccup must not freeze a 0 for 30
+ * days). Read failures fall through to a real run.
  */
-function memoizeIncumbent(
+function memoizeTrials(
   runTask: TaskRunnerFn,
   params: {
-    cache?: TrialCache;
-    trailOpts: ImpactTrailOptions;
+    cache: TrialCache | null;
+    candidateHash: string;
     incumbentHash: string;
     modelTag: string;
-    onHit: () => void;
+    onHit: (variant: "incumbent" | "candidate") => void;
   },
 ): TaskRunnerFn {
-  let cache: TrialCache | null | undefined = params.cache;
-  const open = (): TrialCache | null => {
-    if (cache !== undefined) {
-      return cache;
-    }
-    try {
-      cache = TrialCache.open(params.trailOpts);
-    } catch (err) {
-      log.debug(`trial cache unavailable: ${String(err)}`);
-      cache = null;
-    }
-    return cache;
-  };
   return async (task, variant, ctx) => {
-    if (variant !== "incumbent") {
-      return runTask(task, variant, ctx);
-    }
     const key = {
       taskId: task.id,
       promptHash: promptHash(task.prompt),
-      incumbentHash: params.incumbentHash,
+      incumbentHash: variant === "candidate" ? params.candidateHash : params.incumbentHash,
       modelTag: params.modelTag,
       generatorVersion: CANONICAL_GENERATOR_VERSION,
       trialIndex: ctx.trialIndex,
     };
-    const c = open();
-    const hit = c?.get(key);
+    const hit = params.cache?.get(key);
     if (hit) {
-      params.onHit();
+      params.onHit(variant);
       return { answer: hit.answer, skillRead: hit.skillRead };
     }
     const result = await runTask(task, variant, ctx);
     const r = typeof result === "string" ? { answer: result } : result;
-    c?.put(key, {
-      score: 0, // score is recomputed by the validator from the answer
-      answer: r.answer,
-      skillRead: typeof r.skillRead === "boolean" ? r.skillRead : null,
-    });
+    if (r.answer.trim().length > 0) {
+      params.cache?.put(key, {
+        score: 0, // the validator re-scores from the answer
+        answer: r.answer,
+        skillRead: typeof r.skillRead === "boolean" ? r.skillRead : null,
+      });
+    }
     return result;
   };
+}
+
+/** Hold verdicts that are retried only after HOLD_BACKOFF_MS unless content or corpus changed. */
+const HOLD_BACKOFF_MS = 24 * 60 * 60 * 1000;
+// budget-exhausted is deliberately NOT here: the memo makes its retry a
+// resume, so it runs again next pass.
+const HOLD_BACKOFF_VERDICTS = new Set([
+  "never-triggered",
+  "insufficient-evidence",
+  "insufficient-trials",
+]);
+
+/** Remove trial dirs left behind by a crash (older than a day). */
+async function sweepStaleTrials(trailOpts: ImpactTrailOptions): Promise<void> {
+  const root = trialsRoot(trailOpts);
+  let entries: string[];
+  try {
+    entries = await fs.readdir(root);
+  } catch {
+    return;
+  }
+  const cutoff = Date.now() - HOLD_BACKOFF_MS;
+  for (const name of entries) {
+    const p = path.join(root, name);
+    try {
+      const st = await fs.stat(p);
+      if (st.mtimeMs < cutoff) {
+        await fs.rm(p, { recursive: true, force: true });
+      }
+    } catch {
+      // ignore
+    }
+  }
 }
 
 async function settleOne(
@@ -322,17 +371,46 @@ async function settleOne(
         })
       : undefined);
   let cachedIncumbentTrials = 0;
+  let cachedCandidateTrials = 0;
   const runTask: TaskRunnerFn | undefined = baseRunner
-    ? memoizeIncumbent(baseRunner, {
-        cache: deps.trialCache,
-        trailOpts,
+    ? memoizeTrials(baseRunner, {
+        cache: deps.trialCache ?? null,
+        candidateHash: contentHash,
         incumbentHash,
         modelTag: deps.modelTag ?? "unknown",
-        onHit: () => {
-          cachedIncumbentTrials += 1;
+        onHit: (variant) => {
+          if (variant === "incumbent") {
+            cachedIncumbentTrials += 1;
+          } else {
+            cachedCandidateTrials += 1;
+          }
         },
       })
     : undefined;
+  // Adversarial H2: a held proposal whose content and corpus have not
+  // changed is not re-validated more than once a day.
+  const corpusPrefix = corpus?.version.replace(/-s\d+/, "") ?? "";
+  const last = meta.lastValidation;
+  if (
+    last &&
+    last.contentHash === contentHash &&
+    last.corpusPrefix === corpusPrefix &&
+    last.modelTag === (deps.modelTag ?? "unknown") &&
+    HOLD_BACKOFF_VERDICTS.has(last.verdict) &&
+    Date.now() - last.at < HOLD_BACKOFF_MS
+  ) {
+    return {
+      skillName: name,
+      outcome: "held",
+      detail: `held (${last.verdict}); retry after ${new Date(last.at + HOLD_BACKOFF_MS).toISOString()} unless content or corpus changes`,
+    };
+  }
+  if (mode === "tasks" && !runTask) {
+    // Adversarial M6: the executor is built at pass start from the same
+    // corpus count; if the corpus crossed the threshold mid-pass, say so.
+    log.warn(`validation mode is tasks but no executor is available; falling back to records`);
+    verdictDetail = "tasks mode without an executor; falling back to records";
+  }
   if (mode === "tasks" && runTask) {
     if (!corpus) {
       verdictDetail = "tasks mode but no corpus available; falling back to records";
@@ -346,7 +424,7 @@ async function settleOne(
       });
       verdictAccepted = verdict.accepted;
       const reads = verdict.candidateReadRate;
-      verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, K=${verdict.trialsPerTask ?? 1}, wins=${verdict.wins ?? 0}/losses=${verdict.losses ?? 0}, p=${verdict.pValue !== undefined ? verdict.pValue.toFixed(4) : "n/a"}, reads cap=${reads?.capability ?? "n/a"}/reg=${reads?.regression ?? "n/a"}, cached=${cachedIncumbentTrials}, corpus ${verdict.corpusVersion})`;
+      verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, K=${verdict.trialsPerTask ?? 1}, wins=${verdict.wins ?? 0}/losses=${verdict.losses ?? 0}, p=${verdict.pValue !== undefined ? verdict.pValue.toFixed(4) : "n/a"}, reads cap=${reads?.capability ?? "n/a"}/reg=${reads?.regression ?? "n/a"}, cached=${cachedIncumbentTrials}i/${cachedCandidateTrials}c, corpus ${verdict.corpusVersion})`;
       validationRecord = {
         mode: "tasks",
         verdict: verdict.reason,
@@ -414,6 +492,16 @@ async function settleOne(
       validationRecord.verdict === "scoring-parse-failed" ||
       validationRecord.verdict === "runner-failed";
     if (insufficient) {
+      await atomicWriteJson(path.join(stagedDir, ".evolution-meta.json"), {
+        ...meta,
+        lastValidation: {
+          at: Date.now(),
+          verdict: validationRecord.verdict,
+          contentHash,
+          corpusPrefix,
+          modelTag: deps.modelTag ?? "unknown",
+        },
+      } satisfies EvolutionMeta);
       return { skillName: name, outcome: "held", detail: verdictDetail };
     }
     await discardStaged(roots, name);

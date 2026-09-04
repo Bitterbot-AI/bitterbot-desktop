@@ -16,6 +16,7 @@ import {
   type SkillAttestation,
 } from "./skill-evolution/attestation.js";
 import { makeAttesterWeight } from "./skill-evolution/attester-weight.js";
+import { CANONICAL_GENERATOR_VERSION } from "./skill-evolution/canonical-corpus.js";
 import { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { SkillMarketplace } from "./skill-marketplace.js";
 
@@ -26,7 +27,7 @@ function att(text: string, over: Partial<SkillAttestation>, key = TRUSTED): Skil
     {
       protocol: ATTEST_PROTOCOL,
       content_sha256: skillContentSha256(text),
-      corpus_version: "canonical-g3-s5",
+      corpus_version: `canonical-g${CANONICAL_GENERATOR_VERSION}-s5`,
       corpus_seed: 5,
       private_suite_sha256: null,
       verdict: "accepted",
@@ -90,7 +91,11 @@ describe("SkillMarketplace attestation surface", () => {
     // A stale-generation verdict for `none` must not count.
     storeAttestation(
       db,
-      att(none, { corpus_version: "canonical-g2-s5" }, generateKeyPair()),
+      att(
+        none,
+        { corpus_version: `canonical-g${CANONICAL_GENERATOR_VERSION - 1}-s5` },
+        generateKeyPair(),
+      ),
       "peer",
     );
 

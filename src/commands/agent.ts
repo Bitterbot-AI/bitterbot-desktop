@@ -262,7 +262,7 @@ export async function agentCommand(
   const agentDir = resolveAgentDir(cfg, sessionAgentId);
   const workspace = await ensureAgentWorkspace({
     dir: workspaceDirRaw,
-    ensureBootstrapFiles: !agentCfg?.skipBootstrap,
+    ensureBootstrapFiles: !agentCfg?.skipBootstrap && !workspaceOverride,
   });
   const workspaceDir = workspace.dir;
   const configuredModel = resolveConfiguredModelRef({

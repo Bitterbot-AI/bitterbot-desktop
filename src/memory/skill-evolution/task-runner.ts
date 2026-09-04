@@ -38,6 +38,26 @@ const log = createSubsystemLogger("skill-evolution/task-runner");
 
 export const TRIALS_SUBDIR = ".trials";
 
+/**
+ * PLAN-44 Phase 2 (adversarial H1): the gateway honours a `workspaceDir`
+ * only if THIS process registered it for a trial. A gateway client that
+ * mints a validation-shaped session key cannot point a run at "/" or at
+ * ~/.bitterbot. Consumed once per trial.
+ */
+const registeredTrialWorkspaces = new Set<string>();
+
+export function registerTrialWorkspace(dir: string): void {
+  registeredTrialWorkspaces.add(path.resolve(dir));
+}
+
+/** True (and forgets the dir) when the dir was registered by the runner. */
+export function consumeTrialWorkspace(dir: string | undefined): boolean {
+  if (!dir) {
+    return false;
+  }
+  return registeredTrialWorkspaces.delete(path.resolve(dir));
+}
+
 /** What one real agent turn reports back. Plain string is accepted for compatibility. */
 export interface AgentTurnOutcome {
   text: string;
@@ -164,25 +184,46 @@ export function composeRuntimePathwayPrompt(
 
 /**
  * Did the run read the skill file? Journal-derived, never self-reported:
- * a `read` tool start whose args name the location.
+ * a `read` tool start whose path resolves to the location (relative paths
+ * resolve against the workspace — the runtime chdirs there), or an `exec`
+ * whose command names it (adversarial H6).
  */
 export function detectSkillRead(
   journal: EventJournal,
   runId: string,
   location: string,
+  workspaceDir?: string,
 ): boolean | null {
   try {
-    const rows = journal.query({ runId, streams: ["tool"], limit: 2_000 });
-    if (rows.length === 0) {
+    // Unobservable only when the run left NO journal rows at all; a run
+    // that answered without any tool call did not read the skill.
+    if (journal.queryMeta({ runId, limit: 1 }).length === 0) {
       return null;
     }
-    const target = location.replace(/\\/g, "/");
+    const rows = journal.query({ runId, streams: ["tool"], limit: 2_000 });
+    const target = path.resolve(location);
+    const relative = workspaceDir ? path.relative(workspaceDir, target) : null;
     return rows.some((row) => {
-      if (row.data.phase !== "start" || row.data.name !== "read") {
+      if (row.data.phase !== "start") {
         return false;
       }
-      const args = JSON.stringify(row.data.args ?? "").replace(/\\\\/g, "/");
-      return args.includes(target);
+      const args = (row.data.args ?? {}) as Record<string, unknown>;
+      if (row.data.name === "read") {
+        const p = [args.path, args.file_path, args.filePath].find((v) => typeof v === "string") as
+          | string
+          | undefined;
+        if (!p) {
+          return false;
+        }
+        const resolved = path.isAbsolute(p) ? path.resolve(p) : path.resolve(workspaceDir ?? "", p);
+        return resolved === target;
+      }
+      if (row.data.name === "exec" && typeof args.command === "string") {
+        return (
+          args.command.includes(target) || (relative !== null && args.command.includes(relative))
+        );
+      }
+      return false;
     });
   } catch (err) {
     log.debug(`skill-read detection failed for ${runId}: ${String(err)}`);
@@ -202,6 +243,13 @@ export interface RuntimePathwayDeps {
   storeOpts?: ImpactTrailOptions;
   /** Keep trial dirs after scoring (debugging). Default false. */
   keepTrialDirs?: boolean;
+  /**
+   * Put the index entry in the user message as well (legacy / tests).
+   * Default false: the validation session's SYSTEM prompt carries the real
+   * skills index (the scratch workspace's `skills/` root plus the node's
+   * live skills), exactly like the runtime (adversarial H5).
+   */
+  indexInPrompt?: boolean;
 }
 
 export function trialsRoot(opts: ImpactTrailOptions = {}): string {
@@ -240,16 +288,18 @@ export function makeRuntimePathwayRunner(deps: RuntimePathwayDeps): TaskRunnerFn
       skill = { name: fm.name ?? arm.name, description: fm.description, location };
     }
     try {
-      const prompt = composeRuntimePathwayPrompt(task, skill);
+      const prompt = deps.indexInPrompt ? composeRuntimePathwayPrompt(task, skill) : task.prompt;
+      registerTrialWorkspace(workspaceDir);
       const r = normalizeOutcome(
         await deps.agentTurn(prompt, {
           workspaceDir,
           ...(task.timeoutMs ? { timeoutMs: task.timeoutMs } : {}),
         }),
       );
+      consumeTrialWorkspace(workspaceDir); // in case the executor never consumed it
       const skillRead =
         skill && deps.journal && r.runId
-          ? detectSkillRead(deps.journal, r.runId, skill.location)
+          ? detectSkillRead(deps.journal, r.runId, skill.location, workspaceDir)
           : null;
       return {
         answer: r.text,

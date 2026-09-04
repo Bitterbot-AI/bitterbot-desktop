@@ -48,6 +48,8 @@ const MINER_PROMPT_HEADER = `You are drafting evaluation tasks for an agent benc
 
 Rules:
 - Draft at most 2 tasks, each a SELF-CONTAINED prompt exercising the capability the trace failed at. No references to the trace, prior sessions, external URLs, live services, or private data.
+- HERMETIC: the task runs in an empty scratch working directory. Use only RELATIVE paths inside the current working directory; never /tmp, /home, ~, $HOME or any absolute path; never assume pre-existing files — the prompt must create what it needs.
+- The expected answer must be a STABLE value (a number, a word, a token you defined in the prompt), never an error message or tool output text.
 - Each task must be deterministically checkable: a single correct answer computable from the prompt alone (or from running local shell/file operations the prompt fully specifies).
 - Each prompt MUST end with: Reply with exactly one line of the form "FINAL: <answer>".
 - Output ONLY JSON lines (one per task), no prose, in this exact shape:

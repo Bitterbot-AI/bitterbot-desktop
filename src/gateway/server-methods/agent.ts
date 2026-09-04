@@ -565,6 +565,27 @@ export const agentHandlers: GatewayRequestHandlers = {
       { sessionKey: resolvedSessionKey ?? null, agentId, runId, channel: resolvedChannel ?? "" },
     );
 
+    // PLAN-44 Phase 2 (adversarial H1): a workspace override is honoured
+    // only for a validation session AND only for a scratch dir this
+    // process registered for a trial. Any other request is refused.
+    if (request.workspaceDir) {
+      const { consumeTrialWorkspace } = await import("../../memory/skill-evolution/task-runner.js");
+      if (
+        !isSkillEvolveValidationSessionKey(resolvedSessionKey) ||
+        !consumeTrialWorkspace(request.workspaceDir)
+      ) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "workspaceDir is only honoured for registered skill-validation trial workspaces",
+          ),
+        );
+        return;
+      }
+    }
+
     void agentCommand(
       {
         message: preTurn.message,

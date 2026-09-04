@@ -100,6 +100,11 @@ export interface EvolutionPassDeps {
   publisher?: SkillPublisher | null;
   /** Tasks-mode real-rollout executor (validation gate builds the paired runner). */
   agentTurn?: AgentTurnFn;
+  /**
+   * PLAN-44 Phase 2 (adversarial C1): executor for PEER skill attestation,
+   * on the `peer-` session flavor that keeps the A2A no-tools floor.
+   */
+  peerAgentTurn?: AgentTurnFn;
   /** Dedicated proposer model lane (stronger than the maintainer/cheap lane). */
   proposerLlmCall?: LlmCallFn;
   /** Min days between semantic (LLM) wiki lint passes. Default 7; 0 disables. */

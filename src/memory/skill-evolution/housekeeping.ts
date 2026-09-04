@@ -59,11 +59,11 @@ export async function runHousekeeping(
   // The SWEEP needs tasks-mode rollouts; the fraud pass and the exchange
   // need only the db and the key, and run in every validation mode.
   if (deps.db && deps.attestKeyPair) {
-    if (deps.agentTurn) {
+    if (deps.peerAgentTurn) {
       try {
         attestation = await runAttestationSweep({
           db: deps.db,
-          agentTurn: deps.agentTurn,
+          agentTurn: deps.peerAgentTurn,
           keyPair: deps.attestKeyPair,
           ...(storeOpts.configDir ? { storeOpts } : {}),
           ...(typeof deps.trialsPerTask === "number" ? { trialsPerTask: deps.trialsPerTask } : {}),

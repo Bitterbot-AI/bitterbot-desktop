@@ -538,6 +538,10 @@ export async function runEmbeddedAttempt(
       workspaceNotes,
       reactionGuidance,
       promptMode,
+      // PLAN-44 Phase 2 (adversarial H5): a validation session must see the
+      // skills index the runtime sees, or the gate measures a different
+      // selection problem than production.
+      skillsInMinimal: isSkillEvolveValidationSessionKey(params.sessionKey),
       runtimeInfo,
       messageToolHints,
       sandboxInfo,

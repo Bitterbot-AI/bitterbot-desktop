@@ -313,8 +313,10 @@ function buildSkillsSection(params: {
   skillsPrompt?: string;
   isMinimal: boolean;
   readToolName: string;
+  /** PLAN-44 Phase 2: validation sessions are minimal but must see the skills index. */
+  skillsInMinimal?: boolean;
 }) {
-  if (params.isMinimal) {
+  if (params.isMinimal && !params.skillsInMinimal) {
     return [];
   }
   const trimmed = params.skillsPrompt?.trim();
@@ -676,6 +678,8 @@ export function buildAgentSystemPrompt(params: {
   ttsHint?: string;
   /** Controls which hardcoded sections to include. Defaults to "full". */
   promptMode?: PromptMode;
+  /** PLAN-44 Phase 2: keep the skills section in minimal mode (validation sessions). */
+  skillsInMinimal?: boolean;
   runtimeInfo?: {
     agentId?: string;
     host?: string;
@@ -907,6 +911,7 @@ export function buildAgentSystemPrompt(params: {
     skillsPrompt,
     isMinimal,
     readToolName,
+    skillsInMinimal: params.skillsInMinimal,
   });
   const memorySection = buildMemorySection({
     isMinimal,

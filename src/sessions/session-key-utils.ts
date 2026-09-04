@@ -66,8 +66,24 @@ export function isSubagentSessionKey(sessionKey: string | undefined | null): boo
  */
 export const SKILL_EVOLVE_VALIDATION_MARKER = "skill-evolve-val-";
 
-export function makeSkillEvolveValidationSessionKey(agentId: string, nonce: string): string {
-  return `agent:${agentId}:${SKILL_EVOLVE_VALIDATION_MARKER}${nonce}`;
+export function makeSkillEvolveValidationSessionKey(
+  agentId: string,
+  nonce: string,
+  opts: { peer?: boolean } = {},
+): string {
+  // PLAN-44 Phase 2 (adversarial C1): the PEER flavor runs P2P peer skill
+  // text for the attestation sweep and keeps the A2A no-tools floor; the
+  // plain flavor runs the node's own candidates under the validation
+  // allow-list.
+  return `agent:${agentId}:${SKILL_EVOLVE_VALIDATION_MARKER}${opts.peer ? "peer-" : ""}${nonce}`;
+}
+
+export function isSkillEvolvePeerValidationSessionKey(
+  sessionKey: string | undefined | null,
+): boolean {
+  return (
+    typeof sessionKey === "string" && sessionKey.includes(`:${SKILL_EVOLVE_VALIDATION_MARKER}peer-`)
+  );
 }
 
 export function isSkillEvolveValidationSessionKey(sessionKey: string | undefined | null): boolean {

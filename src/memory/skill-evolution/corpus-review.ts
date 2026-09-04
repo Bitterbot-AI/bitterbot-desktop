@@ -17,9 +17,15 @@ import path from "node:path";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
+import { generateCanonicalCorpus } from "./canonical-corpus.js";
 import { pendingCorpusPath } from "./corpus-miner.js";
 import { atomicWriteFile } from "./fs-atomic.js";
 import { type CorpusTask, corpusPath, MAX_CORPUS_TASKS, parseCorpusTasks } from "./task-corpus.js";
+
+/** Grown tasks the effective corpus actually runs (canonical tasks fill the rest of MAX_CORPUS_TASKS). */
+export function grownCorpusBudget(): number {
+  return Math.max(0, MAX_CORPUS_TASKS - generateCanonicalCorpus(0).tasks.length);
+}
 
 const log = createSubsystemLogger("skill-evolution/corpus-review");
 
@@ -38,9 +44,10 @@ export type DraftFlag =
   | "prompt-too-long"
   | "not-final-checker";
 
-const ABSOLUTE_PATH_RE = /(?:^|[\s"'`(])\/(?:tmp|home|etc|var|usr|root|opt|mnt)\//;
+const ABSOLUTE_PATH_RE =
+  /(?:^|[\s"'`(=:])(?:\/(?:tmp|home|etc|var|usr|root|opt|mnt|proc|sys|dev)\b|~\/|\$HOME|\$\{HOME\}|\.\.\/)/;
 const NETWORK_VERB_RE =
-  /\b(curl|wget|fetch|ssh|scp|sftp|nc|ncat|netcat|telnet|rsync|ftp|pip\s+install|npm\s+install|apt(-get)?\s+install)\b|https?:\/\//i;
+  /\b(curl|wget|fetch|ssh|scp|sftp|nc|ncat|netcat|socat|telnet|rsync|ftp|dig|nslookup|git\s+clone|docker|aws|gcloud|pip\s+install|npm\s+install|apt(-get)?\s+install|http\.server|urllib|requests\.get|import\s+socket)\b|https?:\/\/|\/dev\/tcp/i;
 const ERROR_LIKE_RE = /^(fatal:|ENOENT|Error:|Traceback|Command exited)/i;
 
 export interface ReviewableDraft {
@@ -62,12 +69,13 @@ export function flagDraft(task: CorpusTask): DraftFlag[] {
   if (task.prompt.length > 2_000) {
     flags.push("prompt-too-long");
   }
-  if (ABSOLUTE_PATH_RE.test(task.prompt)) {
+  const scanned = `${task.prompt}\n${task.checker.value}`;
+  if (ABSOLUTE_PATH_RE.test(scanned)) {
     // A trial runs in a fresh scratch workspace; a prompt that names
     // /tmp/... or /home/... escapes it and leaks state between trials.
     flags.push("absolute-path");
   }
-  if (NETWORK_VERB_RE.test(task.prompt)) {
+  if (NETWORK_VERB_RE.test(scanned)) {
     flags.push("network-verb");
   }
   if (ERROR_LIKE_RE.test(task.checker.value)) {
@@ -175,8 +183,12 @@ export async function acceptDrafts(
       refused.push({ id, reason: `flagged: ${flags.join(", ")}` });
       continue;
     }
-    if (liveCount >= MAX_CORPUS_TASKS) {
-      refused.push({ id, reason: `live corpus is at its cap (${MAX_CORPUS_TASKS})` });
+    if (liveCount >= grownCorpusBudget()) {
+      // Adversarial M4: loadEffectiveCorpus only runs this many grown tasks.
+      refused.push({
+        id,
+        reason: `live corpus is at its cap (${grownCorpusBudget()} grown tasks)`,
+      });
       continue;
     }
     lines.push(

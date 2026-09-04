@@ -453,13 +453,22 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   tasks REJECTs (`over-triggered`). Validation sessions
   (`agent:<id>:skill-evolve-val-*`) run under a dedicated workspace-scoped
   tool allow-list (D-4, `skill-validation-policy.ts`: read/write/edit/
-  apply_patch/exec/process, `tools.fs.workspaceOnly` forced) in that
-  scratch workspace (gateway `agent` RPC `workspaceDir`, honoured for
-  validation keys only). Incumbent-arm trials are memoized in
+  apply_patch, `tools.fs.workspaceOnly` forced; `exec`/`process` only with
+  `skills.evolution.validationTools.exec: true`, then approvals off, a
+  scrubbed environment and a workdir confined to the scratch workspace)
+  in that scratch workspace (gateway `agent` RPC `workspaceDir`, honoured
+  only for a trial dir the runner registered in-process). The session's
+  system prompt keeps the skills index in minimal mode, and the candidate
+  enters that index through the scratch workspace's `skills/` root, so the
+  gate measures the runtime's real selection problem. Peer skills
+  (attestation sweep) run on the `skill-evolve-val-peer-` flavor, which
+  keeps the A2A no-tools floor. Both arms' trials are memoized in
   `skill-wiki/.trial-cache.sqlite` (`trial-cache.ts`, keyed by task prompt
-  / incumbent hash / model / generator version / trial index; the canonical
-  seed rotates daily per model so same-day proposals share instances);
-  candidate arms are never cached. A wall-clock budget
+  / arm content hash / model / generator version / trial index, non-empty
+  answers only; the canonical seed rotates daily per model so same-day
+  proposals share instances), so a budget retry resumes rather than
+  restarts; held proposals whose content, corpus and model are unchanged
+  are not re-validated for 24h. A wall-clock budget
   (`skills.evolution.validationBudgetMinutes`, default 45) HOLDs with
   `budget-exhausted`. **Corpus review** (`corpus-review.ts`; RPCs
   `skills.evolution.corpus.list|accept|reject`; CLI `bitterbot skills

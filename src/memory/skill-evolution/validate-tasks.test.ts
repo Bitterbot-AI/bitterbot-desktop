@@ -374,3 +374,36 @@ describe("validateAgainstTasks (PLAN-44 Phase 2)", () => {
     expect(verdict.tokens).toEqual({ incumbent: 8 * 2 * 11, candidate: 8 * 2 * 15 });
   });
 });
+
+describe("validateAgainstTasks: budget during a regression re-check (adversarial H3)", () => {
+  it("HOLDs budget-exhausted instead of rejecting on an unconfirmed flaky regression", async () => {
+    const tasks = [
+      ...[1, 2, 3].map((i) => task(`reg-${i}`, "regression")),
+      ...[1, 2, 3, 4, 5].map((i) => task(`cap-${i}`, "capability")),
+    ];
+    const firstRoundCalls = tasks.length * 2;
+    let n = 0;
+    let recheckCalls = 0;
+    const verdict = await validateAgainstTasks({
+      corpus: corpus(tasks),
+      runTask: async (t, variant) => {
+        n += 1;
+        if (n > firstRoundCalls) {
+          recheckCalls += 1;
+        }
+        if (n === firstRoundCalls) {
+          // The last first-round trial runs the clock past the deadline.
+          await new Promise((r) => setTimeout(r, 15));
+        }
+        if (t.id === "reg-1" && variant === "candidate") {
+          return "wrong"; // apparent regression, never confirmed
+        }
+        return t.suite === "regression" || variant === "candidate" ? `ok-${t.id}` : "wrong";
+      },
+      trialsPerTask: 1,
+      deadlineAt: Date.now() + 8,
+    });
+    expect(verdict.reason).toBe("budget-exhausted");
+    expect(recheckCalls).toBe(0);
+  });
+});

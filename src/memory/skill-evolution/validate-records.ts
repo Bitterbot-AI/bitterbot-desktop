@@ -152,7 +152,10 @@ Respond with ONLY a JSON array, one entry per trial, in order:
 [{"trial": 1, "a": 0.0, "b": 0.0}, ...]`;
 }
 
-function parseScores(raw: string, expected: number): Array<{ a: number; b: number }> | null {
+function parseScores(
+  raw: string,
+  expected: number,
+): Array<{ trial: number; a: number; b: number }> | null {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   const text = (fenced ? fenced[1] : raw)?.trim() ?? "";
   const start = text.indexOf("[");
@@ -169,15 +172,16 @@ function parseScores(raw: string, expected: number): Array<{ a: number; b: numbe
   if (!Array.isArray(parsed)) {
     return null;
   }
-  const scores: Array<{ a: number; b: number }> = [];
-  for (const entry of parsed) {
+  const scores: Array<{ trial: number; a: number; b: number }> = [];
+  for (const [i, entry] of parsed.entries()) {
     const e = entry as Record<string, unknown>;
     const a = typeof e?.a === "number" ? e.a : NaN;
     const b = typeof e?.b === "number" ? e.b : NaN;
     if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || a > 1 || b < 0 || b > 1) {
       continue;
     }
-    scores.push({ a, b });
+    const trial = typeof e?.trial === "number" && Number.isInteger(e.trial) ? e.trial : i + 1;
+    scores.push({ trial, a, b });
   }
   return scores.length === expected ? scores : scores.length >= MIN_PAIRED_TRIALS ? scores : null;
 }
@@ -204,7 +208,7 @@ export async function validateAgainstRecords(params: {
   }
   // Two calls, both orders; per-trial candidate-minus-incumbent deltas are
   // averaged so a "B is always a hair better" bias cancels out.
-  const perOrder: Array<Array<{ candidate: number; incumbent: number }>> = [];
+  const perOrder: Array<Map<number, { candidate: number; incumbent: number }>> = [];
   for (const swap of [false, true]) {
     const prompt = buildScoringPrompt({
       candidateName: params.candidateName,
@@ -225,17 +229,26 @@ export async function validateAgainstRecords(params: {
       return { accepted: false, reason: "scoring-parse-failed", trials: traces.length };
     }
     perOrder.push(
-      scores.map((sc) =>
-        swap ? { candidate: sc.a, incumbent: sc.b } : { candidate: sc.b, incumbent: sc.a },
+      new Map(
+        scores.map((sc) => [
+          sc.trial,
+          swap ? { candidate: sc.a, incumbent: sc.b } : { candidate: sc.b, incumbent: sc.a },
+        ]),
       ),
     );
   }
-  const n = Math.min(perOrder[0]!.length, perOrder[1]!.length);
-  const deltas = Array.from({ length: n }, (_, i) => {
-    const d0 = perOrder[0]![i]!.candidate - perOrder[0]![i]!.incumbent;
-    const d1 = perOrder[1]![i]!.candidate - perOrder[1]![i]!.incumbent;
-    return (d0 + d1) / 2;
-  });
+  // Adversarial M5: pair by TRIAL id, and only trials scored in both orders.
+  const deltas: number[] = [];
+  for (const [trial, first] of perOrder[0]!) {
+    const second = perOrder[1]!.get(trial);
+    if (!second) {
+      continue;
+    }
+    deltas.push((first.candidate - first.incumbent + (second.candidate - second.incumbent)) / 2);
+  }
+  if (deltas.length < MIN_PAIRED_TRIALS) {
+    return { accepted: false, reason: "insufficient-trials", trials: deltas.length };
+  }
   const ci = bootstrapMeanCi(deltas);
   // Corpus/gate upgrade 2026-09-02: exact sign test is the gate (correct
   // at small n, never degenerates); the bootstrap CI is reported only.

@@ -20,7 +20,7 @@ describe("a2a remote floor (e2e through createBitterbotCodingTools)", () => {
     expect(tools.map((t) => t.name)).toEqual([]);
   });
 
-  it("a skill-evolution validation session gets ONLY the workspace-scoped allow-list (PLAN-44 D-4)", () => {
+  it("a skill-evolution validation session gets ONLY workspace-scoped file tools by default (PLAN-44 D-4)", () => {
     const tools = createBitterbotCodingTools({
       sessionKey: "agent:main:skill-evolve-val-deadbeef",
     });
@@ -30,8 +30,9 @@ describe("a2a remote floor (e2e through createBitterbotCodingTools)", () => {
       expect(SKILL_VALIDATION_TOOL_ALLOW as readonly string[]).toContain(name);
     }
     expect(names).toContain("read");
-    expect(names).toContain("exec");
     for (const forbidden of [
+      "exec",
+      "process",
       "web_fetch",
       "web_search",
       "message",
@@ -42,6 +43,25 @@ describe("a2a remote floor (e2e through createBitterbotCodingTools)", () => {
     ]) {
       expect(names).not.toContain(forbidden);
     }
+  });
+
+  it("exec is granted to validation sessions only with skills.evolution.validationTools.exec (adversarial C1)", () => {
+    const tools = createBitterbotCodingTools({
+      sessionKey: "agent:main:skill-evolve-val-deadbeef",
+      config: { skills: { evolution: { validationTools: { exec: true } } } } as BitterbotConfig,
+    });
+    const names = tools.map((t) => t.name);
+    expect(names).toContain("exec");
+    expect(names).not.toContain("web_fetch");
+    expect(names).not.toContain("message");
+  });
+
+  it("the PEER validation flavor (attestation sweep) keeps the no-tools floor", () => {
+    const tools = createBitterbotCodingTools({
+      sessionKey: "agent:main:skill-evolve-val-peer-deadbeef",
+      config: { skills: { evolution: { validationTools: { exec: true } } } } as BitterbotConfig,
+    });
+    expect(tools.map((t) => t.name)).toEqual([]);
   });
 
   it("a normal session with the same config keeps its tools (the floor is scoped)", () => {

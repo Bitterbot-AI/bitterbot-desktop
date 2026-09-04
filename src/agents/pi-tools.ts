@@ -13,6 +13,7 @@ import { logWarn } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
 import {
   isA2aTaskSessionKey,
+  isSkillEvolvePeerValidationSessionKey,
   isSkillEvolveValidationSessionKey,
   isSubagentSessionKey,
 } from "../routing/session-key.js";
@@ -50,7 +51,10 @@ import {
   wrapToolParamNormalization,
 } from "./pi-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
-import { resolveSkillValidationToolPolicy } from "./skill-validation-policy.js";
+import {
+  resolveSkillValidationToolPolicy,
+  validationExecEnabled,
+} from "./skill-validation-policy.js";
 import {
   type EnforcerContext,
   wrapToolsWithCapabilityEnforcer,
@@ -261,16 +265,22 @@ export function createBitterbotCodingTools(options?: {
   // PLAN-43 s3.2b: an inbound A2A task session executes a REMOTE caller's
   // request; it gets the remote floor (default: no tools at all), which no
   // other policy step can widen.
-  const a2aRemotePolicy = isA2aTaskSessionKey(options?.sessionKey)
-    ? resolveA2aRemoteToolPolicy(options?.config)
-    : undefined;
+  // PLAN-44 Phase 2 (adversarial C1): the PEER validation flavor runs P2P
+  // peer skill text for the attestation sweep and keeps the same floor.
+  const a2aRemotePolicy =
+    isA2aTaskSessionKey(options?.sessionKey) ||
+    isSkillEvolvePeerValidationSessionKey(options?.sessionKey)
+      ? resolveA2aRemoteToolPolicy(options?.config)
+      : undefined;
   // PLAN-44 Phase 2 (D-4): skill-evolution validation rollouts execute
   // candidate/peer skill text, so they get an explicit workspace-scoped
   // ALLOW list (read/write/edit/exec) instead of the no-tools floor — the
   // runtime pathway needs `read` to open SKILL.md and a fifth of the
   // regression suite needs a shell. Nothing that reaches the network,
   // other sessions, memory, skills or money survives this step.
-  const isSkillValidationSession = isSkillEvolveValidationSessionKey(options?.sessionKey);
+  const isSkillValidationSession =
+    isSkillEvolveValidationSessionKey(options?.sessionKey) &&
+    !isSkillEvolvePeerValidationSessionKey(options?.sessionKey);
   const skillValidationPolicy = isSkillValidationSession
     ? resolveSkillValidationToolPolicy(options?.config)
     : undefined;
@@ -356,11 +366,28 @@ export function createBitterbotCodingTools(options?: {
     return [tool];
   });
   const { cleanupMs: cleanupMsOverride, ...execDefaults } = options?.exec ?? {};
+  // PLAN-44 Phase 2 (adversarial C1/M2): a validation session's shell,
+  // when the operator enabled it, never asks for approval (a candidate
+  // could social-engineer the operator through the prompt), runs with a
+  // scrubbed environment, and cannot leave the scratch workspace.
+  const validationExec = isSkillValidationSession
+    ? validationExecEnabled(options?.config)
+      ? {
+          security: "allowlist" as const,
+          ask: "off" as const,
+          scrubEnv: true,
+          confineWorkdir: true,
+        }
+      : { security: "deny" as const, ask: "off" as const }
+    : undefined;
   const execTool = createExecTool({
     ...execDefaults,
     host: options?.exec?.host ?? execConfig.host,
-    security: options?.exec?.security ?? execConfig.security,
-    ask: options?.exec?.ask ?? execConfig.ask,
+    security: validationExec?.security ?? options?.exec?.security ?? execConfig.security,
+    ask: validationExec?.ask ?? options?.exec?.ask ?? execConfig.ask,
+    ...(validationExec && "scrubEnv" in validationExec
+      ? { scrubEnv: true, confineWorkdir: true }
+      : {}),
     node: options?.exec?.node ?? execConfig.node,
     pathPrepend: options?.exec?.pathPrepend ?? execConfig.pathPrepend,
     safeBins: options?.exec?.safeBins ?? execConfig.safeBins,

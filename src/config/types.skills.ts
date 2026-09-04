@@ -144,7 +144,15 @@ export type SkillsEvolutionConfig = {
    * apply_patch/exec/process). Network, messaging, memory, skill and wallet
    * tools can never be granted here.
    */
-  validationTools?: { alsoAllow?: string[] };
+  validationTools?: {
+    alsoAllow?: string[];
+    /**
+     * Grant `exec`/`process` to validation rollouts (approvals off, scrubbed
+     * env, workdir confined to the scratch workspace). Off by default: a
+     * candidate skill is proposer-authored from untrusted traces.
+     */
+    exec?: boolean;
+  };
 };
 
 export type SkillsConfig = {

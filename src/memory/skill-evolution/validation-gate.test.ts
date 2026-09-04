@@ -446,3 +446,161 @@ describe("runValidationGate (PLAN-44 Phase 2)", () => {
     expect(budgetOutcome?.detail).toContain("budget-exhausted");
   });
 });
+
+describe("runValidationGate: hold backoff and candidate memo (adversarial H2)", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "valgate-h2-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("does not re-validate a held proposal within 24h unless content or corpus changed", async () => {
+    await applyProposal(
+      {
+        action: "create",
+        name: "held-skill",
+        skillMd: SKILL_MD.replace("name: curl-timeout-guard", "name: held-skill"),
+        purposeMd: PURPOSE_MD,
+      },
+      { storeOpts: { configDir: tmpDir }, iteration: "h2" },
+    );
+    await fs.mkdir(path.dirname(corpusPath({ configDir: tmpDir })), { recursive: true });
+    await fs.writeFile(
+      corpusPath({ configDir: tmpDir }),
+      Array.from({ length: 5 }, (_, i) =>
+        JSON.stringify({
+          id: `g${i}`,
+          prompt: `g ${i}`,
+          checker: { kind: "final", value: "PASS" },
+          suite: "capability",
+        }),
+      ).join("\n") + "\n",
+      "utf-8",
+    );
+    let calls = 0;
+    const neverRead = async (task: { suite?: string }, variant: string) => {
+      calls += 1;
+      return {
+        answer:
+          task.suite === "regression"
+            ? "FINAL: x"
+            : variant === "candidate"
+              ? "FINAL: PASS"
+              : "FINAL: nope",
+        skillRead: false,
+      };
+    };
+    const first = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: neverRead,
+      trialsPerTask: 1,
+      modelTag: "m",
+    });
+    expect(first[0]).toMatchObject({ outcome: "held" });
+    expect(first[0]?.detail).toContain("never-triggered");
+    const firstCalls = calls;
+    const second = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: neverRead,
+      trialsPerTask: 1,
+      modelTag: "m",
+    });
+    expect(second[0]).toMatchObject({ outcome: "held" });
+    expect(second[0]?.detail).toContain("retry after");
+    expect(calls).toBe(firstCalls);
+  });
+
+  it("memoizes the candidate arm too, so a budget retry resumes instead of restarting", async () => {
+    await applyProposal(
+      {
+        action: "create",
+        name: "memo-skill",
+        skillMd: SKILL_MD.replace("name: curl-timeout-guard", "name: memo-skill"),
+        purposeMd: PURPOSE_MD,
+      },
+      { storeOpts: { configDir: tmpDir }, iteration: "h2" },
+    );
+    await fs.mkdir(path.dirname(corpusPath({ configDir: tmpDir })), { recursive: true });
+    await fs.writeFile(
+      corpusPath({ configDir: tmpDir }),
+      Array.from({ length: 5 }, (_, i) =>
+        JSON.stringify({
+          id: `g${i}`,
+          prompt: `g ${i}`,
+          checker: { kind: "final", value: "PASS" },
+          suite: "capability",
+        }),
+      ).join("\n") + "\n",
+      "utf-8",
+    );
+    const cache = TrialCache.inMemory();
+    const calls = { incumbent: 0, candidate: 0 };
+    const runner = async (task: { suite?: string }, variant: "incumbent" | "candidate") => {
+      calls[variant] += 1;
+      return {
+        answer:
+          task.suite === "regression"
+            ? "FINAL: x"
+            : variant === "candidate"
+              ? "FINAL: PASS"
+              : "FINAL: nope",
+        // Read only where it applies (a read on regression tasks is over-triggering).
+        skillRead: variant === "candidate" ? task.suite !== "regression" : null,
+      };
+    };
+    await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: runner,
+      trialsPerTask: 1,
+      modelTag: "m",
+      trialCache: cache,
+      validationBudgetMinutes: -1,
+    });
+    // Deadline in the past: nothing ran — HOLD (budget-exhausted), no calls.
+    expect(calls.candidate).toBe(0);
+    const result = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: runner,
+      trialsPerTask: 1,
+      modelTag: "m",
+      trialCache: cache,
+    });
+    // budget-exhausted is never backed off (the memo makes a retry a resume):
+    // the second pass runs and fills the memo for both arms.
+    expect(result[0]?.outcome).toBe("promoted");
+    expect(cache.size()).toBe(calls.incumbent + calls.candidate);
+    // A third pass would be served entirely from the memo.
+    await applyProposal(
+      {
+        action: "create",
+        name: "memo-skill-2",
+        skillMd: SKILL_MD.replace("name: curl-timeout-guard", "name: memo-skill-2"),
+        purposeMd: PURPOSE_MD,
+      },
+      { storeOpts: { configDir: tmpDir }, iteration: "h2" },
+    );
+    const before = { ...calls };
+    await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: runner,
+      trialsPerTask: 1,
+      modelTag: "m",
+      trialCache: cache,
+    });
+    // Same "no skill" incumbent: served from the memo; new candidate: fresh.
+    expect(calls.incumbent).toBe(before.incumbent);
+    expect(calls.candidate).toBeGreaterThan(before.candidate);
+  });
+});

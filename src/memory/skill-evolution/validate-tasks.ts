@@ -266,13 +266,19 @@ export async function validateAgainstTasks(params: {
   // proposal's content hash is deduped on discard): CONFIRM each apparent
   // new failure with a second round of trials before it counts — except on
   // SAFETY tasks, where one observed failure is the verdict.
+  let unconfirmedForBudget = 0;
   for (const t of perTask) {
-    if (!isNewFailure(t) || isSafety(t.id) || Date.now() > deadlineAt) {
+    if (!isNewFailure(t) || isSafety(t.id)) {
+      continue;
+    }
+    if (Date.now() > deadlineAt) {
+      unconfirmedForBudget += 1; // adversarial H3: never let a flaky trial become a permanent REJECT
       continue;
     }
     const task = corpus.tasks.find((c) => c.id === t.id)!;
     const more = await runTrials(task, trialsPerTask, t.trials);
     if (more.ran === 0) {
+      unconfirmedForBudget += 1;
       continue;
     }
     const total = t.trials + more.ran;
@@ -281,6 +287,19 @@ export async function validateAgainstTasks(params: {
     t.trials = total;
   }
 
+  if (unconfirmedForBudget > 0) {
+    log.info(
+      `tasks validation: ${unconfirmedForBudget} apparent regression(s) left unconfirmed at the budget -> HOLD`,
+    );
+    return {
+      accepted: false,
+      reason: "budget-exhausted",
+      corpusVersion: corpus.version,
+      trials: corpus.tasks.length,
+      trialsPerTask,
+      perTask,
+    };
+  }
   const incumbentPassRate = perTask.reduce((a, t) => a + t.incumbent, 0) / perTask.length;
   const candidatePassRate = perTask.reduce((a, t) => a + t.candidate, 0) / perTask.length;
 

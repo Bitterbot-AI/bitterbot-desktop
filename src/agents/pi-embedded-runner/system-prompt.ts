@@ -26,6 +26,8 @@ export function buildEmbeddedSystemPrompt(params: {
   workspaceNotes?: string[];
   /** Controls which hardcoded sections to include. Defaults to "full". */
   promptMode?: PromptMode;
+  /** PLAN-44 Phase 2: keep the skills section in minimal mode (validation sessions). */
+  skillsInMinimal?: boolean;
   runtimeInfo: {
     agentId?: string;
     host: string;
@@ -80,6 +82,7 @@ export function buildEmbeddedSystemPrompt(params: {
     workspaceNotes: params.workspaceNotes,
     reactionGuidance: params.reactionGuidance,
     promptMode: params.promptMode,
+    skillsInMinimal: params.skillsInMinimal,
     runtimeInfo: params.runtimeInfo,
     messageToolHints: params.messageToolHints,
     sandboxInfo: params.sandboxInfo,

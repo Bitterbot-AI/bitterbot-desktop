@@ -60,6 +60,27 @@ describe("corpus review (PLAN-44 Phase 2)", () => {
     expect(
       flagDraft({ id: "y", prompt: "add 2 and 2", checker: { kind: "contains", value: "4" } }),
     ).toEqual(["not-final-checker"]);
+    // Adversarial M3: home/parent escapes, python networking, and the checker value itself.
+    for (const prompt of [
+      "cat ~/.bitterbot/bitterbot.json",
+      "read $HOME/secret",
+      "read ../../etc/passwd",
+      "python3 -m http.server 8000",
+      'python3 -c "import socket; ..."',
+      "git clone something",
+    ]) {
+      expect(
+        flagDraft({ id: "z", prompt, checker: { kind: "final", value: "1" } }).length,
+        prompt,
+      ).toBeGreaterThan(0);
+    }
+    expect(
+      flagDraft({
+        id: "w",
+        prompt: "count words",
+        checker: { kind: "final", value: "/etc/passwd" },
+      }),
+    ).toContain("absolute-path");
   });
 
   it("lists drafts with flags and acceptability", async () => {
