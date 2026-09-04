@@ -51,6 +51,7 @@ import {
 import {
   clearAgentRunContext,
   emitAgentEvent,
+  emitUserTurnEvent,
   registerAgentRunContext,
 } from "../infra/agent-events.js";
 import { getRemoteSkillEligibility } from "../infra/skills-remote.js";
@@ -138,6 +139,15 @@ function runAgentAttempt(params: {
   });
   if (isCliProvider(params.providerOverride, params.cfg)) {
     const cliSessionId = getCliSessionId(params.sessionEntry, params.providerOverride);
+    // PLAN-44 Phase 0 (adversarial M3): CLI providers bypass the embedded
+    // runner, so the task is journaled here (once per run; the helper
+    // dedupes retries).
+    emitUserTurnEvent({
+      runId: params.runId,
+      text: effectivePrompt,
+      ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+      ...(params.sessionEntry?.channel ? { channel: params.sessionEntry.channel } : {}),
+    });
     return runCliAgent({
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,

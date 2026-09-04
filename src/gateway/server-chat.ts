@@ -431,7 +431,11 @@ export function createAgentEventHandler({
       if (recipients && recipients.size > 0) {
         broadcastToConnIds("agent", toolPayload, recipients);
       }
-    } else {
+    } else if (evt.stream !== "user") {
+      // PLAN-44 (adversarial M2): the `user` stream carries the raw prompt
+      // of every session (other people's DMs, group chats); it exists for
+      // the journal, not for the wire. Tool output is recipient-scoped for
+      // the same reason.
       broadcast("agent", agentPayload);
     }
 

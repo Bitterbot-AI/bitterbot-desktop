@@ -41,8 +41,12 @@ export function classifyRunOrigin(sessionKey: string | null | undefined): RunOri
     if (token === "guest") {
       return "guest";
     }
-    if (token === "cron" || token === "hook") {
+    if (token === "cron") {
       return "system";
+    }
+    if (token === "hook" || token.startsWith("hook-")) {
+      // Webhook bodies are third-party text by definition (adversarial H2).
+      return "guest";
     }
     if (GROUP_TOKENS.has(token)) {
       // Group/channel chats are multi-author; treat like guest content.
@@ -53,11 +57,12 @@ export function classifyRunOrigin(sessionKey: string | null | undefined): RunOri
 }
 
 /**
- * Origins whose task text the evolution loop may learn from. `unknown`
- * (no session key, or a non-"agent:" key) is admitted so pre-upgrade rows
- * and probe/test sessions keep today's behaviour; the sampler's legacy
- * session-key regexes still apply on top of this check.
+ * Origins whose task text the evolution loop may learn from. FAIL CLOSED
+ * (adversarial H2): `unknown` — no session key, a raw `hook:`/`acp:` key,
+ * a bare session id — is not learnable. Every production run path mints an
+ * `agent:<id>:...` key; the few that do not are exactly the ones whose
+ * author we cannot vouch for.
  */
 export function isLearnableOrigin(origin: RunOrigin): boolean {
-  return origin === "human" || origin === "system" || origin === "unknown";
+  return origin === "human" || origin === "system";
 }

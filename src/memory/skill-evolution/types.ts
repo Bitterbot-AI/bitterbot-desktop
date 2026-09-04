@@ -68,7 +68,13 @@ export interface ReconstructedTrace {
   lastSeq: number;
 }
 
-export type TraceLabel = "pass" | "fail" | "unknown";
+/**
+ * PLAN-44 Phase 1: `env-fail` = the run failed on the ENVIRONMENT (provider
+ * outage, DNS, connection refused, rate limit, 5xx, service unavailable,
+ * aborted). Never sampled as an agent failure; may still seed the corpus
+ * miner when the task was human-authored.
+ */
+export type TraceLabel = "pass" | "fail" | "env-fail" | "unknown";
 
 export interface TraceLabelResult {
   label: TraceLabel;
@@ -85,6 +91,12 @@ export interface LabeledTrace {
   label: TraceLabelResult;
   /** Formatted, redacted, char-capped log ready for prompt injection. */
   formattedLog: string;
+  /**
+   * PLAN-44 Phase 1: set when another sampled trace ran the SAME task text
+   * with the opposite outcome (contrastive pair). The maintainer is told
+   * to compare paired traces first.
+   */
+  pairId?: string;
 }
 
 export interface SamplerStats {
@@ -104,6 +116,14 @@ export interface SamplerStats {
   pendingReexamined: number;
   /** PLAN-44 Phase 0: runs carrying a journaled task header. */
   runsWithTask: number;
+  /** PLAN-44 Phase 1: environment failures seen (excluded from the fail budget). */
+  envFails: number;
+  /** PLAN-44 (adversarial H1): runs whose task text was flagged by the injection scanner. */
+  runsInjected: number;
+  /** PLAN-44 Phase 1: candidates skipped as duplicates of an already-selected tool sequence. */
+  runsDeduped: number;
+  /** PLAN-44 Phase 1: contrastive pairs found among the selected traces. */
+  pairs: number;
 }
 
 /** PLAN-44 Phase 0: an in-flight run the sampler deferred instead of skipping past. */
@@ -121,4 +141,10 @@ export interface IterationSample {
   pending: PendingRun[];
   /** PLAN-44 Phase 0: run ids examined this iteration (anti-rescan ring). */
   processedRunIds: string[];
+  /**
+   * PLAN-44 Phase 1: formatted logs of human-origin env-fail traces. Not
+   * maintainer material, but real user tasks that hit outages make good
+   * capability-task drafts for the corpus miner.
+   */
+  envFailTexts: string[];
 }

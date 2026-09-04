@@ -326,22 +326,56 @@ runs into evolution fuel:
   class (`run-origin.ts`: human / system / circle / a2a / subagent / guest /
   unknown) is derived from the session key at read time, never trusted
   from the row.
-- `labeler.ts` — pass/fail/unknown cascade: lifecycle error → terminal tool
-  error → error density → `complete()` self-report → clean end; ambiguous
-  traces go to an optional LLM judge (verdict-line parse, failures degrade
-  to the heuristic). Length-based reward heuristics are banned (PLAN-40).
+- `signals.ts` (PLAN-44 Phase 1) — programmatic trace signals computed
+  BEFORE any model reads a trace: tool sequence, repeated loops, the class
+  of every tool error (environment: provider / dns / connection / timeout /
+  rate-limit / 5xx / service-unavailable / aborted; agent: policy-block /
+  file-not-found / edit-mismatch / 4xx / exit-nonzero / exception /
+  timeout), first-error position and recovery. Printed as a `## Signals`
+  block under the task header of every trace log; the maintainer and judge
+  are told to cite them and never invent mechanisms (arXiv 2605.29463).
+  Signatures come from the live journal's 136 tool errors.
+- `labeler.ts` — pass / fail / **env-fail** / unknown cascade (PLAN-44
+  Phase 1): lifecycle error → env-fail (every live instance was a provider
+  error); terminal tool error → env-fail or fail by error class; AGENT
+  error density; all-env-errors → env-fail; `complete()` with no agent
+  errors → pass; clean end → pass; recovered from env errors → weak pass.
+  `env-fail` never takes a failure slot (5 of 8 live wiki pages were
+  outage narratives before this); human-origin env-fail traces still seed
+  the corpus miner. The judge verdict parse is line-anchored (an echoed
+  "verdict: pass|fail|unknown" is rejected). Calibrated against
+  `benchmarks/skill-evolution/labeled-traces.jsonl` (48 rows built from
+  live run SHAPES with synthetic content; precision ≥ 0.85 / recall ≥ 0.75
+  per class, and no env-fail row may ever label as fail —
+  `labeler.fixture.test.ts`). Length-based reward heuristics are banned
+  (PLAN-40).
 - `sampler.ts` — one iteration's stratified budget (≤8 traces: ≤5 fail +
   ≤3 pass, per the paper), monotonic seq cursor persisted at
   `skill-wiki/.sampler-state.json`, deterministic 20% run-id held-out
   partition reserved for the validation gate, exclusion of evolution/probe
   sessions (anti self-distillation). **PLAN-44 Phase 0:** heartbeat runs
   and third-party-origin runs (circle, A2A, subagent, guest) are excluded
-  from the journaled task header (D-6). Cursor safety: the cursor never
-  passes the scan horizon nor the first event of a run the scan saw but
-  did not examine (interleaved runs were being skipped forever); in-flight
-  runs go to a bounded `pending` list (≤50, 3-day TTL) and are re-examined
-  next iteration; a ring of ≤200 examined run ids prevents double
-  sampling. State writes are atomic (`fs-atomic.ts`).
+  from the journaled task header (D-6); origin FAILS CLOSED (`unknown`,
+  raw `hook:`/`acp:` keys and keyless runs are not learnable; `hook` is
+  `guest`). A task text the injection scanner flags medium/critical is
+  excluded at this boundary (`runsInjected`), and every trace log carries
+  a `task-trust: UNTRUSTED TEXT` line; the maintainer, proposer and judge
+  prompts state the trust boundary. Cursor safety: the cursor never passes
+  the scan horizon nor the first event of a run the scan saw but did not
+  examine — including runs whose slot was full (interleaved runs were
+  being skipped forever); in-flight runs go to a bounded `pending` list
+  (≤50, 3-day TTL) and are re-examined next iteration; a ring of ≤200
+  examined run ids (reconstructed runs only) prevents double sampling;
+  already-examined runs do not consume the per-scan cap. "Complete" is
+  decided from the lifecycle phases (`runHasTerminal`), not from counting
+  lifecycle rows, so retried attempts and subagent runs are not mistaken
+  for finished runs. Diversity (Phase 1): a trace with the same task text
+  AND tool-sequence shape as an already-selected trace is skipped; runs
+  are examined oldest-first within the 14-day window (recency comes from
+  the fast-forward floor; reordering would pin the cursor); selected
+  traces that ran the same task with opposite outcomes are marked as a
+  contrastive pair for the maintainer. State writes are atomic
+  (`fs-atomic.ts`).
 
 Go/no-go recurrence analysis (2026-08-31, live journal): 822 tool-bearing
 complete runs; recurring failure clusters exist (55-run exec cluster,
@@ -366,8 +400,13 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   the Phase 3 proposer slots in after). Degradation contract: no LLM or
   no journal → clean no-op; no new traces → zero LLM spend; unparseable
   maintainer output → nothing written and the cursor holds so the window
-  retries; anything that throws → caught, logged at `warn`, reported as
-  reason `error`. **PLAN-44 Phase 0:** every attempt (no-op, parse-failed,
+  retries, up to `MAX_PARSE_FAILURES` (3) consecutive failures at one
+  cursor, after which the window is skipped (one prose-inducing trace must
+  not pin the loop); housekeeping (gate, lint, publish) runs on the
+  parse-failed path too; anything that throws → caught, logged at `warn`,
+  reported as reason `error`. If the dedicated proposer lane cannot
+  resolve its model, the proposer re-runs on the evolution lane rather
+  than losing the iteration. **PLAN-44 Phase 0:** every attempt (no-op, parse-failed,
   crashed) appends one JSON record to `skill-wiki/iterations.jsonl`
   (`iteration-log.ts`: sampler stats, cursor range, maintainer
   created/updated/dropped + parse issues, proposer turns/reads/protocol
@@ -421,7 +460,10 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   **PLAN-44 Phase 0 (D-1):** when neither `proposerModel` nor `judgeModel`
   is set, the Skill Proposer runs on the agent's primary model (the cheap
   lane failed its own JSON protocol in 3 of 5 live iterations); the RPC
-  reports `proposerModelSource`.
+  reports `proposerModelSource` and `proposerModelEffective`. The `user`
+  journal stream is emitted once per run (retries dedupe) by the embedded
+  runner, the CLI-provider path, and the gateway `agent` command's CLI
+  branch, and is never broadcast to WebSocket clients.
 - Dream-engine hook `maybeRunSkillEvolutionPass` (curator pattern):
   cadence-gated at `skills.evolution.cadenceHours` (default 24h) via the
   persisted sampler-state timestamp + an in-memory attempt throttle; runs

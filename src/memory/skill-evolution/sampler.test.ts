@@ -40,7 +40,7 @@ describe("sampleIteration", () => {
   it("enforces the paper's stratified budget: <=5 fail + <=3 pass, <=8 total", async () => {
     const journal = makeFixtureJournal();
     for (const id of findRunIds(10, false, "fail")) {
-      appendFixtureRun(journal, { runId: id, steps: failSteps(), terminal: "error" });
+      appendFixtureRun(journal, { runId: id, steps: failSteps() });
     }
     for (const id of findRunIds(6, false, "pass")) {
       appendFixtureRun(journal, {
@@ -61,7 +61,7 @@ describe("sampleIteration", () => {
   it("never samples held-out runs (reserved for the validation gate)", async () => {
     const journal = makeFixtureJournal();
     for (const id of findRunIds(4, true, "ho")) {
-      appendFixtureRun(journal, { runId: id, steps: failSteps(), terminal: "error" });
+      appendFixtureRun(journal, { runId: id, steps: failSteps() });
     }
     const result = await sampleIteration(journal, { cursorSeq: 0 });
     expect(result.samples).toHaveLength(0);
@@ -81,13 +81,11 @@ describe("sampleIteration", () => {
       runId: probeId,
       sessionKey: "agent:main:probe-x1",
       steps: failSteps(),
-      terminal: "error",
     });
     appendFixtureRun(journal, {
       runId: evolveId,
       sessionKey: "skill-evolve:validation",
       steps: failSteps(),
-      terminal: "error",
     });
     appendFixtureRun(journal, {
       runId: toolless,
@@ -99,13 +97,11 @@ describe("sampleIteration", () => {
       runId: a2aId,
       sessionKey: "agent:main:a2a-task:0f9e8d7c",
       steps: failSteps(),
-      terminal: "error",
     });
     appendFixtureRun(journal, {
       runId: genuine,
       sessionKey: "agent:main:main",
       steps: failSteps(),
-      terminal: "error",
     });
     const result = await sampleIteration(journal, { cursorSeq: 0 });
     expect(result.samples.map((s) => s.trace.runId)).toEqual([genuine]);
@@ -131,7 +127,7 @@ describe("sampleIteration", () => {
     // Clean end without complete(): weak pass -> judge consulted.
     appendFixtureRun(journal, { runId: ambiguous, steps: passSteps() });
     // Lifecycle error: confident fail -> judge skipped.
-    appendFixtureRun(journal, { runId: confident, steps: failSteps(), terminal: "error" });
+    appendFixtureRun(journal, { runId: confident, steps: failSteps() });
     let calls = 0;
     const result = await sampleIteration(journal, {
       cursorSeq: 0,
@@ -171,7 +167,14 @@ describe("cursor safety (PLAN-44 I2)", () => {
     let seq = 0;
     const emit = (runId: string, stream: string, data: Record<string, unknown>) => {
       seq += 1;
-      journal.append({ runId, seq, stream, ts: Date.now() + seq, data });
+      journal.append({
+        runId,
+        seq,
+        stream,
+        ts: Date.now() + seq,
+        data,
+        sessionKey: "agent:main:main",
+      });
     };
     emit(longId, "lifecycle", { phase: "start" });
     for (const id of shortIds) {
@@ -184,7 +187,7 @@ describe("cursor safety (PLAN-44 I2)", () => {
         isError: true,
         result: "boom",
       });
-      emit(id, "lifecycle", { phase: "error", error: "x" });
+      emit(id, "lifecycle", { phase: "end" });
     }
     emit(longId, "tool", { phase: "start", name: "exec", toolCallId: "c-long", args: {} });
     emit(longId, "tool", {
@@ -200,9 +203,10 @@ describe("cursor safety (PLAN-44 I2)", () => {
     expect(first.samples.map((s) => s.trace.runId)).toEqual([shortIds[0], shortIds[1]]);
     // The cursor stops before the third short run's first event — and well
     // before the long run's true last event.
+    // The long run started at seq 1 and was cut by maxRuns, so the cursor
+    // cannot move at all without losing it: it holds.
     const thirdFirstSeq = 1 + 2 * 4 + 1;
     expect(first.nextCursorSeq).toBeLessThan(thirdFirstSeq);
-    expect(first.nextCursorSeq).toBeGreaterThan(0);
 
     const second = await sampleIteration(journal, {
       cursorSeq: first.nextCursorSeq,
@@ -211,9 +215,18 @@ describe("cursor safety (PLAN-44 I2)", () => {
     });
     const ids = second.samples.map((s) => s.trace.runId);
     expect(ids).toContain(shortIds[2]);
-    // Straddling runs already examined are not re-sampled.
+    // Straddling runs already examined are not re-sampled...
     expect(ids).not.toContain(shortIds[0]);
     expect(ids).not.toContain(shortIds[1]);
+    // ...and the long run is examined once it is among the oldest unprocessed.
+    const third = await sampleIteration(journal, {
+      cursorSeq: second.nextCursorSeq,
+      maxRunsExamined: 2,
+      processedRunIds: second.processedRunIds,
+    });
+    const all = [...ids, ...third.samples.map((s) => s.trace.runId)];
+    expect(all).toContain(longId);
+    expect(third.nextCursorSeq).toBeGreaterThan(0);
   });
 
   it("defers in-flight runs to the pending list and re-examines them once complete", async () => {
@@ -231,7 +244,8 @@ describe("cursor safety (PLAN-44 I2)", () => {
       seq: 99,
       stream: "lifecycle",
       ts: Date.now(),
-      data: { phase: "error", error: "late failure" },
+      data: { phase: "end" },
+      sessionKey: "agent:main:main",
     });
     const second = await sampleIteration(journal, {
       cursorSeq: first.nextCursorSeq,
@@ -264,21 +278,18 @@ describe("cursor safety (PLAN-44 I2)", () => {
       sessionKey: "agent:main:main",
       task: { text: "heartbeat", isHeartbeat: true },
       steps: failSteps(),
-      terminal: "error",
     });
     appendFixtureRun(journal, {
       runId: circle,
       sessionKey: "agent:main:circle:c1",
       task: { text: "post this to the circle" },
       steps: failSteps(),
-      terminal: "error",
     });
     appendFixtureRun(journal, {
       runId: human,
       sessionKey: "agent:main:main",
       task: { text: "fix the build" },
       steps: failSteps(),
-      terminal: "error",
     });
     const result = await sampleIteration(journal, { cursorSeq: 0 });
     expect(result.samples.map((s) => s.trace.runId)).toEqual([human]);

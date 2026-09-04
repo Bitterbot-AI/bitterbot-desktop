@@ -24,6 +24,9 @@ export const USER_TURN_EVENT_MAX_CHARS = 4_000;
  * keeps the first. Origin/trust is derived from the session key at read
  * time (src/memory/skill-evolution/run-origin.ts), never trusted from here.
  */
+const userTurnEmitted = new Set<string>();
+const USER_TURN_EMITTED_MAX = 2_000;
+
 export function emitUserTurnEvent(params: {
   runId: string;
   text: string;
@@ -31,6 +34,19 @@ export function emitUserTurnEvent(params: {
   isHeartbeat?: boolean;
   channel?: string;
 }) {
+  // Once per run: failover / compaction retries re-enter the runner with
+  // the same runId (adversarial M3). Bounded FIFO so the set cannot grow
+  // with process lifetime.
+  if (userTurnEmitted.has(params.runId)) {
+    return;
+  }
+  userTurnEmitted.add(params.runId);
+  if (userTurnEmitted.size > USER_TURN_EMITTED_MAX) {
+    const oldest = userTurnEmitted.values().next().value;
+    if (oldest !== undefined) {
+      userTurnEmitted.delete(oldest);
+    }
+  }
   const text = params.text ?? "";
   emitAgentEvent({
     runId: params.runId,

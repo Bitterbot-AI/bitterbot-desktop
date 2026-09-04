@@ -3143,6 +3143,8 @@ export class DreamEngine {
       log.info(
         `skill evolution pass: no new traces (cursor ${result.cursorBefore ?? "?"} -> ${result.cursorAfter ?? "?"}; examined ${result.samplerStats?.runsExamined ?? 0})`,
       );
+    } else if (result.reason === "error") {
+      log.warn(`skill evolution pass crashed: ${result.error ?? "(no detail)"}`);
     } else if (result.reason) {
       log.debug(`skill evolution pass skipped: ${result.reason}`);
     }

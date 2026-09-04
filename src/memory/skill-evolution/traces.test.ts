@@ -5,6 +5,7 @@ import {
   listRunsSince,
   listRunsSinceDetailed,
   reconstructTrace,
+  runHasTerminal,
   TRACE_LOG_MAX_CHARS,
 } from "./traces.js";
 
@@ -205,5 +206,51 @@ describe("listRunsSinceDetailed", () => {
     const full = await listRunsSinceDetailed(journal, { sinceSeq: 0 });
     expect(full.runs.find((r) => r.runId === "c")?.hasTerminal).toBe(false);
     expect(full.deferredMinFirstSeq).toBeNull();
+  });
+});
+
+// PLAN-44 adversarial H3: retried attempts share a runId and emit several starts.
+describe("retried attempts (multiple lifecycle starts)", () => {
+  it("runHasTerminal is truthful and a later attempt clears an earlier error", async () => {
+    const journal = makeFixtureJournal();
+    let seq = 0;
+    const emit = (stream: string, data: Record<string, unknown>) => {
+      seq += 1;
+      journal.append({ runId: "retry", seq, stream, ts: seq, data, sessionKey: "agent:main:main" });
+    };
+    emit("lifecycle", { phase: "start" });
+    emit("lifecycle", { phase: "error", error: "Connection error." });
+    emit("lifecycle", { phase: "start" });
+    // Two lifecycle rows seen but no terminal yet: the heuristic says
+    // "terminal", the truthful check says in flight...
+    let scan = await listRunsSinceDetailed(journal, { sinceSeq: 2 });
+    const partial = scan.runs.find((r) => r.runId === "retry")!;
+    expect(partial.hasTerminal).toBe(false);
+    emit("lifecycle", { phase: "start" });
+    scan = await listRunsSinceDetailed(journal, { sinceSeq: 2 });
+    const twoStarts = scan.runs.find((r) => r.runId === "retry")!;
+    expect(twoStarts.hasTerminal).toBe(true);
+    expect(runHasTerminal(journal, twoStarts)).toBe(false);
+    emit("tool", { phase: "start", name: "read", toolCallId: "c1", args: {} });
+    emit("tool", { phase: "result", name: "read", toolCallId: "c1", isError: false, result: "ok" });
+    emit("lifecycle", { phase: "end" });
+    scan = await listRunsSinceDetailed(journal, { sinceSeq: 0 });
+    expect(runHasTerminal(journal, scan.runs[0]!)).toBe(true);
+    const trace = await reconstructTrace(journal, "retry");
+    expect(trace?.endedWithError).toBe(false);
+    expect(trace?.isComplete).toBe(true);
+  });
+
+  it("skipRunIds keeps examined runs out of the cap but reports them", async () => {
+    const journal = makeFixtureJournal();
+    appendFixtureRun(journal, { runId: "a", steps: [{ kind: "tool", name: "t", result: "1" }] });
+    appendFixtureRun(journal, { runId: "b", steps: [{ kind: "tool", name: "t", result: "2" }] });
+    const scan = await listRunsSinceDetailed(journal, {
+      sinceSeq: 0,
+      maxRuns: 1,
+      skipRunIds: new Set(["a"]),
+    });
+    expect(scan.runs.map((r) => r.runId)).toEqual(["b"]);
+    expect(scan.skipped.map((r) => r.runId)).toEqual(["a"]);
   });
 });

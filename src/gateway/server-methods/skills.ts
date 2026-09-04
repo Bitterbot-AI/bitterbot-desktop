@@ -9,6 +9,7 @@ import {
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../../agents/agent-scope.js";
+import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { installSkill } from "../../agents/skills-install.js";
 import { withTimeout } from "../../utils/with-timeout.js";
 
@@ -1314,6 +1315,17 @@ export const skillsHandlers: GatewayRequestHandlers = {
             : evo.judgeModel
               ? "judgeModel"
               : "agent-primary",
+          proposerModelEffective:
+            evo.proposerModel ??
+            evo.judgeModel ??
+            (() => {
+              try {
+                const ref = resolveDefaultModelForAgent({ cfg });
+                return `${ref.provider}/${ref.model}`;
+              } catch {
+                return null;
+              }
+            })(),
           wikiMaxPatterns: evo.wikiMaxPatterns ?? 100,
           semanticLintCadenceDays: evo.semanticLintCadenceDays ?? 7,
           propagate: evo.propagate !== false,

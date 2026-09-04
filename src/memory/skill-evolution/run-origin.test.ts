@@ -13,6 +13,10 @@ describe("classifyRunOrigin (PLAN-44 D-6)", () => {
     expect(classifyRunOrigin("agent:main:guest:zz")).toBe("guest");
     expect(classifyRunOrigin("agent:main:group:g1")).toBe("guest");
     expect(classifyRunOrigin("agent:main:cron:nightly")).toBe("system");
+    expect(classifyRunOrigin("agent:main:hook:abc")).toBe("guest");
+    expect(classifyRunOrigin("hook:abc")).toBe("unknown");
+    expect(classifyRunOrigin("agent:main:openai:uuid")).toBe("human");
+    expect(classifyRunOrigin("agent:main:whatsapp:direct:+15551234567")).toBe("human");
     expect(classifyRunOrigin("skill-evolve:validation")).toBe("unknown");
     expect(classifyRunOrigin(null)).toBe("unknown");
     expect(classifyRunOrigin("")).toBe("unknown");
@@ -23,11 +27,10 @@ describe("classifyRunOrigin (PLAN-44 D-6)", () => {
     expect(classifyRunOrigin("AGENT:main:CIRCLE:1")).toBe("circle");
   });
 
-  it("admits human, system and unknown; refuses every third-party class", () => {
+  it("admits human and system only; fails closed on unknown and every third-party class", () => {
     expect(isLearnableOrigin("human")).toBe(true);
     expect(isLearnableOrigin("system")).toBe(true);
-    expect(isLearnableOrigin("unknown")).toBe(true);
-    for (const o of ["circle", "a2a", "subagent", "guest"] as const) {
+    for (const o of ["unknown", "circle", "a2a", "subagent", "guest"] as const) {
       expect(isLearnableOrigin(o)).toBe(false);
     }
   });

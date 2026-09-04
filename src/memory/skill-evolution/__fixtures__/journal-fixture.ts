@@ -14,7 +14,8 @@ export function makeFixtureJournal(): EventJournal {
 
 export interface FixtureRunOptions {
   runId: string;
-  sessionKey?: string;
+  /** Defaults to the production main-session shape; pass null for a keyless run. */
+  sessionKey?: string | null;
   taskId?: string;
   /** Steps in emission order. */
   steps?: Array<
@@ -47,6 +48,7 @@ let toolCallCounter = 0;
 export function appendFixtureRun(journal: EventJournal, opts: FixtureRunOptions): void {
   let runSeq = 0;
   let ts = opts.tsBase ?? Date.now();
+  const sessionKey = opts.sessionKey === undefined ? "agent:main:main" : opts.sessionKey;
   const emit = (stream: string, data: Record<string, unknown>) => {
     runSeq += 1;
     ts += 10;
@@ -56,12 +58,13 @@ export function appendFixtureRun(journal: EventJournal, opts: FixtureRunOptions)
       stream,
       ts,
       data,
-      ...(opts.sessionKey ? { sessionKey: opts.sessionKey } : {}),
+      ...(sessionKey ? { sessionKey } : {}),
       ...(opts.taskId ? { taskId: opts.taskId } : {}),
     });
   };
 
-  emit("lifecycle", { phase: "start", startedAt: ts });
+  // Production order: the runner journals the task BEFORE the attempt's
+  // lifecycle start (pi-embedded-runner/run.ts).
   if (opts.task) {
     emit("user", {
       text: opts.task.text,
@@ -70,6 +73,7 @@ export function appendFixtureRun(journal: EventJournal, opts: FixtureRunOptions)
       ...(opts.task.channel ? { channel: opts.task.channel } : {}),
     });
   }
+  emit("lifecycle", { phase: "start", startedAt: ts });
   for (const step of opts.steps ?? []) {
     if (step.kind === "assistant") {
       // Streamed: cumulative text per event, like the production handler.

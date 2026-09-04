@@ -23,14 +23,23 @@
  *     event of a run the scan saw but this iteration did not examine
  *     (interleaved runs were being skipped forever).
  *   - In-flight runs are DEFERRED to a bounded `pending` list and
- *     re-examined next iteration instead of being lost (the old comment
- *     claimed they "resurface"; they were excluded as tool-less).
+ *     re-examined next iteration instead of being lost.
  *   - A bounded ring of examined run ids prevents a run that straddles the
  *     horizon from being sampled twice.
+ *
+ * PLAN-44 Phase 1 diversity (audit: one live iteration spent all five
+ * failure slots on identical heartbeat curls):
+ *   - `env-fail` traces never take a failure slot (they go to the corpus
+ *     miner when human-authored).
+ *   - A trace with the same task text AND tool-sequence shape as an
+ *     already-selected trace is skipped (heartbeat monoculture).
+ *   - Oldest-first within the 14-day window (recency comes from the
+ *     fast-forward floor; reordering would pin the cursor).
+ *   - Selected traces that ran the same task text with opposite outcomes
+ *     are marked as a contrastive pair.
  */
 
-import fs from "node:fs/promises";
-import path from "node:path";
+import { createHash } from "node:crypto";
 import type { EventJournal } from "../../infra/event-journal.js";
 import type {
   IterationSample,
@@ -39,21 +48,35 @@ import type {
   ReconstructedTrace,
   SamplerStats,
 } from "./types.js";
-import { resolveWikiDir } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { isA2aTaskSessionKey } from "../../sessions/session-key-utils.js";
 import { hashBucket } from "../skill-execution-selection.js";
-import { atomicWriteJson } from "./fs-atomic.js";
 import { type JudgeCallFn, labelTrace } from "./labeler.js";
 import { classifyRunOrigin, isLearnableOrigin } from "./run-origin.js";
+import { PENDING_MAX, PROCESSED_RING_MAX } from "./sampler-state.js";
 import {
   formatTraceLog,
   listRunsSinceDetailed,
   MAX_RECONSTRUCT_EVENTS,
   reconstructTrace,
+  runHasTerminal,
 } from "./traces.js";
 
 const log = createSubsystemLogger("skill-evolution/sampler");
+
+// State I/O lives in sampler-state.ts; re-exported so callers keep one import.
+export {
+  MAX_PARSE_FAILURES,
+  PENDING_MAX,
+  PROCESSED_RING_MAX,
+  readSamplerCursor,
+  readSamplerState,
+  type SamplerState,
+  type SamplerStateOptions,
+  writeSamplerCursor,
+  writeSamplerState,
+} from "./sampler-state.js";
 
 /** Paper Appendix C budgets. */
 export const MAX_TRACES_PER_ITERATION = 8;
@@ -66,101 +89,27 @@ export const RUN_HELD_OUT_FRACTION = 0.2;
 /** Runs examined per iteration before giving up on filling the budget. */
 const MAX_RUNS_EXAMINED = 40;
 
-/** PLAN-44 Phase 0: pending-list bounds. */
-export const PENDING_MAX = 50;
+/** PLAN-44 Phase 0: pending-list TTL (bounds live in sampler-state.ts). */
 export const PENDING_TTL_MS = 3 * 24 * 60 * 60 * 1000;
-/** PLAN-44 Phase 0: anti-rescan ring of examined run ids. */
-export const PROCESSED_RING_MAX = 200;
 
-const SAMPLER_STATE_FILENAME = ".sampler-state.json";
+/** PLAN-44 Phase 1: diversity bounds. */
+export const MAX_ENV_FAIL_TEXTS = 3;
 
 /**
  * Session-key patterns whose runs evolution must never learn from: its own
  * validation rollouts, doctor probes, and (defensively) anything tagged as
  * an evolution session. Substring match on sessionKey.
  */
-export const DEFAULT_EXCLUDED_SESSION_PATTERNS = [":probe-", "skill-evolve", "cron:skill-evolve"];
+export const DEFAULT_EXCLUDED_SESSION_PATTERNS = [
+  ":probe-",
+  "doctor-probe-",
+  "skill-evolve",
+  "cron:skill-evolve",
+];
 
 /** Deterministic: is this run reserved for validation (never sampled)? */
 export function isRunHeldOut(runId: string): boolean {
   return hashBucket(runId) < Math.floor(RUN_HELD_OUT_FRACTION * 100);
-}
-
-export interface SamplerStateOptions {
-  /** Defaults to CONFIG_DIR (state lives beside the wiki). Tests override. */
-  configDir?: string;
-}
-
-export interface SamplerState {
-  cursorSeq: number;
-  updatedAt: number;
-  /** PLAN-44 Phase 0: in-flight runs awaiting a terminal event. */
-  pending: PendingRun[];
-  /** PLAN-44 Phase 0: recently examined run ids (anti-rescan). */
-  processed: string[];
-}
-
-function samplerStatePath(opts: SamplerStateOptions): string {
-  return path.join(resolveWikiDir(opts), SAMPLER_STATE_FILENAME);
-}
-
-function num(v: unknown): number {
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
-}
-
-export async function readSamplerState(opts: SamplerStateOptions = {}): Promise<SamplerState> {
-  try {
-    const raw = await fs.readFile(samplerStatePath(opts), "utf-8");
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const pending = Array.isArray(parsed.pending)
-      ? parsed.pending
-          .filter(
-            (p): p is { runId: string; firstSeenAt: number } =>
-              !!p &&
-              typeof p === "object" &&
-              typeof (p as { runId?: unknown }).runId === "string" &&
-              typeof (p as { firstSeenAt?: unknown }).firstSeenAt === "number",
-          )
-          .map((p) => ({ runId: p.runId, firstSeenAt: p.firstSeenAt }))
-      : [];
-    const processed = Array.isArray(parsed.processed)
-      ? parsed.processed.filter((p): p is string => typeof p === "string")
-      : [];
-    return {
-      cursorSeq: num(parsed.cursorSeq),
-      updatedAt: num(parsed.updatedAt),
-      pending: pending.slice(-PENDING_MAX),
-      processed: processed.slice(-PROCESSED_RING_MAX),
-    };
-  } catch {
-    return { cursorSeq: 0, updatedAt: 0, pending: [], processed: [] };
-  }
-}
-
-export async function readSamplerCursor(opts: SamplerStateOptions = {}): Promise<number> {
-  return (await readSamplerState(opts)).cursorSeq;
-}
-
-/** Atomic; stamps updatedAt (the dream engine's cadence gate reads it). */
-export async function writeSamplerState(
-  state: Omit<SamplerState, "updatedAt">,
-  opts: SamplerStateOptions = {},
-): Promise<void> {
-  await atomicWriteJson(samplerStatePath(opts), {
-    cursorSeq: state.cursorSeq,
-    updatedAt: Date.now(),
-    pending: state.pending.slice(-PENDING_MAX),
-    processed: state.processed.slice(-PROCESSED_RING_MAX),
-  });
-}
-
-/** Cursor-only update that PRESERVES the pending list and processed ring. */
-export async function writeSamplerCursor(
-  cursorSeq: number,
-  opts: SamplerStateOptions = {},
-): Promise<void> {
-  const prev = await readSamplerState(opts);
-  await writeSamplerState({ cursorSeq, pending: prev.pending, processed: prev.processed }, opts);
 }
 
 export interface SampleIterationOptions {
@@ -178,6 +127,40 @@ export interface SampleIterationOptions {
   processedRunIds?: string[];
   /** Clock override (tests). */
   now?: number;
+}
+
+/** Tool-name sequence hash (errored calls marked): the trace's SHAPE. */
+export function toolSequenceHash(trace: ReconstructedTrace): string {
+  const seq = trace.steps
+    .filter((s) => s.kind === "tool")
+    .map((s) => (s.kind === "tool" ? `${s.name}${s.isError ? "!" : ""}` : ""))
+    .join(">");
+  return createHash("sha1").update(seq).digest("hex").slice(0, 12);
+}
+
+/**
+ * Dedupe identity: the same TASK executed with the same SHAPE teaches the
+ * same lesson (the audit's monoculture case: five identical heartbeat
+ * curls). Different tasks that happen to share a shape ("one exec that
+ * failed" is the most common live shape) are different lessons, so
+ * without a task header there is no dedupe — the per-session cap still
+ * applies.
+ */
+export function sampleDedupeKey(trace: ReconstructedTrace): string | null {
+  const task = taskTextHash(trace);
+  return task ? `${task}:${toolSequenceHash(trace)}` : null;
+}
+
+/** Task identity for contrastive pairing: strip the "[date] " prefix, whitespace, case. */
+export function taskTextHash(trace: ReconstructedTrace): string | null {
+  const text = trace.task?.text
+    ?.replace(/^\s*\[[^\]]{0,60}\]\s*/, "")
+    .trim()
+    .toLowerCase();
+  if (!text) {
+    return null;
+  }
+  return createHash("sha1").update(text.replace(/\s+/g, " ")).digest("hex").slice(0, 12);
 }
 
 /**
@@ -205,26 +188,50 @@ export async function sampleIteration(
     runsUntrustedOrigin: 0,
     pendingReexamined: 0,
     runsWithTask: 0,
+    envFails: 0,
+    runsInjected: 0,
+    runsDeduped: 0,
+    pairs: 0,
   };
 
   const fails: LabeledTrace[] = [];
   const passes: LabeledTrace[] = [];
+  const envFailTexts: string[] = [];
+  const selectedShapes = new Set<string>();
   const budgetFull = () =>
     fails.length >= MAX_FAILING_TRACES && passes.length >= MAX_PASSING_TRACES;
 
-  /** Exclusions + labeling + selection for one COMPLETE, reconstructed trace. */
-  const admit = async (trace: ReconstructedTrace): Promise<void> => {
+  /**
+   * Exclusions + labeling + selection for one COMPLETE, reconstructed trace.
+   * "budget" = the trace was fine but its slot is full; the caller must NOT
+   * count it as processed (it bounds the cursor and is sampled next time).
+   */
+  type AdmitOutcome = "selected" | "dropped" | "budget";
+  const admit = async (trace: ReconstructedTrace): Promise<AdmitOutcome> => {
     if (trace.task) {
       stats.runsWithTask += 1;
     }
     if (trace.toolCallCount === 0) {
       stats.runsExcluded += 1;
-      return;
+      return "dropped";
     }
     if (trace.task?.isHeartbeat) {
       stats.runsHeartbeat += 1;
       stats.runsExcluded += 1;
-      return;
+      return "dropped";
+    }
+    // PLAN-44 (adversarial H1): a task text that reads as an instruction
+    // override never reaches the maintainer, the judge, or the proposer.
+    if (trace.task) {
+      const scan = scanSkillForInjection(trace.task.text);
+      if (scan.severity === "critical" || scan.severity === "medium") {
+        stats.runsInjected += 1;
+        stats.runsExcluded += 1;
+        log.warn(
+          `run ${trace.runId} excluded: task text flagged ${scan.severity} (${scan.reason})`,
+        );
+        return "dropped";
+      }
     }
     const key = trace.sessionKey ?? "";
     // PLAN-44 Phase 0 (D-6): third-party-authored tasks never reach the
@@ -234,18 +241,28 @@ export async function sampleIteration(
     if (!isLearnableOrigin(origin)) {
       stats.runsUntrustedOrigin += 1;
       stats.runsExcluded += 1;
-      return;
+      return "dropped";
     }
     if (excluded.some((pattern) => key.includes(pattern))) {
       stats.runsExcluded += 1;
-      return;
+      return "dropped";
     }
     // PLAN-43 Phase 1 (R2): inbound A2A task runs are driven by a REMOTE
     // caller — prime tool-bearing sampler fodder, and exactly the traces
     // evolution must never learn from. Key-shape check, not a substring.
     if (isA2aTaskSessionKey(key)) {
       stats.runsExcluded += 1;
-      return;
+      return "dropped";
+    }
+    // PLAN-44 Phase 1: the dedupe gate runs BEFORE labeling (labeling may
+    // call the judge; do not spend it on a trace we would drop anyway). No
+    // per-session cap: on a real node most legitimate runs share the main
+    // session key, so a cap would starve the sampler of exactly the traces
+    // it should learn from; task+shape dedupe handles the monoculture case.
+    const dedupeKey = sampleDedupeKey(trace);
+    if (dedupeKey && selectedShapes.has(dedupeKey)) {
+      stats.runsDeduped += 1;
+      return "dropped";
     }
     const wantFail = fails.length < MAX_FAILING_TRACES;
     const wantPass = passes.length < MAX_PASSING_TRACES;
@@ -256,14 +273,27 @@ export async function sampleIteration(
     }
     if (label.label === "unknown") {
       stats.runsUnknownLabel += 1;
-      return;
+      return "dropped";
+    }
+    if (label.label === "env-fail") {
+      // Not maintainer material. A human task that hit an outage is still
+      // a real capability to draft a corpus task from.
+      stats.envFails += 1;
+      if (origin === "human" && envFailTexts.length < MAX_ENV_FAIL_TEXTS) {
+        envFailTexts.push(formatTraceLog(trace));
+      }
+      return "dropped";
     }
     const target = label.label === "fail" ? fails : passes;
     const cap = label.label === "fail" ? MAX_FAILING_TRACES : MAX_PASSING_TRACES;
     if (target.length >= cap) {
-      return;
+      return "budget";
     }
     target.push({ trace, label, formattedLog: formatTraceLog(trace) });
+    if (dedupeKey) {
+      selectedShapes.add(dedupeKey);
+    }
+    return "selected";
   };
 
   const processedBefore = new Set(opts.processedRunIds ?? []);
@@ -272,9 +302,15 @@ export async function sampleIteration(
 
   // 1. Re-examine runs deferred as in-flight by earlier iterations. They
   //    do not move the cursor (their early events are already behind it).
-  const pendingIn = (opts.pending ?? [])
-    .filter((p) => now - p.firstSeenAt <= PENDING_TTL_MS)
+  const pendingAll = opts.pending ?? [];
+  const pendingIn = pendingAll
+    .filter((p) => Math.abs(now - p.firstSeenAt) <= PENDING_TTL_MS)
     .slice(-PENDING_MAX);
+  if (pendingIn.length < pendingAll.length) {
+    log.info(
+      `pending list: dropped ${pendingAll.length - pendingIn.length} expired/overflow run(s)`,
+    );
+  }
   const pendingIds = new Set(pendingIn.map((p) => p.runId));
   for (const p of pendingIn) {
     if (budgetFull()) {
@@ -291,16 +327,31 @@ export async function sampleIteration(
       continue;
     }
     stats.runsExamined += 1;
+    if ((await admit(trace)) === "budget") {
+      pendingOut.push(p); // slot full: keep it for next iteration
+      continue;
+    }
     processedOut.push(p.runId);
-    await admit(trace);
   }
 
-  // 2. Scan forward from the cursor.
+  // 2. Scan forward from the cursor, OLDEST FIRST. Recency comes from the
+  //    14-day fast-forward floor (evolution-pass.ts), not from reordering:
+  //    examining newest-first would leave the oldest run unexamined every
+  //    iteration and pin the cursor behind it. Runs left unexamined when
+  //    the budget fills bound the cursor and are picked up next iteration.
   const scan = await listRunsSinceDetailed(journal, {
     sinceSeq: opts.cursorSeq,
     maxRuns: opts.maxRunsExamined ?? MAX_RUNS_EXAMINED,
+    // Already-examined and pending runs do not consume the examination cap
+    // (adversarial: a cap filled by processed straddlers stalled the scan).
+    skipRunIds: new Set([...processedBefore, ...pendingIds]),
   });
   let maxProcessedLastSeq = opts.cursorSeq;
+  for (const run of scan.skipped) {
+    // Straddling a previous horizon, or handled via the pending list: the
+    // cursor may pass their window-bounded events.
+    maxProcessedLastSeq = Math.max(maxProcessedLastSeq, run.lastSeq);
+  }
   // Exclusive upper bound: the cursor must stay BELOW the first event of any
   // run this iteration did not examine.
   let bound = scan.deferredMinFirstSeq ?? Number.POSITIVE_INFINITY;
@@ -310,31 +361,31 @@ export async function sampleIteration(
       bound = Math.min(bound, run.firstSeq);
       continue;
     }
-    if (processedBefore.has(run.runId) || pendingIds.has(run.runId)) {
-      // Straddling a previous horizon, or handled via the pending list.
-      maxProcessedLastSeq = Math.max(maxProcessedLastSeq, run.lastSeq);
-      continue;
-    }
     stats.runsExamined += 1;
     if (isRunHeldOut(run.runId)) {
+      // Never sampled; the cursor passes it. Not ringed (the ring is for
+      // runs whose tail may straddle the horizon and get RE-SAMPLED;
+      // held-out runs are refused by hash every time).
       stats.runsHeldOut += 1;
       maxProcessedLastSeq = Math.max(maxProcessedLastSeq, run.lastSeq);
-      processedOut.push(run.runId);
       continue;
     }
-    if (run.toolEvents === 0 && !run.hasTerminal) {
-      // Started, no tools yet, no terminal: in flight. Defer, don't skip.
+    if (run.toolEvents === 0 && !runHasTerminal(journal, run)) {
+      // Started, no tools yet, no terminal (truthful check: retried
+      // attempts emit several `start`s): in flight. Defer, don't skip.
       pendingOut.push({ runId: run.runId, firstSeenAt: now });
       maxProcessedLastSeq = Math.max(maxProcessedLastSeq, run.lastSeq);
       continue;
     }
     // Metadata pre-filters (zero blob inflation): tool-less runs have
     // nothing to learn from; marathon runs are interactive sessions, not
-    // task executions. Neither is worth reconstructing.
+    // task executions. Neither is worth reconstructing — nor ringing: a
+    // tool-less run re-seen past the horizon is excluded again for free,
+    // and ringing ~600 heartbeats per fortnight evicted the ids the ring
+    // exists to protect (adversarial M1).
     if (run.toolEvents === 0 || run.totalEvents > MAX_RECONSTRUCT_EVENTS) {
       stats.runsExcluded += 1;
       maxProcessedLastSeq = Math.max(maxProcessedLastSeq, run.lastSeq);
-      processedOut.push(run.runId);
       continue;
     }
     const trace = await reconstructTrace(journal, run.runId, { skipMarathonRuns: true });
@@ -344,24 +395,51 @@ export async function sampleIteration(
       processedOut.push(run.runId);
       continue;
     }
+    if (!trace.isComplete) {
+      stats.runsIncomplete += 1;
+      pendingOut.push({ runId: run.runId, firstSeenAt: now });
+      maxProcessedLastSeq = Math.max(maxProcessedLastSeq, run.lastSeq);
+      continue;
+    }
+    if ((await admit(trace)) === "budget") {
+      // Slot full: not processed, and the cursor must not pass it.
+      bound = Math.min(bound, run.firstSeq);
+      continue;
+    }
     // Cursor bookkeeping uses the SCAN-BOUNDED lastSeq, never the run's true
     // last event, so a run that ended past the horizon cannot drag the
     // cursor over runs interleaved with it.
     maxProcessedLastSeq = Math.max(maxProcessedLastSeq, run.lastSeq);
-    if (!trace.isComplete) {
-      stats.runsIncomplete += 1;
-      pendingOut.push({ runId: run.runId, firstSeenAt: now });
-      continue;
-    }
     processedOut.push(run.runId);
-    await admit(trace);
   }
 
-  let next = Math.min(maxProcessedLastSeq, scan.horizonSeq);
-  if (bound - 1 > opts.cursorSeq) {
-    next = Math.min(next, bound - 1);
+  // No stall guard: if an unexamined run starts right after the cursor the
+  // cursor simply holds, and oldest-first examination reaches that run
+  // first next iteration (or defers it to pending if still in flight).
+  const nextCursorSeq = Math.max(
+    opts.cursorSeq,
+    Math.min(maxProcessedLastSeq, scan.horizonSeq, bound - 1),
+  );
+
+  // PLAN-44 Phase 1: contrastive pairs — same task text, opposite outcome.
+  const byTask = new Map<string, LabeledTrace[]>();
+  for (const s of [...fails, ...passes]) {
+    const h = taskTextHash(s.trace);
+    if (h) {
+      byTask.set(h, [...(byTask.get(h) ?? []), s]);
+    }
   }
-  const nextCursorSeq = Math.max(opts.cursorSeq, next);
+  for (const [h, group] of byTask) {
+    if (
+      group.some((s) => s.label.label === "fail") &&
+      group.some((s) => s.label.label === "pass")
+    ) {
+      for (const s of group) {
+        s.pairId = h;
+      }
+      stats.pairs += 1;
+    }
+  }
 
   stats.failsSelected = fails.length;
   stats.passesSelected = passes.length;
@@ -370,7 +448,7 @@ export async function sampleIteration(
     -PROCESSED_RING_MAX,
   );
   log.debug(
-    `sampled ${samples.length} traces (${fails.length} fail / ${passes.length} pass) from ${stats.runsExamined} runs; cursor ${opts.cursorSeq} -> ${nextCursorSeq}; pending ${pendingOut.length}`,
+    `sampled ${samples.length} traces (${fails.length} fail / ${passes.length} pass; ${stats.envFails} env-fail, ${stats.runsDeduped} deduped, ${stats.pairs} pairs) from ${stats.runsExamined} runs; cursor ${opts.cursorSeq} -> ${nextCursorSeq}; pending ${pendingOut.length}`,
   );
   return {
     samples,
@@ -378,5 +456,6 @@ export async function sampleIteration(
     stats,
     pending: pendingOut.slice(-PENDING_MAX),
     processedRunIds,
+    envFailTexts,
   };
 }

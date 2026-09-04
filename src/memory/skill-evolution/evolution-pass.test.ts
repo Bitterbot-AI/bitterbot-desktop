@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { appendFixtureRun, makeFixtureJournal } from "./__fixtures__/journal-fixture.js";
 import { buildIterationRecord, runEvolutionIteration } from "./evolution-pass.js";
 import { readRecentIterations } from "./iteration-log.js";
-import { isRunHeldOut, readSamplerCursor, readSamplerState } from "./sampler.js";
+import {
+  isRunHeldOut,
+  MAX_PARSE_FAILURES,
+  readSamplerCursor,
+  readSamplerState,
+} from "./sampler.js";
 import { readIndex, readPattern } from "./wiki-store.js";
 
 /** Non-held-out run ids for fixtures. */
@@ -53,7 +58,6 @@ describe("runEvolutionIteration", () => {
         steps: [
           { kind: "tool", name: "exec", args: { cmd: "curl x" }, result: "timeout", isError: true },
         ],
-        terminal: "error",
       });
     }
     for (const id of trainRunIds(2, "p")) {
@@ -97,6 +101,9 @@ describe("runEvolutionIteration", () => {
     expect(maintainerPrompt).toBeDefined();
     expect(maintainerPrompt).toContain("labeled FAIL");
     expect(maintainerPrompt).toContain("labeled PASS");
+    // PLAN-44 Phase 1: programmatic signals and the citation rule reach the model.
+    expect(maintainerPrompt).toContain("## Signals");
+    expect(maintainerPrompt).toContain("CITE these signals");
     // The proposer ran after maintenance in the same iteration (paper order)
     // and its no_action was honored.
     expect(result.proposer?.proposal.action).toBe("no_action");
@@ -145,6 +152,63 @@ describe("runEvolutionIteration", () => {
     expect(result).toMatchObject({ ran: true, reason: "maintainer-parse-failed" });
     expect(await readSamplerCursor({ configDir: tmpDir })).toBe(0);
     expect(await readIndex({ configDir: tmpDir })).toBe("");
+    expect((await readSamplerState({ configDir: tmpDir })).parseFailures).toEqual({
+      cursorSeq: 0,
+      count: 1,
+    });
+    // Housekeeping (gate / lint / publish) still ran on the parse-failed path.
+    expect(result.validation).toBeDefined();
+  });
+
+  // PLAN-44 adversarial C1 / I12: a window that never parses is skipped, not pinned.
+  it("skips the window after MAX_PARSE_FAILURES consecutive parse failures", async () => {
+    const journal = seedJournal();
+    let last: Awaited<ReturnType<typeof runEvolutionIteration>> | undefined;
+    for (let i = 0; i < MAX_PARSE_FAILURES; i++) {
+      last = await runEvolutionIteration({
+        journal,
+        llmCall: async () => "still prose",
+        storeOpts: { configDir: tmpDir },
+      });
+    }
+    expect(last?.reason).toBe("maintainer-parse-failed");
+    expect(last?.cursorAfter).toBeGreaterThan(0);
+    const state = await readSamplerState({ configDir: tmpDir });
+    expect(state.cursorSeq).toBe(last?.cursorAfter);
+    expect(state.parseFailures).toBeNull();
+    expect(state.processed.length).toBe(5);
+    // Next attempt finds nothing new: the window is behind the cursor.
+    const next = await runEvolutionIteration({
+      journal,
+      llmCall: async () => "still prose",
+      storeOpts: { configDir: tmpDir },
+    });
+    expect(next.reason).toBe("no-new-traces");
+  });
+
+  // PLAN-44 adversarial H4: a proposer lane that cannot resolve its model
+  // falls back to the evolution lane instead of losing the iteration.
+  it("falls back to the evolution lane when the proposer lane throws", async () => {
+    const journal = seedJournal();
+    let fallbackProposerCalls = 0;
+    const result = await runEvolutionIteration({
+      journal,
+      llmCall: async (prompt) => {
+        if (prompt.includes("Skill Proposer Agent")) {
+          fallbackProposerCalls += 1;
+          return JSON.stringify({ tool: "finish", proposal: { action: "no_action" } });
+        }
+        return "```json\n" + MAINTAINER_JSON + "\n```";
+      },
+      proposerLlmCall: async () => {
+        throw new Error("Cannot resolve model: anthropic/claude-opus-4-8");
+      },
+      storeOpts: { configDir: tmpDir },
+    });
+    expect(result.ran).toBe(true);
+    expect(result.reason).toBeUndefined();
+    expect(fallbackProposerCalls).toBeGreaterThan(0);
+    expect(result.proposer?.proposal.action).toBe("no_action");
   });
 
   it("fast-forwards a stale cursor past old history (learn from the recent past forward)", async () => {
@@ -154,14 +218,12 @@ describe("runEvolutionIteration", () => {
     appendFixtureRun(journal, {
       runId: staleId,
       steps: [{ kind: "tool", name: "exec", result: "old boom", isError: true }],
-      terminal: "error",
       tsBase: Date.now() - 30 * 24 * 60 * 60 * 1000,
     });
     // ...while a recent run is.
     appendFixtureRun(journal, {
       runId: freshId,
       steps: [{ kind: "tool", name: "exec", result: "new boom", isError: true }],
-      terminal: "error",
     });
     const result = await runEvolutionIteration({
       journal,
