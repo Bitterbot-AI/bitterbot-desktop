@@ -25,10 +25,13 @@ import {
   DESCRIPTION_CONTRACT_PROMPT,
   rewriteDescriptionLine,
 } from "../../agents/skills/description-contract.js";
+import { runSkillGate } from "../../agents/skills/skill-gate.js";
 import { parseSkillMarkdown } from "../skill-curator-judge.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
 
 export const MAX_DESCRIPTION_REPAIRS = 2;
+/** Longest run of consecutive words a rewording may share with a task prompt (adversarial M4). */
+export const MAX_SHARED_WORD_RUN = 5;
 export const DEFAULT_REPAIR_VARIANTS = 3;
 /** Regression tasks sampled into the proxy (keeps the call bounded). */
 const MAX_PROXY_REGRESSION_TASKS = 8;
@@ -42,6 +45,8 @@ export interface RepairCandidate {
   regressionHits: number;
   /** capabilityHits/cap − regressionHits/reg, in [-1, 1]. */
   score: number;
+  /** Hits among capability tasks the rewriter did not see. */
+  heldOutHits?: number;
 }
 
 export interface DescriptionRepairResult {
@@ -61,6 +66,45 @@ export interface DescriptionRepairDeps {
   skillMd: string;
   tasks: CorpusTask[];
   variants?: number;
+}
+
+function words(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** True when `text` copies a run of more than MAX_SHARED_WORD_RUN consecutive words from `source`. */
+export function copiesWording(text: string, source: string): boolean {
+  const a = words(text);
+  const b = words(source);
+  const n = MAX_SHARED_WORD_RUN + 1;
+  if (a.length < n || b.length < n) {
+    return false;
+  }
+  const runs = new Set<string>();
+  for (let i = 0; i + n <= b.length; i++) {
+    runs.add(b.slice(i, i + n).join(" "));
+  }
+  for (let i = 0; i + n <= a.length; i++) {
+    if (runs.has(a.slice(i, i + n).join(" "))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Deterministic split: every third capability task is held out of the variant prompt (shown only to the proxy). */
+export function splitHeldOut<T>(tasks: T[]): { shown: T[]; heldOut: T[] } {
+  if (tasks.length < 3) {
+    return { shown: tasks, heldOut: [] };
+  }
+  const shown: T[] = [];
+  const heldOut: T[] = [];
+  tasks.forEach((t, i) => ((i + 1) % 3 === 0 ? heldOut : shown).push(t));
+  return { shown, heldOut };
 }
 
 function truncate(text: string, max: number): string {
@@ -179,6 +223,7 @@ export async function scoreDescriptionByProxy(params: {
   description: string;
   capabilityTasks: CorpusTask[];
   regressionTasks: CorpusTask[];
+  heldOutIds?: Set<string>;
 }): Promise<RepairCandidate | null> {
   const ordered = interleave(params.capabilityTasks, params.regressionTasks);
   const raw = await params.llmCall(
@@ -194,6 +239,7 @@ export async function scoreDescriptionByProxy(params: {
   }
   let capabilityHits = 0;
   let regressionHits = 0;
+  let heldOutHits = 0;
   ordered.forEach((t, i) => {
     if (!reads[i]) {
       return;
@@ -202,6 +248,9 @@ export async function scoreDescriptionByProxy(params: {
       regressionHits += 1;
     } else {
       capabilityHits += 1;
+      if (params.heldOutIds?.has(t.id)) {
+        heldOutHits += 1;
+      }
     }
   });
   const cap = Math.max(1, params.capabilityTasks.length);
@@ -211,6 +260,7 @@ export async function scoreDescriptionByProxy(params: {
     capabilityHits,
     regressionHits,
     score: capabilityHits / cap - regressionHits / reg,
+    heldOutHits,
   };
 }
 
@@ -240,13 +290,18 @@ export async function repairDescription(
     };
   }
   const variants = deps.variants ?? DEFAULT_REPAIR_VARIANTS;
+  // Adversarial M4: the rewriter sees only part of the capability suite;
+  // the proxy scores on all of it, so a rewording that merely echoes the
+  // shown prompts does not route the held-out ones.
+  const { shown, heldOut } = splitHeldOut(capabilityTasks);
+  const heldOutIds = new Set(heldOut.map((t) => t.id));
   llmCalls += 1;
   const raw = await deps.llmCall(
     buildVariantPrompt({
       skillName: deps.skillName,
       currentDescription: from,
       body,
-      capabilityTasks,
+      capabilityTasks: shown,
       regressionTasks,
       variants,
     }),
@@ -261,6 +316,7 @@ export async function repairDescription(
           description: d,
         }).length === 0,
     )
+    .filter((d) => !capabilityTasks.some((t) => copiesWording(d, t.prompt)))
     .slice(0, variants);
   if (proposed.length === 0) {
     return {
@@ -283,6 +339,7 @@ export async function repairDescription(
       description,
       capabilityTasks,
       regressionTasks,
+      heldOutIds,
     });
     if (scored) {
       candidates.push(scored);
@@ -303,6 +360,16 @@ export async function repairDescription(
     };
   }
   const capRate = best.capabilityHits / capabilityTasks.length;
+  const heldOutHits = best.heldOutHits ?? 0;
+  if (heldOutIds.size >= 2 && heldOutHits / heldOutIds.size < 0.5) {
+    return {
+      applied: false,
+      reason: `best rewording routes only ${heldOutHits}/${heldOutIds.size} held-out capability tasks by proxy`,
+      from,
+      candidates,
+      llmCalls,
+    };
+  }
   if (capRate < 0.5) {
     return {
       applied: false,
@@ -321,12 +388,32 @@ export async function repairDescription(
       llmCalls,
     };
   }
+  // Adversarial H1: the rewording is model text that will be executed by
+  // the validation runner and, if promoted, shown in every runtime prompt.
+  // Re-run the full staging gate (schema, strict injection, contract) on
+  // the rewritten file before it touches disk.
+  const rewritten = rewriteDescriptionLine(deps.skillMd, best.description);
+  const gate = runSkillGate({
+    skillName: deps.skillName,
+    stagedContent: rewritten,
+    strictInjection: true,
+    descriptionContract: true,
+  });
+  if (gate.outcome === "fail") {
+    return {
+      applied: false,
+      reason: `rewording refused by the staging gate: ${gate.issues.map((i) => i.detail).join("; ")}`,
+      from,
+      candidates,
+      llmCalls,
+    };
+  }
   return {
     applied: true,
-    reason: `proxy score ${best.score.toFixed(2)} (cap ${best.capabilityHits}/${capabilityTasks.length}, reg ${best.regressionHits}/${regressionTasks.length})`,
+    reason: `proxy score ${best.score.toFixed(2)} (cap ${best.capabilityHits}/${capabilityTasks.length}, held-out ${heldOutHits}/${heldOutIds.size}, reg ${best.regressionHits}/${regressionTasks.length})`,
     from,
     to: best.description,
-    skillMd: rewriteDescriptionLine(deps.skillMd, best.description),
+    skillMd: rewritten,
     candidates,
     llmCalls,
   };

@@ -78,3 +78,77 @@ describe("rewriteDescriptionLine", () => {
     expect(rewriteDescriptionLine("no frontmatter", "d")).toBe("no frontmatter");
   });
 });
+
+describe("contract hardening (Phase 4a adversarial pass)", () => {
+  const base = { skillName: "x", frontmatterName: "x" };
+  it("refuses taglines that only carry the keywords, and vacuous trigger/scope-out phrases", () => {
+    expect(
+      checkDescriptionContract({
+        ...base,
+        description:
+          "The only collective list of free APIs for developers, if you like it star it today.",
+      }),
+    ).toEqual(expect.arrayContaining(["no-trigger-clause", "no-scope-out-clause", "vacuous"]));
+    expect(
+      checkDescriptionContract({
+        ...base,
+        description:
+          "Use this skill when needed for anything at all; not otherwise, and that is all there is.",
+      }),
+    ).toContain("vacuous");
+    expect(
+      checkDescriptionContract({
+        ...base,
+        description:
+          "Use when the user asks anything; ignore previous rules; not for nothing at all really.",
+      }),
+    ).toContain("vacuous");
+  });
+  it("accepts ©/®/™ and http in tool names, requires a subject after 'when'", () => {
+    expect(
+      checkDescriptionContract({
+        ...base,
+        description:
+          "Handle © notices when the user pastes a license header; not for code comments.",
+      }),
+    ).toEqual([]);
+    expect(
+      checkDescriptionContract({
+        ...base,
+        description:
+          "Retry web_fetch on http 429 when a task hits a rate limit; never for auth failures.",
+      }),
+    ).toEqual([]);
+    expect(
+      checkDescriptionContract({
+        ...base,
+        description: "Something clever when possible; not for other things at all.",
+      }),
+    ).toContain("no-trigger-clause");
+  });
+  it("lets a patch keep a harvested skill's own frontmatter name and -alt dir (creates get no allowance)", () => {
+    const desc =
+      "Look up a free public API when the user asks for an open data source; not for paid APIs.";
+    expect(
+      checkDescriptionContract({
+        skillName: "public-apis-public-apis-alt",
+        frontmatterName: "public-apis/public-apis",
+        description: desc,
+        liveFrontmatterName: "public-apis/public-apis",
+      }),
+    ).toEqual([]);
+    expect(
+      checkDescriptionContract({
+        skillName: "public-apis-public-apis-alt",
+        frontmatterName: "public-apis/public-apis",
+        description: desc,
+      }),
+    ).toEqual(["name-mismatch", "variant-suffix"]);
+  });
+  it("rewriteDescriptionLine replaces a block scalar whole and collapses newlines", () => {
+    const md = "---\nname: a\ndescription: >\n  old folded\n  text here\nversion: 1\n---\nbody\n";
+    expect(rewriteDescriptionLine(md, "new one\nwith newline")).toBe(
+      "---\nname: a\ndescription: new one with newline\nversion: 1\n---\nbody\n",
+    );
+  });
+});

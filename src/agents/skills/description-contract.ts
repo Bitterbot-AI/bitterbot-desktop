@@ -19,12 +19,21 @@ import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
 export const DESCRIPTION_MIN_CHARS = 40;
 export const DESCRIPTION_MAX_CHARS = 240;
 
-/** "when" / "whenever" / "if" — the situation the skill fires on. */
-const TRIGGER_RE = /\b(when|whenever|if)\b/i;
-/** A scoping word — what the skill is NOT for. */
-const SCOPE_OUT_RE = /\b(not|never|unless|except|only|don't|do not)\b/i;
+/**
+ * A trigger CLAUSE, not a keyword (adversarial H2: "if you like it" and
+ * "when needed" satisfied a bare `when|if` check): either "use/apply/open
+ * … when" or "when(ever) the/a/you/…", i.e. `when` followed by a subject.
+ */
+const TRIGGER_RE =
+  /\b(?:use|apply|open|read|load|trigger(?:s|ed)?|fire(?:s)?)\b[^.;]{0,80}\bwhen(?:ever)?\b|\bwhen(?:ever)?\s+(?:the|a|an|you|your|asked|running|handling|debugging|working|tasks?|users?|someone)\b/i;
+/** A scope-out CLAUSE: what the skill is not for. Bare `not`/`only` no longer count. */
+const SCOPE_OUT_RE =
+  /\b(?:not\s+(?:for|when|on|while|if)|never\s+(?:for|when|on)|unless|except\s+(?:when|for|on)|only\s+(?:when|if|for|on)|do(?:es)?\s+not\s+(?:use|apply|fire)|don't\s+(?:use|apply))\b/i;
+/** Phrases that satisfy the shape while saying nothing about routing. */
+const VACUOUS_RE =
+  /\b(?:when\s+(?:needed|required|necessary|appropriate|relevant|asked|applicable)|if\s+you\s+(?:like|want|wish)|not\s+(?:for\s+)?otherwise|not\s+for\s+(?:nothing|anything\s+else)|when\s+the\s+user\s+asks\s+(?:anything|for\s+anything))\b/i;
 /** URLs, emoji and maintainer chatter mark a copied tagline, not a trigger. */
-const NOISE_RE = /https?:\/\/|\[NOTE\b|\p{Extended_Pictographic}/u;
+const NOISE_RE = /https?:\/\/|\[NOTE\b|(?![©®™])\p{Extended_Pictographic}/u;
 
 export type DescriptionContractIssue =
   | "name-mismatch"
@@ -33,13 +42,14 @@ export type DescriptionContractIssue =
   | "no-trigger-clause"
   | "no-scope-out-clause"
   | "noise"
+  | "vacuous"
   | "variant-suffix";
 
 /** The rule text handed to every author (proposer prompt, crystallize tool). */
 export const DESCRIPTION_CONTRACT_PROMPT = [
   `Description contract (enforced by the gate; ${DESCRIPTION_MIN_CHARS}-${DESCRIPTION_MAX_CHARS} characters):`,
   "- Name the SITUATION that should trigger the skill with a 'when' clause (what the task looks like, which tool or error is involved).",
-  "- Name what it is NOT for with 'not', 'never', 'unless', 'except' or 'only', so a similar-looking task does not fire it.",
+  "- Name what it is NOT for with 'not for', 'never for', 'unless', 'except when' or 'only when', so a similar-looking task does not fire it. 'When needed' or 'not otherwise' say nothing and are refused.",
   "- Describe the situation class in your own words; never copy task wording, repo taglines, URLs or emoji.",
   "- The frontmatter name must equal the skill name; do not suffix variants with -alt.",
 ].join("\n");
@@ -48,13 +58,23 @@ export function checkDescriptionContract(params: {
   skillName: string;
   frontmatterName: string | undefined;
   description: string | undefined;
+  /**
+   * For a patch over an existing skill: the live file's own frontmatter
+   * name. Harvested skills carry `owner/repo` in a dir named `owner-repo`
+   * and some end in `-alt`; a patch must not be blocked for identity it
+   * did not choose (adversarial H3). Creates get no such allowance.
+   */
+  liveFrontmatterName?: string | null;
 }): DescriptionContractIssue[] {
   const issues: DescriptionContractIssue[] = [];
   const description = (params.description ?? "").trim();
-  if ((params.frontmatterName ?? "").trim() !== params.skillName) {
+  const fmName = (params.frontmatterName ?? "").trim();
+  const live = (params.liveFrontmatterName ?? "").trim();
+  const isPatch = live.length > 0;
+  if (fmName !== params.skillName && !(isPatch && fmName === live)) {
     issues.push("name-mismatch");
   }
-  if (params.skillName.endsWith("-alt")) {
+  if (params.skillName.endsWith("-alt") && !isPatch) {
     issues.push("variant-suffix");
   }
   if (description.length < DESCRIPTION_MIN_CHARS) {
@@ -71,6 +91,9 @@ export function checkDescriptionContract(params: {
   }
   if (NOISE_RE.test(description)) {
     issues.push("noise");
+  }
+  if (VACUOUS_RE.test(description)) {
+    issues.push("vacuous");
   }
   return issues;
 }
@@ -98,6 +121,8 @@ export function describeContractIssues(issues: DescriptionContractIssue[]): stri
     "no-scope-out-clause":
       "description has no 'not/never/unless/except/only' clause scoping it out",
     noise: "description carries a URL, emoji or copied maintainer note",
+    vacuous:
+      "description's trigger or scope-out says nothing ('when needed', 'if you like', 'not otherwise')",
     "variant-suffix": "skill name ends in -alt (indistinguishable variant)",
   };
   return issues.map((i) => text[i]).join("; ");
@@ -109,7 +134,8 @@ export function describeContractIssues(issues: DescriptionContractIssue[]): stri
  * otherwise misread it.
  */
 export function rewriteDescriptionLine(skillMd: string, description: string): string {
-  const value = /[:#"'\n]/.test(description) ? JSON.stringify(description) : description;
+  const single = description.replace(/\s+/g, " ").trim();
+  const value = /[:#"'\n]/.test(single) ? JSON.stringify(single) : single;
   const m = skillMd.match(/^---\n([\s\S]*?)\n---/);
   if (!m) {
     return skillMd;
@@ -118,7 +144,11 @@ export function rewriteDescriptionLine(skillMd: string, description: string): st
   const lines = front.split("\n");
   const idx = lines.findIndex((l) => /^description\s*:/.test(l));
   if (idx >= 0) {
-    lines[idx] = `description: ${value}`;
+    let end = idx + 1;
+    while (end < lines.length && /^\s+\S/.test(lines[end] as string)) {
+      end += 1; // continuation lines of a block/folded/multi-line scalar (adversarial M5)
+    }
+    lines.splice(idx, end - idx, `description: ${value}`);
   } else {
     lines.push(`description: ${value}`);
   }

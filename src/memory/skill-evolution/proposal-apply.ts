@@ -20,6 +20,7 @@ import {
   stagingSkillDir,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { parseSkillMarkdown } from "../skill-curator-judge.js";
 import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
 import { classifyRunOrigin } from "./run-origin.js";
 import { applyPatchOps, type ParseIssue } from "./wiki-store.js";
@@ -99,10 +100,13 @@ export function collectProposalEvidence(
   return { runIds, origins: [...origins].toSorted() };
 }
 
+/** Parsed YAML value, so quoting or block-scalar layout changes do not count as a change (adversarial M5/L8). */
 function frontmatterDescription(skillMd: string | null): string {
-  const m = skillMd?.match(/^---\n([\s\S]*?)\n---/);
-  const line = m?.[1]?.split("\n").find((l) => /^description\s*:/.test(l));
-  return line ? line.slice(line.indexOf(":") + 1).trim() : "";
+  if (!skillMd) {
+    return "";
+  }
+  const fm = (parseSkillMarkdown(skillMd)?.frontmatter ?? {}) as Record<string, unknown>;
+  return typeof fm.description === "string" ? fm.description.replace(/\s+/g, " ").trim() : "";
 }
 
 function descriptionChanged(live: string | null, next: string): boolean {

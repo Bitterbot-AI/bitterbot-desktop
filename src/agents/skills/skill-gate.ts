@@ -147,10 +147,14 @@ export function runSkillGate(input: GateInput): GateResult {
   }
   if (input.descriptionContract) {
     const fm = parsed.frontmatter as Record<string, unknown>;
+    const liveFm = input.liveContent
+      ? ((parseSkillMarkdown(input.liveContent)?.frontmatter ?? {}) as Record<string, unknown>)
+      : null;
     const contract = checkDescriptionContract({
       skillName: input.skillName,
       frontmatterName: typeof fm.name === "string" ? fm.name : undefined,
       description: typeof fm.description === "string" ? fm.description : undefined,
+      liveFrontmatterName: typeof liveFm?.name === "string" ? liveFm.name : null,
     });
     if (contract.length > 0) {
       issues.push({

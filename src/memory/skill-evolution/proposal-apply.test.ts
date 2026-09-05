@@ -108,3 +108,44 @@ describe("description contract on proposals (PLAN-44 Phase 4a)", () => {
     expect(desc.detail).toContain("description contract");
   });
 });
+
+describe("harvested skills stay patchable (Phase 4a adversarial H3)", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "proposal-harvest-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+  it("a compliant description rewrite over an owner/repo-named -alt skill stages", async () => {
+    const { liveSkillPath, resolveStorageRoots } =
+      await import("../../agents/skills/skill-storage.js");
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const name = "public-apis-public-apis-alt";
+    await fs.mkdir(path.dirname(liveSkillPath(roots, name)), { recursive: true });
+    await fs.writeFile(
+      liveSkillPath(roots, name),
+      "---\nname: public-apis/public-apis\ndescription: A collective list of free APIs\n---\nbody\n",
+    );
+    const r = await applyProposal(
+      {
+        action: "patch",
+        name,
+        edits: [
+          {
+            op: "replace",
+            target: "description: A collective list of free APIs",
+            content:
+              "description: Look up a free public API when the user asks for an open data source; not for paid APIs.",
+          },
+        ],
+      },
+      {
+        storeOpts: { configDir: tmpDir },
+        iteration: "it",
+        evidence: { runIds: ["r"], origins: ["human"] },
+      },
+    );
+    expect(r.outcome).toBe("staged");
+  });
+});
