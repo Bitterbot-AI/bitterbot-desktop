@@ -185,21 +185,86 @@ export function extractToolResultMediaPaths(result: unknown): string[] {
   return [];
 }
 
-export function isToolResultError(result: unknown): boolean {
+/**
+ * Outcome of a tool call as far as telemetry is concerned.
+ *
+ * - `error`: the tool threw, or its result BODY says it failed
+ *   (`details.status` error/timeout, `ok: false`, or a non-empty `error`
+ *   field with no `ok: true`). Before 2026-09-05 only `details.status` was
+ *   consulted, so the dominant `jsonResult({ ok: false, error })` shape of
+ *   88 tool sites was journaled as a success and labeled "clean end, zero
+ *   tool errors" downstream.
+ * - `pending`: the result is a placeholder (`approval-pending`): the action
+ *   has not happened yet, so it is neither a success nor a failure.
+ * - `ok`: everything else.
+ *
+ * The classification is telemetry-only: the model still receives the
+ * result text unchanged.
+ */
+export type ToolResultOutcome = "ok" | "error" | "pending";
+
+const PENDING_STATUSES = new Set(["approval-pending"]);
+const ERROR_STATUSES = new Set(["error", "timeout", "failed"]);
+
+function classifyPayloadOutcome(payload: unknown): ToolResultOutcome | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  const status = typeof record.status === "string" ? record.status.trim().toLowerCase() : "";
+  if (status && ERROR_STATUSES.has(status)) {
+    return "error";
+  }
+  if (status && PENDING_STATUSES.has(status)) {
+    return "pending";
+  }
+  if (record.ok === false) {
+    return "error";
+  }
+  if (record.ok === true) {
+    return "ok";
+  }
+  if (typeof record.error === "string" && record.error.trim().length > 0) {
+    return "error";
+  }
+  return null;
+}
+
+export function classifyToolResultOutcome(result: unknown): ToolResultOutcome {
   if (!result || typeof result !== "object") {
-    return false;
+    return "ok";
   }
-  const record = result as { details?: unknown };
-  const details = record.details;
-  if (!details || typeof details !== "object") {
-    return false;
+  const record = result as Record<string, unknown>;
+  const fromDetails = classifyPayloadOutcome(record.details);
+  if (fromDetails) {
+    return fromDetails;
   }
-  const status = (details as { status?: unknown }).status;
-  if (typeof status !== "string") {
-    return false;
+  if (record.details !== undefined && record.details !== null) {
+    // A structured payload that says nothing about failure is a success;
+    // do not second-guess it from the rendered text.
+    return "ok";
   }
-  const normalized = status.trim().toLowerCase();
-  return normalized === "error" || normalized === "timeout";
+  const text = extractToolResultText(result);
+  if (text && text.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      const fromJson = classifyPayloadOutcome(parsed);
+      if (fromJson) {
+        return fromJson;
+      }
+    } catch {
+      // Not JSON: no body-level signal.
+    }
+  }
+  return "ok";
+}
+
+export function isToolResultError(result: unknown): boolean {
+  return classifyToolResultOutcome(result) === "error";
+}
+
+export function isToolResultPending(result: unknown): boolean {
+  return classifyToolResultOutcome(result) === "pending";
 }
 
 export function extractToolErrorMessage(result: unknown): string | undefined {

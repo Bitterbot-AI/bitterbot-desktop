@@ -130,6 +130,8 @@ export interface EvolutionPassResult {
   /** PLAN-44 Phase 0: set with reason "error". */
   error?: string;
   samplerStats?: SamplerStats;
+  /** B6: failure-signature cluster counts from this iteration's sampler pass. */
+  failureSignatures?: Record<string, number>;
   maintenance?: MaintenanceResult;
   proposer?: ProposerRunResult;
   proposalOutcome?: ApplyProposalResult;
@@ -202,6 +204,7 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     judgeCall: deps.judgeCall ?? deps.llmCall,
     pending: state.pending,
     processedRunIds: state.processed,
+    ...(storeOpts.configDir ? { storeOpts } : {}),
   });
 
   if (sample.samples.length === 0) {
@@ -229,6 +232,7 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
       ran: false,
       reason: "no-new-traces",
       samplerStats: sample.stats,
+      failureSignatures: sample.failureSignatures,
       ...housekeeping,
       cursorBefore,
       cursorAfter: Math.max(cursorBefore, sample.nextCursorSeq),
@@ -284,6 +288,7 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
       ran: true,
       reason: "maintainer-parse-failed",
       samplerStats: sample.stats,
+      failureSignatures: sample.failureSignatures,
       maintenance,
       ...housekeeping,
       cursorBefore,
@@ -394,6 +399,7 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
   return {
     ran: true,
     samplerStats: sample.stats,
+    failureSignatures: sample.failureSignatures,
     maintenance,
     ...(proposer ? { proposer } : {}),
     ...(proposalOutcome ? { proposalOutcome } : {}),

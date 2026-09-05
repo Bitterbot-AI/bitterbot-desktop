@@ -1204,6 +1204,77 @@ preview what the curator would do before flipping it on.
 
 ---
 
+## Outcome evidence and verification (2026-09-05 harness review)
+
+The review in `docs/reviews/autonomous-worker-harness-review-2026-09-05.md` found that
+"success" collapsed several different situations into one label. These changes make the
+outcome behind every learning signal explicit and grounded.
+
+### Tool outcomes are read from the result body
+
+`classifyToolResultOutcome` (`src/agents/pi-embedded-subscribe.tools.ts`) returns `ok`,
+`error`, or `pending`. A `jsonResult({ ok: false, error })` body is an error; an
+`approval-pending` placeholder is pending (the action never ran). The journal's tool
+`result` events carry both `isError` and `outcome`, so the trace reconstructor, the
+labeler, and skill-read crediting all see body-level failures. The model still receives
+the result text unchanged.
+
+### Model identity on every run
+
+The lifecycle `start` event records `provider`, `model`, and `thinkLevel`;
+`ReconstructedTrace.model` and every `skill-reads.jsonl` event carry the
+`provider/model` string, and the trace log header prints it. Skill credit and labels
+can now be conditioned on the substrate that earned them.
+
+### The evidence hierarchy (L0–L4)
+
+`src/memory/skill-evolution/outcome.ts` derives, from the journal only:
+
+| Level | Meaning                                                                       |
+| ----- | ----------------------------------------------------------------------------- |
+| L0    | run reached a terminal event                                                  |
+| L1    | every tool call returned without a thrown or body-level error, none pending   |
+| L2    | the agent called `complete()` on top of L1 (self-report)                      |
+| L3    | the run's long-horizon task passed an independent judge round                 |
+| L4    | a human confirmed the outcome (`bitterbot skills feedback <runId> confirmed`) |
+
+Negatives (a failed verification, a rejected feedback entry, a pending approval) are
+recorded separately and block a `pass` label regardless of level. The sampler attaches
+the outcome before labeling; the labeler puts grounded evidence above every structural
+rule, and a run with a pending approval is `unknown`, never `pass`.
+
+### Task verification is executable
+
+Long-horizon tasks carry `checks[]` (`file_exists`, `file_contains`, `file_regex`,
+`output_regex`, and `command` when `BITTERBOT_TASKS_CHECK_COMMANDS=1`). `task_judge`
+executes them first; a failed check fails the round with no model call. The typed
+`verification` record (verdict, evidence level, check results, judge model, round) is
+the only path to `completed`: `task_update` and the store refuse a direct transition.
+Orphaned `running` tasks are reconciled to `waiting_external` with a handoff at store
+start. A verified completion is the one grounded reward signal into the hormonal system.
+
+### Records mode cannot promote
+
+When the validation mode falls back to `records` automatically (fewer than five reviewed
+capability tasks), an accepted LLM-counterfactual verdict HOLDS the proposal as
+`records-only-evidence`; only tasks-mode rollouts or an explicit
+`skills.evolution.validationMode: "records"` opt-in promote.
+
+### Failure signatures and the repeat-call guard
+
+`src/agents/pi-tools.repeat-guard.ts` refuses the fourth identical failing call in a
+session with a message naming the failure. Offline, `signatures.ts` clusters every
+fail-labeled run by ⟨terminal cause, agent-causal, mechanism⟩; the iteration log stores
+the counts and `skills.evolution.status` ranks them across iterations.
+
+### Provenance
+
+Facts extracted from transcript spans inside an external-content envelope keep
+`session_trust = "untrusted"` even in the owner's own session, so paraphrased web,
+email, or circle text cannot become a canonical pin or a standing directive. P2P
+publish refuses a SKILL.md whose body the secret redactor would change or that carries
+a home path, user profile path, email address, or IP address.
+
 ## Related Documentation
 
 - [Architecture Overview](./architecture-overview.md) — system entry point and file map

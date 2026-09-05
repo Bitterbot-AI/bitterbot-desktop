@@ -50,6 +50,7 @@ import { initOtel } from "../observability/otel.js";
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
+import { registerTaskCheckContext } from "../tasks/checks.js";
 import { startCompletionNotifier } from "../tasks/completion-notifier.js";
 import { startHormonalAccessor } from "../tasks/hormonal-accessor.js";
 import { registerJudgeFromConfig } from "../tasks/judge-provider.js";
@@ -292,6 +293,9 @@ export async function startGatewayServer(
   initSubagentRegistry();
   const defaultAgentId = resolveDefaultAgentId(cfgAtStart);
   const defaultWorkspaceDir = resolveAgentWorkspaceDir(cfgAtStart, defaultAgentId);
+  // B4: task acceptance checks run against the default agent workspace;
+  // command checks stay off unless BITTERBOT_TASKS_CHECK_COMMANDS=1.
+  registerTaskCheckContext({ workspaceDir: defaultWorkspaceDir });
   const baseMethods = listGatewayMethods();
   const emptyPluginRegistry = createEmptyPluginRegistry();
   const { pluginRegistry, gatewayMethods: baseGatewayMethods } = minimalTestGateway

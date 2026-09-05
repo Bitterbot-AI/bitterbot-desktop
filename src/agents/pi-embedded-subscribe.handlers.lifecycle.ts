@@ -3,6 +3,7 @@ import { emitAgentEvent } from "../infra/agent-events.js";
 import { createInlineCodeState } from "../markdown/code-spans.js";
 import { formatAssistantErrorText } from "./pi-embedded-helpers.js";
 import { isAssistantMessage } from "./pi-embedded-utils.js";
+import { resetRepeatGuard } from "./pi-tools.repeat-guard.js";
 
 export {
   handleAutoCompactionEnd,
@@ -11,12 +12,22 @@ export {
 
 export function handleAgentStart(ctx: EmbeddedPiSubscribeContext) {
   ctx.log.debug(`embedded run agent start: runId=${ctx.params.runId}`);
+  resetRepeatGuard(ctx.params.sessionKey);
   emitAgentEvent({
     runId: ctx.params.runId,
     stream: "lifecycle",
     data: {
       phase: "start",
       startedAt: Date.now(),
+      ...(ctx.params.modelRef
+        ? {
+            provider: ctx.params.modelRef.provider,
+            model: ctx.params.modelRef.model,
+            ...(ctx.params.modelRef.thinkLevel
+              ? { thinkLevel: ctx.params.modelRef.thinkLevel }
+              : {}),
+          }
+        : {}),
     },
   });
   void ctx.params.onAgentEvent?.({

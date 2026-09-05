@@ -40,6 +40,7 @@
  */
 
 import { createHash } from "node:crypto";
+import type { ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import type { EventJournal } from "../../infra/event-journal.js";
 import type {
   IterationSample,
@@ -55,6 +56,8 @@ import { isA2aTaskSessionKey } from "../../sessions/session-key-utils.js";
 import { makeYieldEvery } from "../event-loop.js";
 import { hashBucket } from "../skill-execution-selection.js";
 import { type JudgeCallFn, labelTrace } from "./labeler.js";
+import { deriveRunOutcome } from "./outcome.js";
+import { readRunFeedback } from "./run-feedback.js";
 import { classifyRunOrigin, isLearnableOrigin } from "./run-origin.js";
 import { PENDING_MAX, PROCESSED_RING_MAX } from "./sampler-state.js";
 import { classifyToolError } from "./signals.js";
@@ -130,6 +133,8 @@ export interface SampleIterationOptions {
   processedRunIds?: string[];
   /** Clock override (tests). */
   now?: number;
+  /** B8: where the run-feedback ledger lives (skill wiki dir); defaults to the config dir. */
+  storeOpts?: ImpactTrailOptions;
 }
 
 /**
@@ -199,11 +204,16 @@ export async function sampleIteration(
     runsInjected: 0,
     runsDeduped: 0,
     pairs: 0,
+    runsVerifiedOutcome: 0,
+    runsPendingApproval: 0,
   };
 
   const fails: LabeledTrace[] = [];
   const passes: LabeledTrace[] = [];
   const envFailTexts: string[] = [];
+  const failureSignatures: Record<string, number> = {};
+  // B3/B8: human verdicts are read once per iteration and joined by run id.
+  const feedback = await readRunFeedback(opts.storeOpts ?? {});
   const selectedShapes = new Set<string>();
   const budgetFull = () =>
     fails.length >= MAX_FAILING_TRACES && passes.length >= MAX_PASSING_TRACES;
@@ -273,10 +283,22 @@ export async function sampleIteration(
     }
     const wantFail = fails.length < MAX_FAILING_TRACES;
     const wantPass = passes.length < MAX_PASSING_TRACES;
+    // B3: join grounded evidence (task verdicts, human feedback) before
+    // labeling so a verified outcome outranks the structural cascade.
+    trace.outcome = deriveRunOutcome(trace, { journal, feedback });
+    if (trace.toolPendingCount > 0) {
+      stats.runsPendingApproval += 1;
+    }
     const labelOpts = opts.judgeCall && (wantFail || wantPass) ? { judgeCall: opts.judgeCall } : {};
     const label = await labelTrace(trace, labelOpts);
     if (label.judged) {
       stats.judgeCalls += 1;
+    }
+    if ((label.evidenceLevel ?? 0) >= 3 || trace.outcome.feedback) {
+      stats.runsVerifiedOutcome += 1;
+    }
+    if (label.label === "fail" && label.signature) {
+      failureSignatures[label.signature.key] = (failureSignatures[label.signature.key] ?? 0) + 1;
     }
     if (label.label === "unknown") {
       stats.runsUnknownLabel += 1;
@@ -466,5 +488,6 @@ export async function sampleIteration(
     pending: pendingOut.slice(-PENDING_MAX),
     processedRunIds,
     envFailTexts,
+    failureSignatures,
   };
 }

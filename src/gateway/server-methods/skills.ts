@@ -52,6 +52,7 @@ import {
   validateSkillsManageParams,
   validateSkillsMetricsParams,
   validateSkillsEvolutionCorpusReviewParams,
+  validateSkillsEvolutionFeedbackParams,
   validateSkillsPromoteParams,
   validateSkillsPublishParams,
   validateSkillsRollbackParams,
@@ -1437,6 +1438,41 @@ export const skillsHandlers: GatewayRequestHandlers = {
         false,
         undefined,
         errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.routing.repair threw: ${String(err)}`),
+      );
+    }
+  },
+  "skills.evolution.feedback": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionFeedbackParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.feedback params: ${formatValidationErrors(validateSkillsEvolutionFeedbackParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const { appendRunFeedback } = await import("../../memory/skill-evolution/run-feedback.js");
+      const p = params as {
+        runId: string;
+        verdict: "confirmed" | "rejected";
+        note?: string;
+        by?: string;
+      };
+      const entry = await appendRunFeedback({
+        runId: p.runId,
+        verdict: p.verdict,
+        ...(p.note ? { note: p.note } : {}),
+        ...(p.by ? { by: p.by } : {}),
+      });
+      respond(true, entry);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.feedback threw: ${String(err)}`),
       );
     }
   },

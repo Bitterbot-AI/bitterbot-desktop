@@ -35,6 +35,7 @@
 import type { ReconstructedTrace, TraceLabelResult } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { classifyLifecycleError, extractTraceSignals, type TraceSignals } from "./signals.js";
+import { deriveFailureSignature } from "./signatures.js";
 import { formatTraceLog } from "./traces.js";
 
 const log = createSubsystemLogger("skill-evolution/labeler");
@@ -52,8 +53,64 @@ export function labelHeuristic(
   trace: ReconstructedTrace,
   signals: TraceSignals = extractTraceSignals(trace),
 ): TraceLabelResult {
+  const result = labelHeuristicCore(trace, signals);
+  const sig =
+    result.label === "fail" ? deriveFailureSignature(trace, signals, result, trace.outcome) : null;
+  return {
+    ...result,
+    ...(trace.outcome ? { evidenceLevel: trace.outcome.level } : {}),
+    ...(sig ? { signature: sig } : {}),
+  };
+}
+
+function labelHeuristicCore(trace: ReconstructedTrace, signals: TraceSignals): TraceLabelResult {
   if (!trace.isComplete) {
     return { label: "unknown", confidence: 0, reason: "run has no terminal event", judged: false };
+  }
+  // B3: grounded evidence outranks every structural rule below. A human
+  // verdict or an independent task verification is the closest thing to
+  // ground truth the loop will ever see; a pending approval means the
+  // action never happened, so nothing can be concluded either way.
+  const outcome = trace.outcome;
+  if (outcome?.feedback?.verdict === "rejected") {
+    return {
+      label: "fail",
+      confidence: 0.95,
+      reason: "human rejected the outcome (run feedback)",
+      judged: false,
+    };
+  }
+  if (outcome?.feedback?.verdict === "confirmed") {
+    return {
+      label: "pass",
+      confidence: 0.95,
+      reason: "human confirmed the outcome (run feedback)",
+      judged: false,
+    };
+  }
+  if (outcome?.taskVerdict?.verdict === "fail") {
+    return {
+      label: "fail",
+      confidence: 0.9,
+      reason: `task verification failed${outcome.taskVerdict.checksTotal > 0 ? ` (${outcome.taskVerdict.checksPassed}/${outcome.taskVerdict.checksTotal} checks)` : ""}`,
+      judged: false,
+    };
+  }
+  if (outcome?.taskVerdict?.verdict === "pass" && !trace.endedWithError) {
+    return {
+      label: "pass",
+      confidence: outcome.taskVerdict.checksTotal > 0 ? 0.9 : 0.8,
+      reason: `task verification passed (L${outcome.taskVerdict.level}${outcome.taskVerdict.checksTotal > 0 ? ", executed checks" : ", judge only"})`,
+      judged: false,
+    };
+  }
+  if (trace.toolPendingCount > 0 && !trace.endedWithError) {
+    return {
+      label: "unknown",
+      confidence: 0.4,
+      reason: `${trace.toolPendingCount} tool call(s) awaiting approval never ran`,
+      judged: false,
+    };
   }
   if (trace.endedWithError) {
     const lc = classifyLifecycleError(trace.errorText);
@@ -208,6 +265,18 @@ export function parseJudgeVerdict(raw: string): "pass" | "fail" | "unknown" | nu
 export async function labelTrace(
   trace: ReconstructedTrace,
   opts: { judgeCall?: JudgeCallFn } = {},
+): Promise<TraceLabelResult> {
+  const result = await labelTraceInner(trace, opts);
+  if (result.judged && result.label === "fail" && !result.signature) {
+    const signals = extractTraceSignals(trace);
+    return { ...result, signature: deriveFailureSignature(trace, signals, result, trace.outcome) };
+  }
+  return result;
+}
+
+async function labelTraceInner(
+  trace: ReconstructedTrace,
+  opts: { judgeCall?: JudgeCallFn },
 ): Promise<TraceLabelResult> {
   const heuristic = labelHeuristic(trace);
   if (heuristic.confidence >= JUDGE_CONFIDENCE_THRESHOLD || !opts.judgeCall) {

@@ -4,7 +4,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetAgentRunContextForTest } from "../../infra/agent-events.js";
 import { startEventJournal, stopEventJournal } from "../../infra/event-journal.js";
-import { startTaskStore, stopTaskStore } from "../../tasks/store.js";
+import {
+  getActiveTaskStore,
+  startTaskStore,
+  stopTaskStore,
+  type TaskStore,
+} from "../../tasks/store.js";
 import {
   createTaskCreateTool,
   createTaskGetTool,
@@ -14,6 +19,32 @@ import {
   createTaskStopTool,
   createTaskUpdateTool,
 } from "./task-tool.js";
+
+/** B4: `completed` is reachable only through a passing verification. */
+function completeVerified(
+  store: TaskStore,
+  id: string,
+  opts: { output?: string; reasoning?: string } = {},
+) {
+  if (opts.output !== undefined) {
+    store.update(id, { output: opts.output });
+  }
+  return store.recordVerification(
+    id,
+    {
+      verdict: "pass",
+      level: 2,
+      checks: [],
+      judgeModel: "test/judge",
+      reasoning: opts.reasoning ?? "criteria verified",
+      missing: [],
+      round: 0,
+      at: 0,
+      runId: null,
+    },
+    "completed",
+  );
+}
 
 type ToolResult = {
   ok: boolean;
@@ -141,7 +172,7 @@ describe("task_* agent tools", () => {
     const created = await callTool(create, { goal: "g", done_criteria: "d" });
     const tid = created.task!.id;
 
-    await callTool(update, { task_id: tid, status: "completed", output: "crystal-1" });
+    await callTool(update, { task_id: tid, status: "failed", output: "crystal-1" });
     const reattempt = await callTool(update, { task_id: tid, status: "running" });
     expect(reattempt.ok).toBe(false);
     expect(reattempt.error).toMatch(/terminal/);
@@ -219,11 +250,12 @@ describe("task_* agent tools", () => {
     expect(before.ok).toBe(false);
     expect(before.error).toMatch(/no output/);
 
-    await callTool(update, {
-      task_id: tid,
-      status: "completed",
-      output: "crystal:abc-123",
-    });
+    // B4: task_update cannot complete a task; only a verification can.
+    const refused = await callTool(update, { task_id: tid, status: "completed", output: "x" });
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toMatch(/task_judge/);
+    await callTool(update, { task_id: tid, output: "crystal:abc-123" });
+    completeVerified(getActiveTaskStore()!, tid);
     const after = await callTool(output, { task_id: tid });
     expect(after.ok).toBe(true);
     expect(after.output).toBe("crystal:abc-123");

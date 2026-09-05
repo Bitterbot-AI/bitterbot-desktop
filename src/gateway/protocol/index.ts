@@ -196,6 +196,8 @@ import {
   type SkillsMetricsResult,
   type SkillsEvolutionCorpusReviewParams,
   SkillsEvolutionCorpusReviewParamsSchema,
+  type SkillsEvolutionFeedbackParams,
+  SkillsEvolutionFeedbackParamsSchema,
   type SkillsPromoteParams,
   SkillsPromoteParamsSchema,
   type SkillsPromoteResult,
@@ -394,6 +396,9 @@ export const validateSkillsPromoteParams =
   ajv.compile<SkillsPromoteParams>(SkillsPromoteParamsSchema);
 export const validateSkillsEvolutionCorpusReviewParams =
   ajv.compile<SkillsEvolutionCorpusReviewParams>(SkillsEvolutionCorpusReviewParamsSchema);
+export const validateSkillsEvolutionFeedbackParams = ajv.compile<SkillsEvolutionFeedbackParams>(
+  SkillsEvolutionFeedbackParamsSchema,
+);
 export const validateSkillsRollbackParams = ajv.compile<SkillsRollbackParams>(
   SkillsRollbackParamsSchema,
 );
@@ -568,6 +573,7 @@ export {
   SkillsManageResultSchema,
   SkillsMetricsParamsSchema,
   SkillsEvolutionCorpusReviewParamsSchema,
+  SkillsEvolutionFeedbackParamsSchema,
   SkillsPromoteParamsSchema,
   SkillsPromoteResultSchema,
   SkillsPublishParamsSchema,
@@ -669,6 +675,7 @@ export type {
   SkillsMetricsParams,
   SkillsMetricsResult,
   SkillsEvolutionCorpusReviewParams,
+  SkillsEvolutionFeedbackParams,
   SkillsPromoteParams,
   SkillsPromoteResult,
   SkillsPublishParams,

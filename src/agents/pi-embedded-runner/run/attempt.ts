@@ -857,6 +857,11 @@ export async function runEmbeddedAttempt(
         config: params.config,
         sessionKey: params.sessionKey ?? params.sessionId,
         contextWindowTokens: params.model.contextWindow,
+        modelRef: {
+          provider: params.model.provider,
+          model: params.model.id,
+          ...(params.thinkLevel ? { thinkLevel: params.thinkLevel } : {}),
+        },
       });
 
       const {

@@ -380,6 +380,41 @@ export function registerSkillsCli(program: Command) {
   });
 
   addGatewayClientOptions(
+    skills
+      .command("feedback")
+      .description(
+        "Record a human verdict on one run (level-4 outcome evidence for the learning loop)",
+      )
+      .argument("<runId>", "Run id (from the journal / task_monitor / session status)")
+      .argument("<verdict>", "confirmed | rejected")
+      .option("--note <text>", "Why (recorded, capped at 500 chars)")
+      .option("--by <name>", "Who is recording it", "operator")
+      .option("--json", "Output as JSON", false),
+  ).action(async (runId: string, verdict: string, opts) => {
+    if (verdict !== "confirmed" && verdict !== "rejected") {
+      defaultRuntime.error("verdict must be confirmed or rejected");
+      defaultRuntime.exit(1);
+      return;
+    }
+    try {
+      const result = await callGatewayFromCli("skills.evolution.feedback", opts, {
+        runId,
+        verdict,
+        ...(opts.note ? { note: opts.note } : {}),
+        by: opts.by,
+      });
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      defaultRuntime.log(`recorded: run ${runId} ${verdict}`);
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
+  addGatewayClientOptions(
     corpus
       .command("reject")
       .description("Drop drafts; the miner never redrafts a rejected id")

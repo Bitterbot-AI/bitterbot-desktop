@@ -41,6 +41,48 @@ export type TaskPlan = {
   cursor?: number;
 };
 
+/**
+ * A deterministic acceptance check the harness can execute (2026-09-05
+ * harness review, B4). See `src/tasks/checks.ts` for semantics and the
+ * workspace/command boundaries.
+ */
+export type TaskCheck =
+  | { kind: "file_exists"; path: string }
+  | { kind: "file_contains"; path: string; value: string }
+  | { kind: "file_regex"; path: string; pattern: string }
+  | { kind: "output_regex"; pattern: string }
+  | { kind: "command"; command: string; expectExitCode?: number; stdoutRegex?: string };
+
+export type TaskCheckResult = {
+  check: TaskCheck;
+  description: string;
+  passed: boolean;
+  detail: string;
+};
+
+/**
+ * Evidence level behind a verdict (the harness review's L0-L4 hierarchy):
+ * 1 = worker self-report only (no judge ran), 2 = independent LLM judge over
+ * the recorded output, 3 = deterministic checks executed and passed (plus
+ * the judge when criteria go beyond the checks), 4 = a human confirmed the
+ * outcome after the fact (recorded by the run-feedback ledger).
+ */
+export type TaskEvidenceLevel = 1 | 2 | 3 | 4;
+
+export type TaskVerification = {
+  verdict: "pass" | "fail" | "needs_more";
+  level: TaskEvidenceLevel;
+  checks: TaskCheckResult[];
+  /** Exact judge model (`provider/model`) or null when no judge call ran. */
+  judgeModel: string | null;
+  reasoning: string;
+  missing: string[];
+  round: number;
+  at: number;
+  /** Run that requested the verification, when known. */
+  runId: string | null;
+};
+
 export type CheckpointRef = {
   /** Checkpoint store thread id (typically = run id at root). */
   threadId: string;
@@ -61,6 +103,12 @@ export type Task = {
   currentRunId: string | null;
   /** Final artifact reference (crystal id, file path, etc.). */
   output: string | null;
+  /** Deterministic acceptance checks run by the judge pass (may be empty). */
+  checks: TaskCheck[];
+  /** Latest verification record; `completed` is unreachable without a passing one. */
+  verification: TaskVerification | null;
+  /** Typed judge-round counter (was model-mutable metadata before B4). */
+  judgeRounds: number;
   source: TaskSource;
   /** Cents. Used by Phase E.4 P2P bidding. */
   bounty: number | null;
@@ -80,6 +128,7 @@ export type TaskCreateInput = {
   id?: string;
   goal: string;
   doneCriteria: string;
+  checks?: TaskCheck[];
   parentTaskId?: string | null;
   plan?: TaskPlan | null;
   source?: TaskSource;
@@ -91,6 +140,7 @@ export type TaskCreateInput = {
 export type TaskUpdateInput = {
   goal?: string;
   doneCriteria?: string;
+  checks?: TaskCheck[];
   status?: TaskStatus;
   plan?: TaskPlan | null;
   checkpoint?: CheckpointRef | null;

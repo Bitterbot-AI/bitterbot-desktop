@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Task, TaskHandoff } from "./types.js";
 import {
   buildTaskJudgePrompt,
+  buildTaskVerification,
   parseTaskJudgeResponse,
   runTaskJudge,
   type TaskJudgeInput,
@@ -181,5 +182,137 @@ describe("runTaskJudge", () => {
     const input: TaskJudgeInput = { task, output: null };
     const decision = await runTaskJudge(input, async () => "garbage");
     expect(decision).toBeNull();
+  });
+});
+
+describe("B4: executed checks in the judge round", () => {
+  const baseTask = {
+    id: "t-checks",
+    goal: "write the report",
+    doneCriteria: "report exists with a summary",
+    status: "judging",
+    parentTaskId: null,
+    plan: null,
+    checkpoint: null,
+    currentRunId: "run-9",
+    output: "out/report.md",
+    checks: [],
+    verification: null,
+    judgeRounds: 0,
+    source: "user",
+    bounty: null,
+    agentSessionKey: null,
+    wakeupCount: 0,
+    createdAt: 1,
+    updatedAt: 1,
+    completedAt: null,
+    lastSeenAt: 1,
+    metadata: null,
+  } as const;
+
+  it("fails the round without an LLM call when any executed check failed", async () => {
+    let calls = 0;
+    const decision = await runTaskJudge(
+      {
+        task: baseTask as never,
+        output: "out/report.md",
+        checkResults: [
+          {
+            check: { kind: "file_exists", path: "out/report.md" },
+            description: "file exists: out/report.md",
+            passed: true,
+            detail: "exists",
+          },
+          {
+            check: { kind: "file_contains", path: "out/report.md", value: "## Summary" },
+            description: 'file out/report.md contains "## Summary"',
+            passed: false,
+            detail: "value not found in file",
+          },
+        ],
+      },
+      async () => {
+        calls += 1;
+        return "```yaml\nverdict: pass\nreasoning: looks fine\n```";
+      },
+    );
+    expect(calls).toBe(0);
+    expect(decision).toMatchObject({ verdict: "fail" });
+    expect(decision?.missing?.[0]).toMatch(/## Summary.*not found/);
+  });
+
+  it("shows passed checks to the judge as ground truth and records level 3 on pass", async () => {
+    let prompt = "";
+    const checkResults = [
+      {
+        check: { kind: "file_exists" as const, path: "out/report.md" },
+        description: "file exists: out/report.md",
+        passed: true,
+        detail: "exists",
+      },
+    ];
+    const decision = await runTaskJudge(
+      { task: baseTask as never, output: "out/report.md", checkResults },
+      async (p) => {
+        prompt = p;
+        return "```yaml\nverdict: pass\nreasoning: summary present\n```";
+      },
+    );
+    expect(prompt).toMatch(/\[PASS\] file exists: out\/report\.md/);
+    expect(prompt).toMatch(/ground truth/);
+    const v = buildTaskVerification({
+      decision: decision!,
+      checkResults,
+      judgeModel: "anthropic/x",
+      judgeCalled: true,
+      runId: "run-9",
+    });
+    expect(v).toMatchObject({
+      verdict: "pass",
+      level: 3,
+      judgeModel: "anthropic/x",
+      runId: "run-9",
+    });
+  });
+
+  it("derives level 2 for a judge-only pass and level 1 when no judge ran", () => {
+    const pass = { verdict: "pass" as const, reasoning: "ok" };
+    expect(
+      buildTaskVerification({
+        decision: pass,
+        checkResults: [],
+        judgeModel: "m",
+        judgeCalled: true,
+      }).level,
+    ).toBe(2);
+    expect(
+      buildTaskVerification({
+        decision: pass,
+        checkResults: [],
+        judgeModel: "m",
+        judgeCalled: false,
+      }),
+    ).toMatchObject({ level: 1, judgeModel: null });
+    const failedCheck = [
+      {
+        check: { kind: "output_regex" as const, pattern: "x" },
+        description: "d",
+        passed: false,
+        detail: "no",
+      },
+    ];
+    expect(
+      buildTaskVerification({
+        decision: { verdict: "fail", reasoning: "r" },
+        checkResults: failedCheck,
+        judgeModel: "m",
+        judgeCalled: false,
+      }).level,
+    ).toBe(1);
+  });
+
+  it("tells the judge to be conservative when no checks are defined", () => {
+    const prompt = buildTaskJudgePrompt({ task: baseTask as never, output: "x" });
+    expect(prompt).toMatch(/none defined/);
   });
 });

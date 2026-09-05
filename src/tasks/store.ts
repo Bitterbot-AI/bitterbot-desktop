@@ -21,6 +21,8 @@ import os from "node:os";
 import path from "node:path";
 import type {
   CheckpointRef,
+  TaskCheck,
+  TaskVerification,
   PlanStep,
   Task,
   TaskCreateInput,
@@ -103,7 +105,60 @@ export class TaskStore {
   constructor(db: DatabaseSync) {
     this.db = db;
     this.db.exec(SCHEMA_SQL);
+    // 2026-09-05 harness review B4: typed verification columns. Additive,
+    // idempotent; pre-B4 rows read back as no checks / no verification.
+    ensureColumn(this.db, "tasks", "checks_json", "TEXT");
+    ensureColumn(this.db, "tasks", "verification_json", "TEXT");
+    ensureColumn(this.db, "tasks", "judge_rounds", "INTEGER NOT NULL DEFAULT 0");
     this.sweepLegacyCuriosityTasks();
+  }
+
+  /**
+   * B4: a gateway restart kills every in-flight run, but the durable task
+   * row still says `running` under a run id that no longer exists (the run
+   * registry is in-memory). Called from `startTaskStore`, never from the
+   * constructor, so a test can open a store without side effects. Each
+   * orphan moves to `waiting_external` with a synthesized handoff so the
+   * next wakeup or `task_resume_inline` resumes from real state instead of
+   * a phantom. Returns the reconciled task ids.
+   */
+  reconcileOrphanedRunning(reason = "gateway-restart"): string[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM tasks WHERE status = 'running' OR status = 'judging'`)
+      .all() as RawTaskRow[];
+    const reconciled: string[] = [];
+    for (const row of rows) {
+      const task = rowToTask(row);
+      try {
+        this.writeHandoff({
+          taskId: task.id,
+          runId: task.currentRunId,
+          intent: `Run ${task.currentRunId ?? "(unknown)"} was interrupted (${reason}); the task did not finish.`,
+          decisions: [],
+          pending: [
+            "Resume from the latest handoff and plan; re-verify any step marked in_progress.",
+          ],
+          context: null,
+        });
+      } catch (err) {
+        log.warn(`reconcile: handoff for ${task.id} failed: ${String(err)}`);
+      }
+      this.update(task.id, {
+        status: "waiting_external",
+        currentRunId: null,
+        metadata: {
+          ...task.metadata,
+          stalledReason: reason,
+          stalledAt: Date.now(),
+          stalledRunId: task.currentRunId,
+        },
+      });
+      reconciled.push(task.id);
+    }
+    if (reconciled.length > 0) {
+      log.warn(`reconciled ${reconciled.length} orphaned running task(s) after ${reason}`);
+    }
+    return reconciled;
   }
 
   /**
@@ -202,6 +257,9 @@ export class TaskStore {
       checkpoint: null,
       currentRunId: null,
       output: null,
+      checks: input.checks ?? [],
+      verification: null,
+      judgeRounds: 0,
       source: input.source ?? "user",
       bounty: input.bounty ?? null,
       agentSessionKey: input.agentSessionKey ?? null,
@@ -218,8 +276,9 @@ export class TaskStore {
           (id, goal, done_criteria, status, parent_task_id, plan_json,
            checkpoint_thread, checkpoint_step, current_run_id, output_ref,
            source, bounty, agent_session_key, wakeup_count,
-           created_at, updated_at, completed_at, last_seen_at, metadata_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           created_at, updated_at, completed_at, last_seen_at, metadata_json,
+           checks_json, verification_json, judge_rounds)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         task.id,
@@ -241,6 +300,9 @@ export class TaskStore {
         null,
         task.lastSeenAt,
         task.metadata ? JSON.stringify(task.metadata) : null,
+        task.checks.length > 0 ? JSON.stringify(task.checks) : null,
+        null,
+        0,
       );
     log.info(`task created id=${id} source=${task.source} goal="${truncate(task.goal, 60)}"`);
     this.emit({ type: "created", task });
@@ -272,11 +334,20 @@ export class TaskStore {
         `task ${id} is terminal (${existing.status}); cannot transition to ${input.status}`,
       );
     }
+    // B4: `completed` is reachable only through recordVerification with a
+    // passing verdict. A worker (or anyone else) setting the status directly
+    // is refused, loudly, with the path that works.
+    if (input.status === "completed" && existing.status !== "completed") {
+      throw new Error(
+        `task ${id} cannot be marked completed directly; run task_judge (a passing verification is required)`,
+      );
+    }
     const now = Date.now();
     const next: Task = {
       ...existing,
       goal: input.goal ?? existing.goal,
       doneCriteria: input.doneCriteria ?? existing.doneCriteria,
+      checks: input.checks !== undefined ? input.checks : existing.checks,
       status: input.status ?? existing.status,
       plan: input.plan !== undefined ? input.plan : existing.plan,
       checkpoint: input.checkpoint !== undefined ? input.checkpoint : existing.checkpoint,
@@ -302,7 +373,7 @@ export class TaskStore {
            checkpoint_thread = ?, checkpoint_step = ?, current_run_id = ?,
            output_ref = ?, source = ?, bounty = ?, agent_session_key = ?,
            wakeup_count = ?, updated_at = ?, completed_at = ?, last_seen_at = ?,
-           metadata_json = ?
+           metadata_json = ?, checks_json = ?
          WHERE id = ?`,
       )
       .run(
@@ -322,8 +393,53 @@ export class TaskStore {
         next.completedAt,
         next.lastSeenAt,
         next.metadata ? JSON.stringify(next.metadata) : null,
+        next.checks.length > 0 ? JSON.stringify(next.checks) : null,
         id,
       );
+    this.emit({ type: "updated", task: next });
+    return next;
+  }
+
+  /**
+   * B4: the ONLY path to `completed`. Persists the verification record and
+   * the typed round counter, then applies the status the caller derived
+   * from the verdict. A `completed` status with a non-passing verdict is
+   * refused (the verdict and the transition must agree).
+   */
+  recordVerification(id: string, verification: TaskVerification, nextStatus: TaskStatus): Task {
+    const existing = this.get(id);
+    if (!existing) {
+      throw new Error(`task ${id} not found`);
+    }
+    if (isTerminal(existing.status)) {
+      throw new Error(`task ${id} is terminal (${existing.status}); cannot record a verification`);
+    }
+    if (nextStatus === "completed" && verification.verdict !== "pass") {
+      throw new Error(
+        `task ${id}: completed requires a passing verification (got ${verification.verdict})`,
+      );
+    }
+    const now = Date.now();
+    const rounds = existing.judgeRounds + 1;
+    const record: TaskVerification = { ...verification, round: rounds, at: now };
+    const completedAt =
+      isTerminal(nextStatus) && !existing.completedAt ? now : existing.completedAt;
+    this.db
+      .prepare(
+        `UPDATE tasks SET status = ?, verification_json = ?, judge_rounds = ?,
+           updated_at = ?, completed_at = ?, last_seen_at = ?
+         WHERE id = ?`,
+      )
+      .run(nextStatus, JSON.stringify(record), rounds, now, completedAt, now, id);
+    const next: Task = {
+      ...existing,
+      status: nextStatus,
+      verification: record,
+      judgeRounds: rounds,
+      updatedAt: now,
+      completedAt,
+      lastSeenAt: now,
+    };
     this.emit({ type: "updated", task: next });
     return next;
   }
@@ -594,7 +710,28 @@ type RawTaskRow = {
   completed_at: number | null;
   last_seen_at: number;
   metadata_json: string | null;
+  checks_json?: string | null;
+  verification_json?: string | null;
+  judge_rounds?: number | null;
 };
+
+function ensureColumn(db: DatabaseSync, table: string, column: string, decl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  }
+}
+
+function parseJsonOr<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
 
 function rowToTask(row: RawTaskRow): Task {
   const checkpoint: CheckpointRef | null =
@@ -611,6 +748,9 @@ function rowToTask(row: RawTaskRow): Task {
     checkpoint,
     currentRunId: row.current_run_id,
     output: row.output_ref,
+    checks: parseJsonOr<TaskCheck[]>(row.checks_json, []),
+    verification: parseJsonOr<TaskVerification | null>(row.verification_json, null),
+    judgeRounds: typeof row.judge_rounds === "number" ? row.judge_rounds : 0,
     source: row.source as TaskSource,
     bounty: row.bounty,
     agentSessionKey: row.agent_session_key,
@@ -654,6 +794,11 @@ export function startTaskStore(opts?: { dbPath?: string }): TaskStore | null {
   try {
     active = TaskStore.open(dbPath);
     log.info(`task store active dbPath=${dbPath}`);
+    try {
+      active.reconcileOrphanedRunning();
+    } catch (err) {
+      log.warn(`task store reconcile failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
     return active;
   } catch (err) {
     log.warn(

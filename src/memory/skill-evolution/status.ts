@@ -12,6 +12,7 @@ import { loadEffectiveCorpus } from "./canonical-corpus.js";
 import { type IterationRecord, readRecentIterations } from "./iteration-log.js";
 import { listP2pEligibleEvolvedSkills } from "./p2p-publish.js";
 import { readSamplerState } from "./sampler.js";
+import { rankFailureSignatures } from "./signatures.js";
 import { listStagedEvolutionProposals, type EvolutionMeta } from "./validation-gate.js";
 import { listPatternNames, logsPath, readIndex } from "./wiki-store.js";
 
@@ -35,6 +36,12 @@ export interface EvolutionStatus {
   p2pEligible: string[];
   corpus: { present: boolean; version?: string; taskCount?: number };
   impactEntries: number;
+  /**
+   * B6: failure-signature clusters over the recent iterations, ranked by
+   * count. `iterations` says how many of those iterations saw the cluster:
+   * a one-off has 1, a recurring learnable pattern has several.
+   */
+  failureSignatures: Array<{ key: string; count: number; iterations: number }>;
 }
 
 export async function collectEvolutionStatus(
@@ -119,5 +126,6 @@ export async function collectEvolutionStatus(
       ? { present: true, version: corpus.version, taskCount: corpus.tasks.length }
       : { present: false },
     impactEntries,
+    failureSignatures: rankFailureSignatures(recentIterations.map((r) => r.failureSignatures)),
   };
 }

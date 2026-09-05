@@ -6,6 +6,32 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TaskPlan } from "./types.js";
 import { TaskStore, getActiveTaskStore, startTaskStore, stopTaskStore } from "./store.js";
 
+/** B4: `completed` is reachable only through a passing verification. */
+function completeVerified(
+  store: TaskStore,
+  id: string,
+  opts: { output?: string; reasoning?: string } = {},
+) {
+  if (opts.output !== undefined) {
+    store.update(id, { output: opts.output });
+  }
+  return store.recordVerification(
+    id,
+    {
+      verdict: "pass",
+      level: 2,
+      checks: [],
+      judgeModel: "test/judge",
+      reasoning: opts.reasoning ?? "criteria verified",
+      missing: [],
+      round: 0,
+      at: 0,
+      runId: null,
+    },
+    "completed",
+  );
+}
+
 const samplePlan: TaskPlan = {
   steps: [
     { id: "step-1", title: "Draft outline", status: "pending" },
@@ -106,7 +132,7 @@ describe("TaskStore", () => {
     const store = TaskStore.open(dbPath);
     try {
       const t = store.create({ goal: "g", doneCriteria: "d" });
-      store.update(t.id, { status: "completed", output: "crystal-abc" });
+      completeVerified(store, t.id, { output: "crystal-abc" });
       expect(() => store.update(t.id, { status: "running" })).toThrow(/terminal/);
       // Setting the same terminal status again is a no-op (allowed).
       const reaffirmed = store.update(t.id, { status: "completed" });
@@ -240,7 +266,7 @@ describe("TaskStore", () => {
       const b = store.create({ goal: "b", doneCriteria: "x" });
       const c = store.create({ goal: "c", doneCriteria: "x" });
       store.update(b.id, { status: "running" });
-      store.update(c.id, { status: "completed" });
+      completeVerified(store, c.id);
       expect(store.count()).toBe(3);
       expect(store.count({ status: "pending" })).toBe(1);
       expect(store.count({ status: ["running", "completed"] })).toBe(2);
@@ -356,5 +382,84 @@ describe("TaskStore", () => {
         reopened.close();
       }
     });
+  });
+  it("B4: refuses a direct transition to completed and accepts a passing verification", () => {
+    const store = TaskStore.open(dbPath);
+    try {
+      const t = store.create({
+        goal: "g",
+        doneCriteria: "d",
+        checks: [{ kind: "output_regex", pattern: "ok" }],
+      });
+      expect(store.get(t.id)?.checks).toEqual([{ kind: "output_regex", pattern: "ok" }]);
+      expect(() => store.update(t.id, { status: "completed" })).toThrow(/task_judge/);
+      expect(store.get(t.id)?.status).toBe("pending");
+      expect(() =>
+        store.recordVerification(
+          t.id,
+          {
+            verdict: "fail",
+            level: 2,
+            checks: [],
+            judgeModel: "m",
+            reasoning: "no",
+            missing: ["x"],
+            round: 0,
+            at: 0,
+            runId: null,
+          },
+          "completed",
+        ),
+      ).toThrow(/passing verification/);
+      const failed = store.recordVerification(
+        t.id,
+        {
+          verdict: "fail",
+          level: 2,
+          checks: [],
+          judgeModel: "m",
+          reasoning: "no",
+          missing: ["x"],
+          round: 0,
+          at: 0,
+          runId: "run-1",
+        },
+        "running",
+      );
+      expect(failed.judgeRounds).toBe(1);
+      expect(failed.verification).toMatchObject({ verdict: "fail", round: 1, runId: "run-1" });
+      const done = completeVerified(store, t.id, { output: "ok done" });
+      expect(done.status).toBe("completed");
+      expect(done.judgeRounds).toBe(2);
+      expect(done.completedAt).not.toBeNull();
+      expect(store.get(t.id)?.verification?.verdict).toBe("pass");
+      // Re-affirming the terminal status is still a no-op.
+      expect(store.update(t.id, { status: "completed" }).status).toBe("completed");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("B4: reconciles tasks left running by a dead process into waiting_external with a handoff", () => {
+    const store = TaskStore.open(dbPath);
+    try {
+      const t = store.create({ goal: "g", doneCriteria: "d" });
+      store.update(t.id, { status: "running", currentRunId: "run-dead" });
+      const untouched = store.create({ goal: "h", doneCriteria: "d" });
+      const ids = store.reconcileOrphanedRunning("test-restart");
+      expect(ids).toEqual([t.id]);
+      const after = store.get(t.id)!;
+      expect(after.status).toBe("waiting_external");
+      expect(after.currentRunId).toBeNull();
+      expect(after.metadata).toMatchObject({
+        stalledReason: "test-restart",
+        stalledRunId: "run-dead",
+      });
+      expect(store.latestHandoff(t.id)?.intent).toMatch(/interrupted/);
+      expect(store.get(untouched.id)?.status).toBe("pending");
+      expect(store.reconcileOrphanedRunning("again")).toEqual([]);
+    } finally {
+      store.close();
+    }
   });
 });

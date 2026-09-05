@@ -2,6 +2,7 @@ import type { AnyAgentTool } from "./tools/common.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { isPlainObject } from "../utils.js";
+import { checkRepeatedCall } from "./pi-tools.repeat-guard.js";
 import { runInterceptors } from "./skills/interceptor-runner.js";
 import { normalizeToolName } from "./tool-policy.js";
 
@@ -149,6 +150,14 @@ export function wrapToolWithBeforeToolCallHook(
   const wrappedTool: AnyAgentTool = {
     ...tool,
     execute: async (toolCallId, params, signal, onUpdate) => {
+      // B6: refuse the (N+1)th identical failing call before any hook or
+      // interceptor spends time on it. Deterministic; the error text is
+      // what the model reads and what the journal records.
+      const repeat = checkRepeatedCall({ scope: ctx?.sessionKey, toolName, args: params });
+      if (repeat.blocked) {
+        log.warn(`repeat guard blocked ${toolName} after ${repeat.failures} identical failures`);
+        throw new Error(repeat.reason);
+      }
       const outcome = await runBeforeToolCallHook({
         toolName,
         params,

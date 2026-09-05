@@ -99,6 +99,7 @@ describe("runValidationGate (records mode)", () => {
     const journal = heldOutJournal();
     const outcomes = await runValidationGate({
       journal,
+      mode: "records",
       llmCall: orderAware(() => scoresAccepting(8)),
       storeOpts: { configDir: tmpDir },
       modelTag: "test/model-1",
@@ -132,6 +133,7 @@ describe("runValidationGate (records mode)", () => {
     const journal = heldOutJournal();
     const outcomes = await runValidationGate({
       journal,
+      mode: "records",
       llmCall: orderAware(() => scoresRejecting(8)),
       storeOpts: { configDir: tmpDir },
     });
@@ -190,6 +192,33 @@ describe("runValidationGate (records mode)", () => {
     expect(outcomes[0]).toMatchObject({ outcome: "held" });
     const roots = resolveStorageRoots({ configDir: tmpDir });
     expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
+  });
+  it("HOLDs an accepted records verdict when records mode was an automatic fallback (P0-4: model-predicted evidence never promotes)", async () => {
+    const journal = heldOutJournal();
+    const outcomes = await runValidationGate({
+      journal,
+      llmCall: orderAware(() => scoresAccepting(8)),
+      storeOpts: { configDir: tmpDir },
+      modelTag: "test/model-1",
+      iteration: "it-1",
+    });
+    expect(outcomes).toEqual([
+      expect.objectContaining({ skillName: "curl-timeout-guard", outcome: "held" }),
+    ]);
+    expect(outcomes[0]?.detail).toContain("records-only-evidence");
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    // Staged, not live: the proposal waits for a grounded rollout.
+    await expect(
+      fs.access(path.join(roots.stagingRoot, "curl-timeout-guard")),
+    ).resolves.toBeUndefined();
+    await expect(fs.access(path.join(roots.liveRoot, "curl-timeout-guard"))).rejects.toThrow();
+    const meta = JSON.parse(
+      await fs.readFile(
+        path.join(roots.stagingRoot, "curl-timeout-guard", ".evolution-meta.json"),
+        "utf-8",
+      ),
+    ) as { lastValidation?: { verdict: string } };
+    expect(meta.lastValidation).toMatchObject({ verdict: "records-only-evidence" });
   });
 });
 

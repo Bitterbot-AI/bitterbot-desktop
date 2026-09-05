@@ -7,6 +7,7 @@
  * written back to the journal — the raw layer is read-only to evolution.
  */
 
+import type { RunOutcome } from "./outcome.js";
 import type { RunOrigin } from "./run-origin.js";
 
 export type TraceStepKind = "assistant" | "tool";
@@ -20,6 +21,11 @@ export interface TraceToolStep {
   /** Result text (redacted; journal-truncated at 8k chars per block). */
   result: string;
   isError: boolean;
+  /**
+   * The result was a placeholder (exec approval pending): the action never
+   * ran inside this trace. Not an error, not a success.
+   */
+  pending?: boolean;
 }
 
 export interface TraceAssistantStep {
@@ -50,6 +56,11 @@ export interface ReconstructedTrace {
   taskId: string | null;
   /** PLAN-44 Phase 0: see TraceTask. */
   task: TraceTask | null;
+  /**
+   * Exact model substrate (`provider/model`) from the lifecycle start event.
+   * Null for runs journaled before model identity was recorded.
+   */
+  model: string | null;
   sessionKey: string | null;
   startedAt: number | null;
   endedAt: number | null;
@@ -64,6 +75,14 @@ export interface ReconstructedTrace {
   isComplete: boolean;
   toolCallCount: number;
   toolErrorCount: number;
+  /** Tool calls whose result was an approval-pending placeholder. */
+  toolPendingCount: number;
+  /**
+   * B3: evidence hierarchy for the run (task verdicts + human feedback
+   * joined from the journal/ledger). Attached by the sampler and the
+   * skill-read crediting pass; absent on a bare reconstruction.
+   */
+  outcome?: RunOutcome;
   /** Journal seq of the run's last event (cursor bookkeeping). */
   lastSeq: number;
 }
@@ -84,7 +103,39 @@ export interface TraceLabelResult {
   reason: string;
   /** True when an LLM judge produced the final label. */
   judged: boolean;
+  /** B3: evidence level (L0-L4) behind the label when an outcome was attached. */
+  evidenceLevel?: number;
+  /** B6: structured failure signature for fail labels (see signatures.ts). */
+  signature?: FailureSignature;
 }
+
+/**
+ * B6: a verifier-grounded failure signature, after Self-Harness: two
+ * failures cluster only when all three agree. `cause` is the terminal
+ * error class, `agentCausal` says whether the agent's own behaviour caused
+ * it (vs the environment), `mechanism` is the abstract reusable mechanism.
+ */
+export interface FailureSignature {
+  cause: string;
+  agentCausal: boolean;
+  mechanism: FailureMechanism;
+  /** `${cause}|${agentCausal ? "agent" : "env"}|${mechanism}` — the cluster key. */
+  key: string;
+}
+
+export type FailureMechanism =
+  | "environment-outage"
+  | "repeated-unsuccessful-retry"
+  | "missing-prerequisite"
+  | "invalid-parameter"
+  | "policy-blocked"
+  | "unknown-tool"
+  | "context-overflow"
+  | "premature-completion"
+  | "human-rejected"
+  | "verification-failed"
+  | "approval-never-granted"
+  | "unresolved-tool-error";
 
 export interface LabeledTrace {
   trace: ReconstructedTrace;
@@ -124,6 +175,10 @@ export interface SamplerStats {
   runsDeduped: number;
   /** PLAN-44 Phase 1: contrastive pairs found among the selected traces. */
   pairs: number;
+  /** B3: runs whose label was decided by task verification or human feedback (L3/L4). */
+  runsVerifiedOutcome: number;
+  /** B3: runs dropped because a tool call was still awaiting approval. */
+  runsPendingApproval: number;
 }
 
 /** PLAN-44 Phase 0: an in-flight run the sampler deferred instead of skipping past. */
@@ -147,4 +202,6 @@ export interface IterationSample {
    * capability-task drafts for the corpus miner.
    */
   envFailTexts: string[];
+  /** B6: failure-signature cluster counts over every fail-labeled run examined. */
+  failureSignatures: Record<string, number>;
 }

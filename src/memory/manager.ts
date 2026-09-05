@@ -25,6 +25,11 @@ import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { loadConfig, type BitterbotConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan, withSpanAttrs } from "../observability/otel.js";
+import {
+  evidenceTouchesUntrusted,
+  findExternalUntrustedLineRanges,
+} from "../security/external-content.js";
+import { registerTaskRewardHook } from "../tasks/judge.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
@@ -3740,11 +3745,24 @@ export class MemoryIndexManager implements MemorySearchManager {
         // transcript, so this is a cheap in-process token-overlap check — no
         // re-read. Weak citations are flagged to memory_audit_log for review.
         const provenanceLines = provenanceEnabled ? entry.content.split("\n") : null;
+        // B7 (2026-09-05 harness review W6): session trust is per session
+        // key, but a fetched web page, email or circle message inside the
+        // owner's own session is wrapped in the external-content envelope.
+        // A fact whose evidence sits inside such a span keeps the taint
+        // through the paraphrase; otherwise the canonical-pin and directive
+        // gates would launder third-party text into first-party memory.
+        const untrustedRanges = findExternalUntrustedLineRanges(entry.content);
 
         // Store extracted facts as crystals with epistemic layers
         for (const fact of result.facts) {
           try {
             const id = `fact_${crypto.randomUUID()}`;
+            const evidenceLines = fact.evidence
+              .filter((e): e is Extract<typeof e, { kind: "session" }> => e.kind === "session")
+              .map((e) => e.line);
+            const factTrust = evidenceTouchesUntrusted(evidenceLines, untrustedRanges)
+              ? "untrusted"
+              : sessionTrust(absPath);
             const hash = crypto.createHash("sha256").update(fact.text).digest("hex");
             const evidenceJson =
               provenanceEnabled && fact.evidence.length > 0 ? JSON.stringify(fact.evidence) : null;
@@ -3776,7 +3794,7 @@ export class MemoryIndexManager implements MemorySearchManager {
                 fact.semanticType,
                 fact.epistemicLayer,
                 evidenceJson,
-                sessionTrust(absPath),
+                factTrust,
                 0,
                 null,
                 now,
@@ -6222,6 +6240,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     // skill CROSSES the gate (an execution being recorded) must re-attempt.
     // publishCrystalSkill re-runs the full gate chain and no-ops when the
     // orchestrator bridge is absent, so this is safe to over-call.
+    // B4: verified task completion is the one grounded reward signal (an
+    // independent judge over executed checks), so it drives the hormonal
+    // system directly instead of "a tool returned ≥200 chars".
+    registerTaskRewardHook((event) => {
+      this.hormonalManager?.stimulate(event);
+    });
     if (this.executionTracker) {
       this.executionTrackingHook = createExecutionTrackingHook(
         this.executionTracker,

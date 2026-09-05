@@ -29,6 +29,8 @@ export interface IterationRecord {
   cursorBefore: number | null;
   cursorAfter: number | null;
   sampler: Record<string, number> | null;
+  /** B6: ⟨cause|agent/env|mechanism⟩ → count for the fail-labeled runs examined. */
+  failureSignatures: Record<string, number> | null;
   maintainer: {
     applied: boolean;
     created: number;
@@ -60,6 +62,7 @@ export interface IterationSource {
   cursorBefore?: number;
   cursorAfter?: number;
   samplerStats?: SamplerStats;
+  failureSignatures?: Record<string, number>;
   maintenance?: {
     applied: boolean;
     promptChars: number;
@@ -95,6 +98,10 @@ export function buildIterationRecord(
     cursorBefore: result.cursorBefore ?? null,
     cursorAfter: result.cursorAfter ?? null,
     sampler: result.samplerStats ? { ...result.samplerStats } : null,
+    failureSignatures:
+      result.failureSignatures && Object.keys(result.failureSignatures).length > 0
+        ? { ...result.failureSignatures }
+        : null,
     maintainer: result.maintenance
       ? {
           applied: result.maintenance.applied,

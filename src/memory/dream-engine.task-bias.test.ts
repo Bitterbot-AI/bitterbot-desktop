@@ -125,7 +125,23 @@ describe("scanPendingTasksForDream → computeDreamTaskAdjustments end-to-end", 
     const a = store.create({ goal: "g", doneCriteria: "d" });
     const b = store.create({ goal: "g", doneCriteria: "d" });
     store.update(a.id, { status: "running" });
-    store.update(b.id, { status: "completed", output: "out" });
+    store.update(b.id, { output: "out" });
+    // B4: `completed` is reachable only through a passing verification.
+    store.recordVerification(
+      b.id,
+      {
+        verdict: "pass",
+        level: 2,
+        checks: [],
+        judgeModel: "test/judge",
+        reasoning: "ok",
+        missing: [],
+        round: 0,
+        at: 0,
+        runId: null,
+      },
+      "completed",
+    );
 
     const scanned = scanPendingTasksForDream();
     expect(scanned).toHaveLength(0);

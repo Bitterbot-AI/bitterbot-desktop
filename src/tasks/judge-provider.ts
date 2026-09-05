@@ -26,7 +26,7 @@
 import type { BitterbotConfig } from "../config/config.js";
 import type { LlmCall } from "./judge.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { registerJudgeLlmCall } from "./judge.js";
+import { registerJudgeLlmCall, registerJudgeModel } from "./judge.js";
 
 const log = createSubsystemLogger("tasks/judge-provider");
 
@@ -131,6 +131,7 @@ export function registerJudgeFromConfig(
   try {
     const llm = createJudgeLlmCall(cfg, opts);
     registerJudgeLlmCall(llm);
+    registerJudgeModel(resolveModelRef(cfg, opts.modelRef));
     log.info(`judge LLM registered (model=${resolveModelRef(cfg, opts.modelRef)})`);
     return true;
   } catch (err) {

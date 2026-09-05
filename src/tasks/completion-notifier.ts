@@ -76,8 +76,9 @@ function handleEvent(evt: TaskStoreEvent, enqueue: typeof enqueueSystemEvent): v
 
 function formatNotificationText(task: Task): string {
   const outputClause = task.output ? ` Output: ${task.output}.` : "";
-  const reasoning =
-    task.metadata && typeof task.metadata.lastJudgeReasoning === "string"
+  const reasoning = task.verification?.reasoning
+    ? ` Judge (L${task.verification.level}): ${task.verification.reasoning}`
+    : task.metadata && typeof task.metadata.lastJudgeReasoning === "string"
       ? ` Judge: ${task.metadata.lastJudgeReasoning}`
       : "";
   return `[task ${task.status}] Task ${task.id} (${truncate(task.goal, 80)}).${outputClause}${reasoning}`;

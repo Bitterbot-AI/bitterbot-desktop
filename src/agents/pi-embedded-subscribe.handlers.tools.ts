@@ -4,6 +4,7 @@ import type {
   EmbeddedPiSubscribeContext,
   ToolCallSummary,
 } from "./pi-embedded-subscribe.handlers.types.js";
+import type { ToolResultOutcome } from "./pi-embedded-subscribe.tools.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { startSpan } from "../observability/otel.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
@@ -16,10 +17,11 @@ import {
   extractToolResultMediaPaths,
   extractToolResultText,
   extractMessagingToolSend,
-  isToolResultError,
+  classifyToolResultOutcome,
   sanitizeToolResult,
 } from "./pi-embedded-subscribe.tools.js";
 import { inferToolMetaFromArgs } from "./pi-embedded-utils.js";
+import { recordToolCallOutcome } from "./pi-tools.repeat-guard.js";
 import { buildToolMutationState, isSameToolMutationAction } from "./tool-mutation.js";
 import { normalizeToolName } from "./tool-policy.js";
 
@@ -214,7 +216,11 @@ export async function handleToolExecutionEnd(
   const toolCallId = String(evt.toolCallId);
   const isError = Boolean(evt.isError);
   const result = evt.result;
-  const isToolError = isError || isToolResultError(result);
+  const bodyOutcome = classifyToolResultOutcome(result);
+  const isToolError = isError || bodyOutcome === "error";
+  // Telemetry outcome: thrown/body-level errors are `error`; an
+  // approval-pending placeholder is `pending` (the action has not run).
+  const outcome: ToolResultOutcome = isToolError ? "error" : bodyOutcome;
   const sanitizedResult = sanitizeToolResult(result);
 
   // PLAN-14 Pillar 6: close the span opened in handleToolExecutionStart.
@@ -288,6 +294,7 @@ export async function handleToolExecutionEnd(
       toolCallId,
       meta,
       isError: isToolError,
+      outcome,
       result: sanitizedResult,
     },
   });
@@ -326,6 +333,16 @@ export async function handleToolExecutionEnd(
       }
     }
   }
+
+  // B6: feed the repeat-call guard with the (tool, args) outcome. Body-level
+  // failures count as failures here; that is the whole point.
+  const startDataForGuard = toolStartData.get(toolCallId);
+  recordToolCallOutcome({
+    scope: ctx.params.sessionKey,
+    toolName,
+    args: startDataForGuard?.args,
+    error: isToolError ? (extractToolErrorMessage(sanitizedResult) ?? "error") : undefined,
+  });
 
   // Run after_tool_call plugin hook (fire-and-forget)
   const hookRunnerAfter = ctx.hookRunner ?? getGlobalHookRunner();

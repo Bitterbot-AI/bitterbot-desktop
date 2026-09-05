@@ -42,6 +42,13 @@ export type SubscribeEmbeddedPiSessionParams = {
    */
   contextWindowTokens?: number;
   /**
+   * Model identity for this run, journaled on the lifecycle `start` event so
+   * every trace, skill-read credit and label can be attributed to the exact
+   * substrate that produced it (2026-09-05 harness review W1). Optional only
+   * for legacy callers; the embedded runner always supplies it.
+   */
+  modelRef?: { provider: string; model: string; thinkLevel?: string };
+  /**
    * When true, the assistant text stream is passed through a
    * StreamingContextScrubber that strips <memory-context>...</memory-context>
    * spans across chunk boundaries. Pairs with

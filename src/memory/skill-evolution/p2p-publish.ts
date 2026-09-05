@@ -30,6 +30,7 @@ import {
   resolveStorageRoots,
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
+import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { atomicWriteJson } from "./fs-atomic.js";
 
@@ -96,6 +97,26 @@ export async function listP2pEligibleEvolvedSkills(
   return out.toSorted((a, b) => a.name.localeCompare(b.name));
 }
 
+const PRIVATE_IDENTIFIER_PATTERNS: Array<{ re: RegExp; what: string }> = [
+  { re: /\/(?:home|Users)\/[A-Za-z0-9._-]+\//, what: "a home-directory path" },
+  { re: /[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\/, what: "a Windows user-profile path" },
+  { re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/, what: "an email address" },
+  { re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/, what: "an IP address" },
+];
+
+/** Why the body must not leave this node, or null when it is clean. */
+export function findPublishLeak(body: string): string | null {
+  if (redactSensitiveText(body, { mode: "tools" }) !== body) {
+    return "body contains a secret the redactor would strip";
+  }
+  for (const { re, what } of PRIVATE_IDENTIFIER_PATTERNS) {
+    if (re.test(body)) {
+      return `body contains ${what}`;
+    }
+  }
+  return null;
+}
+
 function provenanceTrailer(meta: EvolutionMeta): string {
   const v = meta.validation;
   const record = {
@@ -148,6 +169,15 @@ export async function publishEligibleEvolvedSkills(deps: {
       const content = await readLive(roots, skill.name);
       if (!content) {
         result.failed.push({ name: skill.name, detail: "live SKILL.md vanished" });
+        continue;
+      }
+      // B7: a propagated SKILL.md must carry no secrets and no user-specific
+      // identifiers. Redaction is a REFUSAL, not a rewrite: a body the
+      // redactor would change is held with the reason, never published
+      // altered (the receiver verifies the hash of what we sign).
+      const leak = findPublishLeak(content);
+      if (leak) {
+        result.failed.push({ name: skill.name, detail: `refusing to publish: ${leak}` });
         continue;
       }
       const withProvenance = `${content.replace(/\n+$/, "")}\n${provenanceTrailer(skill.meta)}`;

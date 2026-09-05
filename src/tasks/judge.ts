@@ -20,7 +20,7 @@
  */
 
 import YAML from "yaml";
-import type { Task, TaskHandoff } from "./types.js";
+import type { Task, TaskCheckResult, TaskHandoff, TaskVerification } from "./types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("tasks/judge");
@@ -40,6 +40,12 @@ export type TaskJudgeInput = {
   output: string | null;
   /** Most recent handoff for cross-checking pending/decisions. Optional. */
   latestHandoff?: TaskHandoff | null;
+  /**
+   * B4: results of the task's deterministic checks, executed by the harness
+   * before the judge runs. The judge sees them as ground truth it must not
+   * contradict; a failed check never reaches the judge (see runTaskJudge).
+   */
+  checkResults?: TaskCheckResult[];
 };
 
 export type LlmCall = (prompt: string) => Promise<string>;
@@ -59,6 +65,16 @@ export function buildTaskJudgePrompt(input: TaskJudgeInput): string {
           .join("\n")
       : "  (no plan recorded)";
   const outputSnippet = truncate(output ?? "(no output recorded)", MAX_OUTPUT_PROMPT);
+  const checks = input.checkResults ?? [];
+  const checksBlock =
+    checks.length > 0
+      ? [
+          "## Executed checks (harness-run, deterministic — treat as ground truth)",
+          ...checks.map(
+            (r) => `  - [${r.passed ? "PASS" : "FAIL"}] ${r.description} — ${r.detail}`,
+          ),
+        ].join("\n")
+      : "## Executed checks\n(none defined — only the output below is available; be conservative)";
   const handoffBlock = latestHandoff
     ? [
         `## Latest handoff (intent + pending at suspend)`,
@@ -90,6 +106,8 @@ ${planLines}
 \`\`\`
 ${outputSnippet}
 \`\`\`
+
+${checksBlock}
 
 ${handoffBlock}
 
@@ -162,6 +180,17 @@ export async function runTaskJudge(
   input: TaskJudgeInput,
   llmCall: LlmCall,
 ): Promise<TaskJudgeDecision | null> {
+  // B4: a failed deterministic check decides the round without a model call.
+  // Model judgment cannot overrule an executed assertion, and spending a
+  // judge call to be told so would only add noise.
+  const failed = (input.checkResults ?? []).filter((r) => !r.passed);
+  if (failed.length > 0) {
+    return {
+      verdict: "fail",
+      reasoning: `${failed.length} of ${input.checkResults!.length} executed check(s) failed; no judge call made`,
+      missing: failed.map((r) => `${r.description}: ${r.detail}`),
+    };
+  }
   const prompt = buildTaskJudgePrompt(input);
   let raw: string;
   try {
@@ -194,4 +223,70 @@ export function registerJudgeLlmCall(fn: LlmCall | null): void {
 
 export function getJudgeLlmCall(): LlmCall | null {
   return activeLlmCall;
+}
+
+/**
+ * B4: assemble the typed verification record from a judge round. The
+ * evidence level is derived, never asserted: executed-and-passed checks are
+ * level 3; a judge verdict over the output alone is level 2.
+ */
+export function buildTaskVerification(params: {
+  decision: TaskJudgeDecision;
+  checkResults: TaskCheckResult[];
+  judgeModel: string | null;
+  judgeCalled: boolean;
+  runId?: string | null;
+}): TaskVerification {
+  const { decision, checkResults } = params;
+  const allChecksPassed = checkResults.length > 0 && checkResults.every((r) => r.passed);
+  const level: TaskVerification["level"] = allChecksPassed ? 3 : params.judgeCalled ? 2 : 1;
+  return {
+    verdict: decision.verdict,
+    level,
+    checks: checkResults,
+    judgeModel: params.judgeCalled ? params.judgeModel : null,
+    reasoning: decision.reasoning,
+    missing: decision.missing ?? [],
+    round: 0, // set by the store
+    at: 0, // set by the store
+    runId: params.runId ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Reward hook — the memory manager registers a hormonal stimulate at boot.
+// Verified task completion is the one place a "reward" is grounded in an
+// independent verdict rather than in "a tool returned".
+// ---------------------------------------------------------------------------
+
+export type TaskRewardHook = (
+  event: "reward" | "error",
+  ctx: { taskId: string; level: number },
+) => void;
+
+let activeRewardHook: TaskRewardHook | null = null;
+let activeJudgeModel: string | null = null;
+
+export function registerTaskRewardHook(fn: TaskRewardHook | null): void {
+  activeRewardHook = fn;
+}
+
+export function emitTaskReward(
+  event: "reward" | "error",
+  ctx: { taskId: string; level: number },
+): void {
+  try {
+    activeRewardHook?.(event, ctx);
+  } catch (err) {
+    log.debug(`task reward hook failed: ${String(err)}`);
+  }
+}
+
+/** Exact judge model recorded on every verification (set by the provider). */
+export function registerJudgeModel(modelRef: string | null): void {
+  activeJudgeModel = modelRef;
+}
+
+export function getJudgeModel(): string | null {
+  return activeJudgeModel;
 }

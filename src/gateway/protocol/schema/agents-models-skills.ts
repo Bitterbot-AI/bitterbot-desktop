@@ -552,6 +552,17 @@ export const SkillsEvolutionCorpusReviewParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** B8: explicit human verdict on one run (level-4 outcome evidence). */
+export const SkillsEvolutionFeedbackParamsSchema = Type.Object(
+  {
+    runId: NonEmptyString,
+    verdict: Type.Union([Type.Literal("confirmed"), Type.Literal("rejected")]),
+    note: Type.Optional(Type.String({ maxLength: 500 })),
+    by: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
 /** Promote staged content to live. */
 export const SkillsPromoteParamsSchema = Type.Object(
   {

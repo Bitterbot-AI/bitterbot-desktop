@@ -41,6 +41,7 @@ import type {
   SkillsMetricsParamsSchema,
   SkillsMetricsResultSchema,
   SkillsEvolutionCorpusReviewParamsSchema,
+  SkillsEvolutionFeedbackParamsSchema,
   SkillsPromoteParamsSchema,
   SkillsPromoteResultSchema,
   SkillsPublishParamsSchema,
@@ -255,6 +256,7 @@ export type SkillsManageResult = Static<typeof SkillsManageResultSchema>;
 export type SkillsEvolutionCorpusReviewParams = Static<
   typeof SkillsEvolutionCorpusReviewParamsSchema
 >;
+export type SkillsEvolutionFeedbackParams = Static<typeof SkillsEvolutionFeedbackParamsSchema>;
 export type SkillsPromoteParams = Static<typeof SkillsPromoteParamsSchema>;
 export type SkillsPromoteResult = Static<typeof SkillsPromoteResultSchema>;
 export type SkillsRollbackParams = Static<typeof SkillsRollbackParamsSchema>;

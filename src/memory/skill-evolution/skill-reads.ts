@@ -30,6 +30,9 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { makeYieldEvery } from "../event-loop.js";
 import { SkillLifecycleStore } from "../skill-lifecycle.js";
 import { atomicWriteJson } from "./fs-atomic.js";
+import { labelHeuristic } from "./labeler.js";
+import { deriveRunOutcome } from "./outcome.js";
+import { readRunFeedback } from "./run-feedback.js";
 import { classifyRunOrigin, isLearnableOrigin } from "./run-origin.js";
 import { listRunsSinceDetailed, runHasTerminal } from "./run-scan.js";
 import { DEFAULT_EXCLUDED_SESSION_PATTERNS } from "./sampler.js";
@@ -51,8 +54,14 @@ export interface SkillReadEvent {
   runId: string;
   skill: string;
   ts: number;
-  /** Run ended without a lifecycle error and reached a terminal event. */
+  /** B3: the run's label was `pass` (labeler cascade over the outcome hierarchy). */
   success: boolean;
+  /** B3: pass | fail | env-fail | unknown; env-fail/unknown credit usage only, never a verdict. */
+  label: string;
+  /** B3: evidence level L0-L4 behind the label. */
+  outcomeLevel: number;
+  /** B2: exact model substrate (`provider/model`) or null for old runs. */
+  model: string | null;
   /** The agent called complete() (a stronger success signal than `success`). */
   completedExplicitly: boolean;
   /** Tool errors in the run, so a consumer can refine `success`. */
@@ -202,6 +211,7 @@ export async function creditSkillReads(params: {
   const pending: SkillReadsState["pending"] = [];
   const events: SkillReadEvent[] = [];
   const yieldTick = makeYieldEvery(16);
+  const feedback = await readRunFeedback(opts);
   const decide = async (runId: string, firstSeq: number, complete: boolean) => {
     if (!complete) {
       if (pending.length < MAX_PENDING) {
@@ -226,8 +236,13 @@ export async function creditSkillReads(params: {
       return; // validation rollouts and probes open skills by construction
     }
     const origin = trace.task?.origin ?? classifyRunOrigin(trace.sessionKey);
+    // B3: credit the run's OUTCOME, not "no lifecycle error". The labeler
+    // cascade (with task verdicts and human feedback joined) decides; an
+    // env-fail or unknown run credits nothing either way.
+    trace.outcome = deriveRunOutcome(trace, { journal: params.journal, feedback });
+    const label = labelHeuristic(trace);
     const credited = isLearnableOrigin(origin) && !(trace.task?.isHeartbeat ?? false);
-    const success = !trace.endedWithError && trace.isComplete;
+    const success = label.label === "pass";
     for (const skill of read) {
       const key = `${runId} ${skill}`;
       if (seen.has(key)) {
@@ -239,6 +254,9 @@ export async function creditSkillReads(params: {
         skill,
         ts: trace.endedAt ?? trace.startedAt ?? now,
         success,
+        label: label.label,
+        outcomeLevel: trace.outcome.level,
+        model: trace.model,
         completedExplicitly: trace.completedExplicitly,
         toolErrors: trace.toolErrorCount,
         origin,
@@ -287,7 +305,13 @@ export async function creditSkillReads(params: {
         continue;
       }
       try {
-        store.recordUsage({ skillName: e.skill, success: e.success, timestamp: e.ts });
+        store.recordUsage({
+          skillName: e.skill,
+          success: e.success,
+          timestamp: e.ts,
+          // env-fail / unknown runs count as usage, never as a verdict.
+          indeterminate: e.label !== "pass" && e.label !== "fail",
+        });
       } catch (err) {
         log.debug(`lifecycle credit failed for ${e.skill}: ${String(err)}`);
       }

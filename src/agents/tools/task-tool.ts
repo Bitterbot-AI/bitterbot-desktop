@@ -28,11 +28,15 @@ import type { AnyAgentTool } from "./common.js";
 import { getCronEngine } from "../../cron/active.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { getActiveEventJournal } from "../../infra/event-journal.js";
+import { getTaskCheckContext, parseTaskChecks, runTaskChecks } from "../../tasks/checks.js";
 import {
+  buildTaskVerification,
   DEFAULT_MAX_JUDGE_ROUNDS,
-  getJudgeLlmCall,
-  runTaskJudge,
   type TaskJudgeDecision,
+  emitTaskReward,
+  getJudgeLlmCall,
+  getJudgeModel,
+  runTaskJudge,
 } from "../../tasks/judge.js";
 import { getActiveTaskStore, type TaskStore } from "../../tasks/store.js";
 import { isTerminal } from "../../tasks/types.js";
@@ -185,6 +189,16 @@ const CreateSchema = Type.Object({
     minLength: 1,
     maxLength: 2000,
   }),
+  checks: Type.Optional(
+    Type.Array(Type.Record(Type.String(), Type.Unknown()), {
+      description:
+        "Deterministic acceptance checks the harness EXECUTES at judge time (level-3 evidence). " +
+        "Kinds: {kind:'file_exists',path}, {kind:'file_contains',path,value}, {kind:'file_regex',path,pattern}, " +
+        "{kind:'output_regex',pattern} (over the task output), {kind:'command',command,expectExitCode?,stdoutRegex?} " +
+        "(runs only when the operator enables BITTERBOT_TASKS_CHECK_COMMANDS). Paths are relative to the workspace. " +
+        "A failed check fails the judge round without a model call; prefer checks over prose whenever the outcome is observable.",
+    }),
+  ),
   plan: Type.Optional(
     Type.Array(PlanStepSchema, {
       description:
@@ -248,6 +262,14 @@ export function createTaskCreateTool(options: { agentSessionKey?: string }): Any
 
       const goal = readStringParam(params, "goal", { required: true });
       const doneCriteria = readStringParam(params, "done_criteria", { required: true });
+      let checks: ReturnType<typeof parseTaskChecks> | undefined;
+      if (params.checks !== undefined) {
+        try {
+          checks = parseTaskChecks(params.checks);
+        } catch (err) {
+          return jsonResult({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
       const source = (readStringParam(params, "source") as TaskSource | undefined) ?? "user";
       const parentTaskId = readStringParam(params, "parent_task_id");
       const bounty = readNumberParam(params, "bounty", { integer: true });
@@ -265,6 +287,7 @@ export function createTaskCreateTool(options: { agentSessionKey?: string }): Any
         task = store.create({
           goal,
           doneCriteria,
+          ...(checks !== undefined ? { checks } : {}),
           source,
           parentTaskId: parentTaskId ?? null,
           bounty: typeof bounty === "number" ? bounty : null,
@@ -331,6 +354,11 @@ const UpdateSchema = Type.Object({
   output: Type.Optional(Type.String()),
   current_run_id: Type.Optional(Type.String()),
   metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  checks: Type.Optional(
+    Type.Array(Type.Record(Type.String(), Type.Unknown()), {
+      description: "Replace the task's deterministic acceptance checks (see task_create).",
+    }),
+  ),
 });
 
 export function createTaskUpdateTool(): AnyAgentTool {
@@ -338,9 +366,10 @@ export function createTaskUpdateTool(): AnyAgentTool {
     label: "Update Task",
     name: "task_update",
     description:
-      "Mutate a Task's status, plan, current_run_id, or output reference. Use this " +
+      "Mutate a Task's status, plan, checks, current_run_id, or output reference. Use this " +
       "to advance through plan steps (`step_update`), to mark a task as running / " +
-      "judging / completed, or to attach a final artifact reference. Status " +
+      "judging, or to attach a final artifact reference. `completed` is NOT settable " +
+      "here: only a passing task_judge verification completes a task. Status " +
       "transitions out of completed/failed/stopped are blocked — those are terminal.",
     parameters: UpdateSchema,
     execute: safeExecute(async (_toolCallId, params) => {
@@ -374,6 +403,14 @@ export function createTaskUpdateTool(): AnyAgentTool {
       const rawPlan = params.plan;
       const rawMeta = params.metadata;
       const plan = parsePlanArray(rawPlan);
+      let checks: ReturnType<typeof parseTaskChecks> | undefined;
+      if (params.checks !== undefined) {
+        try {
+          checks = parseTaskChecks(params.checks);
+        } catch (err) {
+          return jsonResult({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
       const metadata =
         rawMeta && typeof rawMeta === "object" && !Array.isArray(rawMeta)
           ? (rawMeta as Record<string, unknown>)
@@ -388,6 +425,7 @@ export function createTaskUpdateTool(): AnyAgentTool {
           ...(output !== undefined ? { output } : {}),
           ...(currentRunId !== undefined ? { currentRunId } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
+          ...(checks !== undefined ? { checks } : {}),
         });
         emitTaskEvent(taskId, "updated", { status: task.status });
         return jsonResult({ ok: true, task });
@@ -1145,8 +1183,9 @@ export function createTaskJudgeTool(): AnyAgentTool {
       "step statuses, output reference, and latest handoff — never the worker's " +
       "chain of thought. Three verdicts: 'pass' (→ completed), 'fail' (→ " +
       "rejecting handoff written, task back to running OR failed at round cap), " +
-      "'needs_more' (→ feedback handoff, back to running). Use this *before* " +
-      "transitioning a task to 'completed' yourself — let the judge gatekeep.",
+      "'needs_more' (→ feedback handoff, back to running). The task's deterministic " +
+      "checks are EXECUTED first; a failed check fails the round with no model call. " +
+      "This is the only path to 'completed'.",
     parameters: JudgeSchema,
     execute: safeExecute(async (_toolCallId, params) => {
       const store = getActiveTaskStore();
@@ -1176,7 +1215,17 @@ export function createTaskJudgeTool(): AnyAgentTool {
       }
 
       const latestHandoff = store.latestHandoff(taskId) ?? null;
-      const decision = await runTaskJudge({ task, output: task.output, latestHandoff }, llmCall);
+      const checkCtx = getTaskCheckContext();
+      const checkResults = await runTaskChecks(task.checks, {
+        workspaceDir: checkCtx.workspaceDir,
+        allowCommands: checkCtx.allowCommands,
+        output: task.output,
+      });
+      const judgeCalled = checkResults.every((r) => r.passed);
+      const decision = await runTaskJudge(
+        { task, output: task.output, latestHandoff, checkResults },
+        llmCall,
+      );
 
       if (!decision) {
         emitTaskEvent(taskId, "judge_error", { reason: "judge response unparseable" });
@@ -1186,16 +1235,8 @@ export function createTaskJudgeTool(): AnyAgentTool {
         });
       }
 
-      const judgeRounds = readJudgeRounds(task) + 1;
+      const judgeRounds = task.judgeRounds + 1;
       const verdict = decision.verdict;
-      const metadata = {
-        ...task.metadata,
-        judgeRounds,
-        lastJudgeAt: Date.now(),
-        lastJudgeVerdict: verdict,
-        lastJudgeReasoning: decision.reasoning,
-        ...(decision.missing ? { lastJudgeMissing: decision.missing } : {}),
-      };
 
       let nextStatus: TaskStatus;
       if (verdict === "pass") {
@@ -1221,18 +1262,40 @@ export function createTaskJudgeTool(): AnyAgentTool {
         }
       }
 
-      const updated = store.update(taskId, { status: nextStatus, metadata });
+      const verification = buildTaskVerification({
+        decision,
+        checkResults,
+        judgeModel: getJudgeModel(),
+        judgeCalled,
+        runId: task.currentRunId,
+      });
+      const updated = store.recordVerification(taskId, verification, nextStatus);
+      // Journaled under the task id so the run's trace (and the run-outcome
+      // derivation in skill-evolution) can find the verdict and its evidence
+      // level without trusting the worker's narration.
       emitTaskEvent(taskId, "judged", {
         verdict,
+        level: verification.level,
+        checksPassed: checkResults.filter((r) => r.passed).length,
+        checksTotal: checkResults.length,
+        judgeModel: verification.judgeModel,
+        runId: task.currentRunId,
         reasoning: decision.reasoning,
         ...(decision.missing ? { missing: decision.missing } : {}),
         judgeRounds,
         nextStatus,
       });
+      if (nextStatus === "completed") {
+        emitTaskReward("reward", { taskId, level: verification.level });
+      } else if (nextStatus === "failed") {
+        emitTaskReward("error", { taskId, level: verification.level });
+      }
 
       return jsonResult({
         ok: true,
         verdict,
+        level: verification.level,
+        checks: checkResults,
         reasoning: decision.reasoning,
         missing: decision.missing ?? [],
         judgeRounds,
@@ -1242,12 +1305,6 @@ export function createTaskJudgeTool(): AnyAgentTool {
       });
     }),
   };
-}
-
-function readJudgeRounds(task: Task): number {
-  const meta = task.metadata as Record<string, unknown> | null;
-  const raw = meta?.judgeRounds;
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
 }
 
 function log_(err: unknown, taskId: string): void {

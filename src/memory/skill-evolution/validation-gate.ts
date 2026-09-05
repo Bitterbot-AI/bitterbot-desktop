@@ -329,7 +329,10 @@ async function settleOne(
   const corpus = await loadEffectiveCorpus(trailOpts, corpusSeed);
   // PLAN-44 D-2: explicit config wins; otherwise tasks mode once the corpus
   // carries enough reviewed capability tasks for the sign test.
-  const { mode } = resolveEffectiveValidationMode(deps.mode, countCapabilityTasks(corpus));
+  const { mode, source: modeSource } = resolveEffectiveValidationMode(
+    deps.mode,
+    countCapabilityTasks(corpus),
+  );
   let verdictAccepted = false;
   let verdictDetail = "";
   let validationRecord: EvolutionMeta["validation"];
@@ -438,11 +441,19 @@ async function settleOne(
       candidateContent: staged.content,
       incumbentContent: incumbent,
     });
-    verdictAccepted = verdict.accepted;
-    verdictDetail = `records: ${verdict.reason} (n=${verdict.trials}${verdict.ci95Low !== undefined ? `, ci95Low=${verdict.ci95Low.toFixed(3)}` : ""})${verdictDetail ? `; ${verdictDetail}` : ""}`;
+    // 2026-09-05 harness review P0-4: an LLM counterfactual over past
+    // traces is diagnostic evidence, not measured task performance. When the
+    // node fell back to records mode automatically (no operator opt-in), an
+    // accepted verdict HOLDS the proposal until the corpus can carry a real
+    // rollout; it never promotes. Explicit `validationMode: "records"` keeps
+    // the old behaviour and says so in the record.
+    const recordsOnly = modeSource === "auto" && verdict.accepted;
+    verdictAccepted = verdict.accepted && !recordsOnly;
+    const recordsVerdict = recordsOnly ? "records-only-evidence" : verdict.reason;
+    verdictDetail = `records: ${recordsVerdict}${recordsOnly ? ` (judge said ${verdict.reason}; model-predicted evidence cannot promote — review capability tasks to reach tasks mode)` : ""} (n=${verdict.trials}${verdict.ci95Low !== undefined ? `, ci95Low=${verdict.ci95Low.toFixed(3)}` : ""})${verdictDetail ? `; ${verdictDetail}` : ""}`;
     validationRecord = {
       mode: "records",
-      verdict: verdict.reason,
+      verdict: recordsVerdict,
       ...(verdict.meanDelta !== undefined ? { meanDelta: verdict.meanDelta } : {}),
       ...(verdict.ci95Low !== undefined ? { ci95Low: verdict.ci95Low } : {}),
       ...(verdict.ci95High !== undefined ? { ci95High: verdict.ci95High } : {}),
@@ -463,6 +474,7 @@ async function settleOne(
       validationRecord.verdict === "no-capability-tasks" ||
       validationRecord.verdict === "insufficient-capability-tasks" ||
       validationRecord.verdict === "insufficient-evidence" ||
+      validationRecord.verdict === "records-only-evidence" ||
       // PLAN-44 Phase 2: the agent never opened the skill (description may
       // just need rewording) or the wall-clock budget ran out (memo makes
       // the retry cheap). Over-triggering is a measured REJECT.

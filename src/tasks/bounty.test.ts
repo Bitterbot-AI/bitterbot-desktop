@@ -2,8 +2,35 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { TaskStore } from "./store.js";
 import { getBids, listBiddableTasks, recordBid } from "./bounty.js";
 import { getActiveTaskStore, startTaskStore, stopTaskStore } from "./store.js";
+
+/** B4: `completed` is reachable only through a passing verification. */
+function completeVerified(
+  store: TaskStore,
+  id: string,
+  opts: { output?: string; reasoning?: string } = {},
+) {
+  if (opts.output !== undefined) {
+    store.update(id, { output: opts.output });
+  }
+  return store.recordVerification(
+    id,
+    {
+      verdict: "pass",
+      level: 2,
+      checks: [],
+      judgeModel: "test/judge",
+      reasoning: opts.reasoning ?? "criteria verified",
+      missing: [],
+      round: 0,
+      at: 0,
+      runId: null,
+    },
+    "completed",
+  );
+}
 
 describe("P2P bounty plumbing (PLAN-16 Phase E.4)", () => {
   let dir: string;
@@ -26,7 +53,7 @@ describe("P2P bounty plumbing (PLAN-16 Phase E.4)", () => {
     // Mark the third as completed.
     const list1 = store.list();
     const done = list1.find((t) => t.goal === "expensive done")!;
-    store.update(done.id, { status: "completed", output: "out" });
+    completeVerified(store, done.id, { output: "out" });
 
     const biddable = listBiddableTasks();
     expect(biddable).toHaveLength(1);

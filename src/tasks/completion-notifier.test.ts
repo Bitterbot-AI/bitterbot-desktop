@@ -2,12 +2,39 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TaskStore } from "./store.js";
 import {
   isCompletionNotifierEnabled,
   startCompletionNotifier,
   stopCompletionNotifier,
 } from "./completion-notifier.js";
 import { startTaskStore, stopTaskStore, getActiveTaskStore } from "./store.js";
+
+/** B4: `completed` is reachable only through a passing verification. */
+function completeVerified(
+  store: TaskStore,
+  id: string,
+  opts: { output?: string; reasoning?: string } = {},
+) {
+  if (opts.output !== undefined) {
+    store.update(id, { output: opts.output });
+  }
+  return store.recordVerification(
+    id,
+    {
+      verdict: "pass",
+      level: 2,
+      checks: [],
+      judgeModel: "test/judge",
+      reasoning: opts.reasoning ?? "criteria verified",
+      missing: [],
+      round: 0,
+      at: 0,
+      runId: null,
+    },
+    "completed",
+  );
+}
 
 type EnqueueArgs = [string, { sessionKey: string; contextKey?: string }];
 
@@ -44,7 +71,7 @@ describe("completion-notifier", () => {
     });
     store.update(t.id, { status: "running" });
     expect(enqueue).not.toHaveBeenCalled();
-    store.update(t.id, { status: "completed", output: "crystal:docs-1" });
+    completeVerified(store, t.id, { output: "crystal:docs-1" });
     expect(enqueue).toHaveBeenCalledOnce();
     const [text, opts] = enqueue.mock.calls[0] as EnqueueArgs;
     expect(text).toMatch(/\[task completed\]/);
@@ -83,11 +110,11 @@ describe("completion-notifier", () => {
     startCompletionNotifier({ enqueue });
     const store = getActiveTaskStore()!;
     const t = store.create({ goal: "g", doneCriteria: "x" });
-    store.update(t.id, { status: "completed" });
+    completeVerified(store, t.id);
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it("includes the judge reasoning when present in metadata", () => {
+  it("includes the judge reasoning from the verification record", () => {
     startCompletionNotifier({ enqueue });
     const store = getActiveTaskStore()!;
     const t = store.create({
@@ -95,12 +122,9 @@ describe("completion-notifier", () => {
       doneCriteria: "x",
       agentSessionKey: "s",
     });
-    store.update(t.id, {
-      status: "completed",
-      metadata: { lastJudgeReasoning: "all criteria verified" },
-    });
+    completeVerified(store, t.id, { reasoning: "all criteria verified" });
     const [text] = enqueue.mock.calls[0] as EnqueueArgs;
-    expect(text).toMatch(/Judge: all criteria verified/);
+    expect(text).toMatch(/Judge \(L2\): all criteria verified/);
   });
 
   it("is disabled when BITTERBOT_TASKS_COMPLETION_NOTIFY=0", () => {
@@ -126,7 +150,7 @@ describe("completion-notifier", () => {
     startCompletionNotifier({ enqueue: badEnqueue });
     const store = getActiveTaskStore()!;
     const t = store.create({ goal: "g", doneCriteria: "x", agentSessionKey: "s" });
-    // Should not throw out of the store.update call.
-    expect(() => store.update(t.id, { status: "completed" })).not.toThrow();
+    // Should not throw out of the store call.
+    expect(() => completeVerified(store, t.id)).not.toThrow();
   });
 });
