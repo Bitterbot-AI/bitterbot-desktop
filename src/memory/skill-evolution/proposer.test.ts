@@ -75,7 +75,7 @@ const CREATE_PROPOSAL = {
     action: "create",
     name: "curl-timeout-guard",
     skill_md:
-      "---\nname: curl-timeout-guard\ndescription: Always bound curl with --max-time; apply when running curl in exec.\n---\n\n# Curl timeout guard\n\n## When to Apply\nAny exec call invoking curl.\n\n## When NOT to Apply\nNon-network commands.\n\nAlways pass --max-time 30.",
+      "---\nname: curl-timeout-guard\ndescription: Bound every curl in exec with --max-time when the task runs curl; not for commands that make no network calls.\n---\n\n# Curl timeout guard\n\n## When to Apply\nAny exec call invoking curl.\n\n## When NOT to Apply\nNon-network commands.\n\nAlways pass --max-time 30.",
     purpose_md:
       "# Purpose\n\n## Origin\nwiki-evolution\n\n## Patterns Addressed\n- [exec-network-timeout](../skill-wiki/patterns/exec-network-timeout.md)\n\n## Evolution History\n- created from iteration evidence",
   },

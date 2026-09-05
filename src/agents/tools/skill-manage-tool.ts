@@ -134,7 +134,9 @@ const ManageSchema = Type.Object({
   description: Type.Optional(
     Type.String({
       description:
-        "For crystallize only. One-line description of what the crystallized skill does.",
+        "For crystallize only. One-line description that ROUTES the skill: a 'when' clause naming " +
+        "the triggering situation and a 'not/never/unless/except/only' clause scoping it out, " +
+        "40-240 characters, no URLs or emoji. The gate refuses descriptions that miss this.",
       maxLength: 500,
     }),
   ),

@@ -23,6 +23,7 @@
 import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
+import { checkDescriptionContract, describeContractIssues } from "./description-contract.js";
 
 export type GateOutcome = "pass" | "warn" | "fail";
 
@@ -32,6 +33,7 @@ export interface GateIssue {
     | "missing-field"
     | "injection-critical"
     | "injection-suspect"
+    | "description-contract"
     | "regression-risk"
     | "empty-body";
   detail: string;
@@ -63,6 +65,12 @@ export interface GateInput {
    * as a green light). Human-edited skills keep the warn behaviour.
    */
   strictInjection?: boolean;
+  /**
+   * PLAN-44 Phase 4a: hold SYNTHESIZED content (evolution proposals,
+   * crystallized sequences) to the description contract — the description
+   * is the runtime's routing key. Human-edited skills are not checked.
+   */
+  descriptionContract?: boolean;
 }
 
 const REQUIRED_FRONTMATTER_FIELDS = ["name", "description"] as const;
@@ -132,6 +140,22 @@ export function runSkillGate(input: GateInput): GateResult {
       issues.push({
         kind: "missing-field",
         detail: `frontmatter is missing required field "${field}"`,
+        severity: "block",
+      });
+      outcome = "fail";
+    }
+  }
+  if (input.descriptionContract) {
+    const fm = parsed.frontmatter as Record<string, unknown>;
+    const contract = checkDescriptionContract({
+      skillName: input.skillName,
+      frontmatterName: typeof fm.name === "string" ? fm.name : undefined,
+      description: typeof fm.description === "string" ? fm.description : undefined,
+    });
+    if (contract.length > 0) {
+      issues.push({
+        kind: "description-contract",
+        detail: `description contract: ${describeContractIssues(contract)}`,
         severity: "block",
       });
       outcome = "fail";

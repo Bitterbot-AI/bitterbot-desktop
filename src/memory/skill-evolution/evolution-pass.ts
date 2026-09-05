@@ -115,6 +115,8 @@ export interface EvolutionPassDeps {
   semanticLintCadenceDays?: number;
   /** PLAN-44 Phase 2: wall-clock budget per tasks-mode validation run. */
   validationBudgetMinutes?: number;
+  /** PLAN-44 Phase 4a: reword never-triggered descriptions (default true). */
+  descriptionRepair?: boolean;
   storeOpts?: WikiStoreOptions;
 }
 

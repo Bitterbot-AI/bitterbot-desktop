@@ -53,3 +53,58 @@ describe("applyProposal refuses a proposal that cites no traces (adversarial M3)
     expect(entries).toEqual([]);
   });
 });
+
+describe("description contract on proposals (PLAN-44 Phase 4a)", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "proposal-contract-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+  const evidence = { runIds: ["r1"], origins: ["human"] };
+  const LEGACY =
+    "---\nname: web-nav\ndescription: navigate the web\n---\nStep 1: open page\nStep 2: read\n";
+
+  it("refuses a create whose description cannot route", async () => {
+    const r = await applyProposal(
+      { action: "create", name: "web-nav", skillMd: LEGACY, purposeMd: "why" },
+      { storeOpts: { configDir: tmpDir }, iteration: "it", evidence },
+    );
+    expect(r.outcome).toBe("gate-failed");
+    expect(r.detail).toContain("description contract");
+  });
+
+  it("grandfathers a body patch over a legacy skill, but holds a rewritten description to the contract", async () => {
+    const { liveSkillPath, resolveStorageRoots } =
+      await import("../../agents/skills/skill-storage.js");
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    await fs.mkdir(path.dirname(liveSkillPath(roots, "web-nav")), { recursive: true });
+    await fs.writeFile(liveSkillPath(roots, "web-nav"), LEGACY);
+    const body = await applyProposal(
+      {
+        action: "patch",
+        name: "web-nav",
+        edits: [{ op: "append", content: "Step 3: read with retry" }],
+      },
+      { storeOpts: { configDir: tmpDir }, iteration: "it", evidence },
+    );
+    expect(body.outcome).toBe("staged");
+    const desc = await applyProposal(
+      {
+        action: "patch",
+        name: "web-nav",
+        edits: [
+          {
+            op: "replace",
+            target: "description: navigate the web",
+            content: "description: browse",
+          },
+        ],
+      },
+      { storeOpts: { configDir: tmpDir }, iteration: "it", evidence },
+    );
+    expect(desc.outcome).toBe("gate-failed");
+    expect(desc.detail).toContain("description contract");
+  });
+});

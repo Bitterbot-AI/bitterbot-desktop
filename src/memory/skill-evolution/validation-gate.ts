@@ -30,9 +30,11 @@ import {
   resolveStorageRoots,
   stagingSkillDir,
   type StorageRoots,
+  stagingSkillPath,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { deriveCanonicalSeed, loadEffectiveCorpus } from "./canonical-corpus.js";
+import { MAX_DESCRIPTION_REPAIRS, repairDescription } from "./description-repair.js";
 import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
 import {
   HOLD_BACKOFF_MS,
@@ -61,6 +63,9 @@ export interface EvolutionMeta {
   evidence?: { runIds: string[]; origins: string[] };
   /** PLAN-44 Phase 3: hash of the SKILL.md the pipeline staged (tamper check). */
   contentHash?: string;
+  /** PLAN-44 Phase 4a: description repairs applied so far (capped). */
+  descriptionRepairs?: number;
+  descriptionRepairLog?: Array<{ at: number; from: string; to: string; reason: string }>;
   /** PLAN-44 Phase 2: last hold verdict on the staged proposal (24h backoff). */
   lastValidation?: {
     at: number;
@@ -116,6 +121,8 @@ export interface ValidationGateDeps {
   iteration?: string;
   /** PLAN-44 Phase 2: wall-clock budget per tasks-mode validation (config). */
   validationBudgetMinutes?: number;
+  /** PLAN-44 Phase 4a: reword a never-triggered description (default true). */
+  descriptionRepair?: boolean;
   /** Test override for the incumbent memo (defaults to the on-disk sqlite). */
   trialCache?: TrialCache;
 }
@@ -474,6 +481,68 @@ async function settleOne(
           modelTag: deps.modelTag ?? "unknown",
         },
       } satisfies EvolutionMeta);
+      // PLAN-44 Phase 4a: a never-triggered HOLD is a routing failure, not
+      // a body failure. Reword the description now (cheap: LLM calls, no
+      // agent turns); the repaired content re-measures on the next pass
+      // under a new content hash.
+      if (
+        validationRecord.verdict === "never-triggered" &&
+        deps.descriptionRepair !== false &&
+        deps.llmCall &&
+        corpus &&
+        (meta.descriptionRepairs ?? 0) < MAX_DESCRIPTION_REPAIRS
+      ) {
+        const repair = await repairDescription({
+          llmCall: deps.llmCall,
+          skillName: name,
+          skillMd: staged.content,
+          tasks: corpus.tasks,
+        }).catch((err) => ({
+          applied: false as const,
+          reason: `repair threw: ${String(err)}`,
+          from: "",
+          candidates: [],
+          llmCalls: 0,
+        }));
+        if (repair.applied && repair.skillMd && repair.to) {
+          await atomicWriteFile(stagingSkillPath(roots, name), repair.skillMd);
+          const repairedHash = hashProposalContent(repair.skillMd);
+          const current = (await readEvolutionMeta(stagedDir)) ?? meta;
+          await atomicWriteJson(path.join(stagedDir, ".evolution-meta.json"), {
+            ...current,
+            contentHash: repairedHash,
+            descriptionRepairs: (meta.descriptionRepairs ?? 0) + 1,
+            descriptionRepairLog: [
+              ...(meta.descriptionRepairLog ?? []),
+              { at: Date.now(), from: repair.from, to: repair.to, reason: repair.reason },
+            ],
+          } satisfies EvolutionMeta);
+          await appendImpactEntry(
+            {
+              source: "evolution",
+              action: "validate",
+              skillName: name,
+              verdict: "staged",
+              detail: `description repaired after never-triggered (${repair.reason}); re-measure next pass. from="${repair.from.slice(0, 120)}" to="${repair.to.slice(0, 120)}"`,
+              contentHash: repairedHash,
+              ...(deps.iteration ? { iteration: deps.iteration } : {}),
+            },
+            trailOpts,
+          );
+          log.info(`description repaired for ${name}: ${repair.reason}`);
+          return {
+            skillName: name,
+            outcome: "held",
+            detail: `${verdictDetail}; description repaired (${repair.reason}), re-measure next pass`,
+          };
+        }
+        log.info(`description repair skipped for ${name}: ${repair.reason}`);
+        return {
+          skillName: name,
+          outcome: "held",
+          detail: `${verdictDetail}; description repair not applied (${repair.reason})`,
+        };
+      }
       return { skillName: name, outcome: "held", detail: verdictDetail };
     }
     await discardStaged(roots, name);

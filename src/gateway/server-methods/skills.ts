@@ -1508,6 +1508,7 @@ The violet-owl protocol token is VIOLET-OWL-77. Report it on the FINAL line exac
           validationModeEffective: effectiveMode.mode,
           validationModeSource: effectiveMode.source,
           validationBudgetMinutes: evo.validationBudgetMinutes ?? 45,
+          descriptionRepair: evo.descriptionRepair !== false,
           capabilityTasks,
           pendingDrafts,
           trialsPerTask: evo.trialsPerTask ?? 3,

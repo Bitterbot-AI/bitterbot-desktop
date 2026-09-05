@@ -492,7 +492,7 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   cited traces are all third-party (circle / a2a / subagent / guest /
   unknown) is HELD `untrusted-evidence-only` before any LLM spend, and a
   proposal that read no traces at all is refused at apply time (`proposal
-  cites no traces`); a pre-user-stream trace is classified by its session
+cites no traces`); a pre-user-stream trace is classified by its session
   key, as the sampler admitted it. P2P
   ingestion routes an envelope into the skill-network bridge (memory
   chunk) only when `ingestSkill` ACCEPTED it (`shouldBridgeIngest`); a
@@ -504,7 +504,32 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   The wiki index scan covers only the lines an update ADDS (an old suspect
   line cannot freeze the catalogue) and a withheld log entry still leaves a
   redacted record; the `## Signals` block reduces tool names to an
-  identifier charset and the lifecycle error text is fenced. One trust classifier
+  identifier charset and the lifecycle error text is fenced.
+- Description contract + repair loop (PLAN-44 Phase 4a, 2026-09-05). The
+  runtime index shows the agent only `<name>` + `<description>` and opens a
+  skill when exactly one description clearly applies, so the description is
+  the whole routing key. `description-contract.ts` defines the contract
+  (40-240 chars; a `when` clause naming the triggering situation; a
+  `not/never/unless/except/only` clause scoping it out; no URLs, emoji or
+  copied maintainer notes; frontmatter name equal to the skill name; no
+  `-alt` variants). The staging gate enforces it as a BLOCK for synthesized
+  content only (`descriptionContract` set by `applyProposal` and
+  `crystallize`; a body patch over a legacy skill is grandfathered unless
+  the proposer rewrote the description). The proposer prompt and the
+  `skill_manage` crystallize parameter carry the contract verbatim. Repair:
+  when the tasks-mode gate HOLDs a proposal `never-triggered`,
+  `description-repair.ts` asks the LLM for contract-compliant rewordings,
+  ranks the current description and each variant with a routing proxy (the
+  LLM answers, per capability and regression task, whether the index entry
+  would make it open the skill; score = capability hit rate minus
+  regression hit rate), rewrites only the `description:` line of the staged
+  SKILL.md when the winner routes at least half the capability tasks and
+  beats the current description, re-keys `meta.contentHash` (so the tamper
+  check passes and the 24h backoff does not apply), increments
+  `meta.descriptionRepairs` (cap 2) and records `descriptionRepairLog` and
+  an impact entry. The proxy only SELECTS; the real gate re-measures the
+  repaired candidate on the next pass (incumbent trials memoized). Kill
+  switch `skills.evolution.descriptionRepair: false`. One trust classifier
   remains: `classifySessionKeyTrust` delegates to `classifyRunOrigin`, so
   hook / group / channel / circle / a2a / subagent / guest / skill-evolve
   sessions are untrusted for canonical pins exactly as they are for

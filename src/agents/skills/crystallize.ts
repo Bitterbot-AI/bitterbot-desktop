@@ -75,6 +75,8 @@ export async function crystallizeSkill(params: {
       // PLAN-44 Phase 3: distilled from transcripts that carry tool output;
       // a medium injection hit blocks rather than warns.
       strictInjection: true,
+      // PLAN-44 Phase 4a: agent-typed descriptions meet the same contract.
+      descriptionContract: true,
       overwriteLive: true,
     },
   );

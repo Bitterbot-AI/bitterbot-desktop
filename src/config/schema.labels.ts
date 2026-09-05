@@ -21,6 +21,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "skills.evolution.semanticLintCadenceDays": "Skill Wiki Semantic Lint Cadence (days)",
   "skills.evolution.maturityDays": "Evolved Skill Maturity (days)",
   "skills.evolution.validationBudgetMinutes": "Skill Validation Budget (minutes)",
+  "skills.evolution.descriptionRepair": "Skill Description Repair",
   "skills.evolution.validationTools.exec": "Skill Validation Shell Access",
   "skills.skillSeekers.enabled": "Skill Seekers Ingestion",
   "skills.skillSeekers.trending.enabled": "Skill Seekers Trending Sweep",

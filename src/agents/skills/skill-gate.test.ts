@@ -260,3 +260,30 @@ describe("runSkillGate — strictInjection (PLAN-44 Phase 3, I7)", () => {
     expect(strict.outcome).toBe("warn");
   });
 });
+
+describe("runSkillGate — description contract (PLAN-44 Phase 4a)", () => {
+  const legacy =
+    "---\nname: alpha\ndescription: A collective list of free APIs\n---\n# alpha\nbody\n";
+  it("is not applied to human-edited content", () => {
+    expect(runSkillGate({ skillName: "alpha", stagedContent: legacy }).outcome).toBe("pass");
+  });
+  it("blocks synthesized content whose description cannot route", () => {
+    const result = runSkillGate({
+      skillName: "alpha",
+      stagedContent: legacy,
+      descriptionContract: true,
+    });
+    expect(result.outcome).toBe("fail");
+    expect(result.issues).toEqual([
+      expect.objectContaining({ kind: "description-contract", severity: "block" }),
+    ]);
+    expect(result.issues[0]?.detail).toContain("no 'when' clause");
+  });
+  it("passes synthesized content that meets the contract", () => {
+    const good =
+      "---\nname: alpha\ndescription: Look up a public API when the user asks for a free data source; not for private or paid APIs.\n---\n# alpha\nbody\n";
+    expect(
+      runSkillGate({ skillName: "alpha", stagedContent: good, descriptionContract: true }).outcome,
+    ).toBe("pass");
+  });
+});

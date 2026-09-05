@@ -28,6 +28,7 @@ import path from "node:path";
 import type { EventJournal } from "../../infra/event-journal.js";
 import type { LlmCallFn } from "./maintainer.js";
 import type { LabeledTrace } from "./types.js";
+import { DESCRIPTION_CONTRACT_PROMPT } from "../../agents/skills/description-contract.js";
 import { impactTrailPath, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { liveSkillDir, readLive, resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -107,6 +108,7 @@ If no change is warranted: {"action": "no_action", "reason": "<why>"}
 1. Read the wiki FIRST -- don't propose something that was already tried and rejected.
 2. Focus on action patterns and concrete strategies, not vague advice.
 3. Keep skills concise and actionable; the description field is the triggering surface.
+   ${DESCRIPTION_CONTRACT_PROMPT.split("\n").join("\n   ")}
 4. Prefer patching existing skills over creating new ones when the existing skill is partially correct.
 5. Each "replace" target must be a short, specific section -- not the entire file.
 6. no_action is a perfectly good outcome when the evidence is thin.

@@ -664,6 +664,7 @@ export const BitterbotSchema = z
             propagate: z.boolean().optional().describe("Default: true"),
             maturityDays: z.number().positive().optional().describe("Default: 3"),
             validationBudgetMinutes: z.number().positive().optional().describe("Default: 45"),
+            descriptionRepair: z.boolean().optional().describe("Default: true"),
             validationTools: z
               .object({
                 alsoAllow: z.array(z.string()).optional(),

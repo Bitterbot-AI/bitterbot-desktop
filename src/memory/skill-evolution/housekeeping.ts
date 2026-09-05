@@ -51,6 +51,7 @@ export async function runHousekeeping(
     ...(typeof deps.validationBudgetMinutes === "number"
       ? { validationBudgetMinutes: deps.validationBudgetMinutes }
       : {}),
+    ...(deps.descriptionRepair === false ? { descriptionRepair: false } : {}),
     iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
   });
   // PLAN-43 Phase 3: attest peer skills on our own corpus (tasks mode only:

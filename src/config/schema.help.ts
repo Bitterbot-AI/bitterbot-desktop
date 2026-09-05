@@ -39,6 +39,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Give skill-validation rollouts a shell (exec/process) with approvals off, a scrubbed environment and a workdir confined to the scratch workspace. Off by default: candidate skills are model-authored from untrusted traces. Needed for the exec-based canonical tasks.",
   "skills.evolution.validationBudgetMinutes":
     "Wall-clock budget for one tasks-mode validation run (real agent turns over the corpus). Past it the proposal is held and retried next iteration, reusing cached incumbent results. Default 45.",
+  "skills.evolution.descriptionRepair":
+    "When a proposal is held because the agent never opened it on its capability tasks, reword its description (the runtime's routing key) and re-measure on the next pass; at most 2 repairs per proposal. Default true.",
   "skills.skillSeekers.enabled":
     "Generate skills by scraping documentation sites on demand. Off by default: dials external sites.",
   "skills.skillSeekers.trending.enabled":

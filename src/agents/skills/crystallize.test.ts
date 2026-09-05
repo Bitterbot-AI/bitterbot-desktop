@@ -11,7 +11,8 @@ import { readLive, resolveStorageRoots } from "./skill-storage.js";
 function candidate(overrides: Partial<CrystallizationCandidate> = {}): CrystallizationCandidate {
   return {
     taskName: "Fetch And Summarize",
-    description: "Fetch a URL and summarize its content",
+    description:
+      "Fetch a web page and summarize it when the user gives a URL to read; not for local files or pages already in context.",
     rewardScore: 0.9,
     reasoningPath: ["fetch the page", "extract text", "summarize"],
     toolCalls: [{ tool: "web_fetch", args: { url: "https://example.com" } }],
@@ -58,7 +59,10 @@ describe("crystallizeSkill (PLAN-42 Phase 0: staged + gated, no direct live writ
   it("archives the previous live version when re-crystallizing the same name", async () => {
     await crystallizeSkill({ candidate: candidate(), config, configDir: tmpDir });
     const second = await crystallizeSkill({
-      candidate: candidate({ description: "Fetch a URL and summarize it better" }),
+      candidate: candidate({
+        description:
+          "Fetch a web page and summarize it better when the user gives a URL to read; not for local files.",
+      }),
       config,
       configDir: tmpDir,
     });

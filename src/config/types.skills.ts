@@ -139,6 +139,13 @@ export type SkillsEvolutionConfig = {
    */
   validationBudgetMinutes?: number;
   /**
+   * PLAN-44 Phase 4a: when the tasks-mode gate holds a proposal as
+   * `never-triggered`, reword its description (contract-compliant variants
+   * ranked by a routing proxy) and re-measure on the next pass. Capped at
+   * 2 repairs per proposal. Default: true.
+   */
+  descriptionRepair?: boolean;
+  /**
    * PLAN-44 Phase 2 (D-4): extra tools granted to validation rollouts on
    * top of the built-in workspace-scoped allow-list (read/write/edit/
    * apply_patch/exec/process). Network, messaging, memory, skill and wallet

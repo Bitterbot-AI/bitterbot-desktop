@@ -14,7 +14,7 @@ import { validateAgainstTasks } from "./validate-tasks.js";
 import { runValidationGate } from "./validation-gate.js";
 
 const SKILL_MD =
-  "---\nname: curl-timeout-guard\ndescription: Always bound curl with --max-time; apply when running curl in exec.\n---\n\n## When to Apply\nAny exec call invoking curl.\n\n## When NOT to Apply\nNon-network commands.\n\nAlways pass --max-time 30.";
+  "---\nname: curl-timeout-guard\ndescription: Bound every curl in exec with --max-time when the task runs curl; not for commands that make no network calls.\n---\n\n## When to Apply\nAny exec call invoking curl.\n\n## When NOT to Apply\nNon-network commands.\n\nAlways pass --max-time 30.";
 const PURPOSE_MD =
   "# Purpose\n\n## Origin\nwiki-evolution\n\n## Patterns Addressed\n- exec-network-timeout\n";
 
@@ -705,5 +705,142 @@ describe("staged-content tamper check (PLAN-44 Phase 3 adversarial H1)", () => {
     await expect(
       fs.access(path.join(roots.stagingRoot, "curl-timeout-guard", "SKILL.md")),
     ).rejects.toThrow();
+  });
+});
+
+describe("description repair loop (PLAN-44 Phase 4a)", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "valgate-repair-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+  const REWORDED =
+    "Bound curl with --max-time whenever a grown task shells out to curl; never for arithmetic or file reads.";
+  async function growAndStage() {
+    await fs.mkdir(path.dirname(corpusPath({ configDir: tmpDir })), { recursive: true });
+    const lines = Array.from({ length: 5 }, (_, i) =>
+      JSON.stringify({
+        id: `grown-${i}`,
+        prompt: `grown task ${i}: run curl. Reply FINAL: <answer>.`,
+        checker: { kind: "final", value: "PASS" },
+        suite: "capability",
+      }),
+    );
+    await fs.writeFile(corpusPath({ configDir: tmpDir }), `${lines.join("\n")}\n`, "utf-8");
+    await applyProposal(
+      { action: "create", name: "curl-timeout-guard", skillMd: SKILL_MD, purposeMd: PURPOSE_MD },
+      {
+        storeOpts: { configDir: tmpDir },
+        iteration: "it-r",
+        evidence: { runIds: ["r1"], origins: ["human"] },
+      },
+    );
+  }
+  const neverRead = async (task: { suite?: string }, variant: string) => ({
+    answer:
+      task.suite === "regression"
+        ? "FINAL: x"
+        : variant === "candidate"
+          ? "FINAL: PASS"
+          : "FINAL: nope",
+    skillRead: false,
+  });
+  function repairingLlm() {
+    let calls = 0;
+    const llmCall = async (prompt: string) => {
+      calls += 1;
+      if (prompt.includes('"descriptions"')) {
+        return JSON.stringify({ descriptions: [REWORDED] });
+      }
+      const desc = prompt.match(/<description>(.*)<\/description>/)?.[1] ?? "";
+      const lines = prompt.split("\n").filter((l) => /^\d+\. /.test(l));
+      return JSON.stringify({ reads: lines.map((l) => desc === REWORDED && /grown task/.test(l)) });
+    };
+    return { llmCall, count: () => calls };
+  }
+
+  it("rewrites the staged description after never-triggered, re-keys the meta hash, and records it", async () => {
+    await growAndStage();
+    const llm = repairingLlm();
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: llm.llmCall,
+      storeOpts: { configDir: tmpDir },
+      runTask: neverRead,
+      trialsPerTask: 1,
+      modelTag: "m",
+    });
+    expect(outcomes[0]).toMatchObject({ outcome: "held" });
+    expect(outcomes[0]?.detail).toContain("description repaired");
+    expect(llm.count()).toBeGreaterThan(0);
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const staged = await fs.readFile(
+      path.join(roots.stagingRoot, "curl-timeout-guard", "SKILL.md"),
+      "utf-8",
+    );
+    expect(staged).toContain(`description: ${REWORDED}`);
+    expect(staged).toContain("--max-time 30");
+    const meta = JSON.parse(
+      await fs.readFile(
+        path.join(roots.stagingRoot, "curl-timeout-guard", ".evolution-meta.json"),
+        "utf-8",
+      ),
+    ) as {
+      contentHash: string;
+      descriptionRepairs: number;
+      descriptionRepairLog: unknown[];
+      lastValidation: { contentHash: string };
+    };
+    expect(meta.descriptionRepairs).toBe(1);
+    expect(meta.descriptionRepairLog).toHaveLength(1);
+    expect(meta.contentHash).not.toBe(meta.lastValidation.contentHash);
+    const trail = await readProvenance({ configDir: tmpDir });
+    expect(
+      trail.some((e) => e.verdict === "staged" && /description repaired/.test(e.detail ?? "")),
+    ).toBe(true);
+    // The repaired content is NOT under backoff: the next pass re-measures it (tamper check passes).
+    const second = await runValidationGate({
+      journal: null,
+      llmCall: llm.llmCall,
+      storeOpts: { configDir: tmpDir },
+      runTask: neverRead,
+      trialsPerTask: 1,
+      modelTag: "m",
+    });
+    expect(second[0]?.detail).toContain("never-triggered");
+    expect(second[0]?.detail).not.toContain("tampered");
+  });
+
+  it("stops at the repair cap and honours the kill switch", async () => {
+    await growAndStage();
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const metaPath = path.join(roots.stagingRoot, "curl-timeout-guard", ".evolution-meta.json");
+    const meta = JSON.parse(await fs.readFile(metaPath, "utf-8")) as Record<string, unknown>;
+    await fs.writeFile(metaPath, JSON.stringify({ ...meta, descriptionRepairs: 2 }));
+    const llm = repairingLlm();
+    const capped = await runValidationGate({
+      journal: null,
+      llmCall: llm.llmCall,
+      storeOpts: { configDir: tmpDir },
+      runTask: neverRead,
+      trialsPerTask: 1,
+    });
+    expect(capped[0]?.detail).toContain("never-triggered");
+    expect(capped[0]?.detail).not.toContain("repair");
+    expect(llm.count()).toBe(0);
+
+    await fs.writeFile(metaPath, JSON.stringify({ ...meta, descriptionRepairs: 0 }));
+    const off = await runValidationGate({
+      journal: null,
+      llmCall: llm.llmCall,
+      storeOpts: { configDir: tmpDir },
+      runTask: neverRead,
+      trialsPerTask: 1,
+      descriptionRepair: false,
+    });
+    expect(off[0]?.detail).not.toContain("repair");
+    expect(llm.count()).toBe(0);
   });
 });

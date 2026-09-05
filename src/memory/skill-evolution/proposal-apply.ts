@@ -99,6 +99,16 @@ export function collectProposalEvidence(
   return { runIds, origins: [...origins].toSorted() };
 }
 
+function frontmatterDescription(skillMd: string | null): string {
+  const m = skillMd?.match(/^---\n([\s\S]*?)\n---/);
+  const line = m?.[1]?.split("\n").find((l) => /^description\s*:/.test(l));
+  return line ? line.slice(line.indexOf(":") + 1).trim() : "";
+}
+
+function descriptionChanged(live: string | null, next: string): boolean {
+  return frontmatterDescription(live) !== frontmatterDescription(next);
+}
+
 export async function applyProposal(
   proposal: SkillProposal,
   deps: { storeOpts?: ImpactTrailOptions; iteration?: string; evidence?: ProposalEvidence },
@@ -143,6 +153,7 @@ export async function applyProposal(
   let content: string;
   let purposeMd: string;
   let manageAction: "create" | "edit";
+  let liveForContract: string | null = null;
   if (proposal.action === "create") {
     const existing = await readLive(roots, proposal.name);
     if (existing !== null) {
@@ -179,6 +190,7 @@ export async function applyProposal(
       return { outcome: "invalid", detail: "no live skill to patch" };
     }
     const dropped: ParseIssue[] = [];
+    liveForContract = live;
     content = applyPatchOps(live, proposal.edits, dropped, proposal.name);
     if (content === live) {
       await appendImpactEntry(
@@ -227,6 +239,11 @@ export async function applyProposal(
       author: "evolution",
       // PLAN-44 Phase 3: a medium injection hit blocks evolution-authored content.
       strictInjection: true,
+      // PLAN-44 Phase 4a: the description is the routing key; hold it to
+      // the contract. A patch over a legacy skill is grandfathered unless
+      // the proposer rewrote the description (then it must comply).
+      descriptionContract:
+        manageAction === "create" || descriptionChanged(liveForContract, content),
     },
   );
   if (!manage.ok) {
