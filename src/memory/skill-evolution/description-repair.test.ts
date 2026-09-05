@@ -212,3 +212,25 @@ describe("repair hardening (Phase 4a adversarial pass)", () => {
     expect(r.candidates.find((c) => c.description === GOOD_A)?.heldOutHits).toBe(1);
   });
 });
+
+describe("repair honours the live index (Phase 4b adversarial M5)", () => {
+  it("drops a rewording that overlaps another live skill before scoring, and re-gates with the index", async () => {
+    const other = {
+      name: "curl-max-time-live",
+      description: GOOD_A,
+      contractCompliant: true,
+    };
+    const { llmCall, calls } = stubLlm([GOOD_A, GOOD_B]);
+    const r = await repairDescription({
+      llmCall,
+      skillName: "curl-timeout-guard",
+      skillMd: SKILL_MD,
+      tasks,
+      liveIndex: [other],
+    });
+    // GOOD_A collides with the live skill (identical) and never reaches the proxy; GOOD_B may.
+    expect(r.candidates.map((c) => c.description)).not.toContain(GOOD_A);
+    // One proxy call per scored candidate (baseline + surviving variants); the variant prompt is not a proxy call.
+    expect(calls.filter((c) => c.includes("</available_skills>")).length).toBe(r.candidates.length);
+  });
+});

@@ -19,6 +19,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { EventJournal } from "../../infra/event-journal.js";
 import type { LlmCallFn } from "./maintainer.js";
+import { listLiveSkillIndex } from "../../agents/skills/description-overlap.js";
 import { appendImpactEntry, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { bumpSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
 import { promoteStaged } from "../../agents/skills/skill-promote.js";
@@ -497,6 +498,7 @@ async function settleOne(
           skillName: name,
           skillMd: staged.content,
           tasks: corpus.tasks,
+          liveIndex: await listLiveSkillIndex(roots),
         }).catch((err) => ({
           applied: false as const,
           reason: `repair threw: ${String(err)}`,

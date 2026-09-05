@@ -19,6 +19,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
+import { checkDescriptionContract } from "./description-contract.js";
 import { liveSkillPath, type StorageRoots } from "./skill-storage.js";
 
 /** Token-set Jaccard at or above this is an overlap. */
@@ -40,12 +41,27 @@ const STOP = new Set(
   ).split(" "),
 );
 
+/**
+ * The POSITIVE clause: what the skill fires on. The contract mandates a
+ * scope-out clause ("not for commands that make no network calls") that
+ * two distinct skills about the same tool naturally share; scoring it made
+ * "curl timeout" collide with "curl retry on 429" (adversarial H1). Only
+ * the text before the first scope-out marker (or `;`) is compared.
+ */
+export function positiveClause(text: string): string {
+  const m = text.match(
+    /;|\b(?:not\s+(?:for|when|on|while|if)|never\s+(?:for|when|on)|unless|except\s+(?:when|for|on)|only\s+(?:when|if|for|on)|do(?:es)?\s+not\s+(?:use|apply|fire)|don't\s+(?:use|apply))\b/i,
+  );
+  return m && m.index !== undefined && m.index > 0 ? text.slice(0, m.index) : text;
+}
+
 export function contentWords(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/)
-    .filter((w) => w.length > 1 && !STOP.has(w));
+    .map((w) => w.replace(/^-+|-+$/g, "")) // "--max-time" and "max-time" are one token (adversarial L6)
+    .filter((w) => w.length > 1 && /[a-z0-9]/.test(w) && !STOP.has(w));
 }
 
 function intersection(a: Set<string>, b: Set<string>): number {
@@ -88,8 +104,8 @@ export interface DescriptionSimilarity {
 }
 
 export function descriptionSimilarity(a: string, b: string): DescriptionSimilarity {
-  const wa = contentWords(a);
-  const wb = contentWords(b);
+  const wa = contentWords(positiveClause(a));
+  const wb = contentWords(positiveClause(b));
   const sa = new Set(wa);
   const sb = new Set(wb);
   // Too little substance to call anything a duplicate (contract-compliant
@@ -114,13 +130,22 @@ export function descriptionSimilarity(a: string, b: string): DescriptionSimilari
 export interface LiveSkillIndexEntry {
   name: string;
   description: string;
+  /**
+   * Whether the description itself meets the contract. A hit against a
+   * skill whose description cannot route (harvested taglines, a peer's
+   * four-word squat — adversarial H2) is a WARN, not a block: it holds no
+   * routing ground to collide with.
+   */
+  contractCompliant: boolean;
 }
 
-/** name + description of every live skill (what the runtime index shows). */
+/** name + description of every live skill directory carrying a SKILL.md (what the runtime index shows). */
 export async function listLiveSkillIndex(roots: StorageRoots): Promise<LiveSkillIndexEntry[]> {
   let names: string[];
   try {
-    names = (await fs.readdir(roots.liveRoot)).filter((n) => !n.startsWith("."));
+    names = (await fs.readdir(roots.liveRoot, { withFileTypes: true }))
+      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+      .map((d) => d.name);
   } catch {
     return [];
   }
@@ -130,16 +155,22 @@ export async function listLiveSkillIndex(roots: StorageRoots): Promise<LiveSkill
     try {
       md = await fs.readFile(liveSkillPath(roots, name), "utf-8");
     } catch {
-      try {
-        // Skills stored as a bare <name>.md (legacy layout).
-        md = await fs.readFile(path.join(roots.liveRoot, name), "utf-8");
-      } catch {
-        continue;
-      }
+      continue;
     }
     const fm = (parseSkillMarkdown(md)?.frontmatter ?? {}) as Record<string, unknown>;
     const description = typeof fm.description === "string" ? fm.description.trim() : "";
-    out.push({ name, description });
+    const fmName = typeof fm.name === "string" ? fm.name : undefined;
+    out.push({
+      name,
+      description,
+      contractCompliant:
+        checkDescriptionContract({
+          skillName: name,
+          frontmatterName: fmName,
+          description,
+          liveFrontmatterName: fmName,
+        }).length === 0,
+    });
   }
   return out;
 }

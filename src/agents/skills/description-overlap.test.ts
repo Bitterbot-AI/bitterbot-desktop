@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  contentWords,
   descriptionSimilarity,
   findDescriptionOverlap,
   listLiveSkillIndex,
@@ -34,9 +35,9 @@ describe("descriptionSimilarity / findDescriptionOverlap (PLAN-44 Phase 4b)", ()
 
   it("returns the closest OTHER live skill, excluding the skill itself", () => {
     const index = [
-      { name: "curl-timeout-guard", description: CURL },
-      { name: "git-not-a-repo", description: GIT },
-      { name: "empty", description: "" },
+      { name: "curl-timeout-guard", description: CURL, contractCompliant: true },
+      { name: "git-not-a-repo", description: GIT, contractCompliant: true },
+      { name: "empty", description: "", contractCompliant: false },
     ];
     expect(findDescriptionOverlap(CURL_REWORD, index)?.name).toBe("curl-timeout-guard");
     expect(
@@ -67,9 +68,11 @@ describe("listLiveSkillIndex + gate overlap block", () => {
         `---\nname: ${name}\ndescription: ${desc}\n---\nbody\n`,
       );
     }
+    // A stray file in the live root is not a skill (adversarial L8).
+    await fs.writeFile(path.join(roots.liveRoot, "notes.md"), "scratch");
     expect(await listLiveSkillIndex(roots)).toEqual([
-      { name: "curl-timeout-guard", description: CURL },
-      { name: "git-not-a-repo", description: GIT },
+      { name: "curl-timeout-guard", description: CURL, contractCompliant: true },
+      { name: "git-not-a-repo", description: GIT, contractCompliant: true },
     ]);
     expect(
       await listLiveSkillIndex(resolveStorageRoots({ configDir: path.join(tmp, "none") })),
@@ -77,7 +80,7 @@ describe("listLiveSkillIndex + gate overlap block", () => {
   });
 
   it("blocks a synthesized create that overlaps a live description; a patch of that skill is not self-blocked", () => {
-    const index = [{ name: "curl-timeout-guard", description: CURL }];
+    const index = [{ name: "curl-timeout-guard", description: CURL, contractCompliant: true }];
     const dupe = `---\nname: curl-guard-2\ndescription: ${CURL_REWORD}\n---\n# body\nrule\n`;
     const blocked = runSkillGate({
       skillName: "curl-guard-2",
@@ -102,5 +105,41 @@ describe("listLiveSkillIndex + gate overlap block", () => {
     expect(
       runSkillGate({ skillName: "curl-guard-2", stagedContent: dupe, liveIndex: index }).outcome,
     ).toBe("pass");
+  });
+});
+
+describe("overlap hardening (Phase 4b adversarial pass)", () => {
+  it("H1: two distinct skills about the same tool do not collide through the tool name and the mandated scope-out clause", () => {
+    const retry429 =
+      "Retry curl in exec with backoff when the task gets HTTP 429 from curl; not for commands that make no network calls.";
+    const sim = descriptionSimilarity(CURL, retry429);
+    expect(sim.overlap).toBe(false);
+    expect(sim.containment).toBeLessThan(0.6);
+    // The reworded duplicate still collides on its positive clause alone.
+    expect(descriptionSimilarity(CURL, CURL_REWORD).overlap).toBe(true);
+  });
+
+  it("L6: flag tokens with and without dashes are one token; bare dashes are not words", () => {
+    expect(contentWords("--max-time max-time -- 5 429")).toEqual(["max-time", "max-time", "429"]);
+  });
+
+  it("H2: a hit against a live description that cannot route (four-word squat, tagline) is a warning, not a block", () => {
+    const squat = {
+      name: "peer-squat",
+      description: "curl exec runs max-time",
+      contractCompliant: false,
+    };
+    const staged = `---\nname: curl-guard-2\ndescription: ${CURL_REWORD}\n---\n# body\nrule\n`;
+    const r = runSkillGate({
+      skillName: "curl-guard-2",
+      stagedContent: staged,
+      descriptionContract: true,
+      liveIndex: [squat],
+    });
+    expect(r.outcome).toBe("warn");
+    expect(r.issues).toEqual([
+      expect.objectContaining({ kind: "description-overlap", severity: "warn" }),
+    ]);
+    expect(r.issues[0]?.detail).toContain("cannot route");
   });
 });

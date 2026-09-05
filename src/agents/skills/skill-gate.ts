@@ -178,12 +178,18 @@ export function runSkillGate(input: GateInput): GateResult {
         excludeName: input.skillName,
       });
       if (hit) {
+        const entry = input.liveIndex.find((e) => e.name === hit.name);
+        const compliant = entry?.contractCompliant !== false;
         issues.push({
           kind: "description-overlap",
-          detail: `description overlaps live skill "${hit.name}" (token jaccard ${hit.tokens.toFixed(2)}, containment ${hit.containment.toFixed(2)}, bigram ${hit.bigrams.toFixed(2)}); the runtime opens a skill only when exactly one description applies — patch "${hit.name}" or describe a distinct situation`,
-          severity: "block",
+          detail: `description overlaps live skill "${hit.name}" (token jaccard ${hit.tokens.toFixed(2)}, containment ${hit.containment.toFixed(2)}, bigram ${hit.bigrams.toFixed(2)}); the runtime opens a skill only when exactly one description applies — ${compliant ? `patch "${hit.name}" or describe a distinct situation` : `"${hit.name}" itself cannot route (fails the contract), so this is a warning only`}`,
+          severity: compliant ? "block" : "warn",
         });
-        outcome = "fail";
+        if (compliant) {
+          outcome = "fail";
+        } else if (outcome === "pass") {
+          outcome = "warn";
+        }
       }
     }
   }

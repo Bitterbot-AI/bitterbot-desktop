@@ -25,6 +25,10 @@ import {
   DESCRIPTION_CONTRACT_PROMPT,
   rewriteDescriptionLine,
 } from "../../agents/skills/description-contract.js";
+import {
+  findDescriptionOverlap,
+  type LiveSkillIndexEntry,
+} from "../../agents/skills/description-overlap.js";
 import { runSkillGate } from "../../agents/skills/skill-gate.js";
 import { parseSkillMarkdown } from "../skill-curator-judge.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
@@ -66,6 +70,8 @@ export interface DescriptionRepairDeps {
   skillMd: string;
   tasks: CorpusTask[];
   variants?: number;
+  /** Live index for the overlap check (adversarial M5: a rewording must not converge on another live skill). */
+  liveIndex?: LiveSkillIndexEntry[];
 }
 
 function words(text: string): string[] {
@@ -317,6 +323,12 @@ export async function repairDescription(
         }).length === 0,
     )
     .filter((d) => !capabilityTasks.some((t) => copiesWording(d, t.prompt)))
+    .filter((d) => {
+      const hit = deps.liveIndex
+        ? findDescriptionOverlap(d, deps.liveIndex, { excludeName: deps.skillName })
+        : null;
+      return !hit || deps.liveIndex?.find((e) => e.name === hit.name)?.contractCompliant === false;
+    })
     .slice(0, variants);
   if (proposed.length === 0) {
     return {
@@ -398,6 +410,7 @@ export async function repairDescription(
     stagedContent: rewritten,
     strictInjection: true,
     descriptionContract: true,
+    ...(deps.liveIndex ? { liveIndex: deps.liveIndex } : {}),
   });
   if (gate.outcome === "fail") {
     return {
