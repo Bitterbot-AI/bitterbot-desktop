@@ -19,7 +19,7 @@ export function setActiveEvolutionLlm(lanes: {
   active = { evolution: lanes.evolution ?? null, proposer: lanes.proposer ?? null };
 }
 
-/** The proposer lane (agent's primary model) when configured, else the evolution lane. */
+/** The evolution lane housekeeping uses; the proposer lane only when no evolution lane exists. */
 export function getActiveEvolutionLlm(): LlmCallFn | null {
-  return active.proposer ?? active.evolution;
+  return active.evolution ?? active.proposer;
 }

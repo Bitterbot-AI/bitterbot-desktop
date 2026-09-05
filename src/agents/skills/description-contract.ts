@@ -32,6 +32,14 @@ const SCOPE_OUT_RE =
 /** Phrases that satisfy the shape while saying nothing about routing. */
 const VACUOUS_RE =
   /\b(?:when\s+(?:needed|required|necessary|appropriate|relevant|asked|applicable)|if\s+you\s+(?:like|want|wish)|not\s+(?:for\s+)?otherwise|not\s+for\s+(?:nothing|anything\s+else)|when\s+the\s+user\s+asks\s+(?:anything|for\s+anything))\b/i;
+/**
+ * A description is rendered raw into every turn's system prompt. Shell
+ * commands with arguments, command substitution, backticks, home-relative
+ * or multi-segment absolute paths have no place in a routing key and are
+ * the shape a laundered instruction takes (routing-repair adversarial M6).
+ */
+const HAZARD_RE =
+  /`|\$\(|~\/|(?:^|\s)(?:\/[\w.-]+){2,}|\b(?:cat|rm|sudo|chmod|chown|ssh|scp|eval|source)\s+(?:-|\/|~|\$)/i;
 /** URLs, emoji and maintainer chatter mark a copied tagline, not a trigger. */
 const NOISE_RE = /https?:\/\/|\[NOTE\b|(?![©®™])\p{Extended_Pictographic}/u;
 
@@ -43,6 +51,7 @@ export type DescriptionContractIssue =
   | "no-scope-out-clause"
   | "noise"
   | "vacuous"
+  | "hazard"
   | "variant-suffix";
 
 /** The rule text handed to every author (proposer prompt, crystallize tool). */
@@ -95,6 +104,9 @@ export function checkDescriptionContract(params: {
   if (VACUOUS_RE.test(description)) {
     issues.push("vacuous");
   }
+  if (HAZARD_RE.test(description)) {
+    issues.push("hazard");
+  }
   return issues;
 }
 
@@ -123,6 +135,8 @@ export function describeContractIssues(issues: DescriptionContractIssue[]): stri
     noise: "description carries a URL, emoji or copied maintainer note",
     vacuous:
       "description's trigger or scope-out says nothing ('when needed', 'if you like', 'not otherwise')",
+    hazard:
+      "description carries a shell command, command substitution, backticks or a filesystem path (a routing key never needs these)",
     "variant-suffix": "skill name ends in -alt (indistinguishable variant)",
   };
   return issues.map((i) => text[i]).join("; ");
@@ -135,7 +149,9 @@ export function describeContractIssues(issues: DescriptionContractIssue[]): stri
  */
 export function rewriteDescriptionLine(skillMd: string, description: string): string {
   const single = description.replace(/\s+/g, " ").trim();
-  const value = /[:#"'\n]/.test(single) ? JSON.stringify(single) : single;
+  // Quote when YAML would misread the value: mapping/comment/quote chars
+  // anywhere, or an indicator character first (adversarial L9).
+  const value = /[:#"'\n]|^[[\]{}*&!|>%@`'"-]/.test(single) ? JSON.stringify(single) : single;
   const m = skillMd.match(/^---\n([\s\S]*?)\n---/);
   if (!m) {
     return skillMd;

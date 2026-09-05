@@ -2699,8 +2699,14 @@ export class MemoryIndexManager implements MemorySearchManager {
         const evo = this.cfg.skills?.evolution;
         const spec = evo?.proposerModel ?? evo?.judgeModel ?? this.resolvePrimaryLlmSpec();
         const call = spec ? this.buildLlmCallFn(spec, { maxTokens: 8192 }) : null;
-        // PLAN-44 Phase 5c: expose the lanes to on-demand gateway RPCs.
-        setActiveEvolutionLlm({ evolution: builtLlmCall ?? null, proposer: call });
+        // PLAN-44 Phase 5c: expose the lanes to on-demand gateway RPCs — the
+        // same 8k evolution lane housekeeping uses, plus the proposer lane.
+        const evoSpec =
+          this.cfg.skills?.evolution?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
+        setActiveEvolutionLlm({
+          evolution: evoSpec ? this.buildLlmCallFn(evoSpec, { maxTokens: 8192 }) : null,
+          proposer: call,
+        });
         return call ? { evolutionProposerLlmCall: call } : {};
       })(),
     };
