@@ -428,6 +428,30 @@ async function readQuarantineAuthorPubkey(incomingDir: string): Promise<string |
   }
 }
 
+/**
+ * PLAN-44 Phase 3: only an ACCEPTED envelope becomes a memory chunk in the
+ * skill-network bridge. Quarantined ones wait for the operator's accept
+ * (skills.incoming.accept re-routes them through `readAcceptedEnvelope`).
+ */
+export function shouldBridgeIngest(
+  result: Pick<IngestResult, "action"> | null | undefined,
+): boolean {
+  return result?.action === "accepted";
+}
+
+/** The envelope an accept carried into the live dir as `.provenance.json`, if any. */
+export async function readAcceptedEnvelope(skillPath: string): Promise<SkillEnvelope | null> {
+  try {
+    const raw = await fs.readFile(path.join(path.dirname(skillPath), ".provenance.json"), "utf-8");
+    const parsed = JSON.parse(raw) as SkillEnvelope;
+    return parsed && typeof parsed.content_hash === "string" && typeof parsed.skill_md === "string"
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function acceptIncomingSkill(params: {
   skillName: string;
   config: BitterbotConfig;

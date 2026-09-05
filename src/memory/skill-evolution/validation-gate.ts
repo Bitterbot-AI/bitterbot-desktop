@@ -57,6 +57,8 @@ export interface EvolutionMeta {
   origin: string;
   stagedAt?: number;
   iteration?: string | null;
+  /** PLAN-44 Phase 3: traces the proposer read and their trust classes. */
+  evidence?: { runIds: string[]; origins: string[] };
   /** PLAN-44 Phase 2: last hold verdict on the staged proposal (24h backoff). */
   lastValidation?: {
     at: number;
@@ -233,6 +235,31 @@ async function settleOne(
   const incumbent = await readLive(roots, name);
   const isCreate = incumbent === null;
   const contentHash = hashProposalContent(staged.content);
+
+  // PLAN-44 Phase 3 (TMA-NM): content-based defences are launderable, so
+  // the evidence's ORIGIN is bound at write time and checked here. A
+  // proposal whose cited traces are all third-party text (circle, A2A,
+  // subagent, guest, unknown) never reaches validation. Checked before any
+  // LLM or agent spend.
+  if (
+    meta.evidence &&
+    meta.evidence.runIds.length > 0 &&
+    !meta.evidence.origins.some((o) => o === "human" || o === "system")
+  ) {
+    await appendImpactEntry(
+      {
+        source: "evolution",
+        action: "validate",
+        skillName: name,
+        verdict: "rejected",
+        detail: `untrusted-evidence-only (origins: ${meta.evidence.origins.join(", ")}); held in staging`,
+        contentHash,
+        ...(deps.iteration ? { iteration: deps.iteration } : {}),
+      },
+      trailOpts,
+    );
+    return { skillName: name, outcome: "held", detail: "untrusted-evidence-only" };
+  }
 
   // The cap only constrains NET-NEW evolved skills; patches to existing
   // skills do not add to the count.
@@ -458,7 +485,14 @@ async function settleOne(
   }
   const promoted = await promoteStaged(
     { storageRoots: roots },
-    { name, reason: `validation gate accept (${mode})`, author: "evolution" },
+    {
+      name,
+      reason: `validation gate accept (${mode})`,
+      author: "evolution",
+      // PLAN-44 Phase 3: the validation gate is the ONE path allowed to
+      // promote evolution-staged content.
+      allowEvolutionStaged: true,
+    },
   );
   if (!promoted.ok) {
     return {

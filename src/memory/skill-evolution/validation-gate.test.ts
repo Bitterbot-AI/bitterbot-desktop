@@ -604,3 +604,61 @@ describe("runValidationGate: hold backoff and candidate memo (adversarial H2)", 
     expect(calls.candidate).toBeGreaterThan(before.candidate);
   });
 });
+
+describe("origin-bound evidence (PLAN-44 Phase 3)", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "valgate-p3-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function stageWith(origins: string[]) {
+    await applyProposal(
+      { action: "create", name: "curl-timeout-guard", skillMd: SKILL_MD, purposeMd: PURPOSE_MD },
+      {
+        storeOpts: { configDir: tmpDir },
+        iteration: "it-p3",
+        evidence: { runIds: ["r1", "r2"], origins },
+      },
+    );
+  }
+
+  it("HOLDs a proposal whose cited traces are all third-party, before any LLM spend", async () => {
+    await stageWith(["circle", "a2a"]);
+    let llmCalls = 0;
+    const outcomes = await runValidationGate({
+      journal: heldOutJournal(),
+      llmCall: async () => {
+        llmCalls += 1;
+        return scoresAccepting(8);
+      },
+      storeOpts: { configDir: tmpDir },
+      modelTag: "test/model-1",
+    });
+    expect(outcomes).toEqual([
+      expect.objectContaining({ outcome: "held", detail: "untrusted-evidence-only" }),
+    ]);
+    expect(llmCalls).toBe(0);
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
+    const purpose = await fs.readFile(
+      path.join(roots.stagingRoot, "curl-timeout-guard", "PURPOSE.md"),
+      "utf-8",
+    );
+    expect(purpose).toContain("## Evidence");
+    expect(purpose).toContain("origins: circle, a2a");
+  });
+
+  it("proceeds when at least one cited trace is first-party", async () => {
+    await stageWith(["circle", "human"]);
+    const outcomes = await runValidationGate({
+      journal: heldOutJournal(),
+      llmCall: orderAware(() => scoresAccepting(8)),
+      storeOpts: { configDir: tmpDir },
+      modelTag: "test/model-1",
+    });
+    expect(outcomes[0]?.detail).not.toBe("untrusted-evidence-only");
+  });
+});

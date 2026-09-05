@@ -48,6 +48,11 @@ export function classifyRunOrigin(sessionKey: string | null | undefined): RunOri
       // Webhook bodies are third-party text by definition (adversarial H2).
       return "guest";
     }
+    if (token.startsWith("skill-evolve")) {
+      // PLAN-44 Phase 3: validation rollouts execute candidate / peer skill
+      // text; their transcripts are third-party by construction.
+      return "guest";
+    }
     if (GROUP_TOKENS.has(token)) {
       // Group/channel chats are multi-author; treat like guest content.
       return "guest";

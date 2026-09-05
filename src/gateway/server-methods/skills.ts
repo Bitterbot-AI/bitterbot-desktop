@@ -25,6 +25,7 @@ import { crystallizeSkill } from "../../agents/skills/crystallize.js";
 import { appendImpactEntry } from "../../agents/skills/impact-trail.js";
 import {
   acceptIncomingSkill,
+  readAcceptedEnvelope,
   listIncomingSkills,
   rejectIncomingSkill,
   rejectIncomingSkillsByPeer,
@@ -478,7 +479,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
     const skills = await listIncomingSkills(cfg);
     respond(true, { skills }, undefined);
   },
-  "skills.incoming.accept": async ({ params, respond }) => {
+  "skills.incoming.accept": async ({ params, respond, context }) => {
     const skillName = typeof params?.skillName === "string" ? params.skillName.trim() : "";
     if (!skillName) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "skillName required"));
@@ -493,9 +494,23 @@ export const skillsHandlers: GatewayRequestHandlers = {
       workspaceDir,
       reputationManager,
     });
+    // PLAN-44 Phase 3 (audit security finding 3): a quarantined envelope is
+    // NOT a memory chunk while it sits in review; the operator's accept is
+    // what routes it into the skill-network bridge.
+    let bridge: string | undefined;
+    if (result.ok && result.skillPath && context.skillNetworkBridge) {
+      const envelope = await readAcceptedEnvelope(result.skillPath);
+      if (envelope) {
+        try {
+          bridge = context.skillNetworkBridge.ingestNetworkSkill(envelope).action;
+        } catch (err) {
+          bridge = `error: ${String(err)}`;
+        }
+      }
+    }
     respond(
       result.ok,
-      result,
+      { ...result, ...(bridge ? { bridge } : {}) },
       result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "accept failed"),
     );
   },
@@ -1173,6 +1188,9 @@ export const skillsHandlers: GatewayRequestHandlers = {
     };
     const roots = resolveStorageRoots();
     const cfg = loadConfig();
+    // PLAN-44 Phase 3: an evolution-staged skill is promotable here only as
+    // an explicit OPERATOR override (forceGate from a non-agent author).
+    const operatorOverride = p.forceGate === true && !(p.author ?? "").startsWith("agent:");
     try {
       const result = await withSkillLifecycleStore({ config: cfg }, (store) =>
         promoteStaged(
@@ -1182,6 +1200,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
             ...(p.reason ? { reason: p.reason } : {}),
             ...(p.author ? { author: p.author } : {}),
             ...(p.forceGate ? { forceGate: true } : {}),
+            ...(operatorOverride ? { allowEvolutionStaged: true } : {}),
           },
         ),
       );

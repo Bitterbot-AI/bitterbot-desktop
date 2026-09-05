@@ -42,6 +42,8 @@ export type SkillManageAction = "create" | "edit" | "patch" | "delete" | "consol
 export interface SkillManageBaseParams {
   /** The skill being mutated. */
   name: string;
+  /** PLAN-44 Phase 3: block (not warn) on a medium injection hit; set by the evolution pipeline. */
+  strictInjection?: boolean;
   /** Free-form reason recorded into staging meta. */
   reason: string;
   /** Author identifier ("agent", "user", "curator"). */
@@ -198,6 +200,7 @@ async function stageAndGate(
     timestamp?: number;
     overwriteStaging?: boolean;
     acceptHighRiskDiff?: boolean;
+    strictInjection?: boolean;
   },
 ): Promise<{ stagedFilePath: string; gate: GateResult }> {
   const staged = await stageSkill(ctx.storageRoots, {
@@ -215,6 +218,7 @@ async function stageAndGate(
     liveContent,
     ...(ctx.lifecycleStore ? { lifecycleStore: ctx.lifecycleStore } : {}),
     ...(params.acceptHighRiskDiff ? { acceptHighRiskDiff: true } : {}),
+    ...(params.strictInjection ? { strictInjection: true } : {}),
   });
   await updateStagingGateStatus(
     ctx.storageRoots,
@@ -248,6 +252,7 @@ export async function skillManage(
           reason: params.reason,
           author: params.author,
           ...(params.timestamp ? { timestamp: params.timestamp } : {}),
+          ...(params.strictInjection ? { strictInjection: true } : {}),
         });
         return {
           ok: gate.outcome !== "fail",
@@ -286,6 +291,7 @@ export async function skillManage(
           author: params.author,
           ...(params.timestamp ? { timestamp: params.timestamp } : {}),
           ...(params.acceptHighRiskDiff ? { acceptHighRiskDiff: true } : {}),
+          ...(params.strictInjection ? { strictInjection: true } : {}),
         });
         return {
           ok: gate.outcome !== "fail",
@@ -339,6 +345,7 @@ export async function skillManage(
           author: params.author,
           ...(params.timestamp ? { timestamp: params.timestamp } : {}),
           ...(params.acceptHighRiskDiff ? { acceptHighRiskDiff: true } : {}),
+          ...(params.strictInjection ? { strictInjection: true } : {}),
         });
         return {
           ok: gate.outcome !== "fail",

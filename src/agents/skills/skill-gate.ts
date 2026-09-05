@@ -56,6 +56,13 @@ export interface GateInput {
   lifecycleStore?: SkillLifecycleStore;
   /** When true, accept staged content even on regression-risk warnings. */
   acceptHighRiskDiff?: boolean;
+  /**
+   * PLAN-44 Phase 3: for content the evolution pipeline authored from
+   * untrusted traces, a `medium` injection hit BLOCKS instead of warning
+   * (`warn` maps to gateStatus "passed", which the validation gate takes
+   * as a green light). Human-edited skills keep the warn behaviour.
+   */
+  strictInjection?: boolean;
 }
 
 const REQUIRED_FRONTMATTER_FIELDS = ["name", "description"] as const;
@@ -163,6 +170,19 @@ export function runSkillGate(input: GateInput): GateResult {
     };
   }
   if (scan.severity !== "ok") {
+    if (input.strictInjection && scan.severity === "medium") {
+      issues.push({
+        kind: "injection-suspect",
+        detail: `injection scan severity=${scan.severity} (strict: evolution-authored content): ${scan.reason}`,
+        severity: "block",
+      });
+      return {
+        outcome: "fail",
+        issues,
+        baselineSuccessRate: 0,
+        baselineRuns: 0,
+      };
+    }
     issues.push({
       kind: "injection-suspect",
       detail: `injection scan severity=${scan.severity}: ${scan.reason}`,

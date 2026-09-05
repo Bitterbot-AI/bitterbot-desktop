@@ -186,7 +186,9 @@ export function createSkillManageTool(options: {
       "you to add / change / remove a skill or when telemetry suggests an existing skill is " +
       "broken. Workflow: action=create|edit|patch|delete|consolidate stages a change behind " +
       "the behavioural gate; if the response includes ok:true and gateOutcome ∈ {pass, warn} " +
-      "you can then call action=promote with the same name to lift staged → live. Use " +
+      "you can then call action=promote with the same name to lift staged → live. Skills staged " +
+      "by the skill-evolution pipeline are refused there (error evolution-staged); their " +
+      "validation gate promotes them. Use " +
       "action=rollback + version=N to restore an archived version. Never promote a 'fail' " +
       "outcome without forceGate=true and a documented reason. Use action=crystallize after " +
       "you solve a non-trivial multi-step task that is likely to recur: pass the steps and " +

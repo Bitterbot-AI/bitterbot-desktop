@@ -14,6 +14,9 @@ describe("classifyRunOrigin (PLAN-44 D-6)", () => {
     expect(classifyRunOrigin("agent:main:group:g1")).toBe("guest");
     expect(classifyRunOrigin("agent:main:cron:nightly")).toBe("system");
     expect(classifyRunOrigin("agent:main:hook:abc")).toBe("guest");
+    // PLAN-44 Phase 3: validation rollouts execute candidate/peer text.
+    expect(classifyRunOrigin("agent:main:skill-evolve-val-abc")).toBe("guest");
+    expect(classifyRunOrigin("agent:main:skill-evolve-val-peer-abc")).toBe("guest");
     expect(classifyRunOrigin("hook:abc")).toBe("unknown");
     expect(classifyRunOrigin("agent:main:openai:uuid")).toBe("human");
     expect(classifyRunOrigin("agent:main:whatsapp:direct:+15551234567")).toBe("human");

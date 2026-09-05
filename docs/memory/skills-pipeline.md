@@ -464,7 +464,37 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   load NO bootstrap context (`bootstrap-files.ts`): the scratch workspace
   has no GENOME/PROTOCOLS/MEMORY by design, so the prompt would otherwise
   carry `[MISSING]` markers the model narrates instead of doing the task,
-  and on the peer flavor those files are the node's private state. Peer skills
+  and on the peer flavor those files are the node's private state.
+- Security closures (PLAN-44 Phase 3, 2026-09-04). Every trace span the
+  maintainer / proposer / judge read (assistant text, tool args, tool
+  results) is fenced `<untrusted>…</untrusted>` by `formatTraceLog`, with
+  a smuggled closing tag defanged, and both prompts name the fence as
+  authoritative. The wiki store drops `medium` injection hits like
+  `critical` (D-7; `low` is written and logged). Evolution-authored content
+  goes through the staging gate with `strictInjection`, where a `medium`
+  hit BLOCKS instead of warning (a warn used to map to gateStatus
+  "passed"). `promoteStaged` refuses any staging dir carrying
+  `.evolution-meta.json` (error `evolution-staged`) unless the caller sets
+  `allowEvolutionStaged`: the validation gate does; the `skills.promote`
+  RPC does only for `forceGate` from a non-`agent:` author; the agent's
+  `skill_manage` tool never does. A successful promote now carries
+  `.evolution-meta.json` and `PURPOSE.md` into the live dir, so a
+  promoted skill keeps its cap / doctrine / summary identity. The proposer's
+  evidence is origin-bound: `collectProposalEvidence` records which sampled
+  traces it read and their run-origin classes into `.evolution-meta.json`
+  (`evidence`) and a `## Evidence` section of PURPOSE.md; a proposal whose
+  cited traces are all third-party (circle / a2a / subagent / guest /
+  unknown) is HELD `untrusted-evidence-only` before any LLM spend. P2P
+  ingestion routes an envelope into the skill-network bridge (memory
+  chunk) only when `ingestSkill` ACCEPTED it (`shouldBridgeIngest`); a
+  quarantined envelope is no longer an `active`, recall-visible chunk while
+  its file sits in review — the operator's `skills.incoming.accept` re-routes
+  it from the `.provenance.json` the accept writes (the CLI accept prefers
+  that RPC and falls back to disk-only with a note). One trust classifier
+  remains: `classifySessionKeyTrust` delegates to `classifyRunOrigin`, so
+  hook / group / channel / circle / a2a / subagent / guest / skill-evolve
+  sessions are untrusted for canonical pins exactly as they are for
+  evolution learning. Peer skills
   (attestation sweep) run on the `skill-evolve-val-peer-` flavor, which
   keeps the A2A no-tools floor. Both arms' trials are memoized in
   `skill-wiki/.trial-cache.sqlite` (`trial-cache.ts`, keyed by task prompt

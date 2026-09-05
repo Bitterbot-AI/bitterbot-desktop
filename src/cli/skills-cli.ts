@@ -170,30 +170,46 @@ export function registerSkillsCli(program: Command) {
       }
     });
 
-  incoming
-    .command("accept")
-    .description("Accept a quarantined skill into the active set")
-    .argument("<name>", "Skill name as shown by 'skills incoming list'")
-    .option("--json", "Output as JSON", false)
-    .action(async (name, opts) => {
+  addGatewayClientOptions(
+    incoming
+      .command("accept")
+      .description("Accept a quarantined skill into the active set")
+      .argument("<name>", "Skill name as shown by 'skills incoming list'")
+      .option("--json", "Output as JSON", false),
+  ).action(async (name, opts) => {
+    try {
+      // PLAN-44 Phase 3: prefer the gateway RPC — the running gateway is
+      // what routes an accepted envelope into the skill-network bridge.
+      // Fall back to the direct filesystem accept when no gateway is up.
+      let result: { ok: boolean; skillName?: string; reason?: string; bridge?: string };
       try {
+        result = (await callGatewayFromCli("skills.incoming.accept", opts, {
+          skillName: name,
+        })) as typeof result;
+      } catch {
         const { acceptIncomingSkill } = await import("../agents/skills/ingest.js");
         const config = loadConfig();
         const workspaceDir = resolveAgentWorkspaceDir(config, resolveDefaultAgentId(config));
-        const result = await acceptIncomingSkill({ skillName: name, config, workspaceDir });
-        if (opts.json) {
-          defaultRuntime.log(JSON.stringify(result, null, 2));
-        } else if (result.ok) {
-          defaultRuntime.log(`accepted: ${result.skillName}`);
-        } else {
-          defaultRuntime.error(`accept failed: ${result.reason ?? "unknown"}`);
-          defaultRuntime.exit(1);
+        result = await acceptIncomingSkill({ skillName: name, config, workspaceDir });
+        if (result.ok) {
+          defaultRuntime.error(
+            "note: gateway unreachable; accepted on disk only (no memory chunk until re-ingested)",
+          );
         }
-      } catch (err) {
-        defaultRuntime.error(String(err));
+      }
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+      } else if (result.ok) {
+        defaultRuntime.log(`accepted: ${result.skillName}`);
+      } else {
+        defaultRuntime.error(`accept failed: ${result.reason ?? "unknown"}`);
         defaultRuntime.exit(1);
       }
-    });
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
 
   incoming
     .command("reject")

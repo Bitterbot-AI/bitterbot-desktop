@@ -13,6 +13,7 @@
  */
 
 import fs from "node:fs/promises";
+import path from "node:path";
 import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
@@ -29,6 +30,7 @@ import {
   readLive,
   readStaged,
   rollbackToVersion,
+  stagingSkillDir,
   type StorageRoots,
 } from "./skill-storage.js";
 import { publishStaged as storagePublishStaged } from "./skill-storage.js";
@@ -46,8 +48,29 @@ export interface PromoteParams {
   author?: string;
   /** When true, promote even if the staging gate did not pass. */
   forceGate?: boolean;
+  /**
+   * PLAN-44 Phase 3: content staged by the evolution pipeline (carrying
+   * `.evolution-meta.json`) is promoted ONLY by the validation gate, or by
+   * an operator override. The agent's `skill_manage` tool never sets this.
+   */
+  allowEvolutionStaged?: boolean;
   /** Override timestamp for tests. */
   timestamp?: number;
+}
+
+/** Sidecars the evolution pipeline writes beside a staged SKILL.md. */
+export const EVOLUTION_SIDECARS = [".evolution-meta.json", "PURPOSE.md"] as const;
+
+async function readStagedSidecars(roots: StorageRoots, name: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const file of EVOLUTION_SIDECARS) {
+    try {
+      out.set(file, await fs.readFile(path.join(stagingSkillDir(roots, name), file), "utf-8"));
+    } catch {
+      // absent
+    }
+  }
+  return out;
 }
 
 export type PromoteKind = "edit" | "tombstone" | "consolidate";
@@ -65,6 +88,7 @@ export interface PromoteResult {
     | "tombstone-no-live"
     | "consolidate-target-missing"
     | "consolidate-missing-target-field"
+    | "evolution-staged"
     | "storage-error";
   detail?: string;
 }
@@ -103,6 +127,21 @@ export async function promoteStaged(
       previousArchived: null,
       error: "gate-not-passed",
       detail: `gate status is "${staged.meta.gateStatus ?? "pending"}"; pass forceGate=true to override`,
+    };
+  }
+
+  // PLAN-44 Phase 3 (audit security finding 2): evolution-staged content
+  // used to be promotable by the agent's own skill_manage tool, and the
+  // promoted copy lost its .evolution-meta.json — escaping the evolved-skill
+  // cap, the P2P doctrine and the validation summaries. Read the sidecars
+  // BEFORE publish (publish discards staging) and carry them to live.
+  const sidecars = await readStagedSidecars(ctx.storageRoots, params.name);
+  if (sidecars.has(".evolution-meta.json") && !params.allowEvolutionStaged) {
+    return {
+      ok: false,
+      previousArchived: null,
+      error: "evolution-staged",
+      detail: `"${params.name}" was staged by the skill-evolution pipeline; only its validation gate (or an operator override) promotes it`,
     };
   }
 
@@ -195,6 +234,13 @@ export async function promoteStaged(
       author,
       ...(params.timestamp ? { timestamp: params.timestamp } : {}),
     });
+    for (const [file, content] of sidecars) {
+      await fs.writeFile(
+        path.join(liveSkillDir(ctx.storageRoots, params.name), file),
+        content,
+        "utf-8",
+      );
+    }
     return {
       ok: true,
       kind: "edit",

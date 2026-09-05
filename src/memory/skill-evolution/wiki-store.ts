@@ -24,7 +24,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
+import { isSuspicious, scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { atomicWriteFile } from "./fs-atomic.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
 
@@ -442,11 +442,17 @@ export async function applyMaintainerOutput(
       });
       continue;
     }
+    // D-7: `medium` is dropped like `critical` (the wiki is not the place
+    // to keep suspect text — the proposer reads it raw); `low` is written
+    // and logged so a reviewer can find it.
     const scan = scanSkillForInjection(create.content);
-    if (scan.severity === "critical") {
+    if (scan.severity === "low") {
+      log.info(`wiki create ${create.name}: injection scan low (${scan.reason}); written`);
+    }
+    if (isSuspicious(scan.severity)) {
       result.dropped.push({
         where: `create:${create.name}`,
-        detail: `injection scan critical: ${scan.reason}`,
+        detail: `injection scan ${scan.severity}: ${scan.reason}`,
       });
       continue;
     }
@@ -466,10 +472,13 @@ export async function applyMaintainerOutput(
       continue;
     }
     const scan = scanSkillForInjection(next);
-    if (scan.severity === "critical") {
+    if (scan.severity === "low") {
+      log.info(`wiki update ${update.name}: injection scan low (${scan.reason}); written`);
+    }
+    if (isSuspicious(scan.severity)) {
       result.dropped.push({
         where: `update:${update.name}`,
-        detail: `injection scan critical after edit: ${scan.reason}`,
+        detail: `injection scan ${scan.severity} after edit: ${scan.reason}`,
       });
       continue;
     }
@@ -478,8 +487,11 @@ export async function applyMaintainerOutput(
   }
 
   const indexScan = scanSkillForInjection(output.updateIndex);
-  if (indexScan.severity === "critical") {
-    result.dropped.push({ where: "index", detail: `injection scan critical: ${indexScan.reason}` });
+  if (isSuspicious(indexScan.severity)) {
+    result.dropped.push({
+      where: "index",
+      detail: `injection scan ${indexScan.severity}: ${indexScan.reason}`,
+    });
   } else {
     await atomicWrite(indexPath(opts), output.updateIndex);
     result.indexUpdated = true;
@@ -487,10 +499,10 @@ export async function applyMaintainerOutput(
 
   if (output.updateSchema) {
     const schemaScan = scanSkillForInjection(output.updateSchema);
-    if (schemaScan.severity === "critical") {
+    if (isSuspicious(schemaScan.severity)) {
       result.dropped.push({
         where: "schema",
-        detail: `injection scan critical: ${schemaScan.reason}`,
+        detail: `injection scan ${schemaScan.severity}: ${schemaScan.reason}`,
       });
     } else {
       await atomicWrite(schemaPath(opts), output.updateSchema);
@@ -500,8 +512,11 @@ export async function applyMaintainerOutput(
 
   const logEntry = `\n## ${new Date().toISOString()}\n\n${output.appendLog.trim()}\n`;
   const logScan = scanSkillForInjection(logEntry);
-  if (logScan.severity === "critical") {
-    result.dropped.push({ where: "log", detail: `injection scan critical: ${logScan.reason}` });
+  if (isSuspicious(logScan.severity)) {
+    result.dropped.push({
+      where: "log",
+      detail: `injection scan ${logScan.severity}: ${logScan.reason}`,
+    });
   } else {
     await fs.appendFile(logsPath(opts), logEntry, "utf-8");
     result.logAppended = true;

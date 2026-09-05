@@ -62,9 +62,41 @@ async function isDuplicateOfRejected(
  * promotion). Writes PURPOSE.md + .evolution-meta.json beside the staged
  * SKILL.md and records the verdict in the impact trail either way.
  */
+/**
+ * PLAN-44 Phase 3: origin-bound evidence. Which traces the proposer actually
+ * read, and the trust class each came from (run-origin.ts). Carried into
+ * `.evolution-meta.json` and PURPOSE.md; the validation gate HOLDs a
+ * proposal whose evidence is all third-party (`untrusted-evidence-only`).
+ */
+export interface ProposalEvidence {
+  runIds: string[];
+  origins: string[];
+}
+
+export function collectProposalEvidence(
+  reads: string[],
+  samples: Array<{ trace: { runId: string; task?: { origin: string } | null } }>,
+): ProposalEvidence {
+  const runIds: string[] = [];
+  const origins = new Set<string>();
+  for (const read of reads) {
+    const m = read.match(/^traces\/(.+)$/);
+    if (!m) {
+      continue;
+    }
+    const sample = samples.find((s) => s.trace.runId === m[1]);
+    if (!sample || runIds.includes(sample.trace.runId)) {
+      continue;
+    }
+    runIds.push(sample.trace.runId);
+    origins.add(sample.trace.task?.origin ?? "unknown");
+  }
+  return { runIds, origins: [...origins].toSorted() };
+}
+
 export async function applyProposal(
   proposal: SkillProposal,
-  deps: { storeOpts?: ImpactTrailOptions; iteration?: string },
+  deps: { storeOpts?: ImpactTrailOptions; iteration?: string; evidence?: ProposalEvidence },
 ): Promise<ApplyProposalResult> {
   const storeOpts = deps.storeOpts ?? {};
   const trailOpts = storeOpts.configDir ? { configDir: storeOpts.configDir } : {};
@@ -170,6 +202,8 @@ export async function applyProposal(
       content,
       reason: `wiki-evolution proposal (${deps.iteration ?? "manual"})`,
       author: "evolution",
+      // PLAN-44 Phase 3: a medium injection hit blocks evolution-authored content.
+      strictInjection: true,
     },
   );
   if (!manage.ok) {
@@ -192,13 +226,20 @@ export async function applyProposal(
   // Provenance rides in the staging dir; the Phase 4 promotion path carries
   // it to the live dir alongside SKILL.md.
   const stagedDir = stagingSkillDir(roots, proposal.name);
-  if (purposeMd.trim()) {
-    await atomicWriteFile(path.join(stagedDir, "PURPOSE.md"), purposeMd);
+  const evidenceSection = deps.evidence
+    ? `\n\n## Evidence\n\n- runs: ${deps.evidence.runIds.join(", ") || "(none read)"}\n- origins: ${deps.evidence.origins.join(", ") || "(none)"}\n`
+    : "";
+  if (purposeMd.trim() || evidenceSection) {
+    await atomicWriteFile(
+      path.join(stagedDir, "PURPOSE.md"),
+      `${purposeMd.replace(/\n+$/, "")}${evidenceSection}`,
+    );
   }
   await atomicWriteJson(path.join(stagedDir, ".evolution-meta.json"), {
     origin: "wiki-evolution",
     stagedAt: Date.now(),
     iteration: deps.iteration ?? null,
+    ...(deps.evidence ? { evidence: deps.evidence } : {}),
   });
   await appendImpactEntry(
     {

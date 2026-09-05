@@ -43,7 +43,11 @@ import { appendIterationRecord, buildIterationRecord } from "./iteration-log.js"
 
 export { buildIterationRecord } from "./iteration-log.js";
 import { type LlmCallFn, type MaintenanceResult, runWikiMaintenance } from "./maintainer.js";
-import { type ApplyProposalResult, applyProposal } from "./proposal-apply.js";
+import {
+  type ApplyProposalResult,
+  applyProposal,
+  collectProposalEvidence,
+} from "./proposal-apply.js";
 import { type ProposerRunResult, runSkillProposer } from "./proposer.js";
 import {
   MAX_PARSE_FAILURES,
@@ -338,6 +342,8 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     proposalOutcome = await applyProposal(proposer.proposal, {
       ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),
       iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
+      // PLAN-44 Phase 3: bind the proposal to the traces it actually read.
+      evidence: collectProposalEvidence(proposer.reads, sample.samples),
     });
   }
 

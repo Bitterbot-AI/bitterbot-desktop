@@ -280,7 +280,7 @@ export async function startGatewaySidecars(params: {
       };
       // Wire skill_received → ingestion pipeline (with reputation manager support)
       orchestratorBridge.onSkillReceived(async (event) => {
-        const { ingestSkill } = await import("../agents/skills/ingest.js");
+        const { ingestSkill, shouldBridgeIngest } = await import("../agents/skills/ingest.js");
         const { loadConfig } = await import("../config/config.js");
         const envelope = event as import("../agents/skills/ingest.js").SkillEnvelope;
         const result = await ingestSkill({
@@ -298,8 +298,11 @@ export async function startGatewaySidecars(params: {
           return null;
         });
 
-        // Also route to SkillNetworkBridge for crystal-level ingestion
-        if (skillNetworkBridge && result?.action !== "rejected") {
+        // Also route to SkillNetworkBridge for crystal-level ingestion —
+        // PLAN-44 Phase 3: only an ACCEPTED envelope. A quarantined one used
+        // to become an `active`, recall-visible chunk while its file sat in
+        // review; skills.incoming.accept routes it here instead.
+        if (skillNetworkBridge && shouldBridgeIngest(result)) {
           try {
             skillNetworkBridge.ingestNetworkSkill(envelope);
           } catch (err) {

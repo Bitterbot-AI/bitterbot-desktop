@@ -23,6 +23,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { classifyRunOrigin, isLearnableOrigin } from "./skill-evolution/run-origin.js";
 
 const log = createSubsystemLogger("memory/session-trust");
 
@@ -34,52 +35,20 @@ export type SessionTrust = "first_party" | "untrusted" | "unknown";
  * "agent:<id>:" prefix so an agent literally named "circle" cannot confuse
  * the classifier.
  */
-const UNTRUSTED_TOKENS = new Set([
-  "a2a",
-  "a2a-task",
-  "group",
-  "channel",
-  "circle",
-  "circles",
-  // PLAN-38 §4.1 T9: the circle canvas and the sandbox carry peer-authored
-  // card text and other members' agent moves. Without these tokens a session
-  // keyed "agent:<id>:canvas:<cardId>" classified FIRST-PARTY and its content
-  // would have been eligible for canonical pins and standing user directives.
-  // No such key is minted today (verified 2026-07-27) — this closes the hole
-  // ahead of the surface that would open it, per the plan's P0.0.
-  "canvas",
-  "sandbox",
-  "guest",
-  "subagent",
-]);
+// PLAN-44 Phase 3: the token list that lived here was a second copy of
+// the run-origin classifier (memory/skill-evolution/run-origin.ts). One
+// classifier now decides both what evolution may learn from and what may
+// pin canonical facts: human/system = first_party, every third-party class
+// (circle, a2a, subagent, guest — which covers group/channel/hook/
+// skill-evolve sessions) = untrusted, malformed = unknown.
 
 /** Classify a full session key ("agent:<id>:<rest...>"). */
 export function classifySessionKeyTrust(sessionKey: string): SessionTrust {
-  const parts = sessionKey.toLowerCase().split(":");
-  if (parts.length < 2 || parts[0] !== "agent") {
+  const origin = classifyRunOrigin(sessionKey);
+  if (origin === "unknown") {
     return "unknown";
   }
-  const rest = parts.slice(2);
-  if (rest.length === 0) {
-    return "first_party"; // bare "agent:<id>" — the main session
-  }
-  for (const token of rest) {
-    if (UNTRUSTED_TOKENS.has(token)) {
-      return "untrusted";
-    }
-    // Prefixed forms like "a2a-task" appear as one segment; also catch
-    // "a2a-<anything>" without matching e.g. "canvas".
-    if (token.startsWith("a2a-") || token.startsWith("subagent-")) {
-      return "untrusted";
-    }
-    // PLAN-43 Phase 3 (3b adversarial): skill-evolution validation rollouts
-    // inject PEER-authored skill text into real turns. Their transcripts are
-    // not first-party state (no canonical pins, no directives).
-    if (token.startsWith("skill-evolve")) {
-      return "untrusted";
-    }
-  }
-  return "first_party";
+  return isLearnableOrigin(origin) ? "first_party" : "untrusted";
 }
 
 /**
