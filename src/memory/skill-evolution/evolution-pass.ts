@@ -119,6 +119,8 @@ export interface EvolutionPassDeps {
   descriptionRepair?: boolean;
   /** PLAN-44 Phase 5a: the agent workspace, to resolve relative skill-read paths. */
   workspaceDir?: string;
+  /** PLAN-44 Phase 5c: rewrite non-routable harvested / received descriptions (default true). */
+  routingRepair?: boolean;
   storeOpts?: WikiStoreOptions;
 }
 

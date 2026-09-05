@@ -41,6 +41,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Wall-clock budget for one tasks-mode validation run (real agent turns over the corpus). Past it the proposal is held and retried next iteration, reusing cached incumbent results. Default 45.",
   "skills.evolution.descriptionRepair":
     "When a proposal is held because the agent never opened it on its capability tasks, reword its description (the runtime's routing key) and re-measure on the next pass; at most 2 repairs per proposal. Default true.",
+  "skills.evolution.routingRepair":
+    "Rewrite the description of harvested or received live skills that the agent could never route to (repository taglines) into a 'use when … not for …' form, through the staging gate; up to 5 per housekeeping pass. Default true.",
   "skills.skillSeekers.enabled":
     "Generate skills by scraping documentation sites on demand. Off by default: dials external sites.",
   "skills.skillSeekers.trending.enabled":

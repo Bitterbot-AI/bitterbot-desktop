@@ -3133,6 +3133,7 @@ export class DreamEngine {
         ? { validationBudgetMinutes: cfg.validationBudgetMinutes }
         : {}),
       ...(cfg?.descriptionRepair === false ? { descriptionRepair: false } : {}),
+      ...(cfg?.routingRepair === false ? { routingRepair: false } : {}),
       ...(cfg?.maxActiveEvolved ? { maxActiveEvolved: cfg.maxActiveEvolved } : {}),
       ...(cfg?.semanticLintCadenceDays !== undefined
         ? { semanticLintCadenceDays: cfg.semanticLintCadenceDays }

@@ -146,6 +146,13 @@ export type SkillsEvolutionConfig = {
    */
   descriptionRepair?: boolean;
   /**
+   * PLAN-44 Phase 5c: rewrite the description of harvested / received live
+   * skills that fail the description contract (repository taglines) into a
+   * contract-compliant "use when … not for …" form, through the staging
+   * gate, up to 5 per housekeeping pass. Default: true.
+   */
+  routingRepair?: boolean;
+  /**
    * PLAN-44 Phase 2 (D-4): extra tools granted to validation rollouts on
    * top of the built-in workspace-scoped allow-list (read/write/edit/
    * apply_patch/exec/process). Network, messaging, memory, skill and wallet

@@ -244,6 +244,57 @@ export function registerSkillsCli(program: Command) {
   // PLAN-44 Phase 2: review the corpus miner's drafts (the only way a
   // capability task enters the live corpus). Goes through the gateway so
   // the running node's files are the ones edited.
+  // PLAN-44 Phase 5c: rewrite non-routable harvested / received descriptions now.
+  const routing = skills
+    .command("routing")
+    .description("Make live skills routable: rewrite descriptions the agent could never open");
+  addGatewayClientOptions(
+    routing
+      .command("repair")
+      .description("Rewrite non-routable live descriptions to the contract (dry-run lists them)")
+      .option("--dry-run", "List candidates without rewriting", false)
+      .option("--max <n>", "Max rewrites this run (default 5)")
+      .option("--name <skill>", "Rewrite one skill only")
+      .option("--json", "Output as JSON", false),
+  ).action(async (opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.routing.repair", opts, {
+        ...(opts.dryRun ? { dryRun: true } : {}),
+        ...(opts.max ? { max: Number(opts.max) } : {}),
+        ...(opts.name ? { name: String(opts.name) } : {}),
+      })) as {
+        candidates?: Array<{ name: string; description: string; issues: string[] }>;
+        outcomes?: Array<{
+          name: string;
+          outcome: string;
+          from: string;
+          to?: string;
+          reason: string;
+        }>;
+      };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      for (const c of result.candidates ?? []) {
+        defaultRuntime.log(
+          `  ${c.name}  ${theme.muted(`"${c.description.slice(0, 80)}"`)}\n      ${theme.warn(c.issues.join(", "))}`,
+        );
+      }
+      for (const o of result.outcomes ?? []) {
+        defaultRuntime.log(
+          `  ${o.name}  ${o.outcome === "rewritten" ? theme.success("rewritten") : theme.warn(o.outcome)}${o.to ? `\n      → ${o.to}` : ""}${o.outcome !== "rewritten" ? `\n      ${theme.muted(o.reason)}` : ""}`,
+        );
+      }
+      if (!result.candidates?.length && !result.outcomes?.length) {
+        defaultRuntime.log(theme.muted("Every live skill already routes."));
+      }
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
   const corpus = skills
     .command("corpus")
     .description("Review mined capability-task drafts for skill-evolution validation");

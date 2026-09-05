@@ -96,8 +96,7 @@ Gating:
 - Every incoming skill is assessed for **routing** (PLAN-44): the agent finds a skill only
   through its `description` in the prompt index, so a description with no "when" clause and
   no scope-out, or one that overlaps a local skill's, is held for review with the reason
-  shown by `skills incoming list` (`held for review: description contract: …`). Accepting it
-  anyway is your call; it will rarely be opened until its description is rewritten.
+  shown by `skills incoming list` (`held for review: description contract: …`). Accepting it anyway is your call; the routing-repair pass (`bitterbot skills routing repair`, also run automatically in housekeeping) rewrites such descriptions into routable form through the staging gate, archiving the previous version.
 
 ### Origin provenance (`bitterbot.origin`)
 

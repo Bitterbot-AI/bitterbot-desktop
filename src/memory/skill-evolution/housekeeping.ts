@@ -14,6 +14,7 @@ import { ContributorStatusLedger } from "../contributor-status.js";
 import { SellerBondLedger } from "../seller-bond-ledger.js";
 import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
 import { publishEligibleEvolvedSkills, type PublishSweepResult } from "./p2p-publish.js";
+import { repairNonRoutableSkills, type RoutingRepairResult } from "./routing-repair.js";
 import { creditSkillReads } from "./skill-reads.js";
 import { runValidationGate, type ValidationGateOutcome } from "./validation-gate.js";
 import { runWikiLint, type WikiLintResult } from "./wiki-lint.js";
@@ -41,6 +42,8 @@ export async function runHousekeeping(
   attestation?: { attested: number; skipped: number; held: number };
   /** PLAN-44 Phase 5a: live-skill reads credited from the journal this pass. */
   skillReads?: { scannedRuns: number; credited: number };
+  /** PLAN-44 Phase 5c: harvested / received descriptions rewritten to the contract. */
+  routingRepair?: { examined: number; rewritten: number; failed: number };
 }> {
   // PLAN-44 Phase 5a: the usage signal. Runs first so the lifecycle
   // counters the validation gate's regression check reads are current.
@@ -56,6 +59,24 @@ export async function runHousekeeping(
       skillReads = { scannedRuns: r.scannedRuns, credited: r.credited };
     } catch (err) {
       log.warn(`skill-read crediting failed: ${String(err)}`);
+    }
+  }
+  // PLAN-44 Phase 5c: a live skill the router can never open is dead
+  // weight; rewrite its description before anything else is measured.
+  let routingRepair: { examined: number; rewritten: number; failed: number } | undefined;
+  if (deps.llmCall && deps.routingRepair !== false) {
+    try {
+      const r: RoutingRepairResult = await repairNonRoutableSkills({
+        llmCall: deps.llmCall,
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+      });
+      routingRepair = {
+        examined: r.examined,
+        rewritten: r.outcomes.filter((o) => o.outcome === "rewritten").length,
+        failed: r.outcomes.filter((o) => o.outcome === "failed").length,
+      };
+    } catch (err) {
+      log.warn(`routing repair failed: ${String(err)}`);
     }
   }
   const validation = await runValidationGate({
@@ -167,6 +188,7 @@ export async function runHousekeeping(
   }
   return {
     ...(skillReads ? { skillReads } : {}),
+    ...(routingRepair ? { routingRepair } : {}),
     validation,
     ...(lint ? { lint } : {}),
     ...(attestation ? { attestation } : {}),

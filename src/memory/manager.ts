@@ -99,6 +99,7 @@ import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
 import { SkillCrystallizer } from "./skill-crystallizer.js";
+import { setActiveEvolutionLlm } from "./skill-evolution/active-llm.js";
 import { makeAttesterWeight, resolveOwnAttesterPubkey } from "./skill-evolution/attester-weight.js";
 import { readValidationSummaries } from "./skill-evolution/validation-summaries.js";
 import { SkillExecutionTracker } from "./skill-execution-tracker.js";
@@ -2698,6 +2699,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         const evo = this.cfg.skills?.evolution;
         const spec = evo?.proposerModel ?? evo?.judgeModel ?? this.resolvePrimaryLlmSpec();
         const call = spec ? this.buildLlmCallFn(spec, { maxTokens: 8192 }) : null;
+        // PLAN-44 Phase 5c: expose the lanes to on-demand gateway RPCs.
+        setActiveEvolutionLlm({ evolution: builtLlmCall ?? null, proposer: call });
         return call ? { evolutionProposerLlmCall: call } : {};
       })(),
     };

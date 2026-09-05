@@ -1396,6 +1396,50 @@ export const skillsHandlers: GatewayRequestHandlers = {
   // (one candidate skill, one task, both arms). The workspace registry only
   // honours scratch dirs registered by THIS process, so an operator cannot
   // exercise the arm from outside; this RPC is the supported way.
+  /**
+   * PLAN-44 Phase 5c: rewrite non-routable live descriptions now (the
+   * housekeeping pass does the same on cadence). `dryRun` lists candidates.
+   */
+  "skills.evolution.routing.repair": async ({ params, respond }) => {
+    try {
+      const p = (params ?? {}) as { dryRun?: boolean; max?: number; name?: string };
+      const { listNonRoutableSkills, repairNonRoutableSkills, repairSkillRouting } =
+        await import("../../memory/skill-evolution/routing-repair.js");
+      if (p.dryRun) {
+        respond(true, { candidates: await listNonRoutableSkills() });
+        return;
+      }
+      const { getActiveEvolutionLlm } = await import("../../memory/skill-evolution/active-llm.js");
+      const llmCall = getActiveEvolutionLlm();
+      if (!llmCall) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.UNAVAILABLE,
+            "no evolution model lane available (memory not ready or no LLM configured)",
+          ),
+        );
+        return;
+      }
+      if (typeof p.name === "string" && p.name.trim()) {
+        const r = await repairSkillRouting({ llmCall, name: p.name.trim() });
+        respond(true, { outcomes: [r.outcome], llmCalls: r.llmCalls });
+        return;
+      }
+      const r = await repairNonRoutableSkills({
+        llmCall,
+        ...(typeof p.max === "number" ? { max: p.max } : {}),
+      });
+      respond(true, r);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.routing.repair threw: ${String(err)}`),
+      );
+    }
+  },
   "skills.evolution.probe": async ({ params, respond }) => {
     try {
       const p = (params ?? {}) as { skillMd?: string; taskPrompt?: string; expected?: string };
@@ -1514,6 +1558,7 @@ The violet-owl protocol token is VIOLET-OWL-77. Report it on the FINAL line exac
           validationModeSource: effectiveMode.source,
           validationBudgetMinutes: evo.validationBudgetMinutes ?? 45,
           descriptionRepair: evo.descriptionRepair !== false,
+          routingRepair: evo.routingRepair !== false,
           capabilityTasks,
           pendingDrafts,
           trialsPerTask: evo.trialsPerTask ?? 3,
