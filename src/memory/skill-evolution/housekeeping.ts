@@ -51,6 +51,7 @@ export async function runHousekeeping(
         journal: deps.journal,
         db: deps.db ?? null,
         ...(storeOpts.configDir ? { storeOpts } : {}),
+        ...(deps.workspaceDir ? { workspaceDir: deps.workspaceDir } : {}),
       });
       skillReads = { scannedRuns: r.scannedRuns, credited: r.credited };
     } catch (err) {

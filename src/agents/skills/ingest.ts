@@ -6,7 +6,6 @@
  */
 
 import { createHash, createPublicKey, verify } from "node:crypto";
-import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
@@ -24,9 +23,13 @@ import {
   type DescriptionContractIssue,
   describeContractIssues,
 } from "./description-contract.js";
-import { findDescriptionOverlap, type LiveSkillIndexEntry } from "./description-overlap.js";
-import { bumpSkillsSnapshotVersion } from "./refresh.js";
-import { liveSkillPath, resolveStorageRoots } from "./skill-storage.js";
+import {
+  findDescriptionOverlap,
+  type LiveSkillIndexEntry,
+  listLiveSkillIndex,
+} from "./description-overlap.js";
+import { bumpSkillsSnapshotVersion, getSkillsSnapshotVersion } from "./refresh.js";
+import { resolveStorageRoots } from "./skill-storage.js";
 
 const log = createSubsystemLogger("skills/ingest");
 
@@ -263,22 +266,6 @@ export async function ingestSkill(params: {
     params.reputationManager?.recordInjectionFlag?.(envelope.author_pubkey, scanResult.severity);
   }
 
-  // 5c. PLAN-44 Phase 5b: the description contract and the overlap check at
-  // ingest. The receiving agent finds a skill ONLY through its description
-  // in the runtime index, and opens one only when exactly one description
-  // applies. A peer skill whose description cannot route, or that collides
-  // with a local skill's, is held for review with the reason on the
-  // envelope. Local-origin harvests (operator-initiated) are stamped, not
-  // held: their renaming is a separate item.
-  const routing = assessRouting(envelope.name, skillContent);
-  const routingHold =
-    !isLocalOrigin && (routing.contractIssues.length > 0 || routing.overlap !== null);
-  if (routing.contractIssues.length > 0 || routing.overlap) {
-    log.warn(
-      `Skill ${normalizeSkillName(envelope.name)} (${isLocalOrigin ? "local" : envelope.author_peer_id}): ${describeRouting(routing)}${routingHold ? "; held for review" : ""}`,
-    );
-  }
-
   // 6. Check existing skills for content-hash dedup
   const existingSkillsDir = path.join(CONFIG_DIR, "skills");
   if (await skillExistsWithHash(existingSkillsDir, envelope.content_hash)) {
@@ -307,6 +294,22 @@ export async function ingestSkill(params: {
 
   // Record in reputation system if available
   params.reputationManager?.recordSkillReceived(envelope.author_pubkey, envelope.author_peer_id);
+
+  // 7b. PLAN-44 Phase 5b: the description contract and the overlap check
+  // at ingest, AFTER dedupe and existence (a rejected skill pays nothing).
+  // The receiving agent finds a skill ONLY through its description in the
+  // runtime index, and opens one only when exactly one description
+  // applies. A peer skill whose description cannot route, or collides with
+  // a local skill's, is held for review with the reason on the envelope.
+  // Local-origin harvests (operator-initiated) are stamped, not held.
+  const routing = await assessRouting(envelope.name, skillContent);
+  const routingHold =
+    !isLocalOrigin && (routing.contractIssues.length > 0 || routing.overlap !== null);
+  if (routing.contractIssues.length > 0 || routing.overlap) {
+    log.warn(
+      `Skill ${normalizeSkillName(envelope.name)} (${isLocalOrigin ? "local" : envelope.author_peer_id}): ${describeRouting(routing)}${routingHold ? "; held for review" : ""}`,
+    );
+  }
 
   // 8. Determine destination based on origin, policy, trust level, and scan.
   // `forceQuarantine` overrides accept when the scanner returns critical — the
@@ -526,10 +529,30 @@ export async function acceptIncomingSkill(params: {
     await fs.mkdir(targetDir, { recursive: true });
     await fs.writeFile(path.join(targetDir, "SKILL.md"), content, "utf-8");
 
-    // Copy provenance if exists
+    // Copy provenance if exists. An operator accept overrides a routing
+    // hold; say so on the live record instead of carrying `routing_hold`
+    // forever (adversarial L10).
     try {
       const envelope = await fs.readFile(path.join(incomingDir, ".envelope.json"), "utf-8");
-      await fs.writeFile(path.join(targetDir, ".provenance.json"), envelope, "utf-8");
+      let provenance = envelope;
+      try {
+        const parsed = JSON.parse(envelope) as Record<string, unknown>;
+        if (parsed.routing_hold === true) {
+          provenance = JSON.stringify(
+            {
+              ...parsed,
+              routing_hold: false,
+              routing_hold_overridden_by: "operator",
+              accepted_at: Date.now(),
+            },
+            null,
+            2,
+          );
+        }
+      } catch {
+        // keep verbatim
+      }
+      await fs.writeFile(path.join(targetDir, ".provenance.json"), provenance, "utf-8");
     } catch {}
 
     // Remove from quarantine
@@ -659,46 +682,23 @@ export function describeRouting(r: RoutingAssessment): string {
   return parts.join("; ");
 }
 
-function listLiveSkillIndexSync(
-  roots: ReturnType<typeof resolveStorageRoots>,
-): LiveSkillIndexEntry[] {
-  let names: string[];
-  try {
-    names = fsSync
-      .readdirSync(roots.liveRoot, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
-      .map((d) => d.name);
-  } catch {
-    return [];
+/**
+ * The local live index, memoized on the skills snapshot version so a gossip
+ * burst does not re-read every SKILL.md per envelope (adversarial M5).
+ */
+let liveIndexCache: { version: number; index: LiveSkillIndexEntry[] } | null = null;
+async function cachedLiveSkillIndex(): Promise<LiveSkillIndexEntry[]> {
+  const version = getSkillsSnapshotVersion();
+  if (liveIndexCache && liveIndexCache.version === version) {
+    return liveIndexCache.index;
   }
-  const out: LiveSkillIndexEntry[] = [];
-  for (const name of names) {
-    let md: string;
-    try {
-      md = fsSync.readFileSync(liveSkillPath(roots, name), "utf-8");
-    } catch {
-      continue;
-    }
-    const fm = (parseSkillMarkdown(md)?.frontmatter ?? {}) as Record<string, unknown>;
-    const description = typeof fm.description === "string" ? fm.description.trim() : "";
-    const fmName = typeof fm.name === "string" ? fm.name : undefined;
-    out.push({
-      name,
-      description,
-      contractCompliant:
-        checkDescriptionContract({
-          skillName: name,
-          frontmatterName: fmName,
-          description,
-          liveFrontmatterName: fmName,
-        }).length === 0,
-    });
-  }
-  return out;
+  const index = await listLiveSkillIndex(resolveStorageRoots());
+  liveIndexCache = { version, index };
+  return index;
 }
 
 /** Description-only contract (the harvest path writes owner/repo names by design) plus overlap against local routable skills. */
-function assessRouting(envelopeName: string, skillMd: string): RoutingAssessment {
+async function assessRouting(envelopeName: string, skillMd: string): Promise<RoutingAssessment> {
   const skillName = normalizeSkillName(envelopeName);
   const fm = (parseSkillMarkdown(skillMd)?.frontmatter ?? {}) as Record<string, unknown>;
   const fmName = typeof fm.name === "string" ? fm.name : undefined;
@@ -711,7 +711,7 @@ function assessRouting(envelopeName: string, skillMd: string): RoutingAssessment
   }).filter((i) => i !== "variant-suffix");
   let overlap: RoutingAssessment["overlap"] = null;
   if (contractIssues.length === 0 && description) {
-    const index = listLiveSkillIndexSync(resolveStorageRoots());
+    const index = await cachedLiveSkillIndex();
     const hit = findDescriptionOverlap(description, index, { excludeName: skillName });
     if (hit && index.find((e) => e.name === hit.name)?.contractCompliant) {
       overlap = {

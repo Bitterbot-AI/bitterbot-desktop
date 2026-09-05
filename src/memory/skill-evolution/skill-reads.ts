@@ -27,19 +27,20 @@ import {
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { makeYieldEvery } from "../event-loop.js";
 import { SkillLifecycleStore } from "../skill-lifecycle.js";
 import { atomicWriteJson } from "./fs-atomic.js";
-import { classifyRunOrigin } from "./run-origin.js";
+import { classifyRunOrigin, isLearnableOrigin } from "./run-origin.js";
 import { listRunsSinceDetailed, runHasTerminal } from "./run-scan.js";
 import { DEFAULT_EXCLUDED_SESSION_PATTERNS } from "./sampler.js";
-import { reconstructTrace } from "./traces.js";
+import { MAX_RECONSTRUCT_EVENTS, reconstructTrace } from "./traces.js";
 
 const log = createSubsystemLogger("skill-evolution/skill-reads");
 
 export const SKILL_READS_FILENAME = "skill-reads.jsonl";
 export const SKILL_READS_STATE_FILENAME = "skill-reads-state.json";
-/** Runs scanned per pass. */
-const MAX_RUNS_PER_PASS = 500;
+/** Runs scanned per pass (a test may lower it to exercise the deferral path). */
+export const DEFAULT_MAX_RUNS_PER_PASS = 500;
 /** Incomplete runs remembered for a later pass. */
 const MAX_PENDING = 200;
 const PENDING_TTL_MS = 3 * 24 * 60 * 60 * 1000;
@@ -52,8 +53,18 @@ export interface SkillReadEvent {
   ts: number;
   /** Run ended without a lifecycle error and reached a terminal event. */
   success: boolean;
+  /** The agent called complete() (a stronger success signal than `success`). */
+  completedExplicitly: boolean;
+  /** Tool errors in the run, so a consumer can refine `success`. */
+  toolErrors: number;
   origin: string;
   sessionKey: string | null;
+  /**
+   * Whether the event fed the lifecycle counters. Only first-party (human /
+   * system) non-heartbeat runs do (adversarial M3): a circle or A2A party
+   * must not be able to inflate the numbers the regression gate reads.
+   */
+  credited: boolean;
 }
 
 interface SkillReadsState {
@@ -90,6 +101,7 @@ export function skillsReadInRun(
   runId: string,
   roots: StorageRoots,
   liveNames: string[],
+  workspaceDir?: string,
 ): string[] {
   const targets = new Map<string, string>();
   for (const name of liveNames) {
@@ -106,14 +118,25 @@ export function skillsReadInRun(
     }
     const args = (row.data.args ?? {}) as Record<string, unknown>;
     if (row.data.name === "read") {
-      const p = [args.path, args.file_path, args.filePath].find((v) => typeof v === "string") as
+      const raw = [args.path, args.file_path, args.filePath].find((v) => typeof v === "string") as
         | string
         | undefined;
-      if (p && path.isAbsolute(p)) {
-        const hit = targets.get(path.resolve(p));
-        if (hit) {
-          found.add(hit);
-        }
+      if (!raw) {
+        continue;
+      }
+      const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+      const expanded = raw.startsWith("~/") && home ? path.join(home, raw.slice(2)) : raw;
+      // Relative paths resolve against the workspace when known (the gate's
+      // detectSkillRead does the same); a sandboxed session reads a COPY
+      // under <sandbox>/skills and is not credited (documented limit).
+      const resolved = path.isAbsolute(expanded)
+        ? path.resolve(expanded)
+        : workspaceDir
+          ? path.resolve(workspaceDir, expanded)
+          : null;
+      const hit = resolved ? targets.get(resolved) : undefined;
+      if (hit) {
+        found.add(hit);
       }
       continue;
     }
@@ -151,7 +174,10 @@ export async function creditSkillReads(params: {
   journal: EventJournal;
   db?: DatabaseSync | null;
   storeOpts?: ImpactTrailOptions;
+  /** Resolves relative read paths (the agent's workspace). */
+  workspaceDir?: string;
   now?: number;
+  maxRunsPerPass?: number;
 }): Promise<CreditSkillReadsResult> {
   const opts = params.storeOpts ?? {};
   const now = params.now ?? Date.now();
@@ -166,47 +192,41 @@ export async function creditSkillReads(params: {
   }
   const state = await readState(opts);
   const seen = new Set(state.seen);
+  const livePending = state.pending.filter((p) => now - p.seenAt <= PENDING_TTL_MS);
   const scan = await listRunsSinceDetailed(params.journal, {
     sinceSeq: state.cursorSeq,
-    maxRuns: MAX_RUNS_PER_PASS,
+    maxRuns: params.maxRunsPerPass ?? DEFAULT_MAX_RUNS_PER_PASS,
+    // Pending runs are re-checked by id below; keep them out of the cap.
+    skipRunIds: new Set(livePending.map((p) => p.runId)),
   });
-  const candidates = new Map<string, number>();
-  for (const p of state.pending) {
-    if (now - p.seenAt <= PENDING_TTL_MS) {
-      candidates.set(p.runId, p.firstSeq);
-    }
-  }
-  for (const run of scan.runs) {
-    candidates.set(run.runId, run.firstSeq);
-  }
   const pending: SkillReadsState["pending"] = [];
   const events: SkillReadEvent[] = [];
-  const store = params.db ? new SkillLifecycleStore(params.db) : null;
-  for (const [runId, firstSeq] of candidates) {
-    const summary = scan.runs.find((r) => r.runId === runId);
-    const complete = summary
-      ? runHasTerminal(params.journal, summary)
-      : params.journal.queryMeta({ runId, streams: ["lifecycle"], limit: 50 }).length > 1;
+  const yieldTick = makeYieldEvery(16);
+  const decide = async (runId: string, firstSeq: number, complete: boolean) => {
     if (!complete) {
       if (pending.length < MAX_PENDING) {
         pending.push({ runId, firstSeq, seenAt: now });
+      } else {
+        log.warn(`skill reads: pending list full; dropping incomplete run ${runId}`);
       }
-      continue;
+      return;
     }
     if (liveNames.length === 0) {
-      continue;
+      return;
     }
-    const read = skillsReadInRun(params.journal, runId, roots, liveNames);
+    const read = skillsReadInRun(params.journal, runId, roots, liveNames, params.workspaceDir);
     if (read.length === 0) {
-      continue;
+      return;
     }
     const trace = await reconstructTrace(params.journal, runId);
     if (!trace) {
-      continue;
+      return;
     }
     if (isExcludedSession(trace.sessionKey)) {
-      continue; // validation rollouts and probes open skills by construction
+      return; // validation rollouts and probes open skills by construction
     }
+    const origin = trace.task?.origin ?? classifyRunOrigin(trace.sessionKey);
+    const credited = isLearnableOrigin(origin) && !(trace.task?.isHeartbeat ?? false);
     const success = !trace.endedWithError && trace.isComplete;
     for (const skill of read) {
       const key = `${runId} ${skill}`;
@@ -214,34 +234,65 @@ export async function creditSkillReads(params: {
         continue;
       }
       seen.add(key);
-      const event: SkillReadEvent = {
+      events.push({
         runId,
         skill,
         ts: trace.endedAt ?? trace.startedAt ?? now,
         success,
-        origin: trace.task?.origin ?? classifyRunOrigin(trace.sessionKey),
+        completedExplicitly: trace.completedExplicitly,
+        toolErrors: trace.toolErrorCount,
+        origin,
         sessionKey: trace.sessionKey ?? null,
-      };
-      events.push(event);
-      try {
-        store?.recordUsage({ skillName: skill, success, timestamp: event.ts });
-      } catch (err) {
-        log.debug(`lifecycle credit failed for ${skill}: ${String(err)}`);
-      }
+        credited,
+      });
     }
+  };
+  // Pending runs: completeness is the terminal lifecycle event, not a row
+  // count (start,start from a retry is NOT complete — adversarial M2).
+  for (const p of livePending) {
+    await yieldTick();
+    const trace = await reconstructTrace(params.journal, p.runId);
+    await decide(p.runId, p.firstSeq, trace?.isComplete === true);
   }
+  for (const run of scan.runs) {
+    await yieldTick();
+    // Same pre-filter as the sampler: no tools → nothing to read; marathon
+    // runs are not worth inflating (adversarial M4).
+    if (run.toolEvents === 0 || run.totalEvents > MAX_RECONSTRUCT_EVENTS) {
+      continue;
+    }
+    await decide(run.runId, run.firstSeq, runHasTerminal(params.journal, run));
+  }
+  // Ledger and state land BEFORE the lifecycle credits (adversarial L7): a
+  // crash between them can lose credits, never double them.
   if (events.length > 0) {
     const file = skillReadsPath(opts);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.appendFile(file, `${events.map((e) => JSON.stringify(e)).join("\n")}\n`, "utf-8");
   }
-  const nextCursor = Math.max(state.cursorSeq, scan.horizonSeq);
+  // Adversarial H1: runs the cap deferred are not skipped — the cursor stops
+  // just before the earliest deferred run, exactly like the sampler.
+  const bound = scan.deferredMinFirstSeq !== null ? scan.deferredMinFirstSeq - 1 : scan.horizonSeq;
+  const nextCursor = Math.max(state.cursorSeq, Math.min(scan.horizonSeq, bound));
   const seenList = [...seen];
   await atomicWriteJson(statePath(opts), {
     cursorSeq: nextCursor,
     pending,
     seen: seenList.slice(Math.max(0, seenList.length - MAX_SEEN)),
   } satisfies SkillReadsState);
+  const store = params.db ? new SkillLifecycleStore(params.db) : null;
+  if (store) {
+    for (const e of events) {
+      if (!e.credited) {
+        continue;
+      }
+      try {
+        store.recordUsage({ skillName: e.skill, success: e.success, timestamp: e.ts });
+      } catch (err) {
+        log.debug(`lifecycle credit failed for ${e.skill}: ${String(err)}`);
+      }
+    }
+  }
   if (events.length > 0) {
     log.info(
       `skill reads: credited ${events.length} read(s) across ${new Set(events.map((e) => e.runId)).size} run(s)`,
@@ -267,6 +318,8 @@ export async function summarizeSkillReads(params: {
   liveNames?: string[];
   windowDays?: number;
   now?: number;
+  /** Count reads from third-party / heartbeat runs too (default: first-party only, like the credits). */
+  includeThirdParty?: boolean;
 }): Promise<SkillReadSummary[]> {
   const now = params.now ?? Date.now();
   const since = now - (params.windowDays ?? 14) * 24 * 60 * 60 * 1000;
@@ -307,6 +360,9 @@ export async function summarizeSkillReads(params: {
       continue;
     }
     if (typeof e.ts !== "number" || e.ts < since || typeof e.skill !== "string") {
+      continue;
+    }
+    if (!params.includeThirdParty && e.credited !== undefined && !e.credited) {
       continue;
     }
     const s = ensure(e.skill);

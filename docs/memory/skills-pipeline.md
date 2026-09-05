@@ -288,9 +288,7 @@ and records one event per (run, skill) with the run's outcome (ended
 without a lifecycle error) in `skill-wiki/skill-reads.jsonl`. Each event
 also calls `SkillLifecycleStore.recordUsage`, so `usage_count`,
 `success_count` and `last_used_at` — the numbers the staging gate's
-regression check reads — are finally fed. Validation rollouts and probe
-sessions are excluded; incomplete runs are retried until they end or
-expire; the ledger is append-only and idempotent. `summarizeSkillReads`
+regression check reads — are finally fed. Validation rollouts and probe sessions are excluded; incomplete runs are retried until they end (a retry's second `start` is not an end) or expire; the ledger is append-only and idempotent, and it is written before the lifecycle credits so a crash can lose a credit but never double one. Every read is logged with its origin, but only first-party (human / system), non-heartbeat runs credit the lifecycle counters and the default summary, so a circle or A2A party cannot inflate the numbers the regression gate reads. Known limits: a sandboxed session reads a copy under the sandbox and is not credited; workspace and bundled skills are not tracked (managed `~/.bitterbot/skills` only). `summarizeSkillReads`
 gives per-skill windowed rates (default 14 days) for
 `skills.evolution.status` and for retirement scoring (D-5).
 

@@ -117,6 +117,8 @@ export interface EvolutionPassDeps {
   validationBudgetMinutes?: number;
   /** PLAN-44 Phase 4a: reword never-triggered descriptions (default true). */
   descriptionRepair?: boolean;
+  /** PLAN-44 Phase 5a: the agent workspace, to resolve relative skill-read paths. */
+  workspaceDir?: string;
   storeOpts?: WikiStoreOptions;
 }
 
