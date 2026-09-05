@@ -25,7 +25,7 @@ export const DESCRIPTION_MAX_CHARS = 240;
  * … when" or "when(ever) the/a/you/…", i.e. `when` followed by a subject.
  */
 const TRIGGER_RE =
-  /\b(?:use|apply|open|read|load|trigger(?:s|ed)?|fire(?:s)?)\b[^.;]{0,80}\bwhen(?:ever)?\b|\bwhen(?:ever)?\s+(?:the|a|an|you|your|asked|running|handling|debugging|working|tasks?|users?|someone)\b/i;
+  /\b(?:use|apply|open|read|load|consult|reach for|trigger(?:s|ed)?|fire(?:s)?)\b[^.;]{0,80}\bwhen(?:ever)?\b|\bwhen(?:ever)?\s+(?:the|a|an|you|your|asked|it|they|there|tasks?|users?|someone|\w+ing)\b|\bif\s+(?:the|a|an|you|your|users?|tasks?|someone)\s+\w+/i;
 /** A scope-out CLAUSE: what the skill is not for. Bare `not`/`only` no longer count. */
 const SCOPE_OUT_RE =
   /\b(?:not\s+(?:for|when|on|while|if)|never\s+(?:for|when|on)|unless|except\s+(?:when|for|on)|only\s+(?:when|if|for|on)|do(?:es)?\s+not\s+(?:use|apply|fire)|don't\s+(?:use|apply))\b/i;

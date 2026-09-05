@@ -88,7 +88,7 @@ describe("contract hardening (Phase 4a adversarial pass)", () => {
         description:
           "The only collective list of free APIs for developers, if you like it star it today.",
       }),
-    ).toEqual(expect.arrayContaining(["no-trigger-clause", "no-scope-out-clause", "vacuous"]));
+    ).toEqual(expect.arrayContaining(["no-scope-out-clause", "vacuous"]));
     expect(
       checkDescriptionContract({
         ...base,
@@ -178,5 +178,26 @@ describe("hazard check (routing-repair adversarial M6)", () => {
           "Explain exit 128 and offer git init when a git command runs outside a repository; not for /tmp scratch dirs.",
       }),
     ).toEqual([]);
+  });
+});
+
+describe("trigger clause accepts natural phrasings (live finding 2026-09-05)", () => {
+  const base = { skillName: "x", frontmatterName: "x" };
+  it("accepts gerund subjects, 'if the user …', and 'consult … when', still refusing vacuous ones", () => {
+    for (const d of [
+      "Find a free public API when looking for an open data source for a feature; not for paid or private APIs.",
+      "Suggest a learning path if the user asks how to learn programming from scratch; not for debugging code.",
+      "Consult this curated list when choosing a library for a new project; never for runtime errors.",
+      "Point to free programming books whenever someone wants to learn a language from a book; not for API references.",
+    ]) {
+      expect(checkDescriptionContract({ ...base, description: d })).toEqual([]);
+    }
+    expect(
+      checkDescriptionContract({
+        ...base,
+        description:
+          "Use this skill if you like reading about APIs; not for anything else at all really.",
+      }),
+    ).toContain("vacuous");
   });
 });

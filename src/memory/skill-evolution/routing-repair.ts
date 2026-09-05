@@ -406,7 +406,7 @@ export async function repairSkillRouting(params: {
     };
   }
   const reason = previousAttempt
-    ? `no compliant rewrite in ${ATTEMPTS} attempts (last: ${previousAttempt.problem})`
+    ? `no compliant rewrite in ${ATTEMPTS} attempts (last: ${previousAttempt.problem}; refused text: "${previousAttempt.description.slice(0, 160)}")`
     : "no reply";
   // Adversarial H1: remember the failure so the next passes back off and
   // eventually give up on this body instead of paying two calls forever.
