@@ -510,9 +510,7 @@ cites no traces`); a pre-user-stream trace is classified by its session
   skill when exactly one description clearly applies, so the description is
   the whole routing key. `description-contract.ts` defines the contract
   (40-240 chars; a `when` clause naming the triggering situation; a
-  `not/never/unless/except/only` clause scoping it out; no URLs, emoji or
-  copied maintainer notes; frontmatter name equal to the skill name; no
-  `-alt` variants). The staging gate enforces it as a BLOCK for synthesized
+  `not for / never for / unless / except when / only when` clause scoping it out, both as clauses rather than bare keywords; vacuous phrasings such as "when needed" or "not otherwise" refused; no URLs, emoji or copied maintainer notes; frontmatter name equal to the skill name; no `-alt` variants). A patch over a harvested skill keeps that skill's own `owner/repo` frontmatter name and `-alt` directory. The staging gate enforces it as a BLOCK for synthesized
   content only (`descriptionContract` set by `applyProposal` and
   `crystallize`; a body patch over a legacy skill is grandfathered unless
   the proposer rewrote the description). The proposer prompt and the
@@ -522,9 +520,7 @@ cites no traces`); a pre-user-stream trace is classified by its session
   ranks the current description and each variant with a routing proxy (the
   LLM answers, per capability and regression task, whether the index entry
   would make it open the skill; score = capability hit rate minus
-  regression hit rate), rewrites only the `description:` line of the staged
-  SKILL.md when the winner routes at least half the capability tasks and
-  beats the current description, re-keys `meta.contentHash` (so the tamper
+  regression hit rate), rewrites only the `description:` entry of the staged SKILL.md when the winner routes at least half the capability tasks (including at least half of a held-out third the rewriter never saw), beats the current description, copies no run of more than five words from any task prompt, and passes the full staging gate again (schema, strict injection, contract) on the rewritten file, re-keys `meta.contentHash` (so the tamper
   check passes and the 24h backoff does not apply), increments
   `meta.descriptionRepairs` (cap 2) and records `descriptionRepairLog` and
   an impact entry. The proxy only SELECTS; the real gate re-measures the
