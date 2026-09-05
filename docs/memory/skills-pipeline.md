@@ -524,8 +524,8 @@ cites no traces`); a pre-user-stream trace is classified by its session
   check passes and the 24h backoff does not apply), increments
   `meta.descriptionRepairs` (cap 2) and records `descriptionRepairLog` and
   an impact entry. The proxy only SELECTS; the real gate re-measures the
-  repaired candidate on the next pass (incumbent trials memoized). Kill
-  switch `skills.evolution.descriptionRepair: false`. One trust classifier
+  repaired candidate on the next pass (incumbent trials memoized). Kill switch `skills.evolution.descriptionRepair: false`.
+- Live index for the proposer + overlap check (PLAN-44 Phase 4b, 2026-09-05). The proposer's prompt now lists every live skill as `name: description` (what the runtime router sees) with the rule that a new description must route a situation none of them already do. `description-overlap.ts` scores two descriptions lexically (content-word Jaccard ≥ 0.5, containment ≥ 0.6, or word-bigram Jaccard ≥ 0.4, only when both carry ≥ 4 content words) and the staging gate refuses a synthesized create whose description overlaps another live skill's (`description-overlap`, block, naming the skill to patch instead); a patch of a skill is never compared against itself; human edits are not checked. One trust classifier
   remains: `classifySessionKeyTrust` delegates to `classifyRunOrigin`, so
   hook / group / channel / circle / a2a / subagent / guest / skill-evolve
   sessions are untrusted for canonical pins exactly as they are for

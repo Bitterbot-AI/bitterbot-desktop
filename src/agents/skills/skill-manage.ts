@@ -25,6 +25,7 @@
 
 import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { listLiveSkillIndex } from "./description-overlap.js";
 import { formatGateSummary, type GateResult, runSkillGate } from "./skill-gate.js";
 import {
   type StorageRoots,
@@ -223,6 +224,11 @@ async function stageAndGate(
     ...(params.acceptHighRiskDiff ? { acceptHighRiskDiff: true } : {}),
     ...(params.strictInjection ? { strictInjection: true } : {}),
     ...(params.descriptionContract ? { descriptionContract: true } : {}),
+    // PLAN-44 Phase 4b: synthesized content is also checked for overlap
+    // against every other live description.
+    ...(params.descriptionContract
+      ? { liveIndex: await listLiveSkillIndex(ctx.storageRoots) }
+      : {}),
   });
   await updateStagingGateStatus(
     ctx.storageRoots,

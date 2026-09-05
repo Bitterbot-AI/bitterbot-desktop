@@ -29,6 +29,7 @@ import type { EventJournal } from "../../infra/event-journal.js";
 import type { LlmCallFn } from "./maintainer.js";
 import type { LabeledTrace } from "./types.js";
 import { DESCRIPTION_CONTRACT_PROMPT } from "../../agents/skills/description-contract.js";
+import { listLiveSkillIndex } from "../../agents/skills/description-overlap.js";
 import { impactTrailPath, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { liveSkillDir, readLive, resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -129,6 +130,8 @@ function capRead(text: string): string {
 }
 
 const SKILL_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+/** Per-skill description budget in the proposer's live index. */
+const LIVE_DESCRIPTION_CHARS = 220;
 
 function parseProposal(value: unknown): { proposal: SkillProposal | null; detail?: string } {
   if (typeof value !== "object" || value === null) {
@@ -275,16 +278,18 @@ async function readAllowedPath(
   };
 }
 
-async function listLiveSkillNames(deps: ProposerDeps): Promise<string[]> {
+/** PLAN-44 Phase 4b: the proposer sees what the runtime router sees — name AND description. */
+async function listLiveSkillIndexLines(deps: ProposerDeps): Promise<string[]> {
   const roots = resolveStorageRoots(
     deps.storeOpts?.configDir ? { configDir: deps.storeOpts.configDir } : {},
   );
-  try {
-    const entries = await fs.readdir(roots.liveRoot);
-    return entries.filter((e) => SKILL_NAME_RE.test(e)).toSorted();
-  } catch {
-    return [];
-  }
+  const index = await listLiveSkillIndex(roots);
+  return index
+    .filter((e) => SKILL_NAME_RE.test(e.name))
+    .map(
+      (e) =>
+        `- ${e.name}: ${e.description ? e.description.replace(/\s+/g, " ").slice(0, LIVE_DESCRIPTION_CHARS) : "(no description)"}`,
+    );
 }
 
 /** Run the ReAct loop. Returns a proposal (no_action when forced). */
@@ -296,15 +301,16 @@ export async function runSkillProposer(deps: ProposerDeps): Promise<ProposerRunR
         `- traces/${s.trace.runId}: ${s.label.label.toUpperCase()} (${s.label.reason}; ${s.trace.toolCallCount} tool calls, ${s.trace.toolErrorCount} errors)`,
     )
     .join("\n");
-  const liveSkills = await listLiveSkillNames(deps);
+  const liveSkills = await listLiveSkillIndexLines(deps);
   const transcript: string[] = [
     PROPOSER_RULES,
     "",
     "## This Iteration's Task Outcomes",
     outcomeSummary || "(no traces this iteration)",
     "",
-    "## Live Skills On This Node",
-    liveSkills.length > 0 ? liveSkills.map((n) => `- ${n}`).join("\n") : "(none)",
+    "## Live Skills On This Node (name: description — exactly what the runtime router sees)",
+    liveSkills.length > 0 ? liveSkills.join("\n") : "(none)",
+    "A new skill's description must describe a situation NONE of these already route; the gate refuses a near-duplicate description (overlap check). If a live skill already covers the situation, patch it instead.",
     "",
     "Begin. Respond with exactly one JSON tool call.",
   ];

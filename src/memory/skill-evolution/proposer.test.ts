@@ -313,3 +313,35 @@ describe("applyProposal", () => {
     expect(trail.at(-1)).toMatchObject({ verdict: "no-action" });
   });
 });
+
+describe("proposer sees the live index (PLAN-44 Phase 4b)", () => {
+  it("lists every live skill as name: description, with the overlap rule", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "proposer-index-"));
+    try {
+      const { liveSkillPath, resolveStorageRoots } =
+        await import("../../agents/skills/skill-storage.js");
+      const roots = resolveStorageRoots({ configDir: tmp });
+      await fs.mkdir(path.dirname(liveSkillPath(roots, "git-not-a-repo")), { recursive: true });
+      await fs.writeFile(
+        liveSkillPath(roots, "git-not-a-repo"),
+        "---\nname: git-not-a-repo\ndescription: Explain exit 128 when git runs outside a repository; not for commands inside a repo.\n---\nbody\n",
+      );
+      const llm = scripted([
+        JSON.stringify({ tool: "finish", proposal: { action: "no_action", reason: "x" } }),
+      ]);
+      await runSkillProposer({
+        llmCall: llm.call,
+        samples: SAMPLES,
+        storeOpts: { configDir: tmp },
+        maxTurns: 2,
+      });
+      const first = llm.prompts[0] ?? "";
+      expect(first).toContain(
+        "- git-not-a-repo: Explain exit 128 when git runs outside a repository",
+      );
+      expect(first).toContain("refuses a near-duplicate description (overlap check)");
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+});

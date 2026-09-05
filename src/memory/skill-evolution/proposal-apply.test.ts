@@ -149,3 +149,41 @@ describe("harvested skills stay patchable (Phase 4a adversarial H3)", () => {
     expect(r.outcome).toBe("staged");
   });
 });
+
+describe("overlap check on proposals (PLAN-44 Phase 4b)", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "proposal-overlap-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+  it("refuses a create whose description overlaps a live skill's, naming that skill", async () => {
+    const { liveSkillPath, resolveStorageRoots } =
+      await import("../../agents/skills/skill-storage.js");
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const live =
+      "Bound every curl in exec with --max-time when the task runs curl; not for commands that make no network calls.";
+    await fs.mkdir(path.dirname(liveSkillPath(roots, "curl-timeout-guard")), { recursive: true });
+    await fs.writeFile(
+      liveSkillPath(roots, "curl-timeout-guard"),
+      `---\nname: curl-timeout-guard\ndescription: ${live}\n---\nbody\n`,
+    );
+    const r = await applyProposal(
+      {
+        action: "create",
+        name: "curl-max-time",
+        skillMd:
+          "---\nname: curl-max-time\ndescription: Add --max-time to curl in exec whenever a task runs curl; never for commands without network calls.\n---\n# body\nrule\n",
+        purposeMd: "why",
+      },
+      {
+        storeOpts: { configDir: tmpDir },
+        iteration: "it",
+        evidence: { runIds: ["r"], origins: ["human"] },
+      },
+    );
+    expect(r.outcome).toBe("gate-failed");
+    expect(r.detail).toContain('overlaps live skill "curl-timeout-guard"');
+  });
+});

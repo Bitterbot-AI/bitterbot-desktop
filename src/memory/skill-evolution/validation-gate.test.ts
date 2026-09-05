@@ -289,7 +289,14 @@ describe("runValidationGate (PLAN-44 Phase 2)", () => {
       {
         action: "create",
         name,
-        skillMd: SKILL_MD.replace("name: curl-timeout-guard", `name: ${name}`),
+        // PLAN-44 Phase 4b: each staged name gets a DISTINCT description, or
+        // the overlap check refuses the second create as a near-duplicate.
+        skillMd: SKILL_MD.replace("name: curl-timeout-guard", `name: ${name}`).replace(
+          /^description: .*$/m,
+          name === "curl-timeout-guard"
+            ? "$&"
+            : `description: ${name} ${name}-ops ${name}-mode when the task names ${name}; not for ${name}-less work.`,
+        ),
         purposeMd: PURPOSE_MD,
       },
       { storeOpts: { configDir: tmpDir }, iteration: "it-p2" },
@@ -461,7 +468,10 @@ describe("runValidationGate: hold backoff and candidate memo (adversarial H2)", 
       {
         action: "create",
         name: "held-skill",
-        skillMd: SKILL_MD.replace("name: curl-timeout-guard", "name: held-skill"),
+        skillMd: SKILL_MD.replace("name: curl-timeout-guard", "name: held-skill").replace(
+          /^description: .*$/m,
+          "description: held-skill held-skill-ops held-skill-mode when the task names held-skill; not for held-skill-less work.",
+        ),
         purposeMd: PURPOSE_MD,
       },
       { storeOpts: { configDir: tmpDir }, iteration: "h2" },
@@ -521,7 +531,10 @@ describe("runValidationGate: hold backoff and candidate memo (adversarial H2)", 
       {
         action: "create",
         name: "memo-skill",
-        skillMd: SKILL_MD.replace("name: curl-timeout-guard", "name: memo-skill"),
+        skillMd: SKILL_MD.replace("name: curl-timeout-guard", "name: memo-skill").replace(
+          /^description: .*$/m,
+          "description: memo-skill memo-skill-ops memo-skill-mode when the task names memo-skill; not for memo-skill-less work.",
+        ),
         purposeMd: PURPOSE_MD,
       },
       { storeOpts: { configDir: tmpDir }, iteration: "h2" },
@@ -584,7 +597,10 @@ describe("runValidationGate: hold backoff and candidate memo (adversarial H2)", 
       {
         action: "create",
         name: "memo-skill-2",
-        skillMd: SKILL_MD.replace("name: curl-timeout-guard", "name: memo-skill-2"),
+        skillMd: SKILL_MD.replace("name: curl-timeout-guard", "name: memo-skill-2").replace(
+          /^description: .*$/m,
+          "description: memo-skill-2 memo-skill-2-ops memo-skill-2-mode when the task names memo-skill-2; not for memo-skill-2-less work.",
+        ),
         purposeMd: PURPOSE_MD,
       },
       { storeOpts: { configDir: tmpDir }, iteration: "h2" },
