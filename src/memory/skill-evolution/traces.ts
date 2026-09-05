@@ -290,7 +290,7 @@ export const UNTRUSTED_CLOSE = "</untrusted>";
  * ending the fence early to smuggle "instructions" out of it) is defanged.
  */
 export function fenceUntrusted(text: string): string {
-  return `${UNTRUSTED_OPEN}${text.replace(/<\/?untrusted>/gi, (m) => m.replace("<", "<\\"))}${UNTRUSTED_CLOSE}`;
+  return `${UNTRUSTED_OPEN}${text.replace(/<\s*\\?\/?\s*untrusted\s*>/gi, (m) => `<\\${m.slice(1)}`)}${UNTRUSTED_CLOSE}`;
 }
 
 export function formatTraceLog(
@@ -314,7 +314,7 @@ export function formatTraceLog(
     `run: ${trace.runId}`,
     trace.taskId ? `long-horizon-task: ${trace.taskId}` : null,
     ...taskLines,
-    `outcome: ${trace.endedWithError ? `ERROR${trace.errorText ? ` (${trace.errorText})` : ""}` : trace.isComplete ? "ended" : "incomplete"}`,
+    `outcome: ${trace.endedWithError ? `ERROR${trace.errorText ? ` (${fenceUntrusted(trace.errorText)})` : ""}` : trace.isComplete ? "ended" : "incomplete"}`,
     `tools: ${trace.toolCallCount} calls, ${trace.toolErrorCount} errors${trace.completedExplicitly ? "; agent called complete()" : ""}`,
     // PLAN-44 Phase 3: the fence is named once here; every span below the
     // header (task, assistant text, tool args and results) sits inside it.

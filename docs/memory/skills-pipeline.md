@@ -476,21 +476,35 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   "passed"). `promoteStaged` refuses any staging dir carrying
   `.evolution-meta.json` (error `evolution-staged`) unless the caller sets
   `allowEvolutionStaged`: the validation gate does; the `skills.promote`
-  RPC does only for `forceGate` from a non-`agent:` author; the agent's
-  `skill_manage` tool never does. A successful promote now carries
+  RPC does only for `forceGate` on an `operator.admin` connection (the
+  `author` param is caller-asserted, scopes are not); the admin-scoped
+  `guards.promote_candidate` does; the agent's `skill_manage` tool never
+  does. `stageSkill` strips both sidecars whenever the author is not
+  `evolution`, and the gate re-checks `meta.contentHash` against the staged
+  file, so an agent cannot overwrite an evolution-staged name and ride its
+  provenance (the overwrite becomes an ordinary staged edit; a direct file
+  write is rejected `staged content tampered` and discarded). A successful promote now carries
   `.evolution-meta.json` and `PURPOSE.md` into the live dir, so a
   promoted skill keeps its cap / doctrine / summary identity. The proposer's
   evidence is origin-bound: `collectProposalEvidence` records which sampled
   traces it read and their run-origin classes into `.evolution-meta.json`
   (`evidence`) and a `## Evidence` section of PURPOSE.md; a proposal whose
   cited traces are all third-party (circle / a2a / subagent / guest /
-  unknown) is HELD `untrusted-evidence-only` before any LLM spend. P2P
+  unknown) is HELD `untrusted-evidence-only` before any LLM spend, and a
+  proposal that read no traces at all is refused at apply time (`proposal
+  cites no traces`); a pre-user-stream trace is classified by its session
+  key, as the sampler admitted it. P2P
   ingestion routes an envelope into the skill-network bridge (memory
   chunk) only when `ingestSkill` ACCEPTED it (`shouldBridgeIngest`); a
   quarantined envelope is no longer an `active`, recall-visible chunk while
   its file sits in review — the operator's `skills.incoming.accept` re-routes
   it from the `.provenance.json` the accept writes (the CLI accept prefers
-  that RPC and falls back to disk-only with a note). One trust classifier
+  that RPC and falls back to disk-only with a note), and the accept first
+  re-hashes the quarantined SKILL.md against the envelope's content hash.
+  The wiki index scan covers only the lines an update ADDS (an old suspect
+  line cannot freeze the catalogue) and a withheld log entry still leaves a
+  redacted record; the `## Signals` block reduces tool names to an
+  identifier charset and the lifecycle error text is fenced. One trust classifier
   remains: `classifySessionKeyTrust` delegates to `classifyRunOrigin`, so
   hook / group / channel / circle / a2a / subagent / guest / skill-evolve
   sessions are untrusted for canonical pins exactly as they are for

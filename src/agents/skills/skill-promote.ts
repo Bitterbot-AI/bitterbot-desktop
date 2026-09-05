@@ -234,12 +234,16 @@ export async function promoteStaged(
       author,
       ...(params.timestamp ? { timestamp: params.timestamp } : {}),
     });
-    for (const [file, content] of sidecars) {
-      await fs.writeFile(
-        path.join(liveSkillDir(ctx.storageRoots, params.name), file),
-        content,
-        "utf-8",
-      );
+    for (const file of EVOLUTION_SIDECARS) {
+      const content = sidecars.get(file);
+      const target = path.join(liveSkillDir(ctx.storageRoots, params.name), file);
+      if (content !== undefined) {
+        await fs.writeFile(target, content, "utf-8");
+      } else {
+        // Adversarial L10: a human/agent edit replacing an evolved skill
+        // ends its evolution identity (cap, P2P doctrine, summaries).
+        await fs.rm(target, { force: true });
+      }
     }
     return {
       ok: true,

@@ -21,6 +21,7 @@ import {
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
+import { classifyRunOrigin } from "./run-origin.js";
 import { applyPatchOps, type ParseIssue } from "./wiki-store.js";
 
 const log = createSubsystemLogger("skill-evolution/proposal-apply");
@@ -75,7 +76,9 @@ export interface ProposalEvidence {
 
 export function collectProposalEvidence(
   reads: string[],
-  samples: Array<{ trace: { runId: string; task?: { origin: string } | null } }>,
+  samples: Array<{
+    trace: { runId: string; sessionKey?: string | null; task?: { origin: string } | null };
+  }>,
 ): ProposalEvidence {
   const runIds: string[] = [];
   const origins = new Set<string>();
@@ -89,7 +92,9 @@ export function collectProposalEvidence(
       continue;
     }
     runIds.push(sample.trace.runId);
-    origins.add(sample.trace.task?.origin ?? "unknown");
+    // Same rule the sampler admitted the run under: a pre-user-stream
+    // trace has no task header but does have a session key.
+    origins.add(sample.trace.task?.origin ?? classifyRunOrigin(sample.trace.sessionKey));
   }
   return { runIds, origins: [...origins].toSorted() };
 }
@@ -115,6 +120,24 @@ export async function applyProposal(
       trailOpts,
     );
     return { outcome: "no-action", ...(proposal.reason ? { detail: proposal.reason } : {}) };
+  }
+
+  if (deps.evidence && deps.evidence.runIds.length === 0) {
+    // Adversarial M3: ">= 4 trace reads" was prompt-only. A change proposed
+    // without reading a single trace cites nothing; it is not bound to any
+    // evidence and cannot be gated on origin. Refuse it in code.
+    await appendImpactEntry(
+      {
+        source: "evolution",
+        action: proposal.action,
+        skillName: proposal.name,
+        verdict: "gate-failed",
+        detail: "proposal cites no traces (proposer read none)",
+        ...(deps.iteration ? { iteration: deps.iteration } : {}),
+      },
+      trailOpts,
+    );
+    return { outcome: "invalid", detail: "proposal cites no traces" };
   }
 
   let content: string;
@@ -239,6 +262,9 @@ export async function applyProposal(
     origin: "wiki-evolution",
     stagedAt: Date.now(),
     iteration: deps.iteration ?? null,
+    // Adversarial H1: the gate re-checks this against the staged file, so a
+    // later overwrite of SKILL.md under this name cannot ride the meta.
+    contentHash,
     ...(deps.evidence ? { evidence: deps.evidence } : {}),
   });
   await appendImpactEntry(

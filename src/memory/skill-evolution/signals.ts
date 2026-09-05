@@ -316,21 +316,35 @@ export function extractTraceSignals(trace: ReconstructedTrace): TraceSignals {
   };
 }
 
+/**
+ * Tool names come from the journal, i.e. from the model's own tool calls; a
+ * hallucinated name is arbitrary model text. The Signals block is presented
+ * as machine-computed, so names are reduced to an identifier charset.
+ */
+export function safeToolName(name: string): string {
+  const cleaned = name.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 40);
+  return cleaned || "?";
+}
+
 /** The `## Signals` block printed under the task header of every trace log. */
 export function formatSignals(sig: TraceSignals): string {
   const seq = sig.toolSequence
-    .map((name, i) => (sig.errors.some((e) => e.index === i) ? `${name}!` : name))
+    .map((name, i) =>
+      sig.errors.some((e) => e.index === i) ? `${safeToolName(name)}!` : safeToolName(name),
+    )
     .join(" > ");
   const lines = [
     "## Signals (computed from the journal, not by a model)",
     `tool-sequence: ${seq || "(none)"}`,
   ];
   if (sig.repeated) {
-    lines.push(`repeated: ${sig.repeated.block.join(">")} x${sig.repeated.repeats}`);
+    lines.push(
+      `repeated: ${sig.repeated.block.map(safeToolName).join(">")} x${sig.repeated.repeats}`,
+    );
   }
   if (sig.errors.length > 0) {
     lines.push(
-      `error-classes: ${sig.errors.map((e) => `${e.tool}:${e.cls}${e.scope === "env" ? "(env)" : ""}`).join(", ")}`,
+      `error-classes: ${sig.errors.map((e) => `${safeToolName(e.tool)}:${e.cls}${e.scope === "env" ? "(env)" : ""}`).join(", ")}`,
     );
     lines.push(
       `first-error-at: tool step ${(sig.firstErrorIndex ?? 0) + 1} of ${sig.toolSequence.length}; steps-after-first-error: ${sig.stepsAfterFirstError}; recovered: ${sig.recoveredAfterError ? "yes" : "no"}`,

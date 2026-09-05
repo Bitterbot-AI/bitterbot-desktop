@@ -42,3 +42,36 @@ describe("readAcceptedEnvelope", () => {
     }
   });
 });
+
+describe("acceptIncomingSkill re-verifies the quarantined file against its envelope (adversarial L7)", () => {
+  it("refuses when SKILL.md on disk no longer hashes to envelope.content_hash", async () => {
+    const { createHash } = await import("node:crypto");
+    const { acceptIncomingSkill } = await import("./ingest.js");
+    const quarantineDir = await fs.mkdtemp(path.join(os.tmpdir(), "ingest-q-"));
+    try {
+      const original = "---\nname: peer-skill\ndescription: y\n---\nbody\n";
+      const dir = path.join(quarantineDir, "peer-skill");
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(
+        path.join(dir, ".envelope.json"),
+        JSON.stringify({
+          name: "peer-skill",
+          content_hash: createHash("sha256").update(Buffer.from(original, "utf-8")).digest("hex"),
+          skill_md: Buffer.from(original).toString("base64"),
+          author_pubkey: "pk",
+        }),
+      );
+      await fs.writeFile(path.join(dir, "SKILL.md"), original.replace("body", "tampered body"));
+      const result = await acceptIncomingSkill({
+        skillName: "peer-skill",
+        config: { skills: { p2p: { quarantineDir } } } as never,
+      });
+      expect(result.ok).toBe(false);
+      expect(result.reason).toMatch(/no longer matches its envelope content hash/);
+      // Still in quarantine, untouched.
+      await fs.access(path.join(dir, "SKILL.md"));
+    } finally {
+      await fs.rm(quarantineDir, { recursive: true, force: true });
+    }
+  });
+});

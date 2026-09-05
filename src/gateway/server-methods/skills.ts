@@ -1168,7 +1168,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "skills.promote": async ({ params, respond }) => {
+  "skills.promote": async ({ params, respond, client }) => {
     if (!validateSkillsPromoteParams(params)) {
       respond(
         false,
@@ -1189,8 +1189,10 @@ export const skillsHandlers: GatewayRequestHandlers = {
     const roots = resolveStorageRoots();
     const cfg = loadConfig();
     // PLAN-44 Phase 3: an evolution-staged skill is promotable here only as
-    // an explicit OPERATOR override (forceGate from a non-agent author).
-    const operatorOverride = p.forceGate === true && !(p.author ?? "").startsWith("agent:");
+    // an explicit override from an operator.admin connection (adversarial
+    // H2: `author` is a caller-asserted param, scopes are not).
+    const operatorOverride =
+      p.forceGate === true && (client?.connect?.scopes ?? []).includes("operator.admin");
     try {
       const result = await withSkillLifecycleStore({ config: cfg }, (store) =>
         promoteStaged(

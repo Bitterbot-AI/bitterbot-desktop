@@ -59,6 +59,8 @@ export interface EvolutionMeta {
   iteration?: string | null;
   /** PLAN-44 Phase 3: traces the proposer read and their trust classes. */
   evidence?: { runIds: string[]; origins: string[] };
+  /** PLAN-44 Phase 3: hash of the SKILL.md the pipeline staged (tamper check). */
+  contentHash?: string;
   /** PLAN-44 Phase 2: last hold verdict on the staged proposal (24h backoff). */
   lastValidation?: {
     at: number;
@@ -236,16 +238,35 @@ async function settleOne(
   const isCreate = incumbent === null;
   const contentHash = hashProposalContent(staged.content);
 
+  // Adversarial H1: the staged SKILL.md must be the one the pipeline wrote.
+  // stageSkill strips the sidecars for other authors, but a direct file
+  // write would not go through it; the meta's hash is the last word.
+  if (
+    staged.meta.author !== "evolution" ||
+    (meta.contentHash !== undefined && meta.contentHash !== contentHash)
+  ) {
+    await discardStaged(roots, name);
+    await appendImpactEntry(
+      {
+        source: "evolution",
+        action: "validate",
+        skillName: name,
+        verdict: "rejected",
+        detail: `staged content does not match the pipeline's record (author=${staged.meta.author}); discarded`,
+        contentHash,
+        ...(deps.iteration ? { iteration: deps.iteration } : {}),
+      },
+      trailOpts,
+    );
+    return { skillName: name, outcome: "rejected", detail: "staged content tampered" };
+  }
+
   // PLAN-44 Phase 3 (TMA-NM): content-based defences are launderable, so
   // the evidence's ORIGIN is bound at write time and checked here. A
   // proposal whose cited traces are all third-party text (circle, A2A,
   // subagent, guest, unknown) never reaches validation. Checked before any
   // LLM or agent spend.
-  if (
-    meta.evidence &&
-    meta.evidence.runIds.length > 0 &&
-    !meta.evidence.origins.some((o) => o === "human" || o === "system")
-  ) {
+  if (meta.evidence && !meta.evidence.origins.some((o) => o === "human" || o === "system")) {
     await appendImpactEntry(
       {
         source: "evolution",

@@ -257,6 +257,14 @@ export async function stageSkill(
   }
   await fs.mkdir(dir, { recursive: true });
   await atomicWrite(filePath, params.content);
+  if (params.author !== "evolution") {
+    // PLAN-44 Phase 3 (adversarial H1): a staged edit by anyone else must
+    // not inherit the evolution pipeline's provenance sidecars, or agent
+    // content rides `.evolution-meta.json` through the validation gate.
+    for (const sidecar of [".evolution-meta.json", "PURPOSE.md"]) {
+      await fs.rm(path.join(dir, sidecar), { force: true });
+    }
+  }
   const meta: StagingMeta = {
     reason: params.reason,
     author: params.author,

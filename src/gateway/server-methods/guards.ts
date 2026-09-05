@@ -289,7 +289,13 @@ export const guardsHandlers: GatewayRequestHandlers = {
       }
       const result = await promoteStaged(
         { storageRoots: roots },
-        { name: skill, reason: "guards.promote_candidate", author: "operator" },
+        {
+          name: skill,
+          reason: "guards.promote_candidate",
+          author: "operator",
+          // admin-scoped method (server-methods.ts); may override evolution staging
+          allowEvolutionStaged: true,
+        },
       );
       if (!result.ok) {
         await appendImpactEntry({

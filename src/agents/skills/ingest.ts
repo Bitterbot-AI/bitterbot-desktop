@@ -418,6 +418,16 @@ async function emitQuarantineSystemEvent(message: string): Promise<void> {
  * accept/reject can feed graduated trust. Best-effort; returns null on any
  * read/parse failure.
  */
+async function readQuarantineContentHash(incomingDir: string): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(path.join(incomingDir, ".envelope.json"), "utf-8");
+    const parsed = parseEnvelopeJson(raw) as { content_hash?: unknown } | undefined;
+    return typeof parsed?.content_hash === "string" ? parsed.content_hash : null;
+  } catch {
+    return null;
+  }
+}
+
 async function readQuarantineAuthorPubkey(incomingDir: string): Promise<string | null> {
   try {
     const raw = await fs.readFile(path.join(incomingDir, ".envelope.json"), "utf-8");
@@ -469,6 +479,21 @@ export async function acceptIncomingSkill(params: {
     const content = await fs.readFile(skillPath, "utf-8");
     // Read the author pubkey BEFORE we delete the quarantine dir.
     const authorPubkey = await readQuarantineAuthorPubkey(incomingDir);
+    // PLAN-44 Phase 3 (adversarial L7): the file sat in a writable review
+    // dir; what gets accepted (and becomes a memory chunk under the
+    // envelope's hash) must still be what the peer signed.
+    const envelopeHash = await readQuarantineContentHash(incomingDir);
+    if (envelopeHash) {
+      const onDisk = createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
+      if (onDisk !== envelopeHash) {
+        return {
+          ok: false,
+          action: "rejected",
+          reason:
+            "quarantined SKILL.md no longer matches its envelope content hash; reject it and ask the peer to republish",
+        };
+      }
+    }
     const targetDir = path.join(CONFIG_DIR, "skills", skillName);
     await fs.mkdir(targetDir, { recursive: true });
     await fs.writeFile(path.join(targetDir, "SKILL.md"), content, "utf-8");

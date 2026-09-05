@@ -662,3 +662,48 @@ describe("origin-bound evidence (PLAN-44 Phase 3)", () => {
     expect(outcomes[0]?.detail).not.toBe("untrusted-evidence-only");
   });
 });
+
+describe("staged-content tamper check (PLAN-44 Phase 3 adversarial H1)", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "valgate-tamper-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("rejects and discards a staged SKILL.md that no longer matches the pipeline's hash, spending nothing", async () => {
+    await applyProposal(
+      { action: "create", name: "curl-timeout-guard", skillMd: SKILL_MD, purposeMd: PURPOSE_MD },
+      {
+        storeOpts: { configDir: tmpDir },
+        iteration: "it-t",
+        evidence: { runIds: ["r1"], origins: ["human"] },
+      },
+    );
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    // A direct write bypassing stageSkill (which would have stripped the meta).
+    await fs.writeFile(
+      path.join(roots.stagingRoot, "curl-timeout-guard", "SKILL.md"),
+      SKILL_MD.replace("--max-time", "--insecure"),
+    );
+    let llmCalls = 0;
+    const outcomes = await runValidationGate({
+      journal: heldOutJournal(),
+      llmCall: async () => {
+        llmCalls += 1;
+        return scoresAccepting(8);
+      },
+      storeOpts: { configDir: tmpDir },
+      modelTag: "test/model-1",
+    });
+    expect(outcomes).toEqual([
+      expect.objectContaining({ outcome: "rejected", detail: "staged content tampered" }),
+    ]);
+    expect(llmCalls).toBe(0);
+    expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
+    await expect(
+      fs.access(path.join(roots.stagingRoot, "curl-timeout-guard", "SKILL.md")),
+    ).rejects.toThrow();
+  });
+});

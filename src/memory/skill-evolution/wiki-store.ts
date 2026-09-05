@@ -486,7 +486,16 @@ export async function applyMaintainerOutput(
     result.updated.push(update.name);
   }
 
-  const indexScan = scanSkillForInjection(output.updateIndex);
+  // Adversarial M5: the index is a full replacement each iteration. Scan
+  // only the lines this update ADDS, so a line that already sits in the
+  // index (written under an earlier scanner) cannot block every later
+  // rewrite and freeze the catalogue.
+  const existingIndexLines = new Set((await readIndex(opts)).split("\n"));
+  const addedIndexLines = output.updateIndex
+    .split("\n")
+    .filter((l) => !existingIndexLines.has(l))
+    .join("\n");
+  const indexScan = scanSkillForInjection(addedIndexLines);
   if (isSuspicious(indexScan.severity)) {
     result.dropped.push({
       where: "index",
@@ -517,6 +526,12 @@ export async function applyMaintainerOutput(
       where: "log",
       detail: `injection scan ${logScan.severity}: ${logScan.reason}`,
     });
+    // Adversarial M5: history must still advance; record the drop itself.
+    await fs.appendFile(
+      logsPath(opts),
+      `\n## ${new Date().toISOString()}\n\n(iteration log entry withheld: injection scan ${logScan.severity} — ${logScan.reason})\n`,
+      "utf-8",
+    );
   } else {
     await fs.appendFile(logsPath(opts), logEntry, "utf-8");
     result.logAppended = true;

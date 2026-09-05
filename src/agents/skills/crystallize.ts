@@ -72,6 +72,9 @@ export async function crystallizeSkill(params: {
       content: skillMd,
       reason: `crystallized from session (reward ${candidate.rewardScore})`,
       author: "agent",
+      // PLAN-44 Phase 3: distilled from transcripts that carry tool output;
+      // a medium injection hit blocks rather than warns.
+      strictInjection: true,
       overwriteLive: true,
     },
   );
