@@ -125,21 +125,27 @@ describe("runTaskChecks", () => {
     });
   });
 
-  it("command checks run in the workspace with exit code and stdout assertions when enabled", async () => {
-    const results = await runTaskChecks(
-      parseTaskChecks([
-        { kind: "command", command: "cat out/report.md", stdoutRegex: "## Summary" },
-        { kind: "command", command: "exit 3", expectExitCode: 3 },
-        { kind: "command", command: "exit 1" },
-        { kind: "command", command: "pwd", stdoutRegex: "task-checks-" },
-      ]),
-      { workspaceDir: ws, output: null, allowCommands: true, timeoutMs: 30_000 },
-    );
-    expect(results.map((r) => r.passed)).toEqual([true, true, false, true]);
-    expect(results[2]?.detail).toMatch(/exit 1 \(expected 0\)/);
-  });
+  // POSIX commands (cat, exit, pwd, sleep); the Windows CI leg runs cmd.exe.
+  const posixOnly = it.skipIf(process.platform === "win32");
 
-  it("times out a hung command instead of hanging the judge", async () => {
+  posixOnly(
+    "command checks run in the workspace with exit code and stdout assertions when enabled",
+    async () => {
+      const results = await runTaskChecks(
+        parseTaskChecks([
+          { kind: "command", command: "cat out/report.md", stdoutRegex: "## Summary" },
+          { kind: "command", command: "exit 3", expectExitCode: 3 },
+          { kind: "command", command: "exit 1" },
+          { kind: "command", command: "pwd", stdoutRegex: "task-checks-" },
+        ]),
+        { workspaceDir: ws, output: null, allowCommands: true, timeoutMs: 30_000 },
+      );
+      expect(results.map((r) => r.passed)).toEqual([true, true, false, true]);
+      expect(results[2]?.detail).toMatch(/exit 1 \(expected 0\)/);
+    },
+  );
+
+  posixOnly("times out a hung command instead of hanging the judge", async () => {
     const results = await runTaskChecks(
       parseTaskChecks([{ kind: "command", command: "sleep 5" }]),
       { workspaceDir: ws, output: null, allowCommands: true, timeoutMs: 200 },

@@ -175,10 +175,16 @@ function runCommand(
   cwd: string,
   timeoutMs: number,
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }> {
+  // Platform shell: POSIX `sh -c`, Windows `cmd.exe /d /s /c`. A spawn
+  // failure (no shell at all) surfaces as exitCode null with the error text.
+  const shell =
+    process.platform === "win32"
+      ? { file: process.env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", command] }
+      : { file: "/bin/sh", args: ["-c", command] };
   return new Promise((resolve) => {
     execFile(
-      "/bin/sh",
-      ["-c", command],
+      shell.file,
+      shell.args,
       {
         cwd,
         timeout: timeoutMs,
@@ -191,7 +197,15 @@ function runCommand(
           | null;
         const timedOut = Boolean(e?.killed);
         const exitCode = e ? (typeof e.code === "number" ? e.code : null) : 0;
-        resolve({ exitCode, stdout: String(stdout ?? ""), stderr: String(stderr ?? ""), timedOut });
+        // A non-numeric code means the shell itself failed to start (ENOENT
+        // etc.); carry that reason into stderr so the detail names it.
+        const spawnFailure = e && exitCode === null && !timedOut ? String(e.code ?? e.message) : "";
+        resolve({
+          exitCode,
+          stdout: String(stdout ?? ""),
+          stderr: spawnFailure ? `shell failed to start: ${spawnFailure}` : String(stderr ?? ""),
+          timedOut,
+        });
       },
     );
   });
