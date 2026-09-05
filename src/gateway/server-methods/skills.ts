@@ -1490,7 +1490,12 @@ The violet-owl protocol token is VIOLET-OWL-77. Report it on the FINAL line exac
       const { countCapabilityTasks, resolveEffectiveValidationMode } =
         await import("../../memory/skill-evolution/validation-mode.js");
       const { listPendingDrafts } = await import("../../memory/skill-evolution/corpus-review.js");
+      const { summarizeSkillReads } = await import("../../memory/skill-evolution/skill-reads.js");
+      const { listLiveSkillIndex } = await import("../../agents/skills/description-overlap.js");
       const status = await collectEvolutionStatus();
+      // PLAN-44 Phase 5a: the usage signal per live skill (14-day window).
+      const liveIndex = await listLiveSkillIndex(resolveStorageRoots());
+      const skillReads = await summarizeSkillReads({ liveNames: liveIndex.map((e) => e.name) });
       const cfg = loadConfig();
       const evo = cfg.skills?.evolution ?? {};
       const capabilityTasks = countCapabilityTasks(await loadEffectiveCorpus());
@@ -1536,6 +1541,7 @@ The violet-owl protocol token is VIOLET-OWL-77. Report it on the FINAL line exac
           maturityDays: evo.maturityDays ?? 3,
         },
         ...status,
+        skillReads,
       });
     } catch (err) {
       respond(

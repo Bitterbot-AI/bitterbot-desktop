@@ -39,6 +39,37 @@ Episode (task execution)
 
 ---
 
+## How the agent finds a skill (the runtime index)
+
+A skill "exists" for the agent only as an entry in the `<available_skills>`
+block of its system prompt: `<name>`, `<description>`, `<location>`. The
+runtime rule is the Agent Skills one: scan the descriptions and, when
+exactly one clearly applies, read that SKILL.md with the read tool and
+follow it. Nothing else advertises a skill: no memory recall, no
+notification beyond a one-line "[Skills change since last turn]" diff on
+the next turn. Consequences the rest of this document depends on:
+
+- **The description is the routing key.** A skill whose description names
+  no situation is never opened; two skills whose descriptions route the
+  same situation cancel each other (the rule says pick the most specific,
+  otherwise open nothing). This is why synthesized skills are held to the
+  description contract and the overlap check (PLAN-44 Phase 4a/4b), why a
+  never-triggered proposal gets its description repaired, and why the
+  same contract is assessed at P2P ingest (Phase 5b).
+- **Loader roots.** Entries come from three directories: the workspace
+  `skills/`, the managed `~/.bitterbot/skills` (where promotion, accept
+  and harvest write), and the bundled skills. Eligibility filters apply
+  (config enable/disable, tier, remote-session rules, and the load-time
+  capability gate for mesh-ingested skills).
+- **Hot reload.** Every write to the live set (promote, operator accept,
+  harvest, the file watcher) bumps a snapshot version; at the start of the
+  next turn the reply path rebuilds the snapshot and the index. No restart
+  and no new session are needed.
+- **Use is measured from the journal** (Phase 5a): a housekeeping pass
+  credits each live SKILL.md the agent actually opened in a real run, with
+  the run's outcome, into `skill-wiki/skill-reads.jsonl` and the lifecycle
+  store; `skills.evolution.status` reports per-skill 14-day read counts.
+
 ## Skill Lifecycle
 
 ```mermaid
@@ -64,6 +95,16 @@ flowchart TB
     J --> R[SkillExecutionTracker records outcomes]
     R -->|feedback| D
 ```
+
+> **PLAN-42/44 update (2026-09-05):** the publish leg in the diagram
+> (`J → K → L`) no longer runs from the crystal store. Direct crystal
+> publish was retired in PLAN-42; the outbound leg is
+> `src/memory/skill-evolution/p2p-publish.ts`, which publishes only
+> evolution-promoted SKILL.md files whose validation verdict is accepted
+> and which have survived `maturityDays`. The receive leg (`M → N`) is
+> preceded by the FILE half, `src/agents/skills/ingest.ts`, described
+> under "P2P Skill Network → Receiving" below; `SkillNetworkBridge.ingest`
+> (the memory-chunk half) runs only after an envelope is accepted.
 
 > **PLAN-21 update (2026-05-26):** the `Score ≥ 0.7?` branch labelled `D → E` is now the two-gate validation pipeline implemented in `src/memory/experiment-sandbox.ts`. A mutation must (a) pass an LLM-judged **faithfulness gate** that verifies each key operational concept survives the edit, and (b) clear a **paired-bootstrap performance gate** against a deterministic 20% held-out partition of `skill_executions` (the 95% CI on the per-trial delta must be strictly above zero). Across each cycle, gate-passing candidates are Pareto-ranked in `src/memory/skill-mutation-pareto.ts` over (delta, faithfulness margin, token delta) and clipped to a cosine-decay edit budget, so over-mutation is bounded even when many candidates pass. Every ten cycles an epoch-wise **slow update** in `src/memory/dream-slow-update.ts` re-evaluates the live version against `skill_text_history` and enqueues hormonal-cluster regressions into `mutation_queue` with a `regression-priority` strategy. The 0.7 numeric threshold in the diagram is preserved here as a coarse summary; the actual acceptance rule is statistical.
 
@@ -236,6 +277,22 @@ On completion, the skill crystal's `steering_reward` is adjusted:
 - **Failure:** -0.05
 
 Steering rewards decay multiplicatively each consolidation cycle (default factor: 0.95).
+
+### SKILL.md read crediting (PLAN-44 Phase 5a)
+
+The tracker above matches tool names against memory crystals; it never
+saw a file-based skill. `src/memory/skill-evolution/skill-reads.ts` closes
+that: on every housekeeping pass it scans journal runs since a cursor,
+finds `read` (or exec) tool calls whose path is a live skill's SKILL.md,
+and records one event per (run, skill) with the run's outcome (ended
+without a lifecycle error) in `skill-wiki/skill-reads.jsonl`. Each event
+also calls `SkillLifecycleStore.recordUsage`, so `usage_count`,
+`success_count` and `last_used_at` — the numbers the staging gate's
+regression check reads — are finally fed. Validation rollouts and probe
+sessions are excluded; incomplete runs are retried until they end or
+expire; the ledger is append-only and idempotent. `summarizeSkillReads`
+gives per-skill windowed rates (default 14 days) for
+`skills.evolution.status` and for retirement scoring (D-5).
 
 ### Aggregated Metrics
 
@@ -613,7 +670,27 @@ The `SkillNetworkBridge` (`skill-network-bridge.ts`) mediates between the local 
 4. Generates a SKILL.md format with frontmatter
 5. Sends to the Rust orchestrator via `orchestratorBridge.publishSkill()`
 
-**Ingesting** (`ingestNetworkSkill()`):
+**Receiving — the file half first** (`src/agents/skills/ingest.ts`,
+PLAN-13/PLAN-44): the gateway hands every `skill_received` envelope to
+`ingestSkill` before the bridge sees it. Checks in order: self-loopback,
+policy `deny`, Ed25519 signature, content hash, duplicate hash, legacy
+unvalidated crystal, rate limit, SKILL.md structure, the injection scanner
+(a critical hit force-quarantines regardless of trust), and since PLAN-44
+Phase 5b a **routing assessment**: the description contract (description
+checks only; the harvest path writes `owner/repo` names by design) and the
+overlap check against this node's routable live descriptions. A peer skill
+whose description cannot route, or collides with a local one, is held for
+review even from a trusted publisher under `auto` policy, with the reason
+on `.envelope.json` (`routing`, `routing_hold`) and in `skills incoming
+list`; a local-origin harvest is stamped, not held. Accepted skills land in
+`~/.bitterbot/skills/<name>/` with `.provenance.json`, bump the skills
+snapshot, and only THEN reach `ingestNetworkSkill` below (the operator's
+`skills.incoming.accept` re-routes a quarantined envelope the same way,
+after re-hashing the file). The receiving agent finds the skill exactly as
+it finds a local one: through the description in its runtime index, under
+the mesh-content trust notice, subject to the load-time capability gate.
+
+**Ingesting — the memory-chunk half** (`ingestNetworkSkill()`):
 
 1. Checks if the sender peer is banned via `PeerReputationManager`
 2. **Cortisol gate** — if a network cortisol spike is active (`haltUntrustedIngestion`), rejects skills from peers with trust level below `"trusted"` (i.e., `untrusted` and `provisional` peers are blocked)

@@ -17,6 +17,8 @@ type IncomingSkill = {
   tags?: string[];
   signatureValid?: boolean;
   injectionScan?: { severity?: string; matches?: number };
+  /** PLAN-44 Phase 5b: whether the agent could route to this skill by its description. */
+  routing?: { hold: boolean; summary: string };
   provenance?: Record<string, unknown>;
   contentHash?: string;
   expiresAt?: number;
@@ -348,6 +350,19 @@ export function IncomingPanel({
                   )}
                 >
                   scan: {scanSeverity}
+                </span>
+              )}
+              {item.routing?.summary && (
+                <span
+                  title={item.routing.summary}
+                  className={cn(
+                    "text-xs px-1.5 py-0.5 rounded border",
+                    item.routing.hold
+                      ? "bg-warning/15 text-warning border-warning/30"
+                      : "bg-muted/30 text-muted-foreground border-border/30",
+                  )}
+                >
+                  {item.routing.hold ? "held: won't route" : "routing note"}
                 </span>
               )}
             </div>

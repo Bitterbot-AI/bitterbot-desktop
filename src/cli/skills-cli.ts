@@ -163,6 +163,12 @@ export function registerSkillsCli(program: Command) {
           defaultRuntime.log(
             `  ${item.name}  ${theme.muted(`(from ${from}${when ? ` at ${when}` : ""})`)}`,
           );
+          // PLAN-44 Phase 5b: why the skill would or would not route here.
+          if (item.routing?.summary) {
+            defaultRuntime.log(
+              `      ${item.routing.hold ? theme.warn("held for review: ") : theme.muted("note: ")}${theme.muted(item.routing.summary)}`,
+            );
+          }
         }
       } catch (err) {
         defaultRuntime.error(String(err));

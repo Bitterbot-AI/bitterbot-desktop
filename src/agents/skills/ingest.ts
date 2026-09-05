@@ -6,10 +6,12 @@
  */
 
 import { createHash, createPublicKey, verify } from "node:crypto";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
 import {
   type InjectionScanResult,
   type InjectionSeverity,
@@ -17,7 +19,14 @@ import {
   shouldForceQuarantine,
 } from "../../security/skill-injection-scanner.js";
 import { CONFIG_DIR } from "../../utils.js";
+import {
+  checkDescriptionContract,
+  type DescriptionContractIssue,
+  describeContractIssues,
+} from "./description-contract.js";
+import { findDescriptionOverlap, type LiveSkillIndexEntry } from "./description-overlap.js";
 import { bumpSkillsSnapshotVersion } from "./refresh.js";
+import { liveSkillPath, resolveStorageRoots } from "./skill-storage.js";
 
 const log = createSubsystemLogger("skills/ingest");
 
@@ -254,6 +263,22 @@ export async function ingestSkill(params: {
     params.reputationManager?.recordInjectionFlag?.(envelope.author_pubkey, scanResult.severity);
   }
 
+  // 5c. PLAN-44 Phase 5b: the description contract and the overlap check at
+  // ingest. The receiving agent finds a skill ONLY through its description
+  // in the runtime index, and opens one only when exactly one description
+  // applies. A peer skill whose description cannot route, or that collides
+  // with a local skill's, is held for review with the reason on the
+  // envelope. Local-origin harvests (operator-initiated) are stamped, not
+  // held: their renaming is a separate item.
+  const routing = assessRouting(envelope.name, skillContent);
+  const routingHold =
+    !isLocalOrigin && (routing.contractIssues.length > 0 || routing.overlap !== null);
+  if (routing.contractIssues.length > 0 || routing.overlap) {
+    log.warn(
+      `Skill ${normalizeSkillName(envelope.name)} (${isLocalOrigin ? "local" : envelope.author_peer_id}): ${describeRouting(routing)}${routingHold ? "; held for review" : ""}`,
+    );
+  }
+
   // 6. Check existing skills for content-hash dedup
   const existingSkillsDir = path.join(CONFIG_DIR, "skills");
   if (await skillExistsWithHash(existingSkillsDir, envelope.content_hash)) {
@@ -289,7 +314,7 @@ export async function ingestSkill(params: {
   // accepted directly when it is local-origin (our own research) OR a trusted
   // peer under `auto` policy; everything else is held for review.
   const acceptDirectly =
-    !forceQuarantine && (isLocalOrigin || (policy === "auto" && isAutoAccepted));
+    !forceQuarantine && !routingHold && (isLocalOrigin || (policy === "auto" && isAutoAccepted));
   if (acceptDirectly) {
     // Accept directly into skills directory
     const skillName = normalizeSkillName(envelope.name);
@@ -314,6 +339,7 @@ export async function ingestSkill(params: {
           expires_at: envelope.expires_at,
           provenance: envelope.provenance,
           injection_scan: scanResult ?? undefined,
+          routing,
         },
         null,
         2,
@@ -356,6 +382,8 @@ export async function ingestSkill(params: {
         origin,
         injection_scan: scanResult ?? undefined,
         force_quarantined: forceQuarantine,
+        routing,
+        routing_hold: routingHold,
       },
       null,
       2,
@@ -612,6 +640,91 @@ export async function rejectIncomingSkillsByPeer(params: {
  */
 export type IncomingSkillOrigin = "peer" | "external-scrape" | "local-dream" | "incomplete";
 
+/** PLAN-44 Phase 5b: why a skill would or would not route on this node. */
+export interface RoutingAssessment {
+  contractIssues: DescriptionContractIssue[];
+  overlap: { name: string; tokens: number; containment: number; bigrams: number } | null;
+}
+
+export function describeRouting(r: RoutingAssessment): string {
+  const parts: string[] = [];
+  if (r.contractIssues.length > 0) {
+    parts.push(`description contract: ${describeContractIssues(r.contractIssues)}`);
+  }
+  if (r.overlap) {
+    parts.push(
+      `description overlaps local skill "${r.overlap.name}" (containment ${r.overlap.containment.toFixed(2)})`,
+    );
+  }
+  return parts.join("; ");
+}
+
+function listLiveSkillIndexSync(
+  roots: ReturnType<typeof resolveStorageRoots>,
+): LiveSkillIndexEntry[] {
+  let names: string[];
+  try {
+    names = fsSync
+      .readdirSync(roots.liveRoot, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+      .map((d) => d.name);
+  } catch {
+    return [];
+  }
+  const out: LiveSkillIndexEntry[] = [];
+  for (const name of names) {
+    let md: string;
+    try {
+      md = fsSync.readFileSync(liveSkillPath(roots, name), "utf-8");
+    } catch {
+      continue;
+    }
+    const fm = (parseSkillMarkdown(md)?.frontmatter ?? {}) as Record<string, unknown>;
+    const description = typeof fm.description === "string" ? fm.description.trim() : "";
+    const fmName = typeof fm.name === "string" ? fm.name : undefined;
+    out.push({
+      name,
+      description,
+      contractCompliant:
+        checkDescriptionContract({
+          skillName: name,
+          frontmatterName: fmName,
+          description,
+          liveFrontmatterName: fmName,
+        }).length === 0,
+    });
+  }
+  return out;
+}
+
+/** Description-only contract (the harvest path writes owner/repo names by design) plus overlap against local routable skills. */
+function assessRouting(envelopeName: string, skillMd: string): RoutingAssessment {
+  const skillName = normalizeSkillName(envelopeName);
+  const fm = (parseSkillMarkdown(skillMd)?.frontmatter ?? {}) as Record<string, unknown>;
+  const fmName = typeof fm.name === "string" ? fm.name : undefined;
+  const description = typeof fm.description === "string" ? fm.description : "";
+  const contractIssues = checkDescriptionContract({
+    skillName,
+    frontmatterName: fmName,
+    description,
+    liveFrontmatterName: fmName ?? skillName,
+  }).filter((i) => i !== "variant-suffix");
+  let overlap: RoutingAssessment["overlap"] = null;
+  if (contractIssues.length === 0 && description) {
+    const index = listLiveSkillIndexSync(resolveStorageRoots());
+    const hit = findDescriptionOverlap(description, index, { excludeName: skillName });
+    if (hit && index.find((e) => e.name === hit.name)?.contractCompliant) {
+      overlap = {
+        name: hit.name,
+        tokens: hit.tokens,
+        containment: hit.containment,
+        bigrams: hit.bigrams,
+      };
+    }
+  }
+  return { contractIssues, overlap };
+}
+
 export type IncomingSkillSummary = {
   name: string;
   origin: IncomingSkillOrigin;
@@ -622,6 +735,8 @@ export type IncomingSkillSummary = {
   tags?: string[];
   signatureValid?: boolean;
   injectionScan?: { severity?: InjectionSeverity; matches?: number };
+  /** PLAN-44 Phase 5b: contract / overlap assessment recorded at ingest; `hold` when it kept the skill out of the live set. */
+  routing?: RoutingAssessment & { hold: boolean; summary: string };
   provenance?: Record<string, unknown>;
   contentHash?: string;
   expiresAt?: number;
@@ -727,6 +842,12 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<Incom
         injectionScan: injectionScan
           ? { severity: injectionScan.severity, matches: matchesLen }
           : undefined,
+        routing: (() => {
+          const r = envelopeMeta?.routing as RoutingAssessment | undefined;
+          return r
+            ? { ...r, hold: envelopeMeta?.routing_hold === true, summary: describeRouting(r) }
+            : undefined;
+        })(),
         provenance: envelope?.provenance,
         contentHash: envelope?.content_hash,
         expiresAt: envelope?.expires_at,

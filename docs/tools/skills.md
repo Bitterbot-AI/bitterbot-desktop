@@ -93,6 +93,11 @@ Gating:
 - Default trust level is `review` (quarantine); set `skills.agentskills.defaultTrust = "auto"` to skip.
 - Every imported skill is sha256-deduped against existing installs.
 - Origin metadata is written to `<skill>/.provenance.json` and the SKILL.md frontmatter.
+- Every incoming skill is assessed for **routing** (PLAN-44): the agent finds a skill only
+  through its `description` in the prompt index, so a description with no "when" clause and
+  no scope-out, or one that overlaps a local skill's, is held for review with the reason
+  shown by `skills incoming list` (`held for review: description contract: …`). Accepting it
+  anyway is your call; it will rarely be opened until its description is rewritten.
 
 ### Origin provenance (`bitterbot.origin`)
 
@@ -325,6 +330,8 @@ The system prompt now includes two tiers of skill information:
   - it must NOT enable skills on its own
 
 OS-incompatible skills, missing-requirement skills, and allowlist-blocked skills stay invisible to the agent (hard-disabled). This keeps the model from proposing things the user physically cannot run.
+
+The `description` is the whole routing key: the agent opens a SKILL.md only when exactly one description clearly applies to the task. Skills the node synthesizes itself (evolution proposals, crystallized sequences) are therefore held to a description contract (a "when" clause naming the triggering situation, a "not for / never for / unless / except when / only when" clause, 40–240 characters, no URLs or emoji) and refused when their description overlaps another live skill's. Whether a skill is actually opened is measured from the run journal and reported per skill in `skills.evolution.status` (`skillReads`, 14-day window).
 
 ## Remote nodes (cross-platform skills)
 

@@ -14,6 +14,7 @@ import { ContributorStatusLedger } from "../contributor-status.js";
 import { SellerBondLedger } from "../seller-bond-ledger.js";
 import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
 import { publishEligibleEvolvedSkills, type PublishSweepResult } from "./p2p-publish.js";
+import { creditSkillReads } from "./skill-reads.js";
 import { runValidationGate, type ValidationGateOutcome } from "./validation-gate.js";
 import { runWikiLint, type WikiLintResult } from "./wiki-lint.js";
 import {
@@ -38,7 +39,24 @@ export async function runHousekeeping(
   semanticLint?: SemanticLintResult;
   publish?: PublishSweepResult;
   attestation?: { attested: number; skipped: number; held: number };
+  /** PLAN-44 Phase 5a: live-skill reads credited from the journal this pass. */
+  skillReads?: { scannedRuns: number; credited: number };
 }> {
+  // PLAN-44 Phase 5a: the usage signal. Runs first so the lifecycle
+  // counters the validation gate's regression check reads are current.
+  let skillReads: { scannedRuns: number; credited: number } | undefined;
+  if (deps.journal) {
+    try {
+      const r = await creditSkillReads({
+        journal: deps.journal,
+        db: deps.db ?? null,
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+      });
+      skillReads = { scannedRuns: r.scannedRuns, credited: r.credited };
+    } catch (err) {
+      log.warn(`skill-read crediting failed: ${String(err)}`);
+    }
+  }
   const validation = await runValidationGate({
     journal: deps.journal,
     llmCall: deps.llmCall,
@@ -147,6 +165,7 @@ export async function runHousekeeping(
     });
   }
   return {
+    ...(skillReads ? { skillReads } : {}),
     validation,
     ...(lint ? { lint } : {}),
     ...(attestation ? { attestation } : {}),
