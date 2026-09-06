@@ -52,32 +52,10 @@ beforeEach(() => {
 });
 
 describe("PLAN-40 defaults", () => {
-  it("mutation and the three fuel-starved holds are disabled by default", () => {
-    expect(DEFAULT_MODE_CONFIGS.mutation.enabled).toBe(false);
-    expect(DEFAULT_MODE_CONFIGS.research.enabled).toBe(false);
+  it("the three fuel-starved holds are disabled by default", () => {
     expect(DEFAULT_MODE_CONFIGS.interceptor_harvest.enabled).toBe(false);
     expect(DEFAULT_MODE_CONFIGS.harness_evolve.enabled).toBe(false);
     expect(DEFAULT_MODE_CONFIGS.relationship_reconsolidation.enabled).toBe(false);
-  });
-
-  it("a forced mutation run without an explicit enable produces nothing", async () => {
-    for (let i = 0; i < 6; i++) insertChunk(`s${i}`, `skill text ${i}`, "skill", "skill");
-    let llmCalled = false;
-    const engine = new DreamEngine(
-      db,
-      {
-        llmCall: async () => {
-          llmCalled = true;
-          return "[]";
-        },
-        minChunksForDream: 1,
-      },
-      noopSynthesize,
-      noopEmbedBatch,
-    );
-    const stats = await engine.run({ modes: ["mutation"] });
-    expect(llmCalled).toBe(false);
-    expect(stats?.newInsights.filter((i) => i.mode === "mutation") ?? []).toHaveLength(0);
   });
 });
 
@@ -126,8 +104,8 @@ describe("exploration explored-target filtering (adversarial F12)", () => {
 
 describe("hard LLM budget (adversarial F9)", () => {
   it("a multi-call mode entering late spends only the remaining cycle budget", async () => {
-    // Seed enough skill chunks that mutation would want 5 calls.
-    for (let i = 0; i < 8; i++) insertChunk(`s${i}`, `skill text ${i}`, "skill", "skill");
+    // Seed enough chunks that simulation would want several calls.
+    for (let i = 0; i < 8; i++) insertChunk(`s${i}`, `context text ${i}`, "general");
     insertTarget("t1", false);
     let calls = 0;
     const engine = new DreamEngine(
@@ -139,14 +117,13 @@ describe("hard LLM budget (adversarial F9)", () => {
         },
         minChunksForDream: 1,
         maxLlmCallsPerCycle: 2,
-        modes: { mutation: { enabled: true } },
       },
       noopSynthesize,
       noopEmbedBatch,
     );
-    // exploration spends from the budget first; mutation must then cap at
+    // exploration spends from the budget first; simulation must then cap at
     // the REMAINDER, not restart its own count against the full max.
-    await engine.run({ modes: ["exploration", "mutation"] });
+    await engine.run({ modes: ["exploration", "simulation"] });
     expect(calls).toBeLessThanOrEqual(2);
   });
 });

@@ -1,9 +1,10 @@
 /**
  * Comprehensive test suite for the Knowledge Crystal Memory System.
  *
- * Tests the full vision: crystal lifecycle, 6 dream modes, hormonal modulation,
- * curiosity-driven exploration, user modeling, skill refinement, governance,
- * task memory, scheduling, pub/sub, and cross-system integration loops.
+ * Tests the full vision: crystal lifecycle, dream modes, hormonal modulation,
+ * curiosity-driven exploration, user modeling, governance, task memory,
+ * scheduling, pub/sub, and cross-system integration loops. (The SkillRefiner
+ * and the mutation/research dream modes were retired in PLAN-45 Phase 1.)
  *
  * Every test uses an in-memory SQLite database for full isolation.
  */
@@ -24,8 +25,6 @@ import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
 import { MemoryPipeline } from "./pipeline.js";
 import { MemoryScheduler } from "./scheduler.js";
-import { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import { SkillRefiner } from "./skill-refiner.js";
 import { TaskMemoryManager } from "./task-memory.js";
 import { UserModelManager } from "./user-model.js";
 
@@ -617,68 +616,6 @@ describe("Dream Engine", () => {
     });
   });
 
-  describe("Mode 2: Mutation — generates skill variations", () => {
-    it("produces mutation insights from skill chunks when LLM is available", async () => {
-      // Insert skill chunks
-      for (let i = 0; i < 25; i++) {
-        insertChunk(db, {
-          text: `Skill: use git rebase for clean history, always squash fixups, version ${i}`,
-          importance_score: 0.7,
-          memory_type: i < 5 ? "skill" : "plaintext",
-          semantic_type: i < 5 ? "skill" : "general",
-          embedding: JSON.stringify(fakeEmbedding(i + 1)),
-        });
-      }
-
-      const llm = mockLlmCall([
-        JSON.stringify([
-          {
-            content: "Use interactive rebase with autosquash for cleaner workflow",
-            confidence: 0.85,
-            keywords: ["git", "rebase"],
-          },
-          {
-            content: "Consider git merge --squash for feature branches",
-            confidence: 0.7,
-            keywords: ["git", "merge"],
-          },
-        ]),
-        JSON.stringify([
-          {
-            content: "Adopt trunk-based development with short-lived branches",
-            confidence: 0.9,
-            keywords: ["trunk", "branches"],
-          },
-        ]),
-      ]);
-
-      const engine = new DreamEngine(
-        db,
-        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      const stats = await engine.run({ modes: ["mutation"] });
-
-      expect(stats).not.toBeNull();
-      expect(stats!.newInsights.length).toBeGreaterThan(0);
-      for (const insight of stats!.newInsights) {
-        expect(insight.mode).toBe("mutation");
-        expect(insight.sourceChunkIds.length).toBeGreaterThan(0);
-      }
-    });
-
-    it("skips mutation mode when no LLM is configured", async () => {
-      seedChunksForDream(25, { memory_type: "skill", semantic_type: "skill" });
-
-      const engine = new DreamEngine(db, { minChunksForDream: 5 }, noopSynthesize, noopEmbedBatch);
-      const stats = await engine.run({ modes: ["mutation"] });
-
-      expect(stats).not.toBeNull();
-      expect(stats!.newInsights).toHaveLength(0);
-    });
-  });
-
   describe("Mode 3: Extrapolation — predicts future user needs", () => {
     it("generates predictive insights from preference and episode chunks", async () => {
       // Need at least 3 preference/episode/goal/task_pattern chunks
@@ -705,7 +642,7 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
+        { llmCall: llm, minChunksForDream: 5 },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -805,7 +742,7 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
+        { llmCall: llm, minChunksForDream: 5 },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -851,7 +788,7 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
+        { llmCall: llm, minChunksForDream: 5 },
         noopSynthesize,
         noopEmbedBatch,
       );
@@ -873,147 +810,6 @@ describe("Dream Engine", () => {
       );
       const stats = await engine.run({ modes: ["exploration"] });
 
-      expect(stats).not.toBeNull();
-      expect(stats!.newInsights).toHaveLength(0);
-    });
-  });
-
-  describe("Mode 7: Research — empirical prompt optimization", () => {
-    /** Insert a skill chunk and record N executions for it. */
-    function seedSkillWithExecutions(opts: {
-      skillText?: string;
-      executions: number;
-      successRate?: number;
-      avgReward?: number;
-      errorType?: string;
-    }): { skillId: string; tracker: SkillExecutionTracker } {
-      const skillId = insertChunk(db, {
-        text: opts.skillText ?? "Skill: deploy via docker compose with health checks",
-        importance_score: 0.7,
-        memory_type: "skill",
-        semantic_type: "skill",
-        embedding: JSON.stringify(fakeEmbedding(42)),
-      });
-
-      const tracker = new SkillExecutionTracker(db);
-      const successRate = opts.successRate ?? 0.5;
-      for (let i = 0; i < opts.executions; i++) {
-        const execId = tracker.startExecution(skillId);
-        const success = i / opts.executions < successRate;
-        tracker.completeExecution(execId, {
-          success,
-          rewardScore: success ? (opts.avgReward ?? 0.6) : 0.1,
-          errorType: success ? null : (opts.errorType ?? "timeout"),
-          executionTimeMs: 100,
-        });
-      }
-      return { skillId, tracker };
-    }
-
-    it("produces research insights from skills with execution data", async () => {
-      seedChunksForDream();
-      const { skillId, tracker } = seedSkillWithExecutions({
-        executions: 5,
-        successRate: 0.4,
-        errorType: "timeout",
-      });
-
-      const llm = mockLlmCall([
-        JSON.stringify([
-          {
-            content: "Add connection timeout with exponential backoff",
-            confidence: 0.85,
-            keywords: ["timeout", "retry"],
-          },
-          {
-            content: "Use health check endpoint before deploy",
-            confidence: 0.7,
-            keywords: ["health", "deploy"],
-          },
-        ]),
-      ]);
-
-      const engine = new DreamEngine(
-        db,
-        // PLAN-34 Phase 0 disabled research by default; these tests exercise
-        // the mode's internals, so they opt back in via config.
-        { llmCall: llm, minChunksForDream: 5, modes: { research: { enabled: true } } },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      engine.setExecutionTracker(tracker);
-
-      const stats = await engine.run({ modes: ["research"] });
-
-      expect(stats).not.toBeNull();
-      expect(stats!.newInsights.length).toBeGreaterThan(0);
-      expect(stats!.newInsights[0]!.mode).toBe("research");
-      expect(stats!.newInsights[0]!.sourceChunkIds).toContain(skillId);
-    });
-
-    it("does not run research via explicit modes while disabled by default (PLAN-34 Phase 0)", async () => {
-      seedChunksForDream();
-      const { tracker } = seedSkillWithExecutions({
-        executions: 5,
-        successRate: 0.4,
-        errorType: "timeout",
-      });
-
-      const llm = mockLlmCall([
-        JSON.stringify([{ content: "should never be produced", confidence: 0.9, keywords: [] }]),
-      ]);
-      // Default config: research is enabled:false — an explicit modes array
-      // must NOT bypass the containment default.
-      const engine = new DreamEngine(
-        db,
-        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      engine.setExecutionTracker(tracker);
-
-      const stats = await engine.run({ modes: ["research"] });
-      expect(stats).not.toBeNull();
-      expect(stats!.newInsights).toHaveLength(0);
-      expect(stats!.cycle.modesUsed).toEqual([]);
-    });
-
-    it("skips research when no skills have sufficient execution data", async () => {
-      seedChunksForDream();
-      // Insert a skill but only 1 execution (below MIN_EXECUTIONS threshold)
-      const { tracker } = seedSkillWithExecutions({ executions: 1 });
-
-      const engine = new DreamEngine(
-        db,
-        { llmCall: mockLlmCall(), minChunksForDream: 5, modes: { research: { enabled: true } } },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      engine.setExecutionTracker(tracker);
-
-      const stats = await engine.run({ modes: ["research"] });
-
-      expect(stats).not.toBeNull();
-      expect(stats!.newInsights).toHaveLength(0);
-    });
-
-    it("skips research when no execution tracker is wired", async () => {
-      seedChunksForDream();
-      insertChunk(db, {
-        text: "Skill: some skill",
-        memory_type: "skill",
-        semantic_type: "skill",
-      });
-
-      const engine = new DreamEngine(
-        db,
-        { llmCall: mockLlmCall(), minChunksForDream: 5, modes: { research: { enabled: true } } },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      // Intentionally not calling engine.setExecutionTracker()
-
-      const stats = await engine.run({ modes: ["research"] });
       expect(stats).not.toBeNull();
       expect(stats!.newInsights).toHaveLength(0);
     });
@@ -1041,39 +837,17 @@ describe("Dream Engine", () => {
       expect(stats!.cycle.modesUsed).toBeDefined();
       expect(stats!.cycle.modesUsed!.length).toBeGreaterThan(0);
     });
-
-    it("auto-triggers mutation when skill crystals exist", async () => {
-      for (let i = 0; i < 25; i++) {
-        insertChunk(db, {
-          text: `Content ${i}`,
-          embedding: JSON.stringify(fakeEmbedding(i + 1)),
-          importance_score: 0.5,
-          memory_type: i < 3 ? "skill" : "plaintext",
-          semantic_type: i < 3 ? "skill" : "general",
-        });
-      }
-
-      const engine = new DreamEngine(
-        db,
-        { llmCall: mockLlmCall(), minChunksForDream: 5 },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      const stats = await engine.run();
-      expect(stats).not.toBeNull();
-    });
   });
 
   describe("insight storage and pruning", () => {
     it("prunes insights when exceeding maxInsights", async () => {
-      // Seed enough skill chunks for mutation mode
+      // Seed enough preference chunks for extrapolation mode
       for (let i = 0; i < 25; i++) {
         insertChunk(db, {
-          text: `Skill chunk about deployment pattern variant ${i}`,
+          text: `User preference about deployment pattern variant ${i}`,
           embedding: JSON.stringify(fakeEmbedding(i + 1)),
           importance_score: 0.5,
-          memory_type: i < 5 ? "skill" : "plaintext",
-          semantic_type: i < 5 ? "skill" : "general",
+          semantic_type: i < 5 ? "preference" : "general",
         });
       }
 
@@ -1085,11 +859,12 @@ describe("Dream Engine", () => {
         ).run(`prune-${i}`, `Insight ${i}`, 0.01 * i, Date.now(), Date.now());
       }
 
-      // Run mutation mode (which generates insights and triggers pruneInsights)
+      // Run extrapolation mode (which generates insights and triggers
+      // pruneInsights). PLAN-45 Phase 1: this used to drive mutation mode.
       const llm = mockLlmCall([
         JSON.stringify([
           {
-            content: "Improved deployment with better monitoring",
+            content: "User will likely need better deployment monitoring next",
             confidence: 0.8,
             keywords: ["deploy"],
           },
@@ -1102,12 +877,11 @@ describe("Dream Engine", () => {
           llmCall: llm,
           minChunksForDream: 5,
           maxInsights: 4,
-          modes: { mutation: { enabled: true } },
         },
         noopSynthesize,
         noopEmbedBatch,
       );
-      await engine.run({ modes: ["mutation"] });
+      await engine.run({ modes: ["extrapolation"] });
 
       const count = (db.prepare("SELECT COUNT(*) as c FROM dream_insights").get() as { c: number })
         .c;
@@ -1543,188 +1317,6 @@ describe("User Model Manager", () => {
     const manager = new UserModelManager(db, { enabled: false });
     const prefs = manager.extractPreferences("I prefer TypeScript");
     expect(prefs).toHaveLength(0);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 7. SKILL REFINER
-// ═══════════════════════════════════════════════════════════════════════════════
-
-describe("Skill Refiner", () => {
-  let db: DatabaseSync;
-
-  beforeEach(() => {
-    db = createTestDb();
-  });
-
-  it("promotes high-scoring mutations with sufficient confidence", () => {
-    // NOTE on dedupSimilarityThreshold: 1.1 (used on every SkillRefiner here):
-    // fakeEmbedding(seed) = [seed/norm, 1, 2, 3]/norm, so all fixture vectors
-    // share the [_,1,2,3] tail and are near-parallel (cosine > 0.9). That trips
-    // the real semantic-dedup gate, which these crystallization-path tests are
-    // not exercising. A threshold > 1 disables dedup (cosine never exceeds 1);
-    // the gate itself is covered by skill-refiner.dedup.test.ts.
-    const refiner = new SkillRefiner(db, {
-      promotionThreshold: 0.5,
-      dedupSimilarityThreshold: 1.1,
-    });
-
-    const original = {
-      id: "skill-orig",
-      text: "Use git rebase for clean history with squash fixups",
-    };
-
-    const mutation: DreamInsight = {
-      id: "mut-1",
-      content:
-        "Use interactive rebase with autosquash. Handle edge case when conflicts arise. More general approach with fallback to merge.",
-      embedding: [],
-      confidence: 0.8,
-      mode: "mutation",
-      sourceChunkIds: ["skill-orig"],
-      sourceClusterIds: [],
-      dreamCycleId: "cycle-1",
-      importanceScore: 0.5,
-      accessCount: 0,
-      lastAccessedAt: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    // Insert the insight so the UPDATE in queueForCrystallization works
-    db.prepare(
-      `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
-       VALUES (?, ?, '[]', ?, 'mutation', '[]', '[]', 'cycle-1', 0.5, 0, ?, ?)`,
-    ).run(mutation.id, mutation.content, mutation.confidence, Date.now(), Date.now());
-
-    const result = refiner.evaluateMutations(original, [mutation]);
-
-    expect(result.mutations).toHaveLength(1);
-    expect(result.mutations[0]!.promoted).toBe(true);
-    expect(result.mutations[0]!.score).toBeGreaterThanOrEqual(0.5);
-
-    // Verify audit log entry was created
-    const log = db
-      .prepare("SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted'")
-      .all();
-    expect(log.length).toBeGreaterThan(0);
-  });
-
-  it("archives low-scoring mutations", () => {
-    const refiner = new SkillRefiner(db, {
-      promotionThreshold: 0.99,
-      dedupSimilarityThreshold: 1.1,
-    });
-
-    const result = refiner.evaluateMutations(
-      { id: "s1", text: "Complex multistep deployment process" },
-      [
-        {
-          id: "mut-low",
-          content: "x",
-          embedding: [],
-          confidence: 0.1,
-          mode: "mutation",
-          sourceChunkIds: [],
-          sourceClusterIds: [],
-          dreamCycleId: "c1",
-          importanceScore: 0.3,
-          accessCount: 0,
-          lastAccessedAt: null,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        },
-      ],
-    );
-
-    expect(result.mutations[0]!.promoted).toBe(false);
-
-    const archiveLogs = db
-      .prepare("SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_archived'")
-      .all();
-    expect(archiveLogs.length).toBeGreaterThan(0);
-  });
-
-  it("scores mutation based on keyword coverage, novelty, and structure", () => {
-    const refiner = new SkillRefiner(db, { dedupSimilarityThreshold: 1.1 });
-
-    const original = {
-      id: "s2",
-      text: "Deploy application using Docker containers with monitoring",
-    };
-    const goodMutation: DreamInsight = {
-      id: "mut-good",
-      content:
-        "Deploy application using Docker containers with monitoring. Handle edge case for resource limits. More general approach with Kubernetes fallback.",
-      embedding: [],
-      confidence: 0.9,
-      mode: "mutation",
-      sourceChunkIds: ["s2"],
-      sourceClusterIds: [],
-      dreamCycleId: "c1",
-      importanceScore: 0.6,
-      accessCount: 0,
-      lastAccessedAt: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    db.prepare(
-      `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
-       VALUES (?, ?, '[]', 0.9, 'mutation', '[]', '[]', 'c1', 0.6, 0, ?, ?)`,
-    ).run(goodMutation.id, goodMutation.content, Date.now(), Date.now());
-
-    const result = refiner.evaluateMutations(original, [goodMutation]);
-
-    // Should score well: good coverage + novelty + "edge case" + "more general" + "fallback"
-    expect(result.mutations[0]!.score).toBeGreaterThan(0.5);
-  });
-
-  it("invokes onSkillCrystallized callback on promotion", () => {
-    let callbackId: string | null = null;
-    const refiner = new SkillRefiner(
-      db,
-      { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
-      (id) => {
-        callbackId = id;
-      },
-    );
-
-    const mutation: DreamInsight = {
-      id: "callback-mut",
-      content:
-        "Improved approach with edge case handling and fallback mechanism for broader coverage",
-      embedding: [],
-      confidence: 0.9,
-      mode: "mutation",
-      sourceChunkIds: ["orig"],
-      sourceClusterIds: [],
-      dreamCycleId: "c1",
-      importanceScore: 0.5,
-      accessCount: 0,
-      lastAccessedAt: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    db.prepare(
-      `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
-       VALUES (?, ?, '[]', 0.9, 'mutation', '[]', '[]', 'c1', 0.5, 0, ?, ?)`,
-    ).run(mutation.id, mutation.content, Date.now(), Date.now());
-
-    refiner.evaluateMutations({ id: "orig", text: "Basic deployment process for applications" }, [
-      mutation,
-    ]);
-
-    // Callback receives the new crystal chunk ID (not the mutation ID)
-    expect(callbackId).not.toBeNull();
-    // Verify a new chunk was created with that ID
-    const newChunk = db.prepare("SELECT * FROM chunks WHERE id = ?").get(callbackId!) as
-      | { memory_type: string; lifecycle: string }
-      | undefined;
-    expect(newChunk).toBeDefined();
-    expect(newChunk!.memory_type).toBe("skill");
-    expect(newChunk!.lifecycle).toBe("frozen");
   });
 });
 
@@ -2492,573 +2084,6 @@ describe("Integration: Cross-system feedback loops", () => {
     });
   });
 
-  describe("Dream Mutation → Skill Crystallization → Cycling", () => {
-    it("end-to-end: dream mutation gets evaluated, promoted, and crystallized as a new skill chunk", async () => {
-      // 1. Set up skill chunks for mutation
-      const originalSkillIds: string[] = [];
-      for (let i = 0; i < 25; i++) {
-        const id = insertChunk(db, {
-          text: `Deploy using Docker with health checks and monitoring, variant ${i}`,
-          embedding: JSON.stringify(fakeEmbedding(i + 1)),
-          importance_score: 0.7,
-          memory_type: i < 3 ? "skill" : "plaintext",
-          semantic_type: i < 3 ? "skill" : "general",
-        });
-        if (i < 3) {
-          originalSkillIds.push(id);
-        }
-      }
-
-      // Count skill chunks before dream
-      const skillsBefore = (
-        db.prepare("SELECT COUNT(*) as c FROM chunks WHERE memory_type = 'skill'").get() as {
-          c: number;
-        }
-      ).c;
-
-      // 2. Run dream mutation mode
-      const llm = mockLlmCall([
-        JSON.stringify([
-          {
-            content:
-              "Deploy using Docker with health checks, monitoring, and edge case handling for resource limits. More general approach with Kubernetes fallback.",
-            confidence: 0.9,
-            keywords: ["docker", "deploy", "kubernetes"],
-          },
-        ]),
-      ]);
-
-      const engine = new DreamEngine(
-        db,
-        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      const stats = await engine.run({ modes: ["mutation"] });
-
-      expect(stats).not.toBeNull();
-      const mutations = stats!.newInsights.filter((i) => i.mode === "mutation");
-      expect(mutations.length).toBeGreaterThan(0);
-
-      // 3. Evaluate and crystallize with SkillRefiner
-      let crystallizedId: string | null = null;
-      const refiner = new SkillRefiner(
-        db,
-        { promotionThreshold: 0.4, dedupSimilarityThreshold: 1.1 },
-        (id) => {
-          crystallizedId = id;
-        },
-      );
-
-      const sourceId = mutations[0]!.sourceChunkIds[0]!;
-      const source = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(sourceId) as
-        | { id: string; text: string }
-        | undefined;
-
-      // Dream engine already stored insights in dream_insights during run() — no manual insert needed
-      const result = refiner.evaluateMutations(source, mutations);
-      expect(result.mutations.length).toBeGreaterThan(0);
-      expect(result.mutations[0]!.promoted).toBe(true);
-
-      // 4. Verify crystallization: new skill chunk was created
-      expect(crystallizedId).not.toBeNull();
-      const newSkill = db.prepare("SELECT * FROM chunks WHERE id = ?").get(crystallizedId!) as
-        | {
-            memory_type: string;
-            semantic_type: string;
-            lifecycle: string;
-            origin: string;
-            source: string;
-            parent_id: string | null;
-            text: string;
-            provenance_chain: string;
-          }
-        | undefined;
-
-      expect(newSkill).toBeDefined();
-      expect(newSkill!.memory_type).toBe("skill");
-      expect(newSkill!.semantic_type).toBe("skill");
-      expect(newSkill!.lifecycle).toBe("frozen");
-      expect(newSkill!.origin).toBe("dream");
-      expect(newSkill!.source).toBe("skills");
-      expect(newSkill!.parent_id).toBe(sourceId);
-      expect(newSkill!.text).toContain("Docker");
-      expect(newSkill!.text).toContain("edge case");
-
-      // Provenance chain should link back to original + mutation
-      const provenance = JSON.parse(newSkill!.provenance_chain);
-      expect(provenance).toContain(sourceId);
-
-      // 5. Verify skill count increased
-      const skillsAfter = (
-        db.prepare("SELECT COUNT(*) as c FROM chunks WHERE memory_type = 'skill'").get() as {
-          c: number;
-        }
-      ).c;
-      expect(skillsAfter).toBeGreaterThan(skillsBefore);
-
-      // 6. Verify audit trail
-      const auditLog = db
-        .prepare("SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted'")
-        .all() as Array<{ chunk_id: string; actor: string; metadata: string }>;
-      expect(auditLog.length).toBeGreaterThan(0);
-      const logEntry = auditLog[0]!;
-      expect(logEntry.chunk_id).toBe(crystallizedId);
-      expect(logEntry.actor).toBe("skill_refiner");
-      const metadata = JSON.parse(logEntry.metadata);
-      expect(metadata.originalId).toBe(sourceId);
-    });
-
-    it("crystallized skill survives consolidation (frozen lifecycle)", async () => {
-      // 1. Create and crystallize a skill via SkillRefiner
-      const originalId = insertChunk(db, {
-        text: "Original deployment skill with Docker and Kubernetes",
-        memory_type: "skill",
-        semantic_type: "skill",
-        lifecycle: "frozen",
-        importance_score: 0.8,
-      });
-
-      const mutation: DreamInsight = {
-        id: "mut-survive",
-        content:
-          "Improved deployment with Docker, Kubernetes, and edge case handling for resource limits. More general approach with fallback.",
-        embedding: [],
-        confidence: 0.9,
-        mode: "mutation",
-        sourceChunkIds: [originalId],
-        sourceClusterIds: [],
-        dreamCycleId: "cycle-survive",
-        importanceScore: 0.7,
-        accessCount: 0,
-        lastAccessedAt: null,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-
-      db.prepare(
-        `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
-         VALUES (?, ?, '[]', ?, 'mutation', '[]', '[]', ?, 0.7, 0, ?, ?)`,
-      ).run(
-        mutation.id,
-        mutation.content,
-        mutation.confidence,
-        mutation.dreamCycleId,
-        Date.now(),
-        Date.now(),
-      );
-
-      let crystallizedId: string | null = null;
-      const refiner = new SkillRefiner(
-        db,
-        { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
-        async (id) => {
-          crystallizedId = id;
-        },
-      );
-      refiner.evaluateMutations(
-        { id: originalId, text: "Original deployment skill with Docker and Kubernetes" },
-        [mutation],
-      );
-      expect(crystallizedId).not.toBeNull();
-
-      // 2. Run consolidation — the new skill should survive because lifecycle='frozen'
-      const engine = new ConsolidationEngine(db, { forgetThreshold: 0.1 });
-      await engine.run();
-
-      const skill = db
-        .prepare("SELECT lifecycle, lifecycle_state FROM chunks WHERE id = ?")
-        .get(crystallizedId!) as { lifecycle: string; lifecycle_state: string } | undefined;
-      expect(skill!.lifecycle).toBe("frozen");
-      expect(skill!.lifecycle_state).not.toBe("forgotten");
-    });
-
-    it("crystallized skill is picked up by the next dream mutation cycle", async () => {
-      // 1. Create a crystallized skill (simulates output from a previous dream cycle)
-      const crystallizedId = insertChunk(db, {
-        text: "Use Docker with health checks, Kubernetes fallback, and resource limit edge cases",
-        memory_type: "skill",
-        semantic_type: "skill",
-        lifecycle: "frozen",
-        origin: "dream",
-        importance_score: 0.85,
-        path: "dream/mutation/prev-original",
-        source: "skills",
-        embedding: JSON.stringify(fakeEmbedding(99)),
-      });
-
-      // Pad with general chunks to meet minimum
-      for (let i = 0; i < 24; i++) {
-        insertChunk(db, {
-          text: `General content about software engineering topic ${i}`,
-          embedding: JSON.stringify(fakeEmbedding(i + 1)),
-          importance_score: 0.5,
-        });
-      }
-
-      // 2. Run dream mutation mode — it should pick up our crystallized skill
-      const llm = mockLlmCall([
-        JSON.stringify([
-          {
-            content: "Enhanced Docker deployment with auto-scaling and graceful shutdown handling",
-            confidence: 0.85,
-            keywords: ["docker", "auto-scaling"],
-          },
-        ]),
-      ]);
-
-      const engine = new DreamEngine(
-        db,
-        { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      const stats = await engine.run({ modes: ["mutation"] });
-
-      expect(stats).not.toBeNull();
-      const mutations = stats!.newInsights.filter((i) => i.mode === "mutation");
-      expect(mutations.length).toBeGreaterThan(0);
-
-      // The mutation's source should be our crystallized skill (it's the highest importance skill)
-      const sourcedFromCrystallized = mutations.some((m) =>
-        m.sourceChunkIds.includes(crystallizedId),
-      );
-      expect(sourcedFromCrystallized).toBe(true);
-    });
-
-    it("full skill evolution cycle: original → mutate → crystallize → re-mutate", async () => {
-      // ── Cycle 1: Start with an original skill ──
-      const origId = insertChunk(db, {
-        text: "Deploy application using Docker containers with monitoring",
-        memory_type: "skill",
-        semantic_type: "skill",
-        lifecycle: "frozen",
-        importance_score: 0.8,
-        embedding: JSON.stringify(fakeEmbedding(1)),
-        source: "skills",
-      });
-
-      // Pad with general chunks
-      for (let i = 0; i < 24; i++) {
-        insertChunk(db, {
-          text: `Background chunk ${i} about various topics`,
-          embedding: JSON.stringify(fakeEmbedding(i + 10)),
-          importance_score: 0.3,
-        });
-      }
-
-      // Dream mutation cycle 1
-      const llm1 = mockLlmCall([
-        JSON.stringify([
-          {
-            content:
-              "Deploy application using Docker containers with monitoring. Handle edge case for resource limits. More general approach with Kubernetes fallback.",
-            confidence: 0.9,
-            keywords: ["docker", "deploy"],
-          },
-        ]),
-      ]);
-
-      const dream1 = new DreamEngine(
-        db,
-        { llmCall: llm1, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      const stats1 = await dream1.run({ modes: ["mutation"] });
-      const muts1 = stats1!.newInsights.filter((i) => i.mode === "mutation");
-      expect(muts1.length).toBeGreaterThan(0);
-
-      // Crystallize cycle 1 mutation (dream engine already stored insights)
-      let gen1CrystalId: string | null = null;
-      const refiner1 = new SkillRefiner(
-        db,
-        { promotionThreshold: 0.4, dedupSimilarityThreshold: 1.1 },
-        (id) => {
-          gen1CrystalId = id;
-        },
-      );
-      const source1 = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(origId) as
-        | { id: string; text: string }
-        | undefined;
-      refiner1.evaluateMutations(source1, muts1);
-      expect(gen1CrystalId).not.toBeNull();
-
-      // Verify gen1 skill crystal exists
-      const gen1 = db.prepare("SELECT * FROM chunks WHERE id = ?").get(gen1CrystalId!) as
-        | { memory_type: string; lifecycle: string; parent_id: string | null }
-        | undefined;
-      expect(gen1!.memory_type).toBe("skill");
-      expect(gen1!.lifecycle).toBe("frozen");
-      expect(gen1!.parent_id).toBe(origId);
-
-      // ── Cycle 2: Dream should pick up the gen1 crystal ──
-      const llm2 = mockLlmCall([
-        JSON.stringify([
-          {
-            content:
-              "Deploy application using Docker with health checks, resource limits, Kubernetes orchestration, and CI/CD pipeline integration for automated rollbacks. Handle edge case when services fail.",
-            confidence: 0.92,
-            keywords: ["docker", "kubernetes", "ci-cd"],
-          },
-        ]),
-      ]);
-
-      const dream2 = new DreamEngine(
-        db,
-        { llmCall: llm2, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
-        noopSynthesize,
-        noopEmbedBatch,
-      );
-      const stats2 = await dream2.run({ modes: ["mutation"] });
-      const muts2 = stats2!.newInsights.filter((i) => i.mode === "mutation");
-      expect(muts2.length).toBeGreaterThan(0);
-
-      // Verify the gen1 crystal was used as a source (highest-importance skill)
-      // It should be one of: the original or the gen1 crystal
-      const allSkillIds = new Set([origId, gen1CrystalId!]);
-      const sourcedFromSkill = muts2.some((m) =>
-        m.sourceChunkIds.some((id) => allSkillIds.has(id)),
-      );
-      expect(sourcedFromSkill).toBe(true);
-
-      // Crystallize cycle 2 mutation (dream engine already stored insights)
-      let gen2CrystalId: string | null = null;
-      const refiner2 = new SkillRefiner(
-        db,
-        { promotionThreshold: 0.4, dedupSimilarityThreshold: 1.1 },
-        async (id) => {
-          gen2CrystalId = id;
-        },
-      );
-      const source2 = db
-        .prepare("SELECT id, text FROM chunks WHERE id = ?")
-        .get(muts2[0]!.sourceChunkIds[0]!) as { id: string; text: string } | undefined;
-      refiner2.evaluateMutations(source2, muts2);
-      expect(gen2CrystalId).not.toBeNull();
-
-      // Verify gen2 skill has correct lineage
-      const gen2 = db.prepare("SELECT * FROM chunks WHERE id = ?").get(gen2CrystalId!) as
-        | {
-            memory_type: string;
-            lifecycle: string;
-            origin: string;
-            provenance_chain: string;
-          }
-        | undefined;
-      expect(gen2!.memory_type).toBe("skill");
-      expect(gen2!.lifecycle).toBe("frozen");
-      expect(gen2!.origin).toBe("dream");
-
-      // Verify the provenance chain
-      const gen2Provenance = JSON.parse(gen2!.provenance_chain);
-      expect(gen2Provenance.length).toBeGreaterThan(0);
-
-      // Verify we now have 3+ skill chunks (original + gen1 + gen2)
-      const totalSkills = (
-        db.prepare("SELECT COUNT(*) as c FROM chunks WHERE memory_type = 'skill'").get() as {
-          c: number;
-        }
-      ).c;
-      expect(totalSkills).toBeGreaterThanOrEqual(3);
-
-      // Verify all 3 survive consolidation (frozen lifecycle)
-      const consolidation = new ConsolidationEngine(db, { forgetThreshold: 0.1 });
-      await consolidation.run();
-
-      for (const skillId of [origId, gen1CrystalId!, gen2CrystalId!]) {
-        const after = db.prepare("SELECT lifecycle FROM chunks WHERE id = ?").get(skillId) as
-          | { lifecycle: string }
-          | undefined;
-        expect(after!.lifecycle).toBe("frozen");
-      }
-    });
-
-    it("skill mutation provenance tracks full lineage across generations", () => {
-      // Manually simulate 3 generations of skill evolution
-      const gen0Id = insertChunk(db, {
-        text: "Base skill: deploy with Docker",
-        memory_type: "skill",
-        semantic_type: "skill",
-        lifecycle: "frozen",
-        provenance_chain: "[]",
-      });
-
-      // Gen1: mutated from gen0
-      const gen1Mutation: DreamInsight = {
-        id: "lineage-mut-1",
-        content: "Deploy with Docker and edge case handling. More general approach.",
-        embedding: [],
-        confidence: 0.85,
-        mode: "mutation",
-        sourceChunkIds: [gen0Id],
-        sourceClusterIds: [],
-        dreamCycleId: "lineage-cycle-1",
-        importanceScore: 0.6,
-        accessCount: 0,
-        lastAccessedAt: null,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-
-      db.prepare(
-        `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
-         VALUES (?, ?, '[]', ?, 'mutation', '[]', '[]', ?, 0.6, 0, ?, ?)`,
-      ).run(
-        gen1Mutation.id,
-        gen1Mutation.content,
-        gen1Mutation.confidence,
-        gen1Mutation.dreamCycleId,
-        Date.now(),
-        Date.now(),
-      );
-
-      let gen1Id: string | null = null;
-      const refiner = new SkillRefiner(
-        db,
-        { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
-        (id) => {
-          gen1Id = id;
-        },
-      );
-      refiner.evaluateMutations({ id: gen0Id, text: "Base skill: deploy with Docker" }, [
-        gen1Mutation,
-      ]);
-      expect(gen1Id).not.toBeNull();
-
-      // Gen2: mutated from gen1
-      const gen2Mutation: DreamInsight = {
-        id: "lineage-mut-2",
-        content:
-          "Deploy with Docker, Kubernetes fallback, resource edge cases, auto-scaling. More robust.",
-        embedding: [],
-        confidence: 0.9,
-        mode: "mutation",
-        sourceChunkIds: [gen1Id!],
-        sourceClusterIds: [],
-        dreamCycleId: "lineage-cycle-2",
-        importanceScore: 0.7,
-        accessCount: 0,
-        lastAccessedAt: null,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-
-      db.prepare(
-        `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
-         VALUES (?, ?, '[]', ?, 'mutation', '[]', '[]', ?, 0.7, 0, ?, ?)`,
-      ).run(
-        gen2Mutation.id,
-        gen2Mutation.content,
-        gen2Mutation.confidence,
-        gen2Mutation.dreamCycleId,
-        Date.now(),
-        Date.now(),
-      );
-
-      let gen2Id: string | null = null;
-      const refiner2 = new SkillRefiner(
-        db,
-        { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
-        (id) => {
-          gen2Id = id;
-        },
-      );
-      const gen1Chunk = db.prepare("SELECT id, text FROM chunks WHERE id = ?").get(gen1Id!) as
-        | { id: string; text: string }
-        | undefined;
-      refiner2.evaluateMutations(gen1Chunk, [gen2Mutation]);
-      expect(gen2Id).not.toBeNull();
-
-      // Verify lineage:
-      // gen0 → gen1 (parent_id = gen0)
-      // gen1 → gen2 (parent_id = gen1)
-      const gen1Row = db
-        .prepare("SELECT parent_id, provenance_chain FROM chunks WHERE id = ?")
-        .get(gen1Id!) as { parent_id: string | null; provenance_chain: string } | undefined;
-      expect(gen1Row!.parent_id).toBe(gen0Id);
-      const gen1Prov = JSON.parse(gen1Row!.provenance_chain);
-      expect(gen1Prov).toContain(gen0Id);
-
-      const gen2Row = db
-        .prepare("SELECT parent_id, provenance_chain FROM chunks WHERE id = ?")
-        .get(gen2Id!) as { parent_id: string | null; provenance_chain: string } | undefined;
-      expect(gen2Row!.parent_id).toBe(gen1Id);
-      const gen2Prov = JSON.parse(gen2Row!.provenance_chain);
-      expect(gen2Prov).toContain(gen1Id!);
-
-      // Audit trail should show both promotions
-      const auditLogs = db
-        .prepare(
-          "SELECT * FROM memory_audit_log WHERE event = 'skill_mutation_promoted' ORDER BY timestamp ASC",
-        )
-        .all() as Array<{ chunk_id: string; actor: string; metadata: string }>;
-      expect(auditLogs.length).toBeGreaterThanOrEqual(2);
-    });
-
-    it("P2P round-trip: crystallized skill can be published and imported by peer", () => {
-      // 1. Create a dream-crystallized skill
-      const skillId = insertChunk(db, {
-        text: "Advanced Docker deployment with Kubernetes and monitoring",
-        memory_type: "skill",
-        semantic_type: "skill",
-        lifecycle: "frozen",
-        origin: "dream",
-        source: "skills",
-        importance_score: 0.9,
-        governance_json: JSON.stringify({
-          accessScope: "shared",
-          lifespanPolicy: "permanent",
-          priority: 0.9,
-          sensitivity: "normal",
-          provenanceChain: [],
-        }),
-      });
-
-      // 2. Publish it via MemStore
-      const store = new MemStore(db);
-      const publishResult = store.publish(skillId, "shared");
-      expect(publishResult).not.toBeNull();
-      expect(publishResult!.visibility).toBe("shared");
-
-      // 3. Verify it appears in published skills
-      const published = store.getPublished({ semanticTypes: ["skill"] });
-      expect(published.length).toBe(1);
-      expect(published[0]!.id).toBe(skillId);
-
-      // 4. Simulate P2P import on another "peer" DB
-      const peerDb = createTestDb();
-      const peerStore = new MemStore(peerDb);
-
-      const envelope = {
-        version: 1,
-        skill_md: Buffer.from("Advanced Docker deployment with Kubernetes and monitoring").toString(
-          "base64",
-        ),
-        name: "docker-k8s-deploy",
-        author_peer_id: "peer-123",
-        author_pubkey: "pubkey-abc",
-        signature: "sig-xyz",
-        timestamp: Date.now(),
-        content_hash: "hash-" + crypto.randomUUID(),
-      };
-
-      const importResult = peerStore.importFromPeer(envelope, "pubkey-abc");
-      expect(importResult.ok).toBe(true);
-      expect(importResult.action).toBe("accepted");
-
-      // 5. Verify the imported skill is a proper skill chunk on the peer
-      const importedRow = peerDb
-        .prepare("SELECT * FROM chunks WHERE id = ?")
-        .get(importResult.crystalId!) as
-        | { source: string; semantic_type: string; text: string }
-        | undefined;
-      expect(importedRow!.source).toBe("skills");
-      expect(importedRow!.semantic_type).toBe("skill");
-      expect(importedRow!.text).toContain("Docker");
-    });
-  });
-
   describe("Goal tracking → Dream extrapolation", () => {
     it("active goals are trackable alongside dream-relevant crystals", () => {
       const taskMemory = new TaskMemoryManager(db);
@@ -3240,7 +2265,7 @@ describe("Full E2E Pipeline: ingest → consolidate → dream → curiosity", ()
     const consolidationStats = await consolidation.run();
     expect(consolidationStats.totalChunks).toBeGreaterThanOrEqual(30);
 
-    // Phase 3: Dream — run replay (heuristic) then mutation (LLM)
+    // Phase 3: Dream — run replay (heuristic) then simulation (LLM)
     const llmResponses = [
       JSON.stringify([
         {
@@ -3254,7 +2279,7 @@ describe("Full E2E Pipeline: ingest → consolidate → dream → curiosity", ()
     const llm = mockLlmCall(llmResponses);
     const engine = new DreamEngine(
       db,
-      { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
+      { llmCall: llm, minChunksForDream: 5 },
       noopSynthesize,
       noopEmbedBatch,
     );
@@ -3270,9 +2295,9 @@ describe("Full E2E Pipeline: ingest → consolidate → dream → curiosity", ()
     expect(replayStats).not.toBeNull();
     expect(replayStats!.newInsights).toHaveLength(0); // Replay doesn't create insights
 
-    // Run mutation mode (uses LLM)
-    const mutationStats = await engine.run({ modes: ["mutation"] });
-    expect(mutationStats).not.toBeNull();
+    // Run simulation mode (uses LLM)
+    const simulationStats = await engine.run({ modes: ["simulation"] });
+    expect(simulationStats).not.toBeNull();
 
     // Phase 4: Curiosity assessment on chunks
     const recentChunks = db

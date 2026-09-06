@@ -12,18 +12,35 @@ import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect, beforeEach } from "vitest";
 import type { SkillEnvelope } from "../agents/skills/ingest.js";
-import type { DreamInsight, SynthesizeFn, EmbedBatchFn } from "./dream-types.js";
 import { ConsolidationEngine } from "./consolidation.js";
 import { DiscoveryAgent } from "./discovery-agent.js";
-import { DreamEngine } from "./dream-engine.js";
 import { MemoryGovernance } from "./governance.js";
 import { MemStore } from "./mem-store.js";
 import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
 import { PeerReputationManager } from "./peer-reputation.js";
-import { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import { SkillExecutionTracker, stampExecutionRunOutcome } from "./skill-execution-tracker.js";
+
+/**
+ * PLAN-45 Phase 1.1: a completed execution row is tool-level evidence and
+ * counts for nothing until its RUN's grounded outcome is stamped (the
+ * housekeeping back-fill does that in production). This helper records
+ * one execution as its own run and stamps the verdict immediately.
+ */
+let runSeq = 0;
+function runExecution(
+  t: SkillExecutionTracker,
+  d: DatabaseSync,
+  skillId: string,
+  outcome: Parameters<SkillExecutionTracker["completeExecution"]>[1],
+): string {
+  const runId = `run-${++runSeq}`;
+  const id = t.startExecution(skillId, undefined, { runId, evidence: "tool" });
+  t.completeExecution(id, outcome);
+  stampExecutionRunOutcome(d, runId, { label: outcome.success ? "pass" : "fail", level: 1 });
+  return id;
+}
 import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
-import { SkillRefiner } from "./skill-refiner.js";
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 
@@ -226,10 +243,6 @@ function mockLlmCall(responses?: string[]): (prompt: string) => Promise<string> 
   };
 }
 
-const noopEmbedBatch: EmbedBatchFn = async (texts) => texts.map(() => fakeEmbedding(Math.random()));
-
-const noopSynthesize: SynthesizeFn = async () => [];
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SKILL EXECUTION TRACKER
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -303,17 +316,15 @@ describe("SkillExecutionTracker", () => {
   it("updates steering reward on skill crystal after execution", () => {
     const skillId = createSkillChunk(db, "Test skill");
 
-    // Success: +0.1
-    const exec1 = tracker.startExecution(skillId);
-    tracker.completeExecution(exec1, { success: true });
+    // Success: +0.1 once the run's verdict is stamped (not on the tool call)
+    runExecution(tracker, db, skillId, { success: true });
     let skill = db.prepare("SELECT steering_reward FROM chunks WHERE id = ?").get(skillId) as {
       steering_reward: number;
     };
     expect(skill.steering_reward).toBeCloseTo(0.1);
 
     // Failure: -0.05
-    const exec2 = tracker.startExecution(skillId);
-    tracker.completeExecution(exec2, { success: false });
+    runExecution(tracker, db, skillId, { success: false });
     skill = db.prepare("SELECT steering_reward FROM chunks WHERE id = ?").get(skillId) as {
       steering_reward: number;
     };
@@ -347,18 +358,16 @@ describe("SkillExecutionTracker", () => {
   it("computes correct skill metrics from multiple executions", () => {
     const skillId = createSkillChunk(db, "Test skill");
 
-    // 3 successes, 2 failures
+    // 3 successes, 2 failures (each its own stamped run)
     for (let i = 0; i < 3; i++) {
-      const id = tracker.startExecution(skillId);
-      tracker.completeExecution(id, {
+      runExecution(tracker, db, skillId, {
         success: true,
         rewardScore: 0.8,
         executionTimeMs: 100 + i * 50,
       });
     }
     for (let i = 0; i < 2; i++) {
-      const id = tracker.startExecution(skillId);
-      tracker.completeExecution(id, {
+      runExecution(tracker, db, skillId, {
         success: false,
         errorType: "tool_error",
         executionTimeMs: 500,
@@ -395,14 +404,11 @@ describe("SkillExecutionTracker", () => {
 
     // Execute skill1: 2 successes
     for (let i = 0; i < 2; i++) {
-      const id = tracker.startExecution(skill1);
-      tracker.completeExecution(id, { success: true, rewardScore: 0.9 });
+      runExecution(tracker, db, skill1, { success: true, rewardScore: 0.9 });
     }
     // Execute skill2: 1 success, 1 failure
-    const s2e1 = tracker.startExecution(skill2);
-    tracker.completeExecution(s2e1, { success: true, rewardScore: 0.7 });
-    const s2e2 = tracker.startExecution(skill2);
-    tracker.completeExecution(s2e2, { success: false });
+    runExecution(tracker, db, skill2, { success: true, rewardScore: 0.7 });
+    runExecution(tracker, db, skill2, { success: false });
 
     const peerMetrics = tracker.getPeerSkillMetrics(peerPubkey);
     expect(peerMetrics.totalSkills).toBe(2);
@@ -536,10 +542,9 @@ describe("PeerReputationManager", () => {
     repManager.recordSkillReceived(peerPubkey, "peer-quality");
     const skillId = createSkillChunk(db, "Peer skill", { governance_json: governance });
 
-    // Execute skill successfully
+    // Execute skill successfully (stamped runs)
     for (let i = 0; i < 5; i++) {
-      const execId = tracker.startExecution(skillId);
-      tracker.completeExecution(execId, { success: true, rewardScore: 0.85 });
+      runExecution(tracker, db, skillId, { success: true, rewardScore: 0.85 });
     }
 
     repManager.updatePeerQuality(peerPubkey);
@@ -973,14 +978,12 @@ describe("SkillMarketplace", () => {
     marketplace.listSkill(id1);
     marketplace.listSkill(id2);
 
-    // Execute id1 successfully, id2 with failures
+    // Execute id1 successfully, id2 with failures (stamped runs)
     for (let i = 0; i < 5; i++) {
-      const e = tracker.startExecution(id1);
-      tracker.completeExecution(e, { success: true });
+      runExecution(tracker, db, id1, { success: true });
     }
     for (let i = 0; i < 5; i++) {
-      const e = tracker.startExecution(id2);
-      tracker.completeExecution(e, { success: false });
+      runExecution(tracker, db, id2, { success: false });
     }
 
     const results = marketplace.search("", { minSuccessRate: 0.5 });
@@ -1574,195 +1577,6 @@ describe("End-to-End P2P Skill Propagation", () => {
     db = createTestDb();
   });
 
-  it("dream → refine → crystallize → publish → peer ingests → execution → reputation", async () => {
-    // === NODE A: Generate and publish a skill ===
-    const dbA = createTestDb();
-
-    // 1. Insert seed skills + background chunks
-    for (let i = 0; i < 25; i++) {
-      insertChunk(dbA, {
-        text: `Deploy using Docker with health checks and monitoring, variant ${i}`,
-        embedding: JSON.stringify(fakeEmbedding(i + 1)),
-        importance_score: 0.7,
-        memory_type: i < 3 ? "skill" : "plaintext",
-        semantic_type: i < 3 ? "skill" : "general",
-      });
-    }
-
-    // 2. Dream mutation
-    const llm = mockLlmCall([
-      JSON.stringify([
-        {
-          content:
-            "Deploy using Docker with health checks, monitoring, and edge case handling. More general approach with Kubernetes fallback.",
-          confidence: 0.9,
-          keywords: ["docker", "deploy", "kubernetes"],
-        },
-      ]),
-    ]);
-
-    const dream = new DreamEngine(
-      dbA,
-      { llmCall: llm, minChunksForDream: 5, modes: { mutation: { enabled: true } } },
-      noopSynthesize,
-      noopEmbedBatch,
-    );
-    const stats = await dream.run({ modes: ["mutation"] });
-    expect(stats).not.toBeNull();
-    const mutations = stats!.newInsights.filter((i) => i.mode === "mutation");
-    expect(mutations.length).toBeGreaterThan(0);
-
-    // 3. Refine and crystallize
-    const mockBridge = mockOrchestratorBridge();
-    const networkBridge = new SkillNetworkBridge(dbA, mockBridge);
-
-    let crystallizedId: string | null = null;
-    // dedupSimilarityThreshold: 1.1 disables the semantic-dedup gate here: the
-    // fakeEmbedding fixtures are near-parallel and would otherwise be flagged as
-    // near-duplicates. The gate is covered by skill-refiner.dedup.test.ts.
-    const refiner = new SkillRefiner(
-      dbA,
-      { promotionThreshold: 0.4, dedupSimilarityThreshold: 1.1 },
-      (id) => {
-        crystallizedId = id;
-      },
-      undefined,
-      networkBridge,
-    );
-
-    const sourceId = mutations[0]!.sourceChunkIds[0]!;
-    const source = dbA.prepare("SELECT id, text FROM chunks WHERE id = ?").get(sourceId) as {
-      id: string;
-      text: string;
-    };
-    refiner.evaluateMutations(source, mutations);
-    expect(crystallizedId).not.toBeNull();
-
-    // Wait for async publish
-    await new Promise((r) => setTimeout(r, 100));
-
-    // Verify skill was published to orchestrator
-    expect(mockBridge.publishCalls.length).toBeGreaterThanOrEqual(1);
-
-    // === NODE B: Receive and evaluate the skill ===
-    const dbB = createTestDb();
-    const trackerB = new SkillExecutionTracker(dbB);
-    const repManagerB = new PeerReputationManager(dbB, trackerB);
-
-    // 4. Peer B receives skill via network
-    const bridgeB = new SkillNetworkBridge(dbB, null);
-    const publishedSkill = dbA
-      .prepare("SELECT text FROM chunks WHERE id = ?")
-      .get(crystallizedId!) as { text: string };
-
-    const importResult = bridgeB.ingestNetworkSkill({
-      version: 1,
-      skill_md: Buffer.from(publishedSkill.text).toString("base64"),
-      name: "docker-deploy",
-      author_peer_id: "nodeA-peer-id",
-      author_pubkey: "nodeA-pubkey",
-      signature: "sig",
-      timestamp: Date.now(),
-      content_hash: `hash-${crypto.randomUUID()}`,
-    });
-    expect(importResult.ok).toBe(true);
-
-    // 5. Track reputation for nodeA
-    repManagerB.recordSkillReceived("nodeA-pubkey", "nodeA-peer-id");
-    repManagerB.recordIngestionResult("nodeA-pubkey", true);
-
-    // 6. Execute the imported skill
-    const execId = trackerB.startExecution(importResult.crystalId!);
-    trackerB.completeExecution(execId, { success: true, rewardScore: 0.85 });
-
-    // 7. Update peer quality from execution data
-    repManagerB.updatePeerQuality("nodeA-pubkey");
-
-    const rep = repManagerB.getReputation("nodeA-pubkey");
-    expect(rep).not.toBeNull();
-    expect(rep!.skillsReceived).toBe(1);
-    expect(rep!.skillsAccepted).toBe(1);
-
-    // 8. Verify the skill crystal is usable on node B
-    const metrics = trackerB.getSkillMetrics(importResult.crystalId!);
-    expect(metrics.totalExecutions).toBe(1);
-    expect(metrics.successRate).toBe(1.0);
-  });
-
-  it("skill versioning across crystallization generations", () => {
-    // Gen0: Original
-    const gen0 = createSkillChunk(db, "Base deployment skill");
-    const stableId = crypto.randomUUID();
-    db.prepare(`UPDATE chunks SET stable_skill_id = ?, skill_version = 1 WHERE id = ?`).run(
-      stableId,
-      gen0,
-    );
-
-    // Gen1: Mutation crystallized from Gen0
-    const gen1Mutation: DreamInsight = {
-      id: "gen1-mut",
-      content: "Improved deployment with edge case handling. More general approach with fallback.",
-      embedding: [],
-      confidence: 0.85,
-      mode: "mutation",
-      sourceChunkIds: [gen0],
-      sourceClusterIds: [],
-      dreamCycleId: "cycle-1",
-      importanceScore: 0.7,
-      accessCount: 0,
-      lastAccessedAt: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    db.prepare(
-      `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
-       VALUES (?, ?, '[]', ?, 'mutation', '[]', '[]', ?, 0.7, 0, ?, ?)`,
-    ).run(
-      gen1Mutation.id,
-      gen1Mutation.content,
-      gen1Mutation.confidence,
-      gen1Mutation.dreamCycleId,
-      Date.now(),
-      Date.now(),
-    );
-
-    let gen1Id: string | null = null;
-    const refiner = new SkillRefiner(
-      db,
-      { promotionThreshold: 0.3, dedupSimilarityThreshold: 1.1 },
-      (id) => {
-        gen1Id = id;
-      },
-    );
-    refiner.evaluateMutations({ id: gen0, text: "Base deployment skill" }, [gen1Mutation]);
-    expect(gen1Id).not.toBeNull();
-
-    // Verify version chain
-    const gen1Row = db
-      .prepare(
-        "SELECT stable_skill_id, skill_version, previous_version_id FROM chunks WHERE id = ?",
-      )
-      .get(gen1Id!) as {
-      stable_skill_id: string;
-      skill_version: number;
-      previous_version_id: string;
-    };
-
-    expect(gen1Row.stable_skill_id).toBe(stableId);
-    expect(gen1Row.skill_version).toBe(2);
-    expect(gen1Row.previous_version_id).toBe(gen0);
-
-    // MemStore version queries
-    const store = new MemStore(db);
-    const latest = store.getLatestVersion(stableId);
-    expect(latest).not.toBeNull();
-    expect(latest!.id).toBe(gen1Id);
-
-    const history = store.getVersionHistory(stableId);
-    expect(history.length).toBe(2);
-  });
-
   it("marketplace integrates with execution metrics and peer reputation", () => {
     const tracker = new SkillExecutionTracker(db);
     const repManager = new PeerReputationManager(db, tracker);
@@ -1785,8 +1599,7 @@ describe("End-to-End P2P Skill Propagation", () => {
     marketplace.listSkill(skillId, "Skill description");
 
     // Execute skill successfully
-    const execId = tracker.startExecution(skillId);
-    tracker.completeExecution(execId, { success: true, rewardScore: 0.9 });
+    runExecution(tracker, db, skillId, { success: true, rewardScore: 0.9 });
 
     // Search and verify metrics are included
     const results = marketplace.search("Marketplace");

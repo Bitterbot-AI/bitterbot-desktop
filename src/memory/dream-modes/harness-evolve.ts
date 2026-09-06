@@ -11,7 +11,6 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import type { ScorePairFn } from "../dream-slow-update.js";
 import type { DreamInsight } from "../dream-types.js";
 import {
   appendHarnessPolicyProvenance,
@@ -26,7 +25,7 @@ import {
   mergeActivePolicy,
 } from "../../agents/pi-embedded-runner/harness-policy.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { ExperimentSandbox } from "../experiment-sandbox.js";
+import { ExperimentSandbox, type ScorePairFn } from "../experiment-sandbox.js";
 import { MIN_PAIRED_FOR_BOOTSTRAP } from "../skill-execution-selection.js";
 import { evaluateHarnessCandidate } from "./harness-evolve.gate.js";
 import { proposeHarnessCandidates } from "./harness-evolve.propose.js";

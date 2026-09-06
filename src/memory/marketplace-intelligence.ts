@@ -195,8 +195,9 @@ export class MarketplaceIntelligence {
     const topDemand = opportunities[0]!.demandScore;
     return {
       exploration: topDemand * 0.1,
-      mutation: topDemand * 0.05,
-      research: topDemand * 0.05,
+      // `mutation` / `research` boosts were retired with those modes
+      // (PLAN-45 Phase 1); distillation is the skill-improvement lane now.
+      distillation: topDemand * 0.05,
     };
   }
 
