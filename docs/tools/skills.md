@@ -18,7 +18,7 @@ Skills declare a `tier:` in their SKILL.md frontmatter:
 - **`advisory`** — markdown-only; the LLM may or may not follow the guidance. The legacy default.
 - **`data`** — assets, references, templates; no behavioral lift.
 
-In the marketplace, executable-tier listings carry signed activation/outcome statistics so a buyer can verify the skill's empirical effect before paying. Advisory and data skills are still useful but priced like prose.
+In the marketplace, executable-tier listings carry the seller's execution statistics and validation verdict. Today those statistics are tool-level (a tool call that did not report an error), so treat them as a claim to re-measure locally, not proof. Advisory and data skills are still useful but priced like prose.
 
 ## Locations and precedence
 
@@ -59,7 +59,7 @@ tool surface those skills teach.
 
 ## Finding skills
 
-Browse community skills on [GitHub](https://github.com/Bitterbot-AI/bitterbot-desktop). Skills propagate automatically via the P2P network — nodes share proven skills with peers based on execution success and trust scores.
+Browse community skills on [GitHub](https://github.com/Bitterbot-AI/bitterbot-desktop). Over the P2P network, only skills promoted by the evolution pass (held-out task validation) publish, after a maturity window and with a signed provenance trailer; receiving nodes quarantine them for review. As of 2026-09-05 no node has published one yet.
 
 Install a skill into your workspace:
 

@@ -274,7 +274,7 @@ The P2P layer uses a Rust binary (`orchestrator`) built on libp2p:
 ```
 Agent daily work → episodes
   → Dream engine distills patterns
-  → SkillCrystallizer detects repeated success
+  → Skill-evolution pass proposes and validates a skill (held-out tasks)
   → MarketplaceEconomics prices the skill
   → Agent Card exposes the skill + price
   → External agent calls message/send

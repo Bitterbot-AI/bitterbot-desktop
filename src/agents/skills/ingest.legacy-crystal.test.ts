@@ -62,7 +62,15 @@ description: Dream-generated skill crystal
 
 Always pass --max-time.
 
-<!-- wiki-evolution-provenance {"verdict":"accepted","mode":"records"} -->`;
+<!-- wiki-evolution-provenance {"origin":"wiki-evolution","verdict":"accepted","mode":"tasks","validatedAt":"2026-09-05T00:00:00.000Z"} -->`;
+
+/** PLAN-45 Phase 0: the marker text without a parseable accepted record. */
+const MARKER_ONLY_SKILL = `---
+name: marker-only
+description: Dream-generated skill crystal
+---
+
+Mentions wiki-evolution-provenance in prose and carries no record.`;
 
 describe("ingestSkill — legacy dream crystal rejection (PLAN-42)", () => {
   let tmpRoot: string;
@@ -96,6 +104,16 @@ describe("ingestSkill — legacy dream crystal rejection (PLAN-42)", () => {
     expect(res.action).toBe("quarantined");
     const entries = await fs.readdir(path.join(tmpRoot, "skills-incoming"));
     expect(entries).toContain("curl-timeout-guard");
+  });
+
+  it("a bare marker string no longer exempts a legacy crystal (PLAN-45 Phase 0)", async () => {
+    const pair = generateEd25519();
+    const res = await ingestSkill({
+      envelope: buildEnvelope(MARKER_ONLY_SKILL, "marker-only", pair),
+      config: configFor(tmpRoot),
+    });
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain("legacy unvalidated dream crystal");
   });
 
   it("honors the kill switch (rejectLegacyCrystals=false)", async () => {

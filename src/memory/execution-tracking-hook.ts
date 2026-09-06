@@ -2,10 +2,15 @@
  * Execution Tracking Hook: an `after_tool_call` plugin hook that feeds
  * tool execution outcomes into the SkillExecutionTracker.
  *
- * This is the primary data-ingestion point for the autoresearch loop:
- * every tool call is matched against existing skill crystals, and when
- * a match is found the outcome is recorded so that the dream engine's
- * research mode has empirical data to work with.
+ * What a row here MEANS (PLAN-45 Phase 0): "a tool whose name matches a
+ * skill crystal's category ran and did not report an error". That is
+ * tool-level evidence (`recorded_by = 'after_tool_call'`), never a judgment
+ * that the user's task succeeded. Competence consumers must not read it as
+ * such; Phase 1 back-fills run-level outcomes from the event journal.
+ *
+ * `reward_score` is written as NULL. The previous value was a bucket of the
+ * result's character count (0.5-0.8), which also fired the hormonal "reward"
+ * stimulus for any response over 200 characters. A length is not a reward.
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -20,36 +25,6 @@ import {
 } from "../sessions/session-key-utils.js";
 
 const log = createSubsystemLogger("memory/exec-hook");
-
-/**
- * Compute a reward score (0-1) from the tool call result.
- *
- * - 1.0 for a successful call
- * - 0.0 for an error
- * - 0.5-0.8 scaled by result content length (for non-error, non-trivial results)
- */
-export function computeReward(result: unknown, error: string | undefined): number {
-  if (error) {
-    return 0.0;
-  }
-  if (result == null) {
-    return 0.5;
-  }
-
-  const str = typeof result === "string" ? result : JSON.stringify(result);
-  const len = str.length;
-
-  if (len === 0) {
-    return 0.5;
-  }
-  if (len < 50) {
-    return 0.6;
-  }
-  if (len < 200) {
-    return 0.7;
-  }
-  return 0.8;
-}
 
 /**
  * Normalize a tool name for matching against skill_category.
@@ -130,15 +105,11 @@ export function createExecutionTrackingHook(
       ) {
         return;
       }
-      const reward = computeReward(event.result, event.error);
-
-      // Hormonal events from tool outcomes — personality reacts in real-time
-      if (hormonalManager) {
-        if (event.error) {
-          hormonalManager.stimulate("error");
-        } else if (reward >= 0.7) {
-          hormonalManager.stimulate("reward");
-        }
+      // Hormonal events from tool outcomes: an error is a real signal. A
+      // non-error is NOT a reward (PLAN-45 Phase 0); verified task completion
+      // stimulates reward through registerTaskRewardHook instead.
+      if (hormonalManager && event.error) {
+        hormonalManager.stimulate("error");
       }
 
       const skillId = findMatchingSkill(db, event.toolName);
@@ -153,7 +124,7 @@ export function createExecutionTrackingHook(
 
       const outcome: ExecutionOutcome = {
         success: !event.error,
-        rewardScore: reward,
+        rewardScore: undefined,
         errorType: event.error ? "tool_error" : null,
         errorDetail: event.error ?? null,
         executionTimeMs: event.durationMs,

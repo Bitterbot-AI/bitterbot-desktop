@@ -417,6 +417,15 @@ export class MarketplaceEconomics {
            )
       `)
         .run(now);
+      // PLAN-45 Phase 0: a listing whose crystal no longer exists is not a
+      // listing. The reference node carried 76 such rows (last refreshed
+      // 2026-08-25) advertising six tool-level "successes" at rate 1.0 for
+      // crystals deleted weeks earlier.
+      this.db
+        .prepare(
+          `DELETE FROM marketplace_listings WHERE skill_crystal_id NOT IN (SELECT id FROM chunks)`,
+        )
+        .run();
       // Deliberately NO sweep of chunks.marketplace_listed here: that flag
       // is the FREE browse layer and must never be cleared for not paying
       // in (invariant I1).

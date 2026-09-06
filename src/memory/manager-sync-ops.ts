@@ -52,6 +52,8 @@ type MemorySyncProgressState = {
 
 const META_KEY = "memory_index_meta_v1";
 const VECTOR_TABLE = "chunks_vec";
+/** meta key stamped once the post-v63 vector orphan sweep has run. */
+const VECTOR_ORPHAN_SWEEP_META_KEY = "vector_orphan_sweep_v63";
 const FTS_TABLE = "chunks_fts";
 const EMBEDDING_CACHE_TABLE = "embedding_cache";
 const SESSION_DIRTY_DEBOUNCE_MS = 5000;
@@ -95,6 +97,7 @@ function shouldIgnoreMemoryWatchPath(watchPath: string): boolean {
 class MemoryManagerSyncOps {
   [key: string]: any;
   private sessionInitialSyncDone = false;
+  private vectorOrphanSweepDone = false;
   private lastSyncedAt: number | null = null;
   private async ensureVectorReady(dimensions?: number): Promise<boolean> {
     if (!this.vector.enabled) {
@@ -120,8 +123,49 @@ class MemoryManagerSyncOps {
     }
     if (ready && typeof dimensions === "number" && dimensions > 0) {
       this.ensureVectorTable(dimensions);
+      this.sweepVectorOrphansOnce();
     }
     return ready;
+  }
+
+  /**
+   * PLAN-45 Phase 0: delete vector rows whose chunk no longer exists. Runs
+   * once per database (meta key) after sqlite-vec is loaded, because chunk
+   * deletions that happen inside migrations (v63 purged 572 crystallizer
+   * chunks) cannot touch chunks_vec: the vec0 module is not on the
+   * connection at migration time. Orphan vector rows are not harmless; they
+   * occupy KNN `k` slots on every search and are never returned as chunks.
+   */
+  private sweepVectorOrphansOnce(): void {
+    if (this.vectorOrphanSweepDone) {
+      return;
+    }
+    this.vectorOrphanSweepDone = true;
+    try {
+      const done = this.db
+        .prepare(`SELECT value FROM meta WHERE key = ?`)
+        .get(VECTOR_ORPHAN_SWEEP_META_KEY) as { value: string } | undefined;
+      if (done?.value === "1") {
+        return;
+      }
+      const result = this.db
+        .prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id NOT IN (SELECT id FROM chunks)`)
+        .run();
+      this.db
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'`,
+        )
+        .run(VECTOR_ORPHAN_SWEEP_META_KEY);
+      if (Number(result.changes) > 0) {
+        log.info(
+          `vector orphan sweep removed ${result.changes} ${VECTOR_TABLE} rows with no chunk`,
+        );
+      }
+    } catch (err) {
+      // Not stamped: retried on the next boot.
+      this.vectorOrphanSweepDone = false;
+      log.warn(`vector orphan sweep failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private async loadVectorExtension(): Promise<boolean> {

@@ -2217,6 +2217,54 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "circle_members", "peer_id", "TEXT");
     },
   },
+  {
+    version: 63,
+    description:
+      "PLAN-45 Phase 0 (2026-09-05): retire the SkillCrystallizer and purge its " +
+      "output. Its dedup looked for lifecycle='frozen' while it inserted " +
+      "'generated', and its pattern query LEFT-JOINed chunks, so 13 " +
+      "skill_executions rows whose source crystals were deleted in August kept " +
+      "minting a new crystallizer/auto chunk on every consolidation pass (572 " +
+      "on the reference node, 44 per day). Deletes every crystallizer/auto " +
+      "chunk (all were tool-name-keyed restatements of the same execution " +
+      "rows, never skills), the skill_executions rows whose crystal no longer " +
+      "exists (the poison source), and marketplace_listings rows whose crystal " +
+      "no longer exists (76 stale rows advertising tool-level successes at 1.0). " +
+      "chunks_vec is NOT touched here: sqlite-vec is not loaded on the connection " +
+      "when migrations run, so the vector rows are swept by the manager's " +
+      "one-time orphan sweep after the extension is ready (sweepVectorOrphansOnce).",
+    up: (db: DatabaseSync) => {
+      const hasTable = (name: string): boolean =>
+        db
+          .prepare(`SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name = ?`)
+          .get(name) !== undefined;
+      // The crystallizer wrote path='crystallizer/auto', source='skills',
+      // origin='inferred'; `model` is not usable because the embedding
+      // backfill rewrites it (482 of the reference node's 572 rows carried
+      // the embedding model name).
+      const CRYSTALLIZER_ROWS =
+        `SELECT id FROM chunks WHERE path = 'crystallizer/auto' AND source = 'skills' ` +
+        `AND COALESCE(origin, '') = 'inferred'`;
+      if (hasTable("chunks_fts")) {
+        try {
+          db.exec(`DELETE FROM chunks_fts WHERE id IN (${CRYSTALLIZER_ROWS})`);
+        } catch {
+          /* FTS disabled or a contentless variant: nothing to purge */
+        }
+      }
+      db.exec(`DELETE FROM chunks WHERE id IN (${CRYSTALLIZER_ROWS})`);
+      if (hasTable("skill_executions")) {
+        db.exec(
+          `DELETE FROM skill_executions WHERE skill_crystal_id NOT IN (SELECT id FROM chunks)`,
+        );
+      }
+      if (hasTable("marketplace_listings")) {
+        db.exec(
+          `DELETE FROM marketplace_listings WHERE skill_crystal_id NOT IN (SELECT id FROM chunks)`,
+        );
+      }
+    },
+  },
 ];
 
 /**

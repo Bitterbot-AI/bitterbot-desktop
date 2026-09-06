@@ -103,7 +103,6 @@ import { SessionCoherenceTracker } from "./session-coherence.js";
 import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
-import { SkillCrystallizer } from "./skill-crystallizer.js";
 import { setActiveEvolutionLlm } from "./skill-evolution/active-llm.js";
 import { makeAttesterWeight, resolveOwnAttesterPubkey } from "./skill-evolution/attester-weight.js";
 import { readValidationSummaries } from "./skill-evolution/validation-summaries.js";
@@ -2357,15 +2356,13 @@ export class MemoryIndexManager implements MemorySearchManager {
               log.debug(`quarantine sweep failed: ${String(err)}`);
             });
         }
-        // 8. Crystallize successful execution patterns into skills
+        // 8. (retired, PLAN-45 Phase 0) The SkillCrystallizer used to mint a
+        // "skill" chunk here from any tool name with >=3 non-erroring calls.
+        // Tool-level success is not skill competence, its dedup never matched
+        // (frozen vs generated), and it kept minting from execution rows whose
+        // crystal was deleted. Skills now come only from the evolution pass
+        // (src/memory/skill-evolution/), which gates on held-out task outcomes.
         await yieldToEventLoop();
-        if (this.executionTracker) {
-          const crystallizer = new SkillCrystallizer(this.db, this.executionTracker);
-          const newSkills = crystallizer.crystallizePatterns();
-          if (newSkills > 0) {
-            log.info(`crystallized ${newSkills} new skill(s) from execution patterns`);
-          }
-        }
         // 9. Decay steering rewards to prevent unbounded accumulation
         {
           const engine = new ConsolidationEngine(this.db);

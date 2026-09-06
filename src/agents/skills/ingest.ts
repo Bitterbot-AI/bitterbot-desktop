@@ -11,6 +11,7 @@ import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
+import { parseProvenanceTrailer } from "../../memory/skill-evolution/provenance-trailer.js";
 import {
   type InjectionScanResult,
   type InjectionSeverity,
@@ -175,26 +176,24 @@ export async function ingestSkill(params: {
 }): Promise<IngestResult> {
   const { envelope, config, workspaceDir } = params;
   const origin = params.origin ?? "peer";
-  const isLocalOrigin = origin === "external-scrape";
+  // PLAN-45 Phase 0: "external-scrape" (Skill Seekers harvest) used to count
+  // as local origin and accept straight into skills/, bypassing the review
+  // policy, the routing hold and the synthetic peer's trust level, while the
+  // adapter's docs promised quarantine. Scraped content is untrusted input
+  // like any peer skill: the origin is kept as a provenance label only.
   const p2pConfig = config.skills?.p2p;
   const policy = p2pConfig?.ingestPolicy ?? "review";
 
   // Self-loopback guard: a crystal this node published can be delivered back to
   // it over gossip. Dropping it here stops the node from quarantining its own
   // output as an anonymous inbound peer skill (a source of the "received from
-  // unknown peer" clutter). Local-origin ingests are exempt (they are ours by
-  // definition and take the accept path below).
-  if (
-    !isLocalOrigin &&
-    params.ownPublishPubkey &&
-    envelope.author_pubkey === params.ownPublishPubkey
-  ) {
+  // unknown peer" clutter).
+  if (params.ownPublishPubkey && envelope.author_pubkey === params.ownPublishPubkey) {
     return { ok: false, action: "rejected", reason: "self-loopback (own published skill)" };
   }
 
-  // Policy: deny all. Local-origin research output is not subject to the peer
-  // ingest policy (it never touched the network) — only genuine peer skills are.
-  if (policy === "deny" && !isLocalOrigin) {
+  // Policy: deny all (peer skills and scraped harvests alike).
+  if (policy === "deny") {
     return { ok: false, action: "rejected", reason: "ingestion policy is deny" };
   }
 
@@ -224,11 +223,13 @@ export async function ingestSkill(params: {
   // wiki-evolution provenance trailer marks a skill that passed a validation
   // gate somewhere; those still quarantine for local review. Kill switch:
   // skills.p2p.rejectLegacyCrystals=false restores the old behavior.
-  if (!isLocalOrigin && p2pConfig?.rejectLegacyCrystals !== false) {
+  if (p2pConfig?.rejectLegacyCrystals !== false) {
     const md = Buffer.from(envelope.skill_md, "base64").toString("utf-8");
     const looksLikeLegacyCrystal =
       /^description:\s*Dream-generated skill crystal\s*$/m.test(md) || /\bcrystal_id:/.test(md);
-    const hasValidationEvidence = md.includes("wiki-evolution-provenance");
+    // PLAN-45 Phase 0: evidence means a PARSED trailer with an accepted
+    // verdict, not the marker text (a bare substring exempted anything).
+    const hasValidationEvidence = parseProvenanceTrailer(md) !== null;
     if (looksLikeLegacyCrystal && !hasValidationEvidence) {
       log.info(
         `Rejected legacy unvalidated dream crystal "${envelope.name}" from ${envelope.author_peer_id}`,
@@ -249,6 +250,10 @@ export async function ingestSkill(params: {
   if (!validateSkillContent(skillContent)) {
     return { ok: false, action: "rejected", reason: "invalid SKILL.md structure" };
   }
+  // Sender's validation claim, parsed once and carried on the envelope for
+  // the review list and the receiver re-gate (PLAN-45 Phase 4). Null when
+  // absent or malformed; never a reason to skip local review.
+  const evolutionProvenance = parseProvenanceTrailer(skillContent);
 
   // 5b. Injection scan (PLAN-13 Phase A).
   // Runs on the decoded bytes to catch adversarial content from a signed-but-
@@ -301,13 +306,11 @@ export async function ingestSkill(params: {
   // runtime index, and opens one only when exactly one description
   // applies. A peer skill whose description cannot route, or collides with
   // a local skill's, is held for review with the reason on the envelope.
-  // Local-origin harvests (operator-initiated) are stamped, not held.
   const routing = await assessRouting(envelope.name, skillContent);
-  const routingHold =
-    !isLocalOrigin && (routing.contractIssues.length > 0 || routing.overlap !== null);
+  const routingHold = routing.contractIssues.length > 0 || routing.overlap !== null;
   if (routing.contractIssues.length > 0 || routing.overlap) {
     log.warn(
-      `Skill ${normalizeSkillName(envelope.name)} (${isLocalOrigin ? "local" : envelope.author_peer_id}): ${describeRouting(routing)}${routingHold ? "; held for review" : ""}`,
+      `Skill ${normalizeSkillName(envelope.name)} (${envelope.author_peer_id}): ${describeRouting(routing)}${routingHold ? "; held for review" : ""}`,
     );
   }
 
@@ -316,8 +319,7 @@ export async function ingestSkill(params: {
   // injection scan still guards even our own scraped content. A skill is
   // accepted directly when it is local-origin (our own research) OR a trusted
   // peer under `auto` policy; everything else is held for review.
-  const acceptDirectly =
-    !forceQuarantine && !routingHold && (isLocalOrigin || (policy === "auto" && isAutoAccepted));
+  const acceptDirectly = !forceQuarantine && !routingHold && policy === "auto" && isAutoAccepted;
   if (acceptDirectly) {
     // Accept directly into skills directory
     const skillName = normalizeSkillName(envelope.name);
@@ -343,6 +345,7 @@ export async function ingestSkill(params: {
           provenance: envelope.provenance,
           injection_scan: scanResult ?? undefined,
           routing,
+          evolution_provenance: evolutionProvenance ?? undefined,
         },
         null,
         2,
@@ -356,9 +359,7 @@ export async function ingestSkill(params: {
       changedPath: skillPath,
     });
 
-    log.info(
-      `Accepted skill (${origin}): ${skillName}${isLocalOrigin ? "" : ` from ${envelope.author_peer_id}`}`,
-    );
+    log.info(`Accepted skill (${origin}): ${skillName} from ${envelope.author_peer_id}`);
     params.reputationManager?.recordIngestionResult(envelope.author_pubkey, true);
     return { ok: true, action: "accepted", skillName, skillPath };
   }
@@ -387,6 +388,7 @@ export async function ingestSkill(params: {
         force_quarantined: forceQuarantine,
         routing,
         routing_hold: routingHold,
+        evolution_provenance: evolutionProvenance ?? undefined,
       },
       null,
       2,

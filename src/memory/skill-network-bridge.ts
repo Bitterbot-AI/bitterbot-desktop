@@ -751,7 +751,9 @@ export class SkillNetworkBridge {
 
   /**
    * Plan 8, Phase 4: Quality gate for bounty claims.
-   * Reuses SkillCrystallizer's thresholds: SkillVerifier passes + 3 executions + >70% success.
+   * Legacy floor (same numbers the retired SkillCrystallizer used): SkillVerifier passes +
+   * 3 executions + >70% success. Execution rows are tool-level evidence; PLAN-45 Phase 1
+   * replaces this with run-level outcomes.
    */
   private checkBountyClaimQuality(crystalId: string, text: string): boolean {
     // 1. SkillVerifier must pass

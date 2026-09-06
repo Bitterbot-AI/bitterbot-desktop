@@ -456,3 +456,28 @@ describe("MarketplaceEconomics — PLAN-43 Phase 0 separation", () => {
     expect(listings[2]!.validation).toBeUndefined();
   });
 });
+
+describe("MarketplaceEconomics — PLAN-45 Phase 0 stale rows", () => {
+  it("refreshListings deletes listing rows whose crystal no longer exists", () => {
+    const db = createTestDb();
+    const economics = new MarketplaceEconomics(db);
+    insertSkillChunk(db, "c-alive", "Alive Skill", { forSale: true });
+    recordPassingExecutions(db, "c-alive");
+    economics.refreshListings(0.8);
+    // A row left behind by a crystal deleted since the last refresh.
+    db.prepare(
+      `INSERT INTO marketplace_listings (skill_crystal_id, name, description, price_usdc, listable,
+         total_executions, success_rate, avg_reward_score, download_count, listed_at, updated_at)
+       VALUES ('c-gone', 'Gone Skill', 'd', 0.01, 1, 6, 1.0, 0.8, 0, 1, 1)`,
+    ).run();
+    economics.refreshListings(0.8);
+    const ids = (
+      db
+        .prepare(`SELECT skill_crystal_id AS id FROM marketplace_listings ORDER BY id`)
+        .all() as Array<{
+        id: string;
+      }>
+    ).map((r) => r.id);
+    expect(ids).toEqual(["c-alive"]);
+  });
+});

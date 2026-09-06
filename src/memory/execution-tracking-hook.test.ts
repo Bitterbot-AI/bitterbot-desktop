@@ -122,3 +122,39 @@ describe("createExecutionTrackingHook remote-task exclusion", () => {
     expect(published).toEqual([]);
   });
 });
+
+describe("createExecutionTrackingHook evidence semantics (PLAN-45 Phase 0)", () => {
+  it("records reward_score NULL and never stimulates reward on a non-error call", () => {
+    const { db } = setup();
+    const stimulated: string[] = [];
+    const hormonal = {
+      stimulate: (kind: string) => stimulated.push(kind),
+    } as unknown as Parameters<typeof createExecutionTrackingHook>[2];
+    const tracker = new SkillExecutionTracker(db);
+    const hook = createExecutionTrackingHook(tracker, db, hormonal);
+    hook(
+      {
+        toolName: "web_search",
+        params: {},
+        result: "x".repeat(5000),
+        error: undefined,
+        durationMs: 5,
+      },
+      { toolName: "web_search", sessionKey: "s1" },
+    );
+    hook(
+      { toolName: "web_search", params: {}, result: null, error: "boom", durationMs: 5 },
+      { toolName: "web_search", sessionKey: "s1" },
+    );
+    expect(stimulated).toEqual(["error"]);
+    const rows = db
+      .prepare(
+        `SELECT success, reward_score, recorded_by FROM skill_executions ORDER BY started_at`,
+      )
+      .all() as Array<{ success: number; reward_score: number | null; recorded_by: string }>;
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.reward_score === null)).toBe(true);
+    expect(rows.every((r) => r.recorded_by === "after_tool_call")).toBe(true);
+    expect(rows.map((r) => r.success)).toEqual([1, 0]);
+  });
+});

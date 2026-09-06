@@ -528,7 +528,7 @@ type DreamEngineConfig = {
 The dream engine plays a central role in the skill marketplace:
 
 1. **Mutation mode** creates variations of existing skill patterns during dream cycles
-2. **SkillCrystallizer** detects repeated successful execution patterns and promotes them to skill crystals
+2. **Skill-evolution pass** (PLAN-42/44; the SkillCrystallizer was retired in PLAN-45 Phase 0) proposes skills from journaled traces and promotes only those that pass the held-out task gate
 3. **MarketplaceEconomics** automatically prices and lists qualifying skills
 4. **Hormonal feedback:** Successful skill sales trigger `marketplace_sale` dopamine events, reinforcing the crystallization → sale → dopamine loop
 

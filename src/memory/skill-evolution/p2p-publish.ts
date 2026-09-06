@@ -33,6 +33,7 @@ import {
 import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { atomicWriteJson } from "./fs-atomic.js";
+import { buildProvenanceTrailer } from "./provenance-trailer.js";
 
 const log = createSubsystemLogger("skill-evolution/p2p-publish");
 
@@ -117,23 +118,7 @@ export function findPublishLeak(body: string): string | null {
   return null;
 }
 
-function provenanceTrailer(meta: EvolutionMeta): string {
-  const v = meta.validation;
-  const record = {
-    origin: "wiki-evolution",
-    verdict: v?.verdict,
-    mode: v?.mode,
-    ...(typeof v?.meanDelta === "number" ? { meanDelta: v.meanDelta } : {}),
-    ...(typeof v?.ci95Low === "number" ? { ci95Low: v.ci95Low } : {}),
-    ...(typeof v?.trials === "number" ? { trials: v.trials } : {}),
-    ...(v?.corpusVersion ? { corpusVersion: v.corpusVersion } : {}),
-    ...(v?.model ? { model: v.model } : {}),
-    validatedAt: v?.validatedAt,
-    notice:
-      "Receiving nodes should re-validate locally; this is the sender's evidence, not a guarantee.",
-  };
-  return `\n<!-- wiki-evolution-provenance ${JSON.stringify(record)} -->\n`;
-}
+const provenanceTrailer = buildProvenanceTrailer;
 
 export interface PublishSweepResult {
   published: string[];

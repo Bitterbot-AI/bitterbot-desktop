@@ -151,3 +151,33 @@ describe("ingestSkill — self-loopback guard", () => {
     expect(entries).toContain("theirs");
   });
 });
+
+describe("ingestSkill — external-scrape is untrusted input (PLAN-45 Phase 0)", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-scrape-"));
+  });
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it("quarantines a Skill Seekers harvest under the review policy instead of accepting it", async () => {
+    const pair = generateEd25519();
+    const envelope = {
+      ...buildEnvelope(
+        SKILL("Use when working with the Acme API; not for unrelated HTTP work."),
+        "acme-harvest",
+        pair,
+      ),
+      author_peer_id: "local-skill-seekers",
+    };
+    const cfg: BitterbotConfig = {
+      skills: { p2p: { ingestPolicy: "review", quarantineDir: dir } },
+    } as unknown as BitterbotConfig;
+    const result = await ingestSkill({ envelope, config: cfg, origin: "external-scrape" });
+    expect(result.ok).toBe(true);
+    expect(result.action).toBe("quarantined");
+    const listed = await listIncomingSkills(cfg);
+    expect(listed.map((s) => [s.name, s.origin])).toEqual([["acme-harvest", "external-scrape"]]);
+  });
+});
