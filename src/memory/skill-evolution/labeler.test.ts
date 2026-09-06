@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReconstructedTrace, TraceToolStep } from "./types.js";
-import { labelHeuristic, labelTrace, parseJudgeVerdict } from "./labeler.js";
+import { labelHeuristic, labelTrace, parseJudgeVerdict, parseJudgeCriteria } from "./labeler.js";
 
 function envelope(tool: string, error: string): string {
   return JSON.stringify({
@@ -226,5 +226,59 @@ describe("labelTrace with a judge", () => {
       judgeCall: async () => "verdict: unknown",
     });
     expect(r).toMatchObject({ label: "unknown", judged: true });
+  });
+});
+
+describe("de-anchored judge (PLAN-45 Phase 1.5)", () => {
+  it("asks for success criteria from the header BEFORE showing the trace, then judges against them", async () => {
+    const prompts: string[] = [];
+    const t = trace([tool("read"), tool("read")]);
+    t.task = {
+      text: "Write the release notes to NOTES.md",
+      origin: "human",
+      channel: null,
+      isHeartbeat: false,
+    } as never;
+    const r = await labelTrace(t, {
+      judgeCall: async (p) => {
+        prompts.push(p);
+        return prompts.length === 1
+          ? "criterion: NOTES.md exists and contains release notes\ncriterion: the agent reports the file path"
+          : "verdict: fail";
+      },
+    });
+    expect(prompts).toHaveLength(2);
+    // Commit step: header only, no agent-authored steps.
+    expect(prompts[0]).toContain("task: Write the release notes");
+    expect(prompts[0]).not.toContain("[tool read");
+    // Verdict step: the committed criteria precede the trace.
+    expect(prompts[1]).toContain("- NOTES.md exists and contains release notes");
+    expect(prompts[1]).toContain("[tool read");
+    expect(r).toMatchObject({ label: "fail", judged: true });
+    expect(r.reason).toContain("2 committed criteria");
+  });
+
+  it("skips the commit step when the run has no journaled task", async () => {
+    let calls = 0;
+    const r = await labelTrace(trace([tool("read"), tool("read")]), {
+      judgeCall: async () => {
+        calls += 1;
+        return "verdict: pass";
+      },
+    });
+    expect(calls).toBe(1);
+    expect(r).toMatchObject({ label: "pass", judged: true });
+  });
+
+  it("parses at most three criteria and ignores prose", () => {
+    expect(
+      parseJudgeCriteria(
+        "Sure!\ncriterion: a file named out.txt exists\ncriterion: a file named out.txt exists\ncriterion: it has 3 lines\ncriterion: short\ncriterion: four\ncriterion: the fifth one that is long enough",
+      ),
+    ).toEqual([
+      "a file named out.txt exists",
+      "it has 3 lines",
+      "the fifth one that is long enough",
+    ]);
   });
 });

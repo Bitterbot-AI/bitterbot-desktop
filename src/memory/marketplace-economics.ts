@@ -20,6 +20,7 @@ import {
   normalizeSkillName,
   type SkillValidationSummary,
 } from "./skill-evolution/validation-summaries.js";
+import { RUN_EVIDENCE_WHERE } from "./skill-execution-tracker.js";
 import { skillNameFromText } from "./skill-name.js";
 import { computeSkillPrice, type SkillPricingConfig } from "./skill-pricing.js";
 
@@ -1049,10 +1050,11 @@ export class MarketplaceEconomics {
       const row = this.db
         .prepare(`
         SELECT COUNT(*) as total,
-               COALESCE(AVG(CASE WHEN success = 1 THEN 1.0 ELSE 0.0 END), 0) as success_rate,
+               COALESCE(AVG(CASE WHEN run_outcome_label = 'pass' THEN 1.0 ELSE 0.0 END), 0) as success_rate,
                COALESCE(AVG(reward_score), 0) as avg_reward
         FROM skill_executions
         WHERE completed_at IS NOT NULL
+          AND ${RUN_EVIDENCE_WHERE}
           AND (
             skill_crystal_id = ?
             OR skill_crystal_id IN (

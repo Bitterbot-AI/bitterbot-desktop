@@ -309,11 +309,13 @@ export function fenceUntrusted(text: string): string {
   return `${UNTRUSTED_OPEN}${text.replace(/<\s*\\?\/?\s*untrusted\s*>/gi, (m) => `<\\${m.slice(1)}`)}${UNTRUSTED_CLOSE}`;
 }
 
-export function formatTraceLog(
-  trace: ReconstructedTrace,
-  opts: { maxChars?: number } = {},
-): string {
-  const maxChars = opts.maxChars ?? TRACE_LOG_MAX_CHARS;
+/**
+ * PLAN-45 Phase 1.5: the trace HEADER alone (task, model, outcome line,
+ * programmatic signals, evidence hierarchy) with no agent-authored steps.
+ * The de-anchored judge commits its success criteria from this before it
+ * is shown anything the agent wrote.
+ */
+export function formatTraceHeader(trace: ReconstructedTrace): string {
   // PLAN-44 Phase 0: the task is the FIRST thing a reader sees. Runs
   // journaled before the `user` stream existed say so explicitly, so the
   // maintainer/judge never mistake "unknown task" for "no task".
@@ -326,7 +328,7 @@ export function formatTraceLog(
         `task: ${trace.task.text || "(empty prompt)"}`,
       ]
     : ["task: (not journaled — run predates the user stream)"];
-  const header = [
+  return [
     `run: ${trace.runId}`,
     trace.taskId ? `long-horizon-task: ${trace.taskId}` : null,
     `model: ${trace.model ?? "(not journaled)"}`,
@@ -346,6 +348,14 @@ export function formatTraceLog(
   ]
     .filter((l): l is string => l !== null)
     .join("\n");
+}
+
+export function formatTraceLog(
+  trace: ReconstructedTrace,
+  opts: { maxChars?: number } = {},
+): string {
+  const maxChars = opts.maxChars ?? TRACE_LOG_MAX_CHARS;
+  const header = formatTraceHeader(trace);
 
   const blocks = trace.steps.map((step) => {
     if (step.kind === "assistant") {

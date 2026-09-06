@@ -2265,6 +2265,33 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 64,
+    description:
+      "PLAN-45 Phase 1.1 (2026-09-06): one outcome substrate. skill_executions rows " +
+      "written by the after_tool_call hook are TOOL-level evidence (a tool did not " +
+      "report an error) and carry the run they happened in (run_id, tool_call_id). " +
+      "A housekeeping back-fill (skill-evolution/execution-outcomes.ts) stamps each " +
+      "run's grounded outcome (labeler + L0-L4 hierarchy) into run_outcome_label / " +
+      "run_outcome_level and lifts `evidence` from 'tool' to 'run' | 'task' | 'human'. " +
+      "Competence consumers read only run-or-better rows (RUN_EVIDENCE_WHERE).",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "skill_executions", "run_id", "TEXT");
+      addColumnIfMissing(db, "skill_executions", "tool_call_id", "TEXT");
+      addColumnIfMissing(db, "skill_executions", "evidence", "TEXT");
+      addColumnIfMissing(db, "skill_executions", "run_outcome_level", "INTEGER");
+      addColumnIfMissing(db, "skill_executions", "run_outcome_label", "TEXT");
+      addColumnIfMissing(db, "skill_executions", "run_outcome_at", "INTEGER");
+      db.exec(
+        `UPDATE skill_executions SET evidence = 'tool' WHERE evidence IS NULL AND recorded_by = 'after_tool_call'`,
+      );
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_skill_executions_run ON skill_executions (run_id)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_skill_executions_outcome_pending
+           ON skill_executions (started_at) WHERE run_outcome_level IS NULL`,
+      );
+    },
+  },
 ];
 
 /**

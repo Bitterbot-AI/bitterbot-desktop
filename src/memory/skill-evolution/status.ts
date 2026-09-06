@@ -9,6 +9,7 @@ import path from "node:path";
 import { type ImpactTrailOptions, provenancePath } from "../../agents/skills/impact-trail.js";
 import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { loadEffectiveCorpus } from "./canonical-corpus.js";
+import { readEvidenceRecords, type SkillEvidenceRecord } from "./evidence-record.js";
 import { type IterationRecord, readRecentIterations } from "./iteration-log.js";
 import { listP2pEligibleEvolvedSkills } from "./p2p-publish.js";
 import { readSamplerState } from "./sampler.js";
@@ -42,6 +43,8 @@ export interface EvolutionStatus {
    * a one-off has 1, a recurring learnable pattern has several.
    */
   failureSignatures: Array<{ key: string; count: number; iterations: number }>;
+  /** PLAN-45 Phase 1.3: the per-skill evidence records as last rebuilt by housekeeping. */
+  evidence: SkillEvidenceRecord[];
 }
 
 export async function collectEvolutionStatus(
@@ -127,5 +130,6 @@ export async function collectEvolutionStatus(
       : { present: false },
     impactEntries,
     failureSignatures: rankFailureSignatures(recentIterations.map((r) => r.failureSignatures)),
+    evidence: await readEvidenceRecords(opts),
   };
 }

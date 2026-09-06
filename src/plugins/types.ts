@@ -442,6 +442,9 @@ export type PluginHookToolContext = {
   agentId?: string;
   sessionKey?: string;
   toolName: string;
+  /** PLAN-45 Phase 1.1: the journaled run this call belongs to (joins tool rows to run outcomes). */
+  runId?: string;
+  toolCallId?: string;
 };
 
 // before_tool_call hook

@@ -58,12 +58,17 @@ function insertSkillChunk(
   );
 }
 
-/** Enough successful executions to pass the listing gates (>=3, >=60%). */
+/**
+ * Enough successful executions to pass the listing gates (>=3, >=60%).
+ * PLAN-45 Phase 1.1: only rows with RUN-level evidence count, so each row
+ * carries a stamped run outcome; a bare tool-level row is worth nothing.
+ */
 function recordPassingExecutions(db: DatabaseSync, crystalId: string): void {
   for (let i = 0; i < 5; i++) {
     db.prepare(
-      `INSERT INTO skill_executions (id, skill_crystal_id, started_at, success, reward_score, completed_at)
-       VALUES (?, ?, ?, 1, 0.9, ?)`,
+      `INSERT INTO skill_executions (id, skill_crystal_id, started_at, success, reward_score, completed_at,
+         evidence, run_outcome_label, run_outcome_level)
+       VALUES (?, ?, ?, 1, 0.9, ?, 'run', 'pass', 1)`,
     ).run(`exec-${nextExecId++}`, crystalId, Date.now(), Date.now());
   }
 }

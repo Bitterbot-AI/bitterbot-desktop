@@ -26,6 +26,7 @@
 import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import type { BitterbotConfig } from "../config/config.js";
+import { runEvidenceWhere } from "../memory/skill-execution-tracker.js";
 import { renderSection, type CheckResult, ok, warn, info } from "./doctor-check.js";
 import { resolveDoctorMemoryDbPath } from "./doctor-subsystems.js";
 
@@ -271,6 +272,7 @@ export function inspectArtifactLiveness(db: DatabaseSync, now: number = Date.now
              FROM skill_executions se
              JOIN chunks c ON c.id = se.skill_crystal_id
             WHERE se.completed_at IS NOT NULL
+              AND ${runEvidenceWhere("se")}
               AND c.published_at IS NULL
             GROUP BY se.skill_crystal_id
            HAVING n >= ${PUBLISH_MATURITY_EXECUTIONS})`,

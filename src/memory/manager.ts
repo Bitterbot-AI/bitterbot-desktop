@@ -106,7 +106,7 @@ import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-h
 import { setActiveEvolutionLlm } from "./skill-evolution/active-llm.js";
 import { makeAttesterWeight, resolveOwnAttesterPubkey } from "./skill-evolution/attester-weight.js";
 import { readValidationSummaries } from "./skill-evolution/validation-summaries.js";
-import { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import { SkillExecutionTracker, runEvidenceWhere } from "./skill-execution-tracker.js";
 import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
 import { SkillRefiner } from "./skill-refiner.js";
@@ -384,7 +384,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         id TEXT PRIMARY KEY, skill_crystal_id TEXT NOT NULL, session_id TEXT,
         started_at INTEGER NOT NULL, completed_at INTEGER, success INTEGER,
         reward_score REAL, error_type TEXT, error_detail TEXT,
-        execution_time_ms INTEGER, tool_calls_count INTEGER, user_feedback INTEGER
+        execution_time_ms INTEGER, tool_calls_count INTEGER, user_feedback INTEGER,
+        context_json TEXT, tool_name TEXT, recorded_by TEXT,
+        run_id TEXT, tool_call_id TEXT, evidence TEXT,
+        run_outcome_level INTEGER, run_outcome_label TEXT, run_outcome_at INTEGER
       )`);
       // Peer reputation table
       this.db.exec(`CREATE TABLE IF NOT EXISTS peer_reputation (
@@ -4979,9 +4982,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         .prepare(
           `SELECT c.text, c.importance_score, c.access_count,
                   COUNT(se.id) as exec_count,
-                  COALESCE(AVG(CASE WHEN se.success = 1 THEN 1.0 ELSE 0.0 END), 0) as success_rate
+                  COALESCE(AVG(CASE WHEN se.run_outcome_label = 'pass' THEN 1.0 ELSE 0.0 END), 0) as success_rate
            FROM chunks c
            LEFT JOIN skill_executions se ON se.skill_crystal_id = c.id AND se.completed_at IS NOT NULL
+             AND ${runEvidenceWhere("se")}
            WHERE c.semantic_type IN ('skill', 'task_pattern')
            GROUP BY c.id
            ORDER BY c.access_count DESC, c.importance_score DESC

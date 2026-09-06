@@ -10,7 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
 import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
-import { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import { SkillExecutionTracker, stampExecutionRunOutcome } from "./skill-execution-tracker.js";
 
 const NOW = 1_750_000_000_000;
 
@@ -42,11 +42,21 @@ function setup(): {
   const tracker = new SkillExecutionTracker(db);
   const published: string[] = [];
   const hook = createExecutionTrackingHook(tracker, db, null, (id) => published.push(id));
-  const fire = (toolName: string, error?: string) =>
+  // PLAN-45 Phase 1.1: each fire is its own journal run, and the maturity
+  // gate counts only rows whose run outcome has been stamped (the back-fill
+  // does this in production; here the test stamps the PREVIOUS run before
+  // the next call, the way a later pass would).
+  let runNo = 0;
+  const fire = (toolName: string, error?: string) => {
+    if (runNo > 0) {
+      stampExecutionRunOutcome(db, `run-${runNo}`, { label: error ? "fail" : "pass", level: 1 });
+    }
+    runNo += 1;
     hook(
       { toolName, params: {}, result: "ok", error, durationMs: 5 },
-      { toolName, sessionKey: "s1" },
+      { toolName, sessionKey: "s1", runId: `run-${runNo}`, toolCallId: `tc-${runNo}` },
     );
+  };
   return { db, tracker, published, fire };
 }
 
@@ -55,11 +65,17 @@ describe("createExecutionTrackingHook maturity re-publish (audit F5)", () => {
     const { db, published, fire } = setup();
     fire("web_search");
     fire("web_search");
-    expect(published).toEqual([]); // below the gate
     fire("web_search");
-    expect(published).toEqual(["sk1"]); // crossed at 3
+    expect(published).toEqual([]); // 2 stamped runs + 1 fresh tool row: below the gate
+    fire("web_search");
+    expect(published).toEqual(["sk1"]); // 3 stamped runs: crossed
     fire("web_search");
     expect(published).toEqual(["sk1", "sk1"]); // keeps retrying while unpublished (gates decide)
+    const rows = db
+      .prepare(`SELECT run_id, tool_call_id, evidence FROM skill_executions ORDER BY started_at`)
+      .all() as Array<{ run_id: string; tool_call_id: string; evidence: string }>;
+    expect(rows[0]).toMatchObject({ run_id: "run-1", tool_call_id: "tc-1", evidence: "run" });
+    expect(rows[4]).toMatchObject({ run_id: "run-5", evidence: "tool" }); // newest: not stamped yet
     db.close();
   });
 
@@ -75,6 +91,7 @@ describe("createExecutionTrackingHook maturity re-publish (audit F5)", () => {
 
   it("does not fire on a failed execution", () => {
     const { db, published, fire } = setup();
+    fire("web_search");
     fire("web_search");
     fire("web_search");
     fire("web_search", "boom");

@@ -53,6 +53,8 @@ import {
   validateSkillsMetricsParams,
   validateSkillsEvolutionCorpusReviewParams,
   validateSkillsEvolutionFeedbackParams,
+  validateSkillsEvolutionCalibrationExportParams,
+  validateSkillsEvolutionCalibrationScoreParams,
   validateSkillsPromoteParams,
   validateSkillsPublishParams,
   validateSkillsRollbackParams,
@@ -1473,6 +1475,107 @@ export const skillsHandlers: GatewayRequestHandlers = {
         false,
         undefined,
         errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.feedback threw: ${String(err)}`),
+      );
+    }
+  },
+  // PLAN-45 Phase 1.5: blind labeler calibration on real traces.
+  "skills.evolution.calibration.export": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionCalibrationExportParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.calibration.export params: ${formatValidationErrors(validateSkillsEvolutionCalibrationExportParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const [
+        { buildCalibrationSet, writeCalibrationSet },
+        { getActiveEventJournal },
+        { getActiveEvolutionLlm },
+      ] = await Promise.all([
+        import("../../memory/skill-evolution/calibration.js"),
+        import("../../infra/event-journal.js"),
+        import("../../memory/skill-evolution/active-llm.js"),
+      ]);
+      const journal = getActiveEventJournal();
+      if (!journal) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.UNAVAILABLE, "event journal is not active"),
+        );
+        return;
+      }
+      const p = params as { count?: number; seed?: string; withJudge?: boolean };
+      let judgeCall: ((prompt: string) => Promise<string>) | undefined;
+      if (p.withJudge) {
+        const llm = getActiveEvolutionLlm();
+        if (!llm) {
+          respond(
+            false,
+            undefined,
+            errorShape(ErrorCodes.UNAVAILABLE, "no evolution LLM lane is active for the judge"),
+          );
+          return;
+        }
+        judgeCall = (prompt) => llm(prompt);
+      }
+      const set = await buildCalibrationSet({
+        journal,
+        ...(p.count ? { count: p.count } : {}),
+        ...(p.seed ? { seed: p.seed } : {}),
+        ...(judgeCall ? { judgeCall } : {}),
+      });
+      const written = await writeCalibrationSet(set);
+      respond(true, { ...written, stats: set.stats });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.UNAVAILABLE,
+          `skills.evolution.calibration.export threw: ${String(err)}`,
+        ),
+      );
+    }
+  },
+  "skills.evolution.calibration.score": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionCalibrationScoreParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.calibration.score params: ${formatValidationErrors(validateSkillsEvolutionCalibrationScoreParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const [{ parseLabelFile, readKeyFile, scoreCalibration, formatCalibrationReport }, fs] =
+        await Promise.all([
+          import("../../memory/skill-evolution/calibration.js"),
+          import("node:fs/promises"),
+        ]);
+      const p = params as { dir: string; labels: string[] };
+      const key = await readKeyFile(p.dir);
+      const raters = await Promise.all(
+        p.labels.map(async (file) => parseLabelFile(await fs.readFile(file, "utf-8"))),
+      );
+      const report = scoreCalibration(key, raters[0] as never, raters[1]);
+      respond(true, { report, text: formatCalibrationReport(report) });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.UNAVAILABLE,
+          `skills.evolution.calibration.score threw: ${String(err)}`,
+        ),
       );
     }
   },

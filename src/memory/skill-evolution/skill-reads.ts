@@ -336,6 +336,30 @@ export interface SkillReadSummary {
   runs: number;
 }
 
+/** PLAN-45 Phase 1.3: every event in the ledger (malformed lines skipped). */
+export async function readSkillReadEvents(
+  opts: ImpactTrailOptions = {},
+): Promise<SkillReadEvent[]> {
+  let raw = "";
+  try {
+    raw = await fs.readFile(skillReadsPath(opts), "utf-8");
+  } catch {
+    return [];
+  }
+  const out: SkillReadEvent[] = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      out.push(JSON.parse(line) as SkillReadEvent);
+    } catch {
+      // skip
+    }
+  }
+  return out;
+}
+
 /** Per-skill read counts over the last `windowDays` (default 14), for every name in `liveNames` plus any skill in the ledger. */
 export async function summarizeSkillReads(params: {
   storeOpts?: ImpactTrailOptions;

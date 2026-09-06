@@ -12,7 +12,13 @@ import { syncAttestations } from "../../services/attestation-client.js";
 import { CommerceReputationLedger } from "../commerce-reputation.js";
 import { ContributorStatusLedger } from "../contributor-status.js";
 import { SellerBondLedger } from "../seller-bond-ledger.js";
+import { SkillLifecycleStore } from "../skill-lifecycle.js";
 import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
+import { refreshEvidenceRecords } from "./evidence-record.js";
+import {
+  type BackfillExecutionOutcomesResult,
+  backfillExecutionOutcomes,
+} from "./execution-outcomes.js";
 import { publishEligibleEvolvedSkills, type PublishSweepResult } from "./p2p-publish.js";
 import { repairNonRoutableSkills, type RoutingRepairResult } from "./routing-repair.js";
 import { creditSkillReads } from "./skill-reads.js";
@@ -42,6 +48,10 @@ export async function runHousekeeping(
   attestation?: { attested: number; skipped: number; held: number };
   /** PLAN-44 Phase 5a: live-skill reads credited from the journal this pass. */
   skillReads?: { scannedRuns: number; credited: number };
+  /** PLAN-45 Phase 1.1: tool-level execution rows stamped with their run's grounded outcome. */
+  executionOutcomes?: BackfillExecutionOutcomesResult;
+  /** PLAN-45 Phase 1.3: `.evidence.json` rebuilt for every live skill. */
+  evidenceRecords?: number;
   /** PLAN-44 Phase 5c: harvested / received descriptions rewritten to the contract. */
   routingRepair?: { examined: number; rewritten: number; failed: number };
 }> {
@@ -60,6 +70,33 @@ export async function runHousekeeping(
     } catch (err) {
       log.warn(`skill-read crediting failed: ${String(err)}`);
     }
+  }
+  // PLAN-45 Phase 1.1: ground the tool-level execution rows in their run's
+  // outcome before any consumer (pricing, bridge gate, distillation) reads
+  // them this pass.
+  let executionOutcomes: BackfillExecutionOutcomesResult | undefined;
+  if (deps.db) {
+    try {
+      executionOutcomes = await backfillExecutionOutcomes({
+        journal: deps.journal ?? null,
+        db: deps.db,
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+      });
+    } catch (err) {
+      log.warn(`execution outcome back-fill failed: ${String(err)}`);
+    }
+  }
+  // PLAN-45 Phase 1.3: one evidence record per live skill, rebuilt from the
+  // ledgers above so every reader downstream sees the same numbers.
+  let evidenceRecords: number | undefined;
+  try {
+    const records = await refreshEvidenceRecords({
+      ...(storeOpts.configDir ? { storeOpts } : {}),
+      lifecycleStore: deps.db ? new SkillLifecycleStore(deps.db) : null,
+    });
+    evidenceRecords = records.length;
+  } catch (err) {
+    log.warn(`evidence record refresh failed: ${String(err)}`);
   }
   // PLAN-44 Phase 5c: a live skill the router can never open is dead
   // weight; rewrite its description before anything else is measured.
@@ -188,6 +225,8 @@ export async function runHousekeeping(
   }
   return {
     ...(skillReads ? { skillReads } : {}),
+    ...(executionOutcomes ? { executionOutcomes } : {}),
+    ...(evidenceRecords !== undefined ? { evidenceRecords } : {}),
     ...(routingRepair ? { routingRepair } : {}),
     validation,
     ...(lint ? { lint } : {}),

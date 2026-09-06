@@ -17,12 +17,12 @@ import type { DatabaseSync } from "node:sqlite";
 import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
 import type { ExecutionOutcome } from "./crystal-types.js";
 import type { HormonalStateManager } from "./hormonal.js";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   isA2aTaskSessionKey,
   isSkillEvolveValidationSessionKey,
 } from "../sessions/session-key-utils.js";
+import { RUN_EVIDENCE_WHERE, type SkillExecutionTracker } from "./skill-execution-tracker.js";
 
 const log = createSubsystemLogger("memory/exec-hook");
 
@@ -71,7 +71,8 @@ function findMatchingSkill(db: DatabaseSync, toolName: string): string | null {
 /**
  * Publish maturity gate (mirrors checkBountyClaimQuality's execution floor in
  * skill-network-bridge.ts): re-attempt network publish once a skill has this
- * many completed executions.
+ * many completed executions with RUN-level evidence (PLAN-45 Phase 1.1: a
+ * fresh hook row is never counted; the back-fill stamps earlier runs).
  */
 const PUBLISH_MATURITY_EXECUTIONS = 3;
 
@@ -120,6 +121,9 @@ export function createExecutionTrackingHook(
       const execId = tracker.startExecution(skillId, ctx.sessionKey, {
         toolName: event.toolName,
         recordedBy: "after_tool_call",
+        runId: ctx.runId,
+        toolCallId: ctx.toolCallId,
+        evidence: "tool",
       });
 
       const outcome: ExecutionOutcome = {
@@ -138,7 +142,8 @@ export function createExecutionTrackingHook(
           const mature = db
             .prepare(
               `SELECT (SELECT COUNT(*) FROM skill_executions
-                        WHERE skill_crystal_id = ? AND completed_at IS NOT NULL) AS execs,
+                        WHERE skill_crystal_id = ? AND completed_at IS NOT NULL
+                          AND ${RUN_EVIDENCE_WHERE}) AS execs,
                       (SELECT published_at FROM chunks WHERE id = ?) AS published_at`,
             )
             .get(skillId, skillId) as { execs: number; published_at: number | null } | undefined;

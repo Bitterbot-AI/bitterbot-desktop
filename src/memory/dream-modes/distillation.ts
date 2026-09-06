@@ -26,6 +26,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { recordDreamArtifact } from "../dream-utility.js";
+import {
+  RUN_EVIDENCE_WHERE,
+  RUN_SUCCESS_EXPR,
+  runEvidenceWhere,
+} from "../skill-execution-tracker.js";
 
 const log = createSubsystemLogger("memory/dream-distillation");
 
@@ -110,6 +115,7 @@ export async function runDistillation(params: {
            JOIN chunks c ON c.id = se.skill_crystal_id
           WHERE se.recorded_by = 'after_tool_call'
             AND se.completed_at IS NOT NULL
+            AND ${runEvidenceWhere("se")}
             AND se.started_at > ?
             AND COALESCE(c.origin, '') != 'dream'
           GROUP BY se.skill_crystal_id
@@ -135,13 +141,14 @@ export async function runDistillation(params: {
     const stats = db
       .prepare(
         `SELECT COUNT(*) AS total,
-                SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successes,
+                SUM(${RUN_SUCCESS_EXPR}) AS successes,
                 SUM(CASE WHEN user_feedback IS NOT NULL AND user_feedback < 0 THEN 1 ELSE 0 END) AS negative,
                 GROUP_CONCAT(id) AS exec_ids
            FROM skill_executions
           WHERE skill_crystal_id = ?
             AND recorded_by = 'after_tool_call'
-            AND completed_at IS NOT NULL`,
+            AND completed_at IS NOT NULL
+            AND ${RUN_EVIDENCE_WHERE}`,
       )
       .get(cand.skill_crystal_id) as {
       total: number;

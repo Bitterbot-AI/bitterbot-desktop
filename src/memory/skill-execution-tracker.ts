@@ -10,6 +10,84 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const _log = createSubsystemLogger("memory/execution-tracker");
 
+/** What a skill_executions row is evidence OF (PLAN-45 Phase 1.1). */
+export type ExecutionEvidence = "tool" | "run" | "task" | "human";
+
+/**
+ * SQL predicate: rows that carry run-level-or-better evidence with a
+ * determinate verdict. Tool-level rows (a tool call that did not report an
+ * error) and indeterminate run labels (env-fail, unknown, unattributable)
+ * never count toward competence. Every consumer of execution statistics
+ * that feeds a decision must include this; `RUN_SUCCESS_EXPR` is the matching
+ * success column (the tool-level `success` flag is NOT competence).
+ */
+export const RUN_EVIDENCE_WHERE =
+  "COALESCE(evidence, 'tool') != 'tool' AND run_outcome_label IN ('pass', 'fail')";
+export const RUN_SUCCESS_EXPR = "CASE WHEN run_outcome_label = 'pass' THEN 1 ELSE 0 END";
+/** Same predicate with a table alias. */
+export function runEvidenceWhere(alias: string): string {
+  return `COALESCE(${alias}.evidence, 'tool') != 'tool' AND ${alias}.run_outcome_label IN ('pass', 'fail')`;
+}
+export function runSuccessExpr(alias: string): string {
+  return `CASE WHEN ${alias}.run_outcome_label = 'pass' THEN 1 ELSE 0 END`;
+}
+
+export type RunOutcomeLabel = "pass" | "fail" | "env-fail" | "unknown" | "unattributable";
+
+function evidenceForOutcome(label: RunOutcomeLabel, level: number): ExecutionEvidence {
+  if (label !== "pass" && label !== "fail") {
+    return "tool";
+  }
+  if (level >= 4) {
+    return "human";
+  }
+  if (level >= 3) {
+    return "task";
+  }
+  return "run";
+}
+
+/**
+ * Stamp a run's grounded outcome on every not-yet-stamped execution row of
+ * that run and move the crystals' steering reward on determinate verdicts.
+ * Idempotent per row (run_outcome_level IS NULL guard). Returns rows stamped.
+ */
+export function stampExecutionRunOutcome(
+  db: DatabaseSync,
+  runId: string,
+  outcome: { label: RunOutcomeLabel; level: number; at?: number },
+): number {
+  const evidence = evidenceForOutcome(outcome.label, outcome.level);
+  const crystals = db
+    .prepare(
+      `SELECT DISTINCT skill_crystal_id FROM skill_executions
+        WHERE run_id = ? AND run_outcome_level IS NULL`,
+    )
+    .all(runId) as Array<{ skill_crystal_id: string }>;
+  const result = db
+    .prepare(
+      `UPDATE skill_executions
+          SET run_outcome_label = ?, run_outcome_level = ?, run_outcome_at = ?, evidence = ?
+        WHERE run_id = ? AND run_outcome_level IS NULL`,
+    )
+    .run(outcome.label, outcome.level, outcome.at ?? Date.now(), evidence, runId);
+  const changes = Number(result.changes);
+  if (changes > 0 && evidence !== "tool") {
+    // Steering moves once per (run, crystal) on a run-level verdict; it used
+    // to move +0.1 per tool call that did not throw.
+    const delta = outcome.label === "pass" ? 0.1 : -0.05;
+    const bump = db.prepare(
+      `UPDATE chunks
+          SET steering_reward = MAX(-1.0, MIN(1.0, COALESCE(steering_reward, 0) + ?))
+        WHERE id = ?`,
+    );
+    for (const c of crystals) {
+      bump.run(delta, c.skill_crystal_id);
+    }
+  }
+  return changes;
+}
+
 export class SkillExecutionTracker {
   private readonly db: DatabaseSync;
 
@@ -23,14 +101,44 @@ export class SkillExecutionTracker {
   startExecution(
     skillCrystalId: string,
     sessionId?: string,
-    provenance?: { toolName?: string; recordedBy?: string },
+    provenance?: {
+      toolName?: string;
+      recordedBy?: string;
+      /** PLAN-45 Phase 1.1: the journal run and tool call this row belongs to. */
+      runId?: string;
+      toolCallId?: string;
+      /** Defaults to "tool": the row proves a tool call, nothing more. */
+      evidence?: ExecutionEvidence;
+    },
   ): string {
     const id = crypto.randomUUID();
     const now = Date.now();
     // PLAN-40 Phase 2a: tool_name + recorded_by give Lane 1 the provenance
     // the adversarial pass proved missing — pre-migration rows are
     // unattributable and excluded from distillation eligibility. Falls back
-    // to the legacy column set on pre-v58 schemas.
+    // to the older column sets on pre-v64 / pre-v58 schemas.
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO skill_executions (id, skill_crystal_id, session_id, started_at, tool_name, recorded_by,
+             run_id, tool_call_id, evidence)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          skillCrystalId,
+          sessionId ?? null,
+          now,
+          provenance?.toolName ?? null,
+          provenance?.recordedBy ?? null,
+          provenance?.runId ?? null,
+          provenance?.toolCallId ?? null,
+          provenance?.evidence ?? "tool",
+        );
+      return id;
+    } catch {
+      /* pre-v64 schema: fall through */
+    }
     try {
       this.db
         .prepare(
@@ -84,21 +192,17 @@ export class SkillExecutionTracker {
         executionId,
       );
 
-    // Update steering reward on the skill crystal
-    const row = this.db
-      .prepare(`SELECT skill_crystal_id FROM skill_executions WHERE id = ?`)
-      .get(executionId) as { skill_crystal_id: string } | undefined;
+    // PLAN-45 Phase 1.1: steering no longer moves here. A completed row is
+    // tool-level evidence; the crystal's steering reward moves when the
+    // run's grounded outcome is stamped (stampExecutionRunOutcome).
+  }
 
-    if (row) {
-      const delta = outcome.success ? 0.1 : -0.05;
-      this.db
-        .prepare(
-          `UPDATE chunks
-           SET steering_reward = MAX(-1.0, MIN(1.0, COALESCE(steering_reward, 0) + ?))
-           WHERE id = ?`,
-        )
-        .run(delta, row.skill_crystal_id);
-    }
+  /** See stampExecutionRunOutcome. */
+  stampRunOutcome(
+    runId: string,
+    outcome: { label: RunOutcomeLabel; level: number; at?: number },
+  ): number {
+    return stampExecutionRunOutcome(this.db, runId, outcome);
   }
 
   /**
@@ -116,10 +220,10 @@ export class SkillExecutionTracker {
   getSkillMetrics(skillCrystalId: string): SkillMetrics {
     const rows = this.db
       .prepare(
-        `SELECT success, reward_score, error_type, execution_time_ms,
+        `SELECT ${RUN_SUCCESS_EXPR} AS success, reward_score, error_type, execution_time_ms,
                 user_feedback, started_at
          FROM skill_executions
-         WHERE skill_crystal_id = ? AND completed_at IS NOT NULL
+         WHERE skill_crystal_id = ? AND completed_at IS NOT NULL AND ${RUN_EVIDENCE_WHERE}
          ORDER BY started_at DESC`,
       )
       .all(skillCrystalId) as Array<{
@@ -204,11 +308,11 @@ export class SkillExecutionTracker {
     }
     const rows = this.db
       .prepare(
-        `SELECT se.success, se.reward_score, se.error_type, se.execution_time_ms,
+        `SELECT ${runSuccessExpr("se")} AS success, se.reward_score, se.error_type, se.execution_time_ms,
                 se.user_feedback, se.started_at
          FROM skill_executions se
          JOIN chunks c ON c.id = se.skill_crystal_id
-         WHERE c.skill_category = ? AND se.completed_at IS NOT NULL
+         WHERE c.skill_category = ? AND se.completed_at IS NOT NULL AND ${runEvidenceWhere("se")}
          ORDER BY se.started_at DESC`,
       )
       .all(trimmed) as Array<{
@@ -280,13 +384,14 @@ export class SkillExecutionTracker {
     const rows = this.db
       .prepare(
         `SELECT c.skill_category AS skill_category,
-                se.success, se.reward_score, se.error_type,
+                ${runSuccessExpr("se")} AS success, se.reward_score, se.error_type,
                 se.execution_time_ms, se.user_feedback, se.started_at
          FROM skill_executions se
          JOIN chunks c ON c.id = se.skill_crystal_id
          WHERE c.skill_category IS NOT NULL
            AND c.skill_category != ''
            AND se.completed_at IS NOT NULL
+           AND ${runEvidenceWhere("se")}
          ORDER BY se.started_at DESC`,
       )
       .all() as Array<{

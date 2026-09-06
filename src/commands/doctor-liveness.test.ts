@@ -21,7 +21,8 @@ function livenessDb(): DatabaseSync {
     );
     CREATE TABLE intervention_records (id TEXT PRIMARY KEY, ts INTEGER, record_json TEXT);
     CREATE TABLE skill_executions (
-      id TEXT PRIMARY KEY, skill_crystal_id TEXT, started_at INTEGER, completed_at INTEGER
+      id TEXT PRIMARY KEY, skill_crystal_id TEXT, started_at INTEGER, completed_at INTEGER,
+      evidence TEXT, run_outcome_label TEXT
     );
     CREATE TABLE peer_reputation (
       peer_pubkey TEXT PRIMARY KEY, skills_received INTEGER DEFAULT 0,
@@ -42,7 +43,7 @@ function seedHealthy(db: DatabaseSync): void {
   db.exec(`
     INSERT INTO chunks VALUES ('sk1', 'skill', 'skill', 'web-search', ${NOW});
     INSERT INTO intervention_records VALUES ('ir1', ${NOW}, '{}');
-    INSERT INTO skill_executions VALUES ('e1', 'sk1', ${NOW - 1000}, ${NOW});
+    INSERT INTO skill_executions VALUES ('e1', 'sk1', ${NOW - 1000}, ${NOW}, NULL, NULL);
     INSERT INTO peer_reputation VALUES ('pk1', 5, 2, 1);
     INSERT INTO curiosity_targets VALUES ('t1', ${NOW - DAY}, ${NOW});
     INSERT INTO curiosity_regions VALUES ('r1');
@@ -146,16 +147,16 @@ describe("inspectArtifactLiveness", () => {
     // Legacy double (30 days old).
     const old = NOW - 30 * DAY;
     db.exec(`
-      INSERT INTO skill_executions VALUES ('e2', 'sk1', ${old}, ${old + 100});
-      INSERT INTO skill_executions VALUES ('e3', 'sk1', ${old}, NULL);
+      INSERT INTO skill_executions VALUES ('e2', 'sk1', ${old}, ${old + 100}, NULL, NULL);
+      INSERT INTO skill_executions VALUES ('e3', 'sk1', ${old}, NULL, NULL, NULL);
     `);
     let results = inspectArtifactLiveness(db, NOW);
     expect(warnsOf(results).some((m) => /doubled/.test(m))).toBe(false);
     expect(results.some((r) => r.level === "info" && /pre-fix era/.test(r.message))).toBe(true);
     // Recent double → warn.
     db.exec(`
-      INSERT INTO skill_executions VALUES ('e4', 'sk1', ${NOW - 1000}, ${NOW});
-      INSERT INTO skill_executions VALUES ('e5', 'sk1', ${NOW - 1000}, NULL);
+      INSERT INTO skill_executions VALUES ('e4', 'sk1', ${NOW - 1000}, ${NOW}, NULL, NULL);
+      INSERT INTO skill_executions VALUES ('e5', 'sk1', ${NOW - 1000}, NULL, NULL, NULL);
     `);
     results = inspectArtifactLiveness(db, NOW);
     expect(warnsOf(results).some((m) => /firing twice per call again/.test(m))).toBe(true);
@@ -167,8 +168,9 @@ describe("inspectArtifactLiveness", () => {
     seedHealthy(db);
     db.exec(`
       UPDATE chunks SET published_at = NULL WHERE id = 'sk1';
-      INSERT INTO skill_executions VALUES ('m1', 'sk1', ${NOW - 5000}, ${NOW - 4000});
-      INSERT INTO skill_executions VALUES ('m2', 'sk1', ${NOW - 3000}, ${NOW - 2000});
+      UPDATE skill_executions SET evidence = 'run', run_outcome_label = 'pass' WHERE id = 'e1';
+      INSERT INTO skill_executions VALUES ('m1', 'sk1', ${NOW - 5000}, ${NOW - 4000}, 'run', 'pass');
+      INSERT INTO skill_executions VALUES ('m2', 'sk1', ${NOW - 3000}, ${NOW - 2000}, 'run', 'pass');
     `);
     const w = warnsOf(inspectArtifactLiveness(db, NOW));
     expect(w.some((m) => /maturity gate but were never published/.test(m))).toBe(true);

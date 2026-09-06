@@ -13,6 +13,7 @@ import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { DreamMode } from "./dream-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { runEvidenceWhere } from "./skill-execution-tracker.js";
 
 const log = createSubsystemLogger("memory/marketplace-intelligence");
 
@@ -144,10 +145,11 @@ export class MarketplaceIntelligence {
           const execRow = this.db
             .prepare(
               `SELECT COUNT(*) as total,
-                      AVG(CASE WHEN se.success = 1 THEN 1.0 ELSE 0.0 END) as success_rate
+                      AVG(CASE WHEN se.run_outcome_label = 'pass' THEN 1.0 ELSE 0.0 END) as success_rate
                FROM skill_executions se
                JOIN chunks c ON c.id = se.skill_crystal_id
-               WHERE c.skill_category = ? AND se.completed_at IS NOT NULL`,
+               WHERE c.skill_category = ? AND se.completed_at IS NOT NULL
+                 AND ${runEvidenceWhere("se")}`,
             )
             .get(category) as { total: number; success_rate: number } | undefined;
 

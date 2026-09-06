@@ -65,6 +65,8 @@ const BASE_METHODS = [
   "skills.evolution.corpus.accept",
   "skills.evolution.corpus.reject",
   "skills.evolution.feedback",
+  "skills.evolution.calibration.export",
+  "skills.evolution.calibration.score",
   "skills.evolution.probe",
   "skills.evolution.routing.repair",
   "skills.incoming.list",

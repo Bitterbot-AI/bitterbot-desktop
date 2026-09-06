@@ -414,6 +414,61 @@ export function registerSkillsCli(program: Command) {
     }
   });
 
+  // PLAN-45 Phase 1.5: blind labeler calibration on real traces.
+  const calibrate = skills
+    .command("calibrate")
+    .description("Calibrate the trace labeler against human labels on real runs");
+  addGatewayClientOptions(
+    calibrate
+      .command("export")
+      .description(
+        "Write a blind set of real traces (blind.jsonl) plus the labeler's hidden key (key.jsonl)",
+      )
+      .option("--count <n>", "Traces to export (1-500)", "100")
+      .option("--seed <seed>", "Deterministic selection seed")
+      .option("--with-judge", "Also record the LLM judge's label (two calls per trace)", false)
+      .option("--json", "Output as JSON", false),
+  ).action(async (opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.calibration.export", opts, {
+        count: Number.parseInt(String(opts.count), 10),
+        ...(opts.seed ? { seed: String(opts.seed) } : {}),
+        withJudge: Boolean(opts.withJudge),
+      })) as { dir: string; count: number; stats: Record<string, unknown> };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      defaultRuntime.log(`wrote ${result.count} traces to ${result.dir}`);
+      defaultRuntime.log(
+        theme.muted("label blind.jsonl without opening key.jsonl; see README.md in that directory"),
+      );
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+  addGatewayClientOptions(
+    calibrate
+      .command("score")
+      .description("Score one or two human label files against the labeler's key")
+      .argument("<dir>", "Calibration set directory (from 'skills calibrate export')")
+      .requiredOption("--labels <file...>", "Label file(s), one or two")
+      .option("--json", "Output as JSON", false),
+  ).action(async (dir: string, opts) => {
+    try {
+      const labels = (Array.isArray(opts.labels) ? opts.labels : [opts.labels]).map(String);
+      const result = (await callGatewayFromCli("skills.evolution.calibration.score", opts, {
+        dir,
+        labels: labels.slice(0, 2),
+      })) as { report: unknown; text: string };
+      defaultRuntime.log(opts.json ? JSON.stringify(result.report, null, 2) : result.text);
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
   addGatewayClientOptions(
     corpus
       .command("reject")

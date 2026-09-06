@@ -366,6 +366,10 @@ export async function handleToolExecutionEnd(
         // hook refuses a2a-task sessions); undefined here made every
         // key-based hook guard dead in production.
         sessionKey: ctx.params.sessionKey,
+        // PLAN-45 Phase 1.1: the run id joins this tool row to the journal
+        // run so the outcome back-fill can stamp a grounded verdict on it.
+        runId: ctx.params.runId,
+        toolCallId,
       })
       .catch((err) => {
         ctx.log.warn(`after_tool_call hook failed: tool=${toolName} error=${String(err)}`);

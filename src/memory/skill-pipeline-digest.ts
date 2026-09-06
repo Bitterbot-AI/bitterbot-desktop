@@ -25,6 +25,7 @@ import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { RUN_EVIDENCE_WHERE, RUN_SUCCESS_EXPR } from "./skill-execution-tracker.js";
 
 const log = createSubsystemLogger("skill-pipeline-digest");
 
@@ -317,10 +318,11 @@ function buildExecutionsSection(db: DatabaseSync, start: number, end: number): E
     row = db
       .prepare(
         `SELECT COUNT(*) as total,
-                SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful,
+                SUM(${RUN_SUCCESS_EXPR}) as successful,
                 AVG(reward_score) as avg_reward
          FROM skill_executions
-         WHERE completed_at IS NOT NULL AND started_at >= ? AND started_at < ?`,
+         WHERE completed_at IS NOT NULL AND started_at >= ? AND started_at < ?
+           AND ${RUN_EVIDENCE_WHERE}`,
       )
       .get(start, end) as typeof row;
   } catch {

@@ -53,11 +53,13 @@ function skill(d: DatabaseSync, id: string, author: string, downloads = 0): void
   ).run(id, `s/${id}`, `h-${id}`, `# ${id}`, JSON.stringify({ peerOrigin: author }), downloads);
 }
 
+/** Directly attributed executions with a stamped run outcome (PLAN-45 Phase 1.1). */
 function runs(d: DatabaseSync, id: string, ok: number, bad = 0): void {
   for (let i = 0; i < ok + bad; i += 1) {
     d.prepare(
-      `INSERT INTO skill_executions (id, skill_crystal_id, started_at, success) VALUES (?, ?, ?, ?)`,
-    ).run(`${id}-${i}`, id, 1, i < ok ? 1 : 0);
+      `INSERT INTO skill_executions (id, skill_crystal_id, started_at, success, evidence, run_outcome_label, run_outcome_level)
+       VALUES (?, ?, ?, ?, 'run', ?, 1)`,
+    ).run(`${id}-${i}`, id, 1, i < ok ? 1 : 0, i < ok ? "pass" : "fail");
   }
 }
 

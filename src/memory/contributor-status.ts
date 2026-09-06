@@ -20,6 +20,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ensureColumn } from "./memory-schema.js";
 import { isMeasuredVerdict, skillContentSha256 } from "./skill-evolution/attestation.js";
+import { RUN_EVIDENCE_WHERE, RUN_SUCCESS_EXPR } from "./skill-execution-tracker.js";
 
 export type ContributorTier =
   | "newcomer"
@@ -184,13 +185,17 @@ export class ContributorStatusLedger {
     // Executions credited to a skill only when the tracker attributed them
     // to that skill directly; rows recorded by the after_tool_call hook
     // are name matches on a built-in tool and are exactly the hijack path
-    // (a peer skill named `browser` inheriting every browser call).
+    // (a peer skill named `browser` inheriting every browser call). That is
+    // an ATTRIBUTION exclusion and stays even now that hook rows can carry
+    // run-level outcomes (PLAN-45 Phase 1.1); on top of it, only run-level
+    // evidence with a determinate verdict counts.
     const execStmt = hasExec
       ? this.db.prepare(
-          `SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END), 0) AS ok
+          `SELECT COUNT(*) AS n, COALESCE(SUM(${RUN_SUCCESS_EXPR}), 0) AS ok
              FROM skill_executions
             WHERE skill_crystal_id = ?
-              AND COALESCE(recorded_by, '') != 'after_tool_call'`,
+              AND COALESCE(recorded_by, '') != 'after_tool_call'
+              AND ${RUN_EVIDENCE_WHERE}`,
         )
       : null;
     const attStmt = hasAtt

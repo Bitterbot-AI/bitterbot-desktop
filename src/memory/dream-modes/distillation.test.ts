@@ -40,18 +40,22 @@ function insertExecution(
   i: number,
   opts: { success?: number; recordedBy?: string | null; feedback?: number | null } = {},
 ): void {
+  // PLAN-45 Phase 1.1: distillation reads run-level evidence; a row's
+  // `success` flag is the tool-level bit and no longer counts by itself.
+  const success = opts.success ?? 1;
   db.prepare(
     `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success,
-       user_feedback, recorded_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       user_feedback, recorded_by, evidence, run_outcome_label, run_outcome_level)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'run', ?, 1)`,
   ).run(
     `e-${skillId}-${i}`,
     skillId,
     NOW + i * 1000,
     NOW + i * 1000 + 100,
-    opts.success ?? 1,
+    success,
     opts.feedback ?? null,
     opts.recordedBy === undefined ? "after_tool_call" : opts.recordedBy,
+    success === 1 ? "pass" : "fail",
   );
 }
 
