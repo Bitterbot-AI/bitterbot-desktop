@@ -102,3 +102,47 @@ carry signal.
   modes over volume.
 - Never edit a task in place once verdicts reference its corpus version —
   add new tasks or start a new file revision instead.
+
+## Real-trace calibration (PLAN-45 Phase 1.5)
+
+The synthetic fixture above checks rule consistency on live run SHAPES. The
+real-trace calibration checks the rules against blind labels on this node's
+actual runs. Set: `bitterbot skills calibrate export --count 100 --seed plan45-p1`
+on 2026-09-06 (858 terminal tool-bearing runs scanned, 400 reconstructed, 380
+eligible; heuristic distribution pass 341 / unknown 32 / fail 5 / env-fail 2;
+sample stratified round-robin across the heuristic's own classes, so the rare
+classes are over-represented relative to the population). Rater A = Claude
+labeling the blind logs (no key, no outcome/Signals/evidence lines); rater B
+(Victor) pending, so inter-rater agreement and consensus scores are not yet
+reported.
+
+| Class    | Precision | Recall | F1   | tp  | fp  | fn  |
+| -------- | --------- | ------ | ---- | --- | --- | --- |
+| pass     | 0.77      | 0.64   | 0.70 | 47  | 14  | 27  |
+| fail     | 0.20      | 0.20   | 0.20 | 1   | 4   | 4   |
+| env-fail | 1.00      | 0.11   | 0.20 | 2   | 0   | 16  |
+| unknown  | 0.06      | 0.67   | 0.11 | 2   | 30  | 1   |
+
+Accuracy 0.52 on the stratified sample (n=100). Confusion, truth (rater A)
+to heuristic: pass -> pass 47 / unknown 24 / fail 3; env-fail -> pass 10 /
+unknown 5 / env-fail 2 / fail 1; fail -> pass 3 / fail 1 / unknown 1;
+unknown -> unknown 2 / pass 1.
+
+What this says about the rules, in order of damage:
+
+1. **Environment failures read as passes.** 10 of 18 rater-A env-fails
+   were labeled `pass`: the agent hit a 402 / SDK bug / timeout, handled
+   it gracefully and ended cleanly, and the "recovered from an environment
+   error" rule scored that a weak pass although the deliverable never
+   arrived. Recovery is not delivery.
+2. **`unknown` is over-assigned.** 24 clean runs with no journaled task
+   (pre-user-stream) or no `complete()` call were labeled `unknown`; a
+   reader judged them evidently completed. Those runs are also the ones the
+   sampler drops, so the loop is discarding usable passes.
+3. `fail` is near chance in both directions at n=5+5; too few to act on.
+
+The rule changes belong to the next labeler revision and must clear the
+synthetic fixture (`labeler.fixture.test.ts`) and improve these numbers on a
+FRESH export (different seed) before they land. Files:
+`~/.bitterbot/skill-wiki/calibration/2026-09-06T03-53-55-899Z/`
+(`blind.jsonl`, `key.jsonl`, `labels-claude.jsonl`).
