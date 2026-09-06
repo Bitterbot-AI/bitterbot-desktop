@@ -10,6 +10,8 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
+import { hashProposalContent } from "../../memory/skill-evolution/proposal-apply.js";
 import { canaryOff, isCanaryOff, readCanaryRegistry } from "./canary-registry.js";
 import { appendImpactEntry, type ImpactTrailOptions } from "./impact-trail.js";
 import { resolveStorageRoots } from "./skill-storage.js";
@@ -17,10 +19,18 @@ import { resolveStorageRoots } from "./skill-storage.js";
 export interface PeerBindingCheck {
   examined: number;
   tampered: string[];
+  /** Pre-4.4 routing-repaired skills re-bound to their repaired body. */
+  rebound: string[];
 }
 
 export function sha256Hex(text: string): string {
   return createHash("sha256").update(Buffer.from(text, "utf-8")).digest("hex");
+}
+
+/** The routing-repair stamp's body hash (routing-repair.ts `bodyHash`): the markdown body without frontmatter. */
+export function repairBodyHash(skillMd: string): string {
+  const parsed = parseSkillMarkdown(skillMd);
+  return hashProposalContent(parsed?.body ?? skillMd);
 }
 
 export async function verifyPeerBindings(
@@ -36,9 +46,9 @@ export async function verifyPeerBindings(
       .filter((d) => d.isDirectory() && /^[a-z0-9][a-z0-9._-]*$/.test(d.name))
       .map((d) => d.name);
   } catch {
-    return { examined: 0, tampered: [] };
+    return { examined: 0, tampered: [], rebound: [] };
   }
-  const result: PeerBindingCheck = { examined: 0, tampered: [] };
+  const result: PeerBindingCheck = { examined: 0, tampered: [], rebound: [] };
   for (const name of names) {
     const dir = path.join(roots.liveRoot, name);
     let expected: string | null = null;
@@ -64,6 +74,29 @@ export async function verifyPeerBindings(
     result.examined += 1;
     const actual = sha256Hex(body);
     const tamper = prov.tamper as { actual?: unknown } | undefined;
+    // A routing repair made before PLAN-45 4.4 rewrote the body and left
+    // the author's original hash on the provenance. The repair stamp
+    // carries its own hash of the repaired body: when it matches, this is
+    // the node's own edit, not a tamper; re-bind and move on (one-time
+    // migration of the pre-4.4 state).
+    const rewrite = prov.routing_rewrite as { bodyHash?: unknown } | undefined;
+    if (actual !== expected && rewrite && rewrite.bodyHash === repairBodyHash(body)) {
+      await fs.writeFile(
+        path.join(dir, ".provenance.json"),
+        JSON.stringify(
+          {
+            ...prov,
+            original_content_hash: prov.original_content_hash ?? expected,
+            content_hash: actual,
+          },
+          null,
+          2,
+        ),
+        "utf-8",
+      );
+      result.rebound.push(name);
+      continue;
+    }
     if (
       actual === expected ||
       isCanaryOff(registry.skills[name]) ||
