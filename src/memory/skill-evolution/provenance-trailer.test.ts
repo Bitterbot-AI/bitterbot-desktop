@@ -93,3 +93,12 @@ describe("provenance trailer", () => {
     expect(rec?.model).toBeUndefined();
   });
 });
+
+describe("PLAN-45 2.8: only tasks-mode verdicts are evidence", () => {
+  it("a records-mode trailer does not parse", () => {
+    const mk = (mode: string) =>
+      `<!-- ${PROVENANCE_TRAILER_MARKER} ${JSON.stringify({ origin: "wiki-evolution", verdict: "accepted", mode, validatedAt: "2026-09-05T00:00:00Z" })} -->`;
+    expect(parseProvenanceTrailer(mk("records"))).toBeNull();
+    expect(parseProvenanceTrailer(mk("tasks"))?.mode).toBe("tasks");
+  });
+});

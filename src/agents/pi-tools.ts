@@ -54,6 +54,7 @@ import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.sc
 import {
   resolveSkillValidationToolPolicy,
   validationExecEnabled,
+  SKILL_VALIDATION_SAFE_BINS,
 } from "./skill-validation-policy.js";
 import {
   type EnforcerContext,
@@ -377,6 +378,13 @@ export function createBitterbotCodingTools(options?: {
           ask: "off" as const,
           scrubEnv: true,
           confineWorkdir: true,
+          // PLAN-45 2.3: the trial's scratch workspace is the shell's home
+          // and temp dir, and the allowlist floor covers the tools the
+          // canonical tasks need (no network clients).
+          scrubEnvOverrides: workspaceRoot
+            ? { HOME: workspaceRoot, TMPDIR: workspaceRoot }
+            : undefined,
+          safeBins: [...SKILL_VALIDATION_SAFE_BINS],
         }
       : { security: "deny" as const, ask: "off" as const }
     : undefined;
@@ -386,7 +394,14 @@ export function createBitterbotCodingTools(options?: {
     security: validationExec?.security ?? options?.exec?.security ?? execConfig.security,
     ask: validationExec?.ask ?? options?.exec?.ask ?? execConfig.ask,
     ...(validationExec && "scrubEnv" in validationExec
-      ? { scrubEnv: true, confineWorkdir: true }
+      ? {
+          scrubEnv: true,
+          confineWorkdir: true,
+          ...(validationExec.scrubEnvOverrides
+            ? { scrubEnvOverrides: validationExec.scrubEnvOverrides }
+            : {}),
+          safeBins: validationExec.safeBins,
+        }
       : {}),
     node: options?.exec?.node ?? execConfig.node,
     pathPrepend: options?.exec?.pathPrepend ?? execConfig.pathPrepend,

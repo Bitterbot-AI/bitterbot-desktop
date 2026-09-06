@@ -198,6 +198,8 @@ export async function acceptDrafts(
         checker: task.checker,
         suite: "capability",
         tags: [...new Set([...(task.tags ?? []), "reviewed"])],
+        ...(task.sourceRunId ? { sourceRunId: task.sourceRunId } : {}),
+        ...(task.sourceIteration ? { sourceIteration: task.sourceIteration } : {}),
         reviewedBy: params.reviewedBy,
         reviewedAt: new Date().toISOString(),
       }),

@@ -38,12 +38,21 @@ export function memoizeTrials(
       modelTag: params.modelTag,
       generatorVersion: CANONICAL_GENERATOR_VERSION,
       trialIndex: ctx.trialIndex,
+      profile: RUNNER_PROFILE,
     };
     const hit = params.cache?.get(key);
     if (hit) {
       params.onHit(variant);
-      return { answer: hit.answer, skillRead: hit.skillRead };
+      // PLAN-45 2.5: a memo hit carries the original cost so the token /
+      // wall-time comparison is not biased toward the cached arm.
+      return {
+        answer: hit.answer,
+        skillRead: hit.skillRead,
+        ...(hit.usage ? { usage: hit.usage } : {}),
+        ...(hit.wallMs !== null ? { wallMs: hit.wallMs } : {}),
+      };
     }
+    const started = Date.now();
     const result = await runTask(task, variant, ctx);
     const r = typeof result === "string" ? { answer: result } : result;
     if (r.answer.trim().length > 0) {
@@ -51,6 +60,8 @@ export function memoizeTrials(
         score: 0, // the validator re-scores from the answer
         answer: r.answer,
         skillRead: typeof r.skillRead === "boolean" ? r.skillRead : null,
+        usage: r.usage ?? null,
+        wallMs: r.wallMs ?? Date.now() - started,
       });
     }
     return result;
@@ -66,6 +77,14 @@ export const HOLD_BACKOFF_VERDICTS = new Set([
   "insufficient-evidence",
   "insufficient-trials",
 ]);
+/** PLAN-45 2.5 (adversarial M1): the same body costs the same tokens tomorrow; only a content change re-measures. */
+export const CONTENT_CHANGE_VERDICTS = new Set(["cost-exceeded"]);
+/**
+ * PLAN-45 2.3 (adversarial M6): part of the memo key. Bump when the trial
+ * runner or the validation prompt shape changes so cached trials from the
+ * previous shape are never replayed against fresh ones.
+ */
+export const RUNNER_PROFILE = "runtime-pathway/full-prompt/v2";
 
 /** Remove trial dirs left behind by a crash (older than a day). */
 export async function sweepStaleTrials(trailOpts: ImpactTrailOptions): Promise<void> {

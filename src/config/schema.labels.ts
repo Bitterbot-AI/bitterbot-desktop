@@ -13,6 +13,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "skills.evolution.cadenceHours": "Skill Evolution Cadence (hours)",
   "skills.evolution.validationMode": "Skill Evolution Validation Mode",
   "skills.evolution.trialsPerTask": "Skill Evolution Trials per Task",
+  "skills.evolution.maxTokenDelta": "Skill Evolution Max Token Delta",
   "skills.evolution.maxProposerTurns": "Skill Proposer Turn Cap",
   "skills.evolution.maxActiveEvolved": "Max Active Evolved Skills",
   "skills.evolution.judgeModel": "Skill Evolution Judge Model",

@@ -90,6 +90,21 @@ exactly where the sign test can detect improvement. Retire capability
 tasks that drift above roughly 90% incumbent pass rate; they no longer
 carry signal.
 
+## Canonical capability families (PLAN-45 Phase 2.1)
+
+`canonical-capability.ts` adds nine generator families with `suite:
+"capability"` to the seeded canonical corpus, so a fresh node reaches tasks
+mode with no operator review: `cap-ledger-sum`, `cap-log-triage`,
+`cap-config-diff`, `cap-dep-depth`, `cap-regex-valid`,
+`cap-multi-file-rename`, `cap-csv-filter-sum`, `cap-json-path`,
+`cap-date-window` (a script-fix family was dropped: it needs an interpreter,
+which the validation shell deliberately does not allow). Each instance carries its input files
+(`files`), written into the trial workspace, and a `FINAL:` checker whose
+truth is recomputed from those files in the test sweep. The gate drops, per
+model, the families whose incumbent pass rate sits outside 20-80% after six
+observed trials (never below five survivors). The exemplar file now holds 24
+rows (15 regression + 9 capability); the SHA pin covers all of them.
+
 ## Curation guidance
 
 - **Watch the ceiling effect.** The seed tasks are regression protection: a

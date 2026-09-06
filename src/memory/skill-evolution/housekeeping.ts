@@ -122,6 +122,7 @@ export async function runHousekeeping(
     ...(storeOpts.configDir ? { storeOpts } : {}),
     ...(deps.validationMode ? { mode: deps.validationMode } : {}),
     ...(typeof deps.trialsPerTask === "number" ? { trialsPerTask: deps.trialsPerTask } : {}),
+    ...(typeof deps.maxTokenDelta === "number" ? { maxTokenDelta: deps.maxTokenDelta } : {}),
     ...(deps.agentTurn ? { agentTurn: deps.agentTurn } : {}),
     ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
     ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),
@@ -145,6 +146,7 @@ export async function runHousekeeping(
           keyPair: deps.attestKeyPair,
           ...(storeOpts.configDir ? { storeOpts } : {}),
           ...(typeof deps.trialsPerTask === "number" ? { trialsPerTask: deps.trialsPerTask } : {}),
+          ...(typeof deps.maxTokenDelta === "number" ? { maxTokenDelta: deps.maxTokenDelta } : {}),
           ...(deps.modelTag ? { model: deps.modelTag } : {}),
           ...(deps.nodePubkey ? { nodePubkey: deps.nodePubkey } : {}),
         });

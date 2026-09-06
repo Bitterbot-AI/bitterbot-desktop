@@ -29,9 +29,10 @@ Journaled runs (user prompt, tool outcomes, lifecycle)
                 → receiver quarantine for review
 ```
 
-Nothing is promoted on model opinion: records mode (LLM-judged traces) can no
-longer promote, and tasks mode needs at least five reviewed capability tasks.
-See "Skill evolution" below for each module.
+Nothing is promoted on model opinion: the LLM judge over held-out traces is
+a diagnostic only, and tasks mode is reachable on a fresh node through the
+canonical capability families (PLAN-45 Phase 2). See "Skill evolution"
+below for each module.
 
 ### What an execution row means (PLAN-45 Phase 1)
 
@@ -63,6 +64,66 @@ Each live skill directory also carries a derived `.evidence.json`
 models it was validated on and read by, description repairs, publish time,
 and the lineage's gate history. `skills.evolution.status` returns them as
 `evidence`; nothing downstream should compute skill quality any other way.
+
+### The gate after PLAN-45 Phase 2
+
+A fresh node reaches tasks mode with no operator input: the canonical corpus
+ships nine CAPABILITY generator families (`canonical-capability.ts`: ledger
+sums, log triage, config diffs, dependency depth, identifier validity,
+multi-file rename, CSV filters, JSON paths, date windows) next to the
+fifteen regression templates. Each family is `template(seed) ->
+(files, prompt, truth)`; the runner writes the files into the trial
+workspace, the checker is the hardened `FINAL:` compare, and the instance
+changes with the daily seed. Per model, the gate keeps only the families the
+incumbent passes between 20% and 80% of the time (trial-cache `task_stats`),
+so the suite that feeds the test carries information for that model.
+
+The gate itself:
+
+- Regression suite first, in full, with an immediate confirmation round; a
+  confirmed regression rejects before any capability rollout is spent.
+- A capability WIN counts for the candidate only when the agent read the
+  skill in that trial (`credited`); a candidate that passed without opening
+  the skill is a tie, never a loss; ambient model capability is never the
+  skill's. The node's own grown tasks run first and in full; the sequential
+  test may stop only the canonical remainder. Trigger precision is measured
+  on the grown tasks when any exist, else on the canonical families, and
+  the description repair never runs against the public families alone.
+- A Wald SPRT (p1 0.8, beta 0.2) over the running discordant wins and losses
+  stops the capability loop early on decisive evidence; at truncation the
+  exact one-sided sign test decides at the spent alpha.
+- Alpha spending: a lineage (skill name, counted from the provenance trail)
+  gets three DECISIVE attempts at 0.05, 0.025 and 0.0125, never tighter than
+  the suite can reach; holds for insufficient evidence, cost, an unopened
+  skill or the budget spend nothing. A description repair re-keys the
+  content but never buys a fourth attempt. Past the cap the lineage is
+  closed (`lineage-exhausted`).
+- Cost is a gate dimension: an accepted candidate whose capability-suite
+  tokens exceed the incumbent's by more than `skills.evolution.maxTokenDelta`
+  (default 0.5) holds as `cost-exceeded` until its body changes. Memo hits
+  replay their original cost so the cached arm is not free.
+- Train/test split: a mined task carries the run and iteration it came from;
+  a proposal whose evidence read that run, or that was proposed in that
+  iteration, is never gated on it (`excludedTasks` on the verdict).
+- Rejected-edit memory: every measured verdict (held or rejected) lands on
+  the provenance trail with its statistics and the head of the content; the
+  proposer's prompt opens with `## Previously tried` for the lineages in
+  play, and an identical re-proposal is refused with the date it lost.
+- `validationMode: "records"` is deprecated: the paired LLM judge over
+  held-out traces runs only as a diagnostic (`recordsJudge` on the meta) and
+  can neither promote nor reject; tasks mode without an executor holds.
+- Validation shells are on by default (`validationTools.exec`), with
+  approvals off, a scrubbed environment whose HOME and TMPDIR are the scratch
+  workspace, and an approval-free allowlist of text utilities with no
+  interpreters and no network clients (the allowlist rule also refuses
+  arguments naming existing files, so task files are read with the read
+  tool); the node's own candidate is validated under the production prompt
+  shape (peer skills keep the hermetic minimal prompt). Host egress is not
+  isolated: a candidate can still reach absolute paths and the network
+  through anything the operator's own exec rules allow; PLAN-45 Phase 4
+  records and refuses undeclared egress. A production runner without the
+  event journal holds (`runner-unobservable`) because skill reads cannot be
+  observed.
 
 ### Calibrating the labeler on real traces (PLAN-45 Phase 1.5)
 
@@ -482,20 +543,25 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   path from staged proposal to live skill, and the answer to "how do we
   know a generated skill is good": always comparative, always strict.
   **Mode (D-2):** `validation-mode.ts` resolves the EFFECTIVE mode — an
-  explicit `skills.evolution.validationMode` wins; otherwise `tasks` once
-  the effective corpus carries ≥ 5 reviewed capability tasks, else
-  `records`. **Tasks mode** (`validate-tasks.ts`, `task-runner.ts`,
-  `task-corpus.ts`, `canonical-corpus.ts`): real agent turns over the
-  fresh-seeded canonical REGRESSION suite (15 templates, three of them
+  `tasks` whenever the effective corpus carries ≥ 5 capability tasks, which
+  the canonical capability families guarantee on every node (PLAN-45
+  Phase 2); an explicit `records` only adds the diagnostic judge. **Tasks
+  mode** (`validate-tasks.ts`, `task-runner.ts`, `task-corpus.ts`,
+  `canonical-corpus.ts`, `canonical-capability.ts`): real agent turns over
+  the fresh-seeded canonical REGRESSION suite (15 templates, three of them
   `safety`-tagged: embedded-instruction resistance, a phishing refusal, a
-  plain echo — one observed failure there rejects with no re-check) plus
-  the node's reviewed CAPABILITY suite. The candidate arm is the RUNTIME
+  plain echo — one observed failure there rejects with no re-check), the
+  canonical CAPABILITY families (9, calibrated per model), and the node's
+  reviewed grown CAPABILITY suite; see "The gate after PLAN-45 Phase 2"
+  above for the sequential test, alpha spending, credited wins, cost gate
+  and provenance split. The candidate arm is the RUNTIME
   PATHWAY (D-3): the prompt carries only an `<available_skills>` index
   entry plus the runtime's "read at most one SKILL.md" rule; the body sits
   in a per-trial scratch workspace and the journal records whether the
   agent actually read it. Trigger precision is gated: candidate read rate
-  < 0.5 on capability tasks HOLDs (`never-triggered`), > 0.5 on regression
-  tasks REJECTs (`over-triggered`). Validation sessions
+  < 0.5 on the grown capability tasks (or the canonical families when no
+  grown task exists) HOLDs (`never-triggered`), > 0.5 on regression tasks
+  REJECTs (`over-triggered`). Validation sessions
   (`agent:<id>:skill-evolve-val-*`) run under a dedicated workspace-scoped
   tool allow-list (D-4, `skill-validation-policy.ts`: read/write/edit/
   apply_patch, `tools.fs.workspaceOnly` forced; `exec`/`process` only with

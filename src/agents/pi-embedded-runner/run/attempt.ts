@@ -13,6 +13,7 @@ import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import {
   isA2aTaskSessionKey,
   isSkillEvolveValidationSessionKey,
+  isSkillEvolvePeerValidationSessionKey,
   isCronSessionKey,
   isSubagentSessionKey,
   normalizeAgentId,
@@ -450,8 +451,17 @@ export async function runEmbeddedAttempt(
     const remoteTaskTurn =
       isA2aTaskSessionKey(params.sessionKey) ||
       isSkillEvolveValidationSessionKey(params.sessionKey);
+    // PLAN-45 2.3: the node's OWN candidate is validated under the
+    // production prompt shape (all static sections, the skills index) so
+    // the gate measures the pathway the runtime uses; the private,
+    // nondeterministic blocks (memory, recall, canonical facts, brief) stay
+    // off through the remoteTaskTurn guards below. Peer skills keep the
+    // hermetic minimal prompt (PLAN-43).
+    const ownValidationTurn =
+      isSkillEvolveValidationSessionKey(params.sessionKey) &&
+      !isSkillEvolvePeerValidationSessionKey(params.sessionKey);
     const promptMode =
-      remoteTaskTurn ||
+      (remoteTaskTurn && !ownValidationTurn) ||
       isSubagentSessionKey(params.sessionKey) ||
       isCronSessionKey(params.sessionKey)
         ? "minimal"

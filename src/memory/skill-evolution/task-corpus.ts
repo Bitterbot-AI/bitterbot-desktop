@@ -25,7 +25,11 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 const log = createSubsystemLogger("skill-evolution/task-corpus");
 
 export const CORPUS_FILENAME = "task-corpus.jsonl";
-export const MAX_CORPUS_TASKS = 30;
+/** PLAN-45 Phase 2.1: 15 regression + 10 canonical capability + up to 15 grown. */
+export const MAX_CORPUS_TASKS = 40;
+/** Per-task workspace files: count and total bytes (PLAN-45 Phase 2.1). */
+export const MAX_TASK_FILES = 20;
+export const MAX_TASK_FILE_BYTES = 64 * 1024;
 export const DEFAULT_TASK_TIMEOUT_MS = 120_000;
 
 export interface TaskChecker {
@@ -56,6 +60,21 @@ export interface CorpusTask {
    *   sometimes fails; the sign-test promotion signal lives here.
    */
   suite?: "regression" | "capability";
+  /**
+   * PLAN-45 Phase 2.1: files the runner writes into the trial workspace
+   * before the turn (relative path -> content). Only generated canonical
+   * tasks and operator-reviewed tasks carry them; the miner never emits
+   * them.
+   */
+  files?: Record<string, string>;
+  /**
+   * PLAN-45 Phase 2.2: the journal run a mined task was drafted from and
+   * the evolution iteration that mined it. A proposal whose evidence
+   * includes that run, or that was proposed in that iteration, is never
+   * gated on this task (train/test split).
+   */
+  sourceRunId?: string;
+  sourceIteration?: string;
 }
 
 export interface TaskCorpus {
@@ -66,6 +85,37 @@ export interface TaskCorpus {
 
 export function corpusPath(opts: ImpactTrailOptions = {}): string {
   return path.join(resolveWikiDir(opts), CORPUS_FILENAME);
+}
+
+/** Relative, normalized, no traversal, bounded count and size. */
+export function parseTaskFiles(value: unknown): Record<string, string> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const out: Record<string, string> = {};
+  let bytes = 0;
+  for (const [rawPath, content] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof content !== "string") {
+      return null;
+    }
+    const p = path.posix.normalize(rawPath.replace(/\\/g, "/"));
+    if (
+      p.startsWith("/") ||
+      p.startsWith("../") ||
+      p === ".." ||
+      p === "." ||
+      p.includes("\0") ||
+      /^[A-Za-z]:/.test(p)
+    ) {
+      return null;
+    }
+    bytes += Buffer.byteLength(content, "utf-8");
+    if (bytes > MAX_TASK_FILE_BYTES || Object.keys(out).length >= MAX_TASK_FILES) {
+      return null;
+    }
+    out[p] = content;
+  }
+  return out;
 }
 
 function parseChecker(value: unknown): TaskChecker | null {
@@ -114,7 +164,10 @@ export function parseCorpusTasks(raw: string, opts: { maxTasks?: number } = {}):
       const id = typeof entry.id === "string" ? entry.id.trim() : "";
       const prompt = typeof entry.prompt === "string" ? entry.prompt : "";
       const checker = parseChecker(entry.checker);
-      if (!id || !prompt || !checker || seen.has(id)) {
+      const files = entry.files !== undefined ? parseTaskFiles(entry.files) : undefined;
+      if (!id || !prompt || !checker || seen.has(id) || files === null) {
+        // An unparseable `files` block makes the task unanswerable in both
+        // arms (a tie that pollutes calibration): drop the line, never the field.
         log.debug(`skipping malformed/duplicate corpus line: ${trimmed.slice(0, 80)}`);
         continue;
       }
@@ -131,6 +184,13 @@ export function parseCorpusTasks(raw: string, opts: { maxTasks?: number } = {}):
           : {}),
         ...(entry.suite === "regression" || entry.suite === "capability"
           ? { suite: entry.suite }
+          : {}),
+        ...(files ? { files } : {}),
+        ...(typeof entry.sourceRunId === "string" && entry.sourceRunId.length <= 128
+          ? { sourceRunId: entry.sourceRunId }
+          : {}),
+        ...(typeof entry.sourceIteration === "string" && entry.sourceIteration.length <= 64
+          ? { sourceIteration: entry.sourceIteration }
           : {}),
       });
       if (tasks.length >= maxTasks) {

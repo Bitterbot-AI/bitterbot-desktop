@@ -652,8 +652,11 @@ export const BitterbotSchema = z
             validationMode: z
               .union([z.literal("records"), z.literal("tasks")])
               .optional()
-              .describe("Default: records"),
+              .describe(
+                "Default: tasks ('records' is deprecated: diagnostic only, never promotes)",
+              ),
             trialsPerTask: z.number().int().min(2).max(10).optional().describe("Default: 3"),
+            maxTokenDelta: z.number().min(0).max(5).optional().describe("Default: 0.5"),
             judgeModel: z.string().optional().describe("Default: dream model, else cheap model"),
             proposerModel: z
               .string()
@@ -669,7 +672,7 @@ export const BitterbotSchema = z
             validationTools: z
               .object({
                 alsoAllow: z.array(z.string()).optional(),
-                exec: z.boolean().optional().describe("Default: false"),
+                exec: z.boolean().optional().describe("Default: true (PLAN-45 D-2)"),
               })
               .strict()
               .optional()

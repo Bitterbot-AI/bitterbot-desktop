@@ -27,9 +27,12 @@ export function resolveEffectiveValidationMode(
   explicit: ValidationMode | undefined,
   capabilityTaskCount: number,
 ): { mode: ValidationMode; source: "config" | "auto" } {
-  if (explicit) {
-    return { mode: explicit, source: "config" };
+  if (explicit === "tasks") {
+    return { mode: "tasks", source: "config" };
   }
+  // PLAN-45 2.8 (D-7): explicit "records" no longer selects a promoting
+  // gate. It is honoured only as "run the diagnostic judge"; the auto rule
+  // below still decides whether tasks mode is reachable.
   return {
     mode: capabilityTaskCount >= TASKS_MODE_MIN_CAPABILITY_TASKS ? "tasks" : "records",
     source: "auto",

@@ -48,15 +48,22 @@ async function isDuplicateOfRejected(
   skillName: string,
   contentHash: string,
   trailOpts: ImpactTrailOptions,
-): Promise<boolean> {
+): Promise<{ ts: number | null; detail: string } | null> {
   const trail = await readProvenance(trailOpts);
-  return trail.some(
+  const prior = trail.find(
     (e) =>
       e.source === "evolution" &&
       e.skillName === skillName &&
       e.contentHash === contentHash &&
       (e.verdict === "rejected" || e.verdict === "gate-failed"),
   );
+  if (!prior) {
+    return null;
+  }
+  return {
+    ts: typeof prior.ts === "number" ? prior.ts : null,
+    detail: typeof prior.detail === "string" ? prior.detail.slice(0, 160) : "",
+  };
 }
 
 /**
@@ -217,14 +224,15 @@ export async function applyProposal(
   }
 
   const contentHash = hashProposalContent(content);
-  if (await isDuplicateOfRejected(proposal.name, contentHash, trailOpts)) {
+  const prior = await isDuplicateOfRejected(proposal.name, contentHash, trailOpts);
+  if (prior) {
     await appendImpactEntry(
       {
         source: "evolution",
         action: proposal.action,
         skillName: proposal.name,
         verdict: "gate-failed",
-        detail: "identical content was previously rejected; not re-proposing",
+        detail: `identical content was previously rejected${prior.ts ? ` on ${new Date(prior.ts).toISOString().slice(0, 10)}` : ""}${prior.detail ? ` (${prior.detail})` : ""}; not re-proposing`,
         contentHash,
         ...(deps.iteration ? { iteration: deps.iteration } : {}),
       },

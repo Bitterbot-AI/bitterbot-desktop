@@ -32,6 +32,7 @@ import {
 import { runSkillGate } from "../../agents/skills/skill-gate.js";
 import { parseSkillMarkdown } from "../skill-curator-judge.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
+import { relevantCapabilityTasks } from "./validate-tasks.js";
 
 export const MAX_DESCRIPTION_REPAIRS = 2;
 /** Longest run of consecutive words a rewording may share with a task prompt (adversarial M4). */
@@ -281,7 +282,11 @@ export async function repairDescription(
   const fm = (parsed?.frontmatter ?? {}) as Record<string, unknown>;
   const from = typeof fm.description === "string" ? fm.description : "";
   const body = parsed?.body ?? "";
-  const capabilityTasks = deps.tasks.filter((t) => t.suite !== "regression");
+  // PLAN-45 Phase 2.1: the node's own grown tasks are what an evolved skill
+  // was written for; canonical capability families are generic and count
+  // only when no grown task exists (a curl skill must not be judged on
+  // whether it fires for a ledger-sum task).
+  const capabilityTasks = relevantCapabilityTasks(deps.tasks);
   const regressionTasks = deps.tasks
     .filter((t) => t.suite === "regression")
     .slice(0, MAX_PROXY_REGRESSION_TASKS);

@@ -50,12 +50,20 @@ describe("canonical corpus (generator-seeded)", () => {
     expect(a.tasks.map((t) => t.id)).toEqual(c.tasks.map((t) => t.id));
   });
 
-  it("every task is regression-suite with a hardened final checker", () => {
-    for (const task of generateCanonicalCorpus(3).tasks) {
-      expect(task.suite).toBe("regression");
+  it("every task is regression or canonical-capability with a hardened final checker", () => {
+    const corpus = generateCanonicalCorpus(3);
+    for (const task of corpus.tasks) {
       expect(task.checker.kind).toBe("final");
       expect(task.prompt).toContain('"FINAL: <answer>"');
+      if (task.suite !== "regression") {
+        // PLAN-45 Phase 2.1: capability families carry workspace files and the canonical tag.
+        expect(task.tags).toContain("canonical");
+        expect(task.tags).toContain("capability");
+        expect(Object.keys(task.files ?? {}).length).toBeGreaterThan(0);
+      }
     }
+    expect(corpus.tasks.filter((t) => t.suite === "regression")).toHaveLength(15);
+    expect(corpus.tasks.filter((t) => t.suite === "capability")).toHaveLength(9);
   });
 
   it("generator ground truth is CORRECT across a seed sweep", () => {
@@ -108,7 +116,7 @@ describe("canonical corpus (generator-seeded)", () => {
     const configDir = await fs.mkdtemp(path.join(os.tmpdir(), "corpus-fresh-"));
     const corpus = await loadEffectiveCorpus({ configDir }, 42);
     expect(corpus).not.toBeNull();
-    expect(corpus!.tasks.length).toBe(15);
+    expect(corpus!.tasks.length).toBe(24);
     expect(corpus!.version).toBe(`canonical-g${CANONICAL_GENERATOR_VERSION}-s42`);
     expect(loadCanonicalCorpus(42)!.tasks[0]!.prompt).toBe(corpus!.tasks[0]!.prompt);
   });
@@ -127,7 +135,7 @@ describe("canonical corpus (generator-seeded)", () => {
       "utf-8",
     );
     const corpus = await loadEffectiveCorpus({ configDir }, 5);
-    expect(corpus!.tasks.length).toBe(16);
+    expect(corpus!.tasks.length).toBe(25);
     const arith = corpus!.tasks.find((t) => t.id === "arith-basic")!;
     expect(arith.suite).toBe("regression"); // the canonical one survived
     expect(arith.prompt).not.toContain("1+1");
@@ -151,7 +159,7 @@ describe("canonical corpus (generator-seeded)", () => {
       "utf-8",
     );
     const corpus = await loadEffectiveCorpus({ configDir });
-    expect(corpus!.tasks.length).toBe(30);
-    expect(corpus!.tasks.filter((t) => !t.id.startsWith("grown-")).length).toBe(15);
+    expect(corpus!.tasks.length).toBe(40);
+    expect(corpus!.tasks.filter((t) => !t.id.startsWith("grown-")).length).toBe(24);
   });
 });

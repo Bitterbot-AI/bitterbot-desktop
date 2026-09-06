@@ -89,6 +89,8 @@ export type ExecToolDefaults = {
   commandRulesAllow?: string[];
   /** PLAN-44: run with a minimal environment (PATH/HOME/LANG/TERM only), never the gateway's secrets. */
   scrubEnv?: boolean;
+  /** PLAN-45 2.3: values that replace the scrubbed HOME/TMPDIR (a validation trial's scratch workspace). */
+  scrubEnvOverrides?: Record<string, string>;
   /** PLAN-44: ignore a `workdir` outside `cwd`; the command runs inside `cwd`. */
   confineWorkdir?: boolean;
 };
@@ -325,6 +327,7 @@ export function createExecTool(
             LANG: process.env.LANG,
             TERM: process.env.TERM,
             TMPDIR: process.env.TMPDIR,
+            ...defaults.scrubEnvOverrides,
           })
         : coerceEnv(process.env);
 

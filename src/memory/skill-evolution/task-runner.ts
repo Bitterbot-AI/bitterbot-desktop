@@ -252,6 +252,19 @@ export interface RuntimePathwayDeps {
   indexInPrompt?: boolean;
 }
 
+/** Write `task.files` under the workspace; refuses anything outside it. */
+export async function writeTaskFiles(workspaceDir: string, task: CorpusTask): Promise<void> {
+  const root = path.resolve(workspaceDir);
+  for (const [rel, content] of Object.entries(task.files ?? {})) {
+    const target = path.resolve(root, rel);
+    if (target !== root && !target.startsWith(root + path.sep)) {
+      throw new Error(`task ${task.id}: file path escapes the workspace: ${rel}`);
+    }
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, content, "utf-8");
+  }
+}
+
 export function trialsRoot(opts: ImpactTrailOptions = {}): string {
   return path.join(resolveWikiDir(opts), TRIALS_SUBDIR);
 }
@@ -279,6 +292,9 @@ export function makeRuntimePathwayRunner(deps: RuntimePathwayDeps): TaskRunnerFn
     const workspaceDir = path.join(trialDir, "workspace");
     await fs.rm(trialDir, { recursive: true, force: true });
     await fs.mkdir(workspaceDir, { recursive: true });
+    // PLAN-45 Phase 2.1: the task's generated files land in the workspace
+    // before the turn (paths were validated at parse time; re-checked here).
+    await writeTaskFiles(workspaceDir, task);
     let skill: { name: string; description: string; location: string } | null = null;
     if (arm) {
       const fm = parseSkillFrontmatter(arm.content);

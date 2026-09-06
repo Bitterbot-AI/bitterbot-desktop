@@ -362,3 +362,52 @@ describe("proposer sees the live index (PLAN-44 Phase 4b)", () => {
     }
   });
 });
+
+describe("PLAN-45 2.6 (I11): the proposer sees what the gate already measured", () => {
+  it("prepends a Previously tried block with the lineage's last verdicts", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "proposer-mem-"));
+    try {
+      const { appendImpactEntry } = await import("../../agents/skills/impact-trail.js");
+      await appendImpactEntry(
+        {
+          source: "evolution",
+          action: "validate",
+          skillName: "curl-timeout-guard",
+          verdict: "rejected",
+          detail: "tasks: no-improvement; incumbent 60% vs candidate 55% (...)",
+          contentHash: "deadbeefcafe0001",
+          diff: "---\nname: curl-timeout-guard\ndescription: Bound every curl\n---\nbody",
+          stats: {
+            pValue: 0.81,
+            wins: 2,
+            losses: 3,
+            meanDelta: -0.07,
+            readRate: 0.8,
+            tokenDelta: 0.1,
+          },
+        },
+        { configDir: tmpDir },
+      );
+      const llm = scripted([
+        JSON.stringify({ tool: "finish", proposal: { action: "no_action", reason: "nothing" } }),
+      ]);
+      await runSkillProposer({
+        llmCall: llm.call,
+        samples: SAMPLES,
+        storeOpts: { configDir: tmpDir },
+        maxTurns: 2,
+      });
+      const first = llm.prompts[0] ?? "";
+      expect(first).toContain("## Previously tried");
+      expect(first).toContain("### curl-timeout-guard (1 measured attempt");
+      expect(first).toContain(
+        "REJECTED no-improvement (delta -0.07, p=0.810, w2/l3, reads 0.80, tokens +10%); content deadbeef",
+      );
+      expect(first).toContain(
+        "<untrusted>--- name: curl-timeout-guard description: Bound every curl --- body</untrusted>",
+      );
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});

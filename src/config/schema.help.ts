@@ -18,9 +18,11 @@ export const FIELD_HELP: Record<string, string> = {
   "skills.evolution.cadenceHours":
     "Minimum hours between evolution iterations (one iteration = sample traces, consolidate the wiki, propose at most one skill change, settle the gate). Default 24; floor 1.",
   "skills.evolution.validationMode":
-    "How a proposed skill is validated before promotion. 'records' scores held-out past traces with an LLM judge (cheap, advisory). 'tasks' runs real agent turns over the canonical regression suite plus reviewed capability tasks and gates on an exact sign test (the paper's design). Default 'records' until capability tasks are reviewed.",
+    "How a proposed skill is validated before promotion. 'tasks' runs real agent turns over the canonical regression + capability suites plus reviewed capability tasks and gates on an exact sign test with alpha spending (the gate). 'records' is deprecated: the LLM judge over held-out traces is kept as a diagnostic and can neither promote nor reject. Default 'tasks'.",
   "skills.evolution.trialsPerTask":
     "Tasks-mode trials per task per arm; per-task scores are fractional pass rates. Minimum 2, maximum 10. Default 3.",
+  "skills.evolution.maxTokenDelta":
+    "Cost gate: a candidate whose capability-suite tokens exceed the incumbent's by more than this ratio (candidate/incumbent - 1) is held as cost-exceeded even when it wins. Default 0.5.",
   "skills.evolution.maxProposerTurns":
     "ReAct turn cap for the Skill Proposer (read wiki, read traces, finish). Default 24.",
   "skills.evolution.maxActiveEvolved":
@@ -36,7 +38,7 @@ export const FIELD_HELP: Record<string, string> = {
   "skills.evolution.maturityDays":
     "Days a validated evolved skill must survive locally before P2P publish. Default 3.",
   "skills.evolution.validationTools.exec":
-    "Give skill-validation rollouts a shell (exec/process) with approvals off, a scrubbed environment and a workdir confined to the scratch workspace. Off by default: candidate skills are model-authored from untrusted traces. Needed for the exec-based canonical tasks.",
+    "Give skill-validation rollouts a shell (exec/process) with approvals off, a scrubbed environment (HOME/TMPDIR inside the scratch workspace), a workdir confined to it and a validation-specific binary allowlist with no network clients. On by default (PLAN-45 D-2) so the gate measures the pathway the runtime uses; set false to keep validation shell-less.",
   "skills.evolution.validationBudgetMinutes":
     "Wall-clock budget for one tasks-mode validation run (real agent turns over the corpus). Past it the proposal is held and retried next iteration, reusing cached incumbent results. Default 45.",
   "skills.evolution.descriptionRepair":

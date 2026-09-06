@@ -211,7 +211,7 @@ describe("collectEvolutionStatus", () => {
       expect(status.corpus).toMatchObject({
         present: true,
         version: expect.stringMatching(/^canonical-/),
-        taskCount: 15,
+        taskCount: 24,
       });
       expect(status.stagedProposals).toEqual([]);
     } finally {

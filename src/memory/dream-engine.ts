@@ -2757,6 +2757,7 @@ export class DreamEngine {
       ...(cfg?.maxProposerTurns ? { maxProposerTurns: cfg.maxProposerTurns } : {}),
       ...(cfg?.validationMode ? { validationMode: cfg.validationMode } : {}),
       ...(typeof cfg?.trialsPerTask === "number" ? { trialsPerTask: cfg.trialsPerTask } : {}),
+      ...(typeof cfg?.maxTokenDelta === "number" ? { maxTokenDelta: cfg.maxTokenDelta } : {}),
       ...(typeof cfg?.validationBudgetMinutes === "number"
         ? { validationBudgetMinutes: cfg.validationBudgetMinutes }
         : {}),

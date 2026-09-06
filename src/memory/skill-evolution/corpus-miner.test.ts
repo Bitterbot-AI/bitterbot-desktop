@@ -27,7 +27,7 @@ describe("mineCapabilityTasks", () => {
   it("appends valid drafts to the pending file, never the live corpus", async () => {
     const configDir = await tmpConfigDir();
     const result = await mineCapabilityTasks({
-      failingTraceTexts: ["trace: agent failed a date computation"],
+      failingTraces: [{ text: "trace: agent failed a date computation" }],
       llmCall: async () => GOOD_DRAFT,
       existingIds: new Set(["arith-basic"]),
       storeOpts: { configDir },
@@ -69,7 +69,7 @@ describe("mineCapabilityTasks", () => {
     ];
     let call = 0;
     const result = await mineCapabilityTasks({
-      failingTraceTexts: ["trace-a", "trace-b"],
+      failingTraces: [{ text: "trace-a" }, { text: "trace-b" }],
       llmCall: async () => perTrace[call++]!.join("\n"),
       existingIds: new Set(["arith-basic"]),
       storeOpts: { configDir },
@@ -98,7 +98,7 @@ describe("mineCapabilityTasks", () => {
       mk("ok-1", "Compute 2+2 and report the number."),
     ].join("\n");
     const result = await mineCapabilityTasks({
-      failingTraceTexts: ["trace"],
+      failingTraces: [{ text: "trace" }],
       llmCall: async () => drafts,
       existingIds: new Set(),
       storeOpts: { configDir },
@@ -123,7 +123,7 @@ describe("mineCapabilityTasks", () => {
     await fs.writeFile(path.join(wikiDir, "task-corpus-pending.jsonl"), `${full}\n`);
     let called = false;
     const result = await mineCapabilityTasks({
-      failingTraceTexts: ["trace"],
+      failingTraces: [{ text: "trace" }],
       llmCall: async () => {
         called = true;
         return GOOD_DRAFT;
@@ -143,7 +143,7 @@ describe("mineCapabilityTasks", () => {
       checker: { kind: "final", value: "FINAL: 4" },
     });
     await mineCapabilityTasks({
-      failingTraceTexts: ["trace"],
+      failingTraces: [{ text: "trace" }],
       llmCall: async () => draft,
       existingIds: new Set(),
       storeOpts: { configDir },
@@ -156,7 +156,7 @@ describe("mineCapabilityTasks", () => {
   it("llm failure is skipped, never thrown", async () => {
     const configDir = await tmpConfigDir();
     const result = await mineCapabilityTasks({
-      failingTraceTexts: ["trace"],
+      failingTraces: [{ text: "trace" }],
       llmCall: async () => {
         throw new Error("model down");
       },
@@ -164,5 +164,35 @@ describe("mineCapabilityTasks", () => {
       storeOpts: { configDir },
     });
     expect(result.drafted).toBe(0);
+  });
+});
+
+describe("PLAN-45 2.2: drafts carry provenance", () => {
+  it("writes sourceRunId and sourceIteration on every draft", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { mineCapabilityTasks, pendingCorpusPath } = await import("./corpus-miner.js");
+    const { parseCorpusTasks } = await import("./task-corpus.js");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-miner-prov-"));
+    await mineCapabilityTasks({
+      failingTraces: [
+        { text: "run: r-1\ntask: list files\n[tool exec ERROR]", runId: "r-1", iteration: "it-7" },
+      ],
+      llmCall: async () =>
+        '{"id":"list-files-with-hidden","prompt":"List every file including hidden ones in your workspace. Reply FINAL: <count>.","checker":{"kind":"final","value":"3"}}\n',
+      existingIds: new Set(),
+      storeOpts: { configDir: dir },
+    });
+    const drafts = parseCorpusTasks(
+      await fs.readFile(pendingCorpusPath({ configDir: dir }), "utf-8"),
+    );
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]).toMatchObject({
+      sourceRunId: "r-1",
+      sourceIteration: "it-7",
+      suite: "capability",
+    });
+    await fs.rm(dir, { recursive: true, force: true });
   });
 });

@@ -6,10 +6,14 @@ import {
 } from "./validation-mode.js";
 
 describe("effective validation mode (PLAN-44 D-2)", () => {
-  it("explicit config always wins", () => {
+  it("explicit tasks wins; explicit records is deprecated and no longer selects a promoting gate (PLAN-45 D-7)", () => {
     expect(resolveEffectiveValidationMode("records", 99)).toEqual({
+      mode: "tasks",
+      source: "auto",
+    });
+    expect(resolveEffectiveValidationMode("records", 0)).toEqual({
       mode: "records",
-      source: "config",
+      source: "auto",
     });
     expect(resolveEffectiveValidationMode("tasks", 0)).toEqual({ mode: "tasks", source: "config" });
   });

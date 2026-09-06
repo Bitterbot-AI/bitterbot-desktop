@@ -36,6 +36,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { CAPABILITY_TEMPLATES } from "./canonical-capability.js";
 import {
   loadTaskCorpus,
   MAX_CORPUS_TASKS,
@@ -46,11 +47,11 @@ import {
 const log = createSubsystemLogger("skill-evolution/canonical-corpus");
 
 /** Bump on ANY template change; verdicts are comparable only within one version. */
-export const CANONICAL_GENERATOR_VERSION = 4;
+export const CANONICAL_GENERATOR_VERSION = 5;
 
 /** SHA-256 of the seed-0 exemplar JSONL (integrity pin; test-enforced). */
 export const CANONICAL_EXEMPLAR_SHA256 =
-  "019b8eb3f84f88d93f171953473f785b13c6b169e1d4d620489f31860f51115a";
+  "c5aba5c68af0b4a382c5a2c3b92653933bbb493cb4b7bcff262b2792f40e51ed";
 
 // ---------------------------------------------------------------------------
 // Seeded PRNG (mulberry32 — matches bootstrap-ci.ts) + draw helpers
@@ -282,11 +283,30 @@ const TEMPLATES: Array<(rng: Rng) => CorpusTask> = [
 // Generation + seeds
 // ---------------------------------------------------------------------------
 
-/** Materialize the canonical corpus for a seed. Deterministic per (version, seed). */
+/**
+ * Materialize the canonical corpus for a seed. Deterministic per (version,
+ * seed). PLAN-45 Phase 2.1: the regression templates are followed by the
+ * canonical CAPABILITY families (canonical-capability.ts), so a fresh node
+ * carries a promotion signal from day one and reaches tasks mode with zero
+ * operator input (validation-mode.ts counts suite !== "regression").
+ */
 export function generateCanonicalCorpus(seed: number): TaskCorpus {
   const s = seed >>> 0;
-  const tasks = TEMPLATES.map((template, i) => template(mulberry32((s ^ (i * 0x9e3779b9)) >>> 0)));
-  return { tasks, version: `canonical-g${CANONICAL_GENERATOR_VERSION}-s${s}` };
+  const regression = TEMPLATES.map((template, i) =>
+    template(mulberry32((s ^ (i * 0x9e3779b9)) >>> 0)),
+  );
+  const capability = CAPABILITY_TEMPLATES.map((template, i) =>
+    template(mulberry32((s ^ ((i + 101) * 0x9e3779b9) ^ 0x5bd1e995) >>> 0)),
+  );
+  return {
+    tasks: [...regression, ...capability],
+    version: `canonical-g${CANONICAL_GENERATOR_VERSION}-s${s}`,
+  };
+}
+
+/** The regression-suite share of the canonical corpus (the safety floor). */
+export function canonicalRegressionCount(): number {
+  return TEMPLATES.length;
 }
 
 /** Fresh unpredictable seed for a validation run (recorded with the verdict). */

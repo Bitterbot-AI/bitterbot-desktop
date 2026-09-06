@@ -269,3 +269,30 @@ describe("runtime pathway: system-prompt index, workspace registry, read detecti
     expect(detectSkillRead(journal, "other", location, ws)).toBe(false);
   });
 });
+
+describe("writeTaskFiles (PLAN-45 Phase 2.1)", () => {
+  it("materializes task files under the workspace and refuses escapes", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { writeTaskFiles } = await import("./task-runner.js");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-taskfiles-"));
+    await writeTaskFiles(dir, {
+      id: "t",
+      prompt: "p",
+      checker: { kind: "final", value: "1" },
+      files: { "data/a.csv": "x,y\n1,2\n", "tools/run.py": "print(1)\n" },
+    });
+    expect(await fs.readFile(path.join(dir, "data", "a.csv"), "utf-8")).toBe("x,y\n1,2\n");
+    expect(await fs.readFile(path.join(dir, "tools", "run.py"), "utf-8")).toBe("print(1)\n");
+    await expect(
+      writeTaskFiles(dir, {
+        id: "t2",
+        prompt: "p",
+        checker: { kind: "final", value: "1" },
+        files: { "../escape.txt": "no" },
+      }),
+    ).rejects.toThrow(/escapes the workspace/);
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+});

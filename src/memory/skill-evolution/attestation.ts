@@ -493,6 +493,12 @@ export async function rescoreSkill(params: {
     return { attestation: null, verdict: "no-corpus" };
   }
   const grown = await loadTaskCorpus(params.storeOpts ?? {});
+  // PLAN-45 Phase 2.1: the canonical capability families are PUBLIC; an
+  // attestation scored on them alone is the memorizable baseline PLAN-43
+  // warned about. Re-scoring needs at least one private capability task.
+  if (!grown || grown.tasks.filter((t) => t.suite !== "regression").length === 0) {
+    return { attestation: null, verdict: "no-capability-tasks" };
+  }
   const privateSuiteSha256 = grown
     ? crypto.createHash("sha256").update(JSON.stringify(grown.tasks)).digest("hex")
     : null;

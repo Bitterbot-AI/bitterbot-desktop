@@ -54,7 +54,9 @@ export type ImpactVerdict =
   | "rolled-back"
   | "no-action"
   /** Proposal passed the staging gate and awaits the validation gate. */
-  | "staged";
+  | "staged"
+  /** PLAN-45 2.6: the gate measured the proposal and held it (retryable). */
+  | "held";
 
 export interface ImpactEntry {
   /** Which subsystem produced the mutation attempt. */
@@ -75,6 +77,8 @@ export interface ImpactEntry {
   model?: string;
   /** SHA-1 of the proposed content — rejection dedup key. */
   contentHash?: string;
+  /** PLAN-45 2.6: gate statistics kept in the JSONL mirror (pValue, wins, losses, meanDelta, readRate, tokenDelta). */
+  stats?: Record<string, number | null>;
   /** Override timestamp (test determinism). */
   timestamp?: number;
 }
@@ -126,6 +130,9 @@ function formatEntryMarkdown(entry: ImpactEntry, ts: number): string {
   }
   if (entry.detail) {
     lines.push(`- detail: ${entry.detail.replace(/\r?\n/g, " ").trim()}`);
+  }
+  if (entry.stats) {
+    lines.push(`- stats: ${JSON.stringify(entry.stats)}`);
   }
   if (entry.diff) {
     lines.push("", "```diff", truncateEmbed(entry.diff), "```");
@@ -197,8 +204,9 @@ export async function appendImpactEntry(
       ...(entry.model ? { model: entry.model } : {}),
       ...(entry.iteration ? { iteration: entry.iteration } : {}),
       ...(entry.detail ? { detail: entry.detail } : {}),
-      ...(entry.diff ? { diffChars: entry.diff.length } : {}),
+      ...(entry.diff ? { diffChars: entry.diff.length, diffHead: entry.diff.slice(0, 240) } : {}),
       ...(entry.contentHash ? { contentHash: entry.contentHash } : {}),
+      ...(entry.stats ? { stats: entry.stats } : {}),
     };
     await fs.appendFile(jsonlPath, `${JSON.stringify(record)}\n`, "utf-8");
     return true;

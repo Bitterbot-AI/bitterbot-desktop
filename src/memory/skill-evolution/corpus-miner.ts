@@ -71,8 +71,17 @@ export interface CorpusMinerResult {
  * thrown. Drafts are injection-scanned and deduped against BOTH the
  * pending file and ids the live corpus already uses.
  */
+/** A failing trace to mine, with the provenance the temporal split needs (PLAN-45 2.2). */
+export interface MinerTrace {
+  text: string;
+  /** Journal run the trace came from; a proposal that read it is never gated on the task. */
+  runId?: string;
+  /** Evolution iteration that sampled it; proposals from the same iteration are never gated on it. */
+  iteration?: string;
+}
+
 export async function mineCapabilityTasks(params: {
-  failingTraceTexts: string[];
+  failingTraces: MinerTrace[];
   llmCall: LlmCallFn;
   existingIds: Set<string>;
   storeOpts?: ImpactTrailOptions;
@@ -96,7 +105,8 @@ export async function mineCapabilityTasks(params: {
   }
 
   const lines: string[] = [];
-  for (const traceText of params.failingTraceTexts.slice(0, MAX_TRACES_PER_PASS)) {
+  for (const trace of params.failingTraces.slice(0, MAX_TRACES_PER_PASS)) {
+    const traceText = trace.text;
     let raw: string;
     try {
       raw = await params.llmCall(MINER_PROMPT_HEADER + traceText.slice(0, MAX_TRACE_CHARS));
@@ -120,6 +130,9 @@ export async function mineCapabilityTasks(params: {
           checker: task.checker,
           suite: "capability",
           tags: ["mined"],
+          // PLAN-45 2.2: provenance for the train/test split at the gate.
+          ...(trace.runId ? { sourceRunId: trace.runId } : {}),
+          ...(trace.iteration ? { sourceIteration: trace.iteration } : {}),
         }),
       );
       drafted += 1;

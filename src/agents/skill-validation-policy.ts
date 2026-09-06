@@ -37,9 +37,47 @@ export const SKILL_VALIDATION_TOOL_DENY_ALWAYS = A2A_REMOTE_TOOL_DENY_ALWAYS.fil
   (t) => !FS_AND_SHELL.has(t),
 );
 
+/**
+ * PLAN-45 2.3 (D-2): exec is ON by default in validation. Parity with
+ * production (where the agent has a shell) is worth more than the residual
+ * risk of a confined, approval-free, env-scrubbed shell over a scratch
+ * workspace; `validationTools.exec: false` turns it off.
+ */
 export function validationExecEnabled(cfg?: BitterbotConfig): boolean {
-  return cfg?.skills?.evolution?.validationTools?.exec === true;
+  return cfg?.skills?.evolution?.validationTools?.exec !== false;
 }
+
+/**
+ * PLAN-45 2.3: binaries a validation shell may run without an approval
+ * prompt (the allowlist floor was jq/grep/cut/sort/uniq/head/tail/tr/wc,
+ * which refused `echo`, `sha1sum` and `base64`, so the exec canonical tasks
+ * tied in both arms). NO interpreters and NO network clients (adversarial
+ * H2: `python3 -c`, `node -e`, `awk 'BEGIN{system(...)}'` are one-token
+ * escapes to the network with the gateway user's files readable). The safe
+ * bin rule also refuses arguments that name existing files, so task files
+ * are read with the read tool; the shell serves the exec regression tasks.
+ * Host egress is not isolated; PLAN-45 Phase 4 records and refuses it.
+ */
+export const SKILL_VALIDATION_SAFE_BINS = [
+  "jq",
+  "grep",
+  "cut",
+  "sort",
+  "uniq",
+  "head",
+  "tail",
+  "tr",
+  "wc",
+  "echo",
+  "printf",
+  "sha1sum",
+  "sha256sum",
+  "md5sum",
+  "base64",
+  "date",
+  "true",
+  "false",
+] as const;
 
 export function resolveSkillValidationToolPolicy(cfg?: BitterbotConfig): SandboxToolPolicy {
   const configured = cfg?.skills?.evolution?.validationTools;

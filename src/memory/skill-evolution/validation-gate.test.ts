@@ -95,7 +95,7 @@ describe("runValidationGate (records mode)", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("promotes on measured improvement, carrying PURPOSE.md and validation metadata to live", async () => {
+  it("PLAN-45 D-7: explicit records mode runs the judge as a DIAGNOSTIC and still HOLDs without an executor", async () => {
     const journal = heldOutJournal();
     const outcomes = await runValidationGate({
       journal,
@@ -106,44 +106,49 @@ describe("runValidationGate (records mode)", () => {
       iteration: "it-1",
     });
     expect(outcomes).toEqual([
-      expect.objectContaining({ skillName: "curl-timeout-guard", outcome: "promoted" }),
+      expect.objectContaining({ skillName: "curl-timeout-guard", outcome: "held" }),
     ]);
+    expect(outcomes[0]?.detail).toContain("no-executor");
     const roots = resolveStorageRoots({ configDir: tmpDir });
-    expect(await readLive(roots, "curl-timeout-guard")).toContain("--max-time");
-    const liveDir = path.join(roots.liveRoot, "curl-timeout-guard");
+    expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
     const meta = JSON.parse(
-      await fs.readFile(path.join(liveDir, ".evolution-meta.json"), "utf-8"),
-    ) as { origin: string; validation: { mode: string; verdict: string; model: string } };
-    expect(meta.origin).toBe("wiki-evolution");
-    expect(meta.validation).toMatchObject({
-      mode: "records",
-      verdict: "accepted",
-      model: "test/model-1",
-    });
-    const purpose = await fs.readFile(path.join(liveDir, "PURPOSE.md"), "utf-8");
-    expect(purpose).toContain("## Validation");
-    expect(purpose).toContain("model=test/model-1");
-    // Staging is settled.
-    await expect(fs.access(path.join(roots.stagingRoot, "curl-timeout-guard"))).rejects.toThrow();
-    const trail = await readProvenance({ configDir: tmpDir });
-    expect(trail.at(-1)).toMatchObject({ verdict: "accepted", source: "evolution" });
+      await fs.readFile(
+        path.join(roots.stagingRoot, "curl-timeout-guard", ".evolution-meta.json"),
+        "utf-8",
+      ),
+    ) as { recordsJudge?: { verdict: string; trials: number } };
+    // The judge accepted; that opinion is recorded and decides nothing.
+    expect(meta.recordsJudge).toMatchObject({ verdict: "accepted" });
   });
 
-  it("rejects on no measured improvement: candidate discarded, live untouched, verdict recorded", async () => {
+  it("PLAN-45 D-7: the judge's rejection cannot discard a proposal that the tasks gate accepts", async () => {
     const journal = heldOutJournal();
     const outcomes = await runValidationGate({
       journal,
       mode: "records",
       llmCall: orderAware(() => scoresRejecting(8)),
       storeOpts: { configDir: tmpDir },
+      // Tasks gate: candidate wins every capability task via the checker oracle.
+      runTask: async (task: { suite?: string; checker: { value: string } }, variant: string) =>
+        task.suite === "regression"
+          ? { answer: "FINAL: x", skillRead: false }
+          : {
+              answer: variant === "candidate" ? `FINAL: ${task.checker.value}` : "FINAL: nope",
+              skillRead: variant === "candidate",
+            },
+      trialsPerTask: 1,
+      modelTag: "m",
     });
-    expect(outcomes[0]).toMatchObject({ outcome: "rejected" });
+    expect(outcomes[0]).toMatchObject({ outcome: "promoted" });
     const roots = resolveStorageRoots({ configDir: tmpDir });
-    expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
-    await expect(fs.access(path.join(roots.stagingRoot, "curl-timeout-guard"))).rejects.toThrow();
-    const trail = await readProvenance({ configDir: tmpDir });
-    expect(trail.at(-1)).toMatchObject({ verdict: "rejected" });
-    expect(typeof trail.at(-1)?.contentHash).toBe("string");
+    const meta = JSON.parse(
+      await fs.readFile(
+        path.join(roots.liveRoot, "curl-timeout-guard", ".evolution-meta.json"),
+        "utf-8",
+      ),
+    ) as { recordsJudge?: { verdict: string }; validation: { mode: string } };
+    expect(meta.recordsJudge?.verdict).not.toBe("accepted");
+    expect(meta.validation.mode).toBe("tasks");
   });
 
   it("HOLDS (not rejects) on insufficient held-out data or scoring failure", async () => {
@@ -168,11 +173,20 @@ describe("runValidationGate (records mode)", () => {
   });
 
   it("rejection dedup: identical content cannot be re-staged afterwards", async () => {
-    await runValidationGate({
+    // A measured REJECT (over-triggered: the candidate is read on every
+    // regression task) in tasks mode, which a fresh node now reaches.
+    const rejected = await runValidationGate({
       journal: heldOutJournal(),
       llmCall: orderAware(() => scoresRejecting(8)),
       storeOpts: { configDir: tmpDir },
+      runTask: async (task: { suite?: string }, variant: string) => ({
+        answer: "FINAL: x",
+        skillRead: variant === "candidate" && task.suite === "regression",
+      }),
+      trialsPerTask: 1,
     });
+    expect(rejected[0]).toMatchObject({ outcome: "rejected" });
+    expect(rejected[0]?.detail).toContain("over-triggered");
     const again = await applyProposal(
       { action: "create", name: "curl-timeout-guard", skillMd: SKILL_MD, purposeMd: PURPOSE_MD },
       { storeOpts: { configDir: tmpDir }, iteration: "it-2" },
@@ -193,7 +207,7 @@ describe("runValidationGate (records mode)", () => {
     const roots = resolveStorageRoots({ configDir: tmpDir });
     expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
   });
-  it("HOLDs an accepted records verdict when records mode was an automatic fallback (P0-4: model-predicted evidence never promotes)", async () => {
+  it("PLAN-45 2.8: tasks mode without an executor HOLDs (no-executor), never falls back to the judge", async () => {
     const journal = heldOutJournal();
     const outcomes = await runValidationGate({
       journal,
@@ -205,20 +219,12 @@ describe("runValidationGate (records mode)", () => {
     expect(outcomes).toEqual([
       expect.objectContaining({ skillName: "curl-timeout-guard", outcome: "held" }),
     ]);
-    expect(outcomes[0]?.detail).toContain("records-only-evidence");
+    expect(outcomes[0]?.detail).toContain("no-executor");
     const roots = resolveStorageRoots({ configDir: tmpDir });
-    // Staged, not live: the proposal waits for a grounded rollout.
     await expect(
       fs.access(path.join(roots.stagingRoot, "curl-timeout-guard")),
     ).resolves.toBeUndefined();
     await expect(fs.access(path.join(roots.liveRoot, "curl-timeout-guard"))).rejects.toThrow();
-    const meta = JSON.parse(
-      await fs.readFile(
-        path.join(roots.stagingRoot, "curl-timeout-guard", ".evolution-meta.json"),
-        "utf-8",
-      ),
-    ) as { lastValidation?: { verdict: string } };
-    expect(meta.lastValidation).toMatchObject({ verdict: "records-only-evidence" });
   });
 });
 
@@ -242,7 +248,7 @@ describe("task corpus + tasks validation", () => {
     await fs.writeFile(corpusPath({ configDir: tmpDir }), exemplar, "utf-8");
     const corpus = await loadTaskCorpus({ configDir: tmpDir });
     expect(corpus).not.toBeNull();
-    expect(corpus?.tasks.length).toBe(15);
+    expect(corpus?.tasks.length).toBe(24);
     expect(corpus?.version).toHaveLength(12);
     const arith = corpus?.tasks.find((t) => t.id === "arith-basic")!;
     const answer = arith.checker.value;
@@ -289,7 +295,8 @@ describe("task corpus + tasks validation", () => {
       runTask: async () => "PASS",
     });
     expect(equal.accepted).toBe(false);
-    expect(equal.reason).toBe("no-improvement");
+    // PLAN-45: all ties = no evidence either way, not a measured non-improvement.
+    expect(equal.reason).toBe("insufficient-evidence");
     const crashyCandidate = await validateAgainstTasks({
       corpus,
       runTask: async (_task, variant) => {
@@ -379,18 +386,47 @@ describe("runValidationGate (PLAN-44 Phase 2)", () => {
     expect(meta.validation.candidateReadRate?.capability).toBe(1);
   });
 
-  it("stays on records mode below the threshold when no mode is configured (and HOLDs without a journal)", async () => {
+  it("PLAN-45 2.1: a fresh node with only the canonical corpus reaches tasks mode with zero operator input and runs the gate to a verdict", async () => {
     await stage();
-    await growCorpus(2);
+    await growCorpus(2); // below the old 5-task threshold: the canonical capability families carry the signal
+    // The candidate answers every capability instance via the checker oracle
+    // (a test can read the fresh instance's truth; a real skill has to earn it).
+    const oracleRunner = async (
+      task: { suite?: string; checker: { value: string } },
+      variant: string,
+    ) =>
+      task.suite === "regression"
+        ? { answer: "FINAL: x", skillRead: false }
+        : {
+            answer: variant === "candidate" ? `FINAL: ${task.checker.value}` : "FINAL: nope",
+            skillRead: variant === "candidate",
+          };
     const outcomes = await runValidationGate({
       journal: null,
       llmCall: null,
       storeOpts: { configDir: tmpDir },
-      runTask: winningRunner,
+      runTask: oracleRunner,
       trialsPerTask: 1,
+      modelTag: "m",
     });
-    expect(outcomes[0]?.outcome).toBe("held");
-    expect(outcomes[0]?.detail).toContain("no journal/llm");
+    expect(outcomes[0]?.outcome).toBe("promoted");
+    expect(outcomes[0]?.detail).toContain("tasks: accepted");
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const meta = JSON.parse(
+      await fs.readFile(
+        path.join(roots.liveRoot, "curl-timeout-guard", ".evolution-meta.json"),
+        "utf-8",
+      ),
+    ) as {
+      validation: {
+        mode: string;
+        verdict: string;
+        sequential?: { decision: string };
+        alpha?: number;
+      };
+    };
+    expect(meta.validation).toMatchObject({ mode: "tasks", verdict: "accepted", alpha: 0.05 });
+    expect(meta.validation.sequential?.decision).toBe("accept");
   });
 
   it("serves incumbent trials from the memo on the next proposal (same model, same day)", async () => {
@@ -887,5 +923,224 @@ describe("description repair loop (PLAN-44 Phase 4a)", () => {
     });
     expect(off[0]?.detail).not.toContain("repair");
     expect(llm.count()).toBe(0);
+  });
+});
+
+describe("PLAN-45 2.2: temporal train/test split", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "valgate-split-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("withholds capability tasks mined from a run the proposal read or in the iteration that proposed it", async () => {
+    await fs.mkdir(path.dirname(corpusPath({ configDir: tmpDir })), { recursive: true });
+    const lines = [
+      { id: "grown-from-evidence", sourceRunId: "run-A" },
+      { id: "grown-same-iteration", sourceIteration: "it-9" },
+      { id: "grown-clean", sourceRunId: "run-Z", sourceIteration: "it-1" },
+    ].map((t) =>
+      JSON.stringify({
+        ...t,
+        prompt: `${t.id}. Reply FINAL: <answer>.`,
+        checker: { kind: "final", value: "PASS" },
+        suite: "capability",
+      }),
+    );
+    await fs.writeFile(corpusPath({ configDir: tmpDir }), `${lines.join("\n")}\n`, "utf-8");
+    await applyProposal(
+      { action: "create", name: "curl-timeout-guard", skillMd: SKILL_MD, purposeMd: PURPOSE_MD },
+      {
+        storeOpts: { configDir: tmpDir },
+        iteration: "it-9",
+        evidence: { runIds: ["run-A", "run-B"], origins: ["human"] },
+      },
+    );
+    const seen = new Set<string>();
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: async (
+        task: { id: string; suite?: string; checker: { value: string } },
+        variant: string,
+      ) => {
+        seen.add(task.id);
+        return task.suite === "regression"
+          ? { answer: "FINAL: x", skillRead: false }
+          : {
+              answer: variant === "candidate" ? `FINAL: ${task.checker.value}` : "FINAL: nope",
+              skillRead: variant === "candidate",
+            };
+      },
+      trialsPerTask: 1,
+      modelTag: "m",
+    });
+    expect(seen.has("grown-from-evidence")).toBe(false);
+    expect(seen.has("grown-same-iteration")).toBe(false);
+    // (grown-clean is eligible but the SPRT accepted on the canonical
+    // families before reaching it; its presence is proven by the corpus
+    // version suffix and the excluded list below.)
+    expect(outcomes[0]?.outcome).toBe("promoted");
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const meta = JSON.parse(
+      await fs.readFile(
+        path.join(roots.liveRoot, "curl-timeout-guard", ".evolution-meta.json"),
+        "utf-8",
+      ),
+    ) as { validation: { excludedTasks?: string[]; corpusVersion: string } };
+    expect(meta.validation.excludedTasks?.toSorted()).toEqual([
+      "grown-from-evidence",
+      "grown-same-iteration",
+    ]);
+    expect(meta.validation.corpusVersion).toMatch(/-x2$/);
+  });
+});
+
+describe("PLAN-45 2.6: rejected-edit memory reaches the trail", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "valgate-mem-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("a measured rejection records the content head and stats; a hold records a held verdict; re-staging says when it lost", async () => {
+    await applyProposal(
+      { action: "create", name: "curl-timeout-guard", skillMd: SKILL_MD, purposeMd: PURPOSE_MD },
+      { storeOpts: { configDir: tmpDir }, iteration: "it-1" },
+    );
+    // Over-triggered: read on every regression task -> measured REJECT.
+    await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: async (task: { suite?: string }, variant: string) => ({
+        answer: "FINAL: x",
+        skillRead: variant === "candidate" && task.suite === "regression",
+      }),
+      trialsPerTask: 1,
+      modelTag: "m",
+      iteration: "it-1",
+    });
+    const trail = await readProvenance({ configDir: tmpDir });
+    const rejected = trail.find((e) => e.verdict === "rejected" && e.action === "validate")!;
+    expect(rejected).toMatchObject({ skillName: "curl-timeout-guard" });
+    expect(typeof rejected.diffHead).toBe("string");
+    expect(String(rejected.diffHead)).toContain("curl-timeout-guard");
+    expect(rejected.stats).toMatchObject({ wins: 0, losses: 0 });
+    const again = await applyProposal(
+      { action: "create", name: "curl-timeout-guard", skillMd: SKILL_MD, purposeMd: PURPOSE_MD },
+      { storeOpts: { configDir: tmpDir }, iteration: "it-2" },
+    );
+    expect(again.outcome).toBe("duplicate-of-rejected");
+    const dup = (await readProvenance({ configDir: tmpDir })).at(-1)!;
+    expect(String(dup.detail)).toMatch(/previously rejected on \d{4}-\d{2}-\d{2}/);
+    // A hold leaves a "held" verdict on the lineage too.
+    await applyProposal(
+      {
+        action: "create",
+        name: "other-guard",
+        skillMd: SKILL_MD.replace("curl-timeout-guard", "other-guard"),
+        purposeMd: PURPOSE_MD,
+      },
+      { storeOpts: { configDir: tmpDir }, iteration: "it-3" },
+    );
+    await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: async () => ({ answer: "FINAL: x", skillRead: false }), // never read anywhere: never-triggered HOLD
+      trialsPerTask: 1,
+      modelTag: "m",
+      descriptionRepair: false,
+    });
+    const held = (await readProvenance({ configDir: tmpDir })).find((e) => e.verdict === "held");
+    expect(held).toMatchObject({ skillName: "other-guard", action: "validate" });
+  });
+});
+
+describe("PLAN-45 2.4 alpha spending and 2.3 observability (adversarial H1/M2)", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "valgate-alpha-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("alphaForAttempt tightens per attempt but never below what the suite can reach", async () => {
+    const { alphaForAttempt } = await import("./validation-gate.js");
+    expect(alphaForAttempt(0, 9)).toBe(0.05);
+    expect(alphaForAttempt(1, 9)).toBe(0.025);
+    expect(alphaForAttempt(2, 9)).toBe(0.0125);
+    expect(alphaForAttempt(1, 5)).toBe(0.05); // 0.5^5 = 0.031 >= 0.025: unwinnable, stay at 0.05
+    expect(alphaForAttempt(2, 6)).toBe(0.025); // 0.5^6 = 0.0156 >= 0.0125
+    expect(alphaForAttempt(5, 12)).toBe(0.0125);
+  });
+
+  it("a decisive rejection on the trail counts as a lineage attempt for a re-proposal; holds do not", async () => {
+    await applyProposal(
+      { action: "create", name: "curl-timeout-guard", skillMd: SKILL_MD, purposeMd: PURPOSE_MD },
+      { storeOpts: { configDir: tmpDir }, iteration: "it-1" },
+    );
+    // Measured REJECT (over-triggered).
+    await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: async (task: { suite?: string }, variant: string) => ({
+        answer: "FINAL: x",
+        skillRead: variant === "candidate" && task.suite === "regression",
+      }),
+      trialsPerTask: 1,
+      modelTag: "m",
+    });
+    // Re-propose the same lineage with different content.
+    await applyProposal(
+      {
+        action: "create",
+        name: "curl-timeout-guard",
+        skillMd: SKILL_MD.replace("--max-time 30", "--max-time 45"),
+        purposeMd: PURPOSE_MD,
+      },
+      { storeOpts: { configDir: tmpDir }, iteration: "it-2" },
+    );
+    const second = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: async (task: { suite?: string; checker: { value: string } }, variant: string) =>
+        task.suite === "regression"
+          ? { answer: "FINAL: x", skillRead: false }
+          : {
+              answer: variant === "candidate" ? `FINAL: ${task.checker.value}` : "FINAL: nope",
+              skillRead: variant === "candidate",
+            },
+      trialsPerTask: 1,
+      modelTag: "m",
+    });
+    expect(second[0]?.detail).toContain("attempt 2/3");
+    expect(second[0]?.detail).toContain("alpha=0.025");
+  });
+
+  it("the production runner without a journal HOLDs as runner-unobservable instead of crediting every pass", async () => {
+    await applyProposal(
+      { action: "create", name: "curl-timeout-guard", skillMd: SKILL_MD, purposeMd: PURPOSE_MD },
+      { storeOpts: { configDir: tmpDir }, iteration: "it-1" },
+    );
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      agentTurn: async () => ({ text: "FINAL: x" }),
+      trialsPerTask: 1,
+      modelTag: "m",
+    });
+    expect(outcomes[0]).toMatchObject({ outcome: "held" });
+    expect(outcomes[0]?.detail).toContain("runner-unobservable");
   });
 });

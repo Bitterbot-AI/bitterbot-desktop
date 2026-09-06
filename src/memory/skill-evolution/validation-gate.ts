@@ -20,7 +20,11 @@ import path from "node:path";
 import type { EventJournal } from "../../infra/event-journal.js";
 import type { LlmCallFn } from "./maintainer.js";
 import { listLiveSkillIndex } from "../../agents/skills/description-overlap.js";
-import { appendImpactEntry, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
+import {
+  appendImpactEntry,
+  type ImpactTrailOptions,
+  readProvenance,
+} from "../../agents/skills/impact-trail.js";
 import { bumpSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
 import { promoteStaged } from "../../agents/skills/skill-promote.js";
 import {
@@ -42,15 +46,50 @@ import {
   HOLD_BACKOFF_VERDICTS,
   memoizeTrials,
   sweepStaleTrials,
+  CONTENT_CHANGE_VERDICTS,
 } from "./gate-support.js";
 import { hashProposalContent } from "./proposal-apply.js";
 import { type AgentTurnFn, makeRuntimePathwayRunner } from "./task-runner.js";
 import { TrialCache } from "./trial-cache.js";
 import { validateAgainstRecords } from "./validate-records.js";
-import { type TaskRunnerFn, validateAgainstTasks } from "./validate-tasks.js";
+import {
+  type TaskRunnerFn,
+  validateAgainstTasks,
+  SIGN_TEST_ALPHA,
+  isCanonicalTask,
+  relevantCapabilityTasks,
+} from "./validate-tasks.js";
 import { countCapabilityTasks, resolveEffectiveValidationMode } from "./validation-mode.js";
 
 const log = createSubsystemLogger("skill-evolution/validation-gate");
+
+/** PLAN-45 2.4: measured attempts a lineage gets before it is closed. alpha_k = 0.05 / 2^k. */
+export const MAX_GATE_ATTEMPTS = 3;
+/**
+ * Verdicts that DECIDED something and spend a lineage attempt. Holds that
+ * carry no decision (insufficient evidence, cost, never-triggered, budget)
+ * spend nothing (adversarial H1/M1).
+ */
+const DECISIVE_VERDICTS = new Set(["accepted", "no-improvement", "regression", "over-triggered"]);
+/** Alpha schedule per attempt; never below what the informative suite can reach. */
+const ALPHA_SCHEDULE = [0.05, 0.025, 0.0125];
+export function alphaForAttempt(attempt: number, capabilityTasks: number): number {
+  const wanted = ALPHA_SCHEDULE[Math.min(attempt, ALPHA_SCHEDULE.length - 1)] ?? SIGN_TEST_ALPHA;
+  // 0.5^n is the smallest p an n-task suite can produce; a stricter alpha
+  // would make the attempt unwinnable by construction.
+  const reachable = 0.5 ** capabilityTasks;
+  if (wanted > reachable) {
+    return wanted;
+  }
+  // The tightest schedule value the suite can still reach.
+  let best = SIGN_TEST_ALPHA;
+  for (const a of ALPHA_SCHEDULE) {
+    if (a > reachable) {
+      best = a;
+    }
+  }
+  return best;
+}
 
 export const DEFAULT_MAX_ACTIVE_EVOLVED = 5;
 /** PLAN-44 Phase 2: wall-clock budget for one tasks-mode validation run. */
@@ -67,6 +106,20 @@ export interface EvolutionMeta {
   /** PLAN-44 Phase 4a: description repairs applied so far (capped). */
   descriptionRepairs?: number;
   descriptionRepairLog?: Array<{ at: number; from: string; to: string; reason: string }>;
+  /** PLAN-45 2.4: measured gate attempts for this lineage (alpha is spent across them). */
+  gateAttempts?: number;
+  /**
+   * PLAN-45 2.8: the paired LLM judge over held-out traces, kept as a
+   * DIAGNOSTIC only. It never promotes and never rejects.
+   */
+  recordsJudge?: {
+    verdict: string;
+    meanDelta?: number;
+    ci95Low?: number;
+    ci95High?: number;
+    trials: number;
+    at: number;
+  };
   /** PLAN-44 Phase 2: last hold verdict on the staged proposal (24h backoff). */
   lastValidation?: {
     at: number;
@@ -96,6 +149,33 @@ export interface EvolutionMeta {
     tokens?: { incumbent: number; candidate: number };
     /** PLAN-44 Phase 2: incumbent trials served from the memo. */
     cachedIncumbentTrials?: number;
+    /** PLAN-45 Phase 2.1: canonical capability tasks dropped by per-model calibration. */
+    calibrationDropped?: Array<{ id: string; rate: number }>;
+    /** PLAN-45 2.4: alpha this attempt was judged at and the SPRT state. */
+    alpha?: number;
+    /** PLAN-45 2.2: capability tasks withheld because they share provenance with the proposal. */
+    excludedTasks?: string[];
+    sequential?: {
+      wins: number;
+      losses: number;
+      llr: number;
+      decision: string;
+      stoppedEarly: boolean;
+      tasksRun: number;
+      tasksPlanned: number;
+    };
+    /** PLAN-45 2.5: candidate/incumbent token ratio minus one over capability tasks. */
+    tokenDelta?: number;
+    maxTokenDelta?: number;
+    wallMs?: { incumbent: number; candidate: number };
+    perTask?: Array<{
+      id: string;
+      suite: string;
+      incumbent: number;
+      candidate: number;
+      credited: number;
+      trials: number;
+    }>;
     validatedAt: number;
     model?: string;
   };
@@ -116,6 +196,8 @@ export interface ValidationGateDeps {
   runTask?: TaskRunnerFn;
   /** Trials per task per arm in tasks mode (config skills.evolution.trialsPerTask). */
   trialsPerTask?: number;
+  /** PLAN-45 2.5: ceiling on candidate/incumbent token ratio minus one (config skills.evolution.maxTokenDelta). */
+  maxTokenDelta?: number;
   maxActiveEvolved?: number;
   /** Model tag recorded into the promoted skill's provenance. */
   modelTag?: string;
@@ -326,7 +408,30 @@ async function settleOne(
     deps.modelTag ?? "unknown",
     new Date().toISOString().slice(0, 10),
   );
-  const corpus = await loadEffectiveCorpus(trailOpts, corpusSeed);
+  const loadedCorpus = await loadEffectiveCorpus(trailOpts, corpusSeed);
+  // PLAN-45 2.2 (I3): a capability task mined from a run this proposal
+  // read, or mined in the iteration that proposed it, never gates it
+  // (train/test split; the miner and the proposer share a window).
+  const evidenceRuns = new Set(meta.evidence?.runIds ?? []);
+  const excludedTasks = (loadedCorpus?.tasks ?? [])
+    .filter(
+      (t) =>
+        t.suite !== "regression" &&
+        ((t.sourceRunId !== undefined && evidenceRuns.has(t.sourceRunId)) ||
+          (t.sourceIteration !== undefined &&
+            meta.iteration !== undefined &&
+            meta.iteration !== null &&
+            t.sourceIteration === meta.iteration)),
+    )
+    .map((t) => t.id);
+  const excludedSet = new Set(excludedTasks);
+  const corpus =
+    loadedCorpus && excludedTasks.length > 0
+      ? {
+          tasks: loadedCorpus.tasks.filter((t) => !excludedSet.has(t.id)),
+          version: `${loadedCorpus.version}-x${excludedTasks.length}`,
+        }
+      : loadedCorpus;
   // PLAN-44 D-2: explicit config wins; otherwise tasks mode once the corpus
   // carries enough reviewed capability tasks for the sign test.
   const { mode, source: modeSource } = resolveEffectiveValidationMode(
@@ -377,6 +482,18 @@ async function settleOne(
   if (
     last &&
     last.contentHash === contentHash &&
+    last.modelTag === (deps.modelTag ?? "unknown") &&
+    CONTENT_CHANGE_VERDICTS.has(last.verdict)
+  ) {
+    return {
+      skillName: name,
+      outcome: "held",
+      detail: `held (${last.verdict}); the same content costs the same; edit the body to re-measure`,
+    };
+  }
+  if (
+    last &&
+    last.contentHash === contentHash &&
     last.corpusPrefix === corpusPrefix &&
     last.modelTag === (deps.modelTag ?? "unknown") &&
     HOLD_BACKOFF_VERDICTS.has(last.verdict) &&
@@ -388,26 +505,133 @@ async function settleOne(
       detail: `held (${last.verdict}); retry after ${new Date(last.at + HOLD_BACKOFF_MS).toISOString()} unless content or corpus changes`,
     };
   }
-  if (mode === "tasks" && !runTask) {
-    // Adversarial M6: the executor is built at pass start from the same
-    // corpus count; if the corpus crossed the threshold mid-pass, say so.
-    log.warn(`validation mode is tasks but no executor is available; falling back to records`);
-    verdictDetail = "tasks mode without an executor; falling back to records";
+  // PLAN-45 2.4: alpha spending across a lineage's DECISIVE attempts. The
+  // lineage is the skill name and its record is the provenance trail, so a
+  // re-proposal under the same name continues the count (adversarial H1)
+  // and the proposer's "Previously tried" block agrees with the gate.
+  const trailForAttempts = await readProvenance(trailOpts);
+  const attemptsSoFar = Math.max(
+    meta.gateAttempts ?? 0,
+    trailForAttempts.filter(
+      (e) =>
+        e.source === "evolution" &&
+        e.action === "validate" &&
+        e.skillName === name &&
+        typeof e.stats === "object" &&
+        e.stats !== null &&
+        (e.verdict === "accepted" || e.verdict === "rejected"),
+    ).length,
+  );
+  if (attemptsSoFar >= MAX_GATE_ATTEMPTS) {
+    await discardStaged(roots, name);
+    const detail = `lineage-exhausted: ${attemptsSoFar} measured gate attempts without acceptance`;
+    await appendImpactEntry(
+      {
+        source: "evolution",
+        action: "validate",
+        skillName: name,
+        verdict: "rejected",
+        detail,
+        contentHash,
+        ...(deps.iteration ? { iteration: deps.iteration } : {}),
+        ...(deps.modelTag ? { model: deps.modelTag } : {}),
+      },
+      trailOpts,
+    );
+    return { skillName: name, outcome: "rejected", detail };
+  }
+  const informativeCapability = corpus
+    ? corpus.tasks.filter((t) => t.suite !== "regression").length
+    : 0;
+  const alpha = alphaForAttempt(attemptsSoFar, informativeCapability);
+  // PLAN-45 2.8 (D-7): `validationMode: "records"` now means "also run the
+  // paired judge over held-out traces as a DIAGNOSTIC"; its opinion lands
+  // on the meta for the evidence record and never decides anything.
+  if (deps.mode === "records" && deps.journal && deps.llmCall && !meta.recordsJudge) {
+    try {
+      const judged = await validateAgainstRecords({
+        journal: deps.journal,
+        llmCall: deps.llmCall,
+        candidateName: name,
+        candidateContent: staged.content,
+        incumbentContent: incumbent,
+      });
+      meta.recordsJudge = {
+        verdict: judged.reason,
+        ...(judged.meanDelta !== undefined ? { meanDelta: judged.meanDelta } : {}),
+        ...(judged.ci95Low !== undefined ? { ci95Low: judged.ci95Low } : {}),
+        ...(judged.ci95High !== undefined ? { ci95High: judged.ci95High } : {}),
+        trials: judged.trials,
+        at: Date.now(),
+      };
+      await atomicWriteJson(path.join(stagedDir, ".evolution-meta.json"), meta);
+    } catch (err) {
+      log.debug(`records diagnostic failed for ${name}: ${String(err)}`);
+    }
+  }
+  // Adversarial M2: the production runner cannot observe skill reads
+  // without the journal; every candidate pass would be credited. Hold.
+  if (mode === "tasks" && deps.agentTurn && !deps.runTask && !deps.journal) {
+    return {
+      skillName: name,
+      outcome: "held",
+      detail: "runner-unobservable: no event journal to observe skill reads (retry next pass)",
+    };
+  }
+  if (mode === "tasks" && (!runTask || !corpus)) {
+    // PLAN-45 2.8: no executor or no corpus is a HOLD, never a fallback to
+    // the judge (adversarial leak: explicit tasks mode used to promote on
+    // records when the executor was missing).
+    return {
+      skillName: name,
+      outcome: "held",
+      detail: !runTask
+        ? "no-executor: tasks mode without an executor (retry next pass)"
+        : "no-corpus: tasks mode without a corpus (retry next pass)",
+    };
   }
   if (mode === "tasks" && runTask) {
     if (!corpus) {
-      verdictDetail = "tasks mode but no corpus available; falling back to records";
+      verdictDetail = "unreachable";
     } else {
       const budgetMinutes = deps.validationBudgetMinutes ?? DEFAULT_VALIDATION_BUDGET_MINUTES;
+      // PLAN-45 Phase 2.1: per-model calibration from the incumbent stats
+      // accumulated across earlier gate runs (trial-cache task_stats).
+      const modelTagForStats = deps.modelTag ?? "unknown";
+      const calibration = deps.trialCache
+        ? { incumbentStats: deps.trialCache.incumbentTaskStats(modelTagForStats) }
+        : undefined;
       const verdict = await validateAgainstTasks({
         corpus,
         runTask,
         ...(deps.trialsPerTask !== undefined ? { trialsPerTask: deps.trialsPerTask } : {}),
         deadlineAt: Date.now() + budgetMinutes * 60_000,
+        ...(calibration ? { calibration } : {}),
+        alpha,
+        ...(deps.maxTokenDelta !== undefined ? { maxTokenDelta: deps.maxTokenDelta } : {}),
       });
+      // A MEASURED verdict spends one attempt; holds for budget, runner,
+      // corpus size or a never-opened skill do not.
+      if (DECISIVE_VERDICTS.has(verdict.reason)) {
+        meta.gateAttempts = attemptsSoFar + 1;
+        await atomicWriteJson(path.join(stagedDir, ".evolution-meta.json"), meta);
+      }
+      // Feed the calibration for next time with what the incumbent arm did
+      // on every task that actually ran (memo hits included: they are real
+      // incumbent outcomes on this model).
+      if (deps.trialCache && verdict.perTask) {
+        for (const t of verdict.perTask) {
+          deps.trialCache.recordIncumbentTaskStats(
+            t.id,
+            modelTagForStats,
+            t.incumbent * t.trials,
+            t.trials,
+          );
+        }
+      }
       verdictAccepted = verdict.accepted;
       const reads = verdict.candidateReadRate;
-      verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, K=${verdict.trialsPerTask ?? 1}, wins=${verdict.wins ?? 0}/losses=${verdict.losses ?? 0}, p=${verdict.pValue !== undefined ? verdict.pValue.toFixed(4) : "n/a"}, reads cap=${reads?.capability ?? "n/a"}/reg=${reads?.regression ?? "n/a"}, cached=${cachedIncumbentTrials}i/${cachedCandidateTrials}c, corpus ${verdict.corpusVersion})`;
+      verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, K=${verdict.trialsPerTask ?? 1}, wins=${verdict.wins ?? 0}/losses=${verdict.losses ?? 0}, p=${verdict.pValue !== undefined ? verdict.pValue.toFixed(4) : "n/a"} at alpha=${alpha}, attempt ${attemptsSoFar + 1}/${MAX_GATE_ATTEMPTS}, reads cap=${reads?.capability ?? "n/a"}/reg=${reads?.regression ?? "n/a"}, tokenDelta=${verdict.tokenDelta !== undefined ? verdict.tokenDelta.toFixed(2) : "n/a"}, cached=${cachedIncumbentTrials}i/${cachedCandidateTrials}c, corpus ${verdict.corpusVersion})`;
       validationRecord = {
         mode: "tasks",
         verdict: verdict.reason,
@@ -423,6 +647,25 @@ async function settleOne(
         corpusSeed,
         ...(verdict.candidateReadRate ? { candidateReadRate: verdict.candidateReadRate } : {}),
         ...(verdict.tokens ? { tokens: verdict.tokens } : {}),
+        ...(verdict.calibrationDropped ? { calibrationDropped: verdict.calibrationDropped } : {}),
+        alpha,
+        ...(excludedTasks.length > 0 ? { excludedTasks } : {}),
+        ...(verdict.sequential ? { sequential: verdict.sequential } : {}),
+        ...(verdict.tokenDelta !== undefined ? { tokenDelta: verdict.tokenDelta } : {}),
+        ...(verdict.maxTokenDelta !== undefined ? { maxTokenDelta: verdict.maxTokenDelta } : {}),
+        ...(verdict.wallMs ? { wallMs: verdict.wallMs } : {}),
+        ...(verdict.perTask
+          ? {
+              perTask: verdict.perTask.map((t) => ({
+                id: t.id,
+                suite: t.suite,
+                incumbent: t.incumbent,
+                candidate: t.candidate,
+                credited: t.credited,
+                trials: t.trials,
+              })),
+            }
+          : {}),
         cachedIncumbentTrials,
         validatedAt: Date.now(),
         ...(deps.modelTag ? { model: deps.modelTag } : {}),
@@ -441,19 +684,23 @@ async function settleOne(
       candidateContent: staged.content,
       incumbentContent: incumbent,
     });
-    // 2026-09-05 harness review P0-4: an LLM counterfactual over past
-    // traces is diagnostic evidence, not measured task performance. When the
-    // node fell back to records mode automatically (no operator opt-in), an
-    // accepted verdict HOLDS the proposal until the corpus can carry a real
-    // rollout; it never promotes. Explicit `validationMode: "records"` keeps
-    // the old behaviour and says so in the record.
-    const recordsOnly = modeSource === "auto" && verdict.accepted;
-    verdictAccepted = verdict.accepted && !recordsOnly;
-    const recordsVerdict = recordsOnly ? "records-only-evidence" : verdict.reason;
-    verdictDetail = `records: ${recordsVerdict}${recordsOnly ? ` (judge said ${verdict.reason}; model-predicted evidence cannot promote — review capability tasks to reach tasks mode)` : ""} (n=${verdict.trials}${verdict.ci95Low !== undefined ? `, ci95Low=${verdict.ci95Low.toFixed(3)}` : ""})${verdictDetail ? `; ${verdictDetail}` : ""}`;
+    // PLAN-45 2.8 (D-7): an LLM counterfactual over past traces is a
+    // DIAGNOSTIC, never a verdict. Whatever the judge says, the proposal
+    // HOLDS as `records-only-evidence` until a real rollout can measure it;
+    // the judge's opinion is kept on the meta for the evidence record.
+    verdictAccepted = false;
+    meta.recordsJudge = {
+      verdict: verdict.reason,
+      ...(verdict.meanDelta !== undefined ? { meanDelta: verdict.meanDelta } : {}),
+      ...(verdict.ci95Low !== undefined ? { ci95Low: verdict.ci95Low } : {}),
+      ...(verdict.ci95High !== undefined ? { ci95High: verdict.ci95High } : {}),
+      trials: verdict.trials,
+      at: Date.now(),
+    };
+    verdictDetail = `records: records-only-evidence (judge said ${verdict.reason}; model-predicted evidence cannot promote or reject; n=${verdict.trials}${verdict.ci95Low !== undefined ? `, ci95Low=${verdict.ci95Low.toFixed(3)}` : ""})${modeSource === "config" ? " [validationMode records is deprecated; tasks mode is the gate]" : ""}${verdictDetail ? `; ${verdictDetail}` : ""}`;
     validationRecord = {
       mode: "records",
-      verdict: recordsVerdict,
+      verdict: "records-only-evidence",
       ...(verdict.meanDelta !== undefined ? { meanDelta: verdict.meanDelta } : {}),
       ...(verdict.ci95Low !== undefined ? { ci95Low: verdict.ci95Low } : {}),
       ...(verdict.ci95High !== undefined ? { ci95High: verdict.ci95High } : {}),
@@ -479,10 +726,20 @@ async function settleOne(
       // just need rewording) or the wall-clock budget ran out (memo makes
       // the retry cheap). Over-triggering is a measured REJECT.
       validationRecord.verdict === "never-triggered" ||
+      // PLAN-45 2.5: cost is a hold (the body may be trimmed), not a reject.
+      validationRecord.verdict === "cost-exceeded" ||
       validationRecord.verdict === "budget-exhausted" ||
       validationRecord.verdict === "llm-failed" ||
       validationRecord.verdict === "scoring-parse-failed" ||
       validationRecord.verdict === "runner-failed";
+    const gateStats = {
+      pValue: validationRecord.pValue ?? null,
+      wins: validationRecord.wins ?? null,
+      losses: validationRecord.losses ?? null,
+      meanDelta: validationRecord.meanDelta ?? null,
+      readRate: validationRecord.candidateReadRate?.capability ?? null,
+      tokenDelta: validationRecord.tokenDelta ?? null,
+    };
     if (insufficient) {
       await atomicWriteJson(path.join(stagedDir, ".evolution-meta.json"), {
         ...meta,
@@ -494,6 +751,21 @@ async function settleOne(
           modelTag: deps.modelTag ?? "unknown",
         },
       } satisfies EvolutionMeta);
+      // PLAN-45 2.6: a hold is lineage memory too (the proposer sees why).
+      await appendImpactEntry(
+        {
+          source: "evolution",
+          action: "validate",
+          skillName: name,
+          verdict: "held",
+          detail: verdictDetail,
+          contentHash,
+          stats: gateStats,
+          ...(deps.iteration ? { iteration: deps.iteration } : {}),
+          ...(deps.modelTag ? { model: deps.modelTag } : {}),
+        },
+        trailOpts,
+      );
       // PLAN-44 Phase 4a: a never-triggered HOLD is a routing failure, not
       // a body failure. Reword the description now (cheap: LLM calls, no
       // agent turns); the repaired content re-measures on the next pass
@@ -503,7 +775,14 @@ async function settleOne(
         deps.descriptionRepair !== false &&
         deps.llmCall &&
         corpus &&
-        (meta.descriptionRepairs ?? 0) < MAX_DESCRIPTION_REPAIRS
+        (meta.descriptionRepairs ?? 0) < MAX_DESCRIPTION_REPAIRS &&
+        // PLAN-45 2.4: a repair re-keys the content hash (fresh measurement)
+        // but never buys an extra attempt past the lineage cap.
+        attemptsSoFar < MAX_GATE_ATTEMPTS &&
+        // Adversarial H3: with no grown tasks the only "relevant" tasks are
+        // the public families; rewording a description to fire on ledger or
+        // log tasks is exactly the overfit pressure the repair must not add.
+        relevantCapabilityTasks(corpus.tasks).some((t) => !isCanonicalTask(t))
       ) {
         const repair = await repairDescription({
           llmCall: deps.llmCall,
@@ -567,6 +846,10 @@ async function settleOne(
         skillName: name,
         verdict: "rejected",
         detail: verdictDetail,
+        // PLAN-45 2.6: the rejected content and the statistics survive the
+        // discard, so the next proposer is told what lost and by how much.
+        diff: staged.content,
+        stats: gateStats,
         contentHash,
         ...(typeof validationRecord.meanDelta === "number"
           ? { score: validationRecord.meanDelta }

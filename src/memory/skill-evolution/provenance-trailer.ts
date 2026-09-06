@@ -22,7 +22,8 @@ export const PROVENANCE_TRAILER_MARKER = "wiki-evolution-provenance";
 export interface EvolutionProvenanceRecord {
   origin: "wiki-evolution";
   verdict: "accepted";
-  mode: "tasks" | "records";
+  /** PLAN-45 2.8: only tasks-mode verdicts are evidence; a records trailer never parses. */
+  mode: "tasks";
   validatedAt: string;
   meanDelta?: number;
   ci95Low?: number;
@@ -86,7 +87,7 @@ export function parseProvenanceTrailer(md: string): EvolutionProvenanceRecord | 
     if (r.origin !== "wiki-evolution" || r.verdict !== "accepted") {
       continue;
     }
-    if (r.mode !== "tasks" && r.mode !== "records") {
+    if (r.mode !== "tasks") {
       continue;
     }
     const validatedAt = optionalString(r.validatedAt, 64);
@@ -96,7 +97,7 @@ export function parseProvenanceTrailer(md: string): EvolutionProvenanceRecord | 
     last = {
       origin: "wiki-evolution",
       verdict: "accepted",
-      mode: r.mode,
+      mode: "tasks",
       validatedAt,
       meanDelta: optionalNumber(r.meanDelta),
       ci95Low: optionalNumber(r.ci95Low),

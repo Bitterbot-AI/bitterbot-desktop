@@ -30,12 +30,17 @@ import type { LlmCallFn } from "./maintainer.js";
 import type { LabeledTrace } from "./types.js";
 import { DESCRIPTION_CONTRACT_PROMPT } from "../../agents/skills/description-contract.js";
 import { listLiveSkillIndex } from "../../agents/skills/description-overlap.js";
-import { impactTrailPath, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
+import {
+  impactTrailPath,
+  type ImpactTrailOptions,
+  readProvenance,
+} from "../../agents/skills/impact-trail.js";
 import { liveSkillDir, readLive, resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { isSuspicious, scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { markDreamConsumption } from "../dream-utility.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
+import { buildPreviouslyTried } from "./rejected-edits.js";
 import { fenceUntrusted } from "./traces.js";
 import {
   isValidPatternName,
@@ -317,12 +322,23 @@ export async function runSkillProposer(deps: ProposerDeps): Promise<ProposerRunR
     )
     .join("\n");
   const liveSkills = await listLiveSkillIndexLines(deps);
+  // PLAN-45 2.6 (I11): what the gate already measured for the lineages in
+  // play, so a rejected approach is not re-proposed and a held one is
+  // reworked with the reason in view.
+  let previouslyTried = "";
+  try {
+    const provenance = await readProvenance(deps.storeOpts ?? {});
+    previouslyTried = buildPreviouslyTried(provenance);
+  } catch (err) {
+    log.debug(`previously-tried block unavailable: ${String(err)}`);
+  }
   const transcript: string[] = [
     PROPOSER_RULES,
     "",
     "## This Iteration's Task Outcomes",
     outcomeSummary || "(no traces this iteration)",
     "",
+    ...(previouslyTried ? [previouslyTried, ""] : []),
     "## Live Skills On This Node (name: description — exactly what the runtime router sees)",
     liveSkills.length > 0 ? liveSkills.join("\n") : "(none)",
     "A new skill's description must describe a situation NONE of these already route; the gate refuses a near-duplicate description (overlap check). If a live skill already covers the situation, patch it instead.",

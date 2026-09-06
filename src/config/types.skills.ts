@@ -98,10 +98,13 @@ export type SkillsEvolutionConfig = {
   /** Cap on concurrently-active evolved skills. Default: 5. */
   maxActiveEvolved?: number;
   /**
-   * Validation gate mode. "records": LLM-scored paired comparison over
-   * reconstructed held-out trajectories. "tasks": real rollouts over the
-   * seeded canonical regression suite plus the node's grown capability
-   * suite. Both gate on an exact sign test (p < 0.05). Default: "records".
+   * Validation gate mode. "tasks" (the gate): real rollouts over the seeded
+   * canonical regression + capability suites plus the node's grown
+   * capability suite, exact sign test with alpha spending. "records" is
+   * DEPRECATED (PLAN-45 D-7): the LLM-scored paired comparison over held-out
+   * traces is kept only as a diagnostic and can neither promote nor reject.
+   * Default: "tasks" (a fresh node reaches it with the canonical capability
+   * families, no operator input needed).
    */
   validationMode?: "records" | "tasks";
   /**
@@ -112,6 +115,12 @@ export type SkillsEvolutionConfig = {
    * K >= 2). Default: 3.
    */
   trialsPerTask?: number;
+  /**
+   * PLAN-45 2.5: a candidate whose capability-suite tokens exceed the
+   * incumbent's by more than this ratio (candidate/incumbent - 1) is held
+   * as cost-exceeded even when it wins. Default: 0.5.
+   */
+  maxTokenDelta?: number;
   /** Model spec "provider/model" for maintainer/labeler calls. Default: cheap-model resolution. */
   judgeModel?: string;
   /**
@@ -162,8 +171,10 @@ export type SkillsEvolutionConfig = {
     alsoAllow?: string[];
     /**
      * Grant `exec`/`process` to validation rollouts (approvals off, scrubbed
-     * env, workdir confined to the scratch workspace). Off by default: a
-     * candidate skill is proposer-authored from untrusted traces.
+     * env with HOME/TMPDIR in the scratch workspace, workdir confined to it,
+     * a validation-specific binary allowlist, no network clients). ON by
+     * default since PLAN-45 D-2 so the gate measures the shell-bearing
+     * pathway the runtime uses; set false to keep validation shell-less.
      */
     exec?: boolean;
   };

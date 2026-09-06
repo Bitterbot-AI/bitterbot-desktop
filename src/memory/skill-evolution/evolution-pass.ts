@@ -85,6 +85,8 @@ export interface EvolutionPassDeps {
   /** Validation gate settings (Phase 4). Gate runs whenever a proposal staged. */
   validationMode?: "records" | "tasks";
   trialsPerTask?: number;
+  /** PLAN-45 2.5: ceiling on candidate/incumbent token ratio minus one (default 0.5). */
+  maxTokenDelta?: number;
   /**
    * PLAN-43 Phase 3: signing key for receiver-side attestations of peer
    * skills (device identity). When set together with `agentTurn`, the
@@ -364,16 +366,19 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
   try {
     // PLAN-44 Phase 1: human-authored tasks that hit an environment failure
     // are not maintainer material but still describe a real capability.
-    const failingTexts = [
-      ...sample.samples.filter((s) => s.label.label === "fail").map((s) => s.formattedLog),
-      ...sample.envFailTexts,
+    const iteration = deps.cycleId ?? new Date().toISOString().slice(0, 10);
+    const failingTraces = [
+      ...sample.samples
+        .filter((s) => s.label.label === "fail")
+        .map((s) => ({ text: s.formattedLog, runId: s.trace.runId, iteration })),
+      ...sample.envFailTexts.map((text) => ({ text, iteration })),
     ];
-    if (failingTexts.length > 0) {
+    if (failingTraces.length > 0) {
       const effective = await loadEffectiveCorpus(storeOpts);
       // Reviewed ids (accepted OR rejected) are never redrafted (Phase 2).
       const reviewed = await reviewedDraftIds(storeOpts);
       await mineCapabilityTasks({
-        failingTraceTexts: failingTexts,
+        failingTraces,
         llmCall: deps.llmCall,
         existingIds: new Set([...(effective?.tasks ?? []).map((t) => t.id), ...reviewed]),
         ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),
