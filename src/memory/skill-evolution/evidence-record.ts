@@ -43,6 +43,7 @@ export type SkillLifecycleLadder =
   | "stable"
   | "rolled-back"
   | "retired"
+  | "canary-off"
   | "unmanaged";
 
 export interface SkillEvidenceRecord {

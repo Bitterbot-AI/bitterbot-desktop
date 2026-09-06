@@ -12,6 +12,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { EvolutionMeta } from "./validation-gate.js";
 import {
+  canaryOff,
   readCanaryRegistry,
   registerCanary,
   resetCanaryRegistryCacheForTest,
@@ -587,5 +588,82 @@ describe("canary monitor (PLAN-45 Phase 3)", () => {
       expect.stringContaining("cap"),
       expect.stringContaining("cap"),
     ]);
+  });
+});
+
+describe("PLAN-45 4.2/4.3: peer skills under the monitor", () => {
+  let tmp: string;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "canary-peer-"));
+    resetCanaryRegistryCacheForTest();
+  });
+  afterEach(async () => {
+    await fs.rm(tmp, { recursive: true, force: true });
+    resetCanaryRegistryCacheForTest();
+  });
+
+  it("a canary-off entry is preserved (not swept as stale), and a regressing PEER canary goes canary-off with files kept", async () => {
+    const roots = resolveStorageRoots({ configDir: tmp });
+    const now = Date.now();
+    // Legacy peer skill (provenance only) demoted by attestations: stays withheld.
+    const legacyDir = path.dirname(liveSkillPath(roots, "legacy-peer"));
+    await fs.mkdir(legacyDir, { recursive: true });
+    await fs.writeFile(
+      liveSkillPath(roots, "legacy-peer"),
+      "---\nname: legacy-peer\ndescription: d\n---\nx\n",
+    );
+    await fs.writeFile(
+      path.join(legacyDir, ".provenance.json"),
+      JSON.stringify({ author_pubkey: "PK", content_hash: "h" }),
+    );
+    await canaryOff("legacy-peer", { reason: "attestation", now }, { configDir: tmp });
+    // Re-gated peer skill in canary, regressing in production.
+    await writeEvolved(tmp, "peer-canary", {
+      origin: "peer",
+      ladder: { state: "canary", at: now - DAY, by: "gate" },
+      canary: { startedAt: now - DAY, bucketFraction: 0.5, reason: "gate" },
+      peer: {
+        authorPubkey: "PK",
+        authorPeerId: "p",
+        contentHash: "h",
+        timestamp: 1,
+        receivedAt: 1,
+        trailer: null,
+      },
+    });
+    await registerCanary(
+      "peer-canary",
+      { startedAt: now - DAY, bucketFraction: 0.5, descriptionAtStart: "d", reason: "gate" },
+      { configDir: tmp },
+    );
+    const rows: CanaryRunRow[] = [];
+    for (let i = 0; i < 8; i++) {
+      rows.push(row({ runId: `e${i}`, skill: "peer-canary", read: true, label: "fail" }));
+      rows.push(row({ runId: `u${i}`, skill: "peer-canary", exposed: false, label: "pass" }));
+    }
+    await appendCanaryRuns(rows, { configDir: tmp });
+    const r = await runCanaryMonitor({ storeOpts: { configDir: tmp }, now });
+    expect(r.actions.map((a) => [a.skillName, a.action])).toEqual([
+      ["legacy-peer", "continue"],
+      ["peer-canary", "canary-off"],
+    ]);
+    expect(await readLive(roots, "peer-canary")).toContain("v2 body");
+    const registry = await readCanaryRegistry({ configDir: tmp });
+    expect(registry.skills["legacy-peer"]?.bucketFraction).toBe(0);
+    expect(registry.skills["peer-canary"]).toMatchObject({
+      bucketFraction: 0,
+      reason: "regression",
+    });
+    const meta = JSON.parse(
+      await fs.readFile(
+        path.join(path.dirname(liveSkillPath(roots, "peer-canary")), ".evolution-meta.json"),
+        "utf-8",
+      ),
+    ) as EvolutionMeta;
+    expect(meta.ladder?.state).toBe("canary-off");
+    expect((await readProvenance({ configDir: tmp })).at(-1)).toMatchObject({
+      action: "canary-off",
+      skillName: "peer-canary",
+    });
   });
 });

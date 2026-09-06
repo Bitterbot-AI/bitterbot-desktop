@@ -2776,6 +2776,9 @@ export class DreamEngine {
       // primary re-canaries stable skills.
       modelTag: this.config.runtimeModelTag ?? this.config.model,
       runtimeModelTag: this.config.runtimeModelTag ?? null,
+      ...(this.config.evolutionProposerModelTag
+        ? { evolverModelTag: this.config.evolutionProposerModelTag }
+        : {}),
       ...(attestKeyPair ? { attestKeyPair } : {}),
       ...(nodePubkey ? { nodePubkey } : {}),
       ...(this.config.a2aAttestation?.enabled !== false && this.config.a2aAttestation?.peers?.length
@@ -2784,6 +2787,13 @@ export class DreamEngine {
       ...(this.config.a2aAttestation?.blockedAttesters?.length
         ? { blockedAttesters: this.config.a2aAttestation.blockedAttesters }
         : {}),
+      ...(this.config.a2aAttestation?.trustedAttesters?.length
+        ? { trustedAttesters: this.config.a2aAttestation.trustedAttesters }
+        : {}),
+      ...(typeof this.config.a2aAttestation?.unknownAttesterWeight === "number"
+        ? { unknownAttesterWeight: this.config.a2aAttestation.unknownAttesterWeight }
+        : {}),
+      ...(this.config.attesterPriority ? { attesterPriority: this.config.attesterPriority } : {}),
     });
     if (result.ran) {
       const apply = result.maintenance?.apply;

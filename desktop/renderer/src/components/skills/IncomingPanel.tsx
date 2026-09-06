@@ -102,7 +102,9 @@ function ImportFromAgentskills() {
           text:
             res.action === "accepted"
               ? `Imported "${res.skillName}" — installed and ready to enable.`
-              : `Imported "${res.skillName}" — queued for review below.`,
+              : res.action === "staged"
+                ? `Imported "${res.skillName}" — admitted to local validation; live after it passes.`
+                : `Imported "${res.skillName}" — queued for review below.`,
         });
       } else {
         setMessage({ kind: "err", text: res.reason ?? "Import failed" });
@@ -212,9 +214,9 @@ export function IncomingPanel({
     async (name: string) => {
       if (
         !(await confirmDialog({
-          title: `Accept "${name}" into managed skills?`,
+          title: `Accept "${name}" for local validation?`,
           description:
-            "This copies it from quarantine. It will be installed but stay disabled until you toggle it on.",
+            "Bitterbot will re-test this skill on its own task suite before it goes live. It stays out of the agent's index until it passes, then serves as a canary.",
           actionLabel: "Accept",
         }))
       )

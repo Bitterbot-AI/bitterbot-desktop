@@ -265,6 +265,11 @@ export async function stageSkill(
       await fs.rm(path.join(dir, sidecar), { force: true });
     }
   }
+  if (params.author !== "peer") {
+    // PLAN-45 4.2 (adversarial 4-2): only the peer-staging path may carry
+    // an author binding into staging; anyone else's edit must not inherit it.
+    await fs.rm(path.join(dir, ".provenance.json"), { force: true });
+  }
   const meta: StagingMeta = {
     reason: params.reason,
     author: params.author,
@@ -363,7 +368,11 @@ export interface ArchivedVersion {
  * evolution identity, not inherit it).
  */
 export const ARCHIVE_SIDECARS_MANIFEST = ".sidecars.json";
-export const ARCHIVABLE_SIDECARS = [".evolution-meta.json", "PURPOSE.md"] as const;
+export const ARCHIVABLE_SIDECARS = [
+  ".evolution-meta.json",
+  "PURPOSE.md",
+  ".provenance.json",
+] as const;
 
 export async function readLiveSidecars(
   roots: StorageRoots,

@@ -202,6 +202,85 @@ The evidence record carries `ladder`, `canary`, and `modelDrift`; status
 (`skills.evolution.status.evolvedLive`) shows them per skill, and
 `iterations.jsonl` records every monitor decision.
 
+### Trust is not evidence at every boundary (PLAN-45 Phase 4)
+
+- **Activation ignores reputation (4.1, I5).** The skill version resolver's
+  fitness has trust weight 0 (execution 0.7, recency 0.3). Reputation only
+  orders evaluation: the attestation sweep re-scores higher-reputation
+  authors first (`priorityOf`), never more often.
+- **Receiver re-gate (4.2, PLAN-44 D-8).** An operator accept, or a trusted
+  peer's skill under `ingestPolicy: "auto"`, lands in **staging** with
+  `.evolution-meta.json.origin = "peer"` and the signed envelope as
+  `.provenance.json` (`src/agents/skills/peer-staging.ts`). Staging is
+  name-bound: a peer stage never replaces this node's own pending proposal
+  or another author's stage, and a non-peer edit strips the author binding.
+  The validation gate measures the skill on this node's own private
+  capability tasks (HOLD `no-private-suite`, recorded on the meta and the
+  trail, until some are grown; the public families alone are a memorizable
+  baseline), under the validation tool profile. The evolved-skill cap, the
+  untrusted-evidence hold, description repair and the trail-derived lineage
+  do not apply to peers; the peer lineage is (author key, name) in
+  `skill-wiki/peer-attempts.json`, persisted across restages; bytes this
+  node already measured (its own stored attestation) or that the author
+  retracted are discarded without a run; a cost hold is terminal (signed
+  bytes cannot be edited here). A pass promotes into canary, writes the
+  memory chunk at promotion (retried each pass while the bridge is down,
+  `peer.chunkPending`), and stores the measured verdict as this node's
+  attestation of those bytes. `auto` skips review, never the gate.
+- **Attestations act (4.3, D-4).** A live peer skill is put **canary-off**
+  (withheld from every run, files kept, slash command hidden, ladder
+  `canary-off`, reversible with `unregisterCanary`) when this node's own
+  re-score found a regression or at least two trusted attesters did, on
+  fresh, current-generation verdicts (`attestation-actions.ts`). The monitor
+  treats a regressing or never-read PEER canary the same way instead of
+  deleting it, and never re-opens a canary-off entry (the model-drift loop
+  skips it). Unknown attesters never demote.
+- **Version-bound trust (4.4).** A name is bound to its author's key: another
+  key cannot take it (name squat), an envelope stamped older than the held
+  version or more than five minutes ahead of now is rejected, a newer
+  version from the same author is a fresh review and re-gate (the gate's
+  patch path archives the previous version). Live peer bytes are re-hashed
+  every pass; a mismatch is canary-off ("tamper"), recorded once per byte
+  state on the provenance so an operator's reversal is not re-flagged; a
+  routing repair re-binds the provenance to the repaired body and keeps the
+  original hash on its stamp. The provenance trailer is **signed by the
+  device key** over the claims plus the skill name, the body hash (without
+  any trailer) and the node key; the node key signs the envelope over
+  body + trailer, so the two keys cross-sign with no orchestrator change. A
+  receiver drops a forged binding and rejects a trailer lifted onto another
+  body, skill name or node. What the signature proves is authorship of the
+  claim, never its truth. Found while building this: the Phase 0 parser
+  required a string `validatedAt` while the publisher wrote a number, so no
+  real trailer had ever parsed on a receiver; both forms parse now.
+- **Behavior versus spec (4.5, I9).** Every tool call in a validation
+  session passes an egress check before interceptors and plugins
+  (`validation-egress.ts`): hosts from URL-shaped tool params and shell
+  commands are compared with `bitterbot.capabilities.network.outbound` in
+  the arm's frontmatter, recorded per trial, and an undeclared host is
+  refused on the spot. What is observed is the **attempt** as it appears in
+  tool parameters (URLs, network CLI targets); the validation tool profile
+  already denies every network tool and the safe-bin floor carries no
+  client, so an interpreter-obfuscated attempt is not seen. The candidate
+  arm's undeclared egress, minus hosts the incumbent arm of the same task
+  also attempted (the base model's baseline), is the categorical verdict
+  `undeclared-egress` (ahead of every statistic), a decisive REJECT naming
+  the host. A trial whose workspace no runner registered is never blocked.
+  The memo carries the egress record and its profile moved to v3, so no
+  pre-4.5 trial replays as clean. Two confinement holes closed on the way:
+  the validation safe-bin floor was clobbered by a later key (the
+  operator's global `safeBins` reached the validation shell), and the
+  operator's exec "allow always" entries, including the wildcard agent's,
+  applied to validation shells (they now resolve approvals under the
+  `skill-validation` identity).
+- **Evolver model (4.6, I8).** Every promotion records `evolverModel` (the
+  proposer lane's model) and `validatedOn`; the trailer carries both. A
+  receiver computes the transfer direction on the featured-model tier
+  table. The sender's evolver model is a claim: it buys the default window
+  only when the trailer is device-signed by an attester in
+  `a2a.attestation.trustedAttesters`; every other peer transfer takes the
+  strict canary (a fifth of runs, 16 determinate runs per side, looks at
+  4/8/16/32/64 with alpha 0.05/5, 40 runs or 21 days to graduate).
+
 ### Calibrating the labeler on real traces (PLAN-45 Phase 1.5)
 
 `bitterbot skills calibrate export --count 100` writes a blind, stratified

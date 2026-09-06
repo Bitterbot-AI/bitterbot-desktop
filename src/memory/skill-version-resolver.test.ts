@@ -41,8 +41,8 @@ describe("SkillVersionResolver.fitness", () => {
       peerTrust: 0.5,
       ageMs: 0,
     });
-    // 0.45*0.5 + 0.35*0.5 + 0.20*1.0 = 0.225 + 0.175 + 0.2 = 0.6
-    expect(score).toBeCloseTo(0.6, 1);
+    // PLAN-45 4.1: 0.7*0.5 + 0*trust + 0.3*1.0 = 0.65
+    expect(score).toBeCloseTo(0.65, 2);
   });
 
   it("high-performing trusted skill scores near 1.0", () => {
@@ -55,14 +55,26 @@ describe("SkillVersionResolver.fitness", () => {
     expect(score).toBeGreaterThan(0.85);
   });
 
-  it("old skill from untrusted peer with no executions scores low", () => {
-    const score = SkillVersionResolver.fitness({
+  it("old skill with no executions scores low, and trust cannot lift it (I5)", () => {
+    const untrusted = SkillVersionResolver.fitness({
       executionSuccessRate: null,
       executionCount: 0,
       peerTrust: 0.1,
       ageMs: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
-    expect(score).toBeLessThan(0.35);
+    expect(untrusted).toBeLessThan(0.4);
+    const trusted = SkillVersionResolver.fitness({
+      executionSuccessRate: null,
+      executionCount: 0,
+      peerTrust: 1.0,
+      ageMs: 30 * 24 * 60 * 60 * 1000,
+    });
+    // Trust is not evidence: the activation score is identical.
+    expect(trusted).toBe(untrusted);
+    // Reputation only orders evaluation.
+    expect(SkillVersionResolver.evaluationPriority({ peerTrust: 1.0 })).toBeGreaterThan(
+      SkillVersionResolver.evaluationPriority({ peerTrust: 0.1 }),
+    );
   });
 
   it("Bayesian smoothing blends prior with observed rate for few executions", () => {
@@ -96,8 +108,8 @@ describe("SkillVersionResolver.fitness", () => {
       ageMs: 7 * 24 * 60 * 60 * 1000,
     });
     expect(fresh).toBeGreaterThan(weekOld);
-    // Recency component halves — difference should be ~0.10
-    expect(fresh - weekOld).toBeCloseTo(0.1, 1);
+    // Recency component halves — difference should be ~0.15 (weight 0.3)
+    expect(fresh - weekOld).toBeCloseTo(0.15, 1);
   });
 });
 

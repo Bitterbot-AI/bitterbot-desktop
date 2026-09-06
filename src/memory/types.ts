@@ -148,7 +148,7 @@ export interface MemorySearchManager {
       transport?: "native" | "mcp" | "cli" | "python";
       elapsedMs: number;
       ingested: Array<{
-        action: "accepted" | "quarantined" | "rejected" | "retracted";
+        action: "accepted" | "quarantined" | "rejected" | "retracted" | "staged";
         skillName?: string;
       }>;
       conflicts: Array<{ severity: "low" | "medium" | "high" }>;

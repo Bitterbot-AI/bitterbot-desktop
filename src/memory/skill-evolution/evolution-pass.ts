@@ -98,6 +98,11 @@ export interface EvolutionPassDeps {
   /** Peer A2A URLs to exchange attestations with (a2a.attestation.peers). */
   attestationPeers?: string[];
   blockedAttesters?: string[];
+  /** PLAN-45 4.3: attesters whose regression verdicts are actionable (a2a.attestation.trustedAttesters). */
+  trustedAttesters?: string[];
+  unknownAttesterWeight?: number;
+  /** PLAN-45 4.1: reputation as evaluation order for the attestation sweep (never an activation input). */
+  attesterPriority?: (authorPubkey: string) => number;
   maxActiveEvolved?: number;
   modelTag?: string;
   /**
@@ -105,6 +110,8 @@ export interface EvolutionPassDeps {
    * substrate a stable skill was proven on. A change re-canaries it.
    */
   runtimeModelTag?: string | null;
+  /** PLAN-45 4.6 (I8): the proposer lane's model, recorded as the evolver model on every promotion. */
+  evolverModelTag?: string;
   /** P2P propagation (Phase 5). Publisher = the orchestrator bridge or a fake. */
   propagate?: boolean;
   maturityDays?: number;

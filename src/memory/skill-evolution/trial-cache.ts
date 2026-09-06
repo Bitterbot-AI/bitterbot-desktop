@@ -39,6 +39,29 @@ export interface CachedTrial {
   /** PLAN-45 2.5: cost of the original turn, replayed on a memo hit. */
   usage?: { input?: number; output?: number } | null;
   wallMs?: number | null;
+  /** PLAN-45 4.5: egress attempts of the original trial. */
+  egress?: Array<{ tool: string; host: string; declared: boolean }> | null;
+}
+
+function parseEgress(raw: string | null): CachedTrial["egress"] {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (e): e is { tool: string; host: string; declared: boolean } =>
+            !!e &&
+            typeof e === "object" &&
+            typeof (e as { tool?: unknown }).tool === "string" &&
+            typeof (e as { host?: unknown }).host === "string" &&
+            typeof (e as { declared?: unknown }).declared === "boolean",
+        )
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export function promptHash(prompt: string): string {
@@ -73,7 +96,12 @@ export class TrialCache {
       skill_read INTEGER,
       at INTEGER NOT NULL
     )`);
-    for (const col of ["input_tokens INTEGER", "output_tokens INTEGER", "wall_ms INTEGER"]) {
+    for (const col of [
+      "input_tokens INTEGER",
+      "output_tokens INTEGER",
+      "wall_ms INTEGER",
+      "egress_json TEXT",
+    ]) {
       try {
         this.db.exec(`ALTER TABLE trials ADD COLUMN ${col}`);
       } catch {
@@ -137,7 +165,7 @@ export class TrialCache {
   get(k: TrialCacheKey): CachedTrial | null {
     const row = this.db
       .prepare(
-        "SELECT score, answer, skill_read, input_tokens, output_tokens, wall_ms FROM trials WHERE key = ?",
+        "SELECT score, answer, skill_read, input_tokens, output_tokens, wall_ms, egress_json FROM trials WHERE key = ?",
       )
       .get(trialCacheKey(k)) as
       | {
@@ -147,6 +175,7 @@ export class TrialCache {
           input_tokens: number | null;
           output_tokens: number | null;
           wall_ms: number | null;
+          egress_json: string | null;
         }
       | undefined;
     if (!row) {
@@ -161,14 +190,15 @@ export class TrialCache {
           ? null
           : { input: row.input_tokens ?? 0, output: row.output_tokens ?? 0 },
       wallMs: row.wall_ms,
+      egress: parseEgress(row.egress_json),
     };
   }
 
   put(k: TrialCacheKey, value: CachedTrial, now = Date.now()): void {
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO trials (key, score, answer, skill_read, at, input_tokens, output_tokens, wall_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO trials (key, score, answer, skill_read, at, input_tokens, output_tokens, wall_ms, egress_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         trialCacheKey(k),
@@ -179,6 +209,7 @@ export class TrialCache {
         value.usage?.input ?? null,
         value.usage?.output ?? null,
         value.wallMs ?? null,
+        value.egress ? JSON.stringify(value.egress.slice(0, 64)) : null,
       );
   }
 

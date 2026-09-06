@@ -56,9 +56,12 @@ export type FitnessInput = {
 
 // ── Fitness weights ────────────────────────────────────────────────────────
 
-const WEIGHT_EXECUTION = 0.45;
-const WEIGHT_TRUST = 0.35;
-const WEIGHT_RECENCY = 0.2;
+// PLAN-45 Phase 4.1 (I5): trust is not evidence. Reputation has NO weight
+// in the activation score; it only orders which candidates get evaluated
+// first (`evaluationPriority`). The two evidence terms are renormalized.
+const WEIGHT_EXECUTION = 0.7;
+const WEIGHT_TRUST = 0;
+const WEIGHT_RECENCY = 0.3;
 
 /** Minimum executions before success rate is considered reliable. */
 const MIN_EXECUTIONS_FOR_CONFIDENCE = 3;
@@ -103,13 +106,22 @@ export class SkillVersionResolver {
       execScore = input.executionSuccessRate;
     }
 
-    // Trust component: direct passthrough (already 0–1 from PeerReputationManager)
+    // Trust component: weight 0 (PLAN-45 4.1). Kept in the formula so the
+    // invariant is visible, never so it can be re-tuned back in silently.
     const trustScore = input.peerTrust;
 
     // Recency component: exponential decay
     const recencyScore = Math.exp((-Math.LN2 * input.ageMs) / RECENCY_HALFLIFE_MS);
 
     return WEIGHT_EXECUTION * execScore + WEIGHT_TRUST * trustScore + WEIGHT_RECENCY * recencyScore;
+  }
+
+  /**
+   * PLAN-45 4.1: reputation's only job. Higher goes first in evaluation
+   * queues (attestation sweep, exchange); it never changes what activates.
+   */
+  static evaluationPriority(input: Pick<FitnessInput, "peerTrust">): number {
+    return Number.isFinite(input.peerTrust) ? Math.min(1, Math.max(0, input.peerTrust)) : 0.5;
   }
 
   /**

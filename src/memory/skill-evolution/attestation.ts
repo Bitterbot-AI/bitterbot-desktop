@@ -567,6 +567,12 @@ export async function runAttestationSweep(params: {
   maxPerPass?: number;
   /** Injection pre-scan; anything at or above `medium` is never executed. Default: the skills scanner. */
   scan?: (text: string) => { severity: string };
+  /**
+   * PLAN-45 4.1: reputation as EVALUATION ORDER. Higher-priority authors
+   * are re-scored first; the per-author round-robin and the per-pass budget
+   * are unchanged, so reputation never buys more evaluation, only earlier.
+   */
+  priorityOf?: (authorPubkey: string) => number;
 }): Promise<{ attested: number; skipped: number; held: number }> {
   ensureAttestationSchema(params.db);
   pruneStaleAttestations(params.db);
@@ -594,7 +600,26 @@ export async function runAttestationSweep(params: {
           AND c.governance_json LIKE '%"peerOrigin"%'
         ORDER BY c.updated_at ASC LIMIT 2000`,
     )
-    .all() as unknown as Array<{ id: string; text: string; governance_json: string | null }>;
+    .all() as unknown as Array<{
+    id: string;
+    text: string;
+    governance_json: string | null;
+    updated_at: number;
+  }>;
+  if (params.priorityOf) {
+    const authorOf = (g: string | null): string => {
+      try {
+        const parsed = JSON.parse(g ?? "{}") as { peerOrigin?: unknown };
+        return typeof parsed.peerOrigin === "string" ? parsed.peerOrigin : "";
+      } catch {
+        return "";
+      }
+    };
+    const priorityOf = params.priorityOf;
+    const ranked = rows.map((r, i) => ({ r, i, p: priorityOf(authorOf(r.governance_json)) }));
+    ranked.sort((a, b) => b.p - a.p || a.i - b.i);
+    rows.splice(0, rows.length, ...ranked.map((x) => x.r));
+  }
   let attested = 0;
   let skipped = 0;
   let held = 0;

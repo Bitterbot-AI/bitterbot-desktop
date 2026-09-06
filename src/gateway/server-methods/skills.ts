@@ -25,7 +25,6 @@ import { crystallizeSkill } from "../../agents/skills/crystallize.js";
 import { appendImpactEntry } from "../../agents/skills/impact-trail.js";
 import {
   acceptIncomingSkill,
-  readAcceptedEnvelope,
   listIncomingSkills,
   rejectIncomingSkill,
   rejectIncomingSkillsByPeer,
@@ -482,7 +481,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
     const skills = await listIncomingSkills(cfg);
     respond(true, { skills }, undefined);
   },
-  "skills.incoming.accept": async ({ params, respond, context }) => {
+  "skills.incoming.accept": async ({ params, respond }) => {
     const skillName = typeof params?.skillName === "string" ? params.skillName.trim() : "";
     if (!skillName) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "skillName required"));
@@ -497,23 +496,13 @@ export const skillsHandlers: GatewayRequestHandlers = {
       workspaceDir,
       reputationManager,
     });
-    // PLAN-44 Phase 3 (audit security finding 3): a quarantined envelope is
-    // NOT a memory chunk while it sits in review; the operator's accept is
-    // what routes it into the skill-network bridge.
-    let bridge: string | undefined;
-    if (result.ok && result.skillPath && context.skillNetworkBridge) {
-      const envelope = await readAcceptedEnvelope(result.skillPath);
-      if (envelope) {
-        try {
-          bridge = context.skillNetworkBridge.ingestNetworkSkill(envelope).action;
-        } catch (err) {
-          bridge = `error: ${String(err)}`;
-        }
-      }
-    }
+    // PLAN-45 4.2 (D-8): an accept admits the skill to the LOCAL validation
+    // gate. Neither the live dir nor the memory chunk is written here; both
+    // land when the gate promotes it (canary -> stable). The bridge is
+    // reached by the gate through the active-bridge accessor.
     respond(
       result.ok,
-      { ...result, ...(bridge ? { bridge } : {}) },
+      { ...result, ...(result.ok ? { gate: "pending" } : {}) },
       result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "accept failed"),
     );
   },

@@ -2696,6 +2696,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       // PLAN-42: WikiSkill evolution pass rides skills.evolution (default
       // ON; plain data, structuredClone-safe).
       ...(this.cfg.skills?.evolution ? { skillEvolution: this.cfg.skills.evolution } : {}),
+      // PLAN-45 4.1: reputation orders peer-skill evaluation, nothing more.
+      attesterPriority: (pubkey: string) =>
+        this.peerReputationManager?.getTrustScore(pubkey) ?? 0.5,
       // PLAN-45 Phase 3.5: the substrate evolved skills are measured on.
       ...(() => {
         const spec = this.resolvePrimaryLlmSpec();
@@ -2731,7 +2734,10 @@ export class MemoryIndexManager implements MemorySearchManager {
           evolution: evoSpec ? this.buildLlmCallFn(evoSpec, { maxTokens: 8192 }) : null,
           proposer: call,
         });
-        return call ? { evolutionProposerLlmCall: call } : {};
+        // PLAN-45 4.6 (I8): the evolver model rides every published skill.
+        return call
+          ? { evolutionProposerLlmCall: call, ...(spec ? { evolutionProposerModelTag: spec } : {}) }
+          : {};
       })(),
     };
 

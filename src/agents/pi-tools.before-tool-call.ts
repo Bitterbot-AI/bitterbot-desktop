@@ -4,11 +4,14 @@ import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { isPlainObject } from "../utils.js";
 import { checkRepeatedCall } from "./pi-tools.repeat-guard.js";
 import { runInterceptors } from "./skills/interceptor-runner.js";
+import { checkValidationEgress } from "./skills/validation-egress.js";
 import { normalizeToolName } from "./tool-policy.js";
 
 type HookContext = {
   agentId?: string;
   sessionKey?: string;
+  /** PLAN-45 4.5: the trial workspace (validation sessions), the egress record's key. */
+  workspaceDir?: string;
 };
 
 type HookOutcome = { blocked: true; reason: string } | { blocked: false; params: unknown };
@@ -26,6 +29,19 @@ export async function runBeforeToolCallHook(args: {
 }): Promise<HookOutcome> {
   const toolName = normalizeToolName(args.toolName || "tool");
   let params = args.params;
+
+  // PLAN-45 4.5 (I9): in a validation trial, egress the SKILL.md did not
+  // declare is refused before any interceptor or plugin can reshape it.
+  // No-op outside validation sessions.
+  const egress = checkValidationEgress({
+    toolName,
+    params,
+    sessionKey: args.ctx?.sessionKey,
+    workspaceDir: args.ctx?.workspaceDir,
+  });
+  if (egress.block) {
+    return { blocked: true, reason: egress.block };
+  }
 
   // PLAN-20: skill-owned interceptors run BEFORE plugin hooks so they can
   // shape the action surface plugins observe. Wrapped in try/catch — an

@@ -80,6 +80,8 @@ export interface TrialResult {
   usage?: { input?: number; output?: number };
   /** Wall time of the turn when the runner measured it (memo hits carry it). */
   wallMs?: number;
+  /** PLAN-45 4.5 (I9): egress attempts observed in the trial; undefined when the runner cannot observe. */
+  egress?: Array<{ tool: string; host: string; declared: boolean }>;
 }
 
 export type TaskRunnerFn = (
@@ -217,8 +219,12 @@ export interface TasksValidationVerdict {
     | "over-triggered"
     | "cost-exceeded"
     | "budget-exhausted"
-    | "runner-failed";
+    | "runner-failed"
+    /** PLAN-45 4.5 (I9): the candidate reached a host its frontmatter does not declare. */
+    | "undeclared-egress";
   corpusVersion: string;
+  /** PLAN-45 4.5: the undeclared hosts, by task and tool. */
+  undeclaredEgress?: Array<{ task: string; tool: string; host: string }>;
   incumbentPassRate?: number;
   candidatePassRate?: number;
   /** Mean per-task (credited) delta over CAPABILITY tasks (the gated set). */
@@ -329,6 +335,7 @@ export async function validateAgainstTasks(params: {
   let incumbentErrors = 0;
   let candidateErrors = 0;
   const totalTrials = corpus.tasks.length * trialsPerTask;
+  const undeclaredEgress: Array<{ task: string; tool: string; host: string }> = [];
   const reads = { capability: [] as boolean[], regression: [] as boolean[] };
   const tokens = { incumbent: 0, candidate: 0 };
   const wall = { incumbent: 0, candidate: 0 };
@@ -404,6 +411,16 @@ export async function validateAgainstTasks(params: {
         out.candidate += score;
         out.tokens.candidate += (cand.usage?.input ?? 0) + (cand.usage?.output ?? 0);
         out.wallMs.candidate += cand.wallMs ?? 0;
+        // 4.5: only the CANDIDATE arm is charged, and only for hosts the
+        // incumbent arm of the SAME task did not also attempt (adversarial
+        // 4-4): what the base model reaches for on a prompt is the node's
+        // baseline, not the skill's behavior.
+        const baseline = new Set((inc?.egress ?? []).map((e) => e.host));
+        for (const e of cand.egress ?? []) {
+          if (!e.declared && !baseline.has(e.host)) {
+            undeclaredEgress.push({ task: task.id, tool: e.tool, host: e.host });
+          }
+        }
         // 2.7: a win counts for the skill only when the skill was read in
         // that trial; an unobservable read (string runner) stays neutral.
         if (score === 1 && cand.skillRead !== false) {
@@ -618,11 +635,15 @@ export async function validateAgainstTasks(params: {
     maxTokenDelta,
     wallMs: wall,
     ...(calibrated.dropped.length > 0 ? { calibrationDropped: calibrated.dropped } : {}),
+    ...(undeclaredEgress.length > 0 ? { undeclaredEgress } : {}),
     perTask,
   };
 
   let reason: TasksValidationVerdict["reason"];
-  if (regressions.length > 0) {
+  if (undeclaredEgress.length > 0) {
+    // Behavior versus spec is categorical; no statistic masks it.
+    reason = "undeclared-egress";
+  } else if (regressions.length > 0) {
     reason = "regression";
   } else if (
     candidateReadRate.regression !== null &&

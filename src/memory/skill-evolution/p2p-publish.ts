@@ -24,6 +24,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { KeyPair } from "../../commerce/envelope.js";
 import type { EvolutionMeta } from "./validation-gate.js";
 import {
   appendImpactEntry,
@@ -42,6 +43,7 @@ import {
   buildProvenanceTrailer,
   buildRetractionStub,
   type EvolutionRetractionRecord,
+  stripProvenanceTrailer,
 } from "./provenance-trailer.js";
 
 const log = createSubsystemLogger("skill-evolution/p2p-publish");
@@ -152,6 +154,8 @@ export async function publishEligibleEvolvedSkills(deps: {
   storeOpts?: ImpactTrailOptions;
   maturityDays?: number;
   now?: number;
+  /** PLAN-45 4.4: device key + node key; when present every trailer is signed and bound. */
+  signing?: { key: KeyPair; nodePubkey: string };
 }): Promise<PublishSweepResult> {
   const storeOpts = deps.storeOpts ?? {};
   const trailOpts = storeOpts.configDir ? { configDir: storeOpts.configDir } : {};
@@ -181,7 +185,23 @@ export async function publishEligibleEvolvedSkills(deps: {
         result.failed.push({ name: skill.name, detail: `refusing to publish: ${leak}` });
         continue;
       }
-      const withProvenance = `${content.replace(/\n+$/, "")}\n${provenanceTrailer(skill.meta)}`;
+      // Adversarial 4-7: a body that already carries a trailer (a promoted
+      // peer skill later patched here) is published with ONE trailer, and
+      // the binding commits to the trailer-free body receivers recompute.
+      const body = stripProvenanceTrailer(content);
+      const trailer = provenanceTrailer(
+        skill.meta,
+        deps.signing
+          ? {
+              skillName: skill.name,
+              body,
+              key: deps.signing.key,
+              nodePubkey: deps.signing.nodePubkey,
+              ...(deps.now !== undefined ? { now: deps.now } : {}),
+            }
+          : undefined,
+      );
+      const withProvenance = `${body}\n${trailer}`;
       const raw = await deps.publisher.publishSkill(
         Buffer.from(withProvenance, "utf-8").toString("base64"),
         skill.name,

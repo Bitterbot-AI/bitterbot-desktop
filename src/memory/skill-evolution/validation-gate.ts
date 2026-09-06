@@ -15,10 +15,12 @@
  *     live dir, and enforces the maxActiveEvolved cap.
  */
 
+import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { EventJournal } from "../../infra/event-journal.js";
 import type { LlmCallFn } from "./maintainer.js";
+import type { EvolutionProvenanceRecord } from "./provenance-trailer.js";
 import { DEFAULT_CANARY_FRACTION, registerCanary } from "../../agents/skills/canary-registry.js";
 import { listLiveSkillIndex } from "../../agents/skills/description-overlap.js";
 import {
@@ -26,6 +28,12 @@ import {
   type ImpactTrailOptions,
   readProvenance,
 } from "../../agents/skills/impact-trail.js";
+import { isRetracted } from "../../agents/skills/ingest.js";
+import {
+  bumpPeerAttempts,
+  readPeerAttempts,
+  readStagedPeerProvenance,
+} from "../../agents/skills/peer-staging.js";
 import { bumpSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
 import { promoteStaged } from "../../agents/skills/skill-promote.js";
 import {
@@ -38,7 +46,17 @@ import {
   type StorageRoots,
   stagingSkillPath,
 } from "../../agents/skills/skill-storage.js";
+import { type KeyPair, pubkeyId } from "../../commerce/envelope.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { getActiveSkillNetworkBridge } from "../skill-network-bridge.js";
+import {
+  ATTEST_PROTOCOL,
+  isMeasuredVerdict,
+  listAttestations,
+  signAttestation,
+  skillContentSha256,
+  storeAttestation,
+} from "./attestation.js";
 import { deriveCanonicalSeed, loadEffectiveCorpus } from "./canonical-corpus.js";
 import { MAX_DESCRIPTION_REPAIRS, repairDescription } from "./description-repair.js";
 import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
@@ -50,7 +68,9 @@ import {
   CONTENT_CHANGE_VERDICTS,
 } from "./gate-support.js";
 import { hashProposalContent } from "./proposal-apply.js";
+import { loadTaskCorpus } from "./task-corpus.js";
 import { type AgentTurnFn, makeRuntimePathwayRunner } from "./task-runner.js";
+import { strictCanaryFor, transferDirection } from "./transfer-direction.js";
 import { TrialCache } from "./trial-cache.js";
 import { validateAgainstRecords } from "./validate-records.js";
 import {
@@ -71,7 +91,14 @@ export const MAX_GATE_ATTEMPTS = 3;
  * carry no decision (insufficient evidence, cost, never-triggered, budget)
  * spend nothing (adversarial H1/M1).
  */
-const DECISIVE_VERDICTS = new Set(["accepted", "no-improvement", "regression", "over-triggered"]);
+const DECISIVE_VERDICTS = new Set([
+  "accepted",
+  "no-improvement",
+  "regression",
+  "over-triggered",
+  // PLAN-45 4.5 (I9): behavior versus spec is a measured, categorical reject.
+  "undeclared-egress",
+]);
 /** Alpha schedule per attempt; never below what the informative suite can reach. */
 const ALPHA_SCHEDULE = [0.05, 0.025, 0.0125];
 export function alphaForAttempt(attempt: number, capabilityTasks: number): number {
@@ -93,6 +120,27 @@ export function alphaForAttempt(attempt: number, capabilityTasks: number): numbe
 }
 
 export const DEFAULT_MAX_ACTIVE_EVOLVED = 5;
+
+/**
+ * PLAN-45 4.2: the memory chunk of a promoted peer skill. Returns "written"
+ * or the reason it is not (no bridge yet, rejected, no envelope body).
+ */
+export async function writePeerChunk(liveDir: string): Promise<string> {
+  const envelope = await readStagedPeerProvenance(liveDir);
+  if (!envelope || typeof envelope.skill_md !== "string") {
+    return "no envelope body on the provenance";
+  }
+  const bridge = getActiveSkillNetworkBridge();
+  if (!bridge) {
+    return "skill network bridge not active";
+  }
+  try {
+    const r = bridge.ingestNetworkSkill(envelope as never) as { action?: string; reason?: string };
+    return r?.action === "accepted" ? "written" : `bridge ${r?.action ?? "?"}: ${r?.reason ?? ""}`;
+  } catch (err) {
+    return `bridge threw: ${String(err)}`;
+  }
+}
 
 /** The `description:` frontmatter value of a SKILL.md, or null. */
 export function skillDescription(content: string): string | null {
@@ -117,7 +165,9 @@ export type EvolutionLadderState =
   | "canary"
   | "stable"
   | "rolled-back"
-  | "retired";
+  | "retired"
+  /** PLAN-45 4.3 (D-4): withheld from every run, files kept, reversible. */
+  | "canary-off";
 
 export interface EvolutionLadder {
   state: EvolutionLadderState;
@@ -153,6 +203,23 @@ export interface EvolutionMeta {
   published?: { at: number; contentHash?: string };
   /** PLAN-45 Phase 3.4: a published version was retracted on the mesh. */
   retracted?: { at: number; contentHash: string; reason: string };
+  /**
+   * PLAN-45 4.2: a PEER skill under the receiver re-gate (origin "peer").
+   * The sender's trailer is display only; the gate measures locally.
+   */
+  peer?: {
+    authorPubkey: string;
+    authorPeerId: string;
+    /** The envelope's content_hash (sha256 of the signed SKILL.md bytes). */
+    contentHash: string;
+    timestamp: number;
+    receivedAt: number;
+    trailer: EvolutionProvenanceRecord | null;
+    /** PLAN-45 4.6: sender's evolver model vs this node's primary. */
+    transfer?: { direction: string; evolverModel: string | null; receiverModel: string | null };
+    /** PLAN-45 4.2: why the memory chunk is not written yet (retried by housekeeping). */
+    chunkPending?: string;
+  };
   /** PLAN-44 Phase 3: traces the proposer read and their trust classes. */
   evidence?: { runIds: string[]; origins: string[] };
   /** PLAN-44 Phase 3: hash of the SKILL.md the pipeline staged (tamper check). */
@@ -230,8 +297,14 @@ export interface EvolutionMeta {
       credited: number;
       trials: number;
     }>;
+    /** PLAN-45 4.5 (I9): undeclared hosts the candidate reached, when it was rejected for it. */
+    undeclaredEgress?: Array<{ task: string; tool: string; host: string }>;
     validatedAt: number;
     model?: string;
+    /** PLAN-45 4.6 (I8): the proposer lane's model (the model that authored the candidate). */
+    evolverModel?: string;
+    /** PLAN-45 4.6 (I8): models the candidate was measured on. */
+    validatedOn?: string[];
   };
 }
 
@@ -255,6 +328,14 @@ export interface ValidationGateDeps {
   maxActiveEvolved?: number;
   /** Model tag recorded into the promoted skill's provenance. */
   modelTag?: string;
+  /** PLAN-45 4.6: the proposer lane's model, recorded as the evolver model. */
+  evolverModelTag?: string;
+  /** PLAN-45 4.2: sign and store a local attestation for a measured PEER verdict. */
+  attestKeyPair?: KeyPair;
+  db?: DatabaseSync;
+  nodePubkey?: string;
+  /** PLAN-45 4.6: attesters whose signed trailer claims buy the default canary window. */
+  trustedAttesters?: string[];
   iteration?: string;
   /** PLAN-44 Phase 2: wall-clock budget per tasks-mode validation (config). */
   validationBudgetMinutes?: number;
@@ -270,11 +351,14 @@ export interface ValidationGateOutcome {
   detail: string;
 }
 
+/** Origins the validation gate settles: the node's own proposals and peer skills under re-gate (4.2). */
+export const GATEABLE_ORIGINS = new Set(["wiki-evolution", "peer"]);
+
 async function readEvolutionMeta(dir: string): Promise<EvolutionMeta | null> {
   try {
     const raw = await fs.readFile(path.join(dir, ".evolution-meta.json"), "utf-8");
     const parsed = JSON.parse(raw) as EvolutionMeta;
-    return parsed.origin === "wiki-evolution" ? parsed : null;
+    return GATEABLE_ORIGINS.has(parsed.origin) ? parsed : null;
   } catch {
     return null;
   }
@@ -312,8 +396,14 @@ export async function countActiveEvolvedSkills(roots: StorageRoots): Promise<num
   for (const name of entries) {
     const meta = await readEvolutionMeta(path.join(roots.liveRoot, name));
     // Adversarial 3-7: a demoted version left in place (pre-manifest
-    // rollback) is not in service and must not hold a slot.
-    if (meta && meta.ladder?.state !== "rolled-back" && meta.ladder?.state !== "retired") {
+    // rollback) is not in service and must not hold a slot. Peer skills
+    // (4.2) are not this node's self-modification budget.
+    if (
+      meta &&
+      meta.origin === "wiki-evolution" &&
+      meta.ladder?.state !== "rolled-back" &&
+      meta.ladder?.state !== "retired"
+    ) {
       count += 1;
     }
   }
@@ -388,8 +478,10 @@ async function settleOne(
   // Adversarial H1: the staged SKILL.md must be the one the pipeline wrote.
   // stageSkill strips the sidecars for other authors, but a direct file
   // write would not go through it; the meta's hash is the last word.
+  const isPeer = meta.origin === "peer";
+  const expectedAuthor = isPeer ? "peer" : "evolution";
   if (
-    staged.meta.author !== "evolution" ||
+    staged.meta.author !== expectedAuthor ||
     (meta.contentHash !== undefined && meta.contentHash !== contentHash)
   ) {
     await discardStaged(roots, name);
@@ -413,7 +505,11 @@ async function settleOne(
   // proposal whose cited traces are all third-party text (circle, A2A,
   // subagent, guest, unknown) never reaches validation. Checked before any
   // LLM or agent spend.
-  if (meta.evidence && !meta.evidence.origins.some((o) => o === "human" || o === "system")) {
+  if (
+    !isPeer &&
+    meta.evidence &&
+    !meta.evidence.origins.some((o) => o === "human" || o === "system")
+  ) {
     await appendImpactEntry(
       {
         source: "evolution",
@@ -430,8 +526,9 @@ async function settleOne(
   }
 
   // The cap only constrains NET-NEW evolved skills; patches to existing
-  // skills do not add to the count.
-  if (isCreate) {
+  // skills do not add to the count, and peer skills (4.2) are not this
+  // node's self-modification budget.
+  if (isCreate && !isPeer) {
     const cap = deps.maxActiveEvolved ?? DEFAULT_MAX_ACTIVE_EVOLVED;
     const active = await countActiveEvolvedSkills(roots);
     if (active >= cap) {
@@ -495,6 +592,91 @@ async function settleOne(
     deps.mode,
     countCapabilityTasks(corpus),
   );
+  // PLAN-45 4.2: a peer skill is measured on this node's PRIVATE capability
+  // tasks; the public canonical families alone are a memorizable baseline
+  // (attestation.ts says the same). A fresh node holds peer skills in
+  // staging until it has grown some; it never promotes on public tasks.
+  if (isPeer && meta.peer) {
+    // Adversarial 4-6: bytes the author retracted after the operator's
+    // accept are not measured, let alone promoted.
+    if (await isRetracted(meta.peer.authorPubkey, meta.peer.contentHash)) {
+      await discardStaged(roots, name);
+      await appendImpactEntry(
+        {
+          source: "evolution",
+          action: "validate",
+          skillName: name,
+          verdict: "rejected",
+          detail: "retracted by its author before the gate ran; discarded",
+          contentHash,
+          ...(deps.iteration ? { iteration: deps.iteration } : {}),
+        },
+        trailOpts,
+      );
+      return { skillName: name, outcome: "rejected", detail: "retracted by its author" };
+    }
+    // Adversarial 4-3: this node already measured these exact bytes (its own
+    // stored attestation): a republish does not buy a second run.
+    if (deps.db && deps.attestKeyPair) {
+      const mine = pubkeyId(deps.attestKeyPair);
+      const prior = listAttestations(deps.db, skillContentSha256(staged.content)).find(
+        (a) => a.attester_pubkey === mine,
+      );
+      if (prior && prior.verdict !== "accepted") {
+        await discardStaged(roots, name);
+        await appendImpactEntry(
+          {
+            source: "evolution",
+            action: "validate",
+            skillName: name,
+            verdict: "rejected",
+            detail: `already measured on this node (${prior.verdict}, ${new Date(prior.attested_at).toISOString()}); a republish of the same bytes is not re-run`,
+            contentHash,
+            ...(deps.iteration ? { iteration: deps.iteration } : {}),
+          },
+          trailOpts,
+        );
+        return {
+          skillName: name,
+          outcome: "rejected",
+          detail: `already measured: ${prior.verdict}`,
+        };
+      }
+    }
+  }
+  if (
+    isPeer &&
+    !(corpus?.tasks ?? []).some((t) => t.suite !== "regression" && !isCanonicalTask(t))
+  ) {
+    const detail =
+      "no-private-suite: peer skills are re-gated on this node's own capability tasks; none grown yet";
+    // Recorded (adversarial 4-9a): status shows why it is pending.
+    if (meta.lastValidation?.verdict !== "no-private-suite") {
+      await atomicWriteJson(path.join(stagedDir, ".evolution-meta.json"), {
+        ...meta,
+        lastValidation: {
+          at: Date.now(),
+          verdict: "no-private-suite",
+          contentHash,
+          corpusPrefix: "",
+          modelTag: deps.modelTag ?? "unknown",
+        },
+      } satisfies EvolutionMeta);
+      await appendImpactEntry(
+        {
+          source: "evolution",
+          action: "validate",
+          skillName: name,
+          verdict: "held",
+          detail,
+          contentHash,
+          ...(deps.iteration ? { iteration: deps.iteration } : {}),
+        },
+        trailOpts,
+      );
+    }
+    return { skillName: name, outcome: "held", detail };
+  }
   let verdictAccepted = false;
   let verdictDetail = "";
   let validationRecord: EvolutionMeta["validation"];
@@ -542,6 +724,23 @@ async function settleOne(
     last.modelTag === (deps.modelTag ?? "unknown") &&
     CONTENT_CHANGE_VERDICTS.has(last.verdict)
   ) {
+    if (isPeer) {
+      // A receiver cannot edit signed bytes; a cost hold is terminal here.
+      await discardStaged(roots, name);
+      await appendImpactEntry(
+        {
+          source: "evolution",
+          action: "validate",
+          skillName: name,
+          verdict: "rejected",
+          detail: `peer skill ${last.verdict}; signed bytes cannot be edited locally; discarded`,
+          contentHash,
+          ...(deps.iteration ? { iteration: deps.iteration } : {}),
+        },
+        trailOpts,
+      );
+      return { skillName: name, outcome: "rejected", detail: `${last.verdict} (peer, terminal)` };
+    }
     return {
       skillName: name,
       outcome: "held",
@@ -567,18 +766,27 @@ async function settleOne(
   // re-proposal under the same name continues the count (adversarial H1)
   // and the proposer's "Previously tried" block agrees with the gate.
   const trailForAttempts = await readProvenance(trailOpts);
-  const attemptsSoFar = Math.max(
-    meta.gateAttempts ?? 0,
-    trailForAttempts.filter(
-      (e) =>
-        e.source === "evolution" &&
-        e.action === "validate" &&
-        e.skillName === name &&
-        typeof e.stats === "object" &&
-        e.stats !== null &&
-        (e.verdict === "accepted" || e.verdict === "rejected"),
-    ).length,
-  );
+  // A peer's lineage is (author key, name), persisted outside the stage
+  // (4.2, adversarial 4-3): two authors publishing the same name must not
+  // inherit each other's attempts, and a republish must not reset them.
+  const peerRoots = trailOpts.configDir ? { configDir: trailOpts.configDir } : undefined;
+  const attemptsSoFar = isPeer
+    ? Math.max(
+        meta.gateAttempts ?? 0,
+        await readPeerAttempts(meta.peer?.authorPubkey ?? "", name, peerRoots),
+      )
+    : Math.max(
+        meta.gateAttempts ?? 0,
+        trailForAttempts.filter(
+          (e) =>
+            e.source === "evolution" &&
+            e.action === "validate" &&
+            e.skillName === name &&
+            typeof e.stats === "object" &&
+            e.stats !== null &&
+            (e.verdict === "accepted" || e.verdict === "rejected"),
+        ).length,
+      );
   if (attemptsSoFar >= MAX_GATE_ATTEMPTS) {
     await discardStaged(roots, name);
     const detail = `lineage-exhausted: ${attemptsSoFar} measured gate attempts without acceptance`;
@@ -672,6 +880,9 @@ async function settleOne(
       if (DECISIVE_VERDICTS.has(verdict.reason)) {
         meta.gateAttempts = attemptsSoFar + 1;
         await atomicWriteJson(path.join(stagedDir, ".evolution-meta.json"), meta);
+        if (isPeer && meta.peer) {
+          await bumpPeerAttempts(meta.peer.authorPubkey, name, peerRoots);
+        }
       }
       // Feed the calibration for next time with what the incumbent arm did
       // on every task that actually ran (memo hits included: they are real
@@ -688,7 +899,11 @@ async function settleOne(
       }
       verdictAccepted = verdict.accepted;
       const reads = verdict.candidateReadRate;
-      verdictDetail = `tasks: ${verdict.reason}; incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, K=${verdict.trialsPerTask ?? 1}, wins=${verdict.wins ?? 0}/losses=${verdict.losses ?? 0}, p=${verdict.pValue !== undefined ? verdict.pValue.toFixed(4) : "n/a"} at alpha=${alpha}, attempt ${attemptsSoFar + 1}/${MAX_GATE_ATTEMPTS}, reads cap=${reads?.capability ?? "n/a"}/reg=${reads?.regression ?? "n/a"}, tokenDelta=${verdict.tokenDelta !== undefined ? verdict.tokenDelta.toFixed(2) : "n/a"}, cached=${cachedIncumbentTrials}i/${cachedCandidateTrials}c, corpus ${verdict.corpusVersion})`;
+      verdictDetail = `tasks: ${verdict.reason}; ${
+        verdict.reason === "undeclared-egress" && verdict.undeclaredEgress
+          ? `skill reached ${[...new Set(verdict.undeclaredEgress.map((e) => e.host))].join(", ")} via ${[...new Set(verdict.undeclaredEgress.map((e) => e.tool))].join(",")} on ${new Set(verdict.undeclaredEgress.map((e) => e.task)).size} task(s), undeclared in frontmatter; `
+          : ""
+      }incumbent ${((verdict.incumbentPassRate ?? 0) * 100).toFixed(0)}% vs candidate ${((verdict.candidatePassRate ?? 0) * 100).toFixed(0)}% (n=${verdict.trials}, K=${verdict.trialsPerTask ?? 1}, wins=${verdict.wins ?? 0}/losses=${verdict.losses ?? 0}, p=${verdict.pValue !== undefined ? verdict.pValue.toFixed(4) : "n/a"} at alpha=${alpha}, attempt ${attemptsSoFar + 1}/${MAX_GATE_ATTEMPTS}, reads cap=${reads?.capability ?? "n/a"}/reg=${reads?.regression ?? "n/a"}, tokenDelta=${verdict.tokenDelta !== undefined ? verdict.tokenDelta.toFixed(2) : "n/a"}, cached=${cachedIncumbentTrials}i/${cachedCandidateTrials}c, corpus ${verdict.corpusVersion})`;
       validationRecord = {
         mode: "tasks",
         verdict: verdict.reason,
@@ -724,9 +939,42 @@ async function settleOne(
             }
           : {}),
         cachedIncumbentTrials,
+        ...(verdict.undeclaredEgress ? { undeclaredEgress: verdict.undeclaredEgress } : {}),
         validatedAt: Date.now(),
-        ...(deps.modelTag ? { model: deps.modelTag } : {}),
+        ...(deps.modelTag ? { model: deps.modelTag, validatedOn: [deps.modelTag] } : {}),
+        ...(deps.evolverModelTag ? { evolverModel: deps.evolverModelTag } : {}),
       };
+      // PLAN-45 4.2/4.3: a measured verdict on a PEER skill is this node's
+      // attestation of those bytes, signed and stored before promotion so
+      // the sweep, the exchange and the demotion rule all read one record.
+      if (isPeer && deps.attestKeyPair && deps.db && isMeasuredVerdict(verdict.reason)) {
+        try {
+          const grown = await loadTaskCorpus(trailOpts);
+          const att = signAttestation(
+            {
+              protocol: ATTEST_PROTOCOL,
+              content_sha256: skillContentSha256(staged.content),
+              corpus_version: verdict.corpusVersion,
+              corpus_seed: corpusSeed,
+              private_suite_sha256: skillContentSha256(JSON.stringify(grown?.tasks ?? [])),
+              verdict: verdict.reason,
+              wins: verdict.wins ?? 0,
+              losses: verdict.losses ?? 0,
+              ties: verdict.ties ?? 0,
+              p_value: verdict.pValue ?? 1,
+              regressions: verdict.regressions?.length ?? 0,
+              trials_per_task: verdict.trialsPerTask ?? 1,
+              model: deps.modelTag ?? null,
+              attested_at: Date.now(),
+              node_pubkey: deps.nodePubkey ?? null,
+            },
+            deps.attestKeyPair,
+          );
+          storeAttestation(deps.db, att, "local");
+        } catch (err) {
+          log.warn(`peer attestation not stored for ${name}: ${String(err)}`);
+        }
+      }
     }
   }
   if (!validationRecord) {
@@ -763,7 +1011,8 @@ async function settleOne(
       ...(verdict.ci95High !== undefined ? { ci95High: verdict.ci95High } : {}),
       trials: verdict.trials,
       validatedAt: Date.now(),
-      ...(deps.modelTag ? { model: deps.modelTag } : {}),
+      ...(deps.modelTag ? { model: deps.modelTag, validatedOn: [deps.modelTag] } : {}),
+      ...(deps.evolverModelTag ? { evolverModel: deps.evolverModelTag } : {}),
     };
   }
 
@@ -829,6 +1078,7 @@ async function settleOne(
       // under a new content hash.
       if (
         validationRecord.verdict === "never-triggered" &&
+        !isPeer &&
         deps.descriptionRepair !== false &&
         deps.llmCall &&
         corpus &&
@@ -931,8 +1181,8 @@ async function settleOne(
     { storageRoots: roots },
     {
       name,
-      reason: `validation gate accept (${mode})`,
-      author: "evolution",
+      reason: `validation gate accept (${mode}${isPeer ? ", peer re-gate" : ""})`,
+      author: isPeer ? "peer" : "evolution",
       // PLAN-44 Phase 3: the validation gate is the ONE path allowed to
       // promote evolution-staged content.
       allowEvolutionStaged: true,
@@ -950,6 +1200,26 @@ async function settleOne(
   // every run. The registry withholds it from a hash-bucketed share of runs
   // (the control cohort); the monitor graduates, rolls back or retires it.
   const promotedAt = Date.now();
+  // PLAN-45 4.6: a skill evolved on a weaker (or unknown) model than this
+  // node's primary gets the stricter canary.
+  const transfer = isPeer
+    ? transferDirection(
+        meta.peer?.trailer?.evolverModel ?? meta.peer?.trailer?.model,
+        deps.modelTag,
+      )
+    : null;
+  // Adversarial 4-10: the evolver model is the SENDER's claim. It buys the
+  // default window only when the trailer is device-signed by an attester
+  // the operator trusts; every other peer transfer takes the strict window.
+  const senderTrusted =
+    !!meta.peer?.trailer?.binding &&
+    (deps.trustedAttesters ?? []).includes(meta.peer.trailer.binding.attesterPubkey);
+  const strict = transfer
+    ? senderTrusted
+      ? strictCanaryFor(transfer)
+      : strictCanaryFor("unknown")
+    : null;
+  const bucketFraction = strict?.bucketFraction ?? DEFAULT_CANARY_FRACTION;
   const enrichedMeta: EvolutionMeta = {
     ...meta,
     validation: validationRecord,
@@ -961,7 +1231,19 @@ async function settleOne(
       reason: `validation gate accept (${mode})`,
       previous: meta.ladder?.state ?? "staged",
     },
-    canary: { startedAt: promotedAt, bucketFraction: DEFAULT_CANARY_FRACTION, reason: "gate" },
+    canary: { startedAt: promotedAt, bucketFraction, reason: "gate" },
+    ...(isPeer && meta.peer
+      ? {
+          peer: {
+            ...meta.peer,
+            transfer: {
+              direction: transfer ?? "unknown",
+              evolverModel: meta.peer.trailer?.evolverModel ?? meta.peer.trailer?.model ?? null,
+              receiverModel: deps.modelTag ?? null,
+            },
+          },
+        }
+      : {}),
   };
   // A re-promotion of the same lineage starts a fresh window: the old
   // published marker described different bytes.
@@ -974,14 +1256,31 @@ async function settleOne(
       name,
       {
         startedAt: promotedAt,
-        bucketFraction: DEFAULT_CANARY_FRACTION,
+        bucketFraction,
         descriptionAtStart: skillDescription(promoted.liveContent ?? "") ?? "",
-        reason: "gate",
+        reason:
+          transfer && transfer !== "stronger-to-weaker" && transfer !== "peer-to-peer"
+            ? "transfer"
+            : "gate",
+        ...(strict?.strict ? { strict: strict.strict } : {}),
       },
       trailOpts,
     );
   } catch (err) {
     log.warn(`canary registration failed for ${name}: ${String(err)}`);
+  }
+  if (isPeer) {
+    // 4.2: the memory chunk lands at PROMOTION, never at accept.
+    const chunk = await writePeerChunk(liveDir);
+    if (chunk !== "written") {
+      // Adversarial 4-9b: no chunk means no attestation sweep / exchange
+      // for this skill; housekeeping retries until it lands.
+      await atomicWriteJson(path.join(liveDir, ".evolution-meta.json"), {
+        ...enrichedMeta,
+        peer: { ...enrichedMeta.peer!, chunkPending: chunk },
+      } satisfies EvolutionMeta);
+      log.warn(`peer skill chunk not written for ${name}: ${chunk}`);
+    }
   }
   if (purposeMd) {
     const stamped = `${purposeMd.replace(/\n+$/, "")}\n\n## Validation\n\n- ${new Date().toISOString()}: mode=${validationRecord.mode} verdict=${validationRecord.verdict}${validationRecord.ci95Low !== undefined ? ` ci95Low=${validationRecord.ci95Low.toFixed(3)}` : ""}${validationRecord.corpusVersion ? ` corpus=${validationRecord.corpusVersion}` : ""}${validationRecord.model ? ` model=${validationRecord.model}` : ""}\n`;

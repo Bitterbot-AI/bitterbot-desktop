@@ -27,8 +27,20 @@ export interface EvolutionStatus {
   /** PLAN-44 Phase 0: newest-last slice of skill-wiki/iterations.jsonl. */
   recentIterations: IterationRecord[];
   stagedProposals: string[];
+  /** PLAN-45 4.2: peer skills admitted to the local gate and not yet live. */
+  pendingPeer: Array<{
+    name: string;
+    authorPeerId: string | null;
+    contentHash: string | null;
+    stagedAt: number | null;
+    gateAttempts: number;
+    lastVerdict: string | null;
+    senderClaim: { verdict: string; model: string | null; evolverModel: string | null } | null;
+  }>;
   evolvedLive: Array<{
     name: string;
+    /** "wiki-evolution" (this node's proposal) or "peer" (received, re-gated). */
+    origin: string;
     verdict: string | null;
     mode: string | null;
     validatedAt: number | null;
@@ -77,6 +89,34 @@ export async function collectEvolutionStatus(
   };
   const recentIterations = await readRecentIterations(10, opts);
   const stagedProposals = await listStagedEvolutionProposals(roots);
+  const pendingPeer: EvolutionStatus["pendingPeer"] = [];
+  for (const name of stagedProposals) {
+    try {
+      const meta = JSON.parse(
+        await fs.readFile(path.join(roots.stagingRoot, name, ".evolution-meta.json"), "utf-8"),
+      ) as EvolutionMeta;
+      if (meta.origin !== "peer") {
+        continue;
+      }
+      pendingPeer.push({
+        name,
+        authorPeerId: meta.peer?.authorPeerId ?? null,
+        contentHash: meta.peer?.contentHash ?? null,
+        stagedAt: meta.stagedAt ?? null,
+        gateAttempts: meta.gateAttempts ?? 0,
+        lastVerdict: meta.lastValidation?.verdict ?? null,
+        senderClaim: meta.peer?.trailer
+          ? {
+              verdict: meta.peer.trailer.verdict,
+              model: meta.peer.trailer.model ?? null,
+              evolverModel: meta.peer.trailer.evolverModel ?? null,
+            }
+          : null,
+      });
+    } catch {
+      // not a peer stage
+    }
+  }
 
   const evolvedLive: EvolutionStatus["evolvedLive"] = [];
   let liveEntries: string[] = [];
@@ -95,11 +135,12 @@ export async function collectEvolutionStatus(
         "utf-8",
       );
       const meta = JSON.parse(raw) as EvolutionMeta;
-      if (meta.origin !== "wiki-evolution") {
+      if (meta.origin !== "wiki-evolution" && meta.origin !== "peer") {
         continue;
       }
       evolvedLive.push({
         name,
+        origin: meta.origin,
         verdict: meta.validation?.verdict ?? null,
         mode: meta.validation?.mode ?? null,
         validatedAt: meta.validation?.validatedAt ?? null,
@@ -136,6 +177,7 @@ export async function collectEvolutionStatus(
     sampler,
     recentIterations,
     stagedProposals,
+    pendingPeer,
     evolvedLive: evolvedLive.toSorted((a, b) => a.name.localeCompare(b.name)),
     p2pEligible: eligible.map((e) => e.name),
     corpus: corpus

@@ -1158,3 +1158,134 @@ describe("PLAN-45 2.4 alpha spending and 2.3 observability (adversarial H1/M2)",
     expect(outcomes[0]?.detail).toContain("runner-unobservable");
   });
 });
+
+describe("PLAN-45 Phase 4: receiver re-gate and behavior-vs-spec", () => {
+  let tmpDir: string;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "valgate-p4-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+  const PEER_MD =
+    "---\nname: peer-curl-guard\ndescription: Bound every curl in exec with --max-time when the task runs curl; not for commands that make no network calls.\n---\n\nAlways pass --max-time 30.\n";
+  async function growCorpus(n: number) {
+    await fs.mkdir(path.dirname(corpusPath({ configDir: tmpDir })), { recursive: true });
+    const lines = Array.from({ length: n }, (_, i) =>
+      JSON.stringify({
+        id: `grown-${i}`,
+        prompt: `grown task ${i}. Reply FINAL: <answer>.`,
+        checker: { kind: "final", value: "PASS" },
+        suite: "capability",
+      }),
+    );
+    await fs.writeFile(corpusPath({ configDir: tmpDir }), `${lines.join("\n")}\n`, "utf-8");
+  }
+  async function stagePeer() {
+    const { stagePeerSkill } = await import("../../agents/skills/peer-staging.js");
+    return stagePeerSkill({
+      name: "peer-curl-guard",
+      content: PEER_MD,
+      provenance: {
+        author_pubkey: "PEERKEY==",
+        author_peer_id: "12D3KooWPeer",
+        content_hash: "ab".repeat(32),
+        timestamp: 1000,
+        skill_md: Buffer.from(PEER_MD).toString("base64"),
+      },
+      trailer: null,
+      reason: "test accept",
+      roots: { configDir: tmpDir },
+    });
+  }
+  const oracleRunner = async (
+    task: { suite?: string; checker: { value: string } },
+    variant: string,
+  ) =>
+    task.suite === "regression"
+      ? { answer: "FINAL: x", skillRead: false }
+      : {
+          answer: variant === "candidate" ? `FINAL: ${task.checker.value}` : "FINAL: nope",
+          skillRead: variant === "candidate",
+        };
+
+  it("4.2: a peer skill HOLDs without a private suite, never counts against the cap, and promotes into a strict canary with its provenance intact", async () => {
+    await stagePeer();
+    const held = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: oracleRunner,
+      trialsPerTask: 1,
+      modelTag: "anthropic/claude-opus-5",
+      maxActiveEvolved: 0,
+    });
+    expect(held[0]).toMatchObject({ skillName: "peer-curl-guard", outcome: "held" });
+    expect(held[0]?.detail).toContain("no-private-suite");
+    await growCorpus(5);
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: oracleRunner,
+      trialsPerTask: 1,
+      modelTag: "anthropic/claude-opus-5",
+      maxActiveEvolved: 0, // the evolved cap must not gate a peer skill
+    });
+    expect(outcomes[0]?.outcome).toBe("promoted");
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    expect(await readLive(roots, "peer-curl-guard")).toBe(PEER_MD);
+    const meta = JSON.parse(
+      await fs.readFile(
+        path.join(roots.liveRoot, "peer-curl-guard", ".evolution-meta.json"),
+        "utf-8",
+      ),
+    ) as {
+      origin: string;
+      ladder?: { state: string };
+      canary?: { bucketFraction: number };
+      peer?: { transfer?: { direction: string } };
+    };
+    expect(meta.origin).toBe("peer");
+    expect(meta.ladder?.state).toBe("canary");
+    // No evolver model on the sender's claim: unknown transfer, strict window.
+    expect(meta.peer?.transfer?.direction).toBe("unknown");
+    expect(meta.canary?.bucketFraction).toBe(0.2);
+    const prov = JSON.parse(
+      await fs.readFile(path.join(roots.liveRoot, "peer-curl-guard", ".provenance.json"), "utf-8"),
+    ) as { author_pubkey: string };
+    expect(prov.author_pubkey).toBe("PEERKEY==");
+    const registry = await readCanaryRegistry({ configDir: tmpDir });
+    expect(registry.skills["peer-curl-guard"]).toMatchObject({
+      bucketFraction: 0.2,
+      reason: "transfer",
+    });
+    expect(registry.skills["peer-curl-guard"]?.strict?.minExposed).toBe(16);
+  });
+
+  it("4.5 (I9): undeclared egress in the candidate arm is a REJECT naming the host, even when the candidate wins every task", async () => {
+    await stagePeer();
+    await growCorpus(5);
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: async (task, variant) => ({
+        ...(await oracleRunner(task as never, variant)),
+        egress:
+          variant === "candidate" && task.id === "grown-1"
+            ? [{ tool: "exec", host: "exfil.example", declared: false }]
+            : [],
+      }),
+      trialsPerTask: 1,
+      modelTag: "anthropic/claude-opus-5",
+    });
+    expect(outcomes[0]?.outcome).toBe("rejected");
+    expect(outcomes[0]?.detail).toContain("undeclared-egress");
+    expect(outcomes[0]?.detail).toContain("exfil.example");
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    expect(await readLive(roots, "peer-curl-guard")).toBeNull();
+    const trail = await readProvenance({ configDir: tmpDir });
+    expect(trail.at(-1)).toMatchObject({ verdict: "rejected", skillName: "peer-curl-guard" });
+  });
+});

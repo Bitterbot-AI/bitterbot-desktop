@@ -6,6 +6,7 @@
 
 import type { EvolutionPassDeps } from "./evolution-pass.js";
 import type { WikiStoreOptions } from "./wiki-store.js";
+import { verifyPeerBindings } from "../../agents/skills/peer-binding.js";
 import { pubkeyId } from "../../commerce/envelope.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { syncAttestations } from "../../services/attestation-client.js";
@@ -13,7 +14,9 @@ import { CommerceReputationLedger } from "../commerce-reputation.js";
 import { ContributorStatusLedger } from "../contributor-status.js";
 import { SellerBondLedger } from "../seller-bond-ledger.js";
 import { SkillLifecycleStore } from "../skill-lifecycle.js";
+import { applyAttestationDemotions } from "./attestation-actions.js";
 import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
+import { makeAttesterWeight } from "./attester-weight.js";
 import {
   type CanaryMonitorAction,
   type CanaryMonitorResult,
@@ -26,6 +29,7 @@ import {
   backfillExecutionOutcomes,
 } from "./execution-outcomes.js";
 import { publishEligibleEvolvedSkills, type PublishSweepResult } from "./p2p-publish.js";
+import { retryPendingPeerChunks } from "./peer-chunks.js";
 import { repairNonRoutableSkills, type RoutingRepairResult } from "./routing-repair.js";
 import { creditSkillReads } from "./skill-reads.js";
 import { runValidationGate, type ValidationGateOutcome } from "./validation-gate.js";
@@ -64,6 +68,8 @@ export async function runHousekeeping(
   monitor?: CanaryMonitorResult;
   /** PLAN-45 Phase 3.6: slots freed at the evolved-skill cap this pass. */
   capRetirement?: CanaryMonitorAction[];
+  /** PLAN-45 4.3: peer skills withheld from every run on regression attestations this pass. */
+  attestationDemotions?: string[];
 }> {
   // PLAN-44 Phase 5a: the usage signal. Runs first so the lifecycle
   // counters the validation gate's regression check reads are current.
@@ -113,6 +119,27 @@ export async function runHousekeeping(
   // rolled back; the cap retirement runs before the gate so a freed slot is
   // usable in the same pass.
   const lifecycleStore = deps.db ? new SkillLifecycleStore(deps.db) : null;
+  // PLAN-45 4.2 (adversarial 4-9b): a promoted peer skill whose memory chunk
+  // did not land (bridge not up yet) gets it now.
+  try {
+    await retryPendingPeerChunks(storeOpts.configDir ? { configDir: storeOpts.configDir } : {});
+  } catch (err) {
+    log.debug(`pending peer chunk retry failed: ${String(err)}`);
+  }
+  // PLAN-45 4.4: a peer skill whose live bytes drifted from the signed hash
+  // is withheld before anything measures or serves it.
+  try {
+    const binding = await verifyPeerBindings(
+      storeOpts.configDir ? { configDir: storeOpts.configDir } : {},
+    );
+    if (binding.tampered.length > 0) {
+      log.warn(
+        `peer binding check: canary-off ${binding.tampered.join(", ")} (content hash mismatch)`,
+      );
+    }
+  } catch (err) {
+    log.warn(`peer binding check failed: ${String(err)}`);
+  }
   let monitor: CanaryMonitorResult | undefined;
   let capRetirement: CanaryMonitorAction[] | undefined;
   try {
@@ -173,6 +200,12 @@ export async function runHousekeeping(
     ...(deps.agentTurn ? { agentTurn: deps.agentTurn } : {}),
     ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
     ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),
+    ...(deps.evolverModelTag ? { evolverModelTag: deps.evolverModelTag } : {}),
+    // PLAN-45 4.2: a measured peer verdict is stored as this node's attestation.
+    ...(deps.attestKeyPair ? { attestKeyPair: deps.attestKeyPair } : {}),
+    ...(deps.db ? { db: deps.db } : {}),
+    ...(deps.nodePubkey ? { nodePubkey: deps.nodePubkey } : {}),
+    ...(deps.trustedAttesters ? { trustedAttesters: deps.trustedAttesters } : {}),
     ...(typeof deps.validationBudgetMinutes === "number"
       ? { validationBudgetMinutes: deps.validationBudgetMinutes }
       : {}),
@@ -182,6 +215,7 @@ export async function runHousekeeping(
   // PLAN-43 Phase 3: attest peer skills on our own corpus (tasks mode only:
   // it needs the real-rollout executor). Best-effort, bounded per pass.
   let attestation: { attested: number; skipped: number; held: number } | undefined;
+  let attestationDemotions: string[] | undefined;
   // The SWEEP needs tasks-mode rollouts; the fraud pass and the exchange
   // need only the db and the key, and run in every validation mode.
   if (deps.db && deps.attestKeyPair) {
@@ -196,6 +230,7 @@ export async function runHousekeeping(
           ...(typeof deps.maxTokenDelta === "number" ? { maxTokenDelta: deps.maxTokenDelta } : {}),
           ...(deps.modelTag ? { model: deps.modelTag } : {}),
           ...(deps.nodePubkey ? { nodePubkey: deps.nodePubkey } : {}),
+          ...(deps.attesterPriority ? { priorityOf: deps.attesterPriority } : {}),
         });
       } catch (err) {
         log.warn(`attestation sweep skipped: ${String(err)}`);
@@ -248,6 +283,29 @@ export async function runHousekeeping(
         log.warn(`attestation sync skipped: ${String(err)}`);
       }
     }
+    // PLAN-45 4.3 (D-4): verdicts pulled this pass (and our own) act now.
+    try {
+      const own = pubkeyId(deps.attestKeyPair);
+      const demotions = await applyAttestationDemotions({
+        db: deps.db,
+        weightOf: makeAttesterWeight({
+          ownAttesterPubkey: own,
+          ...(deps.trustedAttesters ? { trustedAttesters: deps.trustedAttesters } : {}),
+          ...(deps.blockedAttesters ? { blockedAttesters: deps.blockedAttesters } : {}),
+          ...(typeof deps.unknownAttesterWeight === "number"
+            ? { unknownWeight: deps.unknownAttesterWeight }
+            : {}),
+        }),
+        ownAttesterPubkey: own,
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+      });
+      if (demotions.demoted.length > 0) {
+        attestationDemotions = demotions.demoted;
+        log.info(`attestation demotions: canary-off ${demotions.demoted.join(", ")}`);
+      }
+    } catch (err) {
+      log.warn(`attestation demotions skipped: ${String(err)}`);
+    }
   }
   const lint = await runWikiLint({
     ...storeOpts,
@@ -270,6 +328,10 @@ export async function runHousekeeping(
       publisher: deps.publisher ?? null,
       ...(storeOpts.configDir ? { storeOpts } : {}),
       ...(deps.maturityDays !== undefined ? { maturityDays: deps.maturityDays } : {}),
+      // PLAN-45 4.4: sign the trailer with the device key, naming the node key.
+      ...(deps.attestKeyPair && deps.nodePubkey
+        ? { signing: { key: deps.attestKeyPair, nodePubkey: deps.nodePubkey } }
+        : {}),
     });
   }
   return {
@@ -284,5 +346,6 @@ export async function runHousekeeping(
     ...(publish ? { publish } : {}),
     ...(monitor ? { monitor } : {}),
     ...(capRetirement ? { capRetirement } : {}),
+    ...(attestationDemotions ? { attestationDemotions } : {}),
   };
 }

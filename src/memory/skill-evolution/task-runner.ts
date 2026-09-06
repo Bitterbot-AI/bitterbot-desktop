@@ -32,6 +32,11 @@ import type { EventJournal } from "../../infra/event-journal.js";
 import type { CorpusTask } from "./task-corpus.js";
 import type { TaskRunnerFn, TaskVariant, TrialContext, TrialResult } from "./validate-tasks.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
+import {
+  collectTrialEgress,
+  declaredHosts,
+  registerTrialDeclaredHosts,
+} from "../../agents/skills/validation-egress.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 
 const log = createSubsystemLogger("skill-evolution/task-runner");
@@ -306,6 +311,9 @@ export function makeRuntimePathwayRunner(deps: RuntimePathwayDeps): TaskRunnerFn
     try {
       const prompt = deps.indexInPrompt ? composeRuntimePathwayPrompt(task, skill) : task.prompt;
       registerTrialWorkspace(workspaceDir);
+      // PLAN-45 4.5 (I9): the arm's declared hosts bind to this trial; the
+      // tool chokepoint refuses anything else and records every attempt.
+      registerTrialDeclaredHosts(workspaceDir, arm ? declaredHosts(arm.content) : []);
       const r = normalizeOutcome(
         await deps.agentTurn(prompt, {
           workspaceDir,
@@ -317,9 +325,15 @@ export function makeRuntimePathwayRunner(deps: RuntimePathwayDeps): TaskRunnerFn
         skill && deps.journal && r.runId
           ? detectSkillRead(deps.journal, r.runId, skill.location, workspaceDir)
           : null;
+      const egress = collectTrialEgress(workspaceDir).map((e) => ({
+        tool: e.tool,
+        host: e.host,
+        declared: e.declared,
+      }));
       return {
         answer: r.text,
         skillRead,
+        egress,
         ...(r.usage ? { usage: r.usage } : {}),
       };
     } finally {

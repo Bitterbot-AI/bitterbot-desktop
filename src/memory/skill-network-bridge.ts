@@ -62,6 +62,17 @@ export type SkillNetworkBridgeConfig = {
   autoPublishOnCrystallize?: boolean;
 };
 
+let activeSkillNetworkBridge: SkillNetworkBridge | null = null;
+
+/** PLAN-45 4.2: the gate writes a peer skill's memory chunk at PROMOTION; this is how it reaches the bridge. */
+export function setActiveSkillNetworkBridge(bridge: SkillNetworkBridge | null): void {
+  activeSkillNetworkBridge = bridge;
+}
+
+export function getActiveSkillNetworkBridge(): SkillNetworkBridge | null {
+  return activeSkillNetworkBridge;
+}
+
 export class SkillNetworkBridge {
   private readonly db: DatabaseSync;
   private orchestratorBridge: OrchestratorBridgeLike | null;

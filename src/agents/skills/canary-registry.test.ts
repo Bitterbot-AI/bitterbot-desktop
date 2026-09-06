@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { onAgentEvent } from "../../infra/agent-events.js";
 import {
   applyCanaryExposure,
+  canaryOff,
+  canaryOffNamesSync,
   canaryUnit,
   inCanaryBucket,
+  isCanaryOff,
   readCanaryRegistry,
   readCanaryRegistrySync,
   registerCanary,
@@ -206,5 +209,67 @@ describe("canary registry (PLAN-45 Phase 3.2)", () => {
     } finally {
       off();
     }
+  });
+});
+
+describe("PLAN-45 4.3: canary-off", () => {
+  let tmp: string;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "canary-off-"));
+    resetCanaryRegistryCacheForTest();
+  });
+  afterEach(async () => {
+    await fs.rm(tmp, { recursive: true, force: true });
+    resetCanaryRegistryCacheForTest();
+  });
+
+  it("withholds from every run, files untouched, reversible; strict options parse and survive", async () => {
+    await canaryOff("curl-timeout-guard", { reason: "regression" }, { configDir: tmp });
+    for (let i = 0; i < 20; i++) {
+      expect(
+        applyCanaryExposure({
+          prompt: PROMPT,
+          runId: `r${i}`,
+          sessionKey: `s${i}`,
+          storeOpts: { configDir: tmp },
+        }),
+      ).not.toContain("curl-timeout-guard");
+    }
+    expect(canaryOffNamesSync({ configDir: tmp })).toEqual(new Set(["curl-timeout-guard"]));
+    expect(
+      isCanaryOff((await readCanaryRegistry({ configDir: tmp })).skills["curl-timeout-guard"]),
+    ).toBe(true);
+    await unregisterCanary("curl-timeout-guard", { configDir: tmp });
+    expect(applyCanaryExposure({ prompt: PROMPT, runId: "r", storeOpts: { configDir: tmp } })).toBe(
+      PROMPT,
+    );
+    await registerCanary(
+      "git-not-a-repo",
+      {
+        startedAt: 1,
+        bucketFraction: 0.2,
+        descriptionAtStart: "d",
+        reason: "transfer",
+        strict: {
+          minExposed: 16,
+          minUnexposed: 16,
+          checkpoints: [4, 8],
+          alphaPerLook: 0.01,
+          graduateRuns: 40,
+          graduateDays: 21,
+        },
+      },
+      { configDir: tmp },
+    );
+    const entry = (await readCanaryRegistry({ configDir: tmp })).skills["git-not-a-repo"];
+    expect(entry?.reason).toBe("transfer");
+    expect(entry?.strict).toEqual({
+      minExposed: 16,
+      minUnexposed: 16,
+      checkpoints: [4, 8],
+      alphaPerLook: 0.01,
+      graduateRuns: 40,
+      graduateDays: 21,
+    });
   });
 });

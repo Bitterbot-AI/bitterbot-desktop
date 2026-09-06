@@ -17,6 +17,7 @@
  * body hash; the read signal (skill-reads.ts) is the acceptance test.
  */
 
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { LlmCallFn } from "./maintainer.js";
@@ -380,9 +381,24 @@ export async function repairSkillRouting(params: {
       };
     }
     const stamp: ProvenanceRewrite = { at: now, from, to: description, bodyHash: hash };
+    // PLAN-45 4.4 (adversarial 4-1): the body changed locally, so the
+    // author's content binding no longer holds; the live provenance binds
+    // to the repaired bytes and keeps the original hash on the stamp.
+    const rewrittenBody = await fs.readFile(path.join(dir, "SKILL.md"), "utf-8").catch(() => null);
+    const rebound =
+      rewrittenBody !== null
+        ? {
+            ...provenance,
+            original_content_hash: provenance.content_hash ?? provenance.original_content_hash,
+            content_hash: crypto
+              .createHash("sha256")
+              .update(Buffer.from(rewrittenBody, "utf-8"))
+              .digest("hex"),
+          }
+        : provenance;
     await fs.writeFile(
       path.join(dir, ".provenance.json"),
-      JSON.stringify({ ...provenance, routing_rewrite: stamp }, null, 2),
+      JSON.stringify({ ...rebound, routing_rewrite: stamp }, null, 2),
       "utf-8",
     );
     bumpSkillsSnapshotVersion({ reason: "manual", changedPath: liveSkillPath(roots, params.name) });

@@ -502,9 +502,12 @@ export async function startGatewaySidecars(params: {
     log: params.log,
     orchestratorBridge: orchestratorBridge ?? undefined,
   })
-    .then((result) => {
+    .then(async (result) => {
       if (result.skillNetworkBridge) {
         skillNetworkBridge = result.skillNetworkBridge;
+        // PLAN-45 4.2: the validation gate writes the peer chunk at promotion.
+        const { setActiveSkillNetworkBridge } = await import("../memory/skill-network-bridge.js");
+        setActiveSkillNetworkBridge(skillNetworkBridge);
         params.onSkillNetworkBridgeReady?.(result.skillNetworkBridge);
       }
     })

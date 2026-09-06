@@ -261,7 +261,17 @@ export type DreamEngineConfig = {
   /** PLAN-45 Phase 3.5: the agent's primary model spec (`provider/model`) the evolved skills run on. */
   runtimeModelTag?: string;
   /** PLAN-43 Phase 3: attestation exchange settings (a2a.attestation). */
-  a2aAttestation?: { enabled?: boolean; peers?: string[]; blockedAttesters?: string[] };
+  a2aAttestation?: {
+    enabled?: boolean;
+    peers?: string[];
+    blockedAttesters?: string[];
+    trustedAttesters?: string[];
+    unknownAttesterWeight?: number;
+  };
+  /** PLAN-45 4.1: reputation lookup used ONLY to order peer-skill evaluation. */
+  attesterPriority?: (authorPubkey: string) => number;
+  /** PLAN-45 4.6 (I8): the proposer lane's model spec, recorded as the evolver model. */
+  evolutionProposerModelTag?: string;
 };
 
 export const DEFAULT_DREAM_CONFIG: Required<
@@ -280,6 +290,8 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "skillCurator"
     | "skillEvolution"
     | "runtimeModelTag"
+    | "attesterPriority"
+    | "evolutionProposerModelTag"
     | "a2aAttestation"
   >
 > & { modes: Record<DreamMode, DreamModeConfig> } = {

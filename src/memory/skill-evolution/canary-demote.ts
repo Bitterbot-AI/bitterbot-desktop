@@ -40,7 +40,8 @@ export async function readLiveEvolvedMeta(
   try {
     const raw = await fs.readFile(path.join(roots.liveRoot, name, ".evolution-meta.json"), "utf-8");
     const parsed = JSON.parse(raw) as EvolutionMeta;
-    return parsed.origin === "wiki-evolution" ? parsed : null;
+    // PLAN-45 4.2: peer skills under re-gate share the ladder.
+    return parsed.origin === "wiki-evolution" || parsed.origin === "peer" ? parsed : null;
   } catch {
     return null;
   }

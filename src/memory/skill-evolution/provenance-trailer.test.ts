@@ -6,12 +6,15 @@
 import { describe, expect, it } from "vitest";
 import type { EvolutionMeta } from "./validation-gate.js";
 import {
-  buildProvenanceTrailer,
-  parseProvenanceTrailer,
   PROVENANCE_TRAILER_MARKER,
-  buildRetractionStub,
-  parseRetractionTrailer,
   RETRACTION_TRAILER_MARKER,
+  bindingMismatch,
+  bodySha256,
+  buildProvenanceTrailer,
+  buildRetractionStub,
+  parseProvenanceTrailer,
+  parseRetractionTrailer,
+  stripProvenanceTrailer,
 } from "./provenance-trailer.js";
 
 const META = {
@@ -123,5 +126,57 @@ describe("PLAN-45 3.4: retraction trailer", () => {
         `<!-- ${RETRACTION_TRAILER_MARKER} {"origin":"wiki-evolution","name":"x","contentSha256":"zz","retractedAt":"2026-09-06T00:00:00Z"} -->`,
       ),
     ).toBeNull();
+  });
+});
+
+describe("PLAN-45 4.4 / 4.6: signed trailer binding and model tags", () => {
+  it("round-trips a device-signed binding, refuses a forged one, and carries evolverModel/validatedOn", async () => {
+    const { generateKeyPair } = await import("../../commerce/envelope.js");
+    const key = generateKeyPair();
+    const meta = {
+      origin: "wiki-evolution",
+      validation: {
+        mode: "tasks" as const,
+        verdict: "accepted",
+        validatedAt: 1_700_000_000_000,
+        model: "openai/gpt-x",
+        evolverModel: "anthropic/claude-opus-5",
+        validatedOn: ["openai/gpt-x"],
+      },
+    };
+    const body = "---\nname: s\ndescription: d\n---\nbody";
+    const trailer = buildProvenanceTrailer(meta, {
+      skillName: "s",
+      body,
+      key,
+      nodePubkey: "NODEKEY==",
+      now: 1_700_000_001_000,
+    });
+    const md = `${body}\n${trailer}`;
+    const parsed = parseProvenanceTrailer(md);
+    expect(parsed).toMatchObject({
+      evolverModel: "anthropic/claude-opus-5",
+      validatedOn: ["openai/gpt-x"],
+      binding: {
+        skillName: "s",
+        nodePubkey: "NODEKEY==",
+        attesterPubkey: `ed25519:${key.publicKeyHex}`,
+      },
+    });
+    expect(parsed?.binding?.bodySha256).toBe(bodySha256(body));
+    expect(stripProvenanceTrailer(md)).toBe(body);
+    expect(bindingMismatch(parsed!, { author_pubkey: "NODEKEY==", name: "s" }, md)).toBeNull();
+    expect(bindingMismatch(parsed!, { author_pubkey: "OTHER==", name: "s" }, md)).toContain(
+      "different node key",
+    );
+    // Tamper with a signed claim: the whole trailer is no trailer.
+    const forged = md.replace('"nodePubkey":"NODEKEY=="', '"nodePubkey":"EVIL=="');
+    expect(parseProvenanceTrailer(forged)).toBeNull();
+    const forgedModel = md.replace('"model":"openai/gpt-x"', '"model":"openai/gpt-z"');
+    expect(parseProvenanceTrailer(forgedModel)).toBeNull();
+    // An unsigned (pre-4.4) trailer still parses, with no binding.
+    const legacy = `${body}\n${buildProvenanceTrailer(meta)}`;
+    expect(parseProvenanceTrailer(legacy)?.binding).toBeUndefined();
+    expect(parseProvenanceTrailer(legacy)?.evolverModel).toBe("anthropic/claude-opus-5");
   });
 });

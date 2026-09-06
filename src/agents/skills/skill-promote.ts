@@ -60,7 +60,11 @@ export interface PromoteParams {
 }
 
 /** Sidecars the evolution pipeline writes beside a staged SKILL.md. */
-export const EVOLUTION_SIDECARS = [".evolution-meta.json", "PURPOSE.md"] as const;
+export const EVOLUTION_SIDECARS = [
+  ".evolution-meta.json",
+  "PURPOSE.md",
+  ".provenance.json",
+] as const;
 
 async function readStagedSidecars(roots: StorageRoots, name: string): Promise<Map<string, string>> {
   const out = new Map<string, string>();

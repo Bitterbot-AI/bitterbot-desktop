@@ -19,6 +19,7 @@ import path from "node:path";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "./impact-trail.js";
+import { bumpSkillsSnapshotVersion } from "./refresh.js";
 
 const log = createSubsystemLogger("skills/canary");
 
@@ -31,7 +32,24 @@ export interface CanaryEntry {
   bucketFraction: number;
   /** Description at canary start: the eligibility key for the whole window (a later repair must not move the denominator). */
   descriptionAtStart: string;
-  reason: "gate" | "model-drift" | "operator";
+  reason:
+    | "gate"
+    | "model-drift"
+    | "operator"
+    | "regression"
+    | "attestation"
+    | "tamper"
+    | "transfer"
+    | "never-read";
+  /** PLAN-45 4.6: a stricter monitor window (weaker-to-stronger or unknown transfers). */
+  strict?: {
+    minExposed: number;
+    minUnexposed: number;
+    checkpoints: number[];
+    alphaPerLook: number;
+    graduateRuns: number;
+    graduateDays: number;
+  };
   /** Bucket salt, so exposure is independent of any other hash split on the run id. */
   seed: string;
 }
@@ -65,11 +83,51 @@ function parseRegistry(raw: string): CanaryRegistry {
           ? e.bucketFraction
           : DEFAULT_CANARY_FRACTION,
       descriptionAtStart: typeof e.descriptionAtStart === "string" ? e.descriptionAtStart : "",
-      reason: e.reason === "model-drift" || e.reason === "operator" ? e.reason : "gate",
+      reason:
+        e.reason === "model-drift" ||
+        e.reason === "operator" ||
+        e.reason === "regression" ||
+        e.reason === "attestation" ||
+        e.reason === "tamper" ||
+        e.reason === "transfer" ||
+        e.reason === "never-read"
+          ? e.reason
+          : "gate",
       seed: typeof e.seed === "string" ? e.seed : String(e.startedAt),
+      ...(parseStrict(e.strict)
+        ? { strict: parseStrict(e.strict) as NonNullable<CanaryEntry["strict"]> }
+        : {}),
     };
   }
   return { version: 1, skills };
+}
+
+function parseStrict(raw: unknown): CanaryEntry["strict"] | undefined {
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+  const s = raw as Record<string, unknown>;
+  const num = (v: unknown, lo: number, hi: number) =>
+    typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi ? v : undefined;
+  const minExposed = num(s.minExposed, 1, 10_000);
+  const minUnexposed = num(s.minUnexposed, 1, 10_000);
+  const alphaPerLook = num(s.alphaPerLook, 0, 1);
+  const graduateRuns = num(s.graduateRuns, 1, 100_000);
+  const graduateDays = num(s.graduateDays, 1, 365);
+  const checkpoints = Array.isArray(s.checkpoints)
+    ? s.checkpoints.filter((c): c is number => typeof c === "number" && c > 0 && c <= 10_000)
+    : [];
+  if (
+    minExposed === undefined ||
+    minUnexposed === undefined ||
+    alphaPerLook === undefined ||
+    graduateRuns === undefined ||
+    graduateDays === undefined ||
+    checkpoints.length === 0
+  ) {
+    return undefined;
+  }
+  return { minExposed, minUnexposed, checkpoints, alphaPerLook, graduateRuns, graduateDays };
 }
 
 let cache: {
@@ -152,9 +210,86 @@ export async function unregisterCanary(
   if (!(name in registry.skills)) {
     return false;
   }
+  const wasOff = isCanaryOff(registry.skills[name]);
   delete registry.skills[name];
   await writeCanaryRegistry(registry, opts);
+  if (wasOff) {
+    bumpSkillsSnapshotVersion({ reason: "manual", changedPath: canaryRegistryPath(opts) });
+  }
   return true;
+}
+
+/**
+ * PLAN-45 4.3 (D-4): CANARY-OFF. A registry entry with `bucketFraction: 0`
+ * withholds the skill from EVERY run: removed from the index, files kept,
+ * reversible with `unregisterCanary`. Deletion stays operator-only.
+ */
+export function isCanaryOff(entry: CanaryEntry | undefined): boolean {
+  return entry !== undefined && entry.bucketFraction === 0;
+}
+
+export async function canaryOff(
+  name: string,
+  params: {
+    reason: "regression" | "attestation" | "tamper" | "operator" | "never-read";
+    descriptionAtStart?: string;
+    now?: number;
+  },
+  opts: ImpactTrailOptions = {},
+): Promise<void> {
+  const now = params.now ?? Date.now();
+  await registerCanary(
+    name,
+    {
+      startedAt: now,
+      bucketFraction: 0,
+      descriptionAtStart: params.descriptionAtStart ?? "",
+      reason: params.reason,
+    },
+    opts,
+  );
+  // The ladder says so too (adversarial 4-5), when the skill has a meta.
+  const metaPath = path.join(
+    opts.configDir ?? path.dirname(resolveWikiDir()),
+    "skills",
+    name,
+    ".evolution-meta.json",
+  );
+  try {
+    const meta = JSON.parse(await fs.readFile(metaPath, "utf-8")) as {
+      ladder?: { state?: string };
+      canary?: Record<string, unknown>;
+    };
+    const next = {
+      ...meta,
+      ladder: {
+        state: "canary-off",
+        at: now,
+        by: "monitor",
+        reason: params.reason,
+        previous: meta.ladder?.state,
+      },
+      ...(meta.canary ? { canary: { ...meta.canary, endedAt: now } } : {}),
+    };
+    const tmp = `${metaPath}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(next, null, 2), "utf-8");
+    await fs.rename(tmp, metaPath);
+  } catch {
+    // no meta (legacy peer skill): the registry entry is the record
+  }
+  // Slash commands are built per snapshot (adversarial 4-12).
+  bumpSkillsSnapshotVersion({ reason: "manual", changedPath: metaPath });
+}
+
+/** Names withheld from every run (canary-off), for surfaces built per snapshot rather than per run. */
+export function canaryOffNamesSync(opts: ImpactTrailOptions = {}): Set<string> {
+  const out = new Set<string>();
+  for (const [name, entry] of Object.entries(readCanaryRegistrySync(opts).skills)) {
+    if (isCanaryOff(entry)) {
+      out.add(name);
+    }
+  }
+  return out;
 }
 
 /**

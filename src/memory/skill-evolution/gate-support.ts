@@ -50,6 +50,9 @@ export function memoizeTrials(
         skillRead: hit.skillRead,
         ...(hit.usage ? { usage: hit.usage } : {}),
         ...(hit.wallMs !== null ? { wallMs: hit.wallMs } : {}),
+        // 4.5: a memo hit replays the trial's egress record too (a v2 row
+        // without one is never replayed: the profile changed).
+        ...(hit.egress ? { egress: hit.egress } : {}),
       };
     }
     const started = Date.now();
@@ -62,6 +65,7 @@ export function memoizeTrials(
         skillRead: typeof r.skillRead === "boolean" ? r.skillRead : null,
         usage: r.usage ?? null,
         wallMs: r.wallMs ?? Date.now() - started,
+        egress: r.egress ?? null,
       });
     }
     return result;
@@ -84,7 +88,7 @@ export const CONTENT_CHANGE_VERDICTS = new Set(["cost-exceeded"]);
  * runner or the validation prompt shape changes so cached trials from the
  * previous shape are never replayed against fresh ones.
  */
-export const RUNNER_PROFILE = "runtime-pathway/full-prompt/v2";
+export const RUNNER_PROFILE = "runtime-pathway/full-prompt/v3";
 
 /** Remove trial dirs left behind by a crash (older than a day). */
 export async function sweepStaleTrials(trailOpts: ImpactTrailOptions): Promise<void> {

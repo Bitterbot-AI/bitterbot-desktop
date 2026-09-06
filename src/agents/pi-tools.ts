@@ -74,6 +74,9 @@ import {
 } from "./tool-policy.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
+/** PLAN-45 4.5: exec-approvals identity for validation shells (no operator allow-always entries). */
+export const SKILL_VALIDATION_EXEC_AGENT_ID = "skill-validation";
+
 function isOpenAIProvider(provider?: string) {
   const normalized = provider?.trim().toLowerCase();
   return normalized === "openai" || normalized === "openai-codex";
@@ -405,8 +408,17 @@ export function createBitterbotCodingTools(options?: {
       : {}),
     node: options?.exec?.node ?? execConfig.node,
     pathPrepend: options?.exec?.pathPrepend ?? execConfig.pathPrepend,
-    safeBins: options?.exec?.safeBins ?? execConfig.safeBins,
-    agentId,
+    // PLAN-45 4.5 (adversarial): the validation floor must not be clobbered
+    // by a later key, and the operator's global safeBins must not reach the
+    // validation shell.
+    safeBins:
+      validationExec && "safeBins" in validationExec
+        ? validationExec.safeBins
+        : (options?.exec?.safeBins ?? execConfig.safeBins),
+    // A validation shell resolves approvals under its own identity: the
+    // operator's "allow always" entries for the default agent are not the
+    // candidate's to use.
+    agentId: isSkillValidationSession ? SKILL_VALIDATION_EXEC_AGENT_ID : agentId,
     cwd: workspaceRoot,
     allowBackground,
     scopeKey,
@@ -541,6 +553,7 @@ export function createBitterbotCodingTools(options?: {
     wrapToolWithBeforeToolCallHook(tool, {
       agentId,
       sessionKey: options?.sessionKey,
+      ...(workspaceRoot ? { workspaceDir: workspaceRoot } : {}),
     }),
   );
   // PLAN-13 Phase B.5: capability enforcer. Wraps each tool with a check

@@ -18,6 +18,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CONFIG_DIR, resolveUserPath } from "../../utils.js";
 import { resolveSandboxPath } from "../sandbox-paths.js";
 import { resolveBundledSkillsDir } from "./bundled-dir.js";
+import { canaryOffNamesSync } from "./canary-registry.js";
 import { applyCapabilityGate, type CapabilityGateContext } from "./capability-gate.js";
 import { shouldIncludeSkill } from "./config.js";
 import { normalizeSkillFilter } from "./filter.js";
@@ -567,7 +568,13 @@ export function buildWorkspaceSkillCommandSpecs(
     opts?.eligibility,
     opts?.capabilityGate,
   );
-  const userInvocable = eligible.filter((entry) => entry.invocation?.userInvocable !== false);
+  // PLAN-45 4.3: a canary-off skill is out of service everywhere, including
+  // the slash-command surface (the prompt filter runs per run; this runs
+  // per snapshot).
+  const withheld = canaryOffNamesSync();
+  const userInvocable = eligible.filter(
+    (entry) => entry.invocation?.userInvocable !== false && !withheld.has(entry.skill.name),
+  );
   const used = new Set<string>();
   for (const reserved of opts?.reservedNames ?? []) {
     used.add(reserved.toLowerCase());
