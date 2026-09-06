@@ -153,12 +153,9 @@ flowchart TB
         RDY -->|ready| FSHO[FSHO Mode Selector]
         RDY -->|skip| SKIP[Save LLM tokens]
         MI[Marketplace Intelligence] --> FSHO
-        FSHO --> R[7 Dream Modes - ripple-enhanced replay]
+        FSHO --> R[Dream Modes - ripple-enhanced replay]
         R --> S[New Insights]
         S --> T[CuriosityEngine.assessDreamInsight]
-        S --> U[SkillRefiner.evaluateMutations]
-        U --> V[SkillVerifier.verify]
-        V --> W[SkillNetworkBridge.publish]
         S --> RLM[RLM Working Memory Rewrite]
         RLM --> WMMD[MEMORY.md state update]
         Q --> SE[Session Extraction - per changed session]
@@ -169,7 +166,7 @@ flowchart TB
     end
 
     subgraph "P2P Network (Two-Tiered)"
-        W --> X[Rust Orchestrator / libp2p]
+        W[SkillNetworkBridge.publish] --> X[Rust Orchestrator / libp2p]
         X --> Y[Peer Swarm]
         Y --> Z[SkillNetworkBridge.ingest]
         Z --> ZA{Cortisol gate}
@@ -210,32 +207,26 @@ flowchart TB
 
 ### Dream System
 
-| File                                      | Purpose                                                                                 |
-| ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| `src/memory/dream-engine.ts`              | `DreamEngine` — state machine, 7 mode runners, FSHO integration, emotional triggering   |
-| `src/memory/dream-oscillator.ts`          | FSHO oscillator — Kuramoto coupling, order parameter for mode selection                 |
-| `src/memory/dream-types.ts`               | Dream types: modes, tiers, configs, `DreamInsight`                                      |
-| `src/memory/dream-schema.ts`              | `dream_insights` + `dream_cycles` + `dream_telemetry` + `dream_outcomes` table creation |
-| `src/memory/dream-evaluator.ts`           | Dream outcome evaluation — DQS scoring, FSHO correlation, adaptive feedback             |
-| `src/memory/dream-synthesis-prompt.ts`    | LLM prompt building, heuristic synthesis, response parsing                              |
-| `src/memory/dream-search.ts`              | Vector search over dream insights                                                       |
-| `src/memory/dream-mutation-strategies.ts` | 5 mutation strategies + LLM prompt builders + rejected-edit context block (PLAN-21)     |
+| File                                   | Purpose                                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------------------------- |
+| `src/memory/dream-engine.ts`           | `DreamEngine` — state machine, 7 mode runners, FSHO integration, emotional triggering   |
+| `src/memory/dream-oscillator.ts`       | FSHO oscillator — Kuramoto coupling, order parameter for mode selection                 |
+| `src/memory/dream-types.ts`            | Dream types: modes, tiers, configs, `DreamInsight`                                      |
+| `src/memory/dream-schema.ts`           | `dream_insights` + `dream_cycles` + `dream_telemetry` + `dream_outcomes` table creation |
+| `src/memory/dream-evaluator.ts`        | Dream outcome evaluation — DQS scoring, FSHO correlation, adaptive feedback             |
+| `src/memory/dream-synthesis-prompt.ts` | LLM prompt building, heuristic synthesis, response parsing                              |
+| `src/memory/dream-search.ts`           | Vector search over dream insights                                                       |
 
 ### Skill Mutation Validation Gate (PLAN-21)
 
-| File                                      | Purpose                                                                                                       |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `src/memory/experiment-sandbox.ts`        | Two-gate validation: faithfulness gate + paired-bootstrap performance gate over a fixed held-out set          |
-| `src/memory/skill-execution-selection.ts` | Deterministic SHA-1 partition of `skill_executions` into a 20% held-out selection set                         |
-| `src/memory/skill-mutation-pareto.ts`     | Pareto-front ranking over (delta, faithfulness margin, token delta) + cosine-decay edit budget                |
-| `src/memory/dream-slow-update.ts`         | Epoch-wise longitudinal regression across `skill_text_history`; hormonal k-means++ clustering; queue priority |
-| `src/memory/prompt-optimization.ts`       | `optimize()` threads rejected-edit rationale through to `buildStrategyPrompt`                                 |
+**Retired in PLAN-45 Phase 1 (2026-09-05).** `skill-mutation-pareto.ts`, `dream-slow-update.ts`, and `prompt-optimization.ts` were deleted with the `mutation` / `research` dream modes. Two files survive with narrower jobs:
 
-Schema additions (PLAN-21):
+| File                                      | Purpose                                                                                      |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `src/memory/experiment-sandbox.ts`        | Paired LLM judge + `bootstrapPairedCI` used only by harness-evolve (PLAN-25); gates no skill |
+| `src/memory/skill-execution-selection.ts` | Deterministic SHA-1 held-out partition (`isHeldOut`, `hashBucket`) shared by harness-evolve  |
 
-- `skill_text_history` — preserves prior `chunks.text` on every `promoteSkillMutation`, so the slow update has real archived versions to score against.
-- `mutation_queue.context_annotation` — JSON-encoded hormonal-cluster centroid attached to each `regression-priority` row.
-- `memory_audit_log` events: `plan21_slow_update_fired` (per-epoch checkpoint), `skill_mutation_promoted` and `skill_mutation_archived` (now consumed by `buildStrategyPrompt` as a "do not re-propose" block).
+`skill_text_history` is left in place with no migration and is orphaned (no reader, no writer). `mutation_queue` was dropped in v58.
 
 ### Working Memory (RLM)
 
@@ -335,7 +326,6 @@ See [Working Memory](./working-memory.md) for full documentation.
 
 | File                                    | Purpose                                                                                |
 | --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `src/memory/skill-refiner.ts`           | `SkillRefiner` — mutation scoring, crystallization pipeline                            |
 | `src/memory/skill-verifier.ts`          | `SkillVerifier` — 3-check safety gate (dangerous patterns, structural, semantic drift) |
 | `src/memory/skill-execution-tracker.ts` | `SkillExecutionTracker` — outcome recording, empirical metrics                         |
 | `src/memory/skill-network-bridge.ts`    | Skill publish/ingest, version conflict resolution, governance, P2P ingest safety gate  |
@@ -382,7 +372,7 @@ The private constructor runs this initialization sequence:
 9.  ensureCuriosityEngine()     — CuriosityEngine
 10. ensureHormonalManager()     — HormonalStateManager
 11. ensureUserModelManager()    — UserModelManager
-12. ensureSkillRefiner()        — SkillRefiner + SkillVerifier
+12. ensureExecutionTracker()    — SkillExecutionTracker (SkillRefiner retired, PLAN-45 Phase 1)
 13. ensureGovernance()          — MemoryGovernance
 14. ensureTaskMemory()          — TaskMemoryManager
 15. ensureScheduler()           — MemoryScheduler
@@ -432,7 +422,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 | `peer_skill_ratings`        | Individual skill ratings by peer                                                   |
 | `peer_trust_edges`          | EigenTrust web-of-trust edges                                                      |
 | `peer_activity_log`         | Peer activity timestamps for anomaly detection                                     |
-| `mutation_queue`            | Pending dream mutation retries                                                     |
+| `mutation_queue`            | Dropped in v58 (PLAN-40); the mutation flow itself was retired in PLAN-45 Phase 1  |
 | `skill_edges`               | Discovered skill relationships (prerequisite, enables, etc.)                       |
 | `embedding_cache`           | Cached embedding vectors                                                           |
 | `memory_audit_log`          | Governance audit trail                                                             |

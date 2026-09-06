@@ -99,7 +99,6 @@ import { SkillCrystallizer } from "./skill-crystallizer.js";
 import { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
-import { SkillRefiner } from "./skill-refiner.js";
 import { SkillVerifier } from "./skill-verifier.js";
 import { recordAccess } from "./spacing-effect.js";
 import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
@@ -272,7 +271,6 @@ export class MemoryIndexManager implements MemorySearchManager {
   private curiosityEngine: CuriosityEngine | null = null;
   private hormonalManager: HormonalStateManager | null = null;
   private userModelManager: UserModelManager | null = null;
-  private skillRefiner: SkillRefiner | null = null;
   private governance: MemoryGovernance | null = null;
   private taskMemory: TaskMemoryManager | null = null;
   private scheduler: MemoryScheduler | null = null;
@@ -310,9 +308,6 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     if (this.executionTracker) {
       (this.executionTracker as unknown as { db: DatabaseSync }).db = this.db;
-    }
-    if (this.skillRefiner) {
-      (this.skillRefiner as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.memStore) {
       (this.memStore as unknown as { db: DatabaseSync }).db = this.db;
@@ -574,7 +569,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     step("ensureUserModelManager");
     this.ensureCanonicalFacts();
     step("ensureCanonicalFacts");
-    this.ensureSkillRefiner();
+    this.ensureExecutionTracker();
     this.ensureGovernance();
     this.ensureTaskMemory();
     this.ensureScheduler();
@@ -2694,12 +2689,6 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.dreamEngine.setHormonalManager(this.hormonalManager);
     }
 
-    // Wire execution tracker for research mode
-    if (!this.executionTracker) {
-      this.executionTracker = new SkillExecutionTracker(this.db);
-    }
-    this.dreamEngine.setExecutionTracker(this.executionTracker);
-
     // PLAN-34 Phase 4: the searchable-chunk writer for promoted dream
     // insights. The manager owns the live embedding model and vec/fts state,
     // so it performs the actual write; the engine owns the gate.
@@ -3311,29 +3300,6 @@ export class MemoryIndexManager implements MemorySearchManager {
 
       // Persist GCCRF state after each dream cycle (dream cycles drive maturity)
       this.curiosityEngine?.saveGCCRFState();
-
-      // Skill refinement evaluation (for mutation and research mode insights)
-      if (this.skillRefiner) {
-        const refinableInsights = stats.newInsights.filter(
-          (i) => i.mode === "mutation" || i.mode === "research",
-        );
-        if (refinableInsights.length > 0) {
-          for (const insight of refinableInsights) {
-            const sourceId = insight.sourceChunkIds[0];
-            if (!sourceId) {
-              continue;
-            }
-            try {
-              const sourceChunk = this.db
-                .prepare(`SELECT id, text FROM chunks WHERE id = ?`)
-                .get(sourceId) as { id: string; text: string } | undefined;
-              if (sourceChunk) {
-                this.skillRefiner.evaluateMutations(sourceChunk, [insight]);
-              }
-            } catch {}
-          }
-        }
-      }
     }
 
     // Post-dream: run discovery agent to find skill relationships
@@ -5765,23 +5731,18 @@ export class MemoryIndexManager implements MemorySearchManager {
     };
   }
 
-  // --- Skill Refiner ---
+  // --- Skill execution tracker ---
 
-  private ensureSkillRefiner(): void {
-    const verifier = new SkillVerifier(this.db);
+  /**
+   * Eagerly construct the SkillExecutionTracker at boot. Before PLAN-45
+   * Phase 1 this happened inside `ensureSkillRefiner()`; the refiner is
+   * gone, but several later `if (this.executionTracker)` wiring paths
+   * (crystallizer, network bridge, marketplace) still rely on it existing.
+   */
+  private ensureExecutionTracker(): void {
     if (!this.executionTracker) {
       this.executionTracker = new SkillExecutionTracker(this.db);
     }
-    this.skillRefiner = new SkillRefiner(
-      this.db,
-      undefined,
-      (crystalId) => {
-        log.debug("skill mutation crystallized via dream", { crystalId });
-      },
-      this.executionTracker,
-      undefined,
-      verifier,
-    );
   }
 
   // --- Governance ---
@@ -6044,11 +6005,6 @@ export class MemoryIndexManager implements MemorySearchManager {
     // ran when the bridge didn't exist yet.
     if (this.peerReputationManager) {
       this.skillNetworkBridge.setPeerReputation(this.peerReputationManager);
-    }
-
-    // Also wire bridge into SkillRefiner if it exists
-    if (this.skillRefiner) {
-      this.skillRefiner.setNetworkBridge(this.skillNetworkBridge);
     }
 
     // Initialize marketplace economics

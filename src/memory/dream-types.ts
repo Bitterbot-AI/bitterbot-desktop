@@ -1,6 +1,10 @@
 /**
- * Dream Engine types: state machine, 9 dream modes, clustering,
+ * Dream Engine types: state machine, dream modes, clustering,
  * synthesis, and configuration.
+ *
+ * PLAN-45 Phase 1 retired the `mutation` and `research` modes (the legacy
+ * skill producers). A user config that still names them is ignored with a
+ * one-line log, see the DreamEngine constructor.
  */
 
 export type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" | "AWAKENING";
@@ -8,15 +12,13 @@ export type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" 
 /** @deprecated Use DreamMode instead */
 export type DreamCreativityMode = "associative" | "convergent" | "cross_domain";
 
-// ── 9 Dream Modes ──
+// ── Dream Modes ──
 export type DreamMode =
   | "replay" // Strengthen important memory pathways
-  | "mutation" // Generate skill/knowledge variations
   | "extrapolation" // Predict future patterns
   | "compression" // Generalize into higher abstractions
   | "simulation" // Cross-domain creative recombination
   | "exploration" // Gap-filling from curiosity targets
-  | "research" // Empirical prompt optimization using execution data
   | "interceptor_harvest" // PLAN-20: mine intervention records → propose new interceptors
   | "relationship_reconsolidation" // PLAN-23 SABM: adjudicate flagged belief contradictions, close losers post-labile-window
   | "harness_evolve" // PLAN-25: mine harness-level failures → propose + validate + promote HarnessPolicy edits
@@ -36,23 +38,13 @@ export type DreamModeConfig = {
 export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   replay: { enabled: true, weight: 0.18, maxChunks: 20, requiresLlm: false },
   compression: { enabled: true, weight: 0.18, maxChunks: 30, requiresLlm: false },
-  // PLAN-40 Phase 0: mutation disabled — the 2026-08-10 utility evaluation
-  // found its lifetime output was 206 paraphrases of ONE skill (1 category,
-  // 3 lineages), zero reads, zero executions: exactly the no-success-signal
-  // distillation the literature warns against. Lane 1 (verified-success
-  // distillation) is the principled replacement. The mode body is deleted
-  // when Lane 1 lands; its auto-trigger is gated on this flag, so the flip
-  // alone silences it.
-  mutation: { enabled: false, weight: 0.14, maxChunks: 10, requiresLlm: true },
   simulation: { enabled: true, weight: 0.14, maxChunks: 10, requiresLlm: true },
   extrapolation: { enabled: true, weight: 0.09, maxChunks: 15, requiresLlm: true },
   exploration: { enabled: true, weight: 0.09, maxChunks: 10, requiresLlm: true },
-  // PLAN-34 Phase 0: research mode disabled by default — it is unfueled
-  // (skill_executions bootstrap deadlock) and its promotion path writes
-  // directly to live chunk text with no staging gate (dream-engine value
-  // audit 2026-07-10). PLAN-40 retires it permanently: Lane 1 is the gated
-  // replacement for "improve skills from execution data".
-  research: { enabled: false, weight: 0.09, maxChunks: 5, requiresLlm: true },
+  // PLAN-45 Phase 1 (2026-09-05): `mutation` (PLAN-40 E2: 206 unread
+  // paraphrases of one skill) and `research` (PLAN-34: unfueled, ungated
+  // direct-write) were deleted outright; the verified-success distillation
+  // lane is the replacement for "improve skills from execution data".
   // PLAN-40 HOLDS: these three are well-built but structurally unfueled
   // (evaluation E5: 0/25 held-out executions, 0/10 outcome-tagged records,
   // 12/100 relationships). Leaving them enabled burned softmax slots on
@@ -116,10 +108,8 @@ export const DEFAULT_MODE_TIERS: Record<DreamMode, ComputeTier> = {
   replay: "none",
   compression: "none",
   exploration: "local",
-  mutation: "cloud",
   extrapolation: "cloud",
   simulation: "cloud",
-  research: "cloud",
   interceptor_harvest: "cloud",
   relationship_reconsolidation: "cloud",
   harness_evolve: "cloud",

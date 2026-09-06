@@ -5,12 +5,13 @@
  * 1. Creates a seed skill chunk (simulating a learned task pattern)
  * 2. Records mock execution history (3+ successes)
  * 3. Runs SkillCrystallizer to promote patterns
- * 4. Runs SkillRefiner with mock dream mutations
- * 5. Verifies crystallized skill in DB
- * 6. Validates SKILL.md generation
- * 7. Tests P2P publish (if orchestrator is running)
- * 8. Tests inbound ingestion (P2P receive path)
- * 9. Verifies marketplace economics integration
+ * 4. Verifies crystallized skill in DB
+ * 5. Validates SKILL.md generation
+ * 6. Tests P2P publish (if orchestrator is running)
+ * 7. Tests inbound ingestion (P2P receive path)
+ * 8. Verifies marketplace economics integration
+ *
+ * (The SkillRefiner / dream-mutation phase was retired in PLAN-45 Phase 1.)
  *
  * Run: npx tsx src/memory/scripts/skill-forge-test.ts
  * Verbose: npx tsx src/memory/scripts/skill-forge-test.ts --verbose
@@ -26,7 +27,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { SkillEnvelope } from "../../agents/skills/ingest.js";
-import type { DreamInsight } from "../dream-types.js";
 import { ConsolidationEngine } from "../consolidation.js";
 import { ensureCuriositySchema } from "../curiosity-schema.js";
 import { ensureDreamSchema } from "../dream-schema.js";
@@ -36,7 +36,6 @@ import { SkillCrystallizer } from "../skill-crystallizer.js";
 // ── Imports from the codebase ──────────────────────────────────────
 import { SkillExecutionTracker } from "../skill-execution-tracker.js";
 import { SkillNetworkBridge } from "../skill-network-bridge.js";
-import { SkillRefiner } from "../skill-refiner.js";
 
 // ── Configuration ──────────────────────────────────────────────────
 const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v");
@@ -309,82 +308,13 @@ common edge cases including build failures and health check timeouts.`;
     }
   }
 
-  // ── Phase 4: Skill Refiner with Dream Mutation ────────────────────
-  section("Phase 4: SkillRefiner — Mutation Evaluation");
-
-  const refiner = new SkillRefiner(db, undefined, undefined, tracker);
-
-  // Simulate a dream mutation insight that improves the original skill
-  const mockMutation: DreamInsight = {
-    id: crypto.randomUUID(),
-    content: `Enhanced Node.js deployment workflow with zero-downtime strategy:
-1. Run the full test suite in parallel with linting (npm test & npm run lint)
-2. Build TypeScript with strict mode enabled (npx tsc --strict)
-3. Run integration tests against staging environment
-4. Create a versioned Docker image tagged with git SHA
-5. Deploy using blue-green strategy: spin up new instances alongside old
-6. Run smoke tests against new instances
-7. Switch load balancer to new instances
-8. Keep old instances warm for 15 minutes as rollback safety net
-9. If any health check fails within the window, instant rollback via LB switch
-
-Key improvements over base workflow:
-- Parallel test execution saves ~40% CI time
-- Docker containerization ensures environment consistency
-- Blue-green deployment eliminates downtime
-- Extended rollback window covers slow-burn failures`,
-    embedding: fakeEmbedding(99),
-    confidence: 0.88,
-    mode: "mutation",
-    sourceChunkIds: [seedSkillId],
-    sourceClusterIds: [],
-    dreamCycleId: "test-forge-cycle",
-    importanceScore: 0.7,
-    accessCount: 0,
-    lastAccessedAt: null,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-
-  // Insert the mock mutation into dream_insights
-  db.prepare(
-    `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    mockMutation.id,
-    mockMutation.content,
-    JSON.stringify(mockMutation.embedding),
-    mockMutation.confidence,
-    mockMutation.mode,
-    JSON.stringify(mockMutation.sourceChunkIds),
-    JSON.stringify(mockMutation.sourceClusterIds),
-    mockMutation.dreamCycleId,
-    mockMutation.importanceScore,
-    mockMutation.accessCount,
-    mockMutation.createdAt,
-    mockMutation.updatedAt,
-  );
-
-  const original = { id: seedSkillId, text: seedSkillText };
-  let refinerResult: ReturnType<typeof refiner.evaluateMutations> | null = null;
-  try {
-    refinerResult = refiner.evaluateMutations(original, [mockMutation]);
-    assert(refinerResult.mutations.length === 1, "1 mutation evaluated");
-    const mutResult = refinerResult.mutations[0]!;
-    console.log(
-      `  Score: ${mutResult.score.toFixed(3)} | Promoted: ${mutResult.promoted} | Reason: ${mutResult.reason}`,
-    );
-  } catch (err) {
-    assert(false, "SkillRefiner.evaluateMutations()", String(err));
-  }
-
-  // Count total skill crystals after refinement
+  // Count total frozen skill crystals
   const allSkills = db
     .prepare(
       "SELECT id, text, lifecycle, origin FROM chunks WHERE semantic_type = 'skill' AND lifecycle = 'frozen'",
     )
     .all() as Array<Record<string, unknown>>;
-  console.log(`  Total frozen skill crystals after refinement: ${allSkills.length}`);
+  console.log(`  Total frozen skill crystals: ${allSkills.length}`);
 
   // ── Phase 5: SKILL.md Generation ──────────────────────────────────
   section("Phase 5: SKILL.md Format Validation");

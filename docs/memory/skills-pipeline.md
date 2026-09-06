@@ -1,8 +1,10 @@
 # Skills Pipeline — Skill Lifecycle, Verification & P2P Network
 
-The skills pipeline handles the full lifecycle of autonomous skill generation: from identifying skill candidates in memory, through dream-based mutation and verification, to P2P propagation across a swarm network with graduated peer trust. Skills are knowledge crystals with `lifecycle='frozen'` and `semantic_type='skill'` that represent reusable, executable knowledge.
+The skills pipeline handles the full lifecycle of autonomous skill generation: from identifying skill candidates in memory, through verification, to P2P propagation across a swarm network with graduated peer trust. Skills are knowledge crystals with `lifecycle='frozen'` and `semantic_type='skill'` that represent reusable, executable knowledge.
 
-**Key source files:** `skill-refiner.ts`, `skill-verifier.ts`, `skill-execution-tracker.ts`, `skill-crystallizer.ts`, `skill-network-bridge.ts`, `peer-reputation.ts`, `discovery-agent.ts`, `dream-mutation-strategies.ts`, `skill-marketplace.ts`, `skill-hierarchy.ts`, `skill-pricing.ts`, `marketplace-economics.ts`
+**Key source files:** `skill-verifier.ts`, `skill-execution-tracker.ts`, `skill-crystallizer.ts`, `skill-network-bridge.ts`, `peer-reputation.ts`, `discovery-agent.ts`, `skill-marketplace.ts`, `skill-hierarchy.ts`, `skill-pricing.ts`, `marketplace-economics.ts`
+
+> **Retired in PLAN-45 Phase 1 (2026-09-05):** the legacy "Pipeline A" skill producers — `SkillRefiner`, the `mutation` and `research` dream modes, `dream-mutation-strategies.ts`, the PLAN-21 validation sandbox / Pareto ranker / slow update, and `prompt-optimization.ts` — were deleted. Skills are produced by `SkillCrystallizer` (execution patterns), the PLAN-40 `distillation` lane, and the PLAN-42/44 wiki-skill pipeline described later in this document. Sections below that describe the retired flow are kept as one-line notes.
 
 **PLAN-20 (May 2026) — executable skill interceptors:** skills can now carry `PreActionInterceptor` implementations that deterministically modify, inject context into, require prerequisites for, or block any tool call before it executes. The Dream Engine's `interceptor_harvest` mode mines the `intervention_records` corpus and auto-proposes new interceptor candidates. See [Pre-Action Interceptors](../agents/interceptors.md).
 
@@ -10,18 +12,17 @@ The skills pipeline handles the full lifecycle of autonomous skill generation: f
 
 ## Full Knowledge Crystal Pipeline
 
-The pipeline transforms raw task experience into verified, tradeable skill crystals through six stages:
+The pipeline transforms raw task experience into verified, tradeable skill crystals through these stages:
 
 ```
-Task Execution → Execution Tracking → Dream Mutation → Crystallization → Verification → Marketplace
+Task Execution → Execution Tracking → Crystallization → Verification → Marketplace
 ```
 
 1. **Task Execution** — The agent performs tasks. Each execution is instrumented by `SkillExecutionTracker`, which records success/failure, reward scores, timing, and error types.
 2. **Execution Tracking** — As executions accumulate, `SkillCrystallizer` monitors for patterns that meet the promotion threshold (>= 3 successes, >= 70% success rate).
-3. **Dream Mutation** — The Dream Engine generates variations of promising patterns using strategy-specific prompts (error-driven, adversarial, compositional, parametric, or generic).
-4. **Crystallization** — `SkillRefiner` scores mutations via `heuristicScore()` + empirical data, then promotes those scoring >= 0.7 to frozen skill crystals with versioning and provenance DAGs.
-5. **Verification** — `SkillVerifier` runs a 3-check safety gate (dangerous pattern blocklist, structural invariants, semantic drift) before any mutation is crystallized.
-6. **Marketplace** — `MarketplaceEconomics` dynamically prices verified skills and lists them for P2P trade, with earnings feeding into The Niche economic summary.
+3. **Crystallization** — `SkillCrystallizer` promotes qualifying patterns to frozen skill crystals with versioning and provenance DAGs. (The dream-mutation + `SkillRefiner` scoring stage that used to sit here was retired in PLAN-45 Phase 1 (2026-09-05).)
+4. **Verification** — `SkillVerifier` runs a 3-check safety gate (dangerous pattern blocklist, structural invariants, semantic drift) before any candidate is crystallized or ingested.
+5. **Marketplace** — `MarketplaceEconomics` dynamically prices verified skills and lists them for P2P trade, with earnings feeding into The Niche economic summary.
 
 ### How Skills Are Learned
 
@@ -29,12 +30,10 @@ Task Execution → Execution Tracking → Dream Mutation → Crystallization →
 Episode (task execution)
   → SkillExecutionTracker records outcome (success/fail, reward, timing)
     → SkillCrystallizer detects pattern (≥3 successes, ≥70% rate)
-      → Dream Engine generates mutation variations
-        → SkillRefiner scores & promotes (heuristicScore + empirical >= 0.7)
-          → SkillVerifier safety gate (3 checks must pass)
-            → Frozen skill crystal (lifecycle='frozen', semantic_type='skill')
-              → SkillNetworkBridge publishes to P2P swarm
-                → MarketplaceEconomics prices & lists for trade
+      → SkillVerifier safety gate (3 checks must pass)
+        → Frozen skill crystal (lifecycle='frozen', semantic_type='skill')
+          → SkillNetworkBridge publishes to P2P swarm
+            → MarketplaceEconomics prices & lists for trade
 ```
 
 ---
@@ -44,16 +43,10 @@ Episode (task execution)
 ```mermaid
 flowchart TB
     A[Knowledge Crystal] -->|high importance + skill type| B[Skill Candidate]
-    B -->|dream mutation mode| C[Dream Engine generates variations]
-    C --> D[SkillRefiner.evaluateMutations]
-    D --> E{Score >= 0.7?}
-    E -->|Yes| F[SkillVerifier.verify]
-    E -->|No, mid-confidence| G[Queue in mutation_queue for retry]
-    E -->|No, low| H[Archive mutation]
-    G -->|retry up to 3x| C
+    B -->|SkillCrystallizer / wiki-skill pipeline| F[SkillVerifier.verify]
     F --> I{All 3 checks pass?}
     I -->|Yes| J[Crystallize: lifecycle=frozen]
-    I -->|No| H
+    I -->|No| H[Archive candidate]
     J --> K[SkillNetworkBridge.publish]
     K --> L[P2P Swarm via Rust Orchestrator]
     L --> M[Peer receives envelope]
@@ -62,10 +55,10 @@ flowchart TB
     O -->|OK| P[Store as local crystal]
     O -->|Banned/duplicate| Q[Reject]
     J --> R[SkillExecutionTracker records outcomes]
-    R -->|feedback| D
+    R -->|feedback| B
 ```
 
-> **PLAN-21 update (2026-05-26):** the `Score ≥ 0.7?` branch labelled `D → E` is now the two-gate validation pipeline implemented in `src/memory/experiment-sandbox.ts`. A mutation must (a) pass an LLM-judged **faithfulness gate** that verifies each key operational concept survives the edit, and (b) clear a **paired-bootstrap performance gate** against a deterministic 20% held-out partition of `skill_executions` (the 95% CI on the per-trial delta must be strictly above zero). Across each cycle, gate-passing candidates are Pareto-ranked in `src/memory/skill-mutation-pareto.ts` over (delta, faithfulness margin, token delta) and clipped to a cosine-decay edit budget, so over-mutation is bounded even when many candidates pass. Every ten cycles an epoch-wise **slow update** in `src/memory/dream-slow-update.ts` re-evaluates the live version against `skill_text_history` and enqueues hormonal-cluster regressions into `mutation_queue` with a `regression-priority` strategy. The 0.7 numeric threshold in the diagram is preserved here as a coarse summary; the actual acceptance rule is statistical.
+> **Retired in PLAN-45 Phase 1 (2026-09-05):** the dream-mutation branch of this diagram (Dream Engine variations → `SkillRefiner.evaluateMutations` → score gate → `mutation_queue` retry) and the PLAN-21 two-gate validation sandbox, Pareto ranker, and slow update that replaced its score gate were all deleted. `mutation_queue` was already dropped in migration v58; `skill_text_history` remains as an orphaned table.
 
 ---
 
@@ -96,51 +89,13 @@ When a pattern qualifies:
 
 ## Skill Refinement (SkillRefiner)
 
-The `SkillRefiner` (`skill-refiner.ts`) orchestrates the dream mutation evaluation pipeline. It takes mutations generated by the Dream Engine and decides which ones are good enough to become frozen skill crystals.
-
-### Scoring
-
-Each mutation is scored by combining heuristic and empirical signals:
-
-**Heuristic score** (`heuristicScore()`):
-
-- **Length ratio** (+0.2) — mutations should be similar length to originals (penalty for >2x or <0.5x)
-- **Keyword coverage** (+0.3 max) — what fraction of original keywords (words >3 chars) appear in the mutation
-- **Novelty** (+0.3 max) — new words not in the original (rewarded via `min(0.3, novelty * 0.5)`)
-- **Structural indicators** (+0.1 each) — presence of edge case handling, generality/robustness language
-
-**Empirical score** (from `SkillExecutionTracker`):
-
-- If the original skill has >= 3 executions, the tracker's `successRate` boosts the score by `successRate * 0.15`
-- If the original already has >90% success rate, an additional `-0.1` penalty raises the bar for mutations (the original is already strong)
-- Combined score is capped at 1.0
-
-### Promotion Threshold and Verification Gate
-
-Mutations must clear two gates to be promoted:
-
-1. **Score gate**: `score >= promotionThreshold` (default **0.7**) AND `mutation.confidence >= 0.5`
-2. **Verification gate**: `SkillVerifier.verify()` must pass all 3 safety checks (dangerous patterns, structural invariants, semantic drift)
-
-Mutations failing the score gate are archived with a learning note via the audit log. Mutations passing the score gate but failing verification are also archived with the verification failure reason.
-
-### Crystallization
-
-When a mutation is promoted:
-
-1. A new chunk is created with `lifecycle='frozen'`, `memory_type='skill'`, `semantic_type='skill'`
-2. If the original had a `stable_skill_id`, the new crystal inherits it with `skill_version + 1` and a `previous_version_id` link
-3. If no `stable_skill_id` exists, a new one is generated (UUID)
-4. A provenance DAG node is recorded: `operation='mutated'`, `actor='dream_engine'`
-5. An audit log entry records `skill_mutation_promoted` with the original ID, mutation ID, confidence, stable skill ID, and version
-6. The `onSkillCrystallized` callback fires (if registered)
-7. If a `SkillNetworkBridge` is wired, `onSkillCrystallized()` auto-publishes to the P2P network
+**Retired in PLAN-45 Phase 1 (2026-09-05).** `skill-refiner.ts` (heuristic + empirical mutation scoring, the 0.7 promotion threshold, semantic-dedup gate, and the crystallize-with-version-bump path) was deleted with the `mutation` dream mode that fed it. `SkillVerifier` and the versioning columns (`stable_skill_id`, `skill_version`, `previous_version_id`) remain and are used by `SkillCrystallizer` and the P2P ingest path.
 
 ---
 
 ## Verification Safety Gate
 
-The `SkillVerifier` (`skill-verifier.ts`) runs 3 checks before any mutation is promoted. All 3 must pass.
+The `SkillVerifier` (`skill-verifier.ts`) runs 3 checks before any skill candidate is promoted or ingested. All 3 must pass.
 
 ### Check 1: Dangerous Pattern Blocklist
 
@@ -178,31 +133,7 @@ type VerificationResult = {
 
 ## Dream Mutation Strategies
 
-The `dream-mutation-strategies.ts` module provides 5 specialized mutation strategies:
-
-| Strategy        | Trigger condition                   | What it does                             |
-| --------------- | ----------------------------------- | ---------------------------------------- |
-| `generic`       | Default fallback                    | General-purpose skill improvement prompt |
-| `error_driven`  | >= 3 executions, high error count   | Analyzes failure logs, suggests fixes    |
-| `adversarial`   | Success rate > 0.9                  | Finds edge cases, hardens the skill      |
-| `compositional` | >= 2 related skills                 | Combines best aspects of multiple skills |
-| `parametric`    | Numeric parameters detected in text | Varies thresholds, timeouts, strategies  |
-
-### Strategy Selection (`selectStrategy()`)
-
-```typescript
-function selectStrategy(
-  skill: { text: string; skillCategory?: string | null },
-  metrics: SkillMetrics | null,
-  relatedSkillCount?: number,
-): MutationStrategy;
-```
-
-Priority order: error_driven > adversarial > compositional > parametric > generic
-
-### Numeric Parameter Detection
-
-`hasNumericParameters()` uses regex to detect patterns like `timeout=30`, `max_retries: 3`, `threshold 0.8` — triggering the `parametric` strategy.
+**Retired in PLAN-45 Phase 1 (2026-09-05).** `dream-mutation-strategies.ts` (the `generic` / `error_driven` / `adversarial` / `compositional` / `parametric` strategy prompts and `selectStrategy()`) was deleted with the `mutation` dream mode.
 
 ---
 
@@ -722,9 +653,9 @@ The original pipeline above is **write-side**: it turns experience into crystall
 curator is the **read/maintenance-side**: it walks the SKILL.md files already on disk and decides
 which to keep, mark stale, archive, or consolidate.
 
-It complements the dream-mutation flow rather than replacing it. The mutation flow is creative
-("here are some variations of this skill"); the curator is custodial ("this skill is unused, that
-one fails 80% of the time, this other one is subsumed by its neighbour").
+It is custodial ("this skill is unused, that one fails 80% of the time, this other one is
+subsumed by its neighbour"). It used to complement the creative dream-mutation flow, which was
+retired in PLAN-45 Phase 1 (2026-09-05).
 
 ### Lifecycle table
 
@@ -815,5 +746,5 @@ preview what the curator would do before flipping it on.
 
 - [Architecture Overview](./architecture-overview.md) — system entry point and file map
 - [Knowledge Crystals](./knowledge-crystals.md) — core data model and lifecycle
-- [Dream Engine](./dream-engine.md) — how dream mutations are generated
+- [Dream Engine](./dream-engine.md) — dream modes and the distillation lane
 - [Curiosity & Search](./curiosity-and-search.md) — curiosity-driven skill gap detection

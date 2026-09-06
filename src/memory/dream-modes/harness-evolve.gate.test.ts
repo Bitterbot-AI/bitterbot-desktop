@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ScorePairFn } from "../dream-slow-update.js";
+import type { ScorePairFn } from "../experiment-sandbox.js";
 import type { HeldOutExecution } from "../skill-execution-selection.js";
 import {
   defaultHarnessPolicy,

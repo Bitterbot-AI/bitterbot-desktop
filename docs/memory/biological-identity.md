@@ -323,7 +323,7 @@ As the agent matures, it develops an ecosystem identity through participation in
 
 ### Skill Publishing
 
-When the dream engine's mutation mode generates a skill variant that passes all three verification checks (dangerous pattern scan, structural validation, semantic drift check), the skill is crystallized (`lifecycle: 'frozen'`) and published to the P2P swarm via the `SkillNetworkBridge`.
+When a skill candidate (from `SkillCrystallizer` or the wiki-skill pipeline; the dream engine's mutation mode was retired in PLAN-45 Phase 1 (2026-09-05)) passes all three verification checks (dangerous pattern scan, structural validation, semantic drift check), the skill is crystallized (`lifecycle: 'frozen'`) and published to the P2P swarm via the `SkillNetworkBridge`.
 
 Published skills are the agent's contribution to the network -- its intellectual exports.
 

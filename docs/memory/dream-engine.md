@@ -1,5 +1,13 @@
 # Dream Engine — Offline Processing & Insight Generation
 
+> **PLAN-45 Phase 1 (2026-09-05).** The legacy skill producers are gone:
+> the `mutation` and `research` dream modes, the PLAN-21 slow update, the
+> Pareto ranker, prompt optimization, and `SkillRefiner` were deleted, not
+> merely disabled. The `skill_text_history` table is left in place (no
+> migration) but is now orphaned: nothing reads or writes it. Skill
+> improvement runs through the PLAN-40 `distillation` lane and the PLAN-42/44
+> wiki-skill pipeline (`docs/memory/skills-pipeline.md`).
+>
 > **PLAN-40 retarget in progress (2026-08-10).** The utility evaluation
 > (docs/reviews/dream-engine-utility-2026-08-10.md) found the engine's
 > lifetime cognitive output had never been consumed by anything downstream.
@@ -16,11 +24,11 @@
 > consumption stamp is written only where content provably enters a model
 > prompt. Consumed-artifact rate — not DQS — is the engine's score.
 
-The Dream Engine processes memories during idle periods, generating new insights through 7 specialized modes: replaying important memories, compressing redundant knowledge, mutating skills, extrapolating future patterns, simulating cross-domain recombinations, exploring curiosity-driven knowledge gaps, and researching empirical prompt optimizations. Each mode is assigned a compute tier (none, local LLM, or cloud LLM) to balance cost against insight quality.
+The Dream Engine processes memories during idle periods, generating new insights through specialized modes: replaying important memories, compressing redundant knowledge, extrapolating future patterns, simulating cross-domain recombinations, and exploring curiosity-driven knowledge gaps, plus the plan-specific lanes listed below. Each mode is assigned a compute tier (none, local LLM, or cloud LLM) to balance cost against insight quality.
 
 The engine uses three complementary signals for intelligent mode selection: **curiosity-driven GCCRF analysis** (prediction error, learning progress, novelty, empowerment, strategic alignment), **FSHO oscillator dynamics** (a Kuramoto synchronization model with empirical self-validation), and **marketplace demand** (Plan 8). Dream cycles are triggered on a timer, but can also fire immediately in response to emotional spikes.
 
-**Key source files:** `dream-engine.ts`, `dream-types.ts`, `dream-schema.ts`, `dream-synthesis-prompt.ts`, `dream-mutation-strategies.ts`, `dream-oscillator.ts`, `scheduler.ts`
+**Key source files:** `dream-engine.ts`, `dream-types.ts`, `dream-schema.ts`, `dream-synthesis-prompt.ts`, `dream-oscillator.ts`, `scheduler.ts`
 
 ---
 
@@ -76,21 +84,19 @@ This saves ~$0.50/day in LLM tokens during quiet periods and prevents "stale dre
 
 ---
 
-## 7 Dream Modes
+## Dream Modes
 
 Each mode serves a different purpose and has a default weight controlling how often it's selected:
 
 | Mode            | Weight | Compute Tier | Purpose                                                             |
 | --------------- | ------ | ------------ | ------------------------------------------------------------------- |
-| `replay`        | 0.20   | `none`       | Strengthen important memory pathways via ripple-enhanced multi-pass |
-| `compression`   | 0.20   | `none`       | Generalize into higher abstractions; consume near-merge hints       |
-| `mutation`      | 0.15   | `cloud`      | Generate skill/knowledge variations via strategy-based prompts      |
-| `simulation`    | 0.15   | `cloud`      | Cross-domain creative recombination via farthest-point sampling     |
-| `extrapolation` | 0.10   | `cloud`      | Predict future patterns from user behavior                          |
-| `exploration`   | 0.10   | `local`      | Gap-filling from curiosity targets                                  |
-| `research`      | 0.10   | `cloud`      | Empirical prompt optimization using skill execution data            |
+| `replay`        | 0.18   | `none`       | Strengthen important memory pathways via ripple-enhanced multi-pass |
+| `compression`   | 0.18   | `none`       | Generalize into higher abstractions; consume near-merge hints       |
+| `simulation`    | 0.14   | `cloud`      | Cross-domain creative recombination via farthest-point sampling     |
+| `extrapolation` | 0.09   | `cloud`      | Predict future patterns from user behavior                          |
+| `exploration`   | 0.09   | `local`      | Gap-filling from curiosity targets                                  |
 
-**`research` is disabled by default** (PLAN-34 Phase 0): the mode has no organic fuel — skill-execution telemetry only records against existing skill crystals, which only mint from existing execution rows — and its promotion path wrote directly to live chunk text with no staging gate. PLAN-40 retires it permanently: the verified-success distillation lane is the gated replacement.
+**Retired in PLAN-45 Phase 1 (2026-09-05):** `mutation` and `research`. Both were disabled by default since PLAN-40 / PLAN-34 and are now deleted from `DreamMode`. A `bitterbot.json` that still lists either key under `memory.dream.modes` or `modelTiers.modeTiers` keeps working: the engine logs `dream mode X was retired in PLAN-45 Phase 1; ignoring` once per key at construction and drops it.
 
 **`hygiene` (PLAN-40 Lane 2, enabled, reserved slot):** each cycle it
 (a) drains the never-embedded crystal backlog (200/cycle, no LLM,
@@ -130,9 +136,8 @@ memory chunks — they live in `dream_briefs`, invisible to every retrieval
 surface, and drain (one per session start) only into sessions that resolve
 to the OWNER, marked explicitly as machine hunches.
 
-**Disabled by default since PLAN-40 Phase 0 (2026-08-10):** `mutation`
-(paraphrase treadmill with no success signal — see the utility evaluation),
-and the three structurally-unfueled holds `interceptor_harvest`,
+**Disabled by default since PLAN-40 Phase 0 (2026-08-10):** the three
+structurally-unfueled holds `interceptor_harvest`,
 `harness_evolve`, and `relationship_reconsolidation`. Holds re-enable when
 their wake counters (shown in `bitterbot doctor`'s dream-utility section)
 cross threshold: ≥10 outcome-tagged intervention records, ≥25 completed
@@ -163,7 +168,7 @@ The `CuriosityEngine` shifts weights based on detected knowledge structure:
 
 - Many knowledge gaps → boost `exploration`
 - Contradictions detected → boost `simulation`
-- Frontier targets → boost `mutation`
+- Frontier targets → boost `distillation` (was `mutation` before PLAN-45 Phase 1)
 
 #### 2. GCCRF Component Analysis
 
@@ -172,18 +177,17 @@ The unified `CuriosityEngine` maps its internal GCCRF component values to modes 
 - High η (prediction error) → `exploration` (investigate the surprising)
 - High Δη (learning progress) → `compression` (consolidate what's being learned)
 - High Iα (novelty) → `simulation` (cross-domain connections in novel space)
-- High E (empowerment) → `mutation` (optimize high-agency skills)
-- High S (strategic alignment) → `research` (goal-directed investigation)
+- (The E → `mutation` and S → `research` couplings were retired with those modes in PLAN-45 Phase 1.)
 
 #### 3. FSHO Oscillator Dynamics (self-validating)
 
 Maps what the _memory landscape_ looks like. Runs a Kuramoto-coupled oscillator simulation on recent chunk salience values and outputs an order parameter R ∈ [0, 1]:
 
-| R Range | Memory State                   | Favored Modes                 |
-| ------- | ------------------------------ | ----------------------------- |
-| R > 0.7 | Coherent (memories clustered)  | compression, replay, research |
-| 0.3-0.7 | Critical (edge of sync)        | mutation, simulation          |
-| R < 0.3 | Scattered (memories dispersed) | exploration, extrapolation    |
+| R Range | Memory State                   | Favored Modes                     |
+| ------- | ------------------------------ | --------------------------------- |
+| R > 0.7 | Coherent (memories clustered)  | compression, replay, distillation |
+| 0.3-0.7 | Critical (edge of sync)        | simulation, extrapolation         |
+| R < 0.3 | Scattered (memories dispersed) | exploration, extrapolation        |
 
 The FSHO uses fractional Gaussian noise (Hurst parameter H=0.7 for long-range memory) and completes in <3ms. After 10+ dream cycles, `computeFshoWeightAdjustment()` checks whether FSHO R actually predicts dream quality (Pearson |r| > 0.3 = validated, |r| < 0.2 after 20 cycles = demoted).
 
@@ -200,7 +204,7 @@ After adjustment, mode selection uses temperature-scaled softmax:
 #### Auto-Triggers
 
 - `exploration` forced if unresolved curiosity targets exist
-- `mutation` forced if skill crystals exist
+- (the `mutation` auto-trigger was retired in PLAN-45 Phase 1)
 
 ---
 
@@ -235,17 +239,9 @@ Clusters semantically similar chunks (cosine ≥ 0.85, min 3 members, min 6 seed
 
 **Near-merge hint consumption:** Before selecting seeds, compression mode checks for **SNN-discovered near-merge hints** — chunk pairs identified by Shared Nearest Neighbor analysis as semantically related despite being below the merge threshold (cosine 0.82-0.91). These pairs are fed into the compression pipeline for LLM-free evaluation.
 
-### Mutation Mode (cloud LLM)
+### Mutation Mode
 
-Generates skill variations using strategy-based prompts. Processes up to 5 skill crystals per cycle:
-
-1. Selects a skill crystal
-2. `selectStrategy()` picks one of 5 mutation strategies based on metrics
-3. `buildStrategyPrompt()` generates a strategy-specific LLM prompt
-4. LLM produces a variation
-5. Result is evaluated by `SkillRefiner` and optionally verified by `SkillVerifier`
-
-Mid-confidence results are queued in `mutation_queue` for retry (up to 3 attempts). Successful promotions trigger a **dopamine spike** via the hormonal manager.
+**Retired in PLAN-45 Phase 1 (2026-09-05).** The strategy-prompt skill-variation mode, `dream-mutation-strategies.ts`, and the `SkillRefiner` that consumed its output were deleted. Its lifetime output was 206 paraphrases of one skill with zero reads or executions (PLAN-40 evaluation E2). The `distillation` lane is the replacement.
 
 ### Extrapolation Mode (cloud LLM)
 
@@ -259,15 +255,13 @@ Cross-domain creative recombination. Uses **farthest-point sampling** to select 
 
 Gap-filling driven by the curiosity engine. Loads unresolved `curiosity_targets` of type `knowledge_gap` and generates content to fill those gaps using a local LLM (to minimize cost).
 
-### Research Mode (cloud LLM)
+### Research Mode
 
-Empirical prompt optimization. Analyzes skill execution data to identify underperforming prompts, generates variations, and runs each through the PLAN-21 two-gate validation pipeline: a **faithfulness gate** (an LLM judge verifies that each key operational concept in the original survives in the mutation, short-circuiting before the expensive performance gate when intent is lost) followed by a **paired-bootstrap performance gate** (each held-out execution from a fixed 20% partition of `skill_executions` is replayed under both versions, producing paired binary outcomes that feed a 2000-iteration bootstrap on the per-trial delta; the mutation is accepted only when the 95% CI lower bound is strictly above zero). Surviving candidates across the cycle are **Pareto-ranked** over (delta, faithfulness margin, token delta) and clipped to a **cosine-decay edit budget** that tightens as the skill's `dream_count` grows. Rejected mutations are persisted to `memory_audit_log` and re-rendered as a "do not re-propose" block at the head of the next cycle's mutation prompt.
+**Retired in PLAN-45 Phase 1 (2026-09-05).** The empirical prompt-optimization mode (`prompt-optimization.ts`), its PLAN-21 two-gate validation sandbox (faithfulness gate + paired-bootstrap performance gate over held-out `skill_executions`), and the Pareto / cosine-decay edit budget (`skill-mutation-pareto.ts`) were deleted. It was unfueled (skill-execution bootstrap deadlock) and its promotion path wrote directly to live chunk text. What survives of `experiment-sandbox.ts` is only the paired LLM judge that harness-evolve (PLAN-25) uses to compare two harness policies; it never gates a skill.
 
-Cold-start skills (fewer than five held-out executions) fall back to a legacy synthetic-scenario gate so brand-new skills are not blocked from optimization while real trajectories accumulate.
+### Slow Update (PLAN-21 Phase D)
 
-### Slow Update (epoch-wise, PLAN-21 Phase D)
-
-Every ten dream cycles the engine runs a **longitudinal regression analysis** across the live `chunks.text` for each highly-active skill and its last three archived versions in `skill_text_history`. Per-task outcomes are classified into the four-way taxonomy (improvement / regression / persistent-failure / stable-success), and regressions are clustered by hormonal state (k-means++ over dopamine × cortisol × oxytocin recovered from the original `intervention_records` trajectories). Clusters with three or more members are enqueued into `mutation_queue` with elevated priority and a JSON `context_annotation` carrying the cluster centroid, so the next mutation cycle picks up the regression-prone biological context first. Per-classification counts are recorded in `dream_telemetry` under phase `plan21_slow_update`.
+**Retired in PLAN-45 Phase 1 (2026-09-05).** The epoch-wise longitudinal regression (`dream-slow-update.ts`) and its per-cycle hook were deleted. The `skill_text_history` table it read is intentionally left in place with no migration and is now orphaned (no reader, no writer); `dream_telemetry` rows under phase `plan21_slow_update` and `memory_audit_log` `plan21_slow_update_fired` events are historical only.
 
 ---
 
@@ -350,7 +344,7 @@ Market demand signals feed into dream mode selection as the fourth signal, enabl
 
 **Effect on dream modes:**
 
-- High-demand categories boost `exploration` and `mutation` modes, directing creative energy toward market opportunities
+- High-demand categories boost `exploration` and `distillation` modes (the `mutation`/`research` boosts were retired in PLAN-45 Phase 1), directing creative energy toward market opportunities
 - Demand targets are injected into the curiosity engine as exploration targets with a **24-hour TTL**, ensuring stale market signals expire naturally
 - When marketplace activity is detected (any signal within the last 24h), the four-signal weighting activates (0.25/0.25/0.30/0.20); when no marketplace activity exists, the system falls back to the original three-signal weights (0.30/0.30/0.40)
 
@@ -396,10 +390,9 @@ const DEFAULT_MODE_TIERS: Record<DreamMode, ComputeTier> = {
   replay: "none",
   compression: "none",
   exploration: "local",
-  mutation: "cloud",
   extrapolation: "cloud",
   simulation: "cloud",
-  research: "cloud",
+  // ... plus the plan-specific lanes (all "cloud")
 };
 ```
 
@@ -453,7 +446,7 @@ Runs heuristic first, then LLM. Takes the higher-confidence result.
 
 ### Insight Storage
 
-Most modes store their insights in `dream_insights` with their own embedding; insights exceeding `maxInsights` (200) are pruned by lowest importance. The mutation lane keeps writing there (it is the skill-refiner's input channel).
+Most modes store their insights in `dream_insights` with their own embedding; insights exceeding `maxInsights` (200) are pruned by lowest importance.
 
 ### Insight Promotion (PLAN-34 Phase 4)
 
@@ -461,7 +454,7 @@ The two LLM-backed creative modes — `extrapolation` and `simulation` — no lo
 
 The gate leads with legs no model can game, then a verifier:
 
-1. **Mode eligibility** — extrapolation and simulation only. Compression is heuristic template synthesis with no LLM to attest anything; exploration outputs questions; mutation is the refiner's channel (exempt).
+1. **Mode eligibility** — extrapolation and simulation only. Compression is heuristic template synthesis with no LLM to attest anything; exploration outputs questions.
 2. **Mechanical grounding** — each accepted source chunk must clear an embedding-similarity floor (0.4) to the insight AND rank among the most-similar of the offered inputs (citing everything cannot pass); `>= 2` distinct grounded sources, `>= 2` of them non-dream ancestors (dream-on-dream compounding is blocked — promoted insight chunks are excluded from both mode seed queries and grounding), and `>= 1` first-party source read from the persisted `chunks.session_trust` column.
 3. **Claim-decomposition verification** — a verifier seam that runs on a _distinct model from the generating call_ (the synthesis model, then the local model, then cloud as a last resort — never the same closure that generated the insight). It labels each hypothesis sentence {restated | inferred | unsupported} and reports misattribution. The parse fails **closed**: fewer labels than sentences, any non-enum/uppercase label, an empty/unparseable reply, or an absent/non-boolean misattribution flag all count against promotion. The untrusted source text is fenced and the output contract is re-asserted after it, so an instruction planted in a source cannot steer the verdict. Promotion requires zero unsupported sentences and no misattribution.
 4. **Hard cap** of 3 promotions per cycle; `maxLlmCallsPerCycle` is 8 (5 mode + 3 verification) and the verification calls are counted into the cycle's LLM total; candidates are relevance-ranked so only the most-grounded are verified within budget.
@@ -518,7 +511,7 @@ type DreamEngineConfig = {
 - [Knowledge Crystals](./knowledge-crystals.md) — core data model and lifecycle
 - [Deep Recall](./deep-recall.md) — RLM infinite recall system
 - [User Knowledge](./user-knowledge.md) — session extraction and Bond evolution
-- [Skills Pipeline](./skills-pipeline.md) — how dream mutations feed into skill refinement
+- [Skills Pipeline](./skills-pipeline.md) — how skills are produced now that dream mutation is retired
 - [Curiosity & Search](./curiosity-and-search.md) — curiosity-dream feedback loop
 
 ---
@@ -527,7 +520,7 @@ type DreamEngineConfig = {
 
 The dream engine plays a central role in the skill marketplace:
 
-1. **Mutation mode** creates variations of existing skill patterns during dream cycles
+1. **Distillation lane** writes verified-success workflow notes from attributed executions (the `mutation` mode that used to sit here was retired in PLAN-45 Phase 1)
 2. **SkillCrystallizer** detects repeated successful execution patterns and promotes them to skill crystals
 3. **MarketplaceEconomics** automatically prices and lists qualifying skills
 4. **Hormonal feedback:** Successful skill sales trigger `marketplace_sale` dopamine events, reinforcing the crystallization → sale → dopamine loop

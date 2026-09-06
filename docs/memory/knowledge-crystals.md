@@ -110,7 +110,7 @@ type CrystalOrigin =
 | Field               | Type             | Description                             |
 | ------------------- | ---------------- | --------------------------------------- |
 | `stableSkillId`     | `string \| null` | Persistent ID across skill versions     |
-| `skillVersion`      | `number`         | Increments on each mutation promotion   |
+| `skillVersion`      | `number`         | Increments on each new skill version    |
 | `previousVersionId` | `string \| null` | Crystal ID of the prior version         |
 | `deprecated`        | `boolean`        | Whether superseded by a newer version   |
 | `deprecatedBy`      | `string \| null` | `stableSkillId` of the replacement      |
@@ -141,7 +141,7 @@ stateDiagram-v2
     generated --> expired: importance below forgetThreshold
     generated --> frozen: crystallized as skill
     activated --> frozen: crystallized as skill
-    frozen --> frozen: immutable (skill mutations create new crystals)
+    frozen --> frozen: immutable (new skill versions are new crystals)
     expired --> [*]: purgeExpired() physical deletion
     archived --> [*]: purgeExpired() physical deletion
 ```

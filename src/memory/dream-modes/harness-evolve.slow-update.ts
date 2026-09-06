@@ -6,12 +6,11 @@
 // in the longer run is reverted without a human.
 
 import type { PolicyVersionRef } from "../../agents/pi-embedded-runner/harness-policy-store.js";
-import type { ScorePairFn } from "../dream-slow-update.js";
 import {
   type HarnessPolicy,
   serializePolicyForJudge,
 } from "../../agents/pi-embedded-runner/harness-policy.js";
-import { bootstrapPairedCI } from "../experiment-sandbox.js";
+import { bootstrapPairedCI, type ScorePairFn } from "../experiment-sandbox.js";
 import { type HeldOutExecution, MIN_PAIRED_FOR_BOOTSTRAP } from "../skill-execution-selection.js";
 
 export interface HarnessSlowUpdateResult {

@@ -96,13 +96,13 @@ describe("fshoModeAdjustments", () => {
     expect(adj.compression).toBeGreaterThan(0);
     expect(adj.replay).toBeGreaterThan(0);
     expect(adj.exploration).toBeUndefined();
-    expect(adj.mutation).toBeUndefined();
+    expect(adj.simulation).toBeUndefined();
   });
 
-  it("mid R (0.3-0.7) boosts mutation and simulation", () => {
+  it("mid R (0.3-0.7) boosts simulation and extrapolation", () => {
     const adj = fshoModeAdjustments(0.5);
-    expect(adj.mutation).toBeGreaterThan(0);
     expect(adj.simulation).toBeGreaterThan(0);
+    expect(adj.extrapolation).toBeGreaterThan(0);
     expect(adj.compression).toBeUndefined();
     expect(adj.exploration).toBeUndefined();
   });
@@ -112,13 +112,13 @@ describe("fshoModeAdjustments", () => {
     expect(adj.exploration).toBeGreaterThan(0);
     expect(adj.extrapolation).toBeGreaterThan(0);
     expect(adj.compression).toBeUndefined();
-    expect(adj.mutation).toBeUndefined();
+    expect(adj.simulation).toBeUndefined();
   });
 
-  it("hormonal modulation at criticality: dopamine boosts mutation", () => {
+  it("hormonal modulation at criticality: dopamine boosts extrapolation", () => {
     const withoutHormones = fshoModeAdjustments(0.5);
     const withDopamine = fshoModeAdjustments(0.5, { dopamine: 0.8, cortisol: 0, oxytocin: 0 });
-    expect(withDopamine.mutation).toBeGreaterThan(withoutHormones.mutation!);
+    expect(withDopamine.extrapolation).toBeGreaterThan(withoutHormones.extrapolation!);
   });
 
   it("hormonal modulation at criticality: oxytocin boosts simulation", () => {
@@ -135,13 +135,13 @@ describe("fshoModeAdjustments", () => {
 
   it("null hormones don't crash", () => {
     const adj = fshoModeAdjustments(0.5, null);
-    expect(adj.mutation).toBe(0.15);
+    expect(adj.simulation).toBe(0.15);
   });
 
   it("R exactly at boundaries", () => {
     // R = 0.7 is in mid-range (<=0.7 check fails, goes to else-if)
     const at70 = fshoModeAdjustments(0.7);
-    expect(at70.mutation).toBeGreaterThan(0); // Mid-range
+    expect(at70.simulation).toBeGreaterThan(0); // Mid-range
 
     // R = 0.3 is in low-range
     const at30 = fshoModeAdjustments(0.3);

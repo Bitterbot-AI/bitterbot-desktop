@@ -877,9 +877,10 @@ export class CuriosityEngine {
       adjustments.simulation = 0.1;
     }
 
-    // High frontier activity → increase mutation weight
+    // High frontier activity → increase distillation weight (PLAN-45
+    // Phase 1: `mutation` retired; distillation is the skill-improvement lane)
     if ((counts.get("frontier") ?? 0) >= 2) {
-      adjustments.mutation = 0.1;
+      adjustments.distillation = 0.1;
     }
 
     return adjustments;

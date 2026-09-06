@@ -5,13 +5,16 @@
 // policy with 95% confidence (ci95Low > 0) — the same acceptance bar the skill
 // gate uses, which is strictly stronger than Self-Harness's point Δ>0 rule.
 
-import type { ScorePairFn } from "../dream-slow-update.js";
 import {
   type HarnessPolicy,
   policyDiffSummary,
   serializePolicyForJudge,
 } from "../../agents/pi-embedded-runner/harness-policy.js";
-import { bootstrapPairedCI, type StatisticalResult } from "../experiment-sandbox.js";
+import {
+  bootstrapPairedCI,
+  type ScorePairFn,
+  type StatisticalResult,
+} from "../experiment-sandbox.js";
 import { type HeldOutExecution, MIN_PAIRED_FOR_BOOTSTRAP } from "../skill-execution-selection.js";
 
 export interface HarnessGateOptions {
