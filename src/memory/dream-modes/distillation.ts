@@ -110,13 +110,13 @@ export async function runDistillation(params: {
   try {
     candidates = db
       .prepare(
-        `SELECT se.skill_crystal_id, MAX(se.started_at) AS latest_started
+        `SELECT se.skill_crystal_id, MAX(se.run_outcome_at) AS latest_started
            FROM skill_executions se
            JOIN chunks c ON c.id = se.skill_crystal_id
           WHERE se.recorded_by = 'after_tool_call'
             AND se.completed_at IS NOT NULL
             AND ${runEvidenceWhere("se")}
-            AND se.started_at > ?
+            AND se.run_outcome_at > ?
             AND COALESCE(c.origin, '') != 'dream'
           GROUP BY se.skill_crystal_id
           ORDER BY latest_started ASC
@@ -211,9 +211,10 @@ export async function runDistillation(params: {
       });
     }
   }
-  // Cursor advances past everything seen this cycle (started_at is
-  // monotonic and indexed — never rowid, which the forgetting engine
-  // recycles).
+  // Cursor advances past everything seen this cycle. PLAN-45 Phase 1: the
+  // cursor is over run_outcome_at (when the run's verdict was stamped), not
+  // started_at, so a run stamped late (in flight during the previous pass)
+  // is still fresh fuel (adversarial M1).
   if (maxSeenStartedAt > cursor) {
     writeCursor(db, maxSeenStartedAt);
   }

@@ -80,16 +80,19 @@ describe("buildEvidenceRecord", () => {
           verdict: "rejected",
           score: -0.2,
           detail: "no-improvement",
-          timestamp: NOW - 9 * DAY,
+          ts: NOW - 9 * DAY,
         },
         {
           skillName: "acme",
           action: "validate",
           verdict: "accepted",
           score: 0.4,
-          timestamp: NOW - 5 * DAY,
+          ts: NOW - 5 * DAY,
         },
-        { skillName: "other", action: "validate", verdict: "accepted", timestamp: NOW - 5 * DAY },
+        { skillName: "other", action: "validate", verdict: "accepted", ts: NOW - 5 * DAY },
+        // appendImpactEntry always writes `ts` (adversarial H2); a row with
+        // no time at all is dropped from the history.
+        { skillName: "acme", action: "validate", verdict: "no-action" },
       ],
       now: NOW,
     });

@@ -180,10 +180,14 @@ export function buildEvidenceRecord(params: {
   reads.successRate = reads.pass + reads.fail > 0 ? reads.pass / (reads.pass + reads.fail) : null;
 
   const v = params.meta?.validation;
+  // appendImpactEntry writes the time as `ts` (adversarial H2); accept the
+  // ImpactEntry field name too for hand-built records.
+  const entryTs = (p: Record<string, unknown>): number | null =>
+    typeof p.ts === "number" ? p.ts : typeof p.timestamp === "number" ? p.timestamp : null;
   const gateHistory = params.provenance
-    .filter((p) => p.skillName === params.name && typeof p.timestamp === "number")
+    .filter((p) => p.skillName === params.name && entryTs(p) !== null)
     .map((p) => ({
-      at: p.timestamp as number,
+      at: entryTs(p) as number,
       action: typeof p.action === "string" ? p.action : "",
       verdict: typeof p.verdict === "string" ? p.verdict : "",
       score: typeof p.score === "number" ? p.score : null,

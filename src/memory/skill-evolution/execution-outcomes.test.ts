@@ -143,6 +143,54 @@ describe("backfillExecutionOutcomes", () => {
     expect(row(db, a)).toMatchObject({ evidence: "tool", run_outcome_label: "unknown" });
   });
 
+  it("re-stamps a run when human feedback arrives after the first stamp and corrects steering (H3)", async () => {
+    const db = openDb();
+    const journal = makeFixtureJournal();
+    appendFixtureRun(journal, {
+      runId: "run-1",
+      task: { text: "do it" },
+      steps: [{ kind: "tool", name: "exec", result: "ok" }],
+      completedExplicitly: true,
+    });
+    const id = record(db, "run-1");
+    const first = await backfillExecutionOutcomes({ journal, db, now: 1_000 });
+    expect(first.byLabel).toEqual({ pass: 1 });
+    expect(steering(db)).toBeCloseTo(0.1);
+    // Operator says the run was actually wrong, after the stamp (feedback ts = wall clock > 1_000).
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { appendRunFeedback } = await import("./run-feedback.js");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-fb-"));
+    await appendRunFeedback(
+      { runId: "run-1", verdict: "rejected", by: "operator" },
+      { configDir: dir },
+    );
+    const second = await backfillExecutionOutcomes({
+      journal,
+      db,
+      now: Date.now(),
+      storeOpts: { configDir: dir },
+    });
+    expect(second.restamped).toBe(1);
+    expect(row(db, id)).toMatchObject({
+      evidence: "human",
+      run_outcome_label: "fail",
+      run_outcome_level: 4,
+    });
+    // +0.1 (pass) corrected to -0.05 (fail): net -0.05.
+    expect(steering(db)).toBeCloseTo(-0.05);
+    // Already at L4: never re-applied.
+    const third = await backfillExecutionOutcomes({
+      journal,
+      db,
+      now: Date.now(),
+      storeOpts: { configDir: dir },
+    });
+    expect(third.restamped).toBe(0);
+    expect(steering(db)).toBeCloseTo(-0.05);
+  });
+
   it("stamps pre-v64 rows without a run id as unattributable, and no-ops without a journal", async () => {
     const db = openDb();
     const legacy = record(db, undefined);

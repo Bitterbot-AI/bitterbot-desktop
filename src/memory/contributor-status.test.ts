@@ -196,7 +196,8 @@ describe("ContributorStatusLedger", () => {
     // 40 "successes" recorded by the after_tool_call name match: worth nothing.
     for (let i = 0; i < 40; i += 1) {
       d.prepare(
-        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, success, recorded_by) VALUES (?, 'h1', 1, 1, 'after_tool_call')`,
+        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, success, recorded_by, evidence, run_outcome_label, run_outcome_level)
+           VALUES (?, 'h1', 1, 1, 'after_tool_call', 'run', 'pass', 1)`,
       ).run(`h1-${i}`);
     }
     const ledger = new ContributorStatusLedger(d);

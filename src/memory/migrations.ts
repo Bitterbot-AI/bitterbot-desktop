@@ -2268,7 +2268,7 @@ const MIGRATIONS: Migration[] = [
   {
     version: 64,
     description:
-      "PLAN-45 Phase 1.1 (2026-09-06): one outcome substrate. skill_executions rows " +
+      "PLAN-45 Phase 1.1 (2026-09-05): one outcome substrate. skill_executions rows " +
       "written by the after_tool_call hook are TOOL-level evidence (a tool did not " +
       "report an error) and carry the run they happened in (run_id, tool_call_id). " +
       "A housekeeping back-fill (skill-evolution/execution-outcomes.ts) stamps each " +

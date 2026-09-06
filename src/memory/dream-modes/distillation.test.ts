@@ -45,8 +45,8 @@ function insertExecution(
   const success = opts.success ?? 1;
   db.prepare(
     `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success,
-       user_feedback, recorded_by, evidence, run_outcome_label, run_outcome_level)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'run', ?, 1)`,
+       user_feedback, recorded_by, evidence, run_outcome_label, run_outcome_level, run_outcome_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'run', ?, 1, ?)`,
   ).run(
     `e-${skillId}-${i}`,
     skillId,
@@ -56,6 +56,7 @@ function insertExecution(
     opts.feedback ?? null,
     opts.recordedBy === undefined ? "after_tool_call" : opts.recordedBy,
     success === 1 ? "pass" : "fail",
+    NOW + i * 1000 + 200,
   );
 }
 

@@ -347,7 +347,9 @@ async function labelTraceInner(
     if (trace.task?.text) {
       try {
         criteria = parseJudgeCriteria(
-          await opts.judgeCall(`${JUDGE_COMMIT_PROMPT_HEADER}${formatTraceHeader(trace)}`),
+          await opts.judgeCall(
+            `${JUDGE_COMMIT_PROMPT_HEADER}${formatTraceHeader(trace, { blind: true })}`,
+          ),
         );
       } catch (err) {
         log.debug(

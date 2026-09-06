@@ -73,7 +73,12 @@ describe("buildCalibrationSet", () => {
     for (const row of set.blind) {
       expect(row).toEqual({ id: expect.any(String), log: expect.any(String) });
       expect(row.log).toContain("task:");
-      expect(row.log).not.toMatch(/verdict|label:/);
+      // Blind: no answer key in the header (adversarial H1).
+      expect(row.log).not.toMatch(
+        /^outcome:|^tools:|evidence-level|## Signals|error-classes|complete\(\)/m,
+      );
+      // ...but the raw tool output the human needs is still there.
+      expect(row.log).toMatch(/\[tool (exec|read)/);
     }
     // 6 pass + 2 fail + the heartbeat are terminal tool-bearing runs; the
     // tool-less and in-flight runs never reach eligibility.

@@ -2361,6 +2361,25 @@ export class MemoryIndexManager implements MemorySearchManager {
         // crystal was deleted. Skills now come only from the evolution pass
         // (src/memory/skill-evolution/), which gates on held-out task outcomes.
         await yieldToEventLoop();
+        // 8b. PLAN-45 Phase 1.1: ground the tool-level execution rows in their
+        // run's outcome HERE, on every consolidation, so competence consumers
+        // (pricing, bridge gate, distillation, tiers, metrics) see stamped rows
+        // on keyless nodes and between evolution passes too. Needs no LLM.
+        try {
+          const [{ backfillExecutionOutcomes }, { getActiveEventJournal }] = await Promise.all([
+            import("./skill-evolution/execution-outcomes.js"),
+            import("../infra/event-journal.js"),
+          ]);
+          const r = await backfillExecutionOutcomes({
+            journal: getActiveEventJournal(),
+            db: this.db,
+          });
+          if (r.stamped > 0) {
+            log.debug(`execution outcomes stamped: ${r.stamped} row(s) over ${r.runs} run(s)`);
+          }
+        } catch (err) {
+          log.debug(`execution outcome back-fill skipped: ${String(err)}`);
+        }
         // 9. Decay steering rewards to prevent unbounded accumulation
         {
           const engine = new ConsolidationEngine(this.db);

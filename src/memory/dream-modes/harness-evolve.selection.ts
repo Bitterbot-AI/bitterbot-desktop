@@ -11,6 +11,10 @@ import {
 } from "../skill-execution-selection.js";
 
 /**
+ * PLAN-45 Phase 1 note: this module reads the TOOL-level `success` bit of
+ * skill_executions on purpose. It measures harness policy (PLAN-25, off by
+ * default), not skill competence; competence consumers use RUN_EVIDENCE_WHERE.
+ *
  * List held-out executions across ALL skills, newest first. Deterministic: an
  * execution is in the held-out partition iff isHeldOut(id) — the same answer
  * forever, so two validation runs see the same split.

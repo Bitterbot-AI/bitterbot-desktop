@@ -1563,8 +1563,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
         ]);
       const p = params as { dir: string; labels: string[] };
       const key = await readKeyFile(p.dir);
+      const { resolve: resolvePath } = await import("node:path");
       const raters = await Promise.all(
-        p.labels.map(async (file) => parseLabelFile(await fs.readFile(file, "utf-8"))),
+        p.labels.map(async (file) =>
+          parseLabelFile(await fs.readFile(resolvePath(p.dir, file), "utf-8")),
+        ),
       );
       const report = scoreCalibration(key, raters[0] as never, raters[1]);
       respond(true, { report, text: formatCalibrationReport(report) });

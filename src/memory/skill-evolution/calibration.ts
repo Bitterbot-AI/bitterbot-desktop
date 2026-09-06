@@ -45,6 +45,9 @@ export const MAX_CALIBRATION_COUNT = 500;
 /** Blind logs are for a human reader; long traces are elided head/tail. */
 export const BLIND_LOG_MAX_CHARS = 6_000;
 const MAX_SCAN_PAGES = 200;
+/** Reconstruct at most this many runs per requested row (and at least MIN_RECONSTRUCT). */
+const RECONSTRUCT_MULTIPLIER = 4;
+const MIN_RECONSTRUCT = 40;
 const SCAN_RUNS_PER_PAGE = 400;
 
 export const TRACE_LABELS: readonly TraceLabel[] = ["pass", "fail", "env-fail", "unknown"];
@@ -115,7 +118,9 @@ async function listTerminalToolRuns(journal: EventJournal): Promise<string[]> {
     for (const run of scan.skipped) {
       seen.add(run.runId);
     }
-    const next = scan.deferredMinFirstSeq ?? scan.horizonSeq + 1;
+    // A deferred run resumes from just BEFORE its first event (the cursor is
+    // exclusive), so its first tool event is not lost (adversarial M3).
+    const next = scan.deferredMinFirstSeq !== null ? scan.deferredMinFirstSeq - 1 : scan.horizonSeq;
     if (scan.runs.length === 0 || next <= sinceSeq) {
       break;
     }
@@ -160,13 +165,21 @@ export async function buildCalibrationSet(
   const feedback = await readRunFeedback(opts.storeOpts ?? {});
   const tick = makeYieldEvery(8);
 
-  const runIds = await listTerminalToolRuns(opts.journal);
+  // Metadata scan first, then reconstruct only a seeded prefix large enough
+  // to fill the sample (adversarial M3): never inflate every run in the
+  // journal for a 100-row sample.
+  const allRunIds = await listTerminalToolRuns(opts.journal);
+  const runIds = allRunIds.toSorted((a, b) =>
+    seededOrder(seed, a).localeCompare(seededOrder(seed, b)),
+  );
+  const reconstructBudget = Math.max(count * RECONSTRUCT_MULTIPLIER, MIN_RECONSTRUCT);
+  let reconstructed = 0;
   const byLabel = new Map<
     TraceLabel,
     Array<{ trace: ReconstructedTrace; label: TraceLabelResult; origin: string }>
   >();
   const stats: CalibrationSet["stats"] = {
-    runsScanned: runIds.length,
+    runsScanned: allRunIds.length,
     runsEligible: 0,
     runsExcluded: 0,
     byHeuristicLabel: {},
@@ -174,7 +187,11 @@ export async function buildCalibrationSet(
     judgeCalls: 0,
   };
   for (const runId of runIds) {
+    if (reconstructed >= reconstructBudget) {
+      break;
+    }
     await tick();
+    reconstructed += 1;
     const trace = await reconstructTrace(opts.journal, runId, { skipMarathonRuns: true });
     if (!trace) {
       stats.runsExcluded += 1;
@@ -236,9 +253,12 @@ export async function buildCalibrationSet(
     stats.selectedByLabel[item.label.label] = (stats.selectedByLabel[item.label.label] ?? 0) + 1;
     blind.push({
       id: item.trace.runId,
-      log: redactSensitiveText(formatTraceLog(item.trace, { maxChars: BLIND_LOG_MAX_CHARS }), {
-        mode: "tools",
-      }),
+      // blind: no outcome line, no tool/error counts, no Signals, no
+      // evidence hierarchy (adversarial H1); the raw tool output stays.
+      log: redactSensitiveText(
+        formatTraceLog(item.trace, { maxChars: BLIND_LOG_MAX_CHARS, blind: true }),
+        { mode: "tools" },
+      ),
     });
     key.push({
       id: item.trace.runId,
@@ -315,10 +335,17 @@ export function parseLabelFile(text: string): CalibrationLabelRow[] {
     if (!line.trim()) {
       continue;
     }
-    const raw = JSON.parse(line) as Record<string, unknown>;
+    let raw: Record<string, unknown>;
+    try {
+      raw = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      throw new Error(`invalid label row ${out.length + 1}: not JSON`);
+    }
     const label = (typeof raw.label === "string" ? raw.label.toLowerCase() : "") as TraceLabel;
     if (typeof raw.id !== "string" || !TRACE_LABELS.includes(label)) {
-      throw new Error(`invalid label row: ${line.slice(0, 120)}`);
+      throw new Error(
+        `invalid label row ${out.length + 1}: expected {"id","label"} with a known label`,
+      );
     }
     out.push({ id: raw.id, label, ...(typeof raw.note === "string" ? { note: raw.note } : {}) });
   }

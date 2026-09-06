@@ -25,7 +25,11 @@ export interface FailureCluster {
   lastTs: number;
   sampleIds: string[];
   exampleDetail: string;
-  /** Ranking weight: frequency scaled by recency. Higher = more worth fixing. */
+  /**
+   * PLAN-45 Phase 1 note: this module reads the TOOL-level `success` bit of
+   * skill_executions on purpose. It measures harness policy (PLAN-25, off by
+   * default), not skill competence; competence consumers use RUN_EVIDENCE_WHERE.
+   * Ranking weight: frequency scaled by recency. Higher = more worth fixing. */
   score: number;
 }
 

@@ -248,9 +248,13 @@ describe("de-anchored judge (PLAN-45 Phase 1.5)", () => {
       },
     });
     expect(prompts).toHaveLength(2);
-    // Commit step: header only, no agent-authored steps.
+    // Commit step: header only, no agent-authored steps, and none of the
+    // programmatic verdict lines that would leak the answer (adversarial H1).
     expect(prompts[0]).toContain("task: Write the release notes");
     expect(prompts[0]).not.toContain("[tool read");
+    expect(prompts[0]).not.toMatch(/^outcome:|^tools:|## Signals|evidence-level/m);
+    // Verdict step keeps the full header.
+    expect(prompts[1]).toMatch(/^outcome:/m);
     // Verdict step: the committed criteria precede the trace.
     expect(prompts[1]).toContain("- NOTES.md exists and contains release notes");
     expect(prompts[1]).toContain("[tool read");

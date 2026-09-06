@@ -88,6 +88,60 @@ export function stampExecutionRunOutcome(
   return changes;
 }
 
+function steeringDeltaFor(label: string | null): number {
+  return label === "pass" ? 0.1 : label === "fail" ? -0.05 : 0;
+}
+
+/**
+ * Overwrite a run's stamped outcome with a HIGHER-level verdict (human
+ * feedback arrives after the fact by definition) and correct the steering
+ * reward by the difference. Rows already at the target level or above are
+ * left alone. Returns rows re-stamped. (adversarial H3)
+ */
+export function restampExecutionRunOutcome(
+  db: DatabaseSync,
+  runId: string,
+  outcome: { label: RunOutcomeLabel; level: number; at?: number },
+): number {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT skill_crystal_id, run_outcome_label FROM skill_executions
+        WHERE run_id = ? AND (run_outcome_level IS NULL OR run_outcome_level < ?)`,
+    )
+    .all(runId, outcome.level) as Array<{
+    skill_crystal_id: string;
+    run_outcome_label: string | null;
+  }>;
+  if (rows.length === 0) {
+    return 0;
+  }
+  const evidence = evidenceForOutcome(outcome.label, outcome.level);
+  const result = db
+    .prepare(
+      `UPDATE skill_executions
+          SET run_outcome_label = ?, run_outcome_level = ?, run_outcome_at = ?, evidence = ?
+        WHERE run_id = ? AND (run_outcome_level IS NULL OR run_outcome_level < ?)`,
+    )
+    .run(outcome.label, outcome.level, outcome.at ?? Date.now(), evidence, runId, outcome.level);
+  const bump = db.prepare(
+    `UPDATE chunks
+        SET steering_reward = MAX(-1.0, MIN(1.0, COALESCE(steering_reward, 0) + ?))
+      WHERE id = ?`,
+  );
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (seen.has(r.skill_crystal_id)) {
+      continue;
+    }
+    seen.add(r.skill_crystal_id);
+    const delta = steeringDeltaFor(outcome.label) - steeringDeltaFor(r.run_outcome_label);
+    if (delta !== 0) {
+      bump.run(delta, r.skill_crystal_id);
+    }
+  }
+  return Number(result.changes);
+}
+
 export class SkillExecutionTracker {
   private readonly db: DatabaseSync;
 

@@ -22,9 +22,14 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import type { EventJournal } from "../../infra/event-journal.js";
+import type { RunFeedbackEntry } from "./run-feedback.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { makeYieldEvery } from "../event-loop.js";
-import { type RunOutcomeLabel, stampExecutionRunOutcome } from "../skill-execution-tracker.js";
+import {
+  type RunOutcomeLabel,
+  restampExecutionRunOutcome,
+  stampExecutionRunOutcome,
+} from "../skill-execution-tracker.js";
 import { labelHeuristic } from "./labeler.js";
 import { deriveRunOutcome } from "./outcome.js";
 import { readRunFeedback } from "./run-feedback.js";
@@ -45,8 +50,12 @@ export interface BackfillExecutionOutcomesResult {
   pending: number;
   /** Pre-v64 rows with no run id, stamped `unattributable`. */
   unattributable: number;
+  /** Rows re-stamped because human feedback (L4) arrived after the first stamp. */
+  restamped: number;
   byLabel: Record<string, number>;
 }
+
+/** A run is one user turn; failover/compaction retries re-enter with the SAME run id and share its verdict. */
 
 export async function backfillExecutionOutcomes(params: {
   journal: EventJournal | null;
@@ -62,6 +71,7 @@ export async function backfillExecutionOutcomes(params: {
     runs: 0,
     pending: 0,
     unattributable: 0,
+    restamped: 0,
     byLabel: {},
   };
   let rows: Array<{ id: string; run_id: string | null; started_at: number }>;
@@ -78,10 +88,56 @@ export async function backfillExecutionOutcomes(params: {
     log.debug(`execution outcome back-fill skipped: ${String(err)}`);
     return result;
   }
-  if (rows.length === 0) {
-    return result;
+  const feedback = await readRunFeedback(params.storeOpts ?? {});
+  if (rows.length > 0) {
+    await stampPendingRows(params, rows, feedback, now, result);
   }
+  // Human feedback (L4) recorded AFTER a run was stamped outranks the
+  // stamp: re-stamp those runs and correct steering (adversarial H3). Runs
+  // even when nothing is pending.
+  try {
+    const stampedBelowHuman = params.db
+      .prepare(
+        `SELECT run_id, MAX(run_outcome_at) AS at FROM skill_executions
+          WHERE run_id IS NOT NULL AND run_outcome_level IS NOT NULL AND run_outcome_level < 4
+          GROUP BY run_id`,
+      )
+      .all() as Array<{ run_id: string; at: number | null }>;
+    for (const row of stampedBelowHuman) {
+      const fb = feedback.get(row.run_id);
+      if (!fb || (row.at !== null && fb.ts < row.at)) {
+        continue;
+      }
+      const n = restampExecutionRunOutcome(params.db, row.run_id, {
+        label: fb.verdict === "confirmed" ? "pass" : "fail",
+        level: 4,
+        at: now,
+      });
+      result.restamped += n;
+    }
+  } catch (err) {
+    log.debug(`feedback re-stamp failed: ${String(err)}`);
+  }
+  if (result.stamped > 0 || result.unattributable > 0 || result.restamped > 0) {
+    log.info(
+      `execution outcomes: stamped ${result.stamped} row(s) over ${result.runs} run(s) ${JSON.stringify(result.byLabel)}; pending ${result.pending}; unattributable ${result.unattributable}; restamped ${result.restamped}`,
+    );
+  }
+  return result;
+}
 
+async function stampPendingRows(
+  params: {
+    journal: EventJournal | null;
+    db: DatabaseSync;
+    maxRunsPerPass?: number;
+    pendingTtlMs?: number;
+  },
+  rows: Array<{ id: string; run_id: string | null; started_at: number }>,
+  feedback: Map<string, RunFeedbackEntry>,
+  now: number,
+  result: BackfillExecutionOutcomesResult,
+): Promise<void> {
   const legacy = rows.filter((r) => !r.run_id);
   if (legacy.length > 0) {
     const stamp = params.db.prepare(
@@ -98,7 +154,7 @@ export async function backfillExecutionOutcomes(params: {
   if (!params.journal) {
     // No journal on this node: rows keep waiting; nothing can ground them.
     result.pending = rows.length - legacy.length;
-    return result;
+    return;
   }
 
   const byRun = new Map<string, number>();
@@ -108,7 +164,6 @@ export async function backfillExecutionOutcomes(params: {
     }
   }
   const runIds = [...byRun.keys()].slice(0, params.maxRunsPerPass ?? DEFAULT_MAX_RUNS_PER_PASS);
-  const feedback = await readRunFeedback(params.storeOpts ?? {});
   const tick = makeYieldEvery(16);
   const ttl = params.pendingTtlMs ?? DEFAULT_PENDING_TTL_MS;
 
@@ -149,10 +204,4 @@ export async function backfillExecutionOutcomes(params: {
   if (byRun.size > runIds.length) {
     result.pending += byRun.size - runIds.length;
   }
-  if (result.stamped > 0 || result.unattributable > 0) {
-    log.info(
-      `execution outcomes: stamped ${result.stamped} row(s) over ${result.runs} run(s) ${JSON.stringify(result.byLabel)}; pending ${result.pending}; unattributable ${result.unattributable}`,
-    );
-  }
-  return result;
 }

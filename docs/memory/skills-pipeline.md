@@ -33,6 +33,50 @@ Nothing is promoted on model opinion: records mode (LLM-judged traces) can no
 longer promote, and tasks mode needs at least five reviewed capability tasks.
 See "Skill evolution" below for each module.
 
+### What an execution row means (PLAN-45 Phase 1)
+
+`skill_executions` still receives one row per tool call that matched a skill
+crystal by name (`recorded_by = 'after_tool_call'`). Since PLAN-45 Phase 1
+that row carries the journal run it happened in (`run_id`, `tool_call_id`)
+and an `evidence` class:
+
+| `evidence` | Meaning                                                               | Counts as competence |
+| ---------- | --------------------------------------------------------------------- | -------------------- |
+| `tool`     | A tool ran and did not report an error. Written by the hook.          | never                |
+| `run`      | The run's calibrated label was `pass` or `fail` (L1-L2 evidence).     | yes                  |
+| `task`     | A PLAN-16 task verdict backed the label (L3).                         | yes                  |
+| `human`    | Operator feedback backed the label (L4, `bitterbot skills feedback`). | yes                  |
+
+The housekeeping step `skill-evolution/execution-outcomes.ts` stamps
+`run_outcome_label` / `run_outcome_level` on every row of a run once the run
+is terminal, lifts `evidence`, and moves the crystal's `steering_reward` once
+per run on the verdict. `env-fail` and `unknown` stay tool-level. Every
+consumer that feeds a decision (tracker metrics, pricing, the bridge gate,
+distillation, contributor status, the working-memory skill list, the digest,
+signal collection, marketplace intelligence, doctor) filters with
+`RUN_EVIDENCE_WHERE` from `skill-execution-tracker.ts`: a tool call that did
+not throw no longer counts anywhere.
+
+Each live skill directory also carries a derived `.evidence.json`
+(`skill-evolution/evidence-record.ts`): credited reads by verdict over a
+14-day window, lifetime counters, the gate verdict and statistics, the
+models it was validated on and read by, description repairs, publish time,
+and the lineage's gate history. `skills.evolution.status` returns them as
+`evidence`; nothing downstream should compute skill quality any other way.
+
+### Calibrating the labeler on real traces (PLAN-45 Phase 1.5)
+
+`bitterbot skills calibrate export --count 100` writes a blind, stratified
+sample of this node's real runs (`blind.jsonl`) and the labeler's hidden
+verdicts (`key.jsonl`) under `skill-wiki/calibration/<stamp>/`. Label the
+blind file without opening the key, then
+`bitterbot skills calibrate score <dir> --labels mine.jsonl [--labels theirs.jsonl]`
+reports per-class precision / recall / F1 for the heuristic (and the judge
+with `--with-judge`), inter-rater agreement (Cohen's kappa) and the scores
+against the raters' consensus. The LLM judge is de-anchored: for ambiguous
+traces with a journaled task it first commits the success criteria from the
+task header alone, then judges the trace against them.
+
 ### The retired crystal pipeline
 
 Until 2026-09-05 a second, older pipeline ran alongside: `SkillExecutionTracker`
