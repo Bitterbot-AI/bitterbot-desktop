@@ -56,7 +56,9 @@ export type ImpactVerdict =
   /** Proposal passed the staging gate and awaits the validation gate. */
   | "staged"
   /** PLAN-45 2.6: the gate measured the proposal and held it (retryable). */
-  | "held";
+  | "held"
+  /** PLAN-45 Phase 3: a stable skill sent back to a canary window (model drift). */
+  | "canary";
 
 export interface ImpactEntry {
   /** Which subsystem produced the mutation attempt. */

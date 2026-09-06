@@ -356,6 +356,49 @@ export interface ArchivedVersion {
 }
 
 /**
+ * PLAN-45 Phase 3.1: sidecars snapshotted next to an archived SKILL.md
+ * (`.evolution-meta.json`, `PURPOSE.md`), as a manifest so a rollback can
+ * restore the EXACT sidecar set of that version (including "none": a
+ * human-authored version restored over an evolved one must drop the
+ * evolution identity, not inherit it).
+ */
+export const ARCHIVE_SIDECARS_MANIFEST = ".sidecars.json";
+export const ARCHIVABLE_SIDECARS = [".evolution-meta.json", "PURPOSE.md"] as const;
+
+export async function readLiveSidecars(
+  roots: StorageRoots,
+  name: string,
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const file of ARCHIVABLE_SIDECARS) {
+    try {
+      out[file] = await fs.readFile(path.join(liveSkillDir(roots, name), file), "utf-8");
+    } catch {
+      // absent
+    }
+  }
+  return out;
+}
+
+/** Replace the live sidecar set with `sidecars` (files not listed are removed). */
+export async function writeLiveSidecars(
+  roots: StorageRoots,
+  name: string,
+  sidecars: Record<string, string>,
+): Promise<void> {
+  const dir = liveSkillDir(roots, name);
+  await fs.mkdir(dir, { recursive: true });
+  for (const file of ARCHIVABLE_SIDECARS) {
+    const content = sidecars[file];
+    if (content !== undefined) {
+      await atomicWrite(path.join(dir, file), content);
+    } else {
+      await fs.rm(path.join(dir, file), { force: true });
+    }
+  }
+}
+
+/**
  * Snapshot the given content into the next available archive slot. Returns
  * the chosen version number. Idempotent only with respect to the counter —
  * each call increments.
@@ -368,6 +411,8 @@ export async function archiveVersion(
     reason: string;
     author: string;
     timestamp?: number;
+    /** PLAN-45 Phase 3.1: sidecar set of this version (manifest written even when empty). */
+    sidecars?: Record<string, string>;
   },
 ): Promise<ArchivedVersion> {
   assertValidSkillName(params.name);
@@ -384,8 +429,38 @@ export async function archiveVersion(
   };
   await atomicWrite(contentPath, params.content);
   await atomicWrite(metaPath, JSON.stringify(meta, null, 2));
+  if (params.sidecars) {
+    await atomicWrite(
+      path.join(dir, ARCHIVE_SIDECARS_MANIFEST),
+      JSON.stringify({ files: params.sidecars }, null, 2),
+    );
+  }
   await writeNextVersion(roots, params.name, version + 1);
   return { version, meta, contentPath };
+}
+
+/** The sidecar manifest of an archived version, or null when it predates the manifest. */
+export async function readArchivedSidecars(
+  roots: StorageRoots,
+  name: string,
+  version: number,
+): Promise<Record<string, string> | null> {
+  try {
+    const raw = await fs.readFile(
+      path.join(archiveVersionDir(roots, name, version), ARCHIVE_SIDECARS_MANIFEST),
+      "utf-8",
+    );
+    const parsed = JSON.parse(raw) as { files?: Record<string, unknown> };
+    const files: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed.files ?? {})) {
+      if (typeof v === "string" && (ARCHIVABLE_SIDECARS as readonly string[]).includes(k)) {
+        files[k] = v;
+      }
+    }
+    return files;
+  } catch {
+    return null;
+  }
 }
 
 export async function listArchivedVersions(
@@ -479,6 +554,7 @@ export async function publishStaged(
       reason: `pre-publish snapshot (${params.reason})`,
       author: params.author,
       timestamp: params.timestamp,
+      sidecars: await readLiveSidecars(roots, params.name),
     });
   }
   // Write staged content to live.
@@ -523,10 +599,58 @@ export async function rollbackToVersion(
       reason: `pre-rollback snapshot (target v${params.version}: ${params.reason})`,
       author: params.author,
       timestamp: params.timestamp,
+      sidecars: await readLiveSidecars(roots, params.name),
     });
   }
   await fs.mkdir(liveSkillDir(roots, params.name), { recursive: true });
+  // PLAN-45 Phase 3.1: a version archived with a sidecar manifest restores
+  // that exact sidecar set (an older archive without one leaves the live
+  // sidecars untouched, the pre-Phase-3 behavior). Sidecars land BEFORE the
+  // body: they describe the target, and a crash in between leaves a meta
+  // that no longer claims the demoted bytes are a validated canary.
+  const sidecars = await readArchivedSidecars(roots, params.name, params.version);
+  if (sidecars) {
+    await writeLiveSidecars(roots, params.name, sidecars);
+  }
   await atomicWrite(liveSkillPath(roots, params.name), target.content);
+  // The derived evidence record described the demoted bytes.
+  await fs.rm(path.join(liveSkillDir(roots, params.name), ".evidence.json"), { force: true });
   log.debug(`rolled back ${params.name} to v${params.version}`);
   return { previousArchived, restoredContent: target.content };
+}
+
+/**
+ * PLAN-45 Phase 3.3: take a live skill out of service. Snapshots the live
+ * SKILL.md and its sidecars into the archive, then removes the live copy
+ * (SKILL.md, evolution sidecars, derived records). Used for evolved
+ * CREATEs that regressed, never fired, or lost their slot at the cap; a
+ * PATCH regression restores the previous version instead (rollbackToVersion).
+ */
+export async function retireLive(
+  roots: StorageRoots,
+  params: { name: string; reason: string; author: string; timestamp?: number },
+): Promise<{ archived: ArchivedVersion; content: string } | null> {
+  assertValidSkillName(params.name);
+  const content = await readLive(roots, params.name);
+  if (!content) {
+    return null;
+  }
+  const archived = await archiveVersion(roots, {
+    name: params.name,
+    content,
+    reason: `retire (${params.reason})`,
+    author: params.author,
+    timestamp: params.timestamp,
+    sidecars: await readLiveSidecars(roots, params.name),
+  });
+  const dir = liveSkillDir(roots, params.name);
+  for (const file of ["SKILL.md", ...ARCHIVABLE_SIDECARS, ".evidence.json"]) {
+    await fs.rm(path.join(dir, file), { force: true });
+  }
+  try {
+    await fs.rmdir(dir);
+  } catch {
+    // user attachments keep the directory; the index is SKILL.md-driven
+  }
+  return { archived, content };
 }

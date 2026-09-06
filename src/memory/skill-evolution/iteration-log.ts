@@ -49,6 +49,8 @@ export interface IterationRecord {
     lane: string | null;
   } | null;
   validation: Array<{ skillName: string; outcome: string; detail?: string }>;
+  /** PLAN-45 Phase 3: canary decisions (graduated / rolled-back / retired / re-canaried) and cap retirements. */
+  monitor: Array<{ skillName: string; action: string; detail?: string }>;
   lint: { archived: number; orphans: number } | null;
   published: number;
   error: string | null;
@@ -79,6 +81,8 @@ export interface IterationSource {
   };
   proposalOutcome?: { outcome: string };
   validation?: Array<{ skillName: string; outcome: string; detail?: string }>;
+  monitor?: { actions: Array<{ skillName: string; action: string; detail?: string }> };
+  capRetirement?: Array<{ skillName: string; action: string; detail?: string }>;
   lint?: { archivedDuplicates: string[]; archivedOverflow: string[]; orphans: string[] };
   publish?: { published: string[] };
 }
@@ -128,6 +132,16 @@ export function buildIterationRecord(
       outcome: v.outcome,
       ...(v.detail ? { detail: v.detail.slice(0, 300) } : {}),
     })),
+    monitor: [
+      ...(result.monitor?.actions ?? []),
+      ...(result.capRetirement ?? []).map((a) => ({ ...a, action: `cap-${a.action}` })),
+    ]
+      .filter((a) => a.action !== "continue")
+      .map((a) => ({
+        skillName: a.skillName,
+        action: a.action,
+        ...(a.detail ? { detail: a.detail.slice(0, 300) } : {}),
+      })),
     lint: result.lint
       ? {
           archived: result.lint.archivedDuplicates.length + result.lint.archivedOverflow.length,

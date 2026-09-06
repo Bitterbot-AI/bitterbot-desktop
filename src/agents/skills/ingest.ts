@@ -11,7 +11,11 @@ import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
-import { parseProvenanceTrailer } from "../../memory/skill-evolution/provenance-trailer.js";
+import {
+  type EvolutionRetractionRecord,
+  parseProvenanceTrailer,
+  parseRetractionTrailer,
+} from "../../memory/skill-evolution/provenance-trailer.js";
 import {
   type InjectionScanResult,
   type InjectionSeverity,
@@ -29,8 +33,9 @@ import {
   type LiveSkillIndexEntry,
   listLiveSkillIndex,
 } from "./description-overlap.js";
+import { appendImpactEntry, resolveWikiDir } from "./impact-trail.js";
 import { bumpSkillsSnapshotVersion, getSkillsSnapshotVersion } from "./refresh.js";
-import { resolveStorageRoots } from "./skill-storage.js";
+import { archiveVersion, resolveStorageRoots } from "./skill-storage.js";
 
 const log = createSubsystemLogger("skills/ingest");
 
@@ -131,7 +136,8 @@ export type SkillEnvelope = {
 
 export type IngestResult = {
   ok: boolean;
-  action: "accepted" | "quarantined" | "rejected";
+  /** `retracted`: PLAN-45 Phase 3.4, a signed retraction stub was applied (never stored as a skill). */
+  action: "accepted" | "quarantined" | "rejected" | "retracted";
   skillName?: string;
   skillPath?: string;
   reason?: string;
@@ -211,6 +217,12 @@ export async function ingestSkill(params: {
     return { ok: false, action: "rejected", reason: "content hash mismatch" };
   }
 
+  // 2b. PLAN-45 Phase 3.4: bytes the author retracted stay retracted (a
+  // fresh envelope has a fresh timestamp/signature, the same hash).
+  if (await isRetracted(envelope.author_pubkey, envelope.content_hash)) {
+    return { ok: false, action: "rejected", reason: "retracted by its author" };
+  }
+
   // 3. Content-hash dedup
   if (seenHashes.has(envelope.content_hash)) {
     return { ok: false, action: "rejected", reason: "duplicate content hash" };
@@ -239,6 +251,30 @@ export async function ingestSkill(params: {
     }
   }
 
+  // 3c. PLAN-45 Phase 3.4: a signed RETRACTION rides the same verb. It is
+  // bound to the original by author pubkey + content hash (the signature
+  // covers the stub, and only the original key's copies match), never
+  // stored as a skill, and remembered so a republish of the same bytes by
+  // the same key is refused. It runs BEFORE the rate limit (adversarial
+  // 3-9): the one message that must land after a publish burst.
+  const skillContent = skillBytes.toString("utf-8");
+  const retraction = parseRetractionTrailer(skillContent);
+  if (retraction) {
+    if (seenHashes.size >= MAX_SEEN_HASHES) {
+      seenHashes.clear();
+    }
+    seenHashes.add(envelope.content_hash);
+    if (await isRetracted(envelope.author_pubkey, retraction.contentSha256)) {
+      return {
+        ok: true,
+        action: "retracted",
+        skillName: normalizeSkillName(retraction.name),
+        reason: "already applied",
+      };
+    }
+    return applyPeerRetraction({ envelope, retraction, config });
+  }
+
   // 4. Rate limiting
   const maxPerHour = p2pConfig?.maxIngestedPerHour ?? 20;
   if (!checkRateLimit(envelope.author_peer_id, maxPerHour)) {
@@ -246,7 +282,6 @@ export async function ingestSkill(params: {
   }
 
   // 5. Parse and validate SKILL.md
-  const skillContent = skillBytes.toString("utf-8");
   if (!validateSkillContent(skillContent)) {
     return { ok: false, action: "rejected", reason: "invalid SKILL.md structure" };
   }
@@ -928,4 +963,205 @@ async function skillExistsWithHash(skillsDir: string, contentHash: string): Prom
     }
   } catch {}
   return false;
+}
+
+// ── PLAN-45 Phase 3.4: peer retractions ──────────────────────────────────
+
+const RETRACTIONS_FILENAME = "retractions.jsonl";
+
+interface RetractionRow {
+  direction: "peer" | "own";
+  author_pubkey?: string;
+  contentSha256?: string;
+}
+
+let retractionsCache: { mtimeMs: number; size: number; keys: Set<string> } | null = null;
+
+function retractionsFile(): string {
+  return path.join(resolveWikiDir(), RETRACTIONS_FILENAME);
+}
+
+/** Whether (author pubkey, content hash) was retracted by a peer stub we applied. Memoized on the ledger's mtime. */
+export async function isRetracted(authorPubkey: string, contentHash: string): Promise<boolean> {
+  const file = retractionsFile();
+  let st: { mtimeMs: number; size: number };
+  try {
+    st = await fs.stat(file);
+  } catch {
+    retractionsCache = null;
+    return false;
+  }
+  if (
+    !retractionsCache ||
+    retractionsCache.mtimeMs !== st.mtimeMs ||
+    retractionsCache.size !== st.size
+  ) {
+    const keys = new Set<string>();
+    try {
+      for (const line of (await fs.readFile(file, "utf-8")).split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const row = JSON.parse(line) as RetractionRow;
+          if (row.direction === "peer" && row.author_pubkey && row.contentSha256) {
+            keys.add(`${row.author_pubkey} ${row.contentSha256}`);
+          }
+        } catch {
+          // malformed line
+        }
+      }
+    } catch {
+      // unreadable: treat as empty
+    }
+    retractionsCache = { mtimeMs: st.mtimeMs, size: st.size, keys };
+  }
+  return retractionsCache.keys.has(`${authorPubkey} ${contentHash}`);
+}
+
+async function readJsonField(file: string, field: string): Promise<string | null> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(file, "utf-8")) as Record<string, unknown>;
+    const v = parsed[field];
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Apply a retraction stub: drop the quarantined copy, archive and remove
+ * the live copy, remember the pair. Matching is by the ORIGINAL envelope's
+ * author pubkey and content hash as recorded on the copy; the stub's own
+ * name is informational.
+ */
+async function applyPeerRetraction(params: {
+  envelope: SkillEnvelope;
+  retraction: EvolutionRetractionRecord;
+  config: BitterbotConfig;
+}): Promise<IngestResult> {
+  const { envelope, retraction, config } = params;
+  const pubkey = envelope.author_pubkey;
+  const hash = retraction.contentSha256;
+  const quarantineDir =
+    config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
+  const liveRoot = path.join(CONFIG_DIR, "skills");
+  const removed: string[] = [];
+  let changed = false;
+
+  // Quarantine copies.
+  try {
+    for (const entry of await fs.readdir(quarantineDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(quarantineDir, entry.name);
+      const envFile = path.join(dir, ".envelope.json");
+      if (
+        (await readJsonField(envFile, "author_pubkey")) === pubkey &&
+        (await readJsonField(envFile, "content_hash")) === hash
+      ) {
+        await fs.rm(dir, { recursive: true, force: true });
+        removed.push(`quarantine:${entry.name}`);
+        changed = true;
+      }
+    }
+  } catch {
+    // no quarantine dir
+  }
+
+  // Live copies: archive first (with the provenance stamped), then remove.
+  try {
+    for (const entry of await fs.readdir(liveRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(liveRoot, entry.name);
+      const provFile = path.join(dir, ".provenance.json");
+      if (
+        (await readJsonField(provFile, "author_pubkey")) !== pubkey ||
+        (await readJsonField(provFile, "content_hash")) !== hash
+      ) {
+        continue;
+      }
+      let content: string | null = null;
+      try {
+        content = await fs.readFile(path.join(dir, "SKILL.md"), "utf-8");
+      } catch {
+        content = null;
+      }
+      if (content) {
+        try {
+          let provenance = "";
+          try {
+            const parsed = JSON.parse(await fs.readFile(provFile, "utf-8")) as Record<
+              string,
+              unknown
+            >;
+            provenance = JSON.stringify(
+              { ...parsed, retracted: { at: Date.now(), reason: retraction.reason } },
+              null,
+              2,
+            );
+          } catch {
+            provenance = "";
+          }
+          await archiveVersion(resolveStorageRoots(), {
+            name: entry.name,
+            content,
+            reason: `peer retraction (${retraction.reason || "no reason given"})`,
+            author: envelope.author_peer_id,
+            sidecars: provenance ? { ".provenance.json": provenance } : {},
+          });
+        } catch (err) {
+          log.debug(`archive of retracted ${entry.name} skipped: ${String(err)}`);
+        }
+      }
+      for (const file of ["SKILL.md", ".provenance.json", ".evidence.json"]) {
+        await fs.rm(path.join(dir, file), { force: true });
+      }
+      try {
+        await fs.rmdir(dir);
+      } catch {
+        // attachments keep the dir; the index is SKILL.md-driven
+      }
+      removed.push(`live:${entry.name}`);
+      changed = true;
+      await appendImpactEntry({
+        source: "evolution",
+        action: "peer-retraction",
+        skillName: entry.name,
+        verdict: "rolled-back",
+        detail: `retracted by its author ${envelope.author_peer_id}: ${retraction.reason || "no reason given"}`,
+        contentHash: hash,
+      });
+    }
+  } catch {
+    // no live root
+  }
+
+  const file = retractionsFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.appendFile(
+    file,
+    `${JSON.stringify({
+      direction: "peer",
+      author_pubkey: pubkey,
+      author_peer_id: envelope.author_peer_id,
+      contentSha256: hash,
+      name: retraction.name,
+      reason: retraction.reason,
+      retractedAt: retraction.retractedAt,
+      receivedAt: Date.now(),
+      removed,
+    })}\n`,
+    "utf-8",
+  );
+  retractionsCache = null;
+  if (changed) {
+    bumpSkillsSnapshotVersion({ reason: "manual", changedPath: liveRoot });
+  }
+  log.info(
+    `Applied retraction of ${retraction.name} (${hash.slice(0, 12)}) from ${envelope.author_peer_id}: ${removed.length > 0 ? removed.join(", ") : "no local copy"}`,
+  );
+  return {
+    ok: true,
+    action: "retracted",
+    skillName: normalizeSkillName(retraction.name),
+    reason: removed.length > 0 ? `removed ${removed.join(", ")}` : "no local copy",
+  };
 }

@@ -109,3 +109,76 @@ export function parseProvenanceTrailer(md: string): EvolutionProvenanceRecord | 
   }
   return last;
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-45 Phase 3.4: RETRACTION trailer. A rolled-back evolved skill is
+// retracted on the mesh with a signed stub envelope from the same author
+// key whose SKILL.md carries this trailer; receivers drop or disable the
+// matching content and never store the stub as a skill.
+// ---------------------------------------------------------------------------
+
+export const RETRACTION_TRAILER_MARKER = "wiki-evolution-retraction";
+
+export interface EvolutionRetractionRecord {
+  origin: "wiki-evolution";
+  /** Name of the retracted skill. */
+  name: string;
+  /** SHA-256 of the SKILL.md bytes that were published (the envelope content_hash). */
+  contentSha256: string;
+  reason: string;
+  retractedAt: string;
+}
+
+export function buildRetractionStub(record: EvolutionRetractionRecord): string {
+  const body = [
+    "---",
+    `name: ${record.name}`,
+    `description: Retraction notice for ${record.name}; not a skill.`,
+    "---",
+    "",
+    `This skill was retracted by its publisher (${record.reason}).`,
+    "",
+    `<!-- ${RETRACTION_TRAILER_MARKER} ${JSON.stringify(record)} -->`,
+    "",
+  ];
+  return body.join("\n");
+}
+
+const RETRACTION_RE = /<!--[ \t]*wiki-evolution-retraction[ \t]+(\{[^\n]*?\})[ \t]*-->/g;
+
+export function parseRetractionTrailer(md: string): EvolutionRetractionRecord | null {
+  let last: EvolutionRetractionRecord | null = null;
+  for (const match of md.matchAll(RETRACTION_RE)) {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(match[1] ?? "");
+    } catch {
+      continue;
+    }
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
+    const r = raw as Record<string, unknown>;
+    const name = optionalString(r.name, 128);
+    const sha = optionalString(r.contentSha256, 64);
+    const retractedAt = optionalString(r.retractedAt, 64);
+    if (
+      r.origin !== "wiki-evolution" ||
+      !name ||
+      !sha ||
+      !/^[0-9a-f]{64}$/.test(sha) ||
+      !retractedAt ||
+      Number.isNaN(Date.parse(retractedAt))
+    ) {
+      continue;
+    }
+    last = {
+      origin: "wiki-evolution",
+      name,
+      contentSha256: sha,
+      reason: optionalString(r.reason, 300) ?? "",
+      retractedAt,
+    };
+  }
+  return last;
+}

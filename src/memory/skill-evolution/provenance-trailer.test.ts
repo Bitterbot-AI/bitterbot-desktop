@@ -9,6 +9,9 @@ import {
   buildProvenanceTrailer,
   parseProvenanceTrailer,
   PROVENANCE_TRAILER_MARKER,
+  buildRetractionStub,
+  parseRetractionTrailer,
+  RETRACTION_TRAILER_MARKER,
 } from "./provenance-trailer.js";
 
 const META = {
@@ -100,5 +103,25 @@ describe("PLAN-45 2.8: only tasks-mode verdicts are evidence", () => {
       `<!-- ${PROVENANCE_TRAILER_MARKER} ${JSON.stringify({ origin: "wiki-evolution", verdict: "accepted", mode, validatedAt: "2026-09-05T00:00:00Z" })} -->`;
     expect(parseProvenanceTrailer(mk("records"))).toBeNull();
     expect(parseProvenanceTrailer(mk("tasks"))?.mode).toBe("tasks");
+  });
+});
+
+describe("PLAN-45 3.4: retraction trailer", () => {
+  it("round-trips a retraction stub and refuses malformed records", () => {
+    const stub = buildRetractionStub({
+      origin: "wiki-evolution",
+      name: "curl-timeout-guard",
+      contentSha256: "a".repeat(64),
+      reason: "canary regression p=0.01",
+      retractedAt: "2026-09-06T00:00:00.000Z",
+    });
+    const rec = parseRetractionTrailer(stub);
+    expect(rec).toMatchObject({ name: "curl-timeout-guard", contentSha256: "a".repeat(64) });
+    expect(parseProvenanceTrailer(stub)).toBeNull(); // a retraction is never validation evidence
+    expect(
+      parseRetractionTrailer(
+        `<!-- ${RETRACTION_TRAILER_MARKER} {"origin":"wiki-evolution","name":"x","contentSha256":"zz","retractedAt":"2026-09-06T00:00:00Z"} -->`,
+      ),
+    ).toBeNull();
   });
 });

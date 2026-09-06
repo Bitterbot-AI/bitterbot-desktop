@@ -16,6 +16,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { unregisterCanary } from "./canary-registry.js";
 import {
   readConsolidateTarget,
   stagedIsConsolidateManifest,
@@ -294,6 +295,26 @@ export async function rollbackStaged(
     if (ctx.lifecycleStore) {
       // Restoring to an archived version implicitly reactivates the skill.
       ctx.lifecycleStore.setState(params.name, "active");
+    }
+    // PLAN-45 Phase 3 (adversarial 3-10): an operator rollback closes the
+    // canary window unless the restored version is itself a canary.
+    try {
+      const metaRaw = await fs
+        .readFile(
+          path.join(liveSkillDir(ctx.storageRoots, params.name), ".evolution-meta.json"),
+          "utf-8",
+        )
+        .catch(() => null);
+      const ladder = metaRaw
+        ? (JSON.parse(metaRaw) as { ladder?: { state?: string } }).ladder?.state
+        : undefined;
+      if (ladder !== "canary") {
+        await unregisterCanary(params.name, {
+          configDir: path.dirname(ctx.storageRoots.liveRoot),
+        });
+      }
+    } catch {
+      // registry is best-effort here; the monitor removes stale entries
     }
     return {
       ok: true,

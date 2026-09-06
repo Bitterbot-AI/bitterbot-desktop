@@ -16,7 +16,11 @@ import { resolveChannelCapabilities } from "../../config/channel-capabilities.js
 import { getMachineDisplayName } from "../../infra/machine-name.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { type enqueueCommand, enqueueCommandInLane } from "../../process/command-queue.js";
-import { isCronSessionKey, isSubagentSessionKey } from "../../routing/session-key.js";
+import {
+  isCronSessionKey,
+  isSkillEvolveValidationSessionKey,
+  isSubagentSessionKey,
+} from "../../routing/session-key.js";
 import { resolveSignalReactionLevel } from "../../signal/reaction-level.js";
 import { resolveTelegramInlineButtonsScope } from "../../telegram/inline-buttons.js";
 import { resolveTelegramReactionLevel } from "../../telegram/reaction-level.js";
@@ -59,6 +63,7 @@ import {
   resolveSkillsPromptForRun,
   type SkillSnapshot,
 } from "../skills.js";
+import { applyCanaryExposure } from "../skills/canary-registry.js";
 import { resolveTranscriptPolicy } from "../transcript-policy.js";
 import {
   checkCompactionBreaker,
@@ -368,11 +373,19 @@ export async function compactEmbeddedPiSessionDirect(
           skills: skillEntries ?? [],
           config: params.config,
         });
-    const skillsPrompt = resolveSkillsPromptForRun({
-      skillsSnapshot: params.skillsSnapshot,
-      entries: shouldLoadSkillEntries ? skillEntries : undefined,
-      config: params.config,
-      workspaceDir: effectiveWorkspace,
+    // PLAN-45 Phase 3.2: the compaction summary sees the same index the run does.
+    const skillsPrompt = applyCanaryExposure({
+      prompt: resolveSkillsPromptForRun({
+        skillsSnapshot: params.skillsSnapshot,
+        entries: shouldLoadSkillEntries ? skillEntries : undefined,
+        config: params.config,
+        workspaceDir: effectiveWorkspace,
+      }),
+      runId,
+      ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+      // A manual /compact carries no runId; it summarizes with the full
+      // index rather than a bucket keyed on the session id (adversarial 3-12).
+      bypass: !params.runId || isSkillEvolveValidationSessionKey(params.sessionKey),
     });
 
     const sessionLabel = params.sessionKey ?? params.sessionId;

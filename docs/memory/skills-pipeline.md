@@ -125,6 +125,83 @@ The gate itself:
   event journal holds (`runner-unobservable`) because skill reads cannot be
   observed.
 
+### After promotion: canary, monitor, rollback (PLAN-45 Phase 3)
+
+The gate proves a candidate on held-out tasks; production is the real test.
+A promoted skill is not in full service. It lands in **canary**
+(`.evolution-meta.json.ladder`), and the ladder from there is
+`staged -> canary -> stable`, or `rolled-back` / `retired`:
+
+- **Exposure (3.2).** `skill-wiki/canary.json` lists the canaries. On every
+  run the prompt builder (`applyCanaryExposure` in
+  `src/agents/skills/canary-registry.ts`) hashes (skill, unit) into an
+  exposed or a withheld bucket (default half and half), strips the withheld
+  `<skill>` blocks from the cached skills index, and journals the exposure
+  once per run (stream `skills`). The randomization unit is a **session for
+  one calendar day**: a transcript keeps a skill's text after one exposed
+  turn, so per-run buckets would contaminate the control cohort and flip the
+  system-prompt prefix (and the provider prompt cache) on every turn.
+  Validation rollouts and a manual `/compact` bypass the filter. The
+  registry lives outside the skills watch globs so writing it never rebuilds
+  a session's index. Cost per run: one `stat`.
+- **Cohorts (3.2).** `creditSkillReads` labels every run whose index the
+  filter touched, reads or not, into `skill-wiki/canary-runs.jsonl`: one
+  row per (run, canary) with exposed / read / eligible / label / model.
+  Eligibility is the description's positive clause (frozen at canary start)
+  against the task header, computed identically on both sides and never
+  widened by a read.
+- **Monitor (3.3).** Each housekeeping pass, `canary-monitor.ts` compares
+  the two cohorts **intention-to-treat**: exposed eligible runs (read or
+  not) against withheld eligible runs, determinate labels only, one-sided
+  Fisher exact (`canary-stats.ts`). A withheld run that still read the
+  skill (text left in its transcript) is contaminated control and counts as
+  exposed. The test is a **look, not a poll**: it runs only when the
+  exposed cohort first reaches 8, 16, 32 or 64 determinate runs, with at
+  least 8 control runs, each look at alpha 0.05/4; consumed looks are
+  persisted on the meta. Worse at a look rolls back; zero reads over 20
+  eligible exposures (or by 28 days) retires (D-5: the router never opens
+  it); 20 eligible exposures or 14 days **with evidence** (at least one
+  read and 8 determinate exposed runs) and no regression graduates to
+  **stable**; at 28 days any read evidence graduates and the trail says the
+  evidence was thin. Only a stable skill propagates over P2P.
+- **Rollback (3.1/3.3).** One primitive, `demoteEvolved`
+  (`canary-demote.ts`): archive first, then restore the version the
+  promotion replaced (`promotedFrom`, with its exact sidecar set from the
+  archive's `.sidecars.json` manifest, so a human-authored version comes
+  back without an evolution identity; sidecars land before the body) or
+  retire a create (archive plus remove). A patch that never fires rolls
+  back too; only a create is removed. Every transition writes an
+  impact-trail entry with the statistics, bumps the snapshot, and, when the
+  version had been published, broadcasts a signed **retraction** (3.4): a
+  stub SKILL.md carrying a `wiki-evolution-retraction` trailer over the
+  existing publish verb, once per content hash. Receivers apply it ahead of
+  the per-peer rate limit, bind it by author pubkey + wire content hash,
+  drop the quarantined copy, archive and remove the live copy, and refuse a
+  republish of the same bytes by the same key
+  (`skill-wiki/retractions.jsonl`). No orchestrator change. An operator
+  rollback (tool or RPC) closes the canary window as well.
+- **Model drift (3.5).** The gate labels evidence with the agent's PRIMARY
+  model (tasks-mode rollouts run on it; the dream lane was a mislabel; the
+  trial memo and per-model task stats re-accumulate once). A stable skill
+  validated on another primary goes back to canary once per target model.
+- **Cap (3.6).** When a staged create with trusted evidence is held at
+  `maxActiveEvolved`, the monitor frees the slot by evidence score (reads x
+  Laplace pass rate over 14 days) among **stable** skills past a 7-day
+  grace: zero-read skills first, then the lowest score. A canary is never
+  the victim (it is withheld from half its runs by construction), and a
+  demoted version left in place does not hold a slot.
+
+Known limits, recorded rather than hidden: in-context use of a skill the
+agent read on an earlier turn without re-reading it is invisible to the
+ledger (bias toward no effect); a published marker from before 3.4 has no
+wire hash and cannot be retracted; on a receiver, a retraction removes the
+files but not the memory chunk the network bridge indexed (Phase 4 reworks
+that path).
+
+The evidence record carries `ladder`, `canary`, and `modelDrift`; status
+(`skills.evolution.status.evolvedLive`) shows them per skill, and
+`iterations.jsonl` records every monitor decision.
+
 ### Calibrating the labeler on real traces (PLAN-45 Phase 1.5)
 
 `bitterbot skills calibrate export --count 100` writes a blind, stratified

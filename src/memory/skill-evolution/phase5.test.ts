@@ -5,7 +5,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { EvolutionMeta } from "./validation-gate.js";
 import { readProvenance } from "../../agents/skills/impact-trail.js";
 import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
-import { listP2pEligibleEvolvedSkills, publishEligibleEvolvedSkills } from "./p2p-publish.js";
+import {
+  listP2pEligibleEvolvedSkills,
+  publishEligibleEvolvedSkills,
+  publishRetraction,
+  retractionsPath,
+  wireContentHash,
+} from "./p2p-publish.js";
+import { parseRetractionTrailer } from "./provenance-trailer.js";
 import { collectEvolutionStatus } from "./status.js";
 import { runWikiLint } from "./wiki-lint.js";
 import { applyMaintainerOutput, listPatternNames, type MaintainerOutput } from "./wiki-store.js";
@@ -152,6 +159,65 @@ describe("P2P publish sweep", () => {
     expect(again.eligible).toBe(0);
     const trail = await readProvenance({ configDir: tmpDir });
     expect(trail.at(-1)).toMatchObject({ action: "p2p-publish", skillName: "ready" });
+  });
+
+  it("PLAN-45 Phase 3: a canary / rolled-back version never propagates; a stable one does, with the wire hash recorded; a retraction rides the publish verb", async () => {
+    const now = Date.now();
+    await writeEvolvedLiveSkill(tmpDir, "canary-one", {
+      validation: { mode: "tasks", verdict: "accepted", validatedAt: now - 5 * DAY },
+      ladder: { state: "canary", at: now - 5 * DAY, by: "gate" },
+    });
+    await writeEvolvedLiveSkill(tmpDir, "rolled", {
+      validation: { mode: "tasks", verdict: "accepted", validatedAt: now - 5 * DAY },
+      ladder: { state: "rolled-back", at: now - DAY, by: "monitor" },
+    });
+    await writeEvolvedLiveSkill(tmpDir, "stable-one", {
+      validation: { mode: "tasks", verdict: "accepted", validatedAt: now - 5 * DAY },
+      ladder: { state: "stable", at: now - DAY, by: "monitor" },
+    });
+    const eligible = await listP2pEligibleEvolvedSkills({ configDir: tmpDir, now });
+    expect(eligible.map((e) => e.name)).toEqual(["stable-one"]);
+    const calls: Array<{ name: string; content: string }> = [];
+    const publisher = {
+      publishSkill: async (b64: string, name: string) => {
+        calls.push({ name, content: Buffer.from(b64, "base64").toString("utf-8") });
+      },
+    };
+    await publishEligibleEvolvedSkills({ publisher, storeOpts: { configDir: tmpDir }, now });
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const meta = JSON.parse(
+      await fs.readFile(path.join(roots.liveRoot, "stable-one", ".evolution-meta.json"), "utf-8"),
+    ) as EvolutionMeta;
+    expect(meta.published?.contentHash).toBe(wireContentHash(calls[0]?.content ?? ""));
+    const r = await publishRetraction({
+      publisher,
+      name: "stable-one",
+      contentHash: meta.published?.contentHash ?? "",
+      reason: "production regression",
+      storeOpts: { configDir: tmpDir },
+      now,
+    });
+    expect(r.published).toBe(true);
+    expect(calls[1]?.name).toBe("stable-one");
+    expect(parseRetractionTrailer(calls[1]?.content ?? "")).toMatchObject({
+      name: "stable-one",
+      contentSha256: meta.published?.contentHash,
+      reason: "production regression",
+    });
+    const trail = await readProvenance({ configDir: tmpDir });
+    expect(trail.at(-1)).toMatchObject({ action: "p2p-retract", verdict: "rolled-back" });
+    // Without a publisher the retraction is still recorded locally.
+    const offline = await publishRetraction({
+      publisher: null,
+      name: "stable-one",
+      contentHash: "cd".repeat(32),
+      reason: "x",
+      storeOpts: { configDir: tmpDir },
+    });
+    expect(offline.published).toBe(false);
+    expect(await fs.readFile(retractionsPath({ configDir: tmpDir }), "utf-8")).toContain(
+      "cd".repeat(32),
+    );
   });
 
   it("does not write the published marker when the bridge rejects the envelope", async () => {

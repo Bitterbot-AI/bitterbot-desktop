@@ -2696,6 +2696,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       // PLAN-42: WikiSkill evolution pass rides skills.evolution (default
       // ON; plain data, structuredClone-safe).
       ...(this.cfg.skills?.evolution ? { skillEvolution: this.cfg.skills.evolution } : {}),
+      // PLAN-45 Phase 3.5: the substrate evolved skills are measured on.
+      ...(() => {
+        const spec = this.resolvePrimaryLlmSpec();
+        return spec ? { runtimeModelTag: spec } : {};
+      })(),
       ...(this.cfg.a2a?.attestation ? { a2aAttestation: this.cfg.a2a.attestation } : {}),
       // PLAN-42 live fix: the maintainer/proposer emit large JSON (full
       // index + pattern pages / full SKILL.md); the default 2048-token cap

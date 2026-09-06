@@ -118,6 +118,37 @@ describe("buildEvidenceRecord", () => {
     expect(rec.lifetime).toMatchObject({ usageCount: 9, successCount: 6, errorCount: 2 });
   });
 
+  it("PLAN-45 Phase 3: the persisted ladder wins; a pre-Phase-3 accepted record is validated", () => {
+    const base = { name: "s", events: [], lifecycle: null, provenance: [] as never[], now: 1 };
+    expect(
+      buildEvidenceRecord({
+        ...base,
+        meta: {
+          origin: "wiki-evolution",
+          validation: { mode: "tasks", verdict: "accepted", validatedAt: 1 },
+          ladder: { state: "canary", at: 5, by: "gate" },
+          canary: { startedAt: 5, bucketFraction: 0.5, reason: "gate" },
+          modelDrift: { from: "a", to: "b", at: 6 },
+        },
+      }),
+    ).toMatchObject({
+      ladder: "canary",
+      ladderAt: 5,
+      ladderBy: "gate",
+      canary: { startedAt: 5, endedAt: null, reason: "gate" },
+      modelDrift: { from: "a", to: "b", at: 6 },
+    });
+    expect(
+      buildEvidenceRecord({
+        ...base,
+        meta: {
+          origin: "wiki-evolution",
+          validation: { mode: "tasks", verdict: "accepted", validatedAt: 1 },
+        },
+      }),
+    ).toMatchObject({ ladder: "validated", ladderAt: null, canary: null, modelDrift: null });
+  });
+
   it("is unmanaged with no gate for a hand-written skill and a null rate with no determinate reads", () => {
     const rec = buildEvidenceRecord({
       name: "manual",

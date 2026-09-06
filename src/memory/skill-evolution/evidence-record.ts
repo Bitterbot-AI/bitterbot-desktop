@@ -41,6 +41,7 @@ export type SkillLifecycleLadder =
   | "validated"
   | "canary"
   | "stable"
+  | "rolled-back"
   | "retired"
   | "unmanaged";
 
@@ -53,6 +54,12 @@ export interface SkillEvidenceRecord {
   origin: string;
   /** Phase 3 ladder; "unmanaged" for skills the evolution loop does not govern. */
   ladder: SkillLifecycleLadder;
+  /** PLAN-45 Phase 3: when and why the ladder last moved. */
+  ladderAt: number | null;
+  ladderBy: string | null;
+  /** The current or last canary window (null for unmanaged / never canaried). */
+  canary: { startedAt: number; endedAt: number | null; reason: string } | null;
+  modelDrift: { from: string; to: string; at: number } | null;
   reads: {
     /** Credited first-party reads in the window. */
     total: number;
@@ -122,8 +129,12 @@ function ladderFor(meta: EvolutionMeta | null): SkillLifecycleLadder {
   if (!meta || meta.origin !== "wiki-evolution") {
     return "unmanaged";
   }
-  // Phase 3 introduces canary/stable; until then an accepted evolved skill
-  // is "validated" (gate passed, no post-promotion measurement yet).
+  // PLAN-45 Phase 3: the persisted ladder wins. A pre-Phase-3 record with
+  // an accepted verdict and no ladder is "validated" (gate passed, never
+  // canaried); the monitor does not govern it until re-promoted.
+  if (meta.ladder?.state) {
+    return meta.ladder.state;
+  }
   return meta.validation?.verdict === "accepted" ? "validated" : "staged";
 }
 
@@ -229,6 +240,16 @@ export function buildEvidenceRecord(params: {
       validatedOn: v?.model ? [v.model] : [],
       readBy: [...readBy].toSorted(),
     },
+    ladderAt: params.meta?.ladder?.at ?? null,
+    ladderBy: params.meta?.ladder?.by ?? null,
+    canary: params.meta?.canary
+      ? {
+          startedAt: params.meta.canary.startedAt,
+          endedAt: params.meta.canary.endedAt ?? null,
+          reason: params.meta.canary.reason,
+        }
+      : null,
+    modelDrift: params.meta?.modelDrift ?? null,
     descriptionRepairs: params.meta?.descriptionRepairs ?? 0,
     publishedAt: params.meta?.published?.at ?? null,
     gateHistory,

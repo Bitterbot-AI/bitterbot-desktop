@@ -30,13 +30,16 @@ function rowTs(r: ProvenanceRow): number | null {
   return num(r.ts) ?? num(r.timestamp);
 }
 
-/** Gate verdicts (source evolution, action validate) for one lineage, oldest first. */
+/** Lineage history rows: gate verdicts plus PLAN-45 Phase 3 monitor demotions, oldest first. */
+const LINEAGE_ACTIONS = new Set(["validate", "rollback", "retire"]);
+
+/** Gate verdicts (source evolution, action validate / rollback / retire) for one lineage, oldest first. */
 export function lineageVerdicts(provenance: ProvenanceRow[], skillName: string): ProvenanceRow[] {
   return provenance
     .filter(
       (r) =>
         r.source === "evolution" &&
-        r.action === "validate" &&
+        LINEAGE_ACTIONS.has(str(r.action)) &&
         r.skillName === skillName &&
         rowTs(r) !== null,
     )

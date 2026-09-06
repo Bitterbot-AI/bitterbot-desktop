@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readCanaryRegistry } from "../../agents/skills/canary-registry.js";
 import { readProvenance } from "../../agents/skills/impact-trail.js";
 import { readLive, resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { appendFixtureRun, makeFixtureJournal } from "./__fixtures__/journal-fixture.js";
@@ -427,6 +428,19 @@ describe("runValidationGate (PLAN-44 Phase 2)", () => {
     };
     expect(meta.validation).toMatchObject({ mode: "tasks", verdict: "accepted", alpha: 0.05 });
     expect(meta.validation.sequential?.decision).toBe("accept");
+    // PLAN-45 Phase 3: a promotion lands in CANARY (registry entry, ladder,
+    // window, no previous version for a create), not in full service.
+    const full = meta as unknown as {
+      ladder?: { state: string; by: string };
+      canary?: { startedAt: number; bucketFraction: number };
+      promotedFrom?: number | null;
+    };
+    expect(full.ladder).toMatchObject({ state: "canary", by: "gate" });
+    expect(full.canary?.bucketFraction).toBe(0.5);
+    expect(full.promotedFrom).toBeNull();
+    const registry = await readCanaryRegistry({ configDir: tmpDir });
+    expect(registry.skills["curl-timeout-guard"]).toMatchObject({ reason: "gate" });
+    expect(registry.skills["curl-timeout-guard"]?.descriptionAtStart.length).toBeGreaterThan(0);
   });
 
   it("serves incumbent trials from the memo on the next proposal (same model, same day)", async () => {

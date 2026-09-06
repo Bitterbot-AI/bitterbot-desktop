@@ -294,6 +294,7 @@ export async function applyProposal(
     // Adversarial H1: the gate re-checks this against the staged file, so a
     // later overwrite of SKILL.md under this name cannot ride the meta.
     contentHash,
+    ladder: { state: "staged", at: Date.now(), by: "pipeline" },
     ...(deps.evidence ? { evidence: deps.evidence } : {}),
   });
   await appendImpactEntry(

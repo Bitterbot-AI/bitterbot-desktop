@@ -2770,7 +2770,12 @@ export class DreamEngine {
       ...(cfg?.propagate !== undefined ? { propagate: cfg.propagate } : {}),
       ...(cfg?.maturityDays !== undefined ? { maturityDays: cfg.maturityDays } : {}),
       publisher: getActiveOrchestratorBridge(),
-      modelTag: this.config.model,
+      // PLAN-45 Phase 3.5: tasks-mode rollouts run on the agent's PRIMARY
+      // model (the gateway agent RPC), so that is the model the evidence
+      // belongs to; the dream lane model was a mislabel. Drift on the
+      // primary re-canaries stable skills.
+      modelTag: this.config.runtimeModelTag ?? this.config.model,
+      runtimeModelTag: this.config.runtimeModelTag ?? null,
       ...(attestKeyPair ? { attestKeyPair } : {}),
       ...(nodePubkey ? { nodePubkey } : {}),
       ...(this.config.a2aAttestation?.enabled !== false && this.config.a2aAttestation?.peers?.length

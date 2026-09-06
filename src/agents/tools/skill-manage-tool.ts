@@ -13,6 +13,8 @@ import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
+import { appendImpactEntry } from "../skills/impact-trail.js";
+import { bumpSkillsSnapshotVersion } from "../skills/refresh.js";
 import { withSkillLifecycleStore } from "../skills/skill-lifecycle-from-config.js";
 import {
   skillManage,
@@ -20,7 +22,7 @@ import {
   type SkillManageParams,
 } from "../skills/skill-manage.js";
 import { promoteStaged, rollbackStaged } from "../skills/skill-promote.js";
-import { resolveStorageRoots } from "../skills/skill-storage.js";
+import { liveSkillPath, resolveStorageRoots } from "../skills/skill-storage.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 const ManageSchema = Type.Object({
@@ -246,6 +248,21 @@ export function createSkillManageTool(options: {
               { name, version, reason, author },
             ),
           );
+          if (result.ok) {
+            // PLAN-45 Phase 3 (audit gap): the tool's rollback left no trail
+            // entry and no snapshot bump, unlike the RPC.
+            await appendImpactEntry({
+              source: "skill-manage",
+              action: "rollback",
+              skillName: name,
+              verdict: "rolled-back",
+              detail: `rolled back to v${version} by ${author}${reason ? `: ${reason}` : ""}`,
+            });
+            bumpSkillsSnapshotVersion({
+              reason: "manual",
+              changedPath: liveSkillPath(roots, name),
+            });
+          }
           return jsonResult({
             ok: result.ok,
             action: "rollback",

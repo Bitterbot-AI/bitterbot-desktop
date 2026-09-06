@@ -21,10 +21,15 @@
  *      re-validated new version may publish again.
  */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { EvolutionMeta } from "./validation-gate.js";
-import { appendImpactEntry, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
+import {
+  appendImpactEntry,
+  type ImpactTrailOptions,
+  resolveWikiDir,
+} from "../../agents/skills/impact-trail.js";
 import {
   readLive,
   resolveStorageRoots,
@@ -33,7 +38,11 @@ import {
 import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { atomicWriteJson } from "./fs-atomic.js";
-import { buildProvenanceTrailer } from "./provenance-trailer.js";
+import {
+  buildProvenanceTrailer,
+  buildRetractionStub,
+  type EvolutionRetractionRecord,
+} from "./provenance-trailer.js";
 
 const log = createSubsystemLogger("skill-evolution/p2p-publish");
 
@@ -53,10 +62,10 @@ export interface EligibleEvolvedSkill {
 async function readLiveEvolutionMeta(
   roots: StorageRoots,
   name: string,
-): Promise<(EvolutionMeta & { published?: { at: number } }) | null> {
+): Promise<EvolutionMeta | null> {
   try {
     const raw = await fs.readFile(path.join(roots.liveRoot, name, ".evolution-meta.json"), "utf-8");
-    const parsed = JSON.parse(raw) as EvolutionMeta & { published?: { at: number } };
+    const parsed = JSON.parse(raw) as EvolutionMeta;
     return parsed.origin === "wiki-evolution" ? parsed : null;
   } catch {
     return null;
@@ -83,6 +92,13 @@ export async function listP2pEligibleEvolvedSkills(
     }
     const meta = await readLiveEvolutionMeta(roots, name);
     if (!meta || meta.validation?.verdict !== "accepted") {
+      continue;
+    }
+    // PLAN-45 Phase 3: only a skill that survived its canary window (ladder
+    // `stable`) leaves the node. A canary, a rolled-back or a retired
+    // version never propagates; a legacy record without a ladder keeps the
+    // maturity-days rule below.
+    if (meta.ladder && meta.ladder.state !== "stable") {
       continue;
     }
     const validatedAt = meta.validation.validatedAt;
@@ -166,12 +182,28 @@ export async function publishEligibleEvolvedSkills(deps: {
         continue;
       }
       const withProvenance = `${content.replace(/\n+$/, "")}\n${provenanceTrailer(skill.meta)}`;
-      await deps.publisher.publishSkill(
+      const raw = await deps.publisher.publishSkill(
         Buffer.from(withProvenance, "utf-8").toString("base64"),
         skill.name,
       );
       const metaPath = path.join(roots.liveRoot, skill.name, ".evolution-meta.json");
-      const nextMeta = { ...skill.meta, published: { at: deps.now ?? Date.now() } };
+      // PLAN-45 Phase 3.4: keep the WIRE hash (body + trailer, what the
+      // orchestrator signed) so a later retraction can name exactly what
+      // was broadcast. The orchestrator reports the hash it put on the
+      // envelope; that one wins over the local computation when they differ.
+      const localHash = wireContentHash(withProvenance);
+      const reported = (raw as { content_hash?: unknown } | null | undefined)?.content_hash;
+      const contentHash =
+        typeof reported === "string" && /^[0-9a-f]{64}$/.test(reported) ? reported : localHash;
+      if (contentHash !== localHash) {
+        log.warn(
+          `publish hash mismatch for ${skill.name}: orchestrator ${contentHash.slice(0, 12)} vs local ${localHash.slice(0, 12)}; recording the orchestrator's`,
+        );
+      }
+      const nextMeta: EvolutionMeta = {
+        ...skill.meta,
+        published: { at: deps.now ?? Date.now(), contentHash },
+      };
       await atomicWriteJson(metaPath, nextMeta);
       await appendImpactEntry(
         {
@@ -191,4 +223,101 @@ export async function publishEligibleEvolvedSkills(deps: {
     }
   }
   return result;
+}
+
+/** SHA-256 of the exact bytes handed to the publisher (the envelope's content_hash). */
+export function wireContentHash(skillMd: string): string {
+  return createHash("sha256").update(Buffer.from(skillMd, "utf-8")).digest("hex");
+}
+
+export const RETRACTIONS_FILENAME = "retractions.jsonl";
+
+export function retractionsPath(opts: ImpactTrailOptions = {}): string {
+  return path.join(resolveWikiDir(opts), RETRACTIONS_FILENAME);
+}
+
+/**
+ * PLAN-45 Phase 3.4: broadcast a signed retraction for a version this node
+ * published. The stub rides the existing publish verb (the orchestrator
+ * signs it with the same key), so a receiver can bind it to the original
+ * envelope by author pubkey + content hash without any orchestrator change.
+ * Idempotent per content hash via the local retractions ledger.
+ */
+export async function publishRetraction(deps: {
+  publisher: SkillPublisher | null;
+  name: string;
+  contentHash: string;
+  reason: string;
+  storeOpts?: ImpactTrailOptions;
+  now?: number;
+}): Promise<{ published: boolean; detail: string }> {
+  const trailOpts = deps.storeOpts?.configDir ? { configDir: deps.storeOpts.configDir } : {};
+  const now = deps.now ?? Date.now();
+  const record: EvolutionRetractionRecord = {
+    origin: "wiki-evolution",
+    name: deps.name,
+    contentSha256: deps.contentHash,
+    reason: deps.reason.slice(0, 300),
+    retractedAt: new Date(now).toISOString(),
+  };
+  const file = retractionsPath(trailOpts);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  // Once per hash (adversarial 3-8): a second demotion of the same bytes
+  // (crash replay, pre-manifest rollback loop) must not re-broadcast.
+  try {
+    const prior = (await fs.readFile(file, "utf-8"))
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => {
+        try {
+          return JSON.parse(l) as {
+            direction?: string;
+            contentSha256?: string;
+            publishedToMesh?: boolean;
+          };
+        } catch {
+          return null;
+        }
+      });
+    if (
+      prior.some(
+        (r) => r?.direction === "own" && r.contentSha256 === deps.contentHash && r.publishedToMesh,
+      )
+    ) {
+      return {
+        published: false,
+        detail: `retraction for ${deps.contentHash.slice(0, 12)} already published`,
+      };
+    }
+  } catch {
+    // no ledger yet
+  }
+  await fs.appendFile(
+    file,
+    `${JSON.stringify({ ...record, direction: "own", publishedToMesh: Boolean(deps.publisher) })}\n`,
+    "utf-8",
+  );
+  if (!deps.publisher) {
+    return { published: false, detail: "no publisher; retraction recorded locally" };
+  }
+  try {
+    await deps.publisher.publishSkill(
+      Buffer.from(buildRetractionStub(record), "utf-8").toString("base64"),
+      deps.name,
+    );
+  } catch (err) {
+    return { published: false, detail: `retraction publish failed: ${String(err)}` };
+  }
+  await appendImpactEntry(
+    {
+      source: "evolution",
+      action: "p2p-retract",
+      skillName: deps.name,
+      verdict: "rolled-back",
+      detail: `retraction published for ${deps.contentHash.slice(0, 12)}: ${record.reason}`,
+      contentHash: deps.contentHash,
+    },
+    trailOpts,
+  );
+  return { published: true, detail: `retraction published for ${deps.contentHash.slice(0, 12)}` };
 }

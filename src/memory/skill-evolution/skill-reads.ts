@@ -20,6 +20,7 @@ import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { EventJournal } from "../../infra/event-journal.js";
+import { readCanaryRegistry } from "../../agents/skills/canary-registry.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import {
   liveSkillPath,
@@ -29,6 +30,7 @@ import {
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { makeYieldEvery } from "../event-loop.js";
 import { SkillLifecycleStore } from "../skill-lifecycle.js";
+import { appendCanaryRuns, type CanaryRunRow, isEligibleTask } from "./canary-ledger.js";
 import { atomicWriteJson } from "./fs-atomic.js";
 import { labelHeuristic } from "./labeler.js";
 import { deriveRunOutcome } from "./outcome.js";
@@ -160,6 +162,29 @@ export function skillsReadInRun(
   return [...found].toSorted();
 }
 
+/**
+ * PLAN-45 Phase 3.2: the exposure record the run path journaled (stream
+ * `skills`), or null when the run's index carried no canary.
+ */
+export function canaryExposureForRun(
+  journal: EventJournal,
+  runId: string,
+): { exposed: string[]; withheld: string[] } | null {
+  const rows = journal.query({ runId, streams: ["skills"], limit: 4 });
+  for (const row of rows) {
+    const exposed = Array.isArray(row.data.exposed)
+      ? row.data.exposed.filter((x): x is string => typeof x === "string")
+      : [];
+    const withheld = Array.isArray(row.data.withheld)
+      ? row.data.withheld.filter((x): x is string => typeof x === "string")
+      : [];
+    if (exposed.length > 0 || withheld.length > 0) {
+      return { exposed, withheld };
+    }
+  }
+  return null;
+}
+
 function isExcludedSession(sessionKey: string | null | undefined): boolean {
   if (!sessionKey) {
     return false;
@@ -172,6 +197,8 @@ export interface CreditSkillReadsResult {
   credited: number;
   events: SkillReadEvent[];
   cursorSeq: number;
+  /** PLAN-45 Phase 3.2: (run, canary skill) rows appended to canary-runs.jsonl. */
+  canaryRows: number;
 }
 
 /**
@@ -210,8 +237,13 @@ export async function creditSkillReads(params: {
   });
   const pending: SkillReadsState["pending"] = [];
   const events: SkillReadEvent[] = [];
+  const canaryRows: CanaryRunRow[] = [];
   const yieldTick = makeYieldEvery(16);
   const feedback = await readRunFeedback(opts);
+  // PLAN-45 Phase 3.2: runs whose index the canary filter touched are
+  // labeled even with zero reads: they are the control cohort.
+  const canaries = (await readCanaryRegistry(opts)).skills;
+  const hasCanaries = Object.keys(canaries).length > 0;
   const decide = async (runId: string, firstSeq: number, complete: boolean) => {
     if (!complete) {
       if (pending.length < MAX_PENDING) {
@@ -225,7 +257,8 @@ export async function creditSkillReads(params: {
       return;
     }
     const read = skillsReadInRun(params.journal, runId, roots, liveNames, params.workspaceDir);
-    if (read.length === 0) {
+    const exposure = hasCanaries ? canaryExposureForRun(params.journal, runId) : null;
+    if (read.length === 0 && !exposure) {
       return;
     }
     const trace = await reconstructTrace(params.journal, runId);
@@ -264,6 +297,39 @@ export async function creditSkillReads(params: {
         credited,
       });
     }
+    if (exposure) {
+      for (const [skill, exposed] of [
+        ...exposure.exposed.map((n) => [n, true] as const),
+        ...exposure.withheld.map((n) => [n, false] as const),
+      ]) {
+        const entry = canaries[skill];
+        if (!entry) {
+          continue; // window already closed
+        }
+        const key = `canary ${runId} ${skill}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        const wasRead = read.includes(skill);
+        canaryRows.push({
+          runId,
+          skill,
+          ts: trace.endedAt ?? trace.startedAt ?? now,
+          exposed,
+          read: wasRead,
+          // Lexical on both sides (adversarial 3-2): a read must not
+          // widen the treated cohort's denominator.
+          eligible: isEligibleTask(entry.descriptionAtStart, trace.task?.text),
+          label: label.label,
+          outcomeLevel: trace.outcome.level,
+          model: trace.model,
+          origin,
+          credited,
+          sessionKey: trace.sessionKey ?? null,
+        });
+      }
+    }
   };
   // Pending runs: completeness is the terminal lifecycle event, not a row
   // count (start,start from a retry is NOT complete — adversarial M2).
@@ -288,6 +354,7 @@ export async function creditSkillReads(params: {
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.appendFile(file, `${events.map((e) => JSON.stringify(e)).join("\n")}\n`, "utf-8");
   }
+  await appendCanaryRuns(canaryRows, opts);
   // Adversarial H1: runs the cap deferred are not skipped — the cursor stops
   // just before the earliest deferred run, exactly like the sampler.
   const bound = scan.deferredMinFirstSeq !== null ? scan.deferredMinFirstSeq - 1 : scan.horizonSeq;
@@ -322,7 +389,13 @@ export async function creditSkillReads(params: {
       `skill reads: credited ${events.length} read(s) across ${new Set(events.map((e) => e.runId)).size} run(s)`,
     );
   }
-  return { scannedRuns: scan.runs.length, credited: events.length, events, cursorSeq: nextCursor };
+  return {
+    scannedRuns: scan.runs.length,
+    credited: events.length,
+    events,
+    cursorSeq: nextCursor,
+    canaryRows: canaryRows.length,
+  };
 }
 
 export interface SkillReadSummary {

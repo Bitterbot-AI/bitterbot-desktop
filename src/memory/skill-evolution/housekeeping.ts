@@ -14,6 +14,12 @@ import { ContributorStatusLedger } from "../contributor-status.js";
 import { SellerBondLedger } from "../seller-bond-ledger.js";
 import { SkillLifecycleStore } from "../skill-lifecycle.js";
 import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
+import {
+  type CanaryMonitorAction,
+  type CanaryMonitorResult,
+  retireEvolvedAtCap,
+  runCanaryMonitor,
+} from "./canary-monitor.js";
 import { refreshEvidenceRecords } from "./evidence-record.js";
 import {
   type BackfillExecutionOutcomesResult,
@@ -54,6 +60,10 @@ export async function runHousekeeping(
   evidenceRecords?: number;
   /** PLAN-44 Phase 5c: harvested / received descriptions rewritten to the contract. */
   routingRepair?: { examined: number; rewritten: number; failed: number };
+  /** PLAN-45 Phase 3.3/3.5: canary decisions and model-drift re-canaries this pass. */
+  monitor?: CanaryMonitorResult;
+  /** PLAN-45 Phase 3.6: slots freed at the evolved-skill cap this pass. */
+  capRetirement?: CanaryMonitorAction[];
 }> {
   // PLAN-44 Phase 5a: the usage signal. Runs first so the lifecycle
   // counters the validation gate's regression check reads are current.
@@ -97,6 +107,43 @@ export async function runHousekeeping(
     evidenceRecords = records.length;
   } catch (err) {
     log.warn(`evidence record refresh failed: ${String(err)}`);
+  }
+  // PLAN-45 Phase 3: the post-promotion monitor runs on fresh evidence and
+  // BEFORE the routing repair / gate spend anything on a skill about to be
+  // rolled back; the cap retirement runs before the gate so a freed slot is
+  // usable in the same pass.
+  const lifecycleStore = deps.db ? new SkillLifecycleStore(deps.db) : null;
+  let monitor: CanaryMonitorResult | undefined;
+  let capRetirement: CanaryMonitorAction[] | undefined;
+  try {
+    monitor = await runCanaryMonitor({
+      ...(storeOpts.configDir ? { storeOpts } : {}),
+      lifecycleStore,
+      publisher: deps.propagate !== false ? (deps.publisher ?? null) : null,
+      runtimeModelTag: deps.runtimeModelTag ?? null,
+      ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
+      ...(deps.cycleId ? { iteration: deps.cycleId } : {}),
+    });
+    capRetirement = await retireEvolvedAtCap({
+      ...(storeOpts.configDir ? { storeOpts } : {}),
+      lifecycleStore,
+      publisher: deps.propagate !== false ? (deps.publisher ?? null) : null,
+      ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
+      ...(deps.cycleId ? { iteration: deps.cycleId } : {}),
+    });
+    const changed =
+      (monitor?.actions ?? []).some((a) => a.action !== "continue" && a.action !== "error") ||
+      (capRetirement ?? []).some((a) => a.action !== "error");
+    if (changed) {
+      // Ladders moved: rebuild the records so status and the gate see them.
+      const records = await refreshEvidenceRecords({
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+        lifecycleStore,
+      });
+      evidenceRecords = records.length;
+    }
+  } catch (err) {
+    log.warn(`canary monitor failed: ${String(err)}`);
   }
   // PLAN-44 Phase 5c: a live skill the router can never open is dead
   // weight; rewrite its description before anything else is measured.
@@ -235,5 +282,7 @@ export async function runHousekeeping(
     ...(attestation ? { attestation } : {}),
     ...(semanticLint ? { semanticLint } : {}),
     ...(publish ? { publish } : {}),
+    ...(monitor ? { monitor } : {}),
+    ...(capRetirement ? { capRetirement } : {}),
   };
 }

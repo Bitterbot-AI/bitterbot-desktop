@@ -67,6 +67,7 @@ import {
   loadWorkspaceSkillEntries,
   resolveSkillsPromptForRun,
 } from "../../skills.js";
+import { applyCanaryExposure } from "../../skills/canary-registry.js";
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { getGlobalToolCache } from "../../tool-cache.js";
@@ -271,11 +272,20 @@ export async function runEmbeddedAttempt(
           config: params.config,
         });
 
-    const skillsPrompt = resolveSkillsPromptForRun({
-      skillsSnapshot: params.skillsSnapshot,
-      entries: shouldLoadSkillEntries ? skillEntries : undefined,
-      config: params.config,
-      workspaceDir: effectiveWorkspace,
+    // PLAN-45 Phase 3.2: a freshly promoted (canary) skill is withheld from
+    // a hash-bucketed share of runs; those runs are the monitor's control
+    // cohort. Validation rollouts bypass the filter (the gate must see the
+    // candidate). The exposure is journaled once per run.
+    const skillsPrompt = applyCanaryExposure({
+      prompt: resolveSkillsPromptForRun({
+        skillsSnapshot: params.skillsSnapshot,
+        entries: shouldLoadSkillEntries ? skillEntries : undefined,
+        config: params.config,
+        workspaceDir: effectiveWorkspace,
+      }),
+      runId: params.runId,
+      ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+      bypass: isSkillEvolveValidationSessionKey(params.sessionKey),
     });
 
     const sessionLabel = params.sessionKey ?? params.sessionId;

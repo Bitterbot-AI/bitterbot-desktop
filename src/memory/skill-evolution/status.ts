@@ -33,6 +33,10 @@ export interface EvolutionStatus {
     mode: string | null;
     validatedAt: number | null;
     publishedAt: number | null;
+    /** PLAN-45 Phase 3: canary | stable | rolled-back | retired (null for pre-Phase-3 records). */
+    ladder: string | null;
+    canary: { startedAt: number; endedAt: number | null; reason: string } | null;
+    modelDrift: { from: string; to: string; at: number } | null;
   }>;
   p2pEligible: string[];
   corpus: { present: boolean; version?: string; taskCount?: number };
@@ -90,7 +94,7 @@ export async function collectEvolutionStatus(
         path.join(roots.liveRoot, name, ".evolution-meta.json"),
         "utf-8",
       );
-      const meta = JSON.parse(raw) as EvolutionMeta & { published?: { at: number } };
+      const meta = JSON.parse(raw) as EvolutionMeta;
       if (meta.origin !== "wiki-evolution") {
         continue;
       }
@@ -100,6 +104,15 @@ export async function collectEvolutionStatus(
         mode: meta.validation?.mode ?? null,
         validatedAt: meta.validation?.validatedAt ?? null,
         publishedAt: meta.published?.at ?? null,
+        ladder: meta.ladder?.state ?? null,
+        canary: meta.canary
+          ? {
+              startedAt: meta.canary.startedAt,
+              endedAt: meta.canary.endedAt ?? null,
+              reason: meta.canary.reason,
+            }
+          : null,
+        modelDrift: meta.modelDrift ?? null,
       });
     } catch {
       // not an evolved skill

@@ -19,6 +19,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { EventJournal } from "../../infra/event-journal.js";
 import type { LlmCallFn } from "./maintainer.js";
+import { DEFAULT_CANARY_FRACTION, registerCanary } from "../../agents/skills/canary-registry.js";
 import { listLiveSkillIndex } from "../../agents/skills/description-overlap.js";
 import {
   appendImpactEntry,
@@ -92,13 +93,66 @@ export function alphaForAttempt(attempt: number, capabilityTasks: number): numbe
 }
 
 export const DEFAULT_MAX_ACTIVE_EVOLVED = 5;
+
+/** The `description:` frontmatter value of a SKILL.md, or null. */
+export function skillDescription(content: string): string | null {
+  const fm = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!fm) {
+    return null;
+  }
+  const line = fm[1]?.split("\n").find((l) => /^description\s*:/.test(l));
+  if (!line) {
+    return null;
+  }
+  const value = line.replace(/^description\s*:\s*/, "").trim();
+  return value.replace(/^["']|["']$/g, "") || null;
+}
 /** PLAN-44 Phase 2: wall-clock budget for one tasks-mode validation run. */
 export const DEFAULT_VALIDATION_BUDGET_MINUTES = 45;
+
+/** PLAN-45 Phase 3.1: the lifecycle ladder of an evolved skill. */
+export type EvolutionLadderState =
+  | "staged"
+  | "validated"
+  | "canary"
+  | "stable"
+  | "rolled-back"
+  | "retired";
+
+export interface EvolutionLadder {
+  state: EvolutionLadderState;
+  at: number;
+  by: "pipeline" | "gate" | "monitor" | "model-drift" | "operator";
+  reason?: string;
+  previous?: EvolutionLadderState;
+}
 
 export interface EvolutionMeta {
   origin: string;
   stagedAt?: number;
   iteration?: string | null;
+  /** PLAN-45 Phase 3.1: staged -> canary (gate) -> stable (monitor) | rolled-back | retired. */
+  ladder?: EvolutionLadder;
+  /**
+   * PLAN-45 Phase 3.3: archive version of the live SKILL.md this promotion
+   * replaced (null for a create). A regression rolls back to it.
+   */
+  promotedFrom?: number | null;
+  /** PLAN-45 Phase 3.2: the current or last canary window. */
+  canary?: {
+    startedAt: number;
+    bucketFraction: number;
+    reason: string;
+    endedAt?: number;
+    /** Monitor looks already taken (exposed-cohort sizes), so a look is never repeated. */
+    checkpoints?: number[];
+  };
+  /** PLAN-45 Phase 3.5: the primary model changed after validation; re-canaried. */
+  modelDrift?: { from: string; to: string; at: number };
+  /** PLAN-42 Phase 5: P2P publish-once marker; `contentHash` is the wire hash (body + trailer). */
+  published?: { at: number; contentHash?: string };
+  /** PLAN-45 Phase 3.4: a published version was retracted on the mesh. */
+  retracted?: { at: number; contentHash: string; reason: string };
   /** PLAN-44 Phase 3: traces the proposer read and their trust classes. */
   evidence?: { runIds: string[]; origins: string[] };
   /** PLAN-44 Phase 3: hash of the SKILL.md the pipeline staged (tamper check). */
@@ -256,7 +310,10 @@ export async function countActiveEvolvedSkills(roots: StorageRoots): Promise<num
   }
   let count = 0;
   for (const name of entries) {
-    if (await readEvolutionMeta(path.join(roots.liveRoot, name))) {
+    const meta = await readEvolutionMeta(path.join(roots.liveRoot, name));
+    // Adversarial 3-7: a demoted version left in place (pre-manifest
+    // rollback) is not in service and must not hold a slot.
+    if (meta && meta.ladder?.state !== "rolled-back" && meta.ladder?.state !== "retired") {
       count += 1;
     }
   }
@@ -889,8 +946,43 @@ async function settleOne(
     };
   }
   const liveDir = liveSkillDir(roots, name);
-  const enrichedMeta: EvolutionMeta = { ...meta, validation: validationRecord };
+  // PLAN-45 Phase 3.1/3.2: a promotion lands in CANARY, not in service for
+  // every run. The registry withholds it from a hash-bucketed share of runs
+  // (the control cohort); the monitor graduates, rolls back or retires it.
+  const promotedAt = Date.now();
+  const enrichedMeta: EvolutionMeta = {
+    ...meta,
+    validation: validationRecord,
+    promotedFrom: promoted.previousArchived?.version ?? null,
+    ladder: {
+      state: "canary",
+      at: promotedAt,
+      by: "gate",
+      reason: `validation gate accept (${mode})`,
+      previous: meta.ladder?.state ?? "staged",
+    },
+    canary: { startedAt: promotedAt, bucketFraction: DEFAULT_CANARY_FRACTION, reason: "gate" },
+  };
+  // A re-promotion of the same lineage starts a fresh window: the old
+  // published marker described different bytes.
+  delete enrichedMeta.published;
+  delete enrichedMeta.retracted;
+  delete enrichedMeta.modelDrift;
   await atomicWriteJson(path.join(liveDir, ".evolution-meta.json"), enrichedMeta);
+  try {
+    await registerCanary(
+      name,
+      {
+        startedAt: promotedAt,
+        bucketFraction: DEFAULT_CANARY_FRACTION,
+        descriptionAtStart: skillDescription(promoted.liveContent ?? "") ?? "",
+        reason: "gate",
+      },
+      trailOpts,
+    );
+  } catch (err) {
+    log.warn(`canary registration failed for ${name}: ${String(err)}`);
+  }
   if (purposeMd) {
     const stamped = `${purposeMd.replace(/\n+$/, "")}\n\n## Validation\n\n- ${new Date().toISOString()}: mode=${validationRecord.mode} verdict=${validationRecord.verdict}${validationRecord.ci95Low !== undefined ? ` ci95Low=${validationRecord.ci95Low.toFixed(3)}` : ""}${validationRecord.corpusVersion ? ` corpus=${validationRecord.corpusVersion}` : ""}${validationRecord.model ? ` model=${validationRecord.model}` : ""}\n`;
     await atomicWriteFile(path.join(liveDir, "PURPOSE.md"), stamped);

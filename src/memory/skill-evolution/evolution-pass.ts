@@ -26,6 +26,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { KeyPair } from "../../commerce/envelope.js";
 import type { EventJournal } from "../../infra/event-journal.js";
+import type { CanaryMonitorAction, CanaryMonitorResult } from "./canary-monitor.js";
 import type { PublishSweepResult, SkillPublisher } from "./p2p-publish.js";
 import type { AgentTurnFn } from "./task-runner.js";
 import type { SamplerStats } from "./types.js";
@@ -40,7 +41,6 @@ import { mineCapabilityTasks } from "./corpus-miner.js";
 import { reviewedDraftIds } from "./corpus-review.js";
 import { runHousekeeping } from "./housekeeping.js";
 import { appendIterationRecord, buildIterationRecord } from "./iteration-log.js";
-
 export { buildIterationRecord } from "./iteration-log.js";
 import { type LlmCallFn, type MaintenanceResult, runWikiMaintenance } from "./maintainer.js";
 import {
@@ -100,6 +100,11 @@ export interface EvolutionPassDeps {
   blockedAttesters?: string[];
   maxActiveEvolved?: number;
   modelTag?: string;
+  /**
+   * PLAN-45 Phase 3.5: the agent's PRIMARY model (`provider/model`), the
+   * substrate a stable skill was proven on. A change re-canaries it.
+   */
+  runtimeModelTag?: string | null;
   /** P2P propagation (Phase 5). Publisher = the orchestrator bridge or a fake. */
   propagate?: boolean;
   maturityDays?: number;
@@ -138,6 +143,9 @@ export interface EvolutionPassResult {
   proposer?: ProposerRunResult;
   proposalOutcome?: ApplyProposalResult;
   validation?: ValidationGateOutcome[];
+  /** PLAN-45 Phase 3: canary monitor decisions and cap retirements this pass. */
+  monitor?: CanaryMonitorResult;
+  capRetirement?: CanaryMonitorAction[];
   lint?: WikiLintResult;
   semanticLint?: SemanticLintResult;
   publish?: PublishSweepResult;

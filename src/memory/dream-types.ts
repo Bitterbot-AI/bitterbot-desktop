@@ -258,6 +258,8 @@ export type DreamEngineConfig = {
    * skills.evolution here. Default ON; kill switch skills.evolution.enabled.
    */
   skillEvolution?: SkillsEvolutionConfig;
+  /** PLAN-45 Phase 3.5: the agent's primary model spec (`provider/model`) the evolved skills run on. */
+  runtimeModelTag?: string;
   /** PLAN-43 Phase 3: attestation exchange settings (a2a.attestation). */
   a2aAttestation?: { enabled?: boolean; peers?: string[]; blockedAttesters?: string[] };
 };
@@ -277,6 +279,7 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "insightPromotion"
     | "skillCurator"
     | "skillEvolution"
+    | "runtimeModelTag"
     | "a2aAttestation"
   >
 > & { modes: Record<DreamMode, DreamModeConfig> } = {

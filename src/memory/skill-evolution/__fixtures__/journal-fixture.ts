@@ -40,6 +40,10 @@ export interface FixtureRunOptions {
    * after lifecycle start, like pi-embedded-runner/run.ts does.
    */
   task?: { text: string; isHeartbeat?: boolean; channel?: string };
+  /** PLAN-45 Phase 3.2: the canary exposure record the run path journals (stream `skills`). */
+  exposure?: { exposed: string[]; withheld: string[] };
+  /** Model the lifecycle start carries (`provider/model` on the trace). */
+  model?: { provider: string; model: string };
 }
 
 let toolCallCounter = 0;
@@ -73,7 +77,14 @@ export function appendFixtureRun(journal: EventJournal, opts: FixtureRunOptions)
       ...(opts.task.channel ? { channel: opts.task.channel } : {}),
     });
   }
-  emit("lifecycle", { phase: "start", startedAt: ts });
+  emit("lifecycle", {
+    phase: "start",
+    startedAt: ts,
+    ...(opts.model ? { provider: opts.model.provider, model: opts.model.model } : {}),
+  });
+  if (opts.exposure) {
+    emit("skills", { exposed: opts.exposure.exposed, withheld: opts.exposure.withheld });
+  }
   for (const step of opts.steps ?? []) {
     if (step.kind === "assistant") {
       // Streamed: cumulative text per event, like the production handler.
