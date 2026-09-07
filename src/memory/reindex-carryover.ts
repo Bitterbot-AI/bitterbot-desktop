@@ -26,7 +26,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-
+import { type Lifecycle, setChunkLifecycle } from "./chunk-writer.js";
 const log = createSubsystemLogger("memory/reindex-carryover");
 
 /** Lifecycles that must never be re-indexed into the search surfaces. */
@@ -77,13 +77,14 @@ function reapplyDemotions(
   );
   if (demoted.length === 0) return 0;
   let applied = 0;
-  const update = to.prepare(
-    `UPDATE chunks SET lifecycle = ?, parent_id = ?, hygiene_done = 1 WHERE id = ?`,
-  );
   const dropFts = ftsTable ? to.prepare(`DELETE FROM ${ftsTable} WHERE id = ?`) : null;
   for (const row of demoted) {
     try {
-      update.run(asText(row.lifecycle), (row.parent_id ?? null) as string | null, asText(row.id));
+      setChunkLifecycle(to, asText(row.id), {
+        lifecycle: asText(row.lifecycle) as Lifecycle,
+        parentId: (row.parent_id ?? null) as string | null,
+        hygieneDone: true,
+      });
       dropFts?.run(asText(row.id));
       applied++;
     } catch (err) {

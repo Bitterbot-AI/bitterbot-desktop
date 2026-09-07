@@ -31,6 +31,7 @@ import {
 } from "../security/external-content.js";
 import { registerTaskRewardHook } from "../tasks/judge.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
+import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
@@ -4711,13 +4712,13 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
 
       let removed = 0;
-      const deleteStmt = this.db.prepare(
-        `UPDATE chunks SET lifecycle = 'expired', lifecycle_state = 'forgotten' WHERE id = ?`,
-      );
 
       for (const chunk of skillChunks) {
         if (!existsSync(chunk.path)) {
-          deleteStmt.run(chunk.id);
+          setChunkLifecycle(this.db, chunk.id, {
+            lifecycle: "expired",
+            lifecycleState: "forgotten",
+          });
           removed++;
         }
       }

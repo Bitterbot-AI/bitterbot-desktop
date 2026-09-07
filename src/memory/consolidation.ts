@@ -11,12 +11,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { setChunkLifecycle } from "./chunk-writer.js";
 import { recordDreamTelemetry } from "./dream-schema.js";
 import { yieldToEventLoop } from "./event-loop.js";
 import { calculateImportance, shouldForget } from "./importance.js";
 import { cosineSimilarity, computeCentroid, parseEmbedding } from "./internal.js";
 import { spacingImportanceMultiplier } from "./spacing-effect.js";
-
 const log = createSubsystemLogger("memory/consolidation");
 
 // Near-merge / merge-candidate discovery compare chunks pairwise (O(n^2)
@@ -233,30 +233,33 @@ export class ConsolidationEngine {
         updateStmt.run(entry.newScore, entry.chunk.id);
       }
 
-      // Soft-delete: set lifecycle='expired' (and legacy lifecycle_state='forgotten')
-      const forgetStmt = this.db.prepare(
-        `UPDATE chunks SET lifecycle_state = 'forgotten', lifecycle = 'expired', version = COALESCE(version, 1) + 1 WHERE id = ?`,
-      );
+      // Soft-delete: expired + forgotten (PLAN-46: via the chunk-writer facade)
       const auditStmt = this.db.prepare(
         `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata) VALUES (?, ?, ?, ?, ?, ?)`,
       );
 
       for (const id of toForget) {
-        forgetStmt.run(id);
+        setChunkLifecycle(this.db, id, {
+          lifecycle: "expired",
+          lifecycleState: "forgotten",
+          bumpVersion: true,
+        });
         auditStmt.run(crypto.randomUUID(), id, "forgotten", now, "consolidation", "{}");
       }
       stats.forgottenChunks = toForget.length;
 
       // Merge: winner gets 'consolidated', loser gets 'archived' with parent_id
-      const mergeStmt = this.db.prepare(
-        `UPDATE chunks SET lifecycle_state = 'forgotten', lifecycle = 'archived', parent_id = ?, version = COALESCE(version, 1) + 1 WHERE id = ?`,
-      );
-      const promoteWinnerStmt = this.db.prepare(
-        `UPDATE chunks SET lifecycle = 'consolidated', lifecycle_state = 'consolidated', last_consolidated_at = ? WHERE id = ?`,
-      );
       for (const { loserId, winnerId } of mergePairs) {
-        mergeStmt.run(winnerId, loserId);
-        promoteWinnerStmt.run(now, winnerId);
+        setChunkLifecycle(this.db, loserId, {
+          lifecycle: "archived",
+          lifecycleState: "forgotten",
+          parentId: winnerId,
+          bumpVersion: true,
+        });
+        setChunkLifecycle(this.db, winnerId, {
+          lifecycle: "consolidated",
+          lastConsolidatedAt: now,
+        });
         auditStmt.run(
           crypto.randomUUID(),
           loserId,

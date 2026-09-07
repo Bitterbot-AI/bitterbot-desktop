@@ -7,8 +7,8 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./crystal-types.js";
+import { type Lifecycle, setChunkImportance } from "./chunk-writer.js";
 import { rowToCrystal } from "./crystal.js";
-
 export type PipelineResult = {
   crystals: KnowledgeCrystal[];
   retrieved: number;
@@ -121,16 +121,12 @@ export class MemoryPipeline {
         }
         case "store": {
           if (step.opts?.updateExisting !== false) {
-            const stmt = db.prepare(
-              `UPDATE chunks SET importance_score = ?, semantic_type = ?, lifecycle = ? WHERE id = ?`,
-            );
             for (const crystal of crystals) {
-              stmt.run(
-                crystal.importanceScore,
-                crystal.semanticType,
-                crystal.lifecycle,
-                crystal.id,
-              );
+              setChunkImportance(db, crystal.id, {
+                importanceScore: crystal.importanceScore,
+                semanticType: crystal.semanticType,
+                lifecycle: crystal.lifecycle as Lifecycle,
+              });
             }
             result.stored = crystals.length;
           }

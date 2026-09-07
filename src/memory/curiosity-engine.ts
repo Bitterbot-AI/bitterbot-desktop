@@ -17,11 +17,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+// Re-export for consumers that previously imported from gccrf-reward directly via manager
+import { setChunkCuriosityReward } from "./chunk-writer.js";
 import { yieldToEventLoop } from "./event-loop.js";
 import { GCCRFRewardFunction, type GCCRFConfig, type GCCRFRewardResult } from "./gccrf-reward.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
-
-// Re-export for consumers that previously imported from gccrf-reward directly via manager
 export type { GCCRFRewardResult, GCCRFConfig };
 import type { EmbeddingPerspective } from "./crystal-types.js";
 import type { DreamInsight, DreamMode } from "./dream-types.js";
@@ -243,9 +243,7 @@ export class CuriosityEngine {
       );
 
     // Write curiosity_reward directly (replaces old dual curiosity_boost path)
-    this.db
-      .prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`)
-      .run(gccrfResult.reward, chunkId);
+    setChunkCuriosityReward(this.db, chunkId, gccrfResult.reward);
 
     return assessment;
   }
@@ -1966,9 +1964,7 @@ export class CuriosityEngine {
 
       const result = this.gccrfReward.compute(chunkEmbedding, regionCentroids, strategicTargets);
 
-      this.db
-        .prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`)
-        .run(result.reward, chunkId);
+      setChunkCuriosityReward(this.db, chunkId, result.reward);
 
       return result;
     } catch (err) {
@@ -2033,7 +2029,6 @@ export class CuriosityEngine {
       }
 
       let scored = 0;
-      const updateStmt = this.db.prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`);
 
       for (let i = 0; i < pendingRows.length; i += 1) {
         const row = pendingRows[i]!;
@@ -2043,7 +2038,7 @@ export class CuriosityEngine {
             continue;
           }
           const result = this.gccrfReward.compute(emb, regionCentroids, strategicTargets);
-          updateStmt.run(result.reward, row.id);
+          setChunkCuriosityReward(this.db, row.id, result.reward);
           scored++;
         } catch {
           /* skip individual failures */

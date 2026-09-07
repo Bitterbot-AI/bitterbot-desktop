@@ -118,7 +118,7 @@
     "format:docs": "git ls-files 'docs/**/*.md' 'docs/**/*.mdx' 'README.md' | xargs oxfmt --write",
     "format:docs:check": "git ls-files 'docs/**/*.md' 'docs/**/*.mdx' 'README.md' | xargs oxfmt --check",
     "gateway:watch": "node scripts/watch-node.mjs gateway --force",
-    "lint": "oxlint --type-aware && node desktop/scripts/check-px-text.mjs && node desktop/scripts/check-pubkey-truncation.mjs && node desktop/scripts/check-file-sizes.mjs && node scripts/check-memory-circle-isolation.mjs",
+    "lint": "oxlint --type-aware && node desktop/scripts/check-px-text.mjs && node desktop/scripts/check-pubkey-truncation.mjs && node desktop/scripts/check-file-sizes.mjs && node scripts/check-memory-circle-isolation.mjs && node scripts/check-chunk-writes.mjs",
     "lint:docs": "pnpm dlx markdownlint-cli2",
     "lint:docs:fix": "pnpm dlx markdownlint-cli2 --fix",
     "lint:fix": "oxlint --type-aware --fix && pnpm format",

@@ -26,6 +26,7 @@ import {
   containsSourceLeak,
   isSensitiveTopic,
 } from "./auto-research-egress.js";
+import { bumpChunkDreamCount, setChunkLifecycle } from "./chunk-writer.js";
 import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
 import {
   assessGrounding,
@@ -2026,22 +2027,20 @@ export class DreamEngine {
         log.debug(`compression: skipped ${skipped} hygiene-consolidated chunk(s)`);
       }
       if (result.confidence >= 0.7) {
-        const archiveStmt = this.db.prepare(
-          `UPDATE chunks SET lifecycle = 'archived', lifecycle_state = 'archived',
-                  parent_id = ?, version = COALESCE(version, 1) + 1
-           WHERE id = ?`,
-        );
         for (const chunkId of targetIds) {
-          archiveStmt.run(insightId, chunkId);
+          setChunkLifecycle(this.db, chunkId, {
+            lifecycle: "archived",
+            parentId: insightId,
+            bumpVersion: true,
+          });
         }
       } else {
-        const consolidateStmt = this.db.prepare(
-          `UPDATE chunks SET lifecycle = 'consolidated', lifecycle_state = 'consolidated',
-                  parent_id = ?, version = COALESCE(version, 1) + 1
-           WHERE id = ?`,
-        );
         for (const chunkId of targetIds) {
-          consolidateStmt.run(insightId, chunkId);
+          setChunkLifecycle(this.db, chunkId, {
+            lifecycle: "consolidated",
+            parentId: insightId,
+            bumpVersion: true,
+          });
         }
       }
     }
@@ -3615,13 +3614,7 @@ export class DreamEngine {
   }
 
   private markChunksDreamed(ids: string[]): void {
-    const now = Date.now();
-    const stmt = this.db.prepare(
-      `UPDATE chunks SET dream_count = COALESCE(dream_count, 0) + 1, last_dreamed_at = ? WHERE id = ?`,
-    );
-    for (const id of ids) {
-      stmt.run(now, id);
-    }
+    bumpChunkDreamCount(this.db, ids);
   }
 
   private pruneInsights(): void {

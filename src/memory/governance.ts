@@ -7,8 +7,8 @@ import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { ProvenanceNode } from "./crystal-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { setChunkLifecycle, setChunkProvenance } from "./chunk-writer.js";
 import { ensureColumn } from "./memory-schema.js";
-
 const log = createSubsystemLogger("memory/governance");
 
 export type AccessContext = {
@@ -161,9 +161,7 @@ export class MemoryGovernance {
 
         if (!chain.includes(event.sourceId)) {
           chain.push(event.sourceId);
-          this.db
-            .prepare(`UPDATE chunks SET provenance_chain = ? WHERE id = ?`)
-            .run(JSON.stringify(chain), crystalId);
+          setChunkProvenance(this.db, crystalId, { provenanceChain: JSON.stringify(chain) });
         }
       }
     } catch (err) {
@@ -194,11 +192,10 @@ export class MemoryGovernance {
           if (governance.lifespanPolicy === "ttl" && governance.ttlMs) {
             const createdAt = row.created_at ?? 0;
             if (now - createdAt > governance.ttlMs) {
-              this.db
-                .prepare(
-                  `UPDATE chunks SET lifecycle = 'expired', lifecycle_state = 'forgotten' WHERE id = ?`,
-                )
-                .run(row.id);
+              setChunkLifecycle(this.db, row.id, {
+                lifecycle: "expired",
+                lifecycleState: "forgotten",
+              });
               expired++;
             }
           }
@@ -260,9 +257,7 @@ export class MemoryGovernance {
 
       dag.push(node);
 
-      this.db
-        .prepare(`UPDATE chunks SET provenance_dag = ? WHERE id = ?`)
-        .run(JSON.stringify(dag), crystalId);
+      setChunkProvenance(this.db, crystalId, { provenanceDag: JSON.stringify(dag) });
     } catch (err) {
       log.warn(`failed to record provenance node: ${String(err)}`);
     }

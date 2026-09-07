@@ -15,6 +15,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { setChunkProvenance } from "./chunk-writer.js";
 import { checkListingLineage, contentSha256 } from "./lineage-gate.js";
 import {
   normalizeSkillName,
@@ -517,9 +518,7 @@ export class MarketplaceEconomics {
           (x) => typeof x === "string" && x.length > 0 && x.length <= 128 && /^[\w:.-]+$/.test(x),
         );
         const merged = [...new Set([...cited, ...existing])].slice(0, 32);
-        this.db
-          .prepare(`UPDATE chunks SET provenance_chain = ? WHERE id = ?`)
-          .run(JSON.stringify(merged), skillCrystalId);
+        setChunkProvenance(this.db, skillCrystalId, { provenanceChain: JSON.stringify(merged) });
       }
       // PLAN-43 Phase 3 (§3.3): lineage-laundering gate. A copy or
       // near-duplicate of a commons skill without cited lineage is refused
@@ -529,9 +528,7 @@ export class MarketplaceEconomics {
         lineage = checkListingLineage(this.db, skillCrystalId);
       } catch (err) {
         if (opts.lineage?.length) {
-          this.db
-            .prepare(`UPDATE chunks SET provenance_chain = ? WHERE id = ?`)
-            .run(originalChain, skillCrystalId);
+          setChunkProvenance(this.db, skillCrystalId, { provenanceChain: originalChain });
         }
         return { ok: false, reason: `lineage check unavailable: ${String(err)}` };
       }
@@ -561,9 +558,7 @@ export class MarketplaceEconomics {
           .run(skillCrystalId, skillCrystalId);
         log.warn(`listing refused for ${skillCrystalId}: ${lineage.reason}`);
         if (opts.lineage?.length) {
-          this.db
-            .prepare(`UPDATE chunks SET provenance_chain = ? WHERE id = ?`)
-            .run(originalChain, skillCrystalId);
+          setChunkProvenance(this.db, skillCrystalId, { provenanceChain: originalChain });
         }
         return { ok: false, reason: lineage.reason ?? "lineage check failed" };
       }

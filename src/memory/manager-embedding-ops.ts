@@ -13,6 +13,7 @@ import {
   runOpenAiEmbeddingBatches,
 } from "./batch-openai.js";
 import { type VoyageBatchRequest, runVoyageEmbeddingBatches } from "./batch-voyage.js";
+import { type Lifecycle, type LifecycleState, setChunkLifecycle } from "./chunk-writer.js";
 import { inferSemanticType, defaultGovernance } from "./crystal.js";
 import { enforceEmbeddingMaxInputTokens } from "./embedding-chunk-limits.js";
 import { estimateUtf8Bytes } from "./embedding-input-limits.js";
@@ -1014,12 +1015,12 @@ class MemoryManagerEmbeddingOps {
       const demoted = demotedBefore.get(id);
       if (demoted) {
         try {
-          this.db
-            .prepare(
-              `UPDATE chunks SET lifecycle = ?, lifecycle_state = ?, parent_id = ?, hygiene_done = 1
-                WHERE id = ?`,
-            )
-            .run(demoted.lifecycle, demoted.lifecycle_state, demoted.parent_id, id);
+          setChunkLifecycle(this.db, id, {
+            lifecycle: demoted.lifecycle as Lifecycle,
+            lifecycleState: demoted.lifecycle_state as LifecycleState,
+            parentId: demoted.parent_id,
+            hygieneDone: true,
+          });
           continue;
         } catch (err) {
           // Fall through and index normally: a chunk that is searchable twice
