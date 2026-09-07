@@ -2365,6 +2365,19 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 67,
+    description:
+      "PLAN-46 Phase 1 (D-4): drop the orphaned skill_text_history table. It has " +
+      "zero references anywhere in src (no writer, no reader, no CREATE) — it is " +
+      "residue of a removed migration. Verified dead by grep, not just empty on one " +
+      "node, so no load-stress gate is needed. skill_executions and skill_lifecycle " +
+      "were also audit 'dead' candidates but are load-bearing (execution-evidence and " +
+      "the skills lifecycle store) and are KEPT.",
+    up: (db: DatabaseSync) => {
+      db.exec(`DROP TABLE IF EXISTS skill_text_history`);
+    },
+  },
 ];
 
 /**
