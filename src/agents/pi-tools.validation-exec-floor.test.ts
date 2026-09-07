@@ -40,9 +40,14 @@ describe("validation exec floor (PLAN-45 5.5)", () => {
         ]) {
           await expect(run(denied)).rejects.toThrow(/exec denied: allowlist miss/);
         }
-        const ok = await run("echo floor-ok");
-        expect(ok.details?.exitCode).toBe(0);
-        expect(ok.details?.aggregated).toContain("floor-ok");
+        // The allow path needs a resolvable safe binary; on Windows `echo`
+        // is a shell builtin with no executable to allowlist, so only the
+        // refusals are asserted there.
+        if (process.platform !== "win32") {
+          const ok = await run("echo floor-ok");
+          expect(ok.details?.exitCode).toBe(0);
+          expect(ok.details?.aggregated).toContain("floor-ok");
+        }
       }
     } finally {
       await fs.rm(ws, { recursive: true, force: true });
