@@ -21,6 +21,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "skills.evolution.wikiMaxPatterns": "Skill Wiki Pattern Cap",
   "skills.evolution.semanticLintCadenceDays": "Skill Wiki Semantic Lint Cadence (days)",
   "skills.evolution.maturityDays": "Evolved Skill Maturity (days)",
+  "skills.evolution.requireCrossModel": "Require Cross-Model Validation Before Publish",
   "skills.evolution.validationBudgetMinutes": "Skill Validation Budget (minutes)",
   "skills.evolution.descriptionRepair": "Skill Description Repair",
   "skills.evolution.routingRepair": "Harvested Skill Routing Repair",

@@ -666,6 +666,7 @@ export const BitterbotSchema = z
             semanticLintCadenceDays: z.number().positive().optional().describe("Default: 7"),
             propagate: z.boolean().optional().describe("Default: true"),
             maturityDays: z.number().positive().optional().describe("Default: 3"),
+            requireCrossModel: z.boolean().optional().describe("Default: false"),
             validationBudgetMinutes: z.number().positive().optional().describe("Default: 45"),
             descriptionRepair: z.boolean().optional().describe("Default: true"),
             routingRepair: z.boolean().optional().describe("Default: true"),

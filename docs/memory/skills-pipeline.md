@@ -315,6 +315,14 @@ tool profile, egress accounting), and writes
   quarantine with the verified binding on another, accept into staging,
   re-gate on the receiver's private suite, strict canary, graduation, the
   receiver's own attestation, and no republish of a peer skill.
+- **Cross-model tag (5.4).** Every trailer says on how many models the
+  skill was measured (`validatedOn`, `singleModel`); the review list and
+  the incoming RPC show the sender's claim, its evolver model, and whether
+  the binding verified. `skills.evolution.requireCrossModel` refuses to
+  publish a single-model skill; off by default, because the gate's executor
+  is the primary agent and a second-model validation lane does not exist
+  yet, so today every published skill is single-model and receivers apply
+  the strict canary to it regardless.
 - **I10.** The report header carries the generator version, the exemplar
   pin, the corpus versions and the exact argv; `pnpm benchmark:skills:check`
   fails when the newest committed report disagrees with the code. The

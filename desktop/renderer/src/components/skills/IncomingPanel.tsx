@@ -16,6 +16,13 @@ type IncomingSkill = {
   category?: string;
   tags?: string[];
   signatureValid?: boolean;
+  evolutionProvenance?: {
+    verdict: string;
+    model: string | null;
+    evolverModel: string | null;
+    singleModel: boolean;
+    signed: boolean;
+  };
   injectionScan?: { severity?: string; matches?: number };
   /** PLAN-44 Phase 5b: whether the agent could route to this skill by its description. */
   routing?: { hold: boolean; summary: string };
@@ -339,6 +346,17 @@ export function IncomingPanel({
               {sigBad && (
                 <span className="text-xs px-1.5 py-0.5 rounded border bg-danger/10 text-danger border-danger/20">
                   signature failed
+                </span>
+              )}
+              {item.evolutionProvenance && (
+                <span
+                  title={`Sender's claim, not local evidence: ${item.evolutionProvenance.verdict} on ${item.evolutionProvenance.model ?? "an unknown model"}${item.evolutionProvenance.evolverModel ? `, evolved by ${item.evolutionProvenance.evolverModel}` : ""}${item.evolutionProvenance.signed ? " (device-signed)" : " (unsigned)"}. The local gate re-tests it before it goes live.`}
+                  className="text-xs px-1.5 py-0.5 rounded border bg-muted/40 text-muted-foreground border-border/30"
+                >
+                  {item.evolutionProvenance.singleModel
+                    ? "single-model claim"
+                    : "cross-model claim"}
+                  {item.evolutionProvenance.signed ? "" : " (unsigned)"}
                 </span>
               )}
               {scanSeverity && (

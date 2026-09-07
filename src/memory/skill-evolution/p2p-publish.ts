@@ -156,6 +156,11 @@ export async function publishEligibleEvolvedSkills(deps: {
   now?: number;
   /** PLAN-45 4.4: device key + node key; when present every trailer is signed and bound. */
   signing?: { key: KeyPair; nodePubkey: string };
+  /**
+   * PLAN-45 5.4: refuse to publish a skill validated on fewer than two
+   * models (default false: such a skill publishes tagged `singleModel`).
+   */
+  requireCrossModel?: boolean;
 }): Promise<PublishSweepResult> {
   const storeOpts = deps.storeOpts ?? {};
   const trailOpts = storeOpts.configDir ? { configDir: storeOpts.configDir } : {};
@@ -183,6 +188,16 @@ export async function publishEligibleEvolvedSkills(deps: {
       const leak = findPublishLeak(content);
       if (leak) {
         result.failed.push({ name: skill.name, detail: `refusing to publish: ${leak}` });
+        continue;
+      }
+      const validatedOn =
+        skill.meta.validation?.validatedOn ??
+        (skill.meta.validation?.model ? [skill.meta.validation.model] : []);
+      if (deps.requireCrossModel && validatedOn.length < 2) {
+        result.failed.push({
+          name: skill.name,
+          detail: `single-model: validated on ${validatedOn.join(", ") || "an unknown model"} only; skills.evolution.requireCrossModel is on`,
+        });
         continue;
       }
       // Adversarial 4-7: a body that already carries a trailer (a promoted

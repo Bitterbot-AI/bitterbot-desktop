@@ -37,6 +37,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Days between LLM-backed wiki lint passes (contradictions, stale claims, near-duplicates). 0 disables. Default 7.",
   "skills.evolution.maturityDays":
     "Days a validated evolved skill must survive locally before P2P publish. Default 3.",
+  "skills.evolution.requireCrossModel":
+    "Publish over P2P only a skill validated on at least two models. Default false: a single-model skill publishes tagged singleModel on its provenance trailer, and receivers apply the strict canary to it.",
   "skills.evolution.validationTools.exec":
     "Give skill-validation rollouts a shell (exec/process) with approvals off, a scrubbed environment (HOME/TMPDIR inside the scratch workspace), a workdir confined to it and a validation-specific binary allowlist with no network clients. On by default (PLAN-45 D-2) so the gate measures the pathway the runtime uses; set false to keep validation shell-less.",
   "skills.evolution.validationBudgetMinutes":

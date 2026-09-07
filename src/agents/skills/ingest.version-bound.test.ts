@@ -12,7 +12,13 @@ import type { BitterbotConfig } from "../../config/config.js";
 import { generateKeyPair } from "../../commerce/envelope.js";
 import { buildProvenanceTrailer } from "../../memory/skill-evolution/provenance-trailer.js";
 import { CONFIG_DIR } from "../../utils.js";
-import { acceptIncomingSkill, ingestSkill, nameCollision, type SkillEnvelope } from "./ingest.js";
+import {
+  acceptIncomingSkill,
+  ingestSkill,
+  listIncomingSkills,
+  nameCollision,
+  type SkillEnvelope,
+} from "./ingest.js";
 import { readStaged, resolveStorageRoots, stagingSkillDir } from "./skill-storage.js";
 
 function generateEd25519(): { pubkeyBase64: string; privateKey: KeyObject } {
@@ -137,9 +143,17 @@ describe("version-bound trust and the receiver re-gate", () => {
     const r2 = await ingestSkill({ envelope: envelopeFor(bound, NAME, impostor), config: cfg() });
     expect(r2.ok).toBe(false);
     expect(r2.reason).toContain("different node key");
-    // Right body, right node: quarantined for review with the claim intact.
+    // Right body, right node: quarantined for review with the claim intact,
+    // and the review list shows it (5.4).
     const r3 = await ingestSkill({ envelope: envelopeFor(bound, NAME, node), config: cfg() });
     expect(r3.action).toBe("quarantined");
+    const listed = (await listIncomingSkills(cfg())).find((s) => s.name === NAME);
+    expect(listed?.evolutionProvenance).toMatchObject({
+      verdict: "accepted",
+      model: "openai/gpt-x",
+      singleModel: true,
+      signed: true,
+    });
     const env = JSON.parse(
       await fs.readFile(path.join(tmp, "skills-incoming", NAME, ".envelope.json"), "utf-8"),
     ) as { evolution_provenance?: { binding?: { attesterPubkey: string } } };

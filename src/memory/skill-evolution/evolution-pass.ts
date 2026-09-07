@@ -115,6 +115,8 @@ export interface EvolutionPassDeps {
   /** P2P propagation (Phase 5). Publisher = the orchestrator bridge or a fake. */
   propagate?: boolean;
   maturityDays?: number;
+  /** PLAN-45 5.4: publish only skills validated on >= 2 models. */
+  requireCrossModel?: boolean;
   publisher?: SkillPublisher | null;
   /** Tasks-mode real-rollout executor (validation gate builds the paired runner). */
   agentTurn?: AgentTurnFn;

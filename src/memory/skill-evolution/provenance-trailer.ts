@@ -60,6 +60,8 @@ export interface EvolutionProvenanceRecord {
   evolverModel?: string;
   /** PLAN-45 4.6 (I8): models the candidate was measured on. */
   validatedOn?: string[];
+  /** PLAN-45 5.4: true when the candidate was measured on fewer than two models. */
+  singleModel?: boolean;
   notice?: string;
   /** PLAN-45 4.4: present and VERIFIED when the sender signed the trailer with its device key. */
   binding?: ProvenanceBinding;
@@ -137,6 +139,7 @@ export function buildProvenanceTrailer(meta: EvolutionMeta, signing?: TrailerSig
     ...(v?.model ? { model: v.model } : {}),
     ...(v?.evolverModel ? { evolverModel: v.evolverModel } : {}),
     ...(v?.validatedOn?.length ? { validatedOn: v.validatedOn.slice(0, 4) } : {}),
+    singleModel: (v?.validatedOn?.length ?? (v?.model ? 1 : 0)) < 2,
     validatedAt: v?.validatedAt,
   };
   if (signing) {
@@ -257,6 +260,7 @@ export function parseProvenanceTrailer(md: string): EvolutionProvenanceRecord | 
       r.validatedOn.every((m) => typeof m === "string" && m.length > 0 && m.length <= 200)
         ? { validatedOn: r.validatedOn as string[] }
         : {}),
+      ...(typeof r.singleModel === "boolean" ? { singleModel: r.singleModel } : {}),
       notice: optionalString(r.notice, 400),
       ...(binding ? { binding } : {}),
     };

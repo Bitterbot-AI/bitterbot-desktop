@@ -13,6 +13,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
 import {
   bindingMismatch,
+  type EvolutionProvenanceRecord,
   type EvolutionRetractionRecord,
   parseProvenanceTrailer,
   parseRetractionTrailer,
@@ -816,6 +817,20 @@ export type IncomingSkillSummary = {
   provenance?: Record<string, unknown>;
   contentHash?: string;
   expiresAt?: number;
+  /**
+   * PLAN-45 4.6/5.4: the sender's validation claim, parsed and verified at
+   * ingest (display only; the local gate measures). `signed` means the
+   * device-key binding verified and matched this envelope.
+   */
+  evolutionProvenance?: {
+    verdict: string;
+    validatedAt: string;
+    model: string | null;
+    evolverModel: string | null;
+    validatedOn: string[];
+    singleModel: boolean;
+    signed: boolean;
+  };
 };
 
 /** The synthetic peer id the skill-seekers harvester stamps on local scrapes. */
@@ -927,6 +942,22 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<Incom
         provenance: envelope?.provenance,
         contentHash: envelope?.content_hash,
         expiresAt: envelope?.expires_at,
+        evolutionProvenance: (() => {
+          const ep = envelopeMeta?.evolution_provenance as EvolutionProvenanceRecord | undefined;
+          if (!ep || typeof ep !== "object" || !ep.verdict) {
+            return undefined;
+          }
+          const validatedOn = ep.validatedOn ?? (ep.model ? [ep.model] : []);
+          return {
+            verdict: ep.verdict,
+            validatedAt: ep.validatedAt,
+            model: ep.model ?? null,
+            evolverModel: ep.evolverModel ?? null,
+            validatedOn,
+            singleModel: ep.singleModel ?? validatedOn.length < 2,
+            signed: !!ep.binding,
+          };
+        })(),
       });
     }
     return skills;

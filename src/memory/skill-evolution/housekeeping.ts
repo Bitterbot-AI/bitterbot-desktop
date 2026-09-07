@@ -328,6 +328,7 @@ export async function runHousekeeping(
       publisher: deps.publisher ?? null,
       ...(storeOpts.configDir ? { storeOpts } : {}),
       ...(deps.maturityDays !== undefined ? { maturityDays: deps.maturityDays } : {}),
+      ...(deps.requireCrossModel ? { requireCrossModel: true } : {}),
       // PLAN-45 4.4: sign the trailer with the device key, naming the node key.
       ...(deps.attestKeyPair && deps.nodePubkey
         ? { signing: { key: deps.attestKeyPair, nodePubkey: deps.nodePubkey } }

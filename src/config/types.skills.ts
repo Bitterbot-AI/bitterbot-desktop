@@ -141,6 +141,13 @@ export type SkillsEvolutionConfig = {
   /** Days a validated skill must survive locally before P2P publish. Default: 3. */
   maturityDays?: number;
   /**
+   * PLAN-45 5.4: publish over P2P only a skill validated on at least two
+   * models. Default false: a single-model skill publishes with
+   * `singleModel: true` on its provenance trailer and receivers treat it
+   * with the strict canary.
+   */
+  requireCrossModel?: boolean;
+  /**
    * PLAN-44 Phase 2: wall-clock budget for one tasks-mode validation run.
    * When exceeded the gate stops issuing rollouts and HOLDs the proposal
    * (`budget-exhausted`); the incumbent memo makes the retry cheap.

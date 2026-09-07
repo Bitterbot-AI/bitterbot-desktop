@@ -12,7 +12,7 @@ import {
   retractionsPath,
   wireContentHash,
 } from "./p2p-publish.js";
-import { parseRetractionTrailer } from "./provenance-trailer.js";
+import { parseProvenanceTrailer, parseRetractionTrailer } from "./provenance-trailer.js";
 import { collectEvolutionStatus } from "./status.js";
 import { runWikiLint } from "./wiki-lint.js";
 import { applyMaintainerOutput, listPatternNames, type MaintainerOutput } from "./wiki-store.js";
@@ -218,6 +218,56 @@ describe("P2P publish sweep", () => {
     expect(await fs.readFile(retractionsPath({ configDir: tmpDir }), "utf-8")).toContain(
       "cd".repeat(32),
     );
+  });
+
+  it("PLAN-45 5.4: a single-model skill publishes tagged singleModel, or not at all under requireCrossModel", async () => {
+    const now = Date.now();
+    await writeEvolvedLiveSkill(tmpDir, "one-model", {
+      validation: {
+        mode: "tasks",
+        verdict: "accepted",
+        validatedAt: now - 5 * DAY,
+        model: "anthropic/claude-opus-5",
+        validatedOn: ["anthropic/claude-opus-5"],
+      },
+      ladder: { state: "stable", at: now - DAY, by: "monitor" },
+    });
+    await writeEvolvedLiveSkill(tmpDir, "two-models", {
+      validation: {
+        mode: "tasks",
+        verdict: "accepted",
+        validatedAt: now - 5 * DAY,
+        model: "anthropic/claude-opus-5",
+        validatedOn: ["anthropic/claude-opus-5", "anthropic/claude-haiku-4-5"],
+      },
+      ladder: { state: "stable", at: now - DAY, by: "monitor" },
+    });
+    const calls: Array<{ name: string; content: string }> = [];
+    const publisher = {
+      publishSkill: async (b64: string, name: string) => {
+        calls.push({ name, content: Buffer.from(b64, "base64").toString("utf-8") });
+      },
+    };
+    const strict = await publishEligibleEvolvedSkills({
+      publisher,
+      storeOpts: { configDir: tmpDir },
+      now,
+      requireCrossModel: true,
+    });
+    expect(strict.published).toEqual(["two-models"]);
+    expect(strict.failed.map((f) => f.name)).toEqual(["one-model"]);
+    expect(strict.failed[0]?.detail).toContain("single-model");
+    expect(parseProvenanceTrailer(calls[0]?.content ?? "")?.singleModel).toBe(false);
+    const lax = await publishEligibleEvolvedSkills({
+      publisher,
+      storeOpts: { configDir: tmpDir },
+      now,
+    });
+    expect(lax.published).toEqual(["one-model"]);
+    expect(parseProvenanceTrailer(calls[1]?.content ?? "")).toMatchObject({
+      singleModel: true,
+      validatedOn: ["anthropic/claude-opus-5"],
+    });
   });
 
   it("does not write the published marker when the bridge rejects the envelope", async () => {
