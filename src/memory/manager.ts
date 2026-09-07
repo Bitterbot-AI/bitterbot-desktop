@@ -73,6 +73,7 @@ import { backfillTypedRelationships } from "./kg-backfill.js";
 import * as kgAdmission from "./kg-entity-admission.js";
 import * as kgExtract from "./kg-relationship-extract.js";
 import { KnowledgeGraphManager } from "./knowledge-graph.js";
+import { MaintenanceMutex } from "./maintenance-mutex.js";
 import { memoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
 import { searchKeyword, searchVector } from "./manager-search.js";
 import { memoryManagerSyncOps } from "./manager-sync-ops.js";
@@ -253,6 +254,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   >();
   private sessionWarm = new Set<string>();
   private syncing: Promise<void> | null = null;
+  /** PLAN-46 Phase 4: serializes heavy maintenance jobs (I4). */
+  private readonly maintenanceMutex = new MaintenanceMutex();
   private consolidationTimer: NodeJS.Timeout | null = null;
   private dreamTimer: NodeJS.Timeout | null = null;
   /**
@@ -2275,7 +2278,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         // 2. Consolidation (Ebbinghaus decay + merge). The engine yields to the
         //    event loop across its O(n^2) similarity sweeps; awaiting it lets the
         //    gateway keepalive flush instead of freezing for the whole pass.
-        await this.consolidate();
+        await this.maintenanceMutex.run("consolidation", () => this.consolidate(), 60_000);
         // 2b. GC: physically delete forgotten/expired tombstones past the
         //     retention window. `purgeExpired` was implemented but never called,
         //     so forgotten chunks (and their dead vec/fts rows) accumulated
@@ -2994,7 +2997,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   private scheduleDigestFire(msUntilNext: number): void {
     this.digestTimer = setTimeout(() => {
       this.digestTimer = null;
-      void this.runDigest({ deliver: true })
+      void this.maintenanceMutex
+        .run("digest", () => this.runDigest({ deliver: true }))
         .catch((err) => {
           log.warn(`digest delivery failed: ${String(err)}`);
         })
@@ -3067,7 +3071,7 @@ export class MemoryIndexManager implements MemorySearchManager {
                   (Date.now() - lastAt) / 3_600_000,
                 )}h ago — running a catch-up now`,
           );
-          await this.runHealthSweep();
+          await this.maintenanceMutex.run("health-sweep", () => this.runHealthSweep(), 60_000);
         } catch (err) {
           log.debug(`health sweep catch-up failed: ${String(err)}`);
         }
@@ -3216,9 +3220,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     const ms = intervalHours * 60 * 60 * 1000;
     this.trendingSweepTimer = setInterval(() => {
-      void this.runTrendingSweep().catch((err) => {
-        log.warn(`trending sweep failed: ${String(err)}`);
-      });
+      void this.maintenanceMutex
+        .run("trending", () => this.runTrendingSweep())
+        .catch((err) => {
+          log.warn(`trending sweep failed: ${String(err)}`);
+        });
     }, ms);
     if (this.trendingSweepTimer.unref) {
       this.trendingSweepTimer.unref();
@@ -3227,9 +3233,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     // pulling from external APIs.
     const initialDelayMs = Math.min(ms, 10 * 60 * 1000); // 10 min or 1 interval
     setTimeout(() => {
-      void this.runTrendingSweep().catch((err) => {
-        log.warn(`trending sweep failed: ${String(err)}`);
-      });
+      void this.maintenanceMutex
+        .run("trending", () => this.runTrendingSweep())
+        .catch((err) => {
+          log.warn(`trending sweep failed: ${String(err)}`);
+        });
     }, initialDelayMs).unref?.();
   }
 
@@ -3378,9 +3386,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!this.dreamEngine) {
       return null;
     }
-    const stats = await withSpan("memory.dream", () => this.dreamEngine!.run(), {
-      "dream.engine": "default",
-    });
+    const stats = await this.maintenanceMutex.run(
+      "dream",
+      () => withSpan("memory.dream", () => this.dreamEngine!.run(), { "dream.engine": "default" }),
+      120_000,
+    );
 
     if (stats && stats.newInsights.length > 0) {
       // Post-dream curiosity assessment
