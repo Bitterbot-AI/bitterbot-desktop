@@ -39,6 +39,7 @@ export default defineConfig({
       "test/**/*.test.ts",
       "benchmarks/arc-agi-3/**/*.test.ts",
       "benchmarks/longmemeval/**/*.test.ts",
+      "benchmarks/skill-evolution/**/*.test.ts",
     ],
     setupFiles: ["test/setup.ts"],
     exclude: [

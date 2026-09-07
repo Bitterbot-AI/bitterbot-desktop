@@ -657,6 +657,10 @@
                 ]
               },
               {
+                "group": "Benchmarks",
+                "pages": ["benchmarks/index"]
+              },
+              {
                 "group": "Multi-agent",
                 "pages": ["concepts/multi-agent", "concepts/presence"]
               },

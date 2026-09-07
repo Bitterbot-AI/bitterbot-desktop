@@ -281,6 +281,42 @@ The evidence record carries `ladder`, `canary`, and `modelDrift`; status
   strict canary (a fifth of runs, 16 determinate runs per side, looks at
   4/8/16/32/64 with alpha 0.05/5, 40 runs or 21 days to graduate).
 
+### Measuring it: the ablation harness (PLAN-45 Phase 5.1 and 5.2)
+
+The mechanism above is only a claim until it has numbers. `pnpm
+benchmark:skills` (`benchmarks/skill-evolution/ablation.ts`) runs the
+node's live skills through the same task suites the gate uses, in-process
+under the validation session flavor (production prompt shape, validation
+tool profile, egress accounting), and writes
+`docs/benchmarks/skills-<date>.md` with a machine-readable header.
+
+- **Arms.** `none` (empty skills index), `harvested` (registry imports,
+  Skill Seekers, accepted peers), `evolved` (skills the loop promoted), and
+  the **in-context control** (5.2): the evidence traces each evolved skill
+  was proposed from, rendered verbatim and blind (no labeler verdict, no
+  "apply this" header), capped the way the proposer saw them (four traces,
+  8k chars each), in the user message ahead of the task, with no skill
+  file and an empty index. That is ContinualSkillBench's control: the same
+  information with no skill abstraction. An LLM-written summary is refused
+  on purpose (it would write instructions and become a skill); a skill
+  whose evidence runs no longer reconstruct is skipped by name, never
+  substituted.
+- **Corpora and models.** `frozen` (the pinned seed-0 exemplar), `fresh`
+  (the generator at the run's seed; frozen minus fresh is the memorization
+  telemetry), `private` (the grown suite); `primary` and `cheap`.
+- **Numbers.** Per cell: pass@1, pass^K (every trial passed), read rate,
+  tokens. Against `none`, and `evolved` against `in-context`: the gate's
+  exact sign test over per-task pass-rate deltas on capability tasks, a
+  bootstrap CI, and the token delta. The verdict sentences are fixed in
+  advance: a tie reproduces the ContinualSkillBench finding and says so; a
+  loss says the abstraction is not carrying its weight.
+- **I10.** The report header carries the generator version, the exemplar
+  pin, the corpus versions and the exact argv; `pnpm benchmark:skills:check`
+  fails when the newest committed report disagrees with the code. The
+  `skills-ablation` workflow runs the harness self-test weekly with a
+  deterministic oracle executor (no keys) and produces a live report on
+  demand as a pull request.
+
 ### Calibrating the labeler on real traces (PLAN-45 Phase 1.5)
 
 `bitterbot skills calibrate export --count 100` writes a blind, stratified

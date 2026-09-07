@@ -161,3 +161,18 @@ synthetic fixture (`labeler.fixture.test.ts`) and improve these numbers on a
 FRESH export (different seed) before they land. Files:
 `~/.bitterbot/skill-wiki/calibration/2026-09-06T03-53-55-899Z/`
 (`blind.jsonl`, `key.jsonl`, `labels-claude.jsonl`).
+
+## The ablation harness (PLAN-45 5.1 and 5.2, 2026-09-06)
+
+`benchmarks/skill-evolution/ablation.ts` (`pnpm benchmark:skills`) measures
+the node's live skills on the corpora above: arms `none`, `harvested`,
+`evolved` and `in-context` (the evidence traces each evolved skill was
+proposed from, rendered verbatim and blind into the prompt with no skill
+file, capped the way the proposer saw them), corpora `frozen`, `fresh` and
+`private`, models `primary` and `cheap`, K trials per task. It reports
+pass@1, pass^K, read rate, tokens, and against the `none` baseline (and
+`evolved` against `in-context`) the gate's exact sign test, a bootstrap CI
+and the token delta. The embedded executor runs real turns in-process under
+the validation session flavor; the `oracle` executor is deterministic and
+keyless for CI. Reports land in `docs/benchmarks/skills-<date>.md` with a
+header that `pnpm benchmark:skills:check` verifies against the corpus pin.

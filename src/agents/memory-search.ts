@@ -358,6 +358,11 @@ export function resolveMemorySearchConfig(
   cfg: BitterbotConfig,
   agentId: string,
 ): ResolvedMemorySearchConfig | null {
+  // PLAN-45 5.1: a measurement process (the ablation harness) must never
+  // instantiate the memory manager, whatever config a prompt block loads.
+  if (process.env.BITTERBOT_MEMORY_OFF === "1") {
+    return null;
+  }
   const defaults = cfg.agents?.defaults?.memorySearch;
   const overrides = resolveAgentConfig(cfg, agentId)?.memorySearch;
   const resolved = mergeConfig(defaults, overrides, agentId);

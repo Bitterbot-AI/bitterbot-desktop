@@ -97,6 +97,8 @@
     "benchmark:longmemeval:download": "bash benchmarks/longmemeval/download.sh",
     "benchmark:longmemeval:evaluate": "node --import tsx benchmarks/longmemeval/evaluate.ts",
     "benchmark:longmemeval:oracle": "node --import tsx benchmarks/longmemeval/runner.ts --oracle",
+    "benchmark:skills": "node --import tsx benchmarks/skill-evolution/ablation.ts",
+    "benchmark:skills:check": "node --import tsx benchmarks/skill-evolution/ablation.ts --check",
     "bitterbot": "node scripts/run-node.mjs",
     "bitterbot:rpc": "node scripts/run-node.mjs agent --mode rpc --json",
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && pnpm canvas:a2ui:bundle && tsdown && node scripts/build-gateway-entry.mjs && pnpm build:plugin-sdk:dts && node --import tsx scripts/write-plugin-sdk-entry-dts.ts && node --import tsx scripts/canvas-a2ui-copy.ts && node scripts/ui-build.mjs && node --import tsx scripts/copy-hook-metadata.ts && node --import tsx scripts/write-build-info.ts && node --import tsx scripts/write-cli-compat.ts",
