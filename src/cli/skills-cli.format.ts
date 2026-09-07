@@ -299,3 +299,173 @@ export function formatSkillsCheck(report: SkillStatusReport, opts: SkillsCheckOp
 
   return appendClawHubHint(lines.join("\n"), opts.json);
 }
+
+// ── PLAN-45 Phase 6: `bitterbot skills evidence [name]` ──────────────────
+
+import type { SkillEvidenceRecord } from "../memory/skill-evolution/evidence-record.js";
+
+export type SkillEvidenceOptions = { json: boolean; all?: boolean };
+
+function pct(v: number | null): string {
+  return v === null ? "n/a" : `${Math.round(v * 100)}%`;
+}
+
+function ago(ts: number | null, now = Date.now()): string {
+  if (ts === null) {
+    return "never";
+  }
+  const ms = Math.max(0, now - ts);
+  const h = Math.floor(ms / 3_600_000);
+  if (h < 1) {
+    return `${Math.floor(ms / 60_000)}m ago`;
+  }
+  if (h < 48) {
+    return `${h}h ago`;
+  }
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function ladderLabel(ladder: SkillEvidenceRecord["ladder"]): string {
+  switch (ladder) {
+    case "stable":
+      return theme.success(ladder);
+    case "canary":
+    case "validated":
+    case "staged":
+      return theme.warn(ladder);
+    case "rolled-back":
+    case "retired":
+    case "canary-off":
+      return theme.error(ladder);
+    default:
+      return theme.muted(ladder);
+  }
+}
+
+/**
+ * One skill: the evidence record as the operator should read it. Every
+ * number comes from the record housekeeping rebuilt (nothing is recomputed
+ * here), so the CLI, the Control UI card and the published evidence agree.
+ */
+export function formatSkillEvidence(
+  records: SkillEvidenceRecord[],
+  skillName: string | undefined,
+  opts: SkillEvidenceOptions,
+  now = Date.now(),
+): string {
+  if (!skillName) {
+    const shown = opts.all ? records : records.filter((r) => r.ladder !== "unmanaged");
+    if (opts.json) {
+      return JSON.stringify(shown, null, 2);
+    }
+    if (shown.length === 0) {
+      return records.length === 0
+        ? "No evidence records yet (housekeeping writes .evidence.json per live skill after the first pass)."
+        : "No evolved or received skill is live. `--all` lists every live skill's record.";
+    }
+    const lines = [theme.heading(`Skill evidence (${shown.length})`), ""];
+    for (const r of shown) {
+      const gate = r.gate?.verdict ? `gate ${r.gate.verdict}` : "no gate";
+      lines.push(
+        `  ${r.name.padEnd(28)} ${ladderLabel(r.ladder).padEnd(20)} ${gate.padEnd(14)} reads ${String(r.reads.total).padStart(3)} ok ${pct(r.reads.successRate).padStart(4)}  ${theme.muted(ago(r.reads.lastReadAt, now))}`,
+      );
+    }
+    lines.push(
+      "",
+      theme.muted(
+        `Run \`${formatCliCommand("bitterbot skills evidence <name>")}\` for one record.`,
+      ),
+    );
+    return lines.join("\n");
+  }
+  const r = records.find((x) => x.name === skillName);
+  if (!r) {
+    if (opts.json) {
+      return JSON.stringify({ error: "not found", skill: skillName }, null, 2);
+    }
+    return `No evidence record for "${skillName}". It is written per LIVE skill by housekeeping; run \`${formatCliCommand("bitterbot skills evidence")}\` to list the ones present.`;
+  }
+  if (opts.json) {
+    return JSON.stringify(r, null, 2);
+  }
+  const lines: string[] = [];
+  lines.push(`${theme.heading(r.name)} ${ladderLabel(r.ladder)} ${theme.muted(`(${r.origin})`)}`);
+  lines.push(
+    theme.muted(
+      `  record v${r.version}, generated ${ago(r.generatedAt, now)}, ${r.windowDays}-day window`,
+    ),
+  );
+  lines.push("");
+  lines.push(theme.heading("Ladder:"));
+  lines.push(
+    `${theme.muted("  State:")} ${r.ladder}${r.ladderAt ? ` since ${new Date(r.ladderAt).toISOString()}` : ""}${r.ladderBy ? ` by ${r.ladderBy}` : ""}`,
+  );
+  if (r.canary) {
+    lines.push(
+      `${theme.muted("  Canary:")} started ${ago(r.canary.startedAt, now)} (${r.canary.reason})${r.canary.endedAt ? `, ended ${ago(r.canary.endedAt, now)}` : ", running"}`,
+    );
+  }
+  if (r.modelDrift) {
+    lines.push(
+      `${theme.muted("  Model drift:")} ${r.modelDrift.from} -> ${r.modelDrift.to} (${ago(r.modelDrift.at, now)})`,
+    );
+  }
+  if (r.publishedAt) {
+    lines.push(`${theme.muted("  Published:")} ${ago(r.publishedAt, now)}`);
+  }
+  lines.push("");
+  lines.push(theme.heading("Gate:"));
+  if (r.gate) {
+    const g = r.gate;
+    lines.push(
+      `${theme.muted("  Verdict:")} ${g.verdict ?? "n/a"} (${g.mode ?? "?"} mode${g.pValue !== null ? `, p=${g.pValue.toFixed(3)}` : ""})`,
+    );
+    if (g.wins !== null || g.losses !== null) {
+      lines.push(
+        `${theme.muted("  Trials:")} ${g.wins ?? 0} wins / ${g.losses ?? 0} losses over ${g.trials ?? "?"} trials${g.trialsPerTask ? ` (${g.trialsPerTask} per task)` : ""}`,
+      );
+    }
+    if (g.candidateReadRate) {
+      lines.push(
+        `${theme.muted("  Candidate read rate:")} capability ${pct(g.candidateReadRate.capability)}, regression ${pct(g.candidateReadRate.regression)}`,
+      );
+    }
+    if (g.tokens) {
+      lines.push(
+        `${theme.muted("  Tokens:")} incumbent ${g.tokens.incumbent}, candidate ${g.tokens.candidate}`,
+      );
+    }
+    if (g.corpusVersion) {
+      lines.push(`${theme.muted("  Corpus:")} ${g.corpusVersion}`);
+    }
+    if (g.validatedAt) {
+      lines.push(`${theme.muted("  Validated:")} ${ago(g.validatedAt, now)}`);
+    }
+  } else {
+    lines.push(theme.muted("  none (not an evolved or re-gated skill)"));
+  }
+  lines.push("");
+  lines.push(theme.heading("Production reads (window):"));
+  lines.push(
+    `${theme.muted("  Reads:")} ${r.reads.total} in ${r.reads.runs} runs; pass ${r.reads.pass}, fail ${r.reads.fail}, indeterminate ${r.reads.indeterminate}; success ${pct(r.reads.successRate)}; max evidence level L${r.reads.maxEvidenceLevel}; last ${ago(r.reads.lastReadAt, now)}`,
+  );
+  lines.push(
+    `${theme.muted("  Lifetime:")} used ${r.lifetime.usageCount}, success ${r.lifetime.successCount}, errors ${r.lifetime.errorCount}, last ${ago(r.lifetime.lastUsedAt, now)}`,
+  );
+  lines.push(
+    `${theme.muted("  Models:")} validated on ${r.models.validatedOn.length ? r.models.validatedOn.join(", ") : "n/a"}; read by ${r.models.readBy.length ? r.models.readBy.join(", ") : "none"}`,
+  );
+  if (r.descriptionRepairs > 0) {
+    lines.push(`${theme.muted("  Description repairs:")} ${r.descriptionRepairs}`);
+  }
+  if (r.gateHistory.length > 0) {
+    lines.push("");
+    lines.push(theme.heading("Gate history (newest last):"));
+    for (const h of r.gateHistory.slice(-8)) {
+      lines.push(
+        `  ${new Date(h.at).toISOString().slice(0, 16)} ${h.action.padEnd(10)} ${h.verdict.padEnd(10)}${h.score !== null ? ` ${h.score.toFixed(2)}` : ""}${h.detail ? ` ${theme.muted(h.detail)}` : ""}`,
+      );
+    }
+  }
+  return lines.join("\n");
+}

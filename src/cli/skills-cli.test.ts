@@ -4,8 +4,14 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { SkillStatusEntry, SkillStatusReport } from "../agents/skills-status.js";
 import type { SkillEntry } from "../agents/skills.js";
+import type { SkillEvidenceRecord } from "../memory/skill-evolution/evidence-record.js";
 import { captureEnv } from "../test-utils/env.js";
-import { formatSkillInfo, formatSkillsCheck, formatSkillsList } from "./skills-cli.format.js";
+import {
+  formatSkillEvidence,
+  formatSkillInfo,
+  formatSkillsCheck,
+  formatSkillsList,
+} from "./skills-cli.format.js";
 
 // Unit tests: don't pay the runtime cost of loading/parsing the real skills loader.
 vi.mock("@mariozechner/pi-coding-agent", () => ({
@@ -297,6 +303,103 @@ describe("skills-cli", () => {
       const output = formatSkillInfo(report, "test-bundled", {});
       expect(output).toContain("test-bundled");
       expect(output).toContain("Details:");
+    });
+  });
+});
+
+describe("formatSkillEvidence (PLAN-45 Phase 6)", () => {
+  const NOW = Date.UTC(2026, 8, 7, 12);
+  function record(overrides: Partial<SkillEvidenceRecord> = {}): SkillEvidenceRecord {
+    return {
+      version: 1,
+      name: "curl-timeout-guard",
+      generatedAt: NOW - 3_600_000,
+      windowDays: 14,
+      origin: "wiki-evolution",
+      ladder: "canary",
+      ladderAt: NOW - 2 * 86_400_000,
+      ladderBy: "gate",
+      canary: { startedAt: NOW - 2 * 86_400_000, endedAt: null, reason: "gate" },
+      modelDrift: null,
+      reads: {
+        total: 7,
+        runs: 6,
+        pass: 5,
+        fail: 1,
+        indeterminate: 1,
+        successRate: 5 / 6,
+        maxEvidenceLevel: 3,
+        lastReadAt: NOW - 7_200_000,
+      },
+      lifetime: { usageCount: 9, successCount: 7, errorCount: 1, lastUsedAt: NOW - 7_200_000 },
+      gate: {
+        verdict: "accepted",
+        mode: "tasks",
+        pValue: 0.031,
+        wins: 6,
+        losses: 1,
+        trials: 21,
+        trialsPerTask: 3,
+        corpusVersion: "gen5",
+        candidateReadRate: { capability: 0.9, regression: 0.1 },
+        tokens: { incumbent: 5000, candidate: 4200 },
+        validatedAt: NOW - 3 * 86_400_000,
+      },
+      models: { validatedOn: ["anthropic/claude-opus-4-8"], readBy: ["anthropic/claude-opus-4-8"] },
+      descriptionRepairs: 1,
+      publishedAt: null,
+      gateHistory: [
+        {
+          at: NOW - 3 * 86_400_000,
+          action: "promote",
+          verdict: "accepted",
+          score: 0.86,
+          detail: null,
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it("lists managed skills only by default and everything with --all", () => {
+    const records = [record(), record({ name: "local-notes", ladder: "unmanaged", gate: null })];
+    const listed = formatSkillEvidence(records, undefined, { json: false }, NOW);
+    expect(listed).toContain("curl-timeout-guard");
+    expect(listed).not.toContain("local-notes");
+    expect(listed).toContain("gate accepted");
+    const all = formatSkillEvidence(records, undefined, { json: false, all: true }, NOW);
+    expect(all).toContain("local-notes");
+    expect(JSON.parse(formatSkillEvidence(records, undefined, { json: true }, NOW))).toHaveLength(
+      1,
+    );
+  });
+
+  it("renders one record with the ladder, gate, canary and read numbers verbatim from the record", () => {
+    const out = formatSkillEvidence([record()], "curl-timeout-guard", { json: false }, NOW);
+    expect(out).toContain("canary");
+    expect(out).toContain("started 2d ago (gate), running");
+    expect(out).toContain("accepted (tasks mode, p=0.031)");
+    expect(out).toContain("6 wins / 1 losses over 21 trials (3 per task)");
+    expect(out).toContain("capability 90%, regression 10%");
+    expect(out).toContain(
+      "7 in 6 runs; pass 5, fail 1, indeterminate 1; success 83%; max evidence level L3",
+    );
+    expect(out).toContain("Description repairs:");
+    expect(out).toContain("promote");
+    expect(
+      JSON.parse(formatSkillEvidence([record()], "curl-timeout-guard", { json: true }, NOW)).name,
+    ).toBe("curl-timeout-guard");
+  });
+
+  it("explains a missing record instead of inventing one", () => {
+    const out = formatSkillEvidence([], "nope", { json: false }, NOW);
+    expect(out).toContain('No evidence record for "nope"');
+    expect(formatSkillEvidence([], undefined, { json: false }, NOW)).toContain(
+      "No evidence records yet",
+    );
+    expect(JSON.parse(formatSkillEvidence([], "nope", { json: true }, NOW))).toEqual({
+      error: "not found",
+      skill: "nope",
     });
   });
 });

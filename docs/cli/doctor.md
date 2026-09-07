@@ -153,6 +153,20 @@ jobs more than 2h past `nextRunAt` while the gateway is running and cron is
 not deliberately disabled mean the scheduler is wedged and suspended tasks
 are dead; repeated per-job failures are flagged).
 
+## Skill evolution
+
+Whether the skill-evolution loop can produce anything, read from its own
+files and a read-only query: the validation gate's effective mode (the
+promoting `tasks` gate needs capability tasks; with none, the loop can only
+run the diagnostic judge and warns), the loop heartbeat (last iteration
+against the configured cadence), the canary monitor backlog (an active
+canary with no exposure rows after three days, or past its 28-day maximum
+with no verdict, is a skill sitting in production with no decision on the
+way), evidence-record freshness (all records older than two days means
+housekeeping is not rebuilding them), and the crystallizer count (migration
+v63 purged the auto-minted chunks; any present means the retired minting
+path is writing again).
+
 ## Dream-mode liveness
 
 The Dream Engine section also reports per-mode liveness: an enabled dream

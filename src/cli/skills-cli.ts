@@ -5,7 +5,12 @@ import { defaultRuntime } from "../runtime.js";
 import { formatDocsLink } from "../terminal/links.js";
 import { theme } from "../terminal/theme.js";
 import { addGatewayClientOptions, callGatewayFromCli } from "./gateway-rpc.js";
-import { formatSkillInfo, formatSkillsCheck, formatSkillsList } from "./skills-cli.format.js";
+import {
+  formatSkillEvidence,
+  formatSkillInfo,
+  formatSkillsCheck,
+  formatSkillsList,
+} from "./skills-cli.format.js";
 
 export type {
   SkillInfoOptions,
@@ -58,6 +63,29 @@ export function registerSkillsCli(program: Command) {
         const { buildWorkspaceSkillStatus } = await import("../agents/skills-status.js");
         const report = buildWorkspaceSkillStatus(workspaceDir, { config });
         defaultRuntime.log(formatSkillInfo(report, name, opts));
+      } catch (err) {
+        defaultRuntime.error(String(err));
+        defaultRuntime.exit(1);
+      }
+    });
+
+  // PLAN-45 Phase 6: the per-skill evidence record (ladder, gate, canary,
+  // production reads) as housekeeping last rebuilt it. Reads the live root
+  // directly; no gateway needed.
+  skills
+    .command("evidence")
+    .description(
+      "Show the evidence record behind a live skill (ladder, gate verdict, canary, production reads)",
+    )
+    .argument("[name]", "Skill name (omit to list evolved and received skills)")
+    .option("--json", "Output as JSON", false)
+    .option("--all", "When listing, include unmanaged (local, bundled) skills", false)
+    .action(async (name: string | undefined, opts: { json: boolean; all: boolean }) => {
+      try {
+        const { readEvidenceRecords } =
+          await import("../memory/skill-evolution/evidence-record.js");
+        const records = await readEvidenceRecords();
+        defaultRuntime.log(formatSkillEvidence(records, name, opts));
       } catch (err) {
         defaultRuntime.error(String(err));
         defaultRuntime.exit(1);

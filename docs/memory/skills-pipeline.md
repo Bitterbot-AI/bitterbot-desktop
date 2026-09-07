@@ -1549,6 +1549,26 @@ email, or circle text cannot become a canonical pin or a standing directive. P2P
 publish refuses a SKILL.md whose body the secret redactor would change or that carries
 a home path, user profile path, email address, or IP address.
 
+### Surfaces
+
+Three views read the same evidence record and recompute nothing, so they
+cannot disagree with each other or with what a skill publishes:
+
+- **Control UI, Skills, Evolution tab.** The loop's state from
+  `skills.evolution.status` (enabled and cadence, effective validation mode
+  with the capability-task count, last iteration and whether it was skipped,
+  managed skills against the active cap, peer skills pending the gate, corpus
+  drafts awaiting review, the top recurring failure signatures) and one card
+  per managed skill: ladder badge, gate verdict with p-value and trials,
+  canary window, production reads with success rate, models validated on and
+  read by, model drift when present.
+- **`bitterbot skills evidence [name]`.** The same record on the command
+  line, listing managed skills by default and printing one record in full
+  with its gate history; `--json` for scripts.
+- **`bitterbot doctor`, Skill evolution section.** Whether the loop can
+  produce anything at all: tasks-mode reachability, loop heartbeat, canary
+  monitor backlog, evidence freshness, crystallizer regrowth.
+
 ## Related Documentation
 
 - [Architecture Overview](./architecture-overview.md) — system entry point and file map

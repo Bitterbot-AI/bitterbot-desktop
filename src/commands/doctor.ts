@@ -71,6 +71,7 @@ import { runRetrievalChecks } from "./doctor-retrieval.js";
 import { runRuntimeChecks } from "./doctor-runtime.js";
 import { maybeRepairSandboxImages, noteSandboxScopeWarnings } from "./doctor-sandbox.js";
 import { runSecurityChecks } from "./doctor-security.js";
+import { runSkillEvolutionChecks } from "./doctor-skill-evolution.js";
 import { runSkillsChecks } from "./doctor-skills.js";
 import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integrity.js";
 import { runSubsystemChecks } from "./doctor-subsystems.js";
@@ -359,6 +360,9 @@ async function runDoctor(
       dbPath,
       isGatewayRunning: healthOk,
     });
+    // ── Skill evolution (PLAN-45 Phase 6): tasks-mode reachability, loop
+    //    heartbeat, canary monitor backlog, evidence freshness, crystallizer ──
+    await runSkillEvolutionChecks({ config: cfg, dbPath });
   }
 
   // ── Post-Q1 subsystems (embeddings backlog, knowledge graph, canonical

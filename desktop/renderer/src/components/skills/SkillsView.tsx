@@ -11,6 +11,7 @@ import {
   useSkillsStore,
 } from "../../stores/skills-store";
 import { AgentAllowlistEditor } from "./AgentAllowlistEditor";
+import { EvolutionPanel } from "./EvolutionPanel";
 import { IncomingPanel } from "./IncomingPanel";
 import { SkillEditor } from "./SkillEditor";
 import { TrustSettings } from "./TrustSettings";
@@ -327,7 +328,7 @@ const TABS: Array<{ id: FilterTab; label: string }> = [
 type AgentRow = { id: string; identity?: { name?: string; emoji?: string } };
 type AgentsListResult = { defaultId?: string; agents?: AgentRow[] };
 
-type ViewMode = "installed" | "incoming";
+type ViewMode = "installed" | "incoming" | "evolution";
 
 export function SkillsView() {
   const [viewMode, setViewMode] = useState<ViewMode>("installed");
@@ -408,9 +409,22 @@ export function SkillsView() {
             </span>
           )}
         </button>
+        <button
+          onClick={() => setViewMode("evolution")}
+          className={cn(
+            "px-3 py-1.5 text-sm rounded-md transition-colors",
+            viewMode === "evolution"
+              ? "bg-brand/15 text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Evolution
+        </button>
       </div>
       {viewMode === "installed" ? (
         <InstalledSkillsView />
+      ) : viewMode === "evolution" ? (
+        <EvolutionPanel />
       ) : (
         <IncomingPanel onCountChange={setIncomingCount} />
       )}
