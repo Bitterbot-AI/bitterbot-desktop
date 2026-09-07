@@ -310,6 +310,11 @@ tool profile, egress accounting), and writes
   bootstrap CI, and the token delta. The verdict sentences are fixed in
   advance: a tie reproduces the ContinualSkillBench finding and says so; a
   loss says the abstraction is not carrying its weight.
+- **Transfer end to end (5.3).** `test/skill-evolution/two-node-transfer.test.ts`
+  asserts the whole path on disk: publish with a signed trailer on one node,
+  quarantine with the verified binding on another, accept into staging,
+  re-gate on the receiver's private suite, strict canary, graduation, the
+  receiver's own attestation, and no republish of a peer skill.
 - **I10.** The report header carries the generator version, the exemplar
   pin, the corpus versions and the exact argv; `pnpm benchmark:skills:check`
   fails when the newest committed report disagrees with the code. The
