@@ -2,7 +2,8 @@
  * PLAN-45 5.1/5.2: the skill ablation harness (one command, D-6, I10).
  *
  *   pnpm benchmark:skills [--arms none,harvested,evolved,in-context]
- *     [--corpora frozen,fresh,private] [--models primary,cheap] [--trials 3]
+ *     [--corpora frozen,fresh,private,external] [--external <dir>] [--external-domains math,science]
+ *     [--models primary,cheap] [--trials 3]
  *     [--cap 6 (per suite)] [--seed N] [--executor embedded|oracle]
  *     [--out docs/benchmarks/skills-<date>.md] [--fresh-context] [--yes] [--check]
  *
@@ -76,6 +77,9 @@ export interface RunOptions {
   freshContext: boolean;
   configDir?: string;
   argv: string[];
+  /** PLAN-45 5.5: ContinualSkillBench checkout for the `external` corpus. */
+  externalDir?: string;
+  externalDomains?: string[];
   /** Test override for the in-context arm's journal. */
   journal?: EventJournal | null;
   /** Skip the trial-count confirmation (CI / tests). */
@@ -89,7 +93,11 @@ export async function runAblation(
   opts: RunOptions,
 ): Promise<{ markdown: string; header: ReportHeader; records: TrialRecord[] }> {
   const configDir = opts.configDir ?? CONFIG_DIR;
-  if (opts.executor === "oracle" && opts.out && /(^|\/)docs\/benchmarks\//.test(opts.out)) {
+  if (
+    opts.executor === "oracle" &&
+    opts.out &&
+    /(^|\/)docs\/benchmarks\//.test(opts.out.replace(/\\/g, "/"))
+  ) {
     throw new Error(
       "the oracle executor never writes under docs/benchmarks (its numbers are not evidence)",
     );
@@ -110,7 +118,13 @@ export async function runAblation(
     fresh: opts.freshContext,
     live,
   });
-  const corpora = await resolveCorpora({ ids: opts.corpora, seed: opts.seed, configDir });
+  const corpora = await resolveCorpora({
+    ids: opts.corpora,
+    seed: opts.seed,
+    configDir,
+    ...(opts.externalDir ? { externalDir: opts.externalDir } : {}),
+    ...(opts.externalDomains?.length ? { externalDomains: opts.externalDomains } : {}),
+  });
   const models: ResolvedModel[] =
     opts.executor === "embedded"
       ? resolveModels(cfg, opts.models)
@@ -306,6 +320,8 @@ async function main(): Promise<void> {
       check: { type: "boolean", default: false },
       "report-dir": { type: "string", default: "docs/benchmarks" },
       yes: { type: "boolean", default: false },
+      external: { type: "string" },
+      "external-domains": { type: "string" },
     },
     strict: true,
   });
@@ -318,9 +334,10 @@ async function main(): Promise<void> {
   const date = new Date().toISOString().slice(0, 10);
   const result = await runAblation({
     arms: list(values.arms, ARM_IDS, [...ARM_IDS]),
-    corpora: list(values.corpora, CORPUS_IDS, [...CORPUS_IDS]),
+    corpora: list(values.corpora, CORPUS_IDS, ["frozen", "fresh", "private"]),
     // Defaults are the affordable run: the primary model, six tasks per suite.
     models: list(values.models, MODEL_IDS, ["primary"]),
+    // `external` is opt-in: it needs a checkout.
     trials: Math.max(1, Number(values.trials) || 3),
     cap: values.cap === undefined ? 6 : Math.max(0, Number(values.cap) || 0),
     seed: values.seed ? Number(values.seed) >>> 0 : 0,
@@ -329,6 +346,10 @@ async function main(): Promise<void> {
     freshContext: values["fresh-context"] === true,
     argv,
     yes: values.yes === true,
+    ...(values.external ? { externalDir: values.external } : {}),
+    ...(values["external-domains"]
+      ? { externalDomains: values["external-domains"].split(",").map((d) => d.trim()) }
+      : {}),
   });
   if (!values.out || values.out === "/dev/null") {
     process.stdout.write(result.markdown);

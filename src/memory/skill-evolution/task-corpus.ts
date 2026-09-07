@@ -41,8 +41,25 @@ export interface TaskChecker {
    * enumerates every candidate value (xFinder arXiv:2405.11874,
    * WebChoreArena arXiv:2506.01952).
    */
-  kind: "contains" | "regex" | "exact" | "final";
+  kind: "contains" | "regex" | "exact" | "final" | "numeric";
   value: string;
+  /** PLAN-45 5.5: absolute tolerance for `numeric` (a FINAL line parsed as a number). */
+  tolerance?: number;
+}
+
+/** Parse a numeric answer: strips currency, thousands separators and a trailing percent sign. */
+export function parseNumericAnswer(raw: string): number | null {
+  const cleaned = raw
+    .trim()
+    .replace(/^[$€£]/, "")
+    .replace(/,/g, "")
+    .replace(/%$/, "")
+    .trim();
+  if (!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(cleaned)) {
+    return null;
+  }
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
 }
 
 export interface CorpusTask {
@@ -121,10 +138,24 @@ export function parseTaskFiles(value: unknown): Record<string, string> | null {
 function parseChecker(value: unknown): TaskChecker | null {
   const c = value as Record<string, unknown>;
   if (
-    (c?.kind === "contains" || c?.kind === "regex" || c?.kind === "exact" || c?.kind === "final") &&
+    (c?.kind === "contains" ||
+      c?.kind === "regex" ||
+      c?.kind === "exact" ||
+      c?.kind === "final" ||
+      c?.kind === "numeric") &&
     typeof c.value === "string" &&
     c.value.length > 0
   ) {
+    if (c.kind === "numeric") {
+      if (parseNumericAnswer(c.value) === null) {
+        return null;
+      }
+      const tolerance =
+        typeof c.tolerance === "number" && Number.isFinite(c.tolerance) && c.tolerance >= 0
+          ? c.tolerance
+          : 0;
+      return { kind: "numeric", value: c.value.trim(), tolerance };
+    }
     if (c.kind === "regex") {
       try {
         // Validate the pattern up front so a bad corpus line cannot throw
@@ -249,6 +280,21 @@ export function scoreTaskAnswer(task: CorpusTask, answer: string): 0 | 1 {
         return 0;
       }
       return value === task.checker.value.trim() ? 1 : 0;
+    }
+    case "numeric": {
+      // Same FINAL-line discipline as `final`, then a tolerance compare.
+      const matches = [...a.matchAll(/^[ \t]*FINAL:[ \t]*(.*)$/gim)];
+      const last = matches.at(-1)?.[1];
+      if (typeof last !== "string" || last.trim().length > MAX_FINAL_ANSWER_CHARS) {
+        return 0;
+      }
+      const got = parseNumericAnswer(last);
+      const want = parseNumericAnswer(task.checker.value);
+      if (got === null || want === null) {
+        return 0;
+      }
+      const tol = task.checker.tolerance ?? 0;
+      return Math.abs(got - want) <= tol + Math.abs(want) * 1e-9 ? 1 : 0;
     }
   }
 }

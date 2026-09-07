@@ -18,7 +18,12 @@ with a machine-readable header. Arms:
 | `in-context` | Per evolved skill S: S's own evidence traces verbatim in the prompt, no skill file (paired with `evolved:S`, the index holding only S) |
 
 Corpora: `frozen` (the pinned seed-0 canonical exemplar), `fresh` (the canonical
-generator at the run's seed), `private` (the node's grown capability suite).
+generator at the run's seed), `private` (the node's grown capability suite), and
+`external`: the deterministically scored subtasks of ContinualSkillBench
+(arXiv 2608.03874, Apache-2.0; exact-match and numeric, 279 of 600 across six
+domains), cloned on demand with `--external <dir>` and filtered with
+`--external-domains`. Its rubric-judged and programmatic subtasks need the
+benchmark's own verifiers and are counted, not scored.
 Models: `primary` (the agent's default) and `cheap`. Per cell: pass@1, pass^K,
 skill read rate, tokens; against the `none` baseline and, for `evolved`,
 against `in-context`: an exact sign test, a bootstrap CI and the token delta.
@@ -30,7 +35,10 @@ session flavor with the node's memory manager switched off
 (`BITTERBOT_MEMORY_OFF=1`), so a measurement never becomes an experience.
 
 `pnpm benchmark:skills:check` verifies the newest committed report against
-the corpus generator version and the exemplar pin (invariant I10). The
+the corpus generator version, the exemplar pin and the harness version
+(invariant I10). The harness version moves when the measurement itself
+changes (version 2: validation shells pinned to the confined gateway host),
+so an older report is flagged rather than compared. The
 `skills-ablation` workflow runs the harness self-test weekly with a
 deterministic executor and can produce a live report on demand.
 
@@ -38,4 +46,5 @@ deterministic executor and can produce a live report on demand.
 
 Newest first.
 
+- [2026-09-06 external](skills-2026-09-06-external.md): ContinualSkillBench math, deterministic subset, baseline and harvested arms, primary model, six tasks, two trials.
 - [2026-09-06](skills-2026-09-06.md): first run on the reference node; baseline and harvested arms only (no evolved skill live yet), primary model, frozen corpus, six tasks per suite, two trials.

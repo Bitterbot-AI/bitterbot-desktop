@@ -176,3 +176,7 @@ and the token delta. The embedded executor runs real turns in-process under
 the validation session flavor; the `oracle` executor is deterministic and
 keyless for CI. Reports land in `docs/benchmarks/skills-<date>.md` with a
 header that `pnpm benchmark:skills:check` verifies against the corpus pin.
+The `external` corpus (5.5) imports ContinualSkillBench's exact-match and
+numeric subtasks (`external/continual-skill-bench.ts`; a `numeric` checker
+with tolerance joins the corpus checkers); the benchmark's sequential
+protocol is not reproduced, the static arms are measured on its tasks.

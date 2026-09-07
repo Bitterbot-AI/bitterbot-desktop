@@ -272,6 +272,15 @@ The evidence record carries `ladder`, `canary`, and `modelDrift`; status
   operator's exec "allow always" entries, including the wildcard agent's,
   applied to validation shells (they now resolve approvals under the
   `skill-validation` identity).
+- **The shell floor is host-pinned (5.5 adversarial).** The allowlist and
+  safe-bin floor is only evaluated on the gateway and node exec hosts. The
+  default host is `sandbox`, and with no sandbox configured that host ran
+  commands raw: the first embedded ablation trials executed `python3`,
+  `node` and `curl` inside validation shells. A validation shell now always
+  runs on the gateway host, whatever `tools.exec.host` says for the main
+  agent, and a unit test executes real commands through the assembled tool
+  to prove interpreters and network clients are refused while `echo` and
+  `jq` pass. Runner profile v4: trials cached under v3 are not replayed.
 - **Evolver model (4.6, I8).** Every promotion records `evolverModel` (the
   proposer lane's model) and `validatedOn`; the trailer carries both. A
   receiver computes the transfer direction on the featured-model tier
@@ -323,6 +332,12 @@ tool profile, egress accounting), and writes
   is the primary agent and a second-model validation lane does not exist
   yet, so today every published skill is single-model and receivers apply
   the strict canary to it regardless.
+- **External benchmark (5.5).** The harness's `external` corpus imports the
+  deterministically scored subtasks of ContinualSkillBench (exact-match and
+  numeric, with a tolerance-aware `numeric` checker) and measures the same
+  arms on them with Bitterbot as the executor; rubric-judged and
+  programmatic subtasks are counted and skipped. The benchmark's sequential
+  evolution protocol is not reproduced by the harness.
 - **I10.** The report header carries the generator version, the exemplar
   pin, the corpus versions and the exact argv; `pnpm benchmark:skills:check`
   fails when the newest committed report disagrees with the code. The

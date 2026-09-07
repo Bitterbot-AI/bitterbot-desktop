@@ -10,11 +10,19 @@ import {
   loadCanonicalCorpus,
 } from "../../../src/memory/skill-evolution/canonical-corpus.js";
 import { loadTaskCorpus } from "../../../src/memory/skill-evolution/task-corpus.js";
+import {
+  CSB_LICENSE,
+  ensureContinualSkillBench,
+  loadContinualSkillBench,
+} from "../external/continual-skill-bench.js";
 
 export async function resolveCorpora(params: {
   ids: readonly CorpusId[];
   seed: number;
   configDir?: string;
+  /** PLAN-45 5.5: a ContinualSkillBench checkout (cloned when absent). */
+  externalDir?: string;
+  externalDomains?: readonly string[];
 }): Promise<ResolvedCorpus[]> {
   const out: ResolvedCorpus[] = [];
   for (const id of params.ids) {
@@ -33,6 +41,27 @@ export async function resolveCorpora(params: {
     } else if (id === "fresh") {
       const c = generateCanonicalCorpus(params.seed);
       out.push({ id, version: c.version, tasks: c.tasks, note: null });
+    } else if (id === "external") {
+      if (!params.externalDir) {
+        out.push({ id, version: "external-none", tasks: [], note: "no --external <dir> given" });
+        continue;
+      }
+      ensureContinualSkillBench(params.externalDir);
+      const loaded = await loadContinualSkillBench(params.externalDir, {
+        ...(params.externalDomains?.length ? { domains: params.externalDomains } : {}),
+      });
+      const skipped = Object.entries(loaded.skipped)
+        .map(([k, v]) => `${k} ${v}`)
+        .join(", ");
+      out.push({
+        id,
+        version: `csb-${loaded.domains.map((d) => d.replace(/-100$/, "")).join("+")}-det${loaded.tasks.length}`,
+        tasks: loaded.tasks,
+        note:
+          loaded.tasks.length === 0
+            ? "no deterministic ContinualSkillBench task found under the directory"
+            : `ContinualSkillBench (${CSB_LICENSE}) deterministic subset: ${loaded.tasks.length} tasks; skipped ${skipped || "none"} (need the benchmark's verifiers or a judge)`,
+      });
     } else if (id === "private") {
       const c = await loadTaskCorpus(params.configDir ? { configDir: params.configDir } : {});
       out.push(

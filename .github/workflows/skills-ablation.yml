@@ -48,9 +48,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    # The runner context is not available in a job-level env (GitHub rejects
+    # the file on push); the state dir is derived from $RUNNER_TEMP in the step.
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      BITTERBOT_STATE_DIR: ${{ runner.temp }}/bitterbot-state
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -66,6 +67,7 @@ jobs:
       - name: Run the capped suite on the primary and cheap models
         if: steps.key.outputs.present == 'true'
         run: |
+          export BITTERBOT_STATE_DIR="$RUNNER_TEMP/bitterbot-state"
           mkdir -p "$BITTERBOT_STATE_DIR"
           pnpm benchmark:skills --arms none,harvested,evolved,in-context --corpora frozen,fresh --models primary,cheap --cap 6 --trials 3 --yes --out "docs/benchmarks/skills-$(date +%F).md"
           pnpm format:docs

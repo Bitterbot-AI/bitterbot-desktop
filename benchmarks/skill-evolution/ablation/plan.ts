@@ -14,7 +14,7 @@ export function armKind(id: ArmId): ArmKind {
   const base = id.split(":")[0] ?? id;
   return (ARM_IDS as readonly string[]).includes(base) ? (base as ArmKind) : "none";
 }
-export const CORPUS_IDS = ["frozen", "fresh", "private"] as const;
+export const CORPUS_IDS = ["frozen", "fresh", "private", "external"] as const;
 export type CorpusId = (typeof CORPUS_IDS)[number];
 export const MODEL_IDS = ["primary", "cheap"] as const;
 export type ModelId = (typeof MODEL_IDS)[number];

@@ -88,7 +88,10 @@ export const CONTENT_CHANGE_VERDICTS = new Set(["cost-exceeded"]);
  * runner or the validation prompt shape changes so cached trials from the
  * previous shape are never replayed against fresh ones.
  */
-export const RUNNER_PROFILE = "runtime-pathway/full-prompt/v3";
+// v4: the validation shell is pinned to the gateway host so the allowlist +
+// safeBins floor is actually evaluated (v3 trials on a default "sandbox" host
+// ran interpreters and network clients raw).
+export const RUNNER_PROFILE = "runtime-pathway/full-prompt/v4";
 
 /** Remove trial dirs left behind by a crash (older than a day). */
 export async function sweepStaleTrials(trailOpts: ImpactTrailOptions): Promise<void> {

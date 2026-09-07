@@ -388,12 +388,20 @@ export function createBitterbotCodingTools(options?: {
             ? { HOME: workspaceRoot, TMPDIR: workspaceRoot }
             : undefined,
           safeBins: [...SKILL_VALIDATION_SAFE_BINS],
+          // PLAN-45 5.5 (adversarial): the allowlist + safeBins floor is
+          // only evaluated on the gateway/node hosts. The default host is
+          // "sandbox", which, with no sandbox configured, ran the command
+          // raw (python3/node/curl all executed in a validation shell). A
+          // validation shell always runs on the gateway host so the floor
+          // is the path taken, whatever the operator configured for the
+          // main agent.
+          host: "gateway" as const,
         }
       : { security: "deny" as const, ask: "off" as const }
     : undefined;
   const execTool = createExecTool({
     ...execDefaults,
-    host: options?.exec?.host ?? execConfig.host,
+    host: validationExec?.host ?? options?.exec?.host ?? execConfig.host,
     security: validationExec?.security ?? options?.exec?.security ?? execConfig.security,
     ask: validationExec?.ask ?? options?.exec?.ask ?? execConfig.ask,
     ...(validationExec && "scrubEnv" in validationExec

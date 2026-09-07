@@ -17,7 +17,7 @@ import type {
 import type { ArmStats, PairedStats } from "./stats.js";
 import { exactSignTest } from "../../../src/memory/skill-evolution/sign-test.js";
 
-export const HARNESS_VERSION = 1;
+export const HARNESS_VERSION = 2;
 
 export interface ReportHeader {
   harnessVersion: number;
