@@ -284,13 +284,42 @@ export function computeCentroid(embeddings: number[][]): number[] {
   return centroid;
 }
 
-export function parseEmbedding(raw: string): number[] {
+/**
+ * Decode a stored embedding. Reads BOTH formats so a partially-migrated table
+ * is always safe (memory audit 2026-09-07 P1.5): a float32 BLOB (the new,
+ * compact storage, ~6 KB for 1536 dims) or a legacy JSON text array (~29 KB).
+ * node:sqlite returns a BLOB column as a Uint8Array.
+ */
+export function parseEmbedding(raw: string | Uint8Array | null | undefined): number[] {
+  if (raw == null) {
+    return [];
+  }
+  if (typeof raw !== "string") {
+    try {
+      // Copy to a zero-offset buffer so the Float32Array view is 4-byte aligned.
+      const bytes = raw.slice();
+      if (bytes.byteLength === 0 || bytes.byteLength % 4 !== 0) {
+        return [];
+      }
+      return Array.from(new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4));
+    } catch {
+      return [];
+    }
+  }
   try {
     const parsed = JSON.parse(raw) as number[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
+}
+
+/**
+ * Encode an embedding for storage as a compact float32 BLOB (memory audit
+ * 2026-09-07 P1.5). ~4.8x smaller than the JSON text form.
+ */
+export function embeddingToBlob(embedding: number[]): Buffer {
+  return Buffer.from(new Float32Array(embedding).buffer);
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

@@ -2292,6 +2292,79 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 65,
+    description:
+      "Memory audit 2026-09-07 (P0.1/C1): index chunks(updated_at) so the dream " +
+      "extrapolation seed no longer full-scans, and reconcile the two lifecycle " +
+      "columns (chunks.lifecycle vs chunks.lifecycle_state). consolidation.ts wrote " +
+      "only `lifecycle` on merge-winner promotion, so rows drifted to " +
+      "lifecycle='consolidated' + lifecycle_state='active'. Derive lifecycle_state " +
+      "from lifecycle for the diverged rows; the writer now sets both.",
+    up: (db: DatabaseSync) => {
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_chunks_updated_at ON chunks(updated_at)`);
+      // consolidated in `lifecycle` but still active in `lifecycle_state`
+      db.exec(
+        `UPDATE chunks SET lifecycle_state = 'consolidated'
+           WHERE lifecycle = 'consolidated' AND COALESCE(lifecycle_state, 'active') = 'active'`,
+      );
+      // archived/expired in `lifecycle` but not reflected in `lifecycle_state`
+      db.exec(
+        `UPDATE chunks SET lifecycle_state = 'archived'
+           WHERE lifecycle IN ('archived', 'expired')
+             AND COALESCE(lifecycle_state, 'active') = 'active'`,
+      );
+    },
+  },
+  {
+    version: 66,
+    description:
+      "Memory audit 2026-09-07 (P1.5): store embeddings as compact float32 BLOBs " +
+      "instead of JSON text (~29 KB -> ~6 KB per 1536-dim vector, ~4.8x). Converts " +
+      "existing chunks.embedding and embedding_cache.embedding rows in place. Readers " +
+      "use parseEmbedding(), which decodes both forms, so the conversion is safe even " +
+      "if interrupted. A follow-up VACUUM returns the freed pages to disk.",
+    up: (db: DatabaseSync) => {
+      const convert = (table: string): number => {
+        const sel = db.prepare(
+          `SELECT rowid AS rid, embedding FROM ${table} WHERE typeof(embedding) = 'text' LIMIT 500`,
+        );
+        const upd = db.prepare(`UPDATE ${table} SET embedding = ? WHERE rowid = ?`);
+        let converted = 0;
+        for (;;) {
+          const rows = sel.all() as Array<{ rid: number | bigint; embedding: string }>;
+          if (rows.length === 0) {
+            break;
+          }
+          for (const r of rows) {
+            let blob: Buffer;
+            try {
+              const arr = JSON.parse(r.embedding) as unknown;
+              blob =
+                Array.isArray(arr) && arr.length > 0
+                  ? Buffer.from(new Float32Array(arr as number[]).buffer)
+                  : Buffer.alloc(0);
+            } catch {
+              // Malformed JSON: write an empty blob so it stops matching
+              // typeof='text' and parseEmbedding returns [] for it.
+              blob = Buffer.alloc(0);
+            }
+            upd.run(blob, r.rid);
+            converted += 1;
+          }
+        }
+        return converted;
+      };
+      const tables = ["chunks", "embedding_cache"];
+      for (const t of tables) {
+        try {
+          convert(t);
+        } catch {
+          // Table may not exist on a minimal DB; skip.
+        }
+      }
+    },
+  },
 ];
 
 /**

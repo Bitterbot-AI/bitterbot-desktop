@@ -198,6 +198,16 @@ export class ConsolidationEngine {
               discoveredAt,
             );
           }
+          // Memory audit 2026-09-07 P2: drop consumed hints and unconsumed
+          // hints older than 14 days (production outran consumption ~22:1).
+          try {
+            this.db
+              .prepare(
+                `DELETE FROM near_merge_hints
+                   WHERE consumed_at IS NOT NULL OR discovered_at < ?`,
+              )
+              .run(discoveredAt - 14 * 24 * 60 * 60 * 1000);
+          } catch {}
           log.debug("SNN near-merge candidates discovered", { count: nearMerges.length });
           recordDreamTelemetry(
             this.db,
@@ -242,7 +252,7 @@ export class ConsolidationEngine {
         `UPDATE chunks SET lifecycle_state = 'forgotten', lifecycle = 'archived', parent_id = ?, version = COALESCE(version, 1) + 1 WHERE id = ?`,
       );
       const promoteWinnerStmt = this.db.prepare(
-        `UPDATE chunks SET lifecycle = 'consolidated', last_consolidated_at = ? WHERE id = ?`,
+        `UPDATE chunks SET lifecycle = 'consolidated', lifecycle_state = 'consolidated', last_consolidated_at = ? WHERE id = ?`,
       );
       for (const { loserId, winnerId } of mergePairs) {
         mergeStmt.run(winnerId, loserId);

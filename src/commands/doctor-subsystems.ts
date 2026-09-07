@@ -223,7 +223,7 @@ export function inspectSubsystems(
       db,
       `SELECT COUNT(*) AS c FROM chunks
         WHERE model IS NOT NULL AND model <> 'pending'
-          AND json_valid(embedding) AND json_array_length(embedding) > 0
+          AND embedding IS NOT NULL AND length(embedding) > 0 AND embedding != '[]'
           AND (lifecycle_state IS NULL OR lifecycle_state <> 'forgotten')
           AND (lifecycle IS NULL OR lifecycle <> 'expired')`,
     );

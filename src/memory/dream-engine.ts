@@ -210,7 +210,13 @@ export class DreamEngine {
    * overshoot).
    */
   private cycleLlmRemaining = 0;
-  /** PLAN-40: round-robin cursor for the reserved utility-lane slot. */
+  /**
+   * PLAN-40: round-robin cursor for the reserved utility-lane slot.
+   * Memory audit 2026-09-07 P3: seeded from the persisted dream-cycle count in
+   * the constructor so it ADVANCES across gateway restarts — an in-memory 0
+   * reset each boot always picked lane 0 (hygiene) and starved distillation /
+   * anticipation (unselected since ~Aug 12).
+   */
   private laneRotationCounter = 0;
 
   constructor(
@@ -220,6 +226,18 @@ export class DreamEngine {
     embedBatch: EmbedBatchFn,
   ) {
     this.db = db;
+    // Memory audit 2026-09-07 P3: advance the utility-lane rotation across
+    // restarts (see laneRotationCounter) by seeding from the persisted cycle
+    // count instead of always starting at 0 (which starved distillation /
+    // anticipation).
+    try {
+      const row = this.db.prepare("SELECT COUNT(*) AS c FROM dream_cycles").get() as
+        | { c: number }
+        | undefined;
+      this.laneRotationCounter = row?.c ?? 0;
+    } catch {
+      this.laneRotationCounter = 0;
+    }
 
     // Merge mode configs. PLAN-45 Phase 1: keys that are no longer a
     // DreamMode (`mutation`, `research`) are dropped with one log line each
@@ -1738,7 +1756,7 @@ export class DreamEngine {
       remainingSlots > 0
         ? (this.db
             .prepare(
-              `SELECT id, text, embedding, importance_score, access_count,
+              `SELECT id, text, importance_score, access_count,
               COALESCE(curiosity_boost, 0.0) as curiosity_boost,
               COALESCE(dream_count, 0) as dream_count,
               last_dreamed_at, emotional_valence
@@ -1757,7 +1775,9 @@ export class DreamEngine {
             .all(this.config.minImportanceForDream, remainingSlots) as ChunkRow[])
         : [];
 
-    const seeds = [...orphanSeeds, ...normalSeeds];
+    // Memory audit 2026-09-07 P0.1: normalSeeds is selected without the 29 KB
+    // embedding column (kept off the sort); hydrate by id for downstream use.
+    const seeds = this.hydrateEmbeddings([...orphanSeeds, ...normalSeeds]);
     if (seeds.length === 0) {
       return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
@@ -1849,7 +1869,7 @@ export class DreamEngine {
     // Select user preferences, task patterns, and recent episodes
     const seeds = this.db
       .prepare(
-        `SELECT id, text, embedding, importance_score, access_count,
+        `SELECT id, text, importance_score, access_count,
                 COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(dream_count, 0) as dream_count,
                 last_dreamed_at, emotional_valence, semantic_type
@@ -2061,7 +2081,7 @@ export class DreamEngine {
     // Pick 2-3 crystals from different knowledge regions (cross-domain)
     const seeds = this.db
       .prepare(
-        `SELECT id, text, embedding, importance_score, access_count,
+        `SELECT id, text, importance_score, access_count,
                 COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(dream_count, 0) as dream_count,
                 last_dreamed_at, emotional_valence, semantic_type
@@ -2083,7 +2103,7 @@ export class DreamEngine {
     }
 
     // Pick 3 chunks that are maximally different from each other
-    const crossDomain = this.pickDiverseChunks(seeds, 3);
+    const crossDomain = this.pickDiverseChunks(this.hydrateEmbeddings(seeds), 3);
     if (crossDomain.length < 2) {
       return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
@@ -2194,7 +2214,7 @@ export class DreamEngine {
     const maxChunks = this.config.modes.exploration.maxChunks;
     const nearbyChunks = this.db
       .prepare(
-        `SELECT id, text, embedding, importance_score, access_count,
+        `SELECT id, text, importance_score, access_count,
                 COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(dream_count, 0) as dream_count,
                 last_dreamed_at, emotional_valence
@@ -2867,6 +2887,31 @@ export class DreamEngine {
 
   // ── Shared helpers ──
 
+  /**
+   * Memory audit 2026-09-07 P0.1: fetch the embedding column for a set of
+   * already-selected rows by id. Keeps the 29 KB embedding off any scan/sort
+   * query; the IN-list read is index-bounded (measured ~2 ms for 50 ids vs
+   * ~100 s for a full-table sort that carries the column).
+   */
+  private hydrateEmbeddings(rows: ChunkRow[]): ChunkRow[] {
+    if (rows.length === 0) {
+      return rows;
+    }
+    try {
+      const placeholders = rows.map(() => "?").join(",");
+      const embRows = this.db
+        .prepare(`SELECT id, embedding FROM chunks WHERE id IN (${placeholders})`)
+        .all(...rows.map((r) => r.id)) as Array<{ id: string; embedding: ChunkRow["embedding"] }>;
+      const byId = new Map(embRows.map((e) => [e.id, e.embedding]));
+      for (const r of rows) {
+        r.embedding = byId.get(r.id) ?? r.embedding;
+      }
+    } catch (err) {
+      log.debug(`hydrateEmbeddings failed: ${String(err)}`);
+    }
+    return rows;
+  }
+
   private selectSeeds(limit?: number, priorityIds?: string[]): ChunkRow[] {
     const maxChunks = limit ?? this.config.maxChunksPerCycle;
 
@@ -2893,11 +2938,16 @@ export class DreamEngine {
     // GCCRF-informed seed selection: use curiosity_reward (from GCCRF) when available,
     // fall back to curiosity_boost (from old heuristic engine) for backwards compatibility.
     // Dream count penalty: / (dream_count + 1) deprioritizes previously-dreamed chunks.
+    // Memory audit 2026-09-07 P0.1: order/filter WITHOUT the 29 KB embedding
+    // column (SQLite buffers every selected column through the sorter before
+    // LIMIT, which froze the event loop for ~100s on the full table), then
+    // hydrate embeddings for only the LIMIT-n winners by id.
     const normalSeeds =
       remaining > 0
-        ? (this.db
-            .prepare(
-              `SELECT id, text, embedding, importance_score, access_count,
+        ? this.hydrateEmbeddings(
+            this.db
+              .prepare(
+                `SELECT id, text, importance_score, access_count,
                 COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(dream_count, 0) as dream_count,
                 last_dreamed_at, emotional_valence
@@ -2913,8 +2963,9 @@ export class DreamEngine {
          ORDER BY (importance_score + COALESCE(curiosity_reward, curiosity_boost, 0.0))
                   / (COALESCE(dream_count, 0) + 1) DESC
          LIMIT ?`,
-            )
-            .all(this.config.minImportanceForDream, remaining) as ChunkRow[])
+              )
+              .all(this.config.minImportanceForDream, remaining) as ChunkRow[],
+          )
         : [];
 
     // Merge, deduplicate

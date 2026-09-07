@@ -67,7 +67,7 @@ import {
   mergeHybridResultsRRF,
   type HybridGraphResult,
 } from "./hybrid.js";
-import { isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
+import { embeddingToBlob, isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
 import { backfillTypedRelationships } from "./kg-backfill.js";
 import * as kgAdmission from "./kg-entity-admission.js";
 import * as kgExtract from "./kg-relationship-extract.js";
@@ -2380,11 +2380,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         } catch (err) {
           log.debug(`execution outcome back-fill skipped: ${String(err)}`);
         }
-        // 9. Decay steering rewards to prevent unbounded accumulation
-        {
-          const engine = new ConsolidationEngine(this.db);
-          engine.decaySteeringRewards();
-        }
+        // 9. (removed, memory audit 2026-09-07 C2) Steering-reward decay ran
+        // HERE and again inside consolidate() -> ConsolidationEngine.run(), so
+        // the reward decayed ~0.9025 instead of the configured 0.95 per tick.
+        // run() is the single decay site now.
         // 10. GCCRF: batch-score pending chunks and persist state (via unified CuriosityEngine)
         await this.curiosityEngine?.scorePendingChunks();
         // 10b. PLAN-43 Phase 4: recompute contributor standings from verified signals.
@@ -5593,7 +5592,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           params.text,
           hash,
           model,
-          JSON.stringify(embedding),
+          embeddingToBlob(embedding),
           JSON.stringify(
             params.evidenceExecutionIds.map((eid) => ({ kind: "execution", id: eid })),
           ),

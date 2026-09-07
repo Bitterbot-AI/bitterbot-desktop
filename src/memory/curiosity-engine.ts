@@ -1017,6 +1017,16 @@ export class CuriosityEngine {
         JSON.stringify(event.metadata),
       );
     }
+    // Memory audit 2026-09-07 P2: only the newest handful is ever surfaced;
+    // cap to the most recent 2,000 by detection time (~39K rows -> ~2K).
+    try {
+      this.db
+        .prepare(
+          `DELETE FROM curiosity_emergence WHERE id NOT IN (
+             SELECT id FROM curiosity_emergence ORDER BY detected_at DESC LIMIT 2000)`,
+        )
+        .run();
+    } catch {}
   }
 
   private loadRegions(): RegionRow[] {
@@ -1510,6 +1520,19 @@ export class CuriosityEngine {
            VALUES (?, ?, ?, ?)`,
         )
         .run(crypto.randomUUID(), region.id, region.prediction_error, now);
+
+      // Memory audit 2026-09-07 P2: keep only the most recent 500 samples per
+      // region (~39K rows -> a few K) — the learning-progress read never needs
+      // deeper history.
+      try {
+        this.db
+          .prepare(
+            `DELETE FROM curiosity_progress WHERE region_id = ? AND id NOT IN (
+               SELECT id FROM curiosity_progress WHERE region_id = ?
+               ORDER BY timestamp DESC LIMIT 500)`,
+          )
+          .run(region.id, region.id);
+      } catch {}
 
       // Compute learning progress from history
       const history = this.db
@@ -2015,7 +2038,7 @@ export class CuriosityEngine {
       for (let i = 0; i < pendingRows.length; i += 1) {
         const row = pendingRows[i]!;
         try {
-          const emb = JSON.parse(row.embedding) as number[];
+          const emb = parseEmbedding(row.embedding);
           if (emb.length === 0) {
             continue;
           }

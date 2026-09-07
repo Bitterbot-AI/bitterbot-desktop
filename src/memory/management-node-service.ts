@@ -235,6 +235,17 @@ export class ManagementNodeService {
           this.anomalyHistory.length,
         );
 
+      // Memory audit 2026-09-07 P2: this log is written every 60s and only ever
+      // read recent-N; prune anything older than 7 days (probabilistically, to
+      // keep it off the hot path). ~67K rows -> ~10K on the reference node.
+      if (Math.random() < 0.02) {
+        try {
+          this.db
+            .prepare(`DELETE FROM management_census_log WHERE timestamp < ?`)
+            .run(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        } catch {}
+      }
+
       return census;
     } catch (err) {
       log.debug(`Census IPC failed: ${String(err)}`);
@@ -572,6 +583,15 @@ export class ManagementNodeService {
           summary.topEarners?.length ?? 0,
           summary.uniqueBuyers ?? 0,
         );
+      // Memory audit 2026-09-07 P2: 5-min snapshots, only recent + lifetime
+      // aggregates read; prune raw rows older than 30 days.
+      if (Math.random() < 0.05) {
+        try {
+          this.db
+            .prepare(`DELETE FROM management_economic_snapshots WHERE timestamp < ?`)
+            .run(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        } catch {}
+      }
     } catch (err) {
       log.debug(`Economic snapshot failed: ${String(err)}`);
     }

@@ -159,7 +159,7 @@ class MemoryManagerEmbeddingOps {
         this.provider.model,
         this.providerKey,
         entry.hash,
-        JSON.stringify(embedding),
+        vectorToBlob(embedding),
         embedding.length,
         now,
       );
@@ -975,7 +975,7 @@ class MemoryManagerEmbeddingOps {
           chunk.hash,
           modelForRow,
           chunk.text,
-          JSON.stringify(embedding),
+          vectorToBlob(embedding),
           now,
           valence,
           origin,
@@ -1103,7 +1103,10 @@ class MemoryManagerEmbeddingOps {
   }): Promise<{ embedded: number; remaining: number }> {
     const limit = Math.max(1, options?.limit ?? PENDING_EMBED_DEFAULT_LIMIT);
     const pendingWhere =
-      `(model = 'pending' OR json_array_length(embedding) = 0)\n` +
+      // Memory audit 2026-09-07 P1.5: embedding is now a float32 BLOB, so
+      // json_array_length() throws 'malformed JSON' on it. Empty (needs
+      // embedding) means NULL, a zero-length blob, or the legacy '[]' text.
+      `(model = 'pending' OR embedding IS NULL OR length(embedding) = 0 OR embedding = '[]')\n` +
       `        AND text IS NOT NULL AND length(trim(text)) > 0\n` +
       `        AND (lifecycle_state IS NULL OR lifecycle_state <> 'forgotten')\n` +
       `        AND (lifecycle IS NULL OR lifecycle <> 'expired')`;
@@ -1183,7 +1186,7 @@ class MemoryManagerEmbeddingOps {
         continue;
       }
       try {
-        updateChunk.run(JSON.stringify(embedding), this.provider.model, now, row.id);
+        updateChunk.run(vectorToBlob(embedding), this.provider.model, now, row.id);
         if (vec) {
           try {
             vec.del.run(row.id);

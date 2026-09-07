@@ -24,6 +24,13 @@ export function recordDreamTelemetry(
       `INSERT INTO dream_telemetry (cycle_id, phase, metric_name, metric_value, created_at)
        VALUES (?, ?, ?, ?, ?)`,
     ).run(cycleId, phase, metric, value, Date.now());
+    // Memory audit 2026-09-07 P2: telemetry is per-cycle/phase/metric and only
+    // recent cycles are read; prune rows older than 30 days (probabilistically).
+    if (Math.random() < 0.05) {
+      db.prepare(`DELETE FROM dream_telemetry WHERE created_at < ?`).run(
+        Date.now() - 30 * 24 * 60 * 60 * 1000,
+      );
+    }
   } catch {
     // Table may not exist yet during early init — non-critical
   }

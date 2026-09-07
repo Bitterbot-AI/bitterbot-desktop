@@ -98,6 +98,11 @@ const DEFAULT_RECENCY_ENABLED = true;
 const DEFAULT_RECENCY_ALPHA = 0.5;
 const DEFAULT_RECENCY_HALF_LIFE_HOURS = 48;
 const DEFAULT_CACHE_ENABLED = true;
+// Memory audit 2026-09-07 P1.4: the embedding cache had no default cap, so
+// pruneEmbeddingCacheIfNeeded early-returned and the cache grew forever (it
+// held 13,043 vectors as ~385 MB of JSON on the reference node, more than the
+// live chunk count). Bound it by default; oldest (updated_at ASC) evicted.
+const DEFAULT_CACHE_MAX_ENTRIES = 10_000;
 const DEFAULT_SOURCES: Array<"memory" | "sessions" | "skills"> = ["memory", "sessions"];
 
 function normalizeSources(
@@ -264,7 +269,8 @@ function mergeConfig(
   };
   const cache = {
     enabled: overrides?.cache?.enabled ?? defaults?.cache?.enabled ?? DEFAULT_CACHE_ENABLED,
-    maxEntries: overrides?.cache?.maxEntries ?? defaults?.cache?.maxEntries,
+    maxEntries:
+      overrides?.cache?.maxEntries ?? defaults?.cache?.maxEntries ?? DEFAULT_CACHE_MAX_ENTRIES,
   };
 
   const importanceWeight = clampNumber(
