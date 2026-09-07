@@ -49,6 +49,7 @@ Notes:
 - `tools.exec.approvalRunningNoticeMs` (default: 10000): emit a single “running” notice when an approval-gated exec runs longer than this (0 disables).
 - `tools.exec.host` (default: `sandbox`)
 - `tools.exec.security` (default: `deny` for sandbox, `allowlist` for gateway + node when unset)
+  - With sandbox mode off, the `sandbox` host runs on the gateway machine and evaluates no allowlist (see the security guide). An explicitly configured or requested `deny` is still enforced there.
 - `tools.exec.ask` (default: `on-miss`)
 - `tools.exec.node` (default: unset)
 - `tools.exec.pathPrepend`: list of directories to prepend to `PATH` for exec runs (gateway + sandbox only).

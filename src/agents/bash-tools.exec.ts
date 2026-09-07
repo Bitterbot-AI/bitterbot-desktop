@@ -297,6 +297,19 @@ export function createExecTool(
       }
 
       const sandbox = host === "sandbox" ? defaults?.sandbox : undefined;
+      // Sandboxing is opt-in: on the sandbox host with no sandbox configured
+      // the command runs on the gateway machine and no allowlist is
+      // evaluated (documented). An operator who wrote security=deny, or a
+      // session that requested it, still gets deny on that path instead of
+      // a silently ignored setting.
+      if (
+        host === "sandbox" &&
+        !sandbox &&
+        security === "deny" &&
+        (defaults?.security === "deny" || requestedSecurity === "deny")
+      ) {
+        throw new Error("exec denied: security=deny (sandbox host, no sandbox configured)");
+      }
       let rawWorkdir = params.workdir?.trim() || defaults?.cwd || process.cwd();
       if (defaults?.confineWorkdir && defaults.cwd) {
         const root = path.resolve(defaults.cwd);
