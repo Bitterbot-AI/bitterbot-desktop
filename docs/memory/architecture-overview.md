@@ -226,7 +226,7 @@ flowchart TB
 | `src/memory/experiment-sandbox.ts`        | Paired LLM judge + `bootstrapPairedCI` used only by harness-evolve (PLAN-25); gates no skill |
 | `src/memory/skill-execution-selection.ts` | Deterministic SHA-1 held-out partition (`isHeldOut`, `hashBucket`) shared by harness-evolve  |
 
-`skill_text_history` is left in place with no migration and is orphaned (no reader, no writer). `mutation_queue` was dropped in v58.
+`skill_text_history` was orphaned (no reader, no writer) and is dropped in v67 (PLAN-46 dead-code pass). `mutation_queue` was dropped in v58.
 
 ### Working Memory (RLM)
 
@@ -336,13 +336,11 @@ See [Working Memory](./working-memory.md) for full documentation.
 
 ### Search & Embeddings
 
-| File                                     | Purpose                                                |
-| ---------------------------------------- | ------------------------------------------------------ |
-| `src/memory/manager-search.ts`           | `searchVector()`, `searchKeyword()` implementations    |
-| `src/memory/mem-store.ts`                | `MemStore` — publish/subscribe, version history        |
-| `src/memory/multi-perspective-search.ts` | Reciprocal Rank Fusion across 4 embedding perspectives |
-| `src/memory/embedding-perspectives.ts`   | Prefix-tuned multi-perspective embedding generation    |
-| `src/memory/embeddings.ts`               | Provider abstraction: OpenAI, Gemini, Voyage, local    |
+| File                           | Purpose                                             |
+| ------------------------------ | --------------------------------------------------- |
+| `src/memory/manager-search.ts` | `searchVector()`, `searchKeyword()` implementations |
+| `src/memory/mem-store.ts`      | `MemStore` — publish/subscribe, version history     |
+| `src/memory/embeddings.ts`     | Provider abstraction: OpenAI, Gemini, Voyage, local |
 
 ### Infrastructure
 
@@ -473,11 +471,15 @@ accumulating:
   consolidation cycle (bounded per pass) and is also exposed as
   `bitterbot memory backfill-embeddings` to clear a backlog manually. It vectorizes
   `model='pending'` chunks and indexes them into `chunks_vec` + `chunks_fts`.
-- **Cooperative yielding on recall (`multi-perspective-search.ts`).** The
-  per-recall RRF sweep parses + cosine-scores up to 1000 chunks across 4
-  perspectives in pure JS. It yields to the event loop every `SEARCH_YIELD_EVERY`
-  chunks so a large recall can't freeze the gateway keepalive (and bounce the
-  Control UI). Yielding is behavior-preserving — identical scores and ranking.
+- **Recall stays off the hot path.** Hybrid recall fuses vector + keyword
+  results by Reciprocal Rank Fusion (`mergeHybridResultsRRF`); vector search is a
+  `chunks_vec` (sqlite-vec) KNN over float32 BLOB vectors, not a JS scan of the
+  row store. Embeddings are stored as compact float32 BLOBs (~6 KB), never dragged
+  through a sort — the 2026-09-07 audit's freeze came from scan queries that
+  selected the old ~29 KB JSON embedding column, now fixed (id-first fetch).
+- **Serialized maintenance (`MaintenanceMutex`).** Consolidation, dream,
+  health-sweep, trending and digest run one at a time under a mutex so they cannot
+  interleave chunk writes or pile onto the event loop together (PLAN-46 Phase 4).
 - **Tombstone GC (`ConsolidationEngine.purgeExpired`).** Forgotten/expired chunks
   are physically deleted (row + vector + FTS) once older than
   `consolidation.forgottenRetentionDays` (default **14**; `0` purges immediately,
@@ -489,7 +491,7 @@ Health check from the DB directly:
 
 ```bash
 # Should be ~0 in steady state — a growing count means embeddings are failing
-SELECT COUNT(*) FROM chunks WHERE model='pending' OR json_array_length(embedding)=0;
+SELECT COUNT(*) FROM chunks WHERE model='pending' OR embedding IS NULL OR length(embedding) < 8;
 
 # Tombstones awaiting GC (drained on the consolidation cycle)
 SELECT COUNT(*) FROM chunks WHERE lifecycle_state='forgotten' OR lifecycle='expired';

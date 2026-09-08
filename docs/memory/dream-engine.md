@@ -3,8 +3,8 @@
 > **PLAN-45 Phase 1 (2026-09-05).** The legacy skill producers are gone:
 > the `mutation` and `research` dream modes, the PLAN-21 slow update, the
 > Pareto ranker, prompt optimization, and `SkillRefiner` were deleted, not
-> merely disabled. The `skill_text_history` table is left in place (no
-> migration) but is now orphaned: nothing reads or writes it. Skill
+> merely disabled. The `skill_text_history` table, orphaned
+> (nothing reads or writes it), was dropped in v67 (PLAN-46 dead-code pass). Skill
 > improvement runs through the PLAN-40 `distillation` lane and the PLAN-42/44
 > wiki-skill pipeline (`docs/memory/skills-pipeline.md`).
 >
