@@ -193,20 +193,17 @@ export function inspectSubsystems(
   // ── Embedding backlog ── (the ~7.3k unembedded-crystal blind spot)
   const embedding: CheckResult[] = [];
   if (tableExists(db, "chunks")) {
-    const missing = countMissingEmbeddings(db);
-    const worstMissing = Math.max(...Object.values(missing));
-    const semanticMissing = missing.semantic;
+    const semanticMissing = countMissingEmbeddings(db);
     if (totalChunks === 0) {
       embedding.push(info("No crystals yet — nothing to embed."));
-    } else if (semanticMissing === 0 && worstMissing === 0) {
-      embedding.push(ok(`All ${totalChunks} crystals embedded across every perspective.`));
+    } else if (semanticMissing === 0) {
+      embedding.push(ok(`All ${totalChunks} crystals have a semantic embedding.`));
     } else {
       const pct = Math.round((semanticMissing / totalChunks) * 100);
       embedding.push(
         warn(
-          `Embedding backlog: ${semanticMissing}/${totalChunks} crystals (${pct}%) lack a semantic embedding ` +
-            `(worst perspective: ${worstMissing}). Semantic recall is degraded until backfill runs. ` +
-            `Details per perspective: ${JSON.stringify(missing)}.`,
+          `Embedding backlog: ${semanticMissing}/${totalChunks} crystals (${pct}%) lack a semantic embedding. ` +
+            `Semantic recall is degraded until backfill runs.`,
         ),
       );
     }

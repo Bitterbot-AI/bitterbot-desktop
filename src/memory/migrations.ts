@@ -2378,6 +2378,23 @@ const MIGRATIONS: Migration[] = [
       db.exec(`DROP TABLE IF EXISTS skill_text_history`);
     },
   },
+  {
+    version: 68,
+    description:
+      "PLAN-46 dead-code pass: drop the empty multi-perspective embedding columns " +
+      "(embedding_procedural/causal/entity). They were NULL on every row — written " +
+      "only by a perspective backfill and read only by a multi-perspective search, " +
+      "both removed as dead code (no runtime callers). SQLite 3.35+ DROP COLUMN.",
+    up: (db: DatabaseSync) => {
+      for (const col of ["embedding_procedural", "embedding_causal", "embedding_entity"]) {
+        try {
+          db.exec(`ALTER TABLE chunks DROP COLUMN ${col}`);
+        } catch {
+          // Column already absent (fresh DB / re-run): no-op.
+        }
+      }
+    },
+  },
 ];
 
 /**
