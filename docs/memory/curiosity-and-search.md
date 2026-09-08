@@ -2,7 +2,7 @@
 
 The curiosity engine identifies knowledge gaps by tracking what the system knows (knowledge regions), what surprises it (novelty assessment), and what the user searches for but can't find (gap detection). It feeds exploration targets into the dream engine's exploration mode and receives dream insights back, forming a continuous curiosity-dream feedback loop. Since PLAN-34 Phase 2, exploration attempts real external research on `knowledge_gap`, `market_demand`, and `frontier` targets (via Skill-Seekers) and stamps each target with an outcome code (`no_url` | `domain_blocked` | `irrelevant` | `resolved`); targets resolve only when the research product is embedding-relevant to them, so "explored" can never silently masquerade as "answered". The search system combines BM25 keyword matching with multi-perspective vector search for robust retrieval.
 
-**Key source files:** `curiosity-engine.ts`, `curiosity-types.ts`, `gccrf-reward.ts`, `mem-store.ts`, `multi-perspective-search.ts`, `embedding-perspectives.ts`, `user-model.ts`, `task-memory.ts`
+**Key source files:** `curiosity-engine.ts`, `curiosity-types.ts`, `gccrf-reward.ts`, `mem-store.ts`, `user-model.ts`, `task-memory.ts`
 
 ---
 
@@ -216,60 +216,6 @@ flowchart TB
 ```
 boostedScore = score * (1 - importanceWeight + importanceWeight * importanceScore)
 ```
-
-### Multi-Perspective Search
-
-The `multi-perspective-search.ts` module enables searching across all 4 embedding perspectives simultaneously using **Reciprocal Rank Fusion (RRF)**:
-
-```typescript
-type PerspectiveWeights = {
-  semantic: number;
-  procedural: number;
-  causal: number;
-  entity: number;
-};
-```
-
-**Weight profiles** for different query intents:
-
-| Profile           | Semantic | Procedural | Causal | Entity |
-| ----------------- | -------- | ---------- | ------ | ------ |
-| `general`         | 0.7      | 0.1        | 0.1    | 0.1    |
-| `skill_discovery` | 0.3      | 0.3        | 0.1    | 0.3    |
-| `debugging`       | 0.2      | 0.1        | 0.5    | 0.2    |
-| `learning_path`   | 0.1      | 0.5        | 0.3    | 0.1    |
-
-**RRF formula** (K=60): For each perspective, rank all chunks by cosine similarity. The fused score is:
-
-```
-score = sum(weight_p * 1/(K + rank_p)) for each perspective p
-```
-
-Steering reward and importance scores provide additional boosts to the fused score.
-
----
-
-## Embedding Perspectives
-
-The `embedding-perspectives.ts` module generates 4 different embedding views of the same text using **prefix-tuning**:
-
-| Perspective  | Prefix                                          | What it captures                    |
-| ------------ | ----------------------------------------------- | ----------------------------------- |
-| `semantic`   | _(none)_                                        | General meaning and concepts        |
-| `procedural` | `"Steps, prerequisites, and execution order: "` | How-to knowledge, workflows         |
-| `causal`     | `"Causes, effects, and consequences: "`         | Why things happen, debugging chains |
-| `entity`     | `"Tools, APIs, technologies, and entities: "`   | Named tools, frameworks, APIs       |
-
-```typescript
-// Generate all 4 perspectives for a text
-const perspectives = await embedWithPerspectives(text, provider);
-// perspectives.semantic, .procedural, .causal, .entity
-
-// Batch embed multiple texts
-const allPerspectives = await batchEmbedWithPerspectives(texts, provider);
-```
-
-Entity extraction (`extractEntities()`) uses regex patterns plus capitalized multi-word detection to identify tools, APIs, frameworks, and languages mentioned in text.
 
 ---
 
