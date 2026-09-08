@@ -91,23 +91,37 @@ export type TaskRunnerFn = (
 ) => Promise<string | TrialResult>;
 
 /**
- * PLAN-45 Phase 2.1: per-model calibration. A CANONICAL capability task
- * whose incumbent pass rate for this model is outside [low, high] after
- * `minTrials` observed trials is dropped from the capability suite: a task
- * the model always passes or never passes cannot show improvement. Grown
- * (node-specific) tasks are never dropped. At least `keepAtLeast` canonical
- * capability tasks survive (the closest to 0.5), so the suite never empties.
+ * PLAN-45 Phase 2.1 + curriculum admission gate (2026-09-08, SkillLearnBench
+ * skill-dependency rule; docs/reviews/skills-curriculum-methodology-2026-09-08.md).
+ *
+ * Per-model calibration drops capability tasks that cannot show a skill's
+ * benefit:
+ *  - CANONICAL tasks are dropped when the incumbent pass rate is OUTSIDE
+ *    [low, high] after `minTrials` — the model always passes or never passes.
+ *  - GROWN (node-specific, mined) tasks are dropped when the incumbent passes
+ *    them too EASILY (rate >= `grownCeiling`, default 0.5): a task the base
+ *    model already solves is not skill-dependent, so a skill cannot earn credit
+ *    on it (the empirical lesson from the 12/12 evolution-drill result). Grown
+ *    tasks are NOT dropped for being hard — that is exactly the frontier a skill
+ *    should close.
+ *
+ * At least `keepAtLeast` capability tasks survive (the closest to 0.5), so the
+ * suite never empties.
  */
 export interface GateCalibration {
   incumbentStats: ReadonlyMap<string, { trials: number; passes: number }>;
   minTrials?: number;
   low?: number;
   high?: number;
+  /** Grown tasks with incumbent pass rate >= this are too easy (not skill-dependent). */
+  grownCeiling?: number;
   keepAtLeast?: number;
 }
 export const CALIBRATION_MIN_TRIALS = 6;
 export const CALIBRATION_LOW = 0.2;
 export const CALIBRATION_HIGH = 0.8;
+/** SkillLearnBench: a task the base model passes >50% is not skill-dependent. */
+export const GROWN_SKILL_DEPENDENCY_CEILING = 0.5;
 export const CALIBRATION_KEEP_AT_LEAST = 5;
 
 export function isCanonicalTask(t: CorpusTask): boolean {
@@ -135,15 +149,22 @@ export function applyGateCalibration(
   const minTrials = cal.minTrials ?? CALIBRATION_MIN_TRIALS;
   const low = cal.low ?? CALIBRATION_LOW;
   const high = cal.high ?? CALIBRATION_HIGH;
+  const grownCeiling = cal.grownCeiling ?? GROWN_SKILL_DEPENDENCY_CEILING;
   const keepAtLeast = cal.keepAtLeast ?? CALIBRATION_KEEP_AT_LEAST;
   const rated = tasks
-    .filter((t) => t.suite !== "regression" && isCanonicalTask(t))
+    .filter((t) => t.suite !== "regression")
     .map((t) => {
       const s = cal.incumbentStats.get(t.id);
       const rate = s && s.trials >= minTrials ? s.passes / s.trials : null;
-      return { t, rate };
+      return { t, rate, canonical: isCanonicalTask(t) };
     });
-  const uninformative = rated.filter((r) => r.rate !== null && (r.rate < low || r.rate > high));
+  const uninformative = rated.filter(
+    (r) =>
+      r.rate !== null &&
+      (r.canonical
+        ? r.rate < low || r.rate > high // canonical: two-sided band
+        : r.rate >= grownCeiling), // grown: too easy = not skill-dependent (one-sided)
+  );
   const survivors = rated.length - uninformative.length;
   const dropSet = new Set(uninformative.map((r) => r.t.id));
   if (survivors < keepAtLeast) {

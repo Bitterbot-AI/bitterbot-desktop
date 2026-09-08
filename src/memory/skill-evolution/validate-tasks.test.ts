@@ -411,7 +411,7 @@ describe("applyGateCalibration (PLAN-45 Phase 2.1)", () => {
     tags,
     suite,
   });
-  it("drops canonical capability tasks the model always or never passes, never grown or regression tasks", async () => {
+  it("drops canonical tasks outside [low,high] and grown tasks the base model already passes (skill-dependency); never regression", async () => {
     const { applyGateCalibration } = await import("./validate-tasks.js");
     const tasks = [
       mk("reg-1", ["canonical"], "regression"),
@@ -419,7 +419,8 @@ describe("applyGateCalibration (PLAN-45 Phase 2.1)", () => {
       mk("cap-hard", ["canonical", "capability"]),
       mk("cap-mid", ["canonical", "capability"]),
       mk("cap-new", ["canonical", "capability"]),
-      mk("grown-1", ["mined", "reviewed"]),
+      mk("grown-easy", ["mined", "reviewed"]), // base model passes → not skill-dependent → drop
+      mk("grown-hard", ["mined", "reviewed"]), // base model fails → the frontier → keep
       mk("cap-a", ["canonical", "capability"]),
       mk("cap-b", ["canonical", "capability"]),
       mk("cap-c", ["canonical", "capability"]),
@@ -431,18 +432,19 @@ describe("applyGateCalibration (PLAN-45 Phase 2.1)", () => {
       ["cap-hard", { trials: 9, passes: 0 }],
       ["cap-mid", { trials: 9, passes: 4 }],
       ["cap-new", { trials: 2, passes: 2 }], // too few trials to judge
-      ["grown-1", { trials: 9, passes: 9 }],
+      ["grown-easy", { trials: 9, passes: 8 }], // 0.89 >= 0.5 ceiling → dropped
+      ["grown-hard", { trials: 9, passes: 1 }], // 0.11 < ceiling → kept (skill-dependent)
       ["cap-a", { trials: 6, passes: 3 }],
       ["cap-b", { trials: 6, passes: 3 }],
       ["cap-c", { trials: 6, passes: 3 }],
       ["cap-d", { trials: 6, passes: 3 }],
     ]);
     const r = applyGateCalibration(tasks, { incumbentStats: stats });
-    expect(r.dropped.map((d) => d.id).toSorted()).toEqual(["cap-easy", "cap-hard"]);
-    expect(r.tasks.map((t) => t.id)).toContain("grown-1");
+    expect(r.dropped.map((d) => d.id).toSorted()).toEqual(["cap-easy", "cap-hard", "grown-easy"]);
+    expect(r.tasks.map((t) => t.id)).toContain("grown-hard"); // hard grown task is the target
+    expect(r.tasks.map((t) => t.id)).not.toContain("grown-easy");
     expect(r.tasks.map((t) => t.id)).toContain("reg-1");
     expect(r.tasks.map((t) => t.id)).toContain("cap-new");
-    expect(r.tasks).toHaveLength(8);
   });
   it("keeps at least five canonical capability tasks (closest to 0.5) when calibration would empty the suite", async () => {
     const { applyGateCalibration } = await import("./validate-tasks.js");
