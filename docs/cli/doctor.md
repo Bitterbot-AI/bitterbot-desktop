@@ -120,7 +120,7 @@ freshly installed build gets a real turn through its pipeline.
 ## Subsystem checks
 
 Doctor opens the agent memory DB read-only and verifies live state:
-embedding backlog per perspective, **search-index coverage** (crystals with
+semantic embedding backlog, **search-index coverage** (crystals with
 embeddings vs rows actually present in `chunks_vec`/`chunks_fts` — a
 populated embedding column with an empty index means search finds nothing),
 knowledge-graph population, canonical facts ledger, and Circles tables on

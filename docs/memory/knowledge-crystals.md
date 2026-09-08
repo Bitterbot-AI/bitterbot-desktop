@@ -117,14 +117,6 @@ type CrystalOrigin =
 | `skillTags`         | `string[]`       | Categorization tags                     |
 | `skillCategory`     | `string \| null` | e.g. `"code-generation"`, `"debugging"` |
 
-### Multi-Perspective Embeddings
-
-| Field                 | Type       | Description                             |
-| --------------------- | ---------- | --------------------------------------- |
-| `embeddingProcedural` | `number[]` | Steps/execution-focused embedding       |
-| `embeddingCausal`     | `number[]` | Cause/effect-focused embedding          |
-| `embeddingEntity`     | `number[]` | Tools/APIs/technology-focused embedding |
-
 ---
 
 ## Lifecycle
