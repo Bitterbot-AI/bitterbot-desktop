@@ -754,6 +754,114 @@ If any check fails, the selling agent responds with 402 and a JSON-RPC error bod
 
 ---
 
+## Agent Payment Mandates, Enforcement, and Consent (AP2 / PLAN-47)
+
+On top of the x402 settlement above, Bitterbot adds an **authorization layer**: a
+signed mandate that proves _who authorized this spend and under what limits_, plus
+a runtime gate that enforces it. This follows the two-layer pattern the agentic-payments
+ecosystem converged on — signed mandates authorize (Google's [AP2](https://ap2-protocol.org/)),
+stablecoins settle (x402) — and it is on by default. It never changes the money math:
+x402 on-chain settlement remains the source of truth, and mandates only ever _constrain_
+a payment, never create one.
+
+### What rides along with a payment
+
+When a buying node pays a 402, it attaches an `ap2` object inside the base64 payment
+token (the same token that already carries the x402 proof), alongside the existing
+`txHash`/`amount`/`signature` fields:
+
+```jsonc
+{
+  "version": "v1", "txHash": "0x…", "amount": 0.05, "sender": "0x…",
+  "recipient": "0x…", "timestamp": 1735689600000, "signature": "0x…",
+  "ap2": {
+    "intent":  { "claims": { "vct": "mandate.payment.open.1", ... }, "signature": "0x…", "signer": "0x…" },
+    "payment": { "claims": { "vct": "mandate.payment.1", ... },      "signature": "0x…", "signer": "0x…" },
+    "consent": { "claims": { ... }, "signature": "<ed25519 hex>" },   // optional (consent lineage)
+    "binding": { "walletAddress": "0x…", "circlePubkey": "ed25519:…", "sigByWallet": "…", "sigByCircle": "…" }
+  }
+}
+```
+
+A peer that does not understand `ap2` ignores it, so this is fully backwards
+compatible with plain x402 clients.
+
+- **Intent mandate** (`mandate.payment.open.1`) — the delegated budget: per-task max
+  and daily ceiling, with conditions. Self-signed by the agent's wallet key.
+- **Payment mandate** (`mandate.payment.1`) — authorization of the one concrete charge
+  (payee, amount, instrument, `transaction_id`), bound to the intent by hash.
+
+Mandates use the verbatim AP2 claim vocabulary and are signed with the node's proven
+secp256k1 / EIP-191 wallet key over a domain-separated canonical form
+(`bitterbot-ap2-mandate:v1:…`), so a mandate signature can never be confused with an
+x402 token signature. **Interop note:** Bitterbot mandates are AP2-_modeled_ and
+verifiable between Bitterbot nodes today; full wire-interop with third-party AP2
+verifiers (SD-JWT + P-256) is a roadmap item.
+
+### The enforcement gate
+
+After the inbound x402 payment verifies on-chain, if the token carries an `ap2`
+mandate the selling node runs it through the enforcement gate and emits a **Policy
+Decision Record** (an auditable allow/deny with reasons). The gate adds the two
+runtime guarantees a valid signature alone does not provide:
+
+- **Consume-once** — a Payment mandate settles at most once; a replay is denied even
+  though its signature is still valid. The nonce is keyed on the mandate's claims (so
+  a re-signed replay is caught too) and claimed atomically after all other checks pass.
+- **Context binding** — the mandate's declared `payee` must equal the party actually
+  being paid, so a mandate authorizing merchant A cannot be redirected to settle
+  against B. This is new over the x402 check, which only binds the token to our wallet.
+
+Plus authenticity + expiry, and that the charge is within the intent's budget. When
+`a2a.payment.enforcement.enabled` is on (default), a **present-but-invalid** mandate
+(forgery / replay / redirect) blocks the task; when off, the gate is advisory (logs
+the decision, never blocks). A **missing** mandate never blocks, and any internal
+error fails open to the on-chain decision — an enforcement bug can never reject a
+task the buyer already paid for.
+
+> **Known limitation.** The `ap2` field is not covered by the x402 token signature,
+> so a motivated buyer can strip or malform it to skip enforcement — the gate can only
+> deny a _present_ mandate, never compel one. This is acceptable for the current
+> posture (only Bitterbot nodes emit mandates, and a mandate never grants payment).
+> Requiring a mandate from known peers, and binding the mandate hash into the x402
+> signature, is tracked as a follow-up.
+
+### Consent lineage (Circles)
+
+Optionally, the buyer also attaches a **spend consent** and an **identity binding** so
+the settling party can verify that the spend traces to a consent signed by the same
+principal that controls the paying wallet — provenance an AP2-only stack cannot
+produce. The spend consent is signed by the node's Ed25519 Circles identity (its
+device key); the identity binding is a statement signed by _both_ the wallet key and
+the circle key, which is what ties the wallet identity (mandate signer) to the Circles
+identity (consent signer). The gate verifies the whole chain and records a
+verified/unverified `consentRef` on the Policy Decision Record.
+
+Consent is **additive provenance** today: an unverified consent is recorded but does
+not by itself flip the verdict. The human disclosure-grant layer that governs whether
+a node emits spend consent, and a policy toggle to gate on consent, are follow-ups.
+See `docs/network/circles.md` for the Circles identity/consent substrate.
+
+### Configuration
+
+These live under `a2a.payment` (see the full Configuration Reference below), all
+default-on and individually kill-switchable:
+
+```jsonc
+{
+  "a2a": {
+    "payment": {
+      "ap2": { "enabled": true }, // attach + verify AP2 mandates
+      "enforcement": { "enabled": true }, // block present-but-invalid mandates (off = advisory only)
+    },
+  },
+}
+```
+
+The outbound attachment is also gated by the A2A client's `ap2Enabled` (default true).
+
+---
+
 ## Remote Execution Is Hermetic (PLAN-43 Phase 1)
 
 An inbound `message/send` or `message/stream` task executes an agent turn on
@@ -1074,6 +1182,14 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
         "address": "0x…", // optional; defaults to the node's own CDP wallet address
         "minPayment": 0.01, // floor in USDC
       },
+      "ap2": {
+        // PLAN-47: attach a signed AP2 mandate to outbound x402 payments and verify inbound ones
+        "enabled": true, // default true; advisory unless enforcement is also on
+      },
+      "enforcement": {
+        // PLAN-47: consume-once + context binding on inbound mandates, emitting Policy Decision Records
+        "enabled": true, // default true; block a present-but-invalid mandate. false = advisory-log-only
+      },
     },
     "marketplace": {
       "enabled": true,
@@ -1124,5 +1240,6 @@ The tool also returns short, paraphrasable `hints[]` strings for the agent to su
 
 - [A2A Protocol Specification](https://a2a-protocol.org/latest/specification/) -- canonical Google A2A reference.
 - [x402 Protocol Specification](https://github.com/coinbase/x402) -- canonical Coinbase x402 reference and v2 transport spec.
+- [AP2: Agent Payments Protocol](https://ap2-protocol.org/) -- the signed-mandate authorization layer Bitterbot models (see "Agent Payment Mandates, Enforcement, and Consent" above).
 - [ERC-8004: Trustless Agents](https://eips.ethereum.org/EIPS/eip-8004) -- identity, reputation, validation registries.
 - [Skill Marketplace Guide](./skill-marketplace.md) -- user-facing overview of marketplace features, pricing configuration, and security.
