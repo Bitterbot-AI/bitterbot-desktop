@@ -57,6 +57,13 @@ export interface A2aClientConfig {
   dailySpendLimitUsdc: number;
   /** Request timeout in ms. Default: 60000 (1 minute) */
   taskTimeoutMs: number;
+  /**
+   * Attach an AP2 payment mandate to outbound x402 payments (PLAN-47 Phase 1).
+   * Default: true. The mandate is advisory metadata alongside the x402 token —
+   * absence never breaks a peer, so this is safe on by default. Kill switch:
+   * a2a.payment.ap2.enabled.
+   */
+  ap2Enabled: boolean;
 }
 
 export interface PeerAgent {
@@ -119,6 +126,7 @@ export class A2aClient {
       maxTaskCostUsdc: config?.maxTaskCostUsdc ?? 0.5,
       dailySpendLimitUsdc: config?.dailySpendLimitUsdc ?? 2.0,
       taskTimeoutMs: config?.taskTimeoutMs ?? 60_000,
+      ap2Enabled: config?.ap2Enabled ?? true,
     };
     this.db = db;
   }
@@ -389,9 +397,46 @@ export class A2aClient {
         log.debug(`payment signature failed (continuing unsigned): ${String(err)}`);
       }
 
-      const paymentToken = Buffer.from(JSON.stringify({ ...tokenPayload, signature })).toString(
-        "base64",
-      );
+      // PLAN-47 Phase 1: attach an AP2 payment mandate alongside the x402 token.
+      // Signed proof that this spend was authorized under a standing delegated
+      // budget (per-task max + daily ceiling). Advisory: a peer that doesn't
+      // understand `ap2` ignores it, and any failure here falls back to the
+      // plain token, so this never breaks settlement.
+      let ap2: { intent: unknown; payment: unknown } | undefined;
+      if (this.config.ap2Enabled) {
+        try {
+          const { issueIntentMandate, issuePaymentMandate, usdc } =
+            await import("../payments/ap2/mandate.js");
+          const sign = (canonical: string) => params.walletService!.signMessage(canonical);
+          const intentMandate = await issueIntentMandate({
+            agentAddress: sender,
+            maxAmount: usdc(this.config.maxTaskCostUsdc),
+            totalAmount: usdc(this.config.dailySpendLimitUsdc),
+            promptPlayback: "pay a peer agent for the task the user asked me to run",
+            ttlMs: 24 * 60 * 60 * 1000,
+            sign,
+          });
+          const paymentMandate = await issuePaymentMandate({
+            intent: intentMandate,
+            agentAddress: sender,
+            payee: { id: payTo },
+            amount: usdc(price),
+            instrument: { id: sender, type: "x402-usdc", description: "USDC on Base via x402" },
+            transactionId: payment.txHash,
+            ttlMs: 5 * 60 * 1000,
+            sign,
+          });
+          ap2 = { intent: intentMandate, payment: paymentMandate };
+        } catch (err) {
+          // Non-fatal (e.g. over-limit would have been caught upstream, or a
+          // signing failure): ship the plain x402 token.
+          log.debug(`AP2 mandate emission skipped: ${String(err)}`);
+        }
+      }
+
+      const paymentToken = Buffer.from(
+        JSON.stringify({ ...tokenPayload, signature, ap2 }),
+      ).toString("base64");
 
       try {
         response = await fetch(a2aUrl, {

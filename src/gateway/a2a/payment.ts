@@ -69,6 +69,41 @@ export function resolveRequestedSkillId(rpcParams?: {
   return typeof meta === "string" && meta.trim() ? meta.trim() : undefined;
 }
 
+/**
+ * PLAN-47 Phase 1: advisory AP2 mandate check. If the buyer attached an AP2
+ * payment mandate inside the x402 token, verify the mandate chain (authenticity,
+ * unexpired, within the delegated budget it references) and log the outcome.
+ *
+ * ADVISORY ONLY: a missing, malformed, or invalid mandate does NOT change the
+ * x402 accept/reject decision here — that stays purely on-chain. Phase 4's
+ * enforcement gate is where the mandate becomes blocking and gains consume-once
+ * + context binding. This function never throws into the payment path.
+ */
+async function checkInboundAp2Mandate(paymentToken: string): Promise<void> {
+  try {
+    const decoded = JSON.parse(Buffer.from(paymentToken, "base64").toString("utf-8")) as {
+      ap2?: { intent?: unknown; payment?: unknown };
+    };
+    if (!decoded.ap2?.intent || !decoded.ap2?.payment) return; // legacy / no mandate
+    const { verifyPaymentAgainstIntent } = await import("../../payments/ap2/mandate.js");
+    const { recoverMessageAddress } = await import("viem");
+    const result = await verifyPaymentAgainstIntent({
+      // Shapes are validated inside the verifier; a bad shape yields valid:false.
+      payment: decoded.ap2.payment as never,
+      intent: decoded.ap2.intent as never,
+      recover: (canonical, signature) =>
+        recoverMessageAddress({ message: canonical, signature: signature as `0x${string}` }),
+    });
+    if (result.valid) {
+      log.debug("inbound AP2 mandate verified (advisory)");
+    } else {
+      log.warn(`inbound AP2 mandate failed verification (advisory, not enforced): ${result.error}`);
+    }
+  } catch (err) {
+    log.debug(`AP2 mandate advisory check skipped: ${String(err)}`);
+  }
+}
+
 export async function verifyA2aPayment(
   req: IncomingMessage,
   config: BitterbotConfig,
@@ -133,6 +168,8 @@ export async function verifyA2aPayment(
     });
 
     if (verification.valid) {
+      // PLAN-47 Phase 1: advisory AP2 mandate check (does not gate acceptance).
+      await checkInboundAp2Mandate(paymentToken ?? paymentHeader!);
       // PLAN-43 Phase 1: EXACT-id skill attribution only. The previous
       // fallback fuzzy-matched the task text against listing names — the
       // slopsquat vector §3.4 bans. No skillId means a generic task.

@@ -82,6 +82,15 @@ export type A2aConfig = {
       /** Minimum per-task payment in USDC. Default: 0.01. */
       minPayment?: number;
     };
+    /** AP2 payment mandates over the x402 rail (PLAN-47 Phase 1). */
+    ap2?: {
+      /**
+       * Attach a signed AP2 payment mandate to outbound x402 payments and
+       * verify inbound ones (advisory). Default: true. Advisory in Phase 1 —
+       * mandates never gate settlement until the Phase 4 enforcement layer.
+       */
+      enabled?: boolean;
+    };
   };
   /** P2P mesh delegation settings. */
   mesh?: {
