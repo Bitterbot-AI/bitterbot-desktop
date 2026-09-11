@@ -68,7 +68,7 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
         // No marketplace db — client still works, spend tracking degrades
       }
       client = new A2aClient(
-        { ...clientConfig, ap2Enabled: cfg.a2a.payment?.ap2?.enabled ?? true },
+        { ...clientConfig, ap2Enabled: cfg.a2a?.payment?.ap2?.enabled ?? true },
         db,
       );
     }
