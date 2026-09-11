@@ -91,6 +91,15 @@ export type A2aConfig = {
        */
       enabled?: boolean;
     };
+    /** AP2 runtime enforcement: consume-once + context binding (PLAN-47 Phase 4). */
+    enforcement?: {
+      /**
+       * Block an inbound task whose attached AP2 mandate is invalid, replayed,
+       * or redirected (wrong payee). Default: true. When false the gate is
+       * advisory-log-only. A missing mandate never blocks either way.
+       */
+      enabled?: boolean;
+    };
   };
   /** P2P mesh delegation settings. */
   mesh?: {

@@ -962,6 +962,12 @@ export const BitterbotSchema = z
               })
               .strict()
               .optional(),
+            enforcement: z
+              .object({
+                enabled: z.boolean().optional(),
+              })
+              .strict()
+              .optional(),
           })
           .strict()
           .optional(),

@@ -70,37 +70,65 @@ export function resolveRequestedSkillId(rpcParams?: {
 }
 
 /**
- * PLAN-47 Phase 1: advisory AP2 mandate check. If the buyer attached an AP2
- * payment mandate inside the x402 token, verify the mandate chain (authenticity,
- * unexpired, within the delegated budget it references) and log the outcome.
+ * PLAN-47 Phase 4: AP2 enforcement gate. If the buyer attached an AP2 payment
+ * mandate inside the x402 token, run the enforcement gate — authenticity +
+ * consume-once (replay) + context binding (the mandate's declared payee must be
+ * the party actually being paid) — and emit a Policy Decision Record.
  *
- * ADVISORY ONLY: a missing, malformed, or invalid mandate does NOT change the
- * x402 accept/reject decision here — that stays purely on-chain. Phase 4's
- * enforcement gate is where the mandate becomes blocking and gains consume-once
- * + context binding. This function never throws into the payment path.
+ * Returns { block } — true only when enforcement is enabled AND a *present*
+ * mandate fails (forgery / replay / redirect). A missing mandate never blocks
+ * (legacy / third-party peers), and when enforcement is disabled the decision is
+ * advisory-logged only (Phase 1 behavior). Never throws into the payment path:
+ * an internal error degrades to advisory (does not block a paid task).
+ *
+ * Today only Bitterbot-fleet peers emit `ap2`, and they share this mandate
+ * format, so blocking a present-and-invalid mandate is a forgery/replay defense
+ * with no legitimate-traffic cost. Kill switch: a2a.payment.enforcement.enabled.
  */
-async function checkInboundAp2Mandate(paymentToken: string): Promise<void> {
+async function enforceInboundAp2Mandate(
+  paymentToken: string,
+  ctx: {
+    expectedPayee: string;
+    expectedAmount: number;
+    enforce: boolean;
+    db?: import("node:sqlite").DatabaseSync;
+  },
+): Promise<{ block: boolean }> {
   try {
     const decoded = JSON.parse(Buffer.from(paymentToken, "base64").toString("utf-8")) as {
       ap2?: { intent?: unknown; payment?: unknown };
     };
-    if (!decoded.ap2?.intent || !decoded.ap2?.payment) return; // legacy / no mandate
-    const { verifyPaymentAgainstIntent } = await import("../../payments/ap2/mandate.js");
+    if (!decoded.ap2?.intent || !decoded.ap2?.payment) return { block: false }; // legacy / no mandate
+
+    const { evaluate, createSqliteEnforcementStore, InMemoryEnforcementStore } =
+      await import("../../payments/ap2/enforcement.js");
     const { recoverMessageAddress } = await import("viem");
-    const result = await verifyPaymentAgainstIntent({
-      // Shapes are validated inside the verifier; a bad shape yields valid:false.
+    const store = ctx.db ? createSqliteEnforcementStore(ctx.db) : new InMemoryEnforcementStore();
+    const pdr = await evaluate({
       payment: decoded.ap2.payment as never,
       intent: decoded.ap2.intent as never,
+      expectedPayee: ctx.expectedPayee,
+      expectedAmount: ctx.expectedAmount,
       recover: (canonical, signature) =>
         recoverMessageAddress({ message: canonical, signature: signature as `0x${string}` }),
+      store,
     });
-    if (result.valid) {
-      log.debug("inbound AP2 mandate verified (advisory)");
-    } else {
-      log.warn(`inbound AP2 mandate failed verification (advisory, not enforced): ${result.error}`);
+
+    if (pdr.verdict === "allow") {
+      log.debug(`AP2 mandate allowed (${pdr.mandateId.slice(0, 16)})`);
+      return { block: false };
     }
+    if (ctx.enforce) {
+      log.warn(`AP2 mandate DENIED, blocking task: ${pdr.reasons.join("; ")}`);
+      return { block: true };
+    }
+    log.warn(`AP2 mandate would be denied (advisory, not enforced): ${pdr.reasons.join("; ")}`);
+    return { block: false };
   } catch (err) {
-    log.debug(`AP2 mandate advisory check skipped: ${String(err)}`);
+    // Fail open to the on-chain decision: an enforcement bug must not reject a
+    // task the buyer already paid for on-chain.
+    log.debug(`AP2 enforcement skipped (degraded to advisory): ${String(err)}`);
+    return { block: false };
   }
 }
 
@@ -168,8 +196,19 @@ export async function verifyA2aPayment(
     });
 
     if (verification.valid) {
-      // PLAN-47 Phase 1: advisory AP2 mandate check (does not gate acceptance).
-      await checkInboundAp2Mandate(paymentToken ?? paymentHeader!);
+      // PLAN-47 Phase 4: AP2 enforcement gate. Blocks a present-but-invalid
+      // mandate (forgery/replay/redirect) when enforcement is enabled; a missing
+      // mandate or disabled enforcement never blocks. Default: enabled.
+      const enforce = config.a2a?.payment?.enforcement?.enabled ?? true;
+      const { block } = await enforceInboundAp2Mandate(paymentToken ?? paymentHeader!, {
+        expectedPayee: address,
+        expectedAmount: requiredAmount,
+        enforce,
+        db: marketplace?.getDb?.(),
+      });
+      if (block) {
+        return { paid: false };
+      }
       // PLAN-43 Phase 1: EXACT-id skill attribution only. The previous
       // fallback fuzzy-matched the task text against listing names — the
       // slopsquat vector §3.4 bans. No skillId means a generic task.
