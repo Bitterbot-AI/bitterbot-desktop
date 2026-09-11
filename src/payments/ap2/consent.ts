@@ -70,6 +70,8 @@ export interface SpendConsentClaims {
   max_amount: { amount: string; currency: string };
   /** Allowed payees (lowercased) or ["*"]. */
   allowed_payees: string[];
+  /** Optional id of the human-set spend grant that authorized this consent (PLAN-48). */
+  grant_ref?: string;
   iat: number; // unix seconds
   exp: number; // unix seconds
 }
@@ -130,6 +132,7 @@ export function buildSpendConsent(params: {
   circlePubkey: CirclePubkey;
   maxAmount: { amount: string; currency: string };
   allowedPayees: string[];
+  grantRef?: string;
   ttlMs: number;
   signCircle: SignEd25519Fn;
   now?: number;
@@ -141,6 +144,7 @@ export function buildSpendConsent(params: {
     circle_pubkey: params.circlePubkey,
     max_amount: params.maxAmount,
     allowed_payees: params.allowedPayees.map((p) => p.toLowerCase()),
+    ...(params.grantRef ? { grant_ref: params.grantRef } : {}),
     iat,
     exp: iat + Math.floor(params.ttlMs / 1000),
   };

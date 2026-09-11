@@ -91,6 +91,16 @@ export type A2aConfig = {
        */
       enabled?: boolean;
     };
+    /** Spend grants + consent (PLAN-48). */
+    consent?: {
+      /**
+       * Require an active human-set spend grant to cover an outbound A2A payment.
+       * Default: false. When true, an uncovered spend raises an approval request
+       * and is refused rather than paid (the "scope once, escalate out-of-scope"
+       * model). Grants are managed via the spendGrant.* operator RPCs.
+       */
+      grantsRequired?: boolean;
+    };
     /** AP2 runtime enforcement: consume-once + context binding (PLAN-47 Phase 4). */
     enforcement?: {
       /**

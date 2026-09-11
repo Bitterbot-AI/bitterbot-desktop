@@ -27,6 +27,7 @@ import { projectsHandlers } from "./server-methods/projects.js";
 import { sendHandlers } from "./server-methods/send.js";
 import { sessionsHandlers } from "./server-methods/sessions.js";
 import { skillsHandlers } from "./server-methods/skills.js";
+import { spendGrantHandlers } from "./server-methods/spend-grants.js";
 import { systemHandlers } from "./server-methods/system.js";
 import { talkHandlers } from "./server-methods/talk.js";
 import { ttsHandlers } from "./server-methods/tts.js";
@@ -329,6 +330,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...dreamHandlers,
   ...circlesHandlers,
   ...forageHandlers,
+  ...spendGrantHandlers,
   ...managementHandlers,
   ...cronHandlers,
 };

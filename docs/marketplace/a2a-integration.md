@@ -838,9 +838,39 @@ identity (consent signer). The gate verifies the whole chain and records a
 verified/unverified `consentRef` on the Policy Decision Record.
 
 Consent is **additive provenance** today: an unverified consent is recorded but does
-not by itself flip the verdict. The human disclosure-grant layer that governs whether
-a node emits spend consent, and a policy toggle to gate on consent, are follow-ups.
-See `docs/network/circles.md` for the Circles identity/consent substrate.
+not by itself flip the verdict (gating on consent is a policy toggle tracked for a
+later phase). When a human-set spend grant covers the spend, the emitted consent
+back-references it (`grant_ref`), so the lineage is grant -> consent -> payment. See
+`docs/network/circles.md` for the Circles identity/consent substrate.
+
+### Spend grants & escalation (PLAN-48)
+
+The consent above answers "did the owner authorize this?"; **spend grants** are how
+the owner authorizes, following the model of ERC-7715 `wallet_grantPermissions` and
+AP2 Intent Mandates: **scope once, spend silently in-scope, escalate out-of-scope.**
+
+- **A spend grant** is a signed, revocable budget the owner sets once: an allowance
+  per period, to a set of payees, with an expiry (`{allowed_payees, allowance,
+period_seconds, per_tx_max?, exp}`), signed by the node's owner/device Ed25519 key
+  so it is tamper-evident and non-repudiable. Managed via the `spendGrant.*` operator
+  RPCs (`set` / `list` / `revoke`).
+- **In-scope spends** proceed with zero prompts and carry the grant's id into their
+  consent. Per-period usage is tracked, so the allowance depletes and refills on the
+  period boundary.
+- **Out-of-scope spends** (no covering grant) **escalate**: the agent raises an
+  approval request and does not pay. A human resolves it with `spendGrant.approve`
+  (which mints a one-time grant scoped to exactly that spend) or `spendGrant.deny`
+  (which spends nothing). List pending requests with `spendGrant.approvals`.
+- **Revocation is immediate** — a revoked or expired grant authorizes no further spend
+  on the next resolution, and never unwinds a spend that already settled.
+
+This is gated by `a2a.payment.consent.grantsRequired` (default **false**). With it
+off, spends behave as before and a covering grant merely back-references the consent;
+with it on, a spend with no covering grant is refused and escalated rather than paid —
+the "can't spend unbidden" safe posture. Grant enforcement is app-side today; binding
+the same grant to an on-chain spend permission (CDP Smart Account / ERC-7710) is a
+later phase, and a one-tap / passkey approval UI is the human-facing surface that
+consumes the approval requests.
 
 ### Configuration
 
@@ -853,6 +883,7 @@ default-on and individually kill-switchable:
     "payment": {
       "ap2": { "enabled": true }, // attach + verify AP2 mandates
       "enforcement": { "enabled": true }, // block present-but-invalid mandates (off = advisory only)
+      "consent": { "grantsRequired": false }, // require a covering spend grant; off = escalation disabled
     },
   },
 }
@@ -1189,6 +1220,10 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
       "enforcement": {
         // PLAN-47: consume-once + context binding on inbound mandates, emitting Policy Decision Records
         "enabled": true, // default true; block a present-but-invalid mandate. false = advisory-log-only
+      },
+      "consent": {
+        // PLAN-48: require a human-set spend grant to cover an outbound payment; escalate otherwise
+        "grantsRequired": false, // default false; true = uncovered spends raise an approval instead of paying
       },
     },
     "marketplace": {

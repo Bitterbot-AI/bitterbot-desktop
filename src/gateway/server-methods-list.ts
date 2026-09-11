@@ -180,6 +180,13 @@ const BASE_METHODS = [
   "marketplace.contributors",
   "marketplace.contributorClearFlag",
   "marketplace.postBond",
+  // PLAN-48: spend grants + escalation approvals (operator surface)
+  "spendGrant.set",
+  "spendGrant.list",
+  "spendGrant.revoke",
+  "spendGrant.approvals",
+  "spendGrant.approve",
+  "spendGrant.deny",
   // Management
   "management.census",
   "management.anomalies",

@@ -64,6 +64,14 @@ export interface A2aClientConfig {
    * a2a.payment.ap2.enabled.
    */
   ap2Enabled: boolean;
+  /**
+   * Require an active human-set spend grant to cover an outbound payment
+   * (PLAN-48 Phase 1). Default: false. When true, a spend with no covering grant
+   * is refused and an approval request is raised instead of paying; when false,
+   * a covering grant (if any) still back-references the consent, but its absence
+   * does not block. Kill switch: a2a.payment.consent.grantsRequired.
+   */
+  grantsRequired: boolean;
 }
 
 export interface PeerAgent {
@@ -100,7 +108,7 @@ export function classifyOutcome(result: A2aTaskResult): CommerceOutcome | null {
   }
   const err = result.error ?? "";
   if (
-    /^(Price \$|Daily A2A spend limit|Payment failed|Payment required but pricing|Peer is commerce-quarantined)/.test(
+    /^(Price \$|Daily A2A spend limit|Payment failed|Payment required but pricing|Peer is commerce-quarantined|Spend awaiting approval|Spend grant)/.test(
       err,
     )
   ) {
@@ -127,6 +135,7 @@ export class A2aClient {
       dailySpendLimitUsdc: config?.dailySpendLimitUsdc ?? 2.0,
       taskTimeoutMs: config?.taskTimeoutMs ?? 60_000,
       ap2Enabled: config?.ap2Enabled ?? true,
+      grantsRequired: config?.grantsRequired ?? false,
     };
     this.db = db;
   }
@@ -354,12 +363,61 @@ export class A2aClient {
         };
       }
 
+      // PLAN-48: spend-grant gate. Resolve the human-set grant that covers this
+      // spend (best-effort — the grant_ref back-references the consent). When
+      // grantsRequired is on, an uncovered spend does NOT pay: it raises an
+      // approval request and refuses, so the human can approve out-of-scope
+      // spends (Phase 2) instead of the agent spending unbidden.
+      let grantRef: string | undefined;
+      if (this.db) {
+        try {
+          const { SpendGrantStore } = await import("../payments/grants/spend-grant-store.js");
+          const { verifyEd25519 } = await import("../payments/ap2/ed25519.js");
+          const store = new SpendGrantStore(this.db);
+          const cov = store.activeGrantFor({ payee: payTo, amountUsd: price, verifyEd25519 });
+          if (cov.grant) {
+            grantRef = cov.grant.claims.grant_id;
+          } else if (this.config.grantsRequired) {
+            store.requestApproval({
+              payee: payTo,
+              amountUsd: price,
+              reason: `A2A task at ${params.agentUrl}`,
+            });
+            return {
+              success: false,
+              error: `Spend awaiting approval: no active grant covers $${price} to ${payTo} (${cov.reason}). Approve it to proceed.`,
+            };
+          }
+        } catch (err) {
+          if (this.config.grantsRequired) {
+            return { success: false, error: `Spend grant check failed: ${String(err)}` };
+          }
+          log.debug(`spend-grant lookup skipped: ${String(err)}`);
+        }
+      } else if (this.config.grantsRequired) {
+        return {
+          success: false,
+          error: "Spend grants required but no grant store (marketplace db) available",
+        };
+      }
+
       // Pay via wallet
       let payment: { txHash: string };
       try {
         payment = await params.walletService.sendUsdc(payTo, price);
       } catch (err) {
         return { success: false, error: `Payment failed: ${String(err)}` };
+      }
+
+      // PLAN-48: record the spend against its grant's period allowance so the
+      // next in-scope spend sees the reduced remaining budget.
+      if (grantRef && this.db) {
+        try {
+          const { SpendGrantStore } = await import("../payments/grants/spend-grant-store.js");
+          new SpendGrantStore(this.db).recordUsage(grantRef, price);
+        } catch (err) {
+          log.debug(`grant usage record skipped: ${String(err)}`);
+        }
       }
 
       // Record the spend immediately — money has left the wallet even if the
@@ -443,6 +501,7 @@ export class A2aClient {
               circlePubkey,
               maxAmount: usdc(this.config.maxTaskCostUsdc),
               allowedPayees: ["*"],
+              grantRef,
               ttlMs: 24 * 60 * 60 * 1000,
               signCircle,
             });
