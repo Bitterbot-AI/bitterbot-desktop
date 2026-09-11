@@ -29,10 +29,14 @@ describe("PLAN-47 invariants (red skeletons — turn green per phase)", () => {
   // I2 consume-once, I3 context binding, I6 Policy Decision Record are DONE
   // (Phase 4) — see src/payments/ap2/enforcement.test.ts.
 
-  // Phase 2: CDP MPC EOA -> Smart Account (Victor-authored; test is ours).
+  // Phase 2: CDP Smart Account. Policy core (SpendPermissionPolicy) is DONE +
+  // tested (src/payments/wallet/spend-permission.test.ts). I5 is an INTEGRATION
+  // check that needs a live/testnet CDP wallet (doctor-wallet), so it stays a
+  // todo here until the operator-run upgrade lands.
   it.todo(
-    "I5 address continuity — after the EIP-7702 upgrade the wallet address is " +
-      "unchanged (0x1593…), balances intact, send_usdc + Aubaine EIP-3009 signer still work",
+    "I5 address/balance continuity — after the CDP Smart Account upgrade the owner " +
+      "EOA is unchanged, balances intact, send_usdc + Aubaine EIP-3009 signer still work " +
+      "(integration check in doctor-wallet; needs live/testnet CDP creds)",
   );
 
   // Cross-cutting, per phase.

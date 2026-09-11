@@ -668,6 +668,15 @@ export const ToolsSchema = z
           .strict()
           .optional(),
         allowlistedContracts: z.array(z.string()).optional(),
+        smartAccount: z
+          .object({
+            enabled: z.boolean().optional(),
+            allowanceUsd: z.number().nonnegative().optional(),
+            periodSeconds: z.number().int().positive().optional(),
+            sponsorGas: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
