@@ -1,7 +1,7 @@
 /**
  * PLAN-47 adversarial pass — attacks on the mandate + enforcement layer.
- * Each test corresponds to a finding; the first two assert the hardenings hold,
- * the third documents an accepted limitation (finding C) as an executable note.
+ * A and B assert the two hardenings hold; finding C (a stripped mandate is not
+ * blocked) is an accepted posture documented in enforcement.ts, not a test.
  */
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
