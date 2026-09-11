@@ -31,10 +31,23 @@
  * authorizing Circles signed-state consent envelope — the lineage an AP2-only
  * deployment cannot produce. (Populating it from a live Circles envelope is a
  * follow-up; the field and passthrough exist here.)
+ *
+ * KNOWN LIMITATION (adversarial pass, finding C). The AP2 mandate rides inside
+ * the x402 token but is NOT covered by the x402 token's signature, and the gate
+ * fails OPEN on any internal error. So a motivated buyer or on-path attacker can
+ * STRIP or malform the `ap2` field to skip enforcement — enforcement can only
+ * ever DENY a *present* mandate, never compel one to exist. This is acceptable
+ * for the current fleet-only posture (only Bitterbot peers emit mandates, share
+ * this format, and cannot gain by evading a check on their own spend), and the
+ * mandate never grants payment (x402 on-chain settlement is the source of truth).
+ * Making enforcement binding — require a valid mandate from known-fleet peers,
+ * and bind the mandate hash into the x402 token signature — is the Phase 4.x
+ * hardening tracked for when non-fleet peers transact.
  */
 
 import { createHash } from "node:crypto";
 import {
+  mandateContentId,
   mandateHash,
   verifyPaymentAgainstIntent,
   type IntentMandateClaims,
@@ -108,7 +121,11 @@ export interface EvaluateParams {
 export async function evaluate(params: EvaluateParams): Promise<PolicyDecisionRecord> {
   const now = params.now ?? Date.now();
   const claims = params.payment.claims;
+  // mandateId identifies the signed envelope (goes in the PDR); nonceKey is the
+  // consume-once key and hashes CLAIMS ONLY, so a re-signed replay of identical
+  // claims is still caught (adversarial-pass hardening).
   const mandateId = mandateHash(params.payment);
+  const nonceKey = mandateContentId(claims);
   const reasons: string[] = [];
 
   const base: Omit<PolicyDecisionRecord, "verdict" | "consumed"> = {
@@ -158,8 +175,9 @@ export async function evaluate(params: EvaluateParams): Promise<PolicyDecisionRe
   }
 
   // 4. Consume-once — claim the mandate LAST, so a failed check above never
-  // burns it. A replay loses the claim and is denied.
-  const claimed = params.store.claimMandate(mandateId, now);
+  // burns it. Keyed on the claims content (nonceKey), so a re-signed replay of
+  // the same authorization is caught too. A replay loses the claim and is denied.
+  const claimed = params.store.claimMandate(nonceKey, now);
   if (!claimed) return deny("consume_once: mandate already consumed (replay)", false);
 
   const pdr: PolicyDecisionRecord = { ...base, verdict: "allow", consumed: true };

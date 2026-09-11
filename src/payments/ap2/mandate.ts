@@ -101,7 +101,7 @@ export interface PaymentMandateClaims {
 /** A signed mandate: the claims, the agent signature, and the declared signer. */
 export interface MandateEnvelope<TClaims> {
   claims: TClaims;
-  /** Agent signature over canonicalizeClaims(claims). */
+  /** Agent signature over signingMaterial(claims) (domain + canonical claims). */
   signature: string;
   /** Declared signer address; must equal claims.cnf.eip155Address and the recovered signer. */
   signer: string;
@@ -120,12 +120,26 @@ export type SignFn = (canonical: string) => Promise<string>;
 export type RecoverFn = (canonical: string, signature: string) => Promise<string>;
 
 /**
+ * Domain separator prepended to every mandate before signing (adversarial-pass
+ * hardening). The agent's `signMessage` is a general EIP-191 signer also used
+ * for x402 payment tokens; tagging the signed bytes with a mandate-specific,
+ * versioned domain means a mandate signature can never be confused with — or
+ * replayed as — a signature over any other kind of message, and vice versa.
+ */
+export const AP2_MANDATE_DOMAIN = "bitterbot-ap2-mandate:v1:";
+
+/**
  * Deterministic canonical encoding of claims for signing/verifying. Keys are
  * emitted in sorted order at every level so the same claims always produce the
  * same bytes. (AP2 wire-interop would replace this with SD-JWT; see file header.)
  */
 export function canonicalizeClaims(claims: unknown): string {
   return JSON.stringify(sortDeep(claims));
+}
+
+/** The exact bytes that get signed/recovered for a mandate: domain + canonical claims. */
+export function signingMaterial(claims: unknown): string {
+  return AP2_MANDATE_DOMAIN + canonicalizeClaims(claims);
 }
 
 function sortDeep(value: unknown): unknown {
@@ -144,6 +158,18 @@ function sortDeep(value: unknown): unknown {
 export function mandateHash<T>(env: MandateEnvelope<T>): string {
   const material = canonicalizeClaims({ claims: env.claims, signature: env.signature });
   return "sha256:" + createHash("sha256").update(material).digest("hex");
+}
+
+/**
+ * Content id of a mandate: a hash of its CLAIMS ONLY (not the signature). This
+ * is the consume-once key (adversarial-pass hardening): keying on the signature
+ * would let a re-signed replay of identical claims slip past the nonce, since
+ * ECDSA signatures are not deterministic. Two genuinely distinct payments differ
+ * in `transaction_id`, so their content ids differ; a replay of the same
+ * authorization has the same content id and is caught regardless of signature.
+ */
+export function mandateContentId(claims: unknown): string {
+  return "sha256:" + createHash("sha256").update(canonicalizeClaims(claims)).digest("hex");
 }
 
 function nowSeconds(): number {
@@ -192,7 +218,7 @@ export async function issueIntentMandate(params: {
       ...(params.promptPlayback ? { prompt_playback: params.promptPlayback } : {}),
     },
   };
-  const signature = await params.sign(canonicalizeClaims(claims));
+  const signature = await params.sign(signingMaterial(claims));
   return { claims, signature, signer };
 }
 
@@ -242,7 +268,7 @@ export async function issuePaymentMandate(params: {
     payment_instrument: params.instrument,
     intent_ref: mandateHash(params.intent),
   };
-  const signature = await params.sign(canonicalizeClaims(claims));
+  const signature = await params.sign(signingMaterial(claims));
   return { claims, signature, signer };
 }
 
@@ -271,7 +297,7 @@ export async function verifyMandate<T extends { cnf: KeyConfirmation; exp: numbe
   }
   let recovered: string;
   try {
-    recovered = await opts.recover(canonicalizeClaims(env.claims), env.signature);
+    recovered = await opts.recover(signingMaterial(env.claims), env.signature);
   } catch (err) {
     return { valid: false, error: `signature recover failed: ${String(err)}` };
   }
