@@ -96,6 +96,14 @@ export interface PaymentMandateClaims {
    * (the `conditional_transaction_id` mechanism); this is that link.
    */
   intent_ref: string;
+  /**
+   * Optional id of the Circles spend-consent this payment traces to
+   * (src/payments/ap2/consent.ts). Signed as part of the mandate so the
+   * reference can't be swapped; the consent artifact + identity binding travel
+   * alongside the mandate for the settling party to verify. Absent on mandates
+   * emitted without consent lineage.
+   */
+  consent_ref?: string;
 }
 
 /** A signed mandate: the claims, the agent signature, and the declared signer. */
@@ -236,6 +244,8 @@ export async function issuePaymentMandate(params: {
   instrument: { id: string; type: string; description?: string };
   transactionId: string;
   ttlMs: number;
+  /** Optional Circles spend-consent id to bind into the mandate (consent lineage). */
+  consentRef?: string;
   sign: SignFn;
 }): Promise<MandateEnvelope<PaymentMandateClaims>> {
   const signer = params.agentAddress.toLowerCase();
@@ -267,6 +277,7 @@ export async function issuePaymentMandate(params: {
     payment_amount: params.amount,
     payment_instrument: params.instrument,
     intent_ref: mandateHash(params.intent),
+    ...(params.consentRef ? { consent_ref: params.consentRef } : {}),
   };
   const signature = await params.sign(signingMaterial(claims));
   return { claims, signature, signer };

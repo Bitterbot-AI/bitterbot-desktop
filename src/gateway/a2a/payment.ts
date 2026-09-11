@@ -96,13 +96,31 @@ async function enforceInboundAp2Mandate(
 ): Promise<{ block: boolean }> {
   try {
     const decoded = JSON.parse(Buffer.from(paymentToken, "base64").toString("utf-8")) as {
-      ap2?: { intent?: unknown; payment?: unknown };
+      ap2?: { intent?: unknown; payment?: unknown; consent?: unknown; binding?: unknown };
     };
     if (!decoded.ap2?.intent || !decoded.ap2?.payment) return { block: false }; // legacy / no mandate
 
     const { evaluate, createSqliteEnforcementStore, InMemoryEnforcementStore } =
       await import("../../payments/ap2/enforcement.js");
     const { recoverMessageAddress } = await import("viem");
+    const nodeCrypto = await import("node:crypto");
+    // Verify an Ed25519 signature over `msg` for an `ed25519:<hex>` pubkey — the
+    // same SPKI-wrapped form the Circles envelope layer uses — to check the
+    // consent lineage (the moat). Never throws.
+    const verifyEd25519 = (msg: string, sigHex: string, pubkey: string): boolean => {
+      try {
+        const m = /^ed25519:([0-9a-f]{64})$/.exec(pubkey);
+        if (!m || !/^[0-9a-f]+$/.test(sigHex)) return false;
+        const spki = Buffer.concat([
+          Buffer.from("302a300506032b6570032100", "hex"),
+          Buffer.from(m[1]!, "hex"),
+        ]);
+        const key = nodeCrypto.createPublicKey({ key: spki, format: "der", type: "spki" });
+        return nodeCrypto.verify(null, Buffer.from(msg), key, Buffer.from(sigHex, "hex"));
+      } catch {
+        return false;
+      }
+    };
     const store = ctx.db ? createSqliteEnforcementStore(ctx.db) : new InMemoryEnforcementStore();
     const pdr = await evaluate({
       payment: decoded.ap2.payment as never,
@@ -112,6 +130,10 @@ async function enforceInboundAp2Mandate(
       recover: (canonical, signature) =>
         recoverMessageAddress({ message: canonical, signature: signature as `0x${string}` }),
       store,
+      // Consent lineage, when the buyer attached it (additive provenance).
+      consent: decoded.ap2.consent as never,
+      binding: decoded.ap2.binding as never,
+      verifyEd25519,
     });
 
     if (pdr.verdict === "allow") {

@@ -173,6 +173,82 @@ describe("AP2 enforcement gate (PLAN-47 Phase 4)", () => {
     }
   });
 
+  // Consent lineage (the moat): a valid consent + binding stamps a verified ref.
+  it("stamps a verified consentRef when a valid consent lineage is attached", async () => {
+    const { buildSpendConsent, buildIdentityBinding } = await import("./consent.js");
+    const sha2 = (s: string) => createHash("sha256").update(s).digest("hex");
+    const CIRCLE = "ed25519:" + "ab".repeat(32);
+    const signCircle = (msg: string) => `${CIRCLE}:${sha2(msg)}`;
+    const verifyEd25519 = (msg: string, sig: string, pk: string) => sig === `${pk}:${sha2(msg)}`;
+    const { intent, payment } = await pair();
+    const consent = buildSpendConsent({
+      walletAddress: AGENT,
+      circlePubkey: CIRCLE,
+      maxAmount: usdc(1),
+      allowedPayees: ["*"],
+      ttlMs: 3_600_000,
+      signCircle,
+    });
+    const binding = await buildIdentityBinding({
+      walletAddress: AGENT,
+      circlePubkey: CIRCLE,
+      signWallet: makeSigner(AGENT),
+      signCircle,
+    });
+    const store = new InMemoryEnforcementStore();
+    const pdr = await evaluate({
+      payment,
+      intent,
+      expectedPayee: SELLER,
+      expectedAmount: 0.25,
+      recover,
+      store,
+      consent,
+      binding,
+      verifyEd25519,
+    });
+    expect(pdr.verdict).toBe("allow");
+    expect(pdr.consentRef).toMatch(/^consent:/);
+    expect(pdr.reasons.join()).toMatch(/consent_verified/);
+  });
+
+  it("records consent_unverified (but does not flip the verdict) on a bad binding", async () => {
+    const { buildSpendConsent, buildIdentityBinding } = await import("./consent.js");
+    const sha2 = (s: string) => createHash("sha256").update(s).digest("hex");
+    const CIRCLE = "ed25519:" + "ab".repeat(32);
+    const signCircle = (msg: string) => `${CIRCLE}:${sha2(msg)}`;
+    const verifyEd25519 = () => false; // force binding/consent verification to fail
+    const { intent, payment } = await pair();
+    const consent = buildSpendConsent({
+      walletAddress: AGENT,
+      circlePubkey: CIRCLE,
+      maxAmount: usdc(1),
+      allowedPayees: ["*"],
+      ttlMs: 3_600_000,
+      signCircle,
+    });
+    const binding = await buildIdentityBinding({
+      walletAddress: AGENT,
+      circlePubkey: CIRCLE,
+      signWallet: makeSigner(AGENT),
+      signCircle,
+    });
+    const store = new InMemoryEnforcementStore();
+    const pdr = await evaluate({
+      payment,
+      intent,
+      expectedPayee: SELLER,
+      expectedAmount: 0.25,
+      recover,
+      store,
+      consent,
+      binding,
+      verifyEd25519,
+    });
+    expect(pdr.verdict).toBe("allow"); // consent is additive; does not gate yet
+    expect(pdr.reasons.join()).toMatch(/consent_unverified/);
+  });
+
   it("does not consume the mandate nonce when an earlier check fails", async () => {
     // A context-binding failure must not burn the nonce: a later correctly
     // addressed presentation of the same mandate should still be evaluable.

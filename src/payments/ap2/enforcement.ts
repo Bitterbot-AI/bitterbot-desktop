@@ -108,8 +108,19 @@ export interface EvaluateParams {
   expectedCurrency?: string;
   recover: RecoverFn;
   store: EnforcementStore;
-  /** Optional Circles consent-envelope id to stamp into the PDR. */
+  /** Optional Circles consent-envelope id to stamp into the PDR (fallback). */
   consentRef?: string;
+  /**
+   * Optional Circles consent lineage (the moat). When the buyer attaches a spend
+   * consent + identity binding, the gate resolves + verifies the chain and stamps
+   * the resulting consentRef (and a verified/unverified reason) into the PDR.
+   * Consent is additive provenance: an unverified consent is recorded but does
+   * NOT by itself flip the verdict in this increment (gating on it is a future
+   * policy toggle). Reuses `recover` for the binding's wallet signature.
+   */
+  consent?: import("./consent.js").SpendConsent;
+  binding?: import("./consent.js").IdentityBinding;
+  verifyEd25519?: import("./consent.js").VerifyEd25519Fn;
   now?: number;
 }
 
@@ -128,6 +139,25 @@ export async function evaluate(params: EvaluateParams): Promise<PolicyDecisionRe
   const nonceKey = mandateContentId(claims);
   const reasons: string[] = [];
 
+  // Circles consent lineage (additive): resolve + verify the chain if the buyer
+  // attached one, and record the result. Does not gate the verdict here.
+  let consentRef = params.consentRef;
+  if (params.consent && params.binding && params.verifyEd25519) {
+    const { resolveConsentRef } = await import("./consent.js");
+    const res = await resolveConsentRef({
+      consent: params.consent,
+      binding: params.binding,
+      payerWallet: claims.cnf.eip155Address,
+      payee: claims.payee.id,
+      amountUsd: parse(claims.payment_amount.amount),
+      recoverWallet: params.recover,
+      verifyEd25519: params.verifyEd25519,
+      now,
+    });
+    consentRef = res.consentRef;
+    reasons.push(res.verified ? "consent_verified" : `consent_unverified: ${res.reason}`);
+  }
+
   const base: Omit<PolicyDecisionRecord, "verdict" | "consumed"> = {
     mandateId,
     transactionId: claims.transaction_id,
@@ -136,7 +166,7 @@ export async function evaluate(params: EvaluateParams): Promise<PolicyDecisionRe
     amount: claims.payment_amount,
     agent: claims.cnf.eip155Address.toLowerCase(),
     intentRef: claims.intent_ref,
-    consentRef: params.consentRef,
+    consentRef,
     timestamp: now,
   };
 

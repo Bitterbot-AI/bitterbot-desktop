@@ -402,7 +402,9 @@ export class A2aClient {
       // budget (per-task max + daily ceiling). Advisory: a peer that doesn't
       // understand `ap2` ignores it, and any failure here falls back to the
       // plain token, so this never breaks settlement.
-      let ap2: { intent: unknown; payment: unknown } | undefined;
+      let ap2:
+        | { intent: unknown; payment: unknown; consent?: unknown; binding?: unknown }
+        | undefined;
       if (this.config.ap2Enabled) {
         try {
           const { issueIntentMandate, issuePaymentMandate, usdc } =
@@ -416,6 +418,46 @@ export class A2aClient {
             ttlMs: 24 * 60 * 60 * 1000,
             sign,
           });
+
+          // PLAN-47 Phase 4.x: Circles consent lineage. Sign a spend consent with
+          // the node's Ed25519 device identity (its Circles key) and a binding
+          // that ties that key to the paying wallet, so the settling party can
+          // prove this spend traces to the same principal that controls both
+          // keys — provenance an AP2-only stack can't produce. Best-effort: any
+          // failure just omits consent and ships the mandate alone.
+          let consent: unknown;
+          let binding: unknown;
+          let consentRef: string | undefined;
+          try {
+            const nodeCrypto = await import("node:crypto");
+            const { keyPairFromPrivateKeyPem, pubkeyId } = await import("../commerce/envelope.js");
+            const { loadOrCreateDeviceIdentity } = await import("../infra/device-identity.js");
+            const { buildSpendConsent, buildIdentityBinding, consentId } =
+              await import("../payments/ap2/consent.js");
+            const circleKey = keyPairFromPrivateKeyPem(loadOrCreateDeviceIdentity().privateKeyPem);
+            const circlePubkey = pubkeyId(circleKey);
+            const signCircle = (msg: string) =>
+              nodeCrypto.sign(null, Buffer.from(msg), circleKey.privateKey).toString("hex");
+            const spendConsent = buildSpendConsent({
+              walletAddress: sender,
+              circlePubkey,
+              maxAmount: usdc(this.config.maxTaskCostUsdc),
+              allowedPayees: ["*"],
+              ttlMs: 24 * 60 * 60 * 1000,
+              signCircle,
+            });
+            binding = await buildIdentityBinding({
+              walletAddress: sender,
+              circlePubkey,
+              signWallet: sign,
+              signCircle,
+            });
+            consent = spendConsent;
+            consentRef = consentId(spendConsent.claims);
+          } catch (err) {
+            log.debug(`AP2 consent lineage skipped: ${String(err)}`);
+          }
+
           const paymentMandate = await issuePaymentMandate({
             intent: intentMandate,
             agentAddress: sender,
@@ -424,9 +466,10 @@ export class A2aClient {
             instrument: { id: sender, type: "x402-usdc", description: "USDC on Base via x402" },
             transactionId: payment.txHash,
             ttlMs: 5 * 60 * 1000,
+            consentRef,
             sign,
           });
-          ap2 = { intent: intentMandate, payment: paymentMandate };
+          ap2 = { intent: intentMandate, payment: paymentMandate, consent, binding };
         } catch (err) {
           // Non-fatal (e.g. over-limit would have been caught upstream, or a
           // signing failure): ship the plain x402 token.
