@@ -17,6 +17,7 @@ import { NodesView } from "../nodes/NodesView";
 import { OverviewView } from "../overview/OverviewView";
 import { P2pDashboard } from "../p2p/P2pDashboard";
 import { SkillsView } from "../skills/SkillsView";
+import { SpendGrantsView } from "../spend-grants/SpendGrantsView";
 import { UsageView } from "../usage/UsageView";
 import { WalletView } from "../wallet/WalletView";
 import { WorkspaceView } from "../workspace/WorkspaceView";
@@ -36,6 +37,7 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   nodes: () => <NodesView />,
   workspace: () => <WorkspaceView />,
   wallet: () => <WalletView />,
+  spendGrants: () => <SpendGrantsView />,
   p2p: () => <P2pDashboard />,
   people: () => <CirclesView />,
   dreams: () => <DreamsView />,
