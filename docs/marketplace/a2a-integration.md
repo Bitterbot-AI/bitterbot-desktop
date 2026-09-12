@@ -794,9 +794,18 @@ compatible with plain x402 clients.
 Mandates use the verbatim AP2 claim vocabulary and are signed with the node's proven
 secp256k1 / EIP-191 wallet key over a domain-separated canonical form
 (`bitterbot-ap2-mandate:v1:…`), so a mandate signature can never be confused with an
-x402 token signature. **Interop note:** Bitterbot mandates are AP2-_modeled_ and
-verifiable between Bitterbot nodes today; full wire-interop with third-party AP2
-verifiers (SD-JWT + P-256) is a roadmap item.
+x402 token signature. This is the default production path: AP2-_modeled_ and
+verifiable between Bitterbot nodes.
+
+**AP2-native wire format (SD-JWT / P-256).** For cross-verifiability with third-party
+AP2 verifiers, `src/payments/ap2/sd-jwt.ts` emits a mandate as a standard compact JWS
+(`alg: ES256`) with the P-256 signing key expressed as a JWK in the payload's `cnf.jwk`
+— the AP2-native encoding. `emitPaymentMandateSdJwt` produces it and `verifyMandateSdJwt`
+checks the ES256 signature against `cnf.jwk` (plus `exp`); any conformant ES256 verifier
+can verify it holding only the JWK — no secp256k1 / eip155 knowledge. This is the
+cross-verifiable form the earlier "roadmap item" note referred to; it is implemented and
+tested, ready to swap in for third-party interop, with the secp256k1 path remaining the
+in-fleet default until that is turned on.
 
 ### The enforcement gate
 
@@ -886,9 +895,16 @@ This is gated by `a2a.payment.consent.grantsRequired` (default **false**). With 
 off, spends behave as before and a covering grant merely back-references the consent;
 with it on, a spend with no covering grant is refused and escalated rather than paid —
 the "can't spend unbidden" safe posture. Grant enforcement is app-side today; binding
-the same grant to an on-chain spend permission (CDP Smart Account / ERC-7710) is a
-later phase. The one-tap approval UI (the "Spend Grants" tab) is the human-facing
-surface that consumes the approval requests.
+the same grant to an on-chain spend permission (CDP Smart Account / ERC-7710) is the
+Phase 4 upgrade. Its pure half is built and tested — `src/payments/wallet/smart-account.ts`
+turns the `wallet.smartAccount` allowance config into the on-chain spend-permission
+descriptor (`buildSpendPermission`) and provides the I5 address/balance continuity check
+(`assertAddressContinuity`, also run by `doctor-wallet`), and `WalletService.getSmartAccountConfig()`
+surfaces the parameters. The live cutover (creating the ERC-4337 CDP Smart Account and
+routing sends through it with sponsored-gas user operations) moves real value, so it is a
+Victor-run operator step (testnet first), deliberately not fired by the agent. The
+one-tap approval UI (the "Spend Grants" tab) is the human-facing surface that consumes
+the approval requests.
 
 **High-value step-up (passkey / biometric).** Set
 `a2a.payment.escalation.stepUpThresholdUsd` to require a local passkey/biometric

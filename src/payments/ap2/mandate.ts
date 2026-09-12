@@ -12,17 +12,19 @@
  * `cnf`, `payee`, `payment_amount`, `payment_instrument`, `transaction_id`,
  * `constraints`) so a mandate we emit is legible to the AP2 ecosystem.
  *
- * WIRE-FORMAT NOTE (D-1, deliberately deferred): AP2's canonical encoding is an
- * SD-JWT signed with a P-256 (ES256) key, with the agent key expressed as a JWK
- * in `cnf`. Phase 1 signs the *canonical JSON* of the claims with the agent's
- * existing, production-proven secp256k1 / EIP-191 key (the same
- * walletService.signMessage that already signs x402 tokens) and expresses the
- * key as an eip155 address in `cnf`. This keeps the signer single and proven.
- * Swapping to a P-256 SD-JWT signer for full wire-interop with third-party AP2
- * verifiers is isolated to `canonicalizeClaims` + the injected sign/recover
- * functions and the `cnf` shape — nothing else in the codebase changes. Until
- * then, a Bitterbot mandate is AP2-*modeled* and self-verifiable, not yet
- * cross-verifiable by a P-256-only AP2 verifier.
+ * WIRE-FORMAT NOTE (D-1): AP2's canonical encoding is an SD-JWT signed with a
+ * P-256 (ES256) key, with the agent key expressed as a JWK in `cnf`. This module
+ * (the DEFAULT production path) signs the *canonical JSON* of the claims with the
+ * agent's production-proven secp256k1 / EIP-191 key (the same
+ * walletService.signMessage that signs x402 tokens) and expresses the key as an
+ * eip155 address in `cnf`, keeping the signer single and proven. The AP2-native
+ * P-256 / ES256 SD-JWT wire format — the cross-verifiable form a third-party
+ * AP2 verifier accepts — is now IMPLEMENTED in `src/payments/ap2/sd-jwt.ts`
+ * (`emitPaymentMandateSdJwt` / `verifyMandateSdJwt`, `cnf.jwk`), isolated exactly
+ * as promised so it can be swapped in for third-party interop without touching
+ * the rest of the codebase. Until that path is turned on by default, a mandate
+ * emitted here is AP2-*modeled* and self-verifiable; a mandate emitted via
+ * sd-jwt.ts is additionally cross-verifiable by any conformant ES256 verifier.
  *
  * SCOPE (Phase 1): emit + verify + mandate-chain constraint enforcement (I1).
  * The runtime enforcement AP2 leaves to deployments — consume-once (nonce/

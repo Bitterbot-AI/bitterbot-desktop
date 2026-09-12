@@ -58,6 +58,29 @@ export interface WalletService {
    * leaked txHash cannot be replayed against a different recipient by another agent.
    */
   signMessage(message: string): Promise<string>;
+  /**
+   * PLAN-48 Phase 4 scaffold: the smart-account spend-permission parameters the
+   * operator's on-chain upgrade will register (the same allowance
+   * `SpendPermissionPolicy` enforces off-chain). Pure config echo — never touches
+   * the chain or creates an account. `enabled` gates whether the operator has
+   * opted into routing; the live create + routing cutover is a Victor-run step.
+   */
+  getSmartAccountConfig(): SmartAccountConfigView;
+}
+
+/** The intended CDP Smart Account spend-permission parameters (config echo). */
+export interface SmartAccountConfigView {
+  /** Whether smart-account routing is opted into (wallet.smartAccount.enabled). */
+  enabled: boolean;
+  /** Per-period allowance in USD the on-chain permission would enforce. */
+  allowanceUsd?: number;
+  /** Allowance period in seconds (default daily). */
+  periodSeconds: number;
+  /** Sponsor gas via user operations (paymaster) rather than requiring ETH. */
+  sponsorGas: boolean;
+  /** USDC contract the allowance is denominated in, for `network`. */
+  token?: string;
+  network: string;
 }
 
 const DEFAULT_WALLET_STORE = path.join(os.homedir(), ".bitterbot", "wallet");
@@ -271,6 +294,29 @@ export function createWalletService(config: WalletConfig): WalletService {
     async signMessage(message: string): Promise<string> {
       const provider = await getProvider();
       return provider.signMessage(message);
+    },
+
+    // PLAN-48 Phase 4 scaffold. Surfaces the spend-permission parameters the
+    // operator's on-chain upgrade will register; pure config, no CDP call.
+    //
+    // LIVE CUTOVER (operator / Victor, testnet first — deliberately NOT built
+    // here to avoid shipping unverifiable money-movement code): create the CDP
+    // Smart Account owned by this EOA (`cdp.evm.getOrCreateSmartAccount`),
+    // register a spend permission from `buildSpendPermission(...)` in
+    // src/payments/wallet/smart-account.ts, persist a SmartAccountRecord to
+    // `<storePath>/smart-account.json`, verify I5 via `assertAddressContinuity`
+    // (also checked by doctor-wallet), then route sendUsdc / payForResource
+    // through the smart account with sponsored-gas user operations.
+    getSmartAccountConfig(): SmartAccountConfigView {
+      const sa = config.smartAccount;
+      return {
+        enabled: sa?.enabled === true,
+        allowanceUsd: sa?.allowanceUsd,
+        periodSeconds: sa?.periodSeconds ?? 86_400,
+        sponsorGas: sa?.sponsorGas === true,
+        token: USDC_CONTRACTS[network],
+        network,
+      };
     },
 
     async getBalance(token?: string): Promise<BalanceResult> {
