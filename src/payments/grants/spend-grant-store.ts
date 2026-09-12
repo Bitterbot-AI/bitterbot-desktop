@@ -42,6 +42,14 @@ export interface SpendApproval {
   createdAt: number;
   resolvedAt: number | null;
   grantId: string | null;
+  /**
+   * How a human confirmed the approval (PLAN-48 Phase 2 step-up). Recorded for
+   * the audit trail: "passkey" (a platform biometric/passkey ceremony passed in
+   * the Control UI), "typed" (typed-confirmation fallback), or null (one-tap /
+   * below the step-up threshold). Advisory today — the ceremony is client-side;
+   * server-side WebAuthn assertion verification is a tracked fast-follow.
+   */
+  confirmation: string | null;
 }
 
 function amountUsd(a: { amount: string }): number {
@@ -90,6 +98,14 @@ export class SpendGrantStore {
         grant_id TEXT
       );
     `);
+    // Additive column for the step-up confirmation method (PLAN-48 Phase 2).
+    // CREATE TABLE IF NOT EXISTS above won't add it to a pre-existing table, so
+    // apply it defensively; ALTER throws if the column already exists.
+    try {
+      this.db.exec(`ALTER TABLE spend_grant_approvals ADD COLUMN confirmation TEXT`);
+    } catch {
+      // column already present
+    }
   }
 
   /** Persist a grant after verifying its signature. Upsert by grant_id (idempotent). */
@@ -253,7 +269,7 @@ export class SpendGrantStore {
   getApproval(approvalId: string): SpendApproval | null {
     const r = this.db
       .prepare(
-        `SELECT approval_id, payee, amount_usd, reason, status, created_at, resolved_at, grant_id
+        `SELECT approval_id, payee, amount_usd, reason, status, created_at, resolved_at, grant_id, confirmation
            FROM spend_grant_approvals WHERE approval_id = ?`,
       )
       .get(approvalId) as unknown as
@@ -266,6 +282,7 @@ export class SpendGrantStore {
           created_at: number;
           resolved_at: number | null;
           grant_id: string | null;
+          confirmation: string | null;
         }
       | undefined;
     if (!r) return null;
@@ -278,6 +295,7 @@ export class SpendGrantStore {
       createdAt: r.created_at,
       resolvedAt: r.resolved_at,
       grantId: r.grant_id,
+      confirmation: r.confirmation ?? null,
     };
   }
 
@@ -305,7 +323,7 @@ export class SpendGrantStore {
   approve(
     approvalId: string,
     signer: { ownerPubkey: CirclePubkey; signOwner: SignEd25519Fn; verifyEd25519: VerifyEd25519Fn },
-    opts?: { ttlMs?: number; now?: number },
+    opts?: { ttlMs?: number; now?: number; confirmation?: string },
   ): SpendGrant {
     const appr = this.getApproval(approvalId);
     if (!appr) throw new Error(`approval ${approvalId} not found`);
@@ -325,10 +343,10 @@ export class SpendGrantStore {
     this.setGrant(grant, signer.verifyEd25519);
     this.db
       .prepare(
-        `UPDATE spend_grant_approvals SET status = 'approved', resolved_at = ?, grant_id = ?
+        `UPDATE spend_grant_approvals SET status = 'approved', resolved_at = ?, grant_id = ?, confirmation = ?
           WHERE approval_id = ?`,
       )
-      .run(now, grant.claims.grant_id, approvalId);
+      .run(now, grant.claims.grant_id, opts?.confirmation ?? null, approvalId);
     return grant;
   }
 

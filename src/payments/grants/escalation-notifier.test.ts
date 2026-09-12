@@ -21,6 +21,7 @@ function approval(over: Partial<SpendApproval> = {}): SpendApproval {
     createdAt: 1_000,
     resolvedAt: null,
     grantId: null,
+    confirmation: null,
     ...over,
   };
 }

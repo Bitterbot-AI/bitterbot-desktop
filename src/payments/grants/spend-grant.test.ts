@@ -217,6 +217,21 @@ describe("SpendGrantStore — escalation approval loop (PLAN-48 Phase 2)", () =>
     expect(onEscalation).toHaveBeenCalledOnce();
   });
 
+  it("records the step-up confirmation method on approve (audit trail)", () => {
+    const s = store();
+    const a = s.requestApproval({ payee: SELLER, amountUsd: 0.5 });
+    expect(s.getApproval(a.approvalId)?.confirmation).toBeNull();
+    s.approve(a.approvalId, signer, { confirmation: "passkey" });
+    expect(s.getApproval(a.approvalId)?.confirmation).toBe("passkey");
+  });
+
+  it("leaves confirmation null when none is supplied (one-tap approve)", () => {
+    const s = store();
+    const a = s.requestApproval({ payee: SELLER, amountUsd: 0.5 });
+    s.approve(a.approvalId, signer);
+    expect(s.getApproval(a.approvalId)?.confirmation).toBeNull();
+  });
+
   it("swallows an onEscalation throw so the escalation still records", () => {
     const s = new SpendGrantStore(new DatabaseSync(":memory:"), () => {
       throw new Error("delivery blew up");

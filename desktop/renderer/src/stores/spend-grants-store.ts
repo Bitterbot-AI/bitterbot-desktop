@@ -24,6 +24,8 @@ export type SpendApproval = {
   createdAt: number;
   resolvedAt: number | null;
   grantId: string | null;
+  /** Step-up confirmation method recorded on approve: "passkey" | "typed" | null. */
+  confirmation?: string | null;
 };
 
 type SpendGrantsState = {
@@ -31,11 +33,17 @@ type SpendGrantsState = {
   approvals: SpendApproval[];
   /** Whether a2a.payment.consent.grantsRequired is on (escalation active). */
   grantsRequired: boolean;
+  /**
+   * USD amount at/above which approving an escalation requires a step-up
+   * (a2a.payment.escalation.stepUpThresholdUsd). null / <= 0 = disabled.
+   */
+  stepUpThresholdUsd: number | null;
   loading: boolean;
   error: string | null;
   setGrants: (grants: SpendGrantRow[]) => void;
   setApprovals: (approvals: SpendApproval[]) => void;
   setGrantsRequired: (grantsRequired: boolean) => void;
+  setStepUpThresholdUsd: (stepUpThresholdUsd: number | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
 };
@@ -44,11 +52,13 @@ export const useSpendGrantsStore = create<SpendGrantsState>((set) => ({
   grants: [],
   approvals: [],
   grantsRequired: false,
+  stepUpThresholdUsd: null,
   loading: false,
   error: null,
   setGrants: (grants) => set({ grants }),
   setApprovals: (approvals) => set({ approvals }),
   setGrantsRequired: (grantsRequired) => set({ grantsRequired }),
+  setStepUpThresholdUsd: (stepUpThresholdUsd) => set({ stepUpThresholdUsd }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
 }));

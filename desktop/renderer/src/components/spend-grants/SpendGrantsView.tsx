@@ -1,4 +1,4 @@
-import { Check, Coins, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
+import { Check, Coins, Fingerprint, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
 /**
  * PLAN-48: Spend Grants & Approvals — the human-facing consent surface.
  *
@@ -10,6 +10,7 @@ import { Check, Coins, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { describeError } from "../../lib/describe-error";
+import { passkeyCeremony, type StepUpMethod } from "../../lib/step-up";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import {
@@ -57,11 +58,14 @@ function ApprovalCard({
   onApprove,
   onDeny,
   busy,
+  stepUp,
 }: {
   approval: SpendApproval;
-  onApprove: (id: string) => void;
+  onApprove: () => void;
   onDeny: (id: string) => void;
   busy: boolean;
+  /** True when this amount is at/above the step-up threshold. */
+  stepUp: boolean;
 }) {
   return (
     <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 space-y-3">
@@ -74,11 +78,18 @@ function ApprovalCard({
             </span>
           </div>
           <p className="text-xs text-muted-foreground truncate">{approval.reason}</p>
-          <p className="text-2xs text-muted-foreground/70 mt-0.5">{fmtAgo(approval.createdAt)}</p>
+          <p className="text-2xs text-muted-foreground/70 mt-0.5">
+            {fmtAgo(approval.createdAt)}
+            {stepUp && (
+              <span className="ml-2 inline-flex items-center gap-1 text-brand">
+                <Fingerprint className="h-3 w-3" /> passkey required
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
-            onClick={() => onApprove(approval.approvalId)}
+            onClick={onApprove}
             disabled={busy}
             className={cn(
               "flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg font-medium transition-colors",
@@ -97,6 +108,94 @@ function ApprovalCard({
           >
             <X className="h-3.5 w-3.5" /> Deny
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Step-up confirmation for a high-value approval (PLAN-48 Phase 2). On open it
+ * runs the platform passkey/biometric ceremony; if that is unavailable or the
+ * operator declines it, a typed "APPROVE" fallback keeps the approval reachable
+ * (never hard-locked). Resolves with the method used so the server can record it.
+ */
+function StepUpModal({
+  approval,
+  onConfirm,
+  onCancel,
+}: {
+  approval: SpendApproval;
+  onConfirm: (method: StepUpMethod) => void;
+  onCancel: () => void;
+}) {
+  const [phase, setPhase] = useState<"passkey" | "typed">("passkey");
+  const [typed, setTyped] = useState("");
+  const attempted = useRef(false);
+
+  useEffect(() => {
+    if (attempted.current) return;
+    attempted.current = true;
+    void (async () => {
+      const ok = await passkeyCeremony();
+      if (ok) onConfirm("passkey");
+      else setPhase("typed");
+    })();
+  }, [onConfirm]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full max-w-sm rounded-xl border border-border/30 bg-card p-5 space-y-4 shadow-xl">
+        <div className="flex items-center gap-2">
+          <Fingerprint className="h-5 w-5 text-brand" />
+          <h3 className="text-sm font-semibold text-foreground">Confirm a high-value spend</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Approving {fmtUsd(approval.amountUsd)} to {fmtPayee(approval.payee)} needs your
+          confirmation.
+        </p>
+        {phase === "passkey" ? (
+          <p className="text-xs text-muted-foreground">Waiting for your passkey / biometric…</p>
+        ) : (
+          <div className="space-y-2">
+            <label className="text-xs text-muted-foreground">
+              No passkey available — type <span className="font-semibold">APPROVE</span> to confirm.
+            </label>
+            <input
+              autoFocus
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder="APPROVE"
+              className={cn(
+                "h-8 px-3 text-sm rounded-lg border bg-transparent w-full",
+                "border-border/30 focus:border-brand focus:outline-none",
+              )}
+            />
+          </div>
+        )}
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs rounded-lg border border-border/30 text-muted-foreground hover:bg-card/80"
+          >
+            Cancel
+          </button>
+          {phase === "typed" && (
+            <button
+              onClick={() => onConfirm("typed")}
+              disabled={typed.trim().toUpperCase() !== "APPROVE"}
+              className={cn(
+                "px-3 py-1.5 text-xs rounded-lg font-medium transition-colors",
+                "bg-success text-white hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed",
+              )}
+            >
+              Confirm
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -263,12 +362,28 @@ export function SpendGrantsView() {
   const grants = useSpendGrantsStore((s) => s.grants);
   const approvals = useSpendGrantsStore((s) => s.approvals);
   const grantsRequired = useSpendGrantsStore((s) => s.grantsRequired);
+  const stepUpThresholdUsd = useSpendGrantsStore((s) => s.stepUpThresholdUsd);
   const loading = useSpendGrantsStore((s) => s.loading);
   const error = useSpendGrantsStore((s) => s.error);
-  const { setGrants, setApprovals, setGrantsRequired, setLoading, setError } =
-    useSpendGrantsStore.getState();
+  const {
+    setGrants,
+    setApprovals,
+    setGrantsRequired,
+    setStepUpThresholdUsd,
+    setLoading,
+    setError,
+  } = useSpendGrantsStore.getState();
   const [busy, setBusy] = useState(false);
+  const [stepUp, setStepUp] = useState<SpendApproval | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const needsStepUp = useCallback(
+    (amountUsd: number) =>
+      typeof stepUpThresholdUsd === "number" &&
+      stepUpThresholdUsd > 0 &&
+      amountUsd >= stepUpThresholdUsd,
+    [stepUpThresholdUsd],
+  );
 
   const refresh = useCallback(async () => {
     if (gwStatus !== "connected") return;
@@ -285,9 +400,18 @@ export function SpendGrantsView() {
       if (aRes.status === "fulfilled") setApprovals(aRes.value?.approvals ?? []);
       if (cRes.status === "fulfilled") {
         const cfg = cRes.value?.config as
-          | { a2a?: { payment?: { consent?: { grantsRequired?: boolean } } } }
+          | {
+              a2a?: {
+                payment?: {
+                  consent?: { grantsRequired?: boolean };
+                  escalation?: { stepUpThresholdUsd?: number };
+                };
+              };
+            }
           | undefined;
         setGrantsRequired(cfg?.a2a?.payment?.consent?.grantsRequired === true);
+        const threshold = cfg?.a2a?.payment?.escalation?.stepUpThresholdUsd;
+        setStepUpThresholdUsd(typeof threshold === "number" && threshold > 0 ? threshold : null);
       }
       setError(null);
     } catch (err) {
@@ -295,7 +419,16 @@ export function SpendGrantsView() {
     } finally {
       setLoading(false);
     }
-  }, [gwStatus, request, setGrants, setApprovals, setGrantsRequired, setLoading, setError]);
+  }, [
+    gwStatus,
+    request,
+    setGrants,
+    setApprovals,
+    setGrantsRequired,
+    setStepUpThresholdUsd,
+    setLoading,
+    setError,
+  ]);
 
   useEffect(() => {
     void refresh();
@@ -325,6 +458,25 @@ export function SpendGrantsView() {
   const handleAdd = useCallback(
     (params: Record<string, unknown>) => void act("spendGrant.set", params, "Grant created"),
     [act],
+  );
+
+  const doApprove = useCallback(
+    (approvalId: string, confirmation?: StepUpMethod) =>
+      void act(
+        "spendGrant.approve",
+        { approvalId, ...(confirmation ? { confirmation } : {}) },
+        "Approved — the agent can proceed",
+      ),
+    [act],
+  );
+
+  // High-value approvals route through the step-up modal; the rest are one-tap.
+  const requestApprove = useCallback(
+    (approval: SpendApproval) => {
+      if (needsStepUp(approval.amountUsd)) setStepUp(approval);
+      else doApprove(approval.approvalId);
+    },
+    [needsStepUp, doApprove],
   );
 
   return (
@@ -372,6 +524,12 @@ export function SpendGrantsView() {
                 ? "Spends without a covering grant are paused for your approval."
                 : "The agent may spend within its caps even without a grant. Turn this on to require approval for out-of-scope spends."}
             </p>
+            {stepUpThresholdUsd !== null && (
+              <p className="text-2xs text-brand mt-0.5 flex items-center gap-1">
+                <Fingerprint className="h-3 w-3" /> Approvals of {fmtUsd(stepUpThresholdUsd)}+
+                require a passkey confirmation.
+              </p>
+            )}
           </div>
         </div>
         <EnableFlagButton
@@ -392,13 +550,8 @@ export function SpendGrantsView() {
               key={a.approvalId}
               approval={a}
               busy={busy}
-              onApprove={(id) =>
-                void act(
-                  "spendGrant.approve",
-                  { approvalId: id },
-                  "Approved — the agent can proceed",
-                )
-              }
+              stepUp={needsStepUp(a.amountUsd)}
+              onApprove={() => requestApprove(a)}
               onDeny={(id) => void act("spendGrant.deny", { approvalId: id }, "Denied")}
             />
           ))}
@@ -425,6 +578,18 @@ export function SpendGrantsView() {
       </section>
 
       <AddGrantForm onAdd={handleAdd} busy={busy} />
+
+      {stepUp && (
+        <StepUpModal
+          approval={stepUp}
+          onConfirm={(method) => {
+            const id = stepUp.approvalId;
+            setStepUp(null);
+            doApprove(id, method);
+          }}
+          onCancel={() => setStepUp(null)}
+        />
+      )}
     </div>
   );
 }

@@ -128,10 +128,19 @@ export const spendGrantHandlers: GatewayRequestHandlers = {
     }
     try {
       const signer = await loadNodeCircleSigner();
+      // Optional step-up confirmation method recorded for the audit trail
+      // (PLAN-48 Phase 2): "passkey" | "typed" from the Control UI, else null.
+      const confirmation =
+        params.confirmation === "passkey" || params.confirmation === "typed"
+          ? params.confirmation
+          : undefined;
       const grant = r.store.approve(
         approvalId,
         { ownerPubkey: signer.pubkey, signOwner: signer.signEd25519, verifyEd25519 },
-        typeof params.ttlMs === "number" ? { ttlMs: params.ttlMs } : undefined,
+        {
+          ...(typeof params.ttlMs === "number" ? { ttlMs: params.ttlMs } : {}),
+          ...(confirmation ? { confirmation } : {}),
+        },
       );
       respond(true, { approvalId, grantId: grant.claims.grant_id }, undefined);
     } catch (err) {

@@ -974,6 +974,12 @@ export const BitterbotSchema = z
               })
               .strict()
               .optional(),
+            escalation: z
+              .object({
+                stepUpThresholdUsd: z.number().nonnegative().optional(),
+              })
+              .strict()
+              .optional(),
           })
           .strict()
           .optional(),

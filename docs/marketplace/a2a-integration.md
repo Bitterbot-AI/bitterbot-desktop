@@ -877,8 +877,22 @@ off, spends behave as before and a covering grant merely back-references the con
 with it on, a spend with no covering grant is refused and escalated rather than paid —
 the "can't spend unbidden" safe posture. Grant enforcement is app-side today; binding
 the same grant to an on-chain spend permission (CDP Smart Account / ERC-7710) is a
-later phase, and a one-tap / passkey approval UI is the human-facing surface that
-consumes the approval requests.
+later phase. The one-tap approval UI (the "Spend Grants" tab) is the human-facing
+surface that consumes the approval requests.
+
+**High-value step-up (passkey / biometric).** Set
+`a2a.payment.escalation.stepUpThresholdUsd` to require a local passkey/biometric
+confirmation before approving an escalation at or above that amount (undefined or
+`<= 0` disables it — the default). In the Control UI, approving such a spend runs a
+platform WebAuthn user-verification ceremony (Touch ID / Windows Hello); if no platform
+authenticator is available it degrades to a typed `APPROVE` confirmation, so an operator
+is never locked out of approving. The confirmation method (`passkey` / `typed`) is
+recorded on the approval for the audit trail. **Honest limitation:** the ceremony is
+verified only in the browser — the server records the method but does not yet verify a
+WebAuthn assertion against a registered credential (server-side verification is a tracked
+fast-follow), so the step-up guards against a casual mis-approval from an unattended,
+already-authenticated Control UI, not a modified client. WebAuthn needs a secure context
+(https or localhost).
 
 ### Configuration
 
@@ -892,6 +906,7 @@ default-on and individually kill-switchable:
       "ap2": { "enabled": true }, // attach + verify AP2 mandates
       "enforcement": { "enabled": true }, // block present-but-invalid mandates (off = advisory only)
       "consent": { "grantsRequired": false }, // require a covering spend grant; off = escalation disabled
+      "escalation": { "stepUpThresholdUsd": 0 }, // >0 = passkey step-up on approvals at/above this USD amount
     },
   },
 }
@@ -1232,6 +1247,10 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
       "consent": {
         // PLAN-48: require a human-set spend grant to cover an outbound payment; escalate otherwise
         "grantsRequired": false, // default false; true = uncovered spends raise an approval instead of paying
+      },
+      "escalation": {
+        // PLAN-48 Phase 2: step-up confirmation on high-value escalation approvals in the Control UI
+        "stepUpThresholdUsd": 0, // 0/undefined = disabled; >0 = passkey/biometric (typed fallback) required at/above this USD
       },
     },
     "marketplace": {

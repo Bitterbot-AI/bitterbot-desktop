@@ -110,6 +110,20 @@ export type A2aConfig = {
        */
       enabled?: boolean;
     };
+    /** Escalation approval UX (PLAN-48 Phase 2). */
+    escalation?: {
+      /**
+       * USD amount at or above which approving a pending escalation in the
+       * Control UI requires a local step-up confirmation (a platform passkey /
+       * biometric ceremony, falling back to a typed confirmation when no
+       * platform authenticator is available). Undefined or <= 0 disables the
+       * step-up (default: disabled). The step-up is a client-side "human present
+       * + verified" gate on the operator-authed approve action; server-side
+       * WebAuthn assertion verification is a tracked fast-follow, so the
+       * confirmation method recorded on the approval is advisory today.
+       */
+      stepUpThresholdUsd?: number;
+    };
   };
   /** P2P mesh delegation settings. */
   mesh?: {
