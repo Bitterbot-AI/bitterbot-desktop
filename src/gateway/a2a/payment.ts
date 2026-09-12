@@ -91,6 +91,8 @@ async function enforceInboundAp2Mandate(
     expectedPayee: string;
     expectedAmount: number;
     enforce: boolean;
+    /** PLAN-48 Phase 5: deny at/above this USD unless consent is verified (0/undef = additive). */
+    gateConsentAboveUsd?: number;
     db?: import("node:sqlite").DatabaseSync;
   },
 ): Promise<{ block: boolean }> {
@@ -134,6 +136,8 @@ async function enforceInboundAp2Mandate(
       consent: decoded.ap2.consent as never,
       binding: decoded.ap2.binding as never,
       verifyEd25519,
+      // D-5: above this amount, an unverified/absent consent denies (0/undef = additive).
+      gateConsentAboveUsd: ctx.gateConsentAboveUsd,
     });
 
     if (pdr.verdict === "allow") {
@@ -222,10 +226,12 @@ export async function verifyA2aPayment(
       // mandate (forgery/replay/redirect) when enforcement is enabled; a missing
       // mandate or disabled enforcement never blocks. Default: enabled.
       const enforce = config.a2a?.payment?.enforcement?.enabled ?? true;
+      const gateConsentAboveUsd = config.a2a?.payment?.consent?.gateThresholdUsd;
       const { block } = await enforceInboundAp2Mandate(paymentToken ?? paymentHeader!, {
         expectedPayee: address,
         expectedAmount: requiredAmount,
         enforce,
+        gateConsentAboveUsd,
         db: marketplace?.getDb?.(),
       });
       if (block) {

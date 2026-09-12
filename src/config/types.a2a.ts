@@ -100,6 +100,16 @@ export type A2aConfig = {
        * model). Grants are managed via the spendGrant.* operator RPCs.
        */
       grantsRequired?: boolean;
+      /**
+       * INBOUND consent gating (PLAN-48 Phase 5, D-5). USD amount at/above which
+       * an inbound settlement whose AP2 mandate lacks a *verified* Circles consent
+       * lineage is BLOCKED (not merely logged). Undefined or `<= 0` keeps consent
+       * additive — recorded in the Policy Decision Record but never verdict-flipping
+       * (the default, per D-5: stay additive until on-chain grants exist). Only
+       * takes effect while `enforcement.enabled` is on; below the threshold, or
+       * with a verified consent, settlement is unaffected.
+       */
+      gateThresholdUsd?: number;
     };
     /** AP2 runtime enforcement: consume-once + context binding (PLAN-47 Phase 4). */
     enforcement?: {

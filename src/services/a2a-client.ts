@@ -23,7 +23,15 @@ export type SignedPaymentPayload = {
   sender: string;
   recipient: string;
   timestamp: number;
-  version: "v1";
+  version: "v1" | "v2";
+  /**
+   * v2 only: the hash of the bound AP2 payment mandate (`mandateHash`). Binding
+   * the mandate into the token signature means a stripped or tampered mandate
+   * yields a different hash, so the recovered signer no longer matches the
+   * declared sender and the token fails verification (PLAN-48 Phase 5 / PLAN-47
+   * finding C). Omitted for v1 (byte-compatible with legacy signed tokens).
+   */
+  mandateHash?: string;
 };
 
 /**
@@ -31,13 +39,14 @@ export type SignedPaymentPayload = {
  * MUST produce the same string for a given payload, so the field order is
  * fixed (NOT JSON.stringify with object key order, which is not portable).
  *
- * Format: `bitterbot-x402:v1:<recipient>:<txHash>:<amount-usdc>:<sender>:<ts-ms>`
+ * Format (v1): `bitterbot-x402:v1:<recipient>:<txHash>:<amount-usdc>:<sender>:<ts-ms>`
+ * Format (v2): the v1 fields, then `:<mandateHash>` (binds the AP2 mandate).
  *
  * Lower-cased addresses for canonical form. Amount is the human-readable USDC
  * value (matches what the buyer signs and what the seller verifies).
  */
 export function canonicalizePaymentPayload(payload: SignedPaymentPayload): string {
-  return [
+  const parts = [
     "bitterbot-x402",
     payload.version,
     payload.recipient.toLowerCase(),
@@ -45,7 +54,11 @@ export function canonicalizePaymentPayload(payload: SignedPaymentPayload): strin
     String(payload.amount),
     payload.sender.toLowerCase(),
     String(payload.timestamp),
-  ].join(":");
+  ];
+  // v2 appends the bound mandate hash. v1 is left untouched so existing tokens
+  // and peers that never emit a mandate verify exactly as before.
+  if (payload.version === "v2") parts.push(payload.mandateHash ?? "");
+  return parts.join(":");
 }
 
 export interface A2aClientConfig {
@@ -438,25 +451,6 @@ export class A2aClient {
       // matches the on-chain Transfer event sender.
       const sender = await params.walletService.getAddress();
       const timestamp = Date.now();
-      const tokenPayload = {
-        txHash: payment.txHash,
-        amount: price,
-        sender,
-        recipient: payTo,
-        timestamp,
-        version: "v1" as const,
-      };
-      let signature: string | undefined;
-      try {
-        signature = await params.walletService.signMessage(
-          canonicalizePaymentPayload(tokenPayload),
-        );
-      } catch (err) {
-        // Signing failure is non-fatal — fall back to unsigned token. The
-        // verifier still checks recipient/amount on-chain; the signature is
-        // defense-in-depth against off-chain replay vectors.
-        log.debug(`payment signature failed (continuing unsigned): ${String(err)}`);
-      }
 
       // PLAN-47 Phase 1: attach an AP2 payment mandate alongside the x402 token.
       // Signed proof that this spend was authorized under a standing delegated
@@ -537,6 +531,50 @@ export class A2aClient {
           // signing failure): ship the plain x402 token.
           log.debug(`AP2 mandate emission skipped: ${String(err)}`);
         }
+      }
+
+      // Sign the token AFTER the mandate so a v2 token can bind the mandate hash
+      // into its signature (PLAN-48 Phase 5 / PLAN-47 finding C): with a mandate
+      // attached we sign a v2 payload carrying mandateHash, so the mandate cannot
+      // be stripped or altered without invalidating the token. With no mandate we
+      // sign a plain v1 token, unchanged and backward-compatible.
+      let boundMandateHash: string | undefined;
+      if (ap2) {
+        try {
+          const { mandateHash } = await import("../payments/ap2/mandate.js");
+          boundMandateHash = mandateHash(ap2.payment as never);
+        } catch (err) {
+          log.debug(`mandate-hash binding skipped: ${String(err)}`);
+        }
+      }
+      const tokenPayload: SignedPaymentPayload = boundMandateHash
+        ? {
+            txHash: payment.txHash,
+            amount: price,
+            sender,
+            recipient: payTo,
+            timestamp,
+            version: "v2",
+            mandateHash: boundMandateHash,
+          }
+        : {
+            txHash: payment.txHash,
+            amount: price,
+            sender,
+            recipient: payTo,
+            timestamp,
+            version: "v1",
+          };
+      let signature: string | undefined;
+      try {
+        signature = await params.walletService.signMessage(
+          canonicalizePaymentPayload(tokenPayload),
+        );
+      } catch (err) {
+        // Signing failure is non-fatal — fall back to unsigned token. The
+        // verifier still checks recipient/amount on-chain; the signature is
+        // defense-in-depth against off-chain replay vectors.
+        log.debug(`payment signature failed (continuing unsigned): ${String(err)}`);
       }
 
       const paymentToken = Buffer.from(

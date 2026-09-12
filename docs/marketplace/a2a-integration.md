@@ -819,12 +819,17 @@ the decision, never blocks). A **missing** mandate never blocks, and any interna
 error fails open to the on-chain decision — an enforcement bug can never reject a
 task the buyer already paid for.
 
-> **Known limitation.** The `ap2` field is not covered by the x402 token signature,
-> so a motivated buyer can strip or malform it to skip enforcement — the gate can only
-> deny a _present_ mandate, never compel one. This is acceptable for the current
-> posture (only Bitterbot nodes emit mandates, and a mandate never grants payment).
-> Requiring a mandate from known peers, and binding the mandate hash into the x402
-> signature, is tracked as a follow-up.
+> **Mandate binding (v2 tokens).** As of PLAN-48 Phase 5, an outbound token that
+> carries an AP2 mandate is signed as **v2**: the payment mandate's hash is folded into
+> the signed canonical string (`bitterbot-x402:v2:…:<mandateHash>`). Stripping or
+> altering the mandate — or downgrading the token to v1 to shed the binding — changes
+> the signed bytes, so the recovered signer no longer matches the declared sender and
+> the payment is **rejected** (finding C, closed for v2). A v2 token that arrives with
+> no mandate is rejected outright. Residual: a peer can still send a legacy **v1** token
+> with no mandate at all; that path is unchanged and is not consent-gated. Acceptable
+> under the fleet posture (Bitterbot nodes emit v2, and a mandate never grants payment —
+> on-chain settlement is the source of truth); requiring a mandate from known peers is
+> the remaining follow-up.
 
 ### Consent lineage (Circles)
 
@@ -837,10 +842,15 @@ the circle key, which is what ties the wallet identity (mandate signer) to the C
 identity (consent signer). The gate verifies the whole chain and records a
 verified/unverified `consentRef` on the Policy Decision Record.
 
-Consent is **additive provenance** today: an unverified consent is recorded but does
-not by itself flip the verdict (gating on consent is a policy toggle tracked for a
-later phase). When a human-set spend grant covers the spend, the emitted consent
-back-references it (`grant_ref`), so the lineage is grant -> consent -> payment. See
+Consent is **additive provenance** by default: an unverified consent is recorded but
+does not by itself flip the verdict. Setting `a2a.payment.consent.gateThresholdUsd` to a
+positive USD amount flips it to **gating** at/above that amount — a settlement whose
+mandate lacks a _verified_ consent lineage is then denied (the consent gate runs before
+the consume-once step, so a consent-blocked mandate is not burned and can settle once a
+verified consent is supplied). It takes effect only while `enforcement.enabled` is on,
+and default-off keeps the additive posture until on-chain grants exist (D-5). When a
+human-set spend grant covers the spend, the emitted consent back-references it
+(`grant_ref`), so the lineage is grant -> consent -> payment. See
 `docs/network/circles.md` for the Circles identity/consent substrate.
 
 ### Spend grants & escalation (PLAN-48)
@@ -905,7 +915,7 @@ default-on and individually kill-switchable:
     "payment": {
       "ap2": { "enabled": true }, // attach + verify AP2 mandates
       "enforcement": { "enabled": true }, // block present-but-invalid mandates (off = advisory only)
-      "consent": { "grantsRequired": false }, // require a covering spend grant; off = escalation disabled
+      "consent": { "grantsRequired": false, "gateThresholdUsd": 0 }, // grantsRequired: covering grant on outbound; gateThresholdUsd: >0 blocks inbound at/above w/o verified consent
       "escalation": { "stepUpThresholdUsd": 0 }, // >0 = passkey step-up on approvals at/above this USD amount
     },
   },
@@ -1247,6 +1257,9 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
       "consent": {
         // PLAN-48: require a human-set spend grant to cover an outbound payment; escalate otherwise
         "grantsRequired": false, // default false; true = uncovered spends raise an approval instead of paying
+        // PLAN-48 Phase 5 (D-5): inbound consent gating. >0 blocks an inbound settlement at/above this USD
+        // whose mandate lacks a VERIFIED consent lineage. 0/undefined = additive (recorded, never blocks).
+        "gateThresholdUsd": 0,
       },
       "escalation": {
         // PLAN-48 Phase 2: step-up confirmation on high-value escalation approvals in the Control UI

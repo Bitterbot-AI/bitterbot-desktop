@@ -32,17 +32,24 @@
  * deployment cannot produce. (Populating it from a live Circles envelope is a
  * follow-up; the field and passthrough exist here.)
  *
- * KNOWN LIMITATION (adversarial pass, finding C). The AP2 mandate rides inside
- * the x402 token but is NOT covered by the x402 token's signature, and the gate
- * fails OPEN on any internal error. So a motivated buyer or on-path attacker can
- * STRIP or malform the `ap2` field to skip enforcement — enforcement can only
- * ever DENY a *present* mandate, never compel one to exist. This is acceptable
- * for the current fleet-only posture (only Bitterbot peers emit mandates, share
- * this format, and cannot gain by evading a check on their own spend), and the
- * mandate never grants payment (x402 on-chain settlement is the source of truth).
- * Making enforcement binding — require a valid mandate from known-fleet peers,
- * and bind the mandate hash into the x402 token signature — is the Phase 4.x
- * hardening tracked for when non-fleet peers transact.
+ * FINDING C (adversarial pass) — mostly closed. The mandate rides inside the
+ * x402 token; historically it was NOT covered by the token signature, so a buyer
+ * or on-path attacker could STRIP or malform the `ap2` field to skip enforcement
+ * (the gate can only ever DENY a *present* mandate, and it fails OPEN on internal
+ * error). PLAN-48 Phase 5 binds the payment mandate's hash into the x402 token
+ * signature for v2 tokens (`canonicalizePaymentPayload` + `x402-verify`): stripping
+ * or altering the mandate on a v2 token now changes the signed bytes, so the
+ * recovered signer no longer matches and the whole payment is rejected — a
+ * stripped mandate no longer settles. Residual: a peer can still emit a legacy
+ * v1 token with no mandate at all (not consent-gated unless it carries a mandate),
+ * acceptable under the fleet posture (fleet peers emit v2, and the mandate never
+ * grants payment — on-chain settlement is the source of truth). Requiring a
+ * mandate from known-fleet peers is the remaining hardening.
+ *
+ * CONSENT GATING (PLAN-48 Phase 5, D-5). `gateConsentAboveUsd` flips consent from
+ * additive to blocking at/above a threshold: a settlement whose mandate lacks a
+ * verified Circles consent lineage is denied. Default off (additive) until
+ * on-chain grants exist; kill-switchable via config.
  */
 
 import { createHash } from "node:crypto";
@@ -121,6 +128,15 @@ export interface EvaluateParams {
   consent?: import("./consent.js").SpendConsent;
   binding?: import("./consent.js").IdentityBinding;
   verifyEd25519?: import("./consent.js").VerifyEd25519Fn;
+  /**
+   * Consent gating (PLAN-48 Phase 5, D-5). When set (> 0), a settlement whose
+   * charged amount (`expectedAmount`) is at/above this threshold is DENIED unless
+   * a verified consent lineage was resolved. Undefined keeps consent additive
+   * (recorded, never verdict-flipping) — the default posture. Independent of the
+   * consume-once nonce: the gate denies BEFORE claiming, so a consent-blocked
+   * mandate is not burned and can settle once a verified consent is supplied.
+   */
+  gateConsentAboveUsd?: number;
   now?: number;
 }
 
@@ -139,9 +155,11 @@ export async function evaluate(params: EvaluateParams): Promise<PolicyDecisionRe
   const nonceKey = mandateContentId(claims);
   const reasons: string[] = [];
 
-  // Circles consent lineage (additive): resolve + verify the chain if the buyer
-  // attached one, and record the result. Does not gate the verdict here.
+  // Circles consent lineage: resolve + verify the chain if the buyer attached
+  // one, and record the result. Additive by default; gates the verdict only when
+  // gateConsentAboveUsd is set and the amount is at/above it (step below).
   let consentRef = params.consentRef;
+  let consentVerified = false;
   if (params.consent && params.binding && params.verifyEd25519) {
     const { resolveConsentRef } = await import("./consent.js");
     const res = await resolveConsentRef({
@@ -155,6 +173,7 @@ export async function evaluate(params: EvaluateParams): Promise<PolicyDecisionRe
       now,
     });
     consentRef = res.consentRef;
+    consentVerified = res.verified;
     reasons.push(res.verified ? "consent_verified" : `consent_unverified: ${res.reason}`);
   }
 
@@ -201,6 +220,21 @@ export async function evaluate(params: EvaluateParams): Promise<PolicyDecisionRe
   if (params.expectedCurrency && claims.payment_amount.currency !== params.expectedCurrency) {
     return deny(
       `currency: mandate ${claims.payment_amount.currency} != ${params.expectedCurrency}`,
+    );
+  }
+
+  // 3b. Consent gating (D-5) — above the configured threshold, a settlement
+  // without a verified consent lineage is denied. Runs before consume-once so a
+  // consent-blocked mandate is not burned; below the threshold (or with a
+  // verified consent) this is a no-op and consent stays purely additive.
+  if (
+    params.gateConsentAboveUsd !== undefined &&
+    params.gateConsentAboveUsd > 0 &&
+    params.expectedAmount >= params.gateConsentAboveUsd &&
+    !consentVerified
+  ) {
+    return deny(
+      `consent_required: verified owner consent required at/above ${params.gateConsentAboveUsd} USD`,
     );
   }
 

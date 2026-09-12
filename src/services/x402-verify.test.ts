@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { mandateHash } from "../payments/ap2/mandate.js";
+import { canonicalizePaymentPayload } from "./a2a-client.js";
 
 // Mock viem before importing the module under test so we don't actually hit Base.
 vi.mock("viem", async () => {
@@ -10,16 +13,26 @@ vi.mock("viem", async () => {
       getTransactionReceipt: async ({ hash }: { hash: string }) => mockedReceipt(hash),
     }),
     recoverMessageAddress: async ({
-      message: _msg,
+      message,
       signature,
     }: {
       message: string;
       signature: string;
     }) => {
-      // Test fixture: signatures of the form "valid:<addr>" recover to <addr>;
-      // anything else is an invalid signature.
+      const { createHash } = await import("node:crypto");
+      // Fixture A: "valid:<addr>" recovers to <addr> regardless of the message
+      // (message-independent; used by the v1 signature tests).
       const m = /^valid:(0x[a-fA-F0-9]{40})$/.exec(signature);
       if (m) return m[1];
+      // Fixture B: "bound:<addr>:<sha256(message)>" models a REAL signature that
+      // covers the exact signed bytes — it recovers to <addr> only when the
+      // message hash matches, else to a wrong address. This lets the v2 tests
+      // prove the mandate hash is bound into the signed canonical string.
+      const b = /^bound:(0x[a-fA-F0-9]{40}):([0-9a-f]{64})$/.exec(signature);
+      if (b) {
+        const h = createHash("sha256").update(message).digest("hex");
+        return b[2] === h ? b[1] : "0x" + "de".repeat(20);
+      }
       throw new Error("invalid signature");
     },
   };
@@ -298,6 +311,121 @@ describe("verifyX402Payment", () => {
     });
     expect(r.valid).toBe(false);
     expect(r.error).toMatch(/No USDC Transfer log/);
+  });
+
+  // --- v2: AP2 mandate bound into the token signature (PLAN-48 Phase 5 / finding C) ---
+
+  // A minimal signed-mandate-shaped envelope; mandateHash only needs claims+signature.
+  const mandate = (n: number) => ({
+    claims: { transaction_id: `0x${n}`, payee: { id: recipient } },
+    signature: `0xsig${n}`,
+    signer: sender,
+  });
+  // A v2 signature that genuinely covers (fields + mandateHash), via fixture B.
+  function boundSig(fields: { txHash: string; amount: number; timestamp: number }, m: object) {
+    const canonical = canonicalizePaymentPayload({
+      txHash: fields.txHash,
+      amount: fields.amount,
+      sender,
+      recipient,
+      timestamp: fields.timestamp,
+      version: "v2",
+      mandateHash: mandateHash(m as never),
+    });
+    return `bound:${sender}:${createHash("sha256").update(canonical).digest("hex")}`;
+  }
+
+  it("verifies a v2 token whose signature is bound to the attached mandate", async () => {
+    setReceipt("0xv2ok");
+    const ts = Date.now();
+    const m = mandate(1);
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({
+        version: "v2",
+        txHash: "0xv2ok",
+        amount: 0.05,
+        sender,
+        recipient,
+        timestamp: ts,
+        signature: boundSig({ txHash: "0xv2ok", amount: 0.05, timestamp: ts }, m),
+        ap2: { payment: m },
+      }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(true);
+    expect(r.signatureVerified).toBe(true);
+  });
+
+  it("rejects a v2 token whose mandate was swapped after signing (binding holds)", async () => {
+    setReceipt("0xv2tamper");
+    const ts = Date.now();
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({
+        version: "v2",
+        txHash: "0xv2tamper",
+        amount: 0.05,
+        sender,
+        recipient,
+        timestamp: ts,
+        // Signature was bound to mandate #1 ...
+        signature: boundSig({ txHash: "0xv2tamper", amount: 0.05, timestamp: ts }, mandate(1)),
+        // ... but a DIFFERENT mandate is shipped, so the recomputed hash differs.
+        ap2: { payment: mandate(2) },
+      }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/signature does not match declared sender/);
+  });
+
+  it("rejects a v2 token with the mandate stripped entirely", async () => {
+    setReceipt("0xv2strip");
+    const ts = Date.now();
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({
+        version: "v2",
+        txHash: "0xv2strip",
+        amount: 0.05,
+        sender,
+        recipient,
+        timestamp: ts,
+        signature: boundSig({ txHash: "0xv2strip", amount: 0.05, timestamp: ts }, mandate(1)),
+        // ap2 omitted — a v2 token must carry its bound mandate.
+      }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/missing its bound AP2 mandate/);
+  });
+
+  it("rejects a v2 token downgraded to v1 to shed the binding", async () => {
+    setReceipt("0xv2down");
+    const ts = Date.now();
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({
+        // Downgraded to v1 (so the verifier drops mandateHash from the canonical)
+        // and the mandate stripped — but the signature was bound over the v2
+        // canonical, so v1 recovery yields the wrong signer.
+        version: "v1",
+        txHash: "0xv2down",
+        amount: 0.05,
+        sender,
+        recipient,
+        timestamp: ts,
+        signature: boundSig({ txHash: "0xv2down", amount: 0.05, timestamp: ts }, mandate(1)),
+      }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/signature does not match declared sender/);
   });
 
   it("rejects a token whose tx_hash has already been consumed (replay)", async () => {

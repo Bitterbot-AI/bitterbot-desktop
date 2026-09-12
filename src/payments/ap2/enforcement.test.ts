@@ -249,6 +249,125 @@ describe("AP2 enforcement gate (PLAN-47 Phase 4)", () => {
     expect(pdr.reasons.join()).toMatch(/consent_unverified/);
   });
 
+  // --- Consent gating (PLAN-48 Phase 5, D-5) ---
+  const sha2 = (s: string) => createHash("sha256").update(s).digest("hex");
+  const CIRCLE = "ed25519:" + "cd".repeat(32);
+  const signCircle = (msg: string) => `${CIRCLE}:${sha2(msg)}`;
+  const verifyOk = (msg: string, sig: string, pk: string) => sig === `${pk}:${sha2(msg)}`;
+
+  async function withConsent() {
+    const { buildSpendConsent, buildIdentityBinding } = await import("./consent.js");
+    const consent = buildSpendConsent({
+      walletAddress: AGENT,
+      circlePubkey: CIRCLE,
+      maxAmount: usdc(1),
+      allowedPayees: ["*"],
+      ttlMs: 3_600_000,
+      signCircle,
+    });
+    const binding = await buildIdentityBinding({
+      walletAddress: AGENT,
+      circlePubkey: CIRCLE,
+      signWallet: makeSigner(AGENT),
+      signCircle,
+    });
+    return { consent, binding };
+  }
+
+  it("gates: denies an at/above-threshold spend with no consent, without burning the nonce", async () => {
+    const { intent, payment } = await pair({ amount: 0.5, max: 1 });
+    let claims = 0;
+    const store: EnforcementStore = {
+      claimMandate: () => {
+        claims++;
+        return true;
+      },
+      recordDecision: () => {},
+    };
+    const pdr = await evaluate({
+      payment,
+      intent,
+      expectedPayee: SELLER,
+      expectedAmount: 0.5,
+      recover,
+      store,
+      gateConsentAboveUsd: 0.5,
+    });
+    expect(pdr.verdict).toBe("deny");
+    expect(pdr.reasons.join()).toMatch(/consent_required/);
+    expect(pdr.consumed).toBe(false);
+    expect(claims).toBe(0); // denied before consume-once, so it can settle later with consent
+  });
+
+  it("gates: allows an at/above-threshold spend when consent is verified", async () => {
+    const { intent, payment } = await pair({ amount: 0.5, max: 1 });
+    const { consent, binding } = await withConsent();
+    const store = new InMemoryEnforcementStore();
+    const pdr = await evaluate({
+      payment,
+      intent,
+      expectedPayee: SELLER,
+      expectedAmount: 0.5,
+      recover,
+      store,
+      consent,
+      binding,
+      verifyEd25519: verifyOk,
+      gateConsentAboveUsd: 0.5,
+    });
+    expect(pdr.verdict).toBe("allow");
+    expect(pdr.reasons.join()).toMatch(/consent_verified/);
+  });
+
+  it("gates: denies at/above threshold when the consent is unverified", async () => {
+    const { intent, payment } = await pair({ amount: 0.5, max: 1 });
+    const { consent, binding } = await withConsent();
+    const store = new InMemoryEnforcementStore();
+    const pdr = await evaluate({
+      payment,
+      intent,
+      expectedPayee: SELLER,
+      expectedAmount: 0.5,
+      recover,
+      store,
+      consent,
+      binding,
+      verifyEd25519: () => false, // force consent verification to fail
+      gateConsentAboveUsd: 0.5,
+    });
+    expect(pdr.verdict).toBe("deny");
+    expect(pdr.reasons.join()).toMatch(/consent_required/);
+  });
+
+  it("gates: below the threshold, an unconsented spend still settles (additive)", async () => {
+    const { intent, payment } = await pair({ amount: 0.25, max: 1 });
+    const store = new InMemoryEnforcementStore();
+    const pdr = await evaluate({
+      payment,
+      intent,
+      expectedPayee: SELLER,
+      expectedAmount: 0.25,
+      recover,
+      store,
+      gateConsentAboveUsd: 0.5, // 0.25 < 0.5 => not gated
+    });
+    expect(pdr.verdict).toBe("allow");
+  });
+
+  it("stays additive when no threshold is set (default): unconsented spend allowed", async () => {
+    const { intent, payment } = await pair({ amount: 5, max: 10 });
+    const store = new InMemoryEnforcementStore();
+    const pdr = await evaluate({
+      payment,
+      intent,
+      expectedPayee: SELLER,
+      expectedAmount: 5,
+      recover,
+      store, // gateConsentAboveUsd undefined
+    });
+    expect(pdr.verdict).toBe("allow");
+  });
+
   it("does not consume the mandate nonce when an earlier check fails", async () => {
     // A context-binding failure must not burn the nonce: a later correctly
     // addressed presentation of the same mandate should still be evaluable.

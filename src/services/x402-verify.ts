@@ -105,6 +105,7 @@ export async function verifyX402Payment(params: {
       timestamp?: number;
       version?: string;
       signature?: string;
+      ap2?: { payment?: unknown };
     };
 
     if (!decoded.txHash) {
@@ -140,7 +141,7 @@ export async function verifyX402Payment(params: {
     // own without forging the signature. Legacy tokens skip this and rely on
     // the on-chain Transfer recipient match below.
     let signatureVerified = false;
-    if (decoded.signature && decoded.version === "v1") {
+    if (decoded.signature && (decoded.version === "v1" || decoded.version === "v2")) {
       if (!decoded.recipient || !decoded.sender || decoded.timestamp === undefined) {
         return { valid: false, error: "Signed token missing required fields" };
       }
@@ -148,6 +149,21 @@ export async function verifyX402Payment(params: {
         return { valid: false, error: "Signed token recipient does not match expected" };
       }
       try {
+        // v2 binds the AP2 payment mandate into the signature (PLAN-48 Phase 5 /
+        // finding C): recompute the mandate's hash from the attached mandate and
+        // fold it into the canonical string. A stripped/tampered mandate — or a
+        // downgrade to v1 to drop the binding — changes the signed bytes, so the
+        // recovered signer stops matching the declared sender and the token is
+        // rejected below. A v2 token with no mandate is rejected outright.
+        let boundMandateHash: string | undefined;
+        if (decoded.version === "v2") {
+          const mandate = decoded.ap2?.payment;
+          if (!mandate) {
+            return { valid: false, error: "v2 payment token missing its bound AP2 mandate" };
+          }
+          const { mandateHash } = await import("../payments/ap2/mandate.js");
+          boundMandateHash = mandateHash(mandate as never);
+        }
         const { recoverMessageAddress } = await import("viem");
         const canonical = canonicalizePaymentPayload({
           txHash: decoded.txHash,
@@ -155,7 +171,8 @@ export async function verifyX402Payment(params: {
           sender: decoded.sender,
           recipient: decoded.recipient,
           timestamp: decoded.timestamp,
-          version: "v1",
+          version: decoded.version,
+          ...(boundMandateHash ? { mandateHash: boundMandateHash } : {}),
         });
         const recovered = await recoverMessageAddress({
           message: canonical,
