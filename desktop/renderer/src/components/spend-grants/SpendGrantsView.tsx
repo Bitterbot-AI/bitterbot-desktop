@@ -22,6 +22,20 @@ import { EnableFlagButton } from "../config/EnableFlagButton";
 
 const DAY = 86_400;
 
+// D-4 conservative first-run defaults: require a grant for any spend (so an
+// out-of-scope spend escalates instead of paying) and step up on spends at or
+// above a small floor. "Can't spend much alone" — loosened later by choice.
+const SAFE_DEFAULT_STEPUP_USD = 5;
+const SAFE_DEFAULTS_PATCH = {
+  a2a: {
+    payment: {
+      consent: { grantsRequired: true },
+      escalation: { stepUpThresholdUsd: SAFE_DEFAULT_STEPUP_USD },
+    },
+  },
+};
+const FIRST_RUN_DISMISS_KEY = "bitterbot.spendGrants.firstRunDismissed";
+
 function fmtUsd(amount: string | number): string {
   const n = typeof amount === "number" ? amount : Number.parseFloat(amount);
   return Number.isFinite(n) ? `$${n.toFixed(2)}` : "$?";
@@ -375,7 +389,32 @@ export function SpendGrantsView() {
   } = useSpendGrantsStore.getState();
   const [busy, setBusy] = useState(false);
   const [stepUp, setStepUp] = useState<SpendApproval | null>(null);
+  const [firstRunDismissed, setFirstRunDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(FIRST_RUN_DISMISS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const dismissFirstRun = useCallback(() => {
+    setFirstRunDismissed(true);
+    try {
+      localStorage.setItem(FIRST_RUN_DISMISS_KEY, "1");
+    } catch {
+      // per-viewer convenience only; safe to ignore if storage is unavailable
+    }
+  }, []);
+
+  // First run: no policy set yet (grants not required, none created, no step-up).
+  const showFirstRun =
+    gwStatus === "connected" &&
+    !loading &&
+    !firstRunDismissed &&
+    !grantsRequired &&
+    stepUpThresholdUsd === null &&
+    grants.length === 0;
 
   const needsStepUp = useCallback(
     (amountUsd: number) =>
@@ -505,6 +544,38 @@ export function SpendGrantsView() {
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
+
+      {/* First-run conservative defaults (D-4) */}
+      {showFirstRun && (
+        <div className="rounded-xl border border-brand/30 bg-brand/5 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-brand flex-shrink-0" />
+            <h3 className="text-sm font-semibold text-foreground">Start safe</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            No spend policy is set yet. Apply conservative defaults so your agent can’t spend
+            unbidden: it must have a grant to pay (out-of-scope spends pause for your approval), and
+            approvals of {fmtUsd(SAFE_DEFAULT_STEPUP_USD)}+ ask for a passkey confirmation. You can
+            loosen this any time.
+          </p>
+          <div className="flex items-center gap-2">
+            <EnableFlagButton
+              patch={SAFE_DEFAULTS_PATCH}
+              label="Apply safe defaults"
+              onDone={() => {
+                dismissFirstRun();
+                void refresh();
+              }}
+            />
+            <button
+              onClick={dismissFirstRun}
+              className="px-3 py-1.5 text-xs rounded-lg border border-border/30 text-muted-foreground hover:bg-card/80"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Enforcement status + toggle */}
       <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4 flex items-center justify-between gap-4">

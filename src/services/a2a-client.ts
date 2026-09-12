@@ -389,8 +389,20 @@ export class A2aClient {
           const { notifyEscalation } = await import("../payments/grants/escalation-notifier.js");
           // Deliver a raised escalation to the operator's primary channel so an
           // out-of-scope spend is not left waiting on the UI poll alone.
+          const { isSingleUseGrant } = await import("../payments/grants/spend-grant-store.js");
           const store = new SpendGrantStore(this.db, (approval) => void notifyEscalation(approval));
           const cov = store.activeGrantFor({ payee: payTo, amountUsd: price, verifyEd25519 });
+          // A one-time (approval) grant authorizes exactly one spend: claim it
+          // atomically before paying so a replay, retry, or concurrent spend
+          // cannot reuse it (period accounting alone leaves a TOCTOU window).
+          if (
+            cov.grant &&
+            isSingleUseGrant(cov.grant) &&
+            !store.claimSingleUse(cov.grant.claims.grant_id)
+          ) {
+            cov.grant = null;
+            cov.reason = "one-time approval already used";
+          }
           if (cov.grant) {
             grantRef = cov.grant.claims.grant_id;
           } else if (this.config.grantsRequired) {

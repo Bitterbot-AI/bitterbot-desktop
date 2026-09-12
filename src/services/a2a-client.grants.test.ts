@@ -107,6 +107,69 @@ describe("A2aClient spend-grant gate (PLAN-48 Phase 1)", () => {
     expect(res.grant).toBeNull(); // 0.05 spent + 0.96 > 1 allowance => now uncovered
   });
 
+  // Phase 6 — a covering grant cannot lift the hard per-task spend cap.
+  it("a covering grant does not let a spend exceed maxTaskCostUsdc (cap fires first)", async () => {
+    const db = new DatabaseSync(":memory:");
+    const signer = await loadNodeCircleSigner();
+    const grant = buildSpendGrant({
+      ownerPubkey: signer.pubkey,
+      scope: { allowed_payees: [PAYTO] },
+      allowance: usdc(100),
+      periodSeconds: 86_400,
+      ttlMs: 3_600_000,
+      signOwner: signer.signEd25519,
+    });
+    new SpendGrantStore(db).setGrant(grant, verifyEd25519);
+    const client = new A2aClient(
+      { grantsRequired: true, maxTaskCostUsdc: 0.02, taskTimeoutMs: 1000 },
+      db,
+    );
+    const restore = mock402(0.05); // price above the per-task cap
+    const sendUsdc = vi.fn(async () => ({ txHash: "0xcap" }));
+    const r = await client.executeTask({
+      agentUrl: PEER,
+      message: "hi",
+      walletService: walletStub(sendUsdc),
+    });
+    restore();
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/exceeds per-task max/);
+    expect(sendUsdc).not.toHaveBeenCalled();
+  });
+
+  // Phase 6 — a one-time (approval) grant funds exactly one spend, then escalates.
+  it("a one-time approval grant is not reusable: the second identical spend re-escalates", async () => {
+    const db = new DatabaseSync(":memory:");
+    const signer = await loadNodeCircleSigner();
+    const store = new SpendGrantStore(db);
+    const appr = store.requestApproval({ payee: PAYTO, amountUsd: 0.05 });
+    store.approve(appr.approvalId, {
+      ownerPubkey: signer.pubkey,
+      signOwner: signer.signEd25519,
+      verifyEd25519,
+    });
+
+    const client = new A2aClient({ grantsRequired: true, taskTimeoutMs: 1000 }, db);
+    const restore = mock402(0.05);
+    const sendUsdc = vi.fn(async () => ({ txHash: "0xone" }));
+    await client.executeTask({
+      agentUrl: PEER,
+      message: "hi",
+      walletService: walletStub(sendUsdc),
+    });
+    const second = await client.executeTask({
+      agentUrl: PEER,
+      message: "hi",
+      walletService: walletStub(sendUsdc),
+    });
+    restore();
+
+    expect(sendUsdc).toHaveBeenCalledTimes(1); // funded exactly once
+    expect(second.success).toBe(false);
+    expect(second.error).toMatch(/awaiting approval/); // second spend re-escalates
+    expect(store.listApprovals("pending")).toHaveLength(1);
+  });
+
   it("does not gate when grantsRequired is off (default)", async () => {
     const db = new DatabaseSync(":memory:");
     const client = new A2aClient({ taskTimeoutMs: 1000 }, db); // grantsRequired defaults false

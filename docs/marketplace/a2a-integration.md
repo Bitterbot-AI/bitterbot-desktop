@@ -879,7 +879,14 @@ period_seconds, per_tx_max?, exp}`), signed by the node's owner/device Ed25519 k
 - **Out-of-scope spends** (no covering grant) **escalate**: the agent raises an
   approval request and does not pay. A human resolves it with `spendGrant.approve`
   (which mints a one-time grant scoped to exactly that spend) or `spendGrant.deny`
-  (which spends nothing). List pending requests with `spendGrant.approvals`.
+  (which spends nothing). List pending requests with `spendGrant.approvals`. A
+  one-time grant is **single-use**: it is claimed atomically before the spend
+  settles (`claimSingleUse`), so a replay, a retry after a failed usage-record, or
+  a concurrent spend cannot reuse it — the second attempt re-escalates.
+- **First run — start safe (D-4).** With no policy set, the Spend Grants tab offers
+  one-click conservative defaults: require a grant for any spend (so out-of-scope
+  spends escalate) and step up on approvals at or above a small floor
+  ($5) — the "can't spend much alone" posture, loosened later by choice.
 - **Escalations are delivered**, not just polled: when a NEW approval is raised, a
   human-readable line (`[spend approval needed] $X to <payee> …`) is enqueued onto the
   main agent session's event queue, which the channel monitor relays to the operator's

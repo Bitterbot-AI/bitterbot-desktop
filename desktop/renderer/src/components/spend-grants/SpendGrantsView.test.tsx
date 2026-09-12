@@ -66,6 +66,11 @@ beforeEach(() => {
   requestMock.mockReset();
   passkeyCeremony.mockReset();
   passkeyCeremony.mockResolvedValue(true);
+  try {
+    localStorage.clear();
+  } catch {
+    /* jsdom localStorage */
+  }
   useSpendGrantsStore.setState({
     grants: [],
     approvals: [],
@@ -181,6 +186,34 @@ describe("SpendGrantsView", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }));
     // No approve RPC was sent.
     expect(requestMock.mock.calls.find((c) => c[0] === "spendGrant.approve")).toBeUndefined();
+  });
+
+  it("offers first-run safe defaults and applies both flags in one click (D-4)", async () => {
+    const user = userEvent.setup();
+    requestMock.mockImplementation((method: string) => {
+      if (method === "spendGrant.list") return Promise.resolve({ grants: [] });
+      if (method === "spendGrant.approvals") return Promise.resolve({ approvals: [] });
+      if (method === "config.get") return Promise.resolve({ config: {}, baseHash: "h1" });
+      return Promise.resolve({ ok: true });
+    });
+    render(<SpendGrantsView />);
+    await waitFor(() => expect(screen.getByText(/Start safe/i)).toBeTruthy());
+
+    await user.click(screen.getByRole("button", { name: /apply safe defaults/i }));
+    await waitFor(() => {
+      const call = requestMock.mock.calls.find((c) => c[0] === "config.patch");
+      expect(call).toBeTruthy();
+      const patch = JSON.parse((call![1] as { raw: string }).raw);
+      expect(patch.a2a.payment.consent.grantsRequired).toBe(true);
+      expect(patch.a2a.payment.escalation.stepUpThresholdUsd).toBe(5);
+    });
+  });
+
+  it("does not show first-run defaults once policy is configured", async () => {
+    // Default beforeEach mock: a grant exists and grantsRequired is on.
+    render(<SpendGrantsView />);
+    await waitFor(() => expect(screen.getByText(/Grants required/i)).toBeTruthy());
+    expect(screen.queryByText(/Start safe/i)).toBeNull();
   });
 
   it("creates a grant with parsed params", async () => {

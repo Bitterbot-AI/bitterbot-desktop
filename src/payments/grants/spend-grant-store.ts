@@ -33,6 +33,19 @@ export interface GrantResolution {
 
 export type ApprovalStatus = "pending" | "approved" | "denied";
 
+/**
+ * Scope category marking a grant minted by approving an escalation. Such a grant
+ * authorizes exactly ONE spend, so it is claimed single-use atomically before the
+ * spend settles (claimSingleUse) rather than relying on period accounting — which
+ * a failed usage-record or two concurrent spends could otherwise slip.
+ */
+export const ONE_TIME_CATEGORY = "one-time-approval";
+
+/** Whether a grant is an approval-minted one-time grant (single-use). */
+export function isSingleUseGrant(grant: SpendGrant): boolean {
+  return grant.claims.scope.categories?.includes(ONE_TIME_CATEGORY) === true;
+}
+
 export interface SpendApproval {
   approvalId: string;
   payee: string;
@@ -87,6 +100,8 @@ export class SpendGrantStore {
         at_ms INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_spend_grant_usage_grant ON spend_grant_usage (grant_id);
+      -- used_at: single-use claim for approval-minted (one-time) grants.
+      -- Set once, atomically, before the spend settles (claimSingleUse).
       CREATE TABLE IF NOT EXISTS spend_grant_approvals (
         approval_id TEXT PRIMARY KEY,
         payee TEXT NOT NULL,
@@ -103,6 +118,12 @@ export class SpendGrantStore {
     // apply it defensively; ALTER throws if the column already exists.
     try {
       this.db.exec(`ALTER TABLE spend_grant_approvals ADD COLUMN confirmation TEXT`);
+    } catch {
+      // column already present
+    }
+    // Additive single-use claim column for one-time (approval) grants.
+    try {
+      this.db.exec(`ALTER TABLE spend_grants ADD COLUMN used_at INTEGER`);
     } catch {
       // column already present
     }
@@ -157,20 +178,42 @@ export class SpendGrantStore {
     return { grant: { claims, signature: r.signature }, revokedAt: r.revoked_at };
   }
 
-  /** All grants (optionally including revoked/expired), newest-created first. */
+  /** All grants (optionally including revoked/expired/used), newest-created first. */
   listGrants(opts?: { includeInactive?: boolean; now?: number }): StoredGrant[] {
     const now = opts?.now ?? Date.now();
     const rows = this.db
-      .prepare(`SELECT grant_id, revoked_at, exp FROM spend_grants ORDER BY created_at DESC`)
-      .all() as unknown as Array<{ grant_id: string; revoked_at: number | null; exp: number }>;
+      .prepare(
+        `SELECT grant_id, revoked_at, exp, used_at FROM spend_grants ORDER BY created_at DESC`,
+      )
+      .all() as unknown as Array<{
+      grant_id: string;
+      revoked_at: number | null;
+      exp: number;
+      used_at: number | null;
+    }>;
     const out: StoredGrant[] = [];
     for (const r of rows) {
-      const active = r.revoked_at === null && r.exp * 1000 > now;
+      // A consumed single-use grant (used_at set) is inactive, so it never
+      // resolves as covering a second spend even before period usage records.
+      const active = r.revoked_at === null && r.exp * 1000 > now && r.used_at === null;
       if (!opts?.includeInactive && !active) continue;
       const s = this.row(r.grant_id);
       if (s) out.push(s);
     }
     return out;
+  }
+
+  /**
+   * Atomically claim a one-time (approval) grant so it authorizes exactly one
+   * spend. Returns true only for the first caller; a second caller (a replay, a
+   * concurrent spend, or a retry after a failed usage-record) gets false and must
+   * escalate. Race-free: the conditional UPDATE is the single source of truth.
+   */
+  claimSingleUse(grantId: string, now: number = Date.now()): boolean {
+    const res = this.db
+      .prepare(`UPDATE spend_grants SET used_at = ? WHERE grant_id = ? AND used_at IS NULL`)
+      .run(now, grantId);
+    return Number(res.changes) === 1;
   }
 
   /** Spend recorded against a grant in the period containing `now` (unix ms). */
@@ -332,7 +375,7 @@ export class SpendGrantStore {
     const amount = usdc(appr.amountUsd);
     const grant = buildSpendGrant({
       ownerPubkey: signer.ownerPubkey,
-      scope: { allowed_payees: [appr.payee], categories: ["one-time-approval"] },
+      scope: { allowed_payees: [appr.payee], categories: [ONE_TIME_CATEGORY] },
       allowance: amount,
       periodSeconds: 24 * 60 * 60,
       perTxMax: amount,
