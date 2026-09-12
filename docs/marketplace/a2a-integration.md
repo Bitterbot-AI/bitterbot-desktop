@@ -861,6 +861,14 @@ period_seconds, per_tx_max?, exp}`), signed by the node's owner/device Ed25519 k
   approval request and does not pay. A human resolves it with `spendGrant.approve`
   (which mints a one-time grant scoped to exactly that spend) or `spendGrant.deny`
   (which spends nothing). List pending requests with `spendGrant.approvals`.
+- **Escalations are delivered**, not just polled: when a NEW approval is raised, a
+  human-readable line (`[spend approval needed] $X to <payee> …`) is enqueued onto the
+  main agent session's event queue, which the channel monitor relays to the operator's
+  primary channel (Telegram / WhatsApp / Discord / Slack) — the same best-effort path
+  the task-completion and skill-quarantine notifiers use. A retry loop escalating the
+  same spend reuses the pending approval and does not re-notify. Delivery is fail-open
+  (a missing channel never disturbs the already-refused spend) and can be disabled with
+  `BITTERBOT_SPEND_ESCALATION_NOTIFY=0`.
 - **Revocation is immediate** — a revoked or expired grant authorizes no further spend
   on the next resolution, and never unwinds a spend that already settled.
 

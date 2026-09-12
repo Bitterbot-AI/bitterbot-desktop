@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { VerifyEd25519Fn } from "../ap2/consent.js";
 import { SpendGrantStore } from "./spend-grant-store.js";
 import {
@@ -204,5 +204,24 @@ describe("SpendGrantStore — escalation approval loop (PLAN-48 Phase 2)", () =>
     const a = s.requestApproval({ payee: SELLER, amountUsd: 0.5 });
     s.approve(a.approvalId, signer);
     expect(() => s.approve(a.approvalId, signer)).toThrow(/already approved/);
+  });
+
+  it("fires onEscalation once for a new approval and not for a reused one", () => {
+    const onEscalation = vi.fn();
+    const s = new SpendGrantStore(new DatabaseSync(":memory:"), onEscalation);
+    const a = s.requestApproval({ payee: SELLER, amountUsd: 0.5, reason: "new merchant" });
+    expect(onEscalation).toHaveBeenCalledOnce();
+    expect(onEscalation.mock.calls[0]![0]!.approvalId).toBe(a.approvalId);
+    // A duplicate request reuses the pending row and must NOT re-notify.
+    s.requestApproval({ payee: SELLER, amountUsd: 0.5 });
+    expect(onEscalation).toHaveBeenCalledOnce();
+  });
+
+  it("swallows an onEscalation throw so the escalation still records", () => {
+    const s = new SpendGrantStore(new DatabaseSync(":memory:"), () => {
+      throw new Error("delivery blew up");
+    });
+    const a = s.requestApproval({ payee: SELLER, amountUsd: 0.5 });
+    expect(s.getApproval(a.approvalId)?.status).toBe("pending");
   });
 });

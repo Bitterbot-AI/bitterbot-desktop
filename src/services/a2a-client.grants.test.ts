@@ -12,6 +12,11 @@ import { SpendGrantStore } from "../payments/grants/spend-grant-store.js";
 import { buildSpendGrant, usdc } from "../payments/grants/spend-grant.js";
 import { A2aClient, classifyOutcome } from "./a2a-client.js";
 
+// Spy on escalation delivery so we can assert a raised approval is pushed to
+// the operator (the notifier itself is unit-tested in escalation-notifier.test).
+const { notifyEscalation } = vi.hoisted(() => ({ notifyEscalation: vi.fn(async () => {}) }));
+vi.mock("../payments/grants/escalation-notifier.js", () => ({ notifyEscalation }));
+
 const PEER = "https://peer.example";
 const PAYTO = "0x00000000000000000000000000000000000000aa";
 
@@ -38,6 +43,7 @@ describe("A2aClient spend-grant gate (PLAN-48 Phase 1)", () => {
   const realFetch = globalThis.fetch;
   afterEach(() => {
     globalThis.fetch = realFetch;
+    notifyEscalation.mockClear();
     vi.restoreAllMocks();
   });
 
@@ -60,6 +66,9 @@ describe("A2aClient spend-grant gate (PLAN-48 Phase 1)", () => {
     const pending = new SpendGrantStore(db).listApprovals("pending");
     expect(pending).toHaveLength(1);
     expect(pending[0]!.payee).toBe(PAYTO);
+    // The raised approval was delivered to the operator (escalation push).
+    expect(notifyEscalation).toHaveBeenCalledOnce();
+    expect(notifyEscalation.mock.calls[0]![0]!.approvalId).toBe(pending[0]!.approvalId);
     // Our own refusal must not be scored against the peer.
     expect(classifyOutcome(r)).toBeNull();
   });
@@ -90,6 +99,8 @@ describe("A2aClient spend-grant gate (PLAN-48 Phase 1)", () => {
     restore();
 
     expect(sendUsdc).toHaveBeenCalledTimes(1);
+    // A covered spend needs no escalation.
+    expect(notifyEscalation).not.toHaveBeenCalled();
     // Usage was recorded against the grant.
     const consumed = new SpendGrantStore(db);
     const res = consumed.activeGrantFor({ payee: PAYTO, amountUsd: 0.96, verifyEd25519 });

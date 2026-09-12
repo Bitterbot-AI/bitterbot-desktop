@@ -50,7 +50,18 @@ function amountUsd(a: { amount: string }): number {
 }
 
 export class SpendGrantStore {
-  constructor(private readonly db: DatabaseSync) {
+  /**
+   * @param db          the marketplace sqlite handle.
+   * @param onEscalation optional side-effect fired ONCE when `requestApproval`
+   *        inserts a NEW pending approval (never on a reused one). Callers wire
+   *        the escalation notifier here so a raised approval reaches the
+   *        operator; best-effort, and a throw is swallowed so it never breaks
+   *        the (already fail-safe) escalation.
+   */
+  constructor(
+    private readonly db: DatabaseSync,
+    private readonly onEscalation?: (approval: SpendApproval) => void,
+  ) {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS spend_grants (
         grant_id TEXT PRIMARY KEY,
@@ -226,7 +237,17 @@ export class SpendGrantStore {
          VALUES (?, ?, ?, ?, 'pending', ?, NULL, NULL)`,
       )
       .run(approvalId, payee, params.amountUsd, params.reason ?? "out-of-scope spend", now);
-    return this.getApproval(approvalId)!;
+    const approval = this.getApproval(approvalId)!;
+    // Deliver only on a NEW approval (the reused-pending branch above returned
+    // early), so a retry loop escalating the same spend does not re-notify.
+    if (this.onEscalation) {
+      try {
+        this.onEscalation(approval);
+      } catch {
+        // best-effort delivery: never let it break the fail-safe escalation
+      }
+    }
+    return approval;
   }
 
   getApproval(approvalId: string): SpendApproval | null {

@@ -373,7 +373,10 @@ export class A2aClient {
         try {
           const { SpendGrantStore } = await import("../payments/grants/spend-grant-store.js");
           const { verifyEd25519 } = await import("../payments/ap2/ed25519.js");
-          const store = new SpendGrantStore(this.db);
+          const { notifyEscalation } = await import("../payments/grants/escalation-notifier.js");
+          // Deliver a raised escalation to the operator's primary channel so an
+          // out-of-scope spend is not left waiting on the UI poll alone.
+          const store = new SpendGrantStore(this.db, (approval) => void notifyEscalation(approval));
           const cov = store.activeGrantFor({ payee: payTo, amountUsd: price, verifyEd25519 });
           if (cov.grant) {
             grantRef = cov.grant.claims.grant_id;
