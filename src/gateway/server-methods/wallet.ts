@@ -107,6 +107,80 @@ export const walletHandlers: GatewayRequestHandlers = {
     }
   },
 
+  "wallet.requestFunding": async ({ params, respond }) => {
+    // PLAN-49 Phase 2: raise a funding request on the consent rail. Notifies the
+    // operator to Add Funds instead of the agent dead-ending; enforces the monthly
+    // ceiling headroom. Moves no money — the human completes the top-up via the
+    // licensed onramp partner. Gated by payments.fiat.onramp.enabled (default off).
+    try {
+      const config = loadConfig();
+      const onramp = config.payments?.fiat?.onramp;
+      if (onramp?.enabled !== true) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.UNAVAILABLE,
+            "In-app funding is not enabled (payments.fiat.onramp)",
+          ),
+        );
+        return;
+      }
+      const amountUsd =
+        typeof params.amountUsd === "number" && Number.isFinite(params.amountUsd)
+          ? params.amountUsd
+          : NaN;
+      if (!(amountUsd > 0)) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "amountUsd (positive number) required"),
+        );
+        return;
+      }
+      const reason = typeof params.reason === "string" ? params.reason : undefined;
+
+      const { checkFundingWithinCeiling } = await import("../../payments/fiat/funding-policy.js");
+      const ceiling = checkFundingWithinCeiling({
+        requestUsd: amountUsd,
+        ceilingUsd: onramp.monthlyCeilingUsd,
+      });
+
+      const svc = getWalletService();
+      let balanceUsd: number | undefined;
+      try {
+        const bal = await svc.getBalance("USDC");
+        const n = Number.parseFloat(bal.balance);
+        balanceUsd = Number.isFinite(n) ? n : undefined;
+      } catch {
+        // balance is best-effort context for the prompt
+      }
+
+      const { notifyFundingNeeded } = await import("../../payments/fiat/funding-notifier.js");
+      await notifyFundingNeeded({ amountUsd, reason, balanceUsd });
+
+      let onrampUrl: string | undefined;
+      try {
+        onrampUrl = await svc.getFundingUrl();
+      } catch {
+        // onramp URL is best-effort
+      }
+
+      respond(true, {
+        requestedUsd: amountUsd,
+        withinCeiling: ceiling.allowed,
+        remainingUsd: Number.isFinite(ceiling.remainingUsd) ? ceiling.remainingUsd : null,
+        onrampUrl,
+      });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, err instanceof Error ? err.message : String(err)),
+      );
+    }
+  },
+
   "wallet.getConfig": async ({ respond }) => {
     try {
       const config = loadConfig();
@@ -144,6 +218,9 @@ export const walletHandlers: GatewayRequestHandlers = {
         // PLAN-49 Phase 1: present the wallet as dollars + a plain-English ledger.
         // Display-only, default on.
         uiDollars: config.payments?.fiat?.uiDollars ?? true,
+        // PLAN-49 Phase 2: in-app funding on the consent rail (default off).
+        onrampEnabled: config.payments?.fiat?.onramp?.enabled === true,
+        fundingMonthlyCeilingUsd: config.payments?.fiat?.onramp?.monthlyCeilingUsd,
       });
     } catch (err) {
       respond(

@@ -1051,6 +1051,13 @@ export const BitterbotSchema = z
         fiat: z
           .object({
             uiDollars: z.boolean().optional(),
+            onramp: z
+              .object({
+                enabled: z.boolean().optional(),
+                monthlyCeilingUsd: z.number().nonnegative().optional(),
+              })
+              .strict()
+              .optional(),
           })
           .strict()
           .optional(),

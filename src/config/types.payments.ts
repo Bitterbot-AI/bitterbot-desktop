@@ -13,5 +13,22 @@ export type PaymentsConfig = {
      * and changes no on-chain behavior. Off = the crypto-first wallet view.
      */
     uiDollars?: boolean;
+    /**
+     * In-app fiat funding on the consent rail (PLAN-49 Phase 2). When enabled, the
+     * agent (or the user) can raise a funding request instead of dead-ending on a
+     * shortfall, and the Wallet tab funds in-app rather than via a manual detour.
+     * The actual card/bank charge runs through the licensed onramp partner and is
+     * always initiated by a human. Default: false (opt-in).
+     */
+    onramp?: {
+      enabled?: boolean;
+      /**
+       * Hard ceiling on total fiat pulled in per 30-day period (invariant I3).
+       * Undefined = not bounded by this ceiling (the wallet's own spend caps still
+       * apply downstream); 0 = block all funding. Auto-refill (Phase 3) will spend
+       * silently only within this ceiling.
+       */
+      monthlyCeilingUsd?: number;
+    };
   };
 };

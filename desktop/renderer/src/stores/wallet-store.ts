@@ -25,6 +25,10 @@ export type WalletConfig = {
   stripeOnrampEnabled: boolean;
   /** PLAN-49 Phase 1: present the wallet in dollars + plain-English ledger. */
   uiDollars?: boolean;
+  /** PLAN-49 Phase 2: in-app funding on the consent rail is enabled. */
+  onrampEnabled?: boolean;
+  /** PLAN-49 Phase 2: hard monthly fiat funding ceiling, if set. */
+  fundingMonthlyCeilingUsd?: number;
 };
 
 /** PLAN-49 Phase 1: dollar-denominated read model (from wallet.getMoneyView). */

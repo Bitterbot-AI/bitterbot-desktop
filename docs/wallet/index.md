@@ -31,6 +31,22 @@ BaseScan links) are one click away behind **Show crypto details**. To make the w
 crypto-first instead, set `payments.fiat.uiDollars` to `false` (default `true`). This
 is display-only — it moves no money and changes no on-chain behavior.
 
+## In-app funding (PLAN-49 Phase 2)
+
+With `payments.fiat.onramp.enabled` (default off), the agent asks you to add funds
+instead of dead-ending when it is short for a task: it calls `request_funding`,
+which delivers a "funds needed" prompt to your primary channel and points you at the
+Wallet tab's **Add Funds** flow. A hard **monthly funding ceiling**
+(`payments.fiat.onramp.monthlyCeilingUsd`) caps how much fiat can be pulled in per
+period, so a runaway can never exceed a budget you set (a ceiling of `0` blocks all
+funding). The actual card/bank charge runs through the licensed onramp partner and is
+always completed by a human — no money moves autonomously.
+
+> **Current limitation.** Funding requests, the ceiling math, and the operator
+> prompt are wired and tested, but completed top-ups are not yet recorded back, so
+> the ceiling headroom shown assumes a fresh period. Automatic top-up (staying above
+> a target balance within the ceiling) and completion tracking are the next phase.
+
 ## Spending Controls
 
 The wallet has layered safety limits:

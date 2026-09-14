@@ -492,6 +492,11 @@ export function WalletView() {
           <Fuel className="w-4 h-4" />
           {network === "base-sepolia" ? "Get Testnet Tokens" : "Add Funds"}
         </button>
+        {walletConfig?.onrampEnabled && walletConfig.fundingMonthlyCeilingUsd !== undefined && (
+          <span className="self-center text-xs text-muted-foreground">
+            Monthly funding limit: {fmtUsd(walletConfig.fundingMonthlyCeilingUsd)}
+          </span>
+        )}
       </div>
 
       {/* Show crypto details toggle (dollars mode only) */}

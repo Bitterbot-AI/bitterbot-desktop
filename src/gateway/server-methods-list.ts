@@ -199,6 +199,7 @@ const BASE_METHODS = [
   "wallet.getBalance",
   "wallet.getHistory",
   "wallet.getMoneyView",
+  "wallet.requestFunding",
   "wallet.getConfig",
   "wallet.setConfig",
   "wallet.fund",
