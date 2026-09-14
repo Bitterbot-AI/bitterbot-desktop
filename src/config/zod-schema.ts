@@ -1046,6 +1046,17 @@ export const BitterbotSchema = z
       })
       .strict()
       .optional(),
+    payments: z
+      .object({
+        fiat: z
+          .object({
+            uiDollars: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {

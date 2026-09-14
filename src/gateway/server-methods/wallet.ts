@@ -67,6 +67,46 @@ export const walletHandlers: GatewayRequestHandlers = {
     }
   },
 
+  "wallet.getMoneyView": async ({ params, respond }) => {
+    try {
+      const svc = getWalletService();
+      const limit =
+        typeof params.limit === "number" && Number.isFinite(params.limit)
+          ? Math.max(1, Math.floor(params.limit))
+          : 50;
+      const [usdc, history] = await Promise.all([
+        svc.getBalance("USDC"),
+        svc.getTransactionHistory(limit),
+      ]);
+      const { buildMoneyView, kindForTxType, usdcToUsd } =
+        await import("../../payments/fiat/money-view.js");
+      // The dollar ledger is USDC-denominated: include USDC transfers and x402
+      // payments (always USDC); ETH/gas rows are not user-facing money events.
+      const events = history
+        .filter((t) => (t.token ?? "USDC") === "USDC" || t.type === "x402_payment")
+        .map((t) => ({
+          kind: kindForTxType(t.type),
+          amountUsd: usdcToUsd(t.amount),
+          at: t.timestamp,
+          ref: t.txHash,
+        }));
+      const view = buildMoneyView({
+        balanceUsdc: usdc.balance,
+        events,
+        note:
+          "Your balance is the live on-chain total. The activity list itemizes recorded " +
+          "spends; money you received or earned is reflected in the balance.",
+      });
+      respond(true, view);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, err instanceof Error ? err.message : String(err)),
+      );
+    }
+  },
+
   "wallet.getConfig": async ({ respond }) => {
     try {
       const config = loadConfig();
@@ -101,6 +141,9 @@ export const walletHandlers: GatewayRequestHandlers = {
         // Onramp is always available — either via local keys, custom endpoint, or hosted service
         stripeOnrampEnabled: true,
         onrampTier,
+        // PLAN-49 Phase 1: present the wallet as dollars + a plain-English ledger.
+        // Display-only, default on.
+        uiDollars: config.payments?.fiat?.uiDollars ?? true,
       });
     } catch (err) {
       respond(

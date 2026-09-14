@@ -23,6 +23,34 @@ export type WalletConfig = {
   x402Enabled: boolean;
   x402MaxPerRequestUsd: number;
   stripeOnrampEnabled: boolean;
+  /** PLAN-49 Phase 1: present the wallet in dollars + plain-English ledger. */
+  uiDollars?: boolean;
+};
+
+/** PLAN-49 Phase 1: dollar-denominated read model (from wallet.getMoneyView). */
+export type LedgerEntry = {
+  kind: "funded" | "spent" | "earned" | "withdrawn";
+  amountUsd: number;
+  at: number;
+  counterparty?: string;
+  ref?: string;
+  feeUsd?: number;
+  deltaUsd: number;
+  description: string;
+};
+
+export type MoneyView = {
+  balanceUsd: number;
+  currency: "USD";
+  entries: LedgerEntry[];
+  totals: {
+    fundedUsd: number;
+    spentUsd: number;
+    earnedUsd: number;
+    withdrawnUsd: number;
+    feesUsd: number;
+  };
+  note?: string;
 };
 
 interface WalletState {
@@ -30,6 +58,7 @@ interface WalletState {
   network: string | null;
   balances: WalletBalance[];
   transactions: WalletTransaction[];
+  moneyView: MoneyView | null;
   config: WalletConfig | null;
   loading: boolean;
   error: string | null;
@@ -37,6 +66,7 @@ interface WalletState {
   setAddress: (address: string, network: string) => void;
   setBalances: (balances: WalletBalance[]) => void;
   setTransactions: (transactions: WalletTransaction[]) => void;
+  setMoneyView: (moneyView: MoneyView | null) => void;
   setConfig: (config: WalletConfig) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -48,6 +78,7 @@ export const useWalletStore = create<WalletState>((set) => ({
   network: null,
   balances: [],
   transactions: [],
+  moneyView: null,
   config: null,
   loading: false,
   error: null,
@@ -55,6 +86,7 @@ export const useWalletStore = create<WalletState>((set) => ({
   setAddress: (address, network) => set({ address, network }),
   setBalances: (balances) => set({ balances }),
   setTransactions: (transactions) => set({ transactions }),
+  setMoneyView: (moneyView) => set({ moneyView }),
   setConfig: (config) => set({ config }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
@@ -64,6 +96,7 @@ export const useWalletStore = create<WalletState>((set) => ({
       network: null,
       balances: [],
       transactions: [],
+      moneyView: null,
       config: null,
       loading: false,
       error: null,

@@ -7,6 +7,9 @@ import {
   Fuel,
   Shield,
   KeyRound,
+  Banknote,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
@@ -15,8 +18,15 @@ import {
   useWalletStore,
   type WalletTransaction,
   type WalletConfig,
+  type LedgerEntry,
+  type MoneyView,
 } from "../../stores/wallet-store";
 import { EnableFlagButton } from "../config/EnableFlagButton";
+
+function fmtUsd(n: number): string {
+  const sign = n < 0 ? "-" : "";
+  return `${sign}$${Math.abs(n).toFixed(2)}`;
+}
 
 function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text).catch(() => {});
@@ -114,6 +124,103 @@ function TransactionRow({ tx, network }: { tx: WalletTransaction; network: strin
   );
 }
 
+function relativeTime(ms: number): string {
+  if (!ms) return "";
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
+  return new Date(ms).toLocaleDateString();
+}
+
+function LedgerRow({ e }: { e: LedgerEntry }) {
+  const inflow = e.kind === "funded" || e.kind === "earned";
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-border/5 last:border-0">
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className={cn(
+            "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+            inflow ? "bg-success/10 text-success" : "bg-warning/10 text-warning",
+          )}
+        >
+          {inflow ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+        </div>
+        <div className="min-w-0">
+          <span className="text-sm text-foreground block truncate">{e.description}</span>
+          <span className="text-2xs text-muted-foreground/60">
+            {relativeTime(e.at)}
+            {e.feeUsd ? ` · ${fmtUsd(e.feeUsd)} fee` : ""}
+          </span>
+        </div>
+      </div>
+      <span
+        className={cn(
+          "text-sm font-medium flex-shrink-0",
+          inflow ? "text-success" : "text-warning",
+        )}
+      >
+        {e.deltaUsd >= 0 ? "+" : ""}
+        {fmtUsd(e.deltaUsd)}
+      </span>
+    </div>
+  );
+}
+
+function MoneySection({ money, testnet }: { money: MoneyView; testnet: boolean }) {
+  return (
+    <>
+      {/* Dollar balance hero */}
+      <div className="rounded-xl border border-brand/20 bg-brand/5 p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Banknote className="w-4 h-4 text-brand" />
+          <p className="text-xs text-muted-foreground">Balance</p>
+          {testnet && (
+            <span className="text-2xs font-medium px-2 py-0.5 rounded-full bg-warning/15 text-warning">
+              Testnet · not real money
+            </span>
+          )}
+        </div>
+        <p className="text-4xl font-bold text-foreground">{fmtUsd(money.balanceUsd)}</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-muted-foreground">
+          {money.totals.spentUsd > 0 && <span>Spent {fmtUsd(money.totals.spentUsd)}</span>}
+          {money.totals.earnedUsd > 0 && (
+            <span className="text-success">Earned {fmtUsd(money.totals.earnedUsd)}</span>
+          )}
+          {money.totals.fundedUsd > 0 && <span>Added {fmtUsd(money.totals.fundedUsd)}</span>}
+          {money.totals.feesUsd > 0 && <span>Fees {fmtUsd(money.totals.feesUsd)}</span>}
+        </div>
+      </div>
+
+      {/* Plain-English activity */}
+      <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm overflow-hidden">
+        <h3 className="text-sm font-medium text-foreground px-4 py-3 border-b border-border/10">
+          Activity
+        </h3>
+        {money.entries.length > 0 ? (
+          <div className="max-h-[360px] overflow-y-auto">
+            {money.entries.map((e, i) => (
+              <LedgerRow key={e.ref || i} e={e} />
+            ))}
+          </div>
+        ) : (
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm text-muted-foreground">No activity yet</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              Add funds and your agent can start transacting
+            </p>
+          </div>
+        )}
+        {money.note && (
+          <p className="text-2xs text-muted-foreground/60 px-4 py-2 border-t border-border/5">
+            {money.note}
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function WalletView() {
   const gwStatus = useGatewayStore((s) => s.status);
   const request = useGatewayStore((s) => s.request);
@@ -121,17 +228,26 @@ export function WalletView() {
   const network = useWalletStore((s) => s.network);
   const balances = useWalletStore((s) => s.balances);
   const transactions = useWalletStore((s) => s.transactions);
+  const moneyView = useWalletStore((s) => s.moneyView);
   const loading = useWalletStore((s) => s.loading);
   const setAddress = useWalletStore((s) => s.setAddress);
   const setBalances = useWalletStore((s) => s.setBalances);
   const setTransactions = useWalletStore((s) => s.setTransactions);
+  const setMoneyView = useWalletStore((s) => s.setMoneyView);
   const setLoading = useWalletStore((s) => s.setLoading);
   const setError = useWalletStore((s) => s.setError);
 
   const [walletConfig, setWalletConfig] = useState<WalletConfig | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showCrypto, setShowCrypto] = useState(false);
   const [failReason, setFailReason] = useState<"disabled" | "unconfigured" | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Dollars-first unless explicitly turned off (payments.fiat.uiDollars).
+  const uiDollars = walletConfig?.uiDollars !== false;
+  // The crypto-native details (address, token balances, raw tx) are always shown
+  // in crypto mode, and behind a toggle in dollars mode.
+  const cryptoOpen = !uiDollars || showCrypto;
 
   const refresh = useCallback(async () => {
     if (gwStatus !== "connected") return;
@@ -151,7 +267,7 @@ export function WalletView() {
       const addrRes = await request<{ address: string; network: string }>("wallet.getAddress");
       setAddress(addrRes.address, addrRes.network);
 
-      const [ethBal, usdcBal, historyRes] = await Promise.allSettled([
+      const [ethBal, usdcBal, historyRes, moneyRes] = await Promise.allSettled([
         request<{ token: string; balance: string; usdValue?: string }>("wallet.getBalance", {
           token: "ETH",
         }),
@@ -161,6 +277,7 @@ export function WalletView() {
         request<{ transactions: WalletTransaction[] }>("wallet.getHistory", {
           limit: 20,
         }),
+        request<MoneyView>("wallet.getMoneyView", { limit: 50 }),
       ]);
 
       const bals = [];
@@ -170,6 +287,9 @@ export function WalletView() {
 
       if (historyRes.status === "fulfilled") {
         setTransactions(historyRes.value.transactions);
+      }
+      if (moneyRes.status === "fulfilled") {
+        setMoneyView(moneyRes.value);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -182,7 +302,16 @@ export function WalletView() {
     } finally {
       setLoading(false);
     }
-  }, [gwStatus, request, setAddress, setBalances, setTransactions, setLoading, setError]);
+  }, [
+    gwStatus,
+    request,
+    setAddress,
+    setBalances,
+    setTransactions,
+    setMoneyView,
+    setLoading,
+    setError,
+  ]);
 
   useEffect(() => {
     refresh();
@@ -327,7 +456,9 @@ export function WalletView() {
               </span>
             )}
           </div>
-          <p className="text-sm text-muted-foreground mt-1">Coinbase AgentKit wallet on Base L2</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {uiDollars ? "Your agent's spending balance" : "Coinbase AgentKit wallet on Base L2"}
+          </p>
         </div>
         <button
           onClick={refresh}
@@ -343,8 +474,43 @@ export function WalletView() {
         </button>
       </div>
 
+      {/* Dollars-first money view (PLAN-49 Phase 1) */}
+      {uiDollars && moneyView && (
+        <MoneySection money={moneyView} testnet={network === "base-sepolia"} />
+      )}
+
+      {/* Fund action */}
+      <div className="flex gap-3">
+        <button
+          onClick={handleFundWallet}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 text-sm rounded-lg",
+            "bg-success/10 text-success hover:bg-success/30",
+            "border border-success/20 transition-colors",
+          )}
+        >
+          <Fuel className="w-4 h-4" />
+          {network === "base-sepolia" ? "Get Testnet Tokens" : "Add Funds"}
+        </button>
+      </div>
+
+      {/* Show crypto details toggle (dollars mode only) */}
+      {uiDollars && (
+        <button
+          onClick={() => setShowCrypto((v) => !v)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {cryptoOpen ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5" />
+          )}
+          {cryptoOpen ? "Hide crypto details" : "Show crypto details"}
+        </button>
+      )}
+
       {/* Address card */}
-      {address && (
+      {cryptoOpen && address && (
         <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -380,83 +546,74 @@ export function WalletView() {
       )}
 
       {/* Balance cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {balances.map((bal) => (
-          <StatCard
-            key={bal.token}
-            label={bal.token}
-            value={formatBalance(bal.balance, bal.token)}
-            sub={bal.usdValue ? `$${bal.usdValue}` : undefined}
-          />
-        ))}
-        {/* Spend caps */}
-        {walletConfig && (
-          <>
+      {cryptoOpen && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {balances.map((bal) => (
             <StatCard
-              label="Session Cap"
-              value={`$${walletConfig.sessionSpendCapUsd}`}
-              sub="per session limit"
-              icon={<Shield className="w-3.5 h-3.5 text-warning" />}
+              key={bal.token}
+              label={bal.token}
+              value={formatBalance(bal.balance, bal.token)}
+              sub={bal.usdValue ? `$${bal.usdValue}` : undefined}
             />
-            <StatCard
-              label="Per-TX Cap"
-              value={`$${walletConfig.perTransactionCapUsd}`}
-              sub="per transaction limit"
-              icon={<Shield className="w-3.5 h-3.5 text-warning" />}
-            />
-            <StatCard
-              label="Daily Limit"
-              value={`$${walletConfig.dailySpendLimitUsd}`}
-              sub="24-hour rolling cap"
-              icon={<Shield className="w-3.5 h-3.5 text-warning" />}
-            />
-            <StatCard
-              label="x402"
-              value={
-                walletConfig.x402Enabled ? `$${walletConfig.x402MaxPerRequestUsd}/req` : "Disabled"
-              }
-              sub={walletConfig.x402Enabled ? "micropayment protocol" : "enable in config"}
-              icon={<Shield className="w-3.5 h-3.5 text-info" />}
-            />
-          </>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-3">
-        <button
-          onClick={handleFundWallet}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 text-sm rounded-lg",
-            "bg-success/10 text-success hover:bg-success/30",
-            "border border-success/20 transition-colors",
+          ))}
+          {/* Spend caps */}
+          {walletConfig && (
+            <>
+              <StatCard
+                label="Session Cap"
+                value={`$${walletConfig.sessionSpendCapUsd}`}
+                sub="per session limit"
+                icon={<Shield className="w-3.5 h-3.5 text-warning" />}
+              />
+              <StatCard
+                label="Per-TX Cap"
+                value={`$${walletConfig.perTransactionCapUsd}`}
+                sub="per transaction limit"
+                icon={<Shield className="w-3.5 h-3.5 text-warning" />}
+              />
+              <StatCard
+                label="Daily Limit"
+                value={`$${walletConfig.dailySpendLimitUsd}`}
+                sub="24-hour rolling cap"
+                icon={<Shield className="w-3.5 h-3.5 text-warning" />}
+              />
+              <StatCard
+                label="x402"
+                value={
+                  walletConfig.x402Enabled
+                    ? `$${walletConfig.x402MaxPerRequestUsd}/req`
+                    : "Disabled"
+                }
+                sub={walletConfig.x402Enabled ? "micropayment protocol" : "enable in config"}
+                icon={<Shield className="w-3.5 h-3.5 text-info" />}
+              />
+            </>
           )}
-        >
-          <Fuel className="w-4 h-4" />
-          {network === "base-sepolia" ? "Get Testnet Tokens" : "Fund Wallet"}
-        </button>
-      </div>
+        </div>
+      )}
 
-      {/* Transaction history */}
-      <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm overflow-hidden">
-        <h3 className="text-sm font-medium text-foreground px-4 py-3 border-b border-border/10">
-          Transaction History
-        </h3>
-        {transactions.length > 0 ? (
-          <div className="max-h-[400px] overflow-y-auto">
-            {transactions.map((tx, i) => (
-              <TransactionRow key={tx.txHash || i} tx={tx} network={network} />
-            ))}
-          </div>
-        ) : (
-          <div className="px-4 py-8 text-center">
-            <p className="text-sm text-muted-foreground">No transactions yet</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">
-              Fund your wallet and start transacting
-            </p>
-          </div>
-        )}
-      </div>
+      {/* Transaction history (raw, crypto view) */}
+      {cryptoOpen && (
+        <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm overflow-hidden">
+          <h3 className="text-sm font-medium text-foreground px-4 py-3 border-b border-border/10">
+            Transaction History
+          </h3>
+          {transactions.length > 0 ? (
+            <div className="max-h-[400px] overflow-y-auto">
+              {transactions.map((tx, i) => (
+                <TransactionRow key={tx.txHash || i} tx={tx} network={network} />
+              ))}
+            </div>
+          ) : (
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm text-muted-foreground">No transactions yet</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">
+                Fund your wallet and start transacting
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
