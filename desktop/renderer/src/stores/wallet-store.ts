@@ -29,6 +29,10 @@ export type WalletConfig = {
   onrampEnabled?: boolean;
   /** PLAN-49 Phase 2: hard monthly fiat funding ceiling, if set. */
   fundingMonthlyCeilingUsd?: number;
+  /** PLAN-49 Phase 0.5: wallet provisioning mode (embedded per-user vs self-host CDP). */
+  provisioning?: "embedded" | "selfHostServer";
+  /** PLAN-49 Phase 0.5: public CDP project id for the embedded sign-in SDK. */
+  embeddedProjectId?: string;
 };
 
 /** PLAN-49 Phase 1: dollar-denominated read model (from wallet.getMoneyView). */

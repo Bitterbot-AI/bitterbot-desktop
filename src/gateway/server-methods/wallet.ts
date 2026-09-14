@@ -2,6 +2,7 @@ import type { GatewayRequestHandlers } from "./types.js";
 import { loadConfig, writeConfigFile } from "../../config/config.js";
 import { createHostedOnrampSession, DEFAULT_ONRAMP_URL } from "../../services/hosted-onramp.js";
 import { createOnrampSession } from "../../services/stripe-onramp.js";
+import { resolveWalletProvisioning } from "../../services/wallet-provisioning.js";
 import { createWalletService, type WalletService } from "../../services/wallet-service.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
@@ -203,6 +204,8 @@ export const walletHandlers: GatewayRequestHandlers = {
         onrampTier = "hosted";
       }
 
+      const provisioningView = resolveWalletProvisioning(walletConfig);
+
       respond(true, {
         // V1 default flip (PLAN-41 D-D): the wallet is opt-in.
         enabled: walletConfig?.enabled === true,
@@ -221,6 +224,9 @@ export const walletHandlers: GatewayRequestHandlers = {
         // PLAN-49 Phase 2: in-app funding on the consent rail (default off).
         onrampEnabled: config.payments?.fiat?.onramp?.enabled === true,
         fundingMonthlyCeilingUsd: config.payments?.fiat?.onramp?.monthlyCeilingUsd,
+        // PLAN-49 Phase 0.5: wallet provisioning mode (embedded vs self-host CDP).
+        provisioning: provisioningView.mode,
+        embeddedProjectId: provisioningView.embeddedProjectId,
       });
     } catch (err) {
       respond(

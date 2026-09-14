@@ -7,6 +7,27 @@ export type WalletConfig = {
   cdpApiKeyId?: string;
   /** Coinbase Developer Platform API key secret. */
   cdpApiKeySecret?: string;
+  /**
+   * How the wallet is provisioned (PLAN-49 Phase 0.5).
+   * - "selfHostServer" (default): the operator's single CDP Server Wallet, keyed by
+   *   the CDP secrets above — today's path, a developer step.
+   * - "embedded": a per-user CDP Embedded Wallet the user creates by signing in
+   *   (email OTP) in the Control UI; the gateway signs via a time-bound delegation.
+   *   Non-custodial (the user controls/exports the key). Requires `embedded.projectId`
+   *   and origins allow-listed in the CDP Portal (Path B: the gateway's
+   *   http://localhost:19001 origin). Falls back to selfHostServer when unset.
+   */
+  provisioning?: "selfHostServer" | "embedded";
+  /** CDP Embedded Wallet settings (PLAN-49 Phase 0.5; used when provisioning="embedded"). */
+  embedded?: {
+    /**
+     * CDP project id for the Embedded Wallet frontend SDK. PUBLIC (ships in the
+     * Control UI), gated by the project's domain allowlist. Get it from the CDP
+     * Portal; without it the embedded path stays inert and the wallet falls back
+     * to the self-host path.
+     */
+    projectId?: string;
+  };
   /** Cumulative spend cap per agent session in USD (default: 50). */
   sessionSpendCapUsd?: number;
   /** Maximum USD value for a single transaction (default: 25). */

@@ -646,6 +646,13 @@ export const ToolsSchema = z
         network: z.union([z.literal("base"), z.literal("base-sepolia")]).optional(),
         cdpApiKeyId: z.string().optional().register(sensitive),
         cdpApiKeySecret: z.string().optional().register(sensitive),
+        provisioning: z.union([z.literal("selfHostServer"), z.literal("embedded")]).optional(),
+        embedded: z
+          .object({
+            projectId: z.string().optional(),
+          })
+          .strict()
+          .optional(),
         sessionSpendCapUsd: z.number().positive().optional(),
         perTransactionCapUsd: z.number().positive().optional(),
         walletStorePath: z.string().optional(),
